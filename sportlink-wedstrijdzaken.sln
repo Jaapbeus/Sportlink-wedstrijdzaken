@@ -1,0 +1,42 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11612.150
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "fa-dev-sportlink-01", "FunctionApp\fa-dev-sportlink-01.csproj", "{EDB4734E-AE01-4828-BAF8-61C44A717CFF}"
+EndProject
+Project("{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}") = "SportlinkSqlDb", "Database\SportlinkSqlDb.sqlproj", "{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Debug|x86.ActiveCfg = Debug|x86
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Debug|x86.Build.0 = Debug|x86
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Release|x86.ActiveCfg = Release|x86
+		{EDB4734E-AE01-4828-BAF8-61C44A717CFF}.Release|x86.Build.0 = Release|x86
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Debug|x86.Build.0 = Debug|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Debug|x86.Deploy.0 = Debug|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Release|Any CPU.Deploy.0 = Release|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Release|x86.ActiveCfg = Release|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Release|x86.Build.0 = Release|Any CPU
+		{5BD29743-C9B4-4505-81FF-9EDFC12DB3EE}.Release|x86.Deploy.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
