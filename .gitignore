@@ -1,3 +1,8 @@
+# ── Git hooks ─────────────────────────────────────────────────────────────────
+# Sensitive patterns file contains real secrets/passwords used for scanning.
+# Copy sensitive-patterns.template.txt → sensitive-patterns.txt and adjust.
+.githooks/sensitive-patterns.txt
+
 # ── Azure Functions ───────────────────────────────────────────────────────────
 # Local settings contain secrets and machine-specific connection strings.
 # Copy local.settings.template.json → local.settings.json and fill in your values.
