@@ -41,14 +41,69 @@ For detailed steps, continue reading below.
 
 1. [Prerequisites](#prerequisites)
 2. [Software Installation](#software-installation)
-3. [Database Setup](#database-setup)
-4. [Sportlink API Credentials Setup](#sportlink-api-credentials-setup)
-5. [Local Settings Configuration](#local-settings-configuration)
-6. [Stored Procedures Deployment](#stored-procedures-deployment)
-7. [Metadata Table Setup](#metadata-table-setup)
-8. [Environment Verification](#environment-verification)
-9. [First Run](#first-run)
-10. [Troubleshooting](#troubleshooting)
+3. [Git Hooks Setup](#git-hooks-setup)
+4. [Database Setup](#database-setup)
+5. [Sportlink API Credentials Setup](#sportlink-api-credentials-setup)
+6. [Local Settings Configuration](#local-settings-configuration)
+7. [Stored Procedures Deployment](#stored-procedures-deployment)
+8. [Metadata Table Setup](#metadata-table-setup)
+9. [Environment Verification](#environment-verification)
+10. [First Run](#first-run)
+11. [Troubleshooting](#troubleshooting)
+
+---
+
+## 3. Git Hooks Setup
+
+This repository includes **pre-commit** and **pre-push** hooks that scan for sensitive data (passwords, API keys, server names, credentials) before allowing commits or pushes to GitHub. This prevents accidental exposure of secrets.
+
+### 3.1 Activate Git Hooks
+
+After cloning the repository, configure git to use the versioned hooks directory:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+### 3.2 Configure Sensitive Patterns
+
+The hooks read patterns from `.githooks/sensitive-patterns.txt` (which is gitignored and never pushed). Create it from the template:
+
+```bash
+cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
+```
+
+Then edit `.githooks/sensitive-patterns.txt` and add your project-specific patterns — real passwords, server names, client IDs, and SQL logins that should never appear in a commit. For example:
+
+```
+# Generic patterns (detect credentials in connection strings)
+Password=[^;'"`<>{}]{4,}
+PWD=[^;'"`<>{}]{4,}
+clientId=[A-Za-z0-9]{6,}
+
+# Project-specific patterns (add your own real values)
+# MySecretPassword
+# MyClientId123
+# Server=MYSERVERNAME
+# my_sql_login_name
+```
+
+### 3.3 Verify Hooks Are Active
+
+Test that the hooks work by staging a file and committing:
+
+```bash
+git commit --allow-empty -m "test hooks"
+```
+
+You should see: `🔍 Scanning staged files for sensitive data...` followed by `✅ No sensitive data detected.`
+
+If you don't see the scanning message, verify `core.hooksPath` is set:
+
+```bash
+git config core.hooksPath
+# Should output: .githooks
+```
 
 ---
 
@@ -688,6 +743,8 @@ Before running the application, ensure all items are checked:
 - [ ] Visual Studio 2022/2026 installed
 - [ ] SQL Server accessible
 - [ ] Node.js and Azurite installed
+- [ ] Git hooks activated (`git config core.hooksPath .githooks`)
+- [ ] Sensitive patterns file configured (`.githooks/sensitive-patterns.txt`)
 - [ ] Database `SportlinkSqlDb` created
 - [ ] Schemas `stg`, `his`, `mta` exist
 - [ ] Stored procedures deployed (`sp_MergeStgToHis`, `sp_CreateTargetTableFromSource`)
