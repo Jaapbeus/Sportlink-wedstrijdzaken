@@ -1,0 +1,14 @@
+# Sensitive data patterns for pre-commit and pre-push hooks.
+# One regex pattern per line. Lines starting with # are comments.
+# Copy this file to sensitive-patterns.txt and add your actual patterns.
+#
+# Suggested generic patterns:
+# Password=[^;'"`<>{}]{4,}
+# PWD=[^;'"`<>{}]{4,}
+# clientId=[A-Za-z0-9]{6,}
+#
+# Add project-specific patterns (real passwords, server names, client IDs):
+# YourActualPassword
+# YourClientId
+# Server=YOUR_SERVER_PREFIX
+# your_sql_login_name
