@@ -1,0 +1,18 @@
+﻿CREATE VIEW [pub].[Teams]
+	AS 
+SELECT [bk_teams]			AS [TeamBk]
+      ,[teamcode]			AS [TeamCode]
+      ,[lokaleteamcode]		AS [TeamCodeLokaal]
+      ,[teamnaam]			AS [TeamNaam]
+      ,[teamsoort]			AS [TeamSoort]
+      ,[geslacht]			AS [Geslacht]
+      ,[leeftijdscategorie]	AS [LeeftijdsCategorie]
+      ,[competitiesoort]	AS [CompetitieSoort]
+      ,[competitienaam]		AS [CompetitieNaam]
+      ,[klasse]				AS [CompetitieKlasse]
+      ,[poule]				AS [Poule]
+      ,[klassepoule]		AS [PouleKlasse]
+      ,[poulecode]			AS [PouleCode]
+      ,[spelsoort]			AS [SpelSoort]
+      ,[speeldag]			AS [Speeldag]
+  FROM [his].[teams];

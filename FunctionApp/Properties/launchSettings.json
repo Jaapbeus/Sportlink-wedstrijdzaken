@@ -1,0 +1,25 @@
+{
+  "profiles": {
+    "fa_dev_sportlink_01 (Debug - Local DB)": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7094",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "dotNetRunConfiguration": "Debug"
+    },
+    "fa_dev_sportlink_01": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7094",
+      "dotNetRunConfiguration": "Debug"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "containerRunArguments": "--init",
+      "httpPort": 31486,
+      "useSSL": false
+    }
+  }
+}
