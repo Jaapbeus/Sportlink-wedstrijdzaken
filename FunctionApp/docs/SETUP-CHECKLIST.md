@@ -21,6 +21,15 @@ Use this checklist to track your setup progress. Check off each item as you comp
 
 ---
 
+## Git Hooks Setup (Sensitive Data Protection)
+
+- [ ] Activated git hooks: `git config core.hooksPath .githooks`
+- [ ] Copied pattern template: `cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt`
+- [ ] Added project-specific patterns (passwords, server names, client IDs) to `sensitive-patterns.txt`
+- [ ] Verified hooks are active (commit shows scanning message)
+
+---
+
 ## Database Setup
 
 ### Database Creation
