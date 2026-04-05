@@ -10,6 +10,7 @@ namespace SportlinkFunction.Planner
     {
         private const int StandardBufferMinutes = 10;
         private const int SunsetWarningMarginMinutes = 20;
+        private static readonly System.Globalization.CultureInfo NL = new("nl-NL");
 
         public static async Task<CheckAvailabilityResponse> CheckAvailabilityAsync(
             CheckAvailabilityRequest request, ILogger log)
@@ -65,7 +66,7 @@ namespace SportlinkFunction.Planner
                         EindTijd = conflict.EindTijd.ToString("HH:mm"),
                         VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
                     };
-                    response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date:d MMMM}: " +
+                    response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date.ToString("d MMMM", NL)}: " +
                                      $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
                     return response;
                 }
@@ -79,7 +80,7 @@ namespace SportlinkFunction.Planner
                 {
                     DayOfWeek.Friday => "vrijdag",
                     DayOfWeek.Sunday => "zondag",
-                    _ => date.ToString("dddd d MMMM")
+                    _ => date.ToString("dddd d MMMM", NL)
                 }}.";
                 return response;
             }
@@ -192,7 +193,7 @@ namespace SportlinkFunction.Planner
             }
             else
             {
-                response.Reden = $"Geen beschikbaar veld gevonden op {date:dddd d MMMM}.";
+                response.Reden = $"Geen beschikbaar veld gevonden op {date.ToString("dddd d MMMM", NL)}.";
                 AddWeekdayWarning(response, date);
             }
 
@@ -254,7 +255,8 @@ namespace SportlinkFunction.Planner
                 var windowEnd = dagdeelTot > field.BeschikbaarTot ? field.BeschikbaarTot : dagdeelTot;
 
                 // Scannen in stappen van 5 minuten
-                for (var time = windowStart; time.AddMinutes(duurMinuten) <= windowEnd; time = time.AddMinutes(5))
+                // Aanvangstijd moet binnen het dagdeel vallen, eindtijd binnen de veldbeschikbaarheid
+                for (var time = windowStart; time < windowEnd && time.AddMinutes(duurMinuten) <= field.BeschikbaarTot; time = time.AddMinutes(5))
                 {
                     var endTime = time.AddMinutes(duurMinuten);
 
@@ -429,7 +431,7 @@ namespace SportlinkFunction.Planner
             response.Beschikbaar = windows.Count > 0;
             response.BeschikbareVensters = windows;
             if (!response.Beschikbaar)
-                response.Reden = $"Geen beschikbare vensters op {date:dddd d MMMM}.";
+                response.Reden = $"Geen beschikbare vensters op {date.ToString("dddd d MMMM", NL)}.";
             AddWeekdayWarning(response, date);
             return response;
         }
@@ -472,7 +474,7 @@ namespace SportlinkFunction.Planner
             if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
             {
                 response.Waarschuwingen.Add(
-                    $"{date.DayOfWeek}: alleen veld 5 beschikbaar (veld 1-4 training).");
+                    $"{date.ToString("dddd", NL)}: alleen veld 5 beschikbaar (veld 1-4 training).");
             }
         }
 
@@ -597,7 +599,7 @@ namespace SportlinkFunction.Planner
 
             if (response.Alternatieven.Count == 0)
             {
-                response.Reden = $"Geen alternatieve tijdsloten gevonden op {date:dddd d MMMM}.";
+                response.Reden = $"Geen alternatieve tijdsloten gevonden op {date.ToString("dddd d MMMM", NL)}.";
             }
             else
             {
@@ -612,7 +614,7 @@ namespace SportlinkFunction.Planner
         {
             if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
             {
-                waarschuwingen.Add($"{date.DayOfWeek}: alleen veld 5 beschikbaar (veld 1-4 training).");
+                waarschuwingen.Add($"{date.ToString("dddd", NL)}: alleen veld 5 beschikbaar (veld 1-4 training).");
             }
         }
     }
