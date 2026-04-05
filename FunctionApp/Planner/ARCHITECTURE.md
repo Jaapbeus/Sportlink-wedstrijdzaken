@@ -343,3 +343,23 @@ De afzendergegevens worden **niet hardcoded** maar opgeslagen in `dbo.AppSetting
 | `PlannerEmailAdres` | Emailadres voor verzending | Configureerbaar per omgeving |
 
 Zo blijven persoonsgegevens buiten de code (AVG/GDPR-conform) en zijn ze wijzigbaar zonder deployment.
+
+#### Communicatiestijl geautomatiseerde berichten
+
+Antwoorden moeten **kort en duidelijk** zijn, zonder technische details over het algoritme. De ontvanger hoeft niet te weten hoe de berekening werkt.
+
+**Niet beschikbaar — voorbeeld:**
+
+> Maandag 18 mei is er geen mogelijkheid omdat er al een andere wedstrijd op veld 5 staat gepland. Mogelijkheden om voor of na deze wedstrijd te spelen is niet mogelijk vanwege het ontbreken van verlichting en zonsondergang (21:31).
+
+**Wel beschikbaar — voorbeeld:**
+
+> Woensdag 20 mei is veld 5 beschikbaar om 18:30. De wedstrijd eindigt om 19:45, ruim voor zonsondergang (21:31).
+
+**Richtlijnen:**
+- Geef alleen aan of het wel of niet kan, niet waarom het algoritme bepaalde tijden heeft geprobeerd
+- Bij "niet mogelijk": vermeld kort de reden (ander wedstrijd, geen verlichting, veld vol)
+- Bij "wel mogelijk": vermeld het tijdstip, veld en eindtijd
+- Vermeld zonsondergang alleen als het relevant is (velden zonder kunstlicht)
+- Bij datum-discrepanties (bijv. "maandag 20 mei" terwijl dat een woensdag is): corrigeer vriendelijk en geef beide opties
+- Geef niet meer dan 2-3 alternatieven — te veel keuze werkt verwarrend
