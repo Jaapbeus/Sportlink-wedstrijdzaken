@@ -328,6 +328,7 @@ Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (laatste keuze)
 | JO14, JO15 | 1.00 (heel) | 85 min | 1 per veld |
 | MO15 | 1.00 (heel) | 85 min | 1 per veld |
 | JO16, JO17, MO17 | 1.00 (heel) | 95 min | 1 per veld |
+| G | 0.50 (half) | 75 min | 2 per veld |
 | JO18, JO19, JO23, MO19, MO20, VR, 1-99 | 1.00 (heel) | 105 min | 1 per veld |
 
 ### Teamspecifieke regels (dbo.TeamRegels)
