@@ -266,7 +266,7 @@ document.addEventListener('click', () => {
                         int bufBreedte = (int)(bufMin * PixelsPerUur / 60.0);
                         sb.AppendLine($"<div style='position:absolute;left:{xBuf}px;top:0;width:{bufBreedte}px;height:{VeldRijHoogte}px;" +
                             $"display:flex;align-items:center;justify-content:center;pointer-events:none;'>" +
-                            $"<span style='font-size:8px;color:#555;writing-mode:vertical-lr;text-orientation:mixed;'>{bufMin}m</span></div>");
+                            $"<span style='font-size:8px;color:#ffffff;writing-mode:vertical-lr;text-orientation:mixed;'>{bufMin}m</span></div>");
                     }
                 }
 
