@@ -126,6 +126,53 @@ namespace SportlinkFunction.Planner
                 return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
             }
         }
+        [Function("Optimaliseer")]
+        public static async Task<IActionResult> Optimaliseer(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/optimaliseer")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("Optimaliseer");
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<OptimaliseerRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Datum))
+                    return new BadRequestObjectResult(new { error = "Request body met 'datum' is verplicht." });
+
+                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}", request.Datum, request.Doel);
+
+                var response = await PlannerService.OptimaliseerAsync(request, log);
+
+                var format = req.Query.ContainsKey("format") ? req.Query["format"].ToString() : "";
+
+                if (format == "html")
+                    return new ContentResult { Content = response.HtmlPlanner, ContentType = "text/html", StatusCode = 200 };
+
+                if (format == "email")
+                {
+                    // Browser-URL opbouwen voor de link in de email
+                    var browserUrl = $"{req.Scheme}://{req.Host}/api/planner/optimaliseer?format=html";
+                    var emailHtml = PlannerHtmlGenerator.GenereerEmailHtml(
+                        DateOnly.Parse(request.Datum),
+                        await PlannerDataAccess.GetFieldOccupationsAsync(DateOnly.Parse(request.Datum)),
+                        response.Suggesties,
+                        await PlannerDataAccess.GetVeldenAsync(),
+                        request.Doel ?? "veld5-ontlasten",
+                        browserUrl);
+                    return new ContentResult { Content = emailHtml, ContentType = "text/html", StatusCode = 200 };
+                }
+
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Optimaliseer failed");
+                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            }
+        }
+
         [Function("ZoekWedstrijd")]
         public static async Task<IActionResult> ZoekWedstrijd(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
