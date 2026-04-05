@@ -1,44 +1,44 @@
-# VRC Sportlink API Documentation
+# VRC Sportlink API Documentatie
 
-**Base URL:** `http://localhost:7094/api`
+**Basis-URL:** `http://localhost:7094/api`
 
-All endpoints require a function key via `x-functions-key` header or `?code=` query parameter (except local development).
+Alle endpoints vereisen een functiesleutel via `x-functions-key` header of `?code=` queryparameter (behalve lokale ontwikkeling).
 
 ---
 
-## Endpoints Overview
+## Overzicht endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/sync-matches` | Manual Sportlink data sync |
-| `POST` | `/planner/check-availability` | Check field availability |
-| `POST` | `/planner/bevestig` | Book a match slot |
-| `POST` | `/planner/populate-sunset` | Populate sunset lookup table |
-| `POST` | `/planner/zoek-wedstrijd` | Search for an existing match |
-| `POST` | `/planner/herplan-check` | Simulate reschedule alternatives |
-| `POST` | `/planner/herplan-bevestig` | Register a reschedule request |
+| Methode | Endpoint | Beschrijving |
+|---------|----------|-------------|
+| `GET` | `/sync-matches` | Handmatige Sportlink data synchronisatie |
+| `POST` | `/planner/check-availability` | Veldbeschikbaarheid controleren |
+| `POST` | `/planner/bevestig` | Wedstrijdslot boeken |
+| `POST` | `/planner/populate-sunset` | Zonsondergangtabel vullen |
+| `POST` | `/planner/zoek-wedstrijd` | Bestaande wedstrijd zoeken |
+| `POST` | `/planner/herplan-check` | Herplan-alternatieven simuleren |
+| `POST` | `/planner/herplan-bevestig` | Herplanverzoek registreren |
 
 ---
 
 ## GET /api/sync-matches
 
-Manually trigger a Sportlink API sync (teams, matches, match details).
+Handmatig een Sportlink API synchronisatie starten (teams, wedstrijden, wedstrijddetails).
 
-### Query Parameters
+### Queryparameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `reset` | `boolean` | No | `true` = full season sync instead of incremental |
-| `season` | `integer` | No | Season start year (e.g. `2024`). Used with `reset=true` |
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|-------------|
+| `reset` | `boolean` | Nee | `true` = volledige seizoensynchronisatie in plaats van incrementeel |
+| `season` | `integer` | Nee | Startjaar seizoen (bijv. `2024`). Gebruikt met `reset=true` |
 
-### Example
+### Voorbeeld
 
 ```
 GET /api/sync-matches
 GET /api/sync-matches?reset=true&season=2025
 ```
 
-### Response
+### Antwoord
 
 ```
 200 OK
@@ -48,9 +48,9 @@ GET /api/sync-matches?reset=true&season=2025
 
 ## POST /api/planner/check-availability
 
-Check if a field is available for a friendly/practice match. Returns a specific slot assignment, available time windows, or a team conflict.
+Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifieke slottoewijzing, beschikbare tijdvensters, of een teamconflict terug.
 
-### Request Body
+### Aanvraag
 
 ```json
 {
@@ -64,21 +64,21 @@ Check if a field is available for a friendly/practice match. Returns a specific 
 }
 ```
 
-### Request Fields
+### Aanvraagvelden
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `datum` | `string` | **Yes** | Date in `yyyy-MM-dd` format |
-| `aanvangsTijd` | `string` | No | Preferred kick-off time `HH:mm`. Omit to find best slot |
-| `dagdeel` | `string` | No | Time-of-day filter: `"ochtend"`, `"middag"`, or `"avond"` |
-| `leeftijdsCategorie` | `string` | No | Age category (e.g. `JO11`, `MO17`, `VR`, `1-99`). Determines match duration and field size. Omit to get available windows |
-| `teamNaam` | `string` | No | Team name for conflict check and team-specific rules |
-| `tegenstander` | `string` | No | Opponent name (for records only) |
-| `wedstrijdDuurMinuten` | `integer` | No | Override match duration in minutes (default from Speeltijden) |
+| Veld | Type | Verplicht | Beschrijving |
+|------|------|-----------|-------------|
+| `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
+| `aanvangsTijd` | `string` | Nee | Gewenste aftrapttijd `HH:mm`. Weglaten om beste slot te vinden |
+| `dagdeel` | `string` | Nee | Dagdeelfilter: `"ochtend"`, `"middag"`, of `"avond"` |
+| `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie (bijv. `JO11`, `MO17`, `VR`, `1-99`). Bepaalt wedstrijdduur en veldgrootte. Weglaten voor beschikbare vensters |
+| `teamNaam` | `string` | Nee | Teamnaam voor conflictcontrole en teamspecifieke regels |
+| `tegenstander` | `string` | Nee | Tegenstander (alleen voor administratie) |
+| `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden) |
 
-### Response — Slot Assigned (200)
+### Antwoord — Slot toegewezen (200)
 
-When `leeftijdsCategorie` is provided and a slot is available:
+Als `leeftijdsCategorie` is opgegeven en een slot beschikbaar is:
 
 ```json
 {
@@ -100,9 +100,9 @@ When `leeftijdsCategorie` is provided and a slot is available:
 }
 ```
 
-### Response — Unavailable with Alternatives (200)
+### Antwoord — Niet beschikbaar met alternatieven (200)
 
-When the requested time is not available:
+Als de gevraagde tijd niet beschikbaar is:
 
 ```json
 {
@@ -135,9 +135,9 @@ When the requested time is not available:
 }
 ```
 
-### Response — Available Windows (200)
+### Antwoord — Beschikbare vensters (200)
 
-When `leeftijdsCategorie` is omitted — returns open time windows per field:
+Als `leeftijdsCategorie` niet is opgegeven — geeft open tijdvensters per veld:
 
 ```json
 {
@@ -162,9 +162,9 @@ When `leeftijdsCategorie` is omitted — returns open time windows per field:
 }
 ```
 
-### Response — Team Conflict (200)
+### Antwoord — Teamconflict (200)
 
-When the team already has a match on the requested date:
+Als het team al een wedstrijd heeft op de gevraagde datum:
 
 ```json
 {
@@ -183,9 +183,9 @@ When the team already has a match on the requested date:
 }
 ```
 
-### Response — No Matches Allowed (200)
+### Antwoord — Geen wedstrijden toegestaan (200)
 
-When the requested day does not allow matches (Friday/Sunday):
+Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 
 ```json
 {
@@ -199,19 +199,19 @@ When the requested day does not allow matches (Friday/Sunday):
 }
 ```
 
-### Response Fields
+### Antwoordvelden
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `beschikbaar` | `boolean` | Whether a slot is available |
-| `toewijzing` | `object\|null` | Assigned slot (Mode 1 only) |
-| `teamConflict` | `object\|null` | Existing match for the team on this date |
-| `reden` | `string\|null` | Reason when unavailable |
-| `alternatieven` | `array` | Up to 3 alternative time slots |
-| `beschikbareVensters` | `array\|null` | Available windows per field (Mode 2 only) |
-| `waarschuwingen` | `array` | Warnings (sunset margin, weekday restrictions) |
+| Veld | Type | Beschrijving |
+|------|------|-------------|
+| `beschikbaar` | `boolean` | Of een slot beschikbaar is |
+| `toewijzing` | `object\|null` | Toegewezen slot (alleen Modus 1) |
+| `teamConflict` | `object\|null` | Bestaande wedstrijd voor het team op deze datum |
+| `reden` | `string\|null` | Reden als niet beschikbaar |
+| `alternatieven` | `array` | Tot 3 alternatieve tijdsloten |
+| `beschikbareVensters` | `array\|null` | Beschikbare vensters per veld (alleen Modus 2) |
+| `waarschuwingen` | `array` | Waarschuwingen (zonsondergangmarge, doordeweekse beperkingen) |
 
-### Error Response (400)
+### Foutantwoord (400)
 
 ```json
 {
@@ -223,9 +223,9 @@ When the requested day does not allow matches (Friday/Sunday):
 
 ## POST /api/planner/bevestig
 
-Confirm and book a match slot. Writes to `planner.GeplandeWedstrijden` table.
+Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijden` tabel.
 
-### Request Body
+### Aanvraag
 
 ```json
 {
@@ -240,18 +240,18 @@ Confirm and book a match slot. Writes to `planner.GeplandeWedstrijden` table.
 }
 ```
 
-### Request Fields
+### Aanvraagvelden
 
-| Field | Type | Required | Description |
+| Veld | Type | Verplicht | Beschrijving |
 |-------|------|----------|-------------|
-| `datum` | `string` | **Yes** | Date in `yyyy-MM-dd` format |
-| `aanvangsTijd` | `string` | **Yes** | Kick-off time `HH:mm` |
-| `veldNummer` | `integer` | **Yes** | Field number (1-5) |
-| `leeftijdsCategorie` | `string` | No | Age category for auto duration/field size |
-| `teamNaam` | `string` | No | Team name |
-| `tegenstander` | `string` | No | Opponent name |
-| `aangevraagdDoor` | `string` | No | Who requested (email, phone, name) |
-| `wedstrijdDuurMinuten` | `integer` | No | Override match duration (default from Speeltijden or 105) |
+| `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
+| `aanvangsTijd` | `string` | **Ja** | Aftrapttijd `HH:mm` |
+| `veldNummer` | `integer` | **Ja** | Veldnummer (1-5) |
+| `leeftijdsCategorie` | `string` | Nee | Leeftijdscategorie voor automatische duur/veldgrootte |
+| `teamNaam` | `string` | Nee | Teamnaam |
+| `tegenstander` | `string` | Nee | Tegenstander |
+| `aangevraagdDoor` | `string` | Nee | Wie het verzoek heeft gedaan |
+| `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur (standaard uit Speeltijden of 105) |
 
 ### Response (200)
 
@@ -266,18 +266,18 @@ Confirm and book a match slot. Writes to `planner.GeplandeWedstrijden` table.
 }
 ```
 
-### Response Fields
+### Antwoordvelden
 
-| Field | Type | Description |
+| Veld | Type | Beschrijving |
 |-------|------|-------------|
-| `id` | `integer` | Database ID of the booked match |
-| `datum` | `string` | Confirmed date |
-| `aanvangsTijd` | `string` | Confirmed kick-off time |
-| `eindTijd` | `string` | Calculated end time |
-| `veldNummer` | `integer` | Assigned field |
-| `status` | `string` | Always `"Gepland"` on creation |
+| `id` | `integer` | Database-ID van de geboekte wedstrijd |
+| `datum` | `string` | Bevestigde datum |
+| `aanvangsTijd` | `string` | Bevestigde aftrapttijd |
+| `eindTijd` | `string` | Berekende eindtijd |
+| `veldNummer` | `integer` | Toegewezen veld |
+| `status` | `string` | Altijd `"Gepland"` bij aanmaak |
 
-### Error Response (400)
+### Foutantwoord (400)
 
 ```json
 {
@@ -289,13 +289,13 @@ Confirm and book a match slot. Writes to `planner.GeplandeWedstrijden` table.
 
 ## POST /api/planner/populate-sunset
 
-Populate the sunset lookup table with NOAA-calculated sunset times for Veenendaal. Run once after initial setup, or when the season/date range expands.
+Vul de zonsondergangtabel met NOAA-berekende tijden voor Veenendaal. Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
 
-### Request Body
+### Aanvraag
 
-None (empty POST).
+Geen (lege POST).
 
-### Response (200)
+### Antwoord (200)
 
 ```json
 {
@@ -307,7 +307,7 @@ None (empty POST).
 
 ## POST /api/planner/zoek-wedstrijd
 
-Search for an existing competition match by team name and date.
+Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
 
 ### Request Body
 
@@ -464,46 +464,47 @@ Register a reschedule request. **Does NOT modify the match** — only records th
 
 ---
 
-## Scheduling Rules Reference
+## Overzicht planningsregels
 
-### Field Availability
+### Veldbeschikbaarheid
 
-| Day | Fields | Hours | Notes |
-|-----|--------|-------|-------|
-| Monday-Thursday | Veld 5 only | 18:00 - sunset | No lights, veld 1-4 training |
-| Friday | None | - | No matches |
-| Saturday | Veld 1-5 | 08:30 - 22:00 (1-4) / 08:30 - 17:00 (5) | 10 min buffer |
-| Sunday | None | - | No matches |
+| Dag | Velden | Tijdvenster | Opmerkingen |
+|-----|--------|-------------|-------------|
+| Maandag-Donderdag | Alleen veld 5 | 18:00 - zonsondergang | Geen kunstlicht, veld 1-4 training |
+| Vrijdag | Geen | - | Geen wedstrijden |
+| Zaterdag | Veld 1-5 | 08:30 - 22:00 (1-4) / 08:30 - 17:00 (5) | 10 min buffer |
+| Zondag | Geen | - | Geen wedstrijden |
 
-### Field Priority
+### Veldvoorkeur
 
-Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (last resort)
+Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (laatste keuze)
 
-### Age Categories (Speeltijden)
+### Leeftijdscategorieën (Speeltijden)
 
-| Category | Field Size | Duration | Field Sharing |
+| Categorie | Veldgrootte | Duur | Veld delen |
 |----------|-----------|----------|---------------|
-| JO7, JO8, JO9 | 0.25 (quarter) | 50 min | 4 per field |
-| JO10 | 0.25 (quarter) | 65 min | 4 per field |
-| JO11, JO12 | 0.50 (half) | 75 min | 2 per field |
-| JO13, MO13 | 1.00 (full) | 75 min | 1 per field |
-| JO14, JO15 | 1.00 (full) | 85 min | 1 per field |
-| MO15 | 1.00 (full) | 85 min | 1 per field |
-| JO16, JO17, MO17 | 1.00 (full) | 95 min | 1 per field |
-| JO18, JO19, JO23, MO19, MO20, VR, 1-99 | 1.00 (full) | 105 min | 1 per field |
+| JO7, JO8, JO9 | 0.25 (kwart) | 50 min | 4 per veld |
+| JO10 | 0.25 (kwart) | 65 min | 4 per veld |
+| JO11, JO12 | 0.50 (half) | 75 min | 2 per veld |
+| JO13, MO13 | 1.00 (heel) | 75 min | 1 per veld |
+| JO14, JO15 | 1.00 (heel) | 85 min | 1 per veld |
+| MO15 | 1.00 (heel) | 85 min | 1 per veld |
+| JO16, JO17, MO17 | 1.00 (heel) | 95 min | 1 per veld |
+| G | 0.50 (half) | 75 min | 2 per veld |
+| JO18, JO19, JO23, MO19, MO20, VR, 1-99 | 1.00 (heel) | 105 min | 1 per veld |
 
-### Team-Specific Rules (dbo.TeamRegels)
+### Teamspecifieke regels (dbo.TeamRegels)
 
-| Team | Rule | Value |
+| Team | Regel | Waarde |
 |------|------|-------|
-| VRC 1 | BufferVoor | 60 min before match, no other matches on same field |
-| VRC 1 | BufferNa | 30 min after match, no other matches on same field |
+| VRC 1 | BufferVoor | 60 min voor wedstrijd, geen andere wedstrijden op hetzelfde veld |
+| VRC 1 | BufferNa | 30 min na wedstrijd, geen andere wedstrijden op hetzelfde veld |
 
 ---
 
-## curl Examples
+## curl Voorbeelden
 
-### Check availability for JO13 on a Saturday
+### Beschikbaarheid controleren voor JO13 op zaterdag
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/check-availability \
@@ -511,7 +512,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability \
   -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","leeftijdsCategorie":"JO13"}'
 ```
 
-### Check Monday evening availability (no category)
+### Maandagavond beschikbaarheid controleren (zonder categorie)
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/check-availability \
@@ -519,7 +520,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability \
   -d '{"datum":"2026-05-18","dagdeel":"avond"}'
 ```
 
-### Check with team conflict detection
+### Controleren met teamconflictdetectie
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/check-availability \
@@ -527,7 +528,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability \
   -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"VRC JO11-9"}'
 ```
 
-### Book a match
+### Wedstrijd boeken
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/bevestig \
@@ -535,13 +536,13 @@ curl -X POST http://localhost:7094/api/planner/bevestig \
   -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"VRC JO13-1","tegenstander":"Ede JO13-2","aangevraagdDoor":"coach@vrc.nl"}'
 ```
 
-### Populate sunset table
+### Zonsondergangtabel vullen
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/populate-sunset
 ```
 
-### Search for an existing match
+### Bestaande wedstrijd zoeken
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd \
@@ -549,7 +550,7 @@ curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd \
   -d '{"teamNaam":"VRC JO8-2","datum":"2026-05-09"}'
 ```
 
-### Check reschedule alternatives (simulation)
+### Herplan-alternatieven controleren (simulatie)
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/herplan-check \
@@ -557,15 +558,15 @@ curl -X POST http://localhost:7094/api/planner/herplan-check \
   -d '{"wedstrijdcode":12345678,"voorkeurTijd":"10:00","dagdeel":"ochtend"}'
 ```
 
-### Register reschedule request
+### Herplanverzoek registreren
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/herplan-bevestig \
   -H "Content-Type: application/json" \
-  -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"08:30 is niet haalbaar"}'
+  -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
-### Manual Sportlink sync
+### Handmatige Sportlink synchronisatie
 
 ```bash
 curl http://localhost:7094/api/sync-matches
