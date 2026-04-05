@@ -149,7 +149,7 @@ namespace SportlinkFunction.Planner
             await conn.OpenAsync();
             using var cmd = new SqlCommand(@"
                 SELECT [Datum], [AanvangsTijd], [EindTijd], [VeldNummer], [VeldDeelGebruik],
-                       [LeeftijdsCategorie], [TeamNaam], [Wedstrijd], [Bron]
+                       [LeeftijdsCategorie], [TeamNaam], [Wedstrijd], [VeldSubpositie], [Bron]
                 FROM (
                     SELECT *, ROW_NUMBER() OVER (
                         PARTITION BY [VeldNummer], [AanvangsTijd], [Wedstrijd]
@@ -176,7 +176,8 @@ namespace SportlinkFunction.Planner
                     LeeftijdsCategorie = reader.IsDBNull(5) ? null : reader.GetString(5),
                     TeamNaam = reader.IsDBNull(6) ? null : reader.GetString(6),
                     Wedstrijd = reader.IsDBNull(7) ? null : reader.GetString(7),
-                    Bron = reader.GetString(8)
+                    VeldSubpositie = reader.IsDBNull(8) ? null : reader.GetString(8)?.Trim(),
+                    Bron = reader.GetString(9)
                 });
             }
             return results;
