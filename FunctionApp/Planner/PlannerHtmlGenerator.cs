@@ -232,19 +232,27 @@ document.addEventListener('click', () => {
                     }
                     else
                     {
-                        var blok = new List<BestaandeWedstrijd> { w };
+                        // Deelveld: positioneer op basis van veldsubpositie (A/B/A1/A2/B1/B2)
                         verwerkt.Add(i);
+                        var sub = (w.VeldSubpositie ?? "").Trim();
+                        int topPos; int hoogte;
+                        BerekenSubpositie(sub, w.VeldDeelGebruik, out topPos, out hoogte);
+                        TekenBlok(sb, paneel, w, veld, topPos, hoogte, startMin, verplaatsVan, isNieuwePlek);
+
+                        // Zoek overige deelveld-wedstrijden die overlappen
                         for (int j = i + 1; j < veldWedstrijden.Count; j++)
                         {
                             if (verwerkt.Contains(j)) continue;
                             var a = veldWedstrijden[j];
                             if (a.VeldDeelGebruik >= 1.0m) continue;
-                            if (a.AanvangsTijd < blok.Max(b => b.EindTijd) && a.EindTijd > blok.Min(b => b.AanvangsTijd))
-                            { blok.Add(a); verwerkt.Add(j); }
+                            if (a.AanvangsTijd < w.EindTijd && a.EindTijd > w.AanvangsTijd)
+                            {
+                                verwerkt.Add(j);
+                                var subA = (a.VeldSubpositie ?? "").Trim();
+                                BerekenSubpositie(subA, a.VeldDeelGebruik, out int topA, out int hoogteA);
+                                TekenBlok(sb, paneel, a, veld, topA, hoogteA, startMin, verplaatsVan, isNieuwePlek);
+                            }
                         }
-                        int bh = (VeldRijHoogte - 2) / Math.Max(blok.Count, 1);
-                        for (int k = 0; k < blok.Count; k++)
-                            TekenBlok(sb, paneel, blok[k], veld, 1 + k * bh, bh - 1, startMin, verplaatsVan, isNieuwePlek);
                     }
                 }
 
@@ -273,6 +281,32 @@ document.addEventListener('click', () => {
                 sb.AppendLine("</div></div>");
             }
             sb.AppendLine("</div>");
+        }
+
+        /// <summary>
+        /// Bereken verticale positie en hoogte op basis van veldsubpositie.
+        /// A = bovenste helft, B = onderste helft
+        /// A1/A2 = kwarten bovenste helft, B1/B2 = kwarten onderste helft
+        /// </summary>
+        private static void BerekenSubpositie(string sub, decimal veldDeelGebruik, out int top, out int hoogte)
+        {
+            int h = VeldRijHoogte - 2;
+            switch (sub)
+            {
+                case "A":   top = 1;          hoogte = h / 2 - 1;    break; // bovenste helft
+                case "B":   top = h / 2 + 1;  hoogte = h / 2 - 1;    break; // onderste helft
+                case "A1":  top = 1;           hoogte = h / 4 - 1;    break; // kwart linksboven
+                case "A2":  top = h / 4 + 1;   hoogte = h / 4 - 1;    break; // kwart rechtsboven
+                case "B1":  top = h / 2 + 1;   hoogte = h / 4 - 1;    break; // kwart linksonder
+                case "B2":  top = h * 3/4 + 1; hoogte = h / 4 - 1;    break; // kwart rechtsonder
+                default:
+                    // Geen subpositie: gebruik veldDeelGebruik voor schatting
+                    if (veldDeelGebruik <= 0.25m) { top = 1; hoogte = h / 4 - 1; }
+                    else if (veldDeelGebruik <= 0.50m) { top = 1; hoogte = h / 2 - 1; }
+                    else { top = 1; hoogte = h - 1; }
+                    break;
+            }
+            if (hoogte < 14) hoogte = 14;
         }
 
         private static void TekenBlok(StringBuilder sb, string paneel,
