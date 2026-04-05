@@ -23,6 +23,13 @@ namespace SportlinkFunction.Planner
                 return response;
             }
 
+            // Date must be in the future (not today, not in the past)
+            if (date <= DateOnly.FromDateTime(DateTime.Today))
+            {
+                response.Reden = $"De gewenste datum {request.Datum} kan niet verwerkt worden. Een datum moet in de toekomst zijn.";
+                return response;
+            }
+
             // Step 1: Resolve match parameters from Speeltijden
             Speeltijd? speeltijd = null;
             int duurMinuten = 105; // default senior
