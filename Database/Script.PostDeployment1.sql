@@ -30,8 +30,8 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden])
 BEGIN
     INSERT INTO [dbo].[Speeltijden] ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
     VALUES
-        ('JO7',  0.13, 50,  20, 10),
-        ('JO8',  1.00, 50,  20, 10),
+        ('JO7',  0.25, 50,  20, 10),
+        ('JO8',  0.25, 50,  20, 10),
         ('JO9',  0.25, 50,  20, 10),
         ('JO10', 0.25, 65,  25, 15),
         ('JO11', 0.50, 75,  30, 15),
@@ -44,7 +44,62 @@ BEGIN
         ('JO18', 1.00, 105, 45, 15),
         ('JO19', 1.00, 105, 45, 15),
         ('JO23', 1.00, 105, 45, 15),
+        ('MO13', 1.00, 75,  30, 15),
+        ('MO15', 1.00, 85,  35, 15),
+        ('MO17', 1.00, 95,  40, 15),
+        ('MO19', 1.00, 105, 45, 15),
+        ('MO20', 1.00, 105, 45, 15),
+        ('VR',   1.00, 105, 45, 15),
         ('1-99', 1.00, 105, 45, 15)
+END
+GO
+
+-- Velden: field definitions
+IF NOT EXISTS (SELECT 1 FROM [dbo].[Velden])
+BEGIN
+    INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [HeeftKunstlicht], [Actief])
+    VALUES
+        (1, 'veld 1', 1, 1),
+        (2, 'veld 2', 1, 1),
+        (3, 'veld 3', 1, 1),
+        (4, 'veld 4', 1, 1),
+        (5, 'veld 5', 0, 1),
+        (6, 'veld 6', 0, 0)  -- non-functional, always ignored
+END
+GO
+
+-- VeldBeschikbaarheid: field availability per day-of-week
+-- DagVanWeek: 1=Monday, 2=Tuesday, ..., 6=Saturday, 7=Sunday
+IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid])
+BEGIN
+    -- Monday-Thursday (1-4): only veld 5, until sunset
+    INSERT INTO [dbo].[VeldBeschikbaarheid] ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang])
+    VALUES
+        (5, 1, '09:00', '22:00', 1),
+        (5, 2, '09:00', '22:00', 1),
+        (5, 3, '09:00', '22:00', 1),
+        (5, 4, '09:00', '22:00', 1)
+    -- Friday (5): no rows = no matches
+    -- Sunday (7): no rows = no matches
+
+    -- Saturday (6): all fields
+    INSERT INTO [dbo].[VeldBeschikbaarheid] ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang])
+    VALUES
+        (1, 6, '08:30', '22:00', 0),
+        (2, 6, '08:30', '22:00', 0),
+        (3, 6, '08:30', '22:00', 0),
+        (4, 6, '08:30', '22:00', 0),
+        (5, 6, '08:30', '17:00', 0)
+END
+GO
+
+-- TeamRegels: team-specific scheduling exceptions
+IF NOT EXISTS (SELECT 1 FROM [dbo].[TeamRegels])
+BEGIN
+    INSERT INTO [dbo].[TeamRegels] ([TeamNaam], [RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking])
+    VALUES
+        ('VRC 1', 'BufferVoor', 60, 10, 1, '1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld'),
+        ('VRC 1', 'BufferNa',   30, 10, 1, '30 min na de wedstrijd geen andere wedstrijden op hetzelfde veld')
 END
 GO
 

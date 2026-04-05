@@ -668,7 +668,7 @@ Function starts but timer never executes
 
 1. Check the timer trigger schedule in `Function1.cs`:
    ```csharp
-   [TimerTrigger("0 */1 * * * *")]  // Every minute
+   [TimerTrigger("0 0 4 * * *")]  // Daily at 04:00
    ```
 
 2. For faster testing, change to every 10 seconds:
@@ -729,7 +729,7 @@ ORDER BY s.name, t.name;
 
 | Cron Expression | Description |
 |----------------|-------------|
-| `0 */1 * * * *` | Every minute at 0 seconds |
+| `0 0 4 * * *` | Daily at 04:00 |
 | `*/10 * * * * *` | Every 10 seconds (testing) |
 | `0 0 8 * * 1` | Every Monday at 8:00 AM |
 | `0 0 8 * * 1,4` | Monday and Thursday at 8:00 AM |
