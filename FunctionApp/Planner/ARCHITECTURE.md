@@ -384,3 +384,17 @@ Antwoorden moeten **kort en duidelijk** zijn, zonder technische details over het
 - Vermeld zonsondergang alleen als het relevant is (velden zonder kunstlicht)
 - Bij datum-discrepanties (bijv. "maandag 20 mei" terwijl dat een woensdag is): corrigeer vriendelijk en geef beide opties
 - Geef niet meer dan 2-3 alternatieven — te veel keuze werkt verwarrend
+- Beantwoord alleen de expliciete vraag — bied niet zelf extra opties aan tenzij het gevraagde niet mogelijk is
+- Gebruik een tijdsgebonden aanhef: voor 12:00 = "Goedemorgen", 12:00-18:00 = "Goedemiddag", na 18:00 = "Goedenavond"
+- Als de genoemde aanvangstijd afwijkt van het systeem (wedstrijd al verplaatst): meld dit en geef aan dat een nieuw verzoek ingediend kan worden
+
+#### Verzoeken buiten scope
+
+Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken vallen **buiten de scope** van de Veldplanner en worden doorgestuurd naar de coördinator voor handmatige afhandeling:
+
+| Type verzoek | Voorbeeld | Actie |
+|-------------|-----------|-------|
+| Persoonlijk roosterconflict | "Ik coach twee teams die tegelijk spelen" | Doorsturen naar coördinator |
+| Sportlink platform problemen | "De veldplanner laadt traag" | Doorsturen naar Sportlink support |
+| Verzoeken over niet-thuiswedstrijden | "Kunnen we onze uitwedstrijd verplaatsen?" | Doorsturen naar tegenstander/KNVB |
+| Verzoeken zonder duidelijke wedstrijd | "Kunnen we een keer oefenen?" | Doorsturen naar coördinator |
