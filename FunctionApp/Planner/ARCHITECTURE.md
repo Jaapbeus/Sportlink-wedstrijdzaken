@@ -107,6 +107,7 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 | MO19 | 1.00 | 105 | 45 | 15 |
 | MO20 | 1.00 | 105 | 45 | 15 |
 | VR | 1.00 | 105 | 45 | 15 |
+| G | 0.50 | 75 | 30 | 15 |
 | 1-99 | 1.00 | 105 | 45 | 15 |
 
 ---
