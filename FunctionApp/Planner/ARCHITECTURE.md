@@ -39,8 +39,11 @@ Veld 5 wordt alleen toegewezen als veld 1–4 volledig bezet zijn in het gevraag
 ## Planningsregels
 
 ### Buffer tussen wedstrijden
-- **Standard buffer:** 10 minuten tussen opeenvolgende wedstrijden op hetzelfde veld (zaterdag)
+- **Standaard buffer:** 15 minuten tussen opeenvolgende wedstrijden op hetzelfde veld
+- **Uitzondering:** 10 minuten voor overvolle programma's (configureerbaar via `dbo.AppSettings` of API parameter)
+- **Dynamische buffer:** bij optimalisatie wordt resterende ruimte tot de gewenste eindtijd (16:15) verdeeld als extra buffer (max 30 min)
 - **Team-specifieke buffers:** Configureerbaar via `dbo.TeamRegels` tabel
+- **Afronden:** alle aanvangstijden worden naar boven afgerond op 5 minuten (voetbalconventie)
 
 ### Teamspecifieke uitzonderingen (dbo.TeamRegels)
 
