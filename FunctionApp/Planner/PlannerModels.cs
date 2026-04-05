@@ -83,7 +83,9 @@ namespace SportlinkFunction.Planner
     {
         public int VeldNummer { get; set; }
         public string VeldNaam { get; set; } = string.Empty;
+        public string VeldType { get; set; } = "kunstgras"; // kunstgras, natuurgras
         public bool HeeftKunstlicht { get; set; }
+        public bool IsKunstgras => VeldType == "kunstgras";
     }
 
     public class VeldBeschikbaarheidInfo
