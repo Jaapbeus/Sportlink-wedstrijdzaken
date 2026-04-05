@@ -694,40 +694,58 @@ namespace SportlinkFunction.Planner
 
                     // Zoek het vroegste moment waarop deze wedstrijd kan, met CanFitMatch
                     // Verwijder de wedstrijd tijdelijk uit de bezetting voor de check
-                    var bezettingZonderDeze = werkBezetting
-                        .Where(b => !(b.AanvangsTijd == wedstrijd.AanvangsTijd &&
-                                      b.Wedstrijd?.Trim() == wedstrijd.Wedstrijd?.Trim()))
-                        .ToList();
+                    // Zoek het vroegste slot op ALLE velden (niet alleen het eigen veld)
+                    TimeOnly? besteSlotTijd = null;
+                    int besteSlotVeld = wedstrijd.VeldNummer;
 
-                    TimeOnly? vroegstMogelijk = null;
-                    for (var tijd = veldBesch.BeschikbaarVanaf; tijd.AddMinutes(duur) <= veldBesch.BeschikbaarTot; tijd = tijd.AddMinutes(5))
+                    foreach (var kandidaatVeld in beschikbareVelden.OrderBy(v => v.VeldNummer))
                     {
-                        if (tijd >= wedstrijd.AanvangsTijd) break; // Niet later dan huidige tijd
-                        var eindTijd = tijd.AddMinutes(duur);
-                        if (CanFitMatch(tijd, eindTijd, 1.0m, veldBesch.VeldNummer,
-                                        bezettingZonderDeze, allTeamRules, new List<TeamRegel>()))
+                        // Alle wedstrijden op dit kandidaat-veld, zonder de huidige wedstrijd
+                        var kandidaatBezetting = bezettingen
+                            .Where(b => b.VeldNummer == kandidaatVeld.VeldNummer)
+                            .Where(b => !(b.VeldNummer == wedstrijd.VeldNummer &&
+                                          b.AanvangsTijd == wedstrijd.AanvangsTijd &&
+                                          b.Wedstrijd?.Trim() == wedstrijd.Wedstrijd?.Trim()))
+                            .ToList();
+
+                        for (var tijd = kandidaatVeld.BeschikbaarVanaf; tijd.AddMinutes(duur) <= kandidaatVeld.BeschikbaarTot; tijd = tijd.AddMinutes(5))
                         {
-                            vroegstMogelijk = tijd;
-                            break;
+                            if (tijd >= wedstrijd.AanvangsTijd) break;
+                            var eindTijd = tijd.AddMinutes(duur);
+                            if (CanFitMatch(tijd, eindTijd, 1.0m, kandidaatVeld.VeldNummer,
+                                            kandidaatBezetting, allTeamRules, new List<TeamRegel>()))
+                            {
+                                if (besteSlotTijd == null || tijd < besteSlotTijd.Value)
+                                {
+                                    besteSlotTijd = tijd;
+                                    besteSlotVeld = kandidaatVeld.VeldNummer;
+                                }
+                                break; // Vroegste op dit veld gevonden, ga naar volgend veld
+                            }
                         }
                     }
 
-                    if (vroegstMogelijk.HasValue)
+                    if (besteSlotTijd.HasValue)
                     {
-                        var verschilMinuten = (wedstrijd.AanvangsTijd - vroegstMogelijk.Value).TotalMinutes;
-                        if (verschilMinuten >= 15) // minstens 15 minuten winst
+                        var verschilMinuten = (wedstrijd.AanvangsTijd - besteSlotTijd.Value).TotalMinutes;
+                        if (verschilMinuten >= 15)
                         {
-                            var veldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
+                            var huidigVeldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
+                            var nieuwVeldNaam = velden.FirstOrDefault(v => v.VeldNummer == besteSlotVeld)?.VeldNaam ?? $"veld {besteSlotVeld}";
+                            var reden = besteSlotVeld == wedstrijd.VeldNummer
+                                ? $"Naar voren schuiven ({(int)verschilMinuten} min eerder)"
+                                : $"Verplaatsen naar {nieuwVeldNaam} ({(int)verschilMinuten} min eerder)";
+
                             suggesties.Add(new OptimalisatieSuggestie
                             {
                                 Wedstrijd = wedstrijd.Wedstrijd?.Trim() ?? "",
                                 HuidigVeldNummer = wedstrijd.VeldNummer,
-                                HuidigVeld = veldNaam,
+                                HuidigVeld = huidigVeldNaam,
                                 HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
-                                NieuwVeldNummer = wedstrijd.VeldNummer,
-                                NieuwVeld = veldNaam,
-                                NieuweTijd = vroegstMogelijk.Value.ToString("HH:mm"),
-                                Reden = $"Naar voren schuiven ({(int)verschilMinuten} min eerder)"
+                                NieuwVeldNummer = besteSlotVeld,
+                                NieuwVeld = nieuwVeldNaam,
+                                NieuweTijd = besteSlotTijd.Value.ToString("HH:mm"),
+                                Reden = reden
                             });
 
                             // Werkbezetting bijwerken
@@ -738,9 +756,9 @@ namespace SportlinkFunction.Planner
                             werkBezetting.Add(new BestaandeWedstrijd
                             {
                                 Datum = wedstrijd.Datum,
-                                AanvangsTijd = vroegstMogelijk.Value,
-                                EindTijd = vroegstMogelijk.Value.AddMinutes(duur),
-                                VeldNummer = wedstrijd.VeldNummer,
+                                AanvangsTijd = besteSlotTijd.Value,
+                                EindTijd = besteSlotTijd.Value.AddMinutes(duur),
+                                VeldNummer = besteSlotVeld,
                                 VeldDeelGebruik = 1.0m,
                                 TeamNaam = wedstrijd.TeamNaam,
                                 Wedstrijd = wedstrijd.Wedstrijd,
