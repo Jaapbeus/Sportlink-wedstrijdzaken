@@ -248,6 +248,28 @@ document.addEventListener('click', () => {
                     }
                 }
 
+                // Buffer-labels tussen opeenvolgende wedstrijden
+                var alleBlokken = veldWedstrijden
+                    .GroupBy(w => w.AanvangsTijd)
+                    .Select(g => new { Start = g.Key, Einde = g.Max(w => w.EindTijd) })
+                    .OrderBy(b => b.Start).ToList();
+
+                for (int bi = 0; bi < alleBlokken.Count - 1; bi++)
+                {
+                    var einde = alleBlokken[bi].Einde;
+                    var volgendeStart = alleBlokken[bi + 1].Start;
+                    int bufMin = (int)(volgendeStart - einde).TotalMinutes;
+                    if (bufMin > 0 && bufMin <= 60)
+                    {
+                        int eindeMin = einde.Hour * 60 + einde.Minute;
+                        int xBuf = (int)((eindeMin - startMin) * PixelsPerUur / 60.0);
+                        int bufBreedte = (int)(bufMin * PixelsPerUur / 60.0);
+                        sb.AppendLine($"<div style='position:absolute;left:{xBuf}px;top:0;width:{bufBreedte}px;height:{VeldRijHoogte}px;" +
+                            $"display:flex;align-items:center;justify-content:center;pointer-events:none;'>" +
+                            $"<span style='font-size:8px;color:#555;writing-mode:vertical-lr;text-orientation:mixed;'>{bufMin}m</span></div>");
+                    }
+                }
+
                 sb.AppendLine("</div></div>");
             }
             sb.AppendLine("</div>");
@@ -331,11 +353,11 @@ document.addEventListener('click', () => {
             Dictionary<string, OptimalisatieSuggestie> verplaatsVan)
         {
             sb.AppendLine($"<table style='border-collapse:collapse;width:100%;font-size:11px;'>");
-            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
+            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Aanvang</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Einde</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
 
             var verplaatsteKeys = new HashSet<string>(suggesties.Select(s => $"{s.HuidigVeldNummer}_{s.HuidigeTijd}_{s.Wedstrijd}"));
             var getoond = new HashSet<string>();
-            var items = new List<(TimeOnly Tijd, string Veld, string Wedstrijd, string Status, string Kleur)>();
+            var items = new List<(TimeOnly Tijd, TimeOnly Einde, string Veld, string Wedstrijd, string Status, string Kleur)>();
 
             foreach (var w in wedstrijden.OrderBy(w => w.AanvangsTijd).ThenBy(w => w.VeldNummer))
             {
@@ -344,22 +366,24 @@ document.addEventListener('click', () => {
                 var vn = velden.FirstOrDefault(v => v.VeldNummer == w.VeldNummer)?.VeldNaam ?? $"veld {w.VeldNummer}";
 
                 if (verplaatsteKeys.Contains(key))
-                { var s = verplaatsVan[key]; items.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
+                { var s = verplaatsVan[key]; items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
                 else if (w.Wedstrijd?.Contains("VRC 1 ") == true)
-                    items.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", "🔒 Vast", BLK_VAST_RAND));
+                    items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", "🔒 Vast", BLK_VAST_RAND));
                 else
-                    items.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", "", TXT_DIM));
+                    items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", "", TXT_DIM));
             }
             foreach (var s in suggesties)
             {
                 TimeOnly.TryParse(s.NieuweTijd, out var t);
-                items.Add((t, s.NieuwVeld, $"★ {s.Wedstrijd}", $"← van {s.HuidigVeld} {s.HuidigeTijd}", BLK_NIEUW_RAND));
+                var orig = wedstrijden.FirstOrDefault(w => w.Wedstrijd?.Trim() == s.Wedstrijd.Trim());
+                int duur = orig != null ? (int)(orig.EindTijd - orig.AanvangsTijd).TotalMinutes : 75;
+                items.Add((t, t.AddMinutes(duur), s.NieuwVeld, $"★ {s.Wedstrijd}", $"← van {s.HuidigVeld} {s.HuidigeTijd}", BLK_NIEUW_RAND));
             }
 
             foreach (var item in items.OrderBy(i => i.Tijd).ThenBy(i => i.Veld))
             {
                 string rijBg = item.Kleur == BLK_OUD_RAND ? "#1a0d00" : item.Kleur == BLK_NIEUW_RAND ? "#0d1a0d" : "transparent";
-                sb.AppendLine($"<tr style='background:{rijBg};border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
+                sb.AppendLine($"<tr style='background:{rijBg};border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Einde:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
             }
             sb.AppendLine("</table>");
         }
@@ -398,7 +422,7 @@ document.addEventListener('click', () => {
             // Gebruik dezelfde data als de chrono-tabel: originele wedstrijden + suggesties
             var verplaatsteKeys = new HashSet<string>(suggesties.Select(s => $"{s.HuidigVeldNummer}_{s.HuidigeTijd}_{s.Wedstrijd}"));
             var getoond = new HashSet<string>();
-            var items = new List<(int Leeftijd, TimeOnly Tijd, string Veld, string Wedstrijd, string Status, string Kleur)>();
+            var items = new List<(int Leeftijd, TimeOnly Tijd, TimeOnly Einde, string Veld, string Wedstrijd, string Status, string Kleur)>();
 
             foreach (var w in wedstrijden.OrderBy(w => w.AanvangsTijd).ThenBy(w => w.VeldNummer))
             {
@@ -409,22 +433,23 @@ document.addEventListener('click', () => {
                 int leeftijd = LeeftijdUitNaam(naam);
 
                 if (verplaatsteKeys.Contains(key))
-                { var s = verplaatsVan[key]; items.Add((leeftijd, w.AanvangsTijd, vn, naam, $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
+                { var s = verplaatsVan[key]; items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
                 else if (naam.Contains("VRC 1 "))
-                    items.Add((leeftijd, w.AanvangsTijd, vn, naam, "🔒 Vast", BLK_VAST_RAND));
+                    items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, "🔒 Vast", BLK_VAST_RAND));
                 else
-                    items.Add((leeftijd, w.AanvangsTijd, vn, naam, "", TXT_DIM));
+                    items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, "", TXT_DIM));
             }
             foreach (var s in suggesties)
             {
                 TimeOnly.TryParse(s.NieuweTijd, out var t);
                 int leeftijd = LeeftijdUitNaam(s.Wedstrijd);
-                items.Add((leeftijd, t, s.NieuwVeld, $"★ {s.Wedstrijd}", $"← van {s.HuidigVeld} {s.HuidigeTijd}", BLK_NIEUW_RAND));
+                var orig = wedstrijden.FirstOrDefault(w => w.Wedstrijd?.Trim() == s.Wedstrijd.Trim());
+                int duur = orig != null ? (int)(orig.EindTijd - orig.AanvangsTijd).TotalMinutes : 75;
+                items.Add((leeftijd, t, t.AddMinutes(duur), s.NieuwVeld, $"★ {s.Wedstrijd}", $"← van {s.HuidigVeld} {s.HuidigeTijd}", BLK_NIEUW_RAND));
             }
 
-            // Sorteer op leeftijd, dan aanvangstijd
             sb.AppendLine($"<table style='border-collapse:collapse;width:100%;font-size:11px;'>");
-            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
+            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Aanvang</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Einde</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
 
             int vorigeLeeftijd = -1;
             foreach (var item in items.OrderBy(i => i.Leeftijd).ThenBy(i => i.Tijd).ThenBy(i => i.Veld))
@@ -432,7 +457,7 @@ document.addEventListener('click', () => {
                 string rijBg = item.Kleur == BLK_OUD_RAND ? "#1a0d00" : item.Kleur == BLK_NIEUW_RAND ? "#0d1a0d" : "transparent";
                 string borderTop = item.Leeftijd != vorigeLeeftijd && vorigeLeeftijd >= 0 ? $"border-top:2px solid {BG_TIJD};" : "";
                 vorigeLeeftijd = item.Leeftijd;
-                sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
+                sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Einde:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
             }
             sb.AppendLine("</table>");
         }

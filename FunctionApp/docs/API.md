@@ -484,6 +484,8 @@ Analyseer de planning voor een datum en genereer optimalisatiesuggesties. Voert 
 |------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
 | `doel` | `string` | Nee | Optimalisatiedoel (zie tabel). Leeg = beide combineren |
+| `gewensteEindtijd` | `string` | Nee | Gewenste eindtijd `HH:mm`. Standaard `16:15`. Resterende ruimte wordt verdeeld als extra buffer |
+| `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden in minuten. Standaard 15. Overschrijft de standaard |
 
 ### Optimalisatiedoelen
 
