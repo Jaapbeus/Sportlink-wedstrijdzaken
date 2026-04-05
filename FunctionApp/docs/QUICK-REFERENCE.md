@@ -26,13 +26,13 @@ WHERE Id = 1;
 ### SQL Scripts (in SSMS)
 ```sql
 -- 1. Create database, schemas, basic tables
-C:\Repos\VRC\fa-dev-sportlink-01\setup-local-database.sql
+<repository>\FunctionApp\setup-local-database.sql
 
 -- 2. Create metadata schema and mappings
-C:\Repos\VRC\fa-dev-sportlink-01\setup-metadata-tables.sql
+<repository>\FunctionApp\setup-metadata-tables.sql
 
 -- 3. Deploy stored procedures from:
-C:\Repos\VRC\SportlinkSqlDb\dbo\System Stored Procedures\
+<repository>\Database\dbo\System Stored Procedures\
    - sp_CreateTargetTableFromSource.sql
    - sp_MergeStgToHis.sql
 ```
@@ -149,8 +149,8 @@ Change in `Function1.cs`:
 
 ## 📞 Resources
 
-- **Database Project:** `C:\Repos\VRC\SportlinkSqlDb`
-- **Function Project:** `C:\Repos\VRC\fa-dev-sportlink-01`
+- **Database Project:** `<repository>\Database`
+- **Function Project:** `<repository>\FunctionApp`
 - **Azure DevOps:** `https://dev.azure.com/VV-VRC/vrc-sportlink`
 
 ---

@@ -16,7 +16,7 @@ The solution (`fa-dev-sportlink-01.sln`) contains two projects:
    - References the SportlinkSqlDb database project
 
 2. **SportlinkSqlDb** (SQL Server Database Project, SQLPROJ)
-   - Located at `C:\Repos\VRC\SportlinkSqlDb`
+   - Located at `<repository>\Database`
    - Contains schemas, tables, stored procedures, and deployment definitions
    - Schemas: `dbo`, `stg` (staging), `his` (history), `mta` (metadata), `pub` (public)
 

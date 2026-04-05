@@ -61,7 +61,7 @@ namespace SportlinkFunction.Planner
                 if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
 
-                // Resolve duration
+                // Bepaal wedstrijdduur
                 int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
                 decimal veldFractie = 1.00m;
                 if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
@@ -110,7 +110,7 @@ namespace SportlinkFunction.Planner
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
-                // Populate sunset for current season range based on DateTable
+                // Vul zonsondergangtabel voor het huidige seizoen
                 var today = DateOnly.FromDateTime(DateTime.Today);
                 var from = new DateOnly(today.Year, 1, 1);
                 var to = new DateOnly(today.Year + 1, 12, 31);
@@ -253,7 +253,7 @@ namespace SportlinkFunction.Planner
                 if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
 
-                // Fetch current match details
+                // Haal huidige wedstrijddetails op
                 var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode);
                 if (match == null)
                     return new OkObjectResult(new { error = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden." });

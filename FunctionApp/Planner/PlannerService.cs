@@ -964,7 +964,7 @@ namespace SportlinkFunction.Planner
                 return response;
             }
 
-            // Step 2: Resolve match parameters
+            // Stap 2: Bepaal wedstrijdparameters
             int duurMinuten = match.DuurMinuten;
             decimal veldFractie = match.VeldDeelGebruik;
 
