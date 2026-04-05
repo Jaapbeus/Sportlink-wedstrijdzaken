@@ -35,7 +35,7 @@ namespace SportlinkFunction.Planner
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
 
-            // Search in his.matches for this team on this date (home or away, by teamnaam or wedstrijd description)
+            // Zoeken in his.matches voor dit team op deze datum (thuis of uit, op teamnaam of wedstrijdomschrijving)
             using var cmd = new SqlCommand(@"
                 SELECT
                     CAST(m.[kaledatum] AS DATE) AS Datum,
@@ -94,7 +94,7 @@ namespace SportlinkFunction.Planner
         public static async Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date)
         {
             var results = new List<VeldBeschikbaarheidInfo>();
-            // DayOfWeek: .NET Monday=1 matches our DB convention (1=Monday...7=Sunday)
+            // DayOfWeek: .NET Maandag=1 komt overeen met onze DB-conventie (1=Maandag...7=Zondag)
             int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
 
             using var conn = new SqlConnection(ConnectionString);

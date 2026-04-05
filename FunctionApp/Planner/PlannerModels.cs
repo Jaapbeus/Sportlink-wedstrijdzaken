@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace SportlinkFunction.Planner
 {
-    // ── Request ──
+    // ── Aanvraag ──
 
     public class CheckAvailabilityRequest
     {
@@ -28,7 +28,7 @@ namespace SportlinkFunction.Planner
         public int? WedstrijdDuurMinuten { get; set; }
     }
 
-    // ── Response ──
+    // ── Antwoord ──
 
     public class CheckAvailabilityResponse
     {
@@ -70,7 +70,7 @@ namespace SportlinkFunction.Planner
         public string? Opmerking { get; set; }
     }
 
-    // ── Internal models ──
+    // ── Interne modellen ──
 
     public class Speeltijd
     {

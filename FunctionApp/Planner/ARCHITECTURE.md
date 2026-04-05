@@ -1,14 +1,14 @@
-# Planner API — Architecture & Guidelines
+# Planner API — Architectuur & Richtlijnen
 
-This document defines the rules, constraints, and API contract for the VRC Veldplanner API. It is the single source of truth for scheduling logic.
+Dit document definieert de regels, beperkingen en API-contract voor de VRC Veldplanner API. Het is de enige bron van waarheid voor de planningslogica.
 
-## Purpose
+## Doel
 
-Automated field availability checking for friendly/practice matches at **Sportpark Spitsbergen, Veenendaal**. When someone asks (via email, WhatsApp, or other channels) to schedule a match, the API checks availability and returns whether the requested date/time works — or suggests alternatives.
+Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **Sportpark Spitsbergen, Veenendaal**. Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
 
 ---
 
-## Field Definitions
+## Velddefinities
 
 | Veld | Kunstlicht | Beschikbaar voor planner | Opmerkingen |
 |------|-----------|-------------------------|-------------|
@@ -19,13 +19,13 @@ Automated field availability checking for friendly/practice matches at **Sportpa
 | Veld 5 | **Nee** | Ma-do + zaterdag | Geen licht, zonsondergang-limiet |
 | Veld 6 | — | **Nooit** | Niet functioneel |
 
-**Field preference order:** Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5
+**Voorkeursvolgorde velden:** Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5
 
-Veld 5 is only assigned when veld 1–4 are fully occupied in the requested time window.
+Veld 5 wordt alleen toegewezen als veld 1–4 volledig bezet zijn in het gevraagde tijdvenster.
 
 ---
 
-## Availability Rules per Day
+## Beschikbaarheidsregels per dag
 
 | Dag | Beschikbare velden | Tijdvenster | Bijzonderheden |
 |-----|-------------------|-------------|----------------|
@@ -36,13 +36,13 @@ Veld 5 is only assigned when veld 1–4 are fully occupied in the requested time
 
 ---
 
-## Scheduling Rules
+## Planningsregels
 
-### Buffer between matches
+### Buffer tussen wedstrijden
 - **Standard buffer:** 10 minuten tussen opeenvolgende wedstrijden op hetzelfde veld (zaterdag)
 - **Team-specifieke buffers:** Configureerbaar via `dbo.TeamRegels` tabel
 
-### Team-specific exceptions (dbo.TeamRegels)
+### Teamspecifieke uitzonderingen (dbo.TeamRegels)
 
 | Team | Regel | Waarde | Toelichting |
 |------|-------|--------|-------------|
@@ -53,13 +53,13 @@ Toekomstige regels (voorbeelden):
 - `VoorkeurVeld`: team speelt altijd op een bepaald veld
 - `VoorkeurTijd`: team speelt altijd rond een bepaalde tijd
 
-### Sunset constraint (velden zonder kunstlicht)
+### Zonsondergang-beperking (velden zonder kunstlicht)
 - Wedstrijd moet eindigen **voor zonsondergang**
 - Zonsondergang berekend via NOAA solar algorithm voor Veenendaal (52.0284°N, 5.5579°E)
 - Opgeslagen in `dbo.Zonsondergang` tabel (handmatige overrides mogelijk)
 - **Geen harde buffer**, wel een waarschuwing als marge < 20 minuten
 
-### Morning-first preference for youth (zaterdag, soft rule)
+### Ochtend-eerst voorkeur voor jeugd (zaterdag, zachte regel)
 - JO7–JO10: voorkeur ochtend (08:30–11:00)
 - JO11–JO12: voorkeur mid-ochtend (10:00–13:00)
 - JO13+/Senioren: voorkeur middag (13:00+)
@@ -68,7 +68,7 @@ Dit zijn voorkeuren, geen harde beperkingen.
 
 ---
 
-## Field Capacity (deelveld-wedstrijden)
+## Veldcapaciteit (deelveld-wedstrijden)
 
 Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis van leeftijdscategorie:
 
@@ -107,11 +107,12 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 | MO19 | 1.00 | 105 | 45 | 15 |
 | MO20 | 1.00 | 105 | 45 | 15 |
 | VR | 1.00 | 105 | 45 | 15 |
+| G | 0.50 | 75 | 30 | 15 |
 | 1-99 | 1.00 | 105 | 45 | 15 |
 
 ---
 
-## Algorithm (processing order)
+## Algoritme (verwerkingsvolgorde)
 
 ```
 1. Resolve match parameters from Speeltijden (duration, field fraction)
@@ -132,7 +133,7 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 
 ---
 
-## API Contract
+## API-contract
 
 ### Endpoint: `POST /api/planner/check-availability`
 
@@ -254,25 +255,25 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
 
 ---
 
-## Database Schema (new tables)
+## Database schema (nieuwe tabellen)
 
 ### dbo.Velden
-Field definitions. Seed: veld 1–4 (lights), veld 5 (no lights), veld 6 (inactive).
+Velddefinities. Seeddata: veld 1–4 (kunstlicht), veld 5 (geen kunstlicht), veld 6 (inactief).
 
 ### dbo.VeldBeschikbaarheid
-Per day-of-week availability windows per field. Drives which fields are available on which days.
+Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen beschikbaar zijn.
 
 ### dbo.TeamRegels
-Configurable team-specific exceptions (buffers, field/time preferences). No code changes needed to add rules.
+Configureerbare teamspecifieke uitzonderingen (buffers, veld-/tijdvoorkeuren). Geen codewijzigingen nodig om regels toe te voegen.
 
 ### dbo.Zonsondergang
-Pre-computed sunset times per date. Populated by NOAA calculator, manually overridable.
+Vooraf berekende zonsondergangstijden per datum. Gevuld door NOAA-calculator, handmatig aan te passen.
 
 ### planner.GeplandeWedstrijden
-Planned matches booked through the API. Includes status (Gepland/Bevestigd/Geannuleerd).
+Geplande wedstrijden geboekt via de API. Bevat status (Gepland/Bevestigd/Geannuleerd).
 
 ### planner.AlleWedstrijdenOpVeld (view)
-Unified view combining competition matches (`his.matches`) with planner bookings. Single source for field occupation queries.
+Gecombineerde weergave van competitiewedstrijden (`his.matches`) met planner-boekingen. Enige bron voor veldbezettingsqueries.
 
 ### planner.HerplanVerzoeken
 Reschedule requests with status tracking (Aangevraagd/InOverleg/Bevestigd/Afgewezen). Records the original match details and desired new time. Does NOT modify the actual match — that is a manual process in Sportlink.
@@ -296,14 +297,90 @@ When an opponent requests to reschedule an existing competition match:
 
 ---
 
-## Future: Messaging Integration
+## Toekomst: Berichtenintegratie
 
-The API is designed as a standalone REST endpoint. Two integration options are documented:
+De API is ontworpen als een zelfstandig REST-endpoint zodat elke integratielaag het kan aanroepen. Twee opties zijn gedocumenteerd:
 
-### Option A: Power Automate
-Trigger on email → AI Builder parses text → HTTP POST to API → auto-reply. Low-code, extends easily to Teams/WhatsApp.
+### Optie A: Power Automate
+Trigger bij email → AI Builder interpreteert tekst → HTTP POST naar API → automatisch antwoord. Low-code, eenvoudig uit te breiden naar Teams/WhatsApp.
 
-### Option B: Azure Function + Microsoft Graph API
-Custom function polls/receives emails via Graph API → LLM extracts parameters → calls PlannerService directly → sends reply via Graph. Full control, same codebase.
+### Optie B: Azure Function + Microsoft Graph API
+Eigen functie pollt/ontvangt emails via Graph API → LLM extraheert parameters → roept PlannerService direct aan → stuurt antwoord via Graph. Volledige controle, zelfde codebase.
 
-**AI choice deferred** — any LLM that parses Dutch natural language to the request JSON works. The API contract is the stable interface.
+**AI-keuze uitgesteld** — elke LLM die Nederlandse natuurlijke taal kan omzetten naar het API-request JSON formaat werkt. Het API-contract is de stabiele interface.
+
+### Thuis/uit-herkenning bij herplanverzoeken
+
+Bij herplanverzoeken kan de email binnenkomen via een VRC-contactpersoon (doorgestuurd namens de tegenstander) of rechtstreeks van de tegenstander. De communicatie-flow verschilt per situatie.
+
+#### Stap 1 — Afzender herkennen
+
+| Aanwijzing | Conclusie |
+|-----------|-----------|
+| Emaildomein `@vv-vrc.nl` | VRC-intern (thuisteam-kant) |
+| Ander emaildomein | Mogelijk tegenstander of ouder/coach tegenstander |
+
+#### Stap 2 — Namens wie is het verzoek?
+
+De AI-laag analyseert de tekst op patronen:
+
+| Patroon in tekst | Conclusie |
+|-----------------|-----------|
+| "[Tegenstander] vraagt of...", "zij willen..." | Doorgestuurd door VRC-er, verzoek namens uitteam |
+| "Wij kunnen niet om...", "Is het voor ons mogelijk..." | Afzender zelf is de vragende partij |
+| "Kunnen we de wedstrijd verplaatsen" | Afzender = vragende partij |
+
+#### Stap 3 — Thuis/uit bepalen uit wedstrijddata
+
+Altijd betrouwbaar uit de database: `his.matches.teamnaam` = VRC-team (thuisteam). De andere partij in het `wedstrijd`-veld is het uitteam. Dit is harde data, geen interpretatie nodig.
+
+#### Stap 4 — Communicatie-flow per scenario
+
+| Afzender | Verzoek namens | Flow |
+|----------|---------------|------|
+| VRC-intern | Tegenstander | Check planning → Overleg eigen VRC-team → Antwoord via VRC-er terug naar tegenstander |
+| Tegenstander direct | Zichzelf | Check planning → Overleg VRC-team → Antwoord naar tegenstander |
+| VRC-intern | Eigen team | Check planning → Direct overleg met tegenstander |
+
+#### Afzender geautomatiseerde berichten
+
+Geautomatiseerde antwoorden worden verstuurd onder de naam **VRC Veldplanner** met vermelding dat het een automatisch bericht is. De handtekening verwijst naar de verantwoordelijke contactpersoon:
+
+```
+Met vriendelijke groet,
+
+VRC Veldplanner
+Geautomatiseerd antwoord namens [CoordinatorNaam]
+[CoordinatorFunctie]
+```
+
+De afzendergegevens worden **niet hardcoded** maar opgeslagen in `dbo.AppSettings`:
+
+| Instelling | Beschrijving | Voorbeeld |
+|-----------|-------------|-----------|
+| `PlannerAfzenderNaam` | Naam van het geautomatiseerde systeem | VRC Veldplanner |
+| `CoordinatorNaam` | Naam verantwoordelijke contactpersoon | Uit database, niet in code |
+| `CoordinatorFunctie` | Functietitel contactpersoon | Coördinator thuiswedstrijden |
+| `PlannerEmailAdres` | Emailadres voor verzending | Configureerbaar per omgeving |
+
+Zo blijven persoonsgegevens buiten de code (AVG/GDPR-conform) en zijn ze wijzigbaar zonder deployment.
+
+#### Communicatiestijl geautomatiseerde berichten
+
+Antwoorden moeten **kort en duidelijk** zijn, zonder technische details over het algoritme. De ontvanger hoeft niet te weten hoe de berekening werkt.
+
+**Niet beschikbaar — voorbeeld:**
+
+> Maandag 18 mei is er geen mogelijkheid omdat er al een andere wedstrijd op veld 5 staat gepland. Mogelijkheden om voor of na deze wedstrijd te spelen is niet mogelijk vanwege het ontbreken van verlichting en zonsondergang (21:31).
+
+**Wel beschikbaar — voorbeeld:**
+
+> Woensdag 20 mei is veld 5 beschikbaar om 18:30. De wedstrijd eindigt om 19:45, ruim voor zonsondergang (21:31).
+
+**Richtlijnen:**
+- Geef alleen aan of het wel of niet kan, niet waarom het algoritme bepaalde tijden heeft geprobeerd
+- Bij "niet mogelijk": vermeld kort de reden (ander wedstrijd, geen verlichting, veld vol)
+- Bij "wel mogelijk": vermeld het tijdstip, veld en eindtijd
+- Vermeld zonsondergang alleen als het relevant is (velden zonder kunstlicht)
+- Bij datum-discrepanties (bijv. "maandag 20 mei" terwijl dat een woensdag is): corrigeer vriendelijk en geef beide opties
+- Geef niet meer dan 2-3 alternatieven — te veel keuze werkt verwarrend

@@ -20,7 +20,10 @@ LEFT JOIN [his].[matchdetails] md
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
 LEFT JOIN [dbo].[Speeltijden] s
-    ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+    ON s.[Leeftijd] = CASE
+        WHEN m.[teamnaam] LIKE 'VRC G[0-9]%' THEN 'G'
+        ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+    END
 LEFT JOIN [dbo].[Velden] v
     ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
 WHERE m.[accommodatie] LIKE '%Spitsbergen%'
