@@ -18,9 +18,9 @@ FROM [his].[matches] m
 LEFT JOIN [his].[matchdetails] md
     ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
 LEFT JOIN [his].[teams] t
-    ON t.[teamnaam] = m.[teamnaam]
+    ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
 LEFT JOIN [dbo].[Speeltijden] s
-    ON s.[Leeftijd] = t.[leeftijdscategorie]
+    ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
 LEFT JOIN [dbo].[Velden] v
     ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
 WHERE m.[accommodatie] LIKE '%Spitsbergen%'

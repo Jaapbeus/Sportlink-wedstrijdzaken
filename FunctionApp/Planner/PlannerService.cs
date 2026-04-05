@@ -482,5 +482,137 @@ namespace SportlinkFunction.Planner
             public TimeOnly EindTijd { get; set; }
             public decimal VeldFractie { get; set; }
         }
+
+        // ── Herplan (reschedule) logic ──
+
+        public static async Task<HerplanCheckResponse> CheckRescheduleAvailabilityAsync(
+            HerplanCheckRequest request, ILogger log)
+        {
+            var response = new HerplanCheckResponse();
+
+            // Step 1: Find the match by wedstrijdcode
+            var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode);
+            if (match == null)
+            {
+                response.Reden = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden.";
+                return response;
+            }
+            response.HuidigeWedstrijd = match;
+
+            if (!DateOnly.TryParse(match.Datum, out var date))
+            {
+                response.Reden = "Kan datum van wedstrijd niet verwerken.";
+                return response;
+            }
+
+            // Step 2: Resolve match parameters
+            int duurMinuten = match.DuurMinuten;
+            decimal veldFractie = match.VeldDeelGebruik;
+
+            // Step 3: Load available fields for this day
+            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+            if (availableFields.Count == 0)
+            {
+                response.Reden = "Geen velden beschikbaar op deze dag.";
+                return response;
+            }
+
+            // Step 4: Load occupations EXCLUDING the match being rescheduled
+            TimeOnly.TryParse(match.AanvangsTijd, out var matchStart);
+            var velden = await PlannerDataAccess.GetVeldenAsync();
+            var matchVeld = velden.FirstOrDefault(v => match.VeldNaam != null && match.VeldNaam.StartsWith(v.VeldNaam));
+            int matchVeldNummer = matchVeld?.VeldNummer ?? 0;
+
+            var occupations = await PlannerDataAccess.GetFieldOccupationsExcludingMatchAsync(
+                date, match.Wedstrijd, matchStart, matchVeldNummer);
+
+            // Step 5: Load team rules (empty for reschedule — we don't know the requesting team's rules)
+            var teamRules = new List<TeamRegel>();
+            var allTeamRules = new Dictionary<string, List<TeamRegel>>();
+            foreach (var occ in occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!).Distinct())
+            {
+                allTeamRules[occ] = await PlannerDataAccess.GetTeamRulesAsync(occ);
+            }
+
+            // Step 6: Sunset
+            var sunset = await PlannerDataAccess.GetSunsetAsync(date);
+            if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
+
+            foreach (var field in availableFields)
+            {
+                if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
+                    field.BeschikbaarTot = sunset.Value;
+            }
+
+            // Step 7: Parse preferred time and dagdeel
+            TimeOnly? preferredTime = null;
+            if (!string.IsNullOrEmpty(request.VoorkeurTijd) && TimeOnly.TryParse(request.VoorkeurTijd, out var parsed))
+                preferredTime = parsed;
+
+            TimeOnly dagdeelVan = new(8, 30);
+            TimeOnly dagdeelTot = new(22, 0);
+            if (!string.IsNullOrEmpty(request.Dagdeel))
+            {
+                switch (request.Dagdeel.ToLowerInvariant())
+                {
+                    case "ochtend": dagdeelVan = new(8, 30); dagdeelTot = new(12, 0); break;
+                    case "middag": dagdeelVan = new(12, 0); dagdeelTot = new(17, 0); break;
+                    case "avond": dagdeelVan = new(17, 0); dagdeelTot = new(22, 0); break;
+                }
+            }
+
+            // Step 8: Find alternative slots (reusing existing logic)
+            if (preferredTime.HasValue)
+            {
+                var exactMatch = TryExactTime(preferredTime.Value, availableFields, occupations, velden,
+                                               allTeamRules, teamRules, veldFractie, duurMinuten, sunset);
+                if (exactMatch != null)
+                {
+                    response.Beschikbaar = true;
+                    response.Alternatieven.Add(ToSlotToewijzing(date, exactMatch, duurMinuten, velden));
+                }
+            }
+
+            var candidates = FindAllSlots(availableFields, occupations, velden, allTeamRules, teamRules,
+                                          veldFractie, duurMinuten, dagdeelVan, dagdeelTot, sunset);
+
+            // Exclude the current time slot from alternatives
+            candidates = candidates.Where(c =>
+                !(c.VeldNummer == matchVeldNummer && c.AanvangsTijd == matchStart)).ToList();
+
+            if (preferredTime.HasValue)
+            {
+                candidates = candidates
+                    .OrderBy(c => Math.Abs(c.AanvangsTijd.ToTimeSpan().TotalMinutes - preferredTime.Value.ToTimeSpan().TotalMinutes))
+                    .ToList();
+            }
+
+            foreach (var c in candidates.Take(response.Beschikbaar ? 2 : 3))
+            {
+                var slot = ToSlotToewijzing(date, c, duurMinuten, velden);
+                if (!response.Alternatieven.Any(a => a.AanvangsTijd == slot.AanvangsTijd && a.VeldNummer == slot.VeldNummer))
+                    response.Alternatieven.Add(slot);
+            }
+
+            if (response.Alternatieven.Count == 0)
+            {
+                response.Reden = $"Geen alternatieve tijdsloten gevonden op {date:dddd d MMMM}.";
+            }
+            else
+            {
+                response.Beschikbaar = true;
+            }
+
+            AddWeekdayWarning(response.Waarschuwingen, date);
+            return response;
+        }
+
+        private static void AddWeekdayWarning(List<string> waarschuwingen, DateOnly date)
+        {
+            if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
+            {
+                waarschuwingen.Add($"{date.DayOfWeek}: alleen veld 5 beschikbaar (veld 1-4 training).");
+            }
+        }
     }
 }
