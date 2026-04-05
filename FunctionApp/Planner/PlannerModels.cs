@@ -101,6 +101,7 @@ namespace SportlinkFunction.Planner
         public TimeOnly EindTijd { get; set; }
         public int VeldNummer { get; set; }
         public decimal VeldDeelGebruik { get; set; }
+        public string? VeldSubpositie { get; set; } // A, B, A1, A2, B1, B2 — voor visuele positionering
         public string? LeeftijdsCategorie { get; set; }
         public string? TeamNaam { get; set; }
         public string? Wedstrijd { get; set; }

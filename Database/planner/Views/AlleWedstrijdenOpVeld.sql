@@ -13,6 +13,7 @@ SELECT
     t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
     m.[teamnaam]                                                                    AS TeamNaam,
     m.[wedstrijd]                                                                   AS Wedstrijd,
+    RTRIM(SUBSTRING(m.[veld], 7, 10))                                               AS VeldSubpositie,
     'Competitie'                                                                    AS Bron
 FROM [his].[matches] m
 LEFT JOIN [his].[matchdetails] md
@@ -43,6 +44,7 @@ SELECT
     [LeeftijdsCategorie],
     [TeamNaam],
     COALESCE([TeamNaam], '') + ' - ' + COALESCE([Tegenstander], '')                 AS Wedstrijd,
+    ''                                                                              AS VeldSubpositie,
     'Planner'                                                                       AS Bron
 FROM [planner].[GeplandeWedstrijden]
 WHERE [Status] <> 'Geannuleerd';
