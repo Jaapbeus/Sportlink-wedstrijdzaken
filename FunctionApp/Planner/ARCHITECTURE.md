@@ -275,6 +275,26 @@ Geplande wedstrijden geboekt via de API. Bevat status (Gepland/Bevestigd/Geannul
 ### planner.AlleWedstrijdenOpVeld (view)
 Gecombineerde weergave van competitiewedstrijden (`his.matches`) met planner-boekingen. Enige bron voor veldbezettingsqueries.
 
+### planner.HerplanVerzoeken
+Reschedule requests with status tracking (Aangevraagd/InOverleg/Bevestigd/Afgewezen). Records the original match details and desired new time. Does NOT modify the actual match — that is a manual process in Sportlink.
+
+---
+
+## Reschedule Flow (Herplannen)
+
+When an opponent requests to reschedule an existing competition match:
+
+```
+1. zoek-wedstrijd     → Find match by team + date
+2. herplan-check      → Simulate: what slots are free if this match moves?
+                         (current slot treated as free, nothing is modified)
+3. [Human decision]   → Own team must confirm the change
+4. herplan-bevestig   → Register the request (status: Aangevraagd)
+5. [Manual in Sportlink] → Actually reschedule the match
+```
+
+**Key principle:** `herplan-check` is a pure simulation. `herplan-bevestig` only records the request. No match data is ever modified by the API.
+
 ---
 
 ## Toekomst: Berichtenintegratie
