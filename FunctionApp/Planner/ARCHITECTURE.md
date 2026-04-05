@@ -287,3 +287,36 @@ Trigger bij email → AI Builder interpreteert tekst → HTTP POST naar API → 
 Eigen functie pollt/ontvangt emails via Graph API → LLM extraheert parameters → roept PlannerService direct aan → stuurt antwoord via Graph. Volledige controle, zelfde codebase.
 
 **AI-keuze uitgesteld** — elke LLM die Nederlandse natuurlijke taal kan omzetten naar het API-request JSON formaat werkt. Het API-contract is de stabiele interface.
+
+### Thuis/uit-herkenning bij herplanverzoeken
+
+Bij herplanverzoeken kan de email binnenkomen via een VRC-contactpersoon (doorgestuurd namens de tegenstander) of rechtstreeks van de tegenstander. De communicatie-flow verschilt per situatie.
+
+#### Stap 1 — Afzender herkennen
+
+| Aanwijzing | Conclusie |
+|-----------|-----------|
+| Emaildomein `@vv-vrc.nl` | VRC-intern (thuisteam-kant) |
+| Ander emaildomein | Mogelijk tegenstander of ouder/coach tegenstander |
+
+#### Stap 2 — Namens wie is het verzoek?
+
+De AI-laag analyseert de tekst op patronen:
+
+| Patroon in tekst | Conclusie |
+|-----------------|-----------|
+| "[Tegenstander] vraagt of...", "zij willen..." | Doorgestuurd door VRC-er, verzoek namens uitteam |
+| "Wij kunnen niet om...", "Is het voor ons mogelijk..." | Afzender zelf is de vragende partij |
+| "Kunnen we de wedstrijd verplaatsen" | Afzender = vragende partij |
+
+#### Stap 3 — Thuis/uit bepalen uit wedstrijddata
+
+Altijd betrouwbaar uit de database: `his.matches.teamnaam` = VRC-team (thuisteam). De andere partij in het `wedstrijd`-veld is het uitteam. Dit is harde data, geen interpretatie nodig.
+
+#### Stap 4 — Communicatie-flow per scenario
+
+| Afzender | Verzoek namens | Flow |
+|----------|---------------|------|
+| VRC-intern | Tegenstander | Check planning → Overleg eigen VRC-team → Antwoord via VRC-er terug naar tegenstander |
+| Tegenstander direct | Zichzelf | Check planning → Overleg VRC-team → Antwoord naar tegenstander |
+| VRC-intern | Eigen team | Check planning → Direct overleg met tegenstander |
