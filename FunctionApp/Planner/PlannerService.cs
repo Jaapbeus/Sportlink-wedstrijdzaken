@@ -540,8 +540,9 @@ namespace SportlinkFunction.Planner
             }
 
             var suggesties = new List<OptimalisatieSuggestie>();
+            var doel = request.Doel?.ToLowerInvariant() ?? "";
 
-            switch (request.Doel?.ToLowerInvariant())
+            switch (doel)
             {
                 case "veld5-ontlasten":
                     suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
@@ -550,7 +551,15 @@ namespace SportlinkFunction.Planner
                     suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden);
                     break;
                 default:
+                    // Standaard: beide combineren — eerst veld 5 ontlasten, dan strakker plannen
                     suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
+                    var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden);
+                    // Voeg strakker-suggesties toe die niet al in veld5-suggesties zitten
+                    foreach (var s in strakkerSuggesties)
+                    {
+                        if (!suggesties.Any(bestaand => bestaand.Wedstrijd == s.Wedstrijd))
+                            suggesties.Add(s);
+                    }
                     break;
             }
 
