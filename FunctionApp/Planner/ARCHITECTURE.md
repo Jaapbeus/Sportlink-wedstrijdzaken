@@ -417,3 +417,11 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 > De wedstrijd [wedstrijd] staat gepland op [datum] om [tijd] op [veld].
 >
 > Helaas is er op [datum] geen mogelijkheid om de wedstrijd te verplaatsen. [Korte reden: velden bezet / geen verlichting / etc.]
+
+**Standaard antwoord bij bevestiging verplaatsing (aanvrager zegt "ja"):**
+
+> Het verzoek om de wedstrijd [wedstrijd] te verplaatsen naar [nieuwe tijd] op [nieuw veld] is ingediend. De coördinator thuiswedstrijden beoordeelt het verzoek en je ontvangt daarna een bevestiging.
+
+**Standaard antwoord bij afwijzing verplaatsing (aanvrager zegt "nee"):**
+
+> Begrepen. De wedstrijd [wedstrijd] blijft staan op [datum] om [tijd] op [veld].
