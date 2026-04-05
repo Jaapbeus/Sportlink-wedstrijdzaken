@@ -261,7 +261,17 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
 ## Database schema (nieuwe tabellen)
 
 ### dbo.Velden
-Velddefinities. Seeddata: veld 1–4 (kunstlicht), veld 5 (geen kunstlicht), veld 6 (inactief).
+Velddefinities met type (kunstgras/natuurgras) en verlichting. Elke vereniging configureert dit naar eigen situatie.
+
+| Kolom | Beschrijving |
+|-------|-------------|
+| VeldNummer | Uniek nummer (PK) |
+| VeldNaam | Weergavenaam (bijv. "veld 1") |
+| VeldType | `kunstgras` of `natuurgras` — bepaalt welke velden ontlast worden |
+| HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
+| Actief | Of het veld in gebruik is |
+
+Seeddata VRC: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder kunstlicht, veld 6 inactief.
 
 ### dbo.VeldBeschikbaarheid
 Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen beschikbaar zijn.
