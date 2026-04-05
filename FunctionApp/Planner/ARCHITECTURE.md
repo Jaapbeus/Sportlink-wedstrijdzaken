@@ -390,11 +390,16 @@ Antwoorden moeten **kort en duidelijk** zijn, zonder technische details over het
 
 #### Verzoeken buiten scope
 
-Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken vallen **buiten de scope** van de Veldplanner en worden doorgestuurd naar de coördinator voor handmatige afhandeling:
+Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken vallen **buiten de scope** van de Veldplanner en worden ter beoordeling bij de coördinator neergelegd:
 
 | Type verzoek | Voorbeeld | Actie |
 |-------------|-----------|-------|
-| Persoonlijk roosterconflict | "Ik coach twee teams die tegelijk spelen" | Doorsturen naar coördinator |
+| Persoonlijk roosterconflict | "Ik coach twee teams die tegelijk spelen" | Ter beoordeling bij coördinator |
 | Sportlink platform problemen | "De veldplanner laadt traag" | Doorsturen naar Sportlink support |
 | Verzoeken over niet-thuiswedstrijden | "Kunnen we onze uitwedstrijd verplaatsen?" | Doorsturen naar tegenstander/KNVB |
-| Verzoeken zonder duidelijke wedstrijd | "Kunnen we een keer oefenen?" | Doorsturen naar coördinator |
+| Verzoeken zonder duidelijke wedstrijd | "Kunnen we een keer oefenen?" | Ter beoordeling bij coördinator |
+| Handmatige actie vereist | "Kun jij contact opnemen met Achterberg?" | Ter beoordeling bij coördinator |
+
+**Standaard antwoord bij buiten-scope verzoeken:**
+
+> Bedankt voor je bericht. Dit verzoek vereist handmatige afhandeling en is ter beoordeling bij de coördinator neergelegd.
