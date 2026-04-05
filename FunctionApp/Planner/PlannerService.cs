@@ -296,56 +296,54 @@ namespace SportlinkFunction.Planner
                     bufferNa = Math.Max(bufferNa, rule.WaardeMinuten.Value);
             }
 
-            var bufferedStart = start.AddMinutes(-bufferVoor);
-            var bufferedEnd = end.AddMinutes(bufferNa);
-
             foreach (var occ in fieldOccupations)
             {
-                // Controleer of tijdvensters overlappen
-                bool overlaps = occ.AanvangsTijd < bufferedEnd && occ.EindTijd > bufferedStart;
-                if (!overlaps) continue;
-
-                // Voor deelveld-wedstrijden, capaciteit controleren tijdens de wedstrijd (niet buffertijd)
-                if (veldFractie < 1.0m && occ.VeldDeelGebruik < 1.0m)
-                {
-                    // Alleen daadwerkelijke overlap controleren (geen buffers) voor deelveld-capaciteit
-                    bool actualOverlap = occ.AanvangsTijd < end && occ.EindTijd > start;
-                    if (actualOverlap)
-                    {
-                        // Totale capaciteit controleren voor dit tijdslot
-                        decimal usedCapacity = fieldOccupations
-                            .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
-                            .Sum(o => o.VeldDeelGebruik);
-                        if (usedCapacity + veldFractie > 1.0m)
-                            return false;
-                        continue; // deelveld delen is prima als capaciteit het toelaat
-                    }
-                    continue;
-                }
-
-                // Voor heel-veld wedstrijden, of als bestaande wedstrijd heel veld is: conflict
-                if (veldFractie >= 1.0m || occ.VeldDeelGebruik >= 1.0m)
-                    return false;
-
-                // Controleer ook bufferregels van bestaand team
+                // Controleer bufferregels van bestaand team
+                int occBufVoor = StandardBufferMinutes;
+                int occBufNa = StandardBufferMinutes;
                 if (!string.IsNullOrEmpty(occ.TeamNaam) && allTeamRules.TryGetValue(occ.TeamNaam, out var existingRules))
                 {
-                    int existingBufVoor = StandardBufferMinutes;
-                    int existingBufNa = StandardBufferMinutes;
                     foreach (var rule in existingRules)
                     {
                         if (rule.RegelType == "BufferVoor" && rule.WaardeMinuten.HasValue)
-                            existingBufVoor = Math.Max(existingBufVoor, rule.WaardeMinuten.Value);
+                            occBufVoor = Math.Max(occBufVoor, rule.WaardeMinuten.Value);
                         if (rule.RegelType == "BufferNa" && rule.WaardeMinuten.HasValue)
-                            existingBufNa = Math.Max(existingBufNa, rule.WaardeMinuten.Value);
+                            occBufNa = Math.Max(occBufNa, rule.WaardeMinuten.Value);
                     }
-
-                    var existingBufferedStart = occ.AanvangsTijd.AddMinutes(-existingBufVoor);
-                    var existingBufferedEnd = occ.EindTijd.AddMinutes(existingBufNa);
-
-                    if (start < existingBufferedEnd && end > existingBufferedStart)
-                        return false;
                 }
+
+                // Daadwerkelijke overlap: spelen beide wedstrijden tegelijkertijd?
+                bool gelijktijdig = occ.AanvangsTijd < end && occ.EindTijd > start;
+
+                if (gelijktijdig)
+                {
+                    // Gelijktijdig op deelvelden: capaciteitscheck
+                    if (veldFractie < 1.0m && occ.VeldDeelGebruik < 1.0m)
+                    {
+                        decimal gebruikteCapaciteit = fieldOccupations
+                            .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
+                            .Sum(o => o.VeldDeelGebruik);
+                        if (gebruikteCapaciteit + veldFractie > 1.0m)
+                            return false;
+                        // Deelveld delen is prima als capaciteit het toelaat
+                        continue;
+                    }
+                    // Heel-veld conflict of mix heel/deelveld
+                    return false;
+                }
+
+                // Niet gelijktijdig: controleer buffer (10 min standaard, of teamspecifiek)
+                // Nieuwe wedstrijd mag niet in de bufferzone van bestaande wedstrijd vallen
+                var occBeschermdeStart = occ.AanvangsTijd.AddMinutes(-occBufVoor);
+                var occBeschermdeEinde = occ.EindTijd.AddMinutes(occBufNa);
+                if (start < occBeschermdeEinde && end > occBeschermdeStart)
+                    return false;
+
+                // Bestaande wedstrijd mag niet in de bufferzone van nieuwe wedstrijd vallen
+                var nieuwBeschermdeStart = start.AddMinutes(-bufferVoor);
+                var nieuwBeschermdeEinde = end.AddMinutes(bufferNa);
+                if (occ.AanvangsTijd < nieuwBeschermdeEinde && occ.EindTijd > nieuwBeschermdeStart)
+                    return false;
             }
 
             return true;
