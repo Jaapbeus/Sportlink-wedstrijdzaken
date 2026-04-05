@@ -117,7 +117,38 @@ namespace SportlinkFunction.Planner
         public int Prioriteit { get; set; }
     }
 
-    // ── Herplan (reschedule) models ──
+    // ── Optimalisatie modellen ──
+
+    public class OptimaliseerRequest
+    {
+        public string Datum { get; set; } = string.Empty;
+        public string Doel { get; set; } = "veld5-ontlasten"; // veld5-ontlasten, strakker-plannen, vroeger-eindigen
+    }
+
+    public class OptimaliseerResponse
+    {
+        public string Datum { get; set; } = string.Empty;
+        public string HuidigeEindtijd { get; set; } = string.Empty;
+        public string? GeschatteNieuweEindtijd { get; set; }
+        public int AantalVerplaatsingen { get; set; }
+        public int AantalVanVeld5Verplaatst { get; set; }
+        public List<OptimalisatieSuggestie> Suggesties { get; set; } = new();
+        public string HtmlPlanner { get; set; } = string.Empty;
+    }
+
+    public class OptimalisatieSuggestie
+    {
+        public string Wedstrijd { get; set; } = string.Empty;
+        public int HuidigVeldNummer { get; set; }
+        public string HuidigVeld { get; set; } = string.Empty;
+        public string HuidigeTijd { get; set; } = string.Empty;
+        public int NieuwVeldNummer { get; set; }
+        public string NieuwVeld { get; set; } = string.Empty;
+        public string NieuweTijd { get; set; } = string.Empty;
+        public string Reden { get; set; } = string.Empty;
+    }
+
+    // ── Herplan (herplannen) modellen ──
 
     public class ZoekWedstrijdRequest
     {
