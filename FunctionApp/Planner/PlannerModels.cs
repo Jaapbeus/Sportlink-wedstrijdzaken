@@ -116,4 +116,60 @@ namespace SportlinkFunction.Planner
         public TimeOnly? WaardeTijd { get; set; }
         public int Prioriteit { get; set; }
     }
+
+    // ── Herplan (reschedule) models ──
+
+    public class ZoekWedstrijdRequest
+    {
+        public string TeamNaam { get; set; } = string.Empty;
+        public string Datum { get; set; } = string.Empty;
+    }
+
+    public class ZoekWedstrijdResponse
+    {
+        public long Wedstrijdcode { get; set; }
+        public string Wedstrijd { get; set; } = string.Empty;
+        public string Datum { get; set; } = string.Empty;
+        public string AanvangsTijd { get; set; } = string.Empty;
+        public string EindTijd { get; set; } = string.Empty;
+        public string? VeldNaam { get; set; }
+        public string? LeeftijdsCategorie { get; set; }
+        public int DuurMinuten { get; set; }
+        public decimal VeldDeelGebruik { get; set; }
+    }
+
+    public class HerplanCheckRequest
+    {
+        public long Wedstrijdcode { get; set; }
+        public string? VoorkeurTijd { get; set; }
+        public string? Dagdeel { get; set; }
+    }
+
+    public class HerplanCheckResponse
+    {
+        public ZoekWedstrijdResponse HuidigeWedstrijd { get; set; } = new();
+        public bool Beschikbaar { get; set; }
+        public List<SlotToewijzing> Alternatieven { get; set; } = new();
+        public string? Reden { get; set; }
+        public List<string> Waarschuwingen { get; set; } = new();
+    }
+
+    public class HerplanBevestigRequest
+    {
+        public long Wedstrijdcode { get; set; }
+        public string GewensteAanvangsTijd { get; set; } = string.Empty;
+        public int? GewenstVeldNummer { get; set; }
+        public string? AangevraagdDoor { get; set; }
+        public string? Opmerking { get; set; }
+    }
+
+    public class HerplanBevestigResponse
+    {
+        public int Id { get; set; }
+        public long Wedstrijdcode { get; set; }
+        public string HuidigeWedstrijd { get; set; } = string.Empty;
+        public string GewensteAanvangsTijd { get; set; } = string.Empty;
+        public int? GewenstVeldNummer { get; set; }
+        public string Status { get; set; } = string.Empty;
+    }
 }

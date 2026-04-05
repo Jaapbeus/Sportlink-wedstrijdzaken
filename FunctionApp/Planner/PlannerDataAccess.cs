@@ -275,5 +275,153 @@ namespace SportlinkFunction.Planner
                 await cmd.ExecuteNonQueryAsync();
             }
         }
+
+        // ── Herplan (reschedule) methods ──
+
+        public static async Task<ZoekWedstrijdResponse?> FindMatchAsync(string teamNaam, DateOnly date)
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT TOP 1
+                    CAST(m.[wedstrijdcode] AS BIGINT) AS Wedstrijdcode,
+                    m.[wedstrijd],
+                    CAST(m.[kaledatum] AS DATE) AS Datum,
+                    m.[aanvangstijd],
+                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105) AS DuurMinuten,
+                    m.[veld],
+                    t.[leeftijdscategorie],
+                    COALESCE(s.[Veldafmeting], 1.00) AS Veldafmeting
+                FROM [his].[matches] m
+                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
+                LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                WHERE CAST(m.[kaledatum] AS DATE) = @date
+                  AND m.[accommodatie] LIKE '%Spitsbergen%'
+                  AND m.[status] <> 'Afgelast'
+                  AND (m.[teamnaam] LIKE @teamPattern OR m.[wedstrijd] LIKE @teamPattern)
+                ORDER BY m.[aanvangstijd]
+            ", conn);
+            cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
+            cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var aanvangstijd = reader.GetString(3).Trim();
+                var duur = reader.GetInt32(4);
+                TimeOnly.TryParse(aanvangstijd, out var startTime);
+                return new ZoekWedstrijdResponse
+                {
+                    Wedstrijdcode = reader.GetInt64(0),
+                    Wedstrijd = reader.GetString(1).Trim(),
+                    Datum = date.ToString("yyyy-MM-dd"),
+                    AanvangsTijd = aanvangstijd,
+                    EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),
+                    DuurMinuten = duur,
+                    VeldNaam = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    VeldDeelGebruik = reader.GetDecimal(7)
+                };
+            }
+            return null;
+        }
+
+        public static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(long wedstrijdcode)
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT TOP 1
+                    CAST(m.[wedstrijdcode] AS BIGINT) AS Wedstrijdcode,
+                    m.[wedstrijd],
+                    CAST(m.[kaledatum] AS DATE) AS Datum,
+                    m.[aanvangstijd],
+                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105) AS DuurMinuten,
+                    m.[veld],
+                    t.[leeftijdscategorie],
+                    COALESCE(s.[Veldafmeting], 1.00) AS Veldafmeting
+                FROM [his].[matches] m
+                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
+                LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
+                  AND m.[accommodatie] LIKE '%Spitsbergen%'
+            ", conn);
+            cmd.Parameters.AddWithValue("@code", wedstrijdcode);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var aanvangstijd = reader.GetString(3).Trim();
+                var duur = reader.GetInt32(4);
+                var datum = DateOnly.FromDateTime(reader.GetDateTime(2));
+                TimeOnly.TryParse(aanvangstijd, out var startTime);
+                return new ZoekWedstrijdResponse
+                {
+                    Wedstrijdcode = reader.GetInt64(0),
+                    Wedstrijd = reader.GetString(1).Trim(),
+                    Datum = datum.ToString("yyyy-MM-dd"),
+                    AanvangsTijd = aanvangstijd,
+                    EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),
+                    DuurMinuten = duur,
+                    VeldNaam = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    VeldDeelGebruik = reader.GetDecimal(7)
+                };
+            }
+            return null;
+        }
+
+        public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingAsync(
+            DateOnly date, long excludeWedstrijdcode)
+        {
+            var all = await GetFieldOccupationsAsync(date);
+            return all.Where(o => o.Wedstrijd == null ||
+                !o.Wedstrijd.Contains(excludeWedstrijdcode.ToString())).ToList();
+        }
+
+        public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchAsync(
+            DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer)
+        {
+            var all = await GetFieldOccupationsAsync(date);
+            return all.Where(o =>
+                !(o.VeldNummer == veldNummer &&
+                  o.AanvangsTijd == aanvangsTijd &&
+                  o.Wedstrijd != null && o.Wedstrijd.Trim() == wedstrijdNaam.Trim())
+            ).ToList();
+        }
+
+        public static async Task<int> SaveHerplanVerzoekAsync(
+            long wedstrijdcode, string huidigeWedstrijd, DateOnly huidigeDatum,
+            TimeOnly huidigeAanvangsTijd, string? huidigeVeldNaam,
+            TimeOnly gewensteAanvangsTijd, int? gewenstVeldNummer,
+            string? aangevraagdDoor, string? opmerking)
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                INSERT INTO [planner].[HerplanVerzoeken]
+                    ([Wedstrijdcode], [HuidigeWedstrijd], [HuidigeDatum], [HuidigeAanvangsTijd],
+                     [HuidigeVeldNaam], [GewensteAanvangsTijd], [GewenstVeldNummer],
+                     [Status], [AangevraagdDoor], [Opmerking])
+                OUTPUT INSERTED.[Id]
+                VALUES
+                    (@code, @wedstrijd, @datum, @aanvang,
+                     @veld, @gewensteTijd, @gewenstVeld,
+                     'Aangevraagd', @door, @opmerking)
+            ", conn);
+            cmd.Parameters.AddWithValue("@code", wedstrijdcode);
+            cmd.Parameters.AddWithValue("@wedstrijd", huidigeWedstrijd);
+            cmd.Parameters.AddWithValue("@datum", huidigeDatum.ToDateTime(TimeOnly.MinValue));
+            cmd.Parameters.AddWithValue("@aanvang", huidigeAanvangsTijd.ToTimeSpan());
+            cmd.Parameters.AddWithValue("@veld", (object?)huidigeVeldNaam ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@gewensteTijd", gewensteAanvangsTijd.ToTimeSpan());
+            cmd.Parameters.AddWithValue("@gewenstVeld", (object?)gewenstVeldNummer ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@door", (object?)aangevraagdDoor ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@opmerking", (object?)opmerking ?? DBNull.Value);
+
+            return (int)(await cmd.ExecuteScalarAsync())!;
+        }
     }
 }

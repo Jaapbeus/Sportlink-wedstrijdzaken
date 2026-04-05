@@ -14,6 +14,9 @@ Alle endpoints vereisen een functiesleutel via `x-functions-key` header of `?cod
 | `POST` | `/planner/check-availability` | Veldbeschikbaarheid controleren |
 | `POST` | `/planner/bevestig` | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | Zonsondergangtabel vullen |
+| `POST` | `/planner/zoek-wedstrijd` | Bestaande wedstrijd zoeken |
+| `POST` | `/planner/herplan-check` | Herplan-alternatieven simuleren |
+| `POST` | `/planner/herplan-bevestig` | Herplanverzoek registreren |
 
 ---
 
@@ -302,6 +305,165 @@ Geen (lege POST).
 
 ---
 
+## POST /api/planner/zoek-wedstrijd
+
+Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
+
+### Request Body
+
+```json
+{
+  "teamNaam": "VRC JO8-2",
+  "datum": "2026-05-09"
+}
+```
+
+### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `teamNaam` | `string` | **Yes** | Team name (partial match supported) |
+| `datum` | `string` | **Yes** | Date in `yyyy-MM-dd` format |
+
+### Response — Found (200)
+
+```json
+{
+  "gevonden": true,
+  "wedstrijd": {
+    "wedstrijdcode": 12345678,
+    "wedstrijd": "VRC JO8-2 - Tegenstander JO8-1",
+    "datum": "2026-05-09",
+    "aanvangsTijd": "08:30",
+    "eindTijd": "09:20",
+    "veldNaam": "veld 3 A1",
+    "leeftijdsCategorie": "Onder 8",
+    "duurMinuten": 50,
+    "veldDeelGebruik": 0.25
+  }
+}
+```
+
+### Response — Not Found (200)
+
+```json
+{
+  "gevonden": false,
+  "reden": "Geen wedstrijd gevonden voor VRC JO8-2 op 2026-05-09."
+}
+```
+
+---
+
+## POST /api/planner/herplan-check
+
+Simulate rescheduling: calculate alternative time slots for an existing match. **Does NOT modify anything** — purely a calculation where the current slot is treated as free.
+
+### Request Body
+
+```json
+{
+  "wedstrijdcode": 12345678,
+  "voorkeurTijd": "10:00",
+  "dagdeel": "ochtend"
+}
+```
+
+### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wedstrijdcode` | `integer` | **Yes** | Match code from `zoek-wedstrijd` response |
+| `voorkeurTijd` | `string` | No | Preferred new time `HH:mm` |
+| `dagdeel` | `string` | No | `"ochtend"`, `"middag"`, or `"avond"` |
+
+### Response (200)
+
+```json
+{
+  "huidigeWedstrijd": {
+    "wedstrijdcode": 12345678,
+    "wedstrijd": "VRC JO8-2 - Tegenstander JO8-1",
+    "datum": "2026-05-09",
+    "aanvangsTijd": "08:30",
+    "eindTijd": "09:20",
+    "veldNaam": "veld 3 A1",
+    "leeftijdsCategorie": "Onder 8",
+    "duurMinuten": 50,
+    "veldDeelGebruik": 0.25
+  },
+  "beschikbaar": true,
+  "alternatieven": [
+    {
+      "datum": "2026-05-09",
+      "aanvangsTijd": "10:00",
+      "eindTijd": "10:50",
+      "veldNummer": 2,
+      "veldNaam": "veld 2",
+      "veldDeelGebruik": 0.25,
+      "wedstrijdDuurMinuten": 50
+    }
+  ],
+  "reden": null,
+  "waarschuwingen": []
+}
+```
+
+### Response — No Alternatives (200)
+
+```json
+{
+  "huidigeWedstrijd": { ... },
+  "beschikbaar": false,
+  "alternatieven": [],
+  "reden": "Geen alternatieve tijdsloten gevonden op zaterdag 9 mei.",
+  "waarschuwingen": []
+}
+```
+
+---
+
+## POST /api/planner/herplan-bevestig
+
+Register a reschedule request. **Does NOT modify the match** — only records the request with status "Aangevraagd". The actual change in Sportlink is a manual process.
+
+### Request Body
+
+```json
+{
+  "wedstrijdcode": 12345678,
+  "gewensteAanvangsTijd": "10:00",
+  "gewenstVeldNummer": 2,
+  "aangevraagdDoor": "tegenstander via email",
+  "opmerking": "08:30 is niet haalbaar"
+}
+```
+
+### Request Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wedstrijdcode` | `integer` | **Yes** | Match code |
+| `gewensteAanvangsTijd` | `string` | **Yes** | Desired new time `HH:mm` |
+| `gewenstVeldNummer` | `integer` | No | Desired field number |
+| `aangevraagdDoor` | `string` | No | Who requested |
+| `opmerking` | `string` | No | Reason / notes |
+
+### Response (200)
+
+```json
+{
+  "id": 1,
+  "wedstrijdcode": 12345678,
+  "huidigeWedstrijd": "VRC JO8-2 - Tegenstander JO8-1",
+  "gewensteAanvangsTijd": "10:00",
+  "gewenstVeldNummer": 2,
+  "status": "Aangevraagd"
+}
+```
+
+---
+
 ## Overzicht planningsregels
 
 ### Veldbeschikbaarheid
@@ -378,6 +540,30 @@ curl -X POST http://localhost:7094/api/planner/bevestig \
 
 ```bash
 curl -X POST http://localhost:7094/api/planner/populate-sunset
+```
+
+### Bestaande wedstrijd zoeken
+
+```bash
+curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd \
+  -H "Content-Type: application/json" \
+  -d '{"teamNaam":"VRC JO8-2","datum":"2026-05-09"}'
+```
+
+### Herplan-alternatieven controleren (simulatie)
+
+```bash
+curl -X POST http://localhost:7094/api/planner/herplan-check \
+  -H "Content-Type: application/json" \
+  -d '{"wedstrijdcode":12345678,"voorkeurTijd":"10:00","dagdeel":"ochtend"}'
+```
+
+### Herplanverzoek registreren
+
+```bash
+curl -X POST http://localhost:7094/api/planner/herplan-bevestig \
+  -H "Content-Type: application/json" \
+  -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
 ### Handmatige Sportlink synchronisatie
