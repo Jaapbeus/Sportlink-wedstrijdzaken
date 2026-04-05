@@ -126,5 +126,124 @@ namespace SportlinkFunction.Planner
                 return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
             }
         }
+        [Function("ZoekWedstrijd")]
+        public static async Task<IActionResult> ZoekWedstrijd(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("ZoekWedstrijd");
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<ZoekWedstrijdRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.TeamNaam) || string.IsNullOrEmpty(request.Datum))
+                    return new BadRequestObjectResult(new { error = "Request body met 'teamNaam' en 'datum' is verplicht." });
+
+                if (!DateOnly.TryParse(request.Datum, out var date))
+                    return new BadRequestObjectResult(new { error = $"Ongeldige datum: {request.Datum}" });
+
+                log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}", request.TeamNaam, request.Datum);
+
+                var match = await PlannerDataAccess.FindMatchAsync(request.TeamNaam, date);
+                if (match == null)
+                    return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
+
+                return new OkObjectResult(new { gevonden = true, wedstrijd = match });
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "ZoekWedstrijd failed");
+                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            }
+        }
+
+        [Function("HerplanCheck")]
+        public static async Task<IActionResult> HerplanCheck(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-check")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("HerplanCheck");
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<HerplanCheckRequest>(body);
+                if (request == null || request.Wedstrijdcode == 0)
+                    return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
+
+                log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}",
+                    request.Wedstrijdcode, request.VoorkeurTijd);
+
+                var response = await PlannerService.CheckRescheduleAvailabilityAsync(request, log);
+
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "HerplanCheck failed");
+                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            }
+        }
+
+        [Function("HerplanBevestig")]
+        public static async Task<IActionResult> HerplanBevestig(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("HerplanBevestig");
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<HerplanBevestigRequest>(body);
+                if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
+                    return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
+
+                if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
+                    return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+
+                // Fetch current match details
+                var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode);
+                if (match == null)
+                    return new OkObjectResult(new { error = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden." });
+
+                TimeOnly.TryParse(match.AanvangsTijd, out var huidigeAanvang);
+
+                log.LogInformation("HerplanBevestig: wedstrijdcode={Code}, gewenst={Tijd}",
+                    request.Wedstrijdcode, request.GewensteAanvangsTijd);
+
+                var id = await PlannerDataAccess.SaveHerplanVerzoekAsync(
+                    request.Wedstrijdcode,
+                    match.Wedstrijd,
+                    DateOnly.Parse(match.Datum),
+                    huidigeAanvang,
+                    match.VeldNaam,
+                    gewensteTijd,
+                    request.GewenstVeldNummer,
+                    request.AangevraagdDoor,
+                    request.Opmerking);
+
+                log.LogInformation("HerplanBevestig: saved with id={Id}", id);
+
+                return new OkObjectResult(new HerplanBevestigResponse
+                {
+                    Id = id,
+                    Wedstrijdcode = request.Wedstrijdcode,
+                    HuidigeWedstrijd = match.Wedstrijd,
+                    GewensteAanvangsTijd = request.GewensteAanvangsTijd,
+                    GewenstVeldNummer = request.GewenstVeldNummer,
+                    Status = "Aangevraagd"
+                });
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "HerplanBevestig failed");
+                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            }
+        }
     }
 }
