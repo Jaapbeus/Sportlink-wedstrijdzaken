@@ -288,3 +288,79 @@ Trigger bij email → AI Builder interpreteert tekst → HTTP POST naar API → 
 Eigen functie pollt/ontvangt emails via Graph API → LLM extraheert parameters → roept PlannerService direct aan → stuurt antwoord via Graph. Volledige controle, zelfde codebase.
 
 **AI-keuze uitgesteld** — elke LLM die Nederlandse natuurlijke taal kan omzetten naar het API-request JSON formaat werkt. Het API-contract is de stabiele interface.
+
+### Thuis/uit-herkenning bij herplanverzoeken
+
+Bij herplanverzoeken kan de email binnenkomen via een VRC-contactpersoon (doorgestuurd namens de tegenstander) of rechtstreeks van de tegenstander. De communicatie-flow verschilt per situatie.
+
+#### Stap 1 — Afzender herkennen
+
+| Aanwijzing | Conclusie |
+|-----------|-----------|
+| Emaildomein `@vv-vrc.nl` | VRC-intern (thuisteam-kant) |
+| Ander emaildomein | Mogelijk tegenstander of ouder/coach tegenstander |
+
+#### Stap 2 — Namens wie is het verzoek?
+
+De AI-laag analyseert de tekst op patronen:
+
+| Patroon in tekst | Conclusie |
+|-----------------|-----------|
+| "[Tegenstander] vraagt of...", "zij willen..." | Doorgestuurd door VRC-er, verzoek namens uitteam |
+| "Wij kunnen niet om...", "Is het voor ons mogelijk..." | Afzender zelf is de vragende partij |
+| "Kunnen we de wedstrijd verplaatsen" | Afzender = vragende partij |
+
+#### Stap 3 — Thuis/uit bepalen uit wedstrijddata
+
+Altijd betrouwbaar uit de database: `his.matches.teamnaam` = VRC-team (thuisteam). De andere partij in het `wedstrijd`-veld is het uitteam. Dit is harde data, geen interpretatie nodig.
+
+#### Stap 4 — Communicatie-flow per scenario
+
+| Afzender | Verzoek namens | Flow |
+|----------|---------------|------|
+| VRC-intern | Tegenstander | Check planning → Overleg eigen VRC-team → Antwoord via VRC-er terug naar tegenstander |
+| Tegenstander direct | Zichzelf | Check planning → Overleg VRC-team → Antwoord naar tegenstander |
+| VRC-intern | Eigen team | Check planning → Direct overleg met tegenstander |
+
+#### Afzender geautomatiseerde berichten
+
+Geautomatiseerde antwoorden worden verstuurd onder de naam **VRC Veldplanner** met vermelding dat het een automatisch bericht is. De handtekening verwijst naar de verantwoordelijke contactpersoon:
+
+```
+Met vriendelijke groet,
+
+VRC Veldplanner
+Geautomatiseerd antwoord namens [CoordinatorNaam]
+[CoordinatorFunctie]
+```
+
+De afzendergegevens worden **niet hardcoded** maar opgeslagen in `dbo.AppSettings`:
+
+| Instelling | Beschrijving | Voorbeeld |
+|-----------|-------------|-----------|
+| `PlannerAfzenderNaam` | Naam van het geautomatiseerde systeem | VRC Veldplanner |
+| `CoordinatorNaam` | Naam verantwoordelijke contactpersoon | Uit database, niet in code |
+| `CoordinatorFunctie` | Functietitel contactpersoon | Coördinator thuiswedstrijden |
+| `PlannerEmailAdres` | Emailadres voor verzending | Configureerbaar per omgeving |
+
+Zo blijven persoonsgegevens buiten de code (AVG/GDPR-conform) en zijn ze wijzigbaar zonder deployment.
+
+#### Communicatiestijl geautomatiseerde berichten
+
+Antwoorden moeten **kort en duidelijk** zijn, zonder technische details over het algoritme. De ontvanger hoeft niet te weten hoe de berekening werkt.
+
+**Niet beschikbaar — voorbeeld:**
+
+> Maandag 18 mei is er geen mogelijkheid omdat er al een andere wedstrijd op veld 5 staat gepland. Mogelijkheden om voor of na deze wedstrijd te spelen is niet mogelijk vanwege het ontbreken van verlichting en zonsondergang (21:31).
+
+**Wel beschikbaar — voorbeeld:**
+
+> Woensdag 20 mei is veld 5 beschikbaar om 18:30. De wedstrijd eindigt om 19:45, ruim voor zonsondergang (21:31).
+
+**Richtlijnen:**
+- Geef alleen aan of het wel of niet kan, niet waarom het algoritme bepaalde tijden heeft geprobeerd
+- Bij "niet mogelijk": vermeld kort de reden (ander wedstrijd, geen verlichting, veld vol)
+- Bij "wel mogelijk": vermeld het tijdstip, veld en eindtijd
+- Vermeld zonsondergang alleen als het relevant is (velden zonder kunstlicht)
+- Bij datum-discrepanties (bijv. "maandag 20 mei" terwijl dat een woensdag is): corrigeer vriendelijk en geef beide opties
+- Geef niet meer dan 2-3 alternatieven — te veel keuze werkt verwarrend
