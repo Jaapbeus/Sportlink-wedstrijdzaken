@@ -3,8 +3,8 @@ using System;
 namespace SportlinkFunction.Planner
 {
     /// <summary>
-    /// NOAA Solar Calculator for sunset times at Sportpark Spitsbergen, Veenendaal.
-    /// Based on: https://gml.noaa.gov/grad/solcalc/solareqns.PDF
+    /// NOAA Zonnecalculator voor zonsondergangstijden op Sportpark Spitsbergen, Veenendaal.
+    /// Gebaseerd op: https://gml.noaa.gov/grad/solcalc/solareqns.PDF
     /// </summary>
     public static class SunsetCalculator
     {
@@ -15,13 +15,13 @@ namespace SportlinkFunction.Planner
 
         private static TimeZoneInfo GetAmsterdamTimeZone()
         {
-            // Windows uses "W. Europe Standard Time", Linux uses "Europe/Amsterdam"
+            // Windows gebruikt "W. Europe Standard Time", Linux gebruikt "Europe/Amsterdam"
             try { return TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); }
             catch { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam"); }
         }
 
         /// <summary>
-        /// Calculate sunset time for a given date in local Amsterdam time.
+        /// Bereken zonsondergangstijd voor een bepaalde datum in lokale Amsterdam-tijd.
         /// </summary>
         public static TimeOnly GetSunset(DateOnly date)
         {
