@@ -320,3 +320,26 @@ Altijd betrouwbaar uit de database: `his.matches.teamnaam` = VRC-team (thuisteam
 | VRC-intern | Tegenstander | Check planning → Overleg eigen VRC-team → Antwoord via VRC-er terug naar tegenstander |
 | Tegenstander direct | Zichzelf | Check planning → Overleg VRC-team → Antwoord naar tegenstander |
 | VRC-intern | Eigen team | Check planning → Direct overleg met tegenstander |
+
+#### Afzender geautomatiseerde berichten
+
+Geautomatiseerde antwoorden worden verstuurd onder de naam **VRC Veldplanner** met vermelding dat het een automatisch bericht is. De handtekening verwijst naar de verantwoordelijke contactpersoon:
+
+```
+Met vriendelijke groet,
+
+VRC Veldplanner
+Geautomatiseerd antwoord namens [CoordinatorNaam]
+[CoordinatorFunctie]
+```
+
+De afzendergegevens worden **niet hardcoded** maar opgeslagen in `dbo.AppSettings`:
+
+| Instelling | Beschrijving | Voorbeeld |
+|-----------|-------------|-----------|
+| `PlannerAfzenderNaam` | Naam van het geautomatiseerde systeem | VRC Veldplanner |
+| `CoordinatorNaam` | Naam verantwoordelijke contactpersoon | Uit database, niet in code |
+| `CoordinatorFunctie` | Functietitel contactpersoon | Coördinator thuiswedstrijden |
+| `PlannerEmailAdres` | Emailadres voor verzending | Configureerbaar per omgeving |
+
+Zo blijven persoonsgegevens buiten de code (AVG/GDPR-conform) en zijn ze wijzigbaar zonder deployment.
