@@ -16,23 +16,23 @@ namespace SportlinkFunction.Planner
         {
             var response = new CheckAvailabilityResponse();
 
-            // Parse date
+            // Datum verwerken
             if (!DateOnly.TryParse(request.Datum, out var date))
             {
                 response.Reden = $"Ongeldige datum: {request.Datum}";
                 return response;
             }
 
-            // Date must be in the future (not today, not in the past)
+            // Datum moet in de toekomst liggen (niet vandaag, niet in het verleden)
             if (date <= DateOnly.FromDateTime(DateTime.Today))
             {
                 response.Reden = $"De gewenste datum {request.Datum} kan niet verwerkt worden. Een datum moet in de toekomst zijn.";
                 return response;
             }
 
-            // Step 1: Resolve match parameters from Speeltijden
+            // Stap 1: Wedstrijdparameters bepalen uit Speeltijden
             Speeltijd? speeltijd = null;
-            int duurMinuten = 105; // default senior
+            int duurMinuten = 105; // standaard senioren
             decimal veldFractie = 1.00m;
 
             if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
@@ -51,7 +51,7 @@ namespace SportlinkFunction.Planner
                 duurMinuten = request.WedstrijdDuurMinuten.Value;
             }
 
-            // Step 2: Team conflict check
+            // Stap 2: Team conflictcontrole
             if (!string.IsNullOrEmpty(request.TeamNaam))
             {
                 var teamMatches = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date);
@@ -71,7 +71,7 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Step 3: Load available fields for this day
+            // Stap 3: Beschikbare velden voor deze dag laden
             var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
             if (availableFields.Count == 0)
             {
@@ -84,31 +84,31 @@ namespace SportlinkFunction.Planner
                 return response;
             }
 
-            // Step 4: Load all existing occupations
+            // Stap 4: Alle huidige veldbezettingen laden
             var occupations = await PlannerDataAccess.GetFieldOccupationsAsync(date);
             var velden = await PlannerDataAccess.GetVeldenAsync();
 
-            // Step 5: Load team-specific rules
+            // Stap 5: Teamspecifieke regels laden
             var teamRules = new List<TeamRegel>();
             if (!string.IsNullOrEmpty(request.TeamNaam))
                 teamRules = await PlannerDataAccess.GetTeamRulesAsync(request.TeamNaam);
 
-            // Also load rules for teams already on the schedule (their buffers must be respected)
+            // Laad ook regels voor teams die al op het programma staan (hun buffers moeten gerespecteerd worden)
             var allTeamRules = new Dictionary<string, List<TeamRegel>>();
             foreach (var occ in occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!).Distinct())
             {
                 allTeamRules[occ] = await PlannerDataAccess.GetTeamRulesAsync(occ);
             }
 
-            // Step 6: Get sunset time
+            // Stap 6: Zonsondergangstijd ophalen
             var sunset = await PlannerDataAccess.GetSunsetAsync(date);
             if (sunset == null)
             {
-                // Compute on-the-fly if not in table
+                // Ter plekke berekenen als niet in tabel
                 sunset = SunsetCalculator.GetSunset(date);
             }
 
-            // Apply sunset constraint to field availability windows
+            // Zonsondergang-beperking toepassen op beschikbaarheidsvensters
             foreach (var field in availableFields)
             {
                 if (field.GebruikZonsondergang && sunset.HasValue)
@@ -118,18 +118,18 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Mode 2: no leeftijdsCategorie — return available windows
+            // Modus 2: geen leeftijdsCategorie — beschikbare vensters teruggeven
             if (string.IsNullOrEmpty(request.LeeftijdsCategorie) && !request.WedstrijdDuurMinuten.HasValue)
             {
                 return BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
             }
 
-            // Mode 1: specific slot assignment
+            // Modus 1: specifieke slottoewijzing
             TimeOnly? preferredTime = null;
             if (!string.IsNullOrEmpty(request.AanvangsTijd) && TimeOnly.TryParse(request.AanvangsTijd, out var parsed))
                 preferredTime = parsed;
 
-            // Apply dagdeel filter
+            // Dagdeelfilter toepassen
             TimeOnly dagdeelVan = new(8, 30);
             TimeOnly dagdeelTot = new(22, 0);
             if (!string.IsNullOrEmpty(request.Dagdeel))
@@ -142,7 +142,7 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Step 7: Try preferred time first (direct check, before full scan)
+            // Stap 7: Eerst voorkeurstijd proberen (directe controle, voor volledige scan)
             if (preferredTime.HasValue)
             {
                 var exactMatch = TryExactTime(preferredTime.Value, availableFields, occupations, velden,
@@ -157,14 +157,14 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Try to find alternative slots
+            // Alternatieve slots zoeken
             var candidates = FindAllSlots(availableFields, occupations, velden, allTeamRules, teamRules,
                                           veldFractie, duurMinuten, dagdeelVan, dagdeelTot, sunset);
 
-            // Step 8: Find best available slot
+            // Stap 8: Beste beschikbaar slot vinden
             if (candidates.Count > 0)
             {
-                // Sort by proximity to preferred time, or by scheduling preference
+                // Sorteren op nabijheid voorkeurstijd, of op planningsvoorkeur
                 var ordered = preferredTime.HasValue
                     ? candidates.OrderBy(c => Math.Abs(c.AanvangsTijd.ToTimeSpan().TotalMinutes - preferredTime.Value.ToTimeSpan().TotalMinutes))
                     : candidates.OrderBy(c => c.AanvangsTijd.ToTimeSpan().TotalMinutes);
@@ -174,7 +174,7 @@ namespace SportlinkFunction.Planner
 
                 if (preferredTime.HasValue)
                 {
-                    // Preferred time didn't match exactly — best is an alternative
+                    // Voorkeurstijd niet exact beschikbaar — beste als alternatief
                     response.Reden = $"Gewenste tijd {preferredTime.Value:HH:mm} is niet beschikbaar.";
                     response.Alternatieven = alternatives.Prepend(best)
                         .Select(c => ToSlotToewijzing(date, c, duurMinuten, velden)).Take(3).ToList();
@@ -210,10 +210,10 @@ namespace SportlinkFunction.Planner
         {
             var endTime = preferredTime.AddMinutes(duurMinuten);
 
-            // Try each field in preference order (veld 1-4 before veld 5)
+            // Elk veld proberen in voorkeursvolgorde (veld 1-4 voor veld 5)
             foreach (var field in availableFields.OrderBy(f => f.VeldNummer == 5 ? 1 : 0))
             {
-                // Check within availability window
+                // Controleer binnen beschikbaarheidsvenster
                 if (preferredTime < field.BeschikbaarVanaf || endTime > field.BeschikbaarTot)
                     continue;
 
@@ -249,11 +249,11 @@ namespace SportlinkFunction.Planner
                 var fieldOccupations = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
                 var veldInfo = velden.FirstOrDefault(v => v.VeldNummer == field.VeldNummer);
 
-                // Determine the effective time window for this field
+                // Effectief tijdvenster voor dit veld bepalen
                 var windowStart = dagdeelVan < field.BeschikbaarVanaf ? field.BeschikbaarVanaf : dagdeelVan;
                 var windowEnd = dagdeelTot > field.BeschikbaarTot ? field.BeschikbaarTot : dagdeelTot;
 
-                // Scan in 5-minute increments
+                // Scannen in stappen van 5 minuten
                 for (var time = windowStart; time.AddMinutes(duurMinuten) <= windowEnd; time = time.AddMinutes(5))
                 {
                     var endTime = time.AddMinutes(duurMinuten);
@@ -267,13 +267,13 @@ namespace SportlinkFunction.Planner
                             AanvangsTijd = time,
                             EindTijd = endTime
                         });
-                        // Skip ahead past this slot for this field to avoid overlapping candidates
-                        time = time.AddMinutes(duurMinuten + StandardBufferMinutes - 5); // -5 because loop adds 5
+                        // Vooruitspringen voorbij dit slot om overlappende kandidaten te vermijden
+                        time = time.AddMinutes(duurMinuten + StandardBufferMinutes - 5); // -5 omdat de lus 5 toevoegt
                     }
                 }
             }
 
-            // Sort: prefer veld 1-4 over veld 5
+            // Sorteren: veld 1-4 prefereren boven veld 5
             return candidates.OrderBy(c => c.VeldNummer == 5 ? 1 : 0)
                              .ThenBy(c => c.AanvangsTijd.ToTimeSpan().TotalMinutes)
                              .ToList();
@@ -285,7 +285,7 @@ namespace SportlinkFunction.Planner
             Dictionary<string, List<TeamRegel>> allTeamRules,
             List<TeamRegel> requestingTeamRules)
         {
-            // Get buffer requirements for the requesting team
+            // Buffervereisten voor het aanvragende team ophalen
             int bufferVoor = StandardBufferMinutes;
             int bufferNa = StandardBufferMinutes;
             foreach (var rule in requestingTeamRules)
@@ -301,33 +301,33 @@ namespace SportlinkFunction.Planner
 
             foreach (var occ in fieldOccupations)
             {
-                // Check if time windows overlap
+                // Controleer of tijdvensters overlappen
                 bool overlaps = occ.AanvangsTijd < bufferedEnd && occ.EindTijd > bufferedStart;
                 if (!overlaps) continue;
 
-                // For sub-field matches, check capacity during actual match time (not buffer time)
+                // Voor deelveld-wedstrijden, capaciteit controleren tijdens de wedstrijd (niet buffertijd)
                 if (veldFractie < 1.0m && occ.VeldDeelGebruik < 1.0m)
                 {
-                    // Only check actual overlap (not buffers) for sub-field capacity
+                    // Alleen daadwerkelijke overlap controleren (geen buffers) voor deelveld-capaciteit
                     bool actualOverlap = occ.AanvangsTijd < end && occ.EindTijd > start;
                     if (actualOverlap)
                     {
-                        // Check total capacity at this time slot
+                        // Totale capaciteit controleren voor dit tijdslot
                         decimal usedCapacity = fieldOccupations
                             .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
                             .Sum(o => o.VeldDeelGebruik);
                         if (usedCapacity + veldFractie > 1.0m)
                             return false;
-                        continue; // sub-field sharing is fine if capacity allows
+                        continue; // deelveld delen is prima als capaciteit het toelaat
                     }
                     continue;
                 }
 
-                // For full-field matches, or if existing match is full-field: conflict
+                // Voor heel-veld wedstrijden, of als bestaande wedstrijd heel veld is: conflict
                 if (veldFractie >= 1.0m || occ.VeldDeelGebruik >= 1.0m)
                     return false;
 
-                // Also check existing team's buffer rules
+                // Controleer ook bufferregels van bestaand team
                 if (!string.IsNullOrEmpty(occ.TeamNaam) && allTeamRules.TryGetValue(occ.TeamNaam, out var existingRules))
                 {
                     int existingBufVoor = StandardBufferMinutes;
