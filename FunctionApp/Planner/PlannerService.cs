@@ -548,12 +548,12 @@ namespace SportlinkFunction.Planner
                     suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
                     break;
                 case "strakker-plannen":
-                    suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden);
+                    suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
                     break;
                 default:
                     // Standaard: beide combineren — eerst veld 5 ontlasten, dan strakker plannen
                     suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
-                    var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden);
+                    var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
                     // Voeg strakker-suggesties toe die niet al in veld5-suggesties zitten
                     foreach (var s in strakkerSuggesties)
                     {
@@ -663,10 +663,10 @@ namespace SportlinkFunction.Planner
             List<BestaandeWedstrijd> bezettingen,
             List<VeldInfo> velden,
             List<VeldBeschikbaarheidInfo> beschikbareVelden,
-            HashSet<string> vasteWedstrijden)
+            HashSet<string> vasteWedstrijden,
+            Dictionary<string, List<TeamRegel>> allTeamRules)
         {
             var suggesties = new List<OptimalisatieSuggestie>();
-            var allTeamRules = new Dictionary<string, List<TeamRegel>>();
 
             // Per veld: zoek heel-veld wedstrijden die naar voren geschoven kunnen worden
             foreach (var veldBesch in beschikbareVelden.OrderBy(f => f.VeldNummer))
