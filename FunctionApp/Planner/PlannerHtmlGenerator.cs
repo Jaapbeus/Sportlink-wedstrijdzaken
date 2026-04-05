@@ -116,17 +116,17 @@ namespace SportlinkFunction.Planner
 
             sb.AppendLine("</div>"); // einde side-by-side
 
-            // Tabellen naast elkaar: chronologisch + per leeftijdscategorie
-            sb.AppendLine("<div style='display:flex;gap:20px;flex-wrap:wrap;'>");
+            // Tabellen naast elkaar, zelfde gap als planners
+            sb.AppendLine("<div style='display:flex;gap:15px;'>");
 
-            sb.AppendLine("<div style='flex:1;min-width:400px;'>");
+            sb.AppendLine($"<div style='flex:1;max-width:{gridBreedte + VeldHeaderBreedte}px;'>");
             sb.AppendLine($"<h3 style='margin:20px 0 8px 0;'>Chronologisch overzicht</h3>");
             TekenChronoTabel(sb, wedstrijden, suggesties, velden, verplaatsVan);
             sb.AppendLine("</div>");
 
-            sb.AppendLine("<div style='flex:1;min-width:400px;'>");
+            sb.AppendLine($"<div style='flex:1;max-width:{gridBreedte + VeldHeaderBreedte}px;'>");
             sb.AppendLine($"<h3 style='margin:20px 0 8px 0;'>Per leeftijdscategorie</h3>");
-            TekenCategorieTabel(sb, nieuweBezetting, suggesties, velden);
+            TekenCategorieTabel(sb, wedstrijden, nieuweBezetting, suggesties, velden, verplaatsVan);
             sb.AppendLine("</div>");
 
             sb.AppendLine("</div>");
@@ -368,83 +368,71 @@ document.addEventListener('click', () => {
         /// Versimpelde email HTML met link naar browser-versie.
         /// </summary>
         private static void TekenCategorieTabel(StringBuilder sb,
+            List<BestaandeWedstrijd> wedstrijden,
             List<BestaandeWedstrijd> nieuweBezetting,
             List<OptimalisatieSuggestie> suggesties,
-            List<VeldInfo> velden)
+            List<VeldInfo> velden,
+            Dictionary<string, OptimalisatieSuggestie> verplaatsVan)
         {
-            // Sorteer op leeftijdsnummer: JO7, JO8, JO9, JO10, JO11, MO11, JO12, MO12, JO13, MO13, ...
-            // Na JO19: MO20, JO23, G, VR, Senioren
-            int LeeftijdVolgorde(string cat)
+            // Leeftijd uit wedstrijdnaam halen voor sortering
+            int LeeftijdUitNaam(string naam)
             {
-                // Haal nummer uit categorie
-                var numStr = new string(cat.Where(char.IsDigit).ToArray());
-                int num = numStr.Length > 0 ? int.Parse(numStr) : 99;
-                int basis = num * 10; // JO13 = 130, MO13 = 131
-                if (cat.StartsWith("MO")) basis += 1;
-                else if (cat == "G") basis = 500;
-                else if (cat == "VR") basis = 600;
-                else if (cat == "O23") basis = 235;
-                else if (cat == "Senioren") basis = 700;
-                else if (cat == "Overig") basis = 999;
-                return basis;
-            }
-
-            string BepaalCategorie(string? wedstrijd, string? teamNaam)
-            {
-                var naam = teamNaam?.Trim() ?? wedstrijd?.Trim() ?? "";
-                if (naam.Contains(" G") && !naam.Contains("GV")) return "G";
-                if (naam.Contains("VR")) return "VR";
-                if (naam.Contains("O23")) return "O23";
-                if (naam.Contains("MO20")) return "MO20";
-                if (naam.Contains("MO19")) return "MO19";
-                if (naam.Contains("MO17")) return "MO17";
-                if (naam.Contains("MO15")) return "MO15";
-                if (naam.Contains("MO13")) return "MO13";
-                if (naam.Contains("MO10")) return "MO10";
-                // JO-categorieën van hoog naar laag checken om JO19 niet als JO1 te matchen
+                // Check van hoog naar laag om JO19 niet als JO1 te matchen
                 for (int i = 23; i >= 7; i--)
-                    if (naam.Contains($"JO{i}")) return $"JO{i}";
+                {
+                    if (naam.Contains($"JO{i}") || naam.Contains($"MO{i}"))
+                        return i * 10 + (naam.Contains($"MO{i}") ? 1 : 0);
+                }
+                if (naam.Contains("MO20")) return 201;
+                // G-teams: na MO20, voor O23
+                if (System.Text.RegularExpressions.Regex.IsMatch(naam, @"\bG\d"))
+                    return 210;
+                if (naam.Contains("O23")) return 230;
+                if (naam.Contains("VR")) return 300;
+                // Senioren (VRC 1-9): helemaal onderaan
                 if (System.Text.RegularExpressions.Regex.IsMatch(naam, @"VRC \d"))
-                    return "Senioren";
-                return "Overig";
+                    return 400;
+                return 500;
             }
 
-            var verplaatsteKeys = new HashSet<string>(suggesties.Select(s => s.Wedstrijd.Trim()));
+            // Gebruik dezelfde data als de chrono-tabel: originele wedstrijden + suggesties
+            var verplaatsteKeys = new HashSet<string>(suggesties.Select(s => $"{s.HuidigVeldNummer}_{s.HuidigeTijd}_{s.Wedstrijd}"));
+            var getoond = new HashSet<string>();
+            var items = new List<(int Leeftijd, TimeOnly Tijd, string Veld, string Wedstrijd, string Status, string Kleur)>();
 
-            var perCategorie = nieuweBezetting
-                .GroupBy(w => $"{w.VeldNummer}_{w.AanvangsTijd:HH:mm}_{w.Wedstrijd?.Trim()}")
-                .Select(g => g.First())
-                .Select(w => new {
-                    Wedstrijd = w,
-                    Categorie = BepaalCategorie(w.Wedstrijd, w.TeamNaam),
-                    VeldNaam = velden.FirstOrDefault(v => v.VeldNummer == w.VeldNummer)?.VeldNaam ?? $"veld {w.VeldNummer}",
-                    IsVerplaatst = verplaatsteKeys.Contains(w.Wedstrijd?.Trim() ?? "")
-                })
-                .OrderBy(x => LeeftijdVolgorde(x.Categorie))
-                .ThenBy(x => x.Wedstrijd.AanvangsTijd)
-                .ToList();
+            foreach (var w in wedstrijden.OrderBy(w => w.AanvangsTijd).ThenBy(w => w.VeldNummer))
+            {
+                string key = $"{w.VeldNummer}_{w.AanvangsTijd:HH:mm}_{w.Wedstrijd?.Trim()}";
+                if (!getoond.Add(key)) continue;
+                var vn = velden.FirstOrDefault(v => v.VeldNummer == w.VeldNummer)?.VeldNaam ?? $"veld {w.VeldNummer}";
+                string naam = w.Wedstrijd?.Trim() ?? "";
+                int leeftijd = LeeftijdUitNaam(naam);
 
+                if (verplaatsteKeys.Contains(key))
+                { var s = verplaatsVan[key]; items.Add((leeftijd, w.AanvangsTijd, vn, naam, $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
+                else if (naam.Contains("VRC 1 "))
+                    items.Add((leeftijd, w.AanvangsTijd, vn, naam, "🔒 Vast", BLK_VAST_RAND));
+                else
+                    items.Add((leeftijd, w.AanvangsTijd, vn, naam, "", TXT_DIM));
+            }
+            foreach (var s in suggesties)
+            {
+                TimeOnly.TryParse(s.NieuweTijd, out var t);
+                int leeftijd = LeeftijdUitNaam(s.Wedstrijd);
+                items.Add((leeftijd, t, s.NieuwVeld, $"★ {s.Wedstrijd}", $"← van {s.HuidigVeld} {s.HuidigeTijd}", BLK_NIEUW_RAND));
+            }
+
+            // Sorteer op leeftijd, dan aanvangstijd
             sb.AppendLine($"<table style='border-collapse:collapse;width:100%;font-size:11px;'>");
             sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
 
-            string vorigeCat = "";
-            foreach (var item in perCategorie)
+            int vorigeLeeftijd = -1;
+            foreach (var item in items.OrderBy(i => i.Leeftijd).ThenBy(i => i.Tijd).ThenBy(i => i.Veld))
             {
-                bool nieuweCat = item.Categorie != vorigeCat;
-                vorigeCat = item.Categorie;
-
-                string rijBg = item.IsVerplaatst ? "#0d1a0d" : "transparent";
-                string kleur = item.IsVerplaatst ? BLK_NIEUW_RAND : TXT;
-                string borderTop = nieuweCat ? $"border-top:2px solid {BG_TIJD};" : "";
-
-                sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'>");
-                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{item.VeldNaam}</td>");
-                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{item.Wedstrijd.AanvangsTijd:HH:mm}</td>");
-                string status = item.IsVerplaatst ? "★" : "";
-                sb.AppendLine($"<td style='padding:4px 8px;color:{BLK_NIEUW_RAND};'>{status}</td>");
-                string naam = item.Wedstrijd.Wedstrijd?.Trim() ?? "";
-                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{naam}</td>");
-                sb.AppendLine("</tr>");
+                string rijBg = item.Kleur == BLK_OUD_RAND ? "#1a0d00" : item.Kleur == BLK_NIEUW_RAND ? "#0d1a0d" : "transparent";
+                string borderTop = item.Leeftijd != vorigeLeeftijd && vorigeLeeftijd >= 0 ? $"border-top:2px solid {BG_TIJD};" : "";
+                vorigeLeeftijd = item.Leeftijd;
+                sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
             }
             sb.AppendLine("</table>");
         }
