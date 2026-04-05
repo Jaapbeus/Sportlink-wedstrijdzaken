@@ -13,7 +13,7 @@ If you just want to get running quickly:
    -- In SSMS connected to YOUR_SERVER, run these scripts in order:
    -- 1. setup-local-database.sql
    -- 2. setup-metadata-tables.sql
-   -- 3. Deploy stored procedures from C:\Repos\VRC\SportlinkSqlDb
+   -- 3. Deploy stored procedures from <repository>\Database
    ```
 
 2. **Configure API Credentials:**
@@ -179,7 +179,7 @@ If you have the full database project:
 
 ```powershell
 # Navigate to the SQL database project
-cd C:\Repos\VRC\SportlinkSqlDb
+cd <repository>\Database
 
 # Publish the database project using SSMS or Visual Studio
 # Or use SqlPackage.exe to deploy the .dacpac file
@@ -315,14 +315,14 @@ The application requires two critical stored procedures that handle data merging
 **Option A: From SportlinkSqlDb Repository**
 
 1. Open Visual Studio
-2. Open the solution: `C:\Repos\VRC\SportlinkSqlDb\SportlinkSqlDb.sln`
+2. Open the solution: `<repository>\Database\SportlinkSqlDb.sln`
 3. Right-click the database project → **Publish**
 4. Target database: `YOUR_SERVER.SportlinkSqlDb`
 5. Click **Publish**
 
 **Option B: Manual Deployment**
 
-1. Navigate to: `C:\Repos\VRC\SportlinkSqlDb\dbo\System Stored Procedures\`
+1. Navigate to: `<repository>\Database\dbo\System Stored Procedures\`
 2. Open in SSMS:
    - `sp_CreateTargetTableFromSource.sql`
    - `sp_MergeStgToHis.sql`
@@ -412,7 +412,7 @@ GO
 Execute the provided PowerShell script to verify your environment:
 
 ```powershell
-cd C:\Repos\VRC\fa-dev-sportlink-01
+cd <repository>\FunctionApp
 .\setup-local-debug.ps1
 ```
 
@@ -604,7 +604,7 @@ SELECT name FROM sys.procedures
 WHERE name IN ('sp_MergeStgToHis', 'sp_CreateTargetTableFromSource');
 
 -- If missing, deploy from:
--- C:\Repos\VRC\SportlinkSqlDb\dbo\System Stored Procedures\
+-- <repository>\Database\dbo\System Stored Procedures\
 ```
 
 ---
@@ -702,8 +702,8 @@ fa-dev-sportlink-01/
 
 | Repository | Location | Purpose |
 |------------|----------|---------|
-| **fa-dev-sportlink-01** | `C:\Repos\VRC\fa-dev-sportlink-01` | Azure Function application |
-| **SportlinkSqlDb** | `C:\Repos\VRC\SportlinkSqlDb` | Database project (schemas, stored procedures) |
+| **fa-dev-sportlink-01** | `<repository>\FunctionApp` | Azure Function application |
+| **SportlinkSqlDb** | `<repository>\Database` | Database project (schemas, stored procedures) |
 
 ### Useful SQL Queries
 

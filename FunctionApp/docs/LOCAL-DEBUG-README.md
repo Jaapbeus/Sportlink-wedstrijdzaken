@@ -39,7 +39,7 @@ WHERE Id = 1;
 Run the PowerShell setup script to verify your local environment:
 
 ```powershell
-cd C:\Repos\VRC\fa-dev-sportlink-01
+cd <repository>\FunctionApp
 .\setup-local-debug.ps1
 ```
 
@@ -152,7 +152,7 @@ fa-dev-sportlink-01/
 
 The SQL database project is located at:
 ```
-C:\Repos\VRC\SportlinkSqlDb
+<repository>\Database
 ```
 
 This contains:

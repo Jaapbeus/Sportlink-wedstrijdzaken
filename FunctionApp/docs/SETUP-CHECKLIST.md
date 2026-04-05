@@ -47,7 +47,7 @@ Use this checklist to track your setup progress. Check off each item as you comp
 - [ ] Mapping data inserted (3 rows)
 
 ### Stored Procedures
-- [ ] Located SportlinkSqlDb repository at: `C:\Repos\VRC\SportlinkSqlDb`
+- [ ] Located SportlinkSqlDb repository at: `<repository>\Database`
 - [ ] Deployed `sp_CreateTargetTableFromSource`
 - [ ] Deployed `sp_MergeStgToHis`
 - [ ] Verified both procedures exist in database
