@@ -101,6 +101,7 @@ namespace SportlinkFunction.Planner
         public TimeOnly EindTijd { get; set; }
         public int VeldNummer { get; set; }
         public decimal VeldDeelGebruik { get; set; }
+        public string? VeldSubpositie { get; set; } // A, B, A1, A2, B1, B2 — voor visuele positionering
         public string? LeeftijdsCategorie { get; set; }
         public string? TeamNaam { get; set; }
         public string? Wedstrijd { get; set; }
@@ -123,6 +124,8 @@ namespace SportlinkFunction.Planner
     {
         public string Datum { get; set; } = string.Empty;
         public string? Doel { get; set; } // optioneel: veld5-ontlasten, strakker-plannen. Leeg = beide combineren
+        public string? GewensteEindtijd { get; set; } // optioneel, standaard "16:15". Alles voor dit tijdstip = extra buffer
+        public int? BufferMinuten { get; set; } // optioneel, standaard 15 min. Overschrijft de standaard buffer tussen wedstrijden
     }
 
     public class OptimaliseerResponse
