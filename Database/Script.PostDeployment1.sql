@@ -75,10 +75,10 @@ BEGIN
     -- Monday-Thursday (1-4): only veld 5, until sunset
     INSERT INTO [dbo].[VeldBeschikbaarheid] ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang])
     VALUES
-        (5, 1, '09:00', '22:00', 1),
-        (5, 2, '09:00', '22:00', 1),
-        (5, 3, '09:00', '22:00', 1),
-        (5, 4, '09:00', '22:00', 1)
+        (5, 1, '18:00', '22:00', 1),
+        (5, 2, '18:00', '22:00', 1),
+        (5, 3, '18:00', '22:00', 1),
+        (5, 4, '18:00', '22:00', 1)
     -- Friday (5): no rows = no matches
     -- Sunday (7): no rows = no matches
 
