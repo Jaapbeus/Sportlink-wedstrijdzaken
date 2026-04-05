@@ -330,8 +330,8 @@ document.addEventListener('click', () => {
             List<VeldInfo> velden,
             Dictionary<string, OptimalisatieSuggestie> verplaatsVan)
         {
-            sb.AppendLine($"<table style='border-collapse:collapse;width:100%;max-width:900px;font-size:11px;'>");
-            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th></tr>");
+            sb.AppendLine($"<table style='border-collapse:collapse;width:100%;font-size:11px;'>");
+            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
 
             var verplaatsteKeys = new HashSet<string>(suggesties.Select(s => $"{s.HuidigVeldNummer}_{s.HuidigeTijd}_{s.Wedstrijd}"));
             var getoond = new HashSet<string>();
@@ -359,7 +359,7 @@ document.addEventListener('click', () => {
             foreach (var item in items.OrderBy(i => i.Tijd).ThenBy(i => i.Veld))
             {
                 string rijBg = item.Kleur == BLK_OUD_RAND ? "#1a0d00" : item.Kleur == BLK_NIEUW_RAND ? "#0d1a0d" : "transparent";
-                sb.AppendLine($"<tr style='background:{rijBg};border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td></tr>");
+                sb.AppendLine($"<tr style='background:{rijBg};border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
             }
             sb.AppendLine("</table>");
         }
@@ -372,13 +372,23 @@ document.addEventListener('click', () => {
             List<OptimalisatieSuggestie> suggesties,
             List<VeldInfo> velden)
         {
-            // Categorievolgorde: JO7-JO19, MO13-MO20, G, VR, Senioren/O23
-            var categorieVolgorde = new[] {
-                "JO7","JO8","JO9","JO10","JO11","JO12","JO13","JO14","JO15","JO16","JO17","JO18","JO19","JO23",
-                "MO13","MO15","MO17","MO19","MO20","G","VR","O23","Senioren"
-            };
+            // Sorteer op leeftijdsnummer: JO7, JO8, JO9, JO10, JO11, MO11, JO12, MO12, JO13, MO13, ...
+            // Na JO19: MO20, JO23, G, VR, Senioren
+            int LeeftijdVolgorde(string cat)
+            {
+                // Haal nummer uit categorie
+                var numStr = new string(cat.Where(char.IsDigit).ToArray());
+                int num = numStr.Length > 0 ? int.Parse(numStr) : 99;
+                int basis = num * 10; // JO13 = 130, MO13 = 131
+                if (cat.StartsWith("MO")) basis += 1;
+                else if (cat == "G") basis = 500;
+                else if (cat == "VR") basis = 600;
+                else if (cat == "O23") basis = 235;
+                else if (cat == "Senioren") basis = 700;
+                else if (cat == "Overig") basis = 999;
+                return basis;
+            }
 
-            // Bepaal categorie per wedstrijd op basis van teamnaam
             string BepaalCategorie(string? wedstrijd, string? teamNaam)
             {
                 var naam = teamNaam?.Trim() ?? wedstrijd?.Trim() ?? "";
@@ -390,9 +400,10 @@ document.addEventListener('click', () => {
                 if (naam.Contains("MO17")) return "MO17";
                 if (naam.Contains("MO15")) return "MO15";
                 if (naam.Contains("MO13")) return "MO13";
-                foreach (var cat in categorieVolgorde.Where(c => c.StartsWith("JO")))
-                    if (naam.Contains(cat)) return cat;
-                // Senioren: VRC 1-9 zonder JO/MO/O23
+                if (naam.Contains("MO10")) return "MO10";
+                // JO-categorieën van hoog naar laag checken om JO19 niet als JO1 te matchen
+                for (int i = 23; i >= 7; i--)
+                    if (naam.Contains($"JO{i}")) return $"JO{i}";
                 if (System.Text.RegularExpressions.Regex.IsMatch(naam, @"VRC \d"))
                     return "Senioren";
                 return "Overig";
@@ -400,7 +411,6 @@ document.addEventListener('click', () => {
 
             var verplaatsteKeys = new HashSet<string>(suggesties.Select(s => s.Wedstrijd.Trim()));
 
-            // Groepeer nieuwe bezetting per categorie
             var perCategorie = nieuweBezetting
                 .GroupBy(w => $"{w.VeldNummer}_{w.AanvangsTijd:HH:mm}_{w.Wedstrijd?.Trim()}")
                 .Select(g => g.First())
@@ -410,13 +420,12 @@ document.addEventListener('click', () => {
                     VeldNaam = velden.FirstOrDefault(v => v.VeldNummer == w.VeldNummer)?.VeldNaam ?? $"veld {w.VeldNummer}",
                     IsVerplaatst = verplaatsteKeys.Contains(w.Wedstrijd?.Trim() ?? "")
                 })
-                .OrderBy(x => Array.IndexOf(categorieVolgorde, x.Categorie) >= 0
-                    ? Array.IndexOf(categorieVolgorde, x.Categorie) : 99)
+                .OrderBy(x => LeeftijdVolgorde(x.Categorie))
                 .ThenBy(x => x.Wedstrijd.AanvangsTijd)
                 .ToList();
 
             sb.AppendLine($"<table style='border-collapse:collapse;width:100%;font-size:11px;'>");
-            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Categorie</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
+            sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Tijd</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
 
             string vorigeCat = "";
             foreach (var item in perCategorie)
@@ -425,17 +434,16 @@ document.addEventListener('click', () => {
                 vorigeCat = item.Categorie;
 
                 string rijBg = item.IsVerplaatst ? "#0d1a0d" : "transparent";
-                string catTekst = nieuweCat ? $"<b>{item.Categorie}</b>" : "";
                 string kleur = item.IsVerplaatst ? BLK_NIEUW_RAND : TXT;
                 string borderTop = nieuweCat ? $"border-top:2px solid {BG_TIJD};" : "";
 
                 sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'>");
-                sb.AppendLine($"<td style='padding:4px 8px;color:{TXT_DIM};'>{catTekst}</td>");
-                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{item.Wedstrijd.AanvangsTijd:HH:mm}</td>");
                 sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{item.VeldNaam}</td>");
+                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{item.Wedstrijd.AanvangsTijd:HH:mm}</td>");
+                string status = item.IsVerplaatst ? "★" : "";
+                sb.AppendLine($"<td style='padding:4px 8px;color:{BLK_NIEUW_RAND};'>{status}</td>");
                 string naam = item.Wedstrijd.Wedstrijd?.Trim() ?? "";
-                string prefix = item.IsVerplaatst ? "★ " : "";
-                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{prefix}{naam}</td>");
+                sb.AppendLine($"<td style='padding:4px 8px;color:{kleur};'>{naam}</td>");
                 sb.AppendLine("</tr>");
             }
             sb.AppendLine("</table>");
