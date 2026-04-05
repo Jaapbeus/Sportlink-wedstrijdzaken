@@ -29,7 +29,7 @@ Veld 5 is only assigned when veld 1–4 are fully occupied in the requested time
 
 | Dag | Beschikbare velden | Tijdvenster | Bijzonderheden |
 |-----|-------------------|-------------|----------------|
-| Maandag–Donderdag | Veld 5 alleen | 09:00 – zonsondergang | Geen kunstlicht |
+| Maandag–Donderdag | Veld 5 alleen | 18:00 – zonsondergang | Geen kunstlicht, sportpark overdag gesloten |
 | Vrijdag | **Geen** | — | Geen wedstrijden toegestaan |
 | Zaterdag | Veld 1–4 + Veld 5 | 08:30 – 22:00 (veld 1–4) / 08:30 – 17:00 (veld 5) | 10 min buffer tussen wedstrijden |
 | Zondag | **Geen** | — | Geen wedstrijden toegestaan |

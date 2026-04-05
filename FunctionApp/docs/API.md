@@ -308,7 +308,7 @@ None (empty POST).
 
 | Day | Fields | Hours | Notes |
 |-----|--------|-------|-------|
-| Monday-Thursday | Veld 5 only | 09:00 - sunset | No lights, veld 1-4 training |
+| Monday-Thursday | Veld 5 only | 18:00 - sunset | No lights, veld 1-4 training |
 | Friday | None | - | No matches |
 | Saturday | Veld 1-5 | 08:30 - 22:00 (1-4) / 08:30 - 17:00 (5) | 10 min buffer |
 | Sunday | None | - | No matches |
