@@ -17,6 +17,7 @@ Alle endpoints vereisen een functiesleutel via `x-functions-key` header of `?cod
 | `POST` | `/planner/zoek-wedstrijd` | Bestaande wedstrijd zoeken |
 | `POST` | `/planner/herplan-check` | Herplan-alternatieven simuleren |
 | `POST` | `/planner/herplan-bevestig` | Herplanverzoek registreren |
+| `POST` | `/planner/optimaliseer` | Planning optimaliseren (HTML/email/JSON) |
 
 ---
 
@@ -464,6 +465,83 @@ Register a reschedule request. **Does NOT modify the match** — only records th
 
 ---
 
+## POST /api/planner/optimaliseer
+
+Analyseer de planning voor een datum en genereer optimalisatiesuggesties. Voert **niets** door — alleen advies. Drie output-formaten beschikbaar.
+
+### Aanvraag
+
+```json
+{
+  "datum": "2026-04-18",
+  "doel": null
+}
+```
+
+### Aanvraagvelden
+
+| Veld | Type | Verplicht | Beschrijving |
+|------|------|-----------|-------------|
+| `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
+| `doel` | `string` | Nee | Optimalisatiedoel (zie tabel). Leeg = beide combineren |
+
+### Optimalisatiedoelen
+
+| Doel | Beschrijving |
+|------|-------------|
+| *(leeg/niet opgegeven)* | **Standaard**: veld 5 ontlasten + strakker plannen gecombineerd |
+| `veld5-ontlasten` | Verplaats wedstrijden van veld 5 naar kunstgras, alleen als het eerder kan |
+| `strakker-plannen` | Minimaliseer gaten tussen wedstrijden op alle velden |
+
+### Output-formaten (via querystring)
+
+| Format | URL | Beschrijving |
+|--------|-----|-------------|
+| JSON | `POST /api/planner/optimaliseer` | Suggesties als JSON |
+| Browser | `POST /api/planner/optimaliseer?format=html` | Interactieve HTML met grid, hover-interactie |
+| Email | `POST /api/planner/optimaliseer?format=email` | Email-compatibele HTML met link naar browser-versie |
+
+### Antwoord — JSON (200)
+
+```json
+{
+  "datum": "2026-04-11",
+  "huidigeEindtijd": "19:00",
+  "aantalVerplaatsingen": 1,
+  "aantalVanVeld5Verplaatst": 1,
+  "suggesties": [
+    {
+      "wedstrijd": "VRC JO19-3 - Tegenstander JO19-4",
+      "huidigVeldNummer": 5,
+      "huidigVeld": "veld 5",
+      "huidigeTijd": "16:45",
+      "nieuwVeldNummer": 2,
+      "nieuwVeld": "veld 2",
+      "nieuweTijd": "16:00",
+      "reden": "Verplaats van veld 5 (geen kunstlicht) naar veld 2"
+    }
+  ],
+  "htmlPlanner": "<html>...</html>"
+}
+```
+
+### Antwoord — Browser HTML
+
+Interactieve veldplanner in Sportlink-stijl met:
+- Donker grid met tijdlijn en gestapelde wedstrijdblokken
+- Kleurcodes: grijs=ongewijzigd, blauw=vast, oranje=suggestie
+- Hover-interactie: blok in grid ↔ rij in chronologische lijst
+- Chronologisch overzicht met status per wedstrijd
+
+### Antwoord — Email HTML
+
+Versimpelde email-compatibele versie met:
+- Bovenaan: link "Bekijk in browser (meer functies)"
+- Chronologische tabel met kleurcodes (inline CSS)
+- Werkt in alle email-clients (Outlook, Gmail, etc.)
+
+---
+
 ## Overzicht planningsregels
 
 ### Veldbeschikbaarheid
@@ -564,6 +642,22 @@ curl -X POST http://localhost:7094/api/planner/herplan-check \
 curl -X POST http://localhost:7094/api/planner/herplan-bevestig \
   -H "Content-Type: application/json" \
   -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
+```
+
+### Planning optimaliseren (browser-versie)
+
+```bash
+curl -X POST "http://localhost:7094/api/planner/optimaliseer?format=html" \
+  -H "Content-Type: application/json" \
+  -d '{"datum":"2026-04-18"}' > optimalisatie.html
+```
+
+### Planning optimaliseren (email-versie)
+
+```bash
+curl -X POST "http://localhost:7094/api/planner/optimaliseer?format=email" \
+  -H "Content-Type: application/json" \
+  -d '{"datum":"2026-04-18"}'
 ```
 
 ### Handmatige Sportlink synchronisatie

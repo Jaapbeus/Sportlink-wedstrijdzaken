@@ -122,7 +122,7 @@ namespace SportlinkFunction.Planner
     public class OptimaliseerRequest
     {
         public string Datum { get; set; } = string.Empty;
-        public string Doel { get; set; } = "veld5-ontlasten"; // veld5-ontlasten, strakker-plannen, vroeger-eindigen
+        public string? Doel { get; set; } // optioneel: veld5-ontlasten, strakker-plannen. Leeg = beide combineren
     }
 
     public class OptimaliseerResponse
