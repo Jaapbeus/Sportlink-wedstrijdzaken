@@ -666,49 +666,87 @@ namespace SportlinkFunction.Planner
             HashSet<string> vasteWedstrijden)
         {
             var suggesties = new List<OptimalisatieSuggestie>();
+            var allTeamRules = new Dictionary<string, List<TeamRegel>>();
 
-            // Per veld: zoek wedstrijden die naar voren geschoven kunnen worden
+            // Per veld: zoek heel-veld wedstrijden die naar voren geschoven kunnen worden
             foreach (var veldBesch in beschikbareVelden.OrderBy(f => f.VeldNummer))
             {
-                var veldBezetting = bezettingen
+                // Heel-veld wedstrijden die verplaatst mogen worden
+                var heelVeldWedstrijden = bezettingen
                     .Where(b => b.VeldNummer == veldBesch.VeldNummer && b.VeldDeelGebruik >= 1.0m)
                     .OrderBy(b => b.AanvangsTijd)
                     .ToList();
 
-                var vorigEinde = veldBesch.BeschikbaarVanaf;
-                foreach (var wedstrijd in veldBezetting)
+                // ALLE wedstrijden op dit veld (inclusief deelveld) voor conflictcheck
+                var alleVeldWedstrijden = bezettingen
+                    .Where(b => b.VeldNummer == veldBesch.VeldNummer)
+                    .ToList();
+
+                // Werklijst die we bijwerken per suggestie
+                var werkBezetting = alleVeldWedstrijden.ToList();
+
+                foreach (var wedstrijd in heelVeldWedstrijden)
                 {
                     string key = $"{wedstrijd.VeldNummer}_{wedstrijd.AanvangsTijd:HH:mm}_{wedstrijd.Wedstrijd?.Trim()}";
-                    if (vasteWedstrijden.Contains(key))
-                    {
-                        vorigEinde = wedstrijd.EindTijd.AddMinutes(StandardBufferMinutes);
-                        continue;
-                    }
+                    if (vasteWedstrijden.Contains(key)) continue;
 
-                    var vroegstMogelijk = vorigEinde.AddMinutes(StandardBufferMinutes);
                     int duur = (int)(wedstrijd.EindTijd - wedstrijd.AanvangsTijd).TotalMinutes;
 
-                    // Verschil tussen huidige aanvangstijd en vroegst mogelijke
-                    var verschilMinuten = (wedstrijd.AanvangsTijd - vroegstMogelijk).TotalMinutes;
-                    if (verschilMinuten >= 15) // minstens 15 minuten te winnen
+                    // Zoek het vroegste moment waarop deze wedstrijd kan, met CanFitMatch
+                    // Verwijder de wedstrijd tijdelijk uit de bezetting voor de check
+                    var bezettingZonderDeze = werkBezetting
+                        .Where(b => !(b.AanvangsTijd == wedstrijd.AanvangsTijd &&
+                                      b.Wedstrijd?.Trim() == wedstrijd.Wedstrijd?.Trim()))
+                        .ToList();
+
+                    TimeOnly? vroegstMogelijk = null;
+                    for (var tijd = veldBesch.BeschikbaarVanaf; tijd.AddMinutes(duur) <= veldBesch.BeschikbaarTot; tijd = tijd.AddMinutes(5))
                     {
-                        var veldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
-                        suggesties.Add(new OptimalisatieSuggestie
+                        if (tijd >= wedstrijd.AanvangsTijd) break; // Niet later dan huidige tijd
+                        var eindTijd = tijd.AddMinutes(duur);
+                        if (CanFitMatch(tijd, eindTijd, 1.0m, veldBesch.VeldNummer,
+                                        bezettingZonderDeze, allTeamRules, new List<TeamRegel>()))
                         {
-                            Wedstrijd = wedstrijd.Wedstrijd?.Trim() ?? "",
-                            HuidigVeldNummer = wedstrijd.VeldNummer,
-                            HuidigVeld = veldNaam,
-                            HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
-                            NieuwVeldNummer = wedstrijd.VeldNummer,
-                            NieuwVeld = veldNaam,
-                            NieuweTijd = vroegstMogelijk.ToString("HH:mm"),
-                            Reden = $"Naar voren schuiven ({(int)verschilMinuten} min eerder)"
-                        });
-                        vorigEinde = vroegstMogelijk.AddMinutes(duur);
+                            vroegstMogelijk = tijd;
+                            break;
+                        }
                     }
-                    else
+
+                    if (vroegstMogelijk.HasValue)
                     {
-                        vorigEinde = wedstrijd.EindTijd;
+                        var verschilMinuten = (wedstrijd.AanvangsTijd - vroegstMogelijk.Value).TotalMinutes;
+                        if (verschilMinuten >= 15) // minstens 15 minuten winst
+                        {
+                            var veldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
+                            suggesties.Add(new OptimalisatieSuggestie
+                            {
+                                Wedstrijd = wedstrijd.Wedstrijd?.Trim() ?? "",
+                                HuidigVeldNummer = wedstrijd.VeldNummer,
+                                HuidigVeld = veldNaam,
+                                HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
+                                NieuwVeldNummer = wedstrijd.VeldNummer,
+                                NieuwVeld = veldNaam,
+                                NieuweTijd = vroegstMogelijk.Value.ToString("HH:mm"),
+                                Reden = $"Naar voren schuiven ({(int)verschilMinuten} min eerder)"
+                            });
+
+                            // Werkbezetting bijwerken
+                            werkBezetting = werkBezetting
+                                .Where(b => !(b.AanvangsTijd == wedstrijd.AanvangsTijd &&
+                                              b.Wedstrijd?.Trim() == wedstrijd.Wedstrijd?.Trim()))
+                                .ToList();
+                            werkBezetting.Add(new BestaandeWedstrijd
+                            {
+                                Datum = wedstrijd.Datum,
+                                AanvangsTijd = vroegstMogelijk.Value,
+                                EindTijd = vroegstMogelijk.Value.AddMinutes(duur),
+                                VeldNummer = wedstrijd.VeldNummer,
+                                VeldDeelGebruik = 1.0m,
+                                TeamNaam = wedstrijd.TeamNaam,
+                                Wedstrijd = wedstrijd.Wedstrijd,
+                                Bron = "Suggestie"
+                            });
+                        }
                     }
                 }
             }
