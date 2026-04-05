@@ -128,7 +128,7 @@ namespace SportlinkFunction.Planner
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(
-                "SELECT [VeldNummer], [VeldNaam], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 ORDER BY [VeldNummer]", conn);
+                "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 ORDER BY [VeldNummer]", conn);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -136,7 +136,8 @@ namespace SportlinkFunction.Planner
                 {
                     VeldNummer = reader.GetInt32(0),
                     VeldNaam = reader.GetString(1),
-                    HeeftKunstlicht = reader.GetBoolean(2)
+                    VeldType = reader.GetString(2),
+                    HeeftKunstlicht = reader.GetBoolean(3)
                 });
             }
             return results;
