@@ -317,21 +317,29 @@ namespace SportlinkFunction.Planner
 
                 if (gelijktijdig)
                 {
-                    // Deelveld-sharing: alleen toegestaan als wedstrijden op EXACT hetzelfde
-                    // tijdstip beginnen (bewust als blok ingepland). Wedstrijden die toevallig
-                    // overlappen door verschillende start-/eindtijden delen het veld NIET.
-                    bool zelfdeStarttijd = occ.AanvangsTijd == start;
-                    if (zelfdeStarttijd && veldFractie < 1.0m && occ.VeldDeelGebruik < 1.0m)
+                    // Deelveld-sharing: beide wedstrijden gebruiken een deel van het veld
+                    // en overlappen in de tijd. Controleer of de totale capaciteit past.
+                    // Alleen toegestaan als GEEN van beide een heel veld (1.00) gebruikt.
+                    if (veldFractie < 1.0m && occ.VeldDeelGebruik < 1.0m)
                     {
-                        decimal gebruikteCapaciteit = fieldOccupations
-                            .Where(o => o.AanvangsTijd == start)
-                            .Sum(o => o.VeldDeelGebruik);
-                        if (gebruikteCapaciteit + veldFractie > 1.0m)
+                        // Controleer totale capaciteit op het drukste moment:
+                        // alle wedstrijden die overlappen met het nieuwe tijdvenster
+                        decimal maxCapaciteitInGebruik = 0;
+                        // Scan per minuut van start tot end om het drukste moment te vinden
+                        for (var checkTime = start; checkTime < end; checkTime = checkTime.AddMinutes(5))
+                        {
+                            var checkEnd = checkTime.AddMinutes(5);
+                            decimal capaciteitOpMoment = fieldOccupations
+                                .Where(o => o.VeldDeelGebruik < 1.0m && o.AanvangsTijd < checkEnd && o.EindTijd > checkTime)
+                                .Sum(o => o.VeldDeelGebruik);
+                            maxCapaciteitInGebruik = Math.Max(maxCapaciteitInGebruik, capaciteitOpMoment);
+                        }
+                        if (maxCapaciteitInGebruik + veldFractie > 1.0m)
                             return false;
                         // Deelveld delen is prima als capaciteit het toelaat
                         continue;
                     }
-                    // Overlap maar niet zelfde starttijd, of heel-veld: conflict
+                    // Overlap met heel-veld wedstrijd: altijd conflict
                     return false;
                 }
 
