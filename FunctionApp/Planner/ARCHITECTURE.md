@@ -403,3 +403,17 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 **Standaard antwoord bij buiten-scope verzoeken:**
 
 > Bedankt voor je bericht. Dit verzoek vereist handmatige afhandeling en is ter beoordeling bij de coördinator neergelegd.
+
+**Standaard antwoord bij herplanverzoek met beschikbaar alternatief:**
+
+> De wedstrijd [wedstrijd] staat gepland op [datum] om [tijd] op [veld].
+>
+> Er is een mogelijkheid om de wedstrijd te verplaatsen naar [nieuwe tijd] op [nieuw veld].
+>
+> Wil je dat wij dit voor je in gang zetten? De coördinator thuiswedstrijden beoordeelt het verzoek en je ontvangt daarna een bevestiging.
+
+**Standaard antwoord bij herplanverzoek zonder beschikbaar alternatief:**
+
+> De wedstrijd [wedstrijd] staat gepland op [datum] om [tijd] op [veld].
+>
+> Helaas is er op [datum] geen mogelijkheid om de wedstrijd te verplaatsen. [Korte reden: velden bezet / geen verlichting / etc.]
