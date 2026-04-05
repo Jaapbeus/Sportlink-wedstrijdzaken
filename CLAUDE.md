@@ -26,7 +26,7 @@ No automated tests or linter configured.
 Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 
 **Two trigger functions** in `FunctionApp/Function1.cs`:
-- `FetchAndStoreApiData` — Timer trigger (hourly, `0 0/1 * * * *`), fetches teams, matches (last 5 weeks via weekoffset), and match details
+- `FetchAndStoreApiData` — Timer trigger (daily at 04:00, `0 0 4 * * *`), fetches teams, matches, and match details
 - `SyncMatchesHttp` — HTTP GET `/api/sync`, manual trigger with optional weekoffset params
 
 **Data flow:** Sportlink JSON -> C# entity models -> staging tables (`stg.*`) -> stored procedure MERGE -> history tables (`his.*`) -> public views (`pub.*`)

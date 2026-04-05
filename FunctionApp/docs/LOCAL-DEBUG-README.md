@@ -58,7 +58,7 @@ In Visual Studio:
 The function will:
 - Connect to your local SQL Server (`YOUR_SERVER`)
 - Use local storage emulator (Azurite)
-- Execute the timer trigger every minute
+- Execute the timer trigger daily at 04:00 (use HTTP trigger for manual sync)
 
 ---
 
@@ -122,10 +122,10 @@ The function will:
 
 ## Timer Schedule
 
-The function runs with this schedule: `"0 */1 * * * *"`
+The function runs with this schedule: `"0 0 4 * * *"`
 
-- **Means:** Every minute at the 0th second
-- **For testing:** Change to `"*/10 * * * * *"` for every 10 seconds
+- **Means:** Daily at 04:00
+- **For manual sync:** Use HTTP trigger `GET /api/sync-matches`
 - **Location:** `Function1.cs`, line with `[TimerTrigger(...)]`
 
 ---

@@ -1,0 +1,20 @@
+CREATE TABLE [planner].[GeplandeWedstrijden] (
+    [Id]                    INT            IDENTITY(1,1) NOT NULL,
+    [Datum]                 DATE           NOT NULL,
+    [AanvangsTijd]          TIME           NOT NULL,
+    [EindTijd]              TIME           NOT NULL,
+    [VeldNummer]            INT            NOT NULL,
+    [VeldDeelGebruik]       DECIMAL(4,2)   NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_Deel] DEFAULT 1.00,
+    [LeeftijdsCategorie]    NVARCHAR(10)   NULL,
+    [TeamNaam]              NVARCHAR(100)  NULL,
+    [Tegenstander]          NVARCHAR(100)  NULL,
+    [WedstrijdDuurMinuten]  INT            NOT NULL,
+    [Status]                NVARCHAR(20)   NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_Status] DEFAULT 'Gepland',
+    [AangevraagdDoor]       NVARCHAR(200)  NULL,
+    [Opmerking]             NVARCHAR(500)  NULL,
+    [mta_inserted]          DATETIME       NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_Ins] DEFAULT GETDATE(),
+    [mta_modified]          DATETIME       NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_Mod] DEFAULT GETDATE(),
+    CONSTRAINT [PK_GeplandeWedstrijden] PRIMARY KEY CLUSTERED ([Id] ASC),
+    CONSTRAINT [FK_GeplandeWedstrijden_Velden] FOREIGN KEY ([VeldNummer]) REFERENCES [dbo].[Velden]([VeldNummer]),
+    CONSTRAINT [UQ_GeplandeWedstrijden_Slot] UNIQUE ([Datum], [AanvangsTijd], [VeldNummer], [VeldDeelGebruik])
+);

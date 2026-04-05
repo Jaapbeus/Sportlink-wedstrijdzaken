@@ -138,7 +138,7 @@ SELECT COUNT(*) FROM [his].[matchdetails];
 
 ## 🔄 Timer Schedule
 
-Current: `0 */1 * * * *` (every minute)
+Current: `0 0 4 * * *` (daily at 04:00)
 
 Change in `Function1.cs`:
 ```csharp

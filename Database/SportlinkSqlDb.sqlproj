@@ -72,6 +72,9 @@
     <Folder Include="his" />
     <Folder Include="his\Tables" />
     <Folder Include="stg\Tables" />
+    <Folder Include="planner" />
+    <Folder Include="planner\Tables" />
+    <Folder Include="planner\Views" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="Schemas\stg.sql" />
@@ -96,6 +99,13 @@
     <Build Include="stg\Tables\Matches.sql" />
     <Build Include="stg\Tables\Teams.sql" />
     <Build Include="pub\Views\Teams.sql" />
+    <Build Include="Schemas\planner.sql" />
+    <Build Include="dbo\Tables\Velden.sql" />
+    <Build Include="dbo\Tables\VeldBeschikbaarheid.sql" />
+    <Build Include="dbo\Tables\TeamRegels.sql" />
+    <Build Include="dbo\Tables\Zonsondergang.sql" />
+    <Build Include="planner\Tables\GeplandeWedstrijden.sql" />
+    <Build Include="planner\Views\AlleWedstrijdenOpVeld.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Script1.sql" />

@@ -177,7 +177,7 @@ SELECT COUNT(*) FROM [his].[matchdetails]; -- Should be > 0
 ## Post-Setup Configuration (Optional)
 
 ### Timer Schedule Adjustment
-Current schedule: `0 */1 * * * *` (every minute)
+Current schedule: `0 0 4 * * *` (daily at 04:00)
 
 For testing, you can change to run more frequently:
 - [ ] Modified timer to `*/10 * * * * *` (every 10 seconds)

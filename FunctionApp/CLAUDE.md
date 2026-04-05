@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an **Azure Functions application** (.NET 10.0, isolated worker model) that integrates with the Sportlink API to fetch sports data and sync it to a SQL Server database. The application runs on a timer trigger (hourly) and provides manual sync via HTTP trigger.
+This is an **Azure Functions application** (.NET 10.0, isolated worker model) that integrates with the Sportlink API to fetch sports data and sync it to a SQL Server database. The application runs on a timer trigger (daily at 04:00) and provides manual sync via HTTP trigger.
 
 ## Solution Structure
 
@@ -35,7 +35,7 @@ History Tables (his.teams, his.matches, his.matchdetails)
 ### Key Components
 
 **[Function1.cs](Function1.cs)**
-- `FetchAndStoreApiData`: Timer trigger (hourly) that orchestrates the sync
+- `FetchAndStoreApiData`: Timer trigger (daily at 04:00) that orchestrates the sync
 - `SyncAndStoreViaHttpTrigger`: HTTP endpoint for manual sync (GET `/api/sync`)
 - Handles: Teams fetch, matches fetch (last 5 weeks), match details fetch
 - Uses retry logic via `SystemUtilities.WaitForDatabaseAsync()`
@@ -170,7 +170,7 @@ DROP TABLE IF EXISTS [his].[matchdetails];
 
 ### Check Timer Trigger Execution
 
-Monitor function logs in Azure portal or locally in console output. Function runs at `0 0/1 * * * *` (every hour).
+Monitor function logs in Azure portal or locally in console output. Function runs at `0 0 4 * * *` (daily at 04:00).
 
 Manual execution via HTTP:
 ```

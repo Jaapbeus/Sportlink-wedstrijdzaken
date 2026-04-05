@@ -51,9 +51,9 @@ func start --port 7094
 
 ## 🔍 Monitor the Function
 
-The function runs on a timer trigger (every 1 minute):
+The function runs on a timer trigger (daily at 04:00):
 ```csharp
-[TimerTrigger("0 0/1 * * * *")]  // Every hour at the 1st minute
+[TimerTrigger("0 0 4 * * *")]  // Daily at 04:00
 ```
 
 You'll see logs like:
