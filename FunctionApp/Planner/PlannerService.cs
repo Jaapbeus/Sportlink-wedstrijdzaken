@@ -8,7 +8,19 @@ namespace SportlinkFunction.Planner
 {
     public static class PlannerService
     {
-        private const int StandardBufferMinutes = 10;
+        private const int StandardBufferMinutes = 15; // Standaard 15 min, kan per club verlaagd worden via dbo.AppSettings
+
+        /// <summary>
+        /// Rond aanvangstijd naar boven af op 5 minuten.
+        /// Bijv. 09:58 → 10:00, 13:04 → 13:05, 10:30 → 10:30
+        /// </summary>
+        private static TimeOnly RondAfOp5Min(TimeOnly tijd)
+        {
+            int minuten = tijd.Hour * 60 + tijd.Minute;
+            int rest = minuten % 5;
+            if (rest > 0) minuten += (5 - rest);
+            return new TimeOnly(minuten / 60, minuten % 60);
+        }
         private const int SunsetWarningMarginMinutes = 20;
         private static readonly System.Globalization.CultureInfo NL = new("nl-NL");
 
@@ -539,21 +551,23 @@ namespace SportlinkFunction.Planner
                     vasteWedstrijden.Add($"{b.VeldNummer}_{b.AanvangsTijd:HH:mm}_{b.Wedstrijd?.Trim()}");
             }
 
+            // Buffer uit request of standaard
+            int bufferMin = request.BufferMinuten ?? StandardBufferMinutes;
+
             var suggesties = new List<OptimalisatieSuggestie>();
             var doel = request.Doel?.ToLowerInvariant() ?? "";
 
             switch (doel)
             {
                 case "veld5-ontlasten":
-                    suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
+                    suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 case "strakker-plannen":
-                    suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
+                    suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 default:
-                    // Standaard: beide combineren — eerst veld 5 ontlasten, dan strakker plannen
-                    suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
-                    var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules);
+                    suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                    var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     // Voeg strakker-suggesties toe die niet al in veld5-suggesties zitten
                     foreach (var s in strakkerSuggesties)
                     {
@@ -563,12 +577,19 @@ namespace SportlinkFunction.Planner
                     break;
             }
 
+            // Stap 2: Dynamische buffer — verdeel resterende ruimte als extra buffer
+            TimeOnly gewensteEindtijd = new(16, 15);
+            if (!string.IsNullOrEmpty(request.GewensteEindtijd) && TimeOnly.TryParse(request.GewensteEindtijd, out var parsed))
+                gewensteEindtijd = parsed;
+
+            suggesties = VerdeelExtraBuffer(suggesties, bezettingen, availableFields, velden, vasteWedstrijden, allTeamRules, gewensteEindtijd);
+
             response.Suggesties = suggesties;
             response.AantalVerplaatsingen = suggesties.Count;
             response.AantalVanVeld5Verplaatst = suggesties.Count(s => s.HuidigVeldNummer == 5);
 
             // HTML genereren
-            response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(date, bezettingen, suggesties, velden, request.Doel ?? "veld5-ontlasten");
+            response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(date, bezettingen, suggesties, velden, request.Doel ?? "optimaliseren");
 
             return response;
         }
@@ -578,7 +599,8 @@ namespace SportlinkFunction.Planner
             List<VeldInfo> velden,
             List<VeldBeschikbaarheidInfo> beschikbareVelden,
             HashSet<string> vasteWedstrijden,
-            Dictionary<string, List<TeamRegel>> allTeamRules)
+            Dictionary<string, List<TeamRegel>> allTeamRules,
+            int bufferMin = 15)
         {
             var suggesties = new List<OptimalisatieSuggestie>();
 
@@ -636,17 +658,18 @@ namespace SportlinkFunction.Planner
                         HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
                         NieuwVeldNummer = besteSlot.VeldNummer,
                         NieuwVeld = veldNaam,
-                        NieuweTijd = besteSlot.AanvangsTijd.ToString("HH:mm"),
+                        NieuweTijd = RondAfOp5Min(besteSlot.AanvangsTijd).ToString("HH:mm"),
                         Reden = $"Verplaats van veld 5 (geen kunstlicht) naar {veldNaam}"
                     });
 
                     // Werkbezetting bijwerken zodat volgende suggesties deze plek als bezet zien
                     werkBezettingen.Remove(wedstrijd);
+                    var afgerondeTijd = RondAfOp5Min(besteSlot.AanvangsTijd);
                     werkBezettingen.Add(new BestaandeWedstrijd
                     {
                         Datum = wedstrijd.Datum,
-                        AanvangsTijd = besteSlot.AanvangsTijd,
-                        EindTijd = besteSlot.EindTijd,
+                        AanvangsTijd = afgerondeTijd,
+                        EindTijd = afgerondeTijd.AddMinutes(duur),
                         VeldNummer = besteSlot.VeldNummer,
                         VeldDeelGebruik = fractie,
                         TeamNaam = wedstrijd.TeamNaam,
@@ -664,7 +687,8 @@ namespace SportlinkFunction.Planner
             List<VeldInfo> velden,
             List<VeldBeschikbaarheidInfo> beschikbareVelden,
             HashSet<string> vasteWedstrijden,
-            Dictionary<string, List<TeamRegel>> allTeamRules)
+            Dictionary<string, List<TeamRegel>> allTeamRules,
+            int bufferMin = 15)
         {
             var suggesties = new List<OptimalisatieSuggestie>();
 
@@ -762,7 +786,7 @@ namespace SportlinkFunction.Planner
                                 HuidigeTijd = bw.AanvangsTijd.ToString("HH:mm"),
                                 NieuwVeldNummer = besteSlotVeld,
                                 NieuwVeld = nieuwVeldNaam,
-                                NieuweTijd = besteSlotTijd.Value.ToString("HH:mm"),
+                                NieuweTijd = RondAfOp5Min(besteSlotTijd.Value).ToString("HH:mm"),
                                 Reden = reden
                             });
                         }
@@ -776,20 +800,140 @@ namespace SportlinkFunction.Planner
                                 b.Wedstrijd?.Trim() == bw.Wedstrijd?.Trim());
                         }
                         // Voeg verplaatste wedstrijden toe op nieuwe positie
+                        var afgerond = RondAfOp5Min(besteSlotTijd.Value);
                         foreach (var bw in blok.Wedstrijden)
                         {
                             int bwDuur = (int)(bw.EindTijd - bw.AanvangsTijd).TotalMinutes;
                             werkBezetting.Add(new BestaandeWedstrijd
                             {
                                 Datum = bw.Datum,
-                                AanvangsTijd = besteSlotTijd.Value,
-                                EindTijd = besteSlotTijd.Value.AddMinutes(bwDuur),
+                                AanvangsTijd = afgerond,
+                                EindTijd = afgerond.AddMinutes(bwDuur),
                                 VeldNummer = besteSlotVeld,
                                 VeldDeelGebruik = bw.VeldDeelGebruik,
                                 TeamNaam = bw.TeamNaam,
                                 Wedstrijd = bw.Wedstrijd,
                                 Bron = "Suggestie"
                             });
+                        }
+                    }
+                }
+            }
+
+            return suggesties;
+        }
+
+        /// <summary>
+        /// Verdeel resterende ruimte als extra buffer tussen wedstrijden.
+        /// Als de planning voor de gewenste eindtijd klaar is, wordt de
+        /// overgebleven ruimte gelijkmatig verdeeld (max 30 min per buffer).
+        /// </summary>
+        private static List<OptimalisatieSuggestie> VerdeelExtraBuffer(
+            List<OptimalisatieSuggestie> suggesties,
+            List<BestaandeWedstrijd> origineleBezetting,
+            List<VeldBeschikbaarheidInfo> beschikbareVelden,
+            List<VeldInfo> velden,
+            HashSet<string> vasteWedstrijden,
+            Dictionary<string, List<TeamRegel>> allTeamRules,
+            TimeOnly gewensteEindtijd)
+        {
+            const int maxBuffer = 30;
+
+            // Bouw de nieuwe bezetting op basis van suggesties
+            var nieuweBezetting = origineleBezetting
+                .GroupBy(w => $"{w.VeldNummer}_{w.AanvangsTijd:HH:mm}_{w.Wedstrijd?.Trim()}")
+                .Select(g => g.First()).ToList();
+
+            foreach (var s in suggesties)
+            {
+                nieuweBezetting.RemoveAll(b =>
+                    b.VeldNummer == s.HuidigVeldNummer &&
+                    b.AanvangsTijd.ToString("HH:mm") == s.HuidigeTijd &&
+                    b.Wedstrijd?.Trim() == s.Wedstrijd.Trim());
+                TimeOnly.TryParse(s.NieuweTijd, out var nt);
+                var orig = origineleBezetting.FirstOrDefault(b =>
+                    b.VeldNummer == s.HuidigVeldNummer &&
+                    b.AanvangsTijd.ToString("HH:mm") == s.HuidigeTijd &&
+                    b.Wedstrijd?.Trim() == s.Wedstrijd.Trim());
+                int duur = orig != null ? (int)(orig.EindTijd - orig.AanvangsTijd).TotalMinutes : 75;
+                nieuweBezetting.Add(new BestaandeWedstrijd
+                {
+                    Datum = orig?.Datum ?? default, AanvangsTijd = nt, EindTijd = nt.AddMinutes(duur),
+                    VeldNummer = s.NieuwVeldNummer, VeldDeelGebruik = orig?.VeldDeelGebruik ?? 1.0m,
+                    TeamNaam = orig?.TeamNaam, Wedstrijd = orig?.Wedstrijd, Bron = "Suggestie"
+                });
+            }
+
+            // Per veld: bereken of er ruimte is om buffers te vergroten
+            foreach (var veldBesch in beschikbareVelden)
+            {
+                var veldWedstrijden = nieuweBezetting
+                    .Where(b => b.VeldNummer == veldBesch.VeldNummer && b.VeldDeelGebruik >= 1.0m)
+                    .OrderBy(b => b.AanvangsTijd).ToList();
+
+                if (veldWedstrijden.Count < 2) continue;
+
+                // Bereken eindtijd van de laatste wedstrijd op dit veld
+                var laatsteEinde = veldWedstrijden.Max(w => w.EindTijd);
+                if (laatsteEinde >= gewensteEindtijd) continue; // Geen ruimte over
+
+                // Tel het aantal gaten (buffers) tussen heel-veld wedstrijden
+                int aantalGaten = 0;
+                for (int i = 1; i < veldWedstrijden.Count; i++)
+                {
+                    string key = $"{veldWedstrijden[i].VeldNummer}_{veldWedstrijden[i].AanvangsTijd:HH:mm}_{veldWedstrijden[i].Wedstrijd?.Trim()}";
+                    if (!vasteWedstrijden.Contains(key)) aantalGaten++;
+                }
+                if (aantalGaten == 0) continue;
+
+                // Beschikbare extra ruimte
+                double extraMinuten = (gewensteEindtijd - laatsteEinde).TotalMinutes;
+                int extraPerGat = Math.Min((int)(extraMinuten / aantalGaten), maxBuffer - StandardBufferMinutes);
+                if (extraPerGat <= 0) continue;
+
+                // Pas suggesties aan voor dit veld: schuif wedstrijden iets naar achteren
+                int cumulatieveVertraging = 0;
+                for (int i = 0; i < veldWedstrijden.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        string key = $"{veldWedstrijden[i].VeldNummer}_{veldWedstrijden[i].AanvangsTijd:HH:mm}_{veldWedstrijden[i].Wedstrijd?.Trim()}";
+                        if (!vasteWedstrijden.Contains(key))
+                            cumulatieveVertraging += extraPerGat;
+                    }
+
+                    if (cumulatieveVertraging > 0)
+                    {
+                        var wedstrijd = veldWedstrijden[i];
+                        var nieuweTijd = wedstrijd.AanvangsTijd.AddMinutes(cumulatieveVertraging);
+
+                        // Update de suggestie als die er al is
+                        var bestaandeSuggestie = suggesties.FirstOrDefault(s =>
+                            s.Wedstrijd.Trim() == wedstrijd.Wedstrijd?.Trim() &&
+                            s.NieuwVeldNummer == wedstrijd.VeldNummer);
+                        if (bestaandeSuggestie != null)
+                        {
+                            bestaandeSuggestie.NieuweTijd = RondAfOp5Min(nieuweTijd).ToString("HH:mm");
+                        }
+                        else
+                        {
+                            // Kijk of dit een originele wedstrijd is die nog niet in suggesties zit
+                            var origKey = $"{wedstrijd.VeldNummer}_{wedstrijd.AanvangsTijd:HH:mm}_{wedstrijd.Wedstrijd?.Trim()}";
+                            if (!vasteWedstrijden.Contains(origKey))
+                            {
+                                var veldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
+                                suggesties.Add(new OptimalisatieSuggestie
+                                {
+                                    Wedstrijd = wedstrijd.Wedstrijd?.Trim() ?? "",
+                                    HuidigVeldNummer = wedstrijd.VeldNummer,
+                                    HuidigVeld = veldNaam,
+                                    HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
+                                    NieuwVeldNummer = wedstrijd.VeldNummer,
+                                    NieuwVeld = veldNaam,
+                                    NieuweTijd = RondAfOp5Min(nieuweTijd).ToString("HH:mm"),
+                                    Reden = $"Extra buffer (+{cumulatieveVertraging} min)"
+                                });
+                            }
                         }
                     }
                 }

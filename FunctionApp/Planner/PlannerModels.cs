@@ -123,6 +123,8 @@ namespace SportlinkFunction.Planner
     {
         public string Datum { get; set; } = string.Empty;
         public string? Doel { get; set; } // optioneel: veld5-ontlasten, strakker-plannen. Leeg = beide combineren
+        public string? GewensteEindtijd { get; set; } // optioneel, standaard "16:15". Alles voor dit tijdstip = extra buffer
+        public int? BufferMinuten { get; set; } // optioneel, standaard 15 min. Overschrijft de standaard buffer tussen wedstrijden
     }
 
     public class OptimaliseerResponse
