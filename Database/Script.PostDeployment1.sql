@@ -58,14 +58,14 @@ GO
 -- Velden: field definitions
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Velden])
 BEGIN
-    INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [HeeftKunstlicht], [Actief])
+    INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief])
     VALUES
-        (1, 'veld 1', 1, 1),
-        (2, 'veld 2', 1, 1),
-        (3, 'veld 3', 1, 1),
-        (4, 'veld 4', 1, 1),
-        (5, 'veld 5', 0, 1),
-        (6, 'veld 6', 0, 0)  -- non-functional, always ignored
+        (1, 'veld 1', 'kunstgras', 1, 1),
+        (2, 'veld 2', 'kunstgras', 1, 1),
+        (3, 'veld 3', 'kunstgras', 1, 1),
+        (4, 'veld 4', 'kunstgras', 1, 1),
+        (5, 'veld 5', 'natuurgras', 0, 1),
+        (6, 'veld 6', 'natuurgras', 0, 0)  -- niet functioneel
 END
 GO
 
