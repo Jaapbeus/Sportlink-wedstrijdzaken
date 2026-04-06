@@ -102,7 +102,7 @@ namespace SportlinkFunction.Planner
 
         [Function("PopulateSunset")]
         public static async Task<IActionResult> PopulateSunset(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/populate-sunset")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Admin, "post", Route = "planner/populate-sunset")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("PopulateSunset");

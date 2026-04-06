@@ -2,22 +2,31 @@
 
 **Basis-URL:** `http://localhost:7094/api`
 
-Alle endpoints vereisen een functiesleutel via `x-functions-key` header of `?code=` queryparameter (behalve lokale ontwikkeling).
+## Beveiliging
+
+Twee beveiligingsniveaus:
+
+| Niveau | Sleutel | Wie | Endpoints |
+|--------|---------|-----|-----------|
+| **Function** | Function key (`?code=`) | Automate, integraties | Alle planner endpoints |
+| **Admin** | Master key (`?code=`) | Alleen coördinator | sync-matches, populate-sunset |
+
+Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 
 ---
 
 ## Overzicht endpoints
 
-| Methode | Endpoint | Beschrijving |
-|---------|----------|-------------|
-| `GET` | `/sync-matches` | Handmatige Sportlink data synchronisatie |
-| `POST` | `/planner/check-availability` | Veldbeschikbaarheid controleren |
-| `POST` | `/planner/bevestig` | Wedstrijdslot boeken |
-| `POST` | `/planner/populate-sunset` | Zonsondergangtabel vullen |
-| `POST` | `/planner/zoek-wedstrijd` | Bestaande wedstrijd zoeken |
-| `POST` | `/planner/herplan-check` | Herplan-alternatieven simuleren |
-| `POST` | `/planner/herplan-bevestig` | Herplanverzoek registreren |
-| `POST` | `/planner/optimaliseer` | Planning optimaliseren (HTML/email/JSON) |
+| Methode | Endpoint | Niveau | Beschrijving |
+|---------|----------|--------|-------------|
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
+| `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren |
+| `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
+| `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
+| `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken |
+| `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren |
+| `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
+| `POST` | `/planner/optimaliseer` | Function | Planning optimaliseren (HTML/email/JSON) |
 
 ---
 

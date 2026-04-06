@@ -26,7 +26,13 @@
         "type": "apiKey",
         "in": "query",
         "name": "code",
-        "description": "Azure Function key (ophalen via Azure Portal of az CLI)"
+        "description": "Azure Function key — voor planner endpoints (ophalen via Azure Portal of az CLI)"
+      },
+      "adminKey": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "code",
+        "description": "Azure Master key — alleen voor admin endpoints (sync, sunset)"
       }
     },
     "schemas": {
@@ -100,8 +106,9 @@
   "paths": {
     "/sync-matches": {
       "get": {
-        "summary": "Sportlink data synchronisatie",
-        "description": "Handmatig synchroniseren van teams, wedstrijden en wedstrijddetails vanuit de Sportlink API",
+        "summary": "[ADMIN] Sportlink data synchronisatie",
+        "description": "Handmatig synchroniseren van teams, wedstrijden en wedstrijddetails vanuit de Sportlink API. Vereist master key.",
+        "security": [{ "adminKey": [] }],
         "parameters": [
           { "name": "reset", "in": "query", "schema": { "type": "boolean" }, "description": "Volledige seizoensynchronisatie" },
           { "name": "season", "in": "query", "schema": { "type": "integer" }, "description": "Startjaar seizoen (bijv. 2025)" }
@@ -164,8 +171,9 @@
     },
     "/planner/populate-sunset": {
       "post": {
-        "summary": "Zonsondergangtabel vullen",
-        "description": "Vul de zonsondergangtabel met NOAA-berekende tijden voor Veenendaal.",
+        "summary": "[ADMIN] Zonsondergangtabel vullen",
+        "description": "Vul de zonsondergangtabel met NOAA-berekende tijden voor Veenendaal. Vereist master key.",
+        "security": [{ "adminKey": [] }],
         "responses": {
           "200": { "description": "Tabel gevuld" }
         }

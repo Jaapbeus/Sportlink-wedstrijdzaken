@@ -258,6 +258,32 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
 
 ---
 
+## Beveiliging
+
+### Authorization levels
+
+| Niveau | Sleutel | Wie heeft toegang |
+|--------|---------|-------------------|
+| **Admin** | Master key | Alleen de coördinator (via Azure Portal of CLI) |
+| **Function** | Function key | Automate, email-integratie, externe systemen |
+
+### Endpoint-indeling
+
+| Endpoint | Niveau | Toelichting |
+|----------|--------|-------------|
+| `sync-matches` | Admin | Sportlink sync — alleen handmatig door coördinator |
+| `populate-sunset` | Admin | Zonsondergangtabel vullen — eenmalig per seizoen |
+| Alle planner endpoints | Function | Beschikbaar voor toekomstige Automate-integratie |
+
+### Bescherming tegen misbruik
+
+- Zonder geldige sleutel → 401 Unauthorized (geen verwerking, geen kosten)
+- Function key = als een wachtwoord, alleen delen met vertrouwde integraties
+- Master key = alleen de coördinator, nooit delen
+- Gratis database heeft auto-pause — langdurig misbruik wordt vanzelf gestopt
+
+---
+
 ## Database schema (nieuwe tabellen)
 
 ### dbo.Velden
