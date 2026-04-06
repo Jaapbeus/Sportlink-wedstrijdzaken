@@ -4,9 +4,7 @@ using Microsoft.Extensions.Hosting;
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
 
-// Application Insights voor monitoring in Azure
-builder.Services
-    .AddApplicationInsightsTelemetryWorkerService()
-    .ConfigureFunctionsApplicationInsights();
+// Application Insights wordt automatisch geconfigureerd via host.json
+// en de APPINSIGHTS_INSTRUMENTATIONKEY app setting in Azure
 
 builder.Build().Run();
