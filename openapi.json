@@ -1,0 +1,259 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "VRC Sportlink Veldplanner API",
+    "description": "API voor veldbeschikbaarheid, wedstrijdplanning en optimalisatie op Sportpark Spitsbergen",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://func-vrc-sportlink.azurewebsites.net/api",
+      "description": "Azure (productie)"
+    },
+    {
+      "url": "http://localhost:7094/api",
+      "description": "Lokaal (development)"
+    }
+  ],
+  "security": [
+    {
+      "functionKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "functionKey": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "code",
+        "description": "Azure Function key (ophalen via Azure Portal of az CLI)"
+      }
+    },
+    "schemas": {
+      "CheckAvailabilityRequest": {
+        "type": "object",
+        "required": ["datum"],
+        "properties": {
+          "datum": { "type": "string", "format": "date", "example": "2026-04-18", "description": "Datum (yyyy-MM-dd)" },
+          "aanvangsTijd": { "type": "string", "example": "12:00", "description": "Gewenste aanvangstijd (HH:mm)" },
+          "dagdeel": { "type": "string", "enum": ["ochtend", "middag", "avond"], "description": "Dagdeelfilter" },
+          "leeftijdsCategorie": { "type": "string", "example": "JO13", "description": "Leeftijdscategorie (JO8-JO19, MO13-MO20, G, VR, 1-99)" },
+          "teamNaam": { "type": "string", "example": "VRC JO13-1", "description": "Teamnaam voor conflictcontrole" },
+          "tegenstander": { "type": "string", "example": "Tegenstander JO13-2", "description": "Tegenstander (administratief)" },
+          "wedstrijdDuurMinuten": { "type": "integer", "description": "Overschrijf wedstrijdduur" }
+        }
+      },
+      "BevestigRequest": {
+        "type": "object",
+        "required": ["datum", "aanvangsTijd", "veldNummer"],
+        "properties": {
+          "datum": { "type": "string", "format": "date", "example": "2026-04-25" },
+          "aanvangsTijd": { "type": "string", "example": "12:00" },
+          "veldNummer": { "type": "integer", "example": 3 },
+          "leeftijdsCategorie": { "type": "string", "example": "JO13" },
+          "teamNaam": { "type": "string", "example": "VRC JO13-1" },
+          "tegenstander": { "type": "string", "example": "Tegenstander JO13-2" },
+          "aangevraagdDoor": { "type": "string", "example": "aanvrager via email" },
+          "wedstrijdDuurMinuten": { "type": "integer" }
+        }
+      },
+      "ZoekWedstrijdRequest": {
+        "type": "object",
+        "required": ["teamNaam", "datum"],
+        "properties": {
+          "teamNaam": { "type": "string", "example": "VRC JO8-2" },
+          "datum": { "type": "string", "format": "date", "example": "2026-05-09" }
+        }
+      },
+      "HerplanCheckRequest": {
+        "type": "object",
+        "required": ["wedstrijdcode"],
+        "properties": {
+          "wedstrijdcode": { "type": "integer", "format": "int64", "example": 20647011 },
+          "voorkeurTijd": { "type": "string", "example": "10:00" },
+          "dagdeel": { "type": "string", "enum": ["ochtend", "middag", "avond"] }
+        }
+      },
+      "HerplanBevestigRequest": {
+        "type": "object",
+        "required": ["wedstrijdcode", "gewensteAanvangsTijd"],
+        "properties": {
+          "wedstrijdcode": { "type": "integer", "format": "int64", "example": 20647011 },
+          "gewensteAanvangsTijd": { "type": "string", "example": "10:00" },
+          "gewenstVeldNummer": { "type": "integer", "example": 2 },
+          "aangevraagdDoor": { "type": "string", "example": "aanvrager via email" },
+          "opmerking": { "type": "string", "example": "Tijdstip is niet haalbaar" }
+        }
+      },
+      "OptimaliseerRequest": {
+        "type": "object",
+        "required": ["datum"],
+        "properties": {
+          "datum": { "type": "string", "format": "date", "example": "2026-04-18" },
+          "doel": { "type": "string", "enum": ["veld5-ontlasten", "strakker-plannen"], "description": "Leeg = beide combineren" },
+          "gewensteEindtijd": { "type": "string", "example": "16:15", "description": "Standaard 16:15" },
+          "bufferMinuten": { "type": "integer", "example": 15, "description": "Standaard 15 minuten" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/sync-matches": {
+      "get": {
+        "summary": "Sportlink data synchronisatie",
+        "description": "Handmatig synchroniseren van teams, wedstrijden en wedstrijddetails vanuit de Sportlink API",
+        "parameters": [
+          { "name": "reset", "in": "query", "schema": { "type": "boolean" }, "description": "Volledige seizoensynchronisatie" },
+          { "name": "season", "in": "query", "schema": { "type": "integer" }, "description": "Startjaar seizoen (bijv. 2025)" }
+        ],
+        "responses": {
+          "200": { "description": "Synchronisatie voltooid" }
+        }
+      }
+    },
+    "/planner/check-availability": {
+      "post": {
+        "summary": "Veldbeschikbaarheid controleren",
+        "description": "Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifieke toewijzing, beschikbare vensters of een teamconflict terug.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckAvailabilityRequest" },
+              "examples": {
+                "specifiekSlot": {
+                  "summary": "Specifiek tijdslot op zaterdag",
+                  "value": { "datum": "2026-04-18", "aanvangsTijd": "10:00", "leeftijdsCategorie": "JO13" }
+                },
+                "beschikbareVensters": {
+                  "summary": "Beschikbare vensters maandagavond",
+                  "value": { "datum": "2026-05-18", "dagdeel": "avond" }
+                },
+                "teamConflict": {
+                  "summary": "Team heeft al een wedstrijd",
+                  "value": { "datum": "2026-05-16", "aanvangsTijd": "12:00", "leeftijdsCategorie": "JO11", "teamNaam": "VRC JO11-9" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Beschikbaarheidsresultaat" },
+          "400": { "description": "Ongeldige aanvraag" }
+        }
+      }
+    },
+    "/planner/bevestig": {
+      "post": {
+        "summary": "Wedstrijdslot boeken",
+        "description": "Bevestig en boek een wedstrijdslot. Schrijft naar planner.GeplandeWedstrijden.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BevestigRequest" },
+              "example": { "datum": "2026-04-25", "aanvangsTijd": "12:00", "veldNummer": 3, "leeftijdsCategorie": "JO13", "teamNaam": "VRC JO13-1", "tegenstander": "Tegenstander JO13-2" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Boeking bevestigd met ID" },
+          "400": { "description": "Ongeldige aanvraag" }
+        }
+      }
+    },
+    "/planner/populate-sunset": {
+      "post": {
+        "summary": "Zonsondergangtabel vullen",
+        "description": "Vul de zonsondergangtabel met NOAA-berekende tijden voor Veenendaal.",
+        "responses": {
+          "200": { "description": "Tabel gevuld" }
+        }
+      }
+    },
+    "/planner/zoek-wedstrijd": {
+      "post": {
+        "summary": "Bestaande wedstrijd zoeken",
+        "description": "Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ZoekWedstrijdRequest" },
+              "example": { "teamNaam": "VRC JO8-2", "datum": "2026-05-09" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Wedstrijd gevonden of niet gevonden" }
+        }
+      }
+    },
+    "/planner/herplan-check": {
+      "post": {
+        "summary": "Herplan-alternatieven simuleren",
+        "description": "Simuleer herplannen: bereken alternatieve slots als deze wedstrijd verplaatst zou worden. Wijzigt niets.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HerplanCheckRequest" },
+              "example": { "wedstrijdcode": 20647011, "voorkeurTijd": "10:00", "dagdeel": "ochtend" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Alternatieven of geen mogelijkheid" }
+        }
+      }
+    },
+    "/planner/herplan-bevestig": {
+      "post": {
+        "summary": "Herplanverzoek registreren",
+        "description": "Registreer een herplanverzoek met status Aangevraagd. Wijzigt niets aan de wedstrijd zelf.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/HerplanBevestigRequest" },
+              "example": { "wedstrijdcode": 20647011, "gewensteAanvangsTijd": "10:00", "gewenstVeldNummer": 2, "aangevraagdDoor": "aanvrager via email", "opmerking": "Tijdstip is niet haalbaar" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Verzoek geregistreerd met ID en status" }
+        }
+      }
+    },
+    "/planner/optimaliseer": {
+      "post": {
+        "summary": "Planning optimaliseren",
+        "description": "Analyseer de planning voor een datum en genereer optimalisatiesuggesties. Drie output-formaten via querystring: JSON (standaard), HTML (browser), email.",
+        "parameters": [
+          { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["html", "email"] }, "description": "html = interactieve browser-versie, email = versimpelde email met link" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OptimaliseerRequest" },
+              "examples": {
+                "standaard": {
+                  "summary": "Standaard optimalisatie (veld5 + strakker)",
+                  "value": { "datum": "2026-04-18" }
+                },
+                "metBuffer": {
+                  "summary": "Met aangepaste buffer",
+                  "value": { "datum": "2026-04-18", "bufferMinuten": 20, "gewensteEindtijd": "16:15" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Optimalisatiesuggesties (JSON of HTML)" }
+        }
+      }
+    }
+  }
+}
