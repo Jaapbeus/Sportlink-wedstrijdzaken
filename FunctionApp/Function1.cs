@@ -54,7 +54,7 @@ namespace SportlinkFunction
         /// </summary>
         [Function("SyncMatchesHttp")]
         public static async Task<IActionResult> SyncMatchesHttp(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "sync-matches")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Admin, "get", Route = "sync-matches")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("SyncMatchesHttp");
