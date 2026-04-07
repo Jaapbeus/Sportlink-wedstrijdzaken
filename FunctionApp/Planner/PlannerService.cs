@@ -165,6 +165,7 @@ namespace SportlinkFunction.Planner
                     response.Beschikbaar = true;
                     response.Toewijzing = ToSlotToewijzing(date, exactMatch, duurMinuten, velden);
                     AddSunsetWarning(response, exactMatch, sunset, velden);
+                    AddNabijeWedstrijdWaarschuwing(response, exactMatch, duurMinuten, occupations, velden);
                     AddWeekdayWarning(response, date);
                     return response;
                 }
@@ -197,6 +198,7 @@ namespace SportlinkFunction.Planner
                 {
                     response.Beschikbaar = true;
                     response.Toewijzing = ToSlotToewijzing(date, best, duurMinuten, velden);
+                    AddNabijeWedstrijdWaarschuwing(response, best, duurMinuten, occupations, velden);
                     response.Alternatieven = alternatives
                         .Select(c => ToSlotToewijzing(date, c, duurMinuten, velden)).ToList();
                     AddSunsetWarning(response, best, sunset, velden);
@@ -486,6 +488,47 @@ namespace SportlinkFunction.Planner
                 response.Waarschuwingen.Add(
                     $"Geen kunstlicht op {veld.VeldNaam}. Wedstrijd eindigt om {slot.EindTijd:HH:mm}, " +
                     $"zonsondergang {sunset.Value:HH:mm} ({(int)margin} min marge).");
+            }
+        }
+
+        /// <summary>
+        /// Waarschuw als er een wedstrijd direct voor of na het toegewezen slot zit
+        /// met minimale buffer (precies op de grens).
+        /// </summary>
+        private static void AddNabijeWedstrijdWaarschuwing(
+            CheckAvailabilityResponse response, CandidateSlot slot, int duurMinuten,
+            List<BestaandeWedstrijd> occupations, List<VeldInfo> velden)
+        {
+            var slotStart = slot.AanvangsTijd;
+            var slotEinde = slot.AanvangsTijd.AddMinutes(duurMinuten);
+            var veldOccupations = occupations.Where(o => o.VeldNummer == slot.VeldNummer).ToList();
+
+            // Zoek wedstrijd direct erna (binnen 20 min na einde + buffer)
+            var directErna = veldOccupations
+                .Where(o => o.AanvangsTijd >= slotEinde && o.AanvangsTijd <= slotEinde.AddMinutes(StandardBufferMinutes + 5))
+                .OrderBy(o => o.AanvangsTijd)
+                .FirstOrDefault();
+
+            if (directErna != null)
+            {
+                int marge = (int)(directErna.AanvangsTijd - slotEinde).TotalMinutes;
+                var wedstrijdNaam = directErna.Wedstrijd?.Trim() ?? "";
+                response.Waarschuwingen.Add(
+                    $"Let op: {wedstrijdNaam} begint om {directErna.AanvangsTijd:HH:mm} op hetzelfde veld ({marge} min na einde).");
+            }
+
+            // Zoek wedstrijd direct ervoor (binnen 20 min voor start)
+            var directErvoor = veldOccupations
+                .Where(o => o.EindTijd <= slotStart && o.EindTijd >= slotStart.AddMinutes(-(StandardBufferMinutes + 5)))
+                .OrderByDescending(o => o.EindTijd)
+                .FirstOrDefault();
+
+            if (directErvoor != null)
+            {
+                int marge = (int)(slotStart - directErvoor.EindTijd).TotalMinutes;
+                var wedstrijdNaam = directErvoor.Wedstrijd?.Trim() ?? "";
+                response.Waarschuwingen.Add(
+                    $"Let op: {wedstrijdNaam} eindigt om {directErvoor.EindTijd:HH:mm} op hetzelfde veld ({marge} min voor aanvang).");
             }
         }
 
