@@ -68,6 +68,10 @@ sp_merge_current.txt
 # ── Claude Code local settings ────────────────────────────────────────────────
 **/.claude/settings.local.json
 
+# ── Gegenereerde bestanden ────────────────────────────────────────────────────
+**/voorbeeld-*.html
+publish/
+
 # ── SQL Server data files ─────────────────────────────────────────────────────
 *.mdf
 *.ldf
