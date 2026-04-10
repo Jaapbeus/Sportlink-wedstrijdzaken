@@ -69,8 +69,8 @@ Full docs: https://sportlinkservices.github.io/navajofeeds-json-parser/article/
 | Endpoint | Path | Notes |
 |---|---|---|
 | Teams | `/teams?clientId=` | All club teams |
-| Match results | `/uitslagen?clientId=&weekoffset=` | Results by week offset |
+| **Programma** | `/programma?clientId=&weekoffset=` | **Primaire bron** voor alle wedstrijden (competitie, beker, oefenwedstrijden). Bevat scheidsrechter, veld, kleedkamers, logos |
+| Uitslagen | `/uitslagen?clientId=&weekoffset=` | Alleen scoreverrijking voor verleden wedstrijden. Mag geen toekomstige wedstrijden toevoegen of programma-velden overschrijven |
 | Match details | `/wedstrijd-informatie?clientId=&wedstrijdcode=` | Per-match detail |
-| *Programma* | `/programma?clientId=` | Not yet implemented; richer than uitslagen (includes referee, venue, logos) |
 
 See `FunctionApp/CLAUDE.md` for detailed field reference including all `/programma` fields.
