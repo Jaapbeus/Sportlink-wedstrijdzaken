@@ -557,7 +557,9 @@ namespace SportlinkFunction
                 int updated = 0;
                 foreach (var match in matches)
                 {
-                    // UPDATE score fields on existing programma row; INSERT full row if not present
+                    // UPDATE: alleen scorevelden bijwerken op bestaande programma-rij.
+                    // INSERT: alleen voor verleden wedstrijden die niet via /programma binnenkwamen.
+                    // /programma is de primaire bron voor toekomstige wedstrijden (inclusief oefenwedstrijden).
                     string query = @"
                         IF EXISTS (SELECT 1 FROM [stg].[matches] WHERE [wedstrijdcode] = @wedstrijdcode)
                             UPDATE [stg].[matches] SET
@@ -571,23 +573,8 @@ namespace SportlinkFunction
                                 ,[sportomschrijving]    = @sportomschrijving
                                 ,[verenigingswedstrijd] = @verenigingswedstrijd
                                 ,[status]               = @status
-                                ,[wedstrijddatum]       = @wedstrijddatum
-                                ,[datum]                = @datum
-                                ,[wedstrijd]            = @wedstrijd
-                                ,[accommodatie]         = @accommodatie
-                                ,[aanvangstijd]         = @aanvangstijd
-                                ,[thuisteam]            = @thuisteam
-                                ,[thuisteamid]          = @thuisteamid
-                                ,[thuisteamlogo]        = @thuisteamlogo
-                                ,[thuisteamclubrelatiecode] = @thuisteamclubrelatiecode
-                                ,[uitteamclubrelatiecode]   = @uitteamclubrelatiecode
-                                ,[uitteam]              = @uitteam
-                                ,[uitteamid]            = @uitteamid
-                                ,[uitteamlogo]          = @uitteamlogo
-                                ,[competitiesoort]      = @competitiesoort
-                                ,[meer]                 = @meer
                             WHERE [wedstrijdcode] = @wedstrijdcode
-                        ELSE
+                        ELSE IF @wedstrijddatum <= CONVERT(NVARCHAR(50), GETDATE(), 127)
                             INSERT INTO [stg].[matches] (
                                  [wedstrijddatum],[wedstrijdcode],[wedstrijdnummer],[datum],[wedstrijd]
                                 ,[accommodatie],[aanvangstijd],[thuisteam],[thuisteamid],[thuisteamlogo]
