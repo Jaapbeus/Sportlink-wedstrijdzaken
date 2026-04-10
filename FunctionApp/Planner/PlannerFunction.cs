@@ -40,6 +40,34 @@ namespace SportlinkFunction.Planner
             }
         }
 
+        [Function("DoordeweeksBeschikbaar")]
+        public static async Task<IActionResult> DoordeweeksBeschikbaar(
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/doordeweeks-beschikbaar")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("DoordeweeksBeschikbaar");
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<DoordeweeksBeschikbaarRequest>(body)
+                    ?? new DoordeweeksBeschikbaarRequest();
+
+                log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}",
+                    request.DagFilter, request.DuurMinuten, request.LeeftijdsCategorie);
+
+                var response = await PlannerService.CheckDoordeweeksBeschikbaarAsync(request, log);
+
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "DoordeweeksBeschikbaar failed");
+                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            }
+        }
+
         [Function("BevestigWedstrijd")]
         public static async Task<IActionResult> BevestigWedstrijd(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/bevestig")] HttpRequest req,

@@ -165,6 +165,42 @@ namespace SportlinkFunction.Planner
         public string Reden { get; set; } = string.Empty;
     }
 
+    // ── Doordeweeks beschikbaarheid modellen ──
+
+    public class DoordeweeksBeschikbaarRequest
+    {
+        public string? DagFilter { get; set; }  // "maandag", "dinsdag", "woensdag", "donderdag" of null voor alle
+        public int? DuurMinuten { get; set; }
+        public string? LeeftijdsCategorie { get; set; }
+    }
+
+    public class DoordeweeksBeschikbaarResponse
+    {
+        public List<DoordeweekseDatum> BeschikbareDatums { get; set; } = new();
+        public string? DagFilter { get; set; }
+        public string SeizoenEinde { get; set; } = string.Empty;
+        public int AantalBeschikbaar { get; set; }
+    }
+
+    public class DoordeweekseDatum
+    {
+        public string Datum { get; set; } = string.Empty;
+        public string DagVanWeek { get; set; } = string.Empty;
+        public string BeschikbaarVan { get; set; } = string.Empty;
+        public string BeschikbaarTot { get; set; } = string.Empty;
+        public string Zonsondergang { get; set; } = string.Empty;
+        public int MaxDuurMinuten { get; set; }
+        public bool PastGewensteDuur { get; set; }
+        public List<BestaandeWedstrijdSamenvatting> GeplandeWedstrijden { get; set; } = new();
+    }
+
+    public class BestaandeWedstrijdSamenvatting
+    {
+        public string Wedstrijd { get; set; } = string.Empty;
+        public string AanvangsTijd { get; set; } = string.Empty;
+        public string EindTijd { get; set; } = string.Empty;
+    }
+
     // ── Herplan (herplannen) modellen ──
 
     public class ZoekWedstrijdRequest
