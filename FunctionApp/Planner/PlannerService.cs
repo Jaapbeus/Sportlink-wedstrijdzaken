@@ -9,6 +9,7 @@ namespace SportlinkFunction.Planner
     public static class PlannerService
     {
         private const int StandardBufferMinutes = 15; // Standaard 15 min, kan per club verlaagd worden via dbo.AppSettings
+        private const double MaxBezettingsPercentageVoorOverslaan = 50.0;
 
         /// <summary>
         /// Rond aanvangstijd naar boven af op 5 minuten.
@@ -695,6 +696,23 @@ namespace SportlinkFunction.Planner
             // Buffer uit request of standaard
             int bufferMin = request.BufferMinuten ?? StandardBufferMinutes;
 
+            // Capaciteitsberekening: check of optimalisatie nodig is
+            var capaciteit = BerekenCapaciteit(bezettingen, availableFields);
+            response.CapaciteitOverzicht = capaciteit;
+
+            if (capaciteit.AantalWedstrijdenOpVeld5 == 0 && capaciteit.BezettingsPercentage < MaxBezettingsPercentageVoorOverslaan)
+            {
+                response.VoldoendeRuimte = true;
+                response.VoldoendeRuimteMelding =
+                    $"Voldoende ruimte op {date.ToString("dddd d MMMM", nl)}: " +
+                    $"geen wedstrijden op veld 5, {capaciteit.BezettingsPercentage:F0}% bezet " +
+                    $"({capaciteit.AantalLegeVelden} veld(en) ongebruikt). Geen optimalisatie nodig.";
+                response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
+                    date, bezettingen, new List<OptimalisatieSuggestie>(), velden,
+                    request.Doel ?? "optimaliseren");
+                return response;
+            }
+
             var suggesties = new List<OptimalisatieSuggestie>();
             var doel = request.Doel?.ToLowerInvariant() ?? "";
 
@@ -733,6 +751,32 @@ namespace SportlinkFunction.Planner
             response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(date, bezettingen, suggesties, velden, request.Doel ?? "optimaliseren");
 
             return response;
+        }
+
+        private static VeldCapaciteitInfo BerekenCapaciteit(
+            List<BestaandeWedstrijd> bezettingen,
+            List<VeldBeschikbaarheidInfo> beschikbareVelden)
+        {
+            int totaalBeschikbaar = 0;
+            foreach (var veld in beschikbareVelden)
+                totaalBeschikbaar += (int)(veld.BeschikbaarTot.ToTimeSpan() - veld.BeschikbaarVanaf.ToTimeSpan()).TotalMinutes;
+
+            int totaalBezet = 0;
+            foreach (var b in bezettingen)
+                totaalBezet += (int)((b.EindTijd.ToTimeSpan() - b.AanvangsTijd.ToTimeSpan()).TotalMinutes * (double)b.VeldDeelGebruik);
+
+            var bezetteVelden = bezettingen.Select(b => b.VeldNummer).Distinct().ToHashSet();
+            int aantalLegeVelden = beschikbareVelden.Count(v => !bezetteVelden.Contains(v.VeldNummer));
+
+            return new VeldCapaciteitInfo
+            {
+                TotaalBeschikbareMinuten = totaalBeschikbaar,
+                TotaalBezettMinuten = totaalBezet,
+                BezettingsPercentage = totaalBeschikbaar > 0
+                    ? (double)totaalBezet / totaalBeschikbaar * 100.0 : 0,
+                AantalWedstrijdenOpVeld5 = bezettingen.Count(b => b.VeldNummer == 5),
+                AantalLegeVelden = aantalLegeVelden
+            };
         }
 
         private static List<OptimalisatieSuggestie> OptimaliseerVeld5Ontlasten(

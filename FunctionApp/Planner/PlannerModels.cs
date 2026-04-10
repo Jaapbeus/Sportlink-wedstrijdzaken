@@ -139,6 +139,18 @@ namespace SportlinkFunction.Planner
         public int AantalVanVeld5Verplaatst { get; set; }
         public List<OptimalisatieSuggestie> Suggesties { get; set; } = new();
         public string HtmlPlanner { get; set; } = string.Empty;
+        public bool VoldoendeRuimte { get; set; }
+        public string? VoldoendeRuimteMelding { get; set; }
+        public VeldCapaciteitInfo? CapaciteitOverzicht { get; set; }
+    }
+
+    public class VeldCapaciteitInfo
+    {
+        public int TotaalBeschikbareMinuten { get; set; }
+        public int TotaalBezettMinuten { get; set; }
+        public double BezettingsPercentage { get; set; }
+        public int AantalWedstrijdenOpVeld5 { get; set; }
+        public int AantalLegeVelden { get; set; }
     }
 
     public class OptimalisatieSuggestie
