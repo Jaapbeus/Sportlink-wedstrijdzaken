@@ -147,6 +147,8 @@ namespace SportlinkFunction
             await new MergeStgToHis("stg", "teams",        "his", "teams").ExecuteAsync(log);
             await new MergeStgToHis("stg", "matches",      "his", "matches").ExecuteAsync(log);
             await new MergeStgToHis("stg", "matchdetails", "his", "matchdetails").ExecuteAsync(log);
+
+            await SystemUtilities.AppSettings.SaveLastSyncTimestampAsync(log);
         }
 
         private static async Task FetchAndStoreMatchDetails(string apiUrl, ILogger log)

@@ -436,5 +436,17 @@ namespace SportlinkFunction.Planner
                 return DateOnly.FromDateTime(Convert.ToDateTime(result));
             return null;
         }
+
+        public static async Task<DateTime?> GetLastSyncTimestampAsync()
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(
+                "SELECT [LastSyncTimestamp] FROM [dbo].[AppSettings]", conn);
+            var result = await cmd.ExecuteScalarAsync();
+            if (result != null && result != DBNull.Value)
+                return Convert.ToDateTime(result);
+            return null;
+        }
     }
 }
