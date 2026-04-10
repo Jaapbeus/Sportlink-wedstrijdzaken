@@ -147,6 +147,14 @@ namespace SportlinkFunction.Planner
 
                 var format = req.Query.ContainsKey("format") ? req.Query["format"].ToString() : "";
 
+                if (response.VoldoendeRuimte && (format == "html" || format == "email"))
+                {
+                    var meldingHtml = $"<div style='background:#1a3a1a;border:1px solid #2ea043;padding:16px;border-radius:8px;margin-bottom:20px;color:#e6edf3;font-family:sans-serif;'>" +
+                        $"<strong>&#10003; {response.VoldoendeRuimteMelding}</strong></div>";
+                    var volleHtml = meldingHtml + response.HtmlPlanner;
+                    return new ContentResult { Content = volleHtml, ContentType = "text/html", StatusCode = 200 };
+                }
+
                 if (format == "html")
                     return new ContentResult { Content = response.HtmlPlanner, ContentType = "text/html", StatusCode = 200 };
 
