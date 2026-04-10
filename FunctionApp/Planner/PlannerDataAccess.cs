@@ -425,5 +425,16 @@ namespace SportlinkFunction.Planner
 
             return (int)(await cmd.ExecuteScalarAsync())!;
         }
+
+        public static async Task<DateOnly?> GetSeasonEndDateAsync()
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand("SELECT MAX(DateUntil) FROM [dbo].[Season]", conn);
+            var result = await cmd.ExecuteScalarAsync();
+            if (result != null && result != DBNull.Value)
+                return DateOnly.FromDateTime(Convert.ToDateTime(result));
+            return null;
+        }
     }
 }
