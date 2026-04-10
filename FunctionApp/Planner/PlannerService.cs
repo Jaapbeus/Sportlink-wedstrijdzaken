@@ -549,6 +549,104 @@ namespace SportlinkFunction.Planner
             public decimal VeldFractie { get; set; }
         }
 
+        // ── Doordeweekse beschikbaarheid ──
+
+        public static async Task<DoordeweeksBeschikbaarResponse> CheckDoordeweeksBeschikbaarAsync(
+            DoordeweeksBeschikbaarRequest request, ILogger log)
+        {
+            var response = new DoordeweeksBeschikbaarResponse { DagFilter = request.DagFilter };
+
+            var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync()
+                ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6));
+            response.SeizoenEinde = seizoenEinde.ToString("yyyy-MM-dd");
+
+            // Gewenste duur afleiden
+            int? gewensteDuur = request.DuurMinuten;
+            if (!gewensteDuur.HasValue && !string.IsNullOrEmpty(request.LeeftijdsCategorie))
+            {
+                var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie);
+                if (speeltijd != null) gewensteDuur = speeltijd.WedstrijdTotaal;
+            }
+
+            // Dagfilter vertalen
+            DayOfWeek? dagFilter = request.DagFilter?.ToLowerInvariant() switch
+            {
+                "maandag" => DayOfWeek.Monday,
+                "dinsdag" => DayOfWeek.Tuesday,
+                "woensdag" => DayOfWeek.Wednesday,
+                "donderdag" => DayOfWeek.Thursday,
+                _ => null
+            };
+
+            var startDate = DateOnly.FromDateTime(DateTime.Today).AddDays(1);
+            for (var date = startDate; date <= seizoenEinde; date = date.AddDays(1))
+            {
+                if (date.DayOfWeek < DayOfWeek.Monday || date.DayOfWeek > DayOfWeek.Thursday)
+                    continue;
+                if (dagFilter.HasValue && date.DayOfWeek != dagFilter.Value)
+                    continue;
+
+                var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+                if (availableFields.Count == 0) continue;
+
+                TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date)
+                    ?? SunsetCalculator.GetSunset(date);
+                string sunsetStr = sunset.HasValue ? sunset.Value.ToString("HH:mm") : "";
+
+                foreach (var field in availableFields)
+                {
+                    if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
+                        field.BeschikbaarTot = sunset.Value;
+                }
+
+                var occupations = await PlannerDataAccess.GetFieldOccupationsAsync(date);
+
+                foreach (var field in availableFields)
+                {
+                    var fieldOccs = occupations
+                        .Where(o => o.VeldNummer == field.VeldNummer)
+                        .OrderBy(o => o.AanvangsTijd).ToList();
+
+                    // Bereken vrije vensters (zelfde logica als BuildWindowsResponse)
+                    var gapStart = field.BeschikbaarVanaf;
+                    void AddVenster(TimeOnly van, TimeOnly tot)
+                    {
+                        int maxDuur = (int)(tot.ToTimeSpan() - van.ToTimeSpan()).TotalMinutes;
+                        if (maxDuur < 30) return;
+                        response.BeschikbareDatums.Add(new DoordeweekseDatum
+                        {
+                            Datum = date.ToString("yyyy-MM-dd"),
+                            DagVanWeek = date.ToString("dddd", NL),
+                            BeschikbaarVan = van.ToString("HH:mm"),
+                            BeschikbaarTot = tot.ToString("HH:mm"),
+                            Zonsondergang = sunsetStr,
+                            MaxDuurMinuten = maxDuur,
+                            PastGewensteDuur = !gewensteDuur.HasValue || maxDuur >= gewensteDuur.Value,
+                            GeplandeWedstrijden = fieldOccs.Select(o => new BestaandeWedstrijdSamenvatting
+                            {
+                                Wedstrijd = o.Wedstrijd?.Trim() ?? "",
+                                AanvangsTijd = o.AanvangsTijd.ToString("HH:mm"),
+                                EindTijd = o.EindTijd.ToString("HH:mm")
+                            }).ToList()
+                        });
+                    }
+
+                    foreach (var occ in fieldOccs)
+                    {
+                        var occStart = occ.AanvangsTijd.AddMinutes(-StandardBufferMinutes);
+                        if (occStart > gapStart)
+                            AddVenster(gapStart, occStart);
+                        gapStart = occ.EindTijd.AddMinutes(StandardBufferMinutes);
+                    }
+                    if (gapStart < field.BeschikbaarTot)
+                        AddVenster(gapStart, field.BeschikbaarTot);
+                }
+            }
+
+            response.AantalBeschikbaar = response.BeschikbareDatums.Count;
+            return response;
+        }
+
         // ── Optimalisatie logica ──
 
         public static async Task<OptimaliseerResponse> OptimaliseerAsync(
