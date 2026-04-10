@@ -18,16 +18,18 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId] FROM [dbo].[AppSettings]";
+                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp] FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
                             while (await reader.ReadAsync())
                             {
-                                string sportlinkApiUrl          = reader["SportlinkApiUrl"].ToString() ?? string.Empty; 
+                                string sportlinkApiUrl          = reader["SportlinkApiUrl"].ToString() ?? string.Empty;
                                 string sportlinkClientId        = reader["SportlinkClientId"].ToString() ?? string.Empty;
                                 settings["sportlinkApiUrl"]     = sportlinkApiUrl;
                                 settings["sportlinkClientId"]   = sportlinkClientId;
+                                if (reader["LastSyncTimestamp"] != DBNull.Value)
+                                    settings["lastSyncTimestamp"] = Convert.ToDateTime(reader["LastSyncTimestamp"]).ToString("yyyy-MM-dd HH:mm:ss");
                             }
                         }
                     }
@@ -42,6 +44,23 @@ namespace SportlinkFunction
             public static string? GetSetting(string key)
             {
                 return settings.ContainsKey(key) ? settings[key] : null;
+            }
+
+            public static async Task SaveLastSyncTimestampAsync(ILogger log)
+            {
+                try
+                {
+                    using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
+                    await connection.OpenAsync();
+                    using var command = new SqlCommand(
+                        "UPDATE [dbo].[AppSettings] SET [LastSyncTimestamp] = GETDATE()", connection);
+                    await command.ExecuteNonQueryAsync();
+                    log.LogInformation("Last sync timestamp updated.");
+                }
+                catch (Exception ex)
+                {
+                    log.LogError($"Error saving last sync timestamp: {ex.Message}");
+                }
             }
         }
         public static class DatabaseConfig
