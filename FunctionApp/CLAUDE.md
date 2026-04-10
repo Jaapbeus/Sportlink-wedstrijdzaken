@@ -188,17 +188,26 @@ Full docs: https://sportlinkservices.github.io/navajofeeds-json-parser/article/
 | Endpoint | URL | Description |
 |---|---|---|
 | teams | `/teams?clientId=` | All teams for the club |
-| matches (uitslagen) | `/uitslagen?clientId=&weekoffset=` | Match results per week offset |
+| programma | `/programma?clientId=&weekoffset=` | **Primaire bron** voor alle wedstrijden (competitie, beker, oefenwedstrijden). Bevat rijkere data: scheidsrechter, veld, kleedkamers, logos, vertrek-/verzameltijd |
+| uitslagen | `/uitslagen?clientId=&weekoffset=` | **Alleen scoreverrijking** voor verleden wedstrijden. Voegt uitslag, uitslag-regulier, etc. toe aan bestaande programma-rijen. Voegt GEEN nieuwe toekomstige wedstrijden toe |
 | match details | `/wedstrijd-informatie?clientId=&wedstrijdcode=` | Full detail per match |
 
 ### Available endpoints (not yet implemented)
 
 | Endpoint | URL | Description |
 |---|---|---|
-| programma | `/programma?clientId=` | Upcoming schedule with referee/venue info |
 | standen | `/standen?clientId=` | League standings |
 | spelers | `/spelers?clientId=` | Player roster |
-| wedstrijd-informatie | `/wedstrijd-informatie?clientId=&wedstrijdcode=` | Already in use as matchdetails |
+
+### Sync strategie: programma vs uitslagen
+
+`/programma` is de **single source of truth** voor toekomstige wedstrijden. `/uitslagen` mag:
+- Bestaande rijen verrijken met scorevelden (UPDATE alleen score-kolommen)
+- Nieuwe rijen toevoegen voor verleden wedstrijden die niet via `/programma` binnenkwamen
+
+`/uitslagen` mag NIET:
+- Gedeelde velden overschrijven (wedstrijd, thuisteam, uitteam, veld, aanvangstijd, etc.)
+- Nieuwe rijen toevoegen voor toekomstige wedstrijden
 
 ### Programma endpoint — all available fields
 
@@ -243,7 +252,7 @@ Fetched live from `https://data.sportlink.com/programma?clientId=YOUR_CLIENT_ID`
 | `kleedkamerscheidsrechter` | string | Referee changing room | `` |
 | `meer` | string | Link to match detail | `wedstrijd-informatie?wedstrijdcode=19816434` |
 
-> **Note:** `programma` returns upcoming fixtures with richer info than `uitslagen` (includes logos, referee, venue, changing rooms, gather/depart times). Consider using this as the primary matches source in a future iteration.
+> **Note:** `programma` is de primaire bron voor alle wedstrijden (competitie, beker én oefenwedstrijden). `/uitslagen` verrijkt alleen bestaande rijen met scores en voegt historische rijen toe voor verleden wedstrijden.
 
 ## Key Dependencies
 
