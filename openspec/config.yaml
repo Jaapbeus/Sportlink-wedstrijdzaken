@@ -1,0 +1,9 @@
+name: sportlink-wedstrijdzaken
+description: VRC Sportlink Wedstrijdzaken — ETL pipeline en Veldplanner API
+version: "1.0"
+language: nl
+specs_dir: specs
+domains:
+  - setup
+  - lokaal-debuggen
+  - api
