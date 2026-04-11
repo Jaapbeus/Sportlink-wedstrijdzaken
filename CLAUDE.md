@@ -64,7 +64,11 @@ Two projects in `sportlink-wedstrijdzaken.sln`:
 ## Sportlink API
 
 Base URL: `https://data.sportlink.com`, auth via `?clientId=` query param (from `dbo.AppSettings`).
-Full docs: https://sportlinkservices.github.io/navajofeeds-json-parser/article/
+
+Documentatie:
+- **Alle endpoints:** https://sportlinkservices.freshdesk.com/nl/support/solutions/articles/9000062942-lijst-met-artikelen-van-club-dataservice
+- **Online API test-tool:** https://sportlinkservices.github.io/navajofeeds-json-parser/article/?programma
+- **JSON parser docs:** https://sportlinkservices.github.io/navajofeeds-json-parser/article/
 
 | Endpoint | Path | Notes |
 |---|---|---|
