@@ -12,3 +12,15 @@
 # YourClientId
 # Server=YOUR_SERVER_PREFIX
 # your_sql_login_name
+#
+# Azure resource namen (ALTIJD toevoegen aan sensitive-patterns.txt):
+# \.database\.windows\.net
+# \.azurewebsites\.net
+# dev\.azure\.com/[A-Za-z-]+/[A-Za-z-]+
+#
+# Persoonsgegevens / AVG (voorbeeldnamen in docs NIET met echte namen):
+# Voornaam.*Achternaam (voeg echte namen toe)
+# @hotmail\.com
+# @outlook\.com
+# @ziggo\.nl
+# 06[0-9]{8}
