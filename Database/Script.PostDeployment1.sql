@@ -12,16 +12,18 @@ Post-Deployment Script Template
 -- New setup needed for the first time
 IF (SELECT [ClubName] FROM [dbo].[AppSettings]) IS NULL
 BEGIN
-	INSERT INTO [dbo].[AppSettings] 
-		([ClubName]		
+	INSERT INTO [dbo].[AppSettings]
+		([ClubName]
 		,[SportlinkApiUrl]
 		,[SportlinkClientId]
-		,[SeasonStartMonth])
+		,[SeasonStartMonth]
+		,[FetchSchedule])
 	VALUES
 		('Uw clubnaam'
 		,'https://data.sportlink.com'
 		,'APIKEY'
-		,7)
+		,7
+		,'0 0 4 * * *')
 END
 GO
 

@@ -3,5 +3,6 @@
 	[SportlinkApiUrl]	NVARCHAR(100)	NOT NULL,
 	[SportlinkClientId]	NVARCHAR(50)	NOT NULL,
 	[SeasonStartMonth]	[int]			NOT NULL,
-	[LastSyncTimestamp]	DATETIME2		NULL
+	[LastSyncTimestamp]	DATETIME2		NULL,
+	[FetchSchedule]		NVARCHAR(50)	NOT NULL DEFAULT '0 0 4 * * *'
 	)
