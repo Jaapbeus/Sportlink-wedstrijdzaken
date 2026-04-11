@@ -35,14 +35,14 @@ History Tables (his.teams, his.matches, his.matchdetails)
 ### Key Components
 
 **[Function1.cs](Function1.cs)**
-- `FetchAndStoreApiData`: Timer trigger (daily at 04:00) that orchestrates the sync
+- `FetchAndStoreApiData`: Timer trigger (schedule via `%FETCH_SCHEDULE%` app setting, default `0 0 4 * * *`) that orchestrates the sync
 - `SyncAndStoreViaHttpTrigger`: HTTP endpoint for manual sync (GET `/api/sync`)
 - Handles: Teams fetch, matches fetch (last 5 weeks), match details fetch
 - Uses retry logic via `SystemUtilities.WaitForDatabaseAsync()`
 
 **[Utilities.cs](Utilities.cs)**
 - `SystemUtilities.AppSettings`: Loads settings from `dbo.AppSettings` table
-  - Fields: `SportlinkApiUrl`, `SportlinkClientId`
+  - Fields: `SportlinkApiUrl`, `SportlinkClientId`, `FetchSchedule`
 - `SystemUtilities.DatabaseConfig`: Manages connection string from environment variables
 - `SystemUtilities.SeasonHelper`: Calculates season end week offsets from `dbo.Season` table
 - Database retry logic with 5 retries, 5-second delays between attempts
@@ -119,6 +119,7 @@ Stored in `local.settings.json` (development) and Azure Key Vault (production):
 - `SqlConnectionString`: Connection string to SQL database (loaded from local.settings.json or Azure Key Vault)
 - `FUNCTIONS_WORKER_RUNTIME`: Always `"dotnet-isolated"`
 - `AzureWebJobsStorage`: Storage for function state (dev uses `UseDevelopmentStorage=true`)
+- `FETCH_SCHEDULE`: CRON-expressie voor de timer trigger (default `0 0 4 * * *` = dagelijks om 04:00)
 
 ### Database Settings
 
@@ -170,7 +171,7 @@ DROP TABLE IF EXISTS [his].[matchdetails];
 
 ### Check Timer Trigger Execution
 
-Monitor function logs in Azure portal or locally in console output. Function runs at `0 0 4 * * *` (daily at 04:00).
+Monitor function logs in Azure portal or locally in console output. Schedule is configureerbaar via de `FETCH_SCHEDULE` app setting (default `0 0 4 * * *` = dagelijks om 04:00).
 
 Manual execution via HTTP:
 ```
