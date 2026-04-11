@@ -17,7 +17,7 @@ namespace SportlinkFunction
         private static readonly HttpClient client = new HttpClient();
 
         [Function("FetchAndStoreApiData")]
-        public static async Task Run([TimerTrigger("0 0 4 * * *")] TimerInfo myTimer, FunctionContext context)
+        public static async Task Run([TimerTrigger("%FETCH_SCHEDULE%")] TimerInfo myTimer, FunctionContext context)
         {
             var log = context.GetLogger("FetchAndStoreApiData");
             log.LogInformation($"Azure Function executed at: {DateTime.Now}");

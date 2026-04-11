@@ -18,7 +18,7 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp] FROM [dbo].[AppSettings]";
+                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule] FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
@@ -30,6 +30,7 @@ namespace SportlinkFunction
                                 settings["sportlinkClientId"]   = sportlinkClientId;
                                 if (reader["LastSyncTimestamp"] != DBNull.Value)
                                     settings["lastSyncTimestamp"] = Convert.ToDateTime(reader["LastSyncTimestamp"]).ToString("yyyy-MM-dd HH:mm:ss");
+                                settings["fetchSchedule"] = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
                             }
                         }
                     }
