@@ -18,7 +18,7 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule] FROM [dbo].[AppSettings]";
+                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres] FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
@@ -31,6 +31,15 @@ namespace SportlinkFunction
                                 if (reader["LastSyncTimestamp"] != DBNull.Value)
                                     settings["lastSyncTimestamp"] = Convert.ToDateTime(reader["LastSyncTimestamp"]).ToString("yyyy-MM-dd HH:mm:ss");
                                 settings["fetchSchedule"] = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
+
+                                if (reader["PlannerAfzenderNaam"] != DBNull.Value)
+                                    settings["plannerAfzenderNaam"] = reader["PlannerAfzenderNaam"].ToString() ?? "";
+                                if (reader["CoordinatorNaam"] != DBNull.Value)
+                                    settings["coordinatorNaam"] = reader["CoordinatorNaam"].ToString() ?? "";
+                                if (reader["CoordinatorFunctie"] != DBNull.Value)
+                                    settings["coordinatorFunctie"] = reader["CoordinatorFunctie"].ToString() ?? "";
+                                if (reader["PlannerEmailAdres"] != DBNull.Value)
+                                    settings["plannerEmailAdres"] = reader["PlannerEmailAdres"].ToString() ?? "";
                             }
                         }
                     }
