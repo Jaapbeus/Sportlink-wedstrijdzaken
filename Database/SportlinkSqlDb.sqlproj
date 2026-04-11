@@ -107,6 +107,7 @@
     <Build Include="planner\Tables\GeplandeWedstrijden.sql" />
     <Build Include="planner\Views\AlleWedstrijdenOpVeld.sql" />
     <Build Include="planner\Tables\HerplanVerzoeken.sql" />
+    <Build Include="planner\Tables\EmailVerwerking.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Script1.sql" />
