@@ -40,6 +40,7 @@ public class EmailAiService
         - Nederlandse tekst, informeel taalgebruik
         - Als afzender @vv-vrc.nl domein heeft: VRC-intern
         - Bij doorgestuurde berichten: bepaal namens wie het verzoek is
+        - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
         """;
 
     private const string AntwoordSystemPrompt = """
@@ -49,7 +50,7 @@ public class EmailAiService
         - Kort en duidelijk, geen technische details
         - Gebruik de tijdsgebonden aanhef (Goedemorgen/Goedemiddag/Goedenavond) gevolgd door de voornaam
         - Maximaal 2-3 alternatieven noemen als de gevraagde tijd niet beschikbaar is
-        - Eindig met: "Met vriendelijke groet,\n\nVRC Veldplanner\nGeautomatiseerd antwoord namens de coördinator thuiswedstrijden"
+        - Voeg GEEN afsluiting of handtekening toe (geen "Met vriendelijke groet" etc.) — die wordt automatisch toegevoegd
         """;
 
     public EmailAiService(ILogger<EmailAiService> logger)
