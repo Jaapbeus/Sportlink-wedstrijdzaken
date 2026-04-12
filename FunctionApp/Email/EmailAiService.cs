@@ -70,7 +70,7 @@ public class EmailAiService
     {
         _logger.LogInformation("Email classificatie gestart voor onderwerp: {Subject}", subject);
 
-        var userPrompt = $"Van: {afzender}\nOnderwerp: {subject}\n\n{body}";
+        var userPrompt = $"Vandaag is {DateTime.Now:yyyy-MM-dd} ({DateTime.Now:dddd}).\n\nVan: {afzender}\nOnderwerp: {subject}\n\n{body}";
 
         var messages = new List<ChatMessage>
         {
