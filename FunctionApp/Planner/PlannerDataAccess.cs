@@ -52,7 +52,7 @@ namespace SportlinkFunction.Planner
                 LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[status] <> 'Afgelast'
-                  AND (m.[teamnaam] LIKE @teamPattern OR m.[wedstrijd] LIKE @teamPattern)
+                  AND m.[teamnaam] = @exactTeamNaam
 
                 UNION ALL
 
@@ -68,10 +68,10 @@ namespace SportlinkFunction.Planner
                 LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
                 WHERE gw.[Datum] = @date
                   AND gw.[Status] <> 'Geannuleerd'
-                  AND (gw.[TeamNaam] LIKE @teamPattern OR gw.[Tegenstander] LIKE @teamPattern)
+                  AND gw.[TeamNaam] = @exactTeamNaam
             ", conn);
             cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
-            cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
+            cmd.Parameters.AddWithValue("@exactTeamNaam", teamNaam);
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
