@@ -78,7 +78,16 @@ public class EmailProcessorFunction
         EmailAiService aiService,
         ILogger log)
     {
-        // 4a. Deduplicatie
+        // 4a. Skip eigen emails (voorkom loop)
+        var eigenMailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
+        if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
+        {
+            log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
+            await graphService.MarkAsReadAsync(email.MessageId);
+            return;
+        }
+
+        // 4b. Deduplicatie
         if (await BestaatMessageIdAsync(email.MessageId))
         {
             log.LogInformation("Email {MessageId} al verwerkt, overslaan", email.MessageId);
@@ -143,11 +152,30 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
+    /// Normaliseert leeftijdscategorie: O13 → JO13, Onder 11 → JO11, etc.
+    /// </summary>
+    private static string? NormaliseerLeeftijdsCategorie(string? categorie)
+    {
+        if (string.IsNullOrWhiteSpace(categorie)) return categorie;
+        var c = categorie.Trim();
+        // "Onder 13" → "JO13"
+        if (c.StartsWith("Onder ", StringComparison.OrdinalIgnoreCase))
+            c = "JO" + c[6..].Trim();
+        // "O13" → "JO13" (maar niet "MO13")
+        if (System.Text.RegularExpressions.Regex.IsMatch(c, @"^O\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            && !c.StartsWith("MO", StringComparison.OrdinalIgnoreCase))
+            c = "J" + c.ToUpper();
+        return c;
+    }
+
+    /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste PlannerService-aanroep.
     /// </summary>
     private static async Task<string> VerwerkMetPlannerAsync(
         EmailClassificatie classificatie, ILogger log)
     {
+        // Normaliseer leeftijdscategorie
+        classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
