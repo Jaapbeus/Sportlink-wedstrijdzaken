@@ -38,7 +38,8 @@ public static class EmailResponseGenerator
                    + $"Op {datumTekst} zijn de volgende mogelijkheden:\n";
             foreach (var v in vensters)
             {
-                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {v.Tot}";
+                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
                 if (!string.IsNullOrEmpty(v.Opmerking))
                     inhoud += $" ({v.Opmerking})";
                 inhoud += "\n";
@@ -202,7 +203,8 @@ public static class EmailResponseGenerator
 
     public static string GetTijdsgebondenAanhef()
     {
-        var uur = DateTime.Now.Hour;
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        var uur = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone).Hour;
         if (uur < 12) return "Goedemorgen";
         if (uur < 18) return "Goedemiddag";
         return "Goedenavond";
@@ -232,6 +234,14 @@ public static class EmailResponseGenerator
         if (kunstgrasVensters.Count >= 3)
             return kunstgrasVensters;
         return vensters;
+    }
+
+    /// <summary>
+    /// Eindtijd >= 21:00 betekent effectief "einde dag" (sluittijd sportpark).
+    /// </summary>
+    private static bool IsEindeDag(string tot)
+    {
+        return TimeOnly.TryParse(tot, out var tijd) && tijd >= new TimeOnly(21, 0);
     }
 
     private static string FormatDatum(string? datumString)
