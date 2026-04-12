@@ -103,9 +103,13 @@ public class EmailProcessorFunction
         var classificatie = await aiService.ClassificeerEmailAsync(
             email.Body, email.Onderwerp, email.Afzender);
 
+        // Valideer dag-datum combinatie (bijv. "zaterdag" + woensdag-datum → corrigeer)
+        ValideerDagDatum(classificatie, email.Body);
+
         var classificatieJson = JsonConvert.SerializeObject(classificatie);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
-        log.LogInformation("Email {Id} geclassificeerd als {Type}", verwerkingId, classificatie.Type);
+        log.LogInformation("Email {Id} geclassificeerd als {Type}, datum={Datum}",
+            verwerkingId, classificatie.Type, classificatie.Datum);
 
         string onderwerp;
         string antwoordBody;
@@ -123,13 +127,9 @@ public class EmailProcessorFunction
             await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
             await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
-            // 4h. Genereer AI-antwoord
-            var aiAntwoord = await aiService.GenereerAntwoordAsync(
-                classificatie, plannerResponseJson, email.AfzenderNaam);
-
-            // 4i. Bouw compleet antwoord op
-            (onderwerp, antwoordBody) = EmailResponseGenerator.BouwAntwoordOp(
-                aiAntwoord, classificatie, email);
+            // 4h. Bouw antwoord via templates (geen AI nodig)
+            (onderwerp, antwoordBody) = BouwTemplateAntwoord(
+                classificatie, plannerResponseJson, email);
         }
 
         // 4j. Bepaal ontvanger (review mode vs productie)
@@ -149,6 +149,83 @@ public class EmailProcessorFunction
 
         log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd naar {Ontvanger}",
             verwerkingId, ontvanger);
+    }
+
+    /// <summary>
+    /// Bouwt het antwoord via templates op basis van het classificatietype en PlannerService response.
+    /// </summary>
+    private static (string onderwerp, string body) BouwTemplateAntwoord(
+        EmailClassificatie classificatie,
+        string plannerResponseJson,
+        InkomendEmail email)
+    {
+        switch (classificatie.Type)
+        {
+            case VerzoekType.BeschikbaarheidCheck:
+                var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
+                return EmailResponseGenerator.BouwBeschikbaarheidAntwoord(
+                    checkResponse ?? new CheckAvailabilityResponse(), classificatie, email);
+
+            case VerzoekType.HerplanVerzoek:
+                // Herplan response is een compound object: { wedstrijd, herplanOpties }
+                var herplanData = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
+                var wedstrijd = herplanData["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+                var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
+                return EmailResponseGenerator.BouwHerplanAntwoord(
+                    wedstrijd, herplanOpties, classificatie, email);
+
+            case VerzoekType.Bevestiging:
+                return EmailResponseGenerator.BouwBevestigingAntwoord(email, classificatie);
+
+            default:
+                return EmailResponseGenerator.BouwBuitenScopeAntwoord(email);
+        }
+    }
+
+    /// <summary>
+    /// Valideert dag-datum combinatie. Als de email expliciet een dag noemt
+    /// ("zaterdag") maar de AI een datum retourneert die niet op die dag valt,
+    /// corrigeer naar de eerstvolgende/vorige matching datum.
+    /// </summary>
+    private static void ValideerDagDatum(EmailClassificatie classificatie, string emailBody)
+    {
+        if (string.IsNullOrEmpty(classificatie.Datum)) return;
+        if (!DateOnly.TryParse(classificatie.Datum, out var datum)) return;
+
+        var dagNamen = new Dictionary<string, DayOfWeek>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["maandag"] = DayOfWeek.Monday, ["dinsdag"] = DayOfWeek.Tuesday,
+            ["woensdag"] = DayOfWeek.Wednesday, ["donderdag"] = DayOfWeek.Thursday,
+            ["vrijdag"] = DayOfWeek.Friday, ["zaterdag"] = DayOfWeek.Saturday,
+            ["zondag"] = DayOfWeek.Sunday
+        };
+
+        var bodyLower = emailBody.ToLowerInvariant();
+        foreach (var (naam, dag) in dagNamen)
+        {
+            if (!bodyLower.Contains(naam)) continue;
+
+            // Email noemt deze dag — klopt de datum?
+            if (datum.DayOfWeek == dag) return; // Klopt
+
+            // Zoek de eerstvolgende matching datum (max 7 dagen vooruit/achteruit)
+            for (int offset = 1; offset <= 7; offset++)
+            {
+                var vooruit = datum.AddDays(offset);
+                if (vooruit.DayOfWeek == dag)
+                {
+                    classificatie.Datum = vooruit.ToString("yyyy-MM-dd");
+                    return;
+                }
+                var achteruit = datum.AddDays(-offset);
+                if (achteruit.DayOfWeek == dag)
+                {
+                    classificatie.Datum = achteruit.ToString("yyyy-MM-dd");
+                    return;
+                }
+            }
+            return;
+        }
     }
 
     /// <summary>
