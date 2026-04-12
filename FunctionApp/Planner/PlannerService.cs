@@ -132,10 +132,23 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Modus 2: geen leeftijdsCategorie — beschikbare vensters teruggeven
-            if (string.IsNullOrEmpty(request.LeeftijdsCategorie) && !request.WedstrijdDuurMinuten.HasValue)
+            // Modus 2: geen specifieke aanvangstijd — beschikbare vensters teruggeven
+            if (string.IsNullOrEmpty(request.AanvangsTijd))
             {
-                return BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
+                var windowsResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
+
+                // Filter vensters op minimale duur als de wedstrijdduur bekend is
+                if (windowsResponse.BeschikbareVensters != null && duurMinuten > 0)
+                {
+                    windowsResponse.BeschikbareVensters = windowsResponse.BeschikbareVensters
+                        .Where(w => w.MaxDuurMinuten >= duurMinuten)
+                        .ToList();
+                    windowsResponse.Beschikbaar = windowsResponse.BeschikbareVensters.Count > 0;
+                    if (!windowsResponse.Beschikbaar)
+                        windowsResponse.Reden = $"Geen venster van minimaal {duurMinuten} minuten beschikbaar op {date.ToString("dddd d MMMM", NL)}.";
+                }
+
+                return windowsResponse;
             }
 
             // Modus 1: specifieke slottoewijzing
