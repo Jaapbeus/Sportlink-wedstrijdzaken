@@ -106,6 +106,16 @@ BEGIN
 END
 GO
 
+-- AppSettings: email-integratie velden vullen
+IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
+BEGIN
+    UPDATE [dbo].[AppSettings]
+    SET [PlannerAfzenderNaam] = 'VRC Veldplanner',
+        [CoordinatorFunctie] = N'Coördinator thuiswedstrijden'
+    WHERE [PlannerAfzenderNaam] IS NULL
+END
+GO
+
 -- Update the Season and datetable
 DECLARE @SeasonStartMonth INT = (SELECT [SeasonStartMonth] FROM [dbo].[AppSettings])
 EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;

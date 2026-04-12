@@ -1,0 +1,20 @@
+CREATE TABLE [planner].[EmailVerwerking] (
+    [Id]                    INT             IDENTITY(1,1) NOT NULL,
+    [MessageId]             NVARCHAR(500)   NOT NULL,
+    [ConversationId]        NVARCHAR(500)   NULL,
+    [Afzender]              NVARCHAR(200)   NOT NULL,
+    [Onderwerp]             NVARCHAR(500)   NOT NULL,
+    [OntvangstDatum]        DATETIME2       NOT NULL,
+    [EmailBody]             NVARCHAR(MAX)   NULL,
+    [VerzoekType]           NVARCHAR(50)    NOT NULL,
+    [GeextraheerdeData]     NVARCHAR(MAX)   NULL,
+    [PlannerResponse]       NVARCHAR(MAX)   NULL,
+    [AntwoordEmail]         NVARCHAR(MAX)   NULL,
+    [VerstuurdNaar]         NVARCHAR(200)   NULL,
+    [Status]                NVARCHAR(30)    NOT NULL CONSTRAINT [DF_EmailVerwerking_Status] DEFAULT 'Ontvangen',
+    [FoutMelding]           NVARCHAR(1000)  NULL,
+    [mta_inserted]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Ins] DEFAULT GETDATE(),
+    [mta_modified]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Mod] DEFAULT GETDATE(),
+    CONSTRAINT [PK_EmailVerwerking] PRIMARY KEY CLUSTERED ([Id] ASC),
+    CONSTRAINT [UQ_EmailVerwerking_MessageId] UNIQUE ([MessageId])
+);
