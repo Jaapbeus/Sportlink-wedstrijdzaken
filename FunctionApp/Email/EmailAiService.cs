@@ -43,15 +43,6 @@ public class EmailAiService
         - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
         """;
 
-    private const string AntwoordSystemPrompt = """
-        Je bent de VRC Veldplanner, een geautomatiseerd systeem dat antwoordt namens de coördinator thuiswedstrijden van voetbalvereniging VRC Veenendaal.
-
-        Schrijfstijl:
-        - Kort en duidelijk, geen technische details
-        - Gebruik de tijdsgebonden aanhef (Goedemorgen/Goedemiddag/Goedenavond) gevolgd door de voornaam
-        - Maximaal 2-3 alternatieven noemen als de gevraagde tijd niet beschikbaar is
-        - Voeg GEEN afsluiting of handtekening toe (geen "Met vriendelijke groet" etc.) — die wordt automatisch toegevoegd
-        """;
 
     public EmailAiService(ILogger<EmailAiService> logger)
     {
@@ -98,57 +89,6 @@ public class EmailAiService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fout bij het classificeren van email met onderwerp: {Subject}", subject);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Genereert een antwoord-email op basis van de classificatie en planner response.
-    /// </summary>
-    public async Task<string> GenereerAntwoordAsync(
-        EmailClassificatie classificatie,
-        string plannerResponseJson,
-        string afzenderNaam)
-    {
-        _logger.LogInformation("Antwoord generatie gestart voor type: {Type}", classificatie.Type);
-
-        var userPrompt = $"""
-            Classificatie van het verzoek:
-            - Type: {classificatie.Type}
-            - Samenvatting: {classificatie.Samenvatting}
-            - Team: {classificatie.TeamNaam ?? "onbekend"}
-            - Datum: {classificatie.Datum ?? "niet opgegeven"}
-            - Tijd: {classificatie.AanvangsTijd ?? "niet opgegeven"}
-            - Tegenstander: {classificatie.Tegenstander ?? "onbekend"}
-
-            Planner response:
-            {plannerResponseJson}
-
-            Naam afzender: {afzenderNaam}
-            """;
-
-        var messages = new List<ChatMessage>
-        {
-            new SystemChatMessage(AntwoordSystemPrompt),
-            new UserChatMessage(userPrompt)
-        };
-
-        var options = new ChatCompletionOptions
-        {
-            Temperature = 0.5f
-        };
-
-        try
-        {
-            var completion = await _chatClient.CompleteChatAsync(messages, options);
-            var antwoord = completion.Value.Content[0].Text;
-
-            _logger.LogInformation("Antwoord-email gegenereerd");
-            return antwoord;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fout bij het genereren van antwoord-email");
             throw;
         }
     }
