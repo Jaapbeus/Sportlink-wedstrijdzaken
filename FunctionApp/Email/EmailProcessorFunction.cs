@@ -229,6 +229,30 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
+    /// Normaliseert teamnaam: "O13-1" → "VRC JO13-1", "JO14-3" → "VRC JO14-3", etc.
+    /// </summary>
+    private static string? NormaliseerTeamNaam(string? teamNaam)
+    {
+        if (string.IsNullOrWhiteSpace(teamNaam)) return teamNaam;
+        var t = teamNaam.Trim();
+
+        // "Onder 13-1" → "JO13-1"
+        if (t.StartsWith("Onder ", StringComparison.OrdinalIgnoreCase))
+            t = "JO" + t[6..].Trim();
+
+        // "O13-1" → "JO13-1" (maar niet "MO13-1")
+        if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^O\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            && !t.StartsWith("MO", StringComparison.OrdinalIgnoreCase))
+            t = "J" + t.ToUpper();
+
+        // Voeg "VRC " prefix toe als het ontbreekt
+        if (!t.StartsWith("VRC ", StringComparison.OrdinalIgnoreCase))
+            t = "VRC " + t;
+
+        return t;
+    }
+
+    /// <summary>
     /// Normaliseert leeftijdscategorie: O13 → JO13, Onder 11 → JO11, etc.
     /// </summary>
     private static string? NormaliseerLeeftijdsCategorie(string? categorie)
@@ -251,8 +275,10 @@ public class EmailProcessorFunction
     private static async Task<string> VerwerkMetPlannerAsync(
         EmailClassificatie classificatie, ILogger log)
     {
-        // Normaliseer leeftijdscategorie
+        // Normaliseer leeftijdscategorie en teamnaam
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
+        classificatie.TeamNaam = NormaliseerTeamNaam(classificatie.TeamNaam);
+
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
