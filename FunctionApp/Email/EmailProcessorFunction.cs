@@ -345,6 +345,15 @@ public class EmailProcessorFunction
     {
         // Normaliseer leeftijdscategorie en teamnaam
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
+
+        // Als verzoek van tegenstander: het VRC-team zit in Tegenstander veld, wissel
+        if (classificatie.NamensWie == NamensWie.Tegenstander && !string.IsNullOrEmpty(classificatie.Tegenstander))
+        {
+            var externTeam = classificatie.TeamNaam;
+            classificatie.TeamNaam = classificatie.Tegenstander;
+            classificatie.Tegenstander = externTeam;
+        }
+
         classificatie.TeamNaam = NormaliseerTeamNaam(classificatie.TeamNaam);
 
         switch (classificatie.Type)
