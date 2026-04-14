@@ -178,9 +178,19 @@ public class EmailProcessorFunction
                     checkResponse ?? new CheckAvailabilityResponse(), classificatie, email);
 
             case VerzoekType.HerplanVerzoek:
-                // Herplan response is een compound object: { wedstrijd, herplanOpties }
                 var herplanData = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
                 var wedstrijd = herplanData["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+
+                // Gewenste datum modus: beschikbaarheid op nieuwe datum
+                if (herplanData["gewensteDatum"] != null && herplanData["beschikbaarheid"] != null)
+                {
+                    var gewensteDatum = herplanData["gewensteDatum"]?.ToString();
+                    var beschikbaarheid = herplanData["beschikbaarheid"]?.ToObject<CheckAvailabilityResponse>();
+                    return EmailResponseGenerator.BouwHerplanGewensteDatumAntwoord(
+                        wedstrijd, gewensteDatum, beschikbaarheid, classificatie, email);
+                }
+
+                // Alternatieven op huidige dag
                 var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
                 return EmailResponseGenerator.BouwHerplanAntwoord(
                     wedstrijd, herplanOpties, classificatie, email);
@@ -359,6 +369,20 @@ public class EmailProcessorFunction
                         var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum);
                         if (wedstrijd != null)
                         {
+                            // Als er een gewenste datum is, check beschikbaarheid op DIE datum
+                            if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
+                            {
+                                var gewenstRequest = new CheckAvailabilityRequest
+                                {
+                                    Datum = classificatie.GewensteDatum,
+                                    LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
+                                    TeamNaam = classificatie.TeamNaam
+                                };
+                                var beschikbaarheid = await PlannerService.CheckAvailabilityAsync(gewenstRequest, log);
+                                return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
+                            }
+
+                            // Geen gewenste datum → check alternatieven op huidige dag
                             var herplanRequest = new HerplanCheckRequest
                             {
                                 Wedstrijdcode = wedstrijd.Wedstrijdcode,
