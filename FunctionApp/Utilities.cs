@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using Microsoft.Data.SqlClient;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -9,7 +10,7 @@ namespace SportlinkFunction
     {
         public static class AppSettings
         {
-            private static readonly Dictionary<string, string> settings = new Dictionary<string, string>();
+            private static readonly ConcurrentDictionary<string, string> settings = new ConcurrentDictionary<string, string>();
 
             public static async Task LoadSettingsAsync(ILogger log)
             {
@@ -53,7 +54,7 @@ namespace SportlinkFunction
 
             public static string? GetSetting(string key)
             {
-                return settings.ContainsKey(key) ? settings[key] : null;
+                return settings.TryGetValue(key, out var value) ? value : null;
             }
 
             public static async Task SaveLastSyncTimestampAsync(ILogger log)
