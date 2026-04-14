@@ -32,22 +32,6 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 1b. Gepauzeerd na database-noodmail — probeer stille reconnect
-        if (_databaseNoodmailVerstuurd)
-        {
-            try
-            {
-                await SystemUtilities.WaitForDatabaseAsync(log);
-                _databaseNoodmailVerstuurd = false;
-                log.LogInformation("Database weer bereikbaar — email processor hervat");
-            }
-            catch
-            {
-                log.LogWarning("Email processor gepauzeerd — database nog niet bereikbaar (noodmail al verstuurd)");
-                return;
-            }
-        }
-
         // 2. Graph client initialiseren (geen database nodig)
         var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
         if (graphClient == null)
@@ -71,12 +55,24 @@ public class EmailProcessorFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
+            if (_databaseNoodmailVerstuurd)
+            {
+                _databaseNoodmailVerstuurd = false;
+                log.LogInformation("Database weer bereikbaar — email processor hervat");
+            }
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
         }
         catch (Exception dbEx)
         {
-            log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
-            await StuurDatabaseNoodmailAsync(graphService, emails.Count, dbEx.Message, log);
+            if (!_databaseNoodmailVerstuurd)
+            {
+                log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
+                await StuurDatabaseNoodmailAsync(graphService, emails.Count, dbEx.Message, log);
+            }
+            else
+            {
+                log.LogWarning("Email processor gepauzeerd — database nog niet bereikbaar (noodmail al verstuurd)");
+            }
             return;
         }
 
