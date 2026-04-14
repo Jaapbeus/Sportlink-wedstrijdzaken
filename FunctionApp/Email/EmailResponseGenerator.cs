@@ -154,6 +154,63 @@ public static class EmailResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
+    // ── Herplannen naar gewenste datum ──
+
+    public static (string onderwerp, string body) BouwHerplanGewensteDatumAntwoord(
+        ZoekWedstrijdResponse? wedstrijd,
+        string? gewensteDatum,
+        CheckAvailabilityResponse? beschikbaarheid,
+        EmailClassificatie classificatie,
+        InkomendEmail email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        var gewenstDatumTekst = FormatDatum(gewensteDatum);
+        string inhoud;
+
+        if (wedstrijd == null)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Er is geen wedstrijd gevonden voor {classificatie.TeamNaam ?? "het opgegeven team"} "
+                   + $"op {FormatDatum(classificatie.Datum)}.";
+        }
+        else if (beschikbaarheid == null || !beschikbaarheid.Beschikbaar)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
+                   + $"Helaas is er op {gewenstDatumTekst} geen ruimte beschikbaar.";
+            if (!string.IsNullOrEmpty(beschikbaarheid?.Reden))
+                inhoud += $" {beschikbaarheid.Reden}";
+        }
+        else if (beschikbaarheid.BeschikbareVensters?.Count > 0)
+        {
+            var vensters = FilterKunstgrasVensters(beschikbaarheid.BeschikbareVensters);
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
+                   + $"Op {gewenstDatumTekst} zijn de volgende mogelijkheden:\n";
+            foreach (var v in vensters)
+            {
+                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}\n";
+            }
+        }
+        else if (beschikbaarheid.Toewijzing != null)
+        {
+            var t = beschikbaarheid.Toewijzing;
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
+                   + $"Op {gewenstDatumTekst} is {t.VeldNaam} beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
+        }
+        else
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat momenteel gepland op {FormatDatum(wedstrijd.Datum)} om {wedstrijd.AanvangsTijd} op {wedstrijd.VeldNaam}.\n\n"
+                   + $"Op {gewenstDatumTekst} is er ruimte beschikbaar.";
+        }
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
     // ── Bevestiging ──
 
     public static (string onderwerp, string body) BouwBevestigingAntwoord(
