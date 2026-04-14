@@ -114,8 +114,8 @@ public class EmailProcessorFunction
         var classificatie = await aiService.ClassificeerEmailAsync(
             email.Body, email.Onderwerp, email.Afzender);
 
-        // Valideer dag-datum combinatie (bijv. "zaterdag" + woensdag-datum → corrigeer)
-        ValideerDagDatum(classificatie, email.Body);
+        // Valideer dag-datum: extraheer uit onderwerp (prioriteit) en body, corrigeer AI-fouten
+        ValideerDagDatum(classificatie, email.Body, email.Onderwerp);
 
         var classificatieJson = JsonConvert.SerializeObject(classificatie);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
@@ -194,49 +194,96 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
-    /// Valideert dag-datum combinatie. Als de email expliciet een dag noemt
-    /// ("zaterdag") maar de AI een datum retourneert die niet op die dag valt,
-    /// corrigeer naar de eerstvolgende/vorige matching datum.
+    /// Extraheert datums uit onderwerp en body, en corrigeert de AI-classificatie.
+    /// Prioriteit: expliciete datum in onderwerp > expliciete datum in body > AI datum + dag-validatie.
     /// </summary>
-    private static void ValideerDagDatum(EmailClassificatie classificatie, string emailBody)
+    private static void ValideerDagDatum(EmailClassificatie classificatie, string emailBody, string onderwerp)
     {
+        // Stap 1: Zoek expliciete datum in onderwerp (bijv. "18-4-2026", "18-04-2026", "9 mei")
+        var onderwerpDatum = ExtractExpliciteDatum(onderwerp);
+        if (onderwerpDatum.HasValue)
+        {
+            classificatie.Datum = onderwerpDatum.Value.ToString("yyyy-MM-dd");
+            return;
+        }
+
+        // Stap 2: Zoek expliciete datum in body (eerste dd-mm-yyyy patroon)
+        var bodyDatum = ExtractExpliciteDatum(emailBody);
+        if (bodyDatum.HasValue && string.IsNullOrEmpty(classificatie.Datum))
+        {
+            classificatie.Datum = bodyDatum.Value.ToString("yyyy-MM-dd");
+            return;
+        }
+
+        // Stap 3: Dag-naam validatie als fallback
         if (string.IsNullOrEmpty(classificatie.Datum)) return;
         if (!DateOnly.TryParse(classificatie.Datum, out var datum)) return;
 
-        var dagNamen = new Dictionary<string, DayOfWeek>(StringComparer.OrdinalIgnoreCase)
+        var tekst = (onderwerp + " " + emailBody).ToLowerInvariant();
+        var dagNamen = new (string naam, DayOfWeek dag)[]
         {
-            ["maandag"] = DayOfWeek.Monday, ["dinsdag"] = DayOfWeek.Tuesday,
-            ["woensdag"] = DayOfWeek.Wednesday, ["donderdag"] = DayOfWeek.Thursday,
-            ["vrijdag"] = DayOfWeek.Friday, ["zaterdag"] = DayOfWeek.Saturday,
-            ["zondag"] = DayOfWeek.Sunday
+            ("maandag", DayOfWeek.Monday), ("dinsdag", DayOfWeek.Tuesday),
+            ("woensdag", DayOfWeek.Wednesday), ("donderdag", DayOfWeek.Thursday),
+            ("vrijdag", DayOfWeek.Friday), ("zaterdag", DayOfWeek.Saturday),
+            ("zondag", DayOfWeek.Sunday)
         };
 
-        var bodyLower = emailBody.ToLowerInvariant();
         foreach (var (naam, dag) in dagNamen)
         {
-            if (!bodyLower.Contains(naam)) continue;
+            if (!tekst.Contains(naam)) continue;
+            if (datum.DayOfWeek == dag) return;
 
-            // Email noemt deze dag — klopt de datum?
-            if (datum.DayOfWeek == dag) return; // Klopt
-
-            // Zoek de eerstvolgende matching datum (max 7 dagen vooruit/achteruit)
             for (int offset = 1; offset <= 7; offset++)
             {
-                var vooruit = datum.AddDays(offset);
-                if (vooruit.DayOfWeek == dag)
-                {
-                    classificatie.Datum = vooruit.ToString("yyyy-MM-dd");
-                    return;
-                }
-                var achteruit = datum.AddDays(-offset);
-                if (achteruit.DayOfWeek == dag)
-                {
-                    classificatie.Datum = achteruit.ToString("yyyy-MM-dd");
-                    return;
-                }
+                if (datum.AddDays(-offset).DayOfWeek == dag)
+                    { classificatie.Datum = datum.AddDays(-offset).ToString("yyyy-MM-dd"); return; }
+                if (datum.AddDays(offset).DayOfWeek == dag)
+                    { classificatie.Datum = datum.AddDays(offset).ToString("yyyy-MM-dd"); return; }
             }
             return;
         }
+    }
+
+    /// <summary>
+    /// Extraheert een expliciete datum uit tekst. Herkent patronen als "18-4-2026", "18-04-2026", "9 mei 2026", "9 mei".
+    /// </summary>
+    private static DateOnly? ExtractExpliciteDatum(string tekst)
+    {
+        if (string.IsNullOrWhiteSpace(tekst)) return null;
+
+        // Patroon: dd-mm-yyyy of d-m-yyyy
+        var numericMatch = System.Text.RegularExpressions.Regex.Match(tekst, @"(\d{1,2})-(\d{1,2})-(\d{4})");
+        if (numericMatch.Success)
+        {
+            if (int.TryParse(numericMatch.Groups[1].Value, out var dag) &&
+                int.TryParse(numericMatch.Groups[2].Value, out var maand) &&
+                int.TryParse(numericMatch.Groups[3].Value, out var jaar))
+            {
+                try { return new DateOnly(jaar, maand, dag); } catch { }
+            }
+        }
+
+        // Patroon: "d maand" of "d maand yyyy" (bijv. "9 mei", "25 april 2026")
+        var maandNamen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["januari"] = 1, ["februari"] = 2, ["maart"] = 3, ["april"] = 4,
+            ["mei"] = 5, ["juni"] = 6, ["juli"] = 7, ["augustus"] = 8,
+            ["september"] = 9, ["oktober"] = 10, ["november"] = 11, ["december"] = 12
+        };
+
+        var tekstLower = tekst.ToLowerInvariant();
+        foreach (var (naam, maandNr) in maandNamen)
+        {
+            var maandMatch = System.Text.RegularExpressions.Regex.Match(tekstLower, $@"(\d{{1,2}})\s+{naam}(?:\s+(\d{{4}}))?");
+            if (maandMatch.Success && int.TryParse(maandMatch.Groups[1].Value, out var d))
+            {
+                var j = maandMatch.Groups[2].Success && int.TryParse(maandMatch.Groups[2].Value, out var jj)
+                    ? jj : DateTime.Now.Year;
+                try { return new DateOnly(j, maandNr, d); } catch { }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
