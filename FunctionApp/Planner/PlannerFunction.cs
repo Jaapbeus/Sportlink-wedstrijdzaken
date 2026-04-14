@@ -271,6 +271,14 @@ namespace SportlinkFunction.Planner
             }
         }
 
+        [Function("Health")]
+        public static IActionResult Health(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "health")] HttpRequest req,
+            FunctionContext context)
+        {
+            return new OkObjectResult(new { status = "ok", timestamp = DateTime.UtcNow });
+        }
+
         [Function("HerplanBevestig")]
         public static async Task<IActionResult> HerplanBevestig(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
