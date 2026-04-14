@@ -43,21 +43,25 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Wacht op Function App opstart
-        run: sleep 30
-
-      - name: "Test: planner endpoint bereikbaar (function key → 200)"
+      - name: "Smoke test: planner endpoint bereikbaar (function key → 200)"
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            "https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}')
-          echo "check-availability: $STATUS"
-          if [ "$STATUS" != "200" ]; then echo "FOUT: verwacht 200"; exit 1; fi
+          URL="https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          MAX=8          # max pogingen
+          WAIT=30        # seconden tussen pogingen (totaal max ~4 min)
+          for i in $(seq 1 $MAX); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST "$URL" \
+              -H "Content-Type: application/json" \
+              -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}')
+            echo "Poging $i/$MAX — check-availability: $STATUS"
+            if [ "$STATUS" = "200" ]; then exit 0; fi
+            if [ "$i" -lt "$MAX" ]; then echo "Wacht ${WAIT}s (cold start / database wake-up)..."; sleep $WAIT; fi
+          done
+          echo "FOUT: check-availability gaf $STATUS na $MAX pogingen (verwacht 200)"
+          exit 1
 
-      - name: "Test: admin endpoint beveiligd (function key → 401)"
+      - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
             "https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}")
           echo "sync-matches: $STATUS"
-          if [ "$STATUS" != "401" ]; then echo "FOUT: verwacht 401"; exit 1; fi
+          if [ "$STATUS" != "401" ]; then echo "FOUT: verwacht 401, kreeg $STATUS"; exit 1; fi
