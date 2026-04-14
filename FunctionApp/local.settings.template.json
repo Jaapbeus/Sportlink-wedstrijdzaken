@@ -13,6 +13,6 @@
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
-    "EMAIL_POLL_SCHEDULE": "0 */5 * * * *"
+    "EMAIL_POLL_SCHEDULE": "0 0 * * * *"
   }
 }
