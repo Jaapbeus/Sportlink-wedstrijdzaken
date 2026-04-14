@@ -20,8 +20,9 @@ public enum NamensWie
 public class EmailClassificatie
 {
     public VerzoekType Type { get; set; }
-    public string? Datum { get; set; }           // yyyy-MM-dd
+    public string? Datum { get; set; }           // yyyy-MM-dd — huidige wedstrijddatum (voor lookup)
     public string? AanvangsTijd { get; set; }    // HH:mm
+    public string? GewensteDatum { get; set; }   // yyyy-MM-dd — gewenste nieuwe datum (bij herplan)
     public string? TeamNaam { get; set; }
     public string? LeeftijdsCategorie { get; set; }
     public string? Tegenstander { get; set; }
