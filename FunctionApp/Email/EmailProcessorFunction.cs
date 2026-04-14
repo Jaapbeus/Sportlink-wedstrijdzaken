@@ -25,7 +25,7 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 2. Services initialiseren
+        // 2. Graph client initialiseren (geen database nodig)
         var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
         if (graphClient == null)
         {
@@ -33,20 +33,31 @@ public class EmailProcessorFunction
             return;
         }
 
-        await SystemUtilities.WaitForDatabaseAsync(log);
-        await SystemUtilities.AppSettings.LoadSettingsAsync(log);
-
         var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
         var graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
-        var aiService = new EmailAiService(loggerFactory.CreateLogger<EmailAiService>());
 
-        // 3. Ongelezen emails ophalen
+        // 3. Ongelezen emails ophalen (Graph API, wekt database NIET)
         var emails = await graphService.GetUnreadEmailsAsync();
         if (emails.Count == 0)
         {
             log.LogInformation("Geen ongelezen emails");
             return;
         }
+
+        // 4. Pas nu database wakker maken (er zijn emails te verwerken)
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+            await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+        }
+        catch (Exception dbEx)
+        {
+            log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
+            await StuurDatabaseNoodmailAsync(graphService, emails.Count, dbEx.Message, log);
+            return;
+        }
+
+        var aiService = new EmailAiService(loggerFactory.CreateLogger<EmailAiService>());
 
         int verwerkt = 0, fouten = 0;
 
@@ -319,6 +330,37 @@ public class EmailProcessorFunction
 
             default:
                 return JsonConvert.SerializeObject(new { status = "Niet verwerkt" });
+        }
+    }
+
+    /// <summary>
+    /// Stuurt een noodmail als de database niet beschikbaar is.
+    /// Emails blijven ongelezen in de inbox en worden bij de volgende poll opnieuw opgepikt.
+    /// </summary>
+    private static async Task StuurDatabaseNoodmailAsync(
+        EmailGraphService graphService, int aantalEmails, string foutmelding, ILogger log)
+    {
+        var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
+
+        var body = $"URGENT: De database is niet bereikbaar.\n\n"
+                 + $"Tijdstip: {nlTijd:dd-MM-yyyy HH:mm}\n"
+                 + $"Foutmelding: {foutmelding}\n"
+                 + $"Onverwerkte emails: {aantalEmails}\n\n"
+                 + "De emails blijven ongelezen in de inbox en worden automatisch verwerkt zodra de database weer beschikbaar is.\n\n"
+                 + "Mogelijke oorzaak: Azure SQL free tier maandlimiet bereikt.\n"
+                 + "Actie: Azure Portal → SQL database → Compute and Storage → \"Continue using database with additional charges\"";
+
+        try
+        {
+            await graphService.SendReplyAsync(mailbox,
+                "URGENT: Database niet bereikbaar — email-verwerking gestopt", body, null);
+            log.LogWarning("Noodmail verstuurd naar {Mailbox}", mailbox);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Kon noodmail niet versturen");
         }
     }
 
