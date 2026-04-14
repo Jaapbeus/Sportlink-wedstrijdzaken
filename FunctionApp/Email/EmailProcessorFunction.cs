@@ -10,6 +10,13 @@ namespace SportlinkFunction.Email;
 
 public class EmailProcessorFunction
 {
+    /// <summary>
+    /// Statische vlag: true zodra een noodmail is verstuurd wegens database-uitval.
+    /// Voorkomt herhaalde noodmails — processor pauzeert tot de database weer bereikbaar is.
+    /// Reset automatisch bij host-restart of zodra de database weer beschikbaar is.
+    /// </summary>
+    private static bool _databaseNoodmailVerstuurd;
+
     [Function("ProcessIncomingEmails")]
     public async Task Run(
         [TimerTrigger("%EMAIL_POLL_SCHEDULE%")] TimerInfo timer,
@@ -23,6 +30,22 @@ public class EmailProcessorFunction
         {
             log.LogInformation("Email processor uitgeschakeld");
             return;
+        }
+
+        // 1b. Gepauzeerd na database-noodmail — probeer stille reconnect
+        if (_databaseNoodmailVerstuurd)
+        {
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+                _databaseNoodmailVerstuurd = false;
+                log.LogInformation("Database weer bereikbaar — email processor hervat");
+            }
+            catch
+            {
+                log.LogWarning("Email processor gepauzeerd — database nog niet bereikbaar (noodmail al verstuurd)");
+                return;
+            }
         }
 
         // 2. Graph client initialiseren (geen database nodig)
@@ -436,6 +459,8 @@ public class EmailProcessorFunction
                  + $"Tijdstip: {nlTijd:dd-MM-yyyy HH:mm}\n"
                  + $"Foutmelding: {foutmelding}\n"
                  + $"Onverwerkte emails: {aantalEmails}\n\n"
+                 + "De email-processor is automatisch GEPAUZEERD. Er worden geen herhaalde meldingen verstuurd.\n"
+                 + "De processor hervat automatisch zodra de database weer bereikbaar is.\n\n"
                  + "De emails blijven ongelezen in de inbox en worden automatisch verwerkt zodra de database weer beschikbaar is.\n\n"
                  + "Mogelijke oorzaak: Azure SQL free tier maandlimiet bereikt.\n"
                  + "Actie: Azure Portal → SQL database → Compute and Storage → \"Continue using database with additional charges\"";
@@ -443,8 +468,9 @@ public class EmailProcessorFunction
         try
         {
             await graphService.SendReplyAsync(mailbox,
-                "URGENT: Database niet bereikbaar — email-verwerking gestopt", body, null);
-            log.LogWarning("Noodmail verstuurd naar {Mailbox}", mailbox);
+                "URGENT: Database niet bereikbaar — email-processor gepauzeerd", body, null);
+            _databaseNoodmailVerstuurd = true;
+            log.LogWarning("Noodmail verstuurd naar {Mailbox} — processor gepauzeerd tot database weer bereikbaar", mailbox);
         }
         catch (Exception ex)
         {
