@@ -192,6 +192,20 @@ public class EmailProcessorFunction
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
+                // Check of het een multi-datum response is
+                var jobj = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
+                if (jobj["multiDatum"]?.ToObject<bool>() == true)
+                {
+                    var resultaten = new List<(string datum, CheckAvailabilityResponse response)>();
+                    foreach (var item in jobj["resultaten"]!)
+                    {
+                        var datum = item["datum"]?.ToString() ?? "";
+                        var resp = item["response"]?.ToObject<CheckAvailabilityResponse>() ?? new CheckAvailabilityResponse();
+                        resultaten.Add((datum, resp));
+                    }
+                    return EmailResponseGenerator.BouwMultiDatumBeschikbaarheidAntwoord(
+                        resultaten, classificatie, email);
+                }
                 var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 return EmailResponseGenerator.BouwBeschikbaarheidAntwoord(
                     checkResponse ?? new CheckAvailabilityResponse(), classificatie, email);
@@ -386,6 +400,26 @@ public class EmailProcessorFunction
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
+                var alleDatums = classificatie.GetAlleDatums();
+                if (alleDatums.Count > 1)
+                {
+                    // Multi-datum: check beschikbaarheid per datum
+                    var multiResults = new List<object>();
+                    foreach (var datum in alleDatums)
+                    {
+                        var req = new CheckAvailabilityRequest
+                        {
+                            Datum = datum,
+                            AanvangsTijd = classificatie.AanvangsTijd,
+                            LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
+                            TeamNaam = classificatie.TeamNaam,
+                            Tegenstander = classificatie.Tegenstander
+                        };
+                        var resp = await PlannerService.CheckAvailabilityAsync(req, log);
+                        multiResults.Add(new { datum, response = resp });
+                    }
+                    return JsonConvert.SerializeObject(new { multiDatum = true, resultaten = multiResults });
+                }
                 var checkRequest = new CheckAvailabilityRequest
                 {
                     Datum = classificatie.Datum ?? "",

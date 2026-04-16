@@ -16,6 +16,10 @@ public static class EmailResponseGenerator
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        var vensters = response.BeschikbareVensters != null
+            ? FilterKunstgrasVensters(response.BeschikbareVensters)
+            : new List<BeschikbaarVenster>();
+        var isDiverseMogelijkheden = vensters.Count >= 4;
         var datumTekst = FormatDatum(classificatie.Datum);
 
         string inhoud;
@@ -27,13 +31,31 @@ public static class EmailResponseGenerator
                    + $"Op {datumTekst} is {t.VeldNaam} beschikbaar om {t.AanvangsTijd}. "
                    + $"De wedstrijd eindigt om {t.EindTijd}.";
 
+            if (isDiverseMogelijkheden)
+                inhoud += " Er zijn op deze dag nog diverse andere mogelijkheden.";
+
             if (response.Waarschuwingen.Count > 0)
                 inhoud += "\n\nLet op: " + string.Join(" ", response.Waarschuwingen);
         }
+        else if (!response.Beschikbaar && vensters.Count > 0 && !string.IsNullOrEmpty(classificatie.AanvangsTijd))
+        {
+            // Voorkeurstijd niet beschikbaar — toon vensters als alternatieven
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Op {datumTekst} om {classificatie.AanvangsTijd} is helaas geen ruimte. Beschikbare mogelijkheden:\n";
+            foreach (var v in vensters)
+            {
+                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
+                if (!string.IsNullOrEmpty(v.Opmerking))
+                    inhoud += $" ({v.Opmerking})";
+                inhoud += "\n";
+            }
+            inhoud += "\nGeef een voorkeurstijd door, dan plannen we het in.";
+        }
         else if (response.BeschikbareVensters?.Count > 0)
         {
-            // Open vraag — toon beschikbare vensters
-            var vensters = FilterKunstgrasVensters(response.BeschikbareVensters);
+            // Open vraag zonder voorkeurstijd — toon beschikbare vensters
+            vensters = FilterKunstgrasVensters(response.BeschikbareVensters);
             inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"Op {datumTekst} zijn de volgende mogelijkheden:\n";
             foreach (var v in vensters)
@@ -74,6 +96,92 @@ public static class EmailResponseGenerator
         }
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
+    // ── Beschikbaarheid (meerdere datums) ──
+
+    public static (string onderwerp, string body) BouwMultiDatumBeschikbaarheidAntwoord(
+        List<(string datum, CheckAvailabilityResponse response)> resultaten,
+        EmailClassificatie classificatie,
+        InkomendEmail email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+
+        var inhoud = $"{aanhef} {voornaam},\n\n";
+
+        foreach (var (datum, response) in resultaten)
+        {
+            inhoud += BouwDatumSectie(datum, response, classificatie) + "\n";
+        }
+
+        inhoud += "Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.";
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
+    /// <summary>
+    /// Bouwt de sectie voor één datum in een (multi-datum) beschikbaarheidantwoord.
+    /// Toont vensters (van-tot) i.p.v. vaste starttijden, en "diverse mogelijkheden" bij een ruime planning.
+    /// </summary>
+    private static string BouwDatumSectie(
+        string datum, CheckAvailabilityResponse response, EmailClassificatie classificatie)
+    {
+        var datumTekst = FormatDatum(datum);
+        var vensters = response.BeschikbareVensters != null
+            ? FilterKunstgrasVensters(response.BeschikbareVensters)
+            : new List<BeschikbaarVenster>();
+        var isDiverseMogelijkheden = vensters.Count >= 4;
+
+        if (response.Beschikbaar && response.Toewijzing != null)
+        {
+            var t = response.Toewijzing;
+            var sectie = $"**{datumTekst}:** {t.VeldNaam} is beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
+            if (response.Waarschuwingen.Count > 0)
+                sectie += " Let op: " + string.Join(" ", response.Waarschuwingen);
+            if (isDiverseMogelijkheden)
+                sectie += " Er zijn op deze dag nog diverse andere mogelijkheden.";
+            return sectie + "\n";
+        }
+
+        if (!response.Beschikbaar && vensters.Count > 0)
+        {
+            // Voorkeurstijd niet beschikbaar — toon vensters als alternatieven
+            var sectie = $"**{datumTekst}:**";
+            if (!string.IsNullOrEmpty(classificatie.AanvangsTijd))
+                sectie += $" Om {classificatie.AanvangsTijd}";
+            sectie += " is helaas geen ruimte. Beschikbare mogelijkheden:\n";
+            foreach (var v in vensters)
+            {
+                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+                sectie += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
+                if (!string.IsNullOrEmpty(v.Opmerking))
+                    sectie += $" ({v.Opmerking})";
+                sectie += "\n";
+            }
+            return sectie;
+        }
+
+        if (!response.Beschikbaar && response.Alternatieven.Count > 0)
+        {
+            var alternatieven = FilterAlternatieven(response.Alternatieven);
+            var sectie = $"**{datumTekst}:**";
+            if (!string.IsNullOrEmpty(classificatie.AanvangsTijd))
+                sectie += $" Om {classificatie.AanvangsTijd}";
+            sectie += " is helaas geen ruimte.";
+            if (alternatieven.Count > 0)
+            {
+                sectie += " Alternatieven:\n";
+                foreach (var alt in alternatieven.Take(3))
+                    sectie += $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n";
+            }
+            return sectie;
+        }
+
+        var fallback = $"**{datumTekst}:** Helaas geen veld beschikbaar.";
+        if (!string.IsNullOrEmpty(response.Reden))
+            fallback += $" {response.Reden}";
+        return fallback + "\n";
     }
 
     // ── Herplannen ──
@@ -283,14 +391,32 @@ public static class EmailResponseGenerator
     }
 
     /// <summary>
-    /// Filter veld 5 uit beschikbare vensters als er 3+ kunstgrasvelden beschikbaar zijn.
+    /// Filter veld 5 (grasveld) uit beschikbare vensters als er kunstgrasalternatieven
+    /// in dezelfde tijdperiode zijn. Houdt veld 5 vensters die uniek zijn qua tijdsblok.
     /// </summary>
     private static List<BeschikbaarVenster> FilterKunstgrasVensters(List<BeschikbaarVenster> vensters)
     {
         var kunstgrasVensters = vensters.Where(v => v.VeldNummer >= 1 && v.VeldNummer <= 4).ToList();
-        if (kunstgrasVensters.Count >= 3)
-            return kunstgrasVensters;
-        return vensters;
+        if (kunstgrasVensters.Count < 3)
+            return vensters;
+
+        // Houd veld 5 vensters die GEEN overlappend kunstgras-alternatief hebben
+        var veld5Uniek = vensters.Where(v => v.VeldNummer == 5).Where(v5 =>
+        {
+            var v5Van = TimeOnly.TryParse(v5.Van, out var van) ? van : TimeOnly.MinValue;
+            var v5Tot = TimeOnly.TryParse(v5.Tot, out var tot) ? tot : TimeOnly.MaxValue;
+            // Geen enkel kunstgrasvenster overlapt met dit veld 5 venster?
+            return !kunstgrasVensters.Any(kg =>
+            {
+                var kgVan = TimeOnly.TryParse(kg.Van, out var kv) ? kv : TimeOnly.MinValue;
+                var kgTot = TimeOnly.TryParse(kg.Tot, out var kt) ? kt : TimeOnly.MaxValue;
+                return kgVan < v5Tot && kgTot > v5Van;
+            });
+        }).ToList();
+
+        return kunstgrasVensters.Concat(veld5Uniek)
+            .OrderBy(v => TimeOnly.TryParse(v.Van, out var t) ? t : TimeOnly.MinValue)
+            .ToList();
     }
 
     /// <summary>
