@@ -20,14 +20,27 @@ public enum NamensWie
 public class EmailClassificatie
 {
     public VerzoekType Type { get; set; }
-    public string? Datum { get; set; }           // yyyy-MM-dd — huidige wedstrijddatum (voor lookup)
+    public string? Datum { get; set; }           // yyyy-MM-dd — eerste/primaire datum
     public string? AanvangsTijd { get; set; }    // HH:mm
     public string? GewensteDatum { get; set; }   // yyyy-MM-dd — gewenste nieuwe datum (bij herplan)
+    public List<string>? Datums { get; set; }    // Meerdere datums bij multi-datum verzoek
     public string? TeamNaam { get; set; }
     public string? LeeftijdsCategorie { get; set; }
     public string? Tegenstander { get; set; }
     public string Samenvatting { get; set; } = "";
     public NamensWie NamensWie { get; set; }
+
+    /// <summary>
+    /// Retourneert alle unieke datums: Datums als die er zijn, anders alleen Datum.
+    /// </summary>
+    public List<string> GetAlleDatums()
+    {
+        if (Datums != null && Datums.Count > 0)
+            return Datums.Distinct().ToList();
+        if (!string.IsNullOrEmpty(Datum))
+            return new List<string> { Datum };
+        return new List<string>();
+    }
 }
 
 // Inkomende email data
