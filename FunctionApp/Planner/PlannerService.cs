@@ -169,6 +169,14 @@ namespace SportlinkFunction.Planner
                 }
             }
 
+            // Vensters altijd berekenen (voor contextinformatie in email responses)
+            var venstersResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
+            if (duurMinuten > 0 && venstersResponse.BeschikbareVensters != null)
+            {
+                venstersResponse.BeschikbareVensters = venstersResponse.BeschikbareVensters
+                    .Where(w => w.MaxDuurMinuten >= duurMinuten).ToList();
+            }
+
             // Stap 7: Eerst voorkeurstijd proberen (directe controle, voor volledige scan)
             if (preferredTime.HasValue)
             {
@@ -178,6 +186,7 @@ namespace SportlinkFunction.Planner
                 {
                     response.Beschikbaar = true;
                     response.Toewijzing = ToSlotToewijzing(date, exactMatch, duurMinuten, velden);
+                    response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                     AddSunsetWarning(response, exactMatch, sunset, velden);
                     AddNabijeWedstrijdWaarschuwing(response, exactMatch, duurMinuten, occupations, velden);
                     AddWeekdayWarning(response, date);
@@ -202,10 +211,11 @@ namespace SportlinkFunction.Planner
 
                 if (preferredTime.HasValue)
                 {
-                    // Voorkeurstijd niet exact beschikbaar — beste als alternatief
+                    // Voorkeurstijd niet exact beschikbaar — toon vensters als alternatief
                     response.Reden = $"Gewenste tijd {preferredTime.Value:HH:mm} is niet beschikbaar.";
                     response.Alternatieven = alternatives.Prepend(best)
                         .Select(c => ToSlotToewijzing(date, c, duurMinuten, velden)).Take(3).ToList();
+                    response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                     AddWeekdayWarning(response, date);
                 }
                 else
@@ -215,6 +225,7 @@ namespace SportlinkFunction.Planner
                     AddNabijeWedstrijdWaarschuwing(response, best, duurMinuten, occupations, velden);
                     response.Alternatieven = alternatives
                         .Select(c => ToSlotToewijzing(date, c, duurMinuten, velden)).ToList();
+                    response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                     AddSunsetWarning(response, best, sunset, velden);
                     AddWeekdayWarning(response, date);
                 }
