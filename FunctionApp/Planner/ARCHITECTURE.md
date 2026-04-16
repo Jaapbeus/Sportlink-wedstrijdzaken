@@ -336,17 +336,146 @@ When an opponent requests to reschedule an existing competition match:
 
 ---
 
-## Toekomst: Berichtenintegratie
+## Email-integratie
 
-De API is ontworpen als een zelfstandig REST-endpoint zodat elke integratielaag het kan aanroepen. Twee opties zijn gedocumenteerd:
+Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest verzoeken, interpreteert ze met AI, roept PlannerService aan, en stuurt een antwoord.
 
-### Optie A: Power Automate
-Trigger bij email → AI Builder interpreteert tekst → HTTP POST naar API → automatisch antwoord. Low-code, eenvoudig uit te breiden naar Teams/WhatsApp.
+### Gekozen aanpak
 
-### Optie B: Azure Function + Microsoft Graph API
-Eigen functie pollt/ontvangt emails via Graph API → LLM extraheert parameters → roept PlannerService direct aan → stuurt antwoord via Graph. Volledige controle, zelfde codebase.
+| Component | Keuze | Reden |
+|-----------|-------|-------|
+| Email lezen/sturen | **Microsoft Graph API + Application Permissions** | Gratis (onderdeel M365), volledig unattended via client credentials flow |
+| AI/LLM | **OpenAI GPT-4o-mini** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
+| Trigger | **Timer (elke 5 min polling)** | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
+| Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
-**AI-keuze uitgesteld** — elke LLM die Nederlandse natuurlijke taal kan omzetten naar het API-request JSON formaat werkt. Het API-contract is de stabiele interface.
+**Verworpen alternatieven:**
+- Power Automate: gratis tier te beperkt (600 runs/maand vs. ~8.640 polls/maand)
+- Graph webhooks: subscription verloopt elke 3 dagen, complexe renewal + cold start problemen
+- Azure OpenAI: langere setup door goedkeuringsproces, zelfde model/prijs
+- Key Vault: niet gratis ($0.03/10K operaties), overkill voor 2 secrets in verenigingsproject
+
+### Architectuur
+
+```
+Timer (elke 5 min via EMAIL_POLL_SCHEDULE)
+       |
+       v
+EmailProcessorFunction
+       |
+  +----+----+
+  |         |
+  v         v
+Graph API   OpenAI GPT-4o-mini
+(inbox)     (classificeer email)
+  |                |
+  v                v
+Ongelezen     Gestructureerd verzoek (JSON)
+emails             |
+                   v
+            PlannerService (bestaand, directe C# call)
+                   |
+                   v
+            OpenAI (genereer antwoord)
+                   |
+                   v
+            Graph API (stuur email)
+            Fase 1: naar review-mailbox
+            Fase 2: naar afzender
+```
+
+### Verwerkingsflow per email
+
+1. **Poll inbox** — `GET /users/{mailbox}/mailFolders/inbox/messages?$filter=isRead eq false`
+2. **Deduplicatie** — check MessageId tegen `planner.EmailVerwerking` tabel
+3. **Classificeer** — GPT-4o-mini structured output → type verzoek + parameters
+4. **PlannerService aanroepen** — directe C# method call (geen HTTP roundtrip)
+5. **Antwoord genereren** — GPT-4o-mini met communicatierichtlijnen als systeemprompt
+6. **Verstuur** — Graph API sendMail (Fase 1: review-mailbox, Fase 2: afzender)
+7. **Markeer als gelezen** — Graph API PATCH isRead=true
+
+### Bestanden (in `FunctionApp/Email/`)
+
+| Bestand | Verantwoordelijkheid |
+|---------|---------------------|
+| `EmailProcessorFunction.cs` | Timer trigger + orchestratie |
+| `EmailGraphService.cs` | Graph API wrapper (lezen, sturen, markeren) |
+| `EmailAiService.cs` | OpenAI classificatie + antwoord generatie |
+| `EmailModels.cs` | DTO's en enums |
+| `EmailResponseGenerator.cs` | Template-gebaseerde antwoord-opbouw |
+
+### AI classificatie (structured output)
+
+```json
+{
+  "type": "beschikbaarheid_check | herplan_verzoek | bevestiging | buiten_scope",
+  "datum": "yyyy-MM-dd",
+  "aanvangsTijd": "HH:mm",
+  "teamNaam": "string",
+  "leeftijdsCategorie": "string",
+  "tegenstander": "string",
+  "samenvatting": "korte samenvatting van het verzoek",
+  "namensWie": "afzender | tegenstander | onbekend"
+}
+```
+
+### Database: planner.EmailVerwerking
+
+Audit trail en conversatie-tracking voor alle verwerkte emails.
+
+| Kolom | Type | Beschrijving |
+|-------|------|-------------|
+| Id | INT IDENTITY | PK |
+| MessageId | NVARCHAR(500) | Graph message ID (deduplicatie) |
+| ConversationId | NVARCHAR(500) | Voor threading |
+| Afzender | NVARCHAR(200) | Email afzender |
+| Onderwerp | NVARCHAR(500) | Email onderwerp |
+| OntvangstDatum | DATETIME2 | Ontvangstmoment |
+| EmailBody | NVARCHAR(MAX) | Platte tekst van email |
+| VerzoekType | NVARCHAR(50) | Classificatie door AI |
+| GeextraheerdeData | NVARCHAR(MAX) | JSON van AI extractie |
+| PlannerResponse | NVARCHAR(MAX) | JSON response van PlannerService |
+| AntwoordEmail | NVARCHAR(MAX) | Gegenereerde antwoordtekst |
+| VerstuurdNaar | NVARCHAR(200) | Ontvanger antwoord |
+| Status | NVARCHAR(30) | Ontvangen → Geclassificeerd → Verwerkt → Antwoord_Verstuurd / Fout / Buiten_Scope |
+| FoutMelding | NVARCHAR(1000) | Bij status Fout |
+
+### Configuratie (Azure Function Application Settings)
+
+| Setting | Beschrijving |
+|---------|-------------|
+| `GraphTenantId` | Azure AD tenant ID |
+| `GraphClientId` | Application (client) ID |
+| `GraphClientSecret` | Client secret (encrypted at rest in App Settings) |
+| `GraphMailbox` | Coordinator mailbox adres |
+| `OpenAiApiKey` | OpenAI API key (encrypted at rest in App Settings) |
+| `EmailProcessorEnabled` | Kill-switch (`true`/`false`) |
+| `EmailReviewMode` | `true` = antwoorden naar review-mailbox (Fase 1) |
+| `EmailReviewRecipient` | Review-mailbox adres (Fase 1) |
+| `EMAIL_POLL_SCHEDULE` | CRON expressie (default `0 */5 * * * *`) |
+
+### Kostenanalyse (maandelijks)
+
+| Component | Kosten |
+|-----------|--------|
+| Microsoft Graph API | EUR 0 (onderdeel M365) |
+| Azure Functions | EUR 0 (binnen free tier) |
+| OpenAI GPT-4o-mini | EUR ~0.03 (100 emails/maand) |
+| **Totaal** | **EUR ~0.03/maand** |
+
+### Azure AD / Entra ID vereisten (eenmalige configuratie)
+
+1. **App Registration** `VRC-Veldplanner-EmailProcessor` (daemon, geen redirect URI)
+2. **API Permissions** (Application type): `Mail.Read`, `Mail.ReadWrite`, `Mail.Send` + admin consent
+3. **Client Secret** aanmaken (24 maanden geldigheid)
+4. **Application Access Policy** — beperk tot coordinator-mailbox via mail-enabled security group
+
+### Uitrolfasen
+
+| Fase | Beschrijving | Email-bestemming |
+|------|-------------|-----------------|
+| Fase 1 | Review mode — controle door coördinator | Review-mailbox |
+| Fase 2 | Productie — direct antwoord | Originele afzender |
 
 ### Thuis/uit-herkenning bij herplanverzoeken
 

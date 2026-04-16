@@ -76,6 +76,73 @@ public static class EmailResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
+    // ── Beschikbaarheid (meerdere datums) ──
+
+    public static (string onderwerp, string body) BouwMultiDatumBeschikbaarheidAntwoord(
+        List<(string datum, CheckAvailabilityResponse response)> resultaten,
+        EmailClassificatie classificatie,
+        InkomendEmail email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+
+        var inhoud = $"{aanhef} {voornaam},\n\n";
+
+        foreach (var (datum, response) in resultaten)
+        {
+            var datumTekst = FormatDatum(datum);
+
+            if (response.Beschikbaar && response.Toewijzing != null)
+            {
+                var t = response.Toewijzing;
+                inhoud += $"**{datumTekst}:** {t.VeldNaam} is beschikbaar om {t.AanvangsTijd} (eindigt {t.EindTijd}).";
+                if (response.Waarschuwingen.Count > 0)
+                    inhoud += " Let op: " + string.Join(" ", response.Waarschuwingen);
+                inhoud += "\n\n";
+            }
+            else if (response.BeschikbareVensters?.Count > 0)
+            {
+                var vensters = FilterKunstgrasVensters(response.BeschikbareVensters);
+                inhoud += $"**{datumTekst}:** De volgende mogelijkheden:\n";
+                foreach (var v in vensters)
+                {
+                    var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+                    inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
+                    if (!string.IsNullOrEmpty(v.Opmerking))
+                        inhoud += $" ({v.Opmerking})";
+                    inhoud += "\n";
+                }
+                inhoud += "\n";
+            }
+            else if (!response.Beschikbaar && response.Alternatieven.Count > 0)
+            {
+                var alternatieven = FilterAlternatieven(response.Alternatieven);
+                inhoud += $"**{datumTekst}:**";
+                if (!string.IsNullOrEmpty(classificatie.AanvangsTijd))
+                    inhoud += $" Om {classificatie.AanvangsTijd}";
+                inhoud += " is helaas geen ruimte.";
+                if (alternatieven.Count > 0)
+                {
+                    inhoud += " Alternatieven:\n";
+                    foreach (var alt in alternatieven.Take(3))
+                        inhoud += $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n";
+                }
+                inhoud += "\n";
+            }
+            else
+            {
+                inhoud += $"**{datumTekst}:** Helaas geen veld beschikbaar.";
+                if (!string.IsNullOrEmpty(response.Reden))
+                    inhoud += $" {response.Reden}";
+                inhoud += "\n\n";
+            }
+        }
+
+        inhoud += "Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.";
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
     // ── Herplannen ──
 
     public static (string onderwerp, string body) BouwHerplanAntwoord(
