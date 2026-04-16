@@ -391,14 +391,32 @@ public static class EmailResponseGenerator
     }
 
     /// <summary>
-    /// Filter veld 5 uit beschikbare vensters als er 3+ kunstgrasvelden beschikbaar zijn.
+    /// Filter veld 5 (grasveld) uit beschikbare vensters als er kunstgrasalternatieven
+    /// in dezelfde tijdperiode zijn. Houdt veld 5 vensters die uniek zijn qua tijdsblok.
     /// </summary>
     private static List<BeschikbaarVenster> FilterKunstgrasVensters(List<BeschikbaarVenster> vensters)
     {
         var kunstgrasVensters = vensters.Where(v => v.VeldNummer >= 1 && v.VeldNummer <= 4).ToList();
-        if (kunstgrasVensters.Count >= 3)
-            return kunstgrasVensters;
-        return vensters;
+        if (kunstgrasVensters.Count < 3)
+            return vensters;
+
+        // Houd veld 5 vensters die GEEN overlappend kunstgras-alternatief hebben
+        var veld5Uniek = vensters.Where(v => v.VeldNummer == 5).Where(v5 =>
+        {
+            var v5Van = TimeOnly.TryParse(v5.Van, out var van) ? van : TimeOnly.MinValue;
+            var v5Tot = TimeOnly.TryParse(v5.Tot, out var tot) ? tot : TimeOnly.MaxValue;
+            // Geen enkel kunstgrasvenster overlapt met dit veld 5 venster?
+            return !kunstgrasVensters.Any(kg =>
+            {
+                var kgVan = TimeOnly.TryParse(kg.Van, out var kv) ? kv : TimeOnly.MinValue;
+                var kgTot = TimeOnly.TryParse(kg.Tot, out var kt) ? kt : TimeOnly.MaxValue;
+                return kgVan < v5Tot && kgTot > v5Van;
+            });
+        }).ToList();
+
+        return kunstgrasVensters.Concat(veld5Uniek)
+            .OrderBy(v => TimeOnly.TryParse(v.Van, out var t) ? t : TimeOnly.MinValue)
+            .ToList();
     }
 
     /// <summary>
