@@ -346,8 +346,12 @@ public class EmailProcessorFunction
             && !t.StartsWith("MO", StringComparison.OrdinalIgnoreCase))
             t = "J" + t.ToUpper();
 
-        // Voeg "VRC " prefix toe als het ontbreekt
-        if (!t.StartsWith("VRC ", StringComparison.OrdinalIgnoreCase))
+        // Alleen "VRC " prefix toevoegen als de naam er uitziet als een eigen team
+        // (start met JO/MO/VR/JM/V + cijfer, of is puur cijfer/letters zonder clubnaam).
+        // Namen met spatie erin zijn meestal externe clubs (bijv. "VOP JO14-1", "Hooglanderveen JO16-4").
+        bool looksLikeVrcTeam = System.Text.RegularExpressions.Regex.IsMatch(t, @"^(JO|MO|VR|JM|ZO)\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                              || !t.Contains(' ');
+        if (looksLikeVrcTeam && !t.StartsWith("VRC ", StringComparison.OrdinalIgnoreCase))
             t = "VRC " + t;
 
         return t;
@@ -385,14 +389,18 @@ public class EmailProcessorFunction
 
         // Heuristiek: naam zonder clubnaam erin is waarschijnlijk het VRC-team
         // Externe teams bevatten vaak de clubnaam (bijv. "Woudenberg MO15-1", "Hooglanderveen JO16-4")
-        bool teamIsVrc = !team.Contains(' ') || team.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
-        bool tegenstanderIsVrc = !tegenstander.Contains(' ') || tegenstander.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
-
-        if (!teamIsVrc && tegenstanderIsVrc)
+        // Swap alleen als BEIDE velden gevuld zijn en de rollen duidelijk omgedraaid zijn
+        if (!string.IsNullOrWhiteSpace(team) && !string.IsNullOrWhiteSpace(tegenstander))
         {
-            // Tegenstander veld bevat het VRC-team → swap
-            classificatie.TeamNaam = tegenstander;
-            classificatie.Tegenstander = team;
+            bool teamIsVrc = !team.Contains(' ') || team.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+            bool tegenstanderIsVrc = !tegenstander.Contains(' ') || tegenstander.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+
+            if (!teamIsVrc && tegenstanderIsVrc)
+            {
+                // Tegenstander veld bevat het VRC-team → swap
+                classificatie.TeamNaam = tegenstander;
+                classificatie.Tegenstander = team;
+            }
         }
 
         classificatie.TeamNaam = NormaliseerTeamNaam(classificatie.TeamNaam);
