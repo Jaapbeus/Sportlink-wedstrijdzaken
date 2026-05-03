@@ -272,6 +272,63 @@ namespace SportlinkFunction.Planner
             return null;
         }
 
+        /// <summary>
+        /// Latest-fit scan per veld: zoekt het slot met de uiterst mogelijke aanvangstijd
+        /// die nog vóór <paramref name="upperBound"/> eindigt (eindtijd ≤ upperBound). Anders dan
+        /// FindAllSlots, dat van vroeg naar laat scant en het vroegste slot per gap pakt, scant
+        /// dit van laat naar vroeg in 5-minuten stappen — geschikt voor 'vervroegen' waarbij we
+        /// zo dicht mogelijk tegen de oorspronkelijke aanvangstijd of een volgende bezetting
+        /// willen plannen. Retourneert maximaal één slot per veld.
+        /// </summary>
+        private static List<CandidateSlot> FindLatestFitPerField(
+            List<VeldBeschikbaarheidInfo> availableFields,
+            List<BestaandeWedstrijd> occupations,
+            Dictionary<string, List<TeamRegel>> allTeamRules,
+            List<TeamRegel> requestingTeamRules,
+            decimal veldFractie, int duurMinuten,
+            TimeOnly upperBound, TimeOnly windowStart)
+        {
+            var result = new List<CandidateSlot>();
+
+            foreach (var field in availableFields)
+            {
+                var fieldOccupations = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
+                var effWindowStart = windowStart < field.BeschikbaarVanaf ? field.BeschikbaarVanaf : windowStart;
+                var effUpper = upperBound > field.BeschikbaarTot ? field.BeschikbaarTot : upperBound;
+
+                // Eerste bezetting op dit veld die start binnen [effWindowStart, effUpper).
+                // Onze eindtijd moet daarvóór vallen (buffer wordt door CanFitMatch afgedwongen).
+                var nextOcc = fieldOccupations
+                    .Where(o => o.AanvangsTijd >= effWindowStart && o.AanvangsTijd < effUpper)
+                    .OrderBy(o => o.AanvangsTijd)
+                    .FirstOrDefault();
+                var hardEnd = nextOcc != null && nextOcc.AanvangsTijd < effUpper ? nextOcc.AanvangsTijd : effUpper;
+
+                // Scan achterwaarts: laatste startwaarde waarbij start + duur ≤ hardEnd, dan terug
+                // in stappen van 5 min totdat een geldige fit gevonden wordt.
+                var latestStartCandidate = hardEnd.AddMinutes(-duurMinuten);
+                if (latestStartCandidate < effWindowStart) continue;
+
+                for (var time = latestStartCandidate; time >= effWindowStart; time = time.AddMinutes(-5))
+                {
+                    var endTime = time.AddMinutes(duurMinuten);
+                    if (CanFitMatch(time, endTime, veldFractie, field.VeldNummer,
+                                    fieldOccupations, allTeamRules, requestingTeamRules))
+                    {
+                        result.Add(new CandidateSlot
+                        {
+                            VeldNummer = field.VeldNummer,
+                            AanvangsTijd = time,
+                            EindTijd = endTime
+                        });
+                        break;
+                    }
+                }
+            }
+
+            return result;
+        }
+
         private static List<CandidateSlot> FindAllSlots(
             List<VeldBeschikbaarheidInfo> availableFields,
             List<BestaandeWedstrijd> occupations,
@@ -1248,14 +1305,48 @@ namespace SportlinkFunction.Planner
             candidates = candidates.Where(c =>
                 !(c.VeldNummer == matchVeldNummer && c.AanvangsTijd == matchStart)).ToList();
 
-            if (preferredTime.HasValue)
+            // Richtingfilter: bij 'vervroegen' alleen slots VÓÓR matchStart, bij 'verlaten' erna.
+            // Per veld het slot kiezen dat het dichtst tegen matchStart aanligt — dat is de
+            // 'natuurlijke' verschuiving die aansluit op de bestaande planning (latest-fit voor
+            // vervroegen, earliest-fit voor verlaten). Hierdoor blijft veld 5 zichtbaar als het
+            // de enige optie is, in plaats van weggesorteerd onder veld 1-4.
+            bool vervroegen = string.Equals(request.Richting, "vervroegen", StringComparison.OrdinalIgnoreCase);
+            bool verlaten = string.Equals(request.Richting, "verlaten", StringComparison.OrdinalIgnoreCase);
+            int neemAantal = response.Beschikbaar ? 2 : 3;
+
+            if (vervroegen)
+            {
+                // Latest-fit per veld: zo dicht mogelijk tegen matchStart óf tegen de eerstvolgende
+                // bezetting in de ochtend — dat is wat een trainer bij 'vervroegen' bedoelt
+                // (minste verstoring voor andere afspraken op die dag).
+                candidates = FindLatestFitPerField(
+                    availableFields, occupations, allTeamRules, teamRules,
+                    veldFractie, duurMinuten,
+                    upperBound: matchStart, windowStart: dagdeelVan);
+                candidates = candidates
+                    .Where(c => !(c.VeldNummer == matchVeldNummer && c.AanvangsTijd == matchStart))
+                    .OrderByDescending(c => c.AanvangsTijd)
+                    .ToList();
+                neemAantal = candidates.Count; // toon alle relevante velden
+            }
+            else if (verlaten)
+            {
+                candidates = candidates
+                    .Where(c => c.AanvangsTijd > matchStart)
+                    .GroupBy(c => c.VeldNummer)
+                    .Select(g => g.OrderBy(c => c.AanvangsTijd).First())
+                    .OrderBy(c => c.AanvangsTijd)
+                    .ToList();
+                neemAantal = candidates.Count;
+            }
+            else if (preferredTime.HasValue)
             {
                 candidates = candidates
                     .OrderBy(c => Math.Abs(c.AanvangsTijd.ToTimeSpan().TotalMinutes - preferredTime.Value.ToTimeSpan().TotalMinutes))
                     .ToList();
             }
 
-            foreach (var c in candidates.Take(response.Beschikbaar ? 2 : 3))
+            foreach (var c in candidates.Take(neemAantal))
             {
                 var slot = ToSlotToewijzing(date, c, duurMinuten, velden);
                 if (!response.Alternatieven.Any(a => a.AanvangsTijd == slot.AanvangsTijd && a.VeldNummer == slot.VeldNummer))
