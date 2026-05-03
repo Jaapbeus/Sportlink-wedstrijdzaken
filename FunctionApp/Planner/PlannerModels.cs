@@ -227,6 +227,8 @@ namespace SportlinkFunction.Planner
         public long Wedstrijdcode { get; set; }
         public string? VoorkeurTijd { get; set; }
         public string? Dagdeel { get; set; }
+        // "vervroegen" of "verlaten"; bepaalt of alternatieven vóór of na de huidige aanvangstijd vallen.
+        public string? Richting { get; set; }
     }
 
     public class HerplanCheckResponse

@@ -141,26 +141,28 @@ public class EmailProcessorFunction
         log.LogInformation("Email {Id} geclassificeerd als {Type}, datum={Datum}",
             verwerkingId, classificatie.Type, classificatie.Datum);
 
-        string onderwerp;
-        string antwoordBody;
-
         if (classificatie.Type == VerzoekType.BuitenScope)
         {
-            // 4e. Buiten scope — standaard antwoord
-            (onderwerp, antwoordBody) = EmailResponseGenerator.BouwBuitenScopeAntwoord(email);
+            // 4e. Buiten scope — geen AI-antwoord versturen; coördinator handelt zelf af.
+            // Markeer met categorie 'Geen AI antwoord' (rood) en zet op gelezen.
             await UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, null);
+            await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
+            await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
+            await graphService.MarkAsReadAsync(email.MessageId);
+            log.LogInformation(
+                "Email {Id} buiten scope — gecategoriseerd 'Geen AI antwoord', geen reply verstuurd",
+                verwerkingId);
+            return;
         }
-        else
-        {
-            // 4f. Roep PlannerService aan op basis van classificatie
-            var plannerResponseJson = await VerwerkMetPlannerAsync(classificatie, log);
-            await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
-            await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
-            // 4h. Bouw antwoord via templates (geen AI nodig)
-            (onderwerp, antwoordBody) = BouwTemplateAntwoord(
-                classificatie, plannerResponseJson, email);
-        }
+        // 4f. Roep PlannerService aan op basis van classificatie
+        var plannerResponseJson = await VerwerkMetPlannerAsync(classificatie, email, log);
+        await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
+        await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
+
+        // 4h. Bouw antwoord via templates (geen AI nodig)
+        var (onderwerp, antwoordBody) = BouwTemplateAntwoord(
+            classificatie, plannerResponseJson, email);
 
         // 4j. Bepaal ontvanger (review mode vs productie)
         var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
@@ -337,6 +339,11 @@ public class EmailProcessorFunction
         if (string.IsNullOrWhiteSpace(teamNaam)) return teamNaam;
         var t = teamNaam.Trim();
 
+        // Slash tussen cijfers → streep (bijv. "JO17/3" → "JO17-3", "17/1" → "17-1").
+        // Trainers schrijven vaak "jo17/3" terwijl Sportlink "JO17-3" gebruikt; zonder
+        // deze normalisatie faalt de LIKE-zoekopdracht in FindMatchAsync.
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"(\d)\s*/\s*(\d)", "$1-$2");
+
         // "Onder 13-1" → "JO13-1"
         if (t.StartsWith("Onder ", StringComparison.OrdinalIgnoreCase))
             t = "JO" + t[6..].Trim();
@@ -375,10 +382,27 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
+    /// Bepaalt of een herplanverzoek vervroeging of verlating betreft, op basis van trefwoorden
+    /// in onderwerp en body. Geeft null terug als beide of geen van beide voorkomen — dan vallen
+    /// we terug op het standaardgedrag (alle slots, gesorteerd op nabijheid).
+    /// </summary>
+    private static string? DetecteerRichting(string onderwerp, string body)
+    {
+        var tekst = ((onderwerp ?? "") + " " + (body ?? "")).ToLowerInvariant();
+        bool vervroegen = tekst.Contains("vervroeg") || tekst.Contains("eerder")
+                       || tekst.Contains("naar voren");
+        bool verlaten = tekst.Contains("verlaat") || tekst.Contains("verlat")
+                     || tekst.Contains(" later") || tekst.Contains("naar achter");
+        if (vervroegen && !verlaten) return "vervroegen";
+        if (verlaten && !vervroegen) return "verlaten";
+        return null;
+    }
+
+    /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste PlannerService-aanroep.
     /// </summary>
     private static async Task<string> VerwerkMetPlannerAsync(
-        EmailClassificatie classificatie, ILogger log)
+        EmailClassificatie classificatie, InkomendEmail email, ILogger log)
     {
         // Normaliseer leeftijdscategorie en teamnaam
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
@@ -460,11 +484,15 @@ public class EmailProcessorFunction
                                 return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
                             }
 
-                            // Geen gewenste datum → check alternatieven op huidige dag
+                            // Geen gewenste datum → check alternatieven op huidige dag.
+                            // Richtingdetectie op trefwoorden in onderwerp+body: trainers schrijven
+                            // expliciet "vervroegen"/"eerder" of "later"/"verlaten"; bij beide of
+                            // geen van beide blijft Richting null (default-gedrag, voor- én nakijken).
                             var herplanRequest = new HerplanCheckRequest
                             {
                                 Wedstrijdcode = wedstrijd.Wedstrijdcode,
-                                VoorkeurTijd = classificatie.AanvangsTijd
+                                VoorkeurTijd = classificatie.AanvangsTijd,
+                                Richting = DetecteerRichting(email.Onderwerp, email.Body)
                             };
                             var herplanResponse = await PlannerService.CheckRescheduleAvailabilityAsync(herplanRequest, log);
                             return JsonConvert.SerializeObject(new { wedstrijd, herplanOpties = herplanResponse });
