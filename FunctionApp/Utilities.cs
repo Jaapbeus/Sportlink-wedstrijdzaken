@@ -83,8 +83,8 @@ namespace SportlinkFunction
         {
             bool isDatabaseAvailable = false;
             int retryCount = 0;
-            int maxRetries = 5;
-            int delayBetweenRetries = 5000; // 5 seconds
+            int maxRetries = 10;
+            int delayBetweenRetries = 15000; // 15 seconds — Azure SQL Serverless auto-resume takes 30-90s
 
             while (!isDatabaseAvailable && retryCount < maxRetries)
             {
@@ -101,7 +101,8 @@ namespace SportlinkFunction
                 {
                     retryCount++;
                     log.LogWarning($"Database connection failed. Retry {retryCount}/{maxRetries}. Error: {ex.Message}");
-                    await Task.Delay(delayBetweenRetries);
+                    if (retryCount < maxRetries)
+                        await Task.Delay(delayBetweenRetries);
                 }
             }
 

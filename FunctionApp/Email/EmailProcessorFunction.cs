@@ -528,8 +528,12 @@ public class EmailProcessorFunction
                  + "De email-processor is automatisch GEPAUZEERD. Er worden geen herhaalde meldingen verstuurd.\n"
                  + "De processor hervat automatisch zodra de database weer bereikbaar is.\n\n"
                  + "De emails blijven ongelezen in de inbox en worden automatisch verwerkt zodra de database weer beschikbaar is.\n\n"
-                 + "Mogelijke oorzaak: Azure SQL free tier maandlimiet bereikt.\n"
-                 + "Actie: Azure Portal → SQL database → Compute and Storage → \"Continue using database with additional charges\"";
+                 + "Meest waarschijnlijke oorzaak: Azure SQL Serverless database was gepauzeerd (auto-pause) en kon niet op tijd opstarten.\n"
+                 + "De processor probeert 10× met 15 seconden tussentijd (max. 150 seconden). Als de database langer nodig heeft om te starten, verschijnt deze melding.\n\n"
+                 + "Controleer in Azure Portal:\n"
+                 + "  • [sql-servernaam] → myFreeDB → Overzicht → Status (moet 'Online' zijn)\n"
+                 + "  • Compute + storage → Free monthly vCore amount (maandlimiet bereikt?)\n\n"
+                 + "Als de maandlimiet bereikt is: Azure Portal → SQL database → Compute and Storage → \"Continue using database with additional charges\"";
 
         try
         {
