@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_NAME: func-vrc-sportlink
   AZURE_FUNCTIONAPP_PACKAGE_PATH: FunctionApp
   DOTNET_VERSION: '9.0.x'
 
@@ -36,7 +35,7 @@ jobs:
       - name: Function App deployen naar Azure
         uses: Azure/functions-action@v1
         with:
-          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+          app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
           package: ./output
 
   test:
@@ -45,7 +44,7 @@ jobs:
     steps:
       - name: "Smoke test: function app bereikbaar (health → 200)"
         run: |
-          URL="https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health?code=${{ secrets.AZURE_FUNCTION_KEY }}"
           MAX=6
           WAIT=20
           for i in $(seq 1 $MAX); do
@@ -60,7 +59,7 @@ jobs:
       - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-            "https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}")
+            "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}")
           echo "sync-matches: $STATUS"
           if [ "$STATUS" != "401" ]; then echo "FOUT: verwacht 401, kreeg $STATUS"; exit 1; fi
 
@@ -68,7 +67,7 @@ jobs:
         continue-on-error: true
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST \
-            "https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}" \
+            "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}')
           echo "check-availability: $STATUS"
