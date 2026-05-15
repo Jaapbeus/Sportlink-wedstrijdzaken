@@ -1,0 +1,51 @@
+# Gitleaks configuratie — https://github.com/gitleaks/gitleaks
+# Detecteert secrets en AVG/GDPR-gevoelige patronen.
+# Wordt gebruikt door: pre-commit hook, GitHub Actions security-scan.yml
+
+title = "Sportlink Wedstrijdzaken — Gitleaks Config"
+
+[extend]
+# Gebruik de standaard gitleaks rules als basis
+useDefault = true
+
+# ── Aanvullende regels voor dit project ───────────────────────────────────────
+
+[[rules]]
+id = "dutch-mobile-number"
+description = "Dutch mobile phone number (AVG/GDPR personal data)"
+regex = '''06[-\s]?[0-9]{8}'''
+tags = ["pii", "avg", "gdpr"]
+
+[[rules]]
+id = "dutch-mobile-plus31"
+description = "Dutch mobile number in international format"
+regex = '''\+316[0-9]{8}'''
+tags = ["pii", "avg", "gdpr"]
+
+[[rules]]
+id = "sportlink-member-code"
+description = "Sportlink member/license code"
+regex = '''BCZ[A-Z][A-Z0-9]{5}'''
+tags = ["pii", "avg", "gdpr", "sportlink"]
+
+[[rules]]
+id = "consumer-email"
+description = "Consumer email address (likely personal data)"
+regex = '''[a-zA-Z0-9._%+\-]+@(hotmail\.(com|nl)|gmail\.com|outlook\.(com|nl)|ziggo\.nl|kpnmail\.nl|casema\.nl|home\.nl|planet\.nl|tele2\.nl)'''
+tags = ["pii", "avg", "gdpr"]
+
+# ── Paden altijd uitsluiten ───────────────────────────────────────────────────
+
+[allowlist]
+description = "Bestanden die uitgesloten worden van scanning"
+paths = [
+  # Gegenereerde bestanden en build output
+  '''\.git/''',
+  '''bin/''',
+  '''obj/''',
+  # Template-bestanden (bevatten geen echte data)
+  '''sensitive-patterns\.template\.txt''',
+  '''local\.settings\.template\.json''',
+  # Database-migratiegeschiedenis (geen secrets)
+  '''Database/.*\.sql''',
+]

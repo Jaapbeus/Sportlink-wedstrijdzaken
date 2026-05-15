@@ -1,0 +1,116 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ── 1. Gitleaks: secrets en tokens in git-geschiedenis ─────────────────────
+  gitleaks:
+    name: Secret Detection (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── 2. Databestanden in repository ─────────────────────────────────────────
+  pii-files:
+    name: PII File Detection (CSV/Excel)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for data files with potential PII
+        run: |
+          echo "Checking for CSV/Excel files in repository..."
+          DATA_FILES=$(find . -not -path "./.git/*" \
+            \( -name "*.csv" -o -name "*.xlsx" -o -name "*.xls" -o -name "*.xlsm" \) \
+            | sort)
+          if [ -n "$DATA_FILES" ]; then
+            echo "BLOCKED: Data files found in repository:"
+            echo "$DATA_FILES"
+            echo ""
+            echo "CSV/Excel files may contain personal data (AVG/GDPR)."
+            echo "Remove them from git tracking and add to .gitignore."
+            exit 1
+          fi
+          echo "OK: No CSV/Excel files tracked in repository."
+
+  # ── 3. Nederlandse telefoonnummers en e-mails in code ──────────────────────
+  pii-patterns:
+    name: PII Pattern Scan (AVG/GDPR)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan for Dutch PII patterns
+        run: |
+          FOUND=0
+          # Scan only tracked text files, exclude binary and known-safe files
+          FILES=$(git ls-files | grep -vE "\.(png|jpg|jpeg|gif|ico|woff|ttf|eot|svg|pdf|zip|dll|exe|pdb|nupkg)$" || true)
+
+          check_pattern() {
+            local desc="$1"
+            local pattern="$2"
+            local matches
+            matches=$(echo "$FILES" | xargs grep -lP "$pattern" 2>/dev/null || true)
+            if [ -n "$matches" ]; then
+              echo "WARN: $desc found in:"
+              echo "$matches" | while read f; do echo "  $f"; done
+              FOUND=1
+            fi
+          }
+
+          check_pattern "Dutch mobile numbers"     "06[-\s]?[0-9]{8}"
+          check_pattern "Dutch mobile (+31)"       "\+316[0-9]{8}"
+          check_pattern "Hotmail addresses"        "[a-z0-9._%+\-]+@hotmail\.(com|nl)"
+          check_pattern "Consumer email addresses" "[a-z0-9._%+\-]+@(gmail\.com|outlook\.(com|nl)|ziggo\.nl|kpnmail\.nl|casema\.nl|home\.nl)"
+          check_pattern "Sportlink member codes"   "BCZ[A-Z][A-Z0-9]{5}"
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo ""
+            echo "Personal data (AVG/GDPR) detected in tracked files."
+            echo "Review the files above and remove personal data."
+            exit 1
+          fi
+          echo "OK: No PII patterns detected in tracked files."
+
+  # ── 4. Dependency vulnerability scan (Trivy) ───────────────────────────────
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 0
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true

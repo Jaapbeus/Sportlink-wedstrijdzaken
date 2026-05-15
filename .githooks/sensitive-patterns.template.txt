@@ -1,26 +1,60 @@
-# Sensitive data patterns for pre-commit and pre-push hooks.
-# One regex pattern per line. Lines starting with # are comments.
-# Copy this file to sensitive-patterns.txt and add your actual patterns.
+# Sensitive data patterns — kopieer naar sensitive-patterns.txt en vul aan.
+# Eén regex per regel. Regels met # zijn commentaar.
+# NOOIT wachtwoorden of echte gegevens in dit template-bestand zetten.
 #
-# Suggested generic patterns:
-# Password=[^;'"`<>{}]{4,}
-# PWD=[^;'"`<>{}]{4,}
-# clientId=[A-Za-z0-9]{6,}
+# ════════════════════════════════════════════════════════════════
+#  STAP 1: Kopieer dit bestand
+#    cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 #
-# Add project-specific patterns (real passwords, server names, client IDs):
-# YourActualPassword
-# YourClientId
-# Server=YOUR_SERVER_PREFIX
-# your_sql_login_name
+#  STAP 2: Activeer de hooks (eenmalig)
+#    git config core.hooksPath .githooks
 #
-# Azure resource namen (ALTIJD toevoegen aan sensitive-patterns.txt):
-# \.database\.windows\.net
-# \.azurewebsites\.net
-# dev\.azure\.com/[A-Za-z-]+/[A-Za-z-]+
-#
-# Persoonsgegevens / AVG (voorbeeldnamen in docs NIET met echte namen):
-# Voornaam.*Achternaam (voeg echte namen toe)
-# @hotmail\.com
-# @outlook\.com
-# @ziggo\.nl
-# 06[0-9]{8}
+#  STAP 3: Vul je eigen project-specifieke secrets in (zie sectie onderaan)
+# ════════════════════════════════════════════════════════════════
+
+# ── Wachtwoorden en connection strings ────────────────────────────────────────
+[Pp]assword\s*=\s*[^;'"`\s<>{}]{4,}
+[Pp]wd\s*=\s*[^;'"`\s<>{}]{4,}
+[Ss]ecret\s*=\s*[^;'"`\s<>{}]{4,}
+[Aa]pi[Kk]ey\s*=\s*[A-Za-z0-9+/]{16,}
+[Cc]lient[Ss]ecret\s*=\s*[^;'"`\s<>{}]{8,}
+[Aa]ccess[Tt]oken\s*=\s*[A-Za-z0-9._\-]{20,}
+[Ss][Qq][Ll].*[Pp]assword\s*=\s*[^;'"`\s]{4,}
+
+# ── Azure / cloud secrets ─────────────────────────────────────────────────────
+AccountKey\s*=\s*[A-Za-z0-9+/=]{40,}
+[Ss]torage[Cc]onnection[Ss]tring
+DefaultEndpointsProtocol=https;AccountName=
+SharedAccessSignature=
+sv=[0-9]{4}-[0-9]{2}-[0-9]{2}&
+
+# ── GitHub / API tokens ───────────────────────────────────────────────────────
+ghp_[A-Za-z0-9]{36}
+github_pat_[A-Za-z0-9_]{82}
+ghs_[A-Za-z0-9]{36}
+
+# ── AVG / GDPR persoonsgegevens — Nederlandse patronen ────────────────────────
+# Mobiele nummers (NL)
+06[-\s]?[0-9]{8}
+\+316[0-9]{8}
+
+# Vaste nummers (selectieve reeksen)
+0[1-9][0-9]{1}[-\s]?[0-9]{7}
+
+# BSN / sofinummer (9 cijfers aaneengesloten)
+\b[0-9]{9}\b
+
+# E-mailadressen van consumenten (voeg eigen domain-patterns toe)
+[Aa-zZ0-9._%+\-]+@hotmail\.(com|nl)
+[Aa-zZ0-9._%+\-]+@gmail\.com
+[Aa-zZ0-9._%+\-]+@outlook\.(com|nl)
+[Aa-zZ0-9._%+\-]+@ziggo\.nl
+[Aa-zZ0-9._%+\-]+@kpnmail\.nl
+[Aa-zZ0-9._%+\-]+@casema\.nl
+[Aa-zZ0-9._%+\-]+@home\.nl
+
+# ── Sportlink / clubspecifiek ─────────────────────────────────────────────────
+# Voeg hieronder project-specifieke secrets toe (clientId, servername, etc.)
+# clientId=JOUW_ECHTE_CLIENT_ID
+# Server=JOUW_SQL_SERVER
+# BCZK[A-Z0-9]{5}     ← Sportlink lidnummers (patroon)
