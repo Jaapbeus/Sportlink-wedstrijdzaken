@@ -75,3 +75,11 @@ publish/
 # ── SQL Server data files ─────────────────────────────────────────────────────
 *.mdf
 *.ldf
+
+# ── AVG/GDPR — persoonsgegevens mogen NOOIT in git ───────────────────────────
+# De exports/ map bevat persoonsgegevens (namen, e-mails, telefoons, geboortedatums).
+# Alleen de scripts mogen worden gecommit, NOOIT de databestanden zelf.
+exports/*.csv
+exports/*.xlsx
+exports/*.xls
+exports/teambegeleiding*.csv
