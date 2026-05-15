@@ -51,6 +51,10 @@ while read local_ref local_sha remote_ref remote_sha; do
       [[ "$pattern" =~ ^# ]] && continue
       while IFS= read -r file; do
         [ -z "$file" ] && continue
+        # Sla configuratie- en template-bestanden over
+        if echo "$file" | grep -qE "(sensitive-patterns\.template\.txt|\.gitleaks\.toml|pre-commit|pre-push|security-scan\.yml)$"; then
+          continue
+        fi
         if git show "$local_sha:$file" 2>/dev/null | grep -qiE "$pattern"; then
           echo ""
           echo "BLOCKED: Sensitive pattern in commit"
