@@ -75,6 +75,8 @@
     <Folder Include="planner" />
     <Folder Include="planner\Tables" />
     <Folder Include="planner\Views" />
+    <Folder Include="avg" />
+    <Folder Include="avg\Tables" />
   </ItemGroup>
   <ItemGroup>
     <Build Include="Schemas\stg.sql" />
@@ -109,6 +111,9 @@
     <Build Include="planner\Views\AlleWedstrijdenOpVeld.sql" />
     <Build Include="planner\Tables\HerplanVerzoeken.sql" />
     <Build Include="planner\Tables\EmailVerwerking.sql" />
+    <Build Include="Schemas\avg.sql" />
+    <Build Include="avg\Tables\Teambegeleiding.sql" />
+    <Build Include="avg\Tables\ImportLog.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Script1.sql" />
