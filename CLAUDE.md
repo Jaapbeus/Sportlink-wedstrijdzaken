@@ -78,3 +78,22 @@ Documentatie:
 | Match details | `/wedstrijd-informatie?clientId=&wedstrijdcode=` | Per-match detail |
 
 See `FunctionApp/CLAUDE.md` for detailed field reference including all `/programma` fields.
+
+## Exports — Teambegeleiding
+
+De `exports/` map bevat **scripts** voor data-exports. De databestanden zelf (CSV, Excel) zijn **uitgesloten van git** vanwege AVG/GDPR.
+
+**🚨 AVG/GDPR — ABSOLUTE REGELS (voor Claude én alle automation):**
+- `exports/*.csv` en `exports/*.xlsx` bevatten persoonsgegevens (namen, e-mails, telefoonnummers, geboortedatums van clubleden)
+- **NOOIT een CSV of Excel-bestand committen of pushen** — `.gitignore` blokkeert dit, maar controleer altijd
+- De databestanden staan alleen lokaal en zijn alleen beschikbaar voor de applicatie zelf
+- Alleen `.ps1` scripts en `README.md` mogen in git
+
+**Scripts in exports/:**
+- `sync-teambegeleiding.ps1` — verwerkt de lokale CSV naar de applicatie
+- `test-sportlink-api-login.ps1` — test Sportlink API-verbinding
+
+**Workflow:**
+1. Download CSV via club.sportlink.com (zie memory voor exacte stappen)
+2. Sla op als `exports/teambegeleiding.csv` — lokaal only, nooit committen
+3. De applicatie leest de CSV direct van het lokale bestandssysteem
