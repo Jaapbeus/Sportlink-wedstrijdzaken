@@ -21,6 +21,20 @@ cd FunctionApp && func start --port 7094
 
 No automated tests or linter configured.
 
+## Security Setup (eenmalig per developer/machine)
+
+**Git hooks activeren** (verplicht — blokkeert secrets en AVG-data bij commit én push):
+```bash
+git config core.hooksPath .githooks
+cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
+# Vul sensitive-patterns.txt aan met project-specifieke secrets (clientId, server, etc.)
+```
+
+**Optioneel: gitleaks installeren** voor diepere secret-detectie in hooks:
+- Windows: `winget install gitleaks`
+- macOS: `brew install gitleaks`
+- De hooks werken ook zonder gitleaks (dan alleen patroon-scan)
+
 ## Architecture
 
 Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
