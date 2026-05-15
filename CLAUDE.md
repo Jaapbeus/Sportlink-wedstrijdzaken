@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Absolute veiligheidsregels — nooit omzeilen
+
+Deze regels gelden altijd, zonder uitzondering:
+
+1. **Na elke push of commit: CI-status controleren.** Nooit aan de gebruiker melden dat iets klaar of succesvol is zonder eerst te verifiëren dat alle GitHub Actions checks geslaagd zijn (`gh pr checks <nr>` of `gh run list`).
+
+2. **Bij een gefaalde of onduidelijke check: direct stoppen en melden.** Niet stilzwijgend doorgaan, niet zelf "oplossen" zonder de gebruiker te informeren. Elke falende security check is een alarmsignaal.
+
+3. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
+
+4. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
+
+Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
+
 ## Build & Run
 
 ```bash
