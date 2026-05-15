@@ -1,51 +1,87 @@
 #!/bin/bash
-# Pre-commit hook: scan staged files for sensitive data before committing.
-# Patterns are loaded from .githooks/sensitive-patterns.txt (not tracked by git).
+# Pre-commit hook: blokkeer AVG/GDPR-gevoelige bestanden en secrets voor commit.
+# Vereist: git config core.hooksPath .githooks (eenmalig per developer)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 
-echo "🔍 Scanning staged files for sensitive data..."
-
-if [ ! -f "$PATTERN_FILE" ]; then
-  echo "⚠️  Pattern file not found: $PATTERN_FILE"
-  echo "   Create it with one regex pattern per line."
-  echo "   Commit allowed (no patterns to check)."
-  exit 0
-fi
+echo "Scanning staged files for secrets and PII..."
 
 FOUND_ISSUE=0
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
 
-if [ -z "$STAGED_FILES" ]; then
-  echo "✅ No staged files to scan."
-  exit 0
-fi
-
-while IFS= read -r pattern || [ -n "$pattern" ]; do
-  [ -z "$pattern" ] && continue
-  [[ "$pattern" =~ ^# ]] && continue
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    if git show ":$file" 2>/dev/null | grep -qiE "$pattern"; then
+# ── 1. Blokkeer data-bestanden unconditionally ────────────────────────────────
+# CSV, Excel, en Access-bestanden bevatten mogelijk persoonsgegevens.
+# Scripts (.ps1, .py, .sh) en templates zijn wel toegestaan.
+BLOCKED_EXTENSIONS=("\.csv$" "\.xlsx$" "\.xls$" "\.xlsm$" "\.mdb$" "\.accdb$")
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  for ext in "${BLOCKED_EXTENSIONS[@]}"; do
+    if echo "$file" | grep -qiE "$ext"; then
       echo ""
-      echo "❌ SENSITIVE DATA DETECTED"
-      echo "   File   : $file"
-      echo "   Pattern: $pattern"
+      echo "BLOCKED: Data file detected (possible personal data)"
+      echo "  File: $file"
+      echo "  Reason: CSV/Excel files may contain personal data (AVG/GDPR)"
+      echo "  Solution: Add to .gitignore and remove from staging with: git reset HEAD $file"
       FOUND_ISSUE=1
     fi
-  done <<< "$STAGED_FILES"
-done < "$PATTERN_FILE"
+  done
+done <<< "$STAGED_FILES"
+
+# ── 2. Blokkeer de exports/ map voor data-bestanden ───────────────────────────
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  if echo "$file" | grep -qiE "^exports/[^/]+\.(csv|xlsx|xls|json|xml)$"; then
+    echo ""
+    echo "BLOCKED: exports/ data file"
+    echo "  File: $file"
+    echo "  Reason: exports/ databestanden zijn AVG-gevoelig en mogen niet in git"
+    FOUND_ISSUE=1
+  fi
+done <<< "$STAGED_FILES"
+
+# ── 3. Pattern-based secret/PII scan ─────────────────────────────────────────
+if [ ! -f "$PATTERN_FILE" ]; then
+  echo "WARN: $PATTERN_FILE not found. Copy sensitive-patterns.template.txt to sensitive-patterns.txt"
+  echo "      Commit allowed without pattern scan."
+else
+  while IFS= read -r pattern || [ -n "$pattern" ]; do
+    [ -z "$pattern" ] && continue
+    [[ "$pattern" =~ ^# ]] && continue
+    while IFS= read -r file; do
+      [ -z "$file" ] && continue
+      # Sla configuratie- en template-bestanden over (deze bevatten patronen als voorbeeld)
+      if echo "$file" | grep -qE "(sensitive-patterns\.template\.txt|\.gitleaks\.toml|pre-commit|pre-push|security-scan\.yml)$"; then
+        continue
+      fi
+      if git show ":$file" 2>/dev/null | grep -qiE "$pattern"; then
+        echo ""
+        echo "BLOCKED: Sensitive pattern detected"
+        echo "  File   : $file"
+        echo "  Pattern: $pattern"
+        FOUND_ISSUE=1
+      fi
+    done <<< "$STAGED_FILES"
+  done < "$PATTERN_FILE"
+fi
+
+# ── 4. Gebruik gitleaks indien beschikbaar ────────────────────────────────────
+if command -v gitleaks &>/dev/null; then
+  if ! gitleaks protect --staged --exit-code 1 2>/dev/null; then
+    echo ""
+    echo "BLOCKED: gitleaks detected secrets in staged files"
+    FOUND_ISSUE=1
+  fi
+fi
 
 if [ "$FOUND_ISSUE" -eq 1 ]; then
   echo ""
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║  COMMIT BLOCKED — sensitive data found in staged files.     ║"
-  echo "║  Remove the sensitive data and stage again.                 ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo ""
+  echo "========================================================"
+  echo " COMMIT BLOCKED — secrets or personal data detected."
+  echo " Fix the issues above, then stage again."
+  echo "========================================================"
   exit 1
 fi
 
-echo "✅ No sensitive data detected. Commit allowed."
+echo "OK: No secrets or personal data detected. Commit allowed."
 exit 0
