@@ -74,24 +74,16 @@ public static class EmailTestFunction
                 Body = body
             };
 
-            string voorbeeldOnderwerp;
-            string voorbeeldBody;
-            if (classificatie.Type == VerzoekType.BuitenScope)
-            {
-                (voorbeeldOnderwerp, voorbeeldBody) =
-                    EmailResponseGenerator.BouwBuitenScopeAntwoord(fakeEmail);
-            }
-            else
-            {
-                (voorbeeldOnderwerp, voorbeeldBody) =
-                    EmailResponseGenerator.BouwBevestigingAntwoord(fakeEmail, classificatie);
-            }
+            EmailProcessorFunction.ValideerDagDatum(classificatie, body, onderwerp);
+            var plannerResponseJson = await EmailProcessorFunction.VerwerkMetPlannerAsync(classificatie, fakeEmail, log);
+            var (voorbeeldOnderwerp, voorbeeldBody) = EmailProcessorFunction.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail);
 
             return new OkObjectResult(new
             {
                 dryRun = true,
                 opmerking = "Dit verstuurt niets en slaat niets op",
                 classificatie,
+                plannerResponse = Newtonsoft.Json.Linq.JToken.Parse(plannerResponseJson),
                 voorbeeldAntwoord = new
                 {
                     onderwerp = voorbeeldOnderwerp,
