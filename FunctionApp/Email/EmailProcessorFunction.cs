@@ -10,12 +10,8 @@ namespace SportlinkFunction.Email;
 
 public class EmailProcessorFunction
 {
-    /// <summary>
-    /// Statische vlag: true zodra een noodmail is verstuurd wegens database-uitval.
-    /// Voorkomt herhaalde noodmails — processor pauzeert tot de database weer bereikbaar is.
-    /// Reset automatisch bij host-restart of zodra de database weer beschikbaar is.
-    /// </summary>
     private static bool _databaseNoodmailVerstuurd;
+    private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
 
     [Function("ProcessIncomingEmails")]
     public async Task Run(
@@ -87,6 +83,20 @@ public class EmailProcessorFunction
             {
                 await VerwerkEmailAsync(email, graphService, aiService, log);
                 verwerkt++;
+            }
+            catch (Exception ex) when (IsOpenAiQuotaFout(ex))
+            {
+                log.LogError(ex, "OpenAI quota overschreden — email processor stopt voor deze batch");
+                if (_openAiQuotaNoodmailVerstuurdenOp == null
+                    || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
+                {
+                    await StuurOpenAiNoodmailAsync(graphService, ex.Message, log);
+                }
+                else
+                {
+                    log.LogWarning("OpenAI quota-noodmail al verstuurd binnen 24u — geen herhaling");
+                }
+                break;
             }
             catch (Exception ex)
             {
@@ -606,6 +616,43 @@ public class EmailProcessorFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Kon noodmail niet versturen");
+        }
+    }
+
+    private static bool IsOpenAiQuotaFout(Exception ex)
+    {
+        var msg = ex.Message + (ex.InnerException?.Message ?? "");
+        return msg.Contains("insufficient_quota", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("429", StringComparison.Ordinal);
+    }
+
+    private static async Task StuurOpenAiNoodmailAsync(
+        EmailGraphService graphService, string foutmelding, ILogger log)
+    {
+        var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
+
+        var body = $"URGENT: OpenAI quota overschreden — email-processor gepauzeerd.\n\n"
+                 + $"Tijdstip: {nlTijd:dd-MM-yyyy HH:mm}\n"
+                 + $"Foutmelding: {foutmelding}\n\n"
+                 + "De email-processor is gestopt met de huidige batch en stuurt geen herhaalde meldingen binnen 24 uur.\n"
+                 + "Onverwerkte emails blijven ongelezen in de inbox en worden opnieuw opgepikt bij de volgende poll.\n\n"
+                 + "Acties:\n"
+                 + "  • Controleer in Azure Portal → OpenAI resource → Overzicht → Quota\n"
+                 + "  • Verhoog de quota-limiet of wacht tot de quota vernieuwt (begin volgende maand)\n"
+                 + "  • Als de quota verhoogd is, hervat de processor automatisch bij de volgende poll";
+
+        try
+        {
+            await graphService.SendReplyAsync(mailbox,
+                "URGENT: OpenAI quota overschreden — email-processor gepauzeerd", body, null);
+            _openAiQuotaNoodmailVerstuurdenOp = DateTime.UtcNow;
+            log.LogWarning("OpenAI quota-noodmail verstuurd naar {Mailbox}", mailbox);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Kon OpenAI quota-noodmail niet versturen");
         }
     }
 
