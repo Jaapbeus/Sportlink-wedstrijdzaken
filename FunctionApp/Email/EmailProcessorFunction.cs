@@ -73,6 +73,7 @@ public class EmailProcessorFunction
         }
 
         var aiService = new EmailAiService(loggerFactory.CreateLogger<EmailAiService>());
+        var uitgeslotenAdressen = await LaadUitgeslotenAdressenAsync(log);
 
         int verwerkt = 0, fouten = 0;
 
@@ -81,7 +82,7 @@ public class EmailProcessorFunction
         {
             try
             {
-                await VerwerkEmailAsync(email, graphService, aiService, log);
+                await VerwerkEmailAsync(email, graphService, aiService, uitgeslotenAdressen, log);
                 verwerkt++;
             }
             catch (Exception ex) when (IsOpenAiQuotaFout(ex))
@@ -116,6 +117,7 @@ public class EmailProcessorFunction
         InkomendEmail email,
         EmailGraphService graphService,
         EmailAiService aiService,
+        HashSet<string> uitgeslotenAdressen,
         ILogger log)
     {
         // 4a. Skip eigen emails (voorkom loop)
@@ -133,6 +135,14 @@ public class EmailProcessorFunction
             && email.Afzender.EndsWith("@" + internDomein.TrimStart('@'), StringComparison.OrdinalIgnoreCase))
         {
             log.LogInformation("Email {MessageId} van intern domein ({Afzender}), overslaan", email.MessageId, email.Afzender);
+            await graphService.MarkAsReadAsync(email.MessageId);
+            return;
+        }
+
+        // 4a-ter. Skip expliciet uitgesloten e-mailadressen
+        if (uitgeslotenAdressen.Contains(email.Afzender))
+        {
+            log.LogInformation("Email {MessageId} van uitgesloten adres ({Afzender}), overslaan", email.MessageId, email.Afzender);
             await graphService.MarkAsReadAsync(email.MessageId);
             return;
         }
@@ -693,6 +703,31 @@ public class EmailProcessorFunction
     }
 
     // --- Database operaties ---
+
+    private static async Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
+    {
+        try
+        {
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(
+                "SELECT [EmailAdres] FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Actief] = 1 AND [ClubCode] = @ClubCode",
+                connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
+            var adressen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                adressen.Add(reader.GetString(0));
+            log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
+            return adressen;
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Uitsluitingslijst kon niet worden geladen — doorgaan zonder");
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
 
     private static async Task<bool> BestaatMessageIdAsync(string messageId)
     {

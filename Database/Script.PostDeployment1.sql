@@ -367,6 +367,22 @@ BEGIN
 END
 GO
 
+-- v2 — UitgeslotenEmailAdressen: expliciete uitsluitingslijst voor email-verwerking
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.UitgeslotenEmailAdressen'))
+BEGIN
+    CREATE TABLE [dbo].[UitgeslotenEmailAdressen] (
+        [Id]           INT IDENTITY(1,1) NOT NULL,
+        [EmailAdres]   NVARCHAR(200) NOT NULL,
+        [Omschrijving] NVARCHAR(500) NULL,
+        [Actief]       BIT NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Actief]    DEFAULT 1,
+        [ClubCode]     NVARCHAR(20) NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode]  DEFAULT 'VRC',
+        [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETDATE(),
+        CONSTRAINT [PK_UitgeslotenEmailAdressen] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
+    );
+END
+GO
+
 -- v2 — #84: EmailTemplateInstellingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
 BEGIN

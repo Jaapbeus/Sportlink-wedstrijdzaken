@@ -98,6 +98,75 @@ else
             <div class="alert alert-success mt-3">@successMessage</div>
         }
     </EditForm>
+
+    <hr class="mt-4" />
+    <div class="row mb-3">
+        <div class="col">
+            <h2 class="mb-0">Uitgesloten e-mailadressen</h2>
+            <p class="text-muted mb-0">
+                Adressen op deze lijst worden altijd overgeslagen door de email-verwerker,
+                ook als het domein niet overeenkomt met het intern domein.
+            </p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNieuwAdres">Adres toevoegen</button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>E-mailadres</th>
+                <th>Omschrijving</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var adres in uitgeslotenEmails)
+            {
+                <tr class="@(!adres.Actief ? "text-muted" : "")">
+                    <td>@adres.EmailAdres</td>
+                    <td>@adres.Omschrijving</td>
+                    <td>@(adres.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => VerwijderAdresAsync(adres.Id)">
+                            Verwijderen
+                        </button>
+                    </td>
+                </tr>
+            }
+            @if (uitgeslotenEmails.Count == 0)
+            {
+                <tr><td colspan="4" class="text-muted">Geen uitgesloten adressen.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (nieuwAdres != null)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Nieuw adres toevoegen</h5>
+                <div class="row">
+                    <div class="col-md-5 mb-3">
+                        <label class="form-label">E-mailadres</label>
+                        <input class="form-control" @bind="nieuwAdres.EmailAdres" placeholder="bijv. wedstrijdsecretaris@vv-vrc.nl" />
+                    </div>
+                    <div class="col-md-5 mb-3">
+                        <label class="form-label">Omschrijving (optioneel)</label>
+                        <input class="form-control" @bind="nieuwAdres.Omschrijving" placeholder="bijv. Wedstrijdsecretaris eigen club" />
+                    </div>
+                </div>
+                <button class="btn btn-primary" @onclick="OpslaanNieuwAdresAsync">Toevoegen</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => nieuwAdres = null">Annuleren</button>
+                @if (!string.IsNullOrEmpty(uitgeslotenMessage))
+                {
+                    <div class="alert alert-info mt-2">@uitgeslotenMessage</div>
+                }
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -106,11 +175,56 @@ else
     private string? errorMessage;
     private string? successMessage;
 
+    private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
+    private UitgeslotenEmailAdresDto? nieuwAdres;
+    private string? uitgeslotenMessage;
+
     protected override async Task OnInitializedAsync()
     {
         var r = await Api.GetSettingsAsync();
         if (r.Success) settings = r.Data;
         else errorMessage = r.ErrorMessage;
+
+        await LaadUitgeslotenEmailsAsync();
+    }
+
+    private async Task LaadUitgeslotenEmailsAsync()
+    {
+        var r = await Api.GetUitgeslotenEmailsAsync();
+        uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
+    }
+
+    private void StartNieuwAdres()
+    {
+        nieuwAdres = new UitgeslotenEmailAdresDto { Actief = true };
+        uitgeslotenMessage = null;
+    }
+
+    private async Task OpslaanNieuwAdresAsync()
+    {
+        if (nieuwAdres == null || string.IsNullOrWhiteSpace(nieuwAdres.EmailAdres))
+        {
+            uitgeslotenMessage = "E-mailadres is verplicht.";
+            return;
+        }
+        var r = await Api.CreateUitgeslotenEmailAsync(nieuwAdres);
+        if (r.Success)
+        {
+            nieuwAdres = null;
+            uitgeslotenMessage = null;
+            await LaadUitgeslotenEmailsAsync();
+        }
+        else
+        {
+            uitgeslotenMessage = "Fout: " + r.ErrorMessage;
+        }
+    }
+
+    private async Task VerwijderAdresAsync(int id)
+    {
+        var r = await Api.DeleteUitgeslotenEmailAsync(id);
+        uitgeslotenMessage = r.Success ? null : "Fout: " + r.ErrorMessage;
+        await LaadUitgeslotenEmailsAsync();
     }
 
     private async Task OpslaanAsync()
