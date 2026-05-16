@@ -4,5 +4,6 @@ CREATE TABLE [dbo].[Speeltijden] (
     [WedstrijdTotaal] INT          NOT NULL,
     [WedstrijdHelft]  INT          NOT NULL,
     [WedstrijdRust]   INT          NOT NULL,
+    [ClubCode]        NVARCHAR(20)  NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'VRC',
     CONSTRAINT [PK_Speeltijden] PRIMARY KEY CLUSTERED ([Leeftijd] ASC)
 ) ON [PRIMARY]

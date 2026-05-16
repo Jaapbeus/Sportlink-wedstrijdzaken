@@ -19,7 +19,7 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres] FROM [dbo].[AppSettings]";
+                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres], [Accommodatie] FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
@@ -41,6 +41,8 @@ namespace SportlinkFunction
                                     settings["coordinatorFunctie"] = reader["CoordinatorFunctie"].ToString() ?? "";
                                 if (reader["PlannerEmailAdres"] != DBNull.Value)
                                     settings["plannerEmailAdres"] = reader["PlannerEmailAdres"].ToString() ?? "";
+                                if (reader["Accommodatie"] != DBNull.Value)
+                                    settings["accommodatie"] = reader["Accommodatie"].ToString() ?? "Sportpark Spitsbergen";
                             }
                         }
                     }

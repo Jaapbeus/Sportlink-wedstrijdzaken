@@ -148,6 +148,7 @@ namespace SportlinkFunction
             await new MergeStgToHis("stg", "matches",      "his", "matches").ExecuteAsync(log);
             await new MergeStgToHis("stg", "matchdetails", "his", "matchdetails").ExecuteAsync(log);
 
+            await SportlinkFunction.Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
             await SystemUtilities.AppSettings.SaveLastSyncTimestampAsync(log);
         }
 
