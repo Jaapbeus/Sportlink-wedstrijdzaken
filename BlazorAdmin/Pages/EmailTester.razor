@@ -13,11 +13,15 @@
 
 <EditForm Model="request" OnValidSubmit="TestAsync">
     <div class="row">
-        <div class="col-md-6 mb-3">
-            <label class="form-label">Afzender</label>
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Afzender (e-mailadres)</label>
             <input class="form-control" @bind="request.Afzender" placeholder="trainer@example.com" />
         </div>
-        <div class="col-md-6 mb-3">
+        <div class="col-md-4 mb-3">
+            <label class="form-label">Afzender naam <small class="text-muted">(voor correcte aanhef)</small></label>
+            <input class="form-control" @bind="request.AfzenderNaam" placeholder="Jan de Vries" />
+        </div>
+        <div class="col-md-4 mb-3">
             <label class="form-label">Onderwerp</label>
             <input class="form-control" @bind="request.Onderwerp" placeholder="Beschikbaarheid 30 maart" />
         </div>
@@ -40,6 +44,12 @@
         <div class="card-body">
             <h5>Classificatie</h5>
             <pre class="bg-light p-3">@System.Text.Json.JsonSerializer.Serialize(response.Classificatie, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+
+            @if (response.PlannerResponse != null)
+            {
+                <h5 class="mt-4">Planner response</h5>
+                <pre class="bg-light p-3">@System.Text.Json.JsonSerializer.Serialize(response.PlannerResponse, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+            }
 
             <h5 class="mt-4">Voorbeeld-antwoord (zou-worden-verstuurd)</h5>
             <p><strong>Onderwerp:</strong> @response.VoorbeeldAntwoord?.Onderwerp</p>

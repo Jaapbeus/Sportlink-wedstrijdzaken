@@ -78,6 +78,7 @@ public class TestEmailRequest
 {
     public string? Onderwerp { get; set; }
     public string? Afzender { get; set; }
+    public string? AfzenderNaam { get; set; }
     public string? Body { get; set; }
 }
 
@@ -86,6 +87,7 @@ public class TestEmailResponse
     public bool DryRun { get; set; }
     public string? Opmerking { get; set; }
     public object? Classificatie { get; set; }
+    public object? PlannerResponse { get; set; }
     public VoorbeeldAntwoord? VoorbeeldAntwoord { get; set; }
 }
 
