@@ -105,37 +105,124 @@ else
     }
 
     <hr class="mt-4" />
-    <h2>Bufferregels per team</h2>
-    <p class="text-muted">Tijdsbuffers vóór en na wedstrijden per team (beheerd via database).</p>
+    <div class="row mb-3">
+        <div class="col">
+            <h2 class="mb-0">Teamregels</h2>
+            <p class="text-muted mb-0">Buffers vóór/na wedstrijden en veldvoorkeuren per team.</p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNewRegel">Nieuwe regel</button>
+        </div>
+    </div>
 
-    @if (teamRegels.Count == 0)
-    {
-        <p class="text-muted">Geen bufferregels gevonden.</p>
-    }
-    else
-    {
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Team</th>
-                    <th>Regeltype</th>
-                    <th>Minuten</th>
-                    <th>Opmerking</th>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Team</th>
+                <th>Regeltype</th>
+                <th>Waarde</th>
+                <th>Opmerking</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in teamRegels)
+            {
+                <tr class="@(!r.Actief ? "text-muted" : "")">
+                    <td>@r.TeamNaam</td>
+                    <td>@RegelTypeNederlands(r.RegelType)</td>
+                    <td>@RegelWaarde(r)</td>
+                    <td>@r.Opmerking</td>
+                    <td>@(r.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => EditRegel(r)">Bewerken</button>
+                        @if (r.Actief)
+                        {
+                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteRegelAsync(r.Id)">
+                                Verwijderen
+                            </button>
+                        }
+                    </td>
                 </tr>
-            </thead>
-            <tbody>
-                @foreach (var r in teamRegels)
-                {
-                    <tr>
-                        <td>@r.TeamNaam</td>
-                        <td>@RegelTypeNederlands(r.RegelType)</td>
-                        <td>@r.WaardeMinuten</td>
-                        <td>@r.Opmerking</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        <small class="text-muted">Wijzigingen in bufferregels gaan via de database (<code>dbo.TeamRegels</code>).</small>
+            }
+            @if (teamRegels.Count == 0)
+            {
+                <tr><td colspan="6" class="text-muted">Geen teamregels gevonden.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editingRegel != null)
+    {
+        <hr />
+        <h3>@(isNewRegel ? "Nieuwe teamregel" : $"Bewerken: {editingRegel.TeamNaam} #{editingRegel.Id}")</h3>
+        <EditForm Model="editingRegel" OnValidSubmit="OpslaanRegelAsync">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Team</label>
+                    <input class="form-control" @bind="editingRegel.TeamNaam" placeholder="bijv. VRC 1" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Regeltype</label>
+                    <select class="form-select" @bind="editingRegel.RegelType">
+                        <option value="BufferVoor">Buffer vóór wedstrijd (minuten)</option>
+                        <option value="BufferNa">Buffer na wedstrijd (minuten)</option>
+                        <option value="VoorkeurVeld">Voorkeursveld (veldnummer + optioneel tijd)</option>
+                    </select>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Prioriteit</label>
+                    <input class="form-control" type="number" min="0" max="99" @bind="editingRegel.Prioriteit" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label d-block">Actief</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editingRegel.Actief" />
+                </div>
+            </div>
+
+            @if (editingRegel.RegelType == "BufferVoor" || editingRegel.RegelType == "BufferNa")
+            {
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Aantal minuten</label>
+                        <input class="form-control" type="number" min="0" max="240"
+                               value="@editingRegel.WaardeMinuten"
+                               @onchange="e => editingRegel.WaardeMinuten = int.TryParse(e.Value?.ToString(), out var v) ? v : null" />
+                    </div>
+                </div>
+            }
+
+            @if (editingRegel.RegelType == "VoorkeurVeld")
+            {
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Veldnummer</label>
+                        <input class="form-control" type="number" min="1" max="99"
+                               value="@editingRegel.WaardeVeldNummer"
+                               @onchange="e => editingRegel.WaardeVeldNummer = int.TryParse(e.Value?.ToString(), out var v) ? v : null" />
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Aanvangstijd (optioneel, HH:mm)</label>
+                        <input class="form-control" @bind="editingRegel.WaardeTijd" placeholder="bijv. 12:00" />
+                        <small class="form-text text-muted">Laat leeg als er geen vaste tijd is</small>
+                    </div>
+                </div>
+            }
+
+            <div class="mb-3">
+                <label class="form-label">Opmerking (optioneel)</label>
+                <input class="form-control" @bind="editingRegel.Opmerking" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingRegel = null">Annuleren</button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(regelMessage))
+        {
+            <div class="alert alert-info mt-3">@regelMessage</div>
+        }
     }
 }
 
@@ -143,10 +230,13 @@ else
     private List<VoorkeurTijdDto> items = new();
     private List<TeamRegelDto> teamRegels = new();
     private VoorkeurTijdDto? editing;
+    private TeamRegelDto? editingRegel;
     private bool isNew;
+    private bool isNewRegel;
     private bool loading = true;
     private string filterTeam = "";
     private string? message;
+    private string? regelMessage;
 
     private List<VoorkeurTijdDto> Gefilterd =>
         string.IsNullOrWhiteSpace(filterTeam)
@@ -203,6 +293,43 @@ else
         await LoadAsync();
     }
 
+    private void EditRegel(TeamRegelDto r)
+    {
+        editingRegel = new TeamRegelDto
+        {
+            Id = r.Id, TeamNaam = r.TeamNaam, RegelType = r.RegelType,
+            WaardeMinuten = r.WaardeMinuten, WaardeVeldNummer = r.WaardeVeldNummer,
+            WaardeTijd = r.WaardeTijd, Prioriteit = r.Prioriteit,
+            Actief = r.Actief, Opmerking = r.Opmerking, ClubCode = r.ClubCode
+        };
+        isNewRegel = false;
+        regelMessage = null;
+    }
+
+    private void StartNewRegel()
+    {
+        editingRegel = new TeamRegelDto { RegelType = "BufferVoor", Actief = true };
+        isNewRegel = true;
+        regelMessage = null;
+    }
+
+    private async Task OpslaanRegelAsync()
+    {
+        if (editingRegel == null) return;
+        var r = isNewRegel
+            ? await Api.CreateTeamRegelAsync(editingRegel)
+            : await Api.UpdateTeamRegelAsync(editingRegel.Id, editingRegel);
+        regelMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success) { editingRegel = null; await LoadAsync(); }
+    }
+
+    private async Task DeleteRegelAsync(int id)
+    {
+        var r = await Api.DeleteTeamRegelAsync(id);
+        regelMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
+        await LoadAsync();
+    }
+
     private static string DagNaam(int dag) => dag switch
     {
         1 => "Maandag", 2 => "Dinsdag", 3 => "Woensdag", 4 => "Donderdag",
@@ -212,9 +339,18 @@ else
 
     private static string RegelTypeNederlands(string? type) => type switch
     {
-        "BufferVoor" => "Buffer vóór wedstrijd",
-        "BufferNa" => "Buffer na wedstrijd",
+        "BufferVoor" => "Buffer vóór",
+        "BufferNa" => "Buffer na",
         "VoorkeurVeld" => "Voorkeursveld",
         _ => type ?? ""
+    };
+
+    private static string RegelWaarde(TeamRegelDto r) => r.RegelType switch
+    {
+        "BufferVoor" or "BufferNa" => r.WaardeMinuten.HasValue ? $"{r.WaardeMinuten} min" : "—",
+        "VoorkeurVeld" => r.WaardeVeldNummer.HasValue
+            ? (string.IsNullOrWhiteSpace(r.WaardeTijd) ? $"veld {r.WaardeVeldNummer}" : $"veld {r.WaardeVeldNummer} om {r.WaardeTijd}")
+            : "—",
+        _ => "—"
     };
 }

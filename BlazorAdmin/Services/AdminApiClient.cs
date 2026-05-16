@@ -70,6 +70,15 @@ public class AdminApiClient
     public async Task<ApiResult<List<TeamRegelDto>>> GetTeamRegelsAsync()
         => await GetAsync<List<TeamRegelDto>>("api/beheer/teamregels");
 
+    public async Task<ApiResult<object>> CreateTeamRegelAsync(TeamRegelDto dto)
+        => await PostAsync<object>("api/beheer/teamregels", dto);
+
+    public async Task<ApiResult<object>> UpdateTeamRegelAsync(int id, TeamRegelDto dto)
+        => await PutAsync<object>($"api/beheer/teamregels/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteTeamRegelAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/teamregels/{id}");
+
     // ── Email log ──
 
     public async Task<ApiResult<EmailLogResponse>> GetEmailLogAsync(
