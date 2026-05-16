@@ -99,7 +99,7 @@ namespace SportlinkFunction
             }
         }
 
-        private static async Task RunSyncAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, ILogger log)
+        public static async Task RunSyncAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, ILogger log)
         {
             string ApiUrl;
 
