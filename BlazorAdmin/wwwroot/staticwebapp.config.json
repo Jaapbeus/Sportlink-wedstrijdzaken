@@ -1,0 +1,25 @@
+{
+  "routes": [
+    { "route": "/api/admin/*", "allowedRoles": ["admin"] },
+    { "route": "/api/test/*", "allowedRoles": ["admin"] },
+    { "route": "/.auth/login/aad", "allowedRoles": ["anonymous"] },
+    { "route": "/*", "allowedRoles": ["authenticated"] }
+  ],
+  "responseOverrides": {
+    "401": { "redirect": "/.auth/login/aad" }
+  },
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/TENANT_ID/v2.0",
+          "clientIdSettingName": "AZURE_CLIENT_ID",
+          "clientSecretSettingName": "AZURE_CLIENT_SECRET"
+        }
+      }
+    }
+  },
+  "platform": {
+    "apiRuntime": "dotnet-isolated|v10"
+  }
+}

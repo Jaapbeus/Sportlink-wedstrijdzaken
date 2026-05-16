@@ -1,0 +1,174 @@
+@page "/voorkeurstijden"
+@inject AdminApiClient Api
+
+<PageTitle>Voorkeurstijden — VRC Admin</PageTitle>
+
+<h1>Team voorkeurstijden</h1>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <input class="form-control" placeholder="Filter op team" @bind="filterTeam" @bind:event="oninput" />
+    </div>
+    <div class="col-md-6 text-end">
+        <button class="btn btn-success" @onclick="StartNew">Nieuwe voorkeur</button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p>Laden...</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Team</th>
+                <th>Dag</th>
+                <th>Tijd</th>
+                <th>Prioriteit</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var v in Gefilterd)
+            {
+                <tr class="@(!v.Actief ? "text-muted" : "")">
+                    <td>@v.TeamNaam</td>
+                    <td>@DagNaam(v.DagVanWeek)</td>
+                    <td>@v.VoorkeurTijd</td>
+                    <td>@v.Prioriteit</td>
+                    <td>@(v.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => Edit(v)">Bewerken</button>
+                        @if (v.Actief)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(v.Id)">
+                                Verwijderen
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+            @if (Gefilterd.Count == 0)
+            {
+                <tr><td colspan="6" class="text-muted">Geen voorkeurstijden gevonden.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editing != null)
+    {
+        <hr />
+        <h3>@(isNew ? "Nieuwe voorkeur" : $"Bewerken: {editing.TeamNaam} #{editing.Id}")</h3>
+        <EditForm Model="editing" OnValidSubmit="OpslaanAsync">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Team</label>
+                    <input class="form-control" @bind="editing.TeamNaam" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Dag</label>
+                    <select class="form-select" @bind="editing.DagVanWeek">
+                        <option value="1">Maandag</option>
+                        <option value="2">Dinsdag</option>
+                        <option value="3">Woensdag</option>
+                        <option value="4">Donderdag</option>
+                        <option value="5">Vrijdag</option>
+                        <option value="6">Zaterdag</option>
+                        <option value="7">Zondag</option>
+                    </select>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Tijd (HH:mm)</label>
+                    <input class="form-control" @bind="editing.VoorkeurTijd" placeholder="14:30" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Prioriteit</label>
+                    <input class="form-control" type="number" min="1" max="10" @bind="editing.Prioriteit" />
+                </div>
+                <div class="col-md-1 mb-3">
+                    <label class="form-label d-block">Actief</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editing.Actief" />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
+        </EditForm>
+    }
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert alert-info mt-3">@message</div>
+    }
+}
+
+@code {
+    private List<VoorkeurTijdDto> items = new();
+    private VoorkeurTijdDto? editing;
+    private bool isNew;
+    private bool loading = true;
+    private string filterTeam = "";
+    private string? message;
+
+    private List<VoorkeurTijdDto> Gefilterd =>
+        string.IsNullOrWhiteSpace(filterTeam)
+            ? items
+            : items.Where(i => i.TeamNaam.Contains(filterTeam, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var r = await Api.GetVoorkeurTijdenAsync();
+        items = r.Success ? r.Data ?? new() : new();
+        loading = false;
+    }
+
+    private void Edit(VoorkeurTijdDto v)
+    {
+        editing = new VoorkeurTijdDto
+        {
+            Id = v.Id,
+            TeamNaam = v.TeamNaam,
+            DagVanWeek = v.DagVanWeek,
+            VoorkeurTijd = v.VoorkeurTijd,
+            Prioriteit = v.Prioriteit,
+            Actief = v.Actief,
+            ClubCode = v.ClubCode
+        };
+        isNew = false;
+    }
+
+    private void StartNew()
+    {
+        editing = new VoorkeurTijdDto { DagVanWeek = 6, VoorkeurTijd = "10:00", Prioriteit = 5, Actief = true };
+        isNew = true;
+    }
+
+    private async Task OpslaanAsync()
+    {
+        if (editing == null) return;
+        var r = isNew
+            ? await Api.CreateVoorkeurTijdAsync(editing)
+            : await Api.UpdateVoorkeurTijdAsync(editing.Id, editing);
+        message = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success) { editing = null; await LoadAsync(); }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        var r = await Api.DeleteVoorkeurTijdAsync(id);
+        message = r.Success ? "Soft-deleted." : "Fout: " + r.ErrorMessage;
+        await LoadAsync();
+    }
+
+    private static string DagNaam(int dag) => dag switch
+    {
+        1 => "Maandag", 2 => "Dinsdag", 3 => "Woensdag", 4 => "Donderdag",
+        5 => "Vrijdag", 6 => "Zaterdag", 7 => "Zondag",
+        _ => $"Dag {dag}"
+    };
+}
