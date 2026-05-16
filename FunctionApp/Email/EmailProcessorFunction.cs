@@ -20,7 +20,6 @@ public class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        // 1. Kill-switch
         if (!string.Equals(Environment.GetEnvironmentVariable("EmailProcessorEnabled"),
                 "true", StringComparison.OrdinalIgnoreCase))
         {
@@ -28,7 +27,6 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 2. Graph client initialiseren (geen database nodig)
         var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
         if (graphClient == null)
         {
@@ -77,7 +75,6 @@ public class EmailProcessorFunction
 
         int verwerkt = 0, fouten = 0;
 
-        // 4. Verwerk elke email
         foreach (var email in emails)
         {
             try
@@ -120,7 +117,6 @@ public class EmailProcessorFunction
         HashSet<string> uitgeslotenAdressen,
         ILogger log)
     {
-        // 4a. Skip eigen emails (voorkom loop)
         var eigenMailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
         if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
         {
@@ -129,7 +125,6 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 4a-bis (#63). Skip emails van intern domein
         var internDomein = SystemUtilities.AppSettings.GetSetting("internDomein") ?? "";
         if (!string.IsNullOrWhiteSpace(internDomein)
             && email.Afzender.EndsWith("@" + internDomein.TrimStart('@'), StringComparison.OrdinalIgnoreCase))
@@ -139,7 +134,6 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 4a-ter. Skip expliciet uitgesloten e-mailadressen
         if (uitgeslotenAdressen.Contains(email.Afzender))
         {
             log.LogInformation("Email {MessageId} van uitgesloten adres ({Afzender}), overslaan", email.MessageId, email.Afzender);
@@ -147,7 +141,6 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 4b. Deduplicatie
         if (await BestaatMessageIdAsync(email.MessageId))
         {
             log.LogInformation("Email {MessageId} al verwerkt, overslaan", email.MessageId);
@@ -155,11 +148,9 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 4b. INSERT in EmailVerwerking (Status = Ontvangen)
         var verwerkingId = await InsertEmailVerwerkingAsync(email);
         log.LogInformation("Email {MessageId} geregistreerd met id {Id}", email.MessageId, verwerkingId);
 
-        // 4c. Classificeer met AI
         var classificatie = await aiService.ClassificeerEmailAsync(
             email.Body, email.Onderwerp, email.Afzender);
 
@@ -173,8 +164,7 @@ public class EmailProcessorFunction
 
         if (classificatie.Type == VerzoekType.BuitenScope)
         {
-            // 4e. Buiten scope — geen AI-antwoord versturen; coördinator handelt zelf af.
-            // Markeer met categorie 'Geen AI antwoord' (rood) en zet op gelezen.
+            // Buiten scope: geen reply versturen, coördinator handelt zelf af.
             await UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, null);
             await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
             await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
@@ -185,28 +175,20 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 4f. Roep PlannerService aan op basis van classificatie
         var plannerResponseJson = await VerwerkMetPlannerAsync(classificatie, email, log);
         await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
-        // 4h. Bouw antwoord via templates (geen AI nodig)
         var (onderwerp, antwoordBody) = BouwTemplateAntwoord(
             classificatie, plannerResponseJson, email);
 
-        // 4j. Bepaal ontvanger (review mode vs productie)
         var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
         var ontvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
             ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? email.Afzender
             : email.Afzender;
 
-        // 4k. Verstuur antwoord
         await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
-
-        // 4l. Update status
         await UpdateAntwoordVerstuurdAsync(verwerkingId, ontvanger, antwoordBody);
-
-        // 4m. Markeer als gelezen
         await graphService.MarkAsReadAsync(email.MessageId);
 
         log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd naar {Ontvanger}",
@@ -474,7 +456,6 @@ public class EmailProcessorFunction
     private static async Task<string> VerwerkMetPlannerAsync(
         EmailClassificatie classificatie, InkomendEmail email, ILogger log)
     {
-        // Normaliseer leeftijdscategorie en teamnaam
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
 
         // Bepaal welke naam het VRC-team is (kan in TeamNaam of Tegenstander staan)
@@ -515,19 +496,16 @@ public class EmailProcessorFunction
                 if (heeftExterneTegenstander && heeftOnbekendVrcTeam && alleDatums.Count == 1
                     && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
                 {
-                    // Stap 2b: wedstrijd al ingepland op gevraagde datum?
                     var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
                         classificatie.Tegenstander!, opponentCheckDatum);
                     if (wedstrijdOpDatum != null)
                         return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
 
-                    // Stap 2d: tegenstander helemaal niet gevonden → vraag welk VRC-team
                     var wedstrijdAndereDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
                         classificatie.Tegenstander!, null);
                     if (wedstrijdAndereDatum == null)
                         return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
 
-                    // Stap 2c: gevonden op andere datum → extraheer VRC-team en ga door met check
                     var vrcTeam = ExtractVrcTeamUitWedstrijd(wedstrijdAndereDatum.Wedstrijd, classificatie.Tegenstander!);
                     if (vrcTeam != null)
                         classificatie.TeamNaam = NormaliseerTeamNaam(vrcTeam);
@@ -535,7 +513,6 @@ public class EmailProcessorFunction
 
                 if (alleDatums.Count > 1)
                 {
-                    // Multi-datum: check beschikbaarheid per datum
                     var multiResults = new List<object>();
                     foreach (var datum in alleDatums)
                     {
@@ -571,7 +548,6 @@ public class EmailProcessorFunction
                         var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum);
                         if (wedstrijd != null)
                         {
-                            // #67 — Herplan-deadline check: verzoek mag niet meer dan X dagen voor de wedstrijd
                             var deadlineDagen = int.TryParse(SystemUtilities.AppSettings.GetSetting("herplanDeadlineDagen"), out var dd) ? dd : 8;
                             if (DateOnly.TryParse(wedstrijd.Datum, out var wedstrijdDatum))
                             {
@@ -588,7 +564,6 @@ public class EmailProcessorFunction
                                 }
                             }
 
-                            // Als er een gewenste datum is, check beschikbaarheid op DIE datum
                             if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
                             {
                                 var gewenstRequest = new CheckAvailabilityRequest
@@ -778,7 +753,6 @@ public class EmailProcessorFunction
         if (geextraheerdeData != null)
         {
             command.Parameters.AddWithValue("@Data", geextraheerdeData);
-            // Extraheer VerzoekType uit de classificatie JSON
             try
             {
                 var classificatie = JsonConvert.DeserializeObject<EmailClassificatie>(geextraheerdeData);
