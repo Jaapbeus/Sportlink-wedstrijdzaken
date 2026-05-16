@@ -7,9 +7,6 @@ using Microsoft.Graph;
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
 
-// Application Insights wordt automatisch geconfigureerd via host.json
-// en de APPINSIGHTS_INSTRUMENTATIONKEY app setting in Azure
-
 // Graph client met client credentials (application permissions)
 var tenantId = Environment.GetEnvironmentVariable("GraphTenantId");
 var clientId = Environment.GetEnvironmentVariable("GraphClientId");
