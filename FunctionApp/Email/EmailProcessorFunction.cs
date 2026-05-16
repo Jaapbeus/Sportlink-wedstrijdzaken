@@ -127,6 +127,16 @@ public class EmailProcessorFunction
             return;
         }
 
+        // 4a-bis (#63). Skip emails van intern domein
+        var internDomein = SystemUtilities.AppSettings.GetSetting("internDomein") ?? "";
+        if (!string.IsNullOrWhiteSpace(internDomein)
+            && email.Afzender.EndsWith("@" + internDomein.TrimStart('@'), StringComparison.OrdinalIgnoreCase))
+        {
+            log.LogInformation("Email {MessageId} van intern domein ({Afzender}), overslaan", email.MessageId, email.Afzender);
+            await graphService.MarkAsReadAsync(email.MessageId);
+            return;
+        }
+
         // 4b. Deduplicatie
         if (await BestaatMessageIdAsync(email.MessageId))
         {
@@ -240,6 +250,15 @@ public class EmailProcessorFunction
             case VerzoekType.HerplanVerzoek:
                 var herplanData = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
                 var wedstrijd = herplanData["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+
+                // #67 — Te laat verzonden herplanverzoek
+                if (herplanData["herplanTeLaat"]?.ToObject<bool>() == true)
+                {
+                    var teLaatWedstrijd = herplanData["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+                    var deadlineDagen = herplanData["deadlineDagen"]?.ToObject<int>() ?? 8;
+                    var dagenTot = herplanData["dagenTotWedstrijd"]?.ToObject<int>() ?? 0;
+                    return EmailResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, email);
+                }
 
                 // Gewenste datum modus: beschikbaarheid op nieuwe datum
                 if (herplanData["gewensteDatum"] != null && herplanData["beschikbaarheid"] != null)
@@ -542,6 +561,23 @@ public class EmailProcessorFunction
                         var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum);
                         if (wedstrijd != null)
                         {
+                            // #67 — Herplan-deadline check: verzoek mag niet meer dan X dagen voor de wedstrijd
+                            var deadlineDagen = int.TryParse(SystemUtilities.AppSettings.GetSetting("herplanDeadlineDagen"), out var dd) ? dd : 8;
+                            if (DateOnly.TryParse(wedstrijd.Datum, out var wedstrijdDatum))
+                            {
+                                var dagenTotWedstrijd = (wedstrijdDatum.ToDateTime(TimeOnly.MinValue) - DateTime.Today).TotalDays;
+                                if (dagenTotWedstrijd < deadlineDagen)
+                                {
+                                    return JsonConvert.SerializeObject(new
+                                    {
+                                        herplanTeLaat = true,
+                                        wedstrijd,
+                                        deadlineDagen,
+                                        dagenTotWedstrijd = (int)dagenTotWedstrijd
+                                    });
+                                }
+                            }
+
                             // Als er een gewenste datum is, check beschikbaarheid op DIE datum
                             if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
                             {

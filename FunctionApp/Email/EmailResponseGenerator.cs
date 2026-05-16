@@ -262,6 +262,40 @@ public static class EmailResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
+    // ── Herplannen — te laat (verzoek binnen deadline) ──
+
+    public static (string onderwerp, string body) BouwHerplanTeLaatAntwoord(
+        ZoekWedstrijdResponse? wedstrijd,
+        int deadlineDagen,
+        int dagenTotWedstrijd,
+        EmailClassificatie classificatie,
+        InkomendEmail email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        string inhoud;
+
+        if (wedstrijd == null)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Je herplanverzoek is helaas te laat ingediend. Volgens onze richtlijn moet een herplanverzoek "
+                   + $"minimaal {deadlineDagen} dagen voor de wedstrijd worden ingediend.";
+        }
+        else
+        {
+            var datumTekst = FormatDatum(wedstrijd.Datum);
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat gepland op {datumTekst} om {wedstrijd.AanvangsTijd} "
+                   + $"op {wedstrijd.VeldNaam}. Dat is over {dagenTotWedstrijd} dag(en).\n\n"
+                   + $"Volgens onze richtlijn moet een herplanverzoek minimaal {deadlineDagen} dagen voor de wedstrijd "
+                   + $"worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer "
+                   + $"automatisch verwerken.\n\n"
+                   + $"Neem voor uitzonderingen rechtstreeks contact op met de coördinator.";
+        }
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
     // ── Herplannen naar gewenste datum ──
 
     public static (string onderwerp, string body) BouwHerplanGewensteDatumAntwoord(
