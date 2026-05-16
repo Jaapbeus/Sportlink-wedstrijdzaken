@@ -94,3 +94,17 @@ public class VoorbeeldAntwoord
     public string? Onderwerp { get; set; }
     public string? Body { get; set; }
 }
+
+public class TeamRegelDto
+{
+    public int Id { get; set; }
+    public string TeamNaam { get; set; } = "";
+    public string RegelType { get; set; } = "";
+    public int? WaardeMinuten { get; set; }
+    public int? WaardeVeldNummer { get; set; }
+    public string? WaardeTijd { get; set; }
+    public int Prioriteit { get; set; }
+    public bool Actief { get; set; }
+    public string? Opmerking { get; set; }
+    public string ClubCode { get; set; } = "VRC";
+}

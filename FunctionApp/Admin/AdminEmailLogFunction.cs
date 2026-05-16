@@ -65,7 +65,8 @@ public static class AdminEmailLogFunction
                 for (int i = 0; i < reader.FieldCount; i++)
                 {
                     var name = reader.GetName(i);
-                    row[name] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    row[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
                 }
                 list.Add(row);
             }

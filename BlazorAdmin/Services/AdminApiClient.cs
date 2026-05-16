@@ -65,6 +65,11 @@ public class AdminApiClient
     public async Task<ApiResult<object>> DeleteVoorkeurTijdAsync(int id)
         => await DeleteAsync<object>($"api/beheer/voorkeurstijden/{id}");
 
+    // ── Teamregels ──
+
+    public async Task<ApiResult<List<TeamRegelDto>>> GetTeamRegelsAsync()
+        => await GetAsync<List<TeamRegelDto>>("api/beheer/teamregels");
+
     // ── Email log ──
 
     public async Task<ApiResult<EmailLogResponse>> GetEmailLogAsync(

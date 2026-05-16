@@ -35,7 +35,7 @@ public static class AdminSyncFunction
                 return new NotFoundObjectResult(new { error = "Geen AppSettings rij" });
 
             DateTime? lastSync = reader["LastSyncTimestamp"] != DBNull.Value
-                ? Convert.ToDateTime(reader["LastSyncTimestamp"])
+                ? DateTime.SpecifyKind(Convert.ToDateTime(reader["LastSyncTimestamp"]), DateTimeKind.Utc)
                 : null;
             var fetchSchedule = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
 
