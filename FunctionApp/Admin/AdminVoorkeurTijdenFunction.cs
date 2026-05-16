@@ -190,12 +190,13 @@ public static class AdminVoorkeurTijdenFunction
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 
+            // Beheer-endpoint: altijd alle regels (ook inactief), zodat ze heractiveerbaar zijn
             using var command = new SqlCommand(@"
                 SELECT [Id], [TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer],
                        CONVERT(VARCHAR(5), [WaardeTijd]) AS [WaardeTijd],
                        [Prioriteit], [Actief], [Opmerking], [ClubCode]
                 FROM [dbo].[TeamRegels]
-                WHERE [ClubCode] = @ClubCode AND [Actief] = 1
+                WHERE [ClubCode] = @ClubCode
                 ORDER BY [TeamNaam], [Prioriteit]", connection);
             command.Parameters.AddWithValue("@ClubCode", clubCode);
 
@@ -218,6 +219,157 @@ public static class AdminVoorkeurTijdenFunction
             log.LogError(ex, "Fout bij ophalen teamregels");
             return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
         }
+    }
+
+    [Function("AdminTeamRegelsPost")]
+    public static async Task<IActionResult> PostTeamRegel(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/teamregels")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminTeamRegelsPost");
+        try
+        {
+            using var bodyReader = new StreamReader(req.Body);
+            var dto = JsonConvert.DeserializeObject<TeamRegelRequest>(await bodyReader.ReadToEndAsync());
+            var validatie = ValideerRegel(dto);
+            if (validatie != null) return validatie;
+
+            await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(@"
+                INSERT INTO [dbo].[TeamRegels]
+                    ([TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer], [WaardeTijd],
+                     [Prioriteit], [Actief], [Opmerking], [ClubCode])
+                VALUES
+                    (@TeamNaam, @RegelType, @WaardeMinuten, @WaardeVeldNummer, @WaardeTijd,
+                     @Prioriteit, @Actief, @Opmerking, @ClubCode);
+                SELECT CAST(SCOPE_IDENTITY() AS INT);", connection);
+            command.Parameters.AddWithValue("@TeamNaam", dto!.TeamNaam!);
+            command.Parameters.AddWithValue("@RegelType", dto.RegelType!);
+            command.Parameters.AddWithValue("@WaardeMinuten", (object?)dto.WaardeMinuten ?? DBNull.Value);
+            command.Parameters.AddWithValue("@WaardeVeldNummer", (object?)dto.WaardeVeldNummer ?? DBNull.Value);
+            command.Parameters.AddWithValue("@WaardeTijd",
+                string.IsNullOrWhiteSpace(dto.WaardeTijd) ? DBNull.Value : TimeSpan.Parse(dto.WaardeTijd));
+            command.Parameters.AddWithValue("@Prioriteit", dto.Prioriteit ?? 0);
+            command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
+            command.Parameters.AddWithValue("@Opmerking", (object?)dto.Opmerking ?? DBNull.Value);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
+
+            var newId = (int)(await command.ExecuteScalarAsync())!;
+            return new OkObjectResult(new { id = newId, status = "aangemaakt" });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij aanmaken teamregel");
+            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+        }
+    }
+
+    [Function("AdminTeamRegelsPut")]
+    public static async Task<IActionResult> PutTeamRegel(
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/teamregels/{id:int}")] HttpRequest req,
+        int id,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminTeamRegelsPut");
+        try
+        {
+            using var bodyReader = new StreamReader(req.Body);
+            var dto = JsonConvert.DeserializeObject<TeamRegelRequest>(await bodyReader.ReadToEndAsync());
+            var validatie = ValideerRegel(dto);
+            if (validatie != null) return validatie;
+
+            await SystemUtilities.WaitForDatabaseAsync(log);
+
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(@"
+                UPDATE [dbo].[TeamRegels]
+                SET [TeamNaam] = @TeamNaam, [RegelType] = @RegelType,
+                    [WaardeMinuten] = @WaardeMinuten, [WaardeVeldNummer] = @WaardeVeldNummer,
+                    [WaardeTijd] = @WaardeTijd, [Prioriteit] = @Prioriteit,
+                    [Actief] = @Actief, [Opmerking] = @Opmerking
+                WHERE [Id] = @Id", connection);
+            command.Parameters.AddWithValue("@Id", id);
+            command.Parameters.AddWithValue("@TeamNaam", dto!.TeamNaam!);
+            command.Parameters.AddWithValue("@RegelType", dto.RegelType!);
+            command.Parameters.AddWithValue("@WaardeMinuten", (object?)dto.WaardeMinuten ?? DBNull.Value);
+            command.Parameters.AddWithValue("@WaardeVeldNummer", (object?)dto.WaardeVeldNummer ?? DBNull.Value);
+            command.Parameters.AddWithValue("@WaardeTijd",
+                string.IsNullOrWhiteSpace(dto.WaardeTijd) ? DBNull.Value : TimeSpan.Parse(dto.WaardeTijd));
+            command.Parameters.AddWithValue("@Prioriteit", dto.Prioriteit ?? 0);
+            command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
+            command.Parameters.AddWithValue("@Opmerking", (object?)dto.Opmerking ?? DBNull.Value);
+
+            var rows = await command.ExecuteNonQueryAsync();
+            if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
+            return new OkObjectResult(new { id, status = "bijgewerkt" });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij bijwerken teamregel {Id}", id);
+            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+        }
+    }
+
+    [Function("AdminTeamRegelsDelete")]
+    public static async Task<IActionResult> DeleteTeamRegel(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "beheer/teamregels/{id:int}")] HttpRequest req,
+        int id,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminTeamRegelsDelete");
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(@"
+                UPDATE [dbo].[TeamRegels] SET [Actief] = 0 WHERE [Id] = @Id", connection);
+            command.Parameters.AddWithValue("@Id", id);
+            var rows = await command.ExecuteNonQueryAsync();
+
+            if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
+            return new OkObjectResult(new { id, status = "soft-deleted" });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij verwijderen teamregel {Id}", id);
+            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+        }
+    }
+
+    private static IActionResult? ValideerRegel(TeamRegelRequest? dto)
+    {
+        if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
+        if (string.IsNullOrWhiteSpace(dto.TeamNaam))
+            return new BadRequestObjectResult(new { error = "TeamNaam verplicht" });
+        var toegestaneTypes = new[] { "BufferVoor", "BufferNa", "VoorkeurVeld" };
+        if (!toegestaneTypes.Contains(dto.RegelType))
+            return new BadRequestObjectResult(new { error = "RegelType moet BufferVoor, BufferNa of VoorkeurVeld zijn" });
+        if ((dto.RegelType == "BufferVoor" || dto.RegelType == "BufferNa") && dto.WaardeMinuten == null)
+            return new BadRequestObjectResult(new { error = "WaardeMinuten verplicht voor BufferVoor/BufferNa" });
+        if (dto.RegelType == "VoorkeurVeld" && dto.WaardeVeldNummer == null)
+            return new BadRequestObjectResult(new { error = "WaardeVeldNummer verplicht voor VoorkeurVeld" });
+        if (!string.IsNullOrWhiteSpace(dto.WaardeTijd) && !TimeSpan.TryParse(dto.WaardeTijd, out _))
+            return new BadRequestObjectResult(new { error = "WaardeTijd vereist HH:mm formaat" });
+        return null;
+    }
+
+    public class TeamRegelRequest
+    {
+        public string? TeamNaam { get; set; }
+        public string? RegelType { get; set; }
+        public int? WaardeMinuten { get; set; }
+        public int? WaardeVeldNummer { get; set; }
+        public string? WaardeTijd { get; set; }
+        public int? Prioriteit { get; set; }
+        public bool? Actief { get; set; }
+        public string? Opmerking { get; set; }
     }
 
     private static IActionResult? Valideer(VoorkeurTijdRequest? dto)
