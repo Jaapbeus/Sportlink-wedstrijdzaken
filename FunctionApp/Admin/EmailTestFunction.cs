@@ -68,7 +68,7 @@ public static class EmailTestFunction
                 MessageId = "dry-run-" + Guid.NewGuid().ToString("N"),
                 ConversationId = "",
                 Afzender = afzender,
-                AfzenderNaam = afzender.Split('@').FirstOrDefault() ?? afzender,
+                AfzenderNaam = dto.AfzenderNaam ?? afzender.Split('@').FirstOrDefault() ?? afzender,
                 Onderwerp = onderwerp,
                 OntvangstDatum = DateTime.UtcNow,
                 Body = body
@@ -117,6 +117,7 @@ public static class EmailTestFunction
     {
         public string? Onderwerp { get; set; }
         public string? Afzender { get; set; }
+        public string? AfzenderNaam { get; set; }
         public string? Body { get; set; }
     }
 }
