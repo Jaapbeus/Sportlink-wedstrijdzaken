@@ -219,12 +219,117 @@ Production. Voor échte productie-auth:
 
 ```bash
 # Lokaal: alle endpoints zonder authenticatie (host-key uitschakelen kan via local.settings.json)
-curl http://localhost:7094/api/admin/settings
-curl http://localhost:7094/api/admin/sync/status
-curl http://localhost:7094/api/admin/templates
-curl http://localhost:7094/api/admin/voorkeurstijden
-curl http://localhost:7094/api/admin/email-log
+curl http://localhost:7094/api/health
+curl http://localhost:7094/api/beheer/settings
+curl http://localhost:7094/api/beheer/sync/status
+curl http://localhost:7094/api/beheer/templates
+curl http://localhost:7094/api/beheer/voorkeurstijden
+curl http://localhost:7094/api/beheer/email-log
 curl -X POST -H "Content-Type: application/json" \
   -d '{"onderwerp":"test","afzender":"x@y.nl","body":"kunnen wij zaterdag 18:00 spelen?"}' \
   http://localhost:7094/api/test/email
 ```
+
+Of gebruik het geautomatiseerde smoke-test script (zie sectie 8):
+
+```powershell
+.\scripts\smoke-test.ps1
+```
+
+---
+
+## 8. Architectuur — bekende valkuilen bij lokale oplevering
+
+Bij de v2-implementatie werden vier fouten pas bij runtime ontdekt die `dotnet build` gewoon liet
+passeren. Documentatie hiervan zodat deze fouten nooit meer onopgemerkt voorbij komen.
+
+### Valkuil 1: .NET runtime mismatch
+
+**Symptoom:** `func start` crasht direct met exit code `0x80008096`, log toont
+`Value cannot be null. (Parameter 'provider')`.
+
+**Oorzaak:** `<TargetFramework>netX.0</TargetFramework>` in het csproj verwijst naar een .NET-versie
+die niet geïnstalleerd is op de devmachine. `dotnet build` compileert succesvol mits de SDK
+aanwezig is; de runtime is een andere installatie.
+
+**Oplossing:** Controleer welke runtimes beschikbaar zijn (`dotnet --list-runtimes`) en zorg dat
+`TargetFramework` daarmee overeenkomt. Huidig: `net10.0`.
+
+**Controle:** `func start` toont "Worker process started and initialized" — anders is er een
+runtime mismatch.
+
+---
+
+### Valkuil 2: Gereserveerd route-prefix `admin/`
+
+**Symptoom:** Alle functies met `Route = "admin/..."` staan bij `func start` in error:
+`"The specified route conflicts with one or more built in routes"`.
+
+**Oorzaak:** De Azure Functions host reserveert `/admin/*` voor interne endpoints (key-management,
+host status). Dit is gedocumenteerd maar niet uitgestoten door de compiler.
+
+**Oplossing:** Gebruik nooit `admin/` als route-prefix. In deze codebase: `beheer/`.
+- Fout: `Route = "admin/settings"`
+- Correct: `Route = "beheer/settings"`
+
+**Controle:** Zoek na elke nieuwe Function op `"admin/` in route-attributen.
+
+---
+
+### Valkuil 3: Transitive dependency vulnerability
+
+**Symptoom:** `dotnet build` slaagt, maar bevat `NU1903 warning`: hoge ernst kwetsbaarheid
+in een transitive package (`Microsoft.Kiota.Abstractions`).
+
+**Oorzaak:** `Microsoft.Graph 5.x` sleepte een kwetsbare Kiota-versie mee
+(GHSA-7j59-v9qr-6fq9). De vulnerability warning blokkeert later de Security Gate in CI.
+
+**Oplossing:** Upgrade naar `Microsoft.Graph 6.0.3` (bevat de gefixte Kiota-versie).
+Controleer met `dotnet build 2>&1 | Select-String "NU19"` dat er geen vulnerability warnings zijn.
+
+**Controle:** 0 NU1903/NU1904 warnings in build output.
+
+---
+
+### Valkuil 4: CORS poort-mismatch
+
+**Symptoom:** Blazor laadt, maar alle API-calls falen met CORS-error in de browser console.
+
+**Oorzaak:** `BlazorAdmin/Properties/launchSettings.json` wijst naar poort 5242 (Blazor default),
+maar de CORS-whitelist in `FunctionApp/Program.cs` bevatte alleen 5000/5001.
+
+**Oplossing:** De CORS origins in `Program.cs` moeten de werkelijke Blazor dev-poort bevatten:
+`http://localhost:5242` en `https://localhost:7242`.
+
+**Controle:** `BlazorAdmin/Properties/launchSettings.json` → `applicationUrl` → controleer of alle
+vermelde poorten in de CORS-origins staan.
+
+---
+
+### Smoke-test script
+
+Het script `scripts/smoke-test.ps1` automatiseert alle bovenstaande controles:
+
+```powershell
+# Volledige smoke test (bouwt, start, controleert, ruimt op):
+.\scripts\smoke-test.ps1
+
+# Sneller (sla Blazor-startup over):
+.\scripts\smoke-test.ps1 -SkipBlazor
+```
+
+Het script doorloopt:
+1. `dotnet build FunctionApp` — bouwt met warnings-als-fouten check
+2. `dotnet build BlazorAdmin` — idem
+3. `func start --port 7094` — wacht op "Worker process started and initialized"
+4. Endpoint checks: health, beheer/settings, beheer/sync/status, beheer/templates,
+   beheer/voorkeurstijden, beheer/email-log, test/email
+5. Route-conflict controle in de func log
+6. Geen .NET runtime mismatch controle
+7. `dotnet run BlazorAdmin` — wacht op "Now listening on:", haalt `<!DOCTYPE html` op
+8. Opruimen (kill alle gestarte processen)
+
+Exitcode 0 = alles groen. Exitcode 1 = minimaal één check gefaald.
+
+**Wanneer uitvoeren:** Altijd vóór een commit of oplevering na significante codewijzigingen.
+`dotnet build` slaagt ≠ werkt bij `func start`. De smoke test is de daadwerkelijke verificatie.
