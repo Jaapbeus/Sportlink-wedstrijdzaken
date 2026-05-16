@@ -70,7 +70,7 @@ public class EmailProcessorFunction
             return;
         }
 
-        var aiService = new EmailAiService(loggerFactory.CreateLogger<EmailAiService>());
+        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
         var uitgeslotenAdressen = await LaadUitgeslotenAdressenAsync(log);
 
         int verwerkt = 0, fouten = 0;
@@ -111,9 +111,9 @@ public class EmailProcessorFunction
     }
 
     private static async Task VerwerkEmailAsync(
-        InkomendEmail email,
+        InkomendBericht email,
         EmailGraphService graphService,
-        EmailAiService aiService,
+        BerichtAiService aiService,
         HashSet<string> uitgeslotenAdressen,
         ILogger log)
     {
@@ -151,7 +151,7 @@ public class EmailProcessorFunction
         var verwerkingId = await InsertEmailVerwerkingAsync(email);
         log.LogInformation("Email {MessageId} geregistreerd met id {Id}", email.MessageId, verwerkingId);
 
-        var classificatie = await aiService.ClassificeerEmailAsync(
+        var classificatie = await aiService.ClassificeerBerichtAsync(
             email.Body, email.Onderwerp, email.Afzender);
 
         // Valideer dag-datum: extraheer uit onderwerp (prioriteit) en body, corrigeer AI-fouten
@@ -199,9 +199,9 @@ public class EmailProcessorFunction
     /// Bouwt het antwoord via templates op basis van het classificatietype en PlannerService response.
     /// </summary>
     internal static (string onderwerp, string body) BouwTemplateAntwoord(
-        EmailClassificatie classificatie,
+        BerichtClassificatie classificatie,
         string plannerResponseJson,
-        InkomendEmail email)
+        InkomendBericht email)
     {
         switch (classificatie.Type)
         {
@@ -211,7 +211,7 @@ public class EmailProcessorFunction
                 if (jobj["wedstrijdAlIngepland"]?.ToObject<bool>() == true)
                 {
                     var ingeplandWedstrijd = jobj["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
-                    return EmailResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
+                    return BerichtResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
                         ingeplandWedstrijd, classificatie, email);
                 }
 
@@ -219,7 +219,7 @@ public class EmailProcessorFunction
                 {
                     var onbekendeTegenstander = jobj["tegenstander"]?.ToString()
                         ?? classificatie.Tegenstander ?? "";
-                    return EmailResponseGenerator.BouwTeamOnbekendAntwoord(
+                    return BerichtResponseGenerator.BouwTeamOnbekendAntwoord(
                         onbekendeTegenstander, classificatie, email);
                 }
 
@@ -232,11 +232,11 @@ public class EmailProcessorFunction
                         var resp = item["response"]?.ToObject<CheckAvailabilityResponse>() ?? new CheckAvailabilityResponse();
                         resultaten.Add((datum, resp));
                     }
-                    return EmailResponseGenerator.BouwMultiDatumBeschikbaarheidAntwoord(
+                    return BerichtResponseGenerator.BouwMultiDatumBeschikbaarheidAntwoord(
                         resultaten, classificatie, email);
                 }
                 var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
-                return EmailResponseGenerator.BouwBeschikbaarheidAntwoord(
+                return BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
                     checkResponse ?? new CheckAvailabilityResponse(), classificatie, email);
 
             case VerzoekType.HerplanVerzoek:
@@ -249,7 +249,7 @@ public class EmailProcessorFunction
                     var teLaatWedstrijd = herplanData["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
                     var deadlineDagen = herplanData["deadlineDagen"]?.ToObject<int>() ?? 8;
                     var dagenTot = herplanData["dagenTotWedstrijd"]?.ToObject<int>() ?? 0;
-                    return EmailResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, email);
+                    return BerichtResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, email);
                 }
 
                 // Gewenste datum modus: beschikbaarheid op nieuwe datum
@@ -257,20 +257,20 @@ public class EmailProcessorFunction
                 {
                     var gewensteDatum = herplanData["gewensteDatum"]?.ToString();
                     var beschikbaarheid = herplanData["beschikbaarheid"]?.ToObject<CheckAvailabilityResponse>();
-                    return EmailResponseGenerator.BouwHerplanGewensteDatumAntwoord(
+                    return BerichtResponseGenerator.BouwHerplanGewensteDatumAntwoord(
                         wedstrijd, gewensteDatum, beschikbaarheid, classificatie, email);
                 }
 
                 // Alternatieven op huidige dag
                 var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
-                return EmailResponseGenerator.BouwHerplanAntwoord(
+                return BerichtResponseGenerator.BouwHerplanAntwoord(
                     wedstrijd, herplanOpties, classificatie, email);
 
             case VerzoekType.Bevestiging:
-                return EmailResponseGenerator.BouwBevestigingAntwoord(email, classificatie);
+                return BerichtResponseGenerator.BouwBevestigingAntwoord(email, classificatie);
 
             default:
-                return EmailResponseGenerator.BouwBuitenScopeAntwoord(email);
+                return BerichtResponseGenerator.BouwBuitenScopeAntwoord(email);
         }
     }
 
@@ -278,7 +278,7 @@ public class EmailProcessorFunction
     /// Extraheert datums uit onderwerp en body, en corrigeert de AI-classificatie.
     /// Prioriteit: expliciete datum in onderwerp > expliciete datum in body > AI datum + dag-validatie.
     /// </summary>
-    internal static void ValideerDagDatum(EmailClassificatie classificatie, string emailBody, string onderwerp)
+    internal static void ValideerDagDatum(BerichtClassificatie classificatie, string emailBody, string onderwerp)
     {
         // Stap 1: Zoek expliciete datum in onderwerp (bijv. "18-4-2026", "18-04-2026", "9 mei")
         var onderwerpDatum = ExtractExpliciteDatum(onderwerp);
@@ -454,7 +454,7 @@ public class EmailProcessorFunction
     /// Vertaalt de AI-classificatie naar de juiste PlannerService-aanroep.
     /// </summary>
     internal static async Task<string> VerwerkMetPlannerAsync(
-        EmailClassificatie classificatie, InkomendEmail email, ILogger log)
+        BerichtClassificatie classificatie, InkomendBericht email, ILogger log)
     {
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
 
@@ -715,7 +715,7 @@ public class EmailProcessorFunction
         return count > 0;
     }
 
-    private static async Task<int> InsertEmailVerwerkingAsync(InkomendEmail email)
+    private static async Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
     {
         using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await connection.OpenAsync();
@@ -755,7 +755,7 @@ public class EmailProcessorFunction
             command.Parameters.AddWithValue("@Data", geextraheerdeData);
             try
             {
-                var classificatie = JsonConvert.DeserializeObject<EmailClassificatie>(geextraheerdeData);
+                var classificatie = JsonConvert.DeserializeObject<BerichtClassificatie>(geextraheerdeData);
                 command.Parameters.AddWithValue("@VerzoekType", classificatie?.Type.ToString() ?? "Onbekend");
             }
             catch

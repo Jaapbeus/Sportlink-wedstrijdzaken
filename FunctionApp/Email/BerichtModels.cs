@@ -17,7 +17,7 @@ public enum NamensWie
 }
 
 // AI classificatie response
-public class EmailClassificatie
+public class BerichtClassificatie
 {
     public VerzoekType Type { get; set; }
     public string? Datum { get; set; }           // yyyy-MM-dd — eerste/primaire datum
@@ -43,8 +43,8 @@ public class EmailClassificatie
     }
 }
 
-// Inkomende email data
-public class InkomendEmail
+// Inkomend bericht (kanaal-agnostisch: email, WhatsApp, dry-run, etc.)
+public class InkomendBericht
 {
     public string MessageId { get; set; } = "";
     public string ConversationId { get; set; } = "";
