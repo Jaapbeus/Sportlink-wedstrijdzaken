@@ -23,8 +23,7 @@ BCC is hier niet alleen etiquette maar ook **AVG-conform vereist**. Artikel 5(1)
 ```sql
 SELECT Naam, Emailadres
 FROM   [avg].[Teambegeleiding]
-WHERE  Team    = @team
-  AND  Teamrol IN ('Lokale staf', 'Technische staf')
+WHERE  Team      = @team
   AND  Emailadres IS NOT NULL
 ```
 
