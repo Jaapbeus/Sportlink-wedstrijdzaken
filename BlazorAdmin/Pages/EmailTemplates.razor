@@ -1,0 +1,146 @@
+@page "/email-templates"
+@inject AdminApiClient Api
+@inject IAuthService Auth
+
+<PageTitle>E-mailtemplates — VRC Admin</PageTitle>
+
+<h1>E-mailtemplates</h1>
+<p class="text-muted">Lege rijen = hardcoded default in code wordt gebruikt.</p>
+
+@if (loading)
+{
+    <p>Laden...</p>
+}
+else
+{
+    <button class="btn btn-success mb-3" @onclick="StartNewTemplate">Nieuwe template</button>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Onderwerp</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in templates)
+            {
+                <tr>
+                    <td><code>@t.TemplateKey</code></td>
+                    <td>@(t.Onderwerp.Length > 80 ? t.Onderwerp[..80] + "..." : t.Onderwerp)</td>
+                    <td>@(t.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => Edit(t)">Bewerken</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ResetAsync(t.TemplateKey)">
+                            Reset
+                        </button>
+                    </td>
+                </tr>
+            }
+            @if (templates.Count == 0)
+            {
+                <tr><td colspan="4" class="text-muted">Geen templates in database — defaults zijn actief.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editing != null)
+    {
+        <hr />
+        <h3>@(isNew ? "Nieuwe template" : $"Bewerken: {editing.TemplateKey}")</h3>
+        <EditForm Model="editing" OnValidSubmit="OpslaanAsync">
+            <div class="mb-3">
+                <label class="form-label">Template key</label>
+                <input class="form-control" @bind="editing.TemplateKey" disabled="@(!isNew)" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Onderwerp</label>
+                <input class="form-control" @bind="editing.Onderwerp" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Body template</label>
+                <textarea class="form-control" rows="10" @bind="editing.BodyTemplate"></textarea>
+                <small class="form-text text-muted">
+                    Beschikbare placeholders: {{voornaam}}, {{aanhef}}, {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}
+                </small>
+            </div>
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="actief" @bind="editing.Actief" />
+                <label class="form-check-label" for="actief">Actief</label>
+            </div>
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert alert-info mt-3">@message</div>
+        }
+    }
+}
+
+@code {
+    private List<TemplateDto> templates = new();
+    private TemplateDto? editing;
+    private bool isNew;
+    private bool loading = true;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var r = await Api.GetTemplatesAsync();
+        templates = r.Success ? r.Data ?? new() : new();
+        loading = false;
+    }
+
+    private void Edit(TemplateDto t)
+    {
+        editing = new TemplateDto
+        {
+            Id = t.Id,
+            TemplateKey = t.TemplateKey,
+            Onderwerp = t.Onderwerp,
+            BodyTemplate = t.BodyTemplate,
+            Actief = t.Actief,
+            ClubCode = t.ClubCode
+        };
+        isNew = false;
+    }
+
+    private void StartNewTemplate()
+    {
+        editing = new TemplateDto { Actief = true };
+        isNew = true;
+    }
+
+    private async Task OpslaanAsync()
+    {
+        if (editing == null || string.IsNullOrWhiteSpace(editing.TemplateKey))
+        {
+            message = "Template key verplicht";
+            return;
+        }
+        var r = await Api.UpdateTemplateAsync(editing.TemplateKey, editing);
+        message = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success)
+        {
+            editing = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task ResetAsync(string key)
+    {
+        var r = await Api.ResetTemplateAsync(key);
+        message = r.Success ? $"Template '{key}' gereset naar default." : "Fout: " + r.ErrorMessage;
+        await LoadAsync();
+    }
+}

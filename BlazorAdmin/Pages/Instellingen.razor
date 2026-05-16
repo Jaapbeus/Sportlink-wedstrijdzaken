@@ -1,0 +1,147 @@
+@page "/instellingen"
+@inject AdminApiClient Api
+@inject IAuthService Auth
+
+<PageTitle>Instellingen — VRC Admin</PageTitle>
+
+<h1>Instellingen</h1>
+
+@if (settings == null && string.IsNullOrEmpty(errorMessage))
+{
+    <p class="text-muted">Laden...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <EditForm Model="settings" OnValidSubmit="OpslaanAsync">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Clubnaam</label>
+                <input class="form-control" value="@settings!.ClubName" disabled />
+                <small class="form-text text-muted">Niet wijzigbaar via deze interface</small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">ClubCode</label>
+                <input class="form-control" value="@settings.ClubCode" disabled />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Accommodatie</label>
+                <input class="form-control" @bind="settings.Accommodatie" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Intern domein</label>
+                <input class="form-control" @bind="settings.InternDomein" placeholder="bv. vv-vrc.nl" />
+                <small class="form-text text-muted">Emails van dit domein worden overgeslagen</small>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Herplan-deadline (dagen vooraf)</label>
+                <input class="form-control" type="number" min="0" max="60" @bind="settings.HerplanDeadlineDagen" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Buffer tussen wedstrijden (minuten)</label>
+                <input class="form-control" type="number" min="0" max="120" @bind="settings.BufferMinuten" />
+            </div>
+        </div>
+
+        <hr />
+        <h5>Afzender &amp; coördinator</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Planner afzendernaam</label>
+                <input class="form-control" @bind="settings.PlannerAfzenderNaam" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Planner e-mailadres</label>
+                <input class="form-control" @bind="settings.PlannerEmailAdres" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Coördinator naam</label>
+                <input class="form-control" @bind="settings.CoordinatorNaam" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Coördinator functie</label>
+                <input class="form-control" @bind="settings.CoordinatorFunctie" />
+            </div>
+        </div>
+
+        <hr />
+        <h5>Synchronisatie</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">FetchSchedule (CRON)</label>
+                <input class="form-control" @bind="settings.FetchSchedule" />
+                <small class="form-text text-warning">
+                    Wijziging vereist herstart van de Azure Function App.
+                </small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Laatste synchronisatie</label>
+                <input class="form-control" value="@(settings.LastSyncTimestamp?.ToString("dd-MM-yyyy HH:mm") ?? "nog niet uitgevoerd")" disabled />
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@saving">
+            @(saving ? "Opslaan..." : "Opslaan")
+        </button>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success mt-3">@successMessage</div>
+        }
+    </EditForm>
+}
+
+@code {
+    private AppSettingsDto? settings;
+    private bool saving;
+    private string? errorMessage;
+    private string? successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetSettingsAsync();
+        if (r.Success) settings = r.Data;
+        else errorMessage = r.ErrorMessage;
+    }
+
+    private async Task OpslaanAsync()
+    {
+        if (settings == null) return;
+        saving = true;
+        successMessage = null;
+        errorMessage = null;
+
+        var update = new SettingsUpdateDto
+        {
+            GewijzigdDoor = Auth.UserName,
+            Velden = new()
+            {
+                ["Accommodatie"] = settings.Accommodatie,
+                ["InternDomein"] = settings.InternDomein,
+                ["HerplanDeadlineDagen"] = settings.HerplanDeadlineDagen?.ToString(),
+                ["BufferMinuten"] = settings.BufferMinuten?.ToString(),
+                ["PlannerAfzenderNaam"] = settings.PlannerAfzenderNaam,
+                ["PlannerEmailAdres"] = settings.PlannerEmailAdres,
+                ["CoordinatorNaam"] = settings.CoordinatorNaam,
+                ["CoordinatorFunctie"] = settings.CoordinatorFunctie,
+                ["FetchSchedule"] = settings.FetchSchedule,
+            }
+        };
+
+        var r = await Api.UpdateSettingsAsync(update);
+        successMessage = r.Success
+            ? "Instellingen opgeslagen."
+            : null;
+        if (!r.Success) errorMessage = r.ErrorMessage;
+        saving = false;
+    }
+}
