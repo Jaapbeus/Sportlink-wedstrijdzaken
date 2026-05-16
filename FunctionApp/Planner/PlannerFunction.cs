@@ -118,7 +118,7 @@ namespace SportlinkFunction.Planner
                     aanvangsTijd = tijd.ToString("HH:mm"),
                     eindTijd = eindTijd.ToString("HH:mm"),
                     veldNummer = request.VeldNummer,
-                    status = "Gepland"
+                    status = "Te bevestigen"
                 });
             }
             catch (Exception ex)
