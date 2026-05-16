@@ -194,8 +194,23 @@ public class EmailProcessorFunction
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
-                // Check of het een multi-datum response is
                 var jobj = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
+
+                if (jobj["wedstrijdAlIngepland"]?.ToObject<bool>() == true)
+                {
+                    var ingeplandWedstrijd = jobj["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
+                    return EmailResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
+                        ingeplandWedstrijd, classificatie, email);
+                }
+
+                if (jobj["teamOnbekend"]?.ToObject<bool>() == true)
+                {
+                    var onbekendeTegenstander = jobj["tegenstander"]?.ToString()
+                        ?? classificatie.Tegenstander ?? "";
+                    return EmailResponseGenerator.BouwTeamOnbekendAntwoord(
+                        onbekendeTegenstander, classificatie, email);
+                }
+
                 if (jobj["multiDatum"]?.ToObject<bool>() == true)
                 {
                     var resultaten = new List<(string datum, CheckAvailabilityResponse response)>();
@@ -332,6 +347,22 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
+    /// Extraheert het VRC-team uit een wedstrijdnaam als "VRC JO16-2 - Hooglanderveen JO16-4".
+    /// </summary>
+    private static string? ExtractVrcTeamUitWedstrijd(string wedstrijd, string tegenstander)
+    {
+        var parts = wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries);
+        foreach (var part in parts)
+            if (part.StartsWith("VRC ", StringComparison.OrdinalIgnoreCase)
+                && !part.Contains(tegenstander, StringComparison.OrdinalIgnoreCase))
+                return part;
+        foreach (var part in parts)
+            if (!part.Contains(tegenstander, StringComparison.OrdinalIgnoreCase))
+                return part;
+        return null;
+    }
+
+    /// <summary>
     /// Normaliseert teamnaam: "O13-1" → "VRC JO13-1", "JO14-3" → "VRC JO14-3", etc.
     /// </summary>
     private static string? NormaliseerTeamNaam(string? teamNaam)
@@ -433,6 +464,36 @@ public class EmailProcessorFunction
         {
             case VerzoekType.BeschikbaarheidCheck:
                 var alleDatums = classificatie.GetAlleDatums();
+
+                // Tegenstander-check: als een extern team vraagt, controleer eerst of de wedstrijd
+                // al in het programma staat vóórdat we beschikbaarheid tonen.
+                // Alleen bij single-datum requests (multi-datum is altijd een open vraag).
+                bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander)
+                    && !classificatie.Tegenstander.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+                bool heeftOnbekendVrcTeam = string.IsNullOrWhiteSpace(classificatie.TeamNaam)
+                    || !classificatie.TeamNaam.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+
+                if (heeftExterneTegenstander && heeftOnbekendVrcTeam && alleDatums.Count == 1
+                    && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
+                {
+                    // Stap 2b: wedstrijd al ingepland op gevraagde datum?
+                    var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
+                        classificatie.Tegenstander!, opponentCheckDatum);
+                    if (wedstrijdOpDatum != null)
+                        return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
+
+                    // Stap 2d: tegenstander helemaal niet gevonden → vraag welk VRC-team
+                    var wedstrijdAndereDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
+                        classificatie.Tegenstander!, null);
+                    if (wedstrijdAndereDatum == null)
+                        return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
+
+                    // Stap 2c: gevonden op andere datum → extraheer VRC-team en ga door met check
+                    var vrcTeam = ExtractVrcTeamUitWedstrijd(wedstrijdAndereDatum.Wedstrijd, classificatie.Tegenstander!);
+                    if (vrcTeam != null)
+                        classificatie.TeamNaam = NormaliseerTeamNaam(vrcTeam);
+                }
+
                 if (alleDatums.Count > 1)
                 {
                     // Multi-datum: check beschikbaarheid per datum
