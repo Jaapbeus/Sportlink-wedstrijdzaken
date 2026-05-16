@@ -8,11 +8,13 @@ Deze regels gelden altijd, zonder uitzondering:
 
 1. **Na elke push of commit: CI-status controleren.** Nooit aan de gebruiker melden dat iets klaar of succesvol is zonder eerst te verifiëren dat alle GitHub Actions checks geslaagd zijn (`gh pr checks <nr>` of `gh run list`).
 
-2. **Bij een gefaalde of onduidelijke check: direct stoppen en melden.** Niet stilzwijgend doorgaan, niet zelf "oplossen" zonder de gebruiker te informeren. Elke falende security check is een alarmsignaal.
+2. **Na elke PR-merge: ook de deploy/build-workflow op `main` controleren.** Na merge direct `gh run list --branch main --limit 3` uitvoeren en wachten op voltooiing van `deploy.yml`. Als de build faalt: direct proberen te fixen. Lukt dit niet: onmiddellijk melden aan de gebruiker. Pas daarna melden dat de PR succesvol is afgerond.
 
-3. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
+3. **Bij een gefaalde of onduidelijke check: direct stoppen en melden.** Niet stilzwijgend doorgaan, niet zelf "oplossen" zonder de gebruiker te informeren. Elke falende security check is een alarmsignaal.
 
-4. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
+4. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
+
+5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
 
 Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
@@ -67,6 +69,77 @@ Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 - `dbo` — `AppSettings` (API URL, client ID, fetch schedule), `Season`, `DateTable`, `Speeltijden`
 
 **Key stored procedures:** `sp_CreateTargetTableFromSource` (dynamic DDL), `sp_MergeStgToHis` (UPSERT via MERGE)
+
+## Toekomstige versie: v2.0 Admin GUI (gepland — nog niet geïmplementeerd)
+
+> **Status:** Volledig uitgewerkt in GitHub. Implementatie nog niet gestart. Alle issues gelabeld met `fase: N`. Epic: #26.
+
+### Architectuur v2.0
+
+```
+Azure Static Web Apps (Free) — Blazor WebAssembly
+  └── 5 schermen: Dashboard | Instellingen | E-mailtemplates | Voorkeurstijden | Email-tester
+      │ SWA proxying (geen CORS, Function-sleutel veilig)
+      ▼
+Azure Functions (Consumption — bestaand)
+  FunctionApp/Admin/           ← nieuwe map, Fase 3
+  FunctionApp/Email/EmailTemplateService.cs  ← nieuw, Fase 2
+      │
+  Azure SQL (bestaand)
+  dbo.EmailTemplateInstellingen  ← nieuw, Fase 1
+  dbo.TeamVoorkeurTijden         ← nieuw, Fase 1
+  dbo.AppSettingsAudit           ← nieuw, Fase 1 (CISO-eis)
+```
+
+### Technologiekeuze
+
+| Laag | Keuze | Reden |
+|---|---|---|
+| Frontend | **Blazor WebAssembly** | .NET/C# stack, browser-native, geen server nodig |
+| Hosting | **Azure Static Web Apps (Free)** | €0 gegarandeerd, ingebouwde Entra ID auth |
+| Auth | **Entra ID** via SWA (admin / user rollen) | Zelfde tenant als Graph API mailbox |
+
+### Geplande Admin API-endpoints (`FunctionApp/Admin/` — Fase 3)
+
+| Endpoint | Bestand | Doel |
+|---|---|---|
+| `GET/PUT /api/admin/settings` | `AdminSettingsFunction.cs` | Instellingen lezen/opslaan + Function App restart bij schedule-wijziging |
+| `GET /api/admin/sync/status` | `AdminSyncFunction.cs` | Synchronisatiestatus |
+| `POST /api/admin/sync/trigger` | `AdminSyncFunction.cs` | Handmatige sync triggeren |
+| `GET/PUT/POST /api/admin/templates` | `AdminTemplatesFunction.cs` | E-mailtemplates beheren |
+| `GET/POST/PUT/DELETE /api/admin/voorkeurstijden` | `AdminVoorkeurTijdenFunction.cs` | Teamvoorkeurstijden |
+| `GET /api/admin/email-log` | `AdminEmailLogFunction.cs` | Verwerkte emails (AVG: geen bodies) |
+| `POST /api/test/email` | `EmailTestFunction.cs` | Dry-run AI-classificatietest (geen verzending, geen opslag) |
+
+### Pre-version werk vereist vóór start
+
+- **#30** — ClubCode toevoegen aan alle bestaande tabellen (multi-club fundament)
+- **#85** — Architectuurdocumentatie bijwerken (dit issue)
+- **#86** — AppSettings schema uitbreiden (Accommodatie, GPS, InternDomein, HerplanDeadlineDagen, BufferMinuten)
+
+### Fasering (±25 uur totaal)
+
+| Fase | Issues | Inhoud |
+|---|---|---|
+| Pre-version | #30, #85, #86, #63, #67 | ClubCode, AppSettings schema, domeinfilter, herplan-deadline |
+| Fase 1 | #88, #62, #84 | DB-tabellen: AppSettingsAudit, TeamVoorkeurTijden, EmailTemplateInstellingen |
+| Fase 2 | #84 | EmailTemplateService + EmailResponseGenerator refactor |
+| Fase 3 | #27, #87, #89, #90, #91, #92, #93 | Admin API endpoints (7 endpoints) |
+| Fase 4 | #94, #95 | Blazor WASM project + SWA aanmaken + routing config |
+| Fase 5 | #96, #97, #98, #62 | Blazor Admin-schermen: Dashboard, Instellingen, Templates, Voorkeurstijden |
+| Fase 6 | #99 | Blazor Email-tester scherm |
+| Fase 7 | #100 | Entra ID app-registratie + roltoewijzing |
+| Fase 8 | #101 | deploy.yml uitbreiden + smoke tests |
+
+### CISO-aandachtspunten voor v2.0
+
+- `SportlinkClientId` en Graph-secrets nooit zichtbaar in UI of API-responses
+- `dbo.AppSettingsAudit`: append-only auditlog voor alle instellings- en templatewijzigingen
+- Rate limiting op `/api/test/email`: max 10/minuut (OpenAI-kosten)
+- AVG: `GET /api/admin/email-log` geeft nooit volledige e-mailbodies terug
+- Defense in depth: rollen gehandhaafd door zowel SWA-routing als Function-endpoints
+
+---
 
 ## Solution Structure
 
