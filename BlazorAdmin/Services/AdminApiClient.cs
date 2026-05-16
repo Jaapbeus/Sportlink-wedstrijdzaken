@@ -22,48 +22,48 @@ public class AdminApiClient
     // ── Settings ──
 
     public async Task<ApiResult<AppSettingsDto>> GetSettingsAsync()
-        => await GetAsync<AppSettingsDto>("api/admin/settings");
+        => await GetAsync<AppSettingsDto>("api/beheer/settings");
 
     public async Task<ApiResult<object>> UpdateSettingsAsync(SettingsUpdateDto dto)
-        => await PutAsync<object>("api/admin/settings", dto);
+        => await PutAsync<object>("api/beheer/settings", dto);
 
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()
-        => await GetAsync<SyncStatusDto>("api/admin/sync/status");
+        => await GetAsync<SyncStatusDto>("api/beheer/sync/status");
 
     public async Task<ApiResult<object>> TriggerSyncAsync()
-        => await PostAsync<object>("api/admin/sync/trigger", new { });
+        => await PostAsync<object>("api/beheer/sync/trigger", new { });
 
     // ── Templates ──
 
     public async Task<ApiResult<List<TemplateDto>>> GetTemplatesAsync()
-        => await GetAsync<List<TemplateDto>>("api/admin/templates");
+        => await GetAsync<List<TemplateDto>>("api/beheer/templates");
 
     public async Task<ApiResult<object>> UpdateTemplateAsync(string key, TemplateDto dto)
-        => await PutAsync<object>($"api/admin/templates/{Uri.EscapeDataString(key)}", dto);
+        => await PutAsync<object>($"api/beheer/templates/{Uri.EscapeDataString(key)}", dto);
 
     public async Task<ApiResult<object>> ResetTemplateAsync(string key)
-        => await PostAsync<object>($"api/admin/templates/{Uri.EscapeDataString(key)}/reset", new { });
+        => await PostAsync<object>($"api/beheer/templates/{Uri.EscapeDataString(key)}/reset", new { });
 
     // ── Voorkeurstijden ──
 
     public async Task<ApiResult<List<VoorkeurTijdDto>>> GetVoorkeurTijdenAsync(string? team = null)
     {
-        var path = "api/admin/voorkeurstijden";
+        var path = "api/beheer/voorkeurstijden";
         if (!string.IsNullOrWhiteSpace(team))
             path += "?team=" + Uri.EscapeDataString(team);
         return await GetAsync<List<VoorkeurTijdDto>>(path);
     }
 
     public async Task<ApiResult<object>> CreateVoorkeurTijdAsync(VoorkeurTijdDto dto)
-        => await PostAsync<object>("api/admin/voorkeurstijden", dto);
+        => await PostAsync<object>("api/beheer/voorkeurstijden", dto);
 
     public async Task<ApiResult<object>> UpdateVoorkeurTijdAsync(int id, VoorkeurTijdDto dto)
-        => await PutAsync<object>($"api/admin/voorkeurstijden/{id}", dto);
+        => await PutAsync<object>($"api/beheer/voorkeurstijden/{id}", dto);
 
     public async Task<ApiResult<object>> DeleteVoorkeurTijdAsync(int id)
-        => await DeleteAsync<object>($"api/admin/voorkeurstijden/{id}");
+        => await DeleteAsync<object>($"api/beheer/voorkeurstijden/{id}");
 
     // ── Email log ──
 
@@ -74,7 +74,7 @@ public class AdminApiClient
         if (vanaf.HasValue) qp.Add($"vanaf={vanaf:yyyy-MM-dd}");
         if (tot.HasValue) qp.Add($"tot={tot:yyyy-MM-dd}");
         if (!string.IsNullOrWhiteSpace(status)) qp.Add($"status={Uri.EscapeDataString(status)}");
-        return await GetAsync<EmailLogResponse>("api/admin/email-log?" + string.Join("&", qp));
+        return await GetAsync<EmailLogResponse>("api/beheer/email-log?" + string.Join("&", qp));
     }
 
     // ── Email tester ──
