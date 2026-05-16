@@ -2,7 +2,7 @@ name: Security Scan
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
     branches: [main]
 
@@ -10,13 +10,21 @@ permissions:
   contents: read
   security-events: write
 
+# ══════════════════════════════════════════════════════════════════════════════
+# BELANGRIJK: Als één of meer jobs hieronder falen, blokkeert de security-gate
+# job automatisch de merge. Zie SECURITY.md voor het protocol bij een fout.
+# ══════════════════════════════════════════════════════════════════════════════
+
 jobs:
   # ── 1. Gitleaks: secrets en tokens in git-geschiedenis ─────────────────────
   gitleaks:
     name: Secret Detection (gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - name: Checkout
+      - name: Checkout (volledige geschiedenis)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -25,6 +33,14 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+
+      - name: Resultaat samenvatting
+        if: failure()
+        run: |
+          echo "::error::🚨 GITLEAKS: SECRET OF TOKEN GEVONDEN IN CODE"
+          echo "::error::Verwijder het secret direct en roteer het — ook als het al gepusht is."
+          echo "::error::Zie SECURITY.md § 'Wat te doen bij een gefaalde check'."
 
   # ── 2. Databestanden in repository ─────────────────────────────────────────
   pii-files:
@@ -34,21 +50,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for data files with potential PII
+      - name: Controleer op databestanden met persoonsgegevens
         run: |
-          echo "Checking for CSV/Excel files in repository..."
+          echo "Zoeken naar CSV/Excel bestanden in repository..."
           DATA_FILES=$(find . -not -path "./.git/*" \
             \( -name "*.csv" -o -name "*.xlsx" -o -name "*.xls" -o -name "*.xlsm" \) \
             | sort)
           if [ -n "$DATA_FILES" ]; then
-            echo "BLOCKED: Data files found in repository:"
+            echo "::error::🚨 PERSOONSGEGEVENS: DATABESTAND(EN) GEVONDEN IN REPOSITORY"
             echo "$DATA_FILES"
-            echo ""
-            echo "CSV/Excel files may contain personal data (AVG/GDPR)."
-            echo "Remove them from git tracking and add to .gitignore."
+            echo "::error::CSV/Excel bestanden mogen NOOIT in git staan (AVG/GDPR)."
+            echo "::error::Verwijder ze direct en voeg toe aan .gitignore."
+            echo "::error::Zie SECURITY.md § 'Wat te doen bij een gefaalde check'."
             exit 1
           fi
-          echo "OK: No CSV/Excel files tracked in repository."
+          echo "✅ Geen databestanden met persoonsgegevens gevonden."
 
   # ── 3. Nederlandse telefoonnummers en e-mails in code ──────────────────────
   pii-patterns:
@@ -58,10 +74,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Scan for Dutch PII patterns
+      - name: Scan op Nederlandse PII-patronen
         run: |
           FOUND=0
-          # Scan only tracked text files, exclude binary and known-safe files
           FILES=$(git ls-files | grep -vE "\.(png|jpg|jpeg|gif|ico|woff|ttf|eot|svg|pdf|zip|dll|exe|pdb|nupkg)$" || true)
 
           check_pattern() {
@@ -70,25 +85,24 @@ jobs:
             local matches
             matches=$(echo "$FILES" | xargs grep -lP "$pattern" 2>/dev/null || true)
             if [ -n "$matches" ]; then
-              echo "WARN: $desc found in:"
-              echo "$matches" | while read f; do echo "  $f"; done
+              echo "::error::🚨 PII GEVONDEN — $desc"
+              echo "$matches" | while read f; do echo "::error::  Bestand: $f"; done
               FOUND=1
             fi
           }
 
-          check_pattern "Dutch mobile numbers"     "06[-\s]?[0-9]{8}"
-          check_pattern "Dutch mobile (+31)"       "\+316[0-9]{8}"
-          check_pattern "Hotmail addresses"        "[a-z0-9._%+\-]+@hotmail\.(com|nl)"
-          check_pattern "Consumer email addresses" "[a-z0-9._%+\-]+@(gmail\.com|outlook\.(com|nl)|ziggo\.nl|kpnmail\.nl|casema\.nl|home\.nl)"
-          check_pattern "Sportlink member codes"   "BCZ[A-Z][A-Z0-9]{5}"
+          check_pattern "Nederlandse mobiele nummers"  "06[-\s]?[0-9]{8}"
+          check_pattern "Nederlandse mobiele nummers (+31)" "\+316[0-9]{8}"
+          check_pattern "Hotmail-adressen"             "[a-z0-9._%+\-]+@hotmail\.(com|nl)"
+          check_pattern "Persoonlijke e-mailadressen"  "[a-z0-9._%+\-]+@(gmail\.com|outlook\.(com|nl)|ziggo\.nl|kpnmail\.nl|casema\.nl|home\.nl)"
+          check_pattern "Sportlink ledencodesn"        "BCZ[A-Z][A-Z0-9]{5}"
 
           if [ "$FOUND" -eq 1 ]; then
-            echo ""
-            echo "Personal data (AVG/GDPR) detected in tracked files."
-            echo "Review the files above and remove personal data."
+            echo "::error::Verwijder de persoonsgegevens uit de bestanden hierboven."
+            echo "::error::Zie SECURITY.md § 'Wat te doen bij een gefaalde check'."
             exit 1
           fi
-          echo "OK: No PII patterns detected in tracked files."
+          echo "✅ Geen PII-patronen gevonden in getrackte bestanden."
 
   # ── 4. Dependency vulnerability scan (Trivy) ───────────────────────────────
   dependency-scan:
@@ -108,9 +122,39 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: 0
 
-      - name: Upload Trivy results to GitHub Security
+      - name: Upload Trivy results naar GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-results.sarif
         continue-on-error: true
+
+  # ── 5. Security gate — blokkeert merge als bovenstaande checks falen ────────
+  security-gate:
+    name: "Security Gate — blokkeert merge bij fout"
+    runs-on: ubuntu-latest
+    needs: [gitleaks, pii-files, pii-patterns]
+    if: always()
+    steps:
+      - name: Controleer alle verplichte security checks
+        run: |
+          FAILED=""
+          [ "${{ needs.gitleaks.result }}"    != "success" ] && FAILED="${FAILED}\n  ❌ Secret Detection (gitleaks): ${{ needs.gitleaks.result }}"
+          [ "${{ needs.pii-files.result }}"   != "success" ] && FAILED="${FAILED}\n  ❌ PII File Detection:           ${{ needs.pii-files.result }}"
+          [ "${{ needs.pii-patterns.result }}" != "success" ] && FAILED="${FAILED}\n  ❌ PII Pattern Scan:             ${{ needs.pii-patterns.result }}"
+
+          if [ -n "$FAILED" ]; then
+            echo "::error::════════════════════════════════════════════════════"
+            echo "::error::🚨  SECURITY CHECKS GEFAALD — MERGE GEBLOKKEERD  🚨"
+            echo "::error::════════════════════════════════════════════════════"
+            printf "::error::Gefaalde checks:${FAILED}\n"
+            echo "::error::"
+            echo "::error::Geen enkele wijziging gaat naar main totdat ALLE"
+            echo "::error::security checks slagen. Zie SECURITY.md."
+            echo "::error::════════════════════════════════════════════════════"
+            exit 1
+          fi
+
+          echo "════════════════════════════════════════════════════"
+          echo "✅  Alle security checks geslaagd — merge toegestaan"
+          echo "════════════════════════════════════════════════════"

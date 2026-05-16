@@ -220,8 +220,8 @@ Fetched live from `https://data.sportlink.com/programma?clientId=YOUR_CLIENT_ID`
 | `wedstrijdcode` | int | Unique match ID | `19816434` |
 | `wedstrijdnummer` | int | Match number | `19780` |
 | `teamnaam` | string | Own team name | `VRC 8` |
-| `thuisteamclubrelatiecode` | string | Home club code | `BBBZ26B` |
-| `uitteamclubrelatiecode` | string | Away club code | `BBBZ77R` |
+| `thuisteamclubrelatiecode` | string | Home club code | `BBBZXXXX` |
+| `uitteamclubrelatiecode` | string | Away club code | `BBBZYYY` |
 | `thuisteamid` | int | Home team ID | `99007` |
 | `thuisteam` | string | Home team name | `VRC 8` |
 | `thuisteamlogo` | string | Home team logo URL | `https://binaries.sportlink.com/...` |

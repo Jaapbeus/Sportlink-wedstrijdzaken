@@ -65,8 +65,13 @@ debug-output.log
 sp_create_current.txt
 sp_merge_current.txt
 
-# ── Claude Code local settings ────────────────────────────────────────────────
-**/.claude/settings.local.json
+# ── Claude Code local settings en memory ─────────────────────────────────────
+# settings.local.json bevat machine-specifieke permissies.
+# memory/ bevat conversatiecontext die persoonlijke info kan bevatten.
+.claude/
+
+# ── Build artifacts ───────────────────────────────────────────────────────────
+*.lscache
 
 # ── Gegenereerde bestanden ────────────────────────────────────────────────────
 **/voorbeeld-*.html

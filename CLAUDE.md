@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Absolute veiligheidsregels — nooit omzeilen
+
+Deze regels gelden altijd, zonder uitzondering:
+
+1. **Na elke push of commit: CI-status controleren.** Nooit aan de gebruiker melden dat iets klaar of succesvol is zonder eerst te verifiëren dat alle GitHub Actions checks geslaagd zijn (`gh pr checks <nr>` of `gh run list`).
+
+2. **Bij een gefaalde of onduidelijke check: direct stoppen en melden.** Niet stilzwijgend doorgaan, niet zelf "oplossen" zonder de gebruiker te informeren. Elke falende security check is een alarmsignaal.
+
+3. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
+
+4. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
+
+Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
+
 ## Build & Run
 
 ```bash
@@ -101,13 +115,12 @@ De `exports/` map bevat **scripts** voor data-exports. De databestanden zelf (CS
 - `exports/*.csv` en `exports/*.xlsx` bevatten persoonsgegevens (namen, e-mails, telefoonnummers, geboortedatums van clubleden)
 - **NOOIT een CSV of Excel-bestand committen of pushen** — `.gitignore` blokkeert dit, maar controleer altijd
 - De databestanden staan alleen lokaal en zijn alleen beschikbaar voor de applicatie zelf
-- Alleen `.ps1` scripts en `README.md` mogen in git
+- Alleen `.ps1` scripts, `README.md` en `HANDLEIDING-teambegeleiding-export.md` mogen in git
 
 **Scripts in exports/:**
-- `sync-teambegeleiding.ps1` — verwerkt de lokale CSV naar de applicatie
-- `test-sportlink-api-login.ps1` — test Sportlink API-verbinding
+- `import-teambegeleiding-to-sql.ps1` — importeert CSV naar `avg.Teambegeleiding` in SQL Server (TRUNCATE + bulk insert)
 
 **Workflow:**
-1. Download CSV via club.sportlink.com (zie memory voor exacte stappen)
-2. Sla op als `exports/teambegeleiding.csv` — lokaal only, nooit committen
-3. De applicatie leest de CSV direct van het lokale bestandssysteem
+1. Download CSV via club.sportlink.com (zie `exports/HANDLEIDING-teambegeleiding-export.md` voor exacte stappen)
+2. Sla op in de lokale `exports/` map — nooit committen
+3. Voer `.\exports\import-teambegeleiding-to-sql.ps1` uit om de data in SQL te laden
