@@ -176,6 +176,50 @@ public static class AdminVoorkeurTijdenFunction
         }
     }
 
+    [Function("AdminTeamRegelsGet")]
+    public static async Task<IActionResult> GetTeamRegels(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/teamregels")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminTeamRegelsGet");
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+
+            using var command = new SqlCommand(@"
+                SELECT [Id], [TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer],
+                       CONVERT(VARCHAR(5), [WaardeTijd]) AS [WaardeTijd],
+                       [Prioriteit], [Actief], [Opmerking], [ClubCode]
+                FROM [dbo].[TeamRegels]
+                WHERE [ClubCode] = @ClubCode AND [Actief] = 1
+                ORDER BY [TeamNaam], [Prioriteit]", connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
+
+            using var reader = await command.ExecuteReaderAsync();
+            var list = new List<Dictionary<string, object?>>();
+            while (await reader.ReadAsync())
+            {
+                var row = new Dictionary<string, object?>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var name = reader.GetName(i);
+                    row[name] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                }
+                list.Add(row);
+            }
+            return new OkObjectResult(list);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij ophalen teamregels");
+            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+        }
+    }
+
     private static IActionResult? Valideer(VoorkeurTijdRequest? dto)
     {
         if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });

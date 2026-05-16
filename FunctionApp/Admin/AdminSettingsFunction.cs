@@ -61,8 +61,8 @@ public static class AdminSettingsFunction
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var name = reader.GetName(i);
-                var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                result[name] = value;
+                var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                result[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
             }
 
             return new OkObjectResult(result);

@@ -32,6 +32,28 @@ Deze regels gelden altijd, zonder uitzondering:
 
 Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
+## Architectuurregels — altijd van toepassing
+
+### UTC in database, lokale tijd in GUI
+
+- **Database:** alle `DateTime` kolommen opslaan in **UTC** (GETUTCDATE(), geen GETDATE()).
+- **API (FunctionApp):** SQL Server levert `DateTimeKind.Unspecified` via `Convert.ToDateTime()` → altijd omzetten naar UTC met `DateTime.SpecifyKind(dt, DateTimeKind.Utc)` zodat de JSON-serializer een `Z`-suffix toevoegt.
+- **Blazor WASM:** gebruik altijd `ToLocalTime()` voor weergave. De browser converteert UTC naar de tijdzone van de gebruiker (Nederland = CET winter / CEST zomer). Nooit een UTC-tijd tonen zonder conversie.
+- Reden: Nederlanders zien anders 02:00 in de ochtend als "04:00" en andersom bij zomertijdwissel.
+
+### GUI en code altijd synchroon
+
+- Als er een placeholder, template-key, enum-waarde of regeltype wordt toegevoegd aan de **code of database**, dan wordt de **GUI** in dezelfde commit bijgewerkt.
+- Als er een UI-veld wordt toegevoegd, wordt ook gecontroleerd of de API en het datamodel meegegroeid zijn.
+- Nooit de GUI laten achterlopen op de code, en nooit de code laten achterlopen op de GUI.
+
+### Microsoft Learn MCP server
+
+- Gebruik de Microsoft Learn MCP server proactief voor C#, .NET, Blazor, Azure Functions en Azure best practices.
+- Tools: `mcp__claude_ai_Microsoft_Learn__microsoft_docs_search` (snel overzicht), `mcp__claude_ai_Microsoft_Learn__microsoft_code_sample_search` (codevoorbeelden), `mcp__claude_ai_Microsoft_Learn__microsoft_docs_fetch` (volledige pagina).
+- Workflow: zoek eerst → haal diepere docs op bij twijfel → gebruik officiële bronnen als grond voor architectuurbeslissingen.
+- Combineer met eigen kennis als architect; MCP-resultaten zijn leidend bij conflicten met training-data.
+
 ## Build & Run
 
 ```bash

@@ -160,8 +160,28 @@ CallEndpoint "GET /api/beheer/settings"             "$base/beheer/settings"
 CallEndpoint "GET /api/beheer/sync/status"          "$base/beheer/sync/status"
 CallEndpoint "GET /api/beheer/templates"            "$base/beheer/templates"
 CallEndpoint "GET /api/beheer/voorkeurstijden"      "$base/beheer/voorkeurstijden"
+CallEndpoint "GET /api/beheer/teamregels"           "$base/beheer/teamregels"
 CallEndpoint "GET /api/beheer/email-log"            "$base/beheer/email-log"
 CallPostEndpoint "POST /api/test/email (rate-check)" "$base/test/email" '{"onderwerp":"smoke","afzender":"test@test.nl","body":"test"}'
+
+# CORS-integratie: Blazor dev origin moet terugkomen in Access-Control-Allow-Origin
+$corsOrigin = "http://localhost:5242"
+try {
+    $corsResp = Invoke-WebRequest -Uri "$base/beheer/sync/status" `
+        -Headers @{ "Origin" = $corsOrigin } `
+        -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+    $allowOrigin = $corsResp.Headers["Access-Control-Allow-Origin"]
+    $corsOk = $allowOrigin -eq $corsOrigin -or $allowOrigin -eq "*"
+    Check "CORS: Origin=$corsOrigin → Access-Control-Allow-Origin correct" $corsOk `
+        "Verwacht '$corsOrigin', ontvangen '$allowOrigin'"
+} catch {
+    $status = $_.Exception.Response.StatusCode.value__
+    if ($status -eq 401) {
+        Check "CORS: Origin=$corsOrigin → Access-Control-Allow-Origin correct" $true "HTTP 401 (function key vereist)"
+    } else {
+        Check "CORS: Origin=$corsOrigin → Access-Control-Allow-Origin correct" $false $_.Exception.Message
+    }
+}
 
 # Check of admin-routes NIET in error staan (geen route-conflict meldingen)
 if (Test-Path $funcLog) {

@@ -1,5 +1,6 @@
 @page "/voorkeurstijden"
 @inject AdminApiClient Api
+@using BlazorAdmin.Models
 
 <PageTitle>Voorkeurstijden — VRC Admin</PageTitle>
 
@@ -102,10 +103,45 @@ else
     {
         <div class="alert alert-info mt-3">@message</div>
     }
+
+    <hr class="mt-4" />
+    <h2>Bufferregels per team</h2>
+    <p class="text-muted">Tijdsbuffers vóór en na wedstrijden per team (beheerd via database).</p>
+
+    @if (teamRegels.Count == 0)
+    {
+        <p class="text-muted">Geen bufferregels gevonden.</p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Team</th>
+                    <th>Regeltype</th>
+                    <th>Minuten</th>
+                    <th>Opmerking</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in teamRegels)
+                {
+                    <tr>
+                        <td>@r.TeamNaam</td>
+                        <td>@RegelTypeNederlands(r.RegelType)</td>
+                        <td>@r.WaardeMinuten</td>
+                        <td>@r.Opmerking</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <small class="text-muted">Wijzigingen in bufferregels gaan via de database (<code>dbo.TeamRegels</code>).</small>
+    }
 }
 
 @code {
     private List<VoorkeurTijdDto> items = new();
+    private List<TeamRegelDto> teamRegels = new();
     private VoorkeurTijdDto? editing;
     private bool isNew;
     private bool loading = true;
@@ -124,6 +160,8 @@ else
         loading = true;
         var r = await Api.GetVoorkeurTijdenAsync();
         items = r.Success ? r.Data ?? new() : new();
+        var regelsResult = await Api.GetTeamRegelsAsync();
+        teamRegels = regelsResult.Success ? regelsResult.Data ?? new() : new();
         loading = false;
     }
 
@@ -170,5 +208,13 @@ else
         1 => "Maandag", 2 => "Dinsdag", 3 => "Woensdag", 4 => "Donderdag",
         5 => "Vrijdag", 6 => "Zaterdag", 7 => "Zondag",
         _ => $"Dag {dag}"
+    };
+
+    private static string RegelTypeNederlands(string? type) => type switch
+    {
+        "BufferVoor" => "Buffer vóór wedstrijd",
+        "BufferNa" => "Buffer na wedstrijd",
+        "VoorkeurVeld" => "Voorkeursveld",
+        _ => type ?? ""
     };
 }

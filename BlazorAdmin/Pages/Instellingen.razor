@@ -85,7 +85,7 @@ else
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Laatste synchronisatie</label>
-                <input class="form-control" value="@(settings.LastSyncTimestamp?.ToString("dd-MM-yyyy HH:mm") ?? "nog niet uitgevoerd")" disabled />
+                <input class="form-control" value="@(settings.LastSyncTimestamp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm") ?? "nog niet uitgevoerd")" disabled />
             </div>
         </div>
 
