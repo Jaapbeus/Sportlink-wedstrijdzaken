@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Planner
 {
@@ -242,7 +243,7 @@ namespace SportlinkFunction.Planner
                 VALUES
                     (@datum, @aanvang, @eind, @veld, @deel,
                      @cat, @team, @tegen, @duur,
-                     'Gepland', @door)
+                     'Te bevestigen', @door)
             ", conn);
             cmd.Parameters.AddWithValue("@datum", datum.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@aanvang", aanvangsTijd.ToTimeSpan());
@@ -299,13 +300,14 @@ namespace SportlinkFunction.Planner
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                 LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
-                  AND m.[accommodatie] LIKE '%Spitsbergen%'
+                  AND m.[accommodatie] LIKE @accommodatiePattern
                   AND m.[status] <> 'Afgelast'
                   AND (m.[teamnaam] LIKE @teamPattern OR m.[wedstrijd] LIKE @teamPattern)
                 ORDER BY m.[aanvangstijd]
             ", conn);
             cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
+            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen"}%");
 
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -354,7 +356,7 @@ namespace SportlinkFunction.Planner
                 LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                 LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
-                WHERE m.[accommodatie] LIKE '%Spitsbergen%'
+                WHERE m.[accommodatie] LIKE @accommodatiePattern
                   AND m.[status] <> 'Afgelast'
                   AND m.[wedstrijd] LIKE @tegPattern
                   AND (@datum IS NULL OR CAST(m.[kaledatum] AS DATE) = @datum)
@@ -364,6 +366,7 @@ namespace SportlinkFunction.Planner
                 cmd.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
                 cmd.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
                     datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
+                cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen"}%");
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -454,9 +457,10 @@ namespace SportlinkFunction.Planner
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                 LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
-                  AND m.[accommodatie] LIKE '%Spitsbergen%'
+                  AND m.[accommodatie] LIKE @accommodatiePattern
             ", conn);
             cmd.Parameters.AddWithValue("@code", wedstrijdcode);
+            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen"}%");
 
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -530,6 +534,34 @@ namespace SportlinkFunction.Planner
             cmd.Parameters.AddWithValue("@opmerking", (object?)opmerking ?? DBNull.Value);
 
             return (int)(await cmd.ExecuteScalarAsync())!;
+        }
+
+        /// <summary>
+        /// Markeert geplande wedstrijden als vervallen zodra ze na de Sportlink-sync in his.matches staan.
+        /// Match op Datum + TeamNaam — een team speelt maximaal 1 wedstrijd per dag.
+        /// </summary>
+        public static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log)
+        {
+            var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen";
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                UPDATE gw
+                SET gw.[IsVervallen] = 1,
+                    gw.[SportlinkWedstrijdCode] = CAST(m.[wedstrijdcode] AS BIGINT),
+                    gw.[mta_modified] = GETDATE()
+                FROM [planner].[GeplandeWedstrijden] gw
+                INNER JOIN [his].[matches] m
+                    ON CAST(m.[kaledatum] AS DATE) = gw.[Datum]
+                    AND m.[teamnaam] = gw.[TeamNaam]
+                WHERE gw.[IsVervallen] = 0
+                  AND gw.[Status] <> 'Geannuleerd'
+                  AND m.[accommodatie] LIKE @accommodatiePattern
+            ", conn);
+            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+            var rows = await cmd.ExecuteNonQueryAsync();
+            if (rows > 0)
+                log.LogInformation("Post-sync: {Count} geplande wedstrijd(en) als vervallen gemarkeerd (overgenomen in Sportlink)", rows);
         }
 
         public static async Task<DateOnly?> GetSeasonEndDateAsync()

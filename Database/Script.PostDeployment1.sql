@@ -263,3 +263,58 @@ GO
 DECLARE @SeasonStartMonth INT = (SELECT [SeasonStartMonth] FROM [dbo].[AppSettings])
 EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;
 GO
+-- ============================================================
+-- #30: Multi-club fundament — ClubCode + Accommodatie
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ClubCode')
+    ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'VRC';
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'Accommodatie')
+    ALTER TABLE [dbo].[AppSettings] ADD [Accommodatie] NVARCHAR(200) NULL CONSTRAINT [DF_AppSettings_Accommodatie] DEFAULT 'Sportpark Spitsbergen';
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Velden') AND name = 'ClubCode')
+    ALTER TABLE [dbo].[Velden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC';
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'ClubCode')
+    ALTER TABLE [dbo].[Speeltijden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'VRC';
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TeamRegels') AND name = 'ClubCode')
+    ALTER TABLE [dbo].[TeamRegels] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'VRC';
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'ClubCode')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC';
+GO
+
+-- ============================================================
+-- #29: IsVervallen + SportlinkWedstrijdCode + status rename
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'IsVervallen')
+    ALTER TABLE [planner].[GeplandeWedstrijden] ADD [IsVervallen] BIT NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_IsVervallen] DEFAULT 0;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'SportlinkWedstrijdCode')
+    ALTER TABLE [planner].[GeplandeWedstrijden] ADD [SportlinkWedstrijdCode] BIGINT NULL;
+GO
+-- Verander default constraint Status: 'Gepland' → 'Te bevestigen'
+IF EXISTS (
+    SELECT 1 FROM sys.default_constraints dc
+    JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+    WHERE dc.parent_object_id = OBJECT_ID('planner.GeplandeWedstrijden')
+      AND c.name = 'Status'
+      AND dc.definition = '(''Gepland'')'
+)
+BEGIN
+    DECLARE @constraintName NVARCHAR(200);
+    SELECT @constraintName = dc.name
+    FROM sys.default_constraints dc
+    JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+    WHERE dc.parent_object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND c.name = 'Status';
+    EXEC('ALTER TABLE [planner].[GeplandeWedstrijden] DROP CONSTRAINT [' + @constraintName + ']');
+    ALTER TABLE [planner].[GeplandeWedstrijden]
+        ADD CONSTRAINT [DF_GeplandeWedstrijden_Status] DEFAULT 'Te bevestigen' FOR [Status];
+END
+GO
+-- Bestaande 'Gepland' rijen bijwerken naar 'Te bevestigen'
+UPDATE [planner].[GeplandeWedstrijden]
+SET [Status] = 'Te bevestigen', [mta_modified] = GETDATE()
+WHERE [Status] = 'Gepland';
+GO

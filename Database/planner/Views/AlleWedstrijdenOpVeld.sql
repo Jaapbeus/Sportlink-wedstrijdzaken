@@ -27,14 +27,14 @@ LEFT JOIN [dbo].[Speeltijden] s
     END
 LEFT JOIN [dbo].[Velden] v
     ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-WHERE m.[accommodatie] LIKE '%Spitsbergen%'
+WHERE m.[accommodatie] LIKE '%' + COALESCE((SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings]), 'Sportpark Spitsbergen') + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
   AND v.[VeldNummer] IS NOT NULL
 
 UNION ALL
 
--- Planner-scheduled matches
+-- Planner-scheduled matches (alleen niet-vervallen; vervallen = overgenomen in Sportlink)
 SELECT
     [Datum],
     [AanvangsTijd],
@@ -47,4 +47,5 @@ SELECT
     ''                                                                              AS VeldSubpositie,
     'Planner'                                                                       AS Bron
 FROM [planner].[GeplandeWedstrijden]
-WHERE [Status] <> 'Geannuleerd';
+WHERE [Status] <> 'Geannuleerd'
+  AND [IsVervallen] = 0;
