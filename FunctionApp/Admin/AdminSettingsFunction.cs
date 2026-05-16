@@ -33,7 +33,7 @@ public static class AdminSettingsFunction
 
     [Function("AdminSettingsGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "admin/settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/settings")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsGet");
@@ -76,7 +76,7 @@ public static class AdminSettingsFunction
 
     [Function("AdminSettingsPut")]
     public static async Task<IActionResult> Put(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "admin/settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/settings")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsPut");
