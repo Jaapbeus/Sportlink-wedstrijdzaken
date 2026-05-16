@@ -9,7 +9,7 @@ namespace SportlinkFunction.Admin;
 /// <summary>
 /// Admin API voor email-verwerkingslog. v2 — #93.
 ///
-/// GET /api/admin/email-log?vanaf=YYYY-MM-DD&amp;tot=YYYY-MM-DD&amp;status=X&amp;limit=50
+/// GET /api/beheer/email-log?vanaf=YYYY-MM-DD&amp;tot=YYYY-MM-DD&amp;status=X&amp;limit=50
 ///
 /// AVG: NOOIT EmailBody of AntwoordEmail teruggeven; alleen metadata.
 /// </summary>
@@ -81,7 +81,7 @@ public static class AdminEmailLogFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij ophalen email-log");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
         }
     }
 }

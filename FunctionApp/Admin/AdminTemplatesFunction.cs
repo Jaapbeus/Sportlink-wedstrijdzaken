@@ -11,9 +11,9 @@ namespace SportlinkFunction.Admin;
 /// <summary>
 /// Admin API voor EmailTemplateInstellingen. v2 — #90.
 ///
-/// GET  /api/admin/templates            → alle actieve templates
-/// PUT  /api/admin/templates/{key}      → upsert template (Onderwerp + BodyTemplate)
-/// POST /api/admin/templates/{key}/reset → verwijder rij; hardcoded default treedt weer in
+/// GET  /api/beheer/templates            → alle actieve templates
+/// PUT  /api/beheer/templates/{key}      → upsert template (Onderwerp + BodyTemplate)
+/// POST /api/beheer/templates/{key}/reset → verwijder rij; hardcoded default treedt weer in
 /// </summary>
 public static class AdminTemplatesFunction
 {
@@ -56,7 +56,7 @@ public static class AdminTemplatesFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij ophalen templates");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -102,7 +102,6 @@ public static class AdminTemplatesFunction
             command.Parameters.AddWithValue("@ClubCode", clubCode);
             await command.ExecuteNonQueryAsync();
 
-            // Audit-log
             var gewijzigdDoor = dto.GewijzigdDoor ?? "onbekend";
             using var auditCmd = new SqlCommand(@"
                 INSERT INTO [dbo].[AppSettingsAudit]
@@ -122,7 +121,7 @@ public static class AdminTemplatesFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij opslaan template {Key}", key);
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -156,7 +155,7 @@ public static class AdminTemplatesFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij reset template {Key}", key);
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Reset mislukt" }) { StatusCode = 500 };
         }
     }
 

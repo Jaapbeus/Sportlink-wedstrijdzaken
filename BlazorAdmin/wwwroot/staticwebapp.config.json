@@ -1,6 +1,6 @@
 {
   "routes": [
-    { "route": "/api/admin/*", "allowedRoles": ["admin"] },
+    { "route": "/api/beheer/*", "allowedRoles": ["admin"] },
     { "route": "/api/test/*", "allowedRoles": ["admin"] },
     { "route": "/.auth/login/aad", "allowedRoles": ["anonymous"] },
     { "route": "/*", "allowedRoles": ["authenticated"] }

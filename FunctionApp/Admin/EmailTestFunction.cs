@@ -35,7 +35,6 @@ public static class EmailTestFunction
     {
         var log = context.GetLogger("EmailTestDryRun");
 
-        // Rate limiting check
         if (!TryAcquireSlot())
         {
             return new ObjectResult(new { error = $"Rate limit overschreden: max {MaxCallsPerMinute}/min" })
@@ -62,10 +61,8 @@ public static class EmailTestFunction
             var afzender = dto.Afzender ?? "test@example.com";
             var body = dto.Body ?? "";
 
-            // 1. Classificeer
             var classificatie = await aiService.ClassificeerEmailAsync(body, onderwerp, afzender);
 
-            // 2. Construct een fake InkomendEmail voor de templates
             var fakeEmail = new InkomendEmail
             {
                 MessageId = "dry-run-" + Guid.NewGuid().ToString("N"),
@@ -77,8 +74,6 @@ public static class EmailTestFunction
                 Body = body
             };
 
-            // 3. Sample antwoord via de standaard buitenscope/aangepast template
-            //    (we hergebruiken de bestaande generator-methodes voor preview)
             string voorbeeldOnderwerp;
             string voorbeeldBody;
             if (classificatie.Type == VerzoekType.BuitenScope)
@@ -107,7 +102,7 @@ public static class EmailTestFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij dry-run email");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Dry-run mislukt" }) { StatusCode = 500 };
         }
     }
 

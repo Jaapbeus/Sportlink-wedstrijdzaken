@@ -49,7 +49,7 @@ public static class AdminSyncFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij opvragen sync-status");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Ophalen sync-status mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -87,7 +87,7 @@ public static class AdminSyncFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij triggeren van sync");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Sync starten mislukt" }) { StatusCode = 500 };
         }
     }
 }
