@@ -329,6 +329,112 @@ namespace SportlinkFunction.Planner
             return null;
         }
 
+        /// <summary>
+        /// Zoekt een wedstrijd op basis van de tegenstander-naam (fuzzy LIKE-match op wedstrijdnaam).
+        /// Zoekt in his.matches (Sportlink-sync) én planner.GeplandeWedstrijden.
+        /// Wanneer datum null is, worden alle toekomstige en recente wedstrijden doorzocht.
+        /// </summary>
+        public static async Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(string tegenstander, DateOnly? datum)
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+
+            // Zoek in his.matches (wedstrijdnaam bevat tegenstander)
+            using (var cmd = new SqlCommand(@"
+                SELECT TOP 1
+                    CAST(m.[wedstrijdcode] AS BIGINT),
+                    m.[wedstrijd],
+                    CAST(m.[kaledatum] AS DATE),
+                    m.[aanvangstijd],
+                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105),
+                    m.[veld],
+                    t.[leeftijdscategorie],
+                    COALESCE(s.[Veldafmeting], 1.00)
+                FROM [his].[matches] m
+                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
+                LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                WHERE m.[accommodatie] LIKE '%Spitsbergen%'
+                  AND m.[status] <> 'Afgelast'
+                  AND m.[wedstrijd] LIKE @tegPattern
+                  AND (@datum IS NULL OR CAST(m.[kaledatum] AS DATE) = @datum)
+                ORDER BY m.[kaledatum]
+            ", conn))
+            {
+                cmd.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
+                cmd.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
+                    datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var aanvangstijd = reader.GetString(3).Trim();
+                    var duur = reader.GetInt32(4);
+                    var datumResult = DateOnly.FromDateTime(reader.GetDateTime(2));
+                    TimeOnly.TryParse(aanvangstijd, out var startTime);
+                    return new ZoekWedstrijdResponse
+                    {
+                        Wedstrijdcode = reader.GetInt64(0),
+                        Wedstrijd = reader.GetString(1).Trim(),
+                        Datum = datumResult.ToString("yyyy-MM-dd"),
+                        AanvangsTijd = aanvangstijd,
+                        EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),
+                        DuurMinuten = duur,
+                        VeldNaam = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                        LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                        VeldDeelGebruik = reader.GetDecimal(7)
+                    };
+                }
+            }
+
+            // Zoek in planner.GeplandeWedstrijden (Tegenstander-kolom)
+            using (var cmd2 = new SqlCommand(@"
+                SELECT TOP 1
+                    CAST(0 AS BIGINT),
+                    COALESCE(gw.[TeamNaam], '') + ' - ' + COALESCE(gw.[Tegenstander], ''),
+                    CAST(gw.[Datum] AS DATE),
+                    CONVERT(VARCHAR(8), gw.[AanvangsTijd], 108),
+                    gw.[WedstrijdDuurMinuten],
+                    COALESCE(v.[VeldNaam], ''),
+                    gw.[LeeftijdsCategorie],
+                    CAST(1.00 AS DECIMAL(18,2))
+                FROM [planner].[GeplandeWedstrijden] gw
+                LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
+                WHERE gw.[Status] <> 'Geannuleerd'
+                  AND gw.[Tegenstander] LIKE @tegPattern
+                  AND (@datum IS NULL OR gw.[Datum] = @datum)
+                ORDER BY gw.[Datum]
+            ", conn))
+            {
+                cmd2.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
+                cmd2.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
+                    datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
+
+                using var reader2 = await cmd2.ExecuteReaderAsync();
+                if (await reader2.ReadAsync())
+                {
+                    var aanvangstijd = reader2.GetString(3).Trim();
+                    var duur = reader2.GetInt32(4);
+                    var datumResult = DateOnly.FromDateTime(reader2.GetDateTime(2));
+                    TimeOnly.TryParse(aanvangstijd, out var startTime);
+                    return new ZoekWedstrijdResponse
+                    {
+                        Wedstrijdcode = reader2.GetInt64(0),
+                        Wedstrijd = reader2.GetString(1).Trim(),
+                        Datum = datumResult.ToString("yyyy-MM-dd"),
+                        AanvangsTijd = aanvangstijd,
+                        EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),
+                        DuurMinuten = duur,
+                        VeldNaam = reader2.IsDBNull(5) ? null : reader2.GetString(5).Trim(),
+                        LeeftijdsCategorie = reader2.IsDBNull(6) ? null : reader2.GetString(6).Trim(),
+                        VeldDeelGebruik = reader2.GetDecimal(7)
+                    };
+                }
+            }
+
+            return null;
+        }
+
         public static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(long wedstrijdcode)
         {
             using var conn = new SqlConnection(ConnectionString);

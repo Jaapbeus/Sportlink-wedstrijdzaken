@@ -349,6 +349,55 @@ public static class EmailResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
+    // ── Wedstrijd al ingepland ──
+
+    public static (string onderwerp, string body) BouwWedstrijdAlIngeplandAntwoord(
+        ZoekWedstrijdResponse? wedstrijd,
+        EmailClassificatie classificatie,
+        InkomendEmail email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        string inhoud;
+
+        if (wedstrijd == null)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + "Er is een fout opgetreden bij het ophalen van de wedstrijdgegevens. "
+                   + "De coördinator neemt zo snel mogelijk contact op.";
+        }
+        else
+        {
+            var datumTekst = FormatDatum(wedstrijd.Datum);
+            var veldTekst = !string.IsNullOrWhiteSpace(wedstrijd.VeldNaam)
+                ? $" op {wedstrijd.VeldNaam}"
+                : "";
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat al ingepland op {datumTekst} "
+                   + $"om {wedstrijd.AanvangsTijd}{veldTekst}.";
+        }
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
+    // ── Team onbekend — vraag welk VRC-team ──
+
+    public static (string onderwerp, string body) BouwTeamOnbekendAntwoord(
+        string tegenstander,
+        EmailClassificatie classificatie,
+        InkomendEmail email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+
+        var inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma. "
+                   + "Tegen welk VRC-team zou deze wedstrijd zijn? "
+                   + "Dan kunnen we de beschikbaarheid voor je controleren.";
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
     // ── Fout ──
 
     public static (string onderwerp, string body) BouwFoutAntwoord(
