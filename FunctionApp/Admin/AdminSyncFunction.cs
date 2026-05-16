@@ -16,7 +16,7 @@ public static class AdminSyncFunction
 {
     [Function("AdminSyncStatus")]
     public static async Task<IActionResult> Status(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "admin/sync/status")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/sync/status")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncStatus");
@@ -55,7 +55,7 @@ public static class AdminSyncFunction
 
     [Function("AdminSyncTrigger")]
     public static async Task<IActionResult> Trigger(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "admin/sync/trigger")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/sync/trigger")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncTrigger");

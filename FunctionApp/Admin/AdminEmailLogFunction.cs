@@ -20,7 +20,7 @@ public static class AdminEmailLogFunction
 
     [Function("AdminEmailLogGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "admin/email-log")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/email-log")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminEmailLogGet");

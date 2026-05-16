@@ -14,7 +14,7 @@ public static class AdminVoorkeurTijdenFunction
 {
     [Function("AdminVoorkeurTijdenGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "admin/voorkeurstijden")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/voorkeurstijden")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenGet");
@@ -62,7 +62,7 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminVoorkeurTijdenPost")]
     public static async Task<IActionResult> Post(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "admin/voorkeurstijden")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/voorkeurstijden")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenPost");
@@ -102,7 +102,7 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminVoorkeurTijdenPut")]
     public static async Task<IActionResult> Put(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "admin/voorkeurstijden/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/voorkeurstijden/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
@@ -145,7 +145,7 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminVoorkeurTijdenDelete")]
     public static async Task<IActionResult> Delete(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "admin/voorkeurstijden/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "beheer/voorkeurstijden/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
