@@ -447,6 +447,61 @@ public static class EmailResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
+    // ── Template-driven antwoord (v2 — EmailTemplateService overload) ──
+
+    /// <summary>
+    /// Past een EmailTemplate toe op de classificatie. Placeholders: {{voornaam}}, {{aanhef}},
+    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}.
+    /// Valt terug op de standaard handtekening + review-wrapper.
+    /// Niet-destructief: bestaande Bouw* methoden blijven beschikbaar als fallback.
+    /// </summary>
+    public static (string onderwerp, string body) BouwAangepasteAntwoord(
+        EmailTemplate template,
+        EmailClassificatie classificatie,
+        InkomendEmail email,
+        IDictionary<string, string>? extraPlaceholders = null)
+    {
+        var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["voornaam"] = ExtractVoornaam(email.AfzenderNaam),
+            ["aanhef"] = GetTijdsgebondenAanhef(),
+            ["datum"] = FormatDatum(classificatie.Datum),
+            ["team"] = classificatie.TeamNaam ?? "",
+            ["tegenstander"] = classificatie.Tegenstander ?? "",
+            ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
+        };
+
+        if (extraPlaceholders != null)
+        {
+            foreach (var (k, v) in extraPlaceholders)
+                placeholders[k] = v;
+        }
+
+        var onderwerpInvulling = EmailTemplateService.ApplyPlaceholders(template.Onderwerp, placeholders);
+        var bodyInvulling = EmailTemplateService.ApplyPlaceholders(template.Body, placeholders);
+
+        var onderwerp = !string.IsNullOrWhiteSpace(onderwerpInvulling)
+            ? onderwerpInvulling
+            : $"Re: {email.Onderwerp}";
+
+        // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
+        var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
+        var body = "";
+        if (string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            body += $"=== REVIEW MODE ===\n"
+                  + $"Originele afzender: {email.Afzender}\n"
+                  + $"Onderwerp: {email.Onderwerp}\n"
+                  + $"Classificatie: {classificatie.Type}\n"
+                  + $"Template: {template.Key}\n"
+                  + $"==================\n\n";
+        }
+
+        body += bodyInvulling;
+        body += "\n\n" + GetHandtekening();
+        return (onderwerp, body);
+    }
+
     // ── Helpers ──
 
     public static string GetTijdsgebondenAanhef()
