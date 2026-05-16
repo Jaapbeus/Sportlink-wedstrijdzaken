@@ -12,8 +12,8 @@ namespace SportlinkFunction.Admin;
 /// Admin API voor AppSettings (zonder secrets). v2 — #87 + #27.
 ///
 /// Endpoints:
-///   GET  /api/admin/settings          → leest niet-gevoelige AppSettings velden
-///   PUT  /api/admin/settings          → schrijft toegestane velden + logt naar dbo.AppSettingsAudit
+///   GET  /api/beheer/settings          → leest niet-gevoelige AppSettings velden
+///   PUT  /api/beheer/settings          → schrijft toegestane velden + logt naar dbo.AppSettingsAudit
 ///
 /// Beveiliging:
 ///   - AuthorizationLevel.Function (in productie via SWA proxying veilig)
@@ -70,7 +70,7 @@ public static class AdminSettingsFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij ophalen AppSettings");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -118,10 +118,8 @@ public static class AdminSettingsFunction
 
             try
             {
-                // Lees huidige waarden voor de audit-trail
-                var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys);
+                    var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys);
 
-                // UPDATE met dynamische SET-clause (gebruik geparameteriseerde queries per veld)
                 foreach (var (veld, nieuweWaarde) in changes)
                 {
                     var updateCmd = new SqlCommand(
@@ -130,7 +128,6 @@ public static class AdminSettingsFunction
                     updateCmd.Parameters.AddWithValue("@Waarde", (object?)nieuweWaarde ?? DBNull.Value);
                     await updateCmd.ExecuteNonQueryAsync();
 
-                    // Audit-log entry
                     currentValues.TryGetValue(veld, out var oud);
                     var auditCmd = new SqlCommand(@"
                         INSERT INTO [dbo].[AppSettingsAudit]
@@ -154,7 +151,6 @@ public static class AdminSettingsFunction
                 throw;
             }
 
-            // Refresh de in-memory cache
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
             var fetchScheduleChanged = changes.Keys.Any(k =>
@@ -172,7 +168,7 @@ public static class AdminSettingsFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij opslaan AppSettings");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
         }
     }
 

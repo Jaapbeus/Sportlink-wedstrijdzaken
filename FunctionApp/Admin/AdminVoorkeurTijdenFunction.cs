@@ -56,7 +56,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij ophalen voorkeurstijden");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -96,7 +96,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij aanmaken voorkeurstijd");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Aanmaken mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -115,6 +115,7 @@ public static class AdminVoorkeurTijdenFunction
             if (validatie != null) return validatie;
 
             await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -122,8 +123,9 @@ public static class AdminVoorkeurTijdenFunction
                 UPDATE [dbo].[TeamVoorkeurTijden]
                 SET [TeamNaam] = @TeamNaam, [DagVanWeek] = @DagVanWeek, [VoorkeurTijd] = @VoorkeurTijd,
                     [Prioriteit] = @Prioriteit, [Actief] = @Actief, [mta_modified] = GETDATE()
-                WHERE [Id] = @Id", connection);
+                WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@Id", id);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             command.Parameters.AddWithValue("@TeamNaam", dto!.TeamNaam!);
             command.Parameters.AddWithValue("@DagVanWeek", dto.DagVanWeek!);
             command.Parameters.AddWithValue("@VoorkeurTijd", TimeSpan.Parse(dto.VoorkeurTijd!));
@@ -139,7 +141,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij bijwerken voorkeurstijd {Id}", id);
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Bijwerken mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -153,15 +155,16 @@ public static class AdminVoorkeurTijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            // Soft delete: zet Actief = 0
             using var command = new SqlCommand(@"
                 UPDATE [dbo].[TeamVoorkeurTijden]
                 SET [Actief] = 0, [mta_modified] = GETDATE()
-                WHERE [Id] = @Id", connection);
+                WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@Id", id);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             var rows = await command.ExecuteNonQueryAsync();
 
             if (rows == 0)
@@ -172,7 +175,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij verwijderen voorkeurstijd {Id}", id);
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Verwijderen mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -217,7 +220,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij ophalen teamregels");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -264,7 +267,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij aanmaken teamregel");
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Aanmaken mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -283,6 +286,7 @@ public static class AdminVoorkeurTijdenFunction
             if (validatie != null) return validatie;
 
             await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -292,8 +296,9 @@ public static class AdminVoorkeurTijdenFunction
                     [WaardeMinuten] = @WaardeMinuten, [WaardeVeldNummer] = @WaardeVeldNummer,
                     [WaardeTijd] = @WaardeTijd, [Prioriteit] = @Prioriteit,
                     [Actief] = @Actief, [Opmerking] = @Opmerking
-                WHERE [Id] = @Id", connection);
+                WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@Id", id);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             command.Parameters.AddWithValue("@TeamNaam", dto!.TeamNaam!);
             command.Parameters.AddWithValue("@RegelType", dto.RegelType!);
             command.Parameters.AddWithValue("@WaardeMinuten", (object?)dto.WaardeMinuten ?? DBNull.Value);
@@ -311,7 +316,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij bijwerken teamregel {Id}", id);
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Bijwerken mislukt" }) { StatusCode = 500 };
         }
     }
 
@@ -325,12 +330,14 @@ public static class AdminVoorkeurTijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             using var command = new SqlCommand(@"
-                UPDATE [dbo].[TeamRegels] SET [Actief] = 0 WHERE [Id] = @Id", connection);
+                UPDATE [dbo].[TeamRegels] SET [Actief] = 0 WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@Id", id);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             var rows = await command.ExecuteNonQueryAsync();
 
             if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
@@ -339,7 +346,7 @@ public static class AdminVoorkeurTijdenFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij verwijderen teamregel {Id}", id);
-            return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+            return new ObjectResult(new { error = "Verwijderen mislukt" }) { StatusCode = 500 };
         }
     }
 
