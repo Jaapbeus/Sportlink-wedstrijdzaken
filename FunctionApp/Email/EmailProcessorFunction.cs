@@ -198,7 +198,7 @@ public class EmailProcessorFunction
     /// <summary>
     /// Bouwt het antwoord via templates op basis van het classificatietype en PlannerService response.
     /// </summary>
-    private static (string onderwerp, string body) BouwTemplateAntwoord(
+    internal static (string onderwerp, string body) BouwTemplateAntwoord(
         EmailClassificatie classificatie,
         string plannerResponseJson,
         InkomendEmail email)
@@ -278,7 +278,7 @@ public class EmailProcessorFunction
     /// Extraheert datums uit onderwerp en body, en corrigeert de AI-classificatie.
     /// Prioriteit: expliciete datum in onderwerp > expliciete datum in body > AI datum + dag-validatie.
     /// </summary>
-    private static void ValideerDagDatum(EmailClassificatie classificatie, string emailBody, string onderwerp)
+    internal static void ValideerDagDatum(EmailClassificatie classificatie, string emailBody, string onderwerp)
     {
         // Stap 1: Zoek expliciete datum in onderwerp (bijv. "18-4-2026", "18-04-2026", "9 mei")
         var onderwerpDatum = ExtractExpliciteDatum(onderwerp);
@@ -453,7 +453,7 @@ public class EmailProcessorFunction
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste PlannerService-aanroep.
     /// </summary>
-    private static async Task<string> VerwerkMetPlannerAsync(
+    internal static async Task<string> VerwerkMetPlannerAsync(
         EmailClassificatie classificatie, InkomendEmail email, ILogger log)
     {
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
