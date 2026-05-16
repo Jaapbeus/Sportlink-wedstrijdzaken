@@ -53,7 +53,22 @@ else
         <EditForm Model="editing" OnValidSubmit="OpslaanAsync">
             <div class="mb-3">
                 <label class="form-label">Template key</label>
-                <input class="form-control" @bind="editing.TemplateKey" disabled="@(!isNew)" />
+                @if (isNew)
+                {
+                    <select class="form-select" @bind="editing.TemplateKey">
+                        <option value="">— kies een type —</option>
+                        <option value="beschikbaarheid_check">beschikbaarheid_check — vraag over veldbeschikbaarheid</option>
+                        <option value="herplan_verzoek">herplan_verzoek — verzoek om wedstrijd te verplaatsen</option>
+                        <option value="bevestiging">bevestiging — bevestiging van een eerder voorstel</option>
+                    </select>
+                    <small class="form-text text-muted">
+                        Kies de template die de code zal gebruiken als override. Lege DB-rij = hardcoded default blijft actief.
+                    </small>
+                }
+                else
+                {
+                    <input class="form-control" value="@editing.TemplateKey" disabled />
+                }
             </div>
             <div class="mb-3">
                 <label class="form-label">Onderwerp</label>

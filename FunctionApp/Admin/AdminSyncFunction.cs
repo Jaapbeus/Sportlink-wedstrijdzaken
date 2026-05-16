@@ -9,8 +9,8 @@ namespace SportlinkFunction.Admin;
 /// <summary>
 /// Admin API voor synchronisatie. v2 — #89.
 ///
-/// GET  /api/admin/sync/status   → laatste sync timestamp + huidige FetchSchedule
-/// POST /api/admin/sync/trigger  → start synchronisatie (intern aanroep van FetchAndStoreApiData.RunSyncAsync)
+/// GET  /api/beheer/sync/status   → laatste sync timestamp + huidige FetchSchedule
+/// POST /api/beheer/sync/trigger  → start synchronisatie (intern aanroep van FetchAndStoreApiData.RunSyncAsync)
 /// </summary>
 public static class AdminSyncFunction
 {

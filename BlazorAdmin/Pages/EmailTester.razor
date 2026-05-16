@@ -53,7 +53,7 @@
 }
 
 @code {
-    private TestEmailRequest request = new();
+    private TestEmailRequest request = new() { Afzender = "trainer@example.com" };
     private TestEmailResponse? response;
     private string? error;
     private bool busy;
