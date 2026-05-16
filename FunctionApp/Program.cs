@@ -21,4 +21,16 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
     builder.Services.AddSingleton(new GraphServiceClient(credential));
 }
 
+#if DEBUG
+// v2: in DEBUG sta lokale Blazor dev-server toe (CORS). In productie verloopt verkeer via SWA proxying.
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+    policy.WithOrigins(
+            "http://localhost:5000",
+            "http://localhost:5001",
+            "https://localhost:7094",
+            "https://localhost:5001")
+          .AllowAnyHeader()
+          .AllowAnyMethod()));
+#endif
+
 builder.Build().Run();
