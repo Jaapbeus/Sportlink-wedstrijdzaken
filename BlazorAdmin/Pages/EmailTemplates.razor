@@ -166,9 +166,9 @@ else
                 break;
         }
 
-        if (!string.IsNullOrWhiteSpace(onderwerp) && string.IsNullOrWhiteSpace(editing.Onderwerp))
+        if (!string.IsNullOrWhiteSpace(onderwerp))
             editing.Onderwerp = onderwerp;
-        if (!string.IsNullOrWhiteSpace(body) && string.IsNullOrWhiteSpace(editing.BodyTemplate))
+        if (!string.IsNullOrWhiteSpace(body))
             editing.BodyTemplate = body;
     }
 

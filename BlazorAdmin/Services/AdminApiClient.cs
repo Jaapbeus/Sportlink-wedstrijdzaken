@@ -79,6 +79,17 @@ public class AdminApiClient
     public async Task<ApiResult<object>> DeleteTeamRegelAsync(int id)
         => await DeleteAsync<object>($"api/beheer/teamregels/{id}");
 
+    // ── Uitgesloten e-mailadressen ──
+
+    public async Task<ApiResult<List<UitgeslotenEmailAdresDto>>> GetUitgeslotenEmailsAsync()
+        => await GetAsync<List<UitgeslotenEmailAdresDto>>("api/beheer/uitgesloten-emails");
+
+    public async Task<ApiResult<object>> CreateUitgeslotenEmailAsync(UitgeslotenEmailAdresDto dto)
+        => await PostAsync<object>("api/beheer/uitgesloten-emails", dto);
+
+    public async Task<ApiResult<object>> DeleteUitgeslotenEmailAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/uitgesloten-emails/{id}");
+
     // ── Email log ──
 
     public async Task<ApiResult<EmailLogResponse>> GetEmailLogAsync(

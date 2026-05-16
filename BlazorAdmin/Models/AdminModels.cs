@@ -95,6 +95,15 @@ public class VoorbeeldAntwoord
     public string? Body { get; set; }
 }
 
+public class UitgeslotenEmailAdresDto
+{
+    public int Id { get; set; }
+    public string EmailAdres { get; set; } = "";
+    public string? Omschrijving { get; set; }
+    public bool Actief { get; set; } = true;
+    public string ClubCode { get; set; } = "";
+}
+
 public class TeamRegelDto
 {
     public int Id { get; set; }
