@@ -55,15 +55,15 @@ public static class EmailTestFunction
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
             var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-            var aiService = new EmailAiService(loggerFactory.CreateLogger<EmailAiService>());
+            var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
 
             var onderwerp = dto.Onderwerp ?? "";
             var afzender = dto.Afzender ?? "test@example.com";
             var body = dto.Body ?? "";
 
-            var classificatie = await aiService.ClassificeerEmailAsync(body, onderwerp, afzender);
+            var classificatie = await aiService.ClassificeerBerichtAsync(body, onderwerp, afzender);
 
-            var fakeEmail = new InkomendEmail
+            var fakeEmail = new InkomendBericht
             {
                 MessageId = "dry-run-" + Guid.NewGuid().ToString("N"),
                 ConversationId = "",

@@ -400,9 +400,9 @@ emails             |
 |---------|---------------------|
 | `EmailProcessorFunction.cs` | Timer trigger + orchestratie |
 | `EmailGraphService.cs` | Graph API wrapper (lezen, sturen, markeren) |
-| `EmailAiService.cs` | OpenAI classificatie + antwoord generatie |
-| `EmailModels.cs` | DTO's en enums |
-| `EmailResponseGenerator.cs` | Template-gebaseerde antwoord-opbouw |
+| `BerichtAiService.cs` | OpenAI classificatie (kanaal-agnostisch) |
+| `BerichtModels.cs` | DTO's en enums (InkomendBericht, BerichtClassificatie) |
+| `BerichtResponseGenerator.cs` | Template-gebaseerde antwoord-opbouw (kanaal-agnostisch) |
 
 ### AI classificatie (structured output)
 

@@ -8,9 +8,9 @@ namespace SportlinkFunction.Email;
 /// Service voor het classificeren van inkomende emails en het genereren van antwoorden
 /// met behulp van OpenAI GPT-4o-mini.
 /// </summary>
-public class EmailAiService
+public class BerichtAiService
 {
-    private readonly ILogger<EmailAiService> _logger;
+    private readonly ILogger<BerichtAiService> _logger;
     private readonly ChatClient _chatClient;
 
     private const string ClassificatieSystemPrompt = """
@@ -52,7 +52,7 @@ public class EmailAiService
         """;
 
 
-    public EmailAiService(ILogger<EmailAiService> logger)
+    public BerichtAiService(ILogger<BerichtAiService> logger)
     {
         _logger = logger;
 
@@ -63,12 +63,12 @@ public class EmailAiService
     }
 
     /// <summary>
-    /// Classificeert een inkomende email met behulp van GPT-4o-mini.
-    /// Retourneert een EmailClassificatie met het type verzoek en geëxtraheerde gegevens.
+    /// Classificeert een inkomend bericht met behulp van GPT-4o-mini.
+    /// Retourneert een BerichtClassificatie met het type verzoek en geëxtraheerde gegevens.
     /// </summary>
-    public async Task<EmailClassificatie> ClassificeerEmailAsync(string body, string subject, string afzender)
+    public async Task<BerichtClassificatie> ClassificeerBerichtAsync(string body, string subject, string afzender)
     {
-        _logger.LogInformation("Email classificatie gestart voor onderwerp: {Subject}", subject);
+        _logger.LogInformation("Bericht classificatie gestart voor onderwerp: {Subject}", subject);
 
         var userPrompt = $"Vandaag is {DateTime.Now:yyyy-MM-dd} ({DateTime.Now:dddd}).\n\nVan: {afzender}\nOnderwerp: {subject}\n\n{body}";
 
@@ -96,15 +96,12 @@ public class EmailAiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fout bij het classificeren van email met onderwerp: {Subject}", subject);
+            _logger.LogError(ex, "Fout bij het classificeren van bericht met onderwerp: {Subject}", subject);
             throw;
         }
     }
 
-    /// <summary>
-    /// Parst de JSON response van OpenAI naar een EmailClassificatie object.
-    /// </summary>
-    private static EmailClassificatie ParseClassificatieResponse(string jsonResponse)
+    private static BerichtClassificatie ParseClassificatieResponse(string jsonResponse)
     {
         using var doc = JsonDocument.Parse(jsonResponse);
         var root = doc.RootElement;
@@ -112,7 +109,7 @@ public class EmailAiService
         var typeString = root.GetProperty("type").GetString() ?? "buiten_scope";
         var namensWieString = root.GetProperty("namensWie").GetString() ?? "onbekend";
 
-        return new EmailClassificatie
+        return new BerichtClassificatie
         {
             Type = MapVerzoekType(typeString),
             Datum = GetOptionalString(root, "datum"),

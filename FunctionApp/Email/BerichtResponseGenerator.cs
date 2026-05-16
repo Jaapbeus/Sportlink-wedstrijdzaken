@@ -3,7 +3,7 @@ using SportlinkFunction.Planner;
 
 namespace SportlinkFunction.Email;
 
-public static class EmailResponseGenerator
+public static class BerichtResponseGenerator
 {
     private static readonly CultureInfo NL = new("nl-NL");
 
@@ -11,8 +11,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwBeschikbaarheidAntwoord(
         CheckAvailabilityResponse response,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -102,8 +102,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwMultiDatumBeschikbaarheidAntwoord(
         List<(string datum, CheckAvailabilityResponse response)> resultaten,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -125,7 +125,7 @@ public static class EmailResponseGenerator
     /// Toont vensters (van-tot) i.p.v. vaste starttijden, en "diverse mogelijkheden" bij een ruime planning.
     /// </summary>
     private static string BouwDatumSectie(
-        string datum, CheckAvailabilityResponse response, EmailClassificatie classificatie)
+        string datum, CheckAvailabilityResponse response, BerichtClassificatie classificatie)
     {
         var datumTekst = FormatDatum(datum);
         var vensters = response.BeschikbareVensters != null
@@ -189,8 +189,8 @@ public static class EmailResponseGenerator
     public static (string onderwerp, string body) BouwHerplanAntwoord(
         ZoekWedstrijdResponse? wedstrijd,
         HerplanCheckResponse? herplanOpties,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -268,8 +268,8 @@ public static class EmailResponseGenerator
         ZoekWedstrijdResponse? wedstrijd,
         int deadlineDagen,
         int dagenTotWedstrijd,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -302,8 +302,8 @@ public static class EmailResponseGenerator
         ZoekWedstrijdResponse? wedstrijd,
         string? gewensteDatum,
         CheckAvailabilityResponse? beschikbaarheid,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -356,7 +356,7 @@ public static class EmailResponseGenerator
     // ── Bevestiging ──
 
     public static (string onderwerp, string body) BouwBevestigingAntwoord(
-        InkomendEmail email, EmailClassificatie classificatie)
+        InkomendBericht email, BerichtClassificatie classificatie)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -370,12 +370,12 @@ public static class EmailResponseGenerator
 
     // ── Buiten scope ──
 
-    public static (string onderwerp, string body) BouwBuitenScopeAntwoord(InkomendEmail email)
+    public static (string onderwerp, string body) BouwBuitenScopeAntwoord(InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
-        var classificatie = new EmailClassificatie { Type = VerzoekType.BuitenScope };
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BuitenScope };
         var inhoud = $"{aanhef} {voornaam},\n\n"
                    + "Bedankt voor je bericht. Dit verzoek vereist handmatige afhandeling "
                    + "en is ter beoordeling bij de coördinator neergelegd.";
@@ -387,8 +387,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwWedstrijdAlIngeplandAntwoord(
         ZoekWedstrijdResponse? wedstrijd,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -418,8 +418,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwTeamOnbekendAntwoord(
         string tegenstander,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -435,7 +435,7 @@ public static class EmailResponseGenerator
     // ── Fout ──
 
     public static (string onderwerp, string body) BouwFoutAntwoord(
-        InkomendEmail email, EmailClassificatie classificatie)
+        InkomendBericht email, BerichtClassificatie classificatie)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -457,8 +457,8 @@ public static class EmailResponseGenerator
     /// </summary>
     public static (string onderwerp, string body) BouwAangepasteAntwoord(
         EmailTemplate template,
-        EmailClassificatie classificatie,
-        InkomendEmail email,
+        BerichtClassificatie classificatie,
+        InkomendBericht email,
         IDictionary<string, string>? extraPlaceholders = null)
     {
         var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -573,7 +573,7 @@ public static class EmailResponseGenerator
     }
 
     private static (string onderwerp, string body) WrapMetReviewEnHandtekening(
-        string inhoud, EmailClassificatie classificatie, InkomendEmail email)
+        string inhoud, BerichtClassificatie classificatie, InkomendBericht email)
     {
         var onderwerp = $"Re: {email.Onderwerp}";
         var body = "";

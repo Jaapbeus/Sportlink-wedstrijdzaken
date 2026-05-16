@@ -6,7 +6,7 @@ namespace SportlinkFunction.Email;
 
 /// <summary>
 /// Laadt email-templates uit dbo.EmailTemplateInstellingen.
-/// Valt terug op hardcoded defaults (EmailResponseGenerator) als de tabel leeg is.
+/// Valt terug op hardcoded defaults (BerichtResponseGenerator) als de tabel leeg is.
 /// Cacht templates statisch met TTL = 5 minuten om DB-round-trips te beperken.
 /// </summary>
 public static class EmailTemplateService

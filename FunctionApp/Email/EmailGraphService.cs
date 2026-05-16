@@ -28,9 +28,9 @@ public partial class EmailGraphService
     /// <summary>
     /// Haalt maximaal 10 ongelezen emails op uit de inbox van de coordinator-mailbox.
     /// </summary>
-    public async Task<List<InkomendEmail>> GetUnreadEmailsAsync()
+    public async Task<List<InkomendBericht>> GetUnreadEmailsAsync()
     {
-        var resultaat = new List<InkomendEmail>();
+        var resultaat = new List<InkomendBericht>();
 
         try
         {
@@ -55,7 +55,7 @@ public partial class EmailGraphService
             {
                 try
                 {
-                    var email = new InkomendEmail
+                    var email = new InkomendBericht
                     {
                         MessageId = message.Id ?? "",
                         ConversationId = message.ConversationId ?? "",
