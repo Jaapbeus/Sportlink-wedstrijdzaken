@@ -107,6 +107,14 @@ public class AdminApiClient
     public async Task<ApiResult<TestEmailResponse>> TestEmailAsync(TestEmailRequest dto)
         => await PostAsync<TestEmailResponse>("api/test/email", dto);
 
+    // ── Feedback widget ──
+
+    public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
+        => await PostAsync<FeedbackValidateResponse>("api/feedback/validate", dto);
+
+    public async Task<ApiResult<FeedbackSubmitResponse>> SubmitFeedbackAsync(FeedbackValidateRequest dto)
+        => await PostAsync<FeedbackSubmitResponse>("api/feedback/submit", dto);
+
     // ── HTTP-helpers ──
 
     private async Task<ApiResult<T>> GetAsync<T>(string path)
