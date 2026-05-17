@@ -67,7 +67,8 @@ $expectedColumns = @{
         "Accommodatie","LastSyncTimestamp","FetchSchedule","PlannerAfzenderNaam",
         "CoordinatorNaam","CoordinatorFunctie","PlannerEmailAdres","InternDomein",
         "HerplanDeadlineDagen","BufferMinuten",
-        "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude"
+        "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude",
+        "EmailVoetnoot"
     )
     "dbo.TeamVoorkeurTijden" = @(
         "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",
@@ -150,6 +151,7 @@ foreach ($tableKey in $expectedColumns.Keys) {
                 "AccommodatiePlaats"   { "NVARCHAR(100) NULL" }
                 "AccommodatieLatitude" { "FLOAT NULL" }
                 "AccommodatieLongitude"{ "FLOAT NULL" }
+                "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
                 "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT 'VRC'" }
                 "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETDATE()" }
                 "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETDATE()" }

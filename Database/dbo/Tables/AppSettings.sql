@@ -13,5 +13,6 @@
 	[PlannerEmailAdres]		NVARCHAR(200)	NULL,
 	[InternDomein]			NVARCHAR(100)	NULL,	-- bijv. '[club-domein]' — emails van dit domein overslaan
 	[HerplanDeadlineDagen]	INT				NULL,	-- default 8: herplanverzoek mag niet eerder dan X dagen voor wedstrijd
-	[BufferMinuten]			INT				NULL	-- default 15: buffer tussen wedstrijden op hetzelfde veld
+	[BufferMinuten]			INT				NULL,	-- default 15: buffer tussen wedstrijden op hetzelfde veld
+	[EmailVoetnoot]			NVARCHAR(MAX)	NULL	-- vrij te bewerken voettekst die onder alle uitgaande e-mails wordt geplaatst
 	)

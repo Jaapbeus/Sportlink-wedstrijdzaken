@@ -596,6 +596,11 @@ public static class BerichtResponseGenerator
 
     private static string GetHandtekening()
     {
+        var voetnoot = SystemUtilities.AppSettings.GetSetting("emailVoetnoot");
+        if (!string.IsNullOrWhiteSpace(voetnoot))
+            return voetnoot;
+
+        // Fallback: auto-opgebouwde handtekening uit losse instellingen
         var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "VRC Veldplanner";
         var coordinatorNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
         var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie") ?? "Coördinator thuiswedstrijden";
