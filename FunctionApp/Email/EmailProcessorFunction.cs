@@ -192,6 +192,60 @@ public class EmailProcessorFunction
 
         log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd naar {Ontvanger}",
             verwerkingId, ontvanger);
+
+        // Stuur interne notificatie naar teamleider bij herplanverzoeken van externe afzender (#66)
+        if (classificatie.Type == VerzoekType.HerplanVerzoek
+            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam)
+            && !string.IsNullOrWhiteSpace(classificatie.Datum))
+        {
+            await StuurTeamleiderNotificatieAsync(
+                graphService, classificatie.TeamNaam, classificatie.Datum, reviewMode, log);
+        }
+    }
+
+    private static async Task StuurTeamleiderNotificatieAsync(
+        EmailGraphService graphService, string teamNaam, string datum, string? reviewMode, ILogger log)
+    {
+        try
+        {
+            var teamleider = await SportlinkFunction.Planner.PlannerDataAccess.GetTeamleiderContactAsync(teamNaam);
+            if (teamleider == null)
+            {
+                log.LogInformation("Geen teamleider gevonden voor {Team} in avg.Teambegeleiding — notificatie overgeslagen", teamNaam);
+                return;
+            }
+
+            var plannerNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
+                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
+
+            DateOnly.TryParse(datum, out var datumDate);
+            var datumDisplay = datumDate != default
+                ? datumDate.ToString("dddd d MMMM yyyy", new System.Globalization.CultureInfo("nl-NL"))
+                : datum;
+
+            var notificatieBody = $"Hoi {teamleider.Naam},\n\n"
+                + $"Er is een herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}.\n\n"
+                + $"De coördinator heeft automatisch gereageerd op dit verzoek. "
+                + $"Je hoeft zelf geen actie te ondernemen, maar we willen je op de hoogte houden.\n\n"
+                + $"Als je vragen hebt over dit herplanverzoek, neem dan contact op met de veldplanner.\n\n"
+                + $"Met vriendelijke groet,\n{plannerNaam}";
+
+            var notificatieOntvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
+                ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? teamleider.Emailadres
+                : teamleider.Emailadres;
+
+            await graphService.SendReplyAsync(
+                notificatieOntvanger,
+                $"Herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}",
+                notificatieBody,
+                null);
+
+            log.LogInformation("Teamleider-notificatie verstuurd voor team {Team}", teamNaam);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Fout bij versturen teamleider-notificatie voor {Team} — hoofdverwerking niet onderbroken", teamNaam);
+        }
     }
 
     /// <summary>
