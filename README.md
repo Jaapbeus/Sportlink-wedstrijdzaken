@@ -1,12 +1,17 @@
 # Sportlink Wedstrijdzaken
 
-> **Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.**
+> **Open-source automation layer for Dutch football clubs using Sportlink Club (KNVB).**  
+> Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Security](https://img.shields.io/badge/AVG%2FGDPR-compliant-green.svg)](SECURITY.md)
+[![Platform](https://img.shields.io/badge/platform-Azure%20Functions%20%7C%20Blazor-0078d4.svg)](https://azure.microsoft.com)
 
 ---
 
 ## Het probleem
 
-Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse voetbalverenigingen. Het werkt — maar het werkt traag, omslachtig en biedt nauwelijks automatisering. Voor een kleine club met vijf teams valt dat mee. Voor een grote vereniging met dertig teams of meer wordt het een wekelijks gevecht.
+Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse voetbalverenigingen (KNVB-aangesloten). Het werkt — maar het werkt traag, omslachtig en biedt nauwelijks automatisering. Voor een kleine club met vijf teams valt dat mee. Voor een grote vereniging met dertig teams of meer wordt het een wekelijks gevecht.
 
 **Herkenbare pijnpunten:**
 
@@ -79,9 +84,17 @@ Azure Static Web Apps (gratis tier)
 - Nederlandse voetbalwereld (domeinkennis om de juiste problemen op te lossen)
 
 **Als eindgebruiker** is dit project bedoeld voor verenigingen die:
-- Draaien op Sportlink Club (KNVB-aangesloten)
+- Draaien op **Sportlink Club** (KNVB-aangesloten)
 - Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
 - Bereid zijn een Azure-omgeving in te richten (kosten: enkele euro's per maand)
+
+Het project is **multi-club**: één installatie kan meerdere verenigingen bedienen, elk met hun eigen Sportlink-koppeling en isolatie van elkaars data.
+
+## Open source
+
+Dit project is volledig open source (MIT-licentie). Alle code, configuratie en documentatie zijn vrij beschikbaar. Clubs, ontwikkelaars en andere Sportlink-gebruikers zijn uitgenodigd om mee te bouwen, issues te melden of het project te forken voor hun eigen omgeving.
+
+**Huidige stand:** in actief gebruik bij VV VRC (Ridderkerk). Ontworpen om schaalbaar te zijn naar meerdere verenigingen.
 
 ---
 

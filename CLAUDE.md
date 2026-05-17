@@ -70,6 +70,22 @@ Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 
 **Key stored procedures:** `sp_CreateTargetTableFromSource` (dynamic DDL), `sp_MergeStgToHis` (UPSERT via MERGE)
 
+## README.md en SECURITY.md bijhouden
+
+Deze twee bestanden zijn het publieke gezicht van het project op GitHub en moeten altijd de actuele stand weergeven.
+
+**Wanneer updaten:**
+
+| Situatie | README.md | SECURITY.md |
+|---|---|---|
+| Nieuwe functionaliteit (endpoint, scherm, integratie) | ✅ Beschrijf wat de functie doet voor gebruikers | Alleen als er een nieuw security-aspect aan zit |
+| Nieuwe beveiligingsmaatregel of -bevinding | — | ✅ Beschrijf de maatregel (niet de aanvalsvector) |
+| Nieuwe AVG-vereiste of gegevensverwerking | ✅ Vermeld in de AVG-sectie | ✅ Voeg toe aan de relevante beveiligingslaag |
+| Architectuurwijziging (nieuwe laag, Azure-service) | ✅ Pas het architectuurdiagram aan | Alleen als de aanvalsoppervlakte wijzigt |
+| Nieuwe club sluit aan | ✅ Pas "Geschikt voor" en het aantal clubs aan | — |
+
+**Regel:** README.md en SECURITY.md gaan mee in dezelfde PR als de functionaliteitswijziging. Ze worden nooit afzonderlijk achterwege gelaten omdat "het later wel kan".
+
 ## Toekomstige versie: v2.0 Admin GUI (gepland — nog niet geïmplementeerd)
 
 > **Status:** Volledig uitgewerkt in GitHub. Implementatie nog niet gestart. Alle issues gelabeld met `fase: N`. Epic: #26.
