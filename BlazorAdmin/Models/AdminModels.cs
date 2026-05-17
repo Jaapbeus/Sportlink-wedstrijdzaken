@@ -130,5 +130,5 @@ public class TeamRegelDto
     public int Prioriteit { get; set; }
     public bool Actief { get; set; }
     public string? Opmerking { get; set; }
-    public string ClubCode { get; set; } = "VRC";
+    public string ClubCode { get; set; } = string.Empty;
 }
