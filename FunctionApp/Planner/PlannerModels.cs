@@ -286,4 +286,11 @@ namespace SportlinkFunction.Planner
         public List<TeamScheduleZaterdag> Zaterdagen { get; set; } = new();
         public List<TeamScheduleWedstrijd> Wedstrijden { get; set; } = new();
     }
+
+    // ── AVG: TeamleiderContact bevat persoonsgegevens — gebruik alleen voor interne notificaties ──
+    public class TeamleiderContact
+    {
+        public string Naam { get; set; } = string.Empty;
+        public string Emailadres { get; set; } = string.Empty;
+    }
 }
