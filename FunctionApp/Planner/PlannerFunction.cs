@@ -332,5 +332,42 @@ namespace SportlinkFunction.Planner
                 return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
+
+        [Function("GetTeamSchedule")]
+        public static async Task<IActionResult> GetTeamSchedule(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "planner/team-schedule")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("GetTeamSchedule");
+            try
+            {
+                var team = req.Query["team"].ToString();
+                if (string.IsNullOrWhiteSpace(team))
+                    return new BadRequestObjectResult(new { error = "Query parameter 'team' is verplicht." });
+
+                var format = req.Query["format"].ToString().ToLowerInvariant();
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}", team, format);
+
+                var schedule = await PlannerService.GetTeamScheduleAsync(team);
+                if (schedule == null)
+                    return new NotFoundObjectResult(new { error = $"Team '{team}' niet gevonden." });
+
+                if (format == "html")
+                {
+                    var html = TeamScheduleHtmlRenderer.Render(schedule);
+                    return new ContentResult { Content = html, ContentType = "text/html; charset=utf-8", StatusCode = 200 };
+                }
+
+                return new OkObjectResult(schedule);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "GetTeamSchedule failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
     }
 }
