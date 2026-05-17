@@ -5,6 +5,9 @@ Alle noemenswaardige wijzigingen in dit project worden bijgehouden in dit bestan
 De indeling volgt [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).  
 Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Definities en beslisregels** — wat is een bug, wat is een feature, wat hoort hier wel/niet in:  
+> zie [docs/VERSIONING.md](docs/VERSIONING.md).
+
 > **Conventie voor versies:**
 > - `MAJOR` (x.0.0) — grote nieuwe laag of breaking change (bijv. Admin GUI, nieuwe auth-laag)
 > - `MINOR` (2.x.0) — nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm, nieuwe instelling)
