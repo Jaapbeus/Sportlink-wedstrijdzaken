@@ -708,5 +708,45 @@ namespace SportlinkFunction.Planner
             if (lower.Contains("beker")) return "beker";
             return "competitie";
         }
+
+        /// <summary>
+        /// Zoekt de primaire teamleider/trainer/coach voor een team in avg.Teambegeleiding.
+        /// AVG: het resultaat bevat persoonsgegevens — gebruik alleen voor interne notificaties.
+        /// </summary>
+        public static async Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam)
+        {
+            // Strip club-prefix voor flexibele match (bijv. "VRC JO11-1" → "JO11-1" als fallback)
+            var parts = teamNaam.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            var teamZonderPrefix = parts.Length > 1 ? parts[1] : teamNaam;
+
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT TOP 1 Naam, Emailadres
+                FROM [avg].[Teambegeleiding]
+                WHERE (Team = @exactTeam OR Team LIKE @partialPattern)
+                  AND Emailadres IS NOT NULL AND Emailadres <> ''
+                  AND (Teamrol LIKE '%Trainer%' OR Teamrol LIKE '%Coach%'
+                       OR Teamrol LIKE '%Teamleider%' OR Teamrol LIKE '%leider%')
+                ORDER BY
+                    CASE WHEN Team = @exactTeam THEN 0 ELSE 1 END,
+                    CASE WHEN Teamrol LIKE '%Trainer%' THEN 1
+                         WHEN Teamrol LIKE '%Coach%' THEN 2
+                         ELSE 3 END
+            ", conn);
+            cmd.Parameters.AddWithValue("@exactTeam", teamNaam);
+            cmd.Parameters.AddWithValue("@partialPattern", $"%{teamZonderPrefix}%");
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                return new TeamleiderContact
+                {
+                    Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                    Emailadres = reader.IsDBNull(1) ? "" : reader.GetString(1)
+                };
+            }
+            return null;
+        }
     }
 }

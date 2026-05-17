@@ -146,8 +146,8 @@ jobs:
         run: |
           FOUND=0
           # Controleer de laatste 20 commit-messages op emailadressen en telefoonnummers
-          # Co-Authored-By regels worden expliciet uitgesloten (CI-standaard)
-          MESSAGES=$(git log -20 --pretty=format:"%s %b" | grep -v "Co-Authored-By" || true)
+          # Co-Authored-By/Co-authored-by regels worden uitgesloten (GitHub squash merge voegt deze toe)
+          MESSAGES=$(git log -20 --pretty=format:"%s %b" | grep -vi "Co-Authored-By" || true)
 
           EMAIL_HITS=$(echo "$MESSAGES" | grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' \
             | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org))$' || true)
