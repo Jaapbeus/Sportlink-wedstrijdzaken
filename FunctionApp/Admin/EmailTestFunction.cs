@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
+using SportlinkFunction.Processing;
 
 namespace SportlinkFunction.Admin;
 
@@ -74,9 +75,9 @@ public static class EmailTestFunction
                 Body = body
             };
 
-            EmailProcessorFunction.ValideerDagDatum(classificatie, body, onderwerp);
-            var plannerResponseJson = await EmailProcessorFunction.VerwerkMetPlannerAsync(classificatie, fakeEmail, log);
-            var (voorbeeldOnderwerp, voorbeeldBody) = EmailProcessorFunction.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail);
+            BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
+            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, fakeEmail, log);
+            var (voorbeeldOnderwerp, voorbeeldBody) = BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail);
 
             return new OkObjectResult(new
             {
