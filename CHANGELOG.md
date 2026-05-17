@@ -25,7 +25,6 @@ _Wijzigingen op `v2/develop` die nog niet zijn vrijgegeven._
 
 ### Fixed
 - **'Doordeweeks' geeft altijd maandag t/m donderdag terug** (#140): bij e-mails als 'kunnen wij volgende week doordeweeks spelen?' retourneerde de AI soms vrijdag of weekenddagen. AI-prompt verduidelijkt ('doordeweeks = ma-do, vrijdag is geen doordeweekse dag') én deterministische code-override in `BerichtPipeline` zorgt dat bij aanwezigheid van 'doordeweeks' altijd exact de vier weekdagen (ma/di/wo/do) van de afgeleide kalenderweek worden gebruikt.
-- **API-ready loading screen** (#137): BlazorAdmin toonde een 'Fetch error' bij het opstarten als de FunctionApp nog niet klaar was. Er verschijnt nu een laadscherm totdat de backend bereikbaar is.
 - **TeamRegelDto hardcoded ClubCode verwijderd** (#135): standaard `ClubCode = "VRC"` in `TeamRegelDto` vervangen door `string.Empty` — voorkomt stille multi-club data-isolatie bypass bij ontbrekende ClubCode.
 
 ### Added
