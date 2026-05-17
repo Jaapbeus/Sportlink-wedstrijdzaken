@@ -9,6 +9,10 @@ Project("{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}") = "SportlinkSqlDb", "Database\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlazorAdmin", "BlazorAdmin\BlazorAdmin.csproj", "{EE8BE34E-EB1C-4613-8FDB-300D108E683C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionApp.Tests", "FunctionApp.Tests\FunctionApp.Tests.csproj", "{4F5D7B30-D2F8-4357-99F2-82C73796002F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "FunctionApp", "FunctionApp", "{8633D9DB-0928-B326-02DE-E13E5BF67737}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +61,18 @@ Global
 		{EE8BE34E-EB1C-4613-8FDB-300D108E683C}.Release|x86.Build.0 = Release|Any CPU
 		{EE8BE34E-EB1C-4613-8FDB-300D108E683C}.Release|x64.ActiveCfg = Release|Any CPU
 		{EE8BE34E-EB1C-4613-8FDB-300D108E683C}.Release|x64.Build.0 = Release|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Debug|x86.Build.0 = Debug|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Debug|x64.Build.0 = Debug|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Release|x86.ActiveCfg = Release|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Release|x86.Build.0 = Release|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Release|x64.ActiveCfg = Release|Any CPU
+		{4F5D7B30-D2F8-4357-99F2-82C73796002F}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
