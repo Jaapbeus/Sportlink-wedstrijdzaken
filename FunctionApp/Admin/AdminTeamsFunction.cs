@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace SportlinkFunction.Admin;
 
 /// <summary>
-/// Levert de lijst van VRC-teams uit his.teams (gesynchroniseerd via Sportlink API).
+/// Levert de lijst van teams uit his.teams (gesynchroniseerd via Sportlink API), gefilterd op ClubCode.
 /// Gebruikt door de Blazor Admin UI voor dropdowns in voorkeurstijden en teamregels.
 /// </summary>
 public static class AdminTeamsFunction
@@ -21,7 +21,8 @@ public static class AdminTeamsFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -29,8 +30,7 @@ public static class AdminTeamsFunction
             using var command = new SqlCommand(@"
                 SELECT DISTINCT [teamnaam]
                 FROM [his].[teams]
-                WHERE [teamnaam] LIKE 'VRC%'
-                  AND [ClubCode] = @ClubCode
+                WHERE [ClubCode] = @ClubCode
                 ORDER BY [teamnaam]",
                 connection);
             command.Parameters.AddWithValue("@ClubCode", clubCode);

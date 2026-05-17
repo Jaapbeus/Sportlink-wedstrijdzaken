@@ -21,7 +21,8 @@ public static class AdminUitgeslotenEmailFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -70,7 +71,8 @@ public static class AdminUitgeslotenEmailFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
             var body = await new System.IO.StreamReader(req.Body).ReadToEndAsync();
             var dto = JsonConvert.DeserializeObject<UitgeslotenEmailRequest>(body);
             if (dto == null || string.IsNullOrWhiteSpace(dto.EmailAdres))
@@ -114,7 +116,8 @@ public static class AdminUitgeslotenEmailFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();

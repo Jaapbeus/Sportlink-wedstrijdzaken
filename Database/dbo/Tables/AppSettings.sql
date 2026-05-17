@@ -1,10 +1,10 @@
 ﻿CREATE TABLE [dbo].[AppSettings](
 	[ClubName]				NVARCHAR(100)	NOT NULL,
-	[ClubCode]				NVARCHAR(20)	NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'VRC',
+	[ClubCode]				NVARCHAR(20)	NOT NULL,
 	[SportlinkApiUrl]		NVARCHAR(100)	NOT NULL,
 	[SportlinkClientId]		NVARCHAR(50)	NOT NULL,
 	[SeasonStartMonth]		[int]			NOT NULL,
-	[Accommodatie]			NVARCHAR(200)	NULL CONSTRAINT [DF_AppSettings_Accommodatie] DEFAULT 'Sportpark Spitsbergen',
+	[Accommodatie]			NVARCHAR(200)	NULL,
 	[LastSyncTimestamp]		DATETIME2		NULL,
 	[FetchSchedule]			NVARCHAR(50)	NOT NULL DEFAULT '0 0 4 * * *',
 	[PlannerAfzenderNaam]	NVARCHAR(100)	NULL,

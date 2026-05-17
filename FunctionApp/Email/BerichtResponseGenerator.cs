@@ -414,7 +414,7 @@ public static class BerichtResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
-    // ── Team onbekend — vraag welk VRC-team ──
+    // ── Team onbekend — vraag welk eigen team ──
 
     public static (string onderwerp, string body) BouwTeamOnbekendAntwoord(
         string tegenstander,
@@ -426,7 +426,7 @@ public static class BerichtResponseGenerator
 
         var inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma. "
-                   + "Tegen welk VRC-team zou deze wedstrijd zijn? "
+                   + "Tegen welk van onze teams zou deze wedstrijd zijn? "
                    + "Dan kunnen we de beschikbaarheid voor je controleren.";
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
@@ -601,7 +601,7 @@ public static class BerichtResponseGenerator
             return voetnoot;
 
         // Fallback: auto-opgebouwde handtekening uit losse instellingen
-        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "VRC Veldplanner";
+        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner";
         var coordinatorNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
         var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie") ?? "Coördinator thuiswedstrijden";
 
