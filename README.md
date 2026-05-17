@@ -2,6 +2,11 @@
 
 > **Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Security](https://img.shields.io/badge/AVG%2FGDPR-compliant-green.svg)](SECURITY.md)
+[![Platform](https://img.shields.io/badge/platform-Azure%20Functions%20%7C%20Blazor-0078d4.svg)](https://azure.microsoft.com)
+[![Changelog](https://img.shields.io/badge/changelog-CHANGELOG.md-informational)](CHANGELOG.md)
+
 ---
 
 ## Het probleem
@@ -30,12 +35,14 @@ Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen
 
 **Geen handmatig zoekwerk meer.** De juiste contactpersonen worden automatisch gevonden via de koppeling met de ledenexport.
 
-### 3 — Admin GUI (in ontwikkeling)
-Een Blazor WebAssembly-applicatie geeft beheerders een overzicht van:
-- Instellingen (API-verbinding, e-mailaccounts, herplan-deadlines)
-- E-mailtemplates beheren
-- Voorkeurstijden per team instellen
-- Verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
+### 3 — Admin GUI
+Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig beheer over:
+- **Instellingen** — API-verbinding, e-mailaccounts, herplan-deadlines, GPS-coördinaten
+- **E-mailtemplates** — AI-antwoordtemplates per berichttype; gedeelde e-mailvoetnoot
+- **Voorkeurstijden** — per team gewenste speeltijden instellen
+- **Veldbeschikbaarheid** — tijdvensters per veld configureren
+- **E-mail tester** — AI-classificatie dry-run zonder e-mail te versturen
+- **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
 
 ---
 
@@ -132,9 +139,19 @@ Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en ver
 
 ---
 
+## Releases en changelog
+
+Alle noemenswaardige wijzigingen staan in [CHANGELOG.md](CHANGELOG.md).  
+Releases zijn beschikbaar via [GitHub Releases](../../releases).
+
+Versienummering volgt [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.  
+Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSIONING.md).
+
+---
+
 ## Bijdragen
 
-Pull requests zijn welkom. Kijk voor openstaand werk naar de [GitHub Issues](../../issues) — issues gelabeld `fase: N` zijn onderdeel van de geplande v2.0-roadmap.
+Pull requests zijn welkom. Kijk voor openstaand werk naar de [GitHub Issues](../../issues).
 
 Heb je een club die baat zou hebben bij deze oplossing, of wil je meedenken over de richting? Open een [Discussion](../../discussions) of stuur een issue.
 
