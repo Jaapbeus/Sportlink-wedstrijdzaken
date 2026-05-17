@@ -79,9 +79,16 @@ else
             <div class="col-md-6 mb-3">
                 <label class="form-label">FetchSchedule (CRON)</label>
                 <input class="form-control" @bind="settings.FetchSchedule" />
-                <small class="form-text text-warning">
-                    Wijziging vereist herstart van de Azure Function App.
-                </small>
+                @if (!string.IsNullOrEmpty(settings.FetchScheduleLeesbaar))
+                {
+                    <small class="form-text text-muted">@settings.FetchScheduleLeesbaar</small>
+                }
+                @if (settings.VolgendeMomenten?.Count > 0)
+                {
+                    <small class="form-text text-muted">
+                        Volgende uitvoeringen (UTC): @string.Join(", ", settings.VolgendeMomenten)
+                    </small>
+                }
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Laatste synchronisatie</label>
@@ -96,6 +103,10 @@ else
         @if (!string.IsNullOrEmpty(successMessage))
         {
             <div class="alert alert-success mt-3">@successMessage</div>
+        }
+        @if (!string.IsNullOrEmpty(herstartMessage))
+        {
+            <div class="alert alert-info mt-3">@herstartMessage</div>
         }
     </EditForm>
 
@@ -174,6 +185,7 @@ else
     private bool saving;
     private string? errorMessage;
     private string? successMessage;
+    private string? herstartMessage;
 
     private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
     private UitgeslotenEmailAdresDto? nieuwAdres;
@@ -232,6 +244,7 @@ else
         if (settings == null) return;
         saving = true;
         successMessage = null;
+        herstartMessage = null;
         errorMessage = null;
 
         var update = new SettingsUpdateDto
@@ -252,10 +265,27 @@ else
         };
 
         var r = await Api.UpdateSettingsAsync(update);
-        successMessage = r.Success
-            ? "Instellingen opgeslagen."
-            : null;
-        if (!r.Success) errorMessage = r.ErrorMessage;
+        if (r.Success)
+        {
+            successMessage = "Instellingen opgeslagen.";
+            if (r.Data?.HerstartAutomatisch == true)
+            {
+                herstartMessage = r.Data.Opmerking ?? "Het ophaalschema is bijgewerkt. De applicatie herstart automatisch en het nieuwe schema is actief na de herstart.";
+                // CRON-preview bijwerken in het scherm
+                if (r.Data.FetchScheduleLeesbaar != null)
+                    settings.FetchScheduleLeesbaar = r.Data.FetchScheduleLeesbaar;
+                if (r.Data.VolgendeMomenten != null)
+                    settings.VolgendeMomenten = r.Data.VolgendeMomenten;
+            }
+            else if (r.Data?.HerstartVereist == true)
+            {
+                herstartMessage = r.Data.Opmerking ?? "Het ophaalschema is opgeslagen. Herstart de Function App handmatig om het nieuwe schema actief te maken.";
+            }
+        }
+        else
+        {
+            errorMessage = r.ErrorMessage;
+        }
         saving = false;
     }
 }

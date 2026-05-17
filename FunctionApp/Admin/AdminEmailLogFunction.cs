@@ -28,6 +28,9 @@ public static class AdminEmailLogFunction
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
 
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+
             DateTime? vanaf = null, tot = null;
             if (DateTime.TryParse(req.Query["vanaf"].ToString(), out var vd)) vanaf = vd.Date;
             if (DateTime.TryParse(req.Query["tot"].ToString(), out var td)) tot = td.Date.AddDays(1);
@@ -44,7 +47,7 @@ public static class AdminEmailLogFunction
                                [OntvangstDatum], [VerzoekType], [Status], [VerstuurdNaar],
                                [FoutMelding], [mta_inserted], [mta_modified]
                         FROM [planner].[EmailVerwerking]
-                        WHERE 1 = 1";
+                        WHERE [ClubCode] = @ClubCode";
             if (vanaf.HasValue) sql += " AND [OntvangstDatum] >= @Vanaf";
             if (tot.HasValue) sql += " AND [OntvangstDatum] < @Tot";
             if (!string.IsNullOrWhiteSpace(statusFilter)) sql += " AND [Status] = @Status";
@@ -52,6 +55,7 @@ public static class AdminEmailLogFunction
 
             using var command = new SqlCommand(sql, connection);
             command.Parameters.AddWithValue("@Limit", limit);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             if (vanaf.HasValue) command.Parameters.AddWithValue("@Vanaf", vanaf.Value);
             if (tot.HasValue) command.Parameters.AddWithValue("@Tot", tot.Value);
             if (!string.IsNullOrWhiteSpace(statusFilter))
