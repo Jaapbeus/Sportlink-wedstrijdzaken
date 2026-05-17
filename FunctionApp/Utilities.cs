@@ -25,7 +25,8 @@ namespace SportlinkFunction
                                    [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
                                    [PlannerEmailAdres], [Accommodatie], [InternDomein],
                                    [HerplanDeadlineDagen], [BufferMinuten],
-                                   [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot]
+                                   [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
+                                   [AccommodatiePlaats]
                             FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
@@ -56,6 +57,7 @@ namespace SportlinkFunction
                                 Set("accommodatieLatitude", 15);
                                 Set("accommodatieLongitude", 16);
                                 Set("emailVoetnoot", 17);
+                                Set("accommodatiePlaats", 18);
                             }
                         }
                     }

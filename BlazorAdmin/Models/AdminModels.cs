@@ -19,8 +19,18 @@ public class AppSettingsDto
     public int? HerplanDeadlineDagen { get; set; }
     public int? BufferMinuten { get; set; }
     public string? EmailVoetnoot { get; set; }
+    public string? AccommodatiePlaats { get; set; }
+    public double? AccommodatieLatitude { get; set; }
+    public double? AccommodatieLongitude { get; set; }
     public string? FetchScheduleLeesbaar { get; set; }
     public List<string>? VolgendeMomenten { get; set; }
+}
+
+public class GeocodeResultDto
+{
+    public double Lat { get; set; }
+    public double Lon { get; set; }
+    public string DisplayName { get; set; } = "";
 }
 
 public class SettingsUpdateDto

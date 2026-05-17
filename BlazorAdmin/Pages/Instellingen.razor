@@ -35,6 +35,29 @@ else
                 <input class="form-control" @bind="settings.Accommodatie" />
             </div>
             <div class="col-md-6 mb-3">
+                <label class="form-label">Accommodatieplaats</label>
+                <div class="input-group">
+                    <input class="form-control" @bind="settings.AccommodatiePlaats" placeholder="bijv. Veenendaal" />
+                    <button class="btn btn-outline-secondary" type="button"
+                            @onclick="ZoekCoordinaten" disabled="@(geocoding || string.IsNullOrWhiteSpace(settings.AccommodatiePlaats))">
+                        @(geocoding ? "Zoeken..." : "Zoek coördinaten")
+                    </button>
+                </div>
+                @if (settings.AccommodatieLatitude.HasValue && settings.AccommodatieLongitude.HasValue)
+                {
+                    <small class="form-text text-muted">
+                        Coördinaten: @settings.AccommodatieLatitude.Value.ToString("F4", System.Globalization.CultureInfo.InvariantCulture), @settings.AccommodatieLongitude.Value.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
+                    </small>
+                }
+                @if (!string.IsNullOrEmpty(geocodeMessage))
+                {
+                    <small class="form-text @(geocodeError ? "text-danger" : "text-success")">@geocodeMessage</small>
+                }
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
                 <label class="form-label">Intern domein</label>
                 <input class="form-control" @bind="settings.InternDomein" placeholder="bv. vv-vrc.nl" />
                 <small class="form-text text-muted">Emails van dit domein worden overgeslagen</small>
@@ -187,6 +210,10 @@ else
     private string? successMessage;
     private string? herstartMessage;
 
+    private bool geocoding;
+    private string? geocodeMessage;
+    private bool geocodeError;
+
     private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
     private UitgeslotenEmailAdresDto? nieuwAdres;
     private string? uitgeslotenMessage;
@@ -239,6 +266,27 @@ else
         await LaadUitgeslotenEmailsAsync();
     }
 
+    private async Task ZoekCoordinaten()
+    {
+        if (settings == null || string.IsNullOrWhiteSpace(settings.AccommodatiePlaats)) return;
+        geocoding = true;
+        geocodeMessage = null;
+        geocodeError = false;
+        var r = await Api.GeocodeAsync(settings.AccommodatiePlaats);
+        if (r.Success && r.Data != null)
+        {
+            settings.AccommodatieLatitude = r.Data.Lat;
+            settings.AccommodatieLongitude = r.Data.Lon;
+            geocodeMessage = $"Gevonden: {r.Data.DisplayName}";
+        }
+        else
+        {
+            geocodeError = true;
+            geocodeMessage = r.ErrorMessage ?? "Niet gevonden";
+        }
+        geocoding = false;
+    }
+
     private async Task OpslaanAsync()
     {
         if (settings == null) return;
@@ -253,6 +301,9 @@ else
             Velden = new()
             {
                 ["Accommodatie"] = settings.Accommodatie,
+                ["AccommodatiePlaats"] = settings.AccommodatiePlaats,
+                ["AccommodatieLatitude"] = settings.AccommodatieLatitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["AccommodatieLongitude"] = settings.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["InternDomein"] = settings.InternDomein,
                 ["HerplanDeadlineDagen"] = settings.HerplanDeadlineDagen?.ToString(),
                 ["BufferMinuten"] = settings.BufferMinuten?.ToString(),
