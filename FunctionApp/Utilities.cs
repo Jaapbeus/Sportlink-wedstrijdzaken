@@ -19,7 +19,7 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres], [Accommodatie], [InternDomein], [HerplanDeadlineDagen], [BufferMinuten], [ClubCode] FROM [dbo].[AppSettings]";
+                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres], [Accommodatie], [AccommodatieLatitude], [AccommodatieLongitude] FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
@@ -43,34 +43,10 @@ namespace SportlinkFunction
                                     settings["plannerEmailAdres"] = reader["PlannerEmailAdres"].ToString() ?? "";
                                 if (reader["Accommodatie"] != DBNull.Value)
                                     settings["accommodatie"] = reader["Accommodatie"].ToString() ?? "Sportpark Spitsbergen";
-
-                                // v2: nieuwe configuratievelden
-                                if (reader.GetSchemaTable() != null)
-                                {
-                                    // InternDomein: NULL → leeg
-                                    var internDomeinObj = reader["InternDomein"];
-                                    settings["internDomein"] = internDomeinObj != DBNull.Value
-                                        ? (internDomeinObj.ToString() ?? "")
-                                        : "";
-
-                                    // HerplanDeadlineDagen: NULL → default 8
-                                    var herplanObj = reader["HerplanDeadlineDagen"];
-                                    settings["herplanDeadlineDagen"] = herplanObj != DBNull.Value
-                                        ? herplanObj.ToString() ?? "8"
-                                        : "8";
-
-                                    // BufferMinuten: NULL → default 15
-                                    var bufferObj = reader["BufferMinuten"];
-                                    settings["bufferMinuten"] = bufferObj != DBNull.Value
-                                        ? bufferObj.ToString() ?? "15"
-                                        : "15";
-
-                                    // ClubCode: NULL → default VRC
-                                    var clubCodeObj = reader["ClubCode"];
-                                    settings["clubCode"] = clubCodeObj != DBNull.Value
-                                        ? clubCodeObj.ToString() ?? "VRC"
-                                        : "VRC";
-                                }
+                                if (reader["AccommodatieLatitude"] != DBNull.Value)
+                                    settings["accommodatieLatitude"] = reader["AccommodatieLatitude"].ToString() ?? "";
+                                if (reader["AccommodatieLongitude"] != DBNull.Value)
+                                    settings["accommodatieLongitude"] = reader["AccommodatieLongitude"].ToString() ?? "";
                             }
                         }
                     }
