@@ -19,34 +19,43 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres], [Accommodatie], [AccommodatieLatitude], [AccommodatieLongitude] FROM [dbo].[AppSettings]";
+                        string query = @"
+                            SELECT [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
+                                   [SeasonStartMonth], [LastSyncTimestamp], [FetchSchedule],
+                                   [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
+                                   [PlannerEmailAdres], [Accommodatie], [InternDomein],
+                                   [HerplanDeadlineDagen], [BufferMinuten],
+                                   [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot]
+                            FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
                             while (await reader.ReadAsync())
                             {
-                                string sportlinkApiUrl          = reader["SportlinkApiUrl"].ToString() ?? string.Empty;
-                                string sportlinkClientId        = reader["SportlinkClientId"].ToString() ?? string.Empty;
-                                settings["sportlinkApiUrl"]     = sportlinkApiUrl;
-                                settings["sportlinkClientId"]   = sportlinkClientId;
-                                if (reader["LastSyncTimestamp"] != DBNull.Value)
-                                    settings["lastSyncTimestamp"] = Convert.ToDateTime(reader["LastSyncTimestamp"]).ToString("yyyy-MM-dd HH:mm:ss");
-                                settings["fetchSchedule"] = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
+                                void Set(string key, int col) {
+                                    if (!reader.IsDBNull(col))
+                                        settings[key] = reader.GetValue(col).ToString() ?? "";
+                                }
 
-                                if (reader["PlannerAfzenderNaam"] != DBNull.Value)
-                                    settings["plannerAfzenderNaam"] = reader["PlannerAfzenderNaam"].ToString() ?? "";
-                                if (reader["CoordinatorNaam"] != DBNull.Value)
-                                    settings["coordinatorNaam"] = reader["CoordinatorNaam"].ToString() ?? "";
-                                if (reader["CoordinatorFunctie"] != DBNull.Value)
-                                    settings["coordinatorFunctie"] = reader["CoordinatorFunctie"].ToString() ?? "";
-                                if (reader["PlannerEmailAdres"] != DBNull.Value)
-                                    settings["plannerEmailAdres"] = reader["PlannerEmailAdres"].ToString() ?? "";
-                                if (reader["Accommodatie"] != DBNull.Value)
-                                    settings["accommodatie"] = reader["Accommodatie"].ToString() ?? "Sportpark Spitsbergen";
-                                if (reader["AccommodatieLatitude"] != DBNull.Value)
-                                    settings["accommodatieLatitude"] = reader["AccommodatieLatitude"].ToString() ?? "";
-                                if (reader["AccommodatieLongitude"] != DBNull.Value)
-                                    settings["accommodatieLongitude"] = reader["AccommodatieLongitude"].ToString() ?? "";
+                                settings["clubName"]        = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                                settings["clubCode"]        = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                                settings["sportlinkApiUrl"] = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                                settings["sportlinkClientId"] = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                                Set("seasonStartMonth", 4);
+                                if (!reader.IsDBNull(5))
+                                    settings["lastSyncTimestamp"] = Convert.ToDateTime(reader.GetValue(5)).ToString("yyyy-MM-dd HH:mm:ss");
+                                settings["fetchSchedule"]   = reader.IsDBNull(6) ? "0 0 4 * * *" : reader.GetString(6);
+                                Set("plannerAfzenderNaam", 7);
+                                Set("coordinatorNaam", 8);
+                                Set("coordinatorFunctie", 9);
+                                Set("plannerEmailAdres", 10);
+                                Set("accommodatie", 11);
+                                Set("internDomein", 12);
+                                Set("herplanDeadlineDagen", 13);
+                                Set("bufferMinuten", 14);
+                                Set("accommodatieLatitude", 15);
+                                Set("accommodatieLongitude", 16);
+                                Set("emailVoetnoot", 17);
                             }
                         }
                     }
@@ -102,6 +111,7 @@ namespace SportlinkFunction
                         isDatabaseAvailable = true;
                         log.LogInformation("Database connection established.");
                     }
+                    await AppSettings.LoadSettingsAsync(log);
                 }
                 catch (Exception ex)
                 {

@@ -766,7 +766,7 @@ namespace SportlinkFunction.Planner
                 allTeamRules[teamNaam] = await PlannerDataAccess.GetTeamRulesAsync(teamNaam);
             }
 
-            // Vaste wedstrijden identificeren (VRC 1 of wedstrijden met speciale regels)
+            // Vaste wedstrijden identificeren (eerste elftal of wedstrijden met speciale bufferregels)
             var vasteWedstrijden = new HashSet<string>();
             foreach (var b in bezettingen)
             {

@@ -139,7 +139,8 @@ public static class AdminSettingsFunction
                     auditCmd.Parameters.AddWithValue("@OudeWaarde", (object?)oud ?? DBNull.Value);
                     auditCmd.Parameters.AddWithValue("@NieuweWaarde", (object?)nieuweWaarde ?? DBNull.Value);
                     auditCmd.Parameters.AddWithValue("@ClubCode",
-                        SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC");
+                        SystemUtilities.AppSettings.GetSetting("clubCode")
+                            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings"));
                     await auditCmd.ExecuteNonQueryAsync();
                 }
 

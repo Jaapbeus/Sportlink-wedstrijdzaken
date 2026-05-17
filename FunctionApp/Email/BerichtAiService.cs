@@ -13,43 +13,52 @@ public class BerichtAiService
     private readonly ILogger<BerichtAiService> _logger;
     private readonly ChatClient _chatClient;
 
-    private const string ClassificatieSystemPrompt = """
-        Je bent een assistent voor de coördinator thuiswedstrijden van voetbalvereniging VRC Veenendaal.
-        Analyseer de inkomende email en classificeer het verzoek.
+    private static string BouwClassificatieSystemPrompt()
+    {
+        var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName") ?? "de thuisclub";
+        var internDomein = SystemUtilities.AppSettings.GetSetting("internDomein") ?? "";
+        var domeinRegel = string.IsNullOrWhiteSpace(internDomein)
+            ? "- Emails van interne clubcontacten worden doorgestuurd of komen van een club-emailadres"
+            : $"- Als afzender @{internDomein.TrimStart('@')} domein heeft: intern (thuisclub-kant)";
 
-        Typen verzoeken:
-        - beschikbaarheid_check: iemand vraagt of een datum/tijd/veld beschikbaar is (bijv. voor een oefenwedstrijd of veldreservering). Ook als er MEERDERE datums worden gevraagd voor hetzelfde team.
-        - herplan_verzoek: iemand wil een bestaande wedstrijd verplaatsen naar een andere datum/tijd
-        - bevestiging: een antwoord op een eerder voorstel ("ja dat is goed", "akkoord", etc.)
-        - buiten_scope: alles wat niet over veldbeschikbaarheid of herplannen gaat, OF als de email over meerdere VERSCHILLENDE teams gaat en het onduidelijk is welke wedstrijd bedoeld wordt
+        return $$"""
+            Je bent een assistent voor de coördinator thuiswedstrijden van {{clubNaam}}.
+            Analyseer de inkomende email en classificeer het verzoek.
 
-        Geef ALTIJD een JSON response met exact dit formaat:
-        {
-          "type": "beschikbaarheid_check | herplan_verzoek | bevestiging | buiten_scope",
-          "datum": "yyyy-MM-dd of null (eerste/primaire datum)",
-          "datums": ["yyyy-MM-dd", ...] of null (ALLE gevraagde datums als er meerdere zijn),
-          "aanvangsTijd": "HH:mm of null",
-          "gewensteDatum": "yyyy-MM-dd of null",
-          "teamNaam": "teamnaam of null",
-          "leeftijdsCategorie": "bijv. JO11 of null",
-          "tegenstander": "naam tegenstander of null",
-          "samenvatting": "korte samenvatting van het verzoek",
-          "namensWie": "afzender | tegenstander | onbekend"
-        }
+            Typen verzoeken:
+            - beschikbaarheid_check: iemand vraagt of een datum/tijd/veld beschikbaar is (bijv. voor een oefenwedstrijd of veldreservering). Ook als er MEERDERE datums worden gevraagd voor hetzelfde team.
+            - herplan_verzoek: iemand wil een bestaande wedstrijd verplaatsen naar een andere datum/tijd
+            - bevestiging: een antwoord op een eerder voorstel ("ja dat is goed", "akkoord", etc.)
+            - buiten_scope: alles wat niet over veldbeschikbaarheid of herplannen gaat, OF als de email over meerdere VERSCHILLENDE teams gaat en het onduidelijk is welke wedstrijd bedoeld wordt
 
-        KRITIEKE REGELS:
-        - Het ONDERWERP van de email bevat vaak de meest betrouwbare datum en teamnamen. Gebruik datums uit het onderwerp als eerste bron.
-        - "datum" = de eerste/primaire datum. Bij herplan_verzoek is dit de HUIDIGE wedstrijddatum, NIET de gewenste nieuwe datum.
-        - "datums" = array met ALLE gevraagde datums als er meerdere zijn (bijv. "30 mei en 6 juni" → ["2026-05-30", "2026-06-06"]). Vul dit veld ALTIJD als er meerdere datums worden genoemd.
-        - "gewensteDatum" = de datum waarnaar men wil verplaatsen (alleen bij herplan_verzoek). Kan null zijn als niet genoemd.
-        - Datums in emails zijn vaak relatief ("aanstaande zaterdag") — bereken de absolute datum op basis van vandaag
-        - Nederlandse tekst, informeel taalgebruik
-        - Als afzender @vv-vrc.nl domein heeft: VRC-intern
-        - Bij doorgestuurde berichten: bepaal namens wie het verzoek is
-        - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
-        - Meerdere datums voor hetzelfde team = beschikbaarheid_check (NIET buiten_scope)
-        - Alleen buiten_scope als het verzoek echt niet over veldbeschikbaarheid of herplannen gaat, of als er meerdere VERSCHILLENDE teams worden genoemd zonder duidelijk verband
-        """;
+            Geef ALTIJD een JSON response met exact dit formaat:
+            {
+              "type": "beschikbaarheid_check | herplan_verzoek | bevestiging | buiten_scope",
+              "datum": "yyyy-MM-dd of null (eerste/primaire datum)",
+              "datums": ["yyyy-MM-dd", ...] of null (ALLE gevraagde datums als er meerdere zijn),
+              "aanvangsTijd": "HH:mm of null",
+              "gewensteDatum": "yyyy-MM-dd of null",
+              "teamNaam": "teamnaam of null",
+              "leeftijdsCategorie": "bijv. JO11 of null",
+              "tegenstander": "naam tegenstander of null",
+              "samenvatting": "korte samenvatting van het verzoek",
+              "namensWie": "afzender | tegenstander | onbekend"
+            }
+
+            KRITIEKE REGELS:
+            - Het ONDERWERP van de email bevat vaak de meest betrouwbare datum en teamnamen. Gebruik datums uit het onderwerp als eerste bron.
+            - "datum" = de eerste/primaire datum. Bij herplan_verzoek is dit de HUIDIGE wedstrijddatum, NIET de gewenste nieuwe datum.
+            - "datums" = array met ALLE gevraagde datums als er meerdere zijn (bijv. "30 mei en 6 juni" → ["2026-05-30", "2026-06-06"]). Vul dit veld ALTIJD als er meerdere datums worden genoemd.
+            - "gewensteDatum" = de datum waarnaar men wil verplaatsen (alleen bij herplan_verzoek). Kan null zijn als niet genoemd.
+            - Datums in emails zijn vaak relatief ("aanstaande zaterdag") — bereken de absolute datum op basis van vandaag
+            - Nederlandse tekst, informeel taalgebruik
+            - {{domeinRegel}}
+            - Bij doorgestuurde berichten: bepaal namens wie het verzoek is
+            - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
+            - Meerdere datums voor hetzelfde team = beschikbaarheid_check (NIET buiten_scope)
+            - Alleen buiten_scope als het verzoek echt niet over veldbeschikbaarheid of herplannen gaat, of als er meerdere VERSCHILLENDE teams worden genoemd zonder duidelijk verband
+            """;
+    }
 
 
     public BerichtAiService(ILogger<BerichtAiService> logger)
@@ -74,7 +83,7 @@ public class BerichtAiService
 
         var messages = new List<ChatMessage>
         {
-            new SystemChatMessage(ClassificatieSystemPrompt),
+            new SystemChatMessage(BouwClassificatieSystemPrompt()),
             new UserChatMessage(userPrompt)
         };
 

@@ -138,6 +138,16 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 - Als er een UI-veld wordt toegevoegd, wordt ook gecontroleerd of de API en het datamodel meegegroeid zijn.
 - Nooit de GUI laten achterlopen op de code, en nooit de code laten achterlopen op de GUI.
 
+### Geen club-specifieke strings in code — nooit
+
+- Fallback-waarden (`?? "..."`) in C#-code mogen **nooit** een clubnaam, domeinnaam, persoonsnaam, plaatsnaam of adres bevatten.
+- Als een verplichte instelling ontbreekt in `dbo.AppSettings` → gooi een `InvalidOperationException`. Een stille fallback maskeert misconfiguratie en breekt multi-club ondersteuning.
+- **Correct:** `GetSetting("clubCode") ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings")`
+- **Fout:** `GetSetting("clubCode") ?? "VRC"` — nooit een clubnaam als default
+- **Fout:** `GetSetting("plannerAfzenderNaam") ?? "VRC Veldplanner"` — nooit
+- Documentatie-voorbeelden bevatten `[ClubNaam]` als placeholder, nooit echte club-specifieke waarden die in code kunnen terechtkomen.
+- Check bij codereview: scan op `?? "` gevolgd door een eigennaam, clubnaam, of adres.
+
 ### Microsoft Learn MCP server
 
 - Gebruik de Microsoft Learn MCP server proactief voor C#, .NET, Blazor, Azure Functions en Azure best practices.

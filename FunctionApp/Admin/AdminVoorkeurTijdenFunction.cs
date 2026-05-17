@@ -21,7 +21,8 @@ public static class AdminVoorkeurTijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
             string? team = req.Query["team"].ToString();
             if (string.IsNullOrWhiteSpace(team)) team = null;
 
@@ -74,7 +75,8 @@ public static class AdminVoorkeurTijdenFunction
             if (validatie != null) return validatie;
 
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -115,7 +117,8 @@ public static class AdminVoorkeurTijdenFunction
             if (validatie != null) return validatie;
 
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -155,7 +158,8 @@ public static class AdminVoorkeurTijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -188,7 +192,8 @@ public static class AdminVoorkeurTijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -238,7 +243,8 @@ public static class AdminVoorkeurTijdenFunction
             if (validatie != null) return validatie;
 
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -286,7 +292,8 @@ public static class AdminVoorkeurTijdenFunction
             if (validatie != null) return validatie;
 
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -330,7 +337,8 @@ public static class AdminVoorkeurTijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();

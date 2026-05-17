@@ -29,7 +29,8 @@ public static class EmailTemplateService
 
         try
         {
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 

@@ -268,12 +268,12 @@ if (-not $blazorRunning) {
     foreach ($page in $pages) {
         try {
             $resp = Invoke-WebRequest -Uri "$blazorBase$($page.Path)" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-            # Zoek naar Blazor foutindicatoren in de HTML
-            $hasError = $resp.Content -match 'blazor-error-ui|An unhandled error has occurred|System\.Exception|Object reference not set'
-            if ($resp.StatusCode -in 200..299 -and -not $hasError) {
+            # Blazor WASM serveert altijd dezelfde index.html (inclusief blazor-error-ui als hidden div).
+            # Runtime-fouten zijn niet detecteerbaar via statische HTTP GET — alleen HTTP-statuscode is betrouwbaar.
+            if ($resp.StatusCode -in 200..299) {
                 Write-Ok "GET $($page.Path) → $($resp.StatusCode) ($($page.Desc))"
             } else {
-                Write-Issue "GET $($page.Path) → $($resp.StatusCode) — mogelijke fout in pagina ($($page.Desc))"
+                Write-Issue "GET $($page.Path) → $($resp.StatusCode) ($($page.Desc))"
             }
         } catch {
             $code = $_.Exception.Response?.StatusCode.value__

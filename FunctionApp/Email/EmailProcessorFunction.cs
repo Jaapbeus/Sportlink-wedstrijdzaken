@@ -368,13 +368,15 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
-    /// Extraheert het VRC-team uit een wedstrijdnaam als "VRC JO16-2 - Hooglanderveen JO16-4".
+    /// Extraheert het eigen team uit een wedstrijdnaam als "CLUBCODE JO16-2 - Tegenstander JO16-4".
     /// </summary>
     private static string? ExtractVrcTeamUitWedstrijd(string wedstrijd, string tegenstander)
     {
+        var clubPrefix = (SystemUtilities.AppSettings.GetSetting("clubCode") ?? "") + " ";
         var parts = wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries);
         foreach (var part in parts)
-            if (part.StartsWith("VRC ", StringComparison.OrdinalIgnoreCase)
+            if (!string.IsNullOrWhiteSpace(clubPrefix.Trim())
+                && part.StartsWith(clubPrefix, StringComparison.OrdinalIgnoreCase)
                 && !part.Contains(tegenstander, StringComparison.OrdinalIgnoreCase))
                 return part;
         foreach (var part in parts)
@@ -384,7 +386,7 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
-    /// Normaliseert teamnaam: "O13-1" → "VRC JO13-1", "JO14-3" → "VRC JO14-3", etc.
+    /// Normaliseert teamnaam: voegt clubprefix toe, normaliseert JO/MO/O-prefix, vervangt / door -.
     /// </summary>
     private static string? NormaliseerTeamNaam(string? teamNaam)
     {
@@ -405,13 +407,18 @@ public class EmailProcessorFunction
             && !t.StartsWith("MO", StringComparison.OrdinalIgnoreCase))
             t = "J" + t.ToUpper();
 
-        // Alleen "VRC " prefix toevoegen als de naam er uitziet als een eigen team
-        // (start met JO/MO/VR/JM/V + cijfer, of is puur cijfer/letters zonder clubnaam).
+        // Clubprefix toevoegen als de naam er uitziet als een eigen team
+        // (start met JO/MO/VR/JM/ZO + cijfer, of is puur cijfer/letters zonder clubnaam).
         // Namen met spatie erin zijn meestal externe clubs (bijv. "VOP JO14-1", "Hooglanderveen JO16-4").
         bool looksLikeVrcTeam = System.Text.RegularExpressions.Regex.IsMatch(t, @"^(JO|MO|VR|JM|ZO)\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
                               || !t.Contains(' ');
-        if (looksLikeVrcTeam && !t.StartsWith("VRC ", StringComparison.OrdinalIgnoreCase))
-            t = "VRC " + t;
+        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode");
+        if (!string.IsNullOrWhiteSpace(clubCode))
+        {
+            var clubPrefix = clubCode + " ";
+            if (looksLikeVrcTeam && !t.StartsWith(clubPrefix, StringComparison.OrdinalIgnoreCase))
+                t = clubPrefix + t;
+        }
 
         return t;
     }
@@ -458,21 +465,24 @@ public class EmailProcessorFunction
     {
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
 
-        // Bepaal welke naam het VRC-team is (kan in TeamNaam of Tegenstander staan)
+        // Bepaal welk veld het eigen team is (kan in TeamNaam of Tegenstander staan)
         var team = classificatie.TeamNaam ?? "";
         var tegenstander = classificatie.Tegenstander ?? "";
 
-        // Heuristiek: naam zonder clubnaam erin is waarschijnlijk het VRC-team
-        // Externe teams bevatten vaak de clubnaam (bijv. "Woudenberg MO15-1", "Hooglanderveen JO16-4")
+        // Heuristiek: naam zonder clubnaam erin is waarschijnlijk het eigen team
+        // Externe teams bevatten vaak hun clubnaam (bijv. "Woudenberg MO15-1", "Hooglanderveen JO16-4")
         // Swap alleen als BEIDE velden gevuld zijn en de rollen duidelijk omgedraaid zijn
         if (!string.IsNullOrWhiteSpace(team) && !string.IsNullOrWhiteSpace(tegenstander))
         {
-            bool teamIsVrc = !team.Contains(' ') || team.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
-            bool tegenstanderIsVrc = !tegenstander.Contains(' ') || tegenstander.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+            var cc = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+            bool teamIsEigenClub = !team.Contains(' ')
+                || (!string.IsNullOrWhiteSpace(cc) && team.StartsWith(cc, StringComparison.OrdinalIgnoreCase));
+            bool tegenstanderIsEigenClub = !tegenstander.Contains(' ')
+                || (!string.IsNullOrWhiteSpace(cc) && tegenstander.StartsWith(cc, StringComparison.OrdinalIgnoreCase));
 
-            if (!teamIsVrc && tegenstanderIsVrc)
+            if (!teamIsEigenClub && tegenstanderIsEigenClub)
             {
-                // Tegenstander veld bevat het VRC-team → swap
+                // Tegenstander-veld bevat het eigen team → swap
                 classificatie.TeamNaam = tegenstander;
                 classificatie.Tegenstander = team;
             }
@@ -488,10 +498,13 @@ public class EmailProcessorFunction
                 // Tegenstander-check: als een extern team vraagt, controleer eerst of de wedstrijd
                 // al in het programma staat vóórdat we beschikbaarheid tonen.
                 // Alleen bij single-datum requests (multi-datum is altijd een open vraag).
+                var cc2 = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
                 bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander)
-                    && !classificatie.Tegenstander.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+                    && (string.IsNullOrWhiteSpace(cc2)
+                        || !classificatie.Tegenstander.StartsWith(cc2, StringComparison.OrdinalIgnoreCase));
                 bool heeftOnbekendVrcTeam = string.IsNullOrWhiteSpace(classificatie.TeamNaam)
-                    || !classificatie.TeamNaam.StartsWith("VRC", StringComparison.OrdinalIgnoreCase);
+                    || string.IsNullOrWhiteSpace(cc2)
+                    || !classificatie.TeamNaam.StartsWith(cc2, StringComparison.OrdinalIgnoreCase);
 
                 if (heeftExterneTegenstander && heeftOnbekendVrcTeam && alleDatums.Count == 1
                     && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
@@ -683,7 +696,8 @@ public class EmailProcessorFunction
     {
         try
         {
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "VRC";
+            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             using var command = new SqlCommand(
