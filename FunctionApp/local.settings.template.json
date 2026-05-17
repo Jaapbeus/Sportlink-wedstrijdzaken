@@ -17,6 +17,9 @@
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
-    "EMAIL_POLL_SCHEDULE": "0 0 * * * *"
+    "EMAIL_POLL_SCHEDULE": "0 0 * * * *",
+    "AzureSubscriptionId": "",
+    "AzureResourceGroupName": "",
+    "AzureFunctionAppName": ""
   }
 }

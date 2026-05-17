@@ -731,13 +731,16 @@ public class EmailProcessorFunction
 
     private static async Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
     {
+        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+
         using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await connection.OpenAsync();
         using var command = new SqlCommand(@"
             INSERT INTO [planner].[EmailVerwerking]
-                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status])
+                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status], [ClubCode])
             VALUES
-                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen');
+                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen', @ClubCode);
             SELECT CAST(SCOPE_IDENTITY() AS INT);", connection);
 
         command.Parameters.AddWithValue("@MessageId", email.MessageId);
@@ -746,6 +749,7 @@ public class EmailProcessorFunction
         command.Parameters.AddWithValue("@Onderwerp", email.Onderwerp);
         command.Parameters.AddWithValue("@OntvangstDatum", email.OntvangstDatum);
         command.Parameters.AddWithValue("@EmailBody", (object?)email.Body ?? DBNull.Value);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
 
         return (int)(await command.ExecuteScalarAsync())!;
     }
