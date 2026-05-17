@@ -15,9 +15,21 @@ if (string.IsNullOrWhiteSpace(functionBaseUrl))
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(functionBaseUrl) });
 builder.Services.AddScoped<AdminApiClient>();
 
-// Auth: lokale dev = LocalAuthService (altijd admin); productie = idem totdat MSAL volledig geconfigureerd is.
-// De feitelijke routebescherming verloopt in productie via staticwebapp.config.json (SWA Entra ID).
-// Zie docs/v2-admin-handleiding.md voor Entra ID app-registratie en het wisselen naar EntraAuthService.
-builder.Services.AddScoped<IAuthService, LocalAuthService>();
+// Auth: Production = Entra ID via MSAL + EntraAuthService (rollen uit claims).
+//       Development = LocalAuthService (altijd admin, geen login — voor lokaal testen).
+// SWA-routing in staticwebapp.config.json beschermt de /api/beheer/* endpoints ook server-side.
+// EntraAuthService geeft de Blazor UI de juiste rolinfo voor menu-items verbergen.
+if (builder.HostEnvironment.IsProduction())
+{
+    builder.Services.AddMsalAuthentication(options =>
+    {
+        builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
+    });
+    builder.Services.AddScoped<IAuthService, EntraAuthService>();
+}
+else
+{
+    builder.Services.AddScoped<IAuthService, LocalAuthService>();
+}
 
 await builder.Build().RunAsync();
