@@ -8,6 +8,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text;
 
@@ -40,10 +41,18 @@ public static class AdminSettingsFunction
     {
         "InternDomein", "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
-        "Accommodatie", "FetchSchedule", "EmailVoetnoot"
+        "Accommodatie", "FetchSchedule", "EmailVoetnoot",
+        "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
+
+    private static readonly HttpClient _geocodeClient;
+    static AdminSettingsFunction()
+    {
+        _geocodeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        _geocodeClient.DefaultRequestHeaders.Add("User-Agent", "SportlinkAdmin/2.0");
+    }
 
     [Function("AdminSettingsGet")]
     public static async Task<IActionResult> Get(
@@ -64,7 +73,8 @@ public static class AdminSettingsFunction
                     [ClubName], [ClubCode], [SportlinkApiUrl], [SeasonStartMonth], [Accommodatie],
                     [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
                     [CoordinatorFunctie], [PlannerEmailAdres], [InternDomein], [HerplanDeadlineDagen],
-                    [BufferMinuten], [EmailVoetnoot]
+                    [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
+                    [AccommodatieLatitude], [AccommodatieLongitude]
                 FROM [dbo].[AppSettings]", connection);
 
             using var reader = await command.ExecuteReaderAsync();
@@ -218,6 +228,63 @@ public static class AdminSettingsFunction
             log.LogError(ex, "Fout bij opslaan AppSettings");
             return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
         }
+    }
+
+    /// <summary>
+    /// Zoekt GPS-coördinaten op voor een plaatsnaam via Nominatim (OpenStreetMap).
+    /// Rate-limit: 1 req/sec per Nominatim ToS — ruim voldoende voor admin-gebruik.
+    /// </summary>
+    [Function("AdminGeocodeGet")]
+    public static async Task<IActionResult> Geocode(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/geocode")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminGeocodeGet");
+        var plaatsnaam = req.Query["plaatsnaam"].ToString().Trim();
+        if (string.IsNullOrWhiteSpace(plaatsnaam))
+            return new BadRequestObjectResult(new { error = "plaatsnaam is verplicht" });
+        if (plaatsnaam.Length > 100)
+            return new BadRequestObjectResult(new { error = "plaatsnaam te lang (max 100 tekens)" });
+
+        try
+        {
+            var url = $"https://nominatim.openstreetmap.org/search?q={Uri.EscapeDataString(plaatsnaam)}&format=json&limit=1&countrycodes=nl";
+            var response = await _geocodeClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                log.LogWarning("Nominatim antwoordde met {Status}", (int)response.StatusCode);
+                return new ObjectResult(new { error = "Geocoding service tijdelijk niet beschikbaar" }) { StatusCode = 502 };
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var results = JsonConvert.DeserializeObject<NominatimResult[]>(json);
+            if (results == null || results.Length == 0)
+                return new NotFoundObjectResult(new { error = $"Geen resultaat gevonden voor '{plaatsnaam}'" });
+
+            var r = results[0];
+            if (!double.TryParse(r.Lat, NumberStyles.Float, CultureInfo.InvariantCulture, out var lat) ||
+                !double.TryParse(r.Lon, NumberStyles.Float, CultureInfo.InvariantCulture, out var lon))
+                return new ObjectResult(new { error = "Ongeldige coördinaten ontvangen van geocoding service" }) { StatusCode = 502 };
+
+            return new OkObjectResult(new { lat, lon, displayName = r.DisplayName });
+        }
+        catch (TaskCanceledException)
+        {
+            log.LogWarning("Nominatim request time-out voor '{Plaatsnaam}'", plaatsnaam);
+            return new ObjectResult(new { error = "Geocoding service time-out (10s)" }) { StatusCode = 504 };
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij geocoding van '{Plaatsnaam}'", plaatsnaam);
+            return new ObjectResult(new { error = "Geocoding mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    private class NominatimResult
+    {
+        [JsonProperty("lat")] public string Lat { get; set; } = "";
+        [JsonProperty("lon")] public string Lon { get; set; } = "";
+        [JsonProperty("display_name")] public string DisplayName { get; set; } = "";
     }
 
     /// <summary>

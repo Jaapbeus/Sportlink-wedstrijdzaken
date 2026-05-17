@@ -333,6 +333,17 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [BufferMinuten] INT NULL;
 GO
 
+-- v2 — #139: AccommodatiePlaats + GPS-coördinaten voor geocoding en zonsondergangsberekening
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatiePlaats')
+    ALTER TABLE [dbo].[AppSettings] ADD [AccommodatiePlaats] NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatieLatitude')
+    ALTER TABLE [dbo].[AppSettings] ADD [AccommodatieLatitude] FLOAT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatieLongitude')
+    ALTER TABLE [dbo].[AppSettings] ADD [AccommodatieLongitude] FLOAT NULL;
+GO
+
 -- v2 — #88: AppSettingsAudit — append-only auditlog van AppSettings/template wijzigingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.AppSettingsAudit'))
 BEGIN
