@@ -128,6 +128,42 @@ namespace SportlinkFunction
             }
         }
 
+        /// <summary>
+        /// Berekent een deterministische 12-karakter hex fingerprint voor een exception.
+        /// Identieke fouten (zelfde type, genormaliseerd bericht, zelfde callsite) geven altijd
+        /// dezelfde fingerprint — essentieel voor deduplicatie van GitHub Issues.
+        /// </summary>
+        public static string ComputeFingerprint(Exception ex)
+        {
+            var raw = $"{ex.GetType().FullName}|{NormalizeMessage(ex.Message)}|{GetCallerFrame(ex)}";
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
+            return Convert.ToHexString(bytes)[..12].ToLower();
+        }
+
+        private static string NormalizeMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return "";
+            // Verwijder variabele delen zodat dezelfde fout altijd dezelfde fingerprint geeft
+            var s = message;
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?", "<date>");
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d+\b", "<n>");
+            return s.Trim();
+        }
+
+        private static string GetCallerFrame(Exception ex)
+        {
+            if (ex.StackTrace == null) return "unknown";
+            foreach (var line in ex.StackTrace.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("at SportlinkFunction.", StringComparison.Ordinal))
+                    return trimmed.Split('(')[0].Replace("at ", "").Trim();
+            }
+            return "external";
+        }
+
         public static class SeasonHelper
         {
             /// <summary>
