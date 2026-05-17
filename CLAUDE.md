@@ -155,6 +155,71 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 - Workflow: zoek eerst → haal diepere docs op bij twijfel → gebruik officiële bronnen als grond voor architectuurbeslissingen.
 - Combineer met eigen kennis als architect; MCP-resultaten zijn leidend bij conflicten met training-data.
 
+## Versiebeheer en Release-protocol
+
+### Semantic Versioning (semver)
+
+Versienummering volgt `MAJOR.MINOR.PATCH`:
+
+| Type | Wanneer | Voorbeeld |
+|---|---|---|
+| **MAJOR** (x.0.0) | Nieuwe architectuurlaag, breaking API-wijziging, grote nieuwe functie-set | v2.0.0 — Admin GUI toegevoegd |
+| **MINOR** (2.x.0) | Nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm) | v2.1.0 — WhatsApp-kanaal toegevoegd |
+| **PATCH** (2.0.x) | Bugfix, beveiligingspatch, documentatie zonder gedragswijziging | v2.0.1 — 500-error op teams-endpoint |
+
+### Conventional Commits → versie-bump
+
+Commit-type bepaalt de minimum versie-bump:
+- `feat:` → MINOR bump
+- `fix:` → PATCH bump
+- `security:` → PATCH bump
+- `BREAKING CHANGE:` in commit-body → MAJOR bump
+- `chore:`, `docs:`, `refactor:` → geen versie-bump (tenzij er ook een `fix:`/`feat:` bij zit)
+
+### CHANGELOG.md bijhouden
+
+**Verplicht bij elke commit die een feature of fix bevat:**
+
+1. Voeg de wijziging toe onder `## [Unreleased]` in `CHANGELOG.md`
+2. Gebruik de secties `### Added`, `### Changed`, `### Fixed`, `### Security`, `### Removed`
+3. Schrijf voor de gebruiker, niet voor de developer: "Beheerders kunnen nu X" i.p.v. "Methode Y refactored"
+
+**Verplicht vóór een release:**
+1. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
+2. Voeg een lege `## [Unreleased]` terug bovenaan
+3. Bump de versie in `FunctionApp/fa-dev-sportlink-01.csproj` en `BlazorAdmin/BlazorAdmin.csproj`
+
+### Release-workflow
+
+```powershell
+# 1. Zorg dat v2/develop up-to-date en groen is
+git checkout v2/develop
+.\Test-App.ps1           # moet exit 0
+
+# 2. PR aanmaken en mergen naar main (via GitHub)
+gh pr create --base main --title "release: v2.0.1" ...
+
+# 3. Na merge: tag aanmaken op main
+git checkout main && git pull
+git tag v2.0.1 -m "Release v2.0.1"
+git push origin v2.0.1  # triggert release.yml workflow automatisch
+
+# 4. GitHub Release wordt automatisch aangemaakt door release.yml
+# Body komt uit CHANGELOG.md — sectie [2.0.1]
+```
+
+Of via GitHub Actions UI (workflow_dispatch in release.yml) zonder lokale tag.
+
+### Versienummer ophalen in code
+
+```csharp
+// Versie is beschikbaar via assembly-metadata (gezet in .csproj):
+var version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "onbekend";
+// → "2.0.0"
+```
+
+Gebruik dit bijv. in de health-endpoint response of in de Admin GUI footer.
+
 ## Build & Run
 
 > **`dotnet build` slagen ≠ werkt.** De enige definitie van "werkt" is: build groen + func start zonder crashes + health endpoint 200 + Test-App.ps1 exit 0. Volg altijd de autonome verificatielus hierboven.

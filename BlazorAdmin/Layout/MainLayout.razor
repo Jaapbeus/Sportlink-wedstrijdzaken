@@ -1,4 +1,5 @@
 ﻿@inherits LayoutComponentBase
+@using System.Reflection
 <div class="page">
     <div class="sidebar">
         <NavMenu />
@@ -6,6 +7,7 @@
 
     <main>
         <div class="top-row px-4">
+            <span class="text-muted small me-3">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?")</span>
             <a href="https://github.com/Jaapbeus/Sportlink-wedstrijdzaken" target="_blank">About</a>
         </div>
 
