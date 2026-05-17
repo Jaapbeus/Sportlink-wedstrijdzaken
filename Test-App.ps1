@@ -108,8 +108,6 @@ $schemaSqlMap = @{
     "dbo.EmailTemplateInstellingen"= Join-Path $root "Database\dbo\Tables\EmailTemplateInstellingen.sql"
 }
 
-# Ontbrekende kolommen per tabel bijhouden voor ALTER TABLE
-$alterStatements = [System.Collections.Generic.List[string]]::new()
 
 foreach ($tableKey in $expectedColumns.Keys) {
     $parts  = $tableKey -split '\.'
@@ -283,7 +281,65 @@ if (-not $blazorRunning) {
 }
 
 # ──────────────────────────────────────────────────────────────────────
-# 6. SAMENVATTING
+# 6. SWA PROXY CHECKS (alleen als SWA emulator draait op poort 4280)
+# ──────────────────────────────────────────────────────────────────────
+Write-Section "SWA emulator checks"
+
+$swaBase    = "http://localhost:4280"
+$swaRunning = [bool](Get-NetTCPConnection -LocalPort 4280 -State Listen -ErrorAction SilentlyContinue)
+
+if (-not $swaRunning) {
+    Write-Host "  SWA emulator niet actief op :4280 — SWA-tests overgeslagen." -ForegroundColor DarkGray
+    Write-Host "  Start met: .\Start-Debug.ps1 -Swa" -ForegroundColor DarkGray
+} else {
+    # 1. Mock-login pagina bereikbaar
+    try {
+        $resp = Invoke-WebRequest -Uri "$swaBase/.auth/login/aad" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        if ($resp.StatusCode -in 200..299) {
+            Write-Ok "SWA mock-login pagina bereikbaar (/.auth/login/aad → $($resp.StatusCode))"
+        } else {
+            Write-Issue "SWA mock-login → $($resp.StatusCode) (verwacht 200)"
+        }
+    } catch {
+        Write-Issue "SWA mock-login niet bereikbaar: $($_.Exception.Message)"
+    }
+
+    # 2. Onbeveiligde route / geeft redirect naar login (SWA route-enforcement werkt)
+    try {
+        $resp = Invoke-WebRequest -Uri "$swaBase/" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        # Verwacht: 200 (Blazor index.html of redirect naar mock-login die automatisch gevolgd wordt)
+        if ($resp.StatusCode -in 200..299) {
+            Write-Ok "SWA GUI bereikbaar (/ → $($resp.StatusCode))"
+        } else {
+            Write-Issue "SWA GUI → $($resp.StatusCode)"
+        }
+    } catch {
+        $code = $_.Exception.Response?.StatusCode.value__
+        if ($code -eq 401) {
+            Write-Ok "SWA route-enforcement actief (/ → 401 zonder login — correct gedrag)"
+        } else {
+            Write-Issue "SWA GUI niet bereikbaar: $($_.Exception.Message)"
+        }
+    }
+
+    # 3. API-proxy werkt: route wordt doorgestuurd naar FunctionApp (200 = proxy actief)
+    # Let op: de SWA CLI met apiDevserverUrl dwingt GEEN auth af op API-routes in dev-modus.
+    # Auth op /api/beheer/* wordt pas afgedwongen door Azure SWA in productie (linked backend).
+    try {
+        $resp = Invoke-WebRequest -Uri "$swaBase/api/beheer/settings" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+        if ($resp.StatusCode -in 200..299) {
+            Write-Ok "SWA API-proxy actief (/api/beheer/settings → $($resp.StatusCode) via proxy)"
+        } else {
+            Write-Issue "SWA API-proxy → $($resp.StatusCode) (verwacht 200 in dev-modus)"
+        }
+    } catch {
+        $code = $_.Exception.Response?.StatusCode.value__
+        Write-Issue "SWA API-proxy niet bereikbaar: $($_.Exception.Message)"
+    }
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# 7. SAMENVATTING
 # ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "══════════════════════════════════════════" -ForegroundColor Cyan

@@ -16,6 +16,45 @@ perspectieven benaderd:
 
 Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 
+## Sessie-isolatie — verplichte branch-check bij elke sessiestart
+
+Meerdere Claude Code-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Claude lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
+
+### Stap S0 — Branch valideren en zo nodig aanmaken (volledig autonoom)
+
+```powershell
+$branch = git branch --show-current   # leeg = detached HEAD
+$safePrefix = 'feature/', 'hotfix/', 'chore/', 'docs/'
+
+# Al op een geïsoleerde branch? Meteen doorgaan.
+if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
+
+# Op 'main', 'v2/develop' of detached HEAD → autonoom branch aanmaken:
+#
+# 1. Bepaal issue-nummer (volgorde, zonder te vragen):
+#    a. Uit conversatiecontext ("werk aan #42", "issue #42", etc.)
+#    b. gh issue list --state open --limit 20  →  kies meest relevante open issue
+#    c. Geen passend issue?  →  gh issue create --title "..." --body "..."
+#                                gebruik het nieuwe nummer
+#
+# 2. Bepaal branch-type en basisbranch:
+#    - Urgente productiefix (bug zichtbaar op live/main):
+#        git checkout -b hotfix/#<nr>-<slug> main
+#    - Alle andere gevallen (features, fixes, docs, chores):
+#        git checkout -b feature/#<nr>-<slug> v2/develop
+```
+
+**Overzicht branch-types:**
+
+| Type | Basis | PR naar | Wanneer |
+|---|---|---|---|
+| `feature/#<nr>-<slug>` | `v2/develop` | `v2/develop` | Alles wat niet direct naar productie moet |
+| `hotfix/#<nr>-<slug>` | `main` | `main` + daarna PR `main → v2/develop` | Urgente bug zichtbaar op live |
+
+**Nooit committen of pushen naar `v2/develop` of `main` — uitsluitend via PR.**
+
+---
+
 ## Autonome ontwikkelcyclus — zelfhelende lus
 
 Claude werkt autonoom: van GitHub issue tot groen CI, zonder tussenkomst van de gebruiker. De lus hieronder is **verplicht** bij elke taak, niet optioneel.
@@ -24,7 +63,13 @@ Claude werkt autonoom: van GitHub issue tot groen CI, zonder tussenkomst van de 
 ```powershell
 gh issue list --label "fase: N" --state open --limit 10  # haal prioriteit op
 gh issue view <nr>                                         # lees volledig + gelinkte issues
-git checkout -b feature/#<nr>-<slug> v2/develop
+
+# Branch aanmaken alleen als Stap S0 dit nog niet deed:
+$branch = git branch --show-current
+if ($branch -in @('main', 'v2/develop') -or [string]::IsNullOrEmpty($branch)) {
+    git checkout -b feature/#<nr>-<slug> v2/develop
+}
+# Zit je al op feature/#<nr>-... → gewoon doorgaan
 ```
 
 ### Stap 1 — Implementeer (altijd alle lagen synchroon)
@@ -65,7 +110,7 @@ ITERATIE:
        Invoke-RestMethod http://localhost:7094/api/health
        → niet 200? Fix, kill services, ga terug naar a.
 
-  f. .\Test-App.ps1 (met live services — secties 4+5 worden nu uitgevoerd)
+  f. .\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
      → exit 1? Fix, kill services, ga terug naar a.
 
   g. Controleer Blazor-pagina's:
@@ -77,16 +122,33 @@ ITERATIE:
   h. Kill services:
        Stop-Process -Name "func" -ErrorAction SilentlyContinue
        Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
+       Stop-Process -Name "node" -ErrorAction SilentlyContinue  # SWA CLI
 
 GESLAAGD als: alle stappen exit 0 of 2xx, geen foutindicatoren
+```
+
+**SWA emulator (optioneel — voor auth-flow testen):**
+```powershell
+# Start alles inclusief SWA CLI op poort 4280:
+.\Start-Debug.ps1 -Swa
+# Admin GUI met auth-emulatie: http://localhost:4280
+# Test-App.ps1 controleert automatisch poort 4280 als SWA draait (sectie 6)
 ```
 
 ### Stap 3 — Commit en PR
 ```powershell
 git add <specifieke bestanden>          # nooit git add -A of git add .
 git commit -m "feat(#<nr>): ..."
-git push -u origin feature/#<nr>-<slug>
-gh pr create --base v2/develop --title "..." --body "..."
+git push -u origin <huidige-branch>
+
+# PR-target bepalen op basis van branch-type (zie Stap S0):
+$branch = git branch --show-current
+if ($branch.StartsWith('hotfix/')) {
+    gh pr create --base main      --title "hotfix(#<nr>): ..." --body "..."
+    # Na merge: ook PR van main → v2/develop aanmaken zodat develop gesynchroniseerd blijft
+} else {
+    gh pr create --base v2/develop --title "feat(#<nr>): ..."  --body "..."
+}
 ```
 
 ### Stap 4 — CI bewaken
@@ -120,6 +182,8 @@ Deze regels gelden altijd, zonder uitzondering:
 4. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
 
 5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
+
+6. **Elke sessie begint op een geïsoleerde branch — volledig autonoom geregeld.** Voer bij sessiestart altijd Stap S0 uit (zie "Sessie-isolatie" hierboven). Zit je op `v2/develop`, `main` of detached HEAD? Maak direct autonoom een branch aan — nooit vragen aan de gebruiker, nooit wachten, nooit een bestandswijziging vóór de branch bestaat. Issue-nummer bepaal je uit de conversatiecontext of via `gh issue list`; ontbreekt een passend issue, maak er dan zelf één aan.
 
 Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
