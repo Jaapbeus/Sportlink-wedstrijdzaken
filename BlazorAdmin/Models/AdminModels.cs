@@ -19,12 +19,24 @@ public class AppSettingsDto
     public int? HerplanDeadlineDagen { get; set; }
     public int? BufferMinuten { get; set; }
     public string? EmailVoetnoot { get; set; }
+    public string? FetchScheduleLeesbaar { get; set; }
+    public List<string>? VolgendeMomenten { get; set; }
 }
 
 public class SettingsUpdateDto
 {
     public string? GewijzigdDoor { get; set; }
     public Dictionary<string, string?>? Velden { get; set; }
+}
+
+public class SettingsUpdateResultDto
+{
+    public string[]? GewijzigdeVelden { get; set; }
+    public bool HerstartVereist { get; set; }
+    public bool HerstartAutomatisch { get; set; }
+    public string? Opmerking { get; set; }
+    public string? FetchScheduleLeesbaar { get; set; }
+    public List<string>? VolgendeMomenten { get; set; }
 }
 
 public class SyncStatusDto
