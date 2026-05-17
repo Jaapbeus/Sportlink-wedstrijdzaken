@@ -185,37 +185,122 @@ Alleen toegewezen gebruikers krijgen toegang. Niet-toegewezen gebruikers krijgen
 
 ---
 
-## 6. Aanzetten van EntraAuthService in Blazor
+## 6. EntraAuthService in productie (automatisch geactiveerd)
 
-De huidige `Program.cs` registreert standaard `LocalAuthService` voor zowel Development als
-Production. Voor échte productie-auth:
+`BlazorAdmin/Program.cs` detecteert de omgeving automatisch:
 
-1. Voeg in `Program.cs` toe:
-   ```csharp
-   builder.Services.AddMsalAuthentication(options =>
-   {
-       builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
-   });
-   ```
-2. Vervang `LocalAuthService` door `EntraAuthService` in de Production-tak van Program.cs
-3. Voeg `appsettings.Production.json` toe met:
-   ```json
-   {
-     "AzureAd": {
-       "Authority": "https://login.microsoftonline.com/TENANT_ID",
-       "ClientId": "APPLICATION_CLIENT_ID",
-       "ValidateAuthority": true
-     }
-   }
-   ```
+- **Development** (`ASPNETCORE_ENVIRONMENT=Development`) → `LocalAuthService` — altijd admin, geen login
+- **Production** (SWA-deployment) → `AddMsalAuthentication` + `EntraAuthService` — echte Entra ID rollen
 
-> Dit is **bewust nog niet gedaan** in de eerste v2 release — SWA-routing in
-> `staticwebapp.config.json` regelt al de daadwerkelijke beveiliging. EntraAuthService is alleen
-> nodig zodra je rollen client-side wilt gebruiken (bijv. menu's verbergen).
+Er is geen handmatige stap nodig om te switchen. Vul wel de placeholders in `appsettings.Production.json` in:
+
+```json
+// BlazorAdmin/wwwroot/appsettings.Production.json
+{
+  "AzureAd": {
+    "Authority": "https://login.microsoftonline.com/TENANT_ID_HIER_INVULLEN",
+    "ClientId": "CLIENT_ID_HIER_INVULLEN",
+    "ValidateAuthority": true
+  }
+}
+```
+
+- `TENANT_ID_HIER_INVULLEN` → Entra ID → **Overview** → Directory (tenant) ID
+- `CLIENT_ID_HIER_INVULLEN` → Entra ID → **App registrations** → `vrc-admin-swa` → Application (client) ID
+
+Commit `appsettings.Production.json` mee (bevat geen secrets — alleen tenant/client ID, die zijn publiek).
 
 ---
 
-## 7. Snel testen
+## 7. Lokaal testen met Azure SWA CLI (aanbevolen vóór productie)
+
+De Azure Static Web Apps CLI emuleert het volledige SWA-gedrag lokaal: routering, auth-emulatie
+en `/api/*` proxying naar de Function App. Hiermee kun je de authenticatieflow testen
+**zonder een echte Entra ID app-registratie of Azure resource**.
+
+### Vereisten (eenmalig)
+
+1. **Node.js** ≥ 18 — [nodejs.org](https://nodejs.org/)
+2. **Azure SWA CLI** installeren:
+   ```powershell
+   npm install -g @azure/static-web-apps-cli
+   swa --version   # controleer installatie
+   ```
+
+### Opstarten
+
+Stap 1 — start de bestaande backends (elk in een eigen terminal):
+
+```powershell
+# Terminal 1: Azurite (opslag emulator)
+azurite --location $env:TEMP\azurite
+
+# Terminal 2: Function App backend
+cd FunctionApp
+func start --port 7094
+
+# Terminal 3: Blazor WASM dev server
+cd BlazorAdmin
+dotnet run --launch-profile http
+# → draait op http://localhost:5242
+```
+
+Stap 2 — start de SWA emulator (vierde terminal):
+
+```powershell
+# In de repo root (waar swa-cli.config.json staat)
+swa start sportlink-admin
+# → SWA emulator draait op http://localhost:4280
+```
+
+### Wat de SWA CLI doet
+
+| Functie | Gedrag |
+|---|---|
+| **Blazor WASM** | Proxy naar `http://localhost:5242` |
+| **`/api/*`** | Proxy naar `http://localhost:7094` |
+| **Routeregels** | `staticwebapp.config.json` afgedwongen (rollen, redirects) |
+| **Auth emulatie** | Mock login op `http://localhost:4280/.auth/login/aad` |
+
+### Authenticatie lokaal testen
+
+Ga naar `http://localhost:4280` — de SWA CLI stuurt je door naar een mock login-pagina.
+Vul daar in:
+
+| Veld | Waarde voor testen |
+|---|---|
+| User ID | Willekeurig getal |
+| Username | `testbeheerder` |
+| Roles | `admin` |
+
+Na "Login" ben je ingelogd als admin zonder enige Entra ID. Zo kun je controleren of:
+- `/api/beheer/*` endpoints bereikbaar zijn met admin-rol
+- Pagina's en navigatie kloppen voor ingelogde gebruikers
+- Niet-admins netjes een 403 krijgen (rol leeg laten bij test)
+
+> **Let op:** De `ASPNETCORE_ENVIRONMENT` van de Blazor dev server is `Development`,
+> dus `LocalAuthService` is actief — de Blazor UI toont altijd admin.
+> De SWA CLI emuleert de route-beveiliging (endpoints), niet de Blazor UI.
+> Productie-test de UI door de Blazor app te publiceren en te serveren via `swa start`.
+
+### Volledige productie-emulatie (optioneel)
+
+Wil je ook de Blazor `Production`-omgeving testen (met echte EntraAuthService)?
+
+```powershell
+# Publiceer Blazor naar een lokale map
+dotnet publish BlazorAdmin/BlazorAdmin.csproj -c Release -o ./blazor-publish
+
+# Start SWA met de gepubliceerde bestanden (geen dev server)
+swa start ./blazor-publish/wwwroot --api-devserver-url http://localhost:7094
+```
+
+Hierbij laadt Blazor `appsettings.Production.json` met de `AzureAd`-sectie.
+Je hebt dan wél de echte Tenant ID en Client ID nodig (zie sectie 4 en 6).
+
+---
+
+## 8. Snel testen (endpoints direct)
 
 ```bash
 # Lokaal: alle endpoints zonder authenticatie (host-key uitschakelen kan via local.settings.json)
@@ -230,7 +315,7 @@ curl -X POST -H "Content-Type: application/json" \
   http://localhost:7094/api/test/email
 ```
 
-Of gebruik het geautomatiseerde smoke-test script (zie sectie 8):
+Of gebruik het geautomatiseerde smoke-test script (zie sectie 9):
 
 ```powershell
 .\scripts\smoke-test.ps1
@@ -238,7 +323,7 @@ Of gebruik het geautomatiseerde smoke-test script (zie sectie 8):
 
 ---
 
-## 8. Architectuur — bekende valkuilen bij lokale oplevering
+## 9. Architectuur — bekende valkuilen bij lokale oplevering
 
 Bij de v2-implementatie werden vier fouten pas bij runtime ontdekt die `dotnet build` gewoon liet
 passeren. Documentatie hiervan zodat deze fouten nooit meer onopgemerkt voorbij komen.
