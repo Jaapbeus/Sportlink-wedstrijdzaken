@@ -1,5 +1,17 @@
 # Security protocol
 
+Dit document beschrijft hoe dit project omgaat met security en de AVG/GDPR. Het is bedoeld voor bijdragers, beheerders en externe partijen die willen weten welke maatregelen er zijn getroffen.
+
+**Kernboodschap:** deze applicatie verwerkt persoonsgegevens van clubleden. We nemen dat serieus. Er zijn meerdere onafhankelijke beveiligingslagen die voorkomen dat gevoelige data in git of online belandt — zowel automatisch (hooks, GitHub Actions, branch protection) als procedureel (protocol voor elke bijdrager).
+
+---
+
+## Een kwetsbaarheid melden
+
+Heb je een beveiligingsprobleem gevonden? Maak geen publiek GitHub Issue aan, maar neem direct contact op via een [privébericht op GitHub](../../security/advisories/new). We streven naar een reactie binnen 48 uur en coördineren disclosure in overleg.
+
+---
+
 ## Kernregel: bij twijfel gaat er niets naar git
 
 **Een gefaalde of onduidelijke security check betekent: STOP.**  
@@ -95,7 +107,7 @@ Een wachtwoord, token of sleutel is gevonden in code of git-geschiedenis.
    - Of de repository moet als gecompromitteerd worden beschouwd en opnieuw worden opgezet
    - Neem altijd contact op met de repo-eigenaar — dit is niet iets om zelf stil op te lossen
 
-4. Maak een nieuw secret aan en sla het op in **1Password** (persoonlijk account `my.1password.com`, item `Sportlink` of vergelijkbaar) of **Azure Key Vault**
+4. Maak een nieuw secret aan en sla het op in een wachtwoordmanager (bijv. 1Password, Bitwarden) of **Azure Key Vault** — nooit in plain text op schijf of in git
 
 **Wat nooit mag:** een secret in plain text in code, commentaar, commit-bericht, of documentatie plaatsen — ook niet tijdelijk.
 
