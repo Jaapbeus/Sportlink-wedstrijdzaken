@@ -20,6 +20,9 @@
     "EMAIL_POLL_SCHEDULE": "0 0 * * * *",
     "AzureSubscriptionId": "",
     "AzureResourceGroupName": "",
-    "AzureFunctionAppName": ""
+    "AzureFunctionAppName": "",
+    "GitHubPat": "",
+    "GitHubOwner": "",
+    "GitHubRepo": "Sportlink-wedstrijdzaken"
   }
 }
