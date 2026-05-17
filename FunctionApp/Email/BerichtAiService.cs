@@ -97,6 +97,7 @@ public class BerichtAiService
             - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
             - Meerdere datums voor hetzelfde team = beschikbaarheid_check (NIET buiten_scope)
             - Alleen buiten_scope als het verzoek echt niet over veldbeschikbaarheid of herplannen gaat, of als er meerdere VERSCHILLENDE teams worden genoemd zonder duidelijk verband
+            - 'doordeweeks' betekent maandag t/m donderdag (vrijdag is GEEN doordeweekse dag). Bij 'volgende week doordeweeks': vul 'datums' met ALLE VIER weekdagen (ma/di/wo/do) van de volgende kalenderweek. Voorbeeld: vandaag zondag 18 mei → 'volgende week doordeweeks' → datums: ["2026-05-19","2026-05-20","2026-05-21","2026-05-22"]
 
             KNVB-regelcheck (voor herplan_verzoek):
             Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
