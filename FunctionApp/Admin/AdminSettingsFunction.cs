@@ -28,7 +28,7 @@ public static class AdminSettingsFunction
     {
         "InternDomein", "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
-        "Accommodatie", "FetchSchedule"
+        "Accommodatie", "FetchSchedule", "EmailVoetnoot"
     };
 
     [Function("AdminSettingsGet")]
@@ -50,7 +50,7 @@ public static class AdminSettingsFunction
                     [ClubName], [ClubCode], [SportlinkApiUrl], [SeasonStartMonth], [Accommodatie],
                     [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
                     [CoordinatorFunctie], [PlannerEmailAdres], [InternDomein], [HerplanDeadlineDagen],
-                    [BufferMinuten]
+                    [BufferMinuten], [EmailVoetnoot]
                 FROM [dbo].[AppSettings]", connection);
 
             using var reader = await command.ExecuteReaderAsync();

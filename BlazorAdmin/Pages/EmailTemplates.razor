@@ -5,7 +5,7 @@
 <PageTitle>E-mailtemplates — VRC Admin</PageTitle>
 
 <h1>E-mailtemplates</h1>
-<p class="text-muted">Lege rijen = hardcoded default in code wordt gebruikt.</p>
+<p class="text-muted">Elke template heeft een hardcoded standaard in de code. Klik <strong>Aanpassen</strong> om de standaard te vervangen. Klik <strong>Verwijder aanpassing</strong> om terug te keren naar de hardcoded standaard.</p>
 
 @if (loading)
 {
@@ -13,14 +13,33 @@
 }
 else
 {
-    <button class="btn btn-success mb-3" @onclick="StartNewTemplate">Nieuwe template</button>
+    @* ── Email voetnote ── *@
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Gedeelde e-mail voetnoot</strong>
+            <small class="text-muted">Wordt automatisch onder elke uitgaande e-mail geplaatst</small>
+        </div>
+        <div class="card-body">
+            <textarea class="form-control font-monospace" rows="4" @bind="voetnoot"
+                      placeholder="Bijv: Met vriendelijke groet,&#10;&#10;Jan de Vries&#10;Coördinator thuiswedstrijden VRC&#10;&#10;WIST U DAT: ..."></textarea>
+            <div class="mt-2 d-flex gap-2 align-items-center">
+                <button class="btn btn-primary btn-sm" @onclick="OpslaanVoetnootAsync">Opslaan</button>
+                @if (!string.IsNullOrEmpty(voetnootMessage))
+                {
+                    <small class="text-success">@voetnootMessage</small>
+                }
+            </div>
+        </div>
+    </div>
 
+    @* ── Template tabel ── *@
     <table class="table table-striped">
         <thead>
             <tr>
-                <th>Key</th>
-                <th>Onderwerp</th>
-                <th>Actief</th>
+                <th>Template</th>
+                <th>Naam</th>
+                <th>Categorie</th>
+                <th>Status</th>
                 <th></th>
             </tr>
         </thead>
@@ -28,29 +47,39 @@ else
             @foreach (var t in templates)
             {
                 <tr>
-                    <td><code>@t.TemplateKey</code></td>
+                    <td><strong>@t.TemplateKey</strong></td>
                     <td>@(t.Onderwerp.Length > 80 ? t.Onderwerp[..80] + "..." : t.Onderwerp)</td>
-                    <td>@(t.Actief ? "ja" : "nee")</td>
                     <td>
-                        <button class="btn btn-sm btn-primary" @onclick="() => Edit(t)">Bewerken</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ResetAsync(t.TemplateKey)">
-                            Reset
-                        </button>
+                        @{
+                            var (cat, catCss) = GetCategorie(t.TemplateKey);
+                        }
+                        <span class="badge @catCss">@cat</span>
+                    </td>
+                    <td>@(t.Actief ? "Aangepast" : "Standaard")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(t)">Aanpassen</button>
+                        @if (t.Actief)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => ResetAsync(t.TemplateKey)">
+                                Verwijder aanpassing
+                            </button>
+                        }
                     </td>
                 </tr>
             }
             @if (templates.Count == 0)
             {
-                <tr><td colspan="4" class="text-muted">Geen templates in database — defaults zijn actief.</td></tr>
+                <tr><td colspan="5" class="text-muted">Geen templates in database — defaults zijn actief.</td></tr>
             }
         </tbody>
     </table>
 
+    @* ── Bewerk-formulier ── *@
     @if (editing != null)
     {
         <hr />
         <h3>@(isNew ? "Nieuwe template" : $"Bewerken: {editing.TemplateKey}")</h3>
-        <EditForm Model="editing" OnValidSubmit="OpslaanAsync">
+        <EditForm Model="editing" OnValidSubmit="OpslaanTemplateAsync">
             <div class="mb-3">
                 <label class="form-label">Template key</label>
                 @if (isNew)
@@ -78,7 +107,8 @@ else
                 <label class="form-label">Body template</label>
                 <textarea class="form-control" rows="10" @bind="editing.BodyTemplate"></textarea>
                 <small class="form-text text-muted">
-                    Beschikbare placeholders: {{voornaam}}, {{aanhef}}, {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}
+                    Beschikbare placeholders: {{voornaam}}, {{aanhef}}, {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}<br />
+                    De voetnoot uit het bovenstaande vak wordt automatisch toegevoegd na de body.
                 </small>
             </div>
             <div class="form-check mb-3">
@@ -89,9 +119,9 @@ else
             <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
         </EditForm>
 
-        @if (!string.IsNullOrEmpty(message))
+        @if (!string.IsNullOrEmpty(templateMessage))
         {
-            <div class="alert alert-info mt-3">@message</div>
+            <div class="alert alert-info mt-3">@templateMessage</div>
         }
     }
 }
@@ -101,19 +131,42 @@ else
     private TemplateDto? editing;
     private bool isNew;
     private bool loading = true;
-    private string? message;
+    private string? templateMessage;
+
+    private string voetnoot = "";
+    private string? voetnootMessage;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync();
+        await Task.WhenAll(LoadTemplatesAsync(), LoadVoetnootAsync());
+        loading = false;
     }
 
-    private async Task LoadAsync()
+    private async Task LoadTemplatesAsync()
     {
-        loading = true;
         var r = await Api.GetTemplatesAsync();
         templates = r.Success ? r.Data ?? new() : new();
-        loading = false;
+    }
+
+    private async Task LoadVoetnootAsync()
+    {
+        var r = await Api.GetSettingsAsync();
+        if (r.Success && r.Data != null)
+            voetnoot = r.Data.EmailVoetnoot ?? "";
+    }
+
+    private async Task OpslaanVoetnootAsync()
+    {
+        var dto = new SettingsUpdateDto
+        {
+            GewijzigdDoor = Auth.UserName ?? "admin",
+            Velden = new Dictionary<string, string?> { ["EmailVoetnoot"] = voetnoot }
+        };
+        var r = await Api.UpdateSettingsAsync(dto);
+        voetnootMessage = r.Success ? "Voetnoot opgeslagen." : "Fout: " + r.ErrorMessage;
+        await Task.Delay(3000);
+        voetnootMessage = null;
+        StateHasChanged();
     }
 
     private void Edit(TemplateDto t)
@@ -154,44 +207,50 @@ else
         {
             case "beschikbaarheid_check":
                 onderwerp = "Beschikbaarheid wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
-                body = "Beste {{aanhef}},\n\nWij willen graag informeren of jullie beschikbaar zijn voor de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nKunt u ons zo spoedig mogelijk laten weten of de locatie en het tijdstip uitkomen?\n\nMet vriendelijke groet,\nVRC Wedstrijdplanning";
+                body = "Beste {{aanhef}},\n\nWij willen graag informeren of jullie beschikbaar zijn voor de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nKunt u ons zo spoedig mogelijk laten weten of de locatie en het tijdstip uitkomen?";
                 break;
             case "herplan_verzoek":
                 onderwerp = "Verzoek herplanning wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
-                body = "Beste {{aanhef}},\n\nWij verzoeken u vriendelijk de geplande wedstrijd van {{datum}} om {{aanvangstijd}} te herplannen.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nZou u ons een alternatieve datum en tijd kunnen voorstellen?\n\nMet vriendelijke groet,\nVRC Wedstrijdplanning";
+                body = "Beste {{aanhef}},\n\nWij verzoeken u vriendelijk de geplande wedstrijd van {{datum}} om {{aanvangstijd}} te herplannen.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nZou u ons een alternatieve datum en tijd kunnen voorstellen?";
                 break;
             case "bevestiging":
                 onderwerp = "Bevestiging wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
-                body = "Beste {{aanhef}},\n\nHierbij bevestigen wij de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nTot dan!\n\nMet vriendelijke groet,\nVRC Wedstrijdplanning";
+                body = "Beste {{aanhef}},\n\nHierbij bevestigen wij de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nTot dan!";
                 break;
         }
 
-        if (!string.IsNullOrWhiteSpace(onderwerp))
-            editing.Onderwerp = onderwerp;
-        if (!string.IsNullOrWhiteSpace(body))
-            editing.BodyTemplate = body;
+        if (!string.IsNullOrWhiteSpace(onderwerp)) editing.Onderwerp = onderwerp;
+        if (!string.IsNullOrWhiteSpace(body)) editing.BodyTemplate = body;
     }
 
-    private async Task OpslaanAsync()
+    private async Task OpslaanTemplateAsync()
     {
         if (editing == null || string.IsNullOrWhiteSpace(editing.TemplateKey))
         {
-            message = "Template key verplicht";
+            templateMessage = "Template key verplicht";
             return;
         }
         var r = await Api.UpdateTemplateAsync(editing.TemplateKey, editing);
-        message = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        templateMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
         if (r.Success)
         {
             editing = null;
-            await LoadAsync();
+            await LoadTemplatesAsync();
         }
     }
 
     private async Task ResetAsync(string key)
     {
         var r = await Api.ResetTemplateAsync(key);
-        message = r.Success ? $"Template '{key}' gereset naar default." : "Fout: " + r.ErrorMessage;
-        await LoadAsync();
+        templateMessage = r.Success ? $"Template '{key}' gereset naar default." : "Fout: " + r.ErrorMessage;
+        await LoadTemplatesAsync();
     }
+
+    private static (string label, string css) GetCategorie(string key) => key switch
+    {
+        var k when k.StartsWith("beschikbaarheid") => ("BeschikbaarheidCheck", "bg-info text-dark"),
+        var k when k.StartsWith("herplan")         => ("HerplanVerzoek", "bg-warning text-dark"),
+        var k when k.StartsWith("bevestig")        => ("Bevestiging", "bg-success"),
+        _                                           => ("Overig", "bg-secondary"),
+    };
 }

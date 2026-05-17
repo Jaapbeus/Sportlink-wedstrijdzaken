@@ -16,6 +16,97 @@ perspectieven benaderd:
 
 Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 
+## Autonome ontwikkelcyclus — zelfhelende lus
+
+Claude werkt autonoom: van GitHub issue tot groen CI, zonder tussenkomst van de gebruiker. De lus hieronder is **verplicht** bij elke taak, niet optioneel.
+
+### Stap 0 — Issue ophalen en branch aanmaken
+```powershell
+gh issue list --label "fase: N" --state open --limit 10  # haal prioriteit op
+gh issue view <nr>                                         # lees volledig + gelinkte issues
+git checkout -b feature/#<nr>-<slug> v2/develop
+```
+
+### Stap 1 — Implementeer (altijd alle lagen synchroon)
+- DB-schema eerst → dan API-endpoint → dan Blazor GUI — nooit één laag zonder de andere
+- Check: ClubCode discriminator aanwezig? UTC in DB? GUI bijgewerkt? CISO-regels?
+
+### Stap 2 — Verificatielus (herhaal tot exit 0, max 3 iteraties)
+
+```
+ITERATIE:
+  a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+     → fouten? Fix, ga terug naar a.
+
+  b. dotnet build BlazorAdmin/BlazorAdmin.csproj  (als Blazor bestaat)
+     → fouten? Fix, ga terug naar a.
+
+  c. .\Test-App.ps1 -Fix
+     → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
+
+  d. Start services (achtergrond, volgorde is verplicht):
+       # 1. Azurite (vereist door func start)
+       $azuriteRunning = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
+       if (-not $azuriteRunning) {
+           $azuriteDir = Join-Path $env:TEMP 'azurite'
+           if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
+           Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
+           Start-Sleep -Seconds 3
+       }
+       # 2. FunctionApp
+       Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
+       # 3. BlazorAdmin (alleen als project bestaat)
+       if (Test-Path "BlazorAdmin/BlazorAdmin.csproj") {
+           Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet run --launch-profile http"
+       }
+       Start-Sleep -Seconds 15
+
+  e. Controleer FunctionApp health:
+       Invoke-RestMethod http://localhost:7094/api/health
+       → niet 200? Fix, kill services, ga terug naar a.
+
+  f. .\Test-App.ps1 (met live services — secties 4+5 worden nu uitgevoerd)
+     → exit 1? Fix, kill services, ga terug naar a.
+
+  g. Controleer Blazor-pagina's:
+       Invoke-WebRequest http://localhost:5242/ -UseBasicParsing
+       Invoke-WebRequest http://localhost:5242/instellingen -UseBasicParsing
+       (herhaal voor elke gewijzigde route)
+       → fout of HTML bevat "An unhandled error"? Fix, kill services, ga terug naar a.
+
+  h. Kill services:
+       Stop-Process -Name "func" -ErrorAction SilentlyContinue
+       Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
+
+GESLAAGD als: alle stappen exit 0 of 2xx, geen foutindicatoren
+```
+
+### Stap 3 — Commit en PR
+```powershell
+git add <specifieke bestanden>          # nooit git add -A of git add .
+git commit -m "feat(#<nr>): ..."
+git push -u origin feature/#<nr>-<slug>
+gh pr create --base v2/develop --title "..." --body "..."
+```
+
+### Stap 4 — CI bewaken
+```powershell
+gh pr checks <pr-nr> --watch           # wacht op groen
+```
+- CI rood door build/code-fout? Fix → push → herhaal stap 4.
+- **Security Gate rood? → STOP. Meld aan gebruiker. Nooit mergen.**
+
+### Stap 5 — Rapporteer aan gebruiker
+Alleen als alles groen: PR-URL, issue-nr, samenvatting van wijzigingen.
+
+### Escaleer naar gebruiker bij (en alleen bij):
+- Security Gate blijft rood na fixpoging
+- > 3 iteraties in verificatielus zonder voortgang
+- Architectuurkeuze met meerdere gelijkwaardige paden
+- AVG/CISO-blokkade die codekeuze vereist
+
+---
+
 ## Absolute veiligheidsregels — nooit omzeilen
 
 Deze regels gelden altijd, zonder uitzondering:
@@ -24,7 +115,7 @@ Deze regels gelden altijd, zonder uitzondering:
 
 2. **Na elke PR-merge: ook de deploy/build-workflow op `main` controleren.** Na merge direct `gh run list --branch main --limit 3` uitvoeren en wachten op voltooiing van `deploy.yml`. Als de build faalt: direct proberen te fixen. Lukt dit niet: onmiddellijk melden aan de gebruiker. Pas daarna melden dat de PR succesvol is afgerond.
 
-3. **Bij een gefaalde of onduidelijke check: direct stoppen en melden.** Niet stilzwijgend doorgaan, niet zelf "oplossen" zonder de gebruiker te informeren. Elke falende security check is een alarmsignaal.
+3. **Build- en runtime-fouten zijn zelfherstelbaar — Security Gate niet.** Bij een build-fout, startup-fout of testfout: fix het zelf en herhaal de verificatielus (zie "Autonome ontwikkelcyclus"). Bij een **Security Gate-fout of AVG-schending**: stop direct en meld aan de gebruiker — nooit stilzwijgend doorgaan of zelf mergen.
 
 4. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
 
@@ -56,22 +147,30 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Build & Run
 
-```bash
-# Build
+> **`dotnet build` slagen ≠ werkt.** De enige definitie van "werkt" is: build groen + func start zonder crashes + health endpoint 200 + Test-App.ps1 exit 0. Volg altijd de autonome verificatielus hierboven.
+
+```powershell
+# Stap 1: Build
 dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 
-# Run locally (requires Azurite running for storage emulation)
-cd FunctionApp && func start --port 7094
+# Stap 2: Start alle services tegelijk (of gebruik Start-Debug.ps1)
+.\Start-Debug.ps1                     # start Azurite + FunctionApp + BlazorAdmin in aparte vensters
+# Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 
-# Manual sync trigger while running
+# Stap 3: Verificatie (wacht 15s na Start-Debug)
+.\Test-App.ps1                        # controleert schema, build, endpoints, Blazor-pagina's
+.\Test-App.ps1 -Fix                   # herstelt schema-drift automatisch
+
+# Handmatige sync
 # GET http://localhost:7094/api/sync?weekOffsetFrom=X&weekOffsetTo=Y
 ```
 
-**Prerequisites:** .NET 10.0 SDK, Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server with `SportlinkSqlDb` database.
+**Prerequisites:** .NET 10.0 SDK, Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server met `SportlinkSqlDb` database.
 
-**Configuration:** Copy `FunctionApp/local.settings.template.json` to `local.settings.json` and set `SqlConnectionString` to your SQL Server instance.
+**Configuration:** Kopieer `FunctionApp/local.settings.template.json` naar `local.settings.json` en stel `SqlConnectionString` in op je SQL Server.
 
-No automated tests or linter configured.
+**Verificatiescripts:** `Test-App.ps1` (schema + build + endpoints + Blazor), `Start-Debug.ps1` (alle services).  
+Zie [FunctionApp/docs/TESTING.md](FunctionApp/docs/TESTING.md) voor volledig overzicht.
 
 ## Security Setup (eenmalig per developer/machine)
 

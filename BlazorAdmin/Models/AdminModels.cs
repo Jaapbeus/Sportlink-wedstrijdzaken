@@ -18,6 +18,7 @@ public class AppSettingsDto
     public string? InternDomein { get; set; }
     public int? HerplanDeadlineDagen { get; set; }
     public int? BufferMinuten { get; set; }
+    public string? EmailVoetnoot { get; set; }
 }
 
 public class SettingsUpdateDto
