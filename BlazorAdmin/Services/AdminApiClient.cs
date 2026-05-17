@@ -24,8 +24,8 @@ public class AdminApiClient
     public async Task<ApiResult<AppSettingsDto>> GetSettingsAsync()
         => await GetAsync<AppSettingsDto>("api/beheer/settings");
 
-    public async Task<ApiResult<object>> UpdateSettingsAsync(SettingsUpdateDto dto)
-        => await PutAsync<object>("api/beheer/settings", dto);
+    public async Task<ApiResult<SettingsUpdateResultDto>> UpdateSettingsAsync(SettingsUpdateDto dto)
+        => await PutAsync<SettingsUpdateResultDto>("api/beheer/settings", dto);
 
     // ── Sync ──
 

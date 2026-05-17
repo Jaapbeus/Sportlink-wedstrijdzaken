@@ -1,10 +1,15 @@
-using System.Net;
+using Azure.Core;
+using Azure.Identity;
+using Cronos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Net.Http.Headers;
+using System.Text;
 
 namespace SportlinkFunction.Admin;
 
@@ -19,6 +24,13 @@ namespace SportlinkFunction.Admin;
 ///   - AuthorizationLevel.Function (in productie via SWA proxying veilig)
 ///   - SportlinkClientId en Graph secrets worden NOOIT in responses gezet
 ///   - Alle wijzigingen worden vastgelegd in dbo.AppSettingsAudit (CISO-eis)
+///
+/// Schedule-restart (#27):
+///   - Bij FetchSchedule-wijziging wordt FETCH_SCHEDULE Azure App Setting bijgewerkt
+///     via Azure Management API → Function App herstart automatisch
+///   - Vereiste env vars: AzureSubscriptionId, AzureResourceGroupName, AzureFunctionAppName
+///   - Managed Identity van de Function App heeft Website Contributor rol nodig op de Function App resource
+///   - Als env vars ontbreken (bijv. lokaal): herstartVereist=true in response, handmatige herstart nodig
 /// </summary>
 public static class AdminSettingsFunction
 {
@@ -30,6 +42,8 @@ public static class AdminSettingsFunction
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot"
     };
+
+    private const string ManagementApiVersion = "2022-03-01";
 
     [Function("AdminSettingsGet")]
     public static async Task<IActionResult> Get(
@@ -65,6 +79,13 @@ public static class AdminSettingsFunction
                 result[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
             }
 
+            // Voeg CRON-preview toe als FetchSchedule aanwezig is
+            if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
+            {
+                result["fetchScheduleLeesbaar"] = VertaalCronNaarLeesbaar(schedStr);
+                result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
+            }
+
             return new OkObjectResult(result);
         }
         catch (Exception ex)
@@ -95,7 +116,7 @@ public static class AdminSettingsFunction
             if (string.IsNullOrWhiteSpace(gewijzigdDoor)) gewijzigdDoor = "onbekend";
 
             // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
-            var changes = new Dictionary<string, string?>();
+            var changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             if (updateRequest.Velden != null)
             {
                 foreach (var (key, value) in updateRequest.Velden)
@@ -110,6 +131,13 @@ public static class AdminSettingsFunction
             if (changes.Count == 0)
                 return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
 
+            // Valideer CRON-expressie vóór opslaan
+            if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
+            {
+                if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
+                    return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
+            }
+
             await SystemUtilities.WaitForDatabaseAsync(log);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
@@ -118,7 +146,7 @@ public static class AdminSettingsFunction
 
             try
             {
-                    var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys);
+                var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys);
 
                 foreach (var (veld, nieuweWaarde) in changes)
                 {
@@ -154,16 +182,35 @@ public static class AdminSettingsFunction
 
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
-            var fetchScheduleChanged = changes.Keys.Any(k =>
-                string.Equals(k, "FetchSchedule", StringComparison.OrdinalIgnoreCase));
+            var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
+            string? herstartOpmerking = null;
+            bool herstartAutomatisch = false;
+
+            if (fetchScheduleChanged && nieuweSchedule != null)
+            {
+                var restartResult = await TriggerFunctionAppRestartAsync(nieuweSchedule, log);
+                if (restartResult != null)
+                {
+                    herstartAutomatisch = true;
+                    herstartOpmerking = restartResult;
+                }
+                else
+                {
+                    herstartOpmerking = "FetchSchedule gewijzigd — herstart van de Function App vereist om effect te laten gelden. " +
+                                        "Configureer AzureSubscriptionId, AzureResourceGroupName en AzureFunctionAppName voor automatische herstart.";
+                }
+            }
 
             return new OkObjectResult(new
             {
                 gewijzigdeVelden = changes.Keys.ToArray(),
-                herstartVereist = fetchScheduleChanged,
-                opmerking = fetchScheduleChanged
-                    ? "FetchSchedule gewijzigd — herstart van de Function App vereist om effect te laten gelden"
-                    : null
+                herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
+                herstartAutomatisch,
+                opmerking = herstartOpmerking,
+                fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
+                    ? VertaalCronNaarLeesbaar(nieuweSchedule) : null,
+                volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
+                    ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
             });
         }
         catch (Exception ex)
@@ -171,6 +218,129 @@ public static class AdminSettingsFunction
             log.LogError(ex, "Fout bij opslaan AppSettings");
             return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
         }
+    }
+
+    /// <summary>
+    /// Werkt de FETCH_SCHEDULE Azure App Setting bij via de Azure Management API.
+    /// Azure herstart de Function App automatisch bij app setting wijziging.
+    /// Vereist: AzureSubscriptionId, AzureResourceGroupName, AzureFunctionAppName env vars
+    ///          en Managed Identity met Website Contributor rol op de Function App.
+    /// Geeft null terug als de env vars niet geconfigureerd zijn (lokale omgeving).
+    /// </summary>
+    private static async Task<string?> TriggerFunctionAppRestartAsync(string nieuweSchedule, ILogger log)
+    {
+        var subscriptionId = Environment.GetEnvironmentVariable("AzureSubscriptionId");
+        var resourceGroup  = Environment.GetEnvironmentVariable("AzureResourceGroupName");
+        var functionAppName = Environment.GetEnvironmentVariable("AzureFunctionAppName");
+
+        if (string.IsNullOrWhiteSpace(subscriptionId) ||
+            string.IsNullOrWhiteSpace(resourceGroup) ||
+            string.IsNullOrWhiteSpace(functionAppName))
+        {
+            log.LogWarning("Azure Management env vars niet geconfigureerd (AzureSubscriptionId / AzureResourceGroupName / AzureFunctionAppName) — automatische herstart overgeslagen");
+            return null;
+        }
+
+        try
+        {
+            var credential = new DefaultAzureCredential();
+            var tokenContext = new TokenRequestContext(["https://management.azure.com/.default"]);
+            var token = await credential.GetTokenAsync(tokenContext);
+
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+
+            var baseUrl = $"https://management.azure.com/subscriptions/{subscriptionId}" +
+                          $"/resourceGroups/{resourceGroup}" +
+                          $"/providers/Microsoft.Web/sites/{functionAppName}";
+
+            // Haal huidige app settings op (POST .../config/appsettings/list)
+            var listResponse = await http.PostAsync($"{baseUrl}/config/appsettings/list?api-version={ManagementApiVersion}", null);
+            listResponse.EnsureSuccessStatusCode();
+            var listJson = await listResponse.Content.ReadAsStringAsync();
+            var listObj = JObject.Parse(listJson);
+
+            var properties = new Dictionary<string, string?>();
+            var existingProps = listObj["properties"] as JObject;
+            if (existingProps != null)
+            {
+                foreach (var prop in existingProps.Properties())
+                    properties[prop.Name] = prop.Value.ToString();
+            }
+
+            // Bijwerken FETCH_SCHEDULE
+            properties["FETCH_SCHEDULE"] = nieuweSchedule;
+
+            var putBody = JsonConvert.SerializeObject(new { properties });
+            var putResponse = await http.PutAsync(
+                $"{baseUrl}/config/appsettings?api-version={ManagementApiVersion}",
+                new StringContent(putBody, Encoding.UTF8, "application/json"));
+            putResponse.EnsureSuccessStatusCode();
+
+            log.LogInformation("FETCH_SCHEDULE bijgewerkt naar '{Schedule}' via Azure Management API — Function App herstart automatisch", nieuweSchedule);
+            return "FetchSchedule bijgewerkt. De Function App herstart automatisch en het nieuwe ophaalschema is actief na de herstart.";
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij aanroepen Azure Management API voor herstart");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Vertaalt veelgebruikte CRON-expressies naar leesbare Nederlandse tekst.
+    /// Valt terug op de ruwe expressie als het patroon niet herkend wordt.
+    /// </summary>
+    internal static string VertaalCronNaarLeesbaar(string cron)
+    {
+        if (string.IsNullOrWhiteSpace(cron)) return cron;
+        var parts = cron.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 6) return cron;
+
+        var (sec, min, uur, dag, maand, week) = (parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]);
+
+        // Dagelijks op vaste tijd: "0 MM HH * * *"
+        if (sec == "0" && dag == "*" && maand == "*" && week == "*"
+            && int.TryParse(min, out var m) && int.TryParse(uur, out var h))
+            return $"Elke dag om {h:D2}:{m:D2}";
+
+        // Elk uur op vaste minuut: "0 MM * * * *"
+        if (sec == "0" && uur == "*" && dag == "*" && maand == "*" && week == "*"
+            && int.TryParse(min, out var hmin))
+            return $"Elk uur op minuut :{hmin:D2}";
+
+        // Elke N minuten: "0 */N * * * *"
+        if (sec == "0" && uur == "*" && dag == "*" && maand == "*" && week == "*"
+            && min.StartsWith("*/") && int.TryParse(min[2..], out var interval))
+            return $"Elke {interval} minuten";
+
+        // Maandelijks op vaste dag+tijd: "0 MM HH D * *"
+        if (sec == "0" && maand == "*" && week == "*"
+            && int.TryParse(min, out var mm) && int.TryParse(uur, out var hh) && int.TryParse(dag, out var dd))
+            return $"Maandelijks op dag {dd} om {hh:D2}:{mm:D2}";
+
+        return cron;
+    }
+
+    /// <summary>
+    /// Berekent de eerstvolgende N uitvoertijden voor een CRON-expressie (6-veld Azure-formaat).
+    /// Geeft een lege lijst als de expressie ongeldig is.
+    /// </summary>
+    internal static List<string> BerekenVolgendeMomenten(string cron, int aantal)
+    {
+        var resultaten = new List<string>();
+        if (!CronExpression.TryParse(cron, CronFormat.IncludeSeconds, out var expr)) return resultaten;
+
+        var nu = DateTime.UtcNow;
+        var volgende = nu;
+        for (int i = 0; i < aantal; i++)
+        {
+            var next = expr.GetNextOccurrence(volgende, TimeZoneInfo.Utc);
+            if (next == null) break;
+            resultaten.Add(next.Value.ToString("yyyy-MM-ddTHH:mm:ss"));
+            volgende = next.Value;
+        }
+        return resultaten;
     }
 
     private static async Task<Dictionary<string, string?>> ReadCurrentValuesAsync(
