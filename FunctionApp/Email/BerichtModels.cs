@@ -29,6 +29,8 @@ public class BerichtClassificatie
     public string? Tegenstander { get; set; }
     public string Samenvatting { get; set; } = "";
     public NamensWie NamensWie { get; set; }
+    // Gevuld door AI als het verzoek mogelijk een KNVB-regel overtreedt (#73)
+    public string? KnvbNotitie { get; set; }
 
     /// <summary>
     /// Retourneert alle unieke datums: Datums als die er zijn, anders alleen Datum.
