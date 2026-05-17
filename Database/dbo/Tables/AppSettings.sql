@@ -14,5 +14,8 @@
 	[InternDomein]			NVARCHAR(100)	NULL,	-- bijv. '[club-domein]' — emails van dit domein overslaan
 	[HerplanDeadlineDagen]	INT				NULL,	-- default 8: herplanverzoek mag niet eerder dan X dagen voor wedstrijd
 	[BufferMinuten]			INT				NULL,	-- default 15: buffer tussen wedstrijden op hetzelfde veld
-	[EmailVoetnoot]			NVARCHAR(MAX)	NULL	-- vrij te bewerken voettekst die onder alle uitgaande e-mails wordt geplaatst
+	[EmailVoetnoot]			NVARCHAR(MAX)	NULL,	-- vrij te bewerken voettekst die onder alle uitgaande e-mails wordt geplaatst
+	[AccommodatiePlaats]	NVARCHAR(100)	NULL,	-- plaatsnaam voor geocoding en zonsondergangsberekening
+	[AccommodatieLatitude]	FLOAT			NULL,	-- breedtegraad WGS84 (decimaal)
+	[AccommodatieLongitude]	FLOAT			NULL	-- lengtegraad WGS84 (decimaal)
 	)

@@ -102,6 +102,11 @@ public class AdminApiClient
         return await GetAsync<EmailLogResponse>("api/beheer/email-log?" + string.Join("&", qp));
     }
 
+    // ── Geocoding ──
+
+    public async Task<ApiResult<GeocodeResultDto>> GeocodeAsync(string plaatsnaam)
+        => await GetAsync<GeocodeResultDto>($"api/beheer/geocode?plaatsnaam={Uri.EscapeDataString(plaatsnaam)}");
+
     // ── Email tester ──
 
     public async Task<ApiResult<TestEmailResponse>> TestEmailAsync(TestEmailRequest dto)
