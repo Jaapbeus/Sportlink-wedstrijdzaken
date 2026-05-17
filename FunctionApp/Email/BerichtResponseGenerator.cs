@@ -259,6 +259,9 @@ public static class BerichtResponseGenerator
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
+            inhoud += $"\n\nLet op: {classificatie.KnvbNotitie} Zie ook: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden";
+
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 

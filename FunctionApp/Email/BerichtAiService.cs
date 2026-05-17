@@ -13,6 +13,45 @@ public class BerichtAiService
     private readonly ILogger<BerichtAiService> _logger;
     private readonly ChatClient _chatClient;
 
+    // KNVB-verplaatsingsregels voor seizoen 2025/'26 — wordt door AI gebruikt om overtreding te signaleren
+    // Bron: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden
+    private const string KnvbRegelsContext = """
+        ## KNVB-verplaatsingsregels seizoen 2025/'26
+
+        ### Aanvangstijdwijzigingen
+        - Tot 8 dagen voor wedstrijd: aanpasbaar via Sportlink Club (geen KNVB-goedkeuring nodig)
+        - Na 8 dagen voor wedstrijd: onderling overleg + KNVB-goedkeuring vereist
+        - Let op (strenger): standaardteams mannen, vrouwen topklasse t/m 1e klasse, landelijke jeugddivisies
+
+        ### Datumverplaatsing — algemeen
+        - Aanvraag uiterlijk 3 dagen voor wedstrijdaanvang (via Sportlink Club)
+        - Beide clubs moeten instemmen; KNVB kan afwijzen
+
+        ### Categorie A (strenge regels)
+        Geldt voor: mannen senioren standaard, vrouwen top/hoofd/1e klasse, landelijke jeugddivisies + hoofdklasse
+        - Mannen/vrouwen senioren: GEEN verplaatsing na 1 mei 2026
+        - Vrouwen 2e klasse: GEEN verplaatsing na 1 mei 2026
+        - Jeugd divisies + hoofdklasse najaar: deadline 13 december 2025
+        - Jeugd divisies + hoofdklasse voorjaar: deadline 16 mei 2026
+        - Laatste 2 wedstrijddagen van de competitie: GEEN verplaatsing
+
+        ### Categorie B (flexibeler — onderling overleg)
+        Geldt voor: pupillen, junioren regionaal, senioren 3e klasse en lager, vrouwen 3e klasse
+        - Senioren 21 sep–31 dec: verplaatst uiterlijk 31 januari 2026
+        - Senioren 1 jan–1 jun: verplaatst uiterlijk 21 juni 2026
+        - Vrouwen 3e klasse: uiterlijk 9 mei 2026; geen verplaatsing na 1 mei
+        - Pupillen (O7–O12): voor volgende fase schriftelijk vastleggen
+
+        ### Snipperdagen (alleen Categorie B)
+        - Max 1 per team per seizoen
+        - Aanvraag uiterlijk dinsdag 23:59 van de voorafgaande week
+        - Periode: seizoenstart t/m eerste volledige weekend maart 2026
+        - NIET voor: beker, O7–O12, MO13–MO20
+
+        ### Bekerwedstrijden
+        - Onderling overleg + KNVB-goedkeuring; moet voor de bekerronde plaatsvinden
+        """;
+
     private static string BouwClassificatieSystemPrompt()
     {
         var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName") ?? "de thuisclub";
@@ -42,7 +81,8 @@ public class BerichtAiService
               "leeftijdsCategorie": "bijv. JO11 of null",
               "tegenstander": "naam tegenstander of null",
               "samenvatting": "korte samenvatting van het verzoek",
-              "namensWie": "afzender | tegenstander | onbekend"
+              "namensWie": "afzender | tegenstander | onbekend",
+              "knvbNotitie": "korte notitie als het verzoek mogelijk een KNVB-regel overtreedt, anders null"
             }
 
             KRITIEKE REGELS:
@@ -57,6 +97,13 @@ public class BerichtAiService
             - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
             - Meerdere datums voor hetzelfde team = beschikbaarheid_check (NIET buiten_scope)
             - Alleen buiten_scope als het verzoek echt niet over veldbeschikbaarheid of herplannen gaat, of als er meerdere VERSCHILLENDE teams worden genoemd zonder duidelijk verband
+
+            KNVB-regelcheck (voor herplan_verzoek):
+            Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
+            Wees kort (1-2 zinnen). Voorbeeld: "Senioren mogen na 1 mei 2026 geen wedstrijden meer verplaatsen (KNVB Cat A)."
+            Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
+
+            {{KnvbRegelsContext}}
             """;
     }
 
@@ -129,7 +176,8 @@ public class BerichtAiService
             LeeftijdsCategorie = GetOptionalString(root, "leeftijdsCategorie"),
             Tegenstander = GetOptionalString(root, "tegenstander"),
             Samenvatting = root.GetProperty("samenvatting").GetString() ?? "",
-            NamensWie = MapNamensWie(namensWieString)
+            NamensWie = MapNamensWie(namensWieString),
+            KnvbNotitie = GetOptionalString(root, "knvbNotitie")
         };
     }
 
