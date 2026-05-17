@@ -14,7 +14,7 @@ draait op v1 (`main`). v2 wordt pas gedeployed wanneer alle Azure-resources zijn
 1. Stel `FunctionApp/local.settings.json` correct in (zie `local.settings.template.json`)
 2. Voer alle migraties uit op de lokale SQL Server:
    ```powershell
-   sqlcmd -S PTCL69L001 -d SportlinkSqlDb -E -i .\Database\Script.PostDeployment1.sql
+   sqlcmd -S YOUR_SQL_SERVER -d SportlinkSqlDb -E -i .\Database\Script.PostDeployment1.sql
    ```
 3. Installeer Azurite (voor storage emulator)
 
