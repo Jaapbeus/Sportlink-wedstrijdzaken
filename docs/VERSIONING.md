@@ -6,6 +6,57 @@ Bij twijfel: raadpleeg dit document. Bij aanpassing: commit de wijziging hier oo
 
 ---
 
+## 0. CISO-verantwoordelijkheid — AVG en PII in documentatie
+
+> **Dit is de meest kritieke sectie.** Documentatie is publiek zodra de repo publiek wordt
+> of een PR wordt gemerged. Een emailadres in CHANGELOG.md is een datalek.
+
+### Wat NOOIT in CHANGELOG, docs/ of commit-messages mag
+
+| Type gegeven | Voorbeeld | Wat te gebruiken |
+|---|---|---|
+| Emailadres (persoonlijk of zakelijk) | `jan@vv-club.nl`, `jan.jansen@gmail.com` | `[emailadres]` of `example@example.nl` |
+| Naam van een persoon in bug-context | "bug gemeld door Jan Jansen" | "bug gemeld door een beheerder" |
+| Telefoonnummer | `06-12345678` | nooit nodig in changelog |
+| Sportlink-ledencode | `BBBZXXXX` | `[ledencode]` |
+| IP-adres of server-hostname | `192.168.1.1`, `srv01.vv-club.nl` | nooit nodig in changelog |
+| Inhoud van een testaanvraag of e-mail | "e-mail van jan@... over wedstrijd op 14 mei" | omschrijving zonder persoonsgegevens |
+
+### Hoe beschrijf je een bug ZONDER PII?
+
+Fout: `Fixed: e-mailverwerking faalde voor jan.jansen@gmail.com`
+Goed: `E-mailadressen met een punt vóór het @-teken werden incorrect geparsed`
+
+Fout: `Fixed: classificatie van e-mail van tegenstander@vv-xyz.nl werkte niet`
+Goed: `AI-classificatie herkende externe club-emailadressen niet als 'tegenstander'`
+
+Fout: `Fixed: herplanverzoek van Jan Jansen voor wedstrijd JO13-2 op 14 mei`
+Goed: `Herplanverzoeken voor jeugdteams werden verkeerd geclassificeerd`
+
+### Blokkeringsprotocol
+
+Als Claude (als CISO) twijfelt of een changelog-entry PII bevat:
+
+1. **STOP** — commit niet
+2. Herschrijf de entry zodat het gedrag beschreven wordt, niet de persoon of het adres
+3. Controleer: is de herschreven versie begrijpelijk zonder de PII? Zo nee → beschrijving klopt niet
+4. Pas daarna committen
+
+Bij ontdekking van PII in een bestaande commit:
+1. **Meld direct aan de gebruiker** — ook als de repo privé is
+2. Verwijder via `git filter-repo` of `git filter-branch` (destructief — overlegen eerst)
+3. Roteer eventuele API-sleutels of wachtwoorden als die ook exposed waren
+4. Documenteer in SECURITY.md
+
+### Automatische bewaking
+
+Drie lagen blokkeren PII automatisch:
+- **Pre-commit hook** (lokaal) — blokkeert commit als CHANGELOG.md of docs/ een emailadres bevat
+- **Security Scan (GitHub Actions)** — `pii-docs` job blokkeert de merge
+- **Security Gate** — geen merge naar main mogelijk zolang pii-docs rood is
+
+---
+
 ## 1. Wat hoort WEL in het CHANGELOG?
 
 Het changelog is geschreven **voor de beheerder en gebruiker van de applicatie**,
