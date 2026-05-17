@@ -13,21 +13,21 @@ Bij twijfel: raadpleeg dit document. Bij aanpassing: commit de wijziging hier oo
 
 ### Wat NOOIT in CHANGELOG, docs/ of commit-messages mag
 
-| Type gegeven | Voorbeeld | Wat te gebruiken |
+| Type gegeven | Voorbeeld (NOOIT zo opschrijven) | Wat te gebruiken |
 |---|---|---|
-| Emailadres (persoonlijk of zakelijk) | `jan@vv-club.nl`, `jan.jansen@gmail.com` | `[emailadres]` of `example@example.nl` |
+| Emailadres (persoonlijk of zakelijk) | adres eindigend op @vv-club.nl of @gmail.com | `[emailadres]` of `naam@example.nl` |
 | Naam van een persoon in bug-context | "bug gemeld door Jan Jansen" | "bug gemeld door een beheerder" |
-| Telefoonnummer | `06-12345678` | nooit nodig in changelog |
-| Sportlink-ledencode | `BBBZXXXX` | `[ledencode]` |
+| Telefoonnummer | een NL mobiel nummer (06 + 8 cijfers) | nooit nodig in changelog |
+| Sportlink-ledencode | ledencode in formaat BCZ-... | `[ledencode]` |
 | IP-adres of server-hostname | `192.168.1.1`, `srv01.vv-club.nl` | nooit nodig in changelog |
-| Inhoud van een testaanvraag of e-mail | "e-mail van jan@... over wedstrijd op 14 mei" | omschrijving zonder persoonsgegevens |
+| Inhoud van een testaanvraag of e-mail | "e-mail over wedstrijd op 14 mei" | omschrijving zonder persoonsgegevens |
 
 ### Hoe beschrijf je een bug ZONDER PII?
 
-Fout: `Fixed: e-mailverwerking faalde voor jan.jansen@gmail.com`
+Fout: `Fixed: e-mailverwerking faalde voor een specifiek gmail-adres met punt vóór @`
 Goed: `E-mailadressen met een punt vóór het @-teken werden incorrect geparsed`
 
-Fout: `Fixed: classificatie van e-mail van tegenstander@vv-xyz.nl werkte niet`
+Fout: `Fixed: classificatie van e-mail van een externe club werkte niet`
 Goed: `AI-classificatie herkende externe club-emailadressen niet als 'tegenstander'`
 
 Fout: `Fixed: herplanverzoek van Jan Jansen voor wedstrijd JO13-2 op 14 mei`
