@@ -167,6 +167,9 @@ Versienummering volgt `MAJOR.MINOR.PATCH`:
 | **MINOR** (2.x.0) | Nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm) | v2.1.0 — WhatsApp-kanaal toegevoegd |
 | **PATCH** (2.0.x) | Bugfix, beveiligingspatch, documentatie zonder gedragswijziging | v2.0.1 — 500-error op teams-endpoint |
 
+> Volledige definities (bug vs. issue vs. feature vs. enhancement, wat in changelog hoort):
+> zie [docs/VERSIONING.md](docs/VERSIONING.md).
+
 ### Conventional Commits → versie-bump
 
 Commit-type bepaalt de minimum versie-bump:
