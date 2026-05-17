@@ -72,6 +72,22 @@ Azure Static Web Apps (gratis tier)
 
 **Technologie:** .NET 10 · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · Azure OpenAI · Azure Static Web Apps · Entra ID
 
+### Kostenmodel: zo dicht mogelijk bij €0
+
+Een belangrijk ontwerpprincipe is dat Azure-kosten zo laag mogelijk blijven — idealiter €0 per maand.
+
+| Azure-service | Tier | Kosten |
+|---|---|---|
+| Azure Functions | Consumption plan | **Gratis** — eerste 1 miljoen aanroepen/maand inbegrepen |
+| Azure Static Web Apps | Free tier | **Gratis** — €0 gegarandeerd |
+| Azure SQL Database | Free Offer (32 GB, serverless) | **Gratis** — via [Azure SQL Free Offer](https://learn.microsoft.com/azure/azure-sql/database/free-offer) |
+| Entra ID | Gratis laag | **Gratis** — tot 50.000 actieve gebruikers/maand |
+| Azure OpenAI | Pay-per-use | **< €1/maand** bij normaal clubgebruik |
+
+> **Azure SQL Free Offer:** één gratis serverless database van 32 GB per Azure-abonnement. Voor een club met meerdere teams is dit ruim voldoende. De database schaalt automatisch terug naar nul buiten gebruiksuren — geen kosten bij inactiviteit.
+
+Het enige onderdeel met variabele kosten is Azure OpenAI voor de AI-classificatie van e-mails. Bij een normale voetbalclub (enkele tientallen wedstrijdgerelateerde e-mails per week) blijft dit verwaarloosbaar.
+
 ---
 
 ## Voor wie is dit interessant?
@@ -86,7 +102,7 @@ Azure Static Web Apps (gratis tier)
 **Als eindgebruiker** is dit project bedoeld voor verenigingen die:
 - Draaien op **Sportlink Club** (KNVB-aangesloten)
 - Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
-- Bereid zijn een Azure-omgeving in te richten (kosten: enkele euro's per maand)
+- Bereid zijn een Azure-omgeving in te richten (kosten: **vrijwel €0** dankzij gratis Azure-tiers)
 
 Het project is **multi-club**: één installatie kan meerdere verenigingen bedienen, elk met hun eigen Sportlink-koppeling en isolatie van elkaars data.
 
