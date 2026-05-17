@@ -91,7 +91,8 @@ public static class BerichtPipeline
         switch (classificatie.Type)
         {
             case VerzoekType.BeschikbaarheidCheck:
-                var alleDatums = classificatie.GetAlleDatums();
+                var alleDatums = ExpandDoordeweeksDatums(
+                    classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body);
 
                 var cc2 = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
                 bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander)
@@ -283,6 +284,40 @@ public static class BerichtPipeline
     }
 
     // ── Private helpers ──
+
+    /// <summary>
+    /// Als de berichttekst 'doordeweeks' bevat, vervang de AI-datums door de exacte
+    /// maandag t/m donderdag van de week die de AI afleidde. Vrijdag is nooit doordeweeks.
+    /// </summary>
+    private static List<string> ExpandDoordeweeksDatums(
+        List<string> aiDatums, string onderwerp, string body)
+    {
+        var tekst = (onderwerp + " " + body).ToLowerInvariant();
+        if (!tekst.Contains("doordeweeks"))
+            return aiDatums;
+
+        // Leid de weekmaandag af: óf uit de eerste AI-datum, óf uit "volgende week"
+        DateOnly weekStart;
+        if (aiDatums.Count > 0 && DateOnly.TryParse(aiDatums[0], out var firstDate))
+        {
+            // Rol terug naar de maandag van de week van die datum
+            int daysFromMonday = ((int)firstDate.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+            weekStart = firstDate.AddDays(-daysFromMonday);
+        }
+        else
+        {
+            // Geen AI-datum: neem de volgende kalenderweek
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            int daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+            if (daysUntilMonday == 0) daysUntilMonday = 7;
+            weekStart = today.AddDays(daysUntilMonday);
+        }
+
+        // Maandag t/m donderdag (4 dagen)
+        return Enumerable.Range(0, 4)
+            .Select(i => weekStart.AddDays(i).ToString("yyyy-MM-dd"))
+            .ToList();
+    }
 
     private static DateOnly? ExtractExpliciteDatum(string tekst)
     {
