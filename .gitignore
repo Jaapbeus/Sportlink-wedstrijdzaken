@@ -13,6 +13,13 @@
 **/__azurite_db_*.json
 **/__blobstorage__/
 
+# ── Environment files (secrets) ──────────────────────────────────────────────
+# .env-bestanden bevatten typisch wachtwoorden, API-keys en connection strings.
+.env
+.env.*
+!.env.template
+!.env.example
+
 # ── Build output ──────────────────────────────────────────────────────────────
 [Dd]ebug/
 [Dd]ebugPublic/
