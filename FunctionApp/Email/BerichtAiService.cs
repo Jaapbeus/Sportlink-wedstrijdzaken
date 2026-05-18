@@ -55,10 +55,6 @@ public class BerichtAiService
     private static string BouwClassificatieSystemPrompt()
     {
         var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName") ?? "de thuisclub";
-        var internDomein = SystemUtilities.AppSettings.GetSetting("internDomein") ?? "";
-        var domeinRegel = string.IsNullOrWhiteSpace(internDomein)
-            ? "- Emails van interne clubcontacten worden doorgestuurd of komen van een club-emailadres"
-            : $"- Als afzender @{internDomein.TrimStart('@')} domein heeft: intern (thuisclub-kant)";
 
         return $$"""
             Je bent een assistent voor de coördinator thuiswedstrijden van {{clubNaam}}.
@@ -92,7 +88,7 @@ public class BerichtAiService
             - "gewensteDatum" = de datum waarnaar men wil verplaatsen (alleen bij herplan_verzoek). Kan null zijn als niet genoemd.
             - Datums in emails zijn vaak relatief ("aanstaande zaterdag") — bereken de absolute datum op basis van vandaag
             - Nederlandse tekst, informeel taalgebruik
-            - {{domeinRegel}}
+            - Emails van interne clubcontacten worden doorgestuurd of komen van een club-emailadres
             - Bij doorgestuurde berichten: bepaal namens wie het verzoek is
             - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
             - Meerdere datums voor hetzelfde team = beschikbaarheid_check (NIET buiten_scope)

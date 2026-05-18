@@ -39,7 +39,7 @@ public static class AdminSettingsFunction
     // SportlinkClientId, Graph-secrets en OpenAI key komen hier NOOIT in.
     private static readonly string[] AllowedFields =
     {
-        "InternDomein", "HerplanDeadlineDagen", "BufferMinuten",
+        "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude"
@@ -72,7 +72,7 @@ public static class AdminSettingsFunction
                 SELECT TOP 1
                     [ClubName], [ClubCode], [SportlinkApiUrl], [SeasonStartMonth], [Accommodatie],
                     [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
-                    [CoordinatorFunctie], [PlannerEmailAdres], [InternDomein], [HerplanDeadlineDagen],
+                    [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                     [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                     [AccommodatieLatitude], [AccommodatieLongitude]
                 FROM [dbo].[AppSettings]", connection);
