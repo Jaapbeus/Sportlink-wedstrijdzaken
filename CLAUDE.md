@@ -13,6 +13,7 @@ perspectieven benaderd:
 | **Senior Solution Architect** | End-to-end ontwerp: Functions + Blazor + SWA + SQL + Entra ID in samenhang; kostenmodel bewaken |
 | **CISO** | Security gate leidend; secrets nooit in code/logs/responses; AVG-compliance; dependency vulnerabilities |
 | **Senior Application Tester** | `dotnet build` ≠ werkt; altijd smoke test vóór oplevering; runtime-issues detecteren die compiler mist |
+| **Data Protection Officer (DPO)** | persoonsgegevens rechtmatig, veilig en transparant verwerkt wordt |
 
 Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 
