@@ -65,7 +65,7 @@ $expectedColumns = @{
     "dbo.AppSettings" = @(
         "ClubName","ClubCode","SportlinkApiUrl","SportlinkClientId","SeasonStartMonth",
         "Accommodatie","LastSyncTimestamp","FetchSchedule","PlannerAfzenderNaam",
-        "CoordinatorNaam","CoordinatorFunctie","PlannerEmailAdres","InternDomein",
+        "CoordinatorNaam","CoordinatorFunctie","PlannerEmailAdres",
         "HerplanDeadlineDagen","BufferMinuten",
         "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude",
         "EmailVoetnoot"
@@ -242,7 +242,46 @@ if (-not $funcRunning) {
 }
 
 # ──────────────────────────────────────────────────────────────────────
-# 5. BLAZOR PAGINA CHECK (alleen als Blazor draait)
+# 5. FEEDBACK WIDGET — GitHub-integratie smoke test
+# ──────────────────────────────────────────────────────────────────────
+Write-Section "Feedback widget (GitHub-integratie)"
+
+$ghPat   = $settings.Values.GitHubPat
+$ghOwner = $settings.Values.GitHubOwner
+$ghRepo  = if ($settings.Values.GitHubRepo) { $settings.Values.GitHubRepo } else { "Sportlink-wedstrijdzaken" }
+
+if (-not $ghPat -or -not $ghOwner) {
+    Write-Issue "GitHubPat of GitHubOwner niet geconfigureerd in local.settings.json — feedbackknop werkt niet"
+} else {
+    $ghHeaders = @{
+        "Authorization"        = "Bearer $ghPat"
+        "Accept"               = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
+        "User-Agent"           = "Test-App.ps1/SportlinkWedstrijdzaken"
+    }
+    $testTitle = "[TEST] Smoke test feedback widget — $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+    $testBody  = "Automatisch aangemaakt door Test-App.ps1 als smoke test voor de feedbackknop. Wordt direct gesloten."
+    $createPayload = @{ title = $testTitle; body = $testBody } | ConvertTo-Json -Compress
+
+    try {
+        $created  = Invoke-RestMethod -Uri "https://api.github.com/repos/$ghOwner/$ghRepo/issues" `
+                        -Method POST -Headers $ghHeaders -Body $createPayload -ContentType "application/json" -ErrorAction Stop
+        $issueNr  = $created.number
+        Write-Ok "GitHub issue aangemaakt: #$issueNr"
+
+        # Sluit het test-issue direct (GitHub ondersteunt geen delete via REST)
+        $closePayload = '{"state":"closed"}'
+        Invoke-RestMethod -Uri "https://api.github.com/repos/$ghOwner/$ghRepo/issues/$issueNr" `
+            -Method PATCH -Headers $ghHeaders -Body $closePayload -ContentType "application/json" -ErrorAction Stop | Out-Null
+        Write-Ok "GitHub issue #$issueNr gesloten (cleanup)"
+    } catch {
+        $code = $_.Exception.Response?.StatusCode.value__
+        Write-Issue "GitHub issue aanmaken mislukt (HTTP $code) — feedbackknop werkt niet: $($_.Exception.Message)"
+    }
+}
+
+# ──────────────────────────────────────────────────────────────────────
+# 7. BLAZOR PAGINA CHECK (alleen als Blazor draait)
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Blazor pagina checks"
 
@@ -281,7 +320,7 @@ if (-not $blazorRunning) {
 }
 
 # ──────────────────────────────────────────────────────────────────────
-# 6. SWA PROXY CHECKS (alleen als SWA emulator draait op poort 4280)
+# 8. SWA PROXY CHECKS (alleen als SWA emulator draait op poort 4280)
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "SWA emulator checks"
 
@@ -339,7 +378,7 @@ if (-not $swaRunning) {
 }
 
 # ──────────────────────────────────────────────────────────────────────
-# 7. SAMENVATTING
+# 9. SAMENVATTING
 # ──────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "══════════════════════════════════════════" -ForegroundColor Cyan
