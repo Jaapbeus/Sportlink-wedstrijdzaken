@@ -20,6 +20,7 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 _Wijzigingen op `v2/develop` die nog niet zijn vrijgegeven._
 
 ### Security
+- **Entra ID tenant en client geconfigureerd** (#132): `staticwebapp.config.json` en `appsettings.Production.json` ingevuld met de echte tenant- en client-ID van de VRC Azure-tenant. SWA runtime bijgewerkt van `dotnet-isolated:9.0` naar `dotnet-isolated:10.0`. Client secret wordt beheerd via Azure SWA Configuration (nooit in git).
 - **Security Gate bewaakt nu ook v2/develop PRs** (#135): `security-scan.yml` triggert voortaan ook op pull requests richting `v2/develop`. Eerder was er een blinde vlek waarbij code zonder beveiligingscontrole `v2/develop` in kon via een PR.
 - **Blazor Admin GUI: Entra ID auth in productie** (geen issue nr): `Program.cs` detecteert automatisch de omgeving — in productie (SWA-deployment) wordt `EntraAuthService` geregistreerd met MSAL, in development `LocalAuthService`. `appsettings.Production.json` bevat de AzureAd-configuratie (placeholders; in te vullen na Entra-registratie). De SWA CLI-configuratie (`swa-cli.config.json`) maakt lokaal testen van auth-flows mogelijk zonder echte Entra ID.
 
