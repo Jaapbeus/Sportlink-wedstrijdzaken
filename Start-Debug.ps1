@@ -19,6 +19,23 @@ param(
 
 $root = $PSScriptRoot
 
+# --- Stop eventueel draaiende apps (op de bekende poorten) ---
+Write-Host "Controleer op draaiende services..." -ForegroundColor DarkGray
+
+foreach ($port in @(7094, 5242, 4280)) {
+    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($conn) {
+        $proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+        if ($proc) {
+            Write-Host "  Stoppen: $($proc.ProcessName) (PID $($proc.Id)) op poort $port" -ForegroundColor Yellow
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# Wacht kort tot poorten vrijgekomen zijn
+Start-Sleep -Seconds 2
+
 # --- Azurite ---
 $azuriteRunning = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
 if ($azuriteRunning) {

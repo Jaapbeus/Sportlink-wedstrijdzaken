@@ -58,14 +58,6 @@ else
 
         <div class="row">
             <div class="col-md-6 mb-3">
-                <label class="form-label">Intern domein</label>
-                <input class="form-control" @bind="settings.InternDomein" placeholder="bv. [club-domein]" />
-                <small class="form-text text-muted">Emails van dit domein worden overgeslagen</small>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-6 mb-3">
                 <label class="form-label">Herplan-deadline (dagen vooraf)</label>
                 <input class="form-control" type="number" min="0" max="60" @bind="settings.HerplanDeadlineDagen" />
             </div>
@@ -138,8 +130,7 @@ else
         <div class="col">
             <h2 class="mb-0">Uitgesloten e-mailadressen</h2>
             <p class="text-muted mb-0">
-                Adressen op deze lijst worden altijd overgeslagen door de email-verwerker,
-                ook als het domein niet overeenkomt met het intern domein.
+                Adressen op deze lijst worden altijd overgeslagen door de email-verwerker.
             </p>
         </div>
         <div class="col-auto align-self-center">
@@ -304,7 +295,6 @@ else
                 ["AccommodatiePlaats"] = settings.AccommodatiePlaats,
                 ["AccommodatieLatitude"] = settings.AccommodatieLatitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["AccommodatieLongitude"] = settings.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["InternDomein"] = settings.InternDomein,
                 ["HerplanDeadlineDagen"] = settings.HerplanDeadlineDagen?.ToString(),
                 ["BufferMinuten"] = settings.BufferMinuten?.ToString(),
                 ["PlannerAfzenderNaam"] = settings.PlannerAfzenderNaam,

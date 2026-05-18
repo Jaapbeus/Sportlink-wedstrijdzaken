@@ -15,7 +15,6 @@ public class AppSettingsDto
     public string? CoordinatorNaam { get; set; }
     public string? CoordinatorFunctie { get; set; }
     public string? PlannerEmailAdres { get; set; }
-    public string? InternDomein { get; set; }
     public int? HerplanDeadlineDagen { get; set; }
     public int? BufferMinuten { get; set; }
     public string? EmailVoetnoot { get; set; }
