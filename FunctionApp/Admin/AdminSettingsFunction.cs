@@ -22,7 +22,7 @@ namespace SportlinkFunction.Admin;
 ///   PUT  /api/beheer/settings          → schrijft toegestane velden + logt naar dbo.AppSettingsAudit
 ///
 /// Beveiliging:
-///   - AuthorizationLevel.Function (in productie via SWA proxying veilig)
+///   - AuthorizationLevel.Anonymous + Easy Auth (Entra ID Bearer token validatie)
 ///   - SportlinkClientId en Graph secrets worden NOOIT in responses gezet
 ///   - Alle wijzigingen worden vastgelegd in dbo.AppSettingsAudit (CISO-eis)
 ///
@@ -56,10 +56,12 @@ public static class AdminSettingsFunction
 
     [Function("AdminSettingsGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/settings")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -107,10 +109,12 @@ public static class AdminSettingsFunction
 
     [Function("AdminSettingsPut")]
     public static async Task<IActionResult> Put(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/settings")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsPut");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -236,10 +240,12 @@ public static class AdminSettingsFunction
     /// </summary>
     [Function("AdminGeocodeGet")]
     public static async Task<IActionResult> Geocode(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/geocode")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/geocode")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminGeocodeGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         var plaatsnaam = req.Query["plaatsnaam"].ToString().Trim();
         if (string.IsNullOrWhiteSpace(plaatsnaam))
             return new BadRequestObjectResult(new { error = "plaatsnaam is verplicht" });
