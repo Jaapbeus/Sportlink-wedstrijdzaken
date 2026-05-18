@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "VRC Sportlink Veldplanner API",
-    "description": "API voor veldbeschikbaarheid, wedstrijdplanning en optimalisatie op Sportpark Spitsbergen",
+    "description": "API voor veldbeschikbaarheid, wedstrijdplanning en optimalisatie",
     "version": "1.0.0"
   },
   "servers": [

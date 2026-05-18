@@ -243,7 +243,7 @@ Fetched live from `https://data.sportlink.com/programma?clientId=YOUR_CLIENT_ID`
 | `status` | string | Match status | `Te spelen` |
 | `scheidsrechters` | string | Full referee description | `A. (Arie) Jansen (Scheidsrechter)` |
 | `scheidsrechter` | string | Referee name | `A. (Arie) Jansen` |
-| `accommodatie` | string | Venue name | `Sportpark Spitsbergen` |
+| `accommodatie` | string | Venue name | `[Accommodatienaam]` |
 | `veld` | string | Field designation | `veld 3` |
 | `locatie` | string | Location type | `Veld`, `Outdoor` |
 | `plaats` | string | City | `VEENENDAAL` |

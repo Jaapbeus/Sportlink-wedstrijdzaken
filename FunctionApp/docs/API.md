@@ -622,7 +622,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability \
 ```bash
 curl -X POST http://localhost:7094/api/planner/bevestig \
   -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"VRC JO13-1","tegenstander":"Ede JO13-2","aangevraagdDoor":"coach@vrc.nl"}'
+  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"VRC JO13-1","tegenstander":"Ede JO13-2","aangevraagdDoor":"coach@example.com"}'
 ```
 
 ### Zonsondergangtabel vullen

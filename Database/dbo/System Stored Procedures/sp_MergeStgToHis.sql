@@ -7,9 +7,9 @@ AS
 BEGIN
     /*
     version | date       | name              | description
-    1.0     | 12-01-2025 | Jaap van Beusekom | Initial setup
-    1.1     | 25-01-2025 | Jaap van Beusekom | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
-    1.2     | 2025       | Jaap van Beusekom | Multi-column business key support using CONCAT
+    1.0     | 12-01-2025 | [author] | Initial setup
+    1.1     | 25-01-2025 | [author] | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
+    1.2     | 2025       | [author] | Multi-column business key support using CONCAT
     */
     SET NOCOUNT ON;
     -- Create the target table from source structure if it does not yet exist

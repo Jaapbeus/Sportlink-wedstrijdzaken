@@ -1,6 +1,6 @@
 CREATE VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
--- Competition matches from Sportlink (home matches at Sportpark Spitsbergen only)
+-- Competition matches from Sportlink (home matches filtered by dbo.AppSettings.Accommodatie)
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
@@ -27,7 +27,7 @@ LEFT JOIN [dbo].[Speeltijden] s
     END
 LEFT JOIN [dbo].[Velden] v
     ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-WHERE m.[accommodatie] LIKE '%' + COALESCE((SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings]), 'Sportpark Spitsbergen') + '%'
+WHERE m.[accommodatie] LIKE '%' + COALESCE((SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings]), '') + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
   AND v.[VeldNummer] IS NOT NULL

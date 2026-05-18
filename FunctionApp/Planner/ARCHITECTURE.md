@@ -4,7 +4,7 @@ Dit document definieert de regels, beperkingen en API-contract voor de VRC Veldp
 
 ## Doel
 
-Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **Sportpark Spitsbergen, Veenendaal**. Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
+Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op het eigen sportpark (geconfigureerd via `dbo.AppSettings.Accommodatie`). Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
 
 ---
 

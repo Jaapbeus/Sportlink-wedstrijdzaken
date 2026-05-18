@@ -7,8 +7,8 @@ AS
 BEGIN
 	/*
 	version | date			| name					| description
-	1.0		| 12-01-2025	| Jaap van Beusekom		| Initial setup
-	1.1		| 2025			| Jaap van Beusekom		| Fixed target table name using @TargetName instead of @SourceName
+	1.0		| 12-01-2025	| [author]		| Initial setup
+	1.1		| 2025			| [author]		| Fixed target table name using @TargetName instead of @SourceName
 	*/
 
 	IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[' + @TargetSchema + '].[' + @TargetName +']') AND type in (N'U'))
