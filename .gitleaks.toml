@@ -49,3 +49,11 @@ paths = [
   # Database-migratiegeschiedenis (geen secrets)
   '''Database/.*\.sql''',
 ]
+# Historische commits met voorbeeldwaarden die patronen triggeren — geen echte PII.
+# Zie bijbehorende GitHub issue voor permanente strategie (filter-repo of accept).
+commits = [
+  # 5311d64: "security: drie-laags AVG-bewaking voor documentatie en changelog"
+  # docs/VERSIONING.md bevatte voorbeeld-email/telefoon ter illustratie van wat NIET mag.
+  # Direct hersteld in commit 70173cb door beschrijvende tekst.
+  "5311d642e3c0b1f8b74e3ca2e733785e36a12a66",
+]
