@@ -19,44 +19,30 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = @"
-                            SELECT [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
-                                   [SeasonStartMonth], [LastSyncTimestamp], [FetchSchedule],
-                                   [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
-                                   [PlannerEmailAdres], [Accommodatie],
-                                   [HerplanDeadlineDagen], [BufferMinuten],
-                                   [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
-                                   [AccommodatiePlaats]
-                            FROM [dbo].[AppSettings]";
+                        string query = "SELECT [SportlinkApiUrl], [SportlinkClientId], [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie], [PlannerEmailAdres], [Accommodatie] FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
                             while (await reader.ReadAsync())
                             {
-                                void Set(string key, int col) {
-                                    if (!reader.IsDBNull(col))
-                                        settings[key] = reader.GetValue(col).ToString() ?? "";
-                                }
+                                string sportlinkApiUrl          = reader["SportlinkApiUrl"].ToString() ?? string.Empty;
+                                string sportlinkClientId        = reader["SportlinkClientId"].ToString() ?? string.Empty;
+                                settings["sportlinkApiUrl"]     = sportlinkApiUrl;
+                                settings["sportlinkClientId"]   = sportlinkClientId;
+                                if (reader["LastSyncTimestamp"] != DBNull.Value)
+                                    settings["lastSyncTimestamp"] = Convert.ToDateTime(reader["LastSyncTimestamp"]).ToString("yyyy-MM-dd HH:mm:ss");
+                                settings["fetchSchedule"] = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
 
-                                settings["clubName"]        = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                                settings["clubCode"]        = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                                settings["sportlinkApiUrl"] = reader.IsDBNull(2) ? "" : reader.GetString(2);
-                                settings["sportlinkClientId"] = reader.IsDBNull(3) ? "" : reader.GetString(3);
-                                Set("seasonStartMonth", 4);
-                                if (!reader.IsDBNull(5))
-                                    settings["lastSyncTimestamp"] = Convert.ToDateTime(reader.GetValue(5)).ToString("yyyy-MM-dd HH:mm:ss");
-                                settings["fetchSchedule"]   = reader.IsDBNull(6) ? "0 0 4 * * *" : reader.GetString(6);
-                                Set("plannerAfzenderNaam", 7);
-                                Set("coordinatorNaam", 8);
-                                Set("coordinatorFunctie", 9);
-                                Set("plannerEmailAdres", 10);
-                                Set("accommodatie", 11);
-                                Set("herplanDeadlineDagen", 12);
-                                Set("bufferMinuten", 13);
-                                Set("accommodatieLatitude", 14);
-                                Set("accommodatieLongitude", 15);
-                                Set("emailVoetnoot", 16);
-                                Set("accommodatiePlaats", 17);
+                                if (reader["PlannerAfzenderNaam"] != DBNull.Value)
+                                    settings["plannerAfzenderNaam"] = reader["PlannerAfzenderNaam"].ToString() ?? "";
+                                if (reader["CoordinatorNaam"] != DBNull.Value)
+                                    settings["coordinatorNaam"] = reader["CoordinatorNaam"].ToString() ?? "";
+                                if (reader["CoordinatorFunctie"] != DBNull.Value)
+                                    settings["coordinatorFunctie"] = reader["CoordinatorFunctie"].ToString() ?? "";
+                                if (reader["PlannerEmailAdres"] != DBNull.Value)
+                                    settings["plannerEmailAdres"] = reader["PlannerEmailAdres"].ToString() ?? "";
+                                if (reader["Accommodatie"] != DBNull.Value)
+                                    settings["accommodatie"] = reader["Accommodatie"].ToString() ?? "Sportpark Spitsbergen";
                             }
                         }
                     }
@@ -112,7 +98,6 @@ namespace SportlinkFunction
                         isDatabaseAvailable = true;
                         log.LogInformation("Database connection established.");
                     }
-                    await AppSettings.LoadSettingsAsync(log);
                 }
                 catch (Exception ex)
                 {
@@ -127,42 +112,6 @@ namespace SportlinkFunction
             {
                 throw new Exception("Unable to establish a database connection after multiple attempts.");
             }
-        }
-
-        /// <summary>
-        /// Berekent een deterministische 12-karakter hex fingerprint voor een exception.
-        /// Identieke fouten (zelfde type, genormaliseerd bericht, zelfde callsite) geven altijd
-        /// dezelfde fingerprint — essentieel voor deduplicatie van GitHub Issues.
-        /// </summary>
-        public static string ComputeFingerprint(Exception ex)
-        {
-            var raw = $"{ex.GetType().FullName}|{NormalizeMessage(ex.Message)}|{GetCallerFrame(ex)}";
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
-            return Convert.ToHexString(bytes)[..12].ToLower();
-        }
-
-        private static string NormalizeMessage(string message)
-        {
-            if (string.IsNullOrEmpty(message)) return "";
-            // Verwijder variabele delen zodat dezelfde fout altijd dezelfde fingerprint geeft
-            var s = message;
-            s = System.Text.RegularExpressions.Regex.Replace(s, @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
-            s = System.Text.RegularExpressions.Regex.Replace(s, @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?", "<date>");
-            s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d+\b", "<n>");
-            return s.Trim();
-        }
-
-        private static string GetCallerFrame(Exception ex)
-        {
-            if (ex.StackTrace == null) return "unknown";
-            foreach (var line in ex.StackTrace.Split('\n'))
-            {
-                var trimmed = line.Trim();
-                if (trimmed.StartsWith("at SportlinkFunction.", StringComparison.Ordinal))
-                    return trimmed.Split('(')[0].Replace("at ", "").Trim();
-            }
-            return "external";
         }
 
         public static class SeasonHelper

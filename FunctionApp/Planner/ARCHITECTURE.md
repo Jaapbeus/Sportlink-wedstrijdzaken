@@ -400,9 +400,9 @@ emails             |
 |---------|---------------------|
 | `EmailProcessorFunction.cs` | Timer trigger + orchestratie |
 | `EmailGraphService.cs` | Graph API wrapper (lezen, sturen, markeren) |
-| `BerichtAiService.cs` | OpenAI classificatie (kanaal-agnostisch) |
-| `BerichtModels.cs` | DTO's en enums (InkomendBericht, BerichtClassificatie) |
-| `BerichtResponseGenerator.cs` | Template-gebaseerde antwoord-opbouw (kanaal-agnostisch) |
+| `EmailAiService.cs` | OpenAI classificatie + antwoord generatie |
+| `EmailModels.cs` | DTO's en enums |
+| `EmailResponseGenerator.cs` | Template-gebaseerde antwoord-opbouw |
 
 ### AI classificatie (structured output)
 
@@ -479,15 +479,13 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 
 ### Thuis/uit-herkenning bij herplanverzoeken
 
-Bij herplanverzoeken kan de email binnenkomen via een intern clubcontact (doorgestuurd namens de tegenstander) of rechtstreeks van de tegenstander. De communicatie-flow verschilt per situatie.
+Bij herplanverzoeken kan de email binnenkomen via een VRC-contactpersoon (doorgestuurd namens de tegenstander) of rechtstreeks van de tegenstander. De communicatie-flow verschilt per situatie.
 
 #### Stap 1 — Afzender herkennen
 
-Het interne domein van de club is geconfigureerd in `dbo.AppSettings` als `internDomein` (bijv. `@mijnclub.nl`).
-
 | Aanwijzing | Conclusie |
 |-----------|-----------|
-| Emaildomein = `internDomein` uit AppSettings | Club-intern (thuisteam-kant) |
+| Emaildomein `@[club-domein]` | VRC-intern (thuisteam-kant) |
 | Ander emaildomein | Mogelijk tegenstander of ouder/coach tegenstander |
 
 #### Stap 2 — Namens wie is het verzoek?
@@ -496,30 +494,30 @@ De AI-laag analyseert de tekst op patronen:
 
 | Patroon in tekst | Conclusie |
 |-----------------|-----------|
-| "[Tegenstander] vraagt of...", "zij willen..." | Doorgestuurd door intern clubcontact, verzoek namens uitteam |
+| "[Tegenstander] vraagt of...", "zij willen..." | Doorgestuurd door VRC-er, verzoek namens uitteam |
 | "Wij kunnen niet om...", "Is het voor ons mogelijk..." | Afzender zelf is de vragende partij |
 | "Kunnen we de wedstrijd verplaatsen" | Afzender = vragende partij |
 
 #### Stap 3 — Thuis/uit bepalen uit wedstrijddata
 
-Altijd betrouwbaar uit de database: `his.matches.teamnaam` = thuisteam (de eigen club). De andere partij in het `wedstrijd`-veld is het uitteam. Dit is harde data, geen interpretatie nodig.
+Altijd betrouwbaar uit de database: `his.matches.teamnaam` = VRC-team (thuisteam). De andere partij in het `wedstrijd`-veld is het uitteam. Dit is harde data, geen interpretatie nodig.
 
 #### Stap 4 — Communicatie-flow per scenario
 
 | Afzender | Verzoek namens | Flow |
 |----------|---------------|------|
-| Club-intern | Tegenstander | Check planning → Overleg eigen team → Antwoord via intern contact terug naar tegenstander |
-| Tegenstander direct | Zichzelf | Check planning → Overleg eigen team → Antwoord naar tegenstander |
-| Club-intern | Eigen team | Check planning → Direct overleg met tegenstander |
+| VRC-intern | Tegenstander | Check planning → Overleg eigen VRC-team → Antwoord via VRC-er terug naar tegenstander |
+| Tegenstander direct | Zichzelf | Check planning → Overleg VRC-team → Antwoord naar tegenstander |
+| VRC-intern | Eigen team | Check planning → Direct overleg met tegenstander |
 
 #### Afzender geautomatiseerde berichten
 
-Geautomatiseerde antwoorden worden verstuurd onder de naam zoals ingesteld in `PlannerAfzenderNaam` (bijv. `[ClubNaam] Veldplanner`). De afzendernaam staat **nooit hardcoded in de code**. De handtekening verwijst naar de verantwoordelijke contactpersoon:
+Geautomatiseerde antwoorden worden verstuurd onder de naam **VRC Veldplanner** met vermelding dat het een automatisch bericht is. De handtekening verwijst naar de verantwoordelijke contactpersoon:
 
 ```
 Met vriendelijke groet,
 
-[PlannerAfzenderNaam]
+VRC Veldplanner
 Geautomatiseerd antwoord namens [CoordinatorNaam]
 [CoordinatorFunctie]
 ```
@@ -528,7 +526,7 @@ De afzendergegevens worden **niet hardcoded** maar opgeslagen in `dbo.AppSetting
 
 | Instelling | Beschrijving | Voorbeeld |
 |-----------|-------------|-----------|
-| `PlannerAfzenderNaam` | Naam van het geautomatiseerde systeem | `[ClubNaam] Veldplanner` — invullen per club |
+| `PlannerAfzenderNaam` | Naam van het geautomatiseerde systeem | VRC Veldplanner |
 | `CoordinatorNaam` | Naam verantwoordelijke contactpersoon | Uit database, niet in code |
 | `CoordinatorFunctie` | Functietitel contactpersoon | Coördinator thuiswedstrijden |
 | `PlannerEmailAdres` | Emailadres voor verzending | Configureerbaar per omgeving |

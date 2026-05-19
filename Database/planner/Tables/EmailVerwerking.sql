@@ -13,7 +13,6 @@ CREATE TABLE [planner].[EmailVerwerking] (
     [VerstuurdNaar]         NVARCHAR(200)   NULL,
     [Status]                NVARCHAR(30)    NOT NULL CONSTRAINT [DF_EmailVerwerking_Status] DEFAULT 'Ontvangen',
     [FoutMelding]           NVARCHAR(1000)  NULL,
-    [ClubCode]              NVARCHAR(20)    NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC',
     [mta_inserted]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Ins] DEFAULT GETDATE(),
     [mta_modified]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Mod] DEFAULT GETDATE(),
     CONSTRAINT [PK_EmailVerwerking] PRIMARY KEY CLUSTERED ([Id] ASC),
