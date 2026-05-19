@@ -25,6 +25,8 @@ if (builder.HostEnvironment.IsProduction())
     {
         builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
         options.ProviderOptions.DefaultAccessTokenScopes.Add(apiScope);
+        // 'redirect' (i.p.v. default 'popup') voorkomt popup-blocker issues in InPrivate/Incognito sessies.
+        options.ProviderOptions.LoginMode = "redirect";
     });
     builder.Services.AddScoped<IAuthService, EntraAuthService>();
 
