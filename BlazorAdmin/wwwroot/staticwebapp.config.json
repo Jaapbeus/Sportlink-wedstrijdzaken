@@ -1,9 +1,31 @@
 {
-  "globalHeaders": {
-    "Blazor-Environment": "Production"
-  },
+  "routes": [
+    {
+      "route": "/index.html",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      }
+    },
+    {
+      "route": "/",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      }
+    }
+  ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/_framework/*", "/css/*", "/js/*", "/*.{png,jpg,gif,ico,woff,woff2}"]
+    "exclude": [
+      "/api/*",
+      "/_framework/*",
+      "/_content/*",
+      "/css/*",
+      "/js/*",
+      "/lib/*",
+      "/*.{png,jpg,gif,ico,woff,woff2,wasm,br,gz}"
+    ]
+  },
+  "mimeTypes": {
+    ".wasm": "application/wasm"
   }
 }
