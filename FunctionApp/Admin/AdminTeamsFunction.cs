@@ -14,10 +14,12 @@ public static class AdminTeamsFunction
 {
     [Function("AdminTeamsGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/teams")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teams")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamsGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

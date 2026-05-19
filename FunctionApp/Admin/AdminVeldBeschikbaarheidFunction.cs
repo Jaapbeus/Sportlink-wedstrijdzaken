@@ -14,10 +14,12 @@ public static class AdminVeldBeschikbaarheidFunction
 {
     [Function("AdminVeldBeschikbaarheidGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/veldbeschikbaarheid")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/veldbeschikbaarheid")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -58,11 +60,13 @@ public static class AdminVeldBeschikbaarheidFunction
 
     [Function("AdminVeldBeschikbaarheidPut")]
     public static async Task<IActionResult> Put(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/veldbeschikbaarheid/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/veldbeschikbaarheid/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidPut");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -103,10 +107,12 @@ public static class AdminVeldBeschikbaarheidFunction
 
     [Function("AdminVeldenGet")]
     public static async Task<IActionResult> GetVelden(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/velden")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/velden")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldenGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -135,10 +141,12 @@ public static class AdminVeldBeschikbaarheidFunction
 
     [Function("AdminVeldBeschikbaarheidPost")]
     public static async Task<IActionResult> Post(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/veldbeschikbaarheid")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/veldbeschikbaarheid")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidPost");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -193,11 +201,13 @@ public static class AdminVeldBeschikbaarheidFunction
 
     [Function("AdminVeldBeschikbaarheidDelete")]
     public static async Task<IActionResult> Delete(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "beheer/veldbeschikbaarheid/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/veldbeschikbaarheid/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidDelete");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

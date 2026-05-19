@@ -348,74 +348,60 @@ Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 
 **Key stored procedures:** `sp_CreateTargetTableFromSource` (dynamic DDL), `sp_MergeStgToHis` (UPSERT via MERGE)
 
-## Toekomstige versie: v2.0 Admin GUI (gepland — nog niet geïmplementeerd)
-
-> **Status:** Volledig uitgewerkt in GitHub. Implementatie nog niet gestart. Alle issues gelabeld met `fase: N`. Epic: #26.
-
-### Architectuur v2.0
+## v2.0 Architectuur (live sinds 2026-05-17)
 
 ```
-Azure Static Web Apps (Free) — Blazor WebAssembly
-  └── 5 schermen: Dashboard | Instellingen | E-mailtemplates | Voorkeurstijden | Email-tester
-      │ SWA proxying (geen CORS, Function-sleutel veilig)
-      ▼
-Azure Functions (Consumption — bestaand)
-  FunctionApp/Admin/           ← nieuwe map, Fase 3
-  FunctionApp/Email/EmailTemplateService.cs  ← nieuw, Fase 2
-      │
-  Azure SQL (bestaand)
-  dbo.EmailTemplateInstellingen  ← nieuw, Fase 1
-  dbo.TeamVoorkeurTijden         ← nieuw, Fase 1
-  dbo.AppSettingsAudit           ← nieuw, Fase 1 (CISO-eis)
+Browser (beheerder)
+  └── Azure Static Web Apps (Free) — Blazor WebAssembly
+        SWA dient alleen statische bestanden; geen SWA-proxying
+        MSAL: Bearer token automatisch meegestuurd naar Function App
+        URL: [swa-unique-id].7.azurestaticapps.net
+        │
+        │ HTTPS + Bearer token (Entra ID)
+        ▼
+  Azure Functions (Consumption) — func-[clubcode]-sportlink.azurewebsites.net
+    Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
+    EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
+    FunctionApp/Admin/       → 9 bestanden, 18+ endpoints op /api/beheer/
+    FunctionApp/Processing/  → BerichtPipeline (kanaal-agnostisch)
+    FunctionApp/Feedback/    → Intelligente feedback widget → GitHub Issues
+        │
+        ▼
+  Azure SQL — SportlinkSqlDb
+    dbo.AppSettings + AppSettingsAudit
+    dbo.EmailTemplateInstellingen, TeamVoorkeurTijden, TeamRegels
+    dbo.UitgeslotenEmailAdressen, Velden, VeldBeschikbaarheid
+    planner.EmailVerwerking (email-log)
+    his.* / stg.* / pub.* (ETL pipeline)
 ```
 
-### Technologiekeuze
+### Auth-architectuur
 
-| Laag | Keuze | Reden |
-|---|---|---|
-| Frontend | **Blazor WebAssembly** | .NET/C# stack, browser-native, geen server nodig |
-| Hosting | **Azure Static Web Apps (Free)** | €0 gegarandeerd, ingebouwde Entra ID auth |
-| Auth | **Entra ID** via SWA (admin / user rollen) | Zelfde tenant als Graph API mailbox |
+| Laag | Mechanisme |
+|---|---|
+| Frontend | MSAL (`AddMsalAuthentication`) + `AuthorizationMessageHandler` |
+| Transport | Bearer token in `Authorization` header |
+| Function App | Azure Easy Auth (AllowAnonymous mode) + `EasyAuthHelper.RequireAdmin()` |
+| Lokaal | Bypass: `WEBSITE_SITE_NAME` afwezig → altijd toestaan |
 
-### Geplande Admin API-endpoints (`FunctionApp/Admin/` — Fase 3)
+### Admin API-endpoints (`/api/beheer/`)
 
-| Endpoint | Bestand | Doel |
-|---|---|---|
-| `GET/PUT /api/admin/settings` | `AdminSettingsFunction.cs` | Instellingen lezen/opslaan + Function App restart bij schedule-wijziging |
-| `GET /api/admin/sync/status` | `AdminSyncFunction.cs` | Synchronisatiestatus |
-| `POST /api/admin/sync/trigger` | `AdminSyncFunction.cs` | Handmatige sync triggeren |
-| `GET/PUT/POST /api/admin/templates` | `AdminTemplatesFunction.cs` | E-mailtemplates beheren |
-| `GET/POST/PUT/DELETE /api/admin/voorkeurstijden` | `AdminVoorkeurTijdenFunction.cs` | Teamvoorkeurstijden |
-| `GET /api/admin/email-log` | `AdminEmailLogFunction.cs` | Verwerkte emails (AVG: geen bodies) |
-| `POST /api/test/email` | `EmailTestFunction.cs` | Dry-run AI-classificatietest (geen verzending, geen opslag) |
+| Endpoints | Bestand |
+|---|---|
+| `GET/PUT /api/beheer/settings`, `GET /api/beheer/geocode` | `AdminSettingsFunction.cs` |
+| `GET /api/beheer/sync/status`, `POST /api/beheer/sync/trigger` | `AdminSyncFunction.cs` |
+| `GET /api/beheer/teams` | `AdminTeamsFunction.cs` |
+| `GET/PUT/POST/DELETE /api/beheer/templates` | `AdminTemplatesFunction.cs` |
+| `GET/POST/DELETE /api/beheer/uitgesloten-emails` | `AdminUitgeslotenEmailFunction.cs` |
+| `GET/PUT/POST/DELETE /api/beheer/velden`, `/veldbeschikbaarheid` | `AdminVeldBeschikbaarheidFunction.cs` |
+| `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden`, `/teamregels` | `AdminVoorkeurTijdenFunction.cs` |
+| `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
+| `POST /api/test/email` | `EmailTestFunction.cs` |
+| `POST /api/feedback/validate`, `/submit` | `FeedbackFunction.cs` |
 
-### Pre-version werk vereist vóór start
+### v2.1 backlog (epic #102)
 
-- **#30** — ClubCode toevoegen aan alle bestaande tabellen (multi-club fundament)
-- **#85** — Architectuurdocumentatie bijwerken (dit issue)
-- **#86** — AppSettings schema uitbreiden (Accommodatie, GPS, InternDomein, HerplanDeadlineDagen, BufferMinuten)
-
-### Fasering (±25 uur totaal)
-
-| Fase | Issues | Inhoud |
-|---|---|---|
-| Pre-version | #30, #85, #86, #63, #67 | ClubCode, AppSettings schema, domeinfilter, herplan-deadline |
-| Fase 1 | #88, #62, #84 | DB-tabellen: AppSettingsAudit, TeamVoorkeurTijden, EmailTemplateInstellingen |
-| Fase 2 | #84 | EmailTemplateService + EmailResponseGenerator refactor |
-| Fase 3 | #27, #87, #89, #90, #91, #92, #93 | Admin API endpoints (7 endpoints) |
-| Fase 4 | #94, #95 | Blazor WASM project + SWA aanmaken + routing config |
-| Fase 5 | #96, #97, #98, #62 | Blazor Admin-schermen: Dashboard, Instellingen, Templates, Voorkeurstijden |
-| Fase 6 | #99 | Blazor Email-tester scherm |
-| Fase 7 | #100 | Entra ID app-registratie + roltoewijzing |
-| Fase 8 | #101 | deploy.yml uitbreiden + smoke tests |
-
-### CISO-aandachtspunten voor v2.0
-
-- `SportlinkClientId` en Graph-secrets nooit zichtbaar in UI of API-responses
-- `dbo.AppSettingsAudit`: append-only auditlog voor alle instellings- en templatewijzigingen
-- Rate limiting op `/api/test/email`: max 10/minuut (OpenAI-kosten)
-- AVG: `GET /api/admin/email-log` geeft nooit volledige e-mailbodies terug
-- Defense in depth: rollen gehandhaafd door zowel SWA-routing als Function-endpoints
+Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#107, #108, #109).
 
 ---
 

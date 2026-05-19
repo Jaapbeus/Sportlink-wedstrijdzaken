@@ -31,10 +31,12 @@ public static class EmailTestFunction
 
     [Function("EmailTestDryRun")]
     public static async Task<IActionResult> DryRun(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "test/email")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "test/email")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("EmailTestDryRun");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
 
         if (!TryAcquireSlot())
         {
