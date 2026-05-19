@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
@@ -48,7 +49,9 @@ if (builder.HostEnvironment.IsProduction())
 }
 else
 {
-    // Ontwikkeling: geen auth, plain HttpClient
+    // Ontwikkeling: geen MSAL; fake AuthenticationStateProvider zodat [Authorize] werkt.
+    builder.Services.AddAuthorizationCore();
+    builder.Services.AddScoped<AuthenticationStateProvider, AlwaysAuthenticatedStateProvider>();
     builder.Services.AddScoped<IAuthService, LocalAuthService>();
     builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(functionBaseUrl) });
     builder.Services.AddScoped<AdminApiClient>();
