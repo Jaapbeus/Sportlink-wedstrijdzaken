@@ -16,6 +16,12 @@ Deze regels gelden altijd, zonder uitzondering:
 
 5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
 
+6. **Sessie-isolatie — werk uitsluitend op de toegewezen branch.** Claude Code op het web draait in een ephemere container; meerdere sessies kunnen parallel actief zijn (bijv. één per open PR). Voorkom kruisbesmetting:
+   - Commit en push **alleen** naar de branch die in de sessie-instructies is genoemd. Nooit naar `main`, nooit naar de branch van een andere sessie.
+   - Vóór elke push: controleer `git branch --show-current` en vergelijk met de toegewezen branch.
+   - Maak **geen** wijzigingen aan bestanden buiten de repository en deel **geen** geheimen tussen sessies. Wat in deze container staat blijft in deze container.
+   - Bij twijfel over welke branch correct is: stop en vraag de gebruiker.
+
 Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Build & Run
