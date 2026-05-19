@@ -31,6 +31,11 @@ if (builder.HostEnvironment.IsProduction())
     // het Entra ID access token toe aan elk request richting de Function App URL.
     var capturedFunctionBaseUrl = functionBaseUrl;
     var capturedScope = apiScope;
+
+    // App.razor injecteert HttpClient voor de health check — registreer plain client zonder auth.
+    // AdminApiClient krijgt een eigen HttpClient mét AuthorizationMessageHandler (zie hieronder).
+    builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(capturedFunctionBaseUrl) });
+
     builder.Services.AddScoped<AdminApiClient>(sp =>
     {
         var handler = sp.GetRequiredService<AuthorizationMessageHandler>()
