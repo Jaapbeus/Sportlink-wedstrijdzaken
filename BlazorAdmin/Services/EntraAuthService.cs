@@ -22,6 +22,7 @@ public class EntraAuthService : IAuthService
     private bool _isAuthenticated;
     private string _userName = "";
     private bool _isAdmin;
+    private bool _isUser;
 
     public EntraAuthService(
         AuthenticationStateProvider authStateProvider,
@@ -35,6 +36,8 @@ public class EntraAuthService : IAuthService
     public bool IsAuthenticated => _isAuthenticated;
     public string UserName => _userName;
     public bool IsAdmin => _isAdmin;
+    public bool IsUser => _isUser;
+    public bool HasAccess => _isAdmin || _isUser;
 
     public Task LoginAsync()
     {
@@ -54,7 +57,10 @@ public class EntraAuthService : IAuthService
         var state = await _authStateProvider.GetAuthenticationStateAsync();
         _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
         _userName = state.User.Identity?.Name ?? "";
-        // Admin-rol komt uit de "roles" claim in het ID-token (rolnaam in Entra: "admin")
+        // Rollen komen uit de "roles" claim in het ID-token. App Registration moet App Roles
+        // 'admin' en 'user' definiëren; Enterprise Application moet users expliciet toewijzen
+        // (Assignment required = Yes). Zonder rol → HasAccess = false → App.razor toont NoAccess.
         _isAdmin = state.User.IsInRole("admin");
+        _isUser = state.User.IsInRole("user");
     }
 }

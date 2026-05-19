@@ -190,6 +190,31 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Architectuurregels — altijd van toepassing
 
+### Defense in depth — vijf auth-lagen, allemaal verplicht
+
+Auth is NIET af zodra `IsAuthenticated = true`. Een tenant-user kan inloggen via Entra zonder enige app-rol. Elke laag hieronder moet onafhankelijk werken — een gemiste laag is een security-incident.
+
+| Laag | Wat | Waar | Status |
+|---|---|---|---|
+| 1 | **Tenant-restriction** — Single tenant App Registration, externe tenants kunnen niet inloggen | Azure Portal → Entra ID → App registrations | ✓ Aanwezig |
+| 2 | **Assignment required = Yes** — alleen pre-toegewezen users krijgen een token | Azure Portal → Entra ID → Enterprise applications → Properties | ⚠️ Per-deploy verifiëren |
+| 3 | **App Roles** — `admin` en `user` rollen gedefinieerd in App Registration manifest, met `allowedMemberTypes: ["User"]` | Azure Portal → App registrations → App roles | ⚠️ Per-deploy verifiëren |
+| 4 | **Frontend role-gate (App.razor)** — check `IsInRole("admin") \|\| IsInRole("user")` BOVENOP `IsAuthenticated`. Zonder rol → `NoAccess`-pagina, géén MainLayout | `BlazorAdmin/App.razor` | ✓ Verplicht in code |
+| 5 | **Backend role-gate (EasyAuthHelper)** — elke admin endpoint roept `RequireAdmin()` aan, die de `roles` claim in `X-MS-CLIENT-PRINCIPAL` valideert | `FunctionApp/Admin/EasyAuthHelper.cs` + alle `Admin*Function.cs` | ✓ Verplicht in code |
+
+**Server is de waarheid.** Frontend kan niet vertrouwd worden — een aanvaller kan de Blazor WASM modificeren. Daarom is Layer 5 leidend voor data-bescherming. Layer 4 is voor UX (geen UI-shell voor non-admin).
+
+**Verplichte 3-user-test bij elke auth-wijziging:**
+
+| Test-user | Configuratie in Azure | Verwacht resultaat |
+|---|---|---|
+| jaapadmin@[club-domein] | Toegewezen met rol `admin` | Volledige UI, alle API werkt |
+| Tweede user ([club-domein]) | Toegewezen met rol `user` | UI laadt, GET-API werkt, mutaties geblokkeerd (toekomstig: nu zelfde als admin maar nog niet gescheiden) |
+| Derde user ([club-domein]) | **Geen** rol toegewezen | `NoAccess` pagina, géén sidebar/nav/FEEDBACK-knop, logout-knop wel zichtbaar |
+| Externe user (andere tenant / guest) | n.v.t. | Kan zelfs niet inloggen — Entra weigert vóór redirect |
+
+Documenteer per release welke 3-user-tests zijn uitgevoerd. Zonder deze tests is een security-wijziging **niet** geaccepteerd.
+
 ### Blazor auth-gate: altijd BOVEN de Router, nooit erin
 
 **KRITIEKE REGEL — drie keer overtreden (PR #178, PR #179, en de auth-redirect-loop hotfix):**
@@ -240,6 +265,8 @@ Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlo
 | 6 | `Authentication.razor` op `@page "/authentication/{action}"` met `<RemoteAuthenticatorView Action="@Action" />` | `Pages/` | Verwerkt MSAL callback (login-callback, logout-callback) |
 | 7 | Easy Auth op Function App (`platform.enabled=true`) + `EasyAuthHelper.RequireAdmin()` op elke admin endpoint | Azure + `FunctionApp/Admin/` | Server-side validatie van Bearer token + admin-rol |
 | 8 | `<CompressionEnabled>false</CompressionEnabled>` in `BlazorAdmin.csproj` | `BlazorAdmin.csproj` | Azure SWA serveert pre-compressed `.wasm.br` zonder `Content-Encoding: br` header → Chrome Incognito faalt op SRI integrity check. Uitschakelen van Blazor's pre-compressie laat SWA terugvallen op uncompressed serving (of correcte dynamische compressie). |
+| 9 | `options.UserOptions.RoleClaim = "roles"` in `AddMsalAuthentication` | `Program.cs` | Entra schrijft app-rollen in de claim `roles`. `ClaimsPrincipal.IsInRole()` leest standaard van `ClaimTypes.Role`. Zonder deze mapping geeft `IsInRole("admin")` altijd `false` — defense-in-depth Layer 4 valt stil en elke geauthenticeerde tenant-user komt voorbij de gate. |
+| 10 | `Cache-Control: no-cache` voor `/index.html` en `/` in `staticwebapp.config.json` | `staticwebapp.config.json` | Browser cachet anders een oude `index.html` die naar fingerprinted assets uit een eerdere deploy verwijst. Na nieuwe deploy → 404's en SRI-mismatches. Fingerprinted assets in `_framework/` mogen wel lang cachen — hun URL verandert per deploy. |
 
 **Verificatie bij elke Blazor auth-wijziging — VERPLICHT:**
 1. Open de site in een verse Incognito/InPrivate mode (geen oude cookies).
