@@ -258,39 +258,4 @@ namespace SportlinkFunction.Planner
         public int? GewenstVeldNummer { get; set; }
         public string Status { get; set; } = string.Empty;
     }
-
-    // ── Team schedule modellen (#70) ──
-
-    public class TeamScheduleWedstrijd
-    {
-        public string Datum { get; set; } = string.Empty;
-        public string AanvangsTijd { get; set; } = string.Empty;
-        public string ThuisUit { get; set; } = string.Empty;  // "thuis" | "uit"
-        public string Tegenstander { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty;      // "competitie" | "beker" | "oefenwedstrijd"
-        public string? Veld { get; set; }
-        public long? Wedstrijdcode { get; set; }
-    }
-
-    public class TeamScheduleZaterdag
-    {
-        public string Datum { get; set; } = string.Empty;
-        public string Status { get; set; } = string.Empty;    // "vrij" | "oefenwedstrijd" | "bezet"
-        public TeamScheduleWedstrijd? BezetDoor { get; set; }
-    }
-
-    public class TeamScheduleResponse
-    {
-        public string Team { get; set; } = string.Empty;
-        public string SeizoenEinde { get; set; } = string.Empty;
-        public List<TeamScheduleZaterdag> Zaterdagen { get; set; } = new();
-        public List<TeamScheduleWedstrijd> Wedstrijden { get; set; } = new();
-    }
-
-    // ── AVG: TeamleiderContact bevat persoonsgegevens — gebruik alleen voor interne notificaties ──
-    public class TeamleiderContact
-    {
-        public string Naam { get; set; } = string.Empty;
-        public string Emailadres { get; set; } = string.Empty;
-    }
 }

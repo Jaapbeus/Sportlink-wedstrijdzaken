@@ -1,9 +1,5 @@
 {
   "IsEncrypted": false,
-  "Host": {
-    "CORS": "http://localhost:5000,http://localhost:5001,http://localhost:5242,https://localhost:5001,https://localhost:7094,https://localhost:7242",
-    "CORSCredentials": false
-  },
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
@@ -17,12 +13,6 @@
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
-    "EMAIL_POLL_SCHEDULE": "0 0 * * * *",
-    "AzureSubscriptionId": "",
-    "AzureResourceGroupName": "",
-    "AzureFunctionAppName": "",
-    "GitHubPat": "",
-    "GitHubOwner": "",
-    "GitHubRepo": "Sportlink-wedstrijdzaken"
+    "EMAIL_POLL_SCHEDULE": "0 0 * * * *"
   }
 }
