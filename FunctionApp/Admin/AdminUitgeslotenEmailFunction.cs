@@ -14,10 +14,12 @@ public static class AdminUitgeslotenEmailFunction
 {
     [Function("AdminUitgeslotenEmailGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/uitgesloten-emails")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/uitgesloten-emails")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminUitgeslotenEmailGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -64,10 +66,12 @@ public static class AdminUitgeslotenEmailFunction
 
     [Function("AdminUitgeslotenEmailPost")]
     public static async Task<IActionResult> Post(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/uitgesloten-emails")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/uitgesloten-emails")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminUitgeslotenEmailPost");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -108,11 +112,13 @@ public static class AdminUitgeslotenEmailFunction
 
     [Function("AdminUitgeslotenEmailDelete")]
     public static async Task<IActionResult> Delete(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "beheer/uitgesloten-emails/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/uitgesloten-emails/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminUitgeslotenEmailDelete");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

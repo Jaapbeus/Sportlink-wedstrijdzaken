@@ -20,10 +20,12 @@ public static class AdminEmailLogFunction
 
     [Function("AdminEmailLogGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/email-log")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/email-log")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminEmailLogGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

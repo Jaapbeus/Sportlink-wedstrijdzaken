@@ -19,10 +19,12 @@ public static class AdminTemplatesFunction
 {
     [Function("AdminTemplatesGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/templates")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/templates")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTemplatesGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -63,11 +65,13 @@ public static class AdminTemplatesFunction
 
     [Function("AdminTemplatesPut")]
     public static async Task<IActionResult> Put(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/templates/{key}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/templates/{key}")] HttpRequest req,
         string key,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTemplatesPut");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         if (string.IsNullOrWhiteSpace(key))
             return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
@@ -129,11 +133,13 @@ public static class AdminTemplatesFunction
 
     [Function("AdminTemplatesReset")]
     public static async Task<IActionResult> Reset(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/templates/{key}/reset")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/templates/{key}/reset")] HttpRequest req,
         string key,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTemplatesReset");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         if (string.IsNullOrWhiteSpace(key))
             return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
