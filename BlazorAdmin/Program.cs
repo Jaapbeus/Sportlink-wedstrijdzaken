@@ -27,6 +27,9 @@ if (builder.HostEnvironment.IsProduction())
         options.ProviderOptions.DefaultAccessTokenScopes.Add(apiScope);
         // 'redirect' (i.p.v. default 'popup') voorkomt popup-blocker issues in InPrivate/Incognito sessies.
         options.ProviderOptions.LoginMode = "redirect";
+        // Entra schrijft app-rollen in de 'roles' claim. ClaimsPrincipal.IsInRole() leest standaard
+        // van ClaimTypes.Role — expliciet "roles" instellen zodat de role-gate in App.razor werkt.
+        options.UserOptions.RoleClaim = "roles";
     });
     builder.Services.AddScoped<IAuthService, EntraAuthService>();
 

@@ -1,0 +1,43 @@
+@*
+    "Geen toegang" pagina voor authenticated users zonder admin/user rol.
+    Bewust GEEN @layout MainLayout — defense in depth: rol-gate in App.razor moet
+    voorkomen dat MainLayout (sidebar/navigatie/FEEDBACK) zichtbaar is voor non-admin.
+    Zie security_defense_in_depth.md memory + CLAUDE.md security architectuur.
+*@
+@inject NavigationManager NavManager
+
+<div class="api-startup">
+    <div class="startup-card" style="max-width: 480px;">
+        <h2 style="margin: 0 0 .5rem; color: #b32121;">Geen toegang</h2>
+        <p class="startup-label" style="line-height: 1.5;">
+            Je bent ingelogd, maar je hebt geen toegangsrol voor deze applicatie.
+            Neem contact op met de beheerder als je toegang nodig hebt.
+        </p>
+        <p class="startup-label" style="font-size: .8rem; margin-top: .5rem;">
+            @if (!string.IsNullOrEmpty(_userName))
+            {
+                <text>Ingelogd als: <strong>@_userName</strong></text>
+            }
+        </p>
+        <button class="btn btn-outline-secondary btn-sm mt-3" @onclick="LogoutAsync">Uitloggen</button>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    private string _userName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _userName = state.User.Identity?.Name ?? "";
+        }
+    }
+
+    private void LogoutAsync()
+    {
+        NavManager.NavigateToLogout("authentication/logout");
+    }
+}
