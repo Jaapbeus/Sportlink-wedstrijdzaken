@@ -321,11 +321,8 @@ GO
 
 -- ============================================================
 -- v2 — #86: AppSettings schema uitbreiden
--- InternDomein, HerplanDeadlineDagen, BufferMinuten
+-- HerplanDeadlineDagen, BufferMinuten
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'InternDomein')
-    ALTER TABLE [dbo].[AppSettings] ADD [InternDomein] NVARCHAR(100) NULL;
-GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'HerplanDeadlineDagen')
     ALTER TABLE [dbo].[AppSettings] ADD [HerplanDeadlineDagen] INT NULL;
 GO

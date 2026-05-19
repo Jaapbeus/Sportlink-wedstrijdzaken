@@ -16,10 +16,12 @@ public static class AdminSyncFunction
 {
     [Function("AdminSyncStatus")]
     public static async Task<IActionResult> Status(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/sync/status")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/sync/status")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncStatus");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -55,10 +57,12 @@ public static class AdminSyncFunction
 
     [Function("AdminSyncTrigger")]
     public static async Task<IActionResult> Trigger(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/sync/trigger")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/sync/trigger")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncTrigger");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

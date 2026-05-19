@@ -14,10 +14,12 @@ public static class AdminVoorkeurTijdenFunction
 {
     [Function("AdminVoorkeurTijdenGet")]
     public static async Task<IActionResult> Get(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/voorkeurstijden")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/voorkeurstijden")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -63,10 +65,12 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminVoorkeurTijdenPost")]
     public static async Task<IActionResult> Post(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/voorkeurstijden")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/voorkeurstijden")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenPost");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -104,11 +108,13 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminVoorkeurTijdenPut")]
     public static async Task<IActionResult> Put(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/voorkeurstijden/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/voorkeurstijden/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenPut");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -150,11 +156,13 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminVoorkeurTijdenDelete")]
     public static async Task<IActionResult> Delete(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "beheer/voorkeurstijden/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/voorkeurstijden/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenDelete");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -185,10 +193,12 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminTeamRegelsGet")]
     public static async Task<IActionResult> GetTeamRegels(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "beheer/teamregels")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teamregels")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsGet");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -231,10 +241,12 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminTeamRegelsPost")]
     public static async Task<IActionResult> PostTeamRegel(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "beheer/teamregels")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teamregels")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsPost");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -279,11 +291,13 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminTeamRegelsPut")]
     public static async Task<IActionResult> PutTeamRegel(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "beheer/teamregels/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/teamregels/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsPut");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -329,11 +343,13 @@ public static class AdminVoorkeurTijdenFunction
 
     [Function("AdminTeamRegelsDelete")]
     public static async Task<IActionResult> DeleteTeamRegel(
-        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "beheer/teamregels/{id:int}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/teamregels/{id:int}")] HttpRequest req,
         int id,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsDelete");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
