@@ -1,133 +1,87 @@
-@inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavManager
-@implements IAsyncDisposable
+@implements IDisposable
 
-@if (_phase is Phase.Checking or Phase.Ready)
-{
-    <div class="api-startup">
-        <div class="startup-card">
-            @if (_phase == Phase.Checking)
-            {
-                <div class="startup-spinner">
-                    <div class="spinner-ring"></div>
-                </div>
-                <p class="startup-label">@_statusText</p>
-            }
-            else
-            {
-                <div class="startup-check">
-                    <svg class="checkmark-svg" viewBox="0 0 52 52">
-                        <circle class="checkmark-circle" cx="26" cy="26" r="25" fill="none" />
-                        <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
-                    </svg>
-                </div>
-                <p class="startup-label startup-label-ready">Verbonden!</p>
-            }
+@*
+    Auth-gate: zie CLAUDE.md sectie "Blazor auth-gate: altijd BOVEN de Router".
+    MainLayout (sidebar/nav/FeedbackWidget) wordt NOOIT gerenderd zonder geldige auth.
+    Verificatie: InPrivate browser test verplicht na elke wijziging hier.
+*@
+<CascadingAuthenticationState>
+    @if (_state == AppState.Initializing)
+    {
+        <div class="api-startup">
+            <div class="startup-card">
+                <div class="startup-spinner"><div class="spinner-ring"></div></div>
+                <p class="startup-label">Bezig met laden...</p>
+            </div>
         </div>
-    </div>
-}
-else if (_onAuthRoute)
-{
-    @* MSAL-callbackroute: render Router zonder layout zodat Authentication.razor kan verwerken. *@
-    <Router AppAssembly="@typeof(App).Assembly">
-        <Found Context="routeData">
-            <RouteView RouteData="@routeData" />
-        </Found>
-    </Router>
-}
-else if (_isAuthenticated)
-{
-    @* Ingelogd: toon volledige applicatie met MainLayout en navigatie. *@
-    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-        <Found Context="routeData">
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-        </Found>
-    </Router>
-}
-@* Niet ingelogd en geen authroute: niets tonen — NavigateToLogin is al aangeroepen. *@
+    }
+    else if (_state == AppState.OnAuthRoute)
+    {
+        @* MSAL-callback (/authentication/...) — geen layout, anders ziet de gebruiker MainLayout tijdens de login-redirect. *@
+        <Router AppAssembly="@typeof(App).Assembly">
+            <Found Context="routeData">
+                <RouteView RouteData="@routeData" />
+            </Found>
+        </Router>
+    }
+    else if (_state == AppState.Authenticated)
+    {
+        @* Ingelogd: volledige app met MainLayout en navigatie. *@
+        <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+            <Found Context="routeData">
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+            </Found>
+        </Router>
+    }
+    @* AppState.RedirectingToLogin: NavigateToLogin is aangeroepen, browser navigeert nu naar /authentication/login → de OnAuthRoute branch neemt over. Geen UI nodig. *@
+</CascadingAuthenticationState>
 
 @code {
-    private Phase _phase = Phase.Checking;
-    private string _statusText = "Verbinding maken...";
-    private readonly CancellationTokenSource _cts = new();
-    private bool _isAuthenticated;
-    private bool _onAuthRoute;
-    private bool _authCheckInProgress;
+    private AppState _state = AppState.Initializing;
 
     protected override async Task OnInitializedAsync()
     {
         NavManager.LocationChanged += HandleLocationChange;
-        _onAuthRoute = NavManager.Uri.Contains("/authentication/");
-        await CheckApiAsync();
-        if (!_onAuthRoute)
-            await CheckAuthAsync();
+        await EvaluateStateAsync();
+    }
+
+    private async Task EvaluateStateAsync()
+    {
+        if (NavManager.Uri.Contains("/authentication/", StringComparison.OrdinalIgnoreCase))
+        {
+            _state = AppState.OnAuthRoute;
+            StateHasChanged();
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var isAuthenticated = authState.User.Identity?.IsAuthenticated ?? false;
+
+        if (isAuthenticated)
+        {
+            _state = AppState.Authenticated;
+            StateHasChanged();
+        }
+        else
+        {
+            _state = AppState.RedirectingToLogin;
+            StateHasChanged();
+            NavManager.NavigateToLogin("authentication/login");
+        }
     }
 
     private void HandleLocationChange(object? sender, LocationChangedEventArgs e)
     {
-        var wasOnAuthRoute = _onAuthRoute;
-        _onAuthRoute = e.Location.Contains("/authentication/");
-
-        // Terugkeer van MSAL-callback naar de app → auth opnieuw controleren
-        if (wasOnAuthRoute && !_onAuthRoute)
-            InvokeAsync(async () => { await CheckAuthAsync(); StateHasChanged(); });
-        else
-            InvokeAsync(StateHasChanged);
+        InvokeAsync(EvaluateStateAsync);
     }
 
-    private async Task CheckAuthAsync()
-    {
-        if (_authCheckInProgress) return;
-        _authCheckInProgress = true;
-        try
-        {
-            var state = await AuthStateProvider.GetAuthenticationStateAsync();
-            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
-            if (!_isAuthenticated)
-                NavManager.NavigateToLogin("authentication/login");
-        }
-        finally
-        {
-            _authCheckInProgress = false;
-        }
-    }
-
-    private async Task CheckApiAsync()
-    {
-        for (var attempt = 0; attempt < 40 && !_cts.Token.IsCancellationRequested; attempt++)
-        {
-            try
-            {
-                var r = await Http.GetAsync("api/health", _cts.Token);
-                if (r.IsSuccessStatusCode)
-                {
-                    _phase = Phase.Ready;
-                    StateHasChanged();
-                    await Task.Delay(1100, _cts.Token);
-                    _phase = Phase.Running;
-                    return;
-                }
-            }
-            catch (OperationCanceledException) { return; }
-            catch { }
-
-            if (attempt is 6)  _statusText = "Wachten op server...";
-            if (attempt is 15) _statusText = "Nog even geduld...";
-            StateHasChanged();
-            await Task.Delay(500, _cts.Token);
-        }
-
-        _phase = Phase.Running;
-    }
-
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
         NavManager.LocationChanged -= HandleLocationChange;
-        await _cts.CancelAsync();
-        _cts.Dispose();
     }
 
-    private enum Phase { Checking, Ready, Running }
+    private enum AppState { Initializing, OnAuthRoute, Authenticated, RedirectingToLogin }
 }
