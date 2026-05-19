@@ -57,7 +57,7 @@ Gitleaks installeren (optioneel maar sterk aanbevolen):
 
 ### Laag 2 — GitHub Actions (in de cloud, bij elke push)
 
-Bij elke push naar elke branch en bij elke pull request naar `main`:
+Bij elke push naar elke branch en bij elke pull request naar `main` of een `v2/*`-branch:
 
 | Check | Wat wordt gecontroleerd | Blokkeert merge? |
 |---|---|---|
@@ -163,7 +163,7 @@ Om te garanderen dat de Security Gate altijd actief is en niet omzeild kan worde
 
 1. Ga naar de repository op GitHub
 2. **Settings → Branches → Add branch protection rule**
-3. Branch name pattern: `main`
+3. Branch name pattern: `main` (herhaal deze stappen voor `v2/develop`)
 4. Vink aan:
    - ✅ **Require a pull request before merging**
    - ✅ **Require status checks to pass before merging**
@@ -172,7 +172,7 @@ Om te garanderen dat de Security Gate altijd actief is en niet omzeild kan worde
    - ✅ **Do not allow bypassing the above settings**
 5. Sla op
 
-Hierna is directe push naar `main` en merge met een rode Security Gate technisch onmogelijk — ook voor repo-eigenaren.
+Hierna is directe push naar `main` (of `v2/develop`) en merge met een rode Security Gate technisch onmogelijk — ook voor repo-eigenaren.
 
 ---
 
