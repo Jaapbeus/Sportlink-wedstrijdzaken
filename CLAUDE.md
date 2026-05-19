@@ -239,6 +239,7 @@ Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlo
 | 5 | SPA redirect URI in Entra App Registration: `https://<host>/authentication/login-callback` | Azure Portal | Anders weigert Entra de redirect na login |
 | 6 | `Authentication.razor` op `@page "/authentication/{action}"` met `<RemoteAuthenticatorView Action="@Action" />` | `Pages/` | Verwerkt MSAL callback (login-callback, logout-callback) |
 | 7 | Easy Auth op Function App (`platform.enabled=true`) + `EasyAuthHelper.RequireAdmin()` op elke admin endpoint | Azure + `FunctionApp/Admin/` | Server-side validatie van Bearer token + admin-rol |
+| 8 | `<CompressionEnabled>false</CompressionEnabled>` in `BlazorAdmin.csproj` | `BlazorAdmin.csproj` | Azure SWA serveert pre-compressed `.wasm.br` zonder `Content-Encoding: br` header → Chrome Incognito faalt op SRI integrity check. Uitschakelen van Blazor's pre-compressie laat SWA terugvallen op uncompressed serving (of correcte dynamische compressie). |
 
 **Verificatie bij elke Blazor auth-wijziging — VERPLICHT:**
 1. Open de site in een verse Incognito/InPrivate mode (geen oude cookies).
