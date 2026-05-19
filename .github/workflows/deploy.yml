@@ -7,7 +7,7 @@ on:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: FunctionApp
-  DOTNET_VERSION: '9.0.x'
+  DOTNET_VERSION: '10.0.x'
 
 jobs:
   build:
@@ -72,3 +72,60 @@ jobs:
             -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}')
           echo "check-availability: $STATUS"
           if [ "$STATUS" != "200" ]; then echo "⚠️ Database mogelijk niet bereikbaar (status $STATUS)"; exit 1; fi
+
+  blazor-deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    # TODO: Stel AZURE_STATIC_WEB_APPS_API_TOKEN in als GitHub Secret voor de SWA deploy.
+    # Zie docs/v2-admin-handleiding.md voor het aanmaken van de SWA resource.
+    # Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
+    # mag niet in job-level if direct staan).
+    env:
+      SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+    steps:
+      - name: Token aanwezig?
+        id: check
+        run: |
+          if [ -z "$SWA_TOKEN" ]; then
+            echo "Geen SWA token ingesteld — Blazor deploy wordt overgeslagen."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout repository
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/checkout@v4
+
+      - name: .NET SDK installeren
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Blazor WASM publiceren
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          dotnet publish BlazorAdmin/BlazorAdmin.csproj \
+            --configuration Release \
+            --output ./blazor-publish
+
+      - name: Deploy naar Azure Static Web Apps
+        if: steps.check.outputs.skip == 'false'
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "./blazor-publish/wwwroot"
+          output_location: ""
+          skip_app_build: true
+
+      - name: Smoke test SWA bereikbaar
+        if: steps.check.outputs.skip == 'false' && vars.AZURE_STATIC_WEB_APP_HOSTNAME != ''
+        env:
+          SWA_HOST: ${{ vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://${SWA_HOST}/")
+          echo "SWA: $STATUS"
+          if [ "$STATUS" -ge 500 ]; then echo "FOUT: SWA gaf $STATUS"; exit 1; fi

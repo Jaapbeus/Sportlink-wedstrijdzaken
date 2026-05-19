@@ -1,15 +1,17 @@
 using System;
+using System.Globalization;
 
 namespace SportlinkFunction.Planner
 {
     /// <summary>
-    /// NOAA Zonnecalculator voor zonsondergangstijden op Sportpark Spitsbergen, Veenendaal.
+    /// NOAA Zonnecalculator. Leest coördinaten uit AppSettings (AccommodatieLatitude/Longitude).
+    /// Fallback: Veenendaal (52.0284, 5.5579).
     /// Gebaseerd op: https://gml.noaa.gov/grad/solcalc/solareqns.PDF
     /// </summary>
     public static class SunsetCalculator
     {
-        private const double Latitude = 52.0284;
-        private const double Longitude = 5.5579;
+        private const double DefaultLatitude  = 52.0284;
+        private const double DefaultLongitude = 5.5579;
 
         private static readonly TimeZoneInfo AmsterdamTz = GetAmsterdamTimeZone();
 
@@ -19,6 +21,17 @@ namespace SportlinkFunction.Planner
             try { return TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time"); }
             catch { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam"); }
         }
+
+        private static double Latitude =>
+            TryParseCoordinate(SystemUtilities.AppSettings.GetSetting("accommodatieLatitude"), DefaultLatitude);
+
+        private static double Longitude =>
+            TryParseCoordinate(SystemUtilities.AppSettings.GetSetting("accommodatieLongitude"), DefaultLongitude);
+
+        private static double TryParseCoordinate(string? value, double fallback) =>
+            !string.IsNullOrEmpty(value) && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+                ? d
+                : fallback;
 
         /// <summary>
         /// Bereken zonsondergangstijd voor een bepaalde datum in lokale Amsterdam-tijd.

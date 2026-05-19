@@ -318,3 +318,98 @@ UPDATE [planner].[GeplandeWedstrijden]
 SET [Status] = 'Te bevestigen', [mta_modified] = GETDATE()
 WHERE [Status] = 'Gepland';
 GO
+
+-- ============================================================
+-- v2 — #86: AppSettings schema uitbreiden
+-- HerplanDeadlineDagen, BufferMinuten
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'HerplanDeadlineDagen')
+    ALTER TABLE [dbo].[AppSettings] ADD [HerplanDeadlineDagen] INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'BufferMinuten')
+    ALTER TABLE [dbo].[AppSettings] ADD [BufferMinuten] INT NULL;
+GO
+
+-- v2 — #139: AccommodatiePlaats + GPS-coördinaten voor geocoding en zonsondergangsberekening
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatiePlaats')
+    ALTER TABLE [dbo].[AppSettings] ADD [AccommodatiePlaats] NVARCHAR(100) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatieLatitude')
+    ALTER TABLE [dbo].[AppSettings] ADD [AccommodatieLatitude] FLOAT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatieLongitude')
+    ALTER TABLE [dbo].[AppSettings] ADD [AccommodatieLongitude] FLOAT NULL;
+GO
+
+-- v2 — #88: AppSettingsAudit — append-only auditlog van AppSettings/template wijzigingen
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.AppSettingsAudit'))
+BEGIN
+    CREATE TABLE [dbo].[AppSettingsAudit] (
+        [Id]            INT IDENTITY(1,1) NOT NULL,
+        [Tijdstip]      DATETIME2 NOT NULL CONSTRAINT [DF_AppSettingsAudit_Tijdstip] DEFAULT GETDATE(),
+        [GewijzigdDoor] NVARCHAR(100) NOT NULL,
+        [Veld]          NVARCHAR(100) NOT NULL,
+        [OudeWaarde]    NVARCHAR(MAX) NULL,
+        [NieuweWaarde]  NVARCHAR(MAX) NULL,
+        [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettingsAudit_ClubCode] DEFAULT 'VRC',
+        CONSTRAINT [PK_AppSettingsAudit] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+-- v2 — #62: TeamVoorkeurTijden
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamVoorkeurTijden'))
+BEGIN
+    CREATE TABLE [dbo].[TeamVoorkeurTijden] (
+        [Id]            INT IDENTITY(1,1) NOT NULL,
+        [TeamNaam]      NVARCHAR(100) NOT NULL,
+        [DagVanWeek]    INT NOT NULL,           -- 6=zaterdag, 7=zondag, 1-5=doordeweeks
+        [VoorkeurTijd]  TIME NOT NULL,
+        [Prioriteit]    INT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Prioriteit] DEFAULT 5,
+        [Actief]        BIT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Actief] DEFAULT 1,
+        [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode] DEFAULT 'VRC',
+        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Inserted] DEFAULT GETDATE(),
+        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Modified] DEFAULT GETDATE(),
+        CONSTRAINT [PK_TeamVoorkeurTijden] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+-- v2 — UitgeslotenEmailAdressen: expliciete uitsluitingslijst voor email-verwerking
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.UitgeslotenEmailAdressen'))
+BEGIN
+    CREATE TABLE [dbo].[UitgeslotenEmailAdressen] (
+        [Id]           INT IDENTITY(1,1) NOT NULL,
+        [EmailAdres]   NVARCHAR(200) NOT NULL,
+        [Omschrijving] NVARCHAR(500) NULL,
+        [Actief]       BIT NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Actief]    DEFAULT 1,
+        [ClubCode]     NVARCHAR(20) NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode]  DEFAULT 'VRC',
+        [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETDATE(),
+        CONSTRAINT [PK_UitgeslotenEmailAdressen] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
+    );
+END
+GO
+
+-- v2 — #119: ClubCode toevoegen aan planner.EmailVerwerking (multi-club isolatie email-log)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'ClubCode')
+    ALTER TABLE [planner].[EmailVerwerking] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC';
+GO
+
+-- v2 — #84: EmailTemplateInstellingen
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
+BEGIN
+    CREATE TABLE [dbo].[EmailTemplateInstellingen] (
+        [Id]            INT IDENTITY(1,1) NOT NULL,
+        [TemplateKey]   NVARCHAR(100) NOT NULL,
+        [Onderwerp]     NVARCHAR(500) NOT NULL,
+        [BodyTemplate]  NVARCHAR(MAX) NOT NULL,
+        [Actief]        BIT NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Actief] DEFAULT 1,
+        [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_ClubCode] DEFAULT 'VRC',
+        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Inserted] DEFAULT GETDATE(),
+        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Modified] DEFAULT GETDATE(),
+        CONSTRAINT [PK_EmailTemplateInstellingen] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [UQ_EmailTemplateInstellingen_Key] UNIQUE ([TemplateKey], [ClubCode])
+    );
+END
+GO

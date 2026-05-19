@@ -3,7 +3,7 @@ using SportlinkFunction.Planner;
 
 namespace SportlinkFunction.Email;
 
-public static class EmailResponseGenerator
+public static class BerichtResponseGenerator
 {
     private static readonly CultureInfo NL = new("nl-NL");
 
@@ -11,8 +11,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwBeschikbaarheidAntwoord(
         CheckAvailabilityResponse response,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -102,8 +102,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwMultiDatumBeschikbaarheidAntwoord(
         List<(string datum, CheckAvailabilityResponse response)> resultaten,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -125,7 +125,7 @@ public static class EmailResponseGenerator
     /// Toont vensters (van-tot) i.p.v. vaste starttijden, en "diverse mogelijkheden" bij een ruime planning.
     /// </summary>
     private static string BouwDatumSectie(
-        string datum, CheckAvailabilityResponse response, EmailClassificatie classificatie)
+        string datum, CheckAvailabilityResponse response, BerichtClassificatie classificatie)
     {
         var datumTekst = FormatDatum(datum);
         var vensters = response.BeschikbareVensters != null
@@ -189,8 +189,8 @@ public static class EmailResponseGenerator
     public static (string onderwerp, string body) BouwHerplanAntwoord(
         ZoekWedstrijdResponse? wedstrijd,
         HerplanCheckResponse? herplanOpties,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -259,6 +259,43 @@ public static class EmailResponseGenerator
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
+            inhoud += $"\n\nLet op: {classificatie.KnvbNotitie} Zie ook: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden";
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
+    // ── Herplannen — te laat (verzoek binnen deadline) ──
+
+    public static (string onderwerp, string body) BouwHerplanTeLaatAntwoord(
+        ZoekWedstrijdResponse? wedstrijd,
+        int deadlineDagen,
+        int dagenTotWedstrijd,
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        string inhoud;
+
+        if (wedstrijd == null)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Je herplanverzoek is helaas te laat ingediend. Volgens onze richtlijn moet een herplanverzoek "
+                   + $"minimaal {deadlineDagen} dagen voor de wedstrijd worden ingediend.";
+        }
+        else
+        {
+            var datumTekst = FormatDatum(wedstrijd.Datum);
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"De wedstrijd {wedstrijd.Wedstrijd} staat gepland op {datumTekst} om {wedstrijd.AanvangsTijd} "
+                   + $"op {wedstrijd.VeldNaam}. Dat is over {dagenTotWedstrijd} dag(en).\n\n"
+                   + $"Volgens onze richtlijn moet een herplanverzoek minimaal {deadlineDagen} dagen voor de wedstrijd "
+                   + $"worden ingediend. Omdat de wedstrijd al binnen die termijn valt, kunnen we het verzoek niet meer "
+                   + $"automatisch verwerken.\n\n"
+                   + $"Neem voor uitzonderingen rechtstreeks contact op met de coördinator.";
+        }
+
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
@@ -268,8 +305,8 @@ public static class EmailResponseGenerator
         ZoekWedstrijdResponse? wedstrijd,
         string? gewensteDatum,
         CheckAvailabilityResponse? beschikbaarheid,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -322,7 +359,7 @@ public static class EmailResponseGenerator
     // ── Bevestiging ──
 
     public static (string onderwerp, string body) BouwBevestigingAntwoord(
-        InkomendEmail email, EmailClassificatie classificatie)
+        InkomendBericht email, BerichtClassificatie classificatie)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -336,12 +373,12 @@ public static class EmailResponseGenerator
 
     // ── Buiten scope ──
 
-    public static (string onderwerp, string body) BouwBuitenScopeAntwoord(InkomendEmail email)
+    public static (string onderwerp, string body) BouwBuitenScopeAntwoord(InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
-        var classificatie = new EmailClassificatie { Type = VerzoekType.BuitenScope };
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BuitenScope };
         var inhoud = $"{aanhef} {voornaam},\n\n"
                    + "Bedankt voor je bericht. Dit verzoek vereist handmatige afhandeling "
                    + "en is ter beoordeling bij de coördinator neergelegd.";
@@ -353,8 +390,8 @@ public static class EmailResponseGenerator
 
     public static (string onderwerp, string body) BouwWedstrijdAlIngeplandAntwoord(
         ZoekWedstrijdResponse? wedstrijd,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -380,19 +417,19 @@ public static class EmailResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
-    // ── Team onbekend — vraag welk VRC-team ──
+    // ── Team onbekend — vraag welk eigen team ──
 
     public static (string onderwerp, string body) BouwTeamOnbekendAntwoord(
         string tegenstander,
-        EmailClassificatie classificatie,
-        InkomendEmail email)
+        BerichtClassificatie classificatie,
+        InkomendBericht email)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
 
         var inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma. "
-                   + "Tegen welk VRC-team zou deze wedstrijd zijn? "
+                   + "Tegen welk van onze teams zou deze wedstrijd zijn? "
                    + "Dan kunnen we de beschikbaarheid voor je controleren.";
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
@@ -401,7 +438,7 @@ public static class EmailResponseGenerator
     // ── Fout ──
 
     public static (string onderwerp, string body) BouwFoutAntwoord(
-        InkomendEmail email, EmailClassificatie classificatie)
+        InkomendBericht email, BerichtClassificatie classificatie)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -411,6 +448,61 @@ public static class EmailResponseGenerator
                    + "De coördinator is op de hoogte gesteld en neemt zo snel mogelijk contact op.";
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
+    // ── Template-driven antwoord (v2 — EmailTemplateService overload) ──
+
+    /// <summary>
+    /// Past een EmailTemplate toe op de classificatie. Placeholders: {{voornaam}}, {{aanhef}},
+    /// {{datum}}, {{team}}, {{tegenstander}}, {{aanvangstijd}}.
+    /// Valt terug op de standaard handtekening + review-wrapper.
+    /// Niet-destructief: bestaande Bouw* methoden blijven beschikbaar als fallback.
+    /// </summary>
+    public static (string onderwerp, string body) BouwAangepasteAntwoord(
+        EmailTemplate template,
+        BerichtClassificatie classificatie,
+        InkomendBericht email,
+        IDictionary<string, string>? extraPlaceholders = null)
+    {
+        var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["voornaam"] = ExtractVoornaam(email.AfzenderNaam),
+            ["aanhef"] = GetTijdsgebondenAanhef(),
+            ["datum"] = FormatDatum(classificatie.Datum),
+            ["team"] = classificatie.TeamNaam ?? "",
+            ["tegenstander"] = classificatie.Tegenstander ?? "",
+            ["aanvangstijd"] = classificatie.AanvangsTijd ?? "",
+        };
+
+        if (extraPlaceholders != null)
+        {
+            foreach (var (k, v) in extraPlaceholders)
+                placeholders[k] = v;
+        }
+
+        var onderwerpInvulling = EmailTemplateService.ApplyPlaceholders(template.Onderwerp, placeholders);
+        var bodyInvulling = EmailTemplateService.ApplyPlaceholders(template.Body, placeholders);
+
+        var onderwerp = !string.IsNullOrWhiteSpace(onderwerpInvulling)
+            ? onderwerpInvulling
+            : $"Re: {email.Onderwerp}";
+
+        // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
+        var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
+        var body = "";
+        if (string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            body += $"=== REVIEW MODE ===\n"
+                  + $"Originele afzender: {email.Afzender}\n"
+                  + $"Onderwerp: {email.Onderwerp}\n"
+                  + $"Classificatie: {classificatie.Type}\n"
+                  + $"Template: {template.Key}\n"
+                  + $"==================\n\n";
+        }
+
+        body += bodyInvulling;
+        body += "\n\n" + GetHandtekening();
+        return (onderwerp, body);
     }
 
     // ── Helpers ──
@@ -484,7 +576,7 @@ public static class EmailResponseGenerator
     }
 
     private static (string onderwerp, string body) WrapMetReviewEnHandtekening(
-        string inhoud, EmailClassificatie classificatie, InkomendEmail email)
+        string inhoud, BerichtClassificatie classificatie, InkomendBericht email)
     {
         var onderwerp = $"Re: {email.Onderwerp}";
         var body = "";
@@ -507,7 +599,12 @@ public static class EmailResponseGenerator
 
     private static string GetHandtekening()
     {
-        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "VRC Veldplanner";
+        var voetnoot = SystemUtilities.AppSettings.GetSetting("emailVoetnoot");
+        if (!string.IsNullOrWhiteSpace(voetnoot))
+            return voetnoot;
+
+        // Fallback: auto-opgebouwde handtekening uit losse instellingen
+        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner";
         var coordinatorNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
         var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie") ?? "Coördinator thuiswedstrijden";
 

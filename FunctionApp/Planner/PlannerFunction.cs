@@ -36,7 +36,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "CheckAvailability failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
 
@@ -64,7 +64,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "DoordeweeksBeschikbaar failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
 
@@ -89,7 +89,6 @@ namespace SportlinkFunction.Planner
                 if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
 
-                // Bepaal wedstrijdduur
                 int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
                 decimal veldFractie = 1.00m;
                 if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
@@ -124,7 +123,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "BevestigWedstrijd failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
 
@@ -138,7 +137,6 @@ namespace SportlinkFunction.Planner
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
-                // Vul zonsondergangtabel voor het huidige seizoen
                 var today = DateOnly.FromDateTime(DateTime.Today);
                 var from = new DateOnly(today.Year, 1, 1);
                 var to = new DateOnly(today.Year + 1, 12, 31);
@@ -151,7 +149,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "PopulateSunset failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
         [Function("Optimaliseer")]
@@ -188,7 +186,6 @@ namespace SportlinkFunction.Planner
 
                 if (format == "email")
                 {
-                    // Browser-URL opbouwen voor de link in de email
                     var browserUrl = $"{req.Scheme}://{req.Host}/api/planner/optimaliseer?format=html";
                     var emailHtml = PlannerHtmlGenerator.GenereerEmailHtml(
                         DateOnly.Parse(request.Datum),
@@ -205,7 +202,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "Optimaliseer failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
 
@@ -238,7 +235,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "ZoekWedstrijd failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
 
@@ -267,7 +264,7 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "HerplanCheck failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
 
@@ -297,7 +294,6 @@ namespace SportlinkFunction.Planner
                 if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
 
-                // Haal huidige wedstrijddetails op
                 var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode);
                 if (match == null)
                     return new OkObjectResult(new { error = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden." });
@@ -333,7 +329,44 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "HerplanBevestig failed");
-                return new ObjectResult(new { error = ex.Message }) { StatusCode = 500 };
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
+        [Function("GetTeamSchedule")]
+        public static async Task<IActionResult> GetTeamSchedule(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "planner/team-schedule")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("GetTeamSchedule");
+            try
+            {
+                var team = req.Query["team"].ToString();
+                if (string.IsNullOrWhiteSpace(team))
+                    return new BadRequestObjectResult(new { error = "Query parameter 'team' is verplicht." });
+
+                var format = req.Query["format"].ToString().ToLowerInvariant();
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}", team, format);
+
+                var schedule = await PlannerService.GetTeamScheduleAsync(team);
+                if (schedule == null)
+                    return new NotFoundObjectResult(new { error = $"Team '{team}' niet gevonden." });
+
+                if (format == "html")
+                {
+                    var html = TeamScheduleHtmlRenderer.Render(schedule);
+                    return new ContentResult { Content = html, ContentType = "text/html; charset=utf-8", StatusCode = 200 };
+                }
+
+                return new OkObjectResult(schedule);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "GetTeamSchedule failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
     }
