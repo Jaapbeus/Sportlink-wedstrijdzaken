@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using SportlinkFunction.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -43,6 +44,7 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError($"Error: {ex.Message}");
+                await GitHubIssueReporter.ReportAsync(ex, "FetchAndStoreApiData", log);
             }
         }
 
@@ -95,11 +97,12 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError($"Error: {ex.Message}");
+                await GitHubIssueReporter.ReportAsync(ex, "SyncMatchesHttp", log);
                 return new StatusCodeResult(500);
             }
         }
 
-        private static async Task RunSyncAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, ILogger log)
+        public static async Task RunSyncAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, ILogger log)
         {
             string ApiUrl;
 
