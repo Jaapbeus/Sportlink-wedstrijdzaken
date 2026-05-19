@@ -190,6 +190,23 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Architectuurregels — altijd van toepassing
 
+### Azure Entra setup — verify/configure via scripts, nooit handmatig
+
+De Entra App Registration mag niet in productie via Portal-klikken worden aangepast — verschil tussen tenants, instellingen die wegvallen, of een verkeerd geklikte checkbox kan alle gebruikers buitensluiten. Gebruik altijd:
+
+```powershell
+az login                                  # eenmalig per machine
+.\scripts\Verify-AzureAuthSetup.ps1       # diagnose, read-only, geen wijzigingen
+.\scripts\Configure-EntraApp.ps1 -WhatIf  # toon wat zou wijzigen
+.\scripts\Configure-EntraApp.ps1          # idempotent apply
+```
+
+Beide scripts staan in [scripts/](scripts/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de [club-domein] tenant zit.
+
+Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets: [docs/AZURE-ENTRA-SETUP.md](docs/AZURE-ENTRA-SETUP.md).
+
+**Verplicht na elke configuratie-wijziging:** sluit alle browser-tabs van de Admin GUI, open verse Incognito sessie, log opnieuw in. MSAL bewaart het ID-token in `localStorage` — zonder verse sessie blijft de oude (rolloze) token in gebruik.
+
 ### Defense in depth — vijf auth-lagen, allemaal verplicht
 
 Auth is NIET af zodra `IsAuthenticated = true`. Een tenant-user kan inloggen via Entra zonder enige app-rol. Elke laag hieronder moet onafhankelijk werken — een gemiste laag is een security-incident.
