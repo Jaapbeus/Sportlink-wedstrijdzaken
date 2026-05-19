@@ -88,9 +88,7 @@ namespace SportlinkFunction.Planner
 
             // Titel
             sb.AppendLine($"<h2 style='margin:0 0 3px 0;'>Veldplanner — Optimalisatieadvies</h2>");
-            var accommodatieNaam = SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "";
-            var locatieSuffix = string.IsNullOrWhiteSpace(accommodatieNaam) ? "" : $" — {accommodatieNaam}";
-            sb.AppendLine($"<p style='margin:0 0 10px 0;color:{TXT_DIM};font-size:12px;'>{datum.ToString("dddd d MMMM yyyy", nl)}{locatieSuffix} — {suggesties.Count} suggestie(s)</p>");
+            sb.AppendLine($"<p style='margin:0 0 10px 0;color:{TXT_DIM};font-size:12px;'>{datum.ToString("dddd d MMMM yyyy", nl)} — Sportpark Spitsbergen — {suggesties.Count} suggestie(s)</p>");
 
             // Legenda
             sb.AppendLine($"<div style='margin-bottom:10px;font-size:11px;color:{TXT_DIM};'>");
@@ -134,8 +132,7 @@ namespace SportlinkFunction.Planner
             sb.AppendLine("</div>");
 
             // Samenvatting
-            var plannerNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner";
-            sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van veld 5 verplaatst: {suggesties.Count(s => s.HuidigVeldNummer == 5)} | Gegenereerd door {plannerNaam}</p>");
+            sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van veld 5 verplaatst: {suggesties.Count(s => s.HuidigVeldNummer == 5)} | Gegenereerd door VRC Veldplanner</p>");
 
             // JavaScript: klik-interactie
             sb.AppendLine("<script>");
@@ -329,7 +326,7 @@ document.addEventListener('click', () => {
             string extraAttr = "";
             string wedstrijdNaam = (w.Wedstrijd?.Trim() ?? "").Replace("'", "&#39;");
 
-            bool isVast = IsEersteElftalWedstrijd(w.Wedstrijd);
+            bool isVast = w.Wedstrijd != null && w.Wedstrijd.Contains("VRC 1 ");
             bool isVerplaatst = verplaatsVan != null && verplaatsVan.ContainsKey(lookupKey);
             bool isNieuw = isNieuwePlek != null && w.Bron == "Suggestie";
 
@@ -345,18 +342,6 @@ document.addEventListener('click', () => {
                 $"style='left:{x}px;top:{top}px;width:{breedte - 1}px;height:{hoogte}px;" +
                 $"background:{bg};border:1px {randStijl} {rand};font-size:{(hoogte < 18 ? 7 : 9)}px;'>" +
                 $"<b>{w.AanvangsTijd:HH:mm}</b> {naam}</div>");
-        }
-
-        private static bool IsEersteElftalWedstrijd(string? wedstrijd)
-        {
-            if (string.IsNullOrWhiteSpace(wedstrijd)) return false;
-            var naam = SystemUtilities.AppSettings.GetSetting("eersteElftalNaam");
-            if (string.IsNullOrWhiteSpace(naam))
-            {
-                var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode");
-                naam = string.IsNullOrWhiteSpace(clubCode) ? null : $"{clubCode} 1";
-            }
-            return !string.IsNullOrWhiteSpace(naam) && wedstrijd.Contains(naam + " ");
         }
 
         private static List<BestaandeWedstrijd> BouwNieuweBezetting(
@@ -416,7 +401,7 @@ document.addEventListener('click', () => {
 
                 if (verplaatsteKeys.Contains(key))
                 { var s = verplaatsVan[key]; items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
-                else if (IsEersteElftalWedstrijd(w.Wedstrijd))
+                else if (w.Wedstrijd?.Contains("VRC 1 ") == true)
                     items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", "🔒 Vast", BLK_VAST_RAND));
                 else
                     items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", "", TXT_DIM));
@@ -462,11 +447,8 @@ document.addEventListener('click', () => {
                     return 210;
                 if (naam.Contains("O23")) return 230;
                 if (naam.Contains("VR")) return 300;
-                // Senioren (eerste team en reserves): helemaal onderaan
-                var _cc = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
-                if (!string.IsNullOrWhiteSpace(_cc)
-                    && System.Text.RegularExpressions.Regex.IsMatch(naam,
-                        $@"{System.Text.RegularExpressions.Regex.Escape(_cc)} \d"))
+                // Senioren (VRC 1-9): helemaal onderaan
+                if (System.Text.RegularExpressions.Regex.IsMatch(naam, @"VRC \d"))
                     return 400;
                 return 500;
             }
@@ -486,7 +468,7 @@ document.addEventListener('click', () => {
 
                 if (verplaatsteKeys.Contains(key))
                 { var s = verplaatsVan[key]; items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
-                else if (IsEersteElftalWedstrijd(naam))
+                else if (naam.Contains("VRC 1 "))
                     items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, "🔒 Vast", BLK_VAST_RAND));
                 else
                     items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, "", TXT_DIM));
@@ -549,7 +531,7 @@ document.addEventListener('click', () => {
                 var vn = velden.FirstOrDefault(v => v.VeldNummer == w.VeldNummer)?.VeldNaam ?? "";
                 if (verplaatsteKeys.TryGetValue(key, out var s))
                     rijen.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", $"⟶ {s.NieuwVeld} {s.NieuweTijd}", "#fef3c7", "#92400e"));
-                else if (IsEersteElftalWedstrijd(w.Wedstrijd))
+                else if (w.Wedstrijd?.Contains("VRC 1 ") == true)
                     rijen.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", "🔒 Vast", "#dbeafe", "#1e40af"));
                 else rijen.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", "", "#fff", "#666"));
             }
@@ -559,7 +541,7 @@ document.addEventListener('click', () => {
                 sb.AppendLine($"<tr style='background:{r.Bg};border-bottom:1px solid #e5e7eb;'><td style='padding:5px 6px;'>{r.T:HH:mm}</td><td style='padding:5px 6px;'>{r.V}</td><td style='padding:5px 6px;'>{r.W}</td><td style='padding:5px 6px;color:{r.Fg};'>{r.S}</td></tr>");
 
             sb.AppendLine("</table>");
-            sb.AppendLine($"<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>{SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner"}</p>");
+            sb.AppendLine("<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>VRC Veldplanner</p>");
             sb.AppendLine("</body></html>");
             return sb.ToString();
         }

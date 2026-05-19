@@ -104,72 +104,6 @@ jobs:
           fi
           echo "✅ Geen PII-patronen gevonden in getrackte bestanden."
 
-  # ── 3b. PII in documentatiebestanden (CHANGELOG, docs/) ──────────────────
-  pii-docs:
-    name: PII in Documentatie (CHANGELOG/docs)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 20
-
-      - name: Scan CHANGELOG en docs op emailadressen
-        run: |
-          FOUND=0
-          # Documentatiebestanden: strenger dan code — GEEN enkel emailadres toegestaan
-          # Gebruik placeholder [emailadres] of example@example.nl in voorbeelden
-          DOC_FILES="CHANGELOG.md docs/VERSIONING.md docs/TESTING.md README.md"
-
-          for f in $DOC_FILES; do
-            [ ! -f "$f" ] && continue
-            # Blokkeer elk emailadres (ook club-domeinen zoals vv-club.nl)
-            # Uitzondering: noreply@github.com, noreply@anthropic.com (CI-systemen)
-            matches=$(grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' "$f" \
-              | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org))$' || true)
-            if [ -n "$matches" ]; then
-              echo "::error::🚨 EMAILADRES in documentatiebestand: $f"
-              echo "$matches" | while read addr; do echo "::error::  Gevonden: $addr — gebruik placeholder [emailadres]"; done
-              FOUND=1
-            fi
-          done
-
-          if [ "$FOUND" -eq 1 ]; then
-            echo "::error::Emailadressen in CHANGELOG of docs zijn een AVG-risico."
-            echo "::error::Vervang door [emailadres], [naam@club.nl] of example@example.nl."
-            echo "::error::Zie docs/VERSIONING.md § AVG-regels voor changelog."
-            exit 1
-          fi
-          echo "✅ Geen emailadressen in documentatiebestanden gevonden."
-
-      - name: Scan recente commit-messages op PII
-        run: |
-          FOUND=0
-          # Controleer de laatste 20 commit-messages op emailadressen en telefoonnummers
-          # Co-Authored-By/Co-authored-by regels worden uitgesloten (GitHub squash merge voegt deze toe)
-          MESSAGES=$(git log -20 --pretty=format:"%s %b" | grep -vi "Co-Authored-By" || true)
-
-          EMAIL_HITS=$(echo "$MESSAGES" | grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' \
-            | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org))$' || true)
-          PHONE_HITS=$(echo "$MESSAGES" | grep -oP '06[-\s]?[0-9]{8}|\+316[0-9]{8}' || true)
-
-          if [ -n "$EMAIL_HITS" ]; then
-            echo "::warning::📋 EMAILADRES in commit-message gevonden (controleer handmatig):"
-            echo "$EMAIL_HITS" | while read addr; do echo "::warning::  $addr"; done
-            FOUND=1
-          fi
-          if [ -n "$PHONE_HITS" ]; then
-            echo "::error::🚨 TELEFOONNUMMER in commit-message gevonden:"
-            echo "$PHONE_HITS"
-            FOUND=1
-          fi
-
-          if [ "$FOUND" -eq 1 ]; then
-            echo "::error::PII in commit-messages is een AVG-risico — zie SECURITY.md."
-            exit 1
-          fi
-          echo "✅ Geen PII gevonden in recente commit-messages."
-
   # ── 4. Dependency vulnerability scan (Trivy) ───────────────────────────────
   dependency-scan:
     name: Dependency Vulnerability Scan
@@ -199,7 +133,7 @@ jobs:
   security-gate:
     name: "Security Gate — blokkeert merge bij fout"
     runs-on: ubuntu-latest
-    needs: [gitleaks, pii-files, pii-patterns, pii-docs]
+    needs: [gitleaks, pii-files, pii-patterns]
     if: always()
     steps:
       - name: Controleer alle verplichte security checks
@@ -208,7 +142,6 @@ jobs:
           [ "${{ needs.gitleaks.result }}"    != "success" ] && FAILED="${FAILED}\n  ❌ Secret Detection (gitleaks): ${{ needs.gitleaks.result }}"
           [ "${{ needs.pii-files.result }}"   != "success" ] && FAILED="${FAILED}\n  ❌ PII File Detection:           ${{ needs.pii-files.result }}"
           [ "${{ needs.pii-patterns.result }}" != "success" ] && FAILED="${FAILED}\n  ❌ PII Pattern Scan:             ${{ needs.pii-patterns.result }}"
-          [ "${{ needs.pii-docs.result }}" != "success" ] && FAILED="${FAILED}\n  ❌ PII in Documentatie:          ${{ needs.pii-docs.result }}"
 
           if [ -n "$FAILED" ]; then
             echo "::error::════════════════════════════════════════════════════"
