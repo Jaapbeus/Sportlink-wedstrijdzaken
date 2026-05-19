@@ -23,7 +23,7 @@ namespace SportlinkFunction
                             SELECT [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
                                    [SeasonStartMonth], [LastSyncTimestamp], [FetchSchedule],
                                    [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
-                                   [PlannerEmailAdres], [Accommodatie], [InternDomein],
+                                   [PlannerEmailAdres], [Accommodatie],
                                    [HerplanDeadlineDagen], [BufferMinuten],
                                    [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
                                    [AccommodatiePlaats]
@@ -51,13 +51,12 @@ namespace SportlinkFunction
                                 Set("coordinatorFunctie", 9);
                                 Set("plannerEmailAdres", 10);
                                 Set("accommodatie", 11);
-                                Set("internDomein", 12);
-                                Set("herplanDeadlineDagen", 13);
-                                Set("bufferMinuten", 14);
-                                Set("accommodatieLatitude", 15);
-                                Set("accommodatieLongitude", 16);
-                                Set("emailVoetnoot", 17);
-                                Set("accommodatiePlaats", 18);
+                                Set("herplanDeadlineDagen", 12);
+                                Set("bufferMinuten", 13);
+                                Set("accommodatieLatitude", 14);
+                                Set("accommodatieLongitude", 15);
+                                Set("emailVoetnoot", 16);
+                                Set("accommodatiePlaats", 17);
                             }
                         }
                     }

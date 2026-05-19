@@ -34,10 +34,12 @@ public static class FeedbackFunction
 
     [Function("FeedbackValidate")]
     public static async Task<IActionResult> Validate(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "feedback/validate")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/validate")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackValidate");
+        var authResult = SportlinkFunction.Admin.EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
         try
         {
             var body = await new StreamReader(req.Body).ReadToEndAsync();
@@ -64,10 +66,12 @@ public static class FeedbackFunction
 
     [Function("FeedbackSubmit")]
     public static async Task<IActionResult> Submit(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "feedback/submit")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/submit")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackSubmit");
+        var authResult = SportlinkFunction.Admin.EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
 
         if (!TryAcquireSubmitSlot())
             return new ObjectResult(new { error = $"Limiet bereikt: maximaal {MaxSubmissiesPerVenster} meldingen per 10 minuten." }) { StatusCode = 429 };

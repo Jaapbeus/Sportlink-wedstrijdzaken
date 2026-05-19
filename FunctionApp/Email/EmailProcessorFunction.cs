@@ -125,15 +125,6 @@ public class EmailProcessorFunction
             return;
         }
 
-        var internDomein = SystemUtilities.AppSettings.GetSetting("internDomein") ?? "";
-        if (!string.IsNullOrWhiteSpace(internDomein)
-            && email.Afzender.EndsWith("@" + internDomein.TrimStart('@'), StringComparison.OrdinalIgnoreCase))
-        {
-            log.LogInformation("Email {MessageId} van intern domein ({Afzender}), overslaan", email.MessageId, email.Afzender);
-            await graphService.MarkAsReadAsync(email.MessageId);
-            return;
-        }
-
         if (uitgeslotenAdressen.Contains(email.Afzender))
         {
             log.LogInformation("Email {MessageId} van uitgesloten adres ({Afzender}), overslaan", email.MessageId, email.Afzender);
