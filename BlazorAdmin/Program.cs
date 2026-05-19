@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
@@ -24,6 +25,8 @@ if (builder.HostEnvironment.IsProduction())
     {
         builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
         options.ProviderOptions.DefaultAccessTokenScopes.Add(apiScope);
+        // 'redirect' (i.p.v. default 'popup') voorkomt popup-blocker issues in InPrivate/Incognito sessies.
+        options.ProviderOptions.LoginMode = "redirect";
     });
     builder.Services.AddScoped<IAuthService, EntraAuthService>();
 
@@ -31,6 +34,11 @@ if (builder.HostEnvironment.IsProduction())
     // het Entra ID access token toe aan elk request richting de Function App URL.
     var capturedFunctionBaseUrl = functionBaseUrl;
     var capturedScope = apiScope;
+
+    // App.razor injecteert HttpClient voor de health check — registreer plain client zonder auth.
+    // AdminApiClient krijgt een eigen HttpClient mét AuthorizationMessageHandler (zie hieronder).
+    builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(capturedFunctionBaseUrl) });
+
     builder.Services.AddScoped<AdminApiClient>(sp =>
     {
         var handler = sp.GetRequiredService<AuthorizationMessageHandler>()
@@ -43,7 +51,9 @@ if (builder.HostEnvironment.IsProduction())
 }
 else
 {
-    // Ontwikkeling: geen auth, plain HttpClient
+    // Ontwikkeling: geen MSAL; fake AuthenticationStateProvider zodat [Authorize] werkt.
+    builder.Services.AddAuthorizationCore();
+    builder.Services.AddScoped<AuthenticationStateProvider, AlwaysAuthenticatedStateProvider>();
     builder.Services.AddScoped<IAuthService, LocalAuthService>();
     builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(functionBaseUrl) });
     builder.Services.AddScoped<AdminApiClient>();
