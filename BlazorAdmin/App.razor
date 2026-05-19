@@ -1,4 +1,6 @@
 @inject HttpClient Http
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavManager
 @implements IAsyncDisposable
 
 @if (_phase is Phase.Checking or Phase.Ready)
@@ -25,38 +27,72 @@
         </div>
     </div>
 }
-else
+else if (_onAuthRoute)
 {
-    <CascadingAuthenticationState>
-        <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-            <Found Context="routeData">
-                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-                    <NotAuthorized>
-                        @if (context.User.Identity is { IsAuthenticated: false })
-                        {
-                            <RedirectToLogin />
-                        }
-                        else
-                        {
-                            <p class="p-4">Je bent niet gemachtigd om deze pagina te bekijken.</p>
-                        }
-                    </NotAuthorized>
-                    <Authorizing>
-                        <p class="p-4">Authenticeren...</p>
-                    </Authorizing>
-                </AuthorizeRouteView>
-                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-            </Found>
-        </Router>
-    </CascadingAuthenticationState>
+    @* MSAL-callbackroute: render Router zonder layout zodat Authentication.razor kan verwerken. *@
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" />
+        </Found>
+    </Router>
 }
+else if (_isAuthenticated)
+{
+    @* Ingelogd: toon volledige applicatie met MainLayout en navigatie. *@
+    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+@* Niet ingelogd en geen authroute: niets tonen — NavigateToLogin is al aangeroepen. *@
 
 @code {
     private Phase _phase = Phase.Checking;
     private string _statusText = "Verbinding maken...";
     private readonly CancellationTokenSource _cts = new();
+    private bool _isAuthenticated;
+    private bool _onAuthRoute;
+    private bool _authCheckInProgress;
 
-    protected override async Task OnInitializedAsync() => await CheckApiAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        NavManager.LocationChanged += HandleLocationChange;
+        _onAuthRoute = NavManager.Uri.Contains("/authentication/");
+        await CheckApiAsync();
+        if (!_onAuthRoute)
+            await CheckAuthAsync();
+    }
+
+    private void HandleLocationChange(object? sender, LocationChangedEventArgs e)
+    {
+        var wasOnAuthRoute = _onAuthRoute;
+        _onAuthRoute = e.Location.Contains("/authentication/");
+
+        // Terugkeer van MSAL-callback naar de app → auth opnieuw controleren
+        if (wasOnAuthRoute && !_onAuthRoute)
+            InvokeAsync(async () => { await CheckAuthAsync(); StateHasChanged(); });
+        else
+            InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CheckAuthAsync()
+    {
+        if (_authCheckInProgress) return;
+        _authCheckInProgress = true;
+        try
+        {
+            var state = await AuthStateProvider.GetAuthenticationStateAsync();
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+            if (!_isAuthenticated)
+                NavManager.NavigateToLogin("authentication/login");
+        }
+        finally
+        {
+            _authCheckInProgress = false;
+        }
+    }
 
     private async Task CheckApiAsync()
     {
@@ -83,12 +119,12 @@ else
             await Task.Delay(500, _cts.Token);
         }
 
-        // Na ~20s nog steeds geen verbinding → toon app in degraded mode
         _phase = Phase.Running;
     }
 
     public async ValueTask DisposeAsync()
     {
+        NavManager.LocationChanged -= HandleLocationChange;
         await _cts.CancelAsync();
         _cts.Dispose();
     }
