@@ -1,11 +1,16 @@
+@using BlazorAdmin.Pages
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavManager
 @implements IDisposable
 
 @*
-    Auth-gate: zie CLAUDE.md sectie "Blazor auth-gate: altijd BOVEN de Router".
-    MainLayout (sidebar/nav/FeedbackWidget) wordt NOOIT gerenderd zonder geldige auth.
-    Verificatie: InPrivate browser test verplicht na elke wijziging hier.
+    Auth-gate: zie CLAUDE.md sectie "Blazor auth-gate" en "Defense in depth security model".
+    MainLayout (sidebar/nav/FeedbackWidget) wordt NOOIT gerenderd zonder geldige auth EN admin/user rol.
+    Verplichte 3-user test bij elke wijziging:
+      - admin (jaapadmin) → AppState.Authenticated → volledige UI
+      - user (regular tenant user met user-rol) → AppState.Authenticated → volledige UI (later beperkter)
+      - tenant-user zonder rol → AppState.AccessDenied → NoAccess pagina, géén MainLayout
+      - andere tenant / guest → wordt door Entra zelf geweigerd vóór hier
 *@
 <CascadingAuthenticationState>
     @if (_state == AppState.Initializing)
@@ -19,7 +24,7 @@
     }
     else if (_state == AppState.OnAuthRoute)
     {
-        @* MSAL-callback (/authentication/...) — geen layout, anders ziet de gebruiker MainLayout tijdens de login-redirect. *@
+        @* MSAL-callback (/authentication/...) — geen layout. *@
         <Router AppAssembly="@typeof(App).Assembly">
             <Found Context="routeData">
                 <RouteView RouteData="@routeData" />
@@ -28,7 +33,7 @@
     }
     else if (_state == AppState.Authenticated)
     {
-        @* Ingelogd: volledige app met MainLayout en navigatie. *@
+        @* Ingelogd MET admin- of user-rol: volledige app met MainLayout. *@
         <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
             <Found Context="routeData">
                 <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
@@ -36,7 +41,13 @@
             </Found>
         </Router>
     }
-    @* AppState.RedirectingToLogin: NavigateToLogin is aangeroepen, browser navigeert nu naar /authentication/login → de OnAuthRoute branch neemt over. Geen UI nodig. *@
+    else if (_state == AppState.AccessDenied)
+    {
+        @* Ingelogd ZONDER admin/user rol: tenant-user die geen toegang heeft.
+           Geen MainLayout — alleen de NoAccess-pagina met logout-knop. *@
+        <NoAccess />
+    }
+    @* AppState.RedirectingToLogin: NavigateToLogin is aangeroepen, geen UI nodig. *@
 </CascadingAuthenticationState>
 
 @code {
@@ -58,19 +69,24 @@
         }
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var isAuthenticated = authState.User.Identity?.IsAuthenticated ?? false;
+        var user = authState.User;
+        var isAuthenticated = user.Identity?.IsAuthenticated ?? false;
 
-        if (isAuthenticated)
-        {
-            _state = AppState.Authenticated;
-            StateHasChanged();
-        }
-        else
+        if (!isAuthenticated)
         {
             _state = AppState.RedirectingToLogin;
             StateHasChanged();
             NavManager.NavigateToLogin("authentication/login");
+            return;
         }
+
+        // Defense in depth — Layer 4: frontend role-gate.
+        // Server-side EasyAuthHelper.RequireAdmin() is Layer 5 (zal API-calls alsnog blokkeren),
+        // maar hier voorkomen we dat de UI-shell überhaupt gerenderd wordt voor non-admin.
+        var hasAccessRole = user.IsInRole("admin") || user.IsInRole("user");
+
+        _state = hasAccessRole ? AppState.Authenticated : AppState.AccessDenied;
+        StateHasChanged();
     }
 
     private void HandleLocationChange(object? sender, LocationChangedEventArgs e)
@@ -83,5 +99,5 @@
         NavManager.LocationChanged -= HandleLocationChange;
     }
 
-    private enum AppState { Initializing, OnAuthRoute, Authenticated, RedirectingToLogin }
+    private enum AppState { Initializing, OnAuthRoute, Authenticated, AccessDenied, RedirectingToLogin }
 }
