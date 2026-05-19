@@ -190,6 +190,63 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Architectuurregels — altijd van toepassing
 
+### Blazor auth-gate: altijd BOVEN de Router, nooit erin
+
+**KRITIEKE REGEL — drie keer overtreden (PR #178, PR #179, en de auth-redirect-loop hotfix):**
+
+De Blazor admin UI mag nooit zichtbaar zijn voor niet-ingelogde gebruikers — ook niet kortstondig, ook niet de sidebar/navigatie, ook niet de FEEDBACK-knop. Bovendien moet een ongeauthenticeerde gebruiker binnen seconden naar de Microsoft login worden gestuurd — niet vastlopen op een laadscherm.
+
+**Fout patroon (VERBODEN):**
+```razor
+<AuthorizeRouteView DefaultLayout="@typeof(MainLayout)">
+    <NotAuthorized><RedirectToLogin /></NotAuthorized>
+```
+→ `AuthorizeRouteView` rendert `MainLayout` (inclusief sidebar + alle knoppen) voor ALLE states — ook Authorizing en NotAuthorized. Gebruiker ziet de volledige UI.
+
+**Anti-patroon: blocking health-check vóór auth-check:**
+```razor
+@if (_phase is Phase.Checking or Phase.Ready) { ... }  // 1-2s vertraging
+else if (_isAuthenticated) { ... }
+```
+→ De auth-check loopt pas NA de health-check delay. InPrivate gebruikers zien een laadscherm dat blijft hangen omdat MSAL silent-SSO faalt en `NavigateToLogin` te laat wordt aangeroepen.
+
+**Juist patroon (VERPLICHT):**
+```razor
+@* App.razor controleert auth EERST, geen blocking delay ervoor *@
+@if (_state == AppState.Initializing)        { spinner (geen layout) }
+else if (_state == AppState.OnAuthRoute)     { <Router> ... <RouteView /> (geen layout) }
+else if (_state == AppState.Authenticated)   { <Router> ... <RouteView DefaultLayout="MainLayout" /> }
+@* RedirectingToLogin: NavigateToLogin is aangeroepen, geen UI nodig *@
+```
+
+**Implementatieregels:**
+1. `App.razor` injecteert `AuthenticationStateProvider` en roept `GetAuthenticationStateAsync()` als ÉÉRSTE actie aan vóór de Router rendert. Geen health-check, geen splash, geen delay ertussen.
+2. `MainLayout` (sidebar, navigatie, FEEDBACK-knop) wordt ALLEEN gerenderd als de gebruiker geauthenticeerd is.
+3. `/authentication/...` routes (MSAL callbacks) krijgen een aparte Router-branch zonder layout.
+4. `NavigationManager.LocationChanged` bewaken om de state opnieuw te evalueren na MSAL-callback.
+5. Geen `AuthorizeRouteView` gebruiken als de DefaultLayout de volledige app-shell is.
+
+### MSAL-configuratie checklist (verplicht voor Blazor WASM + Entra ID)
+
+Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlopende login:
+
+| # | Item | Locatie | Reden |
+|---|---|---|---|
+| 1 | `<script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js">` | `wwwroot/index.html` (vóór `blazor.webassembly.js`) | MSAL JS-bridge — zonder dit script doet `RemoteAuthenticatorView` niets |
+| 2 | `options.ProviderOptions.LoginMode = "redirect"` | `Program.cs` in `AddMsalAuthentication` | Voorkomt popup-blocker fails in InPrivate/Incognito |
+| 3 | `appsettings.Production.json` met `AzureAd.Authority` en `AzureAd.ClientId` | `wwwroot/` | Zonder ClientId/Authority crasht MSAL bij initialisatie |
+| 4 | `<WasmApplicationEnvironmentName>Production</WasmApplicationEnvironmentName>` voor Release | `BlazorAdmin.csproj` | .NET 10: zonder dit laadt Blazor `appsettings.json` (localhost) i.p.v. Production |
+| 5 | SPA redirect URI in Entra App Registration: `https://<host>/authentication/login-callback` | Azure Portal | Anders weigert Entra de redirect na login |
+| 6 | `Authentication.razor` op `@page "/authentication/{action}"` met `<RemoteAuthenticatorView Action="@Action" />` | `Pages/` | Verwerkt MSAL callback (login-callback, logout-callback) |
+| 7 | Easy Auth op Function App (`platform.enabled=true`) + `EasyAuthHelper.RequireAdmin()` op elke admin endpoint | Azure + `FunctionApp/Admin/` | Server-side validatie van Bearer token + admin-rol |
+
+**Verificatie bij elke Blazor auth-wijziging — VERPLICHT:**
+1. Open de site in een verse Incognito/InPrivate mode (geen oude cookies).
+2. Microsoft login-pagina moet binnen 2-3 seconden verschijnen.
+3. Vóór de login: geen sidebar, geen navigatie, geen FEEDBACK-knop, geen "An unhandled error" zichtbaar.
+4. Na inloggen: volledige admin UI laadt, alle API-calls slagen met de Bearer token.
+5. F12 → Network tab: controleer dat MSAL daadwerkelijk naar `login.microsoftonline.com` redirect (geen vastlopende AJAX-requests).
+
 ### UTC in database, lokale tijd in GUI
 
 - **Database:** alle `DateTime` kolommen opslaan in **UTC** (GETUTCDATE(), geen GETDATE()).
