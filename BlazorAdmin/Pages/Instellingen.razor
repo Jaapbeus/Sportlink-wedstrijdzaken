@@ -1,0 +1,332 @@
+@page "/instellingen"
+@inject AdminApiClient Api
+@inject IAuthService Auth
+
+<PageTitle>Instellingen — VRC Admin</PageTitle>
+
+<h1>Instellingen</h1>
+
+@if (settings == null && string.IsNullOrEmpty(errorMessage))
+{
+    <p class="text-muted">Laden...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <EditForm Model="settings" OnValidSubmit="OpslaanAsync">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Clubnaam</label>
+                <input class="form-control" value="@settings!.ClubName" disabled />
+                <small class="form-text text-muted">Niet wijzigbaar via deze interface</small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">ClubCode</label>
+                <input class="form-control" value="@settings.ClubCode" disabled />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Accommodatie</label>
+                <input class="form-control" @bind="settings.Accommodatie" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Accommodatieplaats</label>
+                <div class="input-group">
+                    <input class="form-control" @bind="settings.AccommodatiePlaats" placeholder="bijv. Veenendaal" />
+                    <button class="btn btn-outline-secondary" type="button"
+                            @onclick="ZoekCoordinaten" disabled="@(geocoding || string.IsNullOrWhiteSpace(settings.AccommodatiePlaats))">
+                        @(geocoding ? "Zoeken..." : "Zoek coördinaten")
+                    </button>
+                </div>
+                @if (settings.AccommodatieLatitude.HasValue && settings.AccommodatieLongitude.HasValue)
+                {
+                    <small class="form-text text-muted">
+                        Coördinaten: @settings.AccommodatieLatitude.Value.ToString("F4", System.Globalization.CultureInfo.InvariantCulture), @settings.AccommodatieLongitude.Value.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
+                    </small>
+                }
+                @if (!string.IsNullOrEmpty(geocodeMessage))
+                {
+                    <small class="form-text @(geocodeError ? "text-danger" : "text-success")">@geocodeMessage</small>
+                }
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Herplan-deadline (dagen vooraf)</label>
+                <input class="form-control" type="number" min="0" max="60" @bind="settings.HerplanDeadlineDagen" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Buffer tussen wedstrijden (minuten)</label>
+                <input class="form-control" type="number" min="0" max="120" @bind="settings.BufferMinuten" />
+            </div>
+        </div>
+
+        <hr />
+        <h5>Afzender &amp; coördinator</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Planner afzendernaam</label>
+                <input class="form-control" @bind="settings.PlannerAfzenderNaam" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Planner e-mailadres</label>
+                <input class="form-control" @bind="settings.PlannerEmailAdres" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Coördinator naam</label>
+                <input class="form-control" @bind="settings.CoordinatorNaam" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Coördinator functie</label>
+                <input class="form-control" @bind="settings.CoordinatorFunctie" />
+            </div>
+        </div>
+
+        <hr />
+        <h5>Synchronisatie</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">FetchSchedule (CRON)</label>
+                <input class="form-control" @bind="settings.FetchSchedule" />
+                @if (!string.IsNullOrEmpty(settings.FetchScheduleLeesbaar))
+                {
+                    <small class="form-text text-muted">@settings.FetchScheduleLeesbaar</small>
+                }
+                @if (settings.VolgendeMomenten?.Count > 0)
+                {
+                    <small class="form-text text-muted">
+                        Volgende uitvoeringen (UTC): @string.Join(", ", settings.VolgendeMomenten)
+                    </small>
+                }
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Laatste synchronisatie</label>
+                <input class="form-control" value="@(settings.LastSyncTimestamp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm") ?? "nog niet uitgevoerd")" disabled />
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@saving">
+            @(saving ? "Opslaan..." : "Opslaan")
+        </button>
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success mt-3">@successMessage</div>
+        }
+        @if (!string.IsNullOrEmpty(herstartMessage))
+        {
+            <div class="alert alert-info mt-3">@herstartMessage</div>
+        }
+    </EditForm>
+
+    <hr class="mt-4" />
+    <div class="row mb-3">
+        <div class="col">
+            <h2 class="mb-0">Uitgesloten e-mailadressen</h2>
+            <p class="text-muted mb-0">
+                Adressen op deze lijst worden altijd overgeslagen door de email-verwerker.
+            </p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNieuwAdres">Adres toevoegen</button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>E-mailadres</th>
+                <th>Omschrijving</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var adres in uitgeslotenEmails)
+            {
+                <tr class="@(!adres.Actief ? "text-muted" : "")">
+                    <td>@adres.EmailAdres</td>
+                    <td>@adres.Omschrijving</td>
+                    <td>@(adres.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => VerwijderAdresAsync(adres.Id)">
+                            Verwijderen
+                        </button>
+                    </td>
+                </tr>
+            }
+            @if (uitgeslotenEmails.Count == 0)
+            {
+                <tr><td colspan="4" class="text-muted">Geen uitgesloten adressen.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (nieuwAdres != null)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Nieuw adres toevoegen</h5>
+                <div class="row">
+                    <div class="col-md-5 mb-3">
+                        <label class="form-label">E-mailadres</label>
+                        <input class="form-control" @bind="nieuwAdres.EmailAdres" placeholder="bijv. wedstrijdsecretaris@[club-domein]" />
+                    </div>
+                    <div class="col-md-5 mb-3">
+                        <label class="form-label">Omschrijving (optioneel)</label>
+                        <input class="form-control" @bind="nieuwAdres.Omschrijving" placeholder="bijv. Wedstrijdsecretaris eigen club" />
+                    </div>
+                </div>
+                <button class="btn btn-primary" @onclick="OpslaanNieuwAdresAsync">Toevoegen</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => nieuwAdres = null">Annuleren</button>
+                @if (!string.IsNullOrEmpty(uitgeslotenMessage))
+                {
+                    <div class="alert alert-info mt-2">@uitgeslotenMessage</div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private AppSettingsDto? settings;
+    private bool saving;
+    private string? errorMessage;
+    private string? successMessage;
+    private string? herstartMessage;
+
+    private bool geocoding;
+    private string? geocodeMessage;
+    private bool geocodeError;
+
+    private List<UitgeslotenEmailAdresDto> uitgeslotenEmails = new();
+    private UitgeslotenEmailAdresDto? nieuwAdres;
+    private string? uitgeslotenMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetSettingsAsync();
+        if (r.Success) settings = r.Data;
+        else errorMessage = r.ErrorMessage;
+
+        await LaadUitgeslotenEmailsAsync();
+    }
+
+    private async Task LaadUitgeslotenEmailsAsync()
+    {
+        var r = await Api.GetUitgeslotenEmailsAsync();
+        uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
+    }
+
+    private void StartNieuwAdres()
+    {
+        nieuwAdres = new UitgeslotenEmailAdresDto { Actief = true };
+        uitgeslotenMessage = null;
+    }
+
+    private async Task OpslaanNieuwAdresAsync()
+    {
+        if (nieuwAdres == null || string.IsNullOrWhiteSpace(nieuwAdres.EmailAdres))
+        {
+            uitgeslotenMessage = "E-mailadres is verplicht.";
+            return;
+        }
+        var r = await Api.CreateUitgeslotenEmailAsync(nieuwAdres);
+        if (r.Success)
+        {
+            nieuwAdres = null;
+            uitgeslotenMessage = null;
+            await LaadUitgeslotenEmailsAsync();
+        }
+        else
+        {
+            uitgeslotenMessage = "Fout: " + r.ErrorMessage;
+        }
+    }
+
+    private async Task VerwijderAdresAsync(int id)
+    {
+        var r = await Api.DeleteUitgeslotenEmailAsync(id);
+        uitgeslotenMessage = r.Success ? null : "Fout: " + r.ErrorMessage;
+        await LaadUitgeslotenEmailsAsync();
+    }
+
+    private async Task ZoekCoordinaten()
+    {
+        if (settings == null || string.IsNullOrWhiteSpace(settings.AccommodatiePlaats)) return;
+        geocoding = true;
+        geocodeMessage = null;
+        geocodeError = false;
+        var r = await Api.GeocodeAsync(settings.AccommodatiePlaats);
+        if (r.Success && r.Data != null)
+        {
+            settings.AccommodatieLatitude = r.Data.Lat;
+            settings.AccommodatieLongitude = r.Data.Lon;
+            geocodeMessage = $"Gevonden: {r.Data.DisplayName}";
+        }
+        else
+        {
+            geocodeError = true;
+            geocodeMessage = r.ErrorMessage ?? "Niet gevonden";
+        }
+        geocoding = false;
+    }
+
+    private async Task OpslaanAsync()
+    {
+        if (settings == null) return;
+        saving = true;
+        successMessage = null;
+        herstartMessage = null;
+        errorMessage = null;
+
+        var update = new SettingsUpdateDto
+        {
+            GewijzigdDoor = Auth.UserName,
+            Velden = new()
+            {
+                ["Accommodatie"] = settings.Accommodatie,
+                ["AccommodatiePlaats"] = settings.AccommodatiePlaats,
+                ["AccommodatieLatitude"] = settings.AccommodatieLatitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["AccommodatieLongitude"] = settings.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["HerplanDeadlineDagen"] = settings.HerplanDeadlineDagen?.ToString(),
+                ["BufferMinuten"] = settings.BufferMinuten?.ToString(),
+                ["PlannerAfzenderNaam"] = settings.PlannerAfzenderNaam,
+                ["PlannerEmailAdres"] = settings.PlannerEmailAdres,
+                ["CoordinatorNaam"] = settings.CoordinatorNaam,
+                ["CoordinatorFunctie"] = settings.CoordinatorFunctie,
+                ["FetchSchedule"] = settings.FetchSchedule,
+            }
+        };
+
+        var r = await Api.UpdateSettingsAsync(update);
+        if (r.Success)
+        {
+            successMessage = "Instellingen opgeslagen.";
+            if (r.Data?.HerstartAutomatisch == true)
+            {
+                herstartMessage = r.Data.Opmerking ?? "Het ophaalschema is bijgewerkt. De applicatie herstart automatisch en het nieuwe schema is actief na de herstart.";
+                // CRON-preview bijwerken in het scherm
+                if (r.Data.FetchScheduleLeesbaar != null)
+                    settings.FetchScheduleLeesbaar = r.Data.FetchScheduleLeesbaar;
+                if (r.Data.VolgendeMomenten != null)
+                    settings.VolgendeMomenten = r.Data.VolgendeMomenten;
+            }
+            else if (r.Data?.HerstartVereist == true)
+            {
+                herstartMessage = r.Data.Opmerking ?? "Het ophaalschema is opgeslagen. Herstart de Function App handmatig om het nieuwe schema actief te maken.";
+            }
+        }
+        else
+        {
+            errorMessage = r.ErrorMessage;
+        }
+        saving = false;
+    }
+}

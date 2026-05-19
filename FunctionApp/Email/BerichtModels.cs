@@ -17,7 +17,7 @@ public enum NamensWie
 }
 
 // AI classificatie response
-public class EmailClassificatie
+public class BerichtClassificatie
 {
     public VerzoekType Type { get; set; }
     public string? Datum { get; set; }           // yyyy-MM-dd — eerste/primaire datum
@@ -29,6 +29,8 @@ public class EmailClassificatie
     public string? Tegenstander { get; set; }
     public string Samenvatting { get; set; } = "";
     public NamensWie NamensWie { get; set; }
+    // Gevuld door AI als het verzoek mogelijk een KNVB-regel overtreedt (#73)
+    public string? KnvbNotitie { get; set; }
 
     /// <summary>
     /// Retourneert alle unieke datums: Datums als die er zijn, anders alleen Datum.
@@ -43,8 +45,8 @@ public class EmailClassificatie
     }
 }
 
-// Inkomende email data
-public class InkomendEmail
+// Inkomend bericht (kanaal-agnostisch: email, WhatsApp, dry-run, etc.)
+public class InkomendBericht
 {
     public string MessageId { get; set; } = "";
     public string ConversationId { get; set; } = "";

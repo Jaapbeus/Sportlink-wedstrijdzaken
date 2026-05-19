@@ -1,0 +1,52 @@
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
+using BlazorAdmin;
+using BlazorAdmin.Services;
+
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+builder.RootComponents.Add<App>("#app");
+builder.RootComponents.Add<HeadOutlet>("head::after");
+
+// FunctionBaseUrl: in ontwikkeling het lokale adres, in productie het Function App adres.
+var functionBaseUrl = builder.Configuration["FunctionBaseUrl"] ?? "";
+if (string.IsNullOrWhiteSpace(functionBaseUrl))
+    functionBaseUrl = builder.HostEnvironment.BaseAddress;
+
+if (builder.HostEnvironment.IsProduction())
+{
+    // Productie: Entra ID Bearer token via MSAL — token wordt automatisch meegestuurd
+    // naar de Function App (Easy Auth valideert server-side).
+    var clientId = builder.Configuration["AzureAd:ClientId"]!;
+    var apiScope = $"api://{clientId}/Admin.Access";
+
+    builder.Services.AddMsalAuthentication(options =>
+    {
+        builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
+        options.ProviderOptions.DefaultAccessTokenScopes.Add(apiScope);
+    });
+    builder.Services.AddScoped<IAuthService, EntraAuthService>();
+
+    // AdminApiClient met Bearer token: AuthorizationMessageHandler voegt automatisch
+    // het Entra ID access token toe aan elk request richting de Function App URL.
+    var capturedFunctionBaseUrl = functionBaseUrl;
+    var capturedScope = apiScope;
+    builder.Services.AddScoped<AdminApiClient>(sp =>
+    {
+        var handler = sp.GetRequiredService<AuthorizationMessageHandler>()
+            .ConfigureHandler(
+                authorizedUrls: [capturedFunctionBaseUrl],
+                scopes: [capturedScope]);
+        var http = new HttpClient(handler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
+        return new AdminApiClient(http);
+    });
+}
+else
+{
+    // Ontwikkeling: geen auth, plain HttpClient
+    builder.Services.AddScoped<IAuthService, LocalAuthService>();
+    builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(functionBaseUrl) });
+    builder.Services.AddScoped<AdminApiClient>();
+}
+
+await builder.Build().RunAsync();

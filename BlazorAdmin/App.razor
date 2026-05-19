@@ -1,0 +1,81 @@
+@inject HttpClient Http
+@implements IAsyncDisposable
+
+@if (_phase is Phase.Checking or Phase.Ready)
+{
+    <div class="api-startup">
+        <div class="startup-card">
+            @if (_phase == Phase.Checking)
+            {
+                <div class="startup-spinner">
+                    <div class="spinner-ring"></div>
+                </div>
+                <p class="startup-label">@_statusText</p>
+            }
+            else
+            {
+                <div class="startup-check">
+                    <svg class="checkmark-svg" viewBox="0 0 52 52">
+                        <circle class="checkmark-circle" cx="26" cy="26" r="25" fill="none" />
+                        <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+                    </svg>
+                </div>
+                <p class="startup-label startup-label-ready">Verbonden!</p>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+
+@code {
+    private Phase _phase = Phase.Checking;
+    private string _statusText = "Verbinding maken...";
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync() => await CheckApiAsync();
+
+    private async Task CheckApiAsync()
+    {
+        for (var attempt = 0; attempt < 40 && !_cts.Token.IsCancellationRequested; attempt++)
+        {
+            try
+            {
+                var r = await Http.GetAsync("api/health", _cts.Token);
+                if (r.IsSuccessStatusCode)
+                {
+                    _phase = Phase.Ready;
+                    StateHasChanged();
+                    await Task.Delay(1100, _cts.Token);
+                    _phase = Phase.Running;
+                    return;
+                }
+            }
+            catch (OperationCanceledException) { return; }
+            catch { }
+
+            if (attempt is 6)  _statusText = "Wachten op server...";
+            if (attempt is 15) _statusText = "Nog even geduld...";
+            StateHasChanged();
+            await Task.Delay(500, _cts.Token);
+        }
+
+        // Na ~20s nog steeds geen verbinding → toon app in degraded mode
+        _phase = Phase.Running;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cts.CancelAsync();
+        _cts.Dispose();
+    }
+
+    private enum Phase { Checking, Ready, Running }
+}
