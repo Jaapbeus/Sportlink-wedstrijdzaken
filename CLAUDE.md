@@ -190,6 +190,39 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Architectuurregels — altijd van toepassing
 
+### Blazor auth-gate: altijd BOVEN de Router, nooit erin
+
+**KRITIEKE REGEL — twee keer overtreden (PR #178 en PR #179):**
+
+De Blazor admin UI mag nooit zichtbaar zijn voor niet-ingelogde gebruikers — ook niet kortstondig, ook niet de sidebar/navigatie, ook niet de FEEDBACK-knop.
+
+**Fout patroon (VERBODEN):**
+```razor
+<AuthorizeRouteView DefaultLayout="@typeof(MainLayout)">
+    <NotAuthorized><RedirectToLogin /></NotAuthorized>
+```
+→ `AuthorizeRouteView` rendert `MainLayout` (inclusief sidebar + alle knoppen) voor ALLE states — ook Authorizing en NotAuthorized. Gebruiker ziet de volledige UI.
+
+**Juist patroon (VERPLICHT):**
+```razor
+@* App.razor controleert auth VOORDAT Router/MainLayout wordt gerenderd *@
+else if (_onAuthRoute)       { <Router> ... <RouteView /> (geen layout) } // MSAL callback
+else if (_isAuthenticated)   { <Router> ... <RouteView DefaultLayout="MainLayout" /> }
+@* Niet ingelogd: niets tonen — NavigateToLogin is al aangeroepen *@
+```
+
+**Implementatieregels:**
+1. `App.razor` injecteert `AuthenticationStateProvider` en roept `GetAuthenticationStateAsync()` aan vóór de Router rendert
+2. `MainLayout` (sidebar, navigatie, FEEDBACK-knop) wordt ALLEEN gerenderd als `_isAuthenticated = true`
+3. `/authentication/...` routes (MSAL callbacks) krijgen een aparte Router-branch zonder layout
+4. `NavigationManager.LocationChanged` bewaken voor terugkeer van MSAL-callback naar app
+5. Geen `AuthorizeRouteView` gebruiken als de DefaultLayout de volledige app-shell is
+
+**Verificatie bij elke Blazor auth-wijziging:**
+- Open de site in Incognito/InPrivate mode
+- Controleer: wordt de Microsoft login-pagina getoond ZONDER enige admin-UI zichtbaar?
+- Controleer: is de zijbalk/navigatie/FEEDBACK-knop VOLLEDIG onzichtbaar vóór login?
+
 ### UTC in database, lokale tijd in GUI
 
 - **Database:** alle `DateTime` kolommen opslaan in **UTC** (GETUTCDATE(), geen GETDATE()).
