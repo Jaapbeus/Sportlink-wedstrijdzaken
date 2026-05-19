@@ -1,0 +1,269 @@
+@using System.Reflection
+@inject AdminApiClient Api
+@inject IJSRuntime JS
+@inject IAuthService Auth
+
+<button class="btn btn-warning btn-sm me-3" @onclick="OpenAsync">FEEDBACK</button>
+
+@if (_isOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45)" @onclick="SluitAlsAchtergrond">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+
+                @if (_stap == Stap.Formulier)
+                {
+                    <div class="modal-header">
+                        <h5 class="modal-title">Feedback geven</h5>
+                        <button type="button" class="btn-close" @onclick="Sluit"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Wat wil je melden?</label>
+                            <div class="btn-group w-100" role="group">
+                                @foreach (var optie in new[] { "Fout", "Verzoek", "Vraag" })
+                                {
+                                    <input type="radio" class="btn-check" id="type-@optie"
+                                           name="feedbackType" value="@optie"
+                                           checked="@(_type == optie)"
+                                           @onchange="() => { _type = optie; _vragen.Clear(); _antwoorden.Clear(); }" />
+                                    <label class="btn btn-outline-secondary" for="type-@optie">@optie</label>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Omschrijving</label>
+                            <textarea class="form-control" rows="4" placeholder="Beschrijf in eigen woorden wat er mis gaat of wat je wilt kunnen doen…"
+                                      @bind="_beschrijving"></textarea>
+                        </div>
+
+                        @if (_vragen.Count > 0)
+                        {
+                            <div class="alert alert-info py-2 mb-3">
+                                <small>We hebben nog wat extra informatie nodig:</small>
+                            </div>
+                            @for (var i = 0; i < _vragen.Count; i++)
+                            {
+                                var idx = i;
+                                <div class="mb-3">
+                                    <label class="form-label small">@_vragen[idx]</label>
+                                    <input type="text" class="form-control form-control-sm"
+                                           value="@(_antwoorden.Count > idx ? _antwoorden[idx] : "")"
+                                           @oninput="e => ZetAntwoord(idx, e.Value?.ToString() ?? string.Empty)" />
+                                </div>
+                            }
+                        }
+
+                        @if (_foutmelding != null)
+                        {
+                            <div class="alert alert-danger py-2 mt-2">@_foutmelding</div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" @onclick="Sluit">Annuleren</button>
+                        <button class="btn btn-primary" disabled="@_bezig" @onclick="ControlerenAsync">
+                            @if (_bezig)
+                            { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            @(_vragen.Count > 0 ? "Opnieuw controleren" : "Controleren")
+                        </button>
+                    </div>
+                }
+
+                else if (_stap == Stap.Overzicht)
+                {
+                    <div class="modal-header">
+                        <h5 class="modal-title">Overzicht</h5>
+                        <button type="button" class="btn-close" @onclick="Sluit"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            Dit wordt als melding doorgestuurd naar de ontwikkelaar als GitHub issue.
+                        </p>
+                        <dl class="row mb-0 small">
+                            <dt class="col-4">Type</dt>
+                            <dd class="col-8">@_type</dd>
+                            <dt class="col-4">Pagina</dt>
+                            <dd class="col-8">@(_context?.Pagina ?? "—")</dd>
+                            <dt class="col-4">Versie</dt>
+                            <dd class="col-8">@(_context?.Versie ?? "?")</dd>
+                        </dl>
+                        <hr class="my-2" />
+                        <p class="small mb-0"><em>@_beschrijving</em></p>
+                        @if (_vragen.Count > 0)
+                        {
+                            <ul class="list-unstyled mt-2 mb-0 small">
+                                @for (var i = 0; i < _vragen.Count; i++)
+                                {
+                                    <li><strong>@_vragen[i]</strong><br />@(_antwoorden.Count > i ? _antwoorden[i] : "—")</li>
+                                }
+                            </ul>
+                        }
+                        @if (_foutmelding != null)
+                        {
+                            <div class="alert alert-danger py-2 mt-2">@_foutmelding</div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" @onclick="() => { _stap = Stap.Formulier; _foutmelding = null; }">← Terug</button>
+                        <button class="btn btn-success" disabled="@_bezig" @onclick="VersturenAsync">
+                            @if (_bezig)
+                            { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Versturen
+                        </button>
+                    </div>
+                }
+
+                else if (_stap == Stap.Bevestiging)
+                {
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title text-success">Bedankt!</h5>
+                        <button type="button" class="btn-close" @onclick="Sluit"></button>
+                    </div>
+                    <div class="modal-body text-center py-4">
+                        <div class="fs-1 mb-2">✅</div>
+                        <p>Je melding is ontvangen en staat klaar voor de ontwikkelaar.</p>
+                        <a href="@_issueUrl" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                            Issue #@_issueNummer bekijken
+                        </a>
+                    </div>
+                    <div class="modal-footer border-0">
+                        <button class="btn btn-secondary" @onclick="Sluit">Sluiten</button>
+                    </div>
+                }
+
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isOpen;
+    private bool _bezig;
+    private string? _foutmelding;
+    private Stap _stap = Stap.Formulier;
+
+    private string _type = "Fout";
+    private string _beschrijving = "";
+    private List<string> _vragen = [];
+    private List<string> _antwoorden = [];
+    private FeedbackContext? _context;
+
+    private int _issueNummer;
+    private string _issueUrl = "";
+
+    private enum Stap { Formulier, Overzicht, Bevestiging }
+
+    private async Task OpenAsync()
+    {
+        _isOpen = true;
+        _stap = Stap.Formulier;
+        _beschrijving = "";
+        _type = "Fout";
+        _vragen = [];
+        _antwoorden = [];
+        _foutmelding = null;
+
+        var pagina = await JS.InvokeAsync<string>("eval", "window.location.pathname");
+        var browser = await JS.InvokeAsync<string>("eval", "navigator.userAgent");
+        var versie = typeof(FeedbackWidget).Assembly.GetName().Version?.ToString(3) ?? "?";
+        var rol = Auth.IsAdmin ? "admin" : "gebruiker";
+
+        _context = new FeedbackContext
+        {
+            Pagina = pagina,
+            Versie = versie,
+            Rol = rol,
+            Browser = browser.Length > 120 ? browser[..120] : browser
+        };
+    }
+
+    private void Sluit()
+    {
+        _isOpen = false;
+        _foutmelding = null;
+    }
+
+    private void SluitAlsAchtergrond() => Sluit();
+
+    private void ZetAntwoord(int index, string waarde)
+    {
+        while (_antwoorden.Count <= index)
+            _antwoorden.Add("");
+        _antwoorden[index] = waarde;
+    }
+
+    private async Task ControlerenAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_beschrijving) || _beschrijving.Trim().Length < 10)
+        {
+            _foutmelding = "Vul een beschrijving in van minimaal 10 tekens.";
+            return;
+        }
+
+        _bezig = true;
+        _foutmelding = null;
+
+        var request = BouwRequest();
+        var result = await Api.ValidateFeedbackAsync(request);
+
+        _bezig = false;
+
+        if (!result.Success)
+        {
+            _foutmelding = result.ErrorMessage ?? "Controleren mislukt. Probeer het opnieuw.";
+            return;
+        }
+
+        if (result.Data!.Volledig)
+        {
+            _stap = Stap.Overzicht;
+        }
+        else
+        {
+            _vragen = result.Data.Vragen ?? [];
+            _antwoorden = new List<string>(new string[_vragen.Count]);
+        }
+    }
+
+    private async Task VersturenAsync()
+    {
+        _bezig = true;
+        _foutmelding = null;
+
+        var request = BouwRequest();
+        var result = await Api.SubmitFeedbackAsync(request);
+
+        _bezig = false;
+
+        if (!result.Success)
+        {
+            _foutmelding = result.ErrorMessage ?? "Indienen mislukt. Probeer het opnieuw.";
+            return;
+        }
+
+        _issueNummer = result.Data!.IssueNummer;
+        _issueUrl = result.Data.IssueUrl;
+        _stap = Stap.Bevestiging;
+    }
+
+    private FeedbackValidateRequest BouwRequest()
+    {
+        var qa = _vragen
+            .Select((v, i) => new FeedbackVraagAntwoord
+            {
+                Vraag = v,
+                Antwoord = _antwoorden.Count > i ? _antwoorden[i] : ""
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Antwoord))
+            .ToList();
+
+        return new FeedbackValidateRequest
+        {
+            Type = _type,
+            Beschrijving = _beschrijving.Trim(),
+            VragenAntwoorden = qa,
+            Context = _context
+        };
+    }
+}
