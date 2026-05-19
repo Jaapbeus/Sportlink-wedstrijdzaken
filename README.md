@@ -1,17 +1,17 @@
 # Sportlink Wedstrijdzaken
 
-> **Open-source automation layer for Dutch football clubs using Sportlink Club (KNVB).**  
-> Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.
+> **Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Security](https://img.shields.io/badge/AVG%2FGDPR-compliant-green.svg)](SECURITY.md)
 [![Platform](https://img.shields.io/badge/platform-Azure%20Functions%20%7C%20Blazor-0078d4.svg)](https://azure.microsoft.com)
+[![Changelog](https://img.shields.io/badge/changelog-CHANGELOG.md-informational)](CHANGELOG.md)
 
 ---
 
 ## Het probleem
 
-Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse voetbalverenigingen (KNVB-aangesloten). Het werkt — maar het werkt traag, omslachtig en biedt nauwelijks automatisering. Voor een kleine club met vijf teams valt dat mee. Voor een grote vereniging met dertig teams of meer wordt het een wekelijks gevecht.
+Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse voetbalverenigingen. Het werkt — maar het werkt traag, omslachtig en biedt nauwelijks automatisering. Voor een kleine club met vijf teams valt dat mee. Voor een grote vereniging met dertig teams of meer wordt het een wekelijks gevecht.
 
 **Herkenbare pijnpunten:**
 
@@ -35,12 +35,14 @@ Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen
 
 **Geen handmatig zoekwerk meer.** De juiste contactpersonen worden automatisch gevonden via de koppeling met de ledenexport.
 
-### 3 — Admin GUI (in ontwikkeling)
-Een Blazor WebAssembly-applicatie geeft beheerders een overzicht van:
-- Instellingen (API-verbinding, e-mailaccounts, herplan-deadlines)
-- E-mailtemplates beheren
-- Voorkeurstijden per team instellen
-- Verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
+### 3 — Admin GUI
+Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig beheer over:
+- **Instellingen** — API-verbinding, e-mailaccounts, herplan-deadlines, GPS-coördinaten
+- **E-mailtemplates** — AI-antwoordtemplates per berichttype; gedeelde e-mailvoetnoot
+- **Voorkeurstijden** — per team gewenste speeltijden instellen
+- **Veldbeschikbaarheid** — tijdvensters per veld configureren
+- **E-mail tester** — AI-classificatie dry-run zonder e-mail te versturen
+- **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
 
 ---
 
@@ -72,22 +74,6 @@ Azure Static Web Apps (gratis tier)
 
 **Technologie:** .NET 10 · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · Azure OpenAI · Azure Static Web Apps · Entra ID
 
-### Kostenmodel: zo dicht mogelijk bij €0
-
-Een belangrijk ontwerpprincipe is dat Azure-kosten zo laag mogelijk blijven — idealiter €0 per maand.
-
-| Azure-service | Tier | Kosten |
-|---|---|---|
-| Azure Functions | Consumption plan | **Gratis** — eerste 1 miljoen aanroepen/maand inbegrepen |
-| Azure Static Web Apps | Free tier | **Gratis** — €0 gegarandeerd |
-| Azure SQL Database | Free Offer (32 GB, serverless) | **Gratis** — via [Azure SQL Free Offer](https://learn.microsoft.com/azure/azure-sql/database/free-offer) |
-| Entra ID | Gratis laag | **Gratis** — tot 50.000 actieve gebruikers/maand |
-| Azure OpenAI | Pay-per-use | **< €1/maand** bij normaal clubgebruik |
-
-> **Azure SQL Free Offer:** één gratis serverless database van 32 GB per Azure-abonnement. Voor een club met meerdere teams is dit ruim voldoende. De database schaalt automatisch terug naar nul buiten gebruiksuren — geen kosten bij inactiviteit.
-
-Het enige onderdeel met variabele kosten is Azure OpenAI voor de AI-classificatie van e-mails. Bij een normale voetbalclub (enkele tientallen wedstrijdgerelateerde e-mails per week) blijft dit verwaarloosbaar.
-
 ---
 
 ## Voor wie is dit interessant?
@@ -100,17 +86,9 @@ Het enige onderdeel met variabele kosten is Azure OpenAI voor de AI-classificati
 - Nederlandse voetbalwereld (domeinkennis om de juiste problemen op te lossen)
 
 **Als eindgebruiker** is dit project bedoeld voor verenigingen die:
-- Draaien op **Sportlink Club** (KNVB-aangesloten)
+- Draaien op Sportlink Club (KNVB-aangesloten)
 - Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
-- Bereid zijn een Azure-omgeving in te richten (kosten: **vrijwel €0** dankzij gratis Azure-tiers)
-
-Het project is **multi-club**: één installatie kan meerdere verenigingen bedienen, elk met hun eigen Sportlink-koppeling en isolatie van elkaars data.
-
-## Open source
-
-Dit project is volledig open source (MIT-licentie). Alle code, configuratie en documentatie zijn vrij beschikbaar. Clubs, ontwikkelaars en andere Sportlink-gebruikers zijn uitgenodigd om mee te bouwen, issues te melden of het project te forken voor hun eigen omgeving.
-
-**Huidige stand:** in actief gebruik bij VV VRC (Ridderkerk). Ontworpen om schaalbaar te zijn naar meerdere verenigingen.
+- Bereid zijn een Azure-omgeving in te richten (kosten: enkele euro's per maand)
 
 ---
 
@@ -161,9 +139,19 @@ Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en ver
 
 ---
 
+## Releases en changelog
+
+Alle noemenswaardige wijzigingen staan in [CHANGELOG.md](CHANGELOG.md).  
+Releases zijn beschikbaar via [GitHub Releases](../../releases).
+
+Versienummering volgt [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.  
+Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSIONING.md).
+
+---
+
 ## Bijdragen
 
-Pull requests zijn welkom. Kijk voor openstaand werk naar de [GitHub Issues](../../issues) — issues gelabeld `fase: N` zijn onderdeel van de geplande v2.0-roadmap.
+Pull requests zijn welkom. Kijk voor openstaand werk naar de [GitHub Issues](../../issues).
 
 Heb je een club die baat zou hebben bij deze oplossing, of wil je meedenken over de richting? Open een [Discussion](../../discussions) of stuur een issue.
 
