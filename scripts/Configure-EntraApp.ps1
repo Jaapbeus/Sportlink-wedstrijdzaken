@@ -26,15 +26,15 @@
     .\scripts\Configure-EntraApp.ps1 -WhatIf    # dry-run
 
 .NOTES
-    Doelapp: Sportlink Admin GUI (clientId 75802a92-b3cb-4e98-bd4c-3167ce17d3fe).
-    Zie docs/AZURE-ENTRA-SETUP.md voor het volledige protocol en handmatige
-    Portal-stappen als alternatief.
+    Doelapp: Sportlink Admin GUI — vul ClientId en TenantId in vanuit je eigen
+    Entra App Registration. Zie docs/AZURE-ENTRA-SETUP.md voor het volledige
+    protocol en handmatige Portal-stappen als alternatief.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string] $ClientId = '75802a92-b3cb-4e98-bd4c-3167ce17d3fe',
     [string] $ExpectedTenantId = '74f2b2fe-a0af-4983-9520-ea3b2ac423fb',
-    [string] $AdminUserPrincipalName = 'jaapadmin@vv-vrc.nl'
+    [string] $AdminUserPrincipalName = 'admin@your-club.nl'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -271,7 +271,7 @@ Write-Host '  NA DEZE WIJZIGINGEN — verplichte gebruikersactie:' -ForegroundCo
 Write-Host '    1. Sluit alle bestaande browser-tabs van de Admin GUI.' -ForegroundColor Yellow
 Write-Host '    2. Open een verse Incognito/InPrivate sessie.' -ForegroundColor Yellow
 Write-Host '    3. Navigeer naar https://lively-field-03c896603.7.azurestaticapps.net' -ForegroundColor Yellow
-Write-Host '    4. Log opnieuw in met jaapadmin@vv-vrc.nl.' -ForegroundColor Yellow
+Write-Host '    4. Log opnieuw in met het admin-account.' -ForegroundColor Yellow
 Write-Host ''
 Write-Host '  Reden: MSAL kan een oud ID-token in localStorage hebben (vóór deze wijziging).' -ForegroundColor DarkGray
 Write-Host '  Verse sessie garandeert een nieuw token mét de roles claim.' -ForegroundColor DarkGray
