@@ -45,6 +45,21 @@ function Write-Done($t)    { Write-Host "  ✓ $t" -ForegroundColor Green }
 function Write-Skip($t)    { Write-Host "  → $t (al correct)" -ForegroundColor DarkGreen }
 function Write-WouldDo($t) { Write-Host "  ⊘ $t (WhatIf — niet uitgevoerd)" -ForegroundColor Magenta }
 
+# ── Banner: dit script WIJZIGT Azure ──────────────────────────────────────────
+Write-Host ''
+if ($WhatIfPreference) {
+    Write-Host '┌─────────────────────────────────────────────────────────────────┐' -ForegroundColor Magenta
+    Write-Host '│  Configure-EntraApp.ps1 — DRY-RUN (-WhatIf)                     │' -ForegroundColor Magenta
+    Write-Host '│  Toont wat zou gebeuren — er worden GEEN wijzigingen toegepast. │' -ForegroundColor Magenta
+    Write-Host '└─────────────────────────────────────────────────────────────────┘' -ForegroundColor Magenta
+} else {
+    Write-Host '┌─────────────────────────────────────────────────────────────────┐' -ForegroundColor Yellow
+    Write-Host '│  Configure-EntraApp.ps1 — APPLY MODE                            │' -ForegroundColor Yellow
+    Write-Host '│  Dit script PAST de Azure Entra config aan (idempotent).        │' -ForegroundColor Yellow
+    Write-Host '│  Voor een dry-run: gebruik -WhatIf parameter.                   │' -ForegroundColor Yellow
+    Write-Host '└─────────────────────────────────────────────────────────────────┘' -ForegroundColor Yellow
+}
+
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 Write-Section 'Pre-flight'
 
