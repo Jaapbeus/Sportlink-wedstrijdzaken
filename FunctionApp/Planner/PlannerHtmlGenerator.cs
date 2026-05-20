@@ -134,7 +134,8 @@ namespace SportlinkFunction.Planner
             sb.AppendLine("</div>");
 
             // Samenvatting
-            var plannerNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner";
+            var plannerNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
+                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
             sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van veld 5 verplaatst: {suggesties.Count(s => s.HuidigVeldNummer == 5)} | Gegenereerd door {plannerNaam}</p>");
 
             // JavaScript: klik-interactie
@@ -559,7 +560,9 @@ document.addEventListener('click', () => {
                 sb.AppendLine($"<tr style='background:{r.Bg};border-bottom:1px solid #e5e7eb;'><td style='padding:5px 6px;'>{r.T:HH:mm}</td><td style='padding:5px 6px;'>{r.V}</td><td style='padding:5px 6px;'>{r.W}</td><td style='padding:5px 6px;color:{r.Fg};'>{r.S}</td></tr>");
 
             sb.AppendLine("</table>");
-            sb.AppendLine($"<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>{SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner"}</p>");
+            var plannerNaamFooter = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
+                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
+            sb.AppendLine($"<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>{plannerNaamFooter}</p>");
             sb.AppendLine("</body></html>");
             return sb.ToString();
         }

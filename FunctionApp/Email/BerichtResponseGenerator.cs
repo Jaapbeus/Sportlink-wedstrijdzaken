@@ -604,7 +604,8 @@ public static class BerichtResponseGenerator
             return voetnoot;
 
         // Fallback: auto-opgebouwde handtekening uit losse instellingen
-        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam") ?? "Veldplanner";
+        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
+            ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
         var coordinatorNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
         var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie") ?? "Coördinator thuiswedstrijden";
 

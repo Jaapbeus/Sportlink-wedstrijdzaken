@@ -54,7 +54,8 @@ public class BerichtAiService
 
     private static string BouwClassificatieSystemPrompt()
     {
-        var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName") ?? "de thuisclub";
+        var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubName' ontbreekt in dbo.AppSettings");
 
         return $$"""
             Je bent een assistent voor de coördinator thuiswedstrijden van {{clubNaam}}.
