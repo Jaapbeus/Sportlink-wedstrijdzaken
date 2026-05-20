@@ -88,6 +88,14 @@ Als je meerdere Entra tenants hebt: `az account show` toont welke actief is. `Co
 
 Hoewel Entra documenteert dat app-rollen "automatisch" in tokens komen, blijkt in de praktijk dat de `roles` claim alleen consistent in het ID-token wordt geleverd als deze óók in `optionalClaims.idToken` staat. Layer 3b is dus géén overbodige verdediging maar noodzakelijk voor Layer 4.
 
+### `roles` mag NIET in `optionalClaims.accessToken`
+
+Microsoft Graph weigert `roles` in `optionalClaims.accessToken` met de fout:
+
+> `Property accessToken in payload has a value that does not match schema.`
+
+`roles` is een implicit access-token claim die Entra zelf toevoegt bij app-role assignments — handmatig zetten is niet ondersteund. `Configure-EntraApp.ps1` patcht daarom alleen `optionalClaims.idToken`, niet `.accessToken`.
+
 ### `IsInRole` is case-sensitive
 
 In code: gebruik `IsInRole("admin")` (kleine letters), niet `IsInRole("Admin")`. De App Role `value` is `admin`; de `displayName` (`"Admin"`) wordt niet in tokens geschreven.
