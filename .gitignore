@@ -20,6 +20,12 @@
 !.env.template
 !.env.example
 
+# ── Lokale operationele documenten (niet in repo) ─────────────────────────────
+# Stap-voor-stap handleidingen met azure/github URLs en resource-namen.
+# Staan alleen lokaal — bevatten geen secrets maar wel infra-details die niet
+# publiek hoeven te zijn.
+SECRET-ROTATION.md
+
 # ── Build output ──────────────────────────────────────────────────────────────
 [Dd]ebug/
 [Dd]ebugPublic/
