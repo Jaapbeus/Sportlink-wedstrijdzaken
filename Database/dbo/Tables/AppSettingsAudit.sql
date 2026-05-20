@@ -5,6 +5,6 @@ CREATE TABLE [dbo].[AppSettingsAudit] (
     [Veld]          NVARCHAR(100) NOT NULL,
     [OudeWaarde]    NVARCHAR(MAX) NULL,
     [NieuweWaarde]  NVARCHAR(MAX) NULL,
-    [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettingsAudit_ClubCode] DEFAULT 'VRC',
+    [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettingsAudit_ClubCode] DEFAULT 'VRC', -- migratie-backwards-compat; inserts geven altijd expliciet ClubCode mee
     CONSTRAINT [PK_AppSettingsAudit] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
