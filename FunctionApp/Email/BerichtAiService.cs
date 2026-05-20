@@ -121,7 +121,7 @@ public class BerichtAiService
     /// </summary>
     public async Task<BerichtClassificatie> ClassificeerBerichtAsync(string body, string subject, string afzender)
     {
-        _logger.LogInformation("Bericht classificatie gestart voor onderwerp: {Subject}", subject);
+        _logger.LogInformation("Bericht classificatie gestart (onderwerp niet gelogd — AVG #210)");
 
         var userPrompt = $"Vandaag is {DateTime.Now:yyyy-MM-dd} ({DateTime.Now:dddd}).\n\nVan: {afzender}\nOnderwerp: {subject}\n\n{body}";
 
@@ -149,7 +149,7 @@ public class BerichtAiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fout bij het classificeren van bericht met onderwerp: {Subject}", subject);
+            _logger.LogError(ex, "Fout bij het classificeren van bericht (onderwerp niet gelogd — AVG #210)");
             throw;
         }
     }
