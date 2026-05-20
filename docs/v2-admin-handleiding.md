@@ -1,9 +1,14 @@
 # v2 Admin GUI — handleiding
 
-Deze handleiding beschrijft het v2 Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API
-in `FunctionApp/Admin/`. Het portaal en de admin-API zitten in de branch `v2/develop`. Productie
-draait op v1 (`main`). v2 wordt pas gedeployed wanneer alle Azure-resources zijn ingericht
-(zie sectie *Azure resources aanmaken*).
+Deze handleiding beschrijft het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API
+in `FunctionApp/Admin/`. Het portaal is **live** op:
+
+- **Admin GUI:** `https://[swa-unique-id].7.azurestaticapps.net`
+- **Function App:** `https://func-[clubcode]-sportlink.azurewebsites.net`
+
+De SWA dient uitsluitend statische Blazor-bestanden. De Blazor-app haalt zelf een Bearer token
+op via MSAL (Entra ID) en stuurt dat mee naar de Function App. Easy Auth op de Function App
+valideert het token server-side.
 
 ---
 
@@ -16,30 +21,27 @@ draait op v1 (`main`). v2 wordt pas gedeployed wanneer alle Azure-resources zijn
    ```powershell
    sqlcmd -S YOUR_SQL_SERVER -d SportlinkSqlDb -E -i .\Database\Script.PostDeployment1.sql
    ```
-3. Installeer Azurite (voor storage emulator)
+3. Installeer Azurite (voor storage emulator): `npm install -g azurite`
 
-### Functions en Blazor samen draaien
+### Services starten
 
-In **twee terminals**:
-
-```powershell
-# Terminal 1: Functions backend op poort 7094
-cd FunctionApp
-func start --port 7094
-```
+Gebruik `Start-Debug.ps1` — dit script start Azurite, FunctionApp en BlazorAdmin elk in een
+eigen venster in de juiste volgorde:
 
 ```powershell
-# Terminal 2: Blazor WASM frontend
-cd BlazorAdmin
-dotnet run
+.\Start-Debug.ps1
+# Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 ```
 
-De Blazor app draait standaard op `http://localhost:5000` of `http://localhost:5001` en spreekt de
-Functions aan op `http://localhost:7094` (zie `BlazorAdmin/wwwroot/appsettings.json`,
-`FunctionBaseUrl`). CORS is in `FunctionApp/Program.cs` alleen ingeschakeld in DEBUG.
+Wacht ~15 seconden en controleer dan met:
 
-In de lokale dev-omgeving gebruikt Blazor altijd `LocalAuthService` — je bent altijd ingelogd als
-`LocalDev` met admin-rol. Echte Entra ID wordt pas geactiveerd in productie via de SWA-configuratie.
+```powershell
+.\Test-App.ps1          # verificatie: schema + build + endpoints + Blazor-pagina's
+.\Test-App.ps1 -Fix     # herstelt schema-drift automatisch
+```
+
+In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelper` alle
+`/api/beheer/*` calls altijd doorlaat — je bent automatisch admin zonder login.
 
 ---
 
@@ -47,279 +49,239 @@ In de lokale dev-omgeving gebruikt Blazor altijd `LocalAuthService` — je bent 
 
 ### Branches
 
-- `main` — productie (v1). Hier worden geen v2-wijzigingen aan toegevoegd.
-- `v2/develop` — alle v2 ontwikkelwerk. Blijft lokaal totdat v2 release-klaar is.
-- `feature/*` — losse korte branches voor v1 hotfixes.
+- `main` — productie; alleen via PR, nooit direct pushen
+- `v2/develop` — standaard basis voor nieuwe features en fixes
+- `feature/#<nr>-<slug>` — losse branches voor features en bugfixes (basis: `v2/develop`)
+- `hotfix/#<nr>-<slug>` — urgente productiefixes (basis: `main`; na merge ook PR naar `v2/develop`)
 
-### v1 hotfix procedure
+### Feature-workflow
 
-1. Branch `feature/v1-fix-...` vanaf `main`
-2. Commit + PR → review → merge naar `main`
-3. Na merge: `git checkout v2/develop && git merge main` om hotfixes mee te nemen
-4. CI op `main` controleert de deploy (zie `.github/workflows/deploy.yml`)
+1. Branch aanmaken vanaf `v2/develop`: `git checkout -b feature/#<nr>-<slug> v2/develop`
+2. Implementeren, bouwen, verifiëren (`.\Test-App.ps1`)
+3. Commit + push + PR naar `v2/develop`
+4. CI security gate groen → PR mergen
 
-### v2 mergestrategie
+### Hotfix-workflow
 
-- Werk op `v2/develop` met conventionele commits (`feat(v2/#NN): ...`)
-- Geen pushes naar origin totdat alles klaar is
-- Bij release: PR `v2/develop` → `main`, eenmalige groot review + merge
+1. Branch aanmaken vanaf `main`: `git checkout -b hotfix/#<nr>-<slug> main`
+2. Fix + PR naar `main`
+3. Na merge: PR `main` → `v2/develop` aanmaken zodat `v2/develop` gesynchroniseerd blijft
+4. CI op `main` controleert de deploy (`.github/workflows/deploy.yml`)
 
 ---
 
-## 3. Azure resources aanmaken (vóór v2 livegang)
+## 3. Azure resources aanmaken (eenmalig — reeds gedaan)
+
+De resources zijn aangemaakt en actief. Deze sectie is documentatie voor toekomstige herinrichting.
 
 ### Static Web App aanmaken
 
 ```bash
-RG=rg-vrc-sportlink
-LOC=westeurope
-SWA_NAME=swa-vrc-admin
-
-# 1. Resource group bestaat al; SWA aanmaken in 'Free' tier
 az staticwebapp create \
-  --name $SWA_NAME \
-  --resource-group $RG \
-  --location $LOC \
-  --sku Free \
-  --source https://github.com/<owner>/<repo> \
-  --branch main \
-  --token <GITHUB_PAT>
+  --name swa-[clubcode]-sportlink \
+  --resource-group rg-vrc-sportlink \
+  --location westeurope \
+  --sku Free
 ```
 
-> **Tip:** wanneer je via de GitHub Action deployt in plaats van GitHub-bron koppelen, mag je
-> `--source` / `--token` weglaten en de SWA als losse resource gebruiken.
-
-### Deployment token ophalen
+### Deployment token ophalen en opslaan als GitHub Secret
 
 ```bash
 az staticwebapp secrets list \
-  --name $SWA_NAME \
-  --resource-group $RG \
+  --name swa-[clubcode]-sportlink \
+  --resource-group rg-vrc-sportlink \
   --query "properties.apiKey" -o tsv
 ```
 
-### GitHub Secret instellen
+Sla de waarde op als GitHub Secret `AZURE_STATIC_WEB_APPS_API_TOKEN`. De `blazor-deploy` job
+in `.github/workflows/deploy.yml` gebruikt dit token bij elke push naar `main`.
 
-Zet het token in de repo-secrets:
-
-- `AZURE_STATIC_WEB_APPS_API_TOKEN` — de waarde uit het `apiKey` veld hierboven
-
-Optioneel (smoke test):
-
-- `AZURE_STATIC_WEB_APP_HOSTNAME` — bijv. `swa-vrc-admin.azurestaticapps.net`
-
-Zodra `AZURE_STATIC_WEB_APPS_API_TOKEN` is gezet, draait de `blazor-deploy` job in
-`.github/workflows/deploy.yml` mee bij elke push naar `main`.
-
-### Function App linken aan SWA
-
-Voor proxying zonder CORS:
-
-```bash
-az staticwebapp backends link \
-  --name $SWA_NAME \
-  --resource-group $RG \
-  --backend-resource-id "/subscriptions/.../resourceGroups/.../providers/Microsoft.Web/sites/fa-prd-sportlink-01" \
-  --backend-region westeurope
-```
-
-Na linken worden calls op `https://<swa>/api/admin/*` automatisch geforward naar de Function App,
-inclusief de Entra ID identiteit.
+> **Geen SWA-Function koppeling:** de Function App is **niet** gelinkt aan de SWA.
+> De SWA dient alleen statische Blazor-bestanden. API-calls gaan rechtstreeks van Blazor
+> naar de Function App via Bearer tokens — geen SWA-proxying, geen `az staticwebapp backends link`.
 
 ---
 
-## 4. Entra ID app-registratie (stap-voor-stap)
+## 4. Entra ID app-registratie
+
+### App Registration aanmaken
 
 1. Azure Portal → **Microsoft Entra ID** → **App registrations** → **New registration**
-2. Naam: `vrc-admin-swa`
-3. Supported account types: **Single tenant** (zelfde tenant als de Graph-mailbox)
-4. Redirect URI:
-   - Type: **Web**
-   - URI: `https://<swa-name>.azurestaticapps.net/.auth/login/aad/callback`
+2. Naam: `Sportlink Admin GUI`
+3. Supported account types: **Single tenant**
+4. Redirect URI: **Single-page application (SPA)** → `https://<swa-host>/authentication/login-callback`
 5. **Register**
 
-### Client secret aanmaken
+### API scope aanmaken
 
-1. **Certificates & secrets** → **New client secret**
-2. Description: `swa-admin`, Expires: 12 maanden
-3. **Add** — kopieer de **Value** (eenmalig zichtbaar)
+1. **Expose an API** → **Add a scope**
+2. Application ID URI: accepteer de default (`api://<client-id>`)
+3. Scope name: `Admin.Access`
+4. Wie kan toestemming geven: **Admins and users**
+5. **Add scope**
 
-### API permissions
-
-- Microsoft Graph → **User.Read** (delegated) is standaard al ingesteld
-- Geen extra app permissions nodig; de routebescherming verloopt via SWA-rollen
+> Deze scope wordt gebruikt door Blazor als `DefaultAccessTokenScopes` in `Program.cs`.
 
 ### App rollen aanmaken
 
 1. **App roles** → **Create app role**
-2. Display name: `Admin`, Value: `admin`, Description: `VRC Admin GUI volledige toegang`
-3. Allowed member types: **Users/Groups**
-4. **Apply**
+2. Display name: `Admin`, Value: `admin`, Allowed member types: **Users/Groups** → **Apply**
+3. Optioneel: herhaal voor `user` (lees-alleen, toekomstige gebruik)
 
-Optioneel een `user`-rol aanmaken voor lees-alleen toegang (niet vereist in eerste release).
+### Easy Auth configureren op de Function App
 
-### Applicatie-instellingen in SWA
+Easy Auth valideert het Bearer token server-side vóórdat het de functies bereikt.
 
-Zet in de SWA configuratie (`Configuration` blade):
+1. Azure Portal → **Function App** (`func-[clubcode]-sportlink`) → **Authentication**
+2. **Add identity provider** → **Microsoft**
+3. App Registration: **Pick an existing app** → `Sportlink Admin GUI`
+4. Unauthenticated requests: **HTTP 401 Unauthorized**
+5. **Add**
 
-| Naam | Waarde |
-|---|---|
-| `AZURE_CLIENT_ID` | App registration → Application (client) ID |
-| `AZURE_CLIENT_SECRET` | De zojuist aangemaakte client secret value |
+Controleer na het instellen dat `WEBSITE_AUTH_ENABLED = True` in de Application Settings staat.
 
-In `BlazorAdmin/wwwroot/staticwebapp.config.json` staat al:
-- `openIdIssuer`: vervang `TENANT_ID` door het tenant-id van Entra ID
-- `clientIdSettingName: AZURE_CLIENT_ID`
-- `clientSecretSettingName: AZURE_CLIENT_SECRET`
+### Assignment required
+
+1. Azure Portal → **Enterprise applications** → `Sportlink Admin GUI`
+2. **Properties** → **Assignment required** → **Yes**
+
+Zonder deze instelling kan elke tenant-gebruiker een token ophalen — ook zonder toegewezen rol.
 
 ---
 
 ## 5. Roltoewijzing
 
-1. Azure Portal → **Microsoft Entra ID** → **Enterprise applications** → `vrc-admin-swa`
+1. Azure Portal → **Enterprise applications** → `Sportlink Admin GUI`
 2. **Users and groups** → **Add user/group**
 3. Selecteer de gebruiker → **Select a role** → **Admin** → **Assign**
 
-Alleen toegewezen gebruikers krijgen toegang. Niet-toegewezen gebruikers krijgen 403 op alle
-`/api/admin/*` routes (afgedwongen door `staticwebapp.config.json`).
+Alleen gebruikers met de `admin`-rol krijgen toegang tot de `/api/beheer/*` endpoints.
+Gebruikers zonder rol zien de `NoAccess`-pagina in Blazor (frontend-gate, App.razor) én
+krijgen 403 van de Function App (backend-gate, EasyAuthHelper).
+
+### Verplichte 3-user-test bij elke auth-wijziging
+
+| Gebruiker | Configuratie | Verwacht resultaat |
+|---|---|---|
+| Admin-user | Rol `admin` toegewezen | Volledige UI, alle API-calls slagen |
+| Tweede user | Rol `user` toegewezen | UI laadt, read-API werkt |
+| Derde user | Geen rol | `NoAccess`-pagina, geen sidebar/navigatie |
+| Externe user | Andere tenant of guest | Kan niet inloggen (Entra weigert) |
 
 ---
 
-## 6. EntraAuthService in productie (automatisch geactiveerd)
+## 6. Auth-architectuur in productie
 
-`BlazorAdmin/Program.cs` detecteert de omgeving automatisch:
+### Hoe het werkt
 
-- **Development** (`ASPNETCORE_ENVIRONMENT=Development`) → `LocalAuthService` — altijd admin, geen login
-- **Production** (SWA-deployment) → `AddMsalAuthentication` + `EntraAuthService` — echte Entra ID rollen
+```
+Browser (Blazor WASM)
+  │
+  ├─ App.razor: GetAuthenticationStateAsync() als eerste actie
+  │    Niet ingelogd? → NavigateToLogin → Microsoft login-pagina
+  │    Ingelogd maar geen rol? → NoAccess-pagina
+  │    Admin? → MainLayout + volledige UI
+  │
+  ├─ MSAL haalt Bearer token op bij Entra ID
+  │    Token bevat 'roles' claim met 'admin'
+  │    CustomUserFactory pakt JSON-array uit naar losse claims
+  │
+  └─ AdminApiClient stuurt Bearer token mee via AuthorizationMessageHandler
+       │
+       ▼
+  Azure Function App (func-[clubcode]-sportlink)
+    Easy Auth valideert het token (X-MS-CLIENT-PRINCIPAL header)
+    EasyAuthHelper.RequireAdmin() checkt 'admin' rol op alle /api/beheer/* endpoints
+```
 
-Er is geen handmatige stap nodig om te switchen. Vul wel de placeholders in `appsettings.Production.json` in:
+### Configuratie (`BlazorAdmin/wwwroot/appsettings.Production.json`)
 
 ```json
-// BlazorAdmin/wwwroot/appsettings.Production.json
 {
+  "FunctionBaseUrl": "https://func-[clubcode]-sportlink.azurewebsites.net",
   "AzureAd": {
-    "Authority": "https://login.microsoftonline.com/TENANT_ID_HIER_INVULLEN",
-    "ClientId": "CLIENT_ID_HIER_INVULLEN",
+    "Authority": "https://login.microsoftonline.com/<tenant-id>",
+    "ClientId": "<client-id>",
     "ValidateAuthority": true
-  }
+  },
+  "PostLogoutRedirectUrl": "https://www.[club-domein]/"
 }
 ```
 
-- `TENANT_ID_HIER_INVULLEN` → Entra ID → **Overview** → Directory (tenant) ID
-- `CLIENT_ID_HIER_INVULLEN` → Entra ID → **App registrations** → `vrc-admin-swa` → Application (client) ID
+De werkelijke tenant-ID en client-ID staan al ingevuld in het bestand (geen secrets —
+alleen publieke identifiers). Commit het bestand mee in git.
 
-Commit `appsettings.Production.json` mee (bevat geen secrets — alleen tenant/client ID, die zijn publiek).
+### Verificatie na elke auth-wijziging
+
+1. Open de site in een verse Incognito/InPrivate sessie (geen oude MSAL-token in localStorage)
+2. Microsoft login-pagina verschijnt binnen 2-3 seconden — anders is MSAL niet correct geconfigureerd
+3. Vóór inloggen: geen sidebar, geen navigatie, geen FEEDBACK-knop zichtbaar
+4. Na inloggen met admin-rol: volledige UI laadt, alle API-calls slagen
+5. F12 → Network: controleer dat MSAL redirect naar `login.microsoftonline.com` gaat
 
 ---
 
-## 7. Lokaal testen met Azure SWA CLI (aanbevolen vóór productie)
+## 7. Lokaal testen met Azure SWA CLI (optioneel)
 
-De Azure Static Web Apps CLI emuleert het volledige SWA-gedrag lokaal: routering, auth-emulatie
-en `/api/*` proxying naar de Function App. Hiermee kun je de authenticatieflow testen
-**zonder een echte Entra ID app-registratie of Azure resource**.
+De SWA CLI emuleert de statische hosting lokaal en dwingt `staticwebapp.config.json` routeregels af.
+Omdat de auth in v2 via MSAL in Blazor verloopt (niet via SWA-routeregels), is de SWA CLI
+voornamelijk nuttig voor het testen van de navigatiefallback en cache-headers.
 
 ### Vereisten (eenmalig)
 
-1. **Node.js** ≥ 18 — [nodejs.org](https://nodejs.org/)
-2. **Azure SWA CLI** installeren:
-   ```powershell
-   npm install -g @azure/static-web-apps-cli
-   swa --version   # controleer installatie
-   ```
+```powershell
+npm install -g @azure/static-web-apps-cli
+swa --version
+```
 
 ### Opstarten
 
-Stap 1 — start de bestaande backends (elk in een eigen terminal):
-
-```powershell
-# Terminal 1: Azurite (opslag emulator)
-azurite --location $env:TEMP\azurite
-
-# Terminal 2: Function App backend
-cd FunctionApp
-func start --port 7094
-
-# Terminal 3: Blazor WASM dev server
-cd BlazorAdmin
-dotnet run --launch-profile http
-# → draait op http://localhost:5242
-```
-
-Stap 2 — start de SWA emulator (vierde terminal):
+Start de backends met `Start-Debug.ps1`, daarna in een vierde terminal:
 
 ```powershell
 # In de repo root (waar swa-cli.config.json staat)
 swa start sportlink-admin
-# → SWA emulator draait op http://localhost:4280
+# SWA emulator draait op http://localhost:4280
 ```
 
-### Wat de SWA CLI doet
+De SWA CLI proxied de Blazor dev server (`http://localhost:5242`). Er is geen `/api/*` proxy
+meer naar de Function App — API-calls gaan rechtstreeks van Blazor naar poort 7094.
 
-| Functie | Gedrag |
-|---|---|
-| **Blazor WASM** | Proxy naar `http://localhost:5242` |
-| **`/api/*`** | Proxy naar `http://localhost:7094` |
-| **Routeregels** | `staticwebapp.config.json` afgedwongen (rollen, redirects) |
-| **Auth emulatie** | Mock login op `http://localhost:4280/.auth/login/aad` |
+In de lokale Blazor dev-omgeving (`ASPNETCORE_ENVIRONMENT=Development`) is altijd
+`AlwaysAuthenticatedStateProvider` actief — je bent automatisch admin zonder MSAL.
+De SWA CLI voegt hieraan geen extra auth-laag toe.
 
-### Authenticatie lokaal testen
-
-Ga naar `http://localhost:4280` — de SWA CLI stuurt je door naar een mock login-pagina.
-Vul daar in:
-
-| Veld | Waarde voor testen |
-|---|---|
-| User ID | Willekeurig getal |
-| Username | `testbeheerder` |
-| Roles | `admin` |
-
-Na "Login" ben je ingelogd als admin zonder enige Entra ID. Zo kun je controleren of:
-- `/api/beheer/*` endpoints bereikbaar zijn met admin-rol
-- Pagina's en navigatie kloppen voor ingelogde gebruikers
-- Niet-admins netjes een 403 krijgen (rol leeg laten bij test)
-
-> **Let op:** De `ASPNETCORE_ENVIRONMENT` van de Blazor dev server is `Development`,
-> dus `LocalAuthService` is actief — de Blazor UI toont altijd admin.
-> De SWA CLI emuleert de route-beveiliging (endpoints), niet de Blazor UI.
-> Productie-test de UI door de Blazor app te publiceren en te serveren via `swa start`.
-
-### Volledige productie-emulatie (optioneel)
-
-Wil je ook de Blazor `Production`-omgeving testen (met echte EntraAuthService)?
+Voor een volledige productie-emulatie (met échte MSAL-flow):
 
 ```powershell
-# Publiceer Blazor naar een lokale map
 dotnet publish BlazorAdmin/BlazorAdmin.csproj -c Release -o ./blazor-publish
-
-# Start SWA met de gepubliceerde bestanden (geen dev server)
 swa start ./blazor-publish/wwwroot --api-devserver-url http://localhost:7094
 ```
-
-Hierbij laadt Blazor `appsettings.Production.json` met de `AzureAd`-sectie.
-Je hebt dan wél de echte Tenant ID en Client ID nodig (zie sectie 4 en 6).
 
 ---
 
 ## 8. Snel testen (endpoints direct)
 
-```bash
-# Lokaal: alle endpoints zonder authenticatie (host-key uitschakelen kan via local.settings.json)
-curl http://localhost:7094/api/health
-curl http://localhost:7094/api/beheer/settings
-curl http://localhost:7094/api/beheer/sync/status
-curl http://localhost:7094/api/beheer/templates
-curl http://localhost:7094/api/beheer/voorkeurstijden
-curl http://localhost:7094/api/beheer/email-log
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"onderwerp":"test","afzender":"x@y.nl","body":"kunnen wij zaterdag 18:00 spelen?"}' \
-  http://localhost:7094/api/test/email
+```powershell
+# Lokaal: alle endpoints zonder authenticatie (Easy Auth niet actief lokaal)
+Invoke-RestMethod http://localhost:7094/api/health
+Invoke-RestMethod http://localhost:7094/api/beheer/settings
+Invoke-RestMethod http://localhost:7094/api/beheer/sync/status
+Invoke-RestMethod http://localhost:7094/api/beheer/templates
+Invoke-RestMethod http://localhost:7094/api/beheer/voorkeurstijden
+Invoke-RestMethod http://localhost:7094/api/beheer/email-log
 ```
 
-Of gebruik het geautomatiseerde smoke-test script (zie sectie 9):
+Of gebruik het geautomatiseerde verificatie-script:
 
 ```powershell
-.\scripts\smoke-test.ps1
+.\Test-App.ps1              # schema + build + endpoints + Blazor-pagina's
+.\Test-App.ps1 -Fix         # herstelt schema-drift automatisch
+.\Test-App.ps1 -Verbose     # volledige output per check
 ```
+
+Zie [FunctionApp/docs/TESTING.md](../FunctionApp/docs/TESTING.md) voor een volledig overzicht van
+wat `Test-App.ps1` controleert.
 
 ---
 
@@ -338,7 +300,7 @@ die niet geïnstalleerd is op de devmachine. `dotnet build` compileert succesvol
 aanwezig is; de runtime is een andere installatie.
 
 **Oplossing:** Controleer welke runtimes beschikbaar zijn (`dotnet --list-runtimes`) en zorg dat
-`TargetFramework` daarmee overeenkomt. Huidig: `net10.0`.
+`TargetFramework` daarmee overeenkomt. Huidig: `net9.0`.
 
 **Controle:** `func start` toont "Worker process started and initialized" — anders is er een
 runtime mismatch.
@@ -364,13 +326,13 @@ host status). Dit is gedocumenteerd maar niet uitgestoten door de compiler.
 ### Valkuil 3: Transitive dependency vulnerability
 
 **Symptoom:** `dotnet build` slaagt, maar bevat `NU1903 warning`: hoge ernst kwetsbaarheid
-in een transitive package (`Microsoft.Kiota.Abstractions`).
+in een transitive package.
 
-**Oorzaak:** `Microsoft.Graph 5.x` sleepte een kwetsbare Kiota-versie mee
-(GHSA-7j59-v9qr-6fq9). De vulnerability warning blokkeert later de Security Gate in CI.
+**Oorzaak:** Een dependency sleept een kwetsbare subpackage mee. De vulnerability warning
+blokkeert later de Security Gate in CI.
 
-**Oplossing:** Upgrade naar `Microsoft.Graph 6.0.3` (bevat de gefixte Kiota-versie).
-Controleer met `dotnet build 2>&1 | Select-String "NU19"` dat er geen vulnerability warnings zijn.
+**Oplossing:** Controleer met `dotnet build 2>&1 | Select-String "NU19"` en upgrade de
+betreffende package naar een versie zonder kwetsbare transitive dependencies.
 
 **Controle:** 0 NU1903/NU1904 warnings in build output.
 
@@ -381,7 +343,7 @@ Controleer met `dotnet build 2>&1 | Select-String "NU19"` dat er geen vulnerabil
 **Symptoom:** Blazor laadt, maar alle API-calls falen met CORS-error in de browser console.
 
 **Oorzaak:** `BlazorAdmin/Properties/launchSettings.json` wijst naar poort 5242 (Blazor default),
-maar de CORS-whitelist in `FunctionApp/Program.cs` bevatte alleen 5000/5001.
+maar de CORS-whitelist in `FunctionApp/Program.cs` bevat een andere poort.
 
 **Oplossing:** De CORS origins in `Program.cs` moeten de werkelijke Blazor dev-poort bevatten:
 `http://localhost:5242` en `https://localhost:7242`.
@@ -391,30 +353,45 @@ vermelde poorten in de CORS-origins staan.
 
 ---
 
-### Smoke-test script
+### Valkuil 5: Blazor WASM rolt roles JSON-array naar string
 
-Het script `scripts/smoke-test.ps1` automatiseert alle bovenstaande controles:
+**Symptoom:** Gebruiker heeft de `admin`-rol in Entra ID maar `IsInRole("admin")` geeft `false`.
+De gebruiker ziet de `NoAccess`-pagina ondanks correcte roltoewijzing.
+
+**Oorzaak:** Blazor WASM cast een `"roles": ["admin"]` JSON-array uit het ID-token naar één claim
+met de JSON-string als waarde (`'["admin"]'`), waardoor `IsInRole("admin")` faalt.
+
+**Oplossing:** `CustomUserFactory` in `BlazorAdmin/Services/CustomUserFactory.cs` pakt de array
+uit naar losse claims. Geregistreerd via `.AddAccountClaimsPrincipalFactory<CustomUserFactory>()`
+in `Program.cs`.
+
+**Controle:** Na inloggen met admin-rol: geen `NoAccess`-pagina, sidebar en navigatie zichtbaar.
+
+---
+
+### Verificatiescript
+
+`Test-App.ps1` automatiseert de meeste controles:
 
 ```powershell
-# Volledige smoke test (bouwt, start, controleert, ruimt op):
-.\scripts\smoke-test.ps1
+# Start services (Azurite + FunctionApp + BlazorAdmin)
+.\Start-Debug.ps1
 
-# Sneller (sla Blazor-startup over):
-.\scripts\smoke-test.ps1 -SkipBlazor
+# Wacht ~15 seconden, dan volledige verificatie:
+.\Test-App.ps1
+
+# Met schema-drift herstel:
+.\Test-App.ps1 -Fix
 ```
 
 Het script doorloopt:
-1. `dotnet build FunctionApp` — bouwt met warnings-als-fouten check
-2. `dotnet build BlazorAdmin` — idem
-3. `func start --port 7094` — wacht op "Worker process started and initialized"
-4. Endpoint checks: health, beheer/settings, beheer/sync/status, beheer/templates,
-   beheer/voorkeurstijden, beheer/email-log, test/email
-5. Route-conflict controle in de func log
-6. Geen .NET runtime mismatch controle
-7. `dotnet run BlazorAdmin` — wacht op "Now listening on:", haalt `<!DOCTYPE html` op
-8. Opruimen (kill alle gestarte processen)
+1. Database-verbinding en schema-validatie (tabelstructuur + kolommen)
+2. `dotnet build FunctionApp` — bouwt met warnings-als-fouten check
+3. API smoke tests: health, beheer/settings, beheer/sync/status, beheer/templates,
+   beheer/voorkeurstijden, beheer/velden, beheer/email-log
+4. Feedback widget (GitHub-integratie)
+5. Blazor-pagina checks: alle gewijzigde routes
 
 Exitcode 0 = alles groen. Exitcode 1 = minimaal één check gefaald.
 
-**Wanneer uitvoeren:** Altijd vóór een commit of oplevering na significante codewijzigingen.
-`dotnet build` slaagt ≠ werkt bij `func start`. De smoke test is de daadwerkelijke verificatie.
+**Wanneer uitvoeren:** Altijd vóór een commit of oplevering. `dotnet build` slaagt ≠ werkt.

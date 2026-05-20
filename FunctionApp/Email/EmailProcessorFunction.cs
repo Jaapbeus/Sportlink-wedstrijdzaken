@@ -99,8 +99,8 @@ public class EmailProcessorFunction
             catch (Exception ex)
             {
                 fouten++;
-                log.LogError(ex, "Fout bij verwerken van email {MessageId}: {Onderwerp}",
-                    email.MessageId, email.Onderwerp);
+                log.LogError(ex, "Fout bij verwerken van email {MessageId} (onderwerp niet gelogd — AVG #210)",
+                    email.MessageId);
                 try { await UpdateFoutAsync(email.MessageId, ex.Message); }
                 catch { /* fout bij fout-logging mag niet cascaderen */ }
             }
@@ -127,7 +127,7 @@ public class EmailProcessorFunction
 
         if (uitgeslotenAdressen.Contains(email.Afzender))
         {
-            log.LogInformation("Email {MessageId} van uitgesloten adres ({Afzender}), overslaan", email.MessageId, email.Afzender);
+            log.LogInformation("Email {MessageId} van uitgesloten adres, overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
             await graphService.MarkAsReadAsync(email.MessageId);
             return;
         }
@@ -181,8 +181,8 @@ public class EmailProcessorFunction
         await UpdateAntwoordVerstuurdAsync(verwerkingId, ontvanger, antwoordBody);
         await graphService.MarkAsReadAsync(email.MessageId);
 
-        log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd naar {Ontvanger}",
-            verwerkingId, ontvanger);
+        log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd (ontvanger niet gelogd — AVG #210)",
+            verwerkingId);
 
         // Stuur interne notificatie naar teamleider bij herplanverzoeken van externe afzender (#66)
         if (classificatie.Type == VerzoekType.HerplanVerzoek
