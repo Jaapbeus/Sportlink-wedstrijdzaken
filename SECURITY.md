@@ -82,21 +82,34 @@ Persoonsgegevens worden opgeslagen in de lokale SQL Server (`avg.Teambegeleiding
 
 ### Laag 5 — Azure Function logs / Application Insights (AVG #210)
 
-**Beslissing:** e-mailadressen en e-mailonderwerpen worden **niet** naar Azure Function logs / Application Insights geschreven.
+Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 
-Reden: Azure Function logs (via Application Insights) kunnen e-mailadressen en onderwerpen van inkomende berichten bevatten. Onderwerpen kunnen persoonsgegevens bevatten (namen van personen, teamnamen). Het log is niet de juiste plek voor deze gegevens — de volledige data staat in `planner.EmailVerwerking` met een eigen retentiebeleid.
+**Wat wordt NIET gelogd:**
+- E-mailadressen (afzender, ontvanger)
+- Onderwerpregels van emails
+- Emailinhoud, AI-classificatieresultaten
 
-Wat niet gelogd wordt:
-- Ontvanger-e-mailadres bij verzenden
-- Afzender-e-mailadres bij filteren (uitgesloten adressen)
-- E-mailonderwerp bij verwerking of classificatie
+**Wat WEL wordt gelogd:**
+- MessageId (technische Graph API identifier, geen PII)
+- VerwerkingId (intern rowId)
+- Status en foutmeldingen zonder PII
 
-Wat wel gelogd wordt:
-- MessageId (niet-herleidbaar naar persoon zonder DB-toegang)
-- Verwerkings-ID (`planner.EmailVerwerking.Id`)
-- Status en foutmelding (zonder PII)
+**Application Insights retentie:** stel in op **30 dagen** via Azure Portal → Application Insights → Usage and estimated costs → Data retention. Standaard is 90 dagen.
 
-**Application Insights retentie:** stel Application Insights data retention in op 30 dagen (minimum) via Azure Portal → Application Insights → Usage and estimated costs → Data retention.
+---
+
+### Laag 6 — Automatische AVG-retentie (AVG #208)
+
+`planner.EmailVerwerking` bevat emailinhoud en afzendergegevens van clubleden.
+
+| Fase | Wanneer | Actie |
+|---|---|---|
+| Anonimiseren | 30–90 dagen na ontvangst | Afzender/Onderwerp → `[geanonimiseerd]`, EmailBody/AntwoordEmail/PlannerResponse/GeextraheerdeData → NULL |
+| Verwijderen | > 90 dagen na ontvangst | Hele rij verwijderd |
+
+De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
+
+`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de tabel wordt bij elke import volledig vervangen (TRUNCATE + bulk insert). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
 
 ---
 
