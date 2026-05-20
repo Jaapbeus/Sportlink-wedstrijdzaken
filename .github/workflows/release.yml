@@ -80,12 +80,20 @@ jobs:
 
       - name: GitHub Release aanmaken
         uses: actions/github-script@v7
+        env:
+          # Notes via env-var doorgeven — zo wordt CHANGELOG-content NIET als
+          # JavaScript template literal geparsed. Backticks, ${...} en andere
+          # markdown-tekens in CHANGELOG zouden anders een SyntaxError geven.
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_PRERELEASE: ${{ inputs.prerelease }}
+          RELEASE_NOTES: ${{ steps.changelog.outputs.notes }}
         with:
           script: |
-            const version = '${{ steps.version.outputs.version }}';
-            const tag = '${{ steps.version.outputs.tag }}';
-            const isPrerelease = '${{ inputs.prerelease }}' === 'true';
-            const notes = `${{ steps.changelog.outputs.notes }}`;
+            const version = process.env.RELEASE_VERSION;
+            const tag = process.env.RELEASE_TAG;
+            const isPrerelease = process.env.RELEASE_PRERELEASE === 'true';
+            const notes = process.env.RELEASE_NOTES || '';
 
             const major = parseInt(version.split('.')[0]);
             const isV2Plus = major >= 2;
@@ -101,4 +109,4 @@ jobs:
               make_latest: isV2Plus ? 'true' : 'false'
             });
 
-            core.notice(`✅ Release ${tag} aangemaakt`);
+            core.notice(`Release ${tag} aangemaakt`);
