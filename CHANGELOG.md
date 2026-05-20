@@ -17,9 +17,9 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed
+### Security
 
-- Alle API-aanroepen vanuit de Admin GUI faalden met `net_http_handler_not_assigned` na het inloggen. Oorzaak: de `AuthorizationMessageHandler` (MSAL Bearer token) had geen transport-handler toegewezen gekregen. Fix: `InnerHandler` expliciet gezet op `HttpClientHandler`, conform Blazor WASM vereisten. Dashboard, instellingen en feedbackknop werken nu correct.
+- **Pre-publish cleanup — PII en servernamen verwijderd uit broncode** (#135): drie categorieën anonimisatie vóór publicatie als open-source project: (1) club-specifieke e-mailadressen in docs en scripts vervangen door generieke plaatshoudernamen; (2) hardcoded Azure SQL servernaam in foutmelding vervangen door generieke tekst (`Azure SQL Server → Database`); (3) setup-scripts documenteren nu generieke defaults zodat andere clubs ze direct kunnen gebruiken.
 
 ---
 
