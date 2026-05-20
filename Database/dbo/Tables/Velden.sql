@@ -4,6 +4,6 @@ CREATE TABLE [dbo].[Velden] (
     [VeldType]        NVARCHAR(20)  NOT NULL CONSTRAINT [DF_Velden_Type] DEFAULT 'kunstgras',
     [HeeftKunstlicht] BIT           NOT NULL,
     [Actief]          BIT           NOT NULL CONSTRAINT [DF_Velden_Actief] DEFAULT 1,
-    [ClubCode]        NVARCHAR(20)  NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC',
+    [ClubCode]        NVARCHAR(20)  NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC', -- migratie-backwards-compat; inserts geven altijd expliciet ClubCode mee
     CONSTRAINT [PK_Velden] PRIMARY KEY CLUSTERED ([VeldNummer] ASC)
 );

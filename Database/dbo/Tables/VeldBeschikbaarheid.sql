@@ -5,7 +5,7 @@ CREATE TABLE [dbo].[VeldBeschikbaarheid] (
     [BeschikbaarVanaf]     TIME               NOT NULL,
     [BeschikbaarTot]       TIME               NOT NULL,
     [GebruikZonsondergang] BIT                NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_Zon] DEFAULT 0,
-    [ClubCode]             NVARCHAR(20)       NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC',
+    [ClubCode]             NVARCHAR(20)       NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC', -- migratie-backwards-compat; inserts geven altijd expliciet ClubCode mee
     CONSTRAINT [PK_VeldBeschikbaarheid] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [FK_VeldBeschikbaarheid_Velden] FOREIGN KEY ([VeldNummer]) REFERENCES [dbo].[Velden]([VeldNummer])
 );
