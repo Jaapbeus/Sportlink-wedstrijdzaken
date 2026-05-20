@@ -10,6 +10,6 @@ CREATE TABLE [avg].[Teambegeleiding] (
     [Naam]                   NVARCHAR (300) NULL,
     [Emailadres]             NVARCHAR (200) NULL,
     [Telefoonnummer]         NVARCHAR (50)  NULL,
-    [mta_imported]           DATETIME       CONSTRAINT [DF_avg_Teambegeleiding_mta_imported] DEFAULT (GETDATE()) NOT NULL,
+    [mta_imported]           DATETIME       CONSTRAINT [DF_avg_Teambegeleiding_mta_imported] DEFAULT (GETUTCDATE()) NOT NULL,
     CONSTRAINT [PK_avg_Teambegeleiding] PRIMARY KEY CLUSTERED ([Id] ASC)
 );

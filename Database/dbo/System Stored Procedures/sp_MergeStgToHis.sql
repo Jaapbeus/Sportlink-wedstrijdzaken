@@ -123,7 +123,7 @@ WHEN MATCHED AND (';
     SET @SqlString += ')
 THEN UPDATE SET '
         + @SqlStringTmp + '
-    target.mta_modified = GETDATE()';
+    target.mta_modified = GETUTCDATE()';
 
     SET @SqlString += '
 WHEN NOT MATCHED BY TARGET THEN ';
@@ -143,7 +143,7 @@ WHEN NOT MATCHED BY TARGET THEN ';
     -- CONCAT supports both single and multi-column source keys
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
-VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETDATE(), GETDATE());';
+VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
 
     EXEC sp_executesql @SqlString;
 
