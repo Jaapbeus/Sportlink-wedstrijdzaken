@@ -80,6 +80,24 @@ Bepaalde bestandstypen worden nooit getrackt door git, ongeacht wat er gedaan wo
 
 Persoonsgegevens worden opgeslagen in de lokale SQL Server (`avg.Teambegeleiding`), niet in bestanden. De `avg`-schema is bedoeld voor AVG-beschermde data en de toegang moet beperkt zijn tot bevoegde gebruikers.
 
+### Laag 5 — Azure Function logs / Application Insights (AVG #210)
+
+**Beslissing:** e-mailadressen en e-mailonderwerpen worden **niet** naar Azure Function logs / Application Insights geschreven.
+
+Reden: Azure Function logs (via Application Insights) kunnen e-mailadressen en onderwerpen van inkomende berichten bevatten. Onderwerpen kunnen persoonsgegevens bevatten (namen van personen, teamnamen). Het log is niet de juiste plek voor deze gegevens — de volledige data staat in `planner.EmailVerwerking` met een eigen retentiebeleid.
+
+Wat niet gelogd wordt:
+- Ontvanger-e-mailadres bij verzenden
+- Afzender-e-mailadres bij filteren (uitgesloten adressen)
+- E-mailonderwerp bij verwerking of classificatie
+
+Wat wel gelogd wordt:
+- MessageId (niet-herleidbaar naar persoon zonder DB-toegang)
+- Verwerkings-ID (`planner.EmailVerwerking.Id`)
+- Status en foutmelding (zonder PII)
+
+**Application Insights retentie:** stel Application Insights data retention in op 30 dagen (minimum) via Azure Portal → Application Insights → Usage and estimated costs → Data retention.
+
 ---
 
 ## Wat te doen bij een gefaalde check
