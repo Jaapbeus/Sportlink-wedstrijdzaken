@@ -225,7 +225,7 @@ Auth is NIET af zodra `IsAuthenticated = true`. Een tenant-user kan inloggen via
 
 | Test-user | Configuratie in Azure | Verwacht resultaat |
 |---|---|---|
-| jaapadmin@vv-vrc.nl | Toegewezen met rol `admin` | Volledige UI, alle API werkt |
+| Admin user (vv-vrc.nl) | Toegewezen met rol `admin` | Volledige UI, alle API werkt |
 | Tweede user (vv-vrc.nl) | Toegewezen met rol `user` | UI laadt, GET-API werkt, mutaties geblokkeerd (toekomstig: nu zelfde als admin maar nog niet gescheiden) |
 | Derde user (vv-vrc.nl) | **Geen** rol toegewezen | `NoAccess` pagina, géén sidebar/nav/FEEDBACK-knop, logout-knop wel zichtbaar |
 | Externe user (andere tenant / guest) | n.v.t. | Kan zelfs niet inloggen — Entra weigert vóór redirect |
