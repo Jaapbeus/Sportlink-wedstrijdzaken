@@ -45,6 +45,21 @@ function Write-Done($t)    { Write-Host "  ✓ $t" -ForegroundColor Green }
 function Write-Skip($t)    { Write-Host "  → $t (al correct)" -ForegroundColor DarkGreen }
 function Write-WouldDo($t) { Write-Host "  ⊘ $t (WhatIf — niet uitgevoerd)" -ForegroundColor Magenta }
 
+# ── Banner: dit script WIJZIGT Azure ──────────────────────────────────────────
+Write-Host ''
+if ($WhatIfPreference) {
+    Write-Host '┌─────────────────────────────────────────────────────────────────┐' -ForegroundColor Magenta
+    Write-Host '│  Configure-EntraApp.ps1 — DRY-RUN (-WhatIf)                     │' -ForegroundColor Magenta
+    Write-Host '│  Toont wat zou gebeuren — er worden GEEN wijzigingen toegepast. │' -ForegroundColor Magenta
+    Write-Host '└─────────────────────────────────────────────────────────────────┘' -ForegroundColor Magenta
+} else {
+    Write-Host '┌─────────────────────────────────────────────────────────────────┐' -ForegroundColor Yellow
+    Write-Host '│  Configure-EntraApp.ps1 — APPLY MODE                            │' -ForegroundColor Yellow
+    Write-Host '│  Dit script PAST de Azure Entra config aan (idempotent).        │' -ForegroundColor Yellow
+    Write-Host '│  Voor een dry-run: gebruik -WhatIf parameter.                   │' -ForegroundColor Yellow
+    Write-Host '└─────────────────────────────────────────────────────────────────┘' -ForegroundColor Yellow
+}
+
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 Write-Section 'Pre-flight'
 
@@ -139,37 +154,55 @@ if ($rolesChanged) {
 }
 
 # ── Step 2: Optional claims ──────────────────────────────────────────────────
-Write-Section "Step 2 — Optional claims ('roles' in id/access token)"
+# 'roles' alleen toevoegen aan optionalClaims.idToken. Voor accessToken wordt
+# 'roles' door Entra automatisch toegevoegd (app roles claim is impliciet) en
+# Microsoft Graph weigert het expliciet zetten met "Property accessToken in
+# payload has a value that does not match schema."
+Write-Section "Step 2 — Optional claims ('roles' in idToken)"
 
 $idHas = ($app.optionalClaims.idToken | Where-Object { $_.name -eq 'roles' })
-$atHas = ($app.optionalClaims.accessToken | Where-Object { $_.name -eq 'roles' })
 
-if ($idHas -and $atHas) {
-    Write-Skip "optionalClaims.idToken en .accessToken bevatten beide 'roles'"
+if ($idHas) {
+    Write-Skip "optionalClaims.idToken bevat 'roles'"
 } else {
-    Write-Step "optionalClaims uitbreiden met 'roles'"
-    $newOptional = @{
-        idToken = @(@{ name = 'roles'; essential = $false; additionalProperties = @() })
-        accessToken = @(@{ name = 'roles'; essential = $false; additionalProperties = @() })
-        saml2Token = @()
-    }
+    Write-Step "optionalClaims.idToken uitbreiden met 'roles'"
+
+    # Behoud bestaande idToken-claims (anders dan 'roles')
     $existingIdToken = @($app.optionalClaims.idToken | Where-Object { $_.name -ne 'roles' })
-    $existingAccessToken = @($app.optionalClaims.accessToken | Where-Object { $_.name -ne 'roles' })
-    foreach ($c in $existingIdToken)    { $newOptional.idToken    += $c }
-    foreach ($c in $existingAccessToken){ $newOptional.accessToken += $c }
+    $newIdToken = @(@{ name = 'roles'; essential = $false })
+    foreach ($c in $existingIdToken) { $newIdToken += $c }
+
+    # accessToken/saml2Token bewust niet aanraken — Microsoft beheert die zelf
+    # voor app-role claims, expliciet zetten geeft een schema-fout.
+    $newOptional = @{
+        idToken = $newIdToken
+        accessToken = @($app.optionalClaims.accessToken | Where-Object { $_ })
+        saml2Token  = @($app.optionalClaims.saml2Token  | Where-Object { $_ })
+    }
 
     if ($PSCmdlet.ShouldProcess('App Registration', 'Update optionalClaims')) {
         $payload = @{ optionalClaims = $newOptional } | ConvertTo-Json -Depth 8 -Compress
         $tmp = New-TemporaryFile
         $payload | Out-File -FilePath $tmp -Encoding utf8 -NoNewline
-        az rest --method PATCH `
+
+        $azOutput = az rest --method PATCH `
             --uri "https://graph.microsoft.com/v1.0/applications/$appObjectId" `
             --headers 'Content-Type=application/json' `
-            --body "@$($tmp.FullName)" | Out-Null
+            --body "@$($tmp.FullName)" 2>&1
+        $azExit = $LASTEXITCODE
         Remove-Item $tmp -ErrorAction SilentlyContinue
-        Write-Done "optionalClaims bijgewerkt"
+
+        if ($azExit -ne 0) {
+            Write-Host "  ✗ optionalClaims update FAALDE (exit $azExit)" -ForegroundColor Red
+            Write-Host "    Microsoft Graph response:" -ForegroundColor DarkGray
+            Write-Host "    $azOutput" -ForegroundColor DarkGray
+            Write-Host ''
+            Write-Host '  Stop — fix het probleem en run dit script opnieuw.' -ForegroundColor Red
+            exit 5
+        }
+        Write-Done "optionalClaims.idToken bijgewerkt met 'roles'"
     } else {
-        Write-WouldDo "optionalClaims zou bijgewerkt worden"
+        Write-WouldDo "optionalClaims.idToken zou bijgewerkt worden met 'roles'"
     }
 }
 
