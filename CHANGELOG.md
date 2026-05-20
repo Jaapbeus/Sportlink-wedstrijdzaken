@@ -17,7 +17,32 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [2.2.0] — 2026-05-20
+
+**MINOR-release: AVG-retentiebeleid EmailVerwerking, PII uit logs, security hardening en documentatie-update.**
+
+### Added
+
+- **AVG-retentie EmailVerwerking** (#208): automatische cleanup via wekelijkse timer trigger (`CleanupEmailVerwerkingFunction`, zondagochtend 03:00 UTC). Emailinhoud en afzendergegevens worden na 30 dagen geanonimiseerd, na 90 dagen verwijderd. Stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent en inbegrepen in de database-migratie. Het import-script voor `avg.Teambegeleiding` waarschuwt nu als de data ouder is dan 90 dagen.
+
 ### Security
+
+- **PII verwijderd uit Azure Function logs** (#210): e-mailadressen, onderwerpregels en emailinhoud worden niet meer gelogd in Azure Function logs / Application Insights. MessageId en VerwerkingId zijn niet-herleidbaar en worden wel gelogd voor troubleshooting. SECURITY.md uitgebreid met lagen 5 (logging-AVG) en 6 (automatische retentie).
+- **Gitleaks SQL-uitsluiting verwijderd** (#212): de brede `Database/*.sql` uitsluiting in `.gitleaks.toml` is verwijderd. SQL-bestanden worden nu volledig gescand op secrets en PII. Historisch commit 5311d64 is gedocumenteerd als uitzondering.
+- **Stille fallbacks vervangen door InvalidOperationException** (#214): `plannerAfzenderNaam` en `clubName` in `BerichtAiService`, `BerichtResponseGenerator` en `PlannerHtmlGenerator` gooien nu een expliciete fout bij ontbrekende configuratie in `dbo.AppSettings`. Stille fallbacks maskeerden misconfiguratie.
+
+### Changed
+
+- **GETDATE() vervangen door GETUTCDATE()** (#215): alle `mta_inserted`, `mta_modified` en timestamp-kolommen in SQL-tabellen en stored procedures gebruiken nu GETUTCDATE() conform de architectuurregel UTC in DB / `ToLocalTime()` in Blazor.
+- **DEFAULT 'VRC' gedocumenteerd als migratie-backwards-compat** (#213): `-- migratie-backwards-compat` commentaar toegevoegd aan alle SQL-tabellen en migraties met `DEFAULT 'VRC'`. C#-inserts geven ClubCode altijd expliciet mee vanuit AppSettings. DEFAULT is nodig voor ALTER TABLE op bestaande rijen.
+
+### Documentation
+
+- **v2-admin-handleiding bijgewerkt** (#156): volledige herschrijving van de verouderde SWA-proxy architectuur naar de actuele Easy Auth + MSAL Bearer token architectuur. Secties toegevoegd over Easy Auth configuratie op de Function App, verplichte 3-user-test, MSAL Bearer token flow, en de valkuil rondom de Blazor WASM roles JSON-array.
+
+### Security (pre-publish)
 
 - **Pre-publish cleanup — PII en servernamen verwijderd uit broncode** (#135): drie categorieën anonimisatie vóór publicatie als open-source project: (1) club-specifieke e-mailadressen in docs en scripts vervangen door generieke plaatshoudernamen; (2) hardcoded Azure SQL servernaam in foutmelding vervangen door generieke tekst (`Azure SQL Server → Database`); (3) setup-scripts documenteren nu generieke defaults zodat andere clubs ze direct kunnen gebruiken.
 
