@@ -342,6 +342,9 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'AccommodatieLongitude')
     ALTER TABLE [dbo].[AppSettings] ADD [AccommodatieLongitude] FLOAT NULL;
 GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'EmailVoetnoot')
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailVoetnoot] NVARCHAR(MAX) NULL;
+GO
 
 -- v2 — #88: AppSettingsAudit — append-only auditlog van AppSettings/template wijzigingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.AppSettingsAudit'))
@@ -428,6 +431,26 @@ BEGIN
     WHERE [mta_inserted] < DATEADD(DAY, -90, GETUTCDATE());
 END;
     ');
+END
+GO
+
+-- avg schema + avg.Teambegeleiding (AVG/GDPR persoonsgegevens teambegeleiders)
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
+    EXEC('CREATE SCHEMA [avg]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.Teambegeleiding'))
+BEGIN
+    CREATE TABLE [avg].[Teambegeleiding] (
+        [Id]                     INT            IDENTITY (1, 1) NOT NULL,
+        [Team]                   NVARCHAR (100) NULL,
+        [LeeftijdscategorieTeam] NVARCHAR (50)  NULL,
+        [Teamrol]                NVARCHAR (100) NULL,
+        [Naam]                   NVARCHAR (300) NULL,
+        [Emailadres]             NVARCHAR (200) NULL,
+        [Telefoonnummer]         NVARCHAR (50)  NULL,
+        [mta_imported]           DATETIME       CONSTRAINT [DF_avg_Teambegeleiding_mta_imported] DEFAULT (GETUTCDATE()) NOT NULL,
+        CONSTRAINT [PK_avg_Teambegeleiding] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
 END
 GO
 
