@@ -46,8 +46,8 @@ paths = [
   # Template-bestanden (bevatten geen echte data)
   '''sensitive-patterns\.template\.txt''',
   '''local\.settings\.template\.json''',
-  # Database-migratiegeschiedenis (geen secrets)
-  '''Database/.*\.sql''',
+  # Eerder was hier een brede uitsluiting voor Database/.*\.sql — verwijderd in #212.
+  # SQL-bestanden worden nu volledig gescand. Bij valse positieven: specifiek bestand toevoegen.
 ]
 # Historische commits met voorbeeldwaarden die patronen triggeren — geen echte PII.
 # Zie bijbehorende GitHub issue voor permanente strategie (filter-repo of accept).
