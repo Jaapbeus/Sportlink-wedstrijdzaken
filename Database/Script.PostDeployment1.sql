@@ -398,6 +398,39 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.Em
     ALTER TABLE [planner].[EmailVerwerking] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC';
 GO
 
+-- ============================================================
+-- #208: AVG-retentie — planner.sp_CleanupEmailVerwerking aanmaken
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('planner.sp_CleanupEmailVerwerking') AND type = 'P')
+BEGIN
+    EXEC(N'
+CREATE PROCEDURE [planner].[sp_CleanupEmailVerwerking]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE [planner].[EmailVerwerking]
+    SET [Afzender]          = ''[geanonimiseerd]'',
+        [Onderwerp]         = ''[geanonimiseerd]'',
+        [VerstuurdNaar]     = NULL,
+        [EmailBody]         = NULL,
+        [AntwoordEmail]     = NULL,
+        [PlannerResponse]   = NULL,
+        [GeextraheerdeData] = NULL,
+        [mta_modified]      = GETUTCDATE()
+    WHERE [mta_inserted] < DATEADD(DAY, -30, GETUTCDATE())
+      AND [mta_inserted] >= DATEADD(DAY, -90, GETUTCDATE())
+      AND ([Afzender] <> ''[geanonimiseerd]''
+           OR [EmailBody] IS NOT NULL
+           OR [AntwoordEmail] IS NOT NULL
+           OR [PlannerResponse] IS NOT NULL
+           OR [GeextraheerdeData] IS NOT NULL);
+    DELETE FROM [planner].[EmailVerwerking]
+    WHERE [mta_inserted] < DATEADD(DAY, -90, GETUTCDATE());
+END;
+    ');
+END
+GO
+
 -- v2 — #84: EmailTemplateInstellingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
 BEGIN

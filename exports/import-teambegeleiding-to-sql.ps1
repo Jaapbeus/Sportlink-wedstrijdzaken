@@ -242,6 +242,24 @@ if ($DeleteCsvAfterImport) {
     Write-Host "  CSV bewaard lokaal. Gebruik -DeleteCsvAfterImport `$true om te verwijderen na import." -ForegroundColor Gray
 }
 
+# ── Verouderde data-check (AVG #208) ──────────────────────────────────────────
+$connCheck = New-Object System.Data.SqlClient.SqlConnection($connectionStr)
+$connCheck.Open()
+try {
+    $cmdCheck             = $connCheck.CreateCommand()
+    $cmdCheck.CommandText = "SELECT MIN(mta_imported) FROM [avg].[Teambegeleiding]"
+    $oudsteImport = $cmdCheck.ExecuteScalar()
+    if ($oudsteImport -ne [DBNull]::Value -and $oudsteImport -ne $null) {
+        $dagOud = ([datetime]::UtcNow - [datetime]$oudsteImport).Days
+        if ($dagOud -gt 90) {
+            Write-Host "`n  ⚠️  WAARSCHUWING (AVG #208): de geïmporteerde data in avg.Teambegeleiding" -ForegroundColor Yellow
+            Write-Host "     is $dagOud dagen oud. Overweeg een verse export via club.sportlink.com." -ForegroundColor Yellow
+        }
+    }
+} finally {
+    $connCheck.Close()
+}
+
 # ── Rapport ───────────────────────────────────────────────────────────────────
 Write-Host "`nKlaar!" -ForegroundColor Cyan
 Write-Host "  Geïmporteerd : $($table.Rows.Count) personen" -ForegroundColor White
