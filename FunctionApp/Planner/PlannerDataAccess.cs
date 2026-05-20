@@ -307,7 +307,7 @@ namespace SportlinkFunction.Planner
             ", conn);
             cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
-            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen"}%");
+            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings")}%");
 
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -366,7 +366,7 @@ namespace SportlinkFunction.Planner
                 cmd.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
                 cmd.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
                     datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
-                cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen"}%");
+                cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings")}%");
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -460,7 +460,7 @@ namespace SportlinkFunction.Planner
                   AND m.[accommodatie] LIKE @accommodatiePattern
             ", conn);
             cmd.Parameters.AddWithValue("@code", wedstrijdcode);
-            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen"}%");
+            cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{SystemUtilities.AppSettings.GetSetting("accommodatie") ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings")}%");
 
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -542,7 +542,7 @@ namespace SportlinkFunction.Planner
         /// </summary>
         public static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log)
         {
-            var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "Sportpark Spitsbergen";
+            var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie") ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(@"
