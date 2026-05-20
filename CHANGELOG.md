@@ -17,9 +17,15 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [2.1.2] — 2026-05-20
+
+**PATCH-release: API-connectie hersteld na login — `net_http_handler_not_assigned` opgelost.**
+
 ### Fixed
 
-- Alle API-aanroepen vanuit de Admin GUI faalden met `net_http_handler_not_assigned` na het inloggen. Oorzaak: de `AuthorizationMessageHandler` (MSAL Bearer token) had geen transport-handler toegewezen gekregen. Fix: `InnerHandler` expliciet gezet op `HttpClientHandler`, conform Blazor WASM vereisten. Dashboard, instellingen en feedbackknop werken nu correct.
+- **Alle API-aanroepen faalden na inloggen** (#195): dashboard, instellingen en feedbackknop gaven `net_http_handler_not_assigned` terug na een succesvolle login. Oorzaak: `AuthorizationMessageHandler` (die MSAL Bearer tokens toevoegt) is een `DelegatingHandler` en vereist een `InnerHandler` — de transport-laag die het HTTP-verzoek naar de browser fetch API stuurt. Zonder expliciete toewijzing gooit Blazor WASM de fout bij elke API-aanroep. Fix: `handler.InnerHandler = new HttpClientHandler()` in `Program.cs`.
 
 ---
 
