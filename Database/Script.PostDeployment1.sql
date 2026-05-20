@@ -315,7 +315,7 @@ END
 GO
 -- Bestaande 'Gepland' rijen bijwerken naar 'Te bevestigen'
 UPDATE [planner].[GeplandeWedstrijden]
-SET [Status] = 'Te bevestigen', [mta_modified] = GETDATE()
+SET [Status] = 'Te bevestigen', [mta_modified] = GETUTCDATE()
 WHERE [Status] = 'Gepland';
 GO
 
@@ -346,7 +346,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.AppSett
 BEGIN
     CREATE TABLE [dbo].[AppSettingsAudit] (
         [Id]            INT IDENTITY(1,1) NOT NULL,
-        [Tijdstip]      DATETIME2 NOT NULL CONSTRAINT [DF_AppSettingsAudit_Tijdstip] DEFAULT GETDATE(),
+        [Tijdstip]      DATETIME2 NOT NULL CONSTRAINT [DF_AppSettingsAudit_Tijdstip] DEFAULT GETUTCDATE(),
         [GewijzigdDoor] NVARCHAR(100) NOT NULL,
         [Veld]          NVARCHAR(100) NOT NULL,
         [OudeWaarde]    NVARCHAR(MAX) NULL,
@@ -368,8 +368,8 @@ BEGIN
         [Prioriteit]    INT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Prioriteit] DEFAULT 5,
         [Actief]        BIT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Actief] DEFAULT 1,
         [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode] DEFAULT 'VRC',
-        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Inserted] DEFAULT GETDATE(),
-        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Modified] DEFAULT GETDATE(),
+        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Inserted] DEFAULT GETUTCDATE(),
+        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_TeamVoorkeurTijden] PRIMARY KEY CLUSTERED ([Id] ASC)
     );
 END
@@ -384,7 +384,7 @@ BEGIN
         [Omschrijving] NVARCHAR(500) NULL,
         [Actief]       BIT NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Actief]    DEFAULT 1,
         [ClubCode]     NVARCHAR(20) NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode]  DEFAULT 'VRC',
-        [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETDATE(),
+        [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_UitgeslotenEmailAdressen] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
     );
@@ -406,8 +406,8 @@ BEGIN
         [BodyTemplate]  NVARCHAR(MAX) NOT NULL,
         [Actief]        BIT NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Actief] DEFAULT 1,
         [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_ClubCode] DEFAULT 'VRC',
-        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Inserted] DEFAULT GETDATE(),
-        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Modified] DEFAULT GETDATE(),
+        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Inserted] DEFAULT GETUTCDATE(),
+        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_EmailTemplateInstellingen] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [UQ_EmailTemplateInstellingen_Key] UNIQUE ([TemplateKey], [ClubCode])
     );
