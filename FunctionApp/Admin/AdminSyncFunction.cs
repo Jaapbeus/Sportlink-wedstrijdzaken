@@ -75,18 +75,28 @@ public static class AdminSyncFunction
             var sportlinkClientId = $"clientId={SystemUtilities.AppSettings.GetSetting("sportlinkClientId")}";
 
             int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            log.LogInformation("AdminSyncTrigger: range -1 .. {To}", toWeekOffset);
+            log.LogInformation("AdminSyncTrigger: range -1 .. {To} — fire-and-forget gestart", toWeekOffset);
 
-            // Hergebruik bestaande sync-logica direct (geen HTTP, geen verschil met timer trigger)
-            await FetchAndStoreApiData.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-
-            return new OkObjectResult(new
+            // Fire-and-forget: sync draait op achtergrond (~5 min), client pollt /status op wijziging LastSyncTimestamp
+            _ = Task.Run(async () =>
             {
-                status = "ok",
+                try
+                {
+                    await FetchAndStoreApiData.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Achtergrond sync mislukt");
+                }
+            });
+
+            return new ObjectResult(new
+            {
+                status = "gestart",
                 weekOffsetFrom = -1,
                 weekOffsetTo = toWeekOffset,
                 tijdstip = DateTime.UtcNow
-            });
+            }) { StatusCode = 202 };
         }
         catch (Exception ex)
         {
