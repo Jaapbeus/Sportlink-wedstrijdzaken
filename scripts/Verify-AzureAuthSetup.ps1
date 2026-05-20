@@ -15,14 +15,14 @@
     .\scripts\Verify-AzureAuthSetup.ps1
 
 .NOTES
-    Doelapp: Sportlink Admin GUI (clientId [CLIENT_ID]).
-    Zie docs/AZURE-ENTRA-SETUP.md voor het volledige protocol.
+    Doelapp: Sportlink Admin GUI — vul ClientId en TenantId in vanuit je eigen
+    Entra App Registration. Zie docs/AZURE-ENTRA-SETUP.md voor het volledige protocol.
 #>
 [CmdletBinding()]
 param(
     [string] $ClientId = '[CLIENT_ID]',
     [string] $ExpectedTenantId = '[TENANT_ID]',
-    [string] $AdminUserPrincipalName = 'jaapadmin@[club-domein]'
+    [string] $AdminUserPrincipalName = 'admin@your-club.nl'
 )
 
 $ErrorActionPreference = 'Stop'

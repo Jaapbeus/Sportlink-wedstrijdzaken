@@ -38,7 +38,7 @@ Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd 
 | App Registration `displayName` | Sportlink Admin GUI |
 | App Registration `clientId` | `[CLIENT_ID]` |
 | Service Principal (Enterprise App) `objectId` | `7948575e-4849-45bc-a0d0-122900c91808` |
-| Admin user | `jaapadmin@[club-domein]` |
+| Admin user | `admin@your-club.nl` |
 | SWA host | `[swa-unique-id].7.azurestaticapps.net` |
 | SPA redirect URI | `https://[swa-unique-id].7.azurestaticapps.net/authentication/login-callback` |
 
@@ -51,7 +51,7 @@ Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd 
 3. `az account show` → controleer dat `tenantId` = `[TENANT_ID]`. Zo nee: `az account set --subscription <id-binnen-[club-domein]>`.
 4. Run `.\scripts\Configure-EntraApp.ps1`. Dit script is idempotent: bestaande configuratie wordt niet aangepast, alleen ontbrekende stukken worden bijgevuld.
 5. Verifieer met `.\scripts\Verify-AzureAuthSetup.ps1`. Alle regels moeten ✓ groen zijn.
-6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met jaapadmin@[club-domein].
+6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met admin@your-club.nl.
 
 ### Nieuwe gebruiker toevoegen
 
@@ -102,13 +102,13 @@ In code: gebruik `IsInRole("admin")` (kleine letters), niet `IsInRole("Admin")`.
 
 ### Ander tenant-account ingelogd in browser
 
-Als je dezelfde browser gebruikt voor jaap.vanbeusekom@profile.nl én jaapadmin@[club-domein], kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor jaapadmin-tests, of klik op "Use another account" in de Microsoft loginpagina.
+Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én admin@your-club.nl, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor jaapadmin-tests, of klik op "Use another account" in de Microsoft loginpagina.
 
 ## Verificatie — 3-user-test (verplicht na elke auth-wijziging)
 
 | Test-user | Configuratie in Azure | Verwacht in browser |
 |---|---|---|
-| `jaapadmin@[club-domein]` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
+| `admin@your-club.nl` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
 | 2e [club-domein] user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
 | 3e [club-domein] user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
