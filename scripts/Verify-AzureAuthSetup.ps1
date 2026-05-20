@@ -27,15 +27,25 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$script:Failures = 0
+
 function Write-Section($text) {
     Write-Host ''
     Write-Host "═══ $text ═══" -ForegroundColor Cyan
 }
 
 function Write-Pass($text) { Write-Host "  ✓ $text" -ForegroundColor Green }
-function Write-Fail($text) { Write-Host "  ✗ $text" -ForegroundColor Red }
+function Write-Fail($text) { Write-Host "  ✗ $text" -ForegroundColor Red; $script:Failures++ }
 function Write-Warn($text) { Write-Host "  ⚠ $text" -ForegroundColor Yellow }
 function Write-Info($text) { Write-Host "    $text" -ForegroundColor DarkGray }
+
+# ── Banner: dit script wijzigt NIETS ──────────────────────────────────────────
+Write-Host ''
+Write-Host '┌─────────────────────────────────────────────────────────────────┐' -ForegroundColor DarkCyan
+Write-Host '│  Verify-AzureAuthSetup.ps1 — READ-ONLY diagnose                 │' -ForegroundColor DarkCyan
+Write-Host '│  Dit script wijzigt NIETS in Azure. Het toont alleen de state.  │' -ForegroundColor DarkCyan
+Write-Host '│  Voor de fix: scripts\Configure-EntraApp.ps1                    │' -ForegroundColor DarkCyan
+Write-Host '└─────────────────────────────────────────────────────────────────┘' -ForegroundColor DarkCyan
 
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 Write-Section 'Pre-flight'
@@ -112,22 +122,19 @@ if ($userRole -and $userRole.isEnabled) {
     Write-Fail "App Role 'user' ontbreekt of is disabled"
 }
 
-# ── Layer 3b — Optional claims voor 'roles' in id/access token ────────────────
-Write-Section "Layer 3b — Optional claims ('roles' in idToken/accessToken)"
+# ── Layer 3b — Optional claims voor 'roles' in id token ──────────────────────
+# 'roles' hoort alleen in optionalClaims.idToken. Voor accessToken voegt Entra
+# de roles claim automatisch toe (app-role claim is impliciet); expliciet zetten
+# geeft een schema-fout in Microsoft Graph.
+Write-Section "Layer 3b — Optional claims ('roles' in idToken)"
 
 $idClaims = $app.optionalClaims.idToken | Where-Object { $_.name -eq 'roles' }
-$atClaims = $app.optionalClaims.accessToken | Where-Object { $_.name -eq 'roles' }
 
 if ($idClaims) {
     Write-Pass "'roles' aanwezig in optionalClaims.idToken"
 } else {
     Write-Fail "'roles' ontbreekt in optionalClaims.idToken"
-    Write-Info "Zonder dit komt de role claim mogelijk niet in het ID token van Blazor WASM."
-}
-if ($atClaims) {
-    Write-Pass "'roles' aanwezig in optionalClaims.accessToken"
-} else {
-    Write-Warn "'roles' ontbreekt in optionalClaims.accessToken (server-side check minder relevant)"
+    Write-Info "Zonder dit komt de role claim niet in het ID token van Blazor WASM."
 }
 
 # ── Layer 4 — Frontend role-gate (App.razor) ──────────────────────────────────
@@ -192,5 +199,22 @@ if (-not $adminUser) {
 }
 
 Write-Host ''
-Write-Host 'Diagnose klaar. Bij rode regels → run .\scripts\Configure-EntraApp.ps1 om idempotent te fixen.' -ForegroundColor Cyan
-Write-Host 'Na configuratiewijziging: log uit + verse incognito browser sessie + opnieuw inloggen vereist.' -ForegroundColor Yellow
+Write-Host '─────────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+if ($script:Failures -gt 0) {
+    Write-Host ''
+    Write-Host "  ❌ $script:Failures probleem(en) gevonden." -ForegroundColor Red
+    Write-Host ''
+    Write-Host '  ⚠ Dit Verify-script wijzigt NIETS. Configure-EntraApp.ps1 is de fix.' -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host '  Volgende stap — run ONDERSTAAND commando (zonder -WhatIf = apply):' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '      .\scripts\Configure-EntraApp.ps1' -ForegroundColor White -BackgroundColor DarkBlue
+    Write-Host ''
+    Write-Host '  Daarna opnieuw deze Verify draaien om te bevestigen dat alle regels groen zijn.' -ForegroundColor DarkGray
+    Write-Host '  Tot slot: sluit alle browser-tabs, verse Incognito, opnieuw inloggen.' -ForegroundColor DarkGray
+} else {
+    Write-Host ''
+    Write-Host '  ✓ Alle 5 lagen + admin-assignment correct. Geen actie nodig.' -ForegroundColor Green
+    Write-Host '  Als login alsnog faalt: verse Incognito sessie (MSAL bewaart oude tokens in localStorage).' -ForegroundColor DarkGray
+}
+Write-Host ''
