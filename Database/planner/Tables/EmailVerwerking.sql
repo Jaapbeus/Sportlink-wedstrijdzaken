@@ -13,9 +13,9 @@ CREATE TABLE [planner].[EmailVerwerking] (
     [VerstuurdNaar]         NVARCHAR(200)   NULL,
     [Status]                NVARCHAR(30)    NOT NULL CONSTRAINT [DF_EmailVerwerking_Status] DEFAULT 'Ontvangen',
     [FoutMelding]           NVARCHAR(1000)  NULL,
-    [ClubCode]              NVARCHAR(20)    NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC',
-    [mta_inserted]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Ins] DEFAULT GETDATE(),
-    [mta_modified]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Mod] DEFAULT GETDATE(),
+    [ClubCode]              NVARCHAR(20)    NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC', -- migratie-backwards-compat; inserts geven altijd expliciet ClubCode mee
+    [mta_inserted]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Ins] DEFAULT GETUTCDATE(),
+    [mta_modified]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Mod] DEFAULT GETUTCDATE(),
     CONSTRAINT [PK_EmailVerwerking] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [UQ_EmailVerwerking_MessageId] UNIQUE ([MessageId])
 );

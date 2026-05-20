@@ -8,6 +8,6 @@ CREATE TABLE [dbo].[TeamRegels] (
     [Prioriteit]        INT            NOT NULL CONSTRAINT [DF_TeamRegels_Prioriteit] DEFAULT 0,
     [Actief]            BIT            NOT NULL CONSTRAINT [DF_TeamRegels_Actief] DEFAULT 1,
     [Opmerking]         NVARCHAR(500)  NULL,
-    [ClubCode]          NVARCHAR(20)   NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'VRC',
+    [ClubCode]          NVARCHAR(20)   NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'VRC', -- migratie-backwards-compat; inserts geven altijd expliciet ClubCode mee
     CONSTRAINT [PK_TeamRegels] PRIMARY KEY CLUSTERED ([Id] ASC)
 );

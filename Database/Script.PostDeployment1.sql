@@ -57,7 +57,7 @@ BEGIN
 END
 GO
 
--- Velden: field definitions
+-- Velden: field definitions (ClubCode via DEFAULT 'VRC' — single-club initiële seed; bij multi-club handmatig per club inserten)
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Velden])
 BEGIN
     INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief])
@@ -71,7 +71,7 @@ BEGIN
 END
 GO
 
--- VeldBeschikbaarheid: field availability per day-of-week
+-- VeldBeschikbaarheid: field availability per day-of-week (ClubCode via DEFAULT 'VRC' — single-club initiële seed)
 -- DagVanWeek: 1=Monday, 2=Tuesday, ..., 6=Saturday, 7=Sunday
 IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid])
 BEGIN
@@ -96,7 +96,7 @@ BEGIN
 END
 GO
 
--- TeamRegels: team-specific scheduling exceptions
+-- TeamRegels: team-specific scheduling exceptions (ClubCode via DEFAULT 'VRC' — single-club initiële seed)
 IF NOT EXISTS (SELECT 1 FROM [dbo].[TeamRegels])
 BEGIN
     INSERT INTO [dbo].[TeamRegels] ([TeamNaam], [RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking])
@@ -265,24 +265,26 @@ EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;
 GO
 -- ============================================================
 -- #30: Multi-club fundament — ClubCode + Accommodatie
+-- DEFAULT 'VRC' is uitsluitend voor migratie-backwards-compat (bestaande rijen krijgen hier een waarde).
+-- Alle nieuwe inserts geven ClubCode altijd expliciet mee vanuit AppSettings.
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'VRC';
+    ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'Accommodatie')
-    ALTER TABLE [dbo].[AppSettings] ADD [Accommodatie] NVARCHAR(200) NULL CONSTRAINT [DF_AppSettings_Accommodatie] DEFAULT 'Sportpark Spitsbergen';
+    ALTER TABLE [dbo].[AppSettings] ADD [Accommodatie] NVARCHAR(200) NULL CONSTRAINT [DF_AppSettings_Accommodatie] DEFAULT 'Sportpark Spitsbergen'; -- TODO #221: club-specifieke default verwijderen
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Velden') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[Velden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC';
+    ALTER TABLE [dbo].[Velden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[Speeltijden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'VRC';
+    ALTER TABLE [dbo].[Speeltijden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TeamRegels') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[TeamRegels] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'VRC';
+    ALTER TABLE [dbo].[TeamRegels] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC';
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
 GO
 
 -- ============================================================
@@ -315,7 +317,7 @@ END
 GO
 -- Bestaande 'Gepland' rijen bijwerken naar 'Te bevestigen'
 UPDATE [planner].[GeplandeWedstrijden]
-SET [Status] = 'Te bevestigen', [mta_modified] = GETDATE()
+SET [Status] = 'Te bevestigen', [mta_modified] = GETUTCDATE()
 WHERE [Status] = 'Gepland';
 GO
 
@@ -346,7 +348,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.AppSett
 BEGIN
     CREATE TABLE [dbo].[AppSettingsAudit] (
         [Id]            INT IDENTITY(1,1) NOT NULL,
-        [Tijdstip]      DATETIME2 NOT NULL CONSTRAINT [DF_AppSettingsAudit_Tijdstip] DEFAULT GETDATE(),
+        [Tijdstip]      DATETIME2 NOT NULL CONSTRAINT [DF_AppSettingsAudit_Tijdstip] DEFAULT GETUTCDATE(),
         [GewijzigdDoor] NVARCHAR(100) NOT NULL,
         [Veld]          NVARCHAR(100) NOT NULL,
         [OudeWaarde]    NVARCHAR(MAX) NULL,
@@ -368,8 +370,8 @@ BEGIN
         [Prioriteit]    INT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Prioriteit] DEFAULT 5,
         [Actief]        BIT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Actief] DEFAULT 1,
         [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode] DEFAULT 'VRC',
-        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Inserted] DEFAULT GETDATE(),
-        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Modified] DEFAULT GETDATE(),
+        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Inserted] DEFAULT GETUTCDATE(),
+        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_TeamVoorkeurTijden] PRIMARY KEY CLUSTERED ([Id] ASC)
     );
 END
@@ -384,7 +386,7 @@ BEGIN
         [Omschrijving] NVARCHAR(500) NULL,
         [Actief]       BIT NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Actief]    DEFAULT 1,
         [ClubCode]     NVARCHAR(20) NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode]  DEFAULT 'VRC',
-        [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETDATE(),
+        [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_UitgeslotenEmailAdressen] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
     );
@@ -394,6 +396,39 @@ GO
 -- v2 — #119: ClubCode toevoegen aan planner.EmailVerwerking (multi-club isolatie email-log)
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'ClubCode')
     ALTER TABLE [planner].[EmailVerwerking] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC';
+GO
+
+-- ============================================================
+-- #208: AVG-retentie — planner.sp_CleanupEmailVerwerking aanmaken
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('planner.sp_CleanupEmailVerwerking') AND type = 'P')
+BEGIN
+    EXEC(N'
+CREATE PROCEDURE [planner].[sp_CleanupEmailVerwerking]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE [planner].[EmailVerwerking]
+    SET [Afzender]          = ''[geanonimiseerd]'',
+        [Onderwerp]         = ''[geanonimiseerd]'',
+        [VerstuurdNaar]     = NULL,
+        [EmailBody]         = NULL,
+        [AntwoordEmail]     = NULL,
+        [PlannerResponse]   = NULL,
+        [GeextraheerdeData] = NULL,
+        [mta_modified]      = GETUTCDATE()
+    WHERE [mta_inserted] < DATEADD(DAY, -30, GETUTCDATE())
+      AND [mta_inserted] >= DATEADD(DAY, -90, GETUTCDATE())
+      AND ([Afzender] <> ''[geanonimiseerd]''
+           OR [EmailBody] IS NOT NULL
+           OR [AntwoordEmail] IS NOT NULL
+           OR [PlannerResponse] IS NOT NULL
+           OR [GeextraheerdeData] IS NOT NULL);
+    DELETE FROM [planner].[EmailVerwerking]
+    WHERE [mta_inserted] < DATEADD(DAY, -90, GETUTCDATE());
+END;
+    ');
+END
 GO
 
 -- v2 — #84: EmailTemplateInstellingen
@@ -406,8 +441,8 @@ BEGIN
         [BodyTemplate]  NVARCHAR(MAX) NOT NULL,
         [Actief]        BIT NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Actief] DEFAULT 1,
         [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_ClubCode] DEFAULT 'VRC',
-        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Inserted] DEFAULT GETDATE(),
-        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Modified] DEFAULT GETDATE(),
+        [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Inserted] DEFAULT GETUTCDATE(),
+        [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_EmailTemplateInstellingen] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [UQ_EmailTemplateInstellingen_Key] UNIQUE ([TemplateKey], [ClubCode])
     );
