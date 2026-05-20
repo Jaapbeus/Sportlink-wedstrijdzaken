@@ -1,6 +1,48 @@
 @page "/authentication/{action}"
-<RemoteAuthenticatorView Action="@Action" />
+@using Microsoft.Extensions.Configuration
+@inject NavigationManager NavManager
+@inject IConfiguration Config
+
+<RemoteAuthenticatorView Action="@Action">
+    <LogOutSucceeded>
+        <div class="api-startup">
+            <div class="startup-card">
+                <div class="startup-check">
+                    <svg class="checkmark-svg" viewBox="0 0 52 52">
+                        <circle class="checkmark-circle" cx="26" cy="26" r="25" fill="none" />
+                        <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+                    </svg>
+                </div>
+                <p class="startup-label startup-label-ready">Je bent uitgelogd.</p>
+                @if (!string.IsNullOrWhiteSpace(PostLogoutUrl))
+                {
+                    <p class="startup-label">Doorsturen naar de clubwebsite...</p>
+                }
+            </div>
+        </div>
+    </LogOutSucceeded>
+</RemoteAuthenticatorView>
 
 @code {
     [Parameter] public string? Action { get; set; }
+
+    private string? PostLogoutUrl => Config["PostLogoutRedirectUrl"];
+    private bool _redirectScheduled;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Na een succesvolle logout-callback en als er een PostLogoutRedirectUrl is
+        // geconfigureerd → na korte UX-pauze redirecten naar de clubwebsite.
+        // URL komt uit appsettings.Production.json zodat dit per club configureerbaar is
+        // (geen hardcoded club-strings in code — zie CLAUDE.md).
+        if (firstRender
+            && !_redirectScheduled
+            && string.Equals(Action, "logout-callback", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(PostLogoutUrl))
+        {
+            _redirectScheduled = true;
+            await Task.Delay(1500);
+            NavManager.NavigateTo(PostLogoutUrl, forceLoad: true);
+        }
+    }
 }
