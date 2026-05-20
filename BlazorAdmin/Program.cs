@@ -53,6 +53,10 @@ if (builder.HostEnvironment.IsProduction())
             .ConfigureHandler(
                 authorizedUrls: [capturedFunctionBaseUrl],
                 scopes: [capturedScope]);
+        // DelegatingHandler vereist een InnerHandler (de transport-laag).
+        // Zonder dit gooit HttpClient 'net_http_handler_not_assigned'.
+        // In Blazor WASM mapt HttpClientHandler op BrowserHttpHandler (browser fetch API).
+        handler.InnerHandler = new HttpClientHandler();
         var http = new HttpClient(handler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
         return new AdminApiClient(http);
     });
