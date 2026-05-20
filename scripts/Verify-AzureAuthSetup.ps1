@@ -122,22 +122,19 @@ if ($userRole -and $userRole.isEnabled) {
     Write-Fail "App Role 'user' ontbreekt of is disabled"
 }
 
-# ── Layer 3b — Optional claims voor 'roles' in id/access token ────────────────
-Write-Section "Layer 3b — Optional claims ('roles' in idToken/accessToken)"
+# ── Layer 3b — Optional claims voor 'roles' in id token ──────────────────────
+# 'roles' hoort alleen in optionalClaims.idToken. Voor accessToken voegt Entra
+# de roles claim automatisch toe (app-role claim is impliciet); expliciet zetten
+# geeft een schema-fout in Microsoft Graph.
+Write-Section "Layer 3b — Optional claims ('roles' in idToken)"
 
 $idClaims = $app.optionalClaims.idToken | Where-Object { $_.name -eq 'roles' }
-$atClaims = $app.optionalClaims.accessToken | Where-Object { $_.name -eq 'roles' }
 
 if ($idClaims) {
     Write-Pass "'roles' aanwezig in optionalClaims.idToken"
 } else {
     Write-Fail "'roles' ontbreekt in optionalClaims.idToken"
-    Write-Info "Zonder dit komt de role claim mogelijk niet in het ID token van Blazor WASM."
-}
-if ($atClaims) {
-    Write-Pass "'roles' aanwezig in optionalClaims.accessToken"
-} else {
-    Write-Warn "'roles' ontbreekt in optionalClaims.accessToken (server-side check minder relevant)"
+    Write-Info "Zonder dit komt de role claim niet in het ID token van Blazor WASM."
 }
 
 # ── Layer 4 — Frontend role-gate (App.razor) ──────────────────────────────────
