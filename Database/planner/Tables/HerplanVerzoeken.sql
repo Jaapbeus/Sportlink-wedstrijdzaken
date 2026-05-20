@@ -10,7 +10,7 @@ CREATE TABLE [planner].[HerplanVerzoeken] (
     [Status]                NVARCHAR(20)   NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Status] DEFAULT 'Aangevraagd',
     [AangevraagdDoor]       NVARCHAR(200)  NULL,
     [Opmerking]             NVARCHAR(500)  NULL,
-    [mta_inserted]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Ins] DEFAULT GETDATE(),
-    [mta_modified]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Mod] DEFAULT GETDATE(),
+    [mta_inserted]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Ins] DEFAULT GETUTCDATE(),
+    [mta_modified]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Mod] DEFAULT GETUTCDATE(),
     CONSTRAINT [PK_HerplanVerzoeken] PRIMARY KEY CLUSTERED ([Id] ASC)
 );

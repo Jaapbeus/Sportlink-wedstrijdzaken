@@ -4,7 +4,7 @@ CREATE TABLE [dbo].[UitgeslotenEmailAdressen] (
     [Omschrijving] NVARCHAR (500) NULL,
     [Actief]       BIT            NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Actief]    DEFAULT 1,
     [ClubCode]     NVARCHAR (20)  NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode]  DEFAULT 'VRC',
-    [mta_inserted] DATETIME2 (7)  NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETDATE(),
+    [mta_inserted] DATETIME2 (7)  NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETUTCDATE(),
     CONSTRAINT [PK_UitgeslotenEmailAdressen] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
 );
