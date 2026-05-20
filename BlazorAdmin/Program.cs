@@ -30,7 +30,12 @@ if (builder.HostEnvironment.IsProduction())
         // Entra schrijft app-rollen in de 'roles' claim. ClaimsPrincipal.IsInRole() leest standaard
         // van ClaimTypes.Role — expliciet "roles" instellen zodat de role-gate in App.razor werkt.
         options.UserOptions.RoleClaim = "roles";
-    });
+    })
+    // CustomUserFactory pakt de Entra 'roles' JSON-array uit naar losse claims.
+    // Zonder dit cast Blazor de array naar één claim met de JSON-string als value,
+    // waardoor IsInRole("admin") faalt ook al staat de rol in het token.
+    // Zie BlazorAdmin/Services/CustomUserFactory.cs voor uitleg.
+    .AddAccountClaimsPrincipalFactory<CustomUserFactory>();
     builder.Services.AddScoped<IAuthService, EntraAuthService>();
 
     // AdminApiClient met Bearer token: AuthorizationMessageHandler voegt automatisch
