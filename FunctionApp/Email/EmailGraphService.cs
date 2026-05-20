@@ -212,13 +212,11 @@ public partial class EmailGraphService
                     Message = message
                 });
 
-            _logger.LogInformation("Antwoord verstuurd naar {Ontvanger} met onderwerp '{Onderwerp}'",
-                to, subject);
+            _logger.LogInformation("Antwoord verstuurd (ontvanger en onderwerp niet gelogd — AVG #210)");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fout bij versturen van antwoord naar {Ontvanger} met onderwerp '{Onderwerp}'",
-                to, subject);
+            _logger.LogError(ex, "Fout bij versturen van antwoord (ontvanger en onderwerp niet gelogd — AVG #210)");
         }
     }
 
