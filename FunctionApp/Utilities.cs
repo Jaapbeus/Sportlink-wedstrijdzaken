@@ -80,7 +80,7 @@ namespace SportlinkFunction
                     using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                     await connection.OpenAsync();
                     using var command = new SqlCommand(
-                        "UPDATE [dbo].[AppSettings] SET [LastSyncTimestamp] = GETDATE()", connection);
+                        "UPDATE [dbo].[AppSettings] SET [LastSyncTimestamp] = GETUTCDATE()", connection);
                     await command.ExecuteNonQueryAsync();
                     log.LogInformation("Last sync timestamp updated.");
                 }
