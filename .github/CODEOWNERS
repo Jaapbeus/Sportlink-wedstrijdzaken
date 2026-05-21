@@ -1,0 +1,19 @@
+# CODEOWNERS — automatische review-toewijzing
+#
+# De repository-eigenaar wordt automatisch als reviewer toegevoegd bij PRs
+# die bestanden in de onderstaande paden raken.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Standaard eigenaar voor alles
+* @Jaapbeus
+
+# Security-kritieke paden — extra review verplicht
+.github/workflows/           @Jaapbeus
+scripts/                     @Jaapbeus
+FunctionApp/Admin/           @Jaapbeus
+BlazorAdmin/App.razor        @Jaapbeus
+BlazorAdmin/Services/EntraAuthService.cs @Jaapbeus
+
+# Database-schema — eigenaar bewaakt migratie-paden
+Database/                    @Jaapbeus

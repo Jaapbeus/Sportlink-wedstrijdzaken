@@ -30,7 +30,7 @@ $safePrefix = 'feature/', 'hotfix/', 'chore/', 'docs/'
 # Al op een geïsoleerde branch? Meteen doorgaan.
 if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
 
-# Op 'main', 'v2/develop' of detached HEAD → autonoom branch aanmaken:
+# Op 'main' of detached HEAD → autonoom branch aanmaken:
 #
 # 1. Bepaal issue-nummer (volgorde, zonder te vragen):
 #    a. Uit conversatiecontext ("werk aan #42", "issue #42", etc.)
@@ -38,21 +38,21 @@ if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
 #    c. Geen passend issue?  →  gh issue create --title "..." --body "..."
 #                                gebruik het nieuwe nummer
 #
-# 2. Bepaal branch-type en basisbranch:
+# 2. Bepaal branch-type (beide starten vanuit main):
 #    - Urgente productiefix (bug zichtbaar op live/main):
 #        git checkout -b hotfix/#<nr>-<slug> main
 #    - Alle andere gevallen (features, fixes, docs, chores):
-#        git checkout -b feature/#<nr>-<slug> v2/develop
+#        git checkout -b feature/#<nr>-<slug> main
 ```
 
 **Overzicht branch-types:**
 
 | Type | Basis | PR naar | Wanneer |
 |---|---|---|---|
-| `feature/#<nr>-<slug>` | `v2/develop` | `v2/develop` | Alles wat niet direct naar productie moet |
-| `hotfix/#<nr>-<slug>` | `main` | `main` + daarna PR `main → v2/develop` | Urgente bug zichtbaar op live |
+| `feature/#<nr>-<slug>` | `main` | `main` | Nieuwe features, bugfixes, docs, chores |
+| `hotfix/#<nr>-<slug>` | `main` | `main` | Urgente bug zichtbaar op live |
 
-**Nooit committen of pushen naar `v2/develop` of `main` — uitsluitend via PR.**
+**Nooit direct committen of pushen naar `main` — uitsluitend via PR.**
 
 ---
 
@@ -67,10 +67,10 @@ gh issue view <nr>                                         # lees volledig + gel
 
 # Branch aanmaken alleen als Stap S0 dit nog niet deed:
 $branch = git branch --show-current
-if ($branch -in @('main', 'v2/develop') -or [string]::IsNullOrEmpty($branch)) {
-    git checkout -b feature/#<nr>-<slug> v2/develop
+if ($branch -eq 'main' -or [string]::IsNullOrEmpty($branch)) {
+    git checkout -b feature/#<nr>-<slug> main
 }
-# Zit je al op feature/#<nr>-... → gewoon doorgaan
+# Zit je al op feature/#<nr>-... of hotfix/#<nr>-... → gewoon doorgaan
 ```
 
 ### Stap 1 — Implementeer (altijd alle lagen synchroon)
@@ -142,14 +142,8 @@ git add <specifieke bestanden>          # nooit git add -A of git add .
 git commit -m "feat(#<nr>): ..."
 git push -u origin <huidige-branch>
 
-# PR-target bepalen op basis van branch-type (zie Stap S0):
-$branch = git branch --show-current
-if ($branch.StartsWith('hotfix/')) {
-    gh pr create --base main      --title "hotfix(#<nr>): ..." --body "..."
-    # Na merge: ook PR van main → v2/develop aanmaken zodat develop gesynchroniseerd blijft
-} else {
-    gh pr create --base v2/develop --title "feat(#<nr>): ..."  --body "..."
-}
+# Alle branches gaan via PR naar main:
+gh pr create --base main --title "feat(#<nr>): ..." --body "..."
 ```
 
 ### Stap 4 — CI bewaken
@@ -184,9 +178,70 @@ Deze regels gelden altijd, zonder uitzondering:
 
 5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
 
-6. **Elke sessie begint op een geïsoleerde branch — volledig autonoom geregeld.** Voer bij sessiestart altijd Stap S0 uit (zie "Sessie-isolatie" hierboven). Zit je op `v2/develop`, `main` of detached HEAD? Maak direct autonoom een branch aan — nooit vragen aan de gebruiker, nooit wachten, nooit een bestandswijziging vóór de branch bestaat. Issue-nummer bepaal je uit de conversatiecontext of via `gh issue list`; ontbreekt een passend issue, maak er dan zelf één aan.
+6. **Elke sessie begint op een geïsoleerde branch — volledig autonoom geregeld.** Voer bij sessiestart altijd Stap S0 uit (zie "Sessie-isolatie" hierboven). Zit je op `main` of detached HEAD? Maak direct autonoom een branch aan — nooit vragen aan de gebruiker, nooit wachten, nooit een bestandswijziging vóór de branch bestaat. Issue-nummer bepaal je uit de conversatiecontext of via `gh issue list`; ontbreekt een passend issue, maak er dan zelf één aan.
 
 Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
+
+## Open-source en multi-club architectuur
+
+Deze repository is publiek en bedoeld voor gebruik door meerdere voetbalverenigingen. Elke club forkt de repo, richt eigen Azure-resources in en configureert eigen secrets/variables — **geen club-specifieke waarden in de broncode**.
+
+### Kernprincipes
+
+| Principe | Uitwerking |
+|---|---|
+| **Club-neutraal** | Geen clubnamen, tenant-IDs, URLs, of e-mailadressen in code of config-bestanden |
+| **Template + CI-substitutie** | `appsettings.Production.template.json` + GitHub Variables → CI genereert club-specifieke config bij elke deploy |
+| **ClubCode discriminator** | Elke databasetabel met club-data heeft een `ClubCode`-kolom; queries filteren altijd op `dbo.AppSettings.ClubCode` |
+| **Secrets via GitHub Secrets** | `AZURE_CREDENTIALS`, `AZURE_FUNCTION_KEY`, `AZURE_STATIC_WEB_APPS_API_TOKEN` — nooit in code |
+| **Contributiemodel** | Externe developers forken → PR naar main → Jaap + Claude beoordelen; zie CONTRIBUTING.md |
+
+### Wat bevatten de bestanden in git?
+
+| Bestand | Mag in git? | Reden |
+|---|---|---|
+| `BlazorAdmin/wwwroot/appsettings.Production.template.json` | ✓ Ja | Bevat alleen `{{PLACEHOLDER}}` tokens — geen echte waarden |
+| `BlazorAdmin/wwwroot/appsettings.Production.json` | ✗ Nee | Gegenereerd door CI, bevat Tenant/Client ID van de club |
+| `BlazorAdmin/wwwroot/appsettings.json` | ✓ Ja | Localhost-config zonder secrets |
+| `FunctionApp/local.settings.json` | ✗ Nee | Bevat `SqlConnectionString` en andere secrets |
+| `FunctionApp/local.settings.template.json` | ✓ Ja | Template zonder waarden |
+| `exports/*.csv` / `*.xlsx` | ✗ Nee | Persoonsgegevens (AVG) |
+
+### Branch-strategie (open-source model)
+
+```
+main  ←──── feature/#<nr>-<slug>   (via PR, squash of merge commit)
+  └──── hotfix/#<nr>-<slug>        (via PR, urgente productiefix)
+```
+
+- **main** is altijd deploybaar — de live-branch voor alle clubs die deployen
+- **feature/** en **hotfix/** zijn tijdelijke werkbranches, altijd vanuit `main`
+- **Externe contributors** maken een fork → branch in hun fork → PR naar `main` van de upstream
+- **Claude Code** werkt altijd op een `feature/` of `hotfix/` branch, nooit direct op `main`
+
+### Omgevingen per club
+
+```
+[GitHub fork, club-specifieke secrets]
+  │  push → deploy.yml
+  ▼
+Azure Functions  ← eigen func-<clubcode>-sportlink
+Azure SQL        ← eigen database met dezelfde schema's
+Azure SWA        ← eigen static web app
+Entra ID         ← eigen App Registration (single-tenant)
+```
+
+Elke club heeft een volledig geïsoleerde Azure-omgeving. Er is geen shared infrastructure.
+
+### Invarianten bij codereview
+
+Bij elke PR controleer:
+1. Geen hardcoded clubnamen, domeinen, e-mailadressen, tenant-IDs, resource-namen
+2. Nieuwe databasetabellen hebben `ClubCode`-kolom (of komen via `dbo.AppSettings`)
+3. Fallback `?? "waarde"` in C# mag geen naam/URL/club-specifieke string bevatten
+4. Template-tokens in `appsettings.Production.template.json` bijgewerkt als nieuw config-veld toegevoegd
+
+---
 
 ## Architectuurregels — altijd van toepassing
 
@@ -201,7 +256,7 @@ az login                                  # eenmalig per machine
 .\scripts\Configure-EntraApp.ps1          # idempotent apply
 ```
 
-Beide scripts staan in [scripts/](scripts/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de [club-domein] tenant zit.
+Beide scripts staan in [scripts/](scripts/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de juiste tenant is ingelogd.
 
 Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets: [docs/AZURE-ENTRA-SETUP.md](docs/AZURE-ENTRA-SETUP.md).
 
@@ -225,9 +280,9 @@ Auth is NIET af zodra `IsAuthenticated = true`. Een tenant-user kan inloggen via
 
 | Test-user | Configuratie in Azure | Verwacht resultaat |
 |---|---|---|
-| Admin user ([club-domein]) | Toegewezen met rol `admin` | Volledige UI, alle API werkt |
-| Tweede user ([club-domein]) | Toegewezen met rol `user` | UI laadt, GET-API werkt, mutaties geblokkeerd (toekomstig: nu zelfde als admin maar nog niet gescheiden) |
-| Derde user ([club-domein]) | **Geen** rol toegewezen | `NoAccess` pagina, géén sidebar/nav/FEEDBACK-knop, logout-knop wel zichtbaar |
+| Admin user (eigen tenant) | Toegewezen met rol `admin` | Volledige UI, alle API werkt |
+| Tweede user (eigen tenant) | Toegewezen met rol `user` | UI laadt, GET-API werkt, mutaties geblokkeerd (toekomstig: nu zelfde als admin maar nog niet gescheiden) |
+| Derde user (eigen tenant) | **Geen** rol toegewezen | `NoAccess` pagina, géén sidebar/nav/FEEDBACK-knop, logout-knop wel zichtbaar |
 | Externe user (andere tenant / guest) | n.v.t. | Kan zelfs niet inloggen — Entra weigert vóór redirect |
 
 Documenteer per release welke 3-user-tests zijn uitgevoerd. Zonder deze tests is een security-wijziging **niet** geaccepteerd.
@@ -363,11 +418,11 @@ Commit-type bepaalt de minimum versie-bump:
 ### Release-workflow
 
 ```powershell
-# 1. Zorg dat v2/develop up-to-date en groen is
-git checkout v2/develop
+# 1. Zorg dat main up-to-date en groen is
+git checkout main && git pull
 .\Test-App.ps1           # moet exit 0
 
-# 2. PR aanmaken en mergen naar main (via GitHub)
+# 2. PR aanmaken en mergen naar main (via GitHub) — vanuit een release-branch
 gh pr create --base main --title "release: v2.0.1" ...
 
 # 3. Na merge: tag aanmaken op main

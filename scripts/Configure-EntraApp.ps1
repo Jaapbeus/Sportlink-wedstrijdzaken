@@ -14,27 +14,44 @@
     Script is idempotent: op een al-correcte configuratie doet het niets en
     print het '✓ already configured' per stap. Veilig om herhaald te runnen.
 
-    Verplichte pre-conditie: 'az login' op het juiste account in de [club-domein]
-    tenant. Wordt aan het begin gecontroleerd; als de tenant niet matcht stopt
+    Verplichte pre-conditie: 'az login' op het juiste account in de tenant van
+    jouw club. Wordt aan het begin gecontroleerd; als de tenant niet matcht stopt
     het script direct (faalt-snel-principe).
+
+    Waar vind ik mijn waarden?
+      ClientId        → Azure Portal › App registrations › jouw app › Overview
+      ExpectedTenantId → Azure Portal › Microsoft Entra ID › Overview › Tenant ID
+      AdminUserPrincipalName → het UPN van de admin-gebruiker (bijv. admin@jouwclub.nl)
+
+.PARAMETER ClientId
+    Application (client) ID van de Entra App Registration van jouw club.
+
+.PARAMETER ExpectedTenantId
+    Tenant ID van de Microsoft Entra tenant van jouw club.
+
+.PARAMETER AdminUserPrincipalName
+    UPN van de gebruiker die de admin-rol toegewezen moet krijgen.
 
 .PARAMETER WhatIf
     Print alleen welke wijzigingen zouden gebeuren, doet niets.
 
 .EXAMPLE
-    .\scripts\Configure-EntraApp.ps1            # apply changes
-    .\scripts\Configure-EntraApp.ps1 -WhatIf    # dry-run
+    .\scripts\Configure-EntraApp.ps1 -ClientId '<jouw-app-id>' -ExpectedTenantId '<jouw-tenant-id>' -AdminUserPrincipalName 'admin@jouwclub.nl'
+    .\scripts\Configure-EntraApp.ps1 -ClientId '<jouw-app-id>' -ExpectedTenantId '<jouw-tenant-id>' -AdminUserPrincipalName 'admin@jouwclub.nl' -WhatIf
 
 .NOTES
-    Doelapp: Sportlink Admin GUI — vul ClientId en TenantId in vanuit je eigen
-    Entra App Registration. Zie docs/AZURE-ENTRA-SETUP.md voor het volledige
-    protocol en handmatige Portal-stappen als alternatief.
+    Zie SETUP.md en docs/AZURE-ENTRA-SETUP.md voor het volledige protocol.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string] $ClientId = '[CLIENT_ID]',
-    [string] $ExpectedTenantId = '[TENANT_ID]',
-    [string] $AdminUserPrincipalName = 'admin@your-club.nl'
+    [Parameter(Mandatory = $true, HelpMessage = 'Application (client) ID uit jouw Entra App Registration')]
+    [string] $ClientId,
+
+    [Parameter(Mandatory = $true, HelpMessage = 'Tenant ID uit Microsoft Entra ID › Overview')]
+    [string] $ExpectedTenantId,
+
+    [Parameter(Mandatory = $true, HelpMessage = 'UPN van de admin-gebruiker, bijv. admin@jouwclub.nl')]
+    [string] $AdminUserPrincipalName
 )
 
 $ErrorActionPreference = 'Stop'
