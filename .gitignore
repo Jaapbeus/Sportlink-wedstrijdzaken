@@ -90,6 +90,12 @@ sp_merge_current.txt
 **/voorbeeld-*.html
 publish/
 
+# ── Blazor productie-configuratie (club-specifiek, gegenereerd door CI) ────────
+# NOOIT committen — bevat Entra Tenant/Client IDs en club-specifieke URLs.
+# CI genereert dit bestand vanuit appsettings.Production.template.json + GitHub Variables.
+# Zie SETUP.md voor het instellen van de benodigde GitHub Variables voor jouw club.
+BlazorAdmin/wwwroot/appsettings.Production.json
+
 # ── SQL Server data files ─────────────────────────────────────────────────────
 *.mdf
 *.ldf

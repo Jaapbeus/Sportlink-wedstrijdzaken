@@ -1,6 +1,6 @@
 CREATE VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
--- Competition matches from Sportlink (home matches at Sportpark Spitsbergen only)
+-- Thuiswedstrijden op eigen accommodatie (gefilterd op Accommodatie uit dbo.AppSettings)
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
@@ -22,12 +22,12 @@ LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
 LEFT JOIN [dbo].[Speeltijden] s
     ON s.[Leeftijd] = CASE
-        WHEN m.[teamnaam] LIKE 'VRC G[0-9]%' THEN 'G'
+        WHEN m.[teamnaam] LIKE (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings]) + ' G[0-9]%' THEN 'G'
         ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
     END
 LEFT JOIN [dbo].[Velden] v
     ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-WHERE m.[accommodatie] LIKE '%' + COALESCE((SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings]), 'Sportpark Spitsbergen') + '%'
+WHERE m.[accommodatie] LIKE '%' + (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings]) + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
   AND v.[VeldNummer] IS NOT NULL
