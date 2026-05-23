@@ -316,6 +316,20 @@ Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlo
 - Documentatie-voorbeelden bevatten `[ClubNaam]` als placeholder, nooit echte club-specifieke waarden die in code kunnen terechtkomen.
 - Check bij codereview: scan op `?? "` gevolgd door een eigennaam, clubnaam, of adres.
 
+### AVG-veilige testdata — goedgekeurde uitzonderingen (uitputtende lijst)
+
+Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only developer-testpagina's. Ze volgen het **John Doe-principe**: bewust niet-identificeerbaar, niet gebonden aan een bestaand persoon of domein.
+
+| Waarde | Type | Toegestaan in |
+|---|---|---|
+| `Jan de Vries` | Fictieve naam (NL equivalent van "John Doe") | UI-defaults van admin-only testpagina's |
+| `trainer@voorbeeld.nl` | Fictief e-mailadres (`.voorbeeld.nl` bestaat niet) | UI-defaults van admin-only testpagina's |
+
+**Regels:**
+- Uitsluitend toegestaan als hardcoded UI-default in admin-only developer-testpagina's — **nooit** in bedrijfslogica, API-fallbacks of gedeelde configuratie.
+- `voorbeeld.nl` is opgenomen in `.gitleaks.toml` en `security-scan.yml` zodat security-checks hierop niet falen.
+- Deze lijst is **uitputtend** — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens.
+
 ### Microsoft Learn MCP server
 
 - Gebruik de Microsoft Learn MCP server proactief voor C#, .NET, Blazor, Azure Functions en Azure best practices.
