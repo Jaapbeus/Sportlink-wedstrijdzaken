@@ -25,6 +25,7 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Deploy smoke test: curl timeout brak retry-loop af** (#264): `set -e` in GitHub Actions liet curl's exit code 28 (timeout) de hele step onmiddellijk beëindigen. Alle `curl`-aanroepen in de test-stap gebruiken nu `|| echo "000"` zodat timeouts als "000" worden behandeld en de retry-loop altijd doorloopt.
 - **FunctionApp target framework**: `net9.0` expliciet vastgelegd als vereiste voor Azure Functions op Linux Consumption Plan — upgrade naar `net10.0` veroorzaakt een 503 bij eerste deploy. Geborgd in `CLAUDE.md` en projectgeheugen zodat deze fout niet opnieuw wordt gemaakt.
 
 ### Security
