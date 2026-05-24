@@ -142,6 +142,17 @@ public class TeamRegelDto
     public string ClubCode { get; set; } = string.Empty;
 }
 
+// ── Speeltijden ──
+
+public class SpeeltijdDto
+{
+    public string Leeftijd { get; set; } = "";
+    public decimal Veldafmeting { get; set; } = 1.00m;
+    public int WedstrijdTotaal { get; set; }
+    public int WedstrijdHelft { get; set; }
+    public int WedstrijdRust { get; set; }
+}
+
 // ── Dagplanning / Optimaliseer ──
 
 public class OptimaliseerRequestDto
