@@ -542,7 +542,12 @@ namespace SportlinkFunction.Planner
         /// </summary>
         public static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log)
         {
-            var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie") ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
+            var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
+            if (string.IsNullOrWhiteSpace(accommodatie))
+            {
+                log.LogWarning("Instelling 'accommodatie' niet geconfigureerd — MarkeerVervallenGeplandeWedstrijden overgeslagen. Stel de accommodatienaam in via Admin GUI → Instellingen.");
+                return;
+            }
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(@"

@@ -25,6 +25,7 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Dagelijkse sync brak af als `accommodatie` niet ingesteld** (#254): `MarkeerVervallenGeplandeWedstrijden` gooit nu geen exception als de instelling ontbreekt — de stap wordt overgeslagen met een waarschuwing. De rest van de sync (teams, wedstrijden, uitslagen) loopt gewoon door.
 - **Deploy smoke test: curl timeout brak retry-loop af** (#264): `set -e` in GitHub Actions liet curl's exit code 28 (timeout) de hele step onmiddellijk beëindigen. Alle `curl`-aanroepen in de test-stap gebruiken nu `|| true` zodat timeouts niet meer de step afbreken en de retry-loop altijd doorloopt.
 - **FunctionApp target terug naar net9.0** (#264): vorige sessie had `net10.0` ingezet als target framework "voor lokale dev", maar het Azure Functions Linux Consumption Plan ondersteunt alleen `.NET 9`. Resultaat: 502 op alle endpoints na elke deploy. Gecorrigeerd naar `net9.0`; .NET 10 SDK kan `net9.0` projecten bouwen en uitvoeren.
 - **FunctionApp target framework**: `net9.0` expliciet vastgelegd als vereiste voor Azure Functions op Linux Consumption Plan — upgrade naar `net10.0` veroorzaakt een 503 bij eerste deploy. Geborgd in `CLAUDE.md` en projectgeheugen zodat deze fout niet opnieuw wordt gemaakt.
