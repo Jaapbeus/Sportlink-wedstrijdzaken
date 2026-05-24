@@ -28,6 +28,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Build-teller versioning voor lokale ontwikkeling**: vierde versiecomponent (`2.2.0.x`) automatisch ophoogbaar via `Bump-Build.ps1`. Zichtbaar in health-endpoint (`GET /api/health` geeft nu ook `version` terug) en in de Feedback-modal van de Admin GUI. `.\Bump-Build.ps1 -NewPatch` verhoogt de patch-versie voor nieuwe functionaliteit.
 - **Documentatie-index**: alle documentatie geconsolideerd in `docs/` met een nieuwe [inhoudsopgave (docs/INDEX.md)](docs/INDEX.md) ingedeeld per doelgroep (beheerders, developers, architectuur, security). README toont de documentatietabel prominent.
 
+### Changed
+
+- **Email processor: AI-First flow — database slaapt bij BuitenScope-emails** (#251): de AI-classificatie vindt nu plaats vóór elke database-aanroep. Emails die als BuitenScope worden geclassificeerd krijgen alleen een Outlook-label ("Geen AI antwoord") — de database wordt niet gewekt. Pas als er minstens één email is die daadwerkelijk door de planner verwerkt moet worden, wordt de database wakker gemaakt. Spaart vCores op de gratis Azure SQL database. Bijvangst: `GETDATE()` → `GETUTCDATE()` in alle UPDATE-statements in de email processor.
+
 ### Fixed
 
 - **Git hooks check in Test-App.ps1** (#239): `Test-App.ps1` controleert nu of `core.hooksPath` is ingesteld op `.githooks` en of `sensitive-patterns.txt` aanwezig is. Ontbrekende configuratie geeft een waarschuwing (niet een fout, want CI dekt de fallback).
