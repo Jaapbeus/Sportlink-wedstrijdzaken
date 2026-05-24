@@ -10,6 +10,9 @@ permissions:
   contents: read
   security-events: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BELANGRIJK: Als één of meer jobs hieronder falen, blokkeert de security-gate
 # job automatisch de merge. Zie SECURITY.md voor het protocol bij een fout.
