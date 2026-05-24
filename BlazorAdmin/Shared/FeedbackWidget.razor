@@ -221,8 +221,17 @@
         }
         else
         {
-            _vragen = result.Data.Vragen ?? [];
-            _antwoorden = new List<string>(new string[_vragen.Count]);
+            var nieuweVragen = result.Data.Vragen ?? [];
+            // Bewaar antwoorden op vragen die ook in de nieuwe set voorkomen.
+            var nieuweAntwoorden = nieuweVragen
+                .Select(v =>
+                {
+                    var idx = _vragen.IndexOf(v);
+                    return idx >= 0 && idx < _antwoorden.Count ? _antwoorden[idx] : "";
+                })
+                .ToList();
+            _vragen = nieuweVragen;
+            _antwoorden = nieuweAntwoorden;
         }
     }
 

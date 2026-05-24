@@ -124,6 +124,12 @@ public static class FeedbackFunction
     private static async Task<ValidateResponse> ValideerVolledigheid(
         ChatClient chatClient, FeedbackRequest dto, ILogger log)
     {
+        // Als de gebruiker al antwoorden heeft gegeven op aanvulvragen, accepteer direct.
+        // Re-validatie leidt tot dezelfde vragen omdat het AI-model eerder gestelde vragen
+        // opnieuw stelt ondanks het antwoord — de antwoorden vullen de gaten per definitie.
+        if (dto.VragenAntwoorden?.Any(qa => !string.IsNullOrWhiteSpace(qa.Antwoord)) == true)
+            return new ValidateResponse(true, []);
+
         var beschrijving = Sanitize(dto.Beschrijving, 2000);
         var paginaInfo = string.IsNullOrWhiteSpace(dto.Context?.Pagina) ? "" : $"Pagina: {dto.Context.Pagina}\n";
         var qaBlok = BouwQaBlok(dto.VragenAntwoorden);
