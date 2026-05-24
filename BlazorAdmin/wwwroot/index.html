@@ -30,6 +30,24 @@
     </div>
     <script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js"></script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>
+        window.blazorHelpers = {
+            copyToClipboard: function (text) {
+                return navigator.clipboard.writeText(text);
+            },
+            downloadHtml: function (filename, content) {
+                var blob = new Blob([content], { type: 'text/html' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        };
+    </script>
 </body>
 
 </html>

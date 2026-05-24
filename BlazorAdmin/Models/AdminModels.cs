@@ -141,3 +141,48 @@ public class TeamRegelDto
     public string? Opmerking { get; set; }
     public string ClubCode { get; set; } = string.Empty;
 }
+
+// ── Dagplanning / Optimaliseer ──
+
+public class OptimaliseerRequestDto
+{
+    public string Datum { get; set; } = "";
+    public string? Doel { get; set; }
+    public string? GewensteEindtijd { get; set; }
+    public int? BufferMinuten { get; set; }
+}
+
+public class OptimaliseerResponseDto
+{
+    public string Datum { get; set; } = "";
+    public string HuidigeEindtijd { get; set; } = "";
+    public string? GeschatteNieuweEindtijd { get; set; }
+    public int AantalVerplaatsingen { get; set; }
+    public int AantalVanVeld5Verplaatst { get; set; }
+    public List<OptimalisatieSuggestieDto> Suggesties { get; set; } = new();
+    public string HtmlPlanner { get; set; } = "";
+    public bool VoldoendeRuimte { get; set; }
+    public string? VoldoendeRuimteMelding { get; set; }
+    public VeldCapaciteitDto? CapaciteitOverzicht { get; set; }
+}
+
+public class OptimalisatieSuggestieDto
+{
+    public string Wedstrijd { get; set; } = "";
+    public int HuidigVeldNummer { get; set; }
+    public string HuidigVeld { get; set; } = "";
+    public string HuidigeTijd { get; set; } = "";
+    public int NieuwVeldNummer { get; set; }
+    public string NieuwVeld { get; set; } = "";
+    public string NieuweTijd { get; set; } = "";
+    public string Reden { get; set; } = "";
+}
+
+public class VeldCapaciteitDto
+{
+    public int TotaalBeschikbareMinuten { get; set; }
+    public int TotaalBezettMinuten { get; set; }
+    public double BezettingsPercentage { get; set; }
+    public int AantalWedstrijdenOpVeld5 { get; set; }
+    public int AantalLegeVelden { get; set; }
+}

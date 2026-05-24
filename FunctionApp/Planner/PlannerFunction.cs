@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using SportlinkFunction.Admin;
 
 namespace SportlinkFunction.Planner
 {
@@ -154,10 +156,14 @@ namespace SportlinkFunction.Planner
         }
         [Function("Optimaliseer")]
         public static async Task<IActionResult> Optimaliseer(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/optimaliseer")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/optimaliseer")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("Optimaliseer");
+            var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
+            using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);

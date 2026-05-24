@@ -1,0 +1,191 @@
+@page "/dagplanning"
+@inject AdminApiClient Api
+@inject IAuthService Auth
+@inject IJSRuntime JS
+
+<PageTitle>Dagplanning — Admin</PageTitle>
+
+<h1>Dagplanning</h1>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Datum</label>
+                <input type="date" class="form-control" @bind="_datumDt" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Optimalisatiedoel</label>
+                <select class="form-select" @bind="_doel">
+                    <option value="">(geen voorkeur)</option>
+                    <option value="veld5-ontlasten">Veld 5 ontlasten</option>
+                    <option value="strakker-plannen">Strakker plannen</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Gewenste eindtijd</label>
+                <input type="time" class="form-control" @bind="_gewensteEindtijd" @bind:format="HH:mm" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Buffer (min)</label>
+                <input type="number" class="form-control" @bind="_bufferMinuten" min="0" max="60" />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" @onclick="GenereerAsync" disabled="@_bezig">
+                    @(_bezig ? "Genereren..." : "Genereer dagplanning")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+
+@if (_resultaat != null)
+{
+    @if (_resultaat.VoldoendeRuimte)
+    {
+        <div class="alert alert-success mb-3">
+            <strong>&#10003; @_resultaat.VoldoendeRuimteMelding</strong>
+        </div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-header fw-semibold">Statistieken</div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-2 col-6 mb-2">
+                    <div class="fs-5 fw-bold">@_resultaat.HuidigeEindtijd</div>
+                    <small class="text-muted">Huidige eindtijd</small>
+                </div>
+                <div class="col-md-2 col-6 mb-2">
+                    <div class="fs-5 fw-bold">@(_resultaat.GeschatteNieuweEindtijd ?? "—")</div>
+                    <small class="text-muted">Geschatte nieuwe eindtijd</small>
+                </div>
+                <div class="col-md-2 col-6 mb-2">
+                    <div class="fs-5 fw-bold">@_resultaat.AantalVerplaatsingen</div>
+                    <small class="text-muted">Verplaatsingen</small>
+                </div>
+                <div class="col-md-2 col-6 mb-2">
+                    <div class="fs-5 fw-bold">@_resultaat.AantalVanVeld5Verplaatst</div>
+                    <small class="text-muted">Van veld 5 verplaatst</small>
+                </div>
+                @if (_resultaat.CapaciteitOverzicht != null)
+                {
+                    <div class="col-md-2 col-6 mb-2">
+                        <div class="fs-5 fw-bold">@_resultaat.CapaciteitOverzicht.BezettingsPercentage.ToString("0")%</div>
+                        <small class="text-muted">Bezettingsgraad</small>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <button class="btn btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync" disabled="@_bezig">
+            @(_kopieerStatus ?? "Kopieer e-mail HTML")
+        </button>
+        <button class="btn btn-outline-secondary" @onclick="DownloadHtmlAsync" disabled="@_bezig">
+            Download HTML-bestand
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_resultaat.HtmlPlanner))
+    {
+        <div class="border rounded" style="overflow:hidden;">
+            <iframe srcdoc="@_resultaat.HtmlPlanner"
+                    style="width:100%; min-height:800px; border:none; display:block;"
+                    title="Dagplanning visualisatie">
+            </iframe>
+        </div>
+    }
+}
+
+@code {
+    private DateTime _datumDt;
+    private string _doel = "";
+    private TimeOnly _gewensteEindtijd = new TimeOnly(16, 15);
+    private int _bufferMinuten = 15;
+    private bool _bezig;
+    private string? _errorMessage;
+    private string? _kopieerStatus;
+    private OptimaliseerResponseDto? _resultaat;
+
+    private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
+    private string EindtijdStr => _gewensteEindtijd.ToString("HH:mm");
+
+    protected override void OnInitialized()
+    {
+        _datumDt = VolgendZaterdag().ToDateTime(TimeOnly.MinValue);
+    }
+
+    private static DateOnly VolgendZaterdag()
+    {
+        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        int dagenTotZaterdag = ((int)DayOfWeek.Saturday - (int)vandaag.DayOfWeek + 7) % 7;
+        if (dagenTotZaterdag == 0) dagenTotZaterdag = 7;
+        return vandaag.AddDays(dagenTotZaterdag);
+    }
+
+    private async Task GenereerAsync()
+    {
+        _errorMessage = null;
+        _resultaat = null;
+        _kopieerStatus = null;
+        _bezig = true;
+        try
+        {
+            var req = BuildRequest();
+            var result = await Api.OptimaliseerAsync(req);
+            if (result.Success)
+                _resultaat = result.Data;
+            else
+                _errorMessage = result.ErrorMessage ?? "Onbekende fout bij genereren dagplanning.";
+        }
+        finally
+        {
+            _bezig = false;
+        }
+    }
+
+    private async Task KopieerEmailHtmlAsync()
+    {
+        if (_resultaat == null) return;
+        _bezig = true;
+        try
+        {
+            var result = await Api.OptimaliseerHtmlAsync(BuildRequest(), "email");
+            if (result.Success && result.Data != null)
+            {
+                await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", result.Data);
+                _kopieerStatus = "Gekopieerd!";
+                _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
+            }
+            else
+            {
+                _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
+            }
+        }
+        finally
+        {
+            _bezig = false;
+        }
+    }
+
+    private async Task DownloadHtmlAsync()
+    {
+        if (_resultaat == null || string.IsNullOrEmpty(_resultaat.HtmlPlanner)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _resultaat.HtmlPlanner);
+    }
+
+    private OptimaliseerRequestDto BuildRequest() => new()
+    {
+        Datum = DatumStr,
+        Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
+        GewensteEindtijd = EindtijdStr,
+        BufferMinuten = _bufferMinuten
+    };
+}
