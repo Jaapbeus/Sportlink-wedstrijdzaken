@@ -21,11 +21,18 @@ else
             <div class="col-md-6 mb-3">
                 <label class="form-label">Clubnaam</label>
                 <input class="form-control" value="@settings!.ClubName" disabled />
-                <small class="form-text text-muted">Niet wijzigbaar via deze interface</small>
+                <small class="form-text text-muted">
+                    Staat in AI-systeem-prompt en e-mailtemplates. Wijzigen via SQL:
+                    <code>UPDATE [dbo].[AppSettings] SET [ClubName] = '...'</code>
+                </small>
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">ClubCode</label>
                 <input class="form-control" value="@settings.ClubCode" disabled />
+                <small class="form-text text-muted">
+                    Unieke identifier voor multi-club ondersteuning — staat als filter in elke database-query.
+                    Wijzigen via SQL: <code>UPDATE [dbo].[AppSettings] SET [ClubCode] = '...'</code>
+                </small>
             </div>
         </div>
 
@@ -60,10 +67,18 @@ else
             <div class="col-md-6 mb-3">
                 <label class="form-label">Herplan-deadline (dagen vooraf)</label>
                 <input class="form-control" type="number" min="0" max="60" @bind="settings.HerplanDeadlineDagen" />
+                <small class="form-text text-muted">
+                    Herplanverzoeken die binnenkomen minder dan dit aantal dagen vóór de wedstrijd worden
+                    afgewezen door de planner. Standaard: 8 dagen.
+                </small>
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Buffer tussen wedstrijden (minuten)</label>
                 <input class="form-control" type="number" min="0" max="120" @bind="settings.BufferMinuten" />
+                <small class="form-text text-muted">
+                    Minimale pauze tussen twee wedstrijden op hetzelfde veld bij het zoeken naar
+                    een nieuwe speeltijd. Standaard: 15 minuten.
+                </small>
             </div>
         </div>
 

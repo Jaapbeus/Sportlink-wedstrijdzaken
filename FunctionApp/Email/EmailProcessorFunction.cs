@@ -12,6 +12,9 @@ public class EmailProcessorFunction
 {
     private static bool _databaseNoodmailVerstuurd;
     private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
+    // Uitsluitingslijst-cache: geladen in fase 2, hergebruikt in fase 1 van volgende polls.
+    // Leeg bij koude start — eerste poll classificeert alles via AI (acceptabel).
+    private static HashSet<string> _uitgeslotenCache = new(StringComparer.OrdinalIgnoreCase);
 
     [Function("ProcessIncomingEmails")]
     public async Task Run(
@@ -37,7 +40,8 @@ public class EmailProcessorFunction
         var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
         var graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
 
-        // 3. Ongelezen emails ophalen (Graph API, wekt database NIET)
+        // ── FASE 1: licht — Graph API en AI, geen database ──────────────────────────
+
         var emails = await graphService.GetUnreadEmailsAsync();
         if (emails.Count == 0)
         {
@@ -45,7 +49,101 @@ public class EmailProcessorFunction
             return;
         }
 
-        // 4. Pas nu database wakker maken (er zijn emails te verwerken)
+        var eigenMailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
+
+        // Pre-filter: eigen mailbox en gecachede uitsluitingslijst (geen DB nodig)
+        var teClassificeren = new List<InkomendBericht>();
+        foreach (var email in emails)
+        {
+            if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
+                await graphService.MarkAsReadAsync(email.MessageId);
+            }
+            else if (_uitgeslotenCache.Contains(email.Afzender))
+            {
+                log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
+                await graphService.MarkAsReadAsync(email.MessageId);
+            }
+            else
+            {
+                teClassificeren.Add(email);
+            }
+        }
+
+        if (teClassificeren.Count == 0)
+        {
+            log.LogInformation("Alle emails gefilterd vóór AI-classificatie");
+            return;
+        }
+
+        // AI-classificatie voor alle resterende emails — database wordt nog niet gewekt
+        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
+        var classificaties = new List<(InkomendBericht Email, BerichtClassificatie Classificatie)>();
+        var aiAborted = false;
+
+        foreach (var email in teClassificeren)
+        {
+            try
+            {
+                var classificatie = await aiService.ClassificeerBerichtAsync(
+                    email.Body, email.Onderwerp, email.Afzender);
+                BerichtPipeline.ValideerDagDatum(classificatie, email.Body, email.Onderwerp);
+                classificaties.Add((email, classificatie));
+            }
+            catch (Exception ex) when (IsOpenAiQuotaFout(ex))
+            {
+                log.LogError(ex, "OpenAI quota overschreden — email processor stopt voor deze batch");
+                if (_openAiQuotaNoodmailVerstuurdenOp == null
+                    || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
+                {
+                    await StuurOpenAiNoodmailAsync(graphService, ex.Message, log);
+                }
+                else
+                {
+                    log.LogWarning("OpenAI quota-noodmail al verstuurd binnen 24u — geen herhaling");
+                }
+                aiAborted = true;
+                break;
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "AI-classificatie mislukt voor email {MessageId} — blijft ongelezen voor volgende poll", email.MessageId);
+            }
+        }
+
+        // BuitenScope-emails: alleen Outlook-label, database wordt niet gewekt
+        foreach (var (email, _) in classificaties.Where(c => c.Classificatie.Type == VerzoekType.BuitenScope))
+        {
+            try
+            {
+                await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
+                await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
+                await graphService.MarkAsReadAsync(email.MessageId);
+                log.LogInformation("Email {MessageId} buiten scope — gelabeld in Outlook, database slaapt", email.MessageId);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Fout bij Outlook-labeling BuitenScope email {MessageId}", email.MessageId);
+            }
+        }
+
+        var teVerwerken = classificaties
+            .Where(c => c.Classificatie.Type != VerzoekType.BuitenScope)
+            .ToList();
+
+        if (teVerwerken.Count == 0)
+        {
+            var aantalBuitenScope = classificaties.Count(c => c.Classificatie.Type == VerzoekType.BuitenScope);
+            log.LogInformation(
+                "Alle {Aantal} emails buiten scope{Afgebroken} — database blijft slapen",
+                aantalBuitenScope,
+                aiAborted ? " (AI batch vroegtijdig gestopt)" : "");
+            return; // Database slaapt
+        }
+
+        // ── FASE 2: zwaar — alleen als er non-BuitenScope emails zijn ────────────────
+
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -61,7 +159,7 @@ public class EmailProcessorFunction
             if (!_databaseNoodmailVerstuurd)
             {
                 log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
-                await StuurDatabaseNoodmailAsync(graphService, emails.Count, dbEx.Message, log);
+                await StuurDatabaseNoodmailAsync(graphService, teVerwerken.Count, dbEx.Message, log);
             }
             else
             {
@@ -70,31 +168,17 @@ public class EmailProcessorFunction
             return;
         }
 
-        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
-        var uitgeslotenAdressen = await LaadUitgeslotenAdressenAsync(log);
+        // Refresh uitsluitingslijst nu DB wakker is — cache bijwerken voor volgende polls
+        _uitgeslotenCache = await LaadUitgeslotenAdressenAsync(log);
 
         int verwerkt = 0, fouten = 0;
 
-        foreach (var email in emails)
+        foreach (var (email, classificatie) in teVerwerken)
         {
             try
             {
-                await VerwerkEmailAsync(email, graphService, aiService, uitgeslotenAdressen, log);
+                await VerwerkEmailAsync(email, classificatie, graphService, _uitgeslotenCache, log);
                 verwerkt++;
-            }
-            catch (Exception ex) when (IsOpenAiQuotaFout(ex))
-            {
-                log.LogError(ex, "OpenAI quota overschreden — email processor stopt voor deze batch");
-                if (_openAiQuotaNoodmailVerstuurdenOp == null
-                    || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
-                {
-                    await StuurOpenAiNoodmailAsync(graphService, ex.Message, log);
-                }
-                else
-                {
-                    log.LogWarning("OpenAI quota-noodmail al verstuurd binnen 24u — geen herhaling");
-                }
-                break;
             }
             catch (Exception ex)
             {
@@ -112,22 +196,15 @@ public class EmailProcessorFunction
 
     private static async Task VerwerkEmailAsync(
         InkomendBericht email,
+        BerichtClassificatie classificatie,
         EmailGraphService graphService,
-        BerichtAiService aiService,
         HashSet<string> uitgeslotenAdressen,
         ILogger log)
     {
-        var eigenMailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
-        if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
-        {
-            log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
-            await graphService.MarkAsReadAsync(email.MessageId);
-            return;
-        }
-
+        // Hercheck met verse DB-geladen uitsluitingslijst (kan afwijken van cache)
         if (uitgeslotenAdressen.Contains(email.Afzender))
         {
-            log.LogInformation("Email {MessageId} van uitgesloten adres, overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
+            log.LogInformation("Email {MessageId} van uitgesloten adres (verse lijst), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
             await graphService.MarkAsReadAsync(email.MessageId);
             return;
         }
@@ -139,31 +216,12 @@ public class EmailProcessorFunction
             return;
         }
 
+        // DB INSERT — classificatie is al gedaan in fase 1, resultaat hergebruiken
         var verwerkingId = await InsertEmailVerwerkingAsync(email);
-        log.LogInformation("Email {MessageId} geregistreerd met id {Id}", email.MessageId, verwerkingId);
-
-        var classificatie = await aiService.ClassificeerBerichtAsync(
-            email.Body, email.Onderwerp, email.Afzender);
-
-        BerichtPipeline.ValideerDagDatum(classificatie, email.Body, email.Onderwerp);
-
         var classificatieJson = JsonConvert.SerializeObject(classificatie);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
-        log.LogInformation("Email {Id} geclassificeerd als {Type}, datum={Datum}",
+        log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
             verwerkingId, classificatie.Type, classificatie.Datum);
-
-        if (classificatie.Type == VerzoekType.BuitenScope)
-        {
-            // Buiten scope: geen reply versturen, coördinator handelt zelf af.
-            await UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, null);
-            await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
-            await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
-            await graphService.MarkAsReadAsync(email.MessageId);
-            log.LogInformation(
-                "Email {Id} buiten scope — gecategoriseerd 'Geen AI antwoord', geen reply verstuurd",
-                verwerkingId);
-            return;
-        }
 
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, email, log);
         await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
