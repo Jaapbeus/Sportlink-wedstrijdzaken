@@ -719,6 +719,8 @@ Browser (beheerder)
 | `GET/PUT/POST/DELETE /api/beheer/velden`, `/veldbeschikbaarheid` | `AdminVeldBeschikbaarheidFunction.cs` |
 | `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden`, `/teamregels` | `AdminVoorkeurTijdenFunction.cs` |
 | `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
+| `GET/POST /api/beheer/teambegeleiding`, `/{team}`, `/doorsturen` | `AdminTeambegeleidingFunction.cs` |
+| `GET/POST/PUT/DELETE /api/beheer/speeltijden`, `/{leeftijd}` | `AdminSpeeltijdenFunction.cs` |
 | `POST /api/test/email` | `EmailTestFunction.cs` |
 | `POST /api/feedback/validate`, `/submit` | `FeedbackFunction.cs` |
 

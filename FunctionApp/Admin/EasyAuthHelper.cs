@@ -51,6 +51,78 @@ internal static class EasyAuthHelper
     }
 
     /// <summary>
+    /// Controleert of de aanroeper geauthenticeerd is en de 'admin' of 'user' rol heeft.
+    /// Returns null als OK, anders een 401/403 result.
+    /// </summary>
+    public static IActionResult? RequireAuthenticated(HttpRequest req)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName))
+            return null;
+
+        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
+            string.IsNullOrEmpty(encoded))
+            return new UnauthorizedResult();
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
+            var hasRole = principal?.Claims?.Any(c =>
+                string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(c.Val, "admin", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(c.Val, "user", StringComparison.OrdinalIgnoreCase))) ?? false;
+            return hasRole ? null : new ObjectResult(new { error = "Forbidden" }) { StatusCode = 403 };
+        }
+        catch { return new UnauthorizedResult(); }
+    }
+
+    /// <summary>
+    /// Haalt de weergavenaam van de aanroeper op uit de Entra ID claims.
+    /// Geeft null terug in lokale ontwikkeling of als de claim ontbreekt.
+    /// </summary>
+    public static string? GetCallerName(HttpRequest req)
+    {
+        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
+            string.IsNullOrEmpty(encoded))
+            return null;
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
+            return principal?.Claims?
+                .FirstOrDefault(c => string.Equals(c.Typ, "name", StringComparison.OrdinalIgnoreCase))
+                ?.Val;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Haalt het e-mailadres van de aanroeper op uit de Entra ID claims.
+    /// Uitsluitend voor server-side gebruik (Reply-To in doorstuur-email). Nooit in response terugsturen.
+    /// </summary>
+    public static string? GetCallerEmail(HttpRequest req)
+    {
+        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
+            string.IsNullOrEmpty(encoded))
+            return null;
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
+            return principal?.Claims?
+                .FirstOrDefault(c =>
+                    string.Equals(c.Typ, "preferred_username", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(c.Typ, "upn", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(c.Typ, "email", StringComparison.OrdinalIgnoreCase))
+                ?.Val;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
     /// Leest x-correlation-id uit de request header, of genereert een nieuwe GUID.
     /// Schrijft het ID terug in de response header voor end-to-end tracing.
     /// </summary>

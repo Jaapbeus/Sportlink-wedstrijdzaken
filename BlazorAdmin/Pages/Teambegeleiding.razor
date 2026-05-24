@@ -1,0 +1,186 @@
+@page "/teambegeleiding"
+@inject AdminApiClient Api
+@using BlazorAdmin.Models
+
+<PageTitle>Teambegeleiding — Admin</PageTitle>
+
+<h1>Teambegeleiding</h1>
+<p class="text-muted">
+    Selecteer een team om de begeleiding op te zoeken. U kunt een vraag doorsturen —
+    de begeleider neemt rechtstreeks contact met u op.
+    <strong>Contactgegevens worden niet gedeeld conform AVG.</strong>
+</p>
+
+@if (_loadingTeams)
+{
+    <p>Teams laden...</p>
+}
+else if (_teamsError != null)
+{
+    <div class="alert alert-danger">@_teamsError</div>
+}
+else
+{
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label class="form-label">Team</label>
+            <select class="form-select" @onchange="OnTeamGekozen">
+                <option value="">— Kies een team —</option>
+                @foreach (var t in _teams)
+                {
+                    <option value="@t">@t</option>
+                }
+            </select>
+        </div>
+    </div>
+}
+
+@if (_loadingBegeleiders)
+{
+    <p>Begeleiding laden...</p>
+}
+else if (_selectedTeam != null && _begeleiders.Count > 0)
+{
+    <h3>Begeleiding van @_selectedTeam</h3>
+    <div class="row g-3 mb-4">
+        @foreach (var b in _begeleiders)
+        {
+            <div class="col-md-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">@b.Naam</h5>
+                        <span class="badge bg-secondary">@b.Teamrol</span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (!_vraagFormulierZichtbaar)
+    {
+        <button class="btn btn-primary" @onclick="ToonVraagFormulier">Stel een vraag</button>
+    }
+    else
+    {
+        <div class="card mt-3 border-primary">
+            <div class="card-header bg-primary text-white">Vraag doorsturen naar begeleiding van @_selectedTeam</div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Uw vraag wordt doorgestuurd naar de begeleiding. De begeleider antwoordt rechtstreeks op uw e-mailadres.
+                    Hun e-mailadres wordt niet gedeeld.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label">Onderwerp</label>
+                    <input class="form-control" @bind="_doorsturen.Onderwerp" placeholder="Optioneel" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Bericht <span class="text-danger">*</span></label>
+                    <textarea class="form-control" rows="4" @bind="_doorsturen.Bericht" placeholder="Uw vraag aan de begeleiding..."></textarea>
+                </div>
+                @if (_doorsturenError != null)
+                {
+                    <div class="alert alert-danger">@_doorsturenError</div>
+                }
+                @if (_doorsturenSuccess != null)
+                {
+                    <div class="alert alert-success">@_doorsturenSuccess</div>
+                }
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" @onclick="VerstuurVraagAsync" disabled="@_doorsturenBezig">
+                        @if (_doorsturenBezig) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Versturen
+                    </button>
+                    <button class="btn btn-secondary" @onclick="SluitVraagFormulier">Annuleer</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+else if (_selectedTeam != null && !_loadingBegeleiders)
+{
+    <div class="alert alert-info">Geen begeleiding gevonden voor @_selectedTeam.</div>
+}
+
+@code {
+    private List<string> _teams = new();
+    private List<TeambegeleidingItem> _begeleiders = new();
+    private string? _selectedTeam;
+    private bool _loadingTeams = true;
+    private bool _loadingBegeleiders;
+    private string? _teamsError;
+    private bool _vraagFormulierZichtbaar;
+    private DoorsturenRequest _doorsturen = new();
+    private bool _doorsturenBezig;
+    private string? _doorsturenError;
+    private string? _doorsturenSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetTeambegeleidingTeamsAsync();
+        if (result.Success)
+            _teams = result.Data ?? new();
+        else
+            _teamsError = result.ErrorMessage ?? "Ophalen teams mislukt";
+        _loadingTeams = false;
+    }
+
+    private async Task OnTeamGekozen(ChangeEventArgs e)
+    {
+        _selectedTeam = e.Value?.ToString();
+        _begeleiders.Clear();
+        _vraagFormulierZichtbaar = false;
+        _doorsturenSuccess = null;
+        _doorsturenError = null;
+
+        if (string.IsNullOrEmpty(_selectedTeam)) return;
+
+        _loadingBegeleiders = true;
+        var result = await Api.GetTeambegeleidingAsync(_selectedTeam);
+        if (result.Success)
+            _begeleiders = result.Data ?? new();
+        _loadingBegeleiders = false;
+    }
+
+    private void ToonVraagFormulier()
+    {
+        _doorsturen = new DoorsturenRequest { TeamNaam = _selectedTeam ?? "" };
+        _doorsturenError = null;
+        _doorsturenSuccess = null;
+        _vraagFormulierZichtbaar = true;
+    }
+
+    private void SluitVraagFormulier()
+    {
+        _vraagFormulierZichtbaar = false;
+        _doorsturenError = null;
+        _doorsturenSuccess = null;
+    }
+
+    private async Task VerstuurVraagAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_doorsturen.Bericht))
+        {
+            _doorsturenError = "Vul een bericht in.";
+            return;
+        }
+
+        _doorsturenBezig = true;
+        _doorsturenError = null;
+        _doorsturen.TeamNaam = _selectedTeam ?? "";
+
+        var result = await Api.StuurTeambegeleidingBerichtAsync(_doorsturen);
+        _doorsturenBezig = false;
+
+        if (result.Success)
+        {
+            _doorsturenSuccess = $"Uw vraag over de begeleiding van {_selectedTeam} is doorgestuurd. " +
+                                  "De begeleider neemt rechtstreeks contact met u op. " +
+                                  "Contactgegevens worden niet gedeeld conform AVG.";
+            _vraagFormulierZichtbaar = false;
+        }
+        else
+        {
+            _doorsturenError = result.ErrorMessage ?? "Doorsturen mislukt. Probeer opnieuw.";
+        }
+    }
+}

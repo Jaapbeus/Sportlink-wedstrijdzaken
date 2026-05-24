@@ -32,6 +32,11 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Teambegeleiding opvragen (#168):**
+  - Admin GUI-pagina `/teambegeleiding`: beheerders en gebruikers (user-rol) kunnen een team kiezen en de naam + rol van de begeleiders inzien. Een inline formulier stuurt een vraag door aan de begeleiding — het e-mailadres van de coach wordt nooit getoond (AVG art. 6.1.f). Reply-To is het e-mailadres van de aanvrager; de coach antwoordt rechtstreeks.
+  - E-mail auto-reply: inkomende berichten met "wie is de trainer/coach van [team]?" worden automatisch geclassificeerd als `TeamContactOpvragen`, doorgestuurd naar de coach (BCC coördinator) en beantwoord met "uw vraag is doorgestuurd, contactgegevens worden niet gedeeld".
+  - Nieuwe API-endpoints: `GET /api/beheer/teambegeleiding`, `GET /api/beheer/teambegeleiding/{team}`, `POST /api/beheer/teambegeleiding/doorsturen`.
+  - Nieuw Auth-niveau `RequireAuthenticated()` in EasyAuthHelper: admin- én user-rol hebben toegang tot teambegeleiding.
 - **Speeltijden beheer in Admin GUI** (#291): nieuwe pagina `/instellingen/speeltijden` waarmee beheerders speeltijden per leeftijdscategorie kunnen inzien, toevoegen, bewerken en verwijderen. Het veld "Totaal (incl. rust)" is de totale veldblokkeertijd die de planner direct gebruikt — rust wordt niet apart opgeteld in code. API-endpoints: `GET/POST /api/beheer/speeltijden` en `PUT/DELETE /api/beheer/speeltijden/{leeftijd}`.
 - **Speeltijden DB leidend voor veldplanning** (#291): de planner gebruikt uitsluitend `dbo.Speeltijden.WedstrijdTotaal` voor de berekening van wedstrijdduur. De Sportlink API-waarde `Duration` (die geen rust bevat) wordt niet meer gebruikt. Ontbrekende leeftijdscategorie geeft nu een duidelijke foutmelding met verwijzing naar de beheerpagina in plaats van een stille fallback naar 105 minuten.
 
