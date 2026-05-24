@@ -103,6 +103,24 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: appsettings.Production.json genereren vanuit template
+        if: steps.check.outputs.skip == 'false'
+        env:
+          AZURE_FUNCTIONAPP_URL: ${{ vars.AZURE_FUNCTIONAPP_URL }}
+          AZURE_AD_TENANT_ID: ${{ vars.AZURE_AD_TENANT_ID }}
+          AZURE_AD_CLIENT_ID: ${{ vars.AZURE_AD_CLIENT_ID }}
+          POST_LOGOUT_REDIRECT_URL: ${{ vars.POST_LOGOUT_REDIRECT_URL }}
+        run: |
+          sed \
+            -e "s|{{AZURE_FUNCTIONAPP_URL}}|${AZURE_FUNCTIONAPP_URL}|g" \
+            -e "s|{{AZURE_AD_TENANT_ID}}|${AZURE_AD_TENANT_ID}|g" \
+            -e "s|{{AZURE_AD_CLIENT_ID}}|${AZURE_AD_CLIENT_ID}|g" \
+            -e "s|{{POST_LOGOUT_REDIRECT_URL}}|${POST_LOGOUT_REDIRECT_URL}|g" \
+            BlazorAdmin/wwwroot/appsettings.Production.template.json \
+            > BlazorAdmin/wwwroot/appsettings.Production.json
+          echo "Gegenereerd:"
+          cat BlazorAdmin/wwwroot/appsettings.Production.json
+
       - name: Blazor WASM publiceren
         if: steps.check.outputs.skip == 'false'
         run: |
