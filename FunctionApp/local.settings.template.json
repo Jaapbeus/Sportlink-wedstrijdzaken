@@ -23,6 +23,7 @@
     "AzureFunctionAppName": "",
     "GitHubPat": "",
     "GitHubOwner": "",
-    "GitHubRepo": "Sportlink-wedstrijdzaken"
+    "GitHubRepo": "Sportlink-wedstrijdzaken",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
   }
 }
