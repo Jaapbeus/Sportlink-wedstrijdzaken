@@ -20,8 +20,10 @@ public static class AdminSyncFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncStatus");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -61,8 +63,10 @@ public static class AdminSyncFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSyncTrigger");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

@@ -18,8 +18,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -69,8 +71,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenPost");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -113,8 +117,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenPut");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -161,8 +167,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVoorkeurTijdenDelete");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -197,8 +205,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -245,8 +255,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsPost");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -296,8 +308,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsPut");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -348,8 +362,10 @@ public static class AdminVoorkeurTijdenFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTeamRegelsDelete");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

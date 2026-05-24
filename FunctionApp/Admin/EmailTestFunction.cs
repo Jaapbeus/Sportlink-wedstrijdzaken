@@ -35,8 +35,10 @@ public static class EmailTestFunction
         FunctionContext context)
     {
         var log = context.GetLogger("EmailTestDryRun");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
         if (!TryAcquireSlot())
         {
