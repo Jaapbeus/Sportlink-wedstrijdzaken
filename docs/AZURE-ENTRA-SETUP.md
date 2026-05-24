@@ -6,9 +6,9 @@ Dit document beschrijft de volledige authenticatie- en autorisatieconfiguratie v
 >
 > ```powershell
 > az login
-> .\scripts\Verify-AzureAuthSetup.ps1       # diagnose, read-only
-> .\scripts\Configure-EntraApp.ps1 -WhatIf  # toon wat zou veranderen
-> .\scripts\Configure-EntraApp.ps1          # apply (idempotent)
+> .\scripts\azure\Verify-AzureAuthSetup.ps1       # diagnose, read-only
+> .\scripts\azure\Configure-EntraApp.ps1 -WhatIf  # toon wat zou veranderen
+> .\scripts\azure\Configure-EntraApp.ps1          # apply (idempotent)
 > ```
 >
 > Daarna: log uit + verse Incognito browser + opnieuw inloggen.
@@ -30,17 +30,17 @@ De Blazor Admin GUI (Static Web App) authenticeert tegen Entra ID via MSAL (OIDC
 
 Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd in CI; Layer 1-3b worden gevalideerd door `Verify-AzureAuthSetup.ps1`.
 
-## Identifiers (Sportlink VRC)
+## Identifiers (club-specifiek — haal op via Azure Portal)
 
-| Item | Waarde |
+| Item | Hoe ophalen |
 |---|---|
-| Tenant | v.v. V.R.C. (`[TENANT_ID]`) |
+| Tenant ID | Azure Portal → Entra ID → Overview → `Tenant ID` |
 | App Registration `displayName` | Sportlink Admin GUI |
-| App Registration `clientId` | `[CLIENT_ID]` |
-| Service Principal (Enterprise App) `objectId` | `7948575e-4849-45bc-a0d0-122900c91808` |
-| Admin user | `admin@your-club.nl` |
-| SWA host | `[swa-unique-id].7.azurestaticapps.net` |
-| SPA redirect URI | `https://[swa-unique-id].7.azurestaticapps.net/authentication/login-callback` |
+| App Registration `clientId` | Azure Portal → Entra ID → App registrations → Sportlink Admin GUI → Application (client) ID |
+| Service Principal `objectId` | Azure Portal → Entra ID → Enterprise applications → Sportlink Admin GUI → Object ID |
+| Admin user | `admin@voorbeeld.nl` |
+| SWA host | Zie Azure Portal → Static Web App → URL |
+| SPA redirect URI | `https://<SWA_HOST>/authentication/login-callback` |
 
 ## Workflow
 
@@ -48,20 +48,23 @@ Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd 
 
 1. Installeer de Azure CLI (`az --version` moet `>= 2.50` zijn).
 2. `az login` op een account met `Application Administrator` of `Cloud Application Administrator` rol in de tenant.
-3. `az account show` → controleer dat `tenantId` = `[TENANT_ID]`. Zo nee: `az account set --subscription <id-binnen-[club-domein]>`.
-4. Run `.\scripts\Configure-EntraApp.ps1`. Dit script is idempotent: bestaande configuratie wordt niet aangepast, alleen ontbrekende stukken worden bijgevuld.
-5. Verifieer met `.\scripts\Verify-AzureAuthSetup.ps1`. Alle regels moeten ✓ groen zijn.
-6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met admin@your-club.nl.
+3. `az account show` → controleer dat je op de juiste tenant bent. Zo nee: `az account set --subscription <subscription-naam-of-id>`.
+4. Run `.\scripts\azure\Configure-EntraApp.ps1`. Dit script is idempotent: bestaande configuratie wordt niet aangepast, alleen ontbrekende stukken worden bijgevuld.
+5. Verifieer met `.\scripts\azure\Verify-AzureAuthSetup.ps1`. Alle regels moeten ✓ groen zijn.
+6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met `admin@voorbeeld.nl` (jouw admin-account).
 
 ### Nieuwe gebruiker toevoegen
 
 ```powershell
+# Haal eerst de objectId van de Service Principal op:
+$spObjectId = az ad sp show --display-name "Sportlink Admin GUI" --query "id" -o tsv
+
 # Voor 'user' rol (read-only):
-az ad sp show --id 7948575e-4849-45bc-a0d0-122900c91808 --query "appRoles[?value=='user'].id" -o tsv  # → role-id
-$user = az ad user show --id 'nieuwe.user@[club-domein]' | ConvertFrom-Json
+$roleId = az ad sp show --id $spObjectId --query "appRoles[?value=='user'].id" -o tsv
+$user = az ad user show --id 'nieuwe.user@voorbeeld.nl' | ConvertFrom-Json
 az rest --method POST `
-    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/7948575e-4849-45bc-a0d0-122900c91808/appRoleAssignedTo" `
-    --body "{`"principalId`":`"$($user.id)`",`"resourceId`":`"7948575e-4849-45bc-a0d0-122900c91808`",`"appRoleId`":`"<role-id>`"}"
+    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$spObjectId/appRoleAssignedTo" `
+    --body "{`"principalId`":`"$($user.id)`",`"resourceId`":`"$spObjectId`",`"appRoleId`":`"$roleId`"}"
 ```
 
 Of via Azure Portal: **Enterprise applications → Sportlink Admin GUI → Users and groups → Add user/group**.
@@ -82,7 +85,7 @@ MSAL bewaart een ID-token in `localStorage`. Als je de App Roles of optionalClai
 
 ### Verkeerde tenant in az CLI
 
-Als je meerdere Entra tenants hebt: `az account show` toont welke actief is. `Configure-EntraApp.ps1` faalt vroeg met een duidelijke melding als de tenant niet `[TENANT_ID...]` is. Switch met `az account set --subscription <id>`.
+Als je meerdere Entra tenants hebt: `az account show` toont welke actief is. `Configure-EntraApp.ps1` faalt vroeg met een duidelijke melding als de verkeerde tenant actief is. Switch met `az account set --subscription <subscription-naam-of-id>`.
 
 ### Role claim niet in token zonder optionalClaims
 
@@ -102,15 +105,15 @@ In code: gebruik `IsInRole("admin")` (kleine letters), niet `IsInRole("Admin")`.
 
 ### Ander tenant-account ingelogd in browser
 
-Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én admin@your-club.nl, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor jaapadmin-tests, of klik op "Use another account" in de Microsoft loginpagina.
+Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `admin@voorbeeld.nl`, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor admin-tests, of klik op "Use another account" in de Microsoft loginpagina.
 
 ## Verificatie — 3-user-test (verplicht na elke auth-wijziging)
 
 | Test-user | Configuratie in Azure | Verwacht in browser |
 |---|---|---|
-| `admin@your-club.nl` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
-| 2e [club-domein] user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
-| 3e [club-domein] user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
+| `admin@voorbeeld.nl` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
+| 2e club-user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
+| 3e club-user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
 
 Documenteer de uitkomst per release. Geen 3-user-test → geen acceptatie.
