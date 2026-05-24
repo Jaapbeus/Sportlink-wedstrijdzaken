@@ -383,7 +383,7 @@ public class EmailProcessorFunction
         using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await connection.OpenAsync();
 
-        var setClauses = "[Status] = @Status, [mta_modified] = GETDATE()";
+        var setClauses = "[Status] = @Status, [mta_modified] = GETUTCDATE()";
         if (geextraheerdeData != null)
             setClauses += ", [GeextraheerdeData] = @Data, [VerzoekType] = @VerzoekType";
 
@@ -415,7 +415,7 @@ public class EmailProcessorFunction
         await connection.OpenAsync();
         using var command = new SqlCommand(@"
             UPDATE [planner].[EmailVerwerking]
-            SET [PlannerResponse] = @Response, [mta_modified] = GETDATE()
+            SET [PlannerResponse] = @Response, [mta_modified] = GETUTCDATE()
             WHERE [Id] = @Id", connection);
         command.Parameters.AddWithValue("@Id", verwerkingId);
         command.Parameters.AddWithValue("@Response", plannerResponseJson);
@@ -428,7 +428,7 @@ public class EmailProcessorFunction
         await connection.OpenAsync();
         using var command = new SqlCommand(@"
             UPDATE [planner].[EmailVerwerking]
-            SET [Status] = 'AntwoordVerstuurd', [VerstuurdNaar] = @Naar, [AntwoordEmail] = @Antwoord, [mta_modified] = GETDATE()
+            SET [Status] = 'AntwoordVerstuurd', [VerstuurdNaar] = @Naar, [AntwoordEmail] = @Antwoord, [mta_modified] = GETUTCDATE()
             WHERE [Id] = @Id", connection);
         command.Parameters.AddWithValue("@Id", verwerkingId);
         command.Parameters.AddWithValue("@Naar", verstuurdNaar);
@@ -442,7 +442,7 @@ public class EmailProcessorFunction
         await connection.OpenAsync();
         using var command = new SqlCommand(@"
             UPDATE [planner].[EmailVerwerking]
-            SET [Status] = 'Fout', [FoutMelding] = @Fout, [mta_modified] = GETDATE()
+            SET [Status] = 'Fout', [FoutMelding] = @Fout, [mta_modified] = GETUTCDATE()
             WHERE [MessageId] = @MessageId", connection);
         command.Parameters.AddWithValue("@MessageId", messageId);
         command.Parameters.AddWithValue("@Fout", foutMelding.Length > 1000 ? foutMelding[..1000] : foutMelding);

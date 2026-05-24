@@ -409,10 +409,22 @@ Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlo
 
 ### UTC in database, lokale tijd in GUI
 
-- **Database:** alle `DateTime` kolommen opslaan in **UTC** (GETUTCDATE(), geen GETDATE()).
-- **API (FunctionApp):** SQL Server levert `DateTimeKind.Unspecified` via `Convert.ToDateTime()` → altijd omzetten naar UTC met `DateTime.SpecifyKind(dt, DateTimeKind.Utc)` zodat de JSON-serializer een `Z`-suffix toevoegt.
-- **Blazor WASM:** gebruik altijd `ToLocalTime()` voor weergave. De browser converteert UTC naar de tijdzone van de gebruiker (Nederland = CET winter / CEST zomer). Nooit een UTC-tijd tonen zonder conversie.
-- Reden: Nederlanders zien anders 02:00 in de ochtend als "04:00" en andersom bij zomertijdwissel.
+**Drielaagse verplichting — alle lagen moeten correct zijn, anders stapelen offsets zich op:**
+
+| Laag | Regel | Hoe | Fout patroon |
+|---|---|---|---|
+| **Database** | Altijd UTC opslaan | `GETUTCDATE()` — **nooit `GETDATE()`** | `GETDATE()` slaat lokale servertijd op (CEST = UTC+2); de API markeert het daarna als UTC → Blazor telt nog eens +2u op → tijdstip in de toekomst |
+| **API (FunctionApp)** | Markeer elke DateTime als UTC na lezen uit SQL | `DateTime.SpecifyKind(dt, DateTimeKind.Utc)` → JSON krijgt `Z`-suffix | Zonder SpecifyKind is Kind=Unspecified; sommige clients behandelen Unspecified als Local → inconsistent gedrag |
+| **Blazor WASM** | Converteer UTC naar lokale tijd vóór weergave | `.ToLocalTime()` op elke DateTime die uit de API komt | Rauw UTC tonen zonder conversie geeft tijden in UTC-notatie die 1-2u achter lijken voor NL-gebruikers |
+
+**Incident-referentie (2026-05-21):** `GETDATE()` in `SaveLastSyncTimestampAsync` sloeg CEST-tijd op. API markeerde als UTC. Blazor voegde +2u toe. Dashboard toonde 'Laatste sync' als toekomstig tijdstip. Fix: `GETDATE()` → `GETUTCDATE()` in alle 6 C#-bestanden. Zie PR #246.
+
+**Verplichte check bij codereview:**
+- Elke `INSERT`/`UPDATE` in C# die een `DateTime`-kolom vult: gebruikt `GETUTCDATE()` (niet `GETDATE()`) of `DateTime.UtcNow`?
+- Elke DateTime-weergave in Blazor: staat er `.ToLocalTime()` voor de `.ToString()`?
+- JSON van API: heeft elke datetime een `Z`-suffix (`"2026-05-21T12:39:00Z"`)? Controleer via browser DevTools → Network → response body.
+
+**Reden:** Zomertijdwissel (CEST↔CET, ±1u) maakt fouten pas bij 2% van het jaar zichtbaar. GETUTCDATE() voorkomt dat seizoensgebonden bugs pas 6 maanden later opduiken.
 
 ### GUI en code altijd synchroon
 

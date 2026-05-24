@@ -580,7 +580,7 @@ namespace SportlinkFunction
                                 ,[verenigingswedstrijd] = @verenigingswedstrijd
                                 ,[status]               = @status
                             WHERE [wedstrijdcode] = @wedstrijdcode
-                        ELSE IF @wedstrijddatum <= CONVERT(NVARCHAR(50), GETDATE(), 127)
+                        ELSE IF @wedstrijddatum <= CONVERT(NVARCHAR(50), GETUTCDATE(), 127)
                             INSERT INTO [stg].[matches] (
                                  [wedstrijddatum],[wedstrijdcode],[wedstrijdnummer],[datum],[wedstrijd]
                                 ,[accommodatie],[aanvangstijd],[thuisteam],[thuisteamid],[thuisteamlogo]

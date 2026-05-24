@@ -549,7 +549,7 @@ namespace SportlinkFunction.Planner
                 UPDATE gw
                 SET gw.[IsVervallen] = 1,
                     gw.[SportlinkWedstrijdCode] = CAST(m.[wedstrijdcode] AS BIGINT),
-                    gw.[mta_modified] = GETDATE()
+                    gw.[mta_modified] = GETUTCDATE()
                 FROM [planner].[GeplandeWedstrijden] gw
                 INNER JOIN [his].[matches] m
                     ON CAST(m.[kaledatum] AS DATE) = gw.[Datum]
