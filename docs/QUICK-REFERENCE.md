@@ -26,7 +26,7 @@ WHERE Id = 1;
 ### SQL Scripts (in SSMS)
 ```sql
 -- 1. Create database, schemas, basic tables
-<repository>\FunctionApp\setup-local-database.sql
+<repository>\FunctionApp\scripts/db/setup-local-database.sql
 
 -- 2. Create metadata schema and mappings
 <repository>\FunctionApp\setup-metadata-tables.sql
@@ -40,7 +40,7 @@ WHERE Id = 1;
 ### PowerShell Script
 ```powershell
 # Verify environment setup
-.\setup-local-debug.ps1
+.\scripts\dev\scripts/dev/setup-local-debug.ps1
 ```
 
 ---
@@ -129,9 +129,9 @@ SELECT COUNT(*) FROM [his].[matchdetails];
 | `SETUP.md` | Complete setup guide |
 | `SETUP-CHECKLIST.md` | Interactive checklist |
 | `LOCAL-DEBUG-README.md` | Debugging guide |
-| `setup-local-database.sql` | Database initialization |
+| `scripts/db/setup-local-database.sql` | Database initialization |
 | `setup-metadata-tables.sql` | Metadata setup |
-| `setup-local-debug.ps1` | Environment verification |
+| `scripts/dev/scripts/dev/setup-local-debug.ps1` | Environment verification |
 | `local.settings.json` | Local configuration |
 
 ---

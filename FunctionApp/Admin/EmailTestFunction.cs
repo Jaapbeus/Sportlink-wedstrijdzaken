@@ -97,7 +97,9 @@ public static class EmailTestFunction
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij dry-run email");
-            return new ObjectResult(new { error = "Dry-run mislukt" }) { StatusCode = 500 };
+            var isLocal = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+            var errorMsg = isLocal ? $"Dry-run mislukt: {ex.GetType().Name}: {ex.Message}" : "Dry-run mislukt";
+            return new ObjectResult(new { error = errorMsg }) { StatusCode = 500 };
         }
     }
 

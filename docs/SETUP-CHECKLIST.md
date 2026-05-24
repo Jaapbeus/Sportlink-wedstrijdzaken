@@ -34,7 +34,7 @@ Use this checklist to track your setup progress. Check off each item as you comp
 
 ### Database Creation
 - [ ] Connected to SQL Server in SSMS
-- [ ] Executed `setup-local-database.sql`
+- [ ] Executed `scripts/db/setup-local-database.sql`
 - [ ] Database `SportlinkSqlDb` created
 - [ ] Schemas created: `stg`, `his`
 - [ ] AppSettings table created
@@ -89,7 +89,7 @@ Server=____________; Database=SportlinkSqlDb; Integrated Security=True; TrustSer
 ## Environment Verification
 
 ### Automated Checks
-- [ ] Executed `setup-local-debug.ps1`
+- [ ] Executed `scripts/dev/scripts/dev/setup-local-debug.ps1`
 - [ ] SQL Server connection: ✓ Success
 - [ ] Database existence: ✓ Success
 - [ ] Azurite installation: ✓ Success
