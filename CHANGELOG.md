@@ -19,6 +19,7 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **AVG-bewaartermijn avg.Teambegeleiding** (#238): `sp_CleanupTeambegeleiding` stored procedure verwijdert rijen ouder dan 1 jaar (vangnet als importscript langere tijd niet gedraaid heeft). Maandelijkse timer trigger `CleanupTeambegeleiding` (1e van de maand, 04:00 UTC). Bewaartermijn gedocumenteerd in `exports/README.md`.
 - **Kostenbeleid als meest prominente architectuurregel in CLAUDE.md** (#255): expliciete gratis-eerst eis voor alle Azure-resources; verplichting om vóór elke feature-toevoeging én deployment actuele Microsoft-prijsdocumentatie te controleren via Microsoft Learn MCP; harde stop-deployment regel bij gedetecteerde prijswijziging; geverifieerde tabel van gratis vs. potentieel-betaalde resources; verificatiechecklist als deployment-gate.
 - **Build-teller versioning voor lokale ontwikkeling**: vierde versiecomponent (`2.2.0.x`) automatisch ophoogbaar via `Bump-Build.ps1`. Zichtbaar in health-endpoint (`GET /api/health` geeft nu ook `version` terug) en in de Feedback-modal van de Admin GUI. `.\Bump-Build.ps1 -NewPatch` verhoogt de patch-versie voor nieuwe functionaliteit.
 - **Documentatie-index**: alle documentatie geconsolideerd in `docs/` met een nieuwe [inhoudsopgave (docs/INDEX.md)](docs/INDEX.md) ingedeeld per doelgroep (beheerders, developers, architectuur, security). README toont de documentatietabel prominent.

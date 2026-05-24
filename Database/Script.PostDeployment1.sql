@@ -462,6 +462,19 @@ BEGIN
 END
 GO
 
+-- #238: avg.sp_CleanupTeambegeleiding — AVG-vangnet: verwijder rijen ouder dan 1 jaar
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('avg.sp_CleanupTeambegeleiding') AND type = 'P')
+BEGIN
+    EXEC('
+CREATE PROCEDURE [avg].[sp_CleanupTeambegeleiding]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM [avg].[Teambegeleiding]
+    WHERE [mta_imported] < DATEADD(YEAR, -1, GETUTCDATE());
+END');
+END
+GO
 
 -- v2 — #84: EmailTemplateInstellingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
