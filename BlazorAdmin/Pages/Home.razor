@@ -106,10 +106,38 @@
     {
         syncing = true;
         syncResult = null;
+
+        var timestampVoor = status?.LastSyncTimestamp;
+
         var r = await Api.TriggerSyncAsync();
-        syncResult = r.Success
-            ? "Synchronisatie geslaagd."
-            : $"Synchronisatie mislukt: {r.ErrorMessage}";
+        if (!r.Success)
+        {
+            syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
+            syncing = false;
+            return;
+        }
+
+        // 202 Accepted: sync draait op achtergrond — poll tot LastSyncTimestamp wijzigt
+        syncResult = "Synchronisatie gestart, even geduld…";
+        StateHasChanged();
+
+        var deadline = DateTime.UtcNow.AddMinutes(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5000);
+            var statusResult = await Api.GetSyncStatusAsync();
+            if (statusResult.Success && statusResult.Data?.LastSyncTimestamp != timestampVoor)
+            {
+                status = statusResult.Data;
+                syncResult = "Synchronisatie voltooid.";
+                syncing = false;
+                StateHasChanged();
+                return;
+            }
+        }
+
+        // Na 10 min nog geen wijziging — sync loopt waarschijnlijk nog door
+        syncResult = "Synchronisatie loopt op de achtergrond. Herlaad de pagina later voor de actuele status.";
         syncing = false;
         await LoadAsync();
     }
