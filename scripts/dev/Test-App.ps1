@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$root = $PSScriptRoot
+$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $issues  = [System.Collections.Generic.List[string]]::new()
 $fixed   = [System.Collections.Generic.List[string]]::new()
 $ok      = [System.Collections.Generic.List[string]]::new()
@@ -223,7 +223,7 @@ $endpoints = @(
 
 if (-not $funcRunning) {
     Write-Host "  FunctionApp niet actief op :7094 — API-tests overgeslagen." -ForegroundColor DarkGray
-    Write-Host "  Start met: .\Start-Debug.ps1 en wacht 10s; daarna .\Test-App.ps1" -ForegroundColor DarkGray
+    Write-Host "  Start met: .\scripts\dev\Start-Debug.ps1 en wacht 10s; daarna .\Test-App.ps1" -ForegroundColor DarkGray
 } else {
     foreach ($ep in $endpoints) {
         try {
@@ -300,7 +300,7 @@ $pages = @(
 
 if (-not $blazorRunning) {
     Write-Host "  BlazorAdmin niet actief op :5242 — pagina-tests overgeslagen." -ForegroundColor DarkGray
-    Write-Host "  Start met: .\Start-Debug.ps1 en wacht 15s; daarna .\Test-App.ps1" -ForegroundColor DarkGray
+    Write-Host "  Start met: .\scripts\dev\Start-Debug.ps1 en wacht 15s; daarna .\Test-App.ps1" -ForegroundColor DarkGray
 } else {
     foreach ($page in $pages) {
         try {
@@ -329,7 +329,7 @@ $swaRunning = [bool](Get-NetTCPConnection -LocalPort 4280 -State Listen -ErrorAc
 
 if (-not $swaRunning) {
     Write-Host "  SWA emulator niet actief op :4280 — SWA-tests overgeslagen." -ForegroundColor DarkGray
-    Write-Host "  Start met: .\Start-Debug.ps1 -Swa" -ForegroundColor DarkGray
+    Write-Host "  Start met: .\scripts\dev\Start-Debug.ps1 -Swa" -ForegroundColor DarkGray
 } else {
     # 1. Mock-login pagina bereikbaar
     try {
