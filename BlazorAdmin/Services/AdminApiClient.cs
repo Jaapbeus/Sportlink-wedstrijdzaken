@@ -130,6 +130,20 @@ public class AdminApiClient
         catch (Exception ex) { return ApiResult<string>.Fail(ex.Message); }
     }
 
+    // ── Speeltijden ──
+
+    public async Task<ApiResult<List<SpeeltijdDto>>> GetSpeeltijdenAsync()
+        => await GetAsync<List<SpeeltijdDto>>("api/beheer/speeltijden");
+
+    public async Task<ApiResult<object>> CreateSpeeltijdAsync(SpeeltijdDto dto)
+        => await PostAsync<object>("api/beheer/speeltijden", dto);
+
+    public async Task<ApiResult<object>> UpdateSpeeltijdAsync(string leeftijd, SpeeltijdDto dto)
+        => await PutAsync<object>($"api/beheer/speeltijden/{Uri.EscapeDataString(leeftijd)}", dto);
+
+    public async Task<ApiResult<object>> DeleteSpeeltijdAsync(string leeftijd)
+        => await DeleteAsync<object>($"api/beheer/speeltijden/{Uri.EscapeDataString(leeftijd)}");
+
     // ── Feedback widget ──
 
     public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
