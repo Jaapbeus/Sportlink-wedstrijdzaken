@@ -1,0 +1,66 @@
+name: Infrastructure (Bicep)
+
+# Alleen handmatig uitvoerbaar — nooit automatisch bij push.
+# Gebruik what-if om drift te detecteren zonder wijzigingen.
+# Gebruik deploy alleen na expliciete goedkeuring eigenaar.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Actie'
+        required: true
+        default: 'what-if'
+        type: choice
+        options:
+          - what-if
+          - deploy
+      deploy_monitoring:
+        description: 'Monitoring deployen? (⚠️ Log Analytics is betaald voor nieuwe workspaces)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  RESOURCE_GROUP: myAppGroup
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  infrastructure:
+    name: "Bicep ${{ inputs.action }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure inloggen
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: What-if — drift detecteren (geen wijzigingen)
+        if: inputs.action == 'what-if'
+        run: |
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infrastructure/main.bicep \
+            --parameters infrastructure/main.parameters.json \
+            --parameters deployMonitoring=${{ inputs.deploy_monitoring }}
+
+      - name: Deploy — infrastructure bijwerken
+        if: inputs.action == 'deploy'
+        run: |
+          echo "⚠️  Deploy naar $RESOURCE_GROUP gestart door ${{ github.actor }}"
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infrastructure/main.bicep \
+            --parameters infrastructure/main.parameters.json \
+            --parameters deployMonitoring=${{ inputs.deploy_monitoring }} \
+            --parameters appInsightsConnectionString="${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}" \
+            --parameters sqlConnectionString="${{ secrets.AZURE_SQL_CONNECTION_STRING }}" \
+            --parameters azureWebJobsStorage="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
