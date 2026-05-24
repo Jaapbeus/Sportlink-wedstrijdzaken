@@ -8,6 +8,7 @@ on:
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: FunctionApp
   DOTNET_VERSION: '10.0.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
