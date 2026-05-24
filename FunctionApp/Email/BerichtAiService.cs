@@ -66,7 +66,8 @@ public class BerichtAiService
             - beschikbaarheid_check: iemand vraagt of een datum/tijd/veld beschikbaar is (bijv. voor een oefenwedstrijd of veldreservering). Ook als er MEERDERE datums worden gevraagd voor hetzelfde team.
             - herplan_verzoek: iemand wil een bestaande wedstrijd verplaatsen naar een andere datum/tijd
             - bevestiging: een antwoord op een eerder voorstel ("ja dat is goed", "akkoord", etc.)
-            - buiten_scope: alles wat niet over veldbeschikbaarheid of herplannen gaat, OF als de email over meerdere VERSCHILLENDE teams gaat en het onduidelijk is welke wedstrijd bedoeld wordt
+            - team_contact_opvragen: iemand vraagt wie de trainer, coach, begeleider of teamleider is van een specifiek team. Bijv. "wie is de trainer van JO13-4?", "contactgegevens begeleiding MO15", "wie kan ik bereiken voor VRC 5?"
+            - buiten_scope: alles wat niet over veldbeschikbaarheid, herplannen of teambegeleiding gaat, OF als de email over meerdere VERSCHILLENDE teams gaat en het onduidelijk is welke wedstrijd bedoeld wordt
 
             Geef ALTIJD een JSON response met exact dit formaat:
             {
@@ -186,6 +187,7 @@ public class BerichtAiService
         "beschikbaarheid_check" => VerzoekType.BeschikbaarheidCheck,
         "herplan_verzoek" => VerzoekType.HerplanVerzoek,
         "bevestiging" => VerzoekType.Bevestiging,
+        "team_contact_opvragen" => VerzoekType.TeamContactOpvragen,
         _ => VerzoekType.BuitenScope
     };
 

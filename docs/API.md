@@ -9,7 +9,8 @@ Twee beveiligingsniveaus:
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
 | **Function** | Function key (`?code=`) | Automate, integraties | Alle planner endpoints |
-| **Admin** | Master key (`?code=`) | Alleen coördinator | sync-matches, populate-sunset |
+| **Admin** | Easy Auth Bearer + admin-rol | Alleen coördinator | Alle `/api/beheer/*` endpoints |
+| **Admin+User** | Easy Auth Bearer + admin- of user-rol | Coördinator + club-gebruikers | `/api/beheer/teambegeleiding/*` |
 
 Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 
@@ -27,6 +28,10 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren |
 | `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
 | `POST` | `/planner/optimaliseer` | Easy Auth (admin) | Planning optimaliseren (HTML/email/JSON) |
+| `GET` | `/beheer/teambegeleiding` | **Admin+User** | Alle teams met begeleiding in database |
+| `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen naar coach (BCC coördinator) |
+| `GET/POST/PUT/DELETE` | `/beheer/speeltijden` en `/{leeftijd}` | **Admin** | Speeltijden per leeftijdscategorie beheren |
 
 ---
 

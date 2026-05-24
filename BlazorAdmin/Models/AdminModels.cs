@@ -142,6 +142,21 @@ public class TeamRegelDto
     public string ClubCode { get; set; } = string.Empty;
 }
 
+// ── Teambegeleiding ──
+
+public class TeambegeleidingItem
+{
+    public string Naam { get; set; } = "";
+    public string Teamrol { get; set; } = "";
+}
+
+public class DoorsturenRequest
+{
+    public string TeamNaam { get; set; } = "";
+    public string? Onderwerp { get; set; }
+    public string Bericht { get; set; } = "";
+}
+
 // ── Speeltijden ──
 
 public class SpeeltijdDto
