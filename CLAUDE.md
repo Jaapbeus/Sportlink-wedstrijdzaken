@@ -265,7 +265,19 @@ Deze regels gelden altijd, zonder uitzondering:
 
 1. **Na elke push of commit: CI-status controleren.** Nooit aan de gebruiker melden dat iets klaar of succesvol is zonder eerst te verifiëren dat alle GitHub Actions checks geslaagd zijn (`gh pr checks <nr>` of `gh run list`).
 
-2. **Na elke PR-merge: ook de deploy/build-workflow op `main` controleren.** Na merge direct `gh run list --branch main --limit 3` uitvoeren en wachten op voltooiing van `deploy.yml`. Als de build faalt: direct proberen te fixen. Lukt dit niet: onmiddellijk melden aan de gebruiker. Pas daarna melden dat de PR succesvol is afgerond.
+2. **Na elke PR-merge: ook de deploy/build-workflow op `main` controleren — per job verifiëren.**
+   Na merge:
+   ```powershell
+   # Stap A — haal de run-ID op van deploy.yml op main
+   gh run list --branch main --limit 3
+
+   # Stap B — wacht op voltooiing (NOOIT in de achtergrond draaien voor merge-verificatie)
+   gh run watch <run-id> --exit-status
+
+   # Stap C — verplichte per-job controle: elk job moet 'success' of 'skipped' zijn
+   gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
+   ```
+   **Stap C is verplicht**, ook als Stap B exit 0 geeft. `gh run watch` kan in de achtergrond exit 0 teruggeven terwijl individuele jobs (bijv. `blazor-deploy`) later falen. Pas als ALLE jobs `"conclusion": "success"` of `"conclusion": "skipped"` tonen is de deploy succesvol. Als één job `"conclusion": "failure"` toont: direct proberen te fixen (bijv. `gh run rerun <run-id> --failed` bij transient fouten). Lukt fix niet: onmiddellijk melden aan gebruiker. Nooit melden dat een PR succesvol is afgerond zonder Stap C te hebben uitgevoerd.
 
 3. **Build- en runtime-fouten zijn zelfherstelbaar — Security Gate niet.** Bij een build-fout, startup-fout of testfout: fix het zelf en herhaal de verificatielus (zie "Autonome ontwikkelcyclus"). Bij een **Security Gate-fout of AVG-schending**: stop direct en meld aan de gebruiker — nooit stilzwijgend doorgaan of zelf mergen.
 
