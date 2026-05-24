@@ -50,7 +50,11 @@ namespace SportlinkFunction.Planner
 
             // Bereken tijdlijn: start bij 08:30, eind bij laatste wedstrijd + 30 min
             int startMin = 8 * 60 + 30; // 08:30
-            var laatsteEind = wedstrijden.Max(w => w.EindTijd);
+
+            if (!wedstrijden.Any() && !suggesties.Any())
+                return $"<p style='margin:0;color:{TXT_DIM};font-family:sans-serif;'>Geen wedstrijden gepland op {datum.ToString("dddd d MMMM yyyy", nl)}.</p>";
+
+            var laatsteEind = wedstrijden.Any() ? wedstrijden.Max(w => w.EindTijd) : new TimeOnly(16, 0);
             // Voeg suggestie-eindtijden toe
             foreach (var s in suggesties)
             {

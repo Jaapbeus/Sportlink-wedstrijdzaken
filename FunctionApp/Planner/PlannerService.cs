@@ -755,6 +755,15 @@ namespace SportlinkFunction.Planner
                 .OrderBy(o => o.AanvangsTijd).ThenBy(o => o.VeldNummer)
                 .ToList();
 
+            // Geen wedstrijden op deze dag (bijv. zondag) → informatieve response
+            if (bezettingen.Count == 0)
+            {
+                response.VoldoendeRuimte = true;
+                response.VoldoendeRuimteMelding = $"Geen wedstrijden gepland op {date.ToString("dddd d MMMM", nl)}.";
+                response.HtmlPlanner = $"<p style='color:#8b949e;font-family:sans-serif;'>Geen wedstrijden gepland op {date.ToString("dddd d MMMM yyyy", nl)}.</p>";
+                return response;
+            }
+
             // Huidige eindtijd bepalen
             var laatsteWedstrijd = bezettingen.OrderByDescending(o => o.EindTijd).FirstOrDefault();
             response.HuidigeEindtijd = laatsteWedstrijd?.EindTijd.ToString("HH:mm") ?? "—";
