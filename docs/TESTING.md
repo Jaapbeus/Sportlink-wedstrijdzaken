@@ -2,21 +2,21 @@
 
 ## Test-App.ps1
 
-`Test-App.ps1` in de repo-root is het centrale verificatie- en herstelscript.
+`scripts/dev/scripts/dev/Test-App.ps1` is het centrale verificatie- en herstelscript.
 Het controleert schema, build en runtime in één doorloop.
 
 ### Gebruik
 
 ```powershell
 # Alleen checken (geen wijzigingen)
-.\Test-App.ps1
+.\scripts\dev\Test-App.ps1
 
 # Automatisch herstellen waar mogelijk
-.\Test-App.ps1 -Fix
+.\scripts\dev\Test-App.ps1 -Fix
 
 # Alles tonen, ook successen
-.\Test-App.ps1 -Verbose
-.\Test-App.ps1 -Fix -Verbose
+.\scripts\dev\Test-App.ps1 -Verbose
+.\scripts\dev\Test-App.ps1 -Fix -Verbose
 ```
 
 ### Wat wordt gecontroleerd
@@ -47,11 +47,11 @@ dbo.Velden                   — VeldNummer, VeldNaam, VeldType, ...
 ### Verplicht workflow
 
 1. Wijziging in code, API-contract of database-schema?  
-   → `.\Test-App.ps1 -Fix` uitvoeren
+   → `.\scripts\dev\Test-App.ps1 -Fix` uitvoeren
 2. Alle checks groen (exit 0)?  
    → Pas dan committen
 3. Voor volledige coverage (inclusief API + Blazor smoke tests):  
-   → Eerst `.\Start-Debug.ps1`, wacht ~15s, daarna `.\Test-App.ps1`
+   → Eerst `.\scripts\dev\Start-Debug.ps1`, wacht ~15s, daarna `.\scripts\dev\Test-App.ps1`
 
 ### Exit codes
 
@@ -65,7 +65,7 @@ dbo.Velden                   — VeldNummer, VeldNaam, VeldType, ...
 Start Azurite, FunctionApp en BlazorAdmin tegelijk in aparte vensters.
 
 ```powershell
-.\Start-Debug.ps1
+.\scripts\dev\Start-Debug.ps1
 ```
 
 Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242.

@@ -17,7 +17,7 @@ param(
     [switch]$Swa   # Start ook de Azure SWA emulator (vereist swa CLI)
 )
 
-$root = $PSScriptRoot
+$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 
 # --- Stop eventueel draaiende apps (op de bekende poorten) ---
 Write-Host "Controleer op draaiende services..." -ForegroundColor DarkGray
