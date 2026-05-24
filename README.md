@@ -52,7 +52,7 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 Sportlink Club API
         │  (nachtelijke sync via timer trigger)
         ▼
-Azure Functions (.NET 10, isolated worker)
+Azure Functions (.NET 9, isolated worker)
   ├── FetchAndStoreApiData    — haalt teams, wedstrijden en details op
   ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
   ├── BerichtAiService        — classifieert binnenkomende e-mails met AI
@@ -72,7 +72,7 @@ Azure Static Web Apps (gratis tier)
         └── Entra ID authenticatie (admin / user rollen)
 ```
 
-**Technologie:** .NET 10 · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · Azure OpenAI · Azure Static Web Apps · Entra ID
+**Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · Azure OpenAI · Azure Static Web Apps · Entra ID
 
 ---
 
@@ -89,6 +89,22 @@ Azure Static Web Apps (gratis tier)
 - Draaien op Sportlink Club (KNVB-aangesloten)
 - Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
 - Bereid zijn een Azure-omgeving in te richten (kosten: enkele euro's per maand)
+
+---
+
+## Documentatie
+
+Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
+
+| Categorie | Documenten |
+|---|---|
+| **Beheerders** | [Admin handleiding](docs/v2-admin-handleiding.md) · [Teambegeleiding export](docs/HANDLEIDING-TEAMBEGELEIDING-EXPORT.md) |
+| **Developers — opzet** | [Setup](docs/SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
+| **Developers — architectuur** | [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTURE-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
+| **Azure & auth** | [Azure Entra setup](docs/AZURE-ENTRA-SETUP.md) · [Versiebeheer](docs/VERSIONING.md) |
+| **Kwaliteit & security** | [Testing](docs/TESTING.md) · [Security](SECURITY.md) |
+
+**→ [Volledige inhoudsopgave: docs/INDEX.md](docs/INDEX.md)**
 
 ---
 
@@ -129,6 +145,8 @@ Het project is zo gebouwd dat:
 - Alle automatische beveiligingschecks geblokkeerd bij een merge als er een risico gedetecteerd wordt
 
 Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en verantwoorde omgang met persoonsgegevens.
+
+Zie [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) voor de architectuurprincipes: tijdzones, multi-club isolatie, secrets en AVG.
 
 ---
 

@@ -25,19 +25,19 @@ valideert het token server-side.
 
 ### Services starten
 
-Gebruik `Start-Debug.ps1` — dit script start Azurite, FunctionApp en BlazorAdmin elk in een
+Gebruik `scripts/dev/Start-Debug.ps1` — dit script start Azurite, FunctionApp en BlazorAdmin elk in een
 eigen venster in de juiste volgorde:
 
 ```powershell
-.\Start-Debug.ps1
+.\scripts\dev\Start-Debug.ps1
 # Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 ```
 
 Wacht ~15 seconden en controleer dan met:
 
 ```powershell
-.\Test-App.ps1          # verificatie: schema + build + endpoints + Blazor-pagina's
-.\Test-App.ps1 -Fix     # herstelt schema-drift automatisch
+.\scripts\dev\Test-App.ps1          # verificatie: schema + build + endpoints + Blazor-pagina's
+.\scripts\dev\Test-App.ps1 -Fix     # herstelt schema-drift automatisch
 ```
 
 In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelper` alle
@@ -57,7 +57,7 @@ In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelpe
 ### Feature-workflow
 
 1. Branch aanmaken vanaf `v2/develop`: `git checkout -b feature/#<nr>-<slug> v2/develop`
-2. Implementeren, bouwen, verifiëren (`.\Test-App.ps1`)
+2. Implementeren, bouwen, verifiëren (`.\scripts\dev\Test-App.ps1`)
 3. Commit + push + PR naar `v2/develop`
 4. CI security gate groen → PR mergen
 
@@ -236,7 +236,7 @@ swa --version
 
 ### Opstarten
 
-Start de backends met `Start-Debug.ps1`, daarna in een vierde terminal:
+Start de backends met `scripts/dev/Start-Debug.ps1`, daarna in een vierde terminal:
 
 ```powershell
 # In de repo root (waar swa-cli.config.json staat)
@@ -275,13 +275,13 @@ Invoke-RestMethod http://localhost:7094/api/beheer/email-log
 Of gebruik het geautomatiseerde verificatie-script:
 
 ```powershell
-.\Test-App.ps1              # schema + build + endpoints + Blazor-pagina's
-.\Test-App.ps1 -Fix         # herstelt schema-drift automatisch
-.\Test-App.ps1 -Verbose     # volledige output per check
+.\scripts\dev\Test-App.ps1              # schema + build + endpoints + Blazor-pagina's
+.\scripts\dev\Test-App.ps1 -Fix         # herstelt schema-drift automatisch
+.\scripts\dev\Test-App.ps1 -Verbose     # volledige output per check
 ```
 
 Zie [FunctionApp/docs/TESTING.md](../FunctionApp/docs/TESTING.md) voor een volledig overzicht van
-wat `Test-App.ps1` controleert.
+wat `scripts/dev/Test-App.ps1` controleert.
 
 ---
 
@@ -371,17 +371,17 @@ in `Program.cs`.
 
 ### Verificatiescript
 
-`Test-App.ps1` automatiseert de meeste controles:
+`scripts/dev/Test-App.ps1` automatiseert de meeste controles:
 
 ```powershell
 # Start services (Azurite + FunctionApp + BlazorAdmin)
-.\Start-Debug.ps1
+.\scripts\dev\Start-Debug.ps1
 
 # Wacht ~15 seconden, dan volledige verificatie:
-.\Test-App.ps1
+.\scripts\dev\Test-App.ps1
 
 # Met schema-drift herstel:
-.\Test-App.ps1 -Fix
+.\scripts\dev\Test-App.ps1 -Fix
 ```
 
 Het script doorloopt:

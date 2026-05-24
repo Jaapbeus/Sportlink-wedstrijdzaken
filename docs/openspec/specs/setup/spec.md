@@ -2,7 +2,7 @@
 
 Specificatie voor het opzetten van de lokale ontwikkelomgeving voor het Sportlink Wedstrijdzaken project.
 
-**Bronbestanden:** `FunctionApp/docs/SETUP.md`, `FunctionApp/docs/SETUP-CHECKLIST.md`
+**Bronbestanden:** `docs/SETUP.md`, `docs/SETUP-CHECKLIST.md`
 
 ---
 
