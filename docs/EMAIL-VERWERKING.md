@@ -22,8 +22,9 @@ Inkomend email (ongelezen in Graph-mailbox)
         │
         ├─ BuitenScope ──→ label "Geen AI antwoord" + mark as read → STOP
         │
-        ├─ BeschikbaarheidCheck ──→ PlannerService → template (zie §2)
+        ├─ BeschikbaarheidCheck  ──→ PlannerService → template (zie §2)
         ├─ HerplanVerzoek        ──→ PlannerService → template (zie §2)
+        ├─ TeamContactOpvragen   ──→ GetTeamleiderContactAsync → StuurTeamContactDoorAsync (BCC coördinator, Reply-To afzender) → auto-reply "doorgestuurd"
         └─ Bevestiging           ──→ template "Bedankt voor je bevestiging"
                 │
                 ▼
@@ -356,6 +357,7 @@ Met vriendelijke groet, ...
 | J | Bevestiging | Afzender bevestigt eerder voorstel | "Bedankt voor je bevestiging" |
 | K | (alle) | Technische fout tijdens verwerking | "Fout opgetreden, coördinator op hoogte" |
 | L | BeschikbaarheidCheck | Geen teamnaam én geen leeftijdscategorie | Vraag om ontbrekende informatie |
+| N | TeamContactOpvragen | "Wie is de trainer/coach van [team]?" | Auto-reply "uw vraag is doorgestuurd" + coach ontvangt vraag (BCC coördinator, Reply-To = afzender) |
 | — | BuitenScope | Email gaat niet over planning | Geen antwoord — label "Geen AI antwoord" |
 
 ---

@@ -395,3 +395,51 @@ Het script doorloopt:
 Exitcode 0 = alles groen. Exitcode 1 = minimaal één check gefaald.
 
 **Wanneer uitvoeren:** Altijd vóór een commit of oplevering. `dotnet build` slaagt ≠ werkt.
+
+---
+
+## 10. Teambegeleiding-pagina (`/teambegeleiding`)
+
+De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol** in staat team-contactgegevens op te zoeken en vragen door te sturen aan de begeleiding.
+
+### Functionaliteit
+
+1. **Team selecteren** — dropdown met alle teams waarvoor begeleiding beschikbaar is (uit `avg.Teambegeleiding`)
+2. **Begeleiders inzien** — kaarten per begeleider met naam en teamrol. E-mailadressen en telefoonnummers worden **nooit getoond** (AVG art. 6.1.f)
+3. **Vraag doorsturen** — klik "Stel een vraag" → vul Onderwerp (optioneel) en Bericht in → "Versturen"
+   - To: coach (opgezoekt server-side uit `avg.Teambegeleiding`)
+   - Reply-To: e-mailadres van de aanvrager (automatisch uit Entra ID)
+   - BCC: coördinator (uit `dbo.AppSettings.coordinatorEmail`)
+   - Coach antwoordt rechtstreeks naar aanvrager — aanvrager ziet nooit het coach-adres
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
+| `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam + rol, nooit contactgegevens) |
+| `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag naar coach |
+
+Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.
+
+---
+
+## 11. Speeltijden-pagina (`/instellingen/speeltijden`)
+
+De pagina `/instellingen/speeltijden` (alleen admin-rol) beheert de speeltijden per leeftijdscategorie. De planner gebruikt uitsluitend `dbo.Speeltijden.WedstrijdTotaal` voor de berekening van veldblokkeertijden — de Sportlink API-waarde `Duration` wordt niet meer gebruikt.
+
+Het veld **Totaal (incl. rust)** is de totale veldblokkeertijd die de planner direct gebruikt. Rust wordt **niet** apart opgeteld in code — WedstrijdTotaal = speeltijd + rust + buffer.
+
+### Categorieregels
+- Categorie `1-99` = Senioren mannen; `VR` = Senioren vrouwen → beide 115 minuten
+- MO-categorieën hebben dezelfde WedstrijdTotaal als de equivalente JO-categorie
+- Ontbrekende categorie → foutmelding met verwijzing naar deze pagina
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/speeltijden` | Alle speeltijden voor de club |
+| `POST /api/beheer/speeltijden` | Nieuwe speeltijd toevoegen |
+| `PUT /api/beheer/speeltijden/{leeftijd}` | Speeltijd bijwerken |
+| `DELETE /api/beheer/speeltijden/{leeftijd}` | Speeltijd verwijderen |
