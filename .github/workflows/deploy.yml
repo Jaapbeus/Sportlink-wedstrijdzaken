@@ -48,7 +48,7 @@ jobs:
           MAX=6
           WAIT=20
           for i in $(seq 1 $MAX); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || echo "000")
             echo "Poging $i/$MAX — health: $STATUS"
             if [ "$STATUS" = "200" ]; then exit 0; fi
             if [ "$i" -lt "$MAX" ]; then echo "Wacht ${WAIT}s (cold start)..."; sleep $WAIT; fi
@@ -59,7 +59,7 @@ jobs:
       - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-            "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}")
+            "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}" || echo "000")
           echo "sync-matches: $STATUS"
           if [ "$STATUS" != "401" ]; then echo "FOUT: verwacht 401, kreeg $STATUS"; exit 1; fi
 
@@ -69,7 +69,7 @@ jobs:
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST \
             "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}')
+            -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}' || echo "000")
           echo "check-availability: $STATUS"
           if [ "$STATUS" != "200" ]; then echo "⚠️ Database mogelijk niet bereikbaar (status $STATUS)"; exit 1; fi
 
