@@ -155,7 +155,7 @@ ITERATIE:
   b. dotnet build BlazorAdmin/BlazorAdmin.csproj  (als Blazor bestaat)
      → fouten? Fix, ga terug naar a.
 
-  c. .\Test-App.ps1 -Fix
+  c. .\scripts\dev\Test-App.ps1 -Fix
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
   d. Start services (achtergrond, volgorde is verplicht):
@@ -179,7 +179,7 @@ ITERATIE:
        Invoke-RestMethod http://localhost:7094/api/health
        → niet 200? Fix, kill services, ga terug naar a.
 
-  f. .\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
+  f. .\scripts\dev\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
      → exit 1? Fix, kill services, ga terug naar a.
 
   g. Controleer Blazor-pagina's:
@@ -199,10 +199,35 @@ GESLAAGD als: alle stappen exit 0 of 2xx, geen foutindicatoren
 **SWA emulator (optioneel — voor auth-flow testen):**
 ```powershell
 # Start alles inclusief SWA CLI op poort 4280:
-.\Start-Debug.ps1 -Swa
+.\scripts\dev\Start-Debug.ps1 -Swa
 # Admin GUI met auth-emulatie: http://localhost:4280
 # Test-App.ps1 controleert automatisch poort 4280 als SWA draait (sectie 6)
 ```
+
+### Stap 2b — Documentatie nalopen (verplicht vóór commit)
+
+**Na elke wijziging in architectuur, setup of GUI-functionaliteit:** loop onderstaande docs na en
+update wat verouderd of onvolledig is. Niet alles hoeft altijd te wijzigen — maar elk bestand moet
+bewust worden bekeken.
+
+| Documentatiebestand | Bijwerken bij |
+|---|---|
+| `CLAUDE.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
+| `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
+| `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
+| `docs/AZURE-ENTRA-SETUP.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
+| `docs/v2-admin-handleiding.md` | Admin GUI: scherm, instelling, knop of workflow gewijzigd |
+| `docs/VERSIONING.md` | Release-proces of semver-afspraken gewijzigd |
+| `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
+| `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
+| `docs/TESTING.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
+| `docs/SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
+| `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
+| `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
+| `SECURITY.md` | Security-beleid, AVG-regels of secrets-protocol gewijzigd |
+
+**Werkwijze:** lees elk relevant bestand, vergelijk met de gemaakte wijziging, update wat niet meer klopt.
+Verouderde informatie is erger dan geen documentatie — het misleidt toekomstige sessies.
 
 ### Stap 3 — Commit en PR
 ```powershell
@@ -258,18 +283,39 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Architectuurregels — altijd van toepassing
 
+### .NET versie — net9.0 verplicht voor FunctionApp (NOOIT upgraden zonder infrastructuurwijziging)
+
+**KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
+
+Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**.
+.NET 10 wordt pas ondersteund op het **Flex Consumption Plan** (niet gratis, andere infra).
+
+| Component | Target | Reden |
+|---|---|---|
+| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — nooit wijzigen | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
+| `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
+| Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
+
+**Lokale ontwikkeling:** zorg dat .NET 9 runtime geïnstalleerd is (`winget install Microsoft.DotNet.Runtime.9`).
+Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
+
+**Upgradepad naar .NET 10 is alleen mogelijk als:**
+1. Azure Function App plan wordt omgezet naar Flex Consumption (`az functionapp update --plan <flex-plan>`)
+2. Azure Portal runtime wordt bijgewerkt naar `DOTNET-ISOLATED|10.0`
+3. Beide stappen tegelijk — anders 503 bij eerste deploy
+
 ### Azure Entra setup — verify/configure via scripts, nooit handmatig
 
 De Entra App Registration mag niet in productie via Portal-klikken worden aangepast — verschil tussen tenants, instellingen die wegvallen, of een verkeerd geklikte checkbox kan alle gebruikers buitensluiten. Gebruik altijd:
 
 ```powershell
 az login                                  # eenmalig per machine
-.\scripts\Verify-AzureAuthSetup.ps1       # diagnose, read-only, geen wijzigingen
-.\scripts\Configure-EntraApp.ps1 -WhatIf  # toon wat zou wijzigen
-.\scripts\Configure-EntraApp.ps1          # idempotent apply
+.\scripts\azure\Verify-AzureAuthSetup.ps1       # diagnose, read-only, geen wijzigingen
+.\scripts\azure\Configure-EntraApp.ps1 -WhatIf  # toon wat zou wijzigen
+.\scripts\azure\Configure-EntraApp.ps1          # idempotent apply
 ```
 
-Beide scripts staan in [scripts/](scripts/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de vv-vrc.nl tenant zit.
+Beide scripts staan in [scripts/azure/](scripts/azure/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de vv-vrc.nl tenant zit.
 
 Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets: [docs/AZURE-ENTRA-SETUP.md](docs/AZURE-ENTRA-SETUP.md).
 
@@ -384,6 +430,20 @@ Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlo
 - Documentatie-voorbeelden bevatten `[ClubNaam]` als placeholder, nooit echte club-specifieke waarden die in code kunnen terechtkomen.
 - Check bij codereview: scan op `?? "` gevolgd door een eigennaam, clubnaam, of adres.
 
+### AVG-veilige testdata — goedgekeurde uitzonderingen (uitputtende lijst)
+
+Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only developer-testpagina's. Ze volgen het **John Doe-principe**: bewust niet-identificeerbaar, niet gebonden aan een bestaand persoon of domein.
+
+| Waarde | Type | Toegestaan in |
+|---|---|---|
+| `Jan de Vries` | Fictieve naam (NL equivalent van "John Doe") | UI-defaults van admin-only testpagina's |
+| `trainer@voorbeeld.nl` | Fictief e-mailadres (`.voorbeeld.nl` bestaat niet) | UI-defaults van admin-only testpagina's |
+
+**Regels:**
+- Uitsluitend toegestaan als hardcoded UI-default in admin-only developer-testpagina's — **nooit** in bedrijfslogica, API-fallbacks of gedeelde configuratie.
+- `voorbeeld.nl` is opgenomen in `.gitleaks.toml` en `security-scan.yml` zodat security-checks hierop niet falen.
+- Deze lijst is **uitputtend** — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens.
+
 ### Microsoft Learn MCP server
 
 - Gebruik de Microsoft Learn MCP server proactief voor C#, .NET, Blazor, Azure Functions en Azure best practices.
@@ -433,7 +493,7 @@ Commit-type bepaalt de minimum versie-bump:
 ```powershell
 # 1. Zorg dat v2/develop up-to-date en groen is
 git checkout v2/develop
-.\Test-App.ps1           # moet exit 0
+.\scripts\dev\Test-App.ps1   # moet exit 0
 
 # 2. PR aanmaken en mergen naar main (via GitHub)
 gh pr create --base main --title "release: v2.0.1" ...
@@ -468,23 +528,23 @@ Gebruik dit bijv. in de health-endpoint response of in de Admin GUI footer.
 dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 
 # Stap 2: Start alle services tegelijk (of gebruik Start-Debug.ps1)
-.\Start-Debug.ps1                     # start Azurite + FunctionApp + BlazorAdmin in aparte vensters
+.\scripts\dev\Start-Debug.ps1         # start Azurite + FunctionApp + BlazorAdmin in aparte vensters
 # Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 
 # Stap 3: Verificatie (wacht 15s na Start-Debug)
-.\Test-App.ps1                        # controleert schema, build, endpoints, Blazor-pagina's
-.\Test-App.ps1 -Fix                   # herstelt schema-drift automatisch
+.\scripts\dev\Test-App.ps1            # controleert schema, build, endpoints, Blazor-pagina's
+.\scripts\dev\Test-App.ps1 -Fix       # herstelt schema-drift automatisch
 
 # Handmatige sync
 # GET http://localhost:7094/api/sync?weekOffsetFrom=X&weekOffsetTo=Y
 ```
 
-**Prerequisites:** .NET 10.0 SDK, Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server met `SportlinkSqlDb` database.
+**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server met `SportlinkSqlDb` database.
 
 **Configuration:** Kopieer `FunctionApp/local.settings.template.json` naar `local.settings.json` en stel `SqlConnectionString` in op je SQL Server.
 
-**Verificatiescripts:** `Test-App.ps1` (schema + build + endpoints + Blazor), `Start-Debug.ps1` (alle services).  
-Zie [FunctionApp/docs/TESTING.md](FunctionApp/docs/TESTING.md) voor volledig overzicht.
+**Verificatiescripts:** `scripts/dev/Test-App.ps1` (schema + build + endpoints + Blazor), `scripts/dev/Start-Debug.ps1` (alle services).  
+Zie [docs/TESTING.md](docs/TESTING.md) voor volledig overzicht.
 
 ## Security Setup (eenmalig per developer/machine)
 
@@ -580,7 +640,7 @@ Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#1
 
 Two projects in `sportlink-wedstrijdzaken.sln`:
 
-1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 10 isolated worker Azure Function
+1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 9 isolated worker Azure Function
    - `Function1.cs` — trigger functions and API fetch/store orchestration
    - `Utilities.cs` — AppSettings loader, DatabaseConfig, SeasonHelper, retry logic (5 retries, 5s delay)
    - `Enitities.cs` — Team, Match, MatchDetail models (note: filename typo is intentional legacy)

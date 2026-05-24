@@ -54,8 +54,9 @@ public class BerichtAiService
 
     private static string BouwClassificatieSystemPrompt()
     {
-        var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubName' ontbreekt in dbo.AppSettings");
+        var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName");
+        if (string.IsNullOrWhiteSpace(clubNaam))
+            throw new InvalidOperationException("Vereiste instelling 'clubName' ontbreekt of is leeg in dbo.AppSettings");
 
         return $$"""
             Je bent een assistent voor de coördinator thuiswedstrijden van {{clubNaam}}.
@@ -110,8 +111,9 @@ public class BerichtAiService
     {
         _logger = logger;
 
-        var apiKey = Environment.GetEnvironmentVariable("OpenAiApiKey")
-            ?? throw new InvalidOperationException("OpenAiApiKey environment variable is niet geconfigureerd.");
+        var apiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("OpenAiApiKey environment variable is niet geconfigureerd of leeg.");
 
         _chatClient = new ChatClient("gpt-4o-mini", apiKey);
     }

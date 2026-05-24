@@ -2,7 +2,7 @@
 
 Specificatie voor alle HTTP-endpoints van de VRC Sportlink Wedstrijdzaken API, inclusief beveiliging en planningsregels.
 
-**Bronbestand:** `FunctionApp/docs/API.md`
+**Bronbestand:** `docs/API.md`
 
 ---
 
