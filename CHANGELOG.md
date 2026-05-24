@@ -17,6 +17,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Feedback widget loop bij aanvulvragen** (#283): na het beantwoorden van OpenAI-aanvulvragen keerden dezelfde vragen terug bij "Opnieuw controleren". Backend accepteert nu direct zodra antwoorden zijn ingevuld (re-validatie overbodig — antwoorden vullen de gaten per definitie). Frontend bewaart bovendien bestaande antwoorden als vragen ongewijzigd terugkomen.
+
 ### Added
 
 - **Infrastructure as Code met Bicep** (#257): nieuwe `infrastructure/` map met Bicep-bestanden die alle bestaande Azure-resources declaratief beschrijven (Function App, Consumption Plan, Storage Account, Static Web App, Application Insights). `az deployment group what-if` detecteert drift zonder wijzigingen te maken. Monitoring-module is aanwezig maar standaard uitgeschakeld (`deployMonitoring=false`) om onbedoelde Log Analytics kosten te voorkomen. Nieuwe GitHub Actions workflow `infrastructure.yml` is alleen handmatig uitvoerbaar met keuze tussen `what-if` en `deploy`.
