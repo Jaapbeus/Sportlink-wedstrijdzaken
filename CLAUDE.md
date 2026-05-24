@@ -221,6 +221,7 @@ bewust worden bekeken.
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
 | `docs/TESTING.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
+| `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
