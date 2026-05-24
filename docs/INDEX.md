@@ -32,18 +32,19 @@ Alle documentatie staat in deze map (`docs/`). Gebruik de categorieën hieronder
 |---|---|
 | [Planner architectuur](ARCHITECTURE-PLANNER.md) | Velddefinities, API-contract en dataflow van de veldplanner |
 | [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten, authenticatie |
-| [OpenAPI spec](openapi.json) | Machine-readable OpenAPI 3.0 spec van de volledige API |
+| [OpenAPI spec](openapi.yaml) | Machine-readable OpenAPI 3.0 spec van alle 40 API-endpoints |
 | [E-mailverwerking](EMAIL-VERWERKING.md) | E-mailpipeline, kanaalstrategie, AI-verwerking, BuitenScope-logica |
 | [Versiebeheer](VERSIONING.md) | Semantic versioning, conventional commits, release-workflow, CHANGELOG-richtlijnen |
 | [Gestructureerde specs (openspec)](openspec/config.yaml) | Machine-readable requirements specs per domein (api, setup, lokaal-debuggen) |
 
 ---
 
-## Testen & kwaliteit
+## Testen, kwaliteit & monitoring
 
 | Document | Inhoud |
 |---|---|
 | [Testing](TESTING.md) | Test-App.ps1: schema-controle, endpoint-verificatie, Blazor-pagina's, -Fix modus |
+| [Monitoring](MONITORING.md) | Application Insights setup, gratis alert-typen, KQL-queries, escalatiematrix |
 
 ---
 
