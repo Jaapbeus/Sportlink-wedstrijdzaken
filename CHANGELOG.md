@@ -17,6 +17,15 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Build-teller versioning voor lokale ontwikkeling**: vierde versiecomponent (`2.2.0.x`) automatisch ophoogbaar via `Bump-Build.ps1`. Zichtbaar in health-endpoint (`GET /api/health` geeft nu ook `version` terug) en in de Feedback-modal van de Admin GUI. `.\Bump-Build.ps1 -NewPatch` verhoogt de patch-versie voor nieuwe functionaliteit.
+- **Documentatie-index**: alle documentatie geconsolideerd in `docs/` met een nieuwe [inhoudsopgave (docs/INDEX.md)](docs/INDEX.md) ingedeeld per doelgroep (beheerders, developers, architectuur, security). README toont de documentatietabel prominent.
+
+### Fixed
+
+- **FunctionApp target framework**: `net9.0` expliciet vastgelegd als vereiste voor Azure Functions op Linux Consumption Plan — upgrade naar `net10.0` veroorzaakt een 503 bij eerste deploy. Geborgd in `CLAUDE.md` en projectgeheugen zodat deze fout niet opnieuw wordt gemaakt.
+
 ### Security
 
 - **Pre-publish cleanup — PII en servernamen verwijderd uit broncode** (#135): drie categorieën anonimisatie vóór publicatie als open-source project: (1) club-specifieke e-mailadressen in docs en scripts vervangen door generieke plaatshoudernamen; (2) hardcoded Azure SQL servernaam in foutmelding vervangen door generieke tekst (`Azure SQL Server → Database`); (3) setup-scripts documenteren nu generieke defaults zodat andere clubs ze direct kunnen gebruiken.
