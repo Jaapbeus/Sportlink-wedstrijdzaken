@@ -28,12 +28,16 @@ namespace SportlinkFunction
                 using (SqlConnection connection = new SqlConnection(DatabaseConfig.ConnectionString))
                 {
                     await connection.OpenAsync();
-                    string query = $@"
-                        EXECUTE [dbo].[sp_CreateTargetTableFromSource] '{_sourceSchema}','{_sourceTable}', '{_targetSchema}', '{_targetTable}';
-                        EXECUTE [dbo].[sp_MergeStgToHis] '{_sourceSchema}','{_sourceTable}', '{_targetSchema}', '{_targetTable}';";
+                    const string query = @"
+                        EXECUTE [dbo].[sp_CreateTargetTableFromSource] @srcSchema, @srcTable, @tgtSchema, @tgtTable;
+                        EXECUTE [dbo].[sp_MergeStgToHis] @srcSchema, @srcTable, @tgtSchema, @tgtTable;";
 
                     using (SqlCommand command = new SqlCommand(query, connection))
                     {
+                        command.Parameters.AddWithValue("@srcSchema", _sourceSchema);
+                        command.Parameters.AddWithValue("@srcTable",  _sourceTable);
+                        command.Parameters.AddWithValue("@tgtSchema", _targetSchema);
+                        command.Parameters.AddWithValue("@tgtTable",  _targetTable);
                         await command.ExecuteNonQueryAsync();
                     }
                     connection.Close(); 
