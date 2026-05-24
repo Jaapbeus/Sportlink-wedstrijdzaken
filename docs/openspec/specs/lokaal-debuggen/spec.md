@@ -2,7 +2,7 @@
 
 Specificatie voor het lokaal draaien, debuggen en testen van de Sportlink Azure Function.
 
-**Bronbestanden:** `FunctionApp/docs/LOCAL-DEBUG-README.md`, `FunctionApp/docs/QUICK-REFERENCE.md`
+**Bronbestanden:** `docs/LOKAAL-DEBUGGEN.md`, `docs/QUICK-REFERENCE.md`
 
 ---
 

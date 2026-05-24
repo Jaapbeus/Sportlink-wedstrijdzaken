@@ -166,7 +166,7 @@
 
         var pagina = await JS.InvokeAsync<string>("eval", "window.location.pathname");
         var browser = await JS.InvokeAsync<string>("eval", "navigator.userAgent");
-        var versie = typeof(FeedbackWidget).Assembly.GetName().Version?.ToString(3) ?? "?";
+        var versie = typeof(FeedbackWidget).Assembly.GetName().Version?.ToString(4) ?? "?";
         var rol = Auth.IsAdmin ? "admin" : "gebruiker";
 
         _context = new FeedbackContext
