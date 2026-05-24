@@ -26,7 +26,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken |
 | `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren |
 | `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
-| `POST` | `/planner/optimaliseer` | Function | Planning optimaliseren (HTML/email/JSON) |
+| `POST` | `/planner/optimaliseer` | Easy Auth (admin) | Planning optimaliseren (HTML/email/JSON) |
 
 ---
 

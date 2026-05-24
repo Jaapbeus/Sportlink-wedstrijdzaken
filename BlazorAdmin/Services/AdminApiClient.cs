@@ -112,6 +112,24 @@ public class AdminApiClient
     public async Task<ApiResult<TestEmailResponse>> TestEmailAsync(TestEmailRequest dto)
         => await PostAsync<TestEmailResponse>("api/test/email", dto);
 
+    // ── Dagplanning / Optimaliseer ──
+
+    public async Task<ApiResult<OptimaliseerResponseDto>> OptimaliseerAsync(OptimaliseerRequestDto req)
+        => await PostAsync<OptimaliseerResponseDto>("api/planner/optimaliseer", req);
+
+    public async Task<ApiResult<string>> OptimaliseerHtmlAsync(OptimaliseerRequestDto req, string format)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"api/planner/optimaliseer?format={format}", req);
+            var text = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+                return ApiResult<string>.Fail($"HTTP {(int)resp.StatusCode}: {text}", (int)resp.StatusCode);
+            return ApiResult<string>.Ok(text, (int)resp.StatusCode);
+        }
+        catch (Exception ex) { return ApiResult<string>.Fail(ex.Message); }
+    }
+
     // ── Feedback widget ──
 
     public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
