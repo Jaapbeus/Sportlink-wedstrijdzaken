@@ -6,6 +6,7 @@ public enum VerzoekType
     BeschikbaarheidCheck,
     HerplanVerzoek,
     Bevestiging,
+    TeamContactOpvragen,  // #168: "wie is de trainer/coach van [team]?"
     BuitenScope
 }
 

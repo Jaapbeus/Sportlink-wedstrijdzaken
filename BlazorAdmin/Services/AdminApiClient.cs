@@ -130,6 +130,17 @@ public class AdminApiClient
         catch (Exception ex) { return ApiResult<string>.Fail(ex.Message); }
     }
 
+    // ── Teambegeleiding ──
+
+    public async Task<ApiResult<List<string>>> GetTeambegeleidingTeamsAsync()
+        => await GetAsync<List<string>>("api/beheer/teambegeleiding");
+
+    public async Task<ApiResult<List<TeambegeleidingItem>>> GetTeambegeleidingAsync(string team)
+        => await GetAsync<List<TeambegeleidingItem>>($"api/beheer/teambegeleiding/{Uri.EscapeDataString(team)}");
+
+    public async Task<ApiResult<object>> StuurTeambegeleidingBerichtAsync(DoorsturenRequest request)
+        => await PostAsync<object>("api/beheer/teambegeleiding/doorsturen", request);
+
     // ── Speeltijden ──
 
     public async Task<ApiResult<List<SpeeltijdDto>>> GetSpeeltijdenAsync()

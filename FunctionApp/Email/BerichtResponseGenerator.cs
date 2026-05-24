@@ -368,6 +368,25 @@ public static class BerichtResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }
 
+    // ── Teambegeleiding doorsturen ──
+
+    public static (string onderwerp, string body) BouwTeamContactAutoReply(
+        BerichtClassificatie classificatie, InkomendBericht email)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        var teamTekst = !string.IsNullOrWhiteSpace(classificatie.TeamNaam)
+            ? $"de begeleiding van {classificatie.TeamNaam}"
+            : "de begeleiding van het opgegeven team";
+
+        var inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Uw vraag over {teamTekst} is doorgestuurd. "
+                   + "De begeleider neemt rechtstreeks contact met u op. "
+                   + "Contactgegevens worden niet gedeeld conform AVG.";
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+    }
+
     // ── Bevestiging ──
 
     public static (string onderwerp, string body) BouwBevestigingAntwoord(

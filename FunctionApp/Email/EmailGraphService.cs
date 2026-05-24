@@ -221,6 +221,49 @@ public partial class EmailGraphService
     }
 
     /// <summary>
+    /// Stuurt een teambegeleiding-vraag door naar de coach.
+    /// Coach e-mailadres blijft server-side; aanvrager ziet het nooit (AVG art. 6.1.f).
+    /// - To: coach e-mailadres (server-side lookup)
+    /// - Reply-To: e-mailadres van aanvrager (Entra)
+    /// - BCC: coördinator (uit AppSettings)
+    /// </summary>
+    public async Task StuurTeamContactDoorAsync(
+        string coachEmail, string subject, string body,
+        string? aanvragerEmail, string? coordinatorEmail)
+    {
+        try
+        {
+            var message = new Message
+            {
+                Subject = subject,
+                Body = new ItemBody { ContentType = BodyType.Html, Content = body },
+                ToRecipients = [new Recipient { EmailAddress = new EmailAddress { Address = coachEmail } }]
+            };
+
+            if (!string.IsNullOrEmpty(aanvragerEmail))
+            {
+                message.ReplyTo = [new Recipient { EmailAddress = new EmailAddress { Address = aanvragerEmail } }];
+            }
+
+            if (!string.IsNullOrEmpty(coordinatorEmail))
+            {
+                message.BccRecipients = [new Recipient { EmailAddress = new EmailAddress { Address = coordinatorEmail } }];
+            }
+
+            await _graphClient.Users[_mailbox]
+                .SendMail
+                .PostAsync(new SendMailPostRequestBody { Message = message });
+
+            _logger.LogInformation("Teambegeleiding-vraag doorgestuurd (AVG: geen namen/emailadressen gelogd)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Fout bij doorsturen teambegeleiding-vraag (AVG: geen adressen gelogd)");
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Verwijdert HTML-tags uit tekst en normaliseert whitespace.
     /// </summary>
     private static string StripHtml(string html)
