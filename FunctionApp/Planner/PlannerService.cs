@@ -755,6 +755,15 @@ namespace SportlinkFunction.Planner
                 .OrderBy(o => o.AanvangsTijd).ThenBy(o => o.VeldNummer)
                 .ToList();
 
+            // Geen wedstrijden op deze dag (bijv. zondag) → informatieve response
+            if (bezettingen.Count == 0)
+            {
+                response.VoldoendeRuimte = true;
+                response.VoldoendeRuimteMelding = $"Geen wedstrijden gepland op {date.ToString("dddd d MMMM", nl)}.";
+                response.HtmlPlanner = $"<p style='color:#8b949e;font-family:sans-serif;'>Geen wedstrijden gepland op {date.ToString("dddd d MMMM yyyy", nl)}.</p>";
+                return response;
+            }
+
             // Huidige eindtijd bepalen
             var laatsteWedstrijd = bezettingen.OrderByDescending(o => o.EindTijd).FirstOrDefault();
             response.HuidigeEindtijd = laatsteWedstrijd?.EindTijd.ToString("HH:mm") ?? "—";
@@ -777,10 +786,26 @@ namespace SportlinkFunction.Planner
             // Buffer uit request of standaard
             int bufferMin = request.BufferMinuten ?? StandardBufferMinutes;
 
-            // Capaciteitsberekening: check of optimalisatie nodig is
+            // Capaciteitsberekening en optimalisatie-noodzaak analyse
             var capaciteit = BerekenCapaciteit(bezettingen, availableFields);
             response.CapaciteitOverzicht = capaciteit;
 
+            // Bepaal welke optimalisaties zinvol zijn voor deze specifieke dag en het opgegeven doel.
+            //
+            // veld5-ontlasten: zinvol als veld 1-4 beschikbaar zijn (zaterdag) én er wedstrijden op
+            //   veld 5 staan. Op doordeweekse dagen zijn veld 1-4 in gebruik voor training en zijn er
+            //   geen alternatieve velden — veld 5 is dan per definitie de juiste plek.
+            //
+            // strakker-plannen: zinvol als de gebruiker een gewenste eindtijd heeft opgegeven of
+            //   het doel expliciet op 'strakker-plannen' gezet heeft. Zonder die grenswaarde weet
+            //   de planner niet wat 'beter' is en genereert hij onnodig suggesties.
+            var doel = (request.Doel ?? "").ToLowerInvariant().Trim();
+            bool alleenVeld5Beschikbaar = availableFields.Count > 0 && !availableFields.Any(f => f.VeldNummer <= 4);
+            bool gewensteEindtijdOpgegeven = !string.IsNullOrEmpty(request.GewensteEindtijd);
+            bool veld5OntlastenZinvol = !alleenVeld5Beschikbaar && capaciteit.AantalWedstrijdenOpVeld5 > 0;
+            bool strakkerPlannenZinvol = gewensteEindtijdOpgegeven || doel == "strakker-plannen";
+
+            // Check 1: laag bezettingspercentage én geen veld 5 gebruik (bestaande check)
             if (capaciteit.AantalWedstrijdenOpVeld5 == 0 && capaciteit.BezettingsPercentage < MaxBezettingsPercentageVoorOverslaan)
             {
                 response.VoldoendeRuimte = true;
@@ -789,30 +814,46 @@ namespace SportlinkFunction.Planner
                     $"geen wedstrijden op veld 5, {capaciteit.BezettingsPercentage:F0}% bezet " +
                     $"({capaciteit.AantalLegeVelden} veld(en) ongebruikt). Geen optimalisatie nodig.";
                 response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
-                    date, bezettingen, new List<OptimalisatieSuggestie>(), velden,
-                    request.Doel ?? "optimaliseren");
+                    date, bezettingen, new List<OptimalisatieSuggestie>(), velden, doel);
+                return response;
+            }
+
+            // Check 2: geen enkel optimalisatiedoel is zinvol voor deze dag
+            if (!veld5OntlastenZinvol && !strakkerPlannenZinvol)
+            {
+                string redenDetail = alleenVeld5Beschikbaar
+                    ? "doordeweekse dag — veld 1-4 niet beschikbaar, veld 5 is de enige optie en er is geen gewenste eindtijd opgegeven"
+                    : "geen wedstrijden op veld 5 en geen gewenste eindtijd opgegeven";
+                response.VoldoendeRuimte = true;
+                response.VoldoendeRuimteMelding = $"Geen optimalisatie nodig op {date.ToString("dddd d MMMM", nl)}: {redenDetail}.";
+                response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
+                    date, bezettingen, new List<OptimalisatieSuggestie>(), velden, doel);
                 return response;
             }
 
             var suggesties = new List<OptimalisatieSuggestie>();
-            var doel = request.Doel?.ToLowerInvariant() ?? "";
 
             switch (doel)
             {
                 case "veld5-ontlasten":
-                    suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                    if (veld5OntlastenZinvol)
+                        suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 case "strakker-plannen":
-                    suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                    if (strakkerPlannenZinvol)
+                        suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 default:
-                    suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
-                    var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
-                    // Voeg strakker-suggesties toe die niet al in veld5-suggesties zitten
-                    foreach (var s in strakkerSuggesties)
+                    if (veld5OntlastenZinvol)
+                        suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                    if (strakkerPlannenZinvol)
                     {
-                        if (!suggesties.Any(bestaand => bestaand.Wedstrijd == s.Wedstrijd))
-                            suggesties.Add(s);
+                        var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                        foreach (var s in strakkerSuggesties)
+                        {
+                            if (!suggesties.Any(bestaand => bestaand.Wedstrijd == s.Wedstrijd))
+                                suggesties.Add(s);
+                        }
                     }
                     break;
             }
