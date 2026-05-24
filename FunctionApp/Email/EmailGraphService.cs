@@ -47,7 +47,7 @@ public partial class EmailGraphService
 
             if (messages?.Value is null)
             {
-                _logger.LogInformation("Geen ongelezen emails gevonden in {Mailbox}", _mailbox);
+                _logger.LogInformation("Geen ongelezen emails gevonden in coordinator-mailbox");
                 return resultaat;
             }
 
@@ -75,12 +75,12 @@ public partial class EmailGraphService
                 }
             }
 
-            _logger.LogInformation("{Aantal} ongelezen email(s) opgehaald uit {Mailbox}",
-                resultaat.Count, _mailbox);
+            _logger.LogInformation("{Aantal} ongelezen email(s) opgehaald uit coordinator-mailbox",
+                resultaat.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Fout bij ophalen van ongelezen emails uit {Mailbox}", _mailbox);
+            _logger.LogError(ex, "Fout bij ophalen van ongelezen emails uit coordinator-mailbox");
         }
 
         return resultaat;
