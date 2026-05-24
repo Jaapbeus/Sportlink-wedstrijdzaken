@@ -195,6 +195,19 @@ Wijzigingen in `exports/` gaan **altijd rechtstreeks naar `main`** — nooit via
 
 ---
 
+## AVG-bewaartermijn
+
+`avg.Teambegeleiding` hanteert een bewaartermijn van **1 jaar** vanaf de laatste import (`mta_imported`).
+
+**Hoe het werkt:**
+- Het importscript doet een TRUNCATE + volledige herinsert. Bij elke import krijgen alle actieve begeleiders een verse `mta_imported`.
+- Personen die niet meer actief zijn, verdwijnen automatisch bij de volgende import via de TRUNCATE.
+- De `CleanupTeambegeleiding` Azure Function (maandelijks, 1e van de maand 04:00 UTC) verwijdert als vangnet alle rijen ouder dan 1 jaar — dit beschermt tegen het scenario waarbij het importscript een langere tijd niet draait.
+
+**Aanbeveling:** voer het importscript minimaal **1× per seizoen** uit (seizoensstart ≈ augustus). Dit garandeert dat de data actueel is én dat de bewaartermijn correct verloopt.
+
+---
+
 ## AVG/GDPR-regels
 
 - De CSV mag alleen **tijdelijk lokaal** staan op de machine van de beheerder
