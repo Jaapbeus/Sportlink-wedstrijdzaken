@@ -24,6 +24,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Dagplanning: onnodige optimalisatiesuggesties onderdrukt** (#291/#290): planner genereert geen suggesties meer als er geen zinvol doel is. `veld5-ontlasten` is nooit zinvol op doordeweekse dagen (veld 1-4 niet beschikbaar). `strakker-plannen` is alleen zinvol als een gewenste eindtijd is opgegeven of het doel expliciet gekozen. Zonder doel én zonder gewenste eindtijd geeft de planner direct "Geen optimalisatie nodig" terug.
+- **Dagplanning HTTP 500 bij dagen zonder wedstrijden** (#291): `PlannerHtmlGenerator.GenereerHtml` riep `.Max()` aan op een lege lijst wanneer er geen wedstrijden gepland waren (bijv. zondag). Geeft nu een informatieve melding terug in plaats van een 500-fout.
+- **Dry-run email: teamconflict heeft nu eigen antwoordtekst** (#291): teamconflict verscheen voorheen als aanhangsel aan "geen veld beschikbaar" — terwijl het veld helemaal niet gecheckt werd bij een teamconflict. Teamconflict heeft nu een eigen berichttak zonder vermelding van veldgebrek.
+- **Dry-run planner response toonde geneste lege arrays** (#291): `JToken` (Newtonsoft) geserialiseerd via `System.Text.Json` gaf corrupt JSON terug. Opgelost door `JsonDocument.Parse(...).RootElement` te gebruiken in `EmailTestFunction`.
 - **Feedback widget loop bij aanvulvragen** (#283): na het beantwoorden van OpenAI-aanvulvragen keerden dezelfde vragen terug bij "Opnieuw controleren". Backend accepteert nu direct zodra antwoorden zijn ingevuld (re-validatie overbodig — antwoorden vullen de gaten per definitie). Frontend bewaart bovendien bestaande antwoorden als vragen ongewijzigd terugkomen.
 
 ### Added

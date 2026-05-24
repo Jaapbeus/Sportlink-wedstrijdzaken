@@ -87,6 +87,15 @@ public static class BerichtResponseGenerator
             if (response.Waarschuwingen.Count > 0)
                 inhoud += "\nLet op: " + string.Join(" ", response.Waarschuwingen);
         }
+        else if (response.TeamConflict != null)
+        {
+            // Team heeft al een wedstrijd op deze datum — dit is de primaire reden.
+            // Veld-beschikbaarheid is niet gecheckt (early return in PlannerService),
+            // dus "geen veld beschikbaar" is hier feitelijk onjuist en misleidend.
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"{response.Reden}\n\n"
+                   + $"Hierdoor kan op {datumTekst} geen oefenwedstrijd worden ingepland.";
+        }
         else
         {
             inhoud = $"{aanhef} {voornaam},\n\n"
@@ -177,6 +186,9 @@ public static class BerichtResponseGenerator
             }
             return sectie;
         }
+
+        if (response.TeamConflict != null)
+            return $"**{datumTekst}:** {response.Reden} Hierdoor kan op deze dag geen oefenwedstrijd worden ingepland.\n";
 
         var fallback = $"**{datumTekst}:** Helaas geen veld beschikbaar.";
         if (!string.IsNullOrEmpty(response.Reden))

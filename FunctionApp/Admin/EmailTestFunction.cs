@@ -88,7 +88,7 @@ public static class EmailTestFunction
                 dryRun = true,
                 opmerking = "Dit verstuurt niets en slaat niets op",
                 classificatie,
-                plannerResponse = Newtonsoft.Json.Linq.JToken.Parse(plannerResponseJson),
+                plannerResponse = System.Text.Json.JsonDocument.Parse(plannerResponseJson).RootElement,
                 voorbeeldAntwoord = new
                 {
                     onderwerp = voorbeeldOnderwerp,
