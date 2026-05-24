@@ -126,7 +126,7 @@ jobs:
             # Blokkeer elk emailadres (ook club-domeinen zoals vv-club.nl)
             # Uitzondering: noreply@github.com, noreply@anthropic.com (CI-systemen)
             matches=$(grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' "$f" \
-              | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org))$' || true)
+              | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
             if [ -n "$matches" ]; then
               echo "::error::🚨 EMAILADRES in documentatiebestand: $f"
               echo "$matches" | while read addr; do echo "::error::  Gevonden: $addr — gebruik placeholder [emailadres]"; done
@@ -150,7 +150,7 @@ jobs:
           MESSAGES=$(git log -20 --pretty=format:"%s %b" | grep -vi "Co-Authored-By" || true)
 
           EMAIL_HITS=$(echo "$MESSAGES" | grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' \
-            | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org))$' || true)
+            | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
           PHONE_HITS=$(echo "$MESSAGES" | grep -oP '06[-\s]?[0-9]{8}|\+316[0-9]{8}' || true)
 
           if [ -n "$EMAIL_HITS" ]; then

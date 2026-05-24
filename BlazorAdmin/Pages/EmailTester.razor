@@ -63,7 +63,11 @@
 }
 
 @code {
-    private TestEmailRequest request = new() { Afzender = "trainer@example.com" };
+    private TestEmailRequest request = new()
+    {
+        Afzender = "trainer@voorbeeld.nl",
+        AfzenderNaam = "Jan de Vries"
+    };
     private TestEmailResponse? response;
     private string? error;
     private bool busy;

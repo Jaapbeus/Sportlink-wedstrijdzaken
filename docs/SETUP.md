@@ -11,7 +11,7 @@ If you just want to get running quickly:
 1. **Database Setup:**
    ```sql
    -- In SSMS connected to YOUR_SERVER, run these scripts in order:
-   -- 1. setup-local-database.sql
+   -- 1. scripts/db/setup-local-database.sql
    -- 2. setup-metadata-tables.sql
    -- 3. Deploy stored procedures from <repository>\Database
    ```
@@ -164,7 +164,7 @@ npm install -g azure-functions-core-tools@4 --unsafe-perm true
 
 1. Open **SQL Server Management Studio (SSMS)**
 2. Connect to your SQL Server instance: `YOUR_SERVER`
-3. Open the file: `setup-local-database.sql`
+3. Open the file: `scripts/db/setup-local-database.sql`
 4. Execute the script (F5)
 
 This creates:
@@ -413,7 +413,7 @@ Execute the provided PowerShell script to verify your environment:
 
 ```powershell
 cd <repository>\FunctionApp
-.\setup-local-debug.ps1
+.\scripts\dev\scripts/dev/setup-local-debug.ps1
 ```
 
 This script checks:
@@ -693,8 +693,8 @@ fa-dev-sportlink-01/
 ├── Enitities.cs             # Data models (Team, Match, etc.)
 ├── Program.cs               # Function app startup
 ├── local.settings.json      # Local configuration
-├── setup-local-database.sql # Database initialization script
-├── setup-local-debug.ps1    # Environment verification script
+├── scripts/db/setup-local-database.sql # Database initialization script
+├── scripts/dev/setup-local-debug.ps1    # Environment verification script
 └── SETUP.md                 # This file
 ```
 
