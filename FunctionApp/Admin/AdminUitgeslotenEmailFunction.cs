@@ -96,7 +96,7 @@ public static class AdminUitgeslotenEmailFunction
             command.Parameters.AddWithValue("@ClubCode", clubCode);
 
             var newId = (int)(await command.ExecuteScalarAsync())!;
-            log.LogInformation("Uitsluitingsadres {Adres} toegevoegd (id={Id})", adres, newId);
+            log.LogInformation("Uitsluitingsadres toegevoegd (id={Id})", newId);
             return new OkObjectResult(new { id = newId });
         }
         catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)

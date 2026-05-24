@@ -74,6 +74,12 @@ public static class AdminEmailLogFunction
                     var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
                     row[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
                 }
+                // AVG: mask Afzender — only show domain, never full email address
+                if (row.TryGetValue("Afzender", out var afzender) && afzender is string email)
+                {
+                    var atIndex = email.IndexOf('@');
+                    row["Afzender"] = atIndex > 0 ? "***" + email[atIndex..] : "***";
+                }
                 list.Add(row);
             }
 

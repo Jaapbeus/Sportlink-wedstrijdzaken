@@ -119,7 +119,7 @@ jobs:
           FOUND=0
           # Documentatiebestanden: strenger dan code — GEEN enkel emailadres toegestaan
           # Gebruik placeholder [emailadres] of example@example.nl in voorbeelden
-          DOC_FILES="CHANGELOG.md docs/VERSIONING.md docs/TESTING.md README.md"
+          DOC_FILES=$(git ls-files 'docs/*.md' 'CHANGELOG.md' 'README.md' 'SETUP.md' 'CONTRIBUTING.md')
 
           for f in $DOC_FILES; do
             [ ! -f "$f" ] && continue
