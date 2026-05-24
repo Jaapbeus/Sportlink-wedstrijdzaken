@@ -273,7 +273,8 @@ namespace SportlinkFunction.Planner
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req,
             FunctionContext context)
         {
-            return new OkObjectResult(new { status = "ok", timestamp = DateTime.UtcNow });
+            var version = typeof(PlannerFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
+            return new OkObjectResult(new { status = "ok", version, timestamp = DateTime.UtcNow });
         }
 
         [Function("HerplanBevestig")]

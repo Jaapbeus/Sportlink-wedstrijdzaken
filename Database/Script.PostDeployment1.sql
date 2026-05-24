@@ -454,6 +454,7 @@ BEGIN
 END
 GO
 
+
 -- v2 — #84: EmailTemplateInstellingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
 BEGIN
