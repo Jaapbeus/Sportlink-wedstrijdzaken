@@ -153,6 +153,8 @@ Het project is zo gebouwd dat:
 
 Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en verantwoorde omgang met persoonsgegevens.
 
+Zie [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) voor de architectuurprincipes: tijdzones, multi-club isolatie, secrets en AVG.
+
 ---
 
 ## Releases en changelog

@@ -131,7 +131,7 @@ public static class AdminVoorkeurTijdenFunction
             using var command = new SqlCommand(@"
                 UPDATE [dbo].[TeamVoorkeurTijden]
                 SET [TeamNaam] = @TeamNaam, [DagVanWeek] = @DagVanWeek, [VoorkeurTijd] = @VoorkeurTijd,
-                    [Prioriteit] = @Prioriteit, [Actief] = @Actief, [mta_modified] = GETDATE()
+                    [Prioriteit] = @Prioriteit, [Actief] = @Actief, [mta_modified] = GETUTCDATE()
                 WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@Id", id);
             command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -173,7 +173,7 @@ public static class AdminVoorkeurTijdenFunction
             await connection.OpenAsync();
             using var command = new SqlCommand(@"
                 UPDATE [dbo].[TeamVoorkeurTijden]
-                SET [Actief] = 0, [mta_modified] = GETDATE()
+                SET [Actief] = 0, [mta_modified] = GETUTCDATE()
                 WHERE [Id] = @Id AND [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@Id", id);
             command.Parameters.AddWithValue("@ClubCode", clubCode);

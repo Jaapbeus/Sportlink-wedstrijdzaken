@@ -97,7 +97,7 @@ public static class AdminTemplatesFunction
                     [Onderwerp] = @Onderwerp,
                     [BodyTemplate] = @BodyTemplate,
                     [Actief] = @Actief,
-                    [mta_modified] = GETDATE()
+                    [mta_modified] = GETUTCDATE()
                 WHEN NOT MATCHED THEN INSERT
                     ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
                     VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);", connection);
