@@ -24,6 +24,22 @@ function Write-Fixed($msg) { Write-Host "  [FIX] $msg" -ForegroundColor Yellow ;
 function Write-Section($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 
 # ──────────────────────────────────────────────────────────────────────
+# 0. GIT HOOKS controle
+# ──────────────────────────────────────────────────────────────────────
+Write-Section "Git hooks"
+$hooksPath = git config core.hooksPath 2>$null
+if ($hooksPath -ne ".githooks") {
+    Write-Warning "Git hooks niet geactiveerd! Voer uit: git config core.hooksPath .githooks"
+} else {
+    $patternsFile = Join-Path $root ".githooks\sensitive-patterns.txt"
+    if (-not (Test-Path $patternsFile)) {
+        Write-Warning "sensitive-patterns.txt ontbreekt. Kopieer van .githooks\sensitive-patterns.template.txt"
+    } else {
+        Write-Ok "Git hooks actief (.githooks)"
+    }
+}
+
+# ──────────────────────────────────────────────────────────────────────
 # 1. CONNECTION STRING ophalen
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Database verbinding"
