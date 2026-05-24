@@ -41,15 +41,14 @@ namespace SportlinkFunction.Planner
                 SELECT
                     CAST(m.[kaledatum] AS DATE) AS Datum,
                     CAST(m.[aanvangstijd] AS TIME) AS AanvangsTijd,
-                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105) AS DuurMinuten,
+                    ISNULL(s.[WedstrijdTotaal], 0) AS DuurMinuten,
                     v.[VeldNummer],
                     v.[VeldNaam],
                     m.[wedstrijd],
                     'Competitie' AS Bron
                 FROM [his].[matches] m
-                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
-                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = t.[leeftijdscategorie]
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[status] <> 'Afgelast'
@@ -79,6 +78,11 @@ namespace SportlinkFunction.Planner
             {
                 var aanvangsTijd = reader.GetTimeSpan(1);
                 var duur = reader.GetInt32(2);
+                if (duur <= 0)
+                {
+                    var wedstrijdNaam = reader.IsDBNull(5) ? "onbekend" : reader.GetString(5);
+                    throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{wedstrijdNaam}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
+                }
                 results.Add(new BestaandeWedstrijd
                 {
                     Datum = DateOnly.FromDateTime(reader.GetDateTime(0)),
@@ -291,12 +295,11 @@ namespace SportlinkFunction.Planner
                     m.[wedstrijd],
                     CAST(m.[kaledatum] AS DATE) AS Datum,
                     m.[aanvangstijd],
-                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105) AS DuurMinuten,
+                    ISNULL(s.[WedstrijdTotaal], 0) AS DuurMinuten,
                     m.[veld],
                     t.[leeftijdscategorie],
                     COALESCE(s.[Veldafmeting], 1.00) AS Veldafmeting
                 FROM [his].[matches] m
-                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                 LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
@@ -314,11 +317,13 @@ namespace SportlinkFunction.Planner
             {
                 var aanvangstijd = reader.GetString(3).Trim();
                 var duur = reader.GetInt32(4);
+                var wedstrijdNaamFind = reader.GetString(1).Trim();
+                if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{wedstrijdNaamFind}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
                 TimeOnly.TryParse(aanvangstijd, out var startTime);
                 return new ZoekWedstrijdResponse
                 {
                     Wedstrijdcode = reader.GetInt64(0),
-                    Wedstrijd = reader.GetString(1).Trim(),
+                    Wedstrijd = wedstrijdNaamFind,
                     Datum = date.ToString("yyyy-MM-dd"),
                     AanvangsTijd = aanvangstijd,
                     EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),
@@ -348,12 +353,11 @@ namespace SportlinkFunction.Planner
                     m.[wedstrijd],
                     CAST(m.[kaledatum] AS DATE),
                     m.[aanvangstijd],
-                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105),
+                    ISNULL(s.[WedstrijdTotaal], 0),
                     m.[veld],
                     t.[leeftijdscategorie],
                     COALESCE(s.[Veldafmeting], 1.00)
                 FROM [his].[matches] m
-                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                 LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 WHERE m.[accommodatie] LIKE @accommodatiePattern
@@ -373,12 +377,14 @@ namespace SportlinkFunction.Planner
                 {
                     var aanvangstijd = reader.GetString(3).Trim();
                     var duur = reader.GetInt32(4);
+                    var wedstrijdNaamOpp = reader.GetString(1).Trim();
+                    if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{wedstrijdNaamOpp}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
                     var datumResult = DateOnly.FromDateTime(reader.GetDateTime(2));
                     TimeOnly.TryParse(aanvangstijd, out var startTime);
                     return new ZoekWedstrijdResponse
                     {
                         Wedstrijdcode = reader.GetInt64(0),
-                        Wedstrijd = reader.GetString(1).Trim(),
+                        Wedstrijd = wedstrijdNaamOpp,
                         Datum = datumResult.ToString("yyyy-MM-dd"),
                         AanvangsTijd = aanvangstijd,
                         EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),
@@ -448,12 +454,11 @@ namespace SportlinkFunction.Planner
                     m.[wedstrijd],
                     CAST(m.[kaledatum] AS DATE) AS Datum,
                     m.[aanvangstijd],
-                    COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105) AS DuurMinuten,
+                    ISNULL(s.[WedstrijdTotaal], 0) AS DuurMinuten,
                     m.[veld],
                     t.[leeftijdscategorie],
                     COALESCE(s.[Veldafmeting], 1.00) AS Veldafmeting
                 FROM [his].[matches] m
-                LEFT JOIN [his].[matchdetails] md ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                 LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
@@ -467,12 +472,14 @@ namespace SportlinkFunction.Planner
             {
                 var aanvangstijd = reader.GetString(3).Trim();
                 var duur = reader.GetInt32(4);
+                var wedstrijdNaamCode = reader.GetString(1).Trim();
+                if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{wedstrijdNaamCode}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
                 var datum = DateOnly.FromDateTime(reader.GetDateTime(2));
                 TimeOnly.TryParse(aanvangstijd, out var startTime);
                 return new ZoekWedstrijdResponse
                 {
                     Wedstrijdcode = reader.GetInt64(0),
-                    Wedstrijd = reader.GetString(1).Trim(),
+                    Wedstrijd = wedstrijdNaamCode,
                     Datum = datum.ToString("yyyy-MM-dd"),
                     AanvangsTijd = aanvangstijd,
                     EindTijd = startTime.AddMinutes(duur).ToString("HH:mm"),

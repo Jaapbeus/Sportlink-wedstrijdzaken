@@ -1,11 +1,13 @@
 CREATE VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
 -- Thuiswedstrijden op eigen accommodatie (gefilterd op Accommodatie uit dbo.AppSettings)
+-- Speelduur exclusief via dbo.Speeltijden (WedstrijdTotaal = speeltijd + rust).
+-- Sportlink [Duration] uit matchdetails wordt niet meer gebruikt — DB is leidend (#291).
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
     DATEADD(MINUTE,
-        COALESCE(CAST(md.[Duration] AS INT), s.[WedstrijdTotaal], 105),
+        s.[WedstrijdTotaal],
         CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME)
     )                                                                               AS EindTijd,
     v.[VeldNummer],
@@ -16,8 +18,6 @@ SELECT
     RTRIM(SUBSTRING(m.[veld], 7, 10))                                               AS VeldSubpositie,
     'Competitie'                                                                    AS Bron
 FROM [his].[matches] m
-LEFT JOIN [his].[matchdetails] md
-    ON CAST(md.[InternCode] AS BIGINT) = CAST(m.[wedstrijdcode] AS BIGINT)
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
 LEFT JOIN [dbo].[Speeltijden] s
@@ -31,6 +31,7 @@ WHERE m.[accommodatie] LIKE '%' + (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSe
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
   AND v.[VeldNummer] IS NOT NULL
+  AND s.[WedstrijdTotaal] IS NOT NULL
 
 UNION ALL
 
