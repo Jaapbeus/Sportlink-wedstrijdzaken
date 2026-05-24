@@ -56,7 +56,7 @@ az functionapp config appsettings set \
     "GraphTenantId=<entra-tenant-id>" \
     "GraphClientId=<entra-app-client-id>" \
     "GraphClientSecret=<entra-app-secret>" \
-    "GraphMailbox=<coordinator-email@jouwclub.nl>" \
+    "GraphMailbox=<coordinator@voorbeeld.nl>" \
     "OpenAiApiKey=<openai-api-key>" \
     "GitHubPat=<github-pat>" \
     "GitHubOwner=<github-username>" \
@@ -134,7 +134,7 @@ az login  # log in met een admin-account van jouw tenant
 .\scripts\Configure-EntraApp.ps1 `
   -ClientId "<application-client-id>" `
   -ExpectedTenantId "<directory-tenant-id>" `
-  -AdminUserPrincipalName "admin@jouwclub.nl"
+  -AdminUserPrincipalName "admin@voorbeeld.nl"
 ```
 
 Het script configureert idempotent:

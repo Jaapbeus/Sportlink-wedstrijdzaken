@@ -38,7 +38,7 @@ Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd 
 | App Registration `displayName` | Sportlink Admin GUI |
 | App Registration `clientId` | Azure Portal → Entra ID → App registrations → Sportlink Admin GUI → Application (client) ID |
 | Service Principal `objectId` | Azure Portal → Entra ID → Enterprise applications → Sportlink Admin GUI → Object ID |
-| Admin user | `admin@jouwclub.nl` |
+| Admin user | `admin@voorbeeld.nl` |
 | SWA host | Zie Azure Portal → Static Web App → URL |
 | SPA redirect URI | `https://<SWA_HOST>/authentication/login-callback` |
 
@@ -51,7 +51,7 @@ Layer 1-3b zijn Azure-config, Layer 4-5 zijn code. Layer 4-5 worden gevalideerd 
 3. `az account show` → controleer dat je op de juiste tenant bent. Zo nee: `az account set --subscription <subscription-naam-of-id>`.
 4. Run `.\scripts\azure\Configure-EntraApp.ps1`. Dit script is idempotent: bestaande configuratie wordt niet aangepast, alleen ontbrekende stukken worden bijgevuld.
 5. Verifieer met `.\scripts\azure\Verify-AzureAuthSetup.ps1`. Alle regels moeten ✓ groen zijn.
-6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met admin@your-club.nl.
+6. Sluit bestaande Admin GUI browser-tabs. Open een verse Incognito/InPrivate sessie. Log opnieuw in met `admin@voorbeeld.nl` (jouw admin-account).
 
 ### Nieuwe gebruiker toevoegen
 
@@ -61,7 +61,7 @@ $spObjectId = az ad sp show --display-name "Sportlink Admin GUI" --query "id" -o
 
 # Voor 'user' rol (read-only):
 $roleId = az ad sp show --id $spObjectId --query "appRoles[?value=='user'].id" -o tsv
-$user = az ad user show --id 'nieuwe.user@jouwclub.nl' | ConvertFrom-Json
+$user = az ad user show --id 'nieuwe.user@voorbeeld.nl' | ConvertFrom-Json
 az rest --method POST `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$spObjectId/appRoleAssignedTo" `
     --body "{`"principalId`":`"$($user.id)`",`"resourceId`":`"$spObjectId`",`"appRoleId`":`"$roleId`"}"
@@ -105,13 +105,13 @@ In code: gebruik `IsInRole("admin")` (kleine letters), niet `IsInRole("Admin")`.
 
 ### Ander tenant-account ingelogd in browser
 
-Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én admin@your-club.nl, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor jaapadmin-tests, of klik op "Use another account" in de Microsoft loginpagina.
+Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `admin@voorbeeld.nl`, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor admin-tests, of klik op "Use another account" in de Microsoft loginpagina.
 
 ## Verificatie — 3-user-test (verplicht na elke auth-wijziging)
 
 | Test-user | Configuratie in Azure | Verwacht in browser |
 |---|---|---|
-| `admin@jouwclub.nl` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
+| `admin@voorbeeld.nl` | Toegewezen, role `admin` | Volledige UI, API werkt, sidebar zichtbaar |
 | 2e club-user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
 | 3e club-user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
