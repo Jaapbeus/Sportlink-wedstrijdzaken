@@ -32,8 +32,10 @@ Alle documentatie staat in deze map (`docs/`). Gebruik de categorieën hieronder
 |---|---|
 | [Planner architectuur](ARCHITECTURE-PLANNER.md) | Velddefinities, API-contract en dataflow van de veldplanner |
 | [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten, authenticatie |
+| [OpenAPI spec](openapi.json) | Machine-readable OpenAPI 3.0 spec van de volledige API |
 | [E-mailverwerking](EMAIL-VERWERKING.md) | E-mailpipeline, kanaalstrategie, AI-verwerking, BuitenScope-logica |
 | [Versiebeheer](VERSIONING.md) | Semantic versioning, conventional commits, release-workflow, CHANGELOG-richtlijnen |
+| [Gestructureerde specs (openspec)](openspec/config.yaml) | Machine-readable requirements specs per domein (api, setup, lokaal-debuggen) |
 
 ---
 
