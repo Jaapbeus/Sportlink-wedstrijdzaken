@@ -434,6 +434,14 @@ END;
 END
 GO
 
+-- #242: Verwijder club-specifieke DEFAULT 'VRC' uit EmailVerwerking.ClubCode
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_EmailVerwerking_ClubCode')
+    ALTER TABLE [planner].[EmailVerwerking] DROP CONSTRAINT [DF_EmailVerwerking_ClubCode];
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_EmailVerwerking_ClubCode')
+    ALTER TABLE [planner].[EmailVerwerking] ADD CONSTRAINT [CK_EmailVerwerking_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
+
 -- avg schema + avg.Teambegeleiding (AVG/GDPR persoonsgegevens teambegeleiders)
 IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
     EXEC('CREATE SCHEMA [avg]');

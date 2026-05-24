@@ -119,7 +119,7 @@ jobs:
           FOUND=0
           # Documentatiebestanden: strenger dan code — GEEN enkel emailadres toegestaan
           # Gebruik placeholder [emailadres] of example@example.nl in voorbeelden
-          DOC_FILES="CHANGELOG.md docs/VERSIONING.md docs/TESTING.md README.md"
+          DOC_FILES=$(git ls-files 'docs/*.md' 'CHANGELOG.md' 'README.md' 'SETUP.md' 'CONTRIBUTING.md')
 
           for f in $DOC_FILES; do
             [ ! -f "$f" ] && continue
@@ -154,21 +154,18 @@ jobs:
           PHONE_HITS=$(echo "$MESSAGES" | grep -oP '06[-\s]?[0-9]{8}|\+316[0-9]{8}' || true)
 
           if [ -n "$EMAIL_HITS" ]; then
+            # Waarschuwing: emailadres in commit-message (bijv. als beschrijving van een fix).
+            # Niet geblokkeerd — controleer handmatig of het om daadwerkelijke PII gaat.
             echo "::warning::📋 EMAILADRES in commit-message gevonden (controleer handmatig):"
             echo "$EMAIL_HITS" | while read addr; do echo "::warning::  $addr"; done
-            FOUND=1
           fi
           if [ -n "$PHONE_HITS" ]; then
             echo "::error::🚨 TELEFOONNUMMER in commit-message gevonden:"
             echo "$PHONE_HITS"
-            FOUND=1
-          fi
-
-          if [ "$FOUND" -eq 1 ]; then
-            echo "::error::PII in commit-messages is een AVG-risico — zie SECURITY.md."
+            echo "::error::Telefoonnummer in commit-messages is een AVG-risico — zie SECURITY.md."
             exit 1
           fi
-          echo "✅ Geen PII gevonden in recente commit-messages."
+          echo "✅ Geen geblokkeerde PII gevonden in recente commit-messages."
 
   # ── 4. Dependency vulnerability scan (Trivy) ───────────────────────────────
   dependency-scan:
