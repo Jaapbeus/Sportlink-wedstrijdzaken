@@ -46,7 +46,7 @@ namespace SportlinkFunction.Planner
 
             // Stap 1: Wedstrijdparameters bepalen uit Speeltijden
             Speeltijd? speeltijd = null;
-            int duurMinuten = 105; // standaard senioren
+            int duurMinuten = 0;
             decimal veldFractie = 1.00m;
 
             if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
@@ -54,7 +54,7 @@ namespace SportlinkFunction.Planner
                 speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie);
                 if (speeltijd == null)
                 {
-                    response.Reden = $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}";
+                    response.Reden = $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
                     return response;
                 }
                 duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
@@ -63,6 +63,12 @@ namespace SportlinkFunction.Planner
             else if (request.WedstrijdDuurMinuten.HasValue)
             {
                 duurMinuten = request.WedstrijdDuurMinuten.Value;
+            }
+
+            if (duurMinuten <= 0)
+            {
+                response.Reden = "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
+                return response;
             }
 
             // Stap 2: Team conflictcontrole

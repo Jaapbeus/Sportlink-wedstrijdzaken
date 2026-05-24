@@ -1,0 +1,181 @@
+@page "/instellingen/speeltijden"
+@inject AdminApiClient Api
+@using BlazorAdmin.Models
+
+<PageTitle>Speeltijden — Admin</PageTitle>
+
+<h1>Speeltijden</h1>
+<p class="text-muted">
+    <strong>WedstrijdTotaal</strong> = speeltijd + rust (inclusief buffer). Dit is de totale veldblokkeertijd.
+    De planner gebruikt dit getal direct — rust wordt <em>niet</em> apart opgeteld in de code.
+</p>
+
+@if (_loading)
+{
+    <p>Laden...</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <div class="text-end mb-2">
+        <button class="btn btn-success" @onclick="StartNew">Nieuwe categorie</button>
+    </div>
+
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Leeftijd</th>
+                <th>Veldafmeting</th>
+                <th title="speeltijd + rust incl. buffer">Totaal (min) <small class="text-muted">incl. rust</small></th>
+                <th>Helft (min)</th>
+                <th>Rust (min)</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _items)
+            {
+                <tr>
+                    <td>@s.Leeftijd</td>
+                    <td>@s.Veldafmeting.ToString("0.00")</td>
+                    <td><strong>@s.WedstrijdTotaal</strong></td>
+                    <td>@s.WedstrijdHelft</td>
+                    <td>@s.WedstrijdRust</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-1" @onclick="() => Edit(s)">Bewerken</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(s.Leeftijd)">Verwijderen</button>
+                    </td>
+                </tr>
+            }
+            @if (_items.Count == 0)
+            {
+                <tr><td colspan="6" class="text-muted">Geen speeltijden gevonden.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (_editing != null)
+    {
+        <hr />
+        <h3>@(_isNew ? "Nieuwe leeftijdscategorie" : $"Bewerken: {_editing.Leeftijd}")</h3>
+        <p class="text-muted small">
+            WedstrijdTotaal = speeltijd + rust. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.
+        </p>
+        <EditForm Model="_editing" OnValidSubmit="OpslaanAsync">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label">Leeftijd</label>
+                    <input class="form-control" @bind="_editing.Leeftijd" disabled="@(!_isNew)" placeholder="JO12" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Veldafmeting</label>
+                    <input class="form-control" type="number" step="0.25" min="0.25" max="1.00"
+                           @bind="_editing.Veldafmeting" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Totaal (min) <small class="text-muted">incl. rust</small></label>
+                    <input class="form-control" type="number" min="1" @bind="_editing.WedstrijdTotaal" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Helft (min)</label>
+                    <input class="form-control" type="number" min="1" @bind="_editing.WedstrijdHelft" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Rust (min)</label>
+                    <input class="form-control" type="number" min="0" @bind="_editing.WedstrijdRust" />
+                </div>
+                <div class="col-md-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Opslaan</button>
+                    <button type="button" class="btn btn-secondary" @onclick="Annuleer">Annuleer</button>
+                </div>
+            </div>
+        </EditForm>
+        @if (_saveError != null)
+        {
+            <div class="alert alert-danger mt-2">@_saveError</div>
+        }
+    }
+}
+
+@code {
+    private List<SpeeltijdDto> _items = new();
+    private SpeeltijdDto? _editing;
+    private bool _isNew;
+    private bool _loading = true;
+    private string? _error;
+    private string? _saveError;
+
+    protected override async Task OnInitializedAsync() => await LaadAsync();
+
+    private async Task LaadAsync()
+    {
+        _loading = true;
+        _error = null;
+        var result = await Api.GetSpeeltijdenAsync();
+        if (result.Success)
+            _items = result.Data ?? new();
+        else
+            _error = result.ErrorMessage ?? "Ophalen mislukt";
+        _loading = false;
+    }
+
+    private void StartNew()
+    {
+        _editing = new SpeeltijdDto();
+        _isNew = true;
+        _saveError = null;
+    }
+
+    private void Edit(SpeeltijdDto s)
+    {
+        _editing = new SpeeltijdDto
+        {
+            Leeftijd = s.Leeftijd,
+            Veldafmeting = s.Veldafmeting,
+            WedstrijdTotaal = s.WedstrijdTotaal,
+            WedstrijdHelft = s.WedstrijdHelft,
+            WedstrijdRust = s.WedstrijdRust
+        };
+        _isNew = false;
+        _saveError = null;
+    }
+
+    private void Annuleer()
+    {
+        _editing = null;
+        _saveError = null;
+    }
+
+    private async Task OpslaanAsync()
+    {
+        if (_editing == null) return;
+        _saveError = null;
+        ApiResult<object> result;
+        if (_isNew)
+            result = await Api.CreateSpeeltijdAsync(_editing);
+        else
+            result = await Api.UpdateSpeeltijdAsync(_editing.Leeftijd, _editing);
+
+        if (result.Success)
+        {
+            _editing = null;
+            await LaadAsync();
+        }
+        else
+        {
+            _saveError = result.ErrorMessage ?? "Opslaan mislukt";
+        }
+    }
+
+    private async Task DeleteAsync(string leeftijd)
+    {
+        var result = await Api.DeleteSpeeltijdAsync(leeftijd);
+        if (result.Success)
+            await LaadAsync();
+        else
+            _error = result.ErrorMessage ?? "Verwijderen mislukt";
+    }
+}

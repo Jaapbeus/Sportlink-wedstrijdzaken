@@ -51,9 +51,9 @@ BEGIN
         ('MO17', 1.00, 95,  40, 15),
         ('MO19', 1.00, 105, 45, 15),
         ('MO20', 1.00, 105, 45, 15),
-        ('VR',   1.00, 105, 45, 15),
+        ('VR',   1.00, 115, 45, 15),
         ('G',    0.50, 75,  30, 15),
-        ('1-99', 1.00, 105, 45, 15)
+        ('1-99', 1.00, 115, 45, 15)
 END
 GO
 
@@ -474,6 +474,40 @@ BEGIN
     WHERE [mta_imported] < DATEADD(YEAR, -1, GETUTCDATE());
 END');
 END
+GO
+
+-- ============================================================
+-- #291: Speeltijden correcties en ontbrekende categorieën
+-- Senioren (1-99, VR) = 115 min (2x45 + 15 rust + 10 buffer)
+-- JO6 = 40 min; ontbrekende MO-categorieën = equivalent JO
+-- Idempotent: UPDATE voor bestaande rijen, MERGE voor ontbrekende
+-- ============================================================
+
+-- Senioren correctie: 105 → 115
+UPDATE [dbo].[Speeltijden]
+SET [WedstrijdTotaal] = 115, [WedstrijdHelft] = 45, [WedstrijdRust] = 15
+WHERE [Leeftijd] IN ('1-99', 'VR') AND [WedstrijdTotaal] < 115;
+GO
+
+-- Ontbrekende categorieën aanvullen
+MERGE [dbo].[Speeltijden] AS target
+USING (VALUES
+    ('JO6',  0.25, 40,  15, 10),
+    ('MO7',  0.25, 50,  20, 10),
+    ('MO8',  0.25, 50,  20, 10),
+    ('MO9',  0.25, 50,  20, 10),
+    ('MO10', 0.25, 65,  25, 15),
+    ('MO11', 0.50, 75,  30, 15),
+    ('MO12', 0.50, 75,  30, 15),
+    ('MO14', 1.00, 85,  35, 15),
+    ('MO16', 1.00, 95,  40, 15),
+    ('MO18', 1.00, 105, 45, 15),
+    ('MO23', 1.00, 105, 45, 15)
+) AS src ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
+ON target.[Leeftijd] = src.[Leeftijd]
+WHEN NOT MATCHED THEN
+    INSERT ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
+    VALUES (src.[Leeftijd], src.[Veldafmeting], src.[WedstrijdTotaal], src.[WedstrijdHelft], src.[WedstrijdRust]);
 GO
 
 -- v2 — #84: EmailTemplateInstellingen
