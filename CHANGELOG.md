@@ -17,6 +17,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [2.3.0] — 2026-05-24
+
 ### Changed
 
 - **Versie 2.2.1** — PATCH-bump voor feedback widget bugfix (#284).
