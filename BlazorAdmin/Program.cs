@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
@@ -6,6 +7,11 @@ using BlazorAdmin;
 using BlazorAdmin.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
+
+// Kalenderweek begint op maandag, datumnotatie NL (issue #300)
+var nlCulture = new CultureInfo("nl-NL");
+CultureInfo.DefaultThreadCurrentCulture = nlCulture;
+CultureInfo.DefaultThreadCurrentUICulture = nlCulture;
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 

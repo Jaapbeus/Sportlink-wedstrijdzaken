@@ -22,16 +22,14 @@ else
                 <label class="form-label">Clubnaam</label>
                 <input class="form-control" value="@settings!.ClubName" disabled />
                 <small class="form-text text-muted">
-                    Staat in AI-systeem-prompt en e-mailtemplates. Wijzigen via SQL:
-                    <code>UPDATE [dbo].[AppSettings] SET [ClubName] = '...'</code>
+                    Staat in AI-systeem-prompt en e-mailtemplates. Contacteer de systeembeheerder om deze waarde te wijzigen.
                 </small>
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">ClubCode</label>
                 <input class="form-control" value="@settings.ClubCode" disabled />
                 <small class="form-text text-muted">
-                    Unieke identifier voor multi-club ondersteuning — staat als filter in elke database-query.
-                    Wijzigen via SQL: <code>UPDATE [dbo].[AppSettings] SET [ClubCode] = '...'</code>
+                    Unieke identifier voor multi-club ondersteuning — staat als filter in elke database-query. Contacteer de systeembeheerder om deze waarde te wijzigen.
                 </small>
             </div>
         </div>
