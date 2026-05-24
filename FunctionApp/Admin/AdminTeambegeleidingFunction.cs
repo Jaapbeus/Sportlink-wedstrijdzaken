@@ -11,9 +11,10 @@ using SportlinkFunction.Email;
 namespace SportlinkFunction.Admin;
 
 /// <summary>
-/// Admin API voor teambegeleiding (#168).
-/// AVG: Emailadres en Telefoonnummer worden NOOIT in een API-response teruggestuurd.
-/// Emailadres wordt uitsluitend server-side gebruikt als SMTP-bestemming.
+/// Admin API voor teambegeleiding (#168, #299).
+/// /teambegeleiding/{team} geeft Naam, Teamrol, Emailadres en Telefoonnummer terug
+/// aan de ingelogde beheerder (admin/user-rol) — pagina is afgeschermd achter Entra ID Easy Auth.
+/// E-mail doorstuur-pipeline gebruikt Emailadres uitsluitend server-side; nooit in auto-reply body.
 /// </summary>
 public static class AdminTeambegeleidingFunction
 {
@@ -53,7 +54,7 @@ public static class AdminTeambegeleidingFunction
 
     /// <summary>
     /// GET /api/beheer/teambegeleiding/{team} — begeleiders voor een specifiek team.
-    /// Response bevat alleen Naam en Teamrol — GEEN e-mailadres of telefoonnummer.
+    /// Response bevat Naam, Teamrol, Emailadres en Telefoonnummer — alleen voor ingelogde beheerders (#299).
     /// </summary>
     [Function("AdminTeambegeleidingGet")]
     public static async Task<IActionResult> GetBegeleiders(
@@ -72,7 +73,7 @@ public static class AdminTeambegeleidingFunction
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             using var command = new SqlCommand(@"
-                SELECT [Naam], [Teamrol]
+                SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer]
                 FROM [avg].[Teambegeleiding]
                 WHERE [Team] = @team
                 ORDER BY
@@ -90,7 +91,9 @@ public static class AdminTeambegeleidingFunction
                 list.Add(new
                 {
                     Naam = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                    Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1)
+                    Teamrol = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    Emailadres = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    Telefoonnummer = reader.IsDBNull(3) ? null : reader.GetString(3)
                 });
             }
             return new OkObjectResult(list);

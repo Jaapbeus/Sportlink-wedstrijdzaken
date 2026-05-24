@@ -89,9 +89,21 @@ else
                 {
                     <select class="form-select" value="@editing.TemplateKey" @onchange="OnTemplateKeyChange">
                         <option value="">— kies een type —</option>
-                        <option value="beschikbaarheid_check">beschikbaarheid_check — vraag over veldbeschikbaarheid</option>
-                        <option value="herplan_verzoek">herplan_verzoek — verzoek om wedstrijd te verplaatsen</option>
-                        <option value="bevestiging">bevestiging — bevestiging van een eerder voorstel</option>
+                        <optgroup label="Beschikbaarheid">
+                            <option value="beschikbaarheid_check">beschikbaarheid_check — antwoord op veld-/tijdvraag</option>
+                        </optgroup>
+                        <optgroup label="Herplanning">
+                            <option value="herplan_verzoek">herplan_verzoek — antwoord op herplanningsverzoek</option>
+                        </optgroup>
+                        <optgroup label="Bevestiging">
+                            <option value="bevestiging">bevestiging — bevestiging van eerder voorstel</option>
+                        </optgroup>
+                        <optgroup label="Teambegeleiding">
+                            <option value="team_contact_opvragen">team_contact_opvragen — auto-reply na doorsturen begeleiding</option>
+                        </optgroup>
+                        <optgroup label="Overig">
+                            <option value="buiten_scope">buiten_scope — antwoord op niet-herkend verzoek</option>
+                        </optgroup>
                     </select>
                     <small class="form-text text-muted">
                         Kies de template die de code zal gebruiken als override. Lege DB-rij = hardcoded default blijft actief.
@@ -220,6 +232,14 @@ else
                 onderwerp = "Bevestiging wedstrijd {{datum}} — {{team}} vs {{tegenstander}}";
                 body = "Beste {{aanhef}},\n\nHierbij bevestigen wij de wedstrijd op {{datum}} om {{aanvangstijd}}.\n\nThuisteam: {{team}}\nTegenstander: {{tegenstander}}\n\nTot dan!";
                 break;
+            case "team_contact_opvragen":
+                onderwerp = "Uw vraag over de begeleiding van {{team}}";
+                body = "Beste {{voornaam}},\n\nUw vraag over de begeleiding van {{team}} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op.";
+                break;
+            case "buiten_scope":
+                onderwerp = "Uw bericht ontvangen";
+                body = "Beste {{voornaam}},\n\nBedankt voor uw bericht. Uw vraag valt buiten het bereik van de automatische verwerking. Neem contact op met de club voor verdere hulp.";
+                break;
         }
 
         if (!string.IsNullOrWhiteSpace(onderwerp)) editing.Onderwerp = onderwerp;
@@ -251,9 +271,11 @@ else
 
     private static (string label, string css) GetCategorie(string key) => key switch
     {
-        var k when k.StartsWith("beschikbaarheid") => ("BeschikbaarheidCheck", "bg-info text-dark"),
-        var k when k.StartsWith("herplan")         => ("HerplanVerzoek", "bg-warning text-dark"),
+        var k when k.StartsWith("beschikbaarheid") => ("Beschikbaarheid", "bg-info text-dark"),
+        var k when k.StartsWith("herplan")         => ("Herplanning", "bg-warning text-dark"),
         var k when k.StartsWith("bevestig")        => ("Bevestiging", "bg-success"),
+        var k when k.StartsWith("team_contact")    => ("Teambegeleiding", "bg-primary"),
+        var k when k.StartsWith("buiten_scope")    => ("Buiten scope", "bg-secondary"),
         _                                           => ("Overig", "bg-secondary"),
     };
 }

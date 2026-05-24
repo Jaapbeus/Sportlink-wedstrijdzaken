@@ -222,11 +222,14 @@ public static class BerichtPipeline
 
     /// <summary>
     /// Bouwt het antwoord via templates op basis van het classificatietype en PlannerService response.
+    /// Probeert eerst een DB-override op te halen via EmailTemplateService (#287).
+    /// Valt terug op hardcoded defaults als er geen override is.
     /// </summary>
-    public static (string onderwerp, string body) BouwTemplateAntwoord(
+    public static async Task<(string onderwerp, string body)> BouwTemplateAntwoord(
         BerichtClassificatie classificatie,
         string plannerResponseJson,
-        InkomendBericht bericht)
+        InkomendBericht bericht,
+        ILogger? log = null)
     {
         switch (classificatie.Type)
         {
@@ -260,6 +263,11 @@ public static class BerichtPipeline
                     return BerichtResponseGenerator.BouwMultiDatumBeschikbaarheidAntwoord(
                         resultaten, classificatie, bericht);
                 }
+
+                var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", log);
+                if (beschikbaarheidTemplate != null)
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht);
+
                 var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 return BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
                     checkResponse ?? new CheckAvailabilityResponse(), classificatie, bericht);
@@ -284,17 +292,30 @@ public static class BerichtPipeline
                         wedstrijd, gewensteDatum, beschikbaarheid, classificatie, bericht);
                 }
 
+                var herplanTemplate = await Email.EmailTemplateService.GetTemplateAsync("herplan_verzoek", log);
+                if (herplanTemplate != null)
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht);
+
                 var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
                 return BerichtResponseGenerator.BouwHerplanAntwoord(
                     wedstrijd, herplanOpties, classificatie, bericht);
 
             case VerzoekType.TeamContactOpvragen:
+                var teamContactTemplate = await Email.EmailTemplateService.GetTemplateAsync("team_contact_opvragen", log);
+                if (teamContactTemplate != null)
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht);
                 return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht);
 
             case VerzoekType.Bevestiging:
+                var bevestigingTemplate = await Email.EmailTemplateService.GetTemplateAsync("bevestiging", log);
+                if (bevestigingTemplate != null)
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht);
                 return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie);
 
             default:
+                var buitenScopeTemplate = await Email.EmailTemplateService.GetTemplateAsync("buiten_scope", log);
+                if (buitenScopeTemplate != null)
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht);
                 return BerichtResponseGenerator.BouwBuitenScopeAntwoord(bericht);
         }
     }
