@@ -10,7 +10,7 @@ Run the database setup script in SQL Server Management Studio (SSMS):
 
 ```sql
 -- Connect to: YOUR_SERVER
--- Open and execute: setup-local-database.sql
+-- Open and execute: scripts/db/setup-local-database.sql
 ```
 
 This will:
@@ -40,7 +40,7 @@ Run the PowerShell setup script to verify your local environment:
 
 ```powershell
 cd <repository>\FunctionApp
-.\setup-local-debug.ps1
+.\scripts\dev\scripts/dev/setup-local-debug.ps1
 ```
 
 This script will:
@@ -91,13 +91,13 @@ The function will:
 1. Verify SQL Server is running on `YOUR_SERVER`
 2. Check Windows Authentication is enabled
 3. Verify `SportlinkSqlDb` database exists
-4. Run `setup-local-database.sql` if database doesn't exist
+4. Run `scripts/db/setup-local-database.sql` if database doesn't exist
 
 ### Issue: "AzureWebJobsStorage connection failed"
 
 **Solution:**
 1. Install Azurite: `npm install -g azurite`
-2. Start Azurite: `azurite` or run `setup-local-debug.ps1`
+2. Start Azurite: `azurite` or run `scripts/dev/scripts/dev/setup-local-debug.ps1`
 3. Verify it's running on default ports (10000, 10001, 10002)
 
 ### Issue: "The connection string is not set"
@@ -110,7 +110,7 @@ The function will:
 ### Issue: "sportlinkApiUrl is not configured"
 
 **Solution:**
-1. Run `setup-local-database.sql` to create the AppSettings table
+1. Run `scripts/db/setup-local-database.sql` to create the AppSettings table
 2. Update the AppSettings table with your actual API credentials:
    ```sql
    UPDATE [dbo].[AppSettings]
@@ -142,8 +142,8 @@ fa-dev-sportlink-01/
 ├── Program.cs               # Function app startup
 ├── local.settings.json      # Local development settings
 ├── host.json                # Azure Functions host configuration
-├── setup-local-debug.ps1    # Environment setup script
-└── setup-local-database.sql # Database initialization script
+├── scripts/dev/setup-local-debug.ps1    # Environment setup script
+└── scripts/db/setup-local-database.sql # Database initialization script
 ```
 
 ---

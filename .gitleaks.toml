@@ -38,6 +38,13 @@ tags = ["pii", "avg", "gdpr"]
 
 [allowlist]
 description = "Bestanden die uitgesloten worden van scanning"
+regexes = [
+  # voorbeeld.nl is een goedgekeurd fictief placeholder-domein (John Doe-principe, zie CLAUDE.md).
+  # Niet bestaand domein — geen echte persoonsgegevens. Gebruikt als UI-default in de dry-run tester.
+  '''trainer@voorbeeld\.nl''',
+  # Jan de Vries is een fictieve naam (NL John Doe equivalent) — geen echte persoonsgegevens.
+  '''Jan de Vries''',
+]
 paths = [
   # Gegenereerde bestanden en build output
   '''\.git/''',
