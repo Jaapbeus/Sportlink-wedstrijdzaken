@@ -17,6 +17,74 @@ perspectieven benaderd:
 
 Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 
+---
+
+## Kostenbeleid — absolute grens (meest prominente architectuurregel)
+
+> **De volledige stack draait op gratis Azure-tiers. Dit is een harde, niet-onderhandelbare
+> projectbeperking.** Elke sessie en elke deployment bewaakt dit actief.
+
+### Harde regels — nooit omzeilen
+
+1. **Nooit een nieuwe Azure-resource aanmaken of bestaande tier upgraden zonder expliciete
+   bevestiging van de gebruiker.** Ook niet als de verwachte kosten laag zijn.
+
+2. **Vóór elke feature-toevoeging die Azure-resources raakt, én vóór elke nieuwe versie-build:
+   controleer de actuele prijspagina via de Microsoft Learn MCP server.** Gebruik:
+   ```
+   mcp__claude_ai_Microsoft_Learn__microsoft_docs_search("pricing [resource-naam] free tier")
+   ```
+   Niet vertrouwen op trainingsdata — Microsoft wijzigt gratis tiers zonder waarschuwing vooraf.
+   Bewijs: Log Analytics Legacy Free Tier gestopt op 1 juli 2022 (geen aankondiging in productie-context).
+
+3. **Als een prijswijziging of twijfel over gratis-status wordt gedetecteerd → deployment
+   onmiddellijk stoppen en melden aan de gebruiker. Dit is een harde stop — geen uitzonderingen.**
+   Meldingsformat:
+   ```
+   ⚠️ KOSTENWIJZIGING GEDETECTEERD — DEPLOYMENT GESTOPT
+   Resource: [naam]
+   Gedetecteerd: [wat er veranderd is]
+   Bron: [MS Docs URL]
+   Actie vereist: bevestiging van gebruiker vóór verdere uitvoering
+   ```
+
+### Gratis (huidige stack — geverifieerd via MS Docs)
+
+| Resource | Gratis-grens | Geverifieerde bron |
+|---|---|---|
+| Azure Functions Consumption Plan | 1M executions + 400K GB-s/maand | [MS Docs](https://learn.microsoft.com/azure/azure-functions/functions-consumption-costs) |
+| Azure Static Web Apps Free tier | 100 GB bandbreedte/mnd, 500 MB opslag | [MS Docs](https://learn.microsoft.com/azure/static-web-apps/quotas) |
+| Azure SQL Database Free offer | Bestaande resource — bevestig bij verlenging | Azure portal |
+| Azure Entra ID | Gratis via M365-licentie | — |
+| GitHub Actions | Gratis voor dit repo | — |
+| Activity Log Alerts / Resource Health Alerts | Altijd gratis | [MS Docs](https://learn.microsoft.com/azure/azure-monitor/fundamentals/best-practices-cost#alerts) |
+
+### Potentieel betaald — expliciete goedkeuring vereist
+
+| Resource | Kostenrisico | Verificatieplicht |
+|---|---|---|
+| Log Analytics workspace | Pay-as-you-go; Legacy Free Tier niet meer beschikbaar voor nieuwe workspaces (gestopt 1 juli 2022); 5 GB/mnd vrij per billing account — gedeeld | Controleer [prijspagina](https://learn.microsoft.com/azure/azure-monitor/logs/cost-logs) vóór aanmaak |
+| Application Insights (workspace-based) | Billing loopt via Log Analytics workspace | Idem; stel daily cap in (max 100 MB/dag) |
+| Metric Alert Rules | Betaald per gemonitord time series | Gebruik Activity Log Alerts als gratis alternatief |
+| Key Vault | Standaard betaald per operatie | Controleer [prijspagina](https://azure.microsoft.com/pricing/details/key-vault/) |
+| Flex Consumption Plan | Niet gratis — andere infra dan huidige Consumption Plan | Nooit upgraden zonder goedkeuring |
+| Premium/Standard-tier van bestaande resource | Directe kostenwijziging | Altijd vragen |
+
+### Verificatiemoment — verplicht checklist bij elke deployment
+
+Vóór elke `git push` naar main of elke productie-deployment:
+
+```
+□ Zijn er nieuwe Azure-resources toegevoegd in deze PR? → zo ja: prijscheck via MS Docs
+□ Zijn bestaande resources geconfigureerd gewijzigd (tier, retention, plan)? → zo ja: prijscheck
+□ Heeft Microsoft in de afgelopen 30 dagen tier-wijzigingen aangekondigd voor resources die wij gebruiken?
+  → Controleer via: mcp__claude_ai_Microsoft_Learn__microsoft_docs_search("Azure Functions pricing changes 2025")
+□ Alle checks groen? → deployment mag doorgaan
+□ Eén twijfel? → STOP en meld aan gebruiker
+```
+
+---
+
 ## Sessie-isolatie — verplichte branch-check bij elke sessiestart
 
 Meerdere Claude Code-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Claude lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
