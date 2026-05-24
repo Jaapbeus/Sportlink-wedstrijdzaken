@@ -3,9 +3,17 @@
 # Vereisten: .NET 10 SDK, Azure Functions Core Tools v4, Azurite, SQL Server met SportlinkSqlDb.
 #
 # Gebruik:
-#   .\Start-Debug.ps1          → Azurite + FunctionApp + BlazorAdmin
+#   .\Start-Debug.ps1          → Azurite + FunctionApp + BlazorAdmin (met hot reload)
 #   .\Start-Debug.ps1 -Swa     → bovenstaande + SWA emulator op http://localhost:4280
-#                                 (vereist: npm install -g @azure/static-web-apps-cli)
+#   .\Start-Debug.ps1 -NoWatch → BlazorAdmin zonder hot reload (dotnet run i.p.v. dotnet watch)
+#
+# Hot reload gedrag:
+#   BlazorAdmin  :5242  → HOT RELOAD actief via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
+#                          worden automatisch herladen zonder herstart. Browser ververst vanzelf.
+#   FunctionApp  :7094  → GEEN hot reload. Azure Functions isolated worker ondersteunt dit niet.
+#                          Na een codewijziging in FunctionApp: sluit het venster en herstart
+#                          Start-Debug.ps1. Alternatief: dotnet build in het FunctionApp-venster
+#                          gevolgd door func start --port 7094.
 #
 # Poorten:
 #   Azurite      :10000 (blob), :10001 (queue), :10002 (table)
@@ -14,7 +22,8 @@
 #   SWA emulator :4280  → http://localhost:4280  (met auth-emulatie en routeregels)
 
 param(
-    [switch]$Swa   # Start ook de Azure SWA emulator (vereist swa CLI)
+    [switch]$Swa,      # Start ook de Azure SWA emulator (vereist swa CLI)
+    [switch]$NoWatch   # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
 )
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
@@ -33,7 +42,6 @@ foreach ($port in @(7094, 5242, 4280)) {
     }
 }
 
-# Wacht kort tot poorten vrijgekomen zijn
 Start-Sleep -Seconds 2
 
 # --- Azurite ---
@@ -53,17 +61,26 @@ if ($azuriteRunning) {
 
 # --- FunctionApp ---
 Write-Host "FunctionApp starten op http://localhost:7094 ..." -ForegroundColor Cyan
+Write-Host "  ⚠  FunctionApp heeft GEEN hot reload. Na codewijzigingen: venster sluiten + Start-Debug.ps1 opnieuw." -ForegroundColor DarkYellow
 Start-Process powershell -ArgumentList @(
     '-NoExit', '-Command',
-    "Set-Location '$root\FunctionApp'; Write-Host 'FunctionApp — poort 7094' -ForegroundColor Cyan; func start --port 7094"
+    "Set-Location '$root\FunctionApp'; Write-Host 'FunctionApp — poort 7094  (geen hot reload — herstart vereist na codewijziging)' -ForegroundColor Cyan; func start --port 7094"
 ) -WindowStyle Normal
 
 # --- BlazorAdmin ---
-Write-Host "BlazorAdmin starten op http://localhost:5242 ..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList @(
-    '-NoExit', '-Command',
-    "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242' -ForegroundColor Cyan; dotnet run --launch-profile http"
-) -WindowStyle Normal
+if ($NoWatch) {
+    Write-Host "BlazorAdmin starten op http://localhost:5242 (geen hot reload) ..." -ForegroundColor Cyan
+    Start-Process powershell -ArgumentList @(
+        '-NoExit', '-Command',
+        "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (geen hot reload)' -ForegroundColor Cyan; dotnet run --launch-profile http"
+    ) -WindowStyle Normal
+} else {
+    Write-Host "BlazorAdmin starten op http://localhost:5242 (hot reload actief) ..." -ForegroundColor Cyan
+    Start-Process powershell -ArgumentList @(
+        '-NoExit', '-Command',
+        "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http"
+    ) -WindowStyle Normal
+}
 
 # --- SWA emulator (optioneel) ---
 if ($Swa) {
@@ -85,8 +102,12 @@ if ($Swa) {
 # --- Samenvatting ---
 Write-Host ""
 Write-Host "Gestart:" -ForegroundColor Green
-Write-Host "  FunctionApp   http://localhost:7094/api/health" -ForegroundColor White
-Write-Host "  BlazorAdmin   http://localhost:5242  (direct, LocalDev admin)" -ForegroundColor White
+Write-Host "  FunctionApp   http://localhost:7094/api/health  (herstart vereist na C#-wijziging)" -ForegroundColor White
+if ($NoWatch) {
+    Write-Host "  BlazorAdmin   http://localhost:5242  (geen hot reload)" -ForegroundColor White
+} else {
+    Write-Host "  BlazorAdmin   http://localhost:5242  (hot reload actief — browser ververst automatisch)" -ForegroundColor Green
+}
 if ($Swa -and (Get-Command swa -ErrorAction SilentlyContinue)) {
     Write-Host "  SWA emulator  http://localhost:4280  (auth-emulatie actief)" -ForegroundColor White
     Write-Host ""
@@ -94,5 +115,6 @@ if ($Swa -and (Get-Command swa -ErrorAction SilentlyContinue)) {
     Write-Host "Mock-login: http://localhost:4280/.auth/login/aad  (vul username + rol 'admin' in)" -ForegroundColor DarkGray
 }
 Write-Host ""
-Write-Host "Wacht ~15 seconden tot alle services klaar zijn, daarna: .\Test-App.ps1" -ForegroundColor DarkGray
+Write-Host "Wacht ~15 seconden tot alle services klaar zijn." -ForegroundColor DarkGray
+Write-Host "Hot reload status: BlazorAdmin=JA (.razor/.cs/.css), FunctionApp=NEE (herstart vereist)" -ForegroundColor DarkGray
 Write-Host "Sluit de aparte vensters om te stoppen." -ForegroundColor DarkGray

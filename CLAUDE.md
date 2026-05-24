@@ -158,8 +158,19 @@ ITERATIE:
   c. .\scripts\dev\Test-App.ps1 -Fix
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
-  d. Start services (achtergrond, volgorde is verplicht):
-       # 1. Azurite (vereist door func start)
+  d. Start services via Start-Debug.ps1 (aanbevolen — regelt hot reload automatisch):
+       .\scripts\dev\Start-Debug.ps1
+       Start-Sleep -Seconds 15
+
+       # Hot reload gedrag (vastgelegd in Start-Debug.ps1):
+       # - BlazorAdmin :5242 → HOT RELOAD via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
+       #   worden automatisch doorgevoerd; browser ververst zonder herstart.
+       # - FunctionApp :7094 → GEEN hot reload. Azure Functions isolated worker ondersteunt
+       #   dit niet. Na elke C#-wijziging in FunctionApp: services stoppen en herstart uitvoeren.
+       #   Zie: scripts/dev/Start-Debug.ps1 (commentaarblok bovenaan voor details)
+
+       # Alternatief (handmatig, als Start-Debug.ps1 niet beschikbaar):
+       # 1. Azurite
        $azuriteRunning = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
        if (-not $azuriteRunning) {
            $azuriteDir = Join-Path $env:TEMP 'azurite'
@@ -167,11 +178,11 @@ ITERATIE:
            Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
            Start-Sleep -Seconds 3
        }
-       # 2. FunctionApp
+       # 2. FunctionApp (geen hot reload — herstart na codewijziging)
        Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
-       # 3. BlazorAdmin (alleen als project bestaat)
+       # 3. BlazorAdmin met hot reload
        if (Test-Path "BlazorAdmin/BlazorAdmin.csproj") {
-           Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet run --launch-profile http"
+           Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
        }
        Start-Sleep -Seconds 15
 

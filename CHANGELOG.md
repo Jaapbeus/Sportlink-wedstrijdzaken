@@ -17,6 +17,11 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Versie 2.2.1** — PATCH-bump voor feedback widget bugfix (#284).
+- **Start-Debug.ps1: BlazorAdmin met hot reload** (#285): `dotnet watch run` vervangt `dotnet run`. Wijzigingen in `.razor`, `.cs` en `.css` worden automatisch herladen zonder herstart van de service. Nieuw `-NoWatch` vlag voor omgevingen zonder hot reload. Duidelijke melding dat FunctionApp géén hot reload ondersteunt (Azure Functions isolated worker limitatie) en herstart vereist na C#-wijzigingen.
+
 ### Fixed
 
 - **Feedback widget loop bij aanvulvragen** (#283): na het beantwoorden van OpenAI-aanvulvragen keerden dezelfde vragen terug bij "Opnieuw controleren". Backend accepteert nu direct zodra antwoorden zijn ingevuld (re-validatie overbodig — antwoorden vullen de gaten per definitie). Frontend bewaart bovendien bestaande antwoorden als vragen ongewijzigd terugkomen.
