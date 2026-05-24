@@ -38,8 +38,10 @@ public static class FeedbackFunction
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackValidate");
+        var correlationId = SportlinkFunction.Admin.EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = SportlinkFunction.Admin.EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             var body = await new StreamReader(req.Body).ReadToEndAsync();
@@ -70,8 +72,10 @@ public static class FeedbackFunction
         FunctionContext context)
     {
         var log = context.GetLogger("FeedbackSubmit");
+        var correlationId = SportlinkFunction.Admin.EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = SportlinkFunction.Admin.EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
         if (!TryAcquireSubmitSlot())
             return new ObjectResult(new { error = $"Limiet bereikt: maximaal {MaxSubmissiesPerVenster} meldingen per 10 minuten." }) { StatusCode = 429 };
