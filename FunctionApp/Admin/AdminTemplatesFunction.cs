@@ -23,8 +23,10 @@ public static class AdminTemplatesFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTemplatesGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -70,8 +72,10 @@ public static class AdminTemplatesFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTemplatesPut");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         if (string.IsNullOrWhiteSpace(key))
             return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
@@ -138,8 +142,10 @@ public static class AdminTemplatesFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminTemplatesReset");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         if (string.IsNullOrWhiteSpace(key))
             return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 

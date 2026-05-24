@@ -60,8 +60,10 @@ public static class AdminSettingsFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -113,8 +115,10 @@ public static class AdminSettingsFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminSettingsPut");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -244,8 +248,10 @@ public static class AdminSettingsFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminGeocodeGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         var plaatsnaam = req.Query["plaatsnaam"].ToString().Trim();
         if (string.IsNullOrWhiteSpace(plaatsnaam))
             return new BadRequestObjectResult(new { error = "plaatsnaam is verplicht" });

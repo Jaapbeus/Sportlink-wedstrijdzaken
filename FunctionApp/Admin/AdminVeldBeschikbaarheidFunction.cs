@@ -18,8 +18,10 @@ public static class AdminVeldBeschikbaarheidFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -65,8 +67,10 @@ public static class AdminVeldBeschikbaarheidFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidPut");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -111,8 +115,10 @@ public static class AdminVeldBeschikbaarheidFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldenGet");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -145,8 +151,10 @@ public static class AdminVeldBeschikbaarheidFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidPost");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             using var bodyReader = new StreamReader(req.Body);
@@ -206,8 +214,10 @@ public static class AdminVeldBeschikbaarheidFunction
         FunctionContext context)
     {
         var log = context.GetLogger("AdminVeldBeschikbaarheidDelete");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);

@@ -50,6 +50,20 @@ internal static class EasyAuthHelper
         }
     }
 
+    /// <summary>
+    /// Leest x-correlation-id uit de request header, of genereert een nieuwe GUID.
+    /// Schrijft het ID terug in de response header voor end-to-end tracing.
+    /// </summary>
+    public static string ExtractOrCreateCorrelationId(HttpRequest req)
+    {
+        var correlationId = req.Headers.TryGetValue("x-correlation-id", out var incoming) && !string.IsNullOrWhiteSpace(incoming)
+            ? incoming.ToString()
+            : Guid.NewGuid().ToString("N");
+
+        req.HttpContext.Response.Headers["x-correlation-id"] = correlationId;
+        return correlationId;
+    }
+
     private sealed class ClientPrincipal
     {
         [JsonPropertyName("claims")]
