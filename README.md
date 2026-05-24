@@ -110,25 +110,17 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 ## Lokaal aan de slag
 
-**Vereisten:**
-- .NET 10.0 SDK
-- Azure Functions Core Tools v4
-- Azurite (lokale Azure Storage emulator)
-- SQL Server met database `SportlinkSqlDb`
+**Vereisten:** .NET 10.0 SDK · Azure Functions Core Tools v4 · Azurite · SQL Server met `SportlinkSqlDb`
 
-**Bouwen en draaien:**
-```bash
-# Kopieer de settings-template en vul je verbindingsgegevens in
+```powershell
+# Settings-template kopiëren en verbindingsgegevens invullen
 cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 
-# Build
-dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+# Alle services starten (Azurite + FunctionApp + BlazorAdmin)
+.\Start-Debug.ps1
 
-# Starten (vereist Azurite actief)
-cd FunctionApp && func start --port 7094
-
-# Handmatige sync triggeren
-# GET http://localhost:7094/api/sync?weekOffsetFrom=-1&weekOffsetTo=2
+# Verificatie (wacht 15s na Start-Debug)
+.\Test-App.ps1
 ```
 
 **Git hooks activeren** (verplicht — blokkeert secrets en persoonsgegevens bij commit):
@@ -137,7 +129,8 @@ git config core.hooksPath .githooks
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
 
-Zie [SECURITY.md](SECURITY.md) voor het volledige beveiligingsprotocol.
+Volledige lokale setupbeschrijving: [SETUP.md § Lokale ontwikkelomgeving](SETUP.md#8-lokale-ontwikkelomgeving)  
+Beveiligingsprotocol: [SECURITY.md](SECURITY.md)
 
 ---
 
@@ -167,9 +160,31 @@ Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSION
 
 ---
 
+## Jouw club aan de slag
+
+Sportlink Wedstrijdzaken is ontworpen voor gebruik door meerdere clubs. Je forkt de repository, richt je eigen Azure-resources in, en configureert je eigen Entra ID-tenant — **er komen geen club-specifieke waarden in de code**.
+
+Volg de stap-voor-stap installatiehandleiding: **[SETUP.md](SETUP.md)**
+
+### Wat je nodig hebt
+
+| Resource | Tier | Kosten |
+|---|---|---|
+| Microsoft 365 / Entra ID tenant | Gratis (inbegrepen bij M365) | €0 |
+| Azure Functions | Consumption (1M requests/maand gratis) | €0 |
+| Azure SQL Database | Free tier (32 GB) | €0 |
+| Azure Static Web Apps | Free | €0 |
+| Sportlink `clientId` | Opvragen bij jouw Sportlink-beheerder | — |
+
+> De `clientId` vraag je op bij jouw eigen Sportlink-beheerder — dit is een per-club instelling, niet iets dat in de code staat.
+
+---
+
 ## Bijdragen
 
 Pull requests zijn welkom. Kijk voor openstaand werk naar de [GitHub Issues](../../issues).
+
+Lees voor je begint: **[CONTRIBUTING.md](CONTRIBUTING.md)** — beschrijft de branch-strategie, commit-conventies, en Security Gate.
 
 Heb je een club die baat zou hebben bij deze oplossing, of wil je meedenken over de richting? Open een [Discussion](../../discussions) of stuur een issue.
 
