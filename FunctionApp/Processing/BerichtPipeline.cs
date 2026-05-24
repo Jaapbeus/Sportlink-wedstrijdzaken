@@ -199,6 +199,19 @@ public static class BerichtPipeline
                 }
                 return JsonConvert.SerializeObject(new { error = "Onvoldoende gegevens voor herplanverzoek (team en datum nodig)" });
 
+            case VerzoekType.TeamContactOpvragen:
+                if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
+                {
+                    var contact = await PlannerDataAccess.GetTeamleiderContactAsync(classificatie.TeamNaam);
+                    return JsonConvert.SerializeObject(new
+                    {
+                        teamContactOpgevraagd = true,
+                        teamNaam = classificatie.TeamNaam,
+                        coachGevonden = contact != null
+                    });
+                }
+                return JsonConvert.SerializeObject(new { teamContactOpgevraagd = true, teamNaam = (string?)null, coachGevonden = false });
+
             case VerzoekType.Bevestiging:
                 return JsonConvert.SerializeObject(new { status = "Bevestiging ontvangen", opmerking = "Bevestigingen vereisen handmatige afhandeling door de coördinator" });
 
@@ -274,6 +287,9 @@ public static class BerichtPipeline
                 var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
                 return BerichtResponseGenerator.BouwHerplanAntwoord(
                     wedstrijd, herplanOpties, classificatie, bericht);
+
+            case VerzoekType.TeamContactOpvragen:
+                return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht);
 
             case VerzoekType.Bevestiging:
                 return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie);

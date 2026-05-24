@@ -250,6 +250,14 @@ public class EmailProcessorFunction
             await StuurTeamleiderNotificatieAsync(
                 graphService, classificatie.TeamNaam, classificatie.Datum, reviewMode, log);
         }
+
+        // Stuur vraag door naar coach bij team-contact-opvragen (#168)
+        if (classificatie.Type == VerzoekType.TeamContactOpvragen
+            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
+        {
+            await StuurTeamContactBerichtDoorAsync(
+                graphService, classificatie.TeamNaam, email, reviewMode, log);
+        }
     }
 
     private static async Task StuurTeamleiderNotificatieAsync(
@@ -294,6 +302,43 @@ public class EmailProcessorFunction
         catch (Exception ex)
         {
             log.LogWarning(ex, "Fout bij versturen teamleider-notificatie voor {Team} — hoofdverwerking niet onderbroken", teamNaam);
+        }
+    }
+
+    private static async Task StuurTeamContactBerichtDoorAsync(
+        EmailGraphService graphService, string teamNaam, InkomendBericht email,
+        string? reviewMode, ILogger log)
+    {
+        try
+        {
+            var coach = await SportlinkFunction.Planner.PlannerDataAccess.GetTeamleiderContactAsync(teamNaam);
+            if (coach == null)
+            {
+                log.LogInformation("Geen coach gevonden voor {Team} — doorsturen overgeslagen", teamNaam);
+                return;
+            }
+
+            var coordinatorEmail = SystemUtilities.AppSettings.GetSetting("coordinatorEmail");
+            var subject = $"[{teamNaam}] vraag van {email.AfzenderNaam}";
+            var body = $"Er is een vraag binnengekomen over de begeleiding van {teamNaam}.\n\n"
+                     + $"Vraag van: {email.AfzenderNaam}\n\n"
+                     + $"---\n{email.Body}\n---\n\n"
+                     + "U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.";
+
+            var coachOntvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
+                ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? coach.Emailadres
+                : coach.Emailadres;
+
+            // AVG: Reply-To = email.Afzender zodat coach rechtstreeks kan antwoorden
+            // BCC coördinator voor audit; coach-email nooit in logs
+            await graphService.StuurTeamContactDoorAsync(
+                coachOntvanger, subject, body, email.Afzender, coordinatorEmail);
+
+            log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", teamNaam);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Fout bij doorsturen teambegeleiding-vraag voor {Team} — hoofdverwerking niet onderbroken", teamNaam);
         }
     }
 
