@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "westeurope"
+    },
+    "functionAppName": {
+      "value": "func-[clubcode]-sportlink"
+    },
+    "appServicePlanName": {
+      "value": "WestEuropeLinuxDynamicPlan"
+    },
+    "storageAccountName": {
+      "value": "[storage-account]"
+    },
+    "staticWebAppName": {
+      "value": "swa-[clubcode]-sportlink"
+    },
+    "appInsightsName": {
+      "value": "ai-[clubcode]-sportlink"
+    },
+    "deployMonitoring": {
+      "value": false
+    }
+  }
+}
