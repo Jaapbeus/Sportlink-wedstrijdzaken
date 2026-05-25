@@ -99,8 +99,8 @@ namespace SportlinkFunction
         {
             bool isDatabaseAvailable = false;
             int retryCount = 0;
-            int maxRetries = 10;
-            int delayBetweenRetries = 15000; // 15 seconds — Azure SQL Serverless auto-resume takes 30-90s
+            int maxRetries = 20;
+            int delayBetweenRetries = 15000; // 15 seconds — Azure SQL Serverless auto-resume takes 30-90s; 20 retries = 5 min total
 
             while (!isDatabaseAvailable && retryCount < maxRetries)
             {
