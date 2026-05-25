@@ -871,6 +871,32 @@ namespace SportlinkFunction.Planner
 
             suggesties = VerdeelExtraBuffer(suggesties, bezettingen, availableFields, velden, vasteWedstrijden, allTeamRules, gewensteEindtijd);
 
+            // Check 3: suggesties verbeteren de eindtijd niet — no-op onderdrukken (#301)
+            // Bereken de nieuwe eindtijd na toepassing van de suggesties. Als die niet eerder is
+            // dan de huidige eindtijd, zijn de suggesties zinloos en worden ze onderdrukt.
+            if (suggesties.Count > 0 && bezettingen.Count > 0)
+            {
+                var huidigeMax = bezettingen.Max(b => b.EindTijd);
+                var nieuweMax = bezettingen.Select(b =>
+                {
+                    var sug = suggesties.FirstOrDefault(s => s.Wedstrijd == b.Wedstrijd?.Trim());
+                    if (sug != null && TimeOnly.TryParse(sug.NieuweTijd, out var nieuwStart))
+                        return TimeOnly.FromTimeSpan(nieuwStart.ToTimeSpan() + (b.EindTijd.ToTimeSpan() - b.AanvangsTijd.ToTimeSpan()));
+                    return b.EindTijd;
+                }).Max();
+
+                if (nieuweMax >= huidigeMax)
+                {
+                    response.VoldoendeRuimte = true;
+                    response.VoldoendeRuimteMelding =
+                        $"Geen optimalisatie nodig op {date.ToString("dddd d MMMM", nl)}: " +
+                        "de huidige planning is al optimaal — verplaatsingen leveren geen eerdere eindtijd op.";
+                    response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
+                        date, bezettingen, new List<OptimalisatieSuggestie>(), velden, doel);
+                    return response;
+                }
+            }
+
             response.Suggesties = suggesties;
             response.AantalVerplaatsingen = suggesties.Count;
             response.AantalVanVeld5Verplaatst = suggesties.Count(s => s.HuidigVeldNummer == 5);
