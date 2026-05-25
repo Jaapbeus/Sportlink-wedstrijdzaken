@@ -17,5 +17,10 @@
 	[AccommodatiePlaats]	NVARCHAR(100)	NULL,	-- plaatsnaam voor geocoding en zonsondergangsberekening
 	[AccommodatieLatitude]	FLOAT			NULL,	-- breedtegraad WGS84 (decimaal)
 	[AccommodatieLongitude]	FLOAT			NULL,	-- lengtegraad WGS84 (decimaal)
-	[UseRealtimeApi]		BIT				NOT NULL DEFAULT 1	-- 1=real-time Sportlink API raadplegen bij planner-checks, 0=alleen DB
+	[UseRealtimeApi]		BIT				NOT NULL DEFAULT 1,		-- 1=real-time Sportlink API raadplegen bij planner-checks, 0=alleen DB
+	[ThemeColorPrimary]		NVARCHAR(7)		NULL,		-- hex kleur #rrggbb
+	[ThemeColorSecondary]	NVARCHAR(7)		NULL,
+	[ThemeColorAccent]		NVARCHAR(7)		NULL,
+	[ThemeColorTextOnPrimary] NVARCHAR(7)	NULL,
+	[ThemeClubWebsiteUrl]	NVARCHAR(300)	NULL		-- URL van club-website voor kleurextractie
 	)

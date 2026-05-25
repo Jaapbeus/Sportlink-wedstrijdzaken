@@ -751,6 +751,7 @@ Browser (beheerder)
 | `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
 | `GET /api/beheer/leermomenten`, `/stats`, `PUT /{id}/valideer` | `AdminLeermomentenFunction.cs` |
 | `GET/POST /api/beheer/teambegeleiding`, `/{team}`, `/doorsturen` | `AdminTeambegeleidingFunction.cs` |
+| `GET/PUT /api/beheer/theme`, `POST /theme/extract` | `AdminThemeFunction.cs` |
 | `GET/POST/PUT/DELETE /api/beheer/speeltijden`, `/{leeftijd}` | `AdminSpeeltijdenFunction.cs` |
 | `POST /api/test/email` | `EmailTestFunction.cs` |
 | `POST /api/feedback/validate`, `/submit` | `FeedbackFunction.cs` |

@@ -35,6 +35,9 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
+| `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL) |
+| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl }`) |
+| `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
 
 ---
 

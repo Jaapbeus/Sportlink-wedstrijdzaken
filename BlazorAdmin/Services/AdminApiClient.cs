@@ -175,6 +175,17 @@ public class AdminApiClient
     public async Task<ApiResult<object>> ValideerLeermomentAsync(int id, string actie)
         => await PutAsync<object>($"api/beheer/leermomenten/{id}/valideer", new { actie });
 
+    // ── Thema (#325) ──
+
+    public async Task<ApiResult<ThemeDto>> GetThemeAsync()
+        => await GetAsync<ThemeDto>("api/beheer/theme");
+
+    public async Task<ApiResult<object>> UpdateThemeAsync(ThemeDto dto)
+        => await PutAsync<object>("api/beheer/theme", dto);
+
+    public async Task<ApiResult<ThemeExtractResultDto>> ExtractThemeColorsAsync(string url)
+        => await PostAsync<ThemeExtractResultDto>($"api/beheer/theme/extract?url={Uri.EscapeDataString(url)}", new { });
+
     // ── Feedback widget ──
 
     public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
