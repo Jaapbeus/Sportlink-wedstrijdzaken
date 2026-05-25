@@ -38,8 +38,8 @@ ghs_[A-Za-z0-9]{36}
 06[-\s]?[0-9]{8}
 \+316[0-9]{8}
 
-# Vaste nummers (selectieve reeksen)
-0[1-9][0-9]{1}[-\s]?[0-9]{7}
+# Vaste nummers (selectieve reeksen) — \b voorkomt false positives op GUIDs
+\b0[1-9][0-9]{1}[-\s]?[0-9]{7}\b
 
 # BSN / sofinummer (9 cijfers aaneengesloten)
 \b[0-9]{9}\b

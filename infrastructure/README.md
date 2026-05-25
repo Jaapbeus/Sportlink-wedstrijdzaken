@@ -19,8 +19,8 @@ infrastructure/
 ### Vereisten
 
 ```bash
-az login --tenant 74f2b2fe-a0af-4983-9520-ea3b2ac423fb
-az account set --subscription aa36663f-c4b8-4abc-af1e-94f1d5b2dade
+az login --tenant [TENANT_ID]
+az account set --subscription [SUBSCRIPTION_ID]
 ```
 
 ### What-if (standaard — geen wijzigingen)

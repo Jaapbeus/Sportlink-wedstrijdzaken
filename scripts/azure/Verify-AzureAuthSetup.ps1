@@ -74,7 +74,7 @@ if (-not $account) {
 }
 if ($account.tenantId -ne $ExpectedTenantId) {
     Write-Fail "Verkeerde tenant: $($account.tenantId) (verwacht $ExpectedTenantId)"
-    Write-Info 'Switch met: az account set --subscription <sub-in-vv-vrc.nl-tenant>'
+    Write-Info 'Switch met: az account set --subscription <sub-id-van-de-juiste-tenant>'
     exit 1
 }
 Write-Pass "Tenant: $($account.tenantDefaultDomain) ($($account.tenantId))"
