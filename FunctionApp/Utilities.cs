@@ -26,8 +26,7 @@ namespace SportlinkFunction
                                    [PlannerEmailAdres], [Accommodatie],
                                    [HerplanDeadlineDagen], [BufferMinuten],
                                    [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
-                                   [AccommodatiePlaats],
-                                   ISNULL([UseRealtimeApi], 1)
+                                   [AccommodatiePlaats]
                             FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
@@ -58,9 +57,22 @@ namespace SportlinkFunction
                                 Set("accommodatieLongitude", 15);
                                 Set("emailVoetnoot", 16);
                                 Set("accommodatiePlaats", 17);
-                                settings["useRealtimeApi"] = reader.IsDBNull(18) ? "1" : (reader.GetBoolean(18) ? "1" : "0");
                             }
                         }
+
+                        // UseRealtimeApi: kolom bestaat pas na DB-migratie — dynamisch laden zodat
+                        // de Function App ook opstart als de kolom nog niet aangemaakt is.
+                        using var rtaCmd = new SqlCommand(@"
+                            DECLARE @v BIT = 1;
+                            DECLARE @sql NVARCHAR(200) = CASE
+                                WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
+                                THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings]'
+                                ELSE N'SELECT @v = CAST(1 AS BIT)'
+                            END;
+                            EXEC sp_executesql @sql, N'@v BIT OUTPUT', @v = @v OUTPUT;
+                            SELECT @v;", connection);
+                        var rtaResult = await rtaCmd.ExecuteScalarAsync();
+                        settings["useRealtimeApi"] = (rtaResult is bool b && !b) ? "0" : "1";
                     }
                     log.LogInformation("App settings loaded successfully.");
                 }
