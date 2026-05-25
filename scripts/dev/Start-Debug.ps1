@@ -106,7 +106,7 @@ Write-Host "  FunctionApp   http://localhost:7094/api/health  (herstart vereist 
 if ($NoWatch) {
     Write-Host "  BlazorAdmin   http://localhost:5242  (geen hot reload)" -ForegroundColor White
 } else {
-    Write-Host "  BlazorAdmin   http://localhost:5242  (hot reload actief — browser ververst automatisch)" -ForegroundColor Green
+    Write-Host "  BlazorAdmin   http://localhost:5242  (hot reload actief - browser ververst automatisch)" -ForegroundColor Green
 }
 if ($Swa -and (Get-Command swa -ErrorAction SilentlyContinue)) {
     Write-Host "  SWA emulator  http://localhost:4280  (auth-emulatie actief)" -ForegroundColor White
