@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://func-vrc-sportlink.azurewebsites.net/api",
-      "description": "Azure (productie)"
+      "url": "https://func-{clubcode}-sportlink.azurewebsites.net/api",
+      "description": "Azure (productie — vervang {clubcode} door de clubcode van jouw installatie)"
     },
     {
       "url": "http://localhost:7094/api",

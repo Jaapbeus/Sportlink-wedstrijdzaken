@@ -20,20 +20,20 @@ targetScope = 'resourceGroup'
 @description('Azure-regio — altijd westeurope voor dit project')
 param location string = 'westeurope'
 
-@description('Naam van de Function App')
-param functionAppName string = 'func-vrc-sportlink'
+@description('Naam van de Function App — bijv. func-<clubcode>-sportlink')
+param functionAppName string
 
 @description('Naam van het App Service Plan')
 param appServicePlanName string = 'WestEuropeLinuxDynamicPlan'
 
-@description('Naam van het Storage Account')
-param storageAccountName string = 'stvrcsportlink'
+@description('Naam van het Storage Account — bijv. st<clubcode>sportlink (max 24 tekens, lowercase)')
+param storageAccountName string
 
-@description('Naam van de Static Web App')
-param staticWebAppName string = 'swa-vrc-sportlink'
+@description('Naam van de Static Web App — bijv. swa-<clubcode>-sportlink')
+param staticWebAppName string
 
-@description('Naam van de Application Insights resource')
-param appInsightsName string = 'ai-vrc-sportlink'
+@description('Naam van de Application Insights resource — bijv. ai-<clubcode>-sportlink')
+param appInsightsName string
 
 @description('Application Insights connection string — beheer via GitHub secret APPLICATIONINSIGHTS_CONNECTION_STRING')
 @secure()

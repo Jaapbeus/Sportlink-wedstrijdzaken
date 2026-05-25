@@ -1,10 +1,10 @@
 # v2 Admin GUI — handleiding
 
 Deze handleiding beschrijft het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API
-in `FunctionApp/Admin/`. Het portaal is **live** op:
+in `FunctionApp/Admin/`. Het portaal is **live** op (vul jouw clubspecifieke URLs in):
 
-- **Admin GUI:** `https://lively-field-03c896603.7.azurestaticapps.net`
-- **Function App:** `https://func-vrc-sportlink.azurewebsites.net`
+- **Admin GUI:** zie Azure Portal → Static Web App → URL
+- **Function App:** `https://func-<clubcode>-sportlink.azurewebsites.net`
 
 De SWA dient uitsluitend statische Blazor-bestanden. De Blazor-app haalt zelf een Bearer token
 op via MSAL (Entra ID) en stuurt dat mee naar de Function App. Easy Auth op de Function App
@@ -78,8 +78,8 @@ De resources zijn aangemaakt en actief. Deze sectie is documentatie voor toekoms
 
 ```bash
 az staticwebapp create \
-  --name swa-vrc-sportlink \
-  --resource-group rg-vrc-sportlink \
+  --name swa-<clubcode>-sportlink \
+  --resource-group rg-<clubcode>-sportlink \
   --location westeurope \
   --sku Free
 ```
@@ -88,8 +88,8 @@ az staticwebapp create \
 
 ```bash
 az staticwebapp secrets list \
-  --name swa-vrc-sportlink \
-  --resource-group rg-vrc-sportlink \
+  --name swa-<clubcode>-sportlink \
+  --resource-group rg-<clubcode>-sportlink \
   --query "properties.apiKey" -o tsv
 ```
 
@@ -132,7 +132,7 @@ in `.github/workflows/deploy.yml` gebruikt dit token bij elke push naar `main`.
 
 Easy Auth valideert het Bearer token server-side vóórdat het de functies bereikt.
 
-1. Azure Portal → **Function App** (`func-vrc-sportlink`) → **Authentication**
+1. Azure Portal → **Function App** (`func-<clubcode>-sportlink`) → **Authentication**
 2. **Add identity provider** → **Microsoft**
 3. App Registration: **Pick an existing app** → `Sportlink Admin GUI`
 4. Unauthenticated requests: **HTTP 401 Unauthorized**
@@ -189,7 +189,7 @@ Browser (Blazor WASM)
   └─ AdminApiClient stuurt Bearer token mee via AuthorizationMessageHandler
        │
        ▼
-  Azure Function App (func-vrc-sportlink)
+  Azure Function App (func-<clubcode>-sportlink)
     Easy Auth valideert het token (X-MS-CLIENT-PRINCIPAL header)
     EasyAuthHelper.RequireAdmin() checkt 'admin' rol op alle /api/beheer/* endpoints
 ```
@@ -198,18 +198,20 @@ Browser (Blazor WASM)
 
 ```json
 {
-  "FunctionBaseUrl": "https://func-vrc-sportlink.azurewebsites.net",
+  "FunctionBaseUrl": "https://func-<clubcode>-sportlink.azurewebsites.net",
   "AzureAd": {
     "Authority": "https://login.microsoftonline.com/<tenant-id>",
     "ClientId": "<client-id>",
     "ValidateAuthority": true
   },
-  "PostLogoutRedirectUrl": "https://www.vv-vrc.nl/"
+  "PostLogoutRedirectUrl": "https://www.<clubdomein>.nl/"
 }
 ```
 
-De werkelijke tenant-ID en client-ID staan al ingevuld in het bestand (geen secrets —
-alleen publieke identifiers). Commit het bestand mee in git.
+Dit bestand wordt **automatisch aangemaakt door CI** (`deploy.yml`) vanuit
+`appsettings.Production.template.json` + GitHub Variables. **Nooit handmatig committen —
+het staat in `.gitignore` en mag niet in de repository.** Zie `CLAUDE.md` tabel
+"Wat bevatten de bestanden in git?".
 
 ### Verificatie na elke auth-wijziging
 
