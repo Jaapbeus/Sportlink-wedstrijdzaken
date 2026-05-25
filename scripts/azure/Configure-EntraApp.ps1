@@ -287,7 +287,7 @@ Write-Host ''
 Write-Host '  NA DEZE WIJZIGINGEN — verplichte gebruikersactie:' -ForegroundColor Yellow
 Write-Host '    1. Sluit alle bestaande browser-tabs van de Admin GUI.' -ForegroundColor Yellow
 Write-Host '    2. Open een verse Incognito/InPrivate sessie.' -ForegroundColor Yellow
-Write-Host '    3. Navigeer naar https://[swa-unique-id].7.azurestaticapps.net' -ForegroundColor Yellow
+Write-Host '    3. Navigeer naar de Admin GUI URL (zie je Azure Static Web App in de Portal).' -ForegroundColor Yellow
 Write-Host '    4. Log opnieuw in met het admin-account.' -ForegroundColor Yellow
 Write-Host ''
 Write-Host '  Reden: MSAL kan een oud ID-token in localStorage hebben (vóór deze wijziging).' -ForegroundColor DarkGray

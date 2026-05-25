@@ -38,8 +38,8 @@ ghs_[A-Za-z0-9]{36}
 06[-\s]?[0-9]{8}
 \+316[0-9]{8}
 
-# Vaste nummers (selectieve reeksen)
-0[1-9][0-9]{1}[-\s]?[0-9]{7}
+# Vaste nummers (selectieve reeksen) — \b voorkomt false positives op GUIDs
+\b0[1-9][0-9]{1}[-\s]?[0-9]{7}\b
 
 # BSN / sofinummer (9 cijfers aaneengesloten)
 \b[0-9]{9}\b
@@ -54,7 +54,27 @@ ghs_[A-Za-z0-9]{36}
 [Aa-zZ0-9._%+\-]+@home\.nl
 
 # ── Sportlink / clubspecifiek ─────────────────────────────────────────────────
-# Voeg hieronder project-specifieke secrets toe (clientId, servername, etc.)
-# clientId=JOUW_ECHTE_CLIENT_ID
-# Server=JOUW_SQL_SERVER
-# BCZK[A-Z0-9]{5}     ← Sportlink lidnummers (patroon)
+# BCZK[A-Z0-9]{5}     ← Sportlink lidnummers (patroon, al actief via gitleaks.toml)
+
+# ── VERPLICHT: Club-specifieke infrastructuuridentifiers ───────────────────────
+# Vul hieronder de ECHTE waarden in van jouw Azure-installatie.
+# Dit bestand staat NIET in git (.gitignore). Eenmalig instellen na git clone.
+#
+# Formaat: één regex per regel. Zet de exacte waarde als literal string.
+# Voorbeeld (NIET invullen met echte waarden in dit template):
+#
+#   JOUW_FUNCTIONAPP_NAAM        ← de exacte naam van jouw Function App (func-...-sportlink)
+#   JOUW_SWA_NAAM                ← de exacte naam van jouw Static Web App (swa-...-sportlink)
+#   JOUW_SWA_UNIQUE_ID           ← het unieke id-deel van azurestaticapps.net URL
+#   JOUW_TENANT_GUID             ← Azure Entra ID tenant GUID (8-4-4-4-12 formaat)
+#   JOUW_CLIENT_GUID             ← Azure App Registration client GUID
+#   JOUW_SQL_SERVER_NAAM         ← Azure SQL Server naam (voor .database.windows.net)
+#   JOUW_STORAGE_ACCOUNT_NAAM    ← Azure Storage account naam
+#   JOUW_CLUB_DOMEIN             ← bijv. mijnclub.nl
+#   JOUW_BEHEERDER_LOGIN         ← Azure/Microsoft loginname van de beheerder
+#
+# Na invullen: test met:
+#   echo "testwaarde" | .githooks/pre-commit  (of run handmatig de hook)
+#
+# Zie ook: GitHub Secret CLUB_EXTRA_PATTERNS instellen voor dezelfde patronen in CI/CD
+# (Settings → Secrets and variables → Actions → New repository secret)
