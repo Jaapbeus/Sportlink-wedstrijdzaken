@@ -16,5 +16,6 @@
 	[EmailVoetnoot]			NVARCHAR(MAX)	NULL,	-- vrij te bewerken voettekst die onder alle uitgaande e-mails wordt geplaatst
 	[AccommodatiePlaats]	NVARCHAR(100)	NULL,	-- plaatsnaam voor geocoding en zonsondergangsberekening
 	[AccommodatieLatitude]	FLOAT			NULL,	-- breedtegraad WGS84 (decimaal)
-	[AccommodatieLongitude]	FLOAT			NULL	-- lengtegraad WGS84 (decimaal)
+	[AccommodatieLongitude]	FLOAT			NULL,	-- lengtegraad WGS84 (decimaal)
+	[UseRealtimeApi]		BIT				NOT NULL DEFAULT 1	-- 1=real-time Sportlink API raadplegen bij planner-checks, 0=alleen DB
 	)

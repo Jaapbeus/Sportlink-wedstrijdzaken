@@ -124,6 +124,22 @@ else
             </div>
         </div>
 
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="useRealtimeApi"
+                           @bind="settings.UseRealtimeApi" />
+                    <label class="form-check-label" for="useRealtimeApi">
+                        Real-time Sportlink API raadplegen
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    Aan: de planner checkt beschikbaarheid direct bij de Sportlink API (meest actueel).
+                    Uit: alleen de lokale database wordt gebruikt (sneller, werkt zonder API-verbinding).
+                </small>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" disabled="@saving">
             @(saving ? "Opslaan..." : "Opslaan")
         </button>
@@ -315,6 +331,7 @@ else
                 ["CoordinatorNaam"] = settings.CoordinatorNaam,
                 ["CoordinatorFunctie"] = settings.CoordinatorFunctie,
                 ["FetchSchedule"] = settings.FetchSchedule,
+                ["UseRealtimeApi"] = settings.UseRealtimeApi ? "1" : "0",
             }
         };
 
