@@ -18,10 +18,29 @@ Inkomend email (ongelezen in Graph-mailbox)
 └───────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-   AI-classificatie (GPT-4o-mini)
+   AI-classificatie FASE 1 (GPT-4o-mini)
         │
         ├─ BuitenScope ──→ label "Geen AI antwoord" + mark as read → STOP
         │
+        └─ Overige types: DB INSERT + reply-detectie
+                │
+                ▼
+        ┌─ Reply-detectie (#323) ────────────────────────────────────────────────┐
+        │  Is email reply op eerder beantwoord bericht (zelfde ConversationId)?  │
+        │  Ja:                                                                    │
+        │    → UpdateReplyStatus (IsReplyOpOnsAntwoord=1, ReplyOpVerwerkingId)   │
+        │    → DetecteerCorrectieAsync: is dit een correctie op classificatie?   │
+        │       → Correctie: INSERT ClassificatieCorrectie (pending validatie)   │
+        └────────────────────────────────────────────────────────────────────────┘
+                │
+                ▼
+        ┌─ Few-shot herclassificatie (#323) ─────────────────────────────────────┐
+        │  Zijn er gevalideerde leermomenten (ClassificatieCorrectie)?           │
+        │  Ja: herclassificeer met few-shot voorbeelden in system prompt         │
+        │  Nee: gebruik classificatie uit FASE 1                                  │
+        └────────────────────────────────────────────────────────────────────────┘
+                │
+                ▼
         ├─ BeschikbaarheidCheck  ──→ PlannerService → template (zie §2)
         ├─ HerplanVerzoek        ──→ PlannerService → template (zie §2)
         ├─ TeamContactOpvragen   ──→ GetTeamleiderContactAsync → StuurTeamContactDoorAsync (BCC coördinator, Reply-To afzender) → auto-reply "doorgestuurd"
@@ -31,6 +50,18 @@ Inkomend email (ongelezen in Graph-mailbox)
         Antwoord versturen
         (Review-mode: naar coördinator; Live-mode: naar afzender)
 ```
+
+### Zelflerend classificatiesysteem (#323)
+
+Wanneer een afzender repliet op een AI-antwoord en het verzoek was verkeerd geclassificeerd:
+
+1. **Detectie**: `DetecteerReplyOpOnsAntwoordAsync` koppelt de reply aan de oorspronkelijke verwerking via `ConversationId`.
+2. **Correctie**: `DetecteerCorrectieAsync` vraagt de AI of de reply aangeeft dat de classificatie onjuist was.
+3. **Opslaan**: Een nieuw `ClassificatieCorrectie`-record wordt aangemaakt (status: *te beoordelen*).
+4. **Validatie**: De beheerder valideert of wijst af via `/leermomenten` in de Admin GUI.
+5. **Leren**: Bij de volgende email worden gevalideerde leermomenten als few-shot voorbeelden in de system prompt meegegeven, waardoor de AI hetzelfde type fout niet herhaalt.
+
+**Beheer via Admin GUI:** `/leermomenten` — toont pending/validated/rejected correcties met valideer/afwijzen knoppen.
 
 ---
 

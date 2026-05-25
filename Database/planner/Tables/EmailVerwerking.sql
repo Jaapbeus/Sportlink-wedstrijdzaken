@@ -13,6 +13,8 @@ CREATE TABLE [planner].[EmailVerwerking] (
     [VerstuurdNaar]         NVARCHAR(200)   NULL,
     [Status]                NVARCHAR(30)    NOT NULL CONSTRAINT [DF_EmailVerwerking_Status] DEFAULT 'Ontvangen',
     [FoutMelding]           NVARCHAR(1000)  NULL,
+    [IsReplyOpOnsAntwoord]  BIT             NULL,
+    [ReplyOpVerwerkingId]   INT             NULL,
     [ClubCode]              NVARCHAR(20)    NOT NULL CONSTRAINT [CK_EmailVerwerking_ClubCode] CHECK (LEN([ClubCode]) > 0),
     [mta_inserted]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Ins] DEFAULT GETUTCDATE(),
     [mta_modified]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Mod] DEFAULT GETUTCDATE(),

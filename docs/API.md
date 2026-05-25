@@ -32,6 +32,9 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
 | `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen naar coach (BCC coördinator) |
 | `GET/POST/PUT/DELETE` | `/beheer/speeltijden` en `/{leeftijd}` | **Admin** | Speeltijden per leeftijdscategorie beheren |
+| `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
+| `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
+| `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
 
 ---
 

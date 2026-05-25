@@ -160,6 +160,21 @@ public class AdminApiClient
     public async Task<ApiResult<object>> DeleteSpeeltijdAsync(string leeftijd)
         => await DeleteAsync<object>($"api/beheer/speeltijden/{Uri.EscapeDataString(leeftijd)}");
 
+    // ── Leermomenten (#323) ──
+
+    public async Task<ApiResult<LeermomentenResponse>> GetLeermomentenAsync(string? status = null, int limit = 50)
+    {
+        var path = $"api/beheer/leermomenten?limit={limit}";
+        if (!string.IsNullOrWhiteSpace(status)) path += $"&status={Uri.EscapeDataString(status)}";
+        return await GetAsync<LeermomentenResponse>(path);
+    }
+
+    public async Task<ApiResult<LeermomentenStatsDto>> GetLeermomentenStatsAsync()
+        => await GetAsync<LeermomentenStatsDto>("api/beheer/leermomenten/stats");
+
+    public async Task<ApiResult<object>> ValideerLeermomentAsync(int id, string actie)
+        => await PutAsync<object>($"api/beheer/leermomenten/{id}/valideer", new { actie });
+
     // ── Feedback widget ──
 
     public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
