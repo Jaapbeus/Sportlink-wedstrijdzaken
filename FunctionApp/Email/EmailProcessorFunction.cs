@@ -177,7 +177,7 @@ public class EmailProcessorFunction
         {
             try
             {
-                await VerwerkEmailAsync(email, classificatie, graphService, _uitgeslotenCache, log);
+                await VerwerkEmailAsync(email, classificatie, graphService, _uitgeslotenCache, aiService, log);
                 verwerkt++;
             }
             catch (Exception ex)
@@ -199,6 +199,7 @@ public class EmailProcessorFunction
         BerichtClassificatie classificatie,
         EmailGraphService graphService,
         HashSet<string> uitgeslotenAdressen,
+        BerichtAiService aiService,
         ILogger log)
     {
         // Hercheck met verse DB-geladen uitsluitingslijst (kan afwijken van cache)
@@ -216,8 +217,65 @@ public class EmailProcessorFunction
             return;
         }
 
-        // DB INSERT — classificatie is al gedaan in fase 1, resultaat hergebruiken
+        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+
+        // DB INSERT — classificatie is al gedaan in fase 1, resultaat wordt evt. verfijnd in fase 2
         var verwerkingId = await InsertEmailVerwerkingAsync(email);
+
+        // #323: reply-detectie — is dit een reply op een eerder door ons beantwoord bericht?
+        if (!string.IsNullOrWhiteSpace(email.ConversationId))
+        {
+            var (isReply, origineleVerwerkingId, origineelType, originaleSamenvatting) =
+                await DetecteerReplyOpOnsAntwoordAsync(email.ConversationId, clubCode, log);
+
+            if (isReply && origineleVerwerkingId.HasValue)
+            {
+                await UpdateReplyStatusAsync(verwerkingId, true, origineleVerwerkingId.Value);
+                log.LogInformation("Email {Id} is reply op verwerking {OrigineleId}", verwerkingId, origineleVerwerkingId);
+
+                // Detecteer of het een correctie is op de eerdere classificatie
+                try
+                {
+                    var (isCorrectie, afgeleidType, correctieSamenvatting) = await aiService.DetecteerCorrectieAsync(
+                        email.Body, email.Onderwerp, origineelType ?? "", originaleSamenvatting);
+
+                    if (isCorrectie)
+                    {
+                        await InsertClassificatieCorrectieAsync(
+                            origineleVerwerkingId.Value, verwerkingId,
+                            origineelType ?? "", afgeleidType,
+                            originaleSamenvatting, correctieSamenvatting,
+                            clubCode);
+                        log.LogInformation("Correctie gedetecteerd voor verwerking {OrigineleId}: {OrigineelType} → {JuistType}",
+                            origineleVerwerkingId, origineelType, afgeleidType);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.LogWarning(ex, "Correctie-detectie mislukt voor reply {Id} — doorgaan zonder correctie", verwerkingId);
+                }
+            }
+        }
+
+        // #323: few-shot herclassificatie als er gevalideerde leermomenten zijn
+        var voorbeelden = await HaalLeermomentVoorbeeldenOpAsync(clubCode, log);
+        if (voorbeelden.Count > 0)
+        {
+            try
+            {
+                classificatie = await aiService.ClassificeerBerichtAsync(
+                    email.Body, email.Onderwerp, email.Afzender, voorbeelden);
+                BerichtPipeline.ValideerDagDatum(classificatie, email.Body, email.Onderwerp);
+                log.LogInformation("Email {Id} herclassificatie met {Aantal} leermomenten: {Type}",
+                    verwerkingId, voorbeelden.Count, classificatie.Type);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Herclassificatie met leermomenten mislukt voor {Id} — originele classificatie behouden", verwerkingId);
+            }
+        }
+
         var classificatieJson = JsonConvert.SerializeObject(classificatie);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
         log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
@@ -551,4 +609,132 @@ public class EmailProcessorFunction
         command.Parameters.AddWithValue("@Fout", foutMelding.Length > 1000 ? foutMelding[..1000] : foutMelding);
         await command.ExecuteNonQueryAsync();
     }
+
+    // #323: reply-detectie helpers
+
+    private static async Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
+        DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log)
+    {
+        try
+        {
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(@"
+                SELECT TOP 1 [Id], [VerzoekType], [GeextraheerdeData]
+                FROM [planner].[EmailVerwerking]
+                WHERE [ConversationId] = @ConversationId
+                  AND [VerstuurdNaar] IS NOT NULL
+                  AND [ClubCode] = @ClubCode
+                ORDER BY [mta_inserted] DESC", connection);
+            command.Parameters.AddWithValue("@ConversationId", conversationId);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
+
+            using var reader = await command.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                return (false, null, null, null);
+
+            var id = reader.GetInt32(0);
+            var verzoekType = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var geextraheerdeData = reader.IsDBNull(2) ? null : reader.GetString(2);
+
+            string? samenvatting = null;
+            if (!string.IsNullOrEmpty(geextraheerdeData))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(geextraheerdeData);
+                    if (doc.RootElement.TryGetProperty("Samenvatting", out var s))
+                        samenvatting = s.GetString();
+                }
+                catch { /* samenvatting optioneel */ }
+            }
+
+            return (true, id, verzoekType, samenvatting);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Reply-detectie kon niet worden uitgevoerd — doorgaan als nieuw bericht");
+            return (false, null, null, null);
+        }
+    }
+
+    private static async Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)
+    {
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+        using var command = new SqlCommand(@"
+            UPDATE [planner].[EmailVerwerking]
+            SET [IsReplyOpOnsAntwoord] = @IsReply, [ReplyOpVerwerkingId] = @ReplyOpId, [mta_modified] = GETUTCDATE()
+            WHERE [Id] = @Id", connection);
+        command.Parameters.AddWithValue("@Id", verwerkingId);
+        command.Parameters.AddWithValue("@IsReply", isReply);
+        command.Parameters.AddWithValue("@ReplyOpId", replyOpVerwerkingId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertClassificatieCorrectieAsync(
+        int origineleVerwerkingId, int correctionVerwerkingId,
+        string origineelType, string? afgeleidType,
+        string? originaleSamenvatting, string? correctieSamenvatting,
+        string clubCode)
+    {
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+        using var command = new SqlCommand(@"
+            INSERT INTO [planner].[ClassificatieCorrectie]
+                ([OrigineleVerwerkingId], [CorrectionVerwerkingId], [OrigineelVerzoekType],
+                 [AfgeleidJuistType], [OrigineleSamenvatting], [CorrectieSamenvatting], [ClubCode])
+            VALUES
+                (@OrigineleId, @CorrectionId, @OrigineelType,
+                 @AfgeleidType, @OriginaleSamenvatting, @CorrectieSamenvatting, @ClubCode)", connection);
+        command.Parameters.AddWithValue("@OrigineleId", origineleVerwerkingId);
+        command.Parameters.AddWithValue("@CorrectionId", correctionVerwerkingId);
+        command.Parameters.AddWithValue("@OrigineelType", origineelType);
+        command.Parameters.AddWithValue("@AfgeleidType", (object?)afgeleidType ?? DBNull.Value);
+        command.Parameters.AddWithValue("@OriginaleSamenvatting",
+            (object?)TruncateString(originaleSamenvatting, 500) ?? DBNull.Value);
+        command.Parameters.AddWithValue("@CorrectieSamenvatting",
+            (object?)TruncateString(correctieSamenvatting, 500) ?? DBNull.Value);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(
+        string clubCode, ILogger log)
+    {
+        try
+        {
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(@"
+                SELECT TOP 20 [OrigineelVerzoekType], [AfgeleidJuistType],
+                              [OrigineleSamenvatting], [CorrectieSamenvatting]
+                FROM [planner].[ClassificatieCorrectie]
+                WHERE [IsGevalideerd] = 1 AND [IsAfgewezen] = 0 AND [ClubCode] = @ClubCode
+                ORDER BY [mta_modified] DESC", connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
+
+            var voorbeelden = new List<ClassificatieCorrectieVoorbeeld>();
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                if (reader.IsDBNull(1)) continue;
+                voorbeelden.Add(new ClassificatieCorrectieVoorbeeld(
+                    OrigineelType: reader.GetString(0),
+                    JuistType: reader.GetString(1),
+                    OrigineleSamenvatting: reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    CorrectieSamenvatting: reader.IsDBNull(3) ? "" : reader.GetString(3)
+                ));
+            }
+            return voorbeelden;
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Leermomenten konden niet worden geladen — classificatie zonder few-shots");
+            return new List<ClassificatieCorrectieVoorbeeld>();
+        }
+    }
+
+    private static string? TruncateString(string? value, int maxLength) =>
+        value == null ? null : (value.Length > maxLength ? value[..maxLength] : value);
 }

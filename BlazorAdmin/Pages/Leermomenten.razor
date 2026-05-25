@@ -1,0 +1,202 @@
+@page "/leermomenten"
+@inject AdminApiClient Api
+
+<PageTitle>Leermomenten — Admin</PageTitle>
+
+<h1>AI-leermomenten</h1>
+
+<p class="text-muted">
+    Wanneer de planner een e-mail onjuist heeft geclassificeerd en de afzender dat heeft gecorrigeerd,
+    verschijnt hier een leermoment. Valideer correcte correcties zodat de AI ze meeneemt bij
+    toekomstige classificaties.
+</p>
+
+@if (_stats != null)
+{
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center @(_stats.Pending > 0 ? "border-warning" : "")">
+                <div class="card-body">
+                    <h3 class="card-title @(_stats.Pending > 0 ? "text-warning" : "text-muted")">@_stats.Pending</h3>
+                    <p class="card-text">Te beoordelen</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="card-title text-success">@_stats.Validated</h3>
+                    <p class="card-text">Gevalideerd (actief als voorbeeld)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="card-title text-secondary">@_stats.Rejected</h3>
+                    <p class="card-text">Afgewezen</p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="mb-3 d-flex gap-2">
+    <button class="btn btn-outline-primary @(_filterStatus == "pending" ? "active" : "")"
+            @onclick='() => LaadAsync("pending")'>Te beoordelen</button>
+    <button class="btn btn-outline-success @(_filterStatus == "validated" ? "active" : "")"
+            @onclick='() => LaadAsync("validated")'>Gevalideerd</button>
+    <button class="btn btn-outline-secondary @(_filterStatus == "rejected" ? "active" : "")"
+            @onclick='() => LaadAsync("rejected")'>Afgewezen</button>
+    <button class="btn btn-outline-dark @(_filterStatus == "" ? "active" : "")"
+            @onclick='() => LaadAsync("")'>Alle</button>
+</div>
+
+@if (_bezig)
+{
+    <div class="text-muted">Laden...</div>
+}
+else if (!string.IsNullOrEmpty(_fout))
+{
+    <div class="alert alert-danger">@_fout</div>
+}
+else if (_items.Count == 0)
+{
+    <div class="alert alert-info">Geen leermomenten gevonden.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Datum</th>
+                    <th>Origineel type</th>
+                    <th>Afgeleid type</th>
+                    <th>Originele samenvatting</th>
+                    <th>Correctie samenvatting</th>
+                    <th>Status</th>
+                    <th>Actie</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _items)
+                {
+                    <tr>
+                        <td><small>@item.MtaInserted.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</small></td>
+                        <td><span class="badge bg-secondary">@item.OrigineelVerzoekType</span></td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(item.AfgeleidJuistType))
+                            {
+                                <span class="badge bg-primary">@item.AfgeleidJuistType</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td><small>@item.OrigineleSamenvatting</small></td>
+                        <td><small>@item.CorrectieSamenvatting</small></td>
+                        <td>
+                            @if (item.IsGevalideerd)
+                            {
+                                <span class="badge bg-success">Gevalideerd</span>
+                            }
+                            else if (item.IsAfgewezen)
+                            {
+                                <span class="badge bg-secondary">Afgewezen</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Te beoordelen</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!item.IsGevalideerd && !item.IsAfgewezen)
+                            {
+                                var capturedId = item.Id;
+                                <button class="btn btn-sm btn-success me-1"
+                                        disabled="@_actieBezigId.Contains(capturedId)"
+                                        @onclick='() => ValideerAsync(capturedId, "valideer")'>
+                                    Valideer
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        disabled="@_actieBezigId.Contains(capturedId)"
+                                        @onclick='() => ValideerAsync(capturedId, "afwijzen")'>
+                                    Afwijzen
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted"><small>Toont @_items.Count resultaten</small></p>
+}
+
+@code {
+    private List<LeermomentDto> _items = new();
+    private LeermomentenStatsDto? _stats;
+    private string _filterStatus = "pending";
+    private bool _bezig;
+    private string? _fout;
+    private readonly HashSet<int> _actieBezigId = new();
+
+    protected override async Task OnInitializedAsync() => await LaadAsync("pending");
+
+    private async Task LaadAsync(string status)
+    {
+        _filterStatus = status;
+        _bezig = true;
+        _fout = null;
+        StateHasChanged();
+
+        try
+        {
+            var statsTask = Api.GetLeermomentenStatsAsync();
+            var itemsTask = Api.GetLeermomentenAsync(string.IsNullOrEmpty(status) ? null : status);
+            await Task.WhenAll(statsTask, itemsTask);
+
+            var statsResult = await statsTask;
+            var itemsResult = await itemsTask;
+
+            if (statsResult.Success) _stats = statsResult.Data;
+            if (itemsResult.Success)
+                _items = itemsResult.Data?.Items ?? new();
+            else
+                _fout = itemsResult.ErrorMessage ?? "Ophalen mislukt";
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _bezig = false;
+        }
+    }
+
+    private async Task ValideerAsync(int id, string actie)
+    {
+        _actieBezigId.Add(id);
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.ValideerLeermomentAsync(id, actie);
+            if (!result.Success)
+                _fout = result.ErrorMessage ?? "Actie mislukt";
+            else
+                await LaadAsync(_filterStatus);
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _actieBezigId.Remove(id);
+        }
+    }
+}

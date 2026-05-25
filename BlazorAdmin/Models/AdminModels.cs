@@ -215,3 +215,33 @@ public class VeldCapaciteitDto
     public int AantalWedstrijdenOpVeld5 { get; set; }
     public int AantalLegeVelden { get; set; }
 }
+
+// ── Leermomenten (#323) ──
+
+public class LeermomentDto
+{
+    public int Id { get; set; }
+    public int OrigineleVerwerkingId { get; set; }
+    public int CorrectionVerwerkingId { get; set; }
+    public string OrigineelVerzoekType { get; set; } = "";
+    public string? AfgeleidJuistType { get; set; }
+    public string? OrigineleSamenvatting { get; set; }
+    public string? CorrectieSamenvatting { get; set; }
+    public bool IsGevalideerd { get; set; }
+    public bool IsAfgewezen { get; set; }
+    public DateTime MtaInserted { get; set; }
+}
+
+public class LeermomentenResponse
+{
+    public int Count { get; set; }
+    public int Limit { get; set; }
+    public List<LeermomentDto> Items { get; set; } = new();
+}
+
+public class LeermomentenStatsDto
+{
+    public int Pending { get; set; }
+    public int Validated { get; set; }
+    public int Rejected { get; set; }
+}

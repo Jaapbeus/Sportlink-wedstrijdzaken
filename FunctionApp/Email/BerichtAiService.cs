@@ -52,11 +52,25 @@ public class BerichtAiService
         - Onderling overleg + KNVB-goedkeuring; moet voor de bekerronde plaatsvinden
         """;
 
-    private static string BouwClassificatieSystemPrompt()
+    private static string BouwClassificatieSystemPrompt(IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden = null)
     {
         var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName");
         if (string.IsNullOrWhiteSpace(clubNaam))
             throw new InvalidOperationException("Vereiste instelling 'clubName' ontbreekt of is leeg in dbo.AppSettings");
+
+        var fewShotSectie = "";
+        if (voorbeelden != null && voorbeelden.Count > 0)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine("## Gecorrigeerde classificaties (geleerde voorbeelden)");
+            sb.AppendLine("Let extra op deze patronen — eerder is de classificatie hier fout gegaan:");
+            foreach (var v in voorbeelden)
+            {
+                sb.AppendLine($"- Samenvatting: \"{v.OrigineleSamenvatting}\" → was geclassificeerd als {v.OrigineelType}, maar was eigenlijk {v.JuistType}. Correctie: \"{v.CorrectieSamenvatting}\"");
+            }
+            fewShotSectie = sb.ToString();
+        }
 
         return $$"""
             Je bent een assistent voor de coördinator thuiswedstrijden van {{clubNaam}}.
@@ -104,6 +118,7 @@ public class BerichtAiService
             Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
 
             {{KnvbRegelsContext}}
+            {{fewShotSectie}}
             """;
     }
 
@@ -122,8 +137,11 @@ public class BerichtAiService
     /// <summary>
     /// Classificeert een inkomend bericht met behulp van GPT-4o-mini.
     /// Retourneert een BerichtClassificatie met het type verzoek en geëxtraheerde gegevens.
+    /// Optionele voorbeelden worden als few-shot context in de system prompt geïnjecteerd (#323).
     /// </summary>
-    public async Task<BerichtClassificatie> ClassificeerBerichtAsync(string body, string subject, string afzender)
+    public async Task<BerichtClassificatie> ClassificeerBerichtAsync(
+        string body, string subject, string afzender,
+        IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden = null)
     {
         _logger.LogInformation("Bericht classificatie gestart (onderwerp niet gelogd — AVG #210)");
 
@@ -131,7 +149,7 @@ public class BerichtAiService
 
         var messages = new List<ChatMessage>
         {
-            new SystemChatMessage(BouwClassificatieSystemPrompt()),
+            new SystemChatMessage(BouwClassificatieSystemPrompt(voorbeelden)),
             new UserChatMessage(userPrompt)
         };
 
@@ -155,6 +173,69 @@ public class BerichtAiService
         {
             _logger.LogError(ex, "Fout bij het classificeren van bericht (onderwerp niet gelogd — AVG #210)");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Bepaalt of een reply-email een correctie is op een eerdere classificatie (#323).
+    /// Retourneert (isCorrectie, afgeleidJuistType, samenvatting).
+    /// </summary>
+    public async Task<(bool IsCorrectie, string? AfgeleidJuistType, string? Samenvatting)> DetecteerCorrectieAsync(
+        string body, string subject, string origineelType, string? originaleSamenvatting)
+    {
+        _logger.LogInformation("Correctie-detectie gestart voor reply (onderwerp niet gelogd — AVG #210)");
+
+        const string systemPrompt = """
+            Je analyseert een reply-email om te bepalen of de afzender aangeeft dat een eerdere classificatie onjuist was.
+            Een correctie is een reactie waarbij de afzender verduidelijkt dat het vorige antwoord op een verkeerde interpretatie was gebaseerd.
+
+            Geef ALTIJD JSON terug met dit formaat:
+            {
+              "isCorrectie": true of false,
+              "afgeleidType": "beschikbaarheid_check | herplan_verzoek | bevestiging | team_contact_opvragen | buiten_scope | null",
+              "samenvatting": "korte beschrijving van wat de afzender bedoelde, of null"
+            }
+
+            Regels:
+            - isCorrectie=true: afzender geeft aan dat ons antwoord onjuist was, of dat het verzoek anders bedoeld was
+            - isCorrectie=false: bevestiging, bedankje, akkoord, of follow-up die het oorspronkelijke type niet tegenspreekt
+            - afgeleidType: het type dat het verzoek eigenlijk had moeten zijn (null als isCorrectie=false of onduidelijk)
+            - samenvatting: beschrijving van wat de afzender bedoelde (ook bij isCorrectie=false)
+            """;
+
+        var userPrompt = $"Originele classificatie: {origineelType}.\nOriginele samenvatting: {originaleSamenvatting ?? "(geen)"}.\n\nReply:\nOnderwerp: {subject}\n\n{body}";
+
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage(systemPrompt),
+            new UserChatMessage(userPrompt)
+        };
+
+        var options = new ChatCompletionOptions
+        {
+            Temperature = 0.1f,
+            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+        };
+
+        try
+        {
+            var completion = await _chatClient.CompleteChatAsync(messages, options);
+            var jsonResponse = completion.Value.Content[0].Text;
+
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var root = doc.RootElement;
+
+            bool isCorrectie = root.TryGetProperty("isCorrectie", out var ic) && ic.GetBoolean();
+            var afgeleidType = GetOptionalString(root, "afgeleidType");
+            var samenvatting = GetOptionalString(root, "samenvatting");
+
+            _logger.LogInformation("Correctie-detectie: isCorrectie={IsCorrectie}", isCorrectie);
+            return (isCorrectie, afgeleidType, samenvatting);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Fout bij correctie-detectie — doorgaan zonder correctie");
+            return (false, null, null);
         }
     }
 
