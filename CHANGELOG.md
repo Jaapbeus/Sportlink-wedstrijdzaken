@@ -17,6 +17,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Start-Debug.ps1 parse-fout door em-dash encodingprobleem (#326):** Regel 109 bevatte een em-dash (U+2014) die PowerShell als Windows-1252 decodeerde. Byte 0x94 werd daardoor als aanhalingsteken gelezen, waardoor de string vroegtijdig sloot en het script niet kon starten. Vervangen door ASCII-koppelteken. Gevolg van de bug: alle lokale services (Azurite, FunctionApp, BlazorAdmin) startten niet via `Start-Debug.ps1`.
+
 ### Security
 
 - **Preventie-infrastructuur club-specifieke data (#321):** Drie onafhankelijke lagen voorkomen nu dat Azure-resourcenamen of infrastructuuridentifiers naar GitHub gaan: (1) 7 nieuwe gitleaks-regels op structurele naampatronen, (2) nieuw CI-job `infra-patterns` in security-scan.yml met ondersteuning voor `CLUB_EXTRA_PATTERNS` GitHub Secret, (3) pre-push hook bugfix voor nieuwe branches. Script `scripts/security/Clean-GitHistory.ps1` voor historische git-history cleanup toegevoegd.
