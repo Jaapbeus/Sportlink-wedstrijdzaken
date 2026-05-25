@@ -1,4 +1,4 @@
-# Start-Debug.ps1
+﻿# Start-Debug.ps1
 # Start alle lokale services voor v2 ontwikkelen en testen.
 # Vereisten: .NET 10 SDK, Azure Functions Core Tools v4, Azurite, SQL Server met SportlinkSqlDb.
 #
