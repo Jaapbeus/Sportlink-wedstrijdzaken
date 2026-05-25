@@ -443,3 +443,26 @@ Het veld **Totaal (incl. rust)** is de totale veldblokkeertijd die de planner di
 | `POST /api/beheer/speeltijden` | Nieuwe speeltijd toevoegen |
 | `PUT /api/beheer/speeltijden/{leeftijd}` | Speeltijd bijwerken |
 | `DELETE /api/beheer/speeltijden/{leeftijd}` | Speeltijd verwijderen |
+
+---
+
+## 12. Real-time Sportlink API voor veldbeschikbaarheid (`/instellingen`)
+
+### Wat doet deze instelling?
+
+Op de `/instellingen`-pagina staat de schakelaar **"Real-time Sportlink API raadplegen"** (standaard: aan).
+
+| Stand | Gedrag |
+|---|---|
+| **Aan** | De planner haalt bij elke beschikbaarheidscheck live wedstrijdgegevens op bij de Sportlink `/programma`-API. Dit geeft de meest actuele veldocupatie, ook als de nachtelijke sync nog niet is gelopen. |
+| **Uit** | Alleen de lokale database wordt geraadpleegd. Sneller en werkt zonder internet- of API-verbinding, maar kan achterliggen als de dagelijkse sync recent nog niet is uitgevoerd. |
+
+### Automatische fallback
+
+Bij een API-fout (time-out, netwerk, service onbeschikbaar) schakelt de planner automatisch terug naar de database. Beheerders hoeven hier niets voor te doen — de fallback is transparant.
+
+### Wanneer uitschakelen?
+
+- Testomgeving zonder geldige Sportlink API-credentials
+- Lokale ontwikkelomgeving zonder internet
+- Problematische API-respons tijdelijk omzeilen tijdens een incident

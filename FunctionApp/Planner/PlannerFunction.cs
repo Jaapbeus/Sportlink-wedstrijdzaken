@@ -195,7 +195,7 @@ namespace SportlinkFunction.Planner
                     var browserUrl = $"{req.Scheme}://{req.Host}/api/planner/optimaliseer?format=html";
                     var emailHtml = PlannerHtmlGenerator.GenereerEmailHtml(
                         DateOnly.Parse(request.Datum),
-                        await PlannerDataAccess.GetFieldOccupationsAsync(DateOnly.Parse(request.Datum)),
+                        await SportlinkApiClient.GetFieldOccupationsWithApiAsync(DateOnly.Parse(request.Datum), log),
                         response.Suggesties,
                         await PlannerDataAccess.GetVeldenAsync(),
                         request.Doel ?? "veld5-ontlasten",

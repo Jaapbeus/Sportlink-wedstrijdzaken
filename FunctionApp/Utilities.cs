@@ -26,7 +26,8 @@ namespace SportlinkFunction
                                    [PlannerEmailAdres], [Accommodatie],
                                    [HerplanDeadlineDagen], [BufferMinuten],
                                    [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
-                                   [AccommodatiePlaats]
+                                   [AccommodatiePlaats],
+                                   ISNULL([UseRealtimeApi], 1)
                             FROM [dbo].[AppSettings]";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
@@ -57,6 +58,7 @@ namespace SportlinkFunction
                                 Set("accommodatieLongitude", 15);
                                 Set("emailVoetnoot", 16);
                                 Set("accommodatiePlaats", 17);
+                                settings["useRealtimeApi"] = reader.IsDBNull(18) ? "1" : (reader.GetBoolean(18) ? "1" : "0");
                             }
                         }
                     }
