@@ -29,27 +29,31 @@ Een publieke repository maakt **alles** permanent zichtbaar: code, bestanden, is
 
 ### Absoluut verboden in issues, PR's, en comments
 
-| Type | Voorbeeld | Vervang door |
-|---|---|---|
-| Azure resource naam | `func-vrc-sportlink` | `func-[clubcode]-sportlink` |
-| Azure SWA-URL | `lively-field-03c896603.7.azurestaticapps.net` | `[swa-url].azurestaticapps.net` |
-| Azure Tenant ID | `74f2b2fe-a0af-4983-9520-ea3b2ac423fb` | `[TENANT_ID]` |
-| Azure Client ID | `75802a92-b3cb-4e98-bd4c-3167ce17d3fe` | `[CLIENT_ID]` |
-| SQL server/database naam | `myfreesqldbserver-vrc`, `myFreeDB` | `[sql-servernaam]`, `[database-naam]` |
-| Club-domein | `vv-vrc.nl` | `[club-domein]` |
-| Clubnaam | `VRC`, `vv-vrc` (buiten documentatiecontext) | `[clubnaam]` |
-| E-mailadres lid/medewerker | `trainer@vv-vrc.nl` | `trainer@[club-domein]` |
-| Abonnement-ID, resource-group naam | `myAppGroup`, subscription UUID | `[resource-group]` |
+| Type | Vervang door |
+|---|---|
+| Azure resource naam (Function App, SWA, Storage, App Insights) | `func-[clubcode]-sportlink`, `swa-[clubcode]-sportlink`, etc. |
+| Azure SWA-URL (uniek subdomain van azurestaticapps.net) | `[swa-url].azurestaticapps.net` |
+| Azure Tenant ID (GUID van de Entra ID tenant) | `[TENANT_ID]` |
+| Azure Client ID (GUID van de App Registration) | `[CLIENT_ID]` |
+| SQL server- of databasenaam | `[sql-servernaam]`, `[database-naam]` |
+| Club-domein of e-maildomein | `[club-domein]` |
+| Clubnaam of clubcode in technische context | `[clubcode]` |
+| E-mailadres van een lid of medewerker | `gebruiker@[club-domein]` |
+| Abonnement-ID of resource-group naam | `[resource-group]` |
+| Beheerders-loginname | `[beheerder]` |
+
+> **Nooit echte waarden als "voorbeeld" gebruiken** — ook niet om aan te tonen wat fout is. Gebruik
+> abstracte beschrijvingen (`een GUID van 8-4-4-4-12 tekens`) in plaats van de echte waarde.
 
 ### Hoe een security bevinding rapporteren
 
 Beschrijf het **type** probleem en het **bestand + regelnummer** — nooit de echte waarde:
 
 ```
-FOUT (lekt resource naam):
-  "param functionAppName string = 'func-vrc-sportlink'" staat in main.bicep regel 24
+FOUT (lekt resource naam, ook als 'voorbeeld'):
+  "parameter functionAppName heeft default 'func-[clubnaam]-sportlink'"
 
-GOED (beschrijft het probleem zonder waarde):
+GOED (beschrijft het probleem zonder enige waarde):
   "infrastructure/main.bicep regel 24: parameter functionAppName heeft een hardcoded
   clubnaam als default-waarde. Dit schendt het multi-club principe."
 ```
