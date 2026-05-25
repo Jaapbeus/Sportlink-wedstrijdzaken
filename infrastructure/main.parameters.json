@@ -6,19 +6,19 @@
       "value": "westeurope"
     },
     "functionAppName": {
-      "value": "func-vrc-sportlink"
+      "value": "func-<clubcode>-sportlink"
     },
     "appServicePlanName": {
       "value": "WestEuropeLinuxDynamicPlan"
     },
     "storageAccountName": {
-      "value": "stvrcsportlink"
+      "value": "st<clubcode>sportlink"
     },
     "staticWebAppName": {
-      "value": "swa-vrc-sportlink"
+      "value": "swa-<clubcode>-sportlink"
     },
     "appInsightsName": {
-      "value": "ai-vrc-sportlink"
+      "value": "ai-<clubcode>-sportlink"
     },
     "deployMonitoring": {
       "value": false

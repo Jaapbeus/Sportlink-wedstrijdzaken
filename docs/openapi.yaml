@@ -22,8 +22,8 @@ info:
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
 
 servers:
-  - url: https://func-vrc-sportlink.azurewebsites.net/api
-    description: Productie (Azure Functions)
+  - url: https://func-{clubcode}-sportlink.azurewebsites.net/api
+    description: Productie (Azure Functions — vervang {clubcode} door de clubcode van jouw installatie)
   - url: http://localhost:7094/api
     description: Lokale ontwikkeling (func start)
 

@@ -28,7 +28,7 @@ public static class AdminTeambegeleidingFunction
     {
         var log = context.GetLogger("AdminTeambegeleidingTeams");
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAuthenticated(req);
+        var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
@@ -64,7 +64,7 @@ public static class AdminTeambegeleidingFunction
     {
         var log = context.GetLogger("AdminTeambegeleidingGet");
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAuthenticated(req);
+        var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
@@ -116,7 +116,7 @@ public static class AdminTeambegeleidingFunction
     {
         var log = context.GetLogger("AdminTeambegeleidingDoorsturen");
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAuthenticated(req);
+        var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
         try
