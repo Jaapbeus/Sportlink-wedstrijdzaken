@@ -175,6 +175,11 @@ public class AdminApiClient
     public async Task<ApiResult<object>> ValideerLeermomentAsync(int id, string actie)
         => await PutAsync<object>($"api/beheer/leermomenten/{id}/valideer", new { actie });
 
+    // ── Clubs (#324) ──
+
+    public async Task<ApiResult<List<ClubDto>>> GetClubsAsync()
+        => await GetAsync<List<ClubDto>>("api/beheer/clubs");
+
     // ── Thema (#325) ──
 
     public async Task<ApiResult<ThemeDto>> GetThemeAsync()

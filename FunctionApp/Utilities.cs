@@ -19,19 +19,28 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        string query = @"
-                            SELECT [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
+                        // SyncEnabled bestaat pas na migratie #324. Dynamisch controleren of de
+                        // kolom aanwezig is zodat de query bij oudere DB-installaties ook werkt.
+                        using var syncCheckCmd = new SqlCommand(
+                            "SELECT COUNT(1) FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AppSettings]') AND name = 'SyncEnabled'",
+                            connection);
+                        var hasSyncEnabled = (int)(await syncCheckCmd.ExecuteScalarAsync() ?? 0) > 0;
+                        var syncFilter = hasSyncEnabled ? "WHERE [SyncEnabled] = 1" : "";
+
+                        string query = $@"
+                            SELECT TOP 1 [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
                                    [SeasonStartMonth], [LastSyncTimestamp], [FetchSchedule],
                                    [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
                                    [PlannerEmailAdres], [Accommodatie],
                                    [HerplanDeadlineDagen], [BufferMinuten],
                                    [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
                                    [AccommodatiePlaats]
-                            FROM [dbo].[AppSettings]";
+                            FROM [dbo].[AppSettings]
+                            {syncFilter}";
                         using (SqlCommand command = new SqlCommand(query, connection))
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
                         {
-                            while (await reader.ReadAsync())
+                            if (await reader.ReadAsync())
                             {
                                 void Set(string key, int col) {
                                     if (!reader.IsDBNull(col))
@@ -93,8 +102,12 @@ namespace SportlinkFunction
                 {
                     using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
                     await connection.OpenAsync();
-                    using var command = new SqlCommand(
-                        "UPDATE [dbo].[AppSettings] SET [LastSyncTimestamp] = GETUTCDATE()", connection);
+                    using var command = new SqlCommand(@"
+                        UPDATE [dbo].[AppSettings]
+                        SET [LastSyncTimestamp] = GETUTCDATE()
+                        WHERE [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings]
+                                            WHERE COL_LENGTH('[dbo].[AppSettings]', 'SyncEnabled') IS NULL
+                                               OR [SyncEnabled] = 1)", connection);
                     await command.ExecuteNonQueryAsync();
                     log.LogInformation("Last sync timestamp updated.");
                 }

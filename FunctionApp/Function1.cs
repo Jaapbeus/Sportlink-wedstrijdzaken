@@ -34,6 +34,15 @@ namespace SportlinkFunction
                     log.LogError("sportlinkApiUrl is not configured.");
                     return;
                 }
+
+                // SyncEnabled = 0 → skip sync for demo-clubs (e.g. AllStars FC)
+                var syncEnabledStr = SystemUtilities.AppSettings.GetSetting("syncEnabled");
+                if (syncEnabledStr == "0")
+                {
+                    log.LogInformation("SyncEnabled = 0 — sync overgeslagen voor deze club.");
+                    return;
+                }
+
                 string sportlinkClientId = $"clientId={SystemUtilities.AppSettings.GetSetting("sportlinkClientId")}";
 
                 // Default: previous week (-1) up to end of current season

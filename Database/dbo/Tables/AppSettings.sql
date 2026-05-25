@@ -22,5 +22,6 @@
 	[ThemeColorSecondary]	NVARCHAR(7)		NULL,
 	[ThemeColorAccent]		NVARCHAR(7)		NULL,
 	[ThemeColorTextOnPrimary] NVARCHAR(7)	NULL,
-	[ThemeClubWebsiteUrl]	NVARCHAR(300)	NULL		-- URL van club-website voor kleurextractie
+	[ThemeClubWebsiteUrl]	NVARCHAR(300)	NULL,		-- URL van club-website voor kleurextractie
+	[SyncEnabled]			BIT				NOT NULL DEFAULT 1	-- 0 = geen Sportlink API-sync voor deze club
 	)

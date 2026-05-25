@@ -260,3 +260,10 @@ public class ThemeExtractResultDto
 {
     public List<string> Colors { get; set; } = new();
 }
+
+// Multi-club (#324)
+public class ClubDto
+{
+    public string ClubCode { get; set; } = "";
+    public string ClubName { get; set; } = "";
+}

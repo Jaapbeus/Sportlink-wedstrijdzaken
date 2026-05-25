@@ -123,6 +123,20 @@ internal static class EasyAuthHelper
     }
 
     /// <summary>
+    /// Leest de club-code uit de X-Club-Code request header.
+    /// Terugval op ClubCode uit dbo.AppSettings als de header ontbreekt.
+    /// </summary>
+    public static string GetClubCodeFromRequest(HttpRequest req)
+    {
+        if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
+            !string.IsNullOrWhiteSpace(headerVal))
+            return headerVal.ToString();
+
+        return SystemUtilities.AppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+    }
+
+    /// <summary>
     /// Leest x-correlation-id uit de request header, of genereert een nieuwe GUID.
     /// Schrijft het ID terug in de response header voor end-to-end tracing.
     /// </summary>
