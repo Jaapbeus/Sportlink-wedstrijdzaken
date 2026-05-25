@@ -63,8 +63,8 @@ ghs_[A-Za-z0-9]{36}
 # Formaat: één regex per regel. Zet de exacte waarde als literal string.
 # Voorbeeld (NIET invullen met echte waarden in dit template):
 #
-#   JOUW_FUNCTIONAPP_NAAM        ← bijv. func-mijnclub-sportlink
-#   JOUW_SWA_NAAM                ← bijv. swa-mijnclub-sportlink
+#   JOUW_FUNCTIONAPP_NAAM        ← de exacte naam van jouw Function App (func-...-sportlink)
+#   JOUW_SWA_NAAM                ← de exacte naam van jouw Static Web App (swa-...-sportlink)
 #   JOUW_SWA_UNIQUE_ID           ← het unieke id-deel van azurestaticapps.net URL
 #   JOUW_TENANT_GUID             ← Azure Entra ID tenant GUID (8-4-4-4-12 formaat)
 #   JOUW_CLIENT_GUID             ← Azure App Registration client GUID

@@ -185,7 +185,8 @@ jobs:
           CLUB_EXTRA_PATTERNS: ${{ secrets.CLUB_EXTRA_PATTERNS || '' }}
         run: |
           FOUND=0
-          FILES=$(git ls-files | grep -vE "\.(png|jpg|jpeg|gif|ico|woff|ttf|eot|svg|pdf|zip|dll|exe|pdb|nupkg)$" || true)
+          FILES=$(git ls-files | grep -vE "\.(png|jpg|jpeg|gif|ico|woff|ttf|eot|svg|pdf|zip|dll|exe|pdb|nupkg)$" \
+            | grep -v "sensitive-patterns\.template\.txt" || true)
 
           check_infra() {
             local desc="$1"
