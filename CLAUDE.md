@@ -294,6 +294,36 @@ Deze regels gelden altijd, zonder uitzondering:
 
 4. **Persoonsgegevens, wachtwoorden en tokens nooit in bestanden schrijven.** Ook niet tijdelijk, ook niet in commentaar, ook niet in documentatie. Bij twijfel: het gaat niet in git.
 
+4a. **GitHub issues, PR-bodies, PR-comments en review-comments zijn even publiek als de code zelf — dezelfde regels gelden altijd.**
+
+   > **Dit is een harde stop — niet onderhandelbaar.** Een publieke repo maakt alles wat erin staat permanent zichtbaar: code, issues, comments, PR-beschrijvingen, en de git-history.
+
+   **Verboden in ELKE GitHub-communicatie (issues, PR titles/bodies, comments):**
+   - Echte Azure resource namen (Function App, SWA, Storage, App Insights) → gebruik `func-[clubcode]-sportlink`, `swa-[clubcode]-sportlink`, etc.
+   - Azure SWA-URL (uniek subdomain) → gebruik `[swa-url].azurestaticapps.net`
+   - Azure tenant ID of client ID (GUID-formaat) → gebruik `[TENANT_ID]` of `[CLIENT_ID]`
+   - SQL-servernaam, database-naam → gebruik `[sql-servernaam]`, `[database-naam]`
+   - Club-domein, e-mailadres van een lid/medewerker → gebruik `[club-domein]`, `@[club-domein]`
+   - Elke andere waarde die de installerende club identificeert
+
+   **Verplicht patroon bij security-bevindingen:**
+   ```
+   FOUT:  "parameter functionAppName heeft default 'func-[clubnaam]-sportlink'"  ← bevat clubnaam
+   GOED:  "infrastructure/main.bicep regel 24: parameter functionAppName heeft hardcoded clubnaam als default"
+
+   FOUT:  "tenantId: [TENANT_ID] staat in scripts/Configure-EntraApp.ps1"  ← bevat locatie
+   GOED:  "scripts/Configure-EntraApp.ps1 regel 35: TenantId is hardcoded als parameter-default"
+
+   FOUT:  "SWA URL: [swa-url].azurestaticapps.net staat hardcoded in script"  ← bevat type waarde
+   GOED:  "scripts/deploy.ps1 regel 290: SWA-URL is hardcoded in plaats van via omgevingsvariabele"
+   ```
+
+   **Controleplicht vóór elk `gh issue create`, `gh issue comment`, `gh pr create`:**
+   Scan de tekst mentaal op: clubnaam, resourcenaam, domein, IP, e-mailadres, UUID/GUID van een Azure-resource.
+   Bij twijfel: **gebruik een placeholder en noteer in geheugen** — nooit de echte waarde.
+
+   Vermelding in issue/PR van gevoelige data is **niet terugdraaibaar** — GitHub bewaard edit-history en de data verschijnt in externe caches (Google, archive.org) binnen minuten.
+
 5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
 
 6. **Elke sessie begint op een geïsoleerde branch — volledig autonoom geregeld.** Voer bij sessiestart altijd Stap S0 uit (zie "Sessie-isolatie" hierboven). Zit je op `main` of detached HEAD? Maak direct autonoom een branch aan — nooit vragen aan de gebruiker, nooit wachten, nooit een bestandswijziging vóór de branch bestaat. Issue-nummer bepaal je uit de conversatiecontext of via `gh issue list`; ontbreekt een passend issue, maak er dan zelf één aan.
@@ -395,7 +425,7 @@ az login                                  # eenmalig per machine
 .\scripts\azure\Configure-EntraApp.ps1          # idempotent apply
 ```
 
-Beide scripts staan in [scripts/azure/](scripts/azure/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de vv-vrc.nl tenant zit.
+Beide scripts staan in [scripts/azure/](scripts/azure/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de juiste tenant zit.
 
 Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets: [docs/AZURE-ENTRA-SETUP.md](docs/AZURE-ENTRA-SETUP.md).
 
@@ -678,11 +708,11 @@ Browser (beheerder)
   └── Azure Static Web Apps (Free) — Blazor WebAssembly
         SWA dient alleen statische bestanden; geen SWA-proxying
         MSAL: Bearer token automatisch meegestuurd naar Function App
-        URL: lively-field-03c896603.7.azurestaticapps.net
+        URL: [swa-url].azurestaticapps.net
         │
         │ HTTPS + Bearer token (Entra ID)
         ▼
-  Azure Functions (Consumption) — func-vrc-sportlink.azurewebsites.net
+  Azure Functions (Consumption) — func-[clubcode]-sportlink.azurewebsites.net
     Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
     EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
     FunctionApp/Admin/       → 9 bestanden, 18+ endpoints op /api/beheer/
