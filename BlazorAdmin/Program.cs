@@ -77,4 +77,6 @@ else
     builder.Services.AddScoped<AdminApiClient>();
 }
 
+builder.Services.AddScoped<ThemeService>();
+
 await builder.Build().RunAsync();

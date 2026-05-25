@@ -1,6 +1,7 @@
 @using BlazorAdmin.Pages
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavManager
+@inject BlazorAdmin.Services.ThemeService ThemeService
 @implements IDisposable
 
 @*
@@ -87,6 +88,9 @@
 
         _state = hasAccessRole ? AppState.Authenticated : AppState.AccessDenied;
         StateHasChanged();
+
+        if (_state == AppState.Authenticated)
+            await ThemeService.LoadAndApplyAsync();
     }
 
     private void HandleLocationChange(object? sender, LocationChangedEventArgs e)

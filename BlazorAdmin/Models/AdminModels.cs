@@ -245,3 +245,18 @@ public class LeermomentenStatsDto
     public int Validated { get; set; }
     public int Rejected { get; set; }
 }
+
+// Thema (#325)
+public class ThemeDto
+{
+    public string Primary       { get; set; } = "#1b6ec2";
+    public string Secondary     { get; set; } = "#6c757d";
+    public string Accent        { get; set; } = "#0071c1";
+    public string TextOnPrimary { get; set; } = "#ffffff";
+    public string? ClubWebsiteUrl { get; set; }
+}
+
+public class ThemeExtractResultDto
+{
+    public List<string> Colors { get; set; } = new();
+}

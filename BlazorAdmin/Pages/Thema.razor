@@ -1,0 +1,229 @@
+@page "/instellingen/thema"
+@using BlazorAdmin.Models
+@using BlazorAdmin.Services
+@inject AdminApiClient Api
+@inject ThemeService ThemeService
+
+<PageTitle>Club-thema — Sportlink Admin</PageTitle>
+
+<h1>Club-thema</h1>
+<p class="text-muted mb-4">Pas de huidige kleuren van de beheer-interface aan op de huisstijl van de club.</p>
+
+@if (_loading)
+{
+    <p><em>Laden...</em></p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card mb-4">
+                <div class="card-header">Kleuren instellen</div>
+                <div class="card-body">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Primaire kleur</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="color" class="form-control form-control-color"
+                                   value="@_theme.Primary"
+                                   @oninput='e => OnColorChange("primary", e.Value?.ToString())' />
+                            <input type="text" class="form-control" maxlength="7"
+                                   value="@_theme.Primary"
+                                   @oninput='e => OnColorChange("primary", e.Value?.ToString())' />
+                        </div>
+                        <small class="text-muted">Achtergrond zijbalk, knoppen</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Secundaire kleur</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="color" class="form-control form-control-color"
+                                   value="@_theme.Secondary"
+                                   @oninput='e => OnColorChange("secondary", e.Value?.ToString())' />
+                            <input type="text" class="form-control" maxlength="7"
+                                   value="@_theme.Secondary"
+                                   @oninput='e => OnColorChange("secondary", e.Value?.ToString())' />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Accentkleur (links)</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="color" class="form-control form-control-color"
+                                   value="@_theme.Accent"
+                                   @oninput='e => OnColorChange("accent", e.Value?.ToString())' />
+                            <input type="text" class="form-control" maxlength="7"
+                                   value="@_theme.Accent"
+                                   @oninput='e => OnColorChange("accent", e.Value?.ToString())' />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tekstkleur op primaire achtergrond</label>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="color" class="form-control form-control-color"
+                                   value="@_theme.TextOnPrimary"
+                                   @oninput='e => OnColorChange("textOnPrimary", e.Value?.ToString())' />
+                            <input type="text" class="form-control" maxlength="7"
+                                   value="@_theme.TextOnPrimary"
+                                   @oninput='e => OnColorChange("textOnPrimary", e.Value?.ToString())' />
+                        </div>
+                        <small class="text-muted">Gebruik wit (#ffffff) of zwart (#000000)</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Club-website URL</label>
+                        <input type="url" class="form-control" placeholder="https://www.mijnclub.nl"
+                               @bind="_theme.ClubWebsiteUrl" @bind:event="oninput" />
+                        <small class="text-muted">Voor kleurextractie hieronder</small>
+                    </div>
+
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                            @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Opslaan
+                        </button>
+                        <button class="btn btn-outline-secondary" @onclick="ResetToDefaultAsync">Standaard herstellen</button>
+                    </div>
+
+                    @if (_saveMessage != null)
+                    {
+                        <div class="alert @(_saveSuccess ? "alert-success" : "alert-danger") mt-3">@_saveMessage</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card mb-4">
+                <div class="card-header">Live preview</div>
+                <div class="card-body p-0">
+                    <div style="background-color: @_theme.Primary; padding: 1rem;">
+                        <span style="color: @_theme.TextOnPrimary; font-weight: bold;">Zijbalk achtergrond</span>
+                    </div>
+                    <div style="padding: 1rem;">
+                        <button class="btn btn-primary me-2" style="background-color: @_theme.Primary; border-color: @_theme.Primary; color: @_theme.TextOnPrimary;">
+                            Primaire knop
+                        </button>
+                        <button class="btn btn-outline-secondary me-2">Secundaire knop</button>
+                        <a href="#" style="color: @_theme.Accent;">Link</a>
+                    </div>
+                    <div style="padding: 0.5rem 1rem; background: #f8f9fa;">
+                        <small class="text-muted">Kleuren worden direct toegepast in de zijbalk en knoppen</small>
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_theme.ClubWebsiteUrl))
+            {
+                <div class="card mb-4">
+                    <div class="card-header">Kleuren extraheren uit club-website</div>
+                    <div class="card-body">
+                        <p class="text-muted small">Haal kleuraccenten op uit de HTML van de club-website.</p>
+                        <button class="btn btn-outline-primary" @onclick="ExtractColorsAsync" disabled="@_extracting">
+                            @if (_extracting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Kleuren ophalen
+                        </button>
+
+                        @if (_extractError != null)
+                        {
+                            <div class="alert alert-warning mt-2">@_extractError</div>
+                        }
+
+                        @if (_extractedColors.Count > 0)
+                        {
+                            <div class="mt-3">
+                                <p class="small mb-2">Klik op een kleur om deze als primaire kleur in te stellen:</p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var color in _extractedColors)
+                                    {
+                                        var capturedColor = color;
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div style="width:40px; height:40px; background-color:@capturedColor; border:1px solid #dee2e6; border-radius:4px; cursor:pointer;"
+                                                 title="@capturedColor"
+                                                 @onclick='() => OnColorChange("primary", capturedColor)'></div>
+                                            <small style="font-size:0.65rem;">@capturedColor</small>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ThemeDto _theme = new();
+    private bool _loading = true;
+    private bool _saving = false;
+    private bool _extracting = false;
+    private string? _error;
+    private string? _saveMessage;
+    private bool _saveSuccess;
+    private string? _extractError;
+    private List<string> _extractedColors = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Api.GetThemeAsync();
+        if (result.Success && result.Data != null)
+            _theme = result.Data;
+        else
+            _error = result.ErrorMessage ?? "Thema kon niet worden geladen.";
+        _loading = false;
+    }
+
+    private void OnColorChange(string property, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        switch (property)
+        {
+            case "primary":       _theme.Primary = value; break;
+            case "secondary":     _theme.Secondary = value; break;
+            case "accent":        _theme.Accent = value; break;
+            case "textOnPrimary": _theme.TextOnPrimary = value; break;
+        }
+        _ = ThemeService.ApplyAsync(_theme);
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _saveMessage = null;
+        StateHasChanged();
+
+        var result = await Api.UpdateThemeAsync(_theme);
+        _saveSuccess = result.Success;
+        _saveMessage = result.Success ? "Thema opgeslagen." : (result.ErrorMessage ?? "Opslaan mislukt.");
+        _saving = false;
+    }
+
+    private async Task ResetToDefaultAsync()
+    {
+        _theme = new ThemeDto();
+        await ThemeService.ApplyAsync(_theme);
+    }
+
+    private async Task ExtractColorsAsync()
+    {
+        _extracting = true;
+        _extractError = null;
+        _extractedColors = new();
+        StateHasChanged();
+
+        var result = await Api.ExtractThemeColorsAsync(_theme.ClubWebsiteUrl ?? "");
+        if (result.Success && result.Data != null)
+            _extractedColors = result.Data.Colors;
+        else
+            _extractError = result.ErrorMessage ?? "Kleuren konden niet worden opgehaald.";
+
+        _extracting = false;
+    }
+}

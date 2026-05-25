@@ -552,6 +552,25 @@ BEGIN
 END
 GO
 
+-- ============================================================
+-- #325: Club-thema — ThemeColor* kolommen in dbo.AppSettings
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorPrimary')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeColorPrimary] NVARCHAR(7) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorSecondary')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeColorSecondary] NVARCHAR(7) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorAccent')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeColorAccent] NVARCHAR(7) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorTextOnPrimary')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeColorTextOnPrimary] NVARCHAR(7) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeClubWebsiteUrl')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeClubWebsiteUrl] NVARCHAR(300) NULL;
+GO
+
 -- v2 — #84: EmailTemplateInstellingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
 BEGIN
