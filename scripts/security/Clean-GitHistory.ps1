@@ -175,7 +175,7 @@ $replFile  = Join-Path $tempDir "replacements.txt"
 $lines = @()
 
 # Azure Function App naam (ook als deel van URL)
-if ($replacements.ContainsKey('FunctionAppNaam')) {
+if ($replacements.Contains('FunctionAppNaam')) {
     $v = $replacements.FunctionAppNaam
     $lines += "literal:$v==>func-[clubcode]-sportlink"
     # URL variant
@@ -183,23 +183,23 @@ if ($replacements.ContainsKey('FunctionAppNaam')) {
 }
 
 # SWA uniek subdomain / URL
-if ($replacements.ContainsKey('SwaSubdomein')) {
+if ($replacements.Contains('SwaSubdomein')) {
     $v = $replacements.SwaSubdomein
     $lines += "literal:$v==>[swa-unique-id]"
 }
-if ($replacements.ContainsKey('SwaFullUrl')) {
+if ($replacements.Contains('SwaFullUrl')) {
     $v = $replacements.SwaFullUrl
     $lines += "literal:$v==>[swa-url].azurestaticapps.net"
 }
 
 # SWA resource naam
-if ($replacements.ContainsKey('SwaName')) {
+if ($replacements.Contains('SwaName')) {
     $v = $replacements.SwaName
     $lines += "literal:$v==>swa-[clubcode]-sportlink"
 }
 
 # Tenant ID (ook afgekorte variant: eerste 8 tekens + -)
-if ($replacements.ContainsKey('TenantId')) {
+if ($replacements.Contains('TenantId')) {
     $v = $replacements.TenantId
     $lines += "literal:$v==>[TENANT_ID]"
     # Afgekorte variant (bijv. eerste 8 tekens + "-...")
@@ -209,39 +209,39 @@ if ($replacements.ContainsKey('TenantId')) {
 }
 
 # Client ID
-if ($replacements.ContainsKey('ClientId')) {
+if ($replacements.Contains('ClientId')) {
     $v = $replacements.ClientId
     $lines += "literal:$v==>[CLIENT_ID]"
     $lines += "literal:api://$v==>api://[CLIENT_ID]"
 }
 
 # SQL Server
-if ($replacements.ContainsKey('SqlServer')) {
+if ($replacements.Contains('SqlServer')) {
     $v = $replacements.SqlServer
     $lines += "literal:$v==>[sql-servernaam]"
     $lines += "literal:$v.database.windows.net==>[sql-servernaam].database.windows.net"
 }
 
 # Storage Account
-if ($replacements.ContainsKey('StorageAccount')) {
+if ($replacements.Contains('StorageAccount')) {
     $v = $replacements.StorageAccount
     $lines += "literal:$v==>[storage-account]"
 }
 
 # Club-domein
-if ($replacements.ContainsKey('ClubDomein')) {
+if ($replacements.Contains('ClubDomein')) {
     $v = $replacements.ClubDomein
     $lines += "literal:$v==>[club-domein]"
 }
 
 # Beheerder-login
-if ($replacements.ContainsKey('BeheerderLogin')) {
+if ($replacements.Contains('BeheerderLogin')) {
     $v = $replacements.BeheerderLogin
     $lines += "literal:$v==>[beheerder]"
 }
 
 # App Insights
-if ($replacements.ContainsKey('AppInsights')) {
+if ($replacements.Contains('AppInsights')) {
     $v = $replacements.AppInsights
     $lines += "literal:$v==>ai-[clubcode]-sportlink"
 }
