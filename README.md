@@ -86,7 +86,7 @@ Azure Static Web Apps (gratis tier)
 - Nederlandse voetbalwereld (domeinkennis om de juiste problemen op te lossen)
 
 **Als eindgebruiker** is dit project bedoeld voor verenigingen die:
-- Draaien op Sportlink Club (KNVB-aangesloten)
+- Draaien op Sportlink Club (KNVB-aangesloten) **en beschikken over een actief [Club Dataservice](https://www.sportlink.nl/producten/club-dataservice/)-abonnement**
 - Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
 - Bereid zijn een Azure-omgeving in te richten (kosten: enkele euro's per maand)
 
@@ -166,17 +166,31 @@ Sportlink Wedstrijdzaken is ontworpen voor gebruik door meerdere clubs. Je forkt
 
 Volg de stap-voor-stap installatiehandleiding: **[SETUP.md](SETUP.md)**
 
-### Wat je nodig hebt
+### Vereiste: Sportlink Club Dataservice
+
+Deze applicatie haalt alle wedstrijddata op via de **[Sportlink Club Dataservice](https://www.sportlink.nl/producten/club-dataservice/)** — een betaald product van Sportlink. Zonder dit abonnement is er geen toegang tot de Sportlink API en is de applicatie niet bruikbaar.
+
+De Club Dataservice wordt aangeboden in drie bundels met het Sportlink mediaplatform:
+
+| Bundel | Kosten |
+|---|---|
+| Goed (app + tv + sponsoring) | €1,95/lid/jaar + €375 eenmalig |
+| Beter (integratie bestaande website) | €2,70/lid/jaar + €375 eenmalig |
+| Ideaal (nieuwe website + integratie) | €2,80/lid/jaar + €375 eenmalig |
+
+Facturering is gemaximeerd op 800 leden. Neem contact op met jouw Sportlink-contactpersoon voor de actuele tarieven en beschikbaarheid.
+
+Bij een actief abonnement ontvang je een `clientId` waarmee de applicatie de API aanroept. Dit `clientId` wordt per club geconfigureerd in de applicatie-instellingen — het staat nooit in de broncode.
+
+### Wat je verder nodig hebt
 
 | Resource | Tier | Kosten |
 |---|---|---|
+| Sportlink Club Dataservice | Betaald abonnement (zie hierboven) | Varieert |
 | Microsoft 365 / Entra ID tenant | Gratis (inbegrepen bij M365) | €0 |
 | Azure Functions | Consumption (1M requests/maand gratis) | €0 |
 | Azure SQL Database | Free tier (32 GB) | €0 |
 | Azure Static Web Apps | Free | €0 |
-| Sportlink `clientId` | Opvragen bij jouw Sportlink-beheerder | — |
-
-> De `clientId` vraag je op bij jouw eigen Sportlink-beheerder — dit is een per-club instelling, niet iets dat in de code staat.
 
 ---
 
