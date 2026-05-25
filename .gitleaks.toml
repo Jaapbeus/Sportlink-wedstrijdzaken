@@ -8,6 +8,52 @@ title = "Sportlink Wedstrijdzaken — Gitleaks Config"
 # Gebruik de standaard gitleaks rules als basis
 useDefault = true
 
+# ── Club-specifieke infrastructuurpatronen ────────────────────────────────────
+# Structurele patronen: vangen clubcode-specifieke Azure-resource namen, SWA-URLs
+# en infrastructuuridentifiers. GEEN echte waarden — puur op naamconventie.
+
+[[rules]]
+id = "azure-function-app-clubname"
+description = "Azure Function App naam met clubcode (multi-club architectuurregel)"
+regex = '''func-[a-z]{2,}-sportlink'''
+tags = ["infrastructure", "club-data"]
+
+[[rules]]
+id = "azure-swa-clubname"
+description = "Azure Static Web App naam met clubcode"
+regex = '''swa-[a-z]{2,}-sportlink'''
+tags = ["infrastructure", "club-data"]
+
+[[rules]]
+id = "azure-storage-clubname"
+description = "Azure Storage Account naam met clubcode (st<clubcode>sportlink formaat)"
+regex = '''st[a-z]{2,}sportlink'''
+tags = ["infrastructure", "club-data"]
+
+[[rules]]
+id = "azure-appinsights-clubname"
+description = "Application Insights naam met clubcode"
+regex = '''ai-[a-z]{2,}-sportlink'''
+tags = ["infrastructure", "club-data"]
+
+[[rules]]
+id = "azurestaticapps-url"
+description = "Azure Static Web Apps productie-URL (uniek per installatie)"
+regex = '''[a-z0-9-]+\.\d+\.azurestaticapps\.net'''
+tags = ["infrastructure", "club-data"]
+
+[[rules]]
+id = "azurewebsites-sportlink-url"
+description = "Azure Functions productie-URL voor Sportlink installaties"
+regex = '''[a-z0-9-]+-sportlink\.azurewebsites\.net'''
+tags = ["infrastructure", "club-data"]
+
+[[rules]]
+id = "azure-sql-server-name"
+description = "Azure SQL Server naam (patroon: letters+cijfers+streepje gevolgd door .database.windows.net)"
+regex = '''[a-z0-9][a-z0-9-]{2,}\.database\.windows\.net'''
+tags = ["infrastructure", "club-data"]
+
 # ── Aanvullende regels voor dit project ───────────────────────────────────────
 
 [[rules]]
@@ -40,27 +86,27 @@ tags = ["pii", "avg", "gdpr"]
 description = "Bestanden die uitgesloten worden van scanning"
 regexes = [
   # voorbeeld.nl is een goedgekeurd fictief placeholder-domein (John Doe-principe, zie CLAUDE.md).
-  # Niet bestaand domein — geen echte persoonsgegevens. Gebruikt als UI-default in de dry-run tester.
   '''trainer@voorbeeld\.nl''',
   # Jan de Vries is een fictieve naam (NL John Doe equivalent) — geen echte persoonsgegevens.
   '''Jan de Vries''',
+  # Placeholder-patronen in documentatie zijn geen echte waarden
+  '''\[clubcode\]''',
+  '''\[swa-url\]''',
+  '''\[TENANT_ID\]''',
+  '''\[CLIENT_ID\]''',
+  '''\[sql-servernaam\]''',
+  '''\[club-domein\]''',
+  '''\[beheerder\]''',
+  # infrastructure/ sjabloonwaarden met <> placeholders zijn geen echte resourcenamen
+  '''<clubcode>''',
 ]
 paths = [
-  # Gegenereerde bestanden en build output
   '''\.git/''',
   '''bin/''',
   '''obj/''',
-  # Template-bestanden (bevatten geen echte data)
   '''sensitive-patterns\.template\.txt''',
   '''local\.settings\.template\.json''',
-  # Eerder was hier een brede uitsluiting voor Database/.*\.sql — verwijderd in #212.
-  # SQL-bestanden worden nu volledig gescand. Bij valse positieven: specifiek bestand toevoegen.
 ]
-# Historische commits met voorbeeldwaarden die patronen triggeren — geen echte PII.
-# Zie bijbehorende GitHub issue voor permanente strategie (filter-repo of accept).
-commits = [
-  # 5311d64: "security: drie-laags AVG-bewaking voor documentatie en changelog"
-  # docs/VERSIONING.md bevatte voorbeeld-email/telefoon ter illustratie van wat NIET mag.
-  # Direct hersteld in commit 70173cb door beschrijvende tekst.
-  "5311d642e3c0b1f8b74e3ca2e733785e36a12a66",
-]
+# Commit-SHA allowlist wordt leeggehouden na git-history-rewrite.
+# Alle historische SHAs veranderen bij filter-repo — stale SHAs hier veroorzaken fouten.
+commits = []
