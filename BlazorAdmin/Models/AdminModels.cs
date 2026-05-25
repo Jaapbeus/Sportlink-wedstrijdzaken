@@ -23,6 +23,7 @@ public class AppSettingsDto
     public double? AccommodatieLongitude { get; set; }
     public string? FetchScheduleLeesbaar { get; set; }
     public List<string>? VolgendeMomenten { get; set; }
+    public bool UseRealtimeApi { get; set; } = true;
 }
 
 public class GeocodeResultDto

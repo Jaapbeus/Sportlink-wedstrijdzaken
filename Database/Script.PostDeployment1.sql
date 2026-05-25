@@ -106,6 +106,16 @@ BEGIN
 END
 GO
 
+-- AppSettings: UseRealtimeApi kolom toevoegen (idempotent)
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'UseRealtimeApi'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [UseRealtimeApi] BIT NOT NULL DEFAULT 1
+END
+GO
+
 -- AppSettings: email-integratie velden vullen
 IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
 BEGIN
