@@ -1,29 +1,49 @@
-# Changelog
+﻿# Changelog
 
 Alle noemenswaardige wijzigingen in dit project worden bijgehouden in dit bestand.
 
 De indeling volgt [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).  
 Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Definities en beslisregels** — wat is een bug, wat is een feature, wat hoort hier wel/niet in:  
+> **Definities en beslisregels** -- wat is een bug, wat is een feature, wat hoort hier wel/niet in:  
 > zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 > **Conventie voor versies:**
-> - `MAJOR` (x.0.0) — grote nieuwe laag of breaking change (bijv. Admin GUI, nieuwe auth-laag)
-> - `MINOR` (2.x.0) — nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm, nieuwe instelling)
-> - `PATCH` (2.0.x) — bugfix, beveiligingspatch, documentatie zonder gedragswijziging
+> - `MAJOR` (x.0.0) -- grote nieuwe laag of breaking change (bijv. Admin GUI, nieuwe auth-laag)
+> - `MINOR` (2.x.0) -- nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm, nieuwe instelling)
+> - `PATCH` (2.0.x) -- bugfix, beveiligingspatch, documentatie zonder gedragswijziging
 
 ---
 
 ## [Unreleased]
 
+---
+
+## [2.4.0] — 2026-05-26
+
 ### Added
 
 - **AllStars FC demo-club en multi-club GUI switch (#324):** Synthetische demo-club AllStars FC toegevoegd voor testen buiten het KNVB-seizoen. De Admin GUI toont een club-selector dropdown in de topbalk zodat beheerders naadloos kunnen schakelen tussen de primaire club en AllStars FC. Alle API-calls sturen automatisch de `X-Club-Code` header mee via een nieuwe `ClubCodeHeaderHandler`. Database-laag: `ClubCode`-kolom toegevoegd aan `his.teams`, `his.matches` en `his.matchdetails`; `SyncEnabled`-vlag in `dbo.AppSettings` (0 = geen Sportlink API-sync voor deze club). Nieuw endpoint `GET /api/beheer/clubs` voor de lijst van beschikbare clubs. Idempotente migratiescripts in `scripts/migrations/`.
+- **Club-thema aanpasbaar (#325):** Beheerders kunnen via de nieuwe pagina **Thema** in de Admin GUI de kleurstelling van de interface aanpassen op de huisstijl van de club (primaire kleur, secondaire kleur, accentkleur, tekstkleur op primaire achtergrond). Kleuren worden als CSS-variabelen live toegepast zonder pagina-herladen. Optioneel: automatisch kleuraccenten extraheren uit de club-website. De themakleuren worden bij elke login opgehaald en toegepast. Technisch: vijf nieuwe kolommen op `dbo.AppSettings`, drie nieuwe admin-endpoints (`GET/PUT /api/beheer/theme`, `POST /api/beheer/theme/extract` met SSRF-bescherming) en een Blazor-beheerpagina.
+- **Email feedback loop — zelflerend classificatiesysteem (#323):** Wanneer een afzender reageert op een AI-antwoord en de planner heeft het oorspronkelijke verzoek verkeerd geclassificeerd, detecteert het systeem nu automatisch die correctie en slaat deze op als "leermoment". Beheerders kunnen leermomenten valideren of afwijzen via de nieuwe pagina **Leermomenten** in de Admin GUI. Gevalideerde leermomenten worden bij de volgende e-mail als few-shot voorbeeld meegegeven aan de AI, waardoor dezelfde classificatiefout niet herhaald wordt. Technisch: twee nieuwe kolommen op `planner.EmailVerwerking` (`IsReplyOpOnsAntwoord`, `ReplyOpVerwerkingId`), nieuwe tabel `planner.ClassificatieCorrectie`, drie nieuwe admin-endpoints en een Blazor-beheerpagina.
+- **Real-time Sportlink API voor plannerbeschikbaarheid (#24):** De planner raadpleegt nu standaard de live Sportlink `/programma`-API bij het berekenen van veldbeschikbaarheid, in plaats van uitsluitend de lokale database. Voordeel: altijd actuele veldocupatie, ook als de nachtelijke sync nog niet is gelopen. Bij een API-fout (time-out, netwerkprobleem) valt de planner automatisch terug op de database. De nieuwe instelling "Real-time Sportlink API raadplegen" op de Instellingen-pagina schakelt dit gedrag per club aan of uit.
+- **E-mailtemplates koppeling aan pipeline (#287):** `BouwTemplateAntwoord` raadpleegt nu de database voor elke hardcoded fallback via `EmailTemplateService.GetTemplateAsync`. Als een beheerder een template heeft aangemaakt voor `beschikbaarheid_check`, `herplan_verzoek`, `bevestiging`, `team_contact_opvragen` of `buiten_scope`, wordt die DB-versie gebruikt in plaats van de hardcoded standaard. Dropdown in de Admin GUI uitgebreid met alle actieve template-keys, ingedeeld per categorie.
+
+### Changed
+
+- **README: Sportlink Club Dataservice als expliciete vereiste vermeld:** De README maakt nu duidelijk dat een actief Club Dataservice-abonnement bij Sportlink verplicht is. Inclusief prijsindicatie en link naar de productpagina, zodat clubs weten wat ze nodig hebben voordat ze beginnen.
 
 ### Fixed
 
 - **Start-Debug.ps1 parse-fout door em-dash encodingprobleem (#326):** Regel 109 bevatte een em-dash (U+2014) die PowerShell als Windows-1252 decodeerde. Byte 0x94 werd daardoor als aanhalingsteken gelezen, waardoor de string vroegtijdig sloot en het script niet kon starten. Vervangen door ASCII-koppelteken. Gevolg van de bug: alle lokale services (Azurite, FunctionApp, BlazorAdmin) startten niet via `Start-Debug.ps1`.
+- **Clean-GitHistory.ps1 bugfixes (#321):** Twee fouten gerepareerd: (1) `OrderedDictionary` heeft geen `ContainsKey()`-methode — alle 11 aanroepen vervangen door `Contains()`; (2) git weigert te fetchen naar een checked-out branch — `git checkout --detach HEAD` toegevoegd voor de fetch-stap, daarna terugkeer naar de originele branch. Script is nu volledig uitvoerbaar.
+- **DB connection retry window verdubbeld (#306):** `WaitForDatabaseAsync` verhoogd van 10 naar 20 retries (15s per poging = 5 min totaal). Voorkomt dat de dagelijkse timer-sync mislukt als Azure SQL Free Tier langer dan 2,5 min nodig heeft om te hervatten na auto-pause.
+- **Kalender weekstart op maandag (#300):** `<html lang="en">` was de oorzaak van zondag-als-eerste-dag in alle datumkiezers en kalenders. Gewijzigd naar `lang="nl"` + `CultureInfo("nl-NL")` in `Program.cs`.
+- **Planner: no-op suggesties onderdrukt (#301):** De planner toonde verplaatsingen die de eindtijd niet verbeterden. Na het genereren van suggesties wordt nu de gesimuleerde nieuwe eindtijd vergeleken met de huidige; zijn er geen verbeterd werd de huidige planning is al optimaal teruggegeven.
+- **Teambegeleiding: e-mail en telefoon zichtbaar op kaartje (#299):** Beheerders zien nu het e-mailadres en telefoonnummer van elke begeleider op de `/teambegeleiding`-pagina. Klikbare `mailto:` en `tel:`-links. Onder de kaartjes staat een kopieerknop voor de Outlook-ontvangersregel.
+- **Voorkeurstijden: team-dropdown (#289):** De vrije tekstinvoer voor het teamveld is vervangen door een dropdown gevuld vanuit `GET /api/beheer/teams`. Voorkomt typfouten en inconsistenties.
+- **Voorkeurstijden: inactieve teamregels verborgen (#288):** Inactieve teamregels worden niet meer getoond in de lijst.
+- **Instellingen: SQL-instructies verwijderd (#285):** De rode "Wijzigen via SQL: UPDATE ..." helpteksten zijn verwijderd en vervangen door "Contacteer de systeembeheerder om deze waarde te wijzigen."
 
 ### Security
 
@@ -33,33 +53,7 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Documentatiefout appsettings.Production.json gecorrigeerd (#311):** De handleiding instrueerde foutief om `appsettings.Production.json` te committen. Vervangen door correcte instructie: dit bestand wordt door CI aangemaakt en mag nooit in git.
 - **Hardcoded VRC resourcenamen verwijderd uit infrastructuurbestanden (#312):** `infrastructure/main.bicep`, `main.parameters.json`, `docs/openapi.yaml`, `docs/openapi.json` en `scripts/azure/Configure-EntraApp.ps1` gebruiken nu `<clubcode>`-placeholders i.p.v. hardcoded VRC-waarden.
 
-### Changed
-
-- **README: Sportlink Club Dataservice als expliciete vereiste vermeld:** De README maakt nu duidelijk dat een actief Club Dataservice-abonnement bij Sportlink verplicht is. Inclusief prijsindicatie (€1,95–€2,80/lid/jaar + €375 eenmalig) en link naar de productpagina, zodat clubs weten wat ze nodig hebben voordat ze beginnen.
-
-### Added
-
-- **Club-thema aanpasbaar (#325):** Beheerders kunnen via de nieuwe pagina **Thema** in de Admin GUI de kleurstelling van de interface aanpassen op de huisstijl van de club (primaire kleur, secondaire kleur, accentkleur, tekstkleur op primaire achtergrond). Kleuren worden als CSS-variabelen live toegepast zonder pagina-herladen. Optioneel: automatisch kleuraccenten extraheren uit de club-website. De themakleuren worden bij elke login opgehaald en toegepast. Technisch: vijf nieuwe kolommen op `dbo.AppSettings`, drie nieuwe admin-endpoints (`GET/PUT /api/beheer/theme`, `POST /api/beheer/theme/extract` met SSRF-bescherming) en een Blazor-beheerpagina.
-
-- **Email feedback loop — zelflerend classificatiesysteem (#323):** Wanneer een afzender reageert op een AI-antwoord en de planner heeft het oorspronkelijke verzoek verkeerd geclassificeerd, detecteert het systeem nu automatisch die correctie en slaat deze op als "leermoment". Beheerders kunnen leermomenten valideren of afwijzen via de nieuwe pagina **Leermomenten** in de Admin GUI. Gevalideerde leermomenten worden bij de volgende e-mail als few-shot voorbeeld meegegeven aan de AI, waardoor dezelfde classificatiefout niet herhaald wordt. Technisch: twee nieuwe kolommen op `planner.EmailVerwerking` (`IsReplyOpOnsAntwoord`, `ReplyOpVerwerkingId`), nieuwe tabel `planner.ClassificatieCorrectie`, drie nieuwe admin-endpoints en een Blazor-beheerpagina.
-
-- **Real-time Sportlink API voor plannerbeschikbaarheid (#24):** De planner raadpleegt nu standaard de live Sportlink `/programma`-API bij het berekenen van veldbeschikbaarheid, in plaats van uitsluitend de lokale database. Voordeel: altijd actuele veldocupatie, ook als de nachtelijke sync nog niet is gelopen. Bij een API-fout (time-out, netwerkprobleem) valt de planner automatisch terug op de database. De nieuwe instelling "Real-time Sportlink API raadplegen" op de Instellingen-pagina schakelt dit gedrag per club aan of uit.
-
-- **E-mailtemplates koppeling aan pipeline (#287):** `BouwTemplateAntwoord` raadpleegt nu de database vóór elke hardcoded fallback via `EmailTemplateService.GetTemplateAsync`. Als een beheerder een template heeft aangemaakt voor `beschikbaarheid_check`, `herplan_verzoek`, `bevestiging`, `team_contact_opvragen` of `buiten_scope`, wordt die DB-versie gebruikt in plaats van de hardcoded standaard. Dropdown in de Admin GUI uitgebreid met alle actieve template-keys, ingedeeld per categorie.
-
-### Fixed
-
-- **Clean-GitHistory.ps1 bugfixes (#321):** Twee fouten gerepareerd: (1) `OrderedDictionary` heeft geen `ContainsKey()`-methode — alle 11 aanroepen vervangen door `Contains()`; (2) git weigert te fetchen naar een checked-out branch — `git checkout --detach HEAD` toegevoegd vóór de fetch-stap, daarna terugkeer naar de originele branch. Script is nu volledig uitvoerbaar.
-- **DB connection retry window verdubbeld (#306):** `WaitForDatabaseAsync` verhoogd van 10 naar 20 retries (15s per poging = 5 min totaal). Voorkomt dat de dagelijkse timer-sync mislukt als Azure SQL Free Tier langer dan 2,5 min nodig heeft om te hervatten na auto-pause.
-- **Kalender weekstart op maandag (#300):** `<html lang="en">` was de oorzaak van zondag-als-eerste-dag in alle datumkiezers en kalenders. Gewijzigd naar `lang="nl"` + `CultureInfo("nl-NL")` in `Program.cs`.
-- **Planner: no-op suggesties onderdrukt (#301):** De planner toonde verplaatsingen die de eindtijd niet verbeterden (bijv. MO15-2 eerder naar veld 5 terwijl de dag toch eindigt op 20:20 door een andere wedstrijd). Na het genereren van suggesties wordt nu de gesimuleerde nieuwe eindtijd vergeleken met de huidige; zijn er geen verbeterd → "de huidige planning is al optimaal".
-- **Teambegeleiding: e-mail en telefoon zichtbaar op kaartje (#299):** Beheerders zien nu het e-mailadres en telefoonnummer van elke begeleider op de `/teambegeleiding`-pagina. Klikbare `mailto:` en `tel:`-links. Onder de kaartjes staat een kopieerknop voor de Outlook-ontvangersregel (`"Naam" <email>; ...`).
-- **Voorkeurstijden: team-dropdown (#289):** De vrije tekstinvoer voor het teamveld in het voorkeur- en teamregelformulier is vervangen door een dropdown gevuld vanuit `GET /api/beheer/teams` (`his.teams`). Voorkomt typfouten en inconsistenties.
-- **Voorkeurstijden: inactieve teamregels verborgen (#288):** Inactieve teamregels worden niet meer getoond in de lijst — alleen actieve regels zijn zichtbaar en bewerkbaar.
-- **Instellingen: SQL-instructies verwijderd (#285):** De rode "Wijzigen via SQL: UPDATE ..." helpteksten onder ClubNaam en ClubCode zijn verwijderd en vervangen door "Contacteer de systeembeheerder om deze waarde te wijzigen."
-
 ---
-
 ## [2.3.0] — 2026-05-24
 
 ### Changed
