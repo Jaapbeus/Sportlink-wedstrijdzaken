@@ -79,8 +79,7 @@ public static class AdminSettingsFunction
                     [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
                     [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                     [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
-                    [AccommodatieLatitude], [AccommodatieLongitude],
-                    ISNULL([UseRealtimeApi], 1) AS [UseRealtimeApi]
+                    [AccommodatieLatitude], [AccommodatieLongitude]
                 FROM [dbo].[AppSettings]", connection);
 
             using var reader = await command.ExecuteReaderAsync();
@@ -94,6 +93,20 @@ public static class AdminSettingsFunction
                 var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
                 result[name] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
             }
+            reader.Close();
+
+            // UseRealtimeApi: dynamisch laden — kolom bestaat pas na DB-migratie
+            using var rtaCmd = new SqlCommand(@"
+                DECLARE @v BIT = 1;
+                DECLARE @sql NVARCHAR(200) = CASE
+                    WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
+                    THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings]'
+                    ELSE N'SELECT @v = CAST(1 AS BIT)'
+                END;
+                EXEC sp_executesql @sql, N'@v BIT OUTPUT', @v = @v OUTPUT;
+                SELECT @v;", connection);
+            var rtaScalar = await rtaCmd.ExecuteScalarAsync();
+            result["UseRealtimeApi"] = rtaScalar is bool rtaBool ? rtaBool : true;
 
             // Voeg CRON-preview toe als FetchSchedule aanwezig is
             if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
