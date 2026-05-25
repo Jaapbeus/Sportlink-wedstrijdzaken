@@ -25,7 +25,7 @@
     PROCEDURE:
       1. Maak een lokale backup (stap 1 hieronder doet dit automatisch).
       2. Voer dit script uit — het vraagt om de gevoelige waarden.
-      3. Verifieer het resultaat: git log --all -S "func-vrc" --oneline
+      3. Verifieer het resultaat: git log --all -S "[jouw-func-app-naam]" --oneline
          → geen output = alle waarden verwijderd.
       4. Force-push: git push --force-with-lease --all
                      git push --force-with-lease --tags
@@ -202,7 +202,7 @@ if ($replacements.ContainsKey('SwaName')) {
 if ($replacements.ContainsKey('TenantId')) {
     $v = $replacements.TenantId
     $lines += "literal:$v==>[TENANT_ID]"
-    # Afgekorte variant (bijv. "[TENANT_ID...]")
+    # Afgekorte variant (bijv. eerste 8 tekens + "-...")
     $short = $v.Substring(0, 8)
     $lines += "literal:$short-...==>[TENANT_ID...]"
     $lines += "literal:api://$v==>api://[CLIENT_ID]"

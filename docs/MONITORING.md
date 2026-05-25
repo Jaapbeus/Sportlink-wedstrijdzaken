@@ -17,7 +17,7 @@ Azure Functions (func-[clubcode]-sportlink)
 Azure Static Web Apps (swa-[clubcode]-sportlink)
   → Geen eigen Application Insights; SWA logs via Azure Monitor (gratis Activity Log)
 
-Azure SQL (myFreeDB @ [sql-servernaam])
+Azure SQL ([database-naam] @ [sql-resource-group])
   → Geen Application Insights; Resource Health via Azure Portal
 ```
 
@@ -45,7 +45,7 @@ Stel in via:
 ```bash
 az functionapp config appsettings set \
   --name func-[clubcode]-sportlink \
-  --resource-group [sql-servernaam] \
+  --resource-group [sql-resource-group] \
   --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=<connection-string>"
 ```
 
@@ -105,8 +105,8 @@ Alert bij deploy-fout (Function App restart mislukt):
 ```bash
 az monitor activity-log alert create \
   --name "FunctionApp-deploy-fout" \
-  --resource-group [sql-servernaam] \
-  --scopes "/subscriptions/<id>/resourceGroups/[sql-servernaam]/providers/Microsoft.Web/sites/func-[clubcode]-sportlink" \
+  --resource-group [sql-resource-group] \
+  --scopes "/subscriptions/<id>/resourceGroups/[sql-resource-group]/providers/Microsoft.Web/sites/func-[clubcode]-sportlink" \
   --condition category=Administrative and operationName=Microsoft.Web/sites/write and status=Failed \
   --action-group /subscriptions/<id>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/<naam>
 ```
@@ -116,8 +116,8 @@ az monitor activity-log alert create \
 ```bash
 az monitor activity-log alert create \
   --name "FunctionApp-resource-health" \
-  --resource-group [sql-servernaam] \
-  --scopes "/subscriptions/<id>/resourceGroups/[sql-servernaam]" \
+  --resource-group [sql-resource-group] \
+  --scopes "/subscriptions/<id>/resourceGroups/[sql-resource-group]" \
   --condition category=ResourceHealth and resourceType=Microsoft.Web/sites \
   --action-group /subscriptions/<id>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/<naam>
 ```
