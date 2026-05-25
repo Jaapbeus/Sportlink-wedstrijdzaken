@@ -1,5 +1,10 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @using System.Reflection
+@using BlazorAdmin.Models
+@using BlazorAdmin.Services
+@inject AdminApiClient Api
+@inject ClubSelectorService ClubSelector
+
 <div class="page">
     <div class="sidebar">
         <NavMenu />
@@ -7,6 +12,18 @@
 
     <main>
         <div class="top-row px-4 d-flex align-items-center justify-content-end">
+            @if (_clubs.Count > 1)
+            {
+                <div class="me-3 d-flex align-items-center gap-2">
+                    <span class="text-muted small">Club:</span>
+                    <select class="form-select form-select-sm club-selector" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
+                        @foreach (var club in _clubs)
+                        {
+                            <option value="@club.ClubCode">@club.ClubName</option>
+                        }
+                    </select>
+                </div>
+            }
             <span class="text-muted small me-3">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
             <FeedbackWidget />
             <a href="https://github.com/Jaapbeus/Sportlink-wedstrijdzaken" target="_blank">About</a>
@@ -17,3 +34,31 @@
         </article>
     </main>
 </div>
+
+@code {
+    private List<ClubDto> _clubs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ClubSelector.InitializeAsync();
+        var result = await Api.GetClubsAsync();
+        if (result.Success && result.Data != null)
+        {
+            _clubs = result.Data;
+            // Valideer dat de opgeslagen ClubCode nog bestaat; terugval op eerste club
+            if (_clubs.Count > 0 &&
+                (ClubSelector.SelectedClubCode == null ||
+                 !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode)))
+            {
+                await ClubSelector.SelectClubAsync(_clubs[0].ClubCode);
+            }
+        }
+    }
+
+    private async Task OnClubChanged(ChangeEventArgs e)
+    {
+        var code = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(code))
+            await ClubSelector.SelectClubAsync(code);
+    }
+}

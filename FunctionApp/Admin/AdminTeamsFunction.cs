@@ -25,8 +25,7 @@ public static class AdminTeamsFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();

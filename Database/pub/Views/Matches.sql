@@ -38,10 +38,11 @@ SELECT m.[wedstrijdcode]					AS WedstrijdCode
 	,md.[VerenigingScheidsrechter]			AS DivOfficialScheidsrechter
 	,md.[OverigeOfficialCode]				AS DivOfficialOverigeCode
 	,md.[OverigeOfficial]					AS DivOfficialOverige
+	,m.[ClubCode]							AS ClubCode
 FROM [his].[matches] m
 LEFT JOIN [his].[matchdetails] md ON CAST(md.InternCode AS bigint)=CAST(m.wedstrijdcode AS bigint)
 LEFT JOIN [his].[teams] tt ON tt.teamcode = m.thuisteamid AND (LEFT(tt.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tt.poulecode)
-WHERE tt.teamnaam IS NOT NULL 
+WHERE tt.teamnaam IS NOT NULL
 
 UNION ALL
 
@@ -83,6 +84,7 @@ SELECT m.[wedstrijdcode]					AS WedstrijdCode
 	,md.[VerenigingScheidsrechter]			AS DivOfficialScheidsrechter
 	,md.[OverigeOfficialCode]				AS DivOfficialOverigeCode
 	,md.[OverigeOfficial]					AS DivOfficialOverige
+	,m.[ClubCode]							AS ClubCode
   FROM [his].[matches] m
   LEFT JOIN [his].[matchdetails] md ON CAST(md.InternCode AS bigint)=CAST(m.wedstrijdcode AS bigint)
   LEFT JOIN [his].[teams] tu ON tu.teamcode = m.uitteamid   AND (LEFT(tu.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tu.poulecode)
@@ -128,10 +130,11 @@ SELECT m.[wedstrijdcode]					AS WedstrijdCode
 	,md.[VerenigingScheidsrechter]			AS DivOfficialScheidsrechter
 	,md.[OverigeOfficialCode]				AS DivOfficialOverigeCode
 	,md.[OverigeOfficial]					AS DivOfficialOverige
+	,m.[ClubCode]							AS ClubCode
   FROM [his].[matches] m
   LEFT JOIN [his].[matchdetails] md ON CAST(md.InternCode AS bigint)=CAST(m.wedstrijdcode AS bigint)
   LEFT JOIN [his].[teams] tt ON tt.teamcode = m.thuisteamid AND (LEFT(tt.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tt.poulecode)
   LEFT JOIN [his].[teams] tu ON tu.teamcode = m.uitteamid   AND (LEFT(tu.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tu.poulecode)
-  WHERE tt.teamnaam IS NULL 
+  WHERE tt.teamnaam IS NULL
 	AND tu.teamnaam IS NULL
 GO

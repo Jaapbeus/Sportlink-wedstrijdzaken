@@ -36,6 +36,7 @@ public static class AdminThemeFunction
         var log = context.GetLogger("AdminThemeGet");
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
@@ -44,7 +45,9 @@ public static class AdminThemeFunction
             using var command = new SqlCommand(@"
                 SELECT [ThemeColorPrimary], [ThemeColorSecondary], [ThemeColorAccent],
                        [ThemeColorTextOnPrimary], [ThemeClubWebsiteUrl]
-                FROM [dbo].[AppSettings]", connection);
+                FROM [dbo].[AppSettings]
+                WHERE [ClubCode] = @ClubCode", connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             using var reader = await command.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
                 return new OkObjectResult(DefaultTheme());
@@ -73,6 +76,7 @@ public static class AdminThemeFunction
         var log = context.GetLogger("AdminThemePut");
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
+        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
         try
         {
             string body;
@@ -108,12 +112,14 @@ public static class AdminThemeFunction
                     [ThemeColorSecondary]      = @Secondary,
                     [ThemeColorAccent]         = @Accent,
                     [ThemeColorTextOnPrimary]  = @TextOnPrimary,
-                    [ThemeClubWebsiteUrl]      = @WebsiteUrl", connection);
+                    [ThemeClubWebsiteUrl]      = @WebsiteUrl
+                WHERE [ClubCode]              = @ClubCode", connection);
             command.Parameters.AddWithValue("@Primary",        dto.Primary       ?? "#1b6ec2");
             command.Parameters.AddWithValue("@Secondary",      dto.Secondary     ?? "#6c757d");
             command.Parameters.AddWithValue("@Accent",         dto.Accent        ?? "#0071c1");
             command.Parameters.AddWithValue("@TextOnPrimary",  dto.TextOnPrimary ?? "#ffffff");
             command.Parameters.AddWithValue("@WebsiteUrl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
+            command.Parameters.AddWithValue("@ClubCode",       clubCode);
             await command.ExecuteNonQueryAsync();
 
             log.LogInformation("Club-thema bijgewerkt");

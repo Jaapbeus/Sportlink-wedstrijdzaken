@@ -20,5 +20,6 @@ CREATE TABLE [his].[teams](
 	[more] [nvarchar](200) NULL,
 	[mta_inserted] [datetime] NULL,
 	[mta_modified] [datetime] NULL,
-	[mta_deleted] [datetime] NULL
+	[mta_deleted] [datetime] NULL,
+	[ClubCode] [nvarchar](20) NULL
 )

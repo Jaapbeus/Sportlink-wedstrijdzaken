@@ -37,6 +37,13 @@ main {
         text-overflow: ellipsis;
     }
 
+.club-selector {
+    min-width: 130px;
+    max-width: 200px;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+}
+
 @media (max-width: 640.98px) {
     .top-row {
         justify-content: space-between;

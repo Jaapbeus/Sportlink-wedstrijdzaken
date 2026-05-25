@@ -553,6 +553,55 @@ END
 GO
 
 -- ============================================================
+-- #324: AllStars FC — multi-club infrastructure
+-- ============================================================
+-- ClubCode kolom in his.* tabellen (idempotent)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('his.teams') AND name = 'ClubCode')
+    ALTER TABLE [his].[teams] ADD [ClubCode] NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('his.matches') AND name = 'ClubCode')
+    ALTER TABLE [his].[matches] ADD [ClubCode] NVARCHAR(20) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('his.matchdetails') AND name = 'ClubCode')
+    ALTER TABLE [his].[matchdetails] ADD [ClubCode] NVARCHAR(20) NULL;
+GO
+
+-- SyncEnabled kolom in dbo.AppSettings
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SyncEnabled')
+    ALTER TABLE [dbo].[AppSettings] ADD [SyncEnabled] BIT NOT NULL DEFAULT 1;
+GO
+
+-- UNIQUE constraint op ClubCode in dbo.AppSettings (slechts één rij per club)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'UQ_AppSettings_ClubCode')
+    ALTER TABLE [dbo].[AppSettings] ADD CONSTRAINT [UQ_AppSettings_ClubCode] UNIQUE ([ClubCode]);
+GO
+
+-- ClubCode kolom in dbo.AppSettings (indien ontbreekt — pre-multi-club installaties)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ClubCode')
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL DEFAULT 'CLUB';
+END
+GO
+
+-- Bestaande his.* rijen koppelen aan de primaire club (eenmalig)
+UPDATE [his].[teams]    SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1) WHERE [ClubCode] IS NULL;
+UPDATE [his].[matches]  SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1) WHERE [ClubCode] IS NULL;
+UPDATE [his].[matchdetails] SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1) WHERE [ClubCode] IS NULL;
+GO
+
+-- AllStars FC demo-club seed (idempotent)
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS')
+BEGIN
+    INSERT INTO [dbo].[AppSettings]
+        ([ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId], [SeasonStartMonth],
+         [FetchSchedule], [SyncEnabled])
+    VALUES
+        ('AllStars FC', 'ALLSTARS', 'https://data.sportlink.com', 'ALLSTARS_NO_SYNC', 8,
+         '0 0 4 * * *', 0);
+END
+GO
+
+-- ============================================================
 -- #325: Club-thema — ThemeColor* kolommen in dbo.AppSettings
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorPrimary')

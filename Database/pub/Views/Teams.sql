@@ -15,4 +15,5 @@ SELECT [bk_teams]			AS [TeamBk]
       ,[poulecode]			AS [PouleCode]
       ,[spelsoort]			AS [SpelSoort]
       ,[speeldag]			AS [Speeldag]
+      ,[ClubCode]			AS [ClubCode]
   FROM [his].[teams];

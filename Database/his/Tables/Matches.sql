@@ -52,5 +52,6 @@ CREATE TABLE [his].[matches](
     -- Metadata
     [mta_inserted]              DATETIME        NULL,
     [mta_modified]              DATETIME        NULL,
-    [mta_deleted]               DATETIME        NULL
+    [mta_deleted]               DATETIME        NULL,
+    [ClubCode]                  NVARCHAR(20)    NULL
 )

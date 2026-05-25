@@ -55,15 +55,21 @@ if (builder.HostEnvironment.IsProduction())
 
     builder.Services.AddScoped<AdminApiClient>(sp =>
     {
-        var handler = sp.GetRequiredService<AuthorizationMessageHandler>()
+        var authHandler = sp.GetRequiredService<AuthorizationMessageHandler>()
             .ConfigureHandler(
                 authorizedUrls: [capturedFunctionBaseUrl],
                 scopes: [capturedScope]);
         // DelegatingHandler vereist een InnerHandler (de transport-laag).
         // Zonder dit gooit HttpClient 'net_http_handler_not_assigned'.
         // In Blazor WASM mapt HttpClientHandler op BrowserHttpHandler (browser fetch API).
-        handler.InnerHandler = new HttpClientHandler();
-        var http = new HttpClient(handler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
+        authHandler.InnerHandler = new HttpClientHandler();
+
+        // ClubCodeHeaderHandler injecteert X-Club-Code op elk request (chain boven authHandler).
+        var clubHandler = new ClubCodeHeaderHandler(sp.GetRequiredService<ClubSelectorService>())
+        {
+            InnerHandler = authHandler
+        };
+        var http = new HttpClient(clubHandler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
         return new AdminApiClient(http);
     });
 }
@@ -74,9 +80,18 @@ else
     builder.Services.AddScoped<AuthenticationStateProvider, AlwaysAuthenticatedStateProvider>();
     builder.Services.AddScoped<IAuthService, LocalAuthService>();
     builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(functionBaseUrl) });
-    builder.Services.AddScoped<AdminApiClient>();
+    builder.Services.AddScoped<AdminApiClient>(sp =>
+    {
+        var clubHandler = new ClubCodeHeaderHandler(sp.GetRequiredService<ClubSelectorService>())
+        {
+            InnerHandler = new HttpClientHandler()
+        };
+        var http = new HttpClient(clubHandler) { BaseAddress = new Uri(functionBaseUrl) };
+        return new AdminApiClient(http);
+    });
 }
 
+builder.Services.AddScoped<ClubSelectorService>();
 builder.Services.AddScoped<ThemeService>();
 
 await builder.Build().RunAsync();
