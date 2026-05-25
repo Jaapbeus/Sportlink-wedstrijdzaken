@@ -316,13 +316,24 @@ Write-Step "7 — Originele repo bijwerken vanuit de gecleande mirror"
 
 Push-Location $RepoPath
 try {
-    # Haal alle herschreven refs op vanuit de mirror
+    # Detach HEAD zodat git checked-out branches mag overschrijven via fetch
+    $currentBranch = git branch --show-current
+    git checkout --detach HEAD | Out-Null
+
     git fetch $mirrorDir --force 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Fetch vanuit mirror mislukt — script gestopt."
+        if ($currentBranch) { git checkout $currentBranch | Out-Null }
         exit 1
     }
-    Write-Ok "Herschreven commits opgehaald in lokale repo"
+
+    # Zet HEAD terug op de originele branch
+    if ($currentBranch) {
+        git checkout $currentBranch | Out-Null
+        Write-Ok "Herschreven commits opgehaald; terug op branch '$currentBranch'"
+    } else {
+        Write-Ok "Herschreven commits opgehaald in lokale repo"
+    }
 } finally {
     Pop-Location
 }

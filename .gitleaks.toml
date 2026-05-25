@@ -108,8 +108,4 @@ paths = [
   '''local\.settings\.template\.json''',
 ]
 # Commit-SHA allowlist — leegmaken na git-history-rewrite (SHAs veranderen bij filter-repo).
-commits = [
-  # ead9d0cc — initial Clean-GitHistory.ps1 had lowercase 'clubcode' placeholders.
-  # Fixed in e3adf22 (uppercase CLUB). SHA hier zodat gitleaks de introducing commit overslaat.
-  "ead9d0cc3b3a21212feb5d301f0a8cdf18d8a75a",
-]
+commits = []
