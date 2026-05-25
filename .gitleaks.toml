@@ -99,6 +99,11 @@ regexes = [
   '''\[beheerder\]''',
   # infrastructure/ sjabloonwaarden met <> placeholders zijn geen echte resourcenamen
   '''<clubcode>''',
+  # 'clubcode' als letterlijke tekst is een placeholder-woord, geen echte clubnaam
+  # (bijv. "[func-clubcode-sportlink]" in script-prompts vóór de uppercase-fix)
+  '''func-clubcode-sportlink''',
+  '''swa-clubcode-sportlink''',
+  '''ai-clubcode-sportlink''',
 ]
 paths = [
   '''\.git/''',
