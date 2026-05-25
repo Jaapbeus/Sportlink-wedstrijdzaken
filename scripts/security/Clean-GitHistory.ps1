@@ -134,7 +134,7 @@ function Prompt-Value ([string]$label, [string]$placeholder, [string]$envVar = '
 
 # Haal waarden op — ofwel uit omgevingsvariabelen, ofwel interactief
 $vals = [ordered]@{
-    FunctionAppNaam    = Prompt-Value "Azure Function App naam"     "[func-clubcode-sportlink]"  "CLEANUP_FUNC_APP"
+    FunctionAppNaam    = Prompt-Value "Azure Function App naam"     "[func-CLUB-sportlink]"  "CLEANUP_FUNC_APP"
     SwaSubdomein       = Prompt-Value "SWA uniek subdomain (het deel vóór .N.azurestaticapps.net)" "[swa-unique-id]" "CLEANUP_SWA_SUB"
     SwaFullUrl         = Prompt-Value "Volledige SWA-URL (inclusief .azurestaticapps.net)" "[swa-url].azurestaticapps.net" "CLEANUP_SWA_URL"
     TenantId           = Prompt-Value "Azure Tenant GUID (8-4-4-4-12 formaat)"  "[TENANT_ID]"   "CLEANUP_TENANT_ID"
@@ -143,8 +143,8 @@ $vals = [ordered]@{
     StorageAccount     = Prompt-Value "Azure Storage Account naam"    "[storage-account]"        "CLEANUP_STORAGE"
     ClubDomein         = Prompt-Value "Club-domein (bijv. mijnclub.nl)"  "[club-domein]"         "CLEANUP_CLUB_DOMAIN"
     BeheerderLogin     = Prompt-Value "Beheerder-loginname"           "[beheerder]"              "CLEANUP_BEHEERDER"
-    SwaName            = Prompt-Value "Azure SWA resource naam (swa-...-sportlink formaat)" "[swa-clubcode-sportlink]" "CLEANUP_SWA_NAME"
-    AppInsights        = Prompt-Value "Application Insights naam"     "[ai-clubcode-sportlink]"  "CLEANUP_AI_NAME"
+    SwaName            = Prompt-Value "Azure SWA resource naam (swa-XXX-sportlink formaat)" "[swa-CLUB-sportlink]" "CLEANUP_SWA_NAME"
+    AppInsights        = Prompt-Value "Application Insights naam"     "[ai-CLUB-sportlink]"  "CLEANUP_AI_NAME"
 }
 
 # Filter lege waarden eruit
