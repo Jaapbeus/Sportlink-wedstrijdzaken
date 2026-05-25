@@ -81,7 +81,7 @@ public static class EmailTestFunction
 
             BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
             var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, fakeEmail, log);
-            var (voorbeeldOnderwerp, voorbeeldBody) = BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail);
+            var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail, log);
 
             return new OkObjectResult(new
             {

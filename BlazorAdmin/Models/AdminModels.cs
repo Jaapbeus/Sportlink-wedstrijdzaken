@@ -148,6 +148,8 @@ public class TeambegeleidingItem
 {
     public string Naam { get; set; } = "";
     public string Teamrol { get; set; } = "";
+    public string? Emailadres { get; set; }
+    public string? Telefoonnummer { get; set; }
 }
 
 public class DoorsturenRequest

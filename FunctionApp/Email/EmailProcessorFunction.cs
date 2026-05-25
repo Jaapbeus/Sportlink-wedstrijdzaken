@@ -227,8 +227,8 @@ public class EmailProcessorFunction
         await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
-        var (onderwerp, antwoordBody) = BerichtPipeline.BouwTemplateAntwoord(
-            classificatie, plannerResponseJson, email);
+        var (onderwerp, antwoordBody) = await BerichtPipeline.BouwTemplateAntwoord(
+            classificatie, plannerResponseJson, email, log);
 
         var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
         var ontvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)

@@ -67,7 +67,13 @@ else
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Team</label>
-                    <input class="form-control" @bind="editing.TeamNaam" />
+                    <select class="form-select" @bind="editing.TeamNaam">
+                        <option value="">— Kies een team —</option>
+                        @foreach (var t in teams)
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Dag</label>
@@ -122,33 +128,28 @@ else
                 <th>Regeltype</th>
                 <th>Waarde</th>
                 <th>Opmerking</th>
-                <th>Actief</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var r in teamRegels)
+            @foreach (var r in ActieveTeamRegels)
             {
-                <tr class="@(!r.Actief ? "text-muted" : "")">
+                <tr>
                     <td>@r.TeamNaam</td>
                     <td>@RegelTypeNederlands(r.RegelType)</td>
                     <td>@RegelWaarde(r)</td>
                     <td>@r.Opmerking</td>
-                    <td>@(r.Actief ? "ja" : "nee")</td>
                     <td>
                         <button class="btn btn-sm btn-primary" @onclick="() => EditRegel(r)">Bewerken</button>
-                        @if (r.Actief)
-                        {
-                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteRegelAsync(r.Id)">
-                                Verwijderen
-                            </button>
-                        }
+                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteRegelAsync(r.Id)">
+                            Verwijderen
+                        </button>
                     </td>
                 </tr>
             }
-            @if (teamRegels.Count == 0)
+            @if (ActieveTeamRegels.Count == 0)
             {
-                <tr><td colspan="6" class="text-muted">Geen teamregels gevonden.</td></tr>
+                <tr><td colspan="5" class="text-muted">Geen teamregels gevonden.</td></tr>
             }
         </tbody>
     </table>
@@ -161,7 +162,13 @@ else
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Team</label>
-                    <input class="form-control" @bind="editingRegel.TeamNaam" placeholder="bijv. VRC 1" />
+                    <select class="form-select" @bind="editingRegel.TeamNaam">
+                        <option value="">— Kies een team —</option>
+                        @foreach (var t in teams)
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
                 </div>
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Regeltype</label>
@@ -229,6 +236,7 @@ else
 @code {
     private List<VoorkeurTijdDto> items = new();
     private List<TeamRegelDto> teamRegels = new();
+    private List<string> teams = new();
     private VoorkeurTijdDto? editing;
     private TeamRegelDto? editingRegel;
     private bool isNew;
@@ -243,11 +251,16 @@ else
             ? items
             : items.Where(i => i.TeamNaam.Contains(filterTeam, StringComparison.OrdinalIgnoreCase)).ToList();
 
+    // #288: alleen actieve teamregels tonen in de tabel
+    private List<TeamRegelDto> ActieveTeamRegels => teamRegels.Where(r => r.Actief).ToList();
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         loading = true;
+        var teamsResult = await Api.GetTeamsAsync();
+        teams = teamsResult.Success ? teamsResult.Data ?? new() : new();
         var r = await Api.GetVoorkeurTijdenAsync();
         items = r.Success ? r.Data ?? new() : new();
         var regelsResult = await Api.GetTeamRegelsAsync();

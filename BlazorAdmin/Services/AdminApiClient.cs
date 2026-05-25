@@ -46,6 +46,11 @@ public class AdminApiClient
     public async Task<ApiResult<object>> ResetTemplateAsync(string key)
         => await PostAsync<object>($"api/beheer/templates/{Uri.EscapeDataString(key)}/reset", new { });
 
+    // ── Teams ──
+
+    public async Task<ApiResult<List<string>>> GetTeamsAsync()
+        => await GetAsync<List<string>>("api/beheer/teams");
+
     // ── Voorkeurstijden ──
 
     public async Task<ApiResult<List<VoorkeurTijdDto>>> GetVoorkeurTijdenAsync(string? team = null)

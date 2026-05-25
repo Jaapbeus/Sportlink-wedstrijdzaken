@@ -17,6 +17,19 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **E-mailtemplates koppeling aan pipeline (#287):** `BouwTemplateAntwoord` raadpleegt nu de database vóór elke hardcoded fallback via `EmailTemplateService.GetTemplateAsync`. Als een beheerder een template heeft aangemaakt voor `beschikbaarheid_check`, `herplan_verzoek`, `bevestiging`, `team_contact_opvragen` of `buiten_scope`, wordt die DB-versie gebruikt in plaats van de hardcoded standaard. Dropdown in de Admin GUI uitgebreid met alle actieve template-keys, ingedeeld per categorie.
+
+### Fixed
+
+- **Kalender weekstart op maandag (#300):** `<html lang="en">` was de oorzaak van zondag-als-eerste-dag in alle datumkiezers en kalenders. Gewijzigd naar `lang="nl"` + `CultureInfo("nl-NL")` in `Program.cs`.
+- **Planner: no-op suggesties onderdrukt (#301):** De planner toonde verplaatsingen die de eindtijd niet verbeterden (bijv. MO15-2 eerder naar veld 5 terwijl de dag toch eindigt op 20:20 door een andere wedstrijd). Na het genereren van suggesties wordt nu de gesimuleerde nieuwe eindtijd vergeleken met de huidige; zijn er geen verbeterd → "de huidige planning is al optimaal".
+- **Teambegeleiding: e-mail en telefoon zichtbaar op kaartje (#299):** Beheerders zien nu het e-mailadres en telefoonnummer van elke begeleider op de `/teambegeleiding`-pagina. Klikbare `mailto:` en `tel:`-links. Onder de kaartjes staat een kopieerknop voor de Outlook-ontvangersregel (`"Naam" <email>; ...`).
+- **Voorkeurstijden: team-dropdown (#289):** De vrije tekstinvoer voor het teamveld in het voorkeur- en teamregelformulier is vervangen door een dropdown gevuld vanuit `GET /api/beheer/teams` (`his.teams`). Voorkomt typfouten en inconsistenties.
+- **Voorkeurstijden: inactieve teamregels verborgen (#288):** Inactieve teamregels worden niet meer getoond in de lijst — alleen actieve regels zijn zichtbaar en bewerkbaar.
+- **Instellingen: SQL-instructies verwijderd (#285):** De rode "Wijzigen via SQL: UPDATE ..." helpteksten onder ClubNaam en ClubCode zijn verwijderd en vervangen door "Contacteer de systeembeheerder om deze waarde te wijzigen."
+
 ---
 
 ## [2.3.0] — 2026-05-24

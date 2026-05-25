@@ -1,14 +1,14 @@
 @page "/teambegeleiding"
 @inject AdminApiClient Api
+@inject IJSRuntime JS
 @using BlazorAdmin.Models
 
 <PageTitle>Teambegeleiding — Admin</PageTitle>
 
 <h1>Teambegeleiding</h1>
 <p class="text-muted">
-    Selecteer een team om de begeleiding op te zoeken. U kunt een vraag doorsturen —
-    de begeleider neemt rechtstreeks contact met u op.
-    <strong>Contactgegevens worden niet gedeeld conform AVG.</strong>
+    Selecteer een team om de begeleiding op te zoeken. U kunt ook een vraag doorsturen —
+    de begeleider antwoordt rechtstreeks op uw e-mailadres.
 </p>
 
 @if (_loadingTeams)
@@ -42,19 +42,46 @@ else
 else if (_selectedTeam != null && _begeleiders.Count > 0)
 {
     <h3>Begeleiding van @_selectedTeam</h3>
-    <div class="row g-3 mb-4">
+    <div class="row g-3 mb-3">
         @foreach (var b in _begeleiders)
         {
             <div class="col-md-3">
                 <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">@b.Naam</h5>
-                        <span class="badge bg-secondary">@b.Teamrol</span>
+                        <span class="badge bg-secondary mb-2">@b.Teamrol</span>
+                        @if (!string.IsNullOrWhiteSpace(b.Emailadres))
+                        {
+                            <div class="small mt-1">
+                                <a href="mailto:@b.Emailadres">@b.Emailadres</a>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(b.Telefoonnummer))
+                        {
+                            <div class="small mt-1 text-muted">
+                                <a href="tel:@b.Telefoonnummer">@b.Telefoonnummer</a>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
         }
     </div>
+
+    @* Outlook-kopieerregel (#299) *@
+    @if (!string.IsNullOrEmpty(OutlookRegel))
+    {
+        <div class="mb-4">
+            <label class="form-label text-muted small">Kopieer naar Outlook (Aan-veld)</label>
+            <div class="input-group">
+                <input class="form-control form-control-sm font-monospace" value="@OutlookRegel" readonly />
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => KopieerNaarKlembordAsync(OutlookRegel)"
+                        title="Kopieer naar klembord">
+                    @(_gekopieerd ? "✓ Gekopieerd" : "Kopieer")
+                </button>
+            </div>
+        </div>
+    }
 
     @if (!_vraagFormulierZichtbaar)
     {
@@ -67,7 +94,6 @@ else if (_selectedTeam != null && _begeleiders.Count > 0)
             <div class="card-body">
                 <p class="text-muted small">
                     Uw vraag wordt doorgestuurd naar de begeleiding. De begeleider antwoordt rechtstreeks op uw e-mailadres.
-                    Hun e-mailadres wordt niet gedeeld.
                 </p>
                 <div class="mb-3">
                     <label class="form-label">Onderwerp</label>
@@ -113,6 +139,11 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     private bool _doorsturenBezig;
     private string? _doorsturenError;
     private string? _doorsturenSuccess;
+    private bool _gekopieerd;
+
+    private string OutlookRegel => string.Join("; ", _begeleiders
+        .Where(b => !string.IsNullOrWhiteSpace(b.Emailadres))
+        .Select(b => $"\"{b.Naam}\" <{b.Emailadres}>"));
 
     protected override async Task OnInitializedAsync()
     {
@@ -131,6 +162,7 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
         _vraagFormulierZichtbaar = false;
         _doorsturenSuccess = null;
         _doorsturenError = null;
+        _gekopieerd = false;
 
         if (string.IsNullOrEmpty(_selectedTeam)) return;
 
@@ -139,6 +171,16 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
         if (result.Success)
             _begeleiders = result.Data ?? new();
         _loadingBegeleiders = false;
+    }
+
+    private async Task KopieerNaarKlembordAsync(string tekst)
+    {
+        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", tekst);
+        _gekopieerd = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _gekopieerd = false;
+        StateHasChanged();
     }
 
     private void ToonVraagFormulier()
@@ -173,9 +215,7 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
 
         if (result.Success)
         {
-            _doorsturenSuccess = $"Uw vraag over de begeleiding van {_selectedTeam} is doorgestuurd. " +
-                                  "De begeleider neemt rechtstreeks contact met u op. " +
-                                  "Contactgegevens worden niet gedeeld conform AVG.";
+            _doorsturenSuccess = $"Uw vraag over de begeleiding van {_selectedTeam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op.";
             _vraagFormulierZichtbaar = false;
         }
         else
