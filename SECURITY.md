@@ -12,12 +12,66 @@ Heb je een beveiligingsprobleem gevonden? Maak geen publiek GitHub Issue aan, ma
 
 ---
 
-## Kernregel: bij twijfel gaat er niets naar git
+## Kernregel: bij twijfel gaat er niets naar git — én niet naar GitHub
 
 **Een gefaalde of onduidelijke security check betekent: STOP.**  
-Geen commit, geen push, geen merge — totdat de oorzaak volledig is onderzocht en opgelost.
+Geen commit, geen push, geen merge, geen issue aanmaken — totdat de oorzaak volledig is onderzocht en opgelost.
 
 Dit is geen aanbeveling. Dit is een harde eis zonder uitzonderingen.
+
+---
+
+## GitHub issues, PR's en comments: even publiek als de code
+
+> **Kritieke regel — meerdere keren geschonden (issues #209, #237, #312 e.a.).**
+
+Een publieke repository maakt **alles** permanent zichtbaar: code, bestanden, issues, issue-comments, PR-titels, PR-bodies, review-comments. Git-history en GitHub-caches zijn niet zomaar te wissen. Externe crawlers (Google, archive.org, security.txt-scanners) indexeren publieke repo's binnen minuten.
+
+### Absoluut verboden in issues, PR's, en comments
+
+| Type | Vervang door |
+|---|---|
+| Azure resource naam (Function App, SWA, Storage, App Insights) | `func-[clubcode]-sportlink`, `swa-[clubcode]-sportlink`, etc. |
+| Azure SWA-URL (uniek subdomain van azurestaticapps.net) | `[swa-url].azurestaticapps.net` |
+| Azure Tenant ID (GUID van de Entra ID tenant) | `[TENANT_ID]` |
+| Azure Client ID (GUID van de App Registration) | `[CLIENT_ID]` |
+| SQL server- of databasenaam | `[sql-servernaam]`, `[database-naam]` |
+| Club-domein of e-maildomein | `[club-domein]` |
+| Clubnaam of clubcode in technische context | `[clubcode]` |
+| E-mailadres van een lid of medewerker | `gebruiker@[club-domein]` |
+| Abonnement-ID of resource-group naam | `[resource-group]` |
+| Beheerders-loginname | `[beheerder]` |
+
+> **Nooit echte waarden als "voorbeeld" gebruiken** — ook niet om aan te tonen wat fout is. Gebruik
+> abstracte beschrijvingen (`een GUID van 8-4-4-4-12 tekens`) in plaats van de echte waarde.
+
+### Hoe een security bevinding rapporteren
+
+Beschrijf het **type** probleem en het **bestand + regelnummer** — nooit de echte waarde:
+
+```
+FOUT (lekt resource naam, ook als 'voorbeeld'):
+  "parameter functionAppName heeft default 'func-[clubnaam]-sportlink'"
+
+GOED (beschrijft het probleem zonder enige waarde):
+  "infrastructure/main.bicep regel 24: parameter functionAppName heeft een hardcoded
+  clubnaam als default-waarde. Dit schendt het multi-club principe."
+```
+
+### Controleplicht vóór elk gh-commando dat naar GitHub schrijft
+
+Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
+
+```
+□ Bevat de tekst een echte resource naam? → vervang door [clubcode] placeholder
+□ Bevat de tekst een URL met club-specifieke subdomeinen? → vervang
+□ Bevat de tekst een UUID/GUID die een Azure-resource identificeert? → vervang
+□ Bevat de tekst een e-mailadres van een lid of medewerker? → vervang
+□ Bevat de tekst een database- of servernaam? → vervang
+□ Alle checks groen? → pas dan publiceren
+```
+
+**Eén twijfel = niet publiceren. Gebruik placeholders en sla de echte waarde op in memory (nooit publiek).**
 
 ---
 
