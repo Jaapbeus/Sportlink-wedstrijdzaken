@@ -42,7 +42,8 @@ public static class AdminSettingsFunction
         "HerplanDeadlineDagen", "BufferMinuten",
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
-        "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude"
+        "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
+        "UseRealtimeApi"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -78,7 +79,8 @@ public static class AdminSettingsFunction
                     [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
                     [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                     [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
-                    [AccommodatieLatitude], [AccommodatieLongitude]
+                    [AccommodatieLatitude], [AccommodatieLongitude],
+                    ISNULL([UseRealtimeApi], 1) AS [UseRealtimeApi]
                 FROM [dbo].[AppSettings]", connection);
 
             using var reader = await command.ExecuteReaderAsync();

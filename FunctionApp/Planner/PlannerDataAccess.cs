@@ -189,6 +189,100 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
+        // Lookup: VeldNaam (trimmed, 6 chars) → VeldNummer. Gebruikt door SportlinkApiClient.
+        public static async Task<Dictionary<string, int>> GetVeldenLookupAsync()
+        {
+            var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(
+                "SELECT [VeldNaam], [VeldNummer] FROM [dbo].[Velden] WHERE [Actief] = 1", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result[reader.GetString(0).TrimEnd()] = reader.GetInt32(1);
+            return result;
+        }
+
+        // Lookup: Leeftijd → Speeltijd. Gebruikt door SportlinkApiClient.
+        public static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync()
+        {
+            var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(
+                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden]", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result[reader.GetString(0)] = new Speeltijd
+                {
+                    Leeftijd       = reader.GetString(0),
+                    Veldafmeting   = reader.GetDecimal(1),
+                    WedstrijdTotaal = reader.GetInt32(2)
+                };
+            return result;
+        }
+
+        // Lookup: teamnaam → Speeltijden-sleutel (bijv. "JO13", "MO15", "G", "VR").
+        // Gebruikt door SportlinkApiClient om /programma-records te mappen zonder SQL view.
+        public static async Task<Dictionary<string, string>> GetTeamLeeftijdLookupAsync(string clubCode)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT [teamnaam],
+                       REPLACE(REPLACE(REPLACE([leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                FROM [his].[teams]
+                WHERE [leeftijdscategorie] IS NOT NULL AND [leeftijdscategorie] <> ''", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var naam = reader.GetString(0);
+                var key  = reader.GetString(1);
+                result[naam] = key;
+            }
+            return result;
+        }
+
+        // Alleen planner-ingeplande wedstrijden (zonder his.matches). Gebruikt door SportlinkApiClient
+        // om te combineren met real-time API-data.
+        public static async Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(DateOnly date)
+        {
+            var results = new List<BestaandeWedstrijd>();
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT gw.[Datum], gw.[AanvangsTijd], gw.[EindTijd],
+                       gw.[VeldNummer], gw.[VeldDeelGebruik], gw.[LeeftijdsCategorie],
+                       gw.[TeamNaam],
+                       COALESCE(gw.[TeamNaam], '') + ' - ' + COALESCE(gw.[Tegenstander], '') AS Wedstrijd,
+                       v.[VeldNaam], 'Planner' AS Bron
+                FROM [planner].[GeplandeWedstrijden] gw
+                LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
+                WHERE gw.[Datum] = @date
+                  AND gw.[Status] <> 'Geannuleerd'
+                  AND gw.[IsVervallen] = 0", conn);
+            cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results.Add(new BestaandeWedstrijd
+                {
+                    Datum             = DateOnly.FromDateTime(reader.GetDateTime(0)),
+                    AanvangsTijd      = TimeOnly.FromTimeSpan(reader.GetTimeSpan(1)),
+                    EindTijd          = TimeOnly.FromDateTime(reader.GetDateTime(2)),
+                    VeldNummer        = reader.GetInt32(3),
+                    VeldDeelGebruik   = reader.GetDecimal(4),
+                    LeeftijdsCategorie = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    TeamNaam          = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    Wedstrijd         = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    VeldSubpositie    = null,
+                    Bron              = "Planner"
+                });
+            }
+            return results;
+        }
+
         public static async Task<List<TeamRegel>> GetTeamRulesAsync(string teamNaam)
         {
             var results = new List<TeamRegel>();

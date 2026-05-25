@@ -104,8 +104,8 @@ namespace SportlinkFunction.Planner
                 return response;
             }
 
-            // Stap 4: Alle huidige veldbezettingen laden
-            var occupations = await PlannerDataAccess.GetFieldOccupationsAsync(date);
+            // Stap 4: Alle huidige veldbezettingen laden (real-time API of DB als fallback)
+            var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
             var velden = await PlannerDataAccess.GetVeldenAsync();
 
             // Stap 5: Teamspecifieke regels laden
@@ -687,7 +687,7 @@ namespace SportlinkFunction.Planner
                         field.BeschikbaarTot = sunset.Value;
                 }
 
-                var occupations = await PlannerDataAccess.GetFieldOccupationsAsync(date);
+                var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
 
                 foreach (var field in availableFields)
                 {
@@ -749,8 +749,8 @@ namespace SportlinkFunction.Planner
                 return response;
             }
 
-            // Data laden
-            var occupations = await PlannerDataAccess.GetFieldOccupationsAsync(date);
+            // Data laden (real-time API of DB als fallback)
+            var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
             var velden = await PlannerDataAccess.GetVeldenAsync();
             var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
 
@@ -1321,8 +1321,8 @@ namespace SportlinkFunction.Planner
             var matchVeld = velden.FirstOrDefault(v => match.VeldNaam != null && match.VeldNaam.StartsWith(v.VeldNaam));
             int matchVeldNummer = matchVeld?.VeldNummer ?? 0;
 
-            var occupations = await PlannerDataAccess.GetFieldOccupationsExcludingMatchAsync(
-                date, match.Wedstrijd, matchStart, matchVeldNummer);
+            var occupations = await SportlinkApiClient.GetFieldOccupationsExcludingMatchWithApiAsync(
+                date, match.Wedstrijd, matchStart, matchVeldNummer, log);
 
             // Step 5: Load team rules (empty for reschedule — we don't know the requesting team's rules)
             var teamRules = new List<TeamRegel>();
