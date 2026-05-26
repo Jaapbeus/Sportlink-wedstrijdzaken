@@ -17,6 +17,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [2.4.1] — 2026-05-26
+
 ### Fixed
 - Migratie 002 (AllStars FC seed) werkt nu correct: kolomnamen in `avg.Teambegeleiding` gecorrigeerd en VeldNummer-reeks aangepast naar 101-103 om PK-conflict met de primaire club te vermijden.
 - Club-selector in de topbalk selecteert nu automatisch de juiste primaire club (op basis van `SyncEnabled=1`) in plaats van altijd de eerste club in de lijst. Brede selector, het "Club:"-voorvoegsel is verwijderd.
