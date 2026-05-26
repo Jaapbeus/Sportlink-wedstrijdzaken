@@ -147,27 +147,35 @@ if ($branch -eq 'main' -or [string]::IsNullOrEmpty($branch)) {
 
 ### Stap 2 — Verificatielus (herhaal tot exit 0, max 3 iteraties)
 
+> **KRITIEKE REGEL — Blazor fingerprint-veiligheid:**
+> Roep **NOOIT** `dotnet build BlazorAdmin` aan terwijl de Blazor dev server al draait of ná het starten.
+> BlazorAdmin genereert content-hash fingerprints per compilatie. Twee compilatiepassen = twee sets fingerprints
+> = 404 op framework-JS = "An unhandled error has occurred. Reload" in de browser.
+> Stap `b` is uitsluitend voor build-fout-detectie; de services worden daarna gestopt + gecleand + herstart.
+
 ```
 ITERATIE:
   a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
      → fouten? Fix, ga terug naar a.
 
-  b. dotnet build BlazorAdmin/BlazorAdmin.csproj  (als Blazor bestaat)
+  b. dotnet build BlazorAdmin/BlazorAdmin.csproj  (build-fout-detectie — NIET terwijl server draait)
      → fouten? Fix, ga terug naar a.
 
   c. .\scripts\dev\Test-App.ps1 -Fix
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
-  d. Start services via Start-Debug.ps1 (aanbevolen — regelt hot reload automatisch):
+  d. Stop services + clean BlazorAdmin + herstart:
+       Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+       Start-Sleep -Seconds 2
+       dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null   # verwijdert stale fingerprints
        .\scripts\dev\Start-Debug.ps1
-       Start-Sleep -Seconds 15
+       Start-Sleep -Seconds 20
 
        # Hot reload gedrag (vastgelegd in Start-Debug.ps1):
        # - BlazorAdmin :5242 → HOT RELOAD via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
        #   worden automatisch doorgevoerd; browser ververst zonder herstart.
        # - FunctionApp :7094 → GEEN hot reload. Azure Functions isolated worker ondersteunt
        #   dit niet. Na elke C#-wijziging in FunctionApp: services stoppen en herstart uitvoeren.
-       #   Zie: scripts/dev/Start-Debug.ps1 (commentaarblok bovenaan voor details)
 
        # Alternatief (handmatig, als Start-Debug.ps1 niet beschikbaar):
        # 1. Azurite
@@ -184,27 +192,46 @@ ITERATIE:
        if (Test-Path "BlazorAdmin/BlazorAdmin.csproj") {
            Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
        }
-       Start-Sleep -Seconds 15
+       Start-Sleep -Seconds 20
 
-  e. Controleer FunctionApp health:
-       Invoke-RestMethod http://localhost:7094/api/health
+  e. Controleer FunctionApp health + versienummer:
+       $health = Invoke-RestMethod http://localhost:7094/api/health
+       Write-Host "Versie: $($health.version)"
        → niet 200? Fix, kill services, ga terug naar a.
 
-  f. .\scripts\dev\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
+  f. Blazor fingerprint consistency check (VERPLICHT — detecteert root cause van "An unhandled error"):
+       # .NET 10 Blazor WASM: importmap key is './_framework/dotnet.js' (niet 'dotnet')
+       $html = (Invoke-WebRequest "http://localhost:5242/" -UseBasicParsing -ErrorAction SilentlyContinue).Content
+       $importmapMatch = [regex]::Match($html, '<script type="importmap"[^>]*>(.*?)</script>',
+           [System.Text.RegularExpressions.RegexOptions]::Singleline)
+       if ($importmapMatch.Success) {
+           $dotnetEntry = ($importmapMatch.Groups[1].Value | ConvertFrom-Json).imports."./_framework/dotnet.js" -replace '^\.\/', ''
+           $check = Invoke-WebRequest "http://localhost:5242/$dotnetEntry" -UseBasicParsing -ErrorAction SilentlyContinue
+           if ($check.StatusCode -ne 200) {
+               Write-Host "FINGERPRINT MISMATCH: $dotnetEntry → $($check.StatusCode)" -ForegroundColor Red
+           }
+       }
+       → mismatch of importmap leeg? Stop services → dotnet clean BlazorAdmin → terug naar d.
+
+  g. .\scripts\dev\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
      → exit 1? Fix, kill services, ga terug naar a.
 
-  g. Controleer Blazor-pagina's:
-       Invoke-WebRequest http://localhost:5242/ -UseBasicParsing
-       Invoke-WebRequest http://localhost:5242/instellingen -UseBasicParsing
-       (herhaal voor elke gewijzigde route)
-       → fout of HTML bevat "An unhandled error"? Fix, kill services, ga terug naar a.
+  h. Browser render check — VERPLICHT (HTTP 200 ≠ Blazor rendert):
+     In Blazor WASM retourneert elke route dezelfde index.html (HTTP 200). Client-side rendering
+     kan alsnog crashen. Instrueer de gebruiker of verifieer handmatig:
+       Open http://localhost:5242 → Ctrl+Shift+F5 (hard refresh)
+       Minimale verificatie:
+         - Geen "An unhandled error has occurred" banner onderaan de pagina
+         - Versienummer zichtbaar in de header (bijv. v2.5.0)
+         - http://localhost:5242/instellingen laadt zonder foutmelding
+     → fout? F12 → Console → foutmelding rapporteren
 
-  h. Kill services:
+  i. Kill services:
        Stop-Process -Name "func" -ErrorAction SilentlyContinue
        Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
        Stop-Process -Name "node" -ErrorAction SilentlyContinue  # SWA CLI
 
-GESLAAGD als: alle stappen exit 0 of 2xx, geen foutindicatoren
+GESLAAGD als: alle stappen exit 0 of 2xx, fingerprint consistent ✅, browser toont geen foutbanner
 ```
 
 **SWA emulator (optioneel — voor auth-flow testen):**
@@ -590,12 +617,26 @@ Versienummering volgt `MAJOR.MINOR.PATCH`:
 
 ### Conventional Commits → versie-bump
 
-Commit-type bepaalt de minimum versie-bump:
-- `feat:` → MINOR bump
-- `fix:` → PATCH bump
-- `security:` → PATCH bump
-- `BREAKING CHANGE:` in commit-body → MAJOR bump
-- `chore:`, `docs:`, `refactor:` → geen versie-bump (tenzij er ook een `fix:`/`feat:` bij zit)
+Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
+
+| Commit-type | Versie-impact | Voorbeeld |
+|---|---|---|
+| `feat:` | MINOR bump — Patch en Revision resetten naar 0 | `2.5.0.3 → 2.6.0.0` |
+| `fix:` of `security:` | PATCH bump — Revision reset naar 0 | `2.5.0.3 → 2.5.1.0` |
+| `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.5.x.x → 3.0.0.0` |
+| Kleine fix, CSS, UX, chore **met zichtbaar effect** | REVISION bump | `2.5.0.0 → 2.5.0.1` |
+| Puur intern (refactor zonder effect, docs, CLAUDE.md) | Geen bump | — |
+
+> **Reden voor Revision:** de beheerder ziet het versienummer in de header. Na een deployment
+> kan de beheerder bevestigen dat de juiste versie actief is. Zonder Revision-bump is elke
+> kleine fix onzichtbaar in de UI.
+
+Zet alle drie velden synchroon in **beide** csproj's:
+```xml
+<Version>2.5.0.1</Version>
+<AssemblyVersion>2.5.0.1</AssemblyVersion>
+<FileVersion>2.5.0.1</FileVersion>
+```
 
 ### CHANGELOG.md bijhouden
 

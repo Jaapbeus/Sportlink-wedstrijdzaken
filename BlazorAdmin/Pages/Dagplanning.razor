@@ -2,6 +2,9 @@
 @inject AdminApiClient Api
 @inject IAuthService Auth
 @inject IJSRuntime JS
+@inject ClubSelectorService ClubSelector
+@using BlazorAdmin.Services
+@implements IDisposable
 
 <PageTitle>Dagplanning — Admin</PageTitle>
 
@@ -120,7 +123,18 @@
     protected override void OnInitialized()
     {
         _datumDt = VolgendZaterdag().ToDateTime(TimeOnly.MinValue);
+        ClubSelector.OnChange += OnClubChanged;
     }
+
+    private void OnClubChanged() => InvokeAsync(() =>
+    {
+        _resultaat = null;
+        _errorMessage = null;
+        _kopieerStatus = null;
+        StateHasChanged();
+    });
+
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
 
     private static DateOnly VolgendZaterdag()
     {

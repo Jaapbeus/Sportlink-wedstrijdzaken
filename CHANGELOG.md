@@ -9,19 +9,24 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 > zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 > **Conventie voor versies:**
-> - `MAJOR` (x.0.0) -- grote nieuwe laag of breaking change (bijv. Admin GUI, nieuwe auth-laag)
-> - `MINOR` (2.x.0) -- nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm, nieuwe instelling)
-> - `PATCH` (2.0.x) -- bugfix, beveiligingspatch, documentatie zonder gedragswijziging
+> - `MAJOR` (x.0.0.0) -- grote nieuwe laag of breaking change (bijv. Admin GUI, nieuwe auth-laag)
+> - `MINOR` (2.x.0.0) -- nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm, nieuwe instelling)
+> - `PATCH` (2.0.x.0) -- bugfix of beveiligingspatch
+> - `REVISION` (2.0.0.x) -- kleine fix, CSS/UX-verbetering of aanpassing met zichtbaar effect; elke commit die de beheerder merkt
 
 ---
 
 ## [Unreleased]
+
+## [2.5.0.1] — 2026-05-26
 
 ### Fixed
 - Multi-club data-isolatie volledig gerepareerd (#352): alle admin-schermen (Instellingen, Sync-status, Templates, Speeltijden, Voorkeurstijden, Veldenbeschikbaarheid, Email-log, Leermomenten, Uitgesloten-emails, Teambegeleiding) tonen nu uitsluitend data van de actief geselecteerde club. Voordien negeerden alle API-endpoints de `X-Club-Code`-header van de Blazor-frontend en laadden altijd de primaire/eerste club uit de startup-cache.
 - Club-switch in de topbalk staat nu gecentreerd in de navigatiebalk in plaats van rechtsuitgelijnd.
 - Instellingen-submenu in de navigatiebalk is nu zichtbaar (knop had Bootstrap `.btn-link`-kleur die onzichtbaar was op de donkere achtergrond).
 - Import-script teambegeleiding: `TRUNCATE TABLE` vervangen door `DELETE WHERE ClubCode = @cc` zodat data van andere clubs niet wordt gewist bij een import.
+- Navigatiemenu-iconen staan nu gelijk uitgelijnd met de menutekst (was licht omhoog verschoven door een verouderde CSS-regel voor het oude SVG-icon-systeem).
+- Dagplanning-pagina wordt nu automatisch leeggemaakt bij het wisselen van club in de topbalk, zodat er geen verwarring ontstaat met data van de vorige club.
 
 ---
 
