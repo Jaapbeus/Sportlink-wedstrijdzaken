@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Blazor WASM crashte direct na laden ("An unhandled error has occurred") wanneer de browser ingesteld is op de Nederlandse taal (`nl-NL`). Oorzaak: `BlazorWebAssemblyLoadAllGlobalizationData` stond niet ingeschakeld, waardoor Blazor geen cultuurwijziging kon verwerken. Alle gebruikers met een Nederlandse browser-instelling konden de app niet openen.
+
 ## [2.5.0.1] — 2026-05-26
 
 ### Fixed
