@@ -24,13 +24,14 @@ END
 GO
 
 -- ─── Velden ────────────────────────────────────────────────
+-- VeldNummer 101-103: vermijdt PK-conflict met primaire club (PK_Velden is op VeldNummer alleen)
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Velden] WHERE [ClubCode] = 'ALLSTARS')
 BEGIN
     INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief], [ClubCode])
     VALUES
-        (1, 'Kunstgras 1', 'kunstgras',   1, 1, 'ALLSTARS'),
-        (2, 'Kunstgras 2', 'kunstgras',   1, 1, 'ALLSTARS'),
-        (3, 'Gras',        'natuurgras',  0, 1, 'ALLSTARS');
+        (101, 'Kunstgras 1', 'kunstgras',   1, 1, 'ALLSTARS'),
+        (102, 'Kunstgras 2', 'kunstgras',   1, 1, 'ALLSTARS'),
+        (103, 'Gras',        'natuurgras',  0, 1, 'ALLSTARS');
 END
 GO
 
@@ -38,7 +39,7 @@ GO
 IF NOT EXISTS (SELECT 1 FROM [avg].[Teambegeleiding] WHERE [ClubCode] = 'ALLSTARS')
 BEGIN
     INSERT INTO [avg].[Teambegeleiding]
-        ([TeamNaam], [Naam], [EmailAdres], [Rol], [ClubCode])
+        ([Team], [Naam], [Emailadres], [Teamrol], [ClubCode])
     VALUES
         ('AllStars JO8 1',   'Frenkie',  'frenkie@allstars-fc.test',  'Trainer', 'ALLSTARS'),
         ('AllStars JO8 2',   'John',     'john@allstars-fc.test',     'Trainer', 'ALLSTARS'),
