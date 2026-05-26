@@ -1,5 +1,7 @@
 @inject IAuthService Auth
 @inject BlazorAdmin.Services.AdminApiClient Api
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -14,53 +16,67 @@
     <nav class="nav flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Dashboard
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="instellingen">
-                <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span> Instellingen
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="instellingen/thema">
-                <span class="bi bi-palette-fill-nav-menu" aria-hidden="true"></span> Thema
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="email-templates">
-                <span class="bi bi-envelope-fill-nav-menu" aria-hidden="true"></span> E-mailtemplates
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="voorkeurstijden">
-                <span class="bi bi-clock-fill-nav-menu" aria-hidden="true"></span> Voorkeurstijden
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="instellingen/speeltijden">
-                <span class="bi bi-stopwatch-fill-nav-menu" aria-hidden="true"></span> Speeltijden
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="teambegeleiding">
-                <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span> Teambegeleiding
+                <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i> Dashboard
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="dagplanning">
-                <span class="bi bi-calendar2-week-fill-nav-menu" aria-hidden="true"></span> Dagplanning
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="email-tester">
-                <span class="bi bi-bug-fill-nav-menu" aria-hidden="true"></span> Email-tester
+                <i class="bi bi-calendar-week me-1" aria-hidden="true"></i> Dagplanning
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="leermomenten">
-                <span class="bi bi-lightbulb-fill-nav-menu" aria-hidden="true"></span> Leermomenten
+                <i class="bi bi-lightbulb me-1" aria-hidden="true"></i> Leermomenten
             </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="email-tester">
+                <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> Email-tester
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="teambegeleiding">
+                <i class="bi bi-people me-1" aria-hidden="true"></i> Teambegeleiding
+            </NavLink>
+        </div>
+
+        @* Collapsible Instellingen submenu *@
+        <div class="nav-item px-3">
+            <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
+                    @onclick="ToggleInstellingen" @onclick:stopPropagation="true">
+                <span><i class="bi bi-gear me-1" aria-hidden="true"></i> Instellingen</span>
+                <i class="bi @(_instellingenOpen ? "bi-chevron-down" : "bi-chevron-right") ms-1 small" aria-hidden="true"></i>
+            </button>
+            @if (_instellingenOpen)
+            {
+                <div class="ps-2">
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="instellingen" Match="NavLinkMatch.All">
+                            <i class="bi bi-sliders me-1" aria-hidden="true"></i> Instellingen
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="instellingen/speeltijden">
+                            <i class="bi bi-clock me-1" aria-hidden="true"></i> Speeltijden
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="voorkeurstijden">
+                            <i class="bi bi-clock-history me-1" aria-hidden="true"></i> Voorkeurstijden
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="email-templates">
+                            <i class="bi bi-file-text me-1" aria-hidden="true"></i> E-mailtemplates
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="instellingen/thema">
+                            <i class="bi bi-palette me-1" aria-hidden="true"></i> Thema
+                        </NavLink>
+                    </div>
+                </div>
+            }
         </div>
 
         @if (Auth.IsAuthenticated)
@@ -75,18 +91,37 @@
 
 @code {
     private bool collapseNavMenu = true;
+    private bool _instellingenOpen;
     private string? _clubName;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
+    private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates"];
+
     protected override async Task OnInitializedAsync()
     {
+        _instellingenOpen = IsInstellingenRoute(Navigation.Uri);
+        Navigation.LocationChanged += OnLocationChanged;
+
         var result = await Api.GetSettingsAsync();
         if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
             _clubName = result.Data.ClubName;
     }
 
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (IsInstellingenRoute(e.Location))
+            _instellingenOpen = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static bool IsInstellingenRoute(string uri) =>
+        InstellingenRoutes.Any(r => uri.Contains(r, StringComparison.OrdinalIgnoreCase));
+
     private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+    private void ToggleInstellingen() => _instellingenOpen = !_instellingenOpen;
 
     private async Task LogoutAsync() => await Auth.LogoutAsync();
 }
