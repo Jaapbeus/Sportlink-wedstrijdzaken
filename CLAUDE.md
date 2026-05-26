@@ -89,6 +89,29 @@ Vóór elke `git push` naar main of elke productie-deployment:
 
 Meerdere Claude Code-sessies werken als onafhankelijke senior developers op hetzelfde project. **Dit is de eerste actie bij elke sessie, vóór elke code-wijziging of bestandsbewerking.** Claude lost dit volledig autonoom op — de gebruiker wordt hier nooit over bevraagd.
 
+### Branch-strategie: develop als integratiebranch
+
+Dit project heeft één online omgeving (productie = Azure). Om meerdere features/issues tegelijk lokaal te kunnen testen zonder productie te raken, werken we met een `develop`-integratiebranch:
+
+```
+main     ← productie (Azure deploy triggert bij elke push)
+  └── develop  ← integratiebranch (GEEN deploy, alleen lokaal testen)
+        ├── feature/#N-slug   ← per issue
+        └── feature/#M-slug   ← parallel issue
+```
+
+**Workflow:**
+- Feature branches worden aangemaakt **vanuit `develop`** (niet vanuit `main`)
+- PRs gaan naar **`develop`** — geen productie-impact
+- Meerdere features kunnen tegelijk worden gemerged naar `develop` en lokaal gecombineerd getest
+- Release naar productie = **één PR `develop` → `main`** → triggert Azure deploy
+- Urgente productiefix: **hotfix vanuit `main`**, direct PR naar `main`
+
+**Branch op branch:** branch B hangt af van branch A?
+1. Maak branch B vanuit branch A
+2. Merge A naar develop
+3. Rebase B op develop: `git rebase develop`
+
 ### Stap S0 — Branch valideren en zo nodig aanmaken (volledig autonoom)
 
 ```powershell
@@ -98,7 +121,7 @@ $safePrefix = 'feature/', 'hotfix/', 'chore/', 'docs/'
 # Al op een geïsoleerde branch? Meteen doorgaan.
 if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
 
-# Op 'main' of detached HEAD → autonoom branch aanmaken:
+# Op 'main', 'develop' of detached HEAD → autonoom branch aanmaken:
 #
 # 1. Bepaal issue-nummer (volgorde, zonder te vragen):
 #    a. Uit conversatiecontext ("werk aan #42", "issue #42", etc.)
@@ -106,21 +129,22 @@ if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
 #    c. Geen passend issue?  →  gh issue create --title "..." --body "..."
 #                                gebruik het nieuwe nummer
 #
-# 2. Bepaal branch-type (beide starten vanuit main):
+# 2. Bepaal branch-type:
 #    - Urgente productiefix (bug zichtbaar op live/main):
 #        git checkout -b hotfix/#<nr>-<slug> main
 #    - Alle andere gevallen (features, fixes, docs, chores):
-#        git checkout -b feature/#<nr>-<slug> main
+#        git checkout -b feature/#<nr>-<slug> develop
 ```
 
 **Overzicht branch-types:**
 
 | Type | Basis | PR naar | Wanneer |
 |---|---|---|---|
-| `feature/#<nr>-<slug>` | `main` | `main` | Nieuwe features, bugfixes, docs, chores |
-| `hotfix/#<nr>-<slug>` | `main` | `main` | Urgente bug zichtbaar op live |
+| `feature/#<nr>-<slug>` | `develop` | `develop` | Nieuwe features, bugfixes, docs, chores |
+| `develop` | `main` | `main` | Release naar productie (alle geteste features samen) |
+| `hotfix/#<nr>-<slug>` | `main` | `main` | Urgente bug zichtbaar op live/productie |
 
-**Nooit direct committen of pushen naar `main` — uitsluitend via PR.**
+**Nooit direct committen of pushen naar `main` of `develop` — uitsluitend via PR.**
 
 ---
 
@@ -135,9 +159,10 @@ gh issue view <nr>                                         # lees volledig + gel
 
 # Branch aanmaken alleen als Stap S0 dit nog niet deed:
 $branch = git branch --show-current
-if ($branch -eq 'main' -or [string]::IsNullOrEmpty($branch)) {
-    git checkout -b feature/#<nr>-<slug> main
+if ($branch -eq 'main' -or $branch -eq 'develop' -or [string]::IsNullOrEmpty($branch)) {
+    git checkout -b feature/#<nr>-<slug> develop   # ALTIJD vanuit develop, nooit vanuit main
 }
+# Urgente productiefix: git checkout -b hotfix/#<nr>-<slug> main
 # Zit je al op feature/#<nr>-... of hotfix/#<nr>-... → gewoon doorgaan
 ```
 
@@ -275,8 +300,14 @@ git add <specifieke bestanden>          # nooit git add -A of git add .
 git commit -m "feat(#<nr>): ..."
 git push -u origin <huidige-branch>
 
-# Alle branches gaan via PR naar main:
-gh pr create --base main --title "feat(#<nr>): ..." --body "..."
+# Feature branches gaan via PR naar develop (NIET naar main):
+gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
+
+# Hotfix branches gaan direct naar main:
+# gh pr create --base main --title "fix(#<nr>): ..." --body "..."
+
+# Release: develop → main (pas als alle features lokaal getest zijn):
+# gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
 
 ### Stap 4 — CI bewaken
@@ -385,14 +416,18 @@ Deze repository is publiek en bedoeld voor gebruik door meerdere voetbalverenigi
 ### Branch-strategie (open-source model)
 
 ```
-main  ←──── feature/#<nr>-<slug>   (via PR, squash of merge commit)
-  └──── hotfix/#<nr>-<slug>        (via PR, urgente productiefix)
+main     ←── develop              (via PR, release naar productie)
+  └──── hotfix/#<nr>-<slug>       (via PR, urgente productiefix)
+
+develop  ←── feature/#<nr>-<slug> (via PR, per issue)
 ```
 
-- **main** is altijd deploybaar — de live-branch voor alle clubs die deployen
-- **feature/** en **hotfix/** zijn tijdelijke werkbranches, altijd vanuit `main`
-- **Externe contributors** maken een fork → branch in hun fork → PR naar `main` van de upstream
-- **Claude Code** werkt altijd op een `feature/` of `hotfix/` branch, nooit direct op `main`
+- **main** is altijd deploybaar — de live-branch, elke push triggert Azure deploy
+- **develop** is de integratiebranch — geen deploy, voor lokaal combineren en testen van features
+- **feature/** branches starten vanuit `develop`, PR terug naar `develop`
+- **hotfix/** branches starten vanuit `main`, PR direct naar `main` (noodfix productie)
+- **Externe contributors** maken een fork → branch in hun fork → PR naar `develop` van de upstream
+- **Claude Code** werkt altijd op een `feature/` of `hotfix/` branch, nooit direct op `main` of `develop`
 
 ### Omgevingen per club
 
