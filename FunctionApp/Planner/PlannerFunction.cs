@@ -173,9 +173,10 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' is verplicht." });
 
-                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}", request.Datum, request.Doel);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}, club={Club}", request.Datum, request.Doel, clubCode);
 
-                var response = await PlannerService.OptimaliseerAsync(request, log);
+                var response = await PlannerService.OptimaliseerAsync(request, log, clubCode);
 
                 var format = req.Query.ContainsKey("format") ? req.Query["format"].ToString() : "";
 
@@ -192,10 +193,14 @@ namespace SportlinkFunction.Planner
 
                 if (format == "email")
                 {
+                    var parsedDate = DateOnly.Parse(request.Datum);
                     var browserUrl = $"{req.Scheme}://{req.Host}/api/planner/optimaliseer?format=html";
+                    var emailOccupations = string.Equals(clubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase)
+                        ? await PlannerDataAccess.GetAllstarsOccupationsAsync(parsedDate)
+                        : await SportlinkApiClient.GetFieldOccupationsWithApiAsync(parsedDate, log);
                     var emailHtml = PlannerHtmlGenerator.GenereerEmailHtml(
-                        DateOnly.Parse(request.Datum),
-                        await SportlinkApiClient.GetFieldOccupationsWithApiAsync(DateOnly.Parse(request.Datum), log),
+                        parsedDate,
+                        emailOccupations,
                         response.Suggesties,
                         await PlannerDataAccess.GetVeldenAsync(),
                         request.Doel ?? "veld5-ontlasten",

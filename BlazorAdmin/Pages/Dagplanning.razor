@@ -21,7 +21,7 @@
                 <label class="form-label">Optimalisatiedoel</label>
                 <select class="form-select" @bind="_doel">
                     <option value="">(geen voorkeur)</option>
-                    <option value="veld5-ontlasten">Veld 5 ontlasten</option>
+                    <option value="veld5-ontlasten">Grasveld(en) ontlasten</option>
                     <option value="strakker-plannen">Strakker plannen</option>
                 </select>
             </div>
@@ -74,7 +74,7 @@
                 </div>
                 <div class="col-md-2 col-6 mb-2">
                     <div class="fs-5 fw-bold">@_resultaat.AantalVanVeld5Verplaatst</div>
-                    <small class="text-muted">Van veld 5 verplaatst</small>
+                    <small class="text-muted">Van grasveld verplaatst</small>
                 </div>
                 @if (_resultaat.CapaciteitOverzicht != null)
                 {

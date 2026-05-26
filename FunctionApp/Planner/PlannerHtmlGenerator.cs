@@ -41,7 +41,7 @@ namespace SportlinkFunction.Planner
         {
             var sb = new StringBuilder();
             var nl = new System.Globalization.CultureInfo("nl-NL");
-            var actieveVelden = velden.Where(v => v.VeldNummer <= 5).OrderBy(v => v.VeldNummer).ToList();
+            var actieveVelden = velden.OrderBy(v => v.VeldNummer).ToList();
 
             // Dedup wedstrijden
             var wedstrijden = alleWedstrijden
@@ -140,7 +140,9 @@ namespace SportlinkFunction.Planner
             // Samenvatting
             var plannerNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
                 ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
-            sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van veld 5 verplaatst: {suggesties.Count(s => s.HuidigVeldNummer == 5)} | Gegenereerd door {plannerNaam}</p>");
+            var grasveldNrsHtml = velden.Where(v => v.VeldType == "gras").Select(v => v.VeldNummer).ToHashSet();
+            int aantalVanGrasveld = suggesties.Count(s => grasveldNrsHtml.Count == 0 ? s.HuidigVeldNummer == 5 : grasveldNrsHtml.Contains(s.HuidigVeldNummer));
+            sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van grasveld verplaatst: {aantalVanGrasveld} | Gegenereerd door {plannerNaam}</p>");
 
             // JavaScript: klik-interactie
             sb.AppendLine("<script>");

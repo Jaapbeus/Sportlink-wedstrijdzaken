@@ -19,6 +19,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- Dagplanning in ALLSTARS-modus laadt nu fictieve testwedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'` in plaats van de Sportlink API — de planner-optimalisatie werkt volledig met testdata (#365)
+- Grasveld-logica in de planner is nu dynamisch op basis van `VeldType = 'gras'` in `dbo.Velden` — geen hardcoded verwijzing naar veldnummer 5 meer; werkt correct voor clubs met andere veldindelingen
+
+### Fixed
+- Clubnaam in de zijbalk wordt nu direct bijgewerkt na wisselen van club: "ALLSTARS (testmodus)" bij testmodus, clubnaam uit AppSettings bij terugkeren (#365)
+- Optimalisatiedoel "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten" en statistiek "Van veld 5 verplaatst" → "Van grasveld verplaatst" in dagplanning (#365)
+- Planner-suggesties tonen nu de juiste (dynamische) veldnaam en reden op basis van het werkelijke grasveld
+
+### Added (eerder in 2.7.0.0)
 - Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid met de volgende mogelijkheden:
   - Teams-dropdown toont uitsluitend teams gekoppeld aan ALLSTARS-teambegeleiding
   - Tegenstander-veld wordt automatisch gevuld met het suffix van het thuisteam (bijv. "FC Onbekend JO9-2")

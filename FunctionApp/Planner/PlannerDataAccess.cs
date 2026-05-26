@@ -693,6 +693,55 @@ namespace SportlinkFunction.Planner
             return null;
         }
 
+        // ALLSTARS-modus: veldbezetting uit his.matches WHERE ClubCode='ALLSTARS' (test data)
+        public static async Task<List<BestaandeWedstrijd>> GetAllstarsOccupationsAsync(DateOnly date)
+        {
+            var results = new List<BestaandeWedstrijd>();
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT
+                    CAST(m.[kaledatum] AS DATE)                                        AS Datum,
+                    CAST(m.[aanvangstijd] AS TIME)                                     AS AanvangsTijd,
+                    ISNULL(s.[WedstrijdTotaal], 90)                                    AS DuurMinuten,
+                    v.[VeldNummer],
+                    COALESCE(s.[Veldafmeting], 1.00)                                   AS VeldDeelGebruik,
+                    m.[teamnaam]                                                        AS TeamNaam,
+                    COALESCE(m.[thuisteam], '') + ' - ' + COALESCE(m.[uitteam], '')    AS Wedstrijd,
+                    m.[competitiesoort]                                                 AS LeeftijdsCategorie
+                FROM [his].[matches] m
+                LEFT JOIN [dbo].[Velden] v
+                    ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
+                LEFT JOIN [dbo].[Speeltijden] s
+                    ON s.[Leeftijd] = LEFT(m.[teamnaam], CHARINDEX('-', m.[teamnaam] + '-') - 1)
+                WHERE CAST(m.[kaledatum] AS DATE) = @date
+                  AND m.[ClubCode] = 'ALLSTARS'
+                  AND m.[aanvangstijd] IS NOT NULL
+                  AND v.[VeldNummer] IS NOT NULL
+            ", conn);
+            cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var aanvangsTijd = reader.GetTimeSpan(1);
+                var duur = reader.GetInt32(2);
+                results.Add(new BestaandeWedstrijd
+                {
+                    Datum             = DateOnly.FromDateTime(reader.GetDateTime(0)),
+                    AanvangsTijd      = TimeOnly.FromTimeSpan(aanvangsTijd),
+                    EindTijd          = TimeOnly.FromTimeSpan(aanvangsTijd).AddMinutes(duur),
+                    VeldNummer        = reader.GetInt32(3),
+                    VeldDeelGebruik   = reader.GetDecimal(4),
+                    TeamNaam          = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Wedstrijd         = reader.GetString(6),
+                    VeldSubpositie    = null,
+                    Bron              = "ALLSTARS"
+                });
+            }
+            return results;
+        }
+
         // ── Team-schedule (#70) ──
 
         public static async Task<bool> TeamExistsAsync(string team)
