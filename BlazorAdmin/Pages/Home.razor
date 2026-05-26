@@ -1,180 +1,74 @@
 @page "/"
-@inject AdminApiClient Api
-@inject ClubSelectorService ClubSelector
+@inject ThemeService ThemeService
 @using BlazorAdmin.Services
 @implements IDisposable
 
-<PageTitle>Dashboard — VRC Admin</PageTitle>
+<PageTitle>Dashboard — Sportlink Admin</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(ThemeService.LogoUrl))
+{
+    <div class="mb-4 text-center">
+        <img src="@ThemeService.LogoUrl" alt="Club logo" style="max-height:80px; max-width:240px; object-fit:contain;" />
+    </div>
+}
 
 <h1>Dashboard</h1>
+<p class="text-muted mb-4">Welkom in de beheeromgeving. Kies een functie om te beginnen.</p>
 
-<div class="row mt-4">
-    <div class="col-md-6">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title">Synchronisatie</h5>
-                @if (loading)
-                {
-                    <p class="text-muted">Laden...</p>
-                }
-                else if (status == null)
-                {
-                    <p class="text-danger">Kon synchronisatiestatus niet ophalen.</p>
-                }
-                else
-                {
-                    <p>
-                        <strong>Laatste sync:</strong>
-                        @(status.LastSyncTimestamp.HasValue
-                              ? status.LastSyncTimestamp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
-                              : "nog niet uitgevoerd")
-                    </p>
-                    <p>
-                        <strong>Synchronisatieschema:</strong> @CronNaarNederlands(status.FetchSchedule)
-                        <small class="text-muted ms-1">(<code>@status.FetchSchedule</code>)</small>
-                    </p>
-                    <p>
-                        <strong>Status:</strong>
-                        <span class="badge @(status.Status == "ok" ? "bg-success" : "bg-warning")">
-                            @status.Status
-                        </span>
-                    </p>
-                }
-
-                <button class="btn btn-primary" @onclick="TriggerSyncAsync" disabled="@(syncing)">
-                    @(syncing ? "Synchroniseren..." : "Nu synchroniseren")
-                </button>
-                @if (!string.IsNullOrEmpty(syncResult))
-                {
-                    <div class="alert alert-info mt-3">@syncResult</div>
-                }
+<div class="row g-3 mt-2">
+    <div class="col-sm-6 col-xl-3">
+        <a href="dagplanning" class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-0 dashboard-card">
+                <div class="card-body d-flex flex-column align-items-center text-center p-4">
+                    <i class="bi bi-calendar-week dashboard-card-icon mb-3" aria-hidden="true"></i>
+                    <h5 class="card-title mb-1">Dagplanning</h5>
+                    <p class="card-text text-muted small mb-0">Plan wedstrijden in en beheer de veldindeling voor een speeldag.</p>
+                </div>
             </div>
-        </div>
+        </a>
     </div>
-
-    <div class="col-md-6">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title">Email verwerking (laatste 24u)</h5>
-                @if (emailLog == null)
-                {
-                    <p class="text-muted">Laden...</p>
-                }
-                else
-                {
-                    <p><strong>Verwerkt:</strong> @verwerkt</p>
-                    <p><strong>Fouten:</strong> @fouten</p>
-                    <p><strong>Buiten scope:</strong> @buitenScope</p>
-                }
+    <div class="col-sm-6 col-xl-3">
+        <a href="leermomenten" class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-0 dashboard-card">
+                <div class="card-body d-flex flex-column align-items-center text-center p-4">
+                    <i class="bi bi-lightbulb dashboard-card-icon mb-3" aria-hidden="true"></i>
+                    <h5 class="card-title mb-1">Leermomenten</h5>
+                    <p class="card-text text-muted small mb-0">Valideer AI-classificatiecorrecties om het systeem te verbeteren.</p>
+                </div>
             </div>
-        </div>
+        </a>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <a href="email-tester" class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-0 dashboard-card">
+                <div class="card-body d-flex flex-column align-items-center text-center p-4">
+                    <i class="bi bi-envelope-check dashboard-card-icon mb-3" aria-hidden="true"></i>
+                    <h5 class="card-title mb-1">Email-tester</h5>
+                    <p class="card-text text-muted small mb-0">Test de e-mailverwerking en verstuur testberichten vanuit de beheeromgeving.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <a href="teambegeleiding" class="text-decoration-none">
+            <div class="card h-100 shadow-sm border-0 dashboard-card">
+                <div class="card-body d-flex flex-column align-items-center text-center p-4">
+                    <i class="bi bi-people dashboard-card-icon mb-3" aria-hidden="true"></i>
+                    <h5 class="card-title mb-1">Teambegeleiding</h5>
+                    <p class="card-text text-muted small mb-0">Bekijk en beheer de contactgegevens van teambegeleid&shy;ers.</p>
+                </div>
+            </div>
+        </a>
     </div>
 </div>
 
 @code {
-    private SyncStatusDto? status;
-    private EmailLogResponse? emailLog;
-    private bool loading = true;
-    private bool syncing;
-    private string? syncResult;
-    private int verwerkt, fouten, buitenScope;
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        ClubSelector.OnChange += OnClubChanged;
-        await LoadAsync();
+        ThemeService.OnThemeChanged += OnThemeChanged;
     }
 
-    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
-    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+    public void Dispose() => ThemeService.OnThemeChanged -= OnThemeChanged;
 
-    private async Task LoadAsync()
-    {
-        loading = true;
-        var statusResult = await Api.GetSyncStatusAsync();
-        if (statusResult.Success) status = statusResult.Data;
-
-        var vanaf = DateTime.Today.AddDays(-1);
-        var logResult = await Api.GetEmailLogAsync(vanaf: vanaf, limit: 200);
-        if (logResult.Success)
-        {
-            emailLog = logResult.Data;
-            if (emailLog?.Items != null)
-            {
-                verwerkt = emailLog.Items.Count(i => i.Status == "AntwoordVerstuurd");
-                fouten = emailLog.Items.Count(i => i.Status == "Fout");
-                buitenScope = emailLog.Items.Count(i => i.Status == "BuitenScope");
-            }
-        }
-        loading = false;
-    }
-
-    private async Task TriggerSyncAsync()
-    {
-        syncing = true;
-        syncResult = null;
-
-        var timestampVoor = status?.LastSyncTimestamp;
-
-        var r = await Api.TriggerSyncAsync();
-        if (!r.Success)
-        {
-            syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
-            syncing = false;
-            return;
-        }
-
-        // 202 Accepted: sync draait op achtergrond — poll tot LastSyncTimestamp wijzigt
-        syncResult = "Synchronisatie gestart, even geduld…";
-        StateHasChanged();
-
-        var deadline = DateTime.UtcNow.AddMinutes(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(5000);
-            var statusResult = await Api.GetSyncStatusAsync();
-            if (statusResult.Success && statusResult.Data?.LastSyncTimestamp != timestampVoor)
-            {
-                status = statusResult.Data;
-                syncResult = "Synchronisatie voltooid.";
-                syncing = false;
-                StateHasChanged();
-                return;
-            }
-        }
-
-        // Na 10 min nog geen wijziging — sync loopt waarschijnlijk nog door
-        syncResult = "Synchronisatie loopt op de achtergrond. Herlaad de pagina later voor de actuele status.";
-        syncing = false;
-        await LoadAsync();
-    }
-
-    // Azure Functions cron: {seconde} {minuut} {uur} {dag} {maand} {weekdag}
-    private static string CronNaarNederlands(string? cron)
-    {
-        if (string.IsNullOrWhiteSpace(cron)) return "Onbekend schema";
-        var p = cron.Trim().Split(' ');
-        if (p.Length != 6) return cron;
-
-        var (sec, min, hour, day, month, weekday) = (p[0], p[1], p[2], p[3], p[4], p[5]);
-
-        if (sec == "0" && day == "*" && month == "*" && weekday == "*")
-        {
-            if (int.TryParse(hour, out var h) && int.TryParse(min, out var m))
-                return m == 0 ? $"Elke dag om {h:D2}:00" : $"Elke dag om {h:D2}:{m:D2}";
-        }
-
-        if (sec == "0" && min == "0" && hour == "*" && day == "*" && month == "*" && weekday == "*")
-            return "Elk uur";
-
-        string[] dagNamen = { "", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag" };
-        if (sec == "0" && min == "0" && day == "*" && month == "*"
-            && int.TryParse(hour, out var h2) && int.TryParse(weekday, out var wd) && wd >= 0 && wd <= 7)
-        {
-            var dag = wd == 0 ? dagNamen[7] : wd < dagNamen.Length ? dagNamen[wd] : $"dag {wd}";
-            return $"Elke {dag} om {h2:D2}:00";
-        }
-
-        return cron;
-    }
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
 }

@@ -246,7 +246,7 @@ public class LeermomentenStatsDto
     public int Rejected { get; set; }
 }
 
-// Thema (#325)
+// Thema (#325, #339)
 public class ThemeDto
 {
     public string Primary       { get; set; } = "#1b6ec2";
@@ -254,11 +254,15 @@ public class ThemeDto
     public string Accent        { get; set; } = "#0071c1";
     public string TextOnPrimary { get; set; } = "#ffffff";
     public string? ClubWebsiteUrl { get; set; }
+    public string? FaviconUrl   { get; set; }
+    public string? LogoUrl      { get; set; }
 }
 
 public class ThemeExtractResultDto
 {
-    public List<string> Colors { get; set; } = new();
+    public List<string> Colors    { get; set; } = new();
+    public string?      FaviconUrl { get; set; }
+    public string?      LogoUrl    { get; set; }
 }
 
 // Multi-club (#324)

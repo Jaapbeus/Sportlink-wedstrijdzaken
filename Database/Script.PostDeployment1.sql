@@ -116,6 +116,25 @@ BEGIN
 END
 GO
 
+-- AppSettings: FaviconUrl en LogoUrl toevoegen voor club-thema (#339, idempotent)
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'FaviconUrl'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [FaviconUrl] NVARCHAR(2048) NULL
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'LogoUrl'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [LogoUrl] NVARCHAR(2048) NULL
+END
+GO
+
 -- AppSettings: email-integratie velden vullen
 IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
 BEGIN
