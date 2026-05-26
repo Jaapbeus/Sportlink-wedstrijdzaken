@@ -3,6 +3,8 @@
 @using BlazorAdmin.Services
 @inject AdminApiClient Api
 @inject ThemeService ThemeService
+@inject ClubSelectorService ClubSelector
+@implements IDisposable
 
 <PageTitle>Club-thema — Sportlink Admin</PageTitle>
 
@@ -172,6 +174,17 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        ClubSelector.OnChange += OnClubChanged;
+        await LoadAsync();
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
         var result = await Api.GetThemeAsync();
         if (result.Success && result.Data != null)
             _theme = result.Data;

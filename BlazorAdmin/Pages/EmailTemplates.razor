@@ -1,6 +1,9 @@
 @page "/email-templates"
 @inject AdminApiClient Api
 @inject IAuthService Auth
+@inject ClubSelectorService ClubSelector
+@using BlazorAdmin.Services
+@implements IDisposable
 
 <PageTitle>E-mailtemplates — VRC Admin</PageTitle>
 
@@ -153,6 +156,16 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        ClubSelector.OnChange += OnClubChanged;
+        await LoadAsync();
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    private async Task LoadAsync()
+    {
+        loading = true;
         await Task.WhenAll(LoadTemplatesAsync(), LoadVoetnootAsync());
         loading = false;
     }

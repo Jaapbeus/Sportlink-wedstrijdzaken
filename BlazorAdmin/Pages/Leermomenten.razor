@@ -1,5 +1,8 @@
 @page "/leermomenten"
 @inject AdminApiClient Api
+@inject ClubSelectorService ClubSelector
+@using BlazorAdmin.Services
+@implements IDisposable
 
 <PageTitle>Leermomenten — Admin</PageTitle>
 
@@ -143,7 +146,14 @@ else
     private string? _fout;
     private readonly HashSet<int> _actieBezigId = new();
 
-    protected override async Task OnInitializedAsync() => await LaadAsync("pending");
+    protected override async Task OnInitializedAsync()
+    {
+        ClubSelector.OnChange += OnClubChanged;
+        await LaadAsync("pending");
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LaadAsync(_filterStatus ?? "pending"); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
 
     private async Task LaadAsync(string status)
     {

@@ -30,7 +30,7 @@ public static class AdminClubsFunction
             await connection.OpenAsync();
 
             using var command = new SqlCommand(@"
-                SELECT [ClubCode], [ClubName]
+                SELECT [ClubCode], [ClubName], [SyncEnabled]
                 FROM [dbo].[AppSettings]
                 ORDER BY [SyncEnabled] DESC, [ClubName]",
                 connection);
@@ -42,7 +42,8 @@ public static class AdminClubsFunction
                 clubs.Add(new
                 {
                     clubCode = reader.GetString(0),
-                    clubName = reader.GetString(1)
+                    clubName = reader.GetString(1),
+                    syncEnabled = !reader.IsDBNull(2) && reader.GetBoolean(2)
                 });
             }
 

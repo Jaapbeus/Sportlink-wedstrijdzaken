@@ -1,7 +1,10 @@
 @page "/teambegeleiding"
 @inject AdminApiClient Api
 @inject IJSRuntime JS
+@inject ClubSelectorService ClubSelector
 @using BlazorAdmin.Models
+@using BlazorAdmin.Services
+@implements IDisposable
 
 <PageTitle>Teambegeleiding — Admin</PageTitle>
 
@@ -147,6 +150,19 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
 
     protected override async Task OnInitializedAsync()
     {
+        ClubSelector.OnChange += OnClubChanged;
+        await LoadAsync();
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    private async Task LoadAsync()
+    {
+        _loadingTeams = true;
+        _teamsError = null;
+        _selectedTeam = null;
+        _begeleiders.Clear();
         var result = await Api.GetTeambegeleidingTeamsAsync();
         if (result.Success)
             _teams = result.Data ?? new();
