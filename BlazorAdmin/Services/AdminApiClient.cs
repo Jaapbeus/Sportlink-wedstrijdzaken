@@ -146,6 +146,11 @@ public class AdminApiClient
     public async Task<ApiResult<object>> StuurTeambegeleidingBerichtAsync(DoorsturenRequest request)
         => await PostAsync<object>("api/beheer/teambegeleiding/doorsturen", request);
 
+    public async Task<ApiResult<TeambegeldingImportResultaat>> ImporteerTeambegeleidingAsync(
+        string csvContent, string? bestandsnaam)
+        => await PostAsync<TeambegeldingImportResultaat>("api/beheer/teambegeleiding/import",
+            new TeambegeldingImportRequest { CsvContent = csvContent, Bestandsnaam = bestandsnaam });
+
     // ── Speeltijden ──
 
     public async Task<ApiResult<List<SpeeltijdDto>>> GetSpeeltijdenAsync()

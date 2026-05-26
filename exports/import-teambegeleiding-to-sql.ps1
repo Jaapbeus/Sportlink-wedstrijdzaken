@@ -239,12 +239,13 @@ try {
     $stopwatch.Stop()
     $cmdLog             = $conn.CreateCommand()
     $cmdLog.CommandText = @"
-INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms)
-VALUES (@rijen, @csv, SYSTEM_USER, @duur)
+INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms, ClubCode)
+VALUES (@rijen, @csv, SYSTEM_USER, @duur, @club)
 "@
     $null = $cmdLog.Parameters.AddWithValue("@rijen", $table.Rows.Count)
     $null = $cmdLog.Parameters.AddWithValue("@csv",   $CsvPath)
     $null = $cmdLog.Parameters.AddWithValue("@duur",  [int]$stopwatch.ElapsedMilliseconds)
+    $null = $cmdLog.Parameters.AddWithValue("@club",  $ClubCode)
     $cmdLog.ExecuteNonQuery() | Out-Null
     Write-Host "  Importlog weggeschreven (avg.ImportLog)." -ForegroundColor Gray
 }

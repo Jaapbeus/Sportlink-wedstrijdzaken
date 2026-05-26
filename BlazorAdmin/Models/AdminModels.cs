@@ -145,6 +145,20 @@ public class TeamRegelDto
 
 // ── Teambegeleiding ──
 
+public class TeambegeldingImportRequest
+{
+    public string CsvContent { get; set; } = "";
+    public string? Bestandsnaam { get; set; }
+}
+
+public class TeambegeldingImportResultaat
+{
+    public int Rijen { get; set; }
+    public List<string> Herkend { get; set; } = [];
+    public List<string> Ontbreekt { get; set; } = [];
+    public List<string> Waarschuwingen { get; set; } = [];
+}
+
 public class TeambegeleidingItem
 {
     public string Naam { get; set; } = "";

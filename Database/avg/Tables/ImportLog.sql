@@ -5,5 +5,6 @@ CREATE TABLE [avg].[ImportLog] (
     [CsvBestand]       NVARCHAR (500) NULL,
     [ImporterendeDoor] NVARCHAR (200) NULL,
     [Duur_ms]          INT            NULL,
+    [ClubCode]         NVARCHAR (20)  NOT NULL CONSTRAINT [DF_avg_ImportLog_ClubCode] DEFAULT '',
     CONSTRAINT [PK_avg_ImportLog] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
