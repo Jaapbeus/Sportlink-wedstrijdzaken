@@ -17,6 +17,10 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+---
+
+## [2.5.0] — 2026-05-26
+
 ### Added
 - Navigatiemenu toont nu iconen (Bootstrap Icons) bij elk menu-item.
 - Navigatiemenu is geherstructureerd: Dagplanning, Leermomenten, Email-tester en Teambegeleiding staan bovenaan; Instellingen, Speeltijden, Voorkeurstijden, E-mailtemplates en Thema zijn samengebracht onder een inklapbaar 'Instellingen'-submenu dat automatisch openklapt zodra de beheerder een van die pagina's bezoekt.
