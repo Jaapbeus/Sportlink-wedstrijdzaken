@@ -140,7 +140,7 @@ WHEN MATCHED AND ('
 THEN
 UPDATE SET ';
     SET @SqlString  += @SqlStringTmp  + '
-    target.mta_modified = GETDATE()';
+    target.mta_modified = GETUTCDATE()';
     
     SET @SqlString  += '
 WHEN NOT MATCHED BY TARGET THEN ';
@@ -161,7 +161,7 @@ WHEN NOT MATCHED BY TARGET THEN ';
 INSERT 
     (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
 VALUES 
-    (CAST(' + @SourcePkColumns + ' AS NVARCHAR(255))' + @SqlStringValues + ', GETDATE(), GETDATE());';
+    (CAST(' + @SourcePkColumns + ' AS NVARCHAR(255))' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
     
     -- Execute the dynamic SQL
     EXEC sp_executesql @SqlString;

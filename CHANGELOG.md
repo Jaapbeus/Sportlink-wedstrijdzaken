@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Blazor WASM crashte bij nl-NL browser-locale ("An unhandled error has occurred") door ontbrekende globalization-data in invariant-mode (#359). Alle gebruikers met een Nederlandse browser konden de app niet openen.
+- Email-handtekening gebruikte hardcoded fallback "Coördinator thuiswedstrijden" als `coordinatorFunctie` niet geconfigureerd was (#356). Veld is nu optioneel — ontbrekende instelling geeft geen tekst, geen fout.
+
+### Security
+- Setup-scripts `fix-merge-procedure.sql` en `complete-database-setup.sql` gebruikten `GETDATE()` (lokale servertijd) in gegenereerde `sp_MergeStgToHis` voor `mta_modified`/`mta_inserted`. Vervangen door `GETUTCDATE()` (#355). Productie CI-pad was niet aangetast — alleen lokale developer-setup.
+
 ## [2.5.0.1] — 2026-05-26
 
 ### Fixed

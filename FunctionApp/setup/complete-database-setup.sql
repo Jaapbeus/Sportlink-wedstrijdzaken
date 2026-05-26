@@ -73,8 +73,8 @@ BEGIN
         [Id] INT IDENTITY(1,1) PRIMARY KEY,
         [sportlinkApiUrl] NVARCHAR(500) NOT NULL,
         [sportlinkClientId] NVARCHAR(500) NOT NULL,
-        [CreatedDate] DATETIME2 DEFAULT GETDATE(),
-        [ModifiedDate] DATETIME2 DEFAULT GETDATE()
+        [CreatedDate] DATETIME2 DEFAULT GETUTCDATE(),
+        [ModifiedDate] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT '  ✓ AppSettings table created';
 END
@@ -117,8 +117,8 @@ BEGIN
         [target_pk] NVARCHAR(255) NULL,
         [merge_type] NVARCHAR(10) DEFAULT 'IUD',
         [is_active] BIT DEFAULT 1,
-        [created_date] DATETIME2 DEFAULT GETDATE(),
-        [modified_date] DATETIME2 DEFAULT GETDATE()
+        [created_date] DATETIME2 DEFAULT GETUTCDATE(),
+        [modified_date] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT '  ✓ Table [mta].[source_target_mapping] created';
 END
@@ -328,7 +328,7 @@ WHEN MATCHED AND ('
 THEN
 UPDATE SET ' 
     SET @SqlString  += @SqlStringTmp  + '
-    target.mta_modified = GETDATE()'
+    target.mta_modified = GETUTCDATE()'
     SET @SqlString  += '
 WHEN NOT MATCHED BY TARGET THEN '
 
@@ -347,7 +347,7 @@ WHEN NOT MATCHED BY TARGET THEN '
 INSERT 
     (' + @TargetPk + @SqlStringTargets + ', mta_inserted,mta_modified)
 VALUES 
-    (CAST(' + @SourcePkColumns + ' AS NVARCHAR(255))' + @SqlStringValues + ', GETDATE(), GETDATE());';
+    (CAST(' + @SourcePkColumns + ' AS NVARCHAR(255))' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
     
     EXEC sp_sqlexec @SqlString ;
 END;

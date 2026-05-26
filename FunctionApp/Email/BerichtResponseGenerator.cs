@@ -638,12 +638,13 @@ public static class BerichtResponseGenerator
         var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
             ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
         var coordinatorNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
-        var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie") ?? "Coördinator thuiswedstrijden";
+        var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie");
 
         var handtekening = $"Met vriendelijke groet,\n\n{afzenderNaam}";
         if (!string.IsNullOrEmpty(coordinatorNaam))
             handtekening += $"\nGeautomatiseerd antwoord namens {coordinatorNaam}";
-        handtekening += $"\n{coordinatorFunctie}";
+        if (!string.IsNullOrEmpty(coordinatorFunctie))
+            handtekening += $"\n{coordinatorFunctie}";
 
         return handtekening;
     }

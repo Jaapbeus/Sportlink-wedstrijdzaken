@@ -5,9 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <Version>2.5.0.1</Version>
-    <AssemblyVersion>2.5.0.1</AssemblyVersion>
-    <FileVersion>2.5.0.1</FileVersion>
+    <Version>2.5.1.0</Version>
+    <AssemblyVersion>2.5.1.0</AssemblyVersion>
+    <FileVersion>2.5.1.0</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.
@@ -15,6 +15,8 @@
          Fix: schakel Blazor's pre-compression uit zodat alleen .wasm aanwezig is in de publish-
          output. SWA's eigen dynamische compressie zet vervolgens wél de juiste Content-Encoding. -->
     <CompressionEnabled>false</CompressionEnabled>
+    <!-- nl-NL browser-locale veroorzaakte Blazor WASM crash in invariant-globalization-modus (#359) -->
+    <BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>
   </PropertyGroup>
 
   <!-- .NET 10: Blazor-Environment HTTP header is vervangen door WasmApplicationEnvironmentName.
