@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.5.1.0] — 2026-05-26
+
 ### Fixed
 - Blazor WASM crashte bij nl-NL browser-locale ("An unhandled error has occurred") door ontbrekende globalization-data in invariant-mode (#359). Alle gebruikers met een Nederlandse browser konden de app niet openen.
 - Email-handtekening gebruikte hardcoded fallback "Coördinator thuiswedstrijden" als `coordinatorFunctie` niet geconfigureerd was (#356). Veld is nu optioneel — ontbrekende instelling geeft geen tekst, geen fout.
