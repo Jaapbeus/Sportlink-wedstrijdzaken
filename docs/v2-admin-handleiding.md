@@ -468,3 +468,60 @@ Bij een API-fout (time-out, netwerk, service onbeschikbaar) schakelt de planner 
 - Testomgeving zonder geldige Sportlink API-credentials
 - Lokale ontwikkelomgeving zonder internet
 - Problematische API-respons tijdelijk omzeilen tijdens een incident
+
+---
+
+## 13. Test data modus (ALLSTARS) — `/testdata/wedstrijden`
+
+De **Testmodus** maakt het mogelijk fictieve wedstrijden aan te maken die worden gebruikt voor lokale tests van de dagplanning en optimalisatie, zonder productiewedstrijden te raken.
+
+### Activeren
+
+Klik op **"Testmodus"** in de zijbalk (onderaan bij de ingelogde gebruiker). De knop activeert de ALLSTARS-modus:
+- Alle API-aanroepen sturen voortaan `X-Club-Code: ALLSTARS` mee
+- Het menu **"Test data"** verschijnt in de zijbalk
+- De actieve club-indicator in de topbalk toont "ALLSTARS"
+
+### Deactiveren
+
+Klik op **"Testmodus — verlaten"** (oranje knop) om terug te keren naar de normale clubmodus.
+
+### Test data → Wedstrijden
+
+De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fictieve wedstrijden:
+
+| Kolom | Beschrijving |
+|---|---|
+| Datum | Datum van de wedstrijd (↓ fill-down beschikbaar) |
+| Team (thuis) | Selecteer een echt clubteam uit de dropdown |
+| Tegenstander | Vrij tekstveld voor de naam van de tegenstander |
+| Starttijd | Aanvangstijd (↓ fill-down beschikbaar) |
+| Veld | Veldnaam selecteren uit de dropdown |
+| Soort | Competitie / Beker / Oefenwedstrijd / Vriendschappelijk |
+
+**Globale invoerbalk** (boven de tabel): Stel datum, soort, tegenstander en starttijd in vóór het toevoegen van rijen — deze waarden worden als default voor nieuwe rijen gebruikt.
+
+**Knoppen:**
+- **Alle teams** — voegt één rij per huidig clubteam toe en slaat alles op
+- **+ Lege rij** — voegt één lege rij toe
+- **↓** in een kolomkop — kopieert de eerste ingevulde waarde naar alle lege cellen in die kolom
+- **Verwijder alles** — verwijdert alle testdata-wedstrijden (`WHERE ClubCode='ALLSTARS'`)
+
+**Auto-save:** Elke celwijziging triggert direct een opslaan naar de database. Een ✅ of ⚠️ achter de rij geeft de opslagstatus aan.
+
+### Technische details
+
+- Alle testdata gebruikt `ClubCode = 'ALLSTARS'` — echte wedstrijden (`ClubCode = '<clubcode>'`) blijven onaangetast
+- `bk_matches` wordt synthetisch gegenereerd als `ALLSTARS-{guid}` (28 tekens)
+- Testdata staat in `his.matches` — hetzelfde schema als productiewedstrijden, klaar voor gebruik door de dagplanning
+- De ALLSTARS-modus is persistent in de browser (localStorage via `ClubSelectorService`) en wordt hersteld bij herstart van de browser
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden ophalen |
+| `GET /api/beheer/testdata/teams` | Echte clubteams ophalen voor dropdown |
+| `POST /api/beheer/testdata/wedstrijden` | Test-wedstrijd aanmaken of bijwerken (upsert) |
+| `DELETE /api/beheer/testdata/wedstrijden/{bk}` | Één test-wedstrijd verwijderen |
+| `DELETE /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden verwijderen |
