@@ -293,7 +293,7 @@ Velddefinities met type (kunstgras/natuurgras) en verlichting. Elke vereniging c
 |-------|-------------|
 | VeldNummer | Uniek nummer (PK) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
-| VeldType | `kunstgras` of `natuurgras` — bepaalt welke velden ontlast worden |
+| VeldType | `kunstgras` of `gras` — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
 | Actief | Of het veld in gebruik is |
 
