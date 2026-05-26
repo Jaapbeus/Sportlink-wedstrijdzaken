@@ -150,9 +150,16 @@
         ThemeService.OnThemeChanged += OnThemeChanged;
         ClubSelector.OnChange       += OnClubChanged;
 
-        var result = await Api.GetSettingsAsync();
-        if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
-            _clubName = result.Data.ClubName;
+        if (ClubSelector.SelectedClubCode == "ALLSTARS")
+        {
+            _clubName = "ALLSTARS (testmodus)";
+        }
+        else
+        {
+            var result = await Api.GetSettingsAsync();
+            if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
+                _clubName = result.Data.ClubName;
+        }
     }
 
     public void Dispose()

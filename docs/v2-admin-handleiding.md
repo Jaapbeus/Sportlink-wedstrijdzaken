@@ -45,7 +45,24 @@ In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelpe
 
 ---
 
-## 2. Way of working
+## 2. Testmodus — ALLSTARS fictieve wedstrijden
+
+De Admin GUI heeft een ingebouwde testmodus waarmee de dagplanning volledig op fictieve data kan worden getest, zonder de echte Sportlink-wedstrijden te beïnvloeden.
+
+**Activeren:** Klik op **Testmodus** onderaan de zijbalk (onder de gebruikersnaam).  
+**Verlaten:** Klik op **Testmodus — verlaten** (gele knop, verschijnt in de zijbalk).
+
+In testmodus:
+- Toont de zijbalk **"ALLSTARS (testmodus)"** als clubnaam
+- Laadt de dagplanning fictieve wedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'`
+- Is het submenu **Testdata → Wedstrijden** zichtbaar voor het invoeren van fictieve wedstrijden
+- Zijn synchronisatie en e-mailverwerking op de Instellingen-pagina verborgen (niet van toepassing)
+
+Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
+
+---
+
+## 3. Way of working
 
 ### Branches
 

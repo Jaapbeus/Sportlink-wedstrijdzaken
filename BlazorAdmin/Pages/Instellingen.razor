@@ -17,71 +17,82 @@
     }
 </div>
 
-@* ── Synchronisatie (verplaatst van Dashboard #344) ── *@
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="card-title">Synchronisatie</h5>
-                @if (_syncLoading)
-                {
-                    <p class="text-muted">Laden...</p>
-                }
-                else if (_status == null)
-                {
-                    <p class="text-danger">Kon synchronisatiestatus niet ophalen.</p>
-                }
-                else
-                {
-                    <p>
-                        <strong>Laatste sync:</strong>
-                        @(_status.LastSyncTimestamp.HasValue
-                              ? _status.LastSyncTimestamp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
-                              : "nog niet uitgevoerd")
-                    </p>
-                    <p>
-                        <strong>Schema:</strong> @CronNaarNederlands(_status.FetchSchedule)
-                        <small class="text-muted ms-1">(<code>@_status.FetchSchedule</code>)</small>
-                    </p>
-                    <p>
-                        <strong>Status:</strong>
-                        <span class="badge @(_status.Status == "ok" ? "bg-success" : "bg-warning")">
-                            @_status.Status
-                        </span>
-                    </p>
-                }
-                <button class="btn btn-primary btn-sm" @onclick="TriggerSyncAsync" disabled="@(_syncing)">
-                    @(_syncing ? "Synchroniseren..." : "Nu synchroniseren")
-                </button>
-                @if (!string.IsNullOrEmpty(_syncResult))
-                {
-                    <div class="alert alert-info mt-3">@_syncResult</div>
-                }
+@if (!_isTestmodus)
+{
+    @* ── Synchronisatie (verplaatst van Dashboard #344) ── *@
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Synchronisatie</h5>
+                    @if (_syncLoading)
+                    {
+                        <p class="text-muted">Laden...</p>
+                    }
+                    else if (_status == null)
+                    {
+                        <p class="text-danger">Kon synchronisatiestatus niet ophalen.</p>
+                    }
+                    else
+                    {
+                        <p>
+                            <strong>Laatste sync:</strong>
+                            @(_status.LastSyncTimestamp.HasValue
+                                  ? _status.LastSyncTimestamp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
+                                  : "nog niet uitgevoerd")
+                        </p>
+                        <p>
+                            <strong>Schema:</strong> @CronNaarNederlands(_status.FetchSchedule)
+                            <small class="text-muted ms-1">(<code>@_status.FetchSchedule</code>)</small>
+                        </p>
+                        <p>
+                            <strong>Status:</strong>
+                            <span class="badge @(_status.Status == "ok" ? "bg-success" : "bg-warning")">
+                                @_status.Status
+                            </span>
+                        </p>
+                    }
+                    <button class="btn btn-primary btn-sm" @onclick="TriggerSyncAsync" disabled="@(_syncing)">
+                        @(_syncing ? "Synchroniseren..." : "Nu synchroniseren")
+                    </button>
+                    @if (!string.IsNullOrEmpty(_syncResult))
+                    {
+                        <div class="alert alert-info mt-3">@_syncResult</div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Email verwerking (laatste 24u)</h5>
+                    @if (_emailLog == null && !_syncLoading)
+                    {
+                        <p class="text-muted">Niet beschikbaar.</p>
+                    }
+                    else if (_emailLog != null)
+                    {
+                        <p><strong>Verwerkt:</strong> @_emailVerwerkt</p>
+                        <p><strong>Fouten:</strong> @_emailFouten</p>
+                        <p><strong>Buiten scope:</strong> @_emailBuitenScope</p>
+                    }
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-body">
-                <h5 class="card-title">Email verwerking (laatste 24u)</h5>
-                @if (_emailLog == null && !_syncLoading)
-                {
-                    <p class="text-muted">Niet beschikbaar.</p>
-                }
-                else if (_emailLog != null)
-                {
-                    <p><strong>Verwerkt:</strong> @_emailVerwerkt</p>
-                    <p><strong>Fouten:</strong> @_emailFouten</p>
-                    <p><strong>Buiten scope:</strong> @_emailBuitenScope</p>
-                }
-            </div>
-        </div>
+
+    <hr class="mb-4" />
+}
+
+@if (_isTestmodus)
+{
+    <div class="alert alert-info">
+        <i class="bi bi-database-gear me-2"></i>
+        <strong>Testmodus actief</strong> — Instellingen, synchronisatie en e-mailverwerking zijn niet beschikbaar voor ALLSTARS testdata.
+        Gebruik de <strong>Testmodus — verlaten</strong>-knop in de zijbalk om terug te schakelen naar de normale clubweergave.
     </div>
-</div>
-
-<hr class="mb-4" />
-
-@if (settings == null && string.IsNullOrEmpty(errorMessage))
+}
+else if (settings == null && string.IsNullOrEmpty(errorMessage))
 {
     <p class="text-muted">Laden...</p>
 }
@@ -321,6 +332,8 @@ else
     private string? _syncResult;
     private int _emailVerwerkt, _emailFouten, _emailBuitenScope;
 
+    private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
+
     protected override async Task OnInitializedAsync()
     {
         ClubSelector.OnChange += OnClubChanged;
@@ -333,7 +346,16 @@ else
     private async Task LoadAsync()
     {
         errorMessage = null;
+        settings = null;
         _syncLoading = true;
+
+        if (_isTestmodus)
+        {
+            _status = null;
+            _emailLog = null;
+            _syncLoading = false;
+            return;
+        }
 
         var settingsTask = Api.GetSettingsAsync();
         var syncTask    = Api.GetSyncStatusAsync();

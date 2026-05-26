@@ -98,7 +98,7 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 | Categorie | Documenten |
 |---|---|
-| **Beheerders** | [Admin handleiding](docs/v2-admin-handleiding.md) · [Teambegeleiding export](docs/HANDLEIDING-TEAMBEGELEIDING-EXPORT.md) |
+| **Beheerders** | [Admin handleiding](docs/v2-admin-handleiding.md) · [Testmodus ALLSTARS](docs/TESTMODUS-ALLSTARS.md) · [Teambegeleiding export](docs/HANDLEIDING-TEAMBEGELEIDING-EXPORT.md) |
 | **Developers — opzet** | [Setup](docs/SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
 | **Developers — architectuur** | [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTURE-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
 | **Azure & auth** | [Azure Entra setup](docs/AZURE-ENTRA-SETUP.md) · [Versiebeheer](docs/VERSIONING.md) |
