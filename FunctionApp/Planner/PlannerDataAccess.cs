@@ -96,11 +96,12 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
-        public static async Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date)
+        public static async Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date, string? clubCode = null)
         {
             var results = new List<VeldBeschikbaarheidInfo>();
             // DayOfWeek: .NET Maandag=1 komt overeen met onze DB-conventie (1=Maandag...7=Zondag)
             int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
+            clubCode ??= SystemUtilities.AppSettings.GetPrimaryClubCode();
 
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
@@ -108,10 +109,11 @@ namespace SportlinkFunction.Planner
                 SELECT vb.[VeldNummer], vb.[BeschikbaarVanaf], vb.[BeschikbaarTot], vb.[GebruikZonsondergang]
                 FROM [dbo].[VeldBeschikbaarheid] vb
                 INNER JOIN [dbo].[Velden] v ON v.[VeldNummer] = vb.[VeldNummer]
-                WHERE v.[Actief] = 1 AND vb.[DagVanWeek] = @dag
+                WHERE v.[Actief] = 1 AND vb.[DagVanWeek] = @dag AND vb.[ClubCode] = @clubCode
                 ORDER BY vb.[VeldNummer]
             ", conn);
             cmd.Parameters.AddWithValue("@dag", dagVanWeek);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -127,13 +129,15 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
-        public static async Task<List<VeldInfo>> GetVeldenAsync()
+        public static async Task<List<VeldInfo>> GetVeldenAsync(string? clubCode = null)
         {
+            clubCode ??= SystemUtilities.AppSettings.GetPrimaryClubCode();
             var results = new List<VeldInfo>();
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(
-                "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 ORDER BY [VeldNummer]", conn);
+                "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 AND [ClubCode] = @clubCode ORDER BY [VeldNummer]", conn);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {

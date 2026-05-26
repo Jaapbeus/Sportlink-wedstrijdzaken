@@ -125,7 +125,7 @@ namespace SportlinkFunction.Planner
     public class OptimaliseerRequest
     {
         public string Datum { get; set; } = string.Empty;
-        public string? Doel { get; set; } // optioneel: veld5-ontlasten, strakker-plannen. Leeg = beide combineren
+        public string? Doel { get; set; } // optioneel: grasveld-ontlasten, strakker-plannen. Leeg = beide combineren
         public string? GewensteEindtijd { get; set; } // optioneel, standaard "16:15". Alles voor dit tijdstip = extra buffer
         public int? BufferMinuten { get; set; } // optioneel, standaard 15 min. Overschrijft de standaard buffer tussen wedstrijden
     }
@@ -136,7 +136,7 @@ namespace SportlinkFunction.Planner
         public string HuidigeEindtijd { get; set; } = string.Empty;
         public string? GeschatteNieuweEindtijd { get; set; }
         public int AantalVerplaatsingen { get; set; }
-        public int AantalVanVeld5Verplaatst { get; set; }
+        public int AantalVanGrasveldVerplaatst { get; set; }
         public List<OptimalisatieSuggestie> Suggesties { get; set; } = new();
         public string HtmlPlanner { get; set; } = string.Empty;
         public bool VoldoendeRuimte { get; set; }
@@ -149,7 +149,7 @@ namespace SportlinkFunction.Planner
         public int TotaalBeschikbareMinuten { get; set; }
         public int TotaalBezettMinuten { get; set; }
         public double BezettingsPercentage { get; set; }
-        public int AantalWedstrijdenOpVeld5 { get; set; }
+        public int AantalWedstrijdenOpGrasveld { get; set; }
         public int AantalLegeVelden { get; set; }
     }
 

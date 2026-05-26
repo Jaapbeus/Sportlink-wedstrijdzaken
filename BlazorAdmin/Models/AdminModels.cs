@@ -201,7 +201,7 @@ public class OptimaliseerResponseDto
     public string HuidigeEindtijd { get; set; } = "";
     public string? GeschatteNieuweEindtijd { get; set; }
     public int AantalVerplaatsingen { get; set; }
-    public int AantalVanVeld5Verplaatst { get; set; }
+    public int AantalVanGrasveldVerplaatst { get; set; }
     public List<OptimalisatieSuggestieDto> Suggesties { get; set; } = new();
     public string HtmlPlanner { get; set; } = "";
     public bool VoldoendeRuimte { get; set; }
@@ -226,7 +226,7 @@ public class VeldCapaciteitDto
     public int TotaalBeschikbareMinuten { get; set; }
     public int TotaalBezettMinuten { get; set; }
     public double BezettingsPercentage { get; set; }
-    public int AantalWedstrijdenOpVeld5 { get; set; }
+    public int AantalWedstrijdenOpGrasveld { get; set; }
     public int AantalLegeVelden { get; set; }
 }
 

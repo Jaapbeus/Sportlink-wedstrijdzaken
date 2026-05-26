@@ -173,9 +173,10 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' is verplicht." });
 
-                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}", request.Datum, request.Doel);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}, clubCode={ClubCode}", request.Datum, request.Doel, clubCode);
 
-                var response = await PlannerService.OptimaliseerAsync(request, log);
+                var response = await PlannerService.OptimaliseerAsync(request, clubCode, log);
 
                 var format = req.Query.ContainsKey("format") ? req.Query["format"].ToString() : "";
 
@@ -197,8 +198,8 @@ namespace SportlinkFunction.Planner
                         DateOnly.Parse(request.Datum),
                         await SportlinkApiClient.GetFieldOccupationsWithApiAsync(DateOnly.Parse(request.Datum), log),
                         response.Suggesties,
-                        await PlannerDataAccess.GetVeldenAsync(),
-                        request.Doel ?? "veld5-ontlasten",
+                        await PlannerDataAccess.GetVeldenAsync(clubCode),
+                        request.Doel ?? "grasveld-ontlasten",
                         browserUrl);
                     return new ContentResult { Content = emailHtml, ContentType = "text/html", StatusCode = 200 };
                 }

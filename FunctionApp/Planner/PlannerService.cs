@@ -256,8 +256,9 @@ namespace SportlinkFunction.Planner
         {
             var endTime = preferredTime.AddMinutes(duurMinuten);
 
-            // Elk veld proberen in voorkeursvolgorde (veld 1-4 voor veld 5)
-            foreach (var field in availableFields.OrderBy(f => f.VeldNummer == 5 ? 1 : 0))
+            // Kunstgrasvelden prefereren boven grasvelden (grasvelden laatste keuze)
+            var grasveldNummers = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            foreach (var field in availableFields.OrderBy(f => grasveldNummers.Contains(f.VeldNummer) ? 1 : 0))
             {
                 // Controleer binnen beschikbaarheidsvenster
                 if (preferredTime < field.BeschikbaarVanaf || endTime > field.BeschikbaarTot)
@@ -377,8 +378,9 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Sorteren: veld 1-4 prefereren boven veld 5
-            return candidates.OrderBy(c => c.VeldNummer == 5 ? 1 : 0)
+            // Sorteren: kunstgrasvelden prefereren boven grasvelden
+            var grasveldNummersSort = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            return candidates.OrderBy(c => grasveldNummersSort.Contains(c.VeldNummer) ? 1 : 0)
                              .ThenBy(c => c.AanvangsTijd.ToTimeSpan().TotalMinutes)
                              .ToList();
         }
@@ -625,7 +627,7 @@ namespace SportlinkFunction.Planner
             if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
             {
                 response.Waarschuwingen.Add(
-                    $"{date.ToString("dddd", NL)}: alleen veld 5 beschikbaar (veld 1-4 training).");
+                    $"{date.ToString("dddd", NL)}: doordeweeks — kunstgrasvelden mogelijk in gebruik voor training. Controleer veldbeschikbaarheid.");
             }
         }
 
@@ -738,7 +740,7 @@ namespace SportlinkFunction.Planner
         // ── Optimalisatie logica ──
 
         public static async Task<OptimaliseerResponse> OptimaliseerAsync(
-            OptimaliseerRequest request, ILogger log)
+            OptimaliseerRequest request, string? clubCode, ILogger log)
         {
             var nl = new System.Globalization.CultureInfo("nl-NL");
             var response = new OptimaliseerResponse { Datum = request.Datum };
@@ -751,8 +753,10 @@ namespace SportlinkFunction.Planner
 
             // Data laden (real-time API of DB als fallback)
             var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
-            var velden = await PlannerDataAccess.GetVeldenAsync();
-            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+            var velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
+            var grasveldNummers = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            var kunstgrasNummers = velden.Where(v => v.VeldType == "kunstgras").Select(v => v.VeldNummer).ToHashSet();
 
             // Dedup bezettingen
             var bezettingen = occupations
@@ -793,31 +797,30 @@ namespace SportlinkFunction.Planner
             int bufferMin = request.BufferMinuten ?? StandardBufferMinutes;
 
             // Capaciteitsberekening en optimalisatie-noodzaak analyse
-            var capaciteit = BerekenCapaciteit(bezettingen, availableFields);
+            var capaciteit = BerekenCapaciteit(bezettingen, availableFields, grasveldNummers);
             response.CapaciteitOverzicht = capaciteit;
 
             // Bepaal welke optimalisaties zinvol zijn voor deze specifieke dag en het opgegeven doel.
             //
-            // veld5-ontlasten: zinvol als veld 1-4 beschikbaar zijn (zaterdag) én er wedstrijden op
-            //   veld 5 staan. Op doordeweekse dagen zijn veld 1-4 in gebruik voor training en zijn er
-            //   geen alternatieve velden — veld 5 is dan per definitie de juiste plek.
+            // grasveld-ontlasten: zinvol als kunstgrasvelden beschikbaar zijn (zaterdag) én er wedstrijden op
+            //   grasveld staan. Op doordeweekse dagen zijn kunstgrasvelden mogelijk in gebruik voor training.
             //
             // strakker-plannen: zinvol als de gebruiker een gewenste eindtijd heeft opgegeven of
             //   het doel expliciet op 'strakker-plannen' gezet heeft. Zonder die grenswaarde weet
             //   de planner niet wat 'beter' is en genereert hij onnodig suggesties.
             var doel = (request.Doel ?? "").ToLowerInvariant().Trim();
-            bool alleenVeld5Beschikbaar = availableFields.Count > 0 && !availableFields.Any(f => f.VeldNummer <= 4);
+            bool alleenGrasveldBeschikbaar = availableFields.Count > 0 && !availableFields.Any(f => kunstgrasNummers.Contains(f.VeldNummer));
             bool gewensteEindtijdOpgegeven = !string.IsNullOrEmpty(request.GewensteEindtijd);
-            bool veld5OntlastenZinvol = !alleenVeld5Beschikbaar && capaciteit.AantalWedstrijdenOpVeld5 > 0;
+            bool grasveldOntlastenZinvol = !alleenGrasveldBeschikbaar && capaciteit.AantalWedstrijdenOpGrasveld > 0;
             bool strakkerPlannenZinvol = gewensteEindtijdOpgegeven || doel == "strakker-plannen";
 
-            // Check 1: laag bezettingspercentage én geen veld 5 gebruik (bestaande check)
-            if (capaciteit.AantalWedstrijdenOpVeld5 == 0 && capaciteit.BezettingsPercentage < MaxBezettingsPercentageVoorOverslaan)
+            // Check 1: laag bezettingspercentage én geen grasveld gebruik
+            if (capaciteit.AantalWedstrijdenOpGrasveld == 0 && capaciteit.BezettingsPercentage < MaxBezettingsPercentageVoorOverslaan)
             {
                 response.VoldoendeRuimte = true;
                 response.VoldoendeRuimteMelding =
                     $"Voldoende ruimte op {date.ToString("dddd d MMMM", nl)}: " +
-                    $"geen wedstrijden op veld 5, {capaciteit.BezettingsPercentage:F0}% bezet " +
+                    $"geen wedstrijden op grasveld, {capaciteit.BezettingsPercentage:F0}% bezet " +
                     $"({capaciteit.AantalLegeVelden} veld(en) ongebruikt). Geen optimalisatie nodig.";
                 response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
                     date, bezettingen, new List<OptimalisatieSuggestie>(), velden, doel);
@@ -825,11 +828,11 @@ namespace SportlinkFunction.Planner
             }
 
             // Check 2: geen enkel optimalisatiedoel is zinvol voor deze dag
-            if (!veld5OntlastenZinvol && !strakkerPlannenZinvol)
+            if (!grasveldOntlastenZinvol && !strakkerPlannenZinvol)
             {
-                string redenDetail = alleenVeld5Beschikbaar
-                    ? "doordeweekse dag — veld 1-4 niet beschikbaar, veld 5 is de enige optie en er is geen gewenste eindtijd opgegeven"
-                    : "geen wedstrijden op veld 5 en geen gewenste eindtijd opgegeven";
+                string redenDetail = alleenGrasveldBeschikbaar
+                    ? "doordeweekse dag — alleen grasveld beschikbaar, kunstgrasvelden niet beschikbaar, en er is geen gewenste eindtijd opgegeven"
+                    : "geen wedstrijden op grasveld en geen gewenste eindtijd opgegeven";
                 response.VoldoendeRuimte = true;
                 response.VoldoendeRuimteMelding = $"Geen optimalisatie nodig op {date.ToString("dddd d MMMM", nl)}: {redenDetail}.";
                 response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
@@ -841,17 +844,17 @@ namespace SportlinkFunction.Planner
 
             switch (doel)
             {
-                case "veld5-ontlasten":
-                    if (veld5OntlastenZinvol)
-                        suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                case "grasveld-ontlasten":
+                    if (grasveldOntlastenZinvol)
+                        suggesties = OptimaliseerGrasveldOntlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 case "strakker-plannen":
                     if (strakkerPlannenZinvol)
                         suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 default:
-                    if (veld5OntlastenZinvol)
-                        suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                    if (grasveldOntlastenZinvol)
+                        suggesties = OptimaliseerGrasveldOntlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     if (strakkerPlannenZinvol)
                     {
                         var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
@@ -899,7 +902,7 @@ namespace SportlinkFunction.Planner
 
             response.Suggesties = suggesties;
             response.AantalVerplaatsingen = suggesties.Count;
-            response.AantalVanVeld5Verplaatst = suggesties.Count(s => s.HuidigVeldNummer == 5);
+            response.AantalVanGrasveldVerplaatst = suggesties.Count(s => grasveldNummers.Contains(s.HuidigVeldNummer));
 
             // HTML genereren
             response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(date, bezettingen, suggesties, velden, request.Doel ?? "optimaliseren");
@@ -909,7 +912,8 @@ namespace SportlinkFunction.Planner
 
         private static VeldCapaciteitInfo BerekenCapaciteit(
             List<BestaandeWedstrijd> bezettingen,
-            List<VeldBeschikbaarheidInfo> beschikbareVelden)
+            List<VeldBeschikbaarheidInfo> beschikbareVelden,
+            HashSet<int> grasveldNummers)
         {
             int totaalBeschikbaar = 0;
             foreach (var veld in beschikbareVelden)
@@ -928,12 +932,12 @@ namespace SportlinkFunction.Planner
                 TotaalBezettMinuten = totaalBezet,
                 BezettingsPercentage = totaalBeschikbaar > 0
                     ? (double)totaalBezet / totaalBeschikbaar * 100.0 : 0,
-                AantalWedstrijdenOpVeld5 = bezettingen.Count(b => b.VeldNummer == 5),
+                AantalWedstrijdenOpGrasveld = bezettingen.Count(b => grasveldNummers.Contains(b.VeldNummer)),
                 AantalLegeVelden = aantalLegeVelden
             };
         }
 
-        private static List<OptimalisatieSuggestie> OptimaliseerVeld5Ontlasten(
+        private static List<OptimalisatieSuggestie> OptimaliseerGrasveldOntlasten(
             List<BestaandeWedstrijd> bezettingen,
             List<VeldInfo> velden,
             List<VeldBeschikbaarheidInfo> beschikbareVelden,
@@ -941,11 +945,13 @@ namespace SportlinkFunction.Planner
             Dictionary<string, List<TeamRegel>> allTeamRules,
             int bufferMin = 15)
         {
+            var grasveldNummers = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            var kunstgrasNummers = velden.Where(v => v.VeldType == "kunstgras").Select(v => v.VeldNummer).ToHashSet();
             var suggesties = new List<OptimalisatieSuggestie>();
 
-            // Wedstrijden op veld 5 die verplaatst mogen worden
-            var veld5Wedstrijden = bezettingen
-                .Where(b => b.VeldNummer == 5)
+            // Wedstrijden op grasvelden die verplaatst mogen worden
+            var grasveldWedstrijden = bezettingen
+                .Where(b => grasveldNummers.Contains(b.VeldNummer))
                 .Where(b => !vasteWedstrijden.Contains($"{b.VeldNummer}_{b.AanvangsTijd:HH:mm}_{b.Wedstrijd?.Trim()}"))
                 .OrderBy(b => b.AanvangsTijd)
                 .ToList();
@@ -953,21 +959,22 @@ namespace SportlinkFunction.Planner
             // Werk met een kopie van bezettingen die we aanpassen naarmate we suggesties doen
             var werkBezettingen = bezettingen.ToList();
 
-            foreach (var wedstrijd in veld5Wedstrijden)
+            foreach (var wedstrijd in grasveldWedstrijden)
             {
                 int duur = (int)(wedstrijd.EindTijd - wedstrijd.AanvangsTijd).TotalMinutes;
                 decimal fractie = wedstrijd.VeldDeelGebruik;
+                var huidigVeldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
 
-                // Zoek een plek op veld 1-4 die EERDER is dan huidige tijd op veld 5
+                // Zoek een plek op kunstgrasveld die EERDER is dan huidige tijd op grasveld
                 // Alleen verplaatsen als het een verbetering is (eerder of gelijktijdig op kunstgras)
                 CandidateSlot? besteSlot = null;
-                foreach (var veldBesch in beschikbareVelden.Where(f => f.VeldNummer <= 4).OrderBy(f => f.VeldNummer))
+                foreach (var veldBesch in beschikbareVelden.Where(f => kunstgrasNummers.Contains(f.VeldNummer)).OrderBy(f => f.VeldNummer))
                 {
                     var veldBezetting = werkBezettingen.Where(b => b.VeldNummer == veldBesch.VeldNummer).ToList();
 
                     for (var tijd = veldBesch.BeschikbaarVanaf; tijd.AddMinutes(duur) <= veldBesch.BeschikbaarTot; tijd = tijd.AddMinutes(5))
                     {
-                        // Alleen accepteren als het niet later is dan de huidige tijd op veld 5
+                        // Alleen accepteren als het niet later is dan de huidige tijd op grasveld
                         if (tijd > wedstrijd.AanvangsTijd) break;
 
                         var eindTijd = tijd.AddMinutes(duur);
@@ -992,13 +999,13 @@ namespace SportlinkFunction.Planner
                     suggesties.Add(new OptimalisatieSuggestie
                     {
                         Wedstrijd = wedstrijd.Wedstrijd?.Trim() ?? "",
-                        HuidigVeldNummer = 5,
-                        HuidigVeld = "veld 5",
+                        HuidigVeldNummer = wedstrijd.VeldNummer,
+                        HuidigVeld = huidigVeldNaam,
                         HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
                         NieuwVeldNummer = besteSlot.VeldNummer,
                         NieuwVeld = veldNaam,
                         NieuweTijd = RondAfOp5Min(besteSlot.AanvangsTijd).ToString("HH:mm"),
-                        Reden = $"Verplaats van veld 5 (geen kunstlicht) naar {veldNaam}"
+                        Reden = $"Verplaats van {huidigVeldNaam} (grasveld) naar {veldNaam} (kunstgras)"
                     });
 
                     // Werkbezetting bijwerken zodat volgende suggesties deze plek als bezet zien
