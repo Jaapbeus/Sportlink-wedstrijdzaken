@@ -18,6 +18,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.6.0.1] — 2026-05-26
+
+### Added
+- Teambegeleiding importeren via de Admin GUI (#358): beheerders kunnen nu een CSV-bestand van club.sportlink.com direct uploaden op de Teambegeleiding-pagina. De CSV wordt in de browser ingelezen (geen serveropslag — AVG), een voorbeeldtabel toont de eerste vijf rijen ter controle, en na bevestiging worden de begeleiders geïmporteerd met dezelfde kolomdetectie als het handmatige PowerShell-script. Handmatig script blijft bestaan als fallback.
+- `avg.ImportLog` uitgebreid met `ClubCode`-kolom voor multi-club isolatie van importlogs.
+- Koude-start indicator in de topbalk: zolang de backend nog opwarmt (koude start tot ±36 seconden) verschijnt een kleine spinner met "Backend start op…". Na succesvol laden verdwijnt de spinner en verschijnt automatisch de club-selector.
+
+### Fixed
+- CSV-import via de GUI gaf altijd "Import mislukt" door ontbrekende `ClubCode`-kolom in `avg.ImportLog`. Import werkt nu correct.
+
 ## [2.5.1.0] — 2026-05-26
 
 ### Fixed

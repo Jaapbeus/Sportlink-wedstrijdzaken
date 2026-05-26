@@ -4,6 +4,7 @@
 @inject ClubSelectorService ClubSelector
 @using BlazorAdmin.Models
 @using BlazorAdmin.Services
+@using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
 <PageTitle>Teambegeleiding — Admin</PageTitle>
@@ -130,6 +131,86 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     <div class="alert alert-info">Geen begeleiding gevonden voor @_selectedTeam.</div>
 }
 
+@* ── Teambegeleiding importeren ─────────────────────────────────────────────── *@
+<hr class="mt-4" />
+<h4>Teambegeleiding importeren</h4>
+<p class="text-muted small">
+    Download de CSV via club.sportlink.com → Leden → Exporteer tabel.<br />
+    De CSV wordt in de browser ingelezen en verwerkt — er worden geen bestanden opgeslagen op de server.
+</p>
+
+<div class="mb-3" style="max-width: 480px;">
+    <InputFile OnChange="BestandGeselecteerdAsync" accept=".csv" class="form-control"
+               disabled="@_importBezig" />
+</div>
+
+@if (_importLeesError != null)
+{
+    <div class="alert alert-danger">@_importLeesError</div>
+}
+
+@if (_csvPreview != null && _importResultaat == null)
+{
+    <div class="card border-info mb-3">
+        <div class="card-header bg-info bg-opacity-10">
+            Voorbeeldweergave — eerste @_csvPreview.VoorbeeldRijen.Count van @_csvPreview.TotaalRijen rijen
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        @foreach (var h in _csvPreview.Headers)
+                        {
+                            <th class="small">@h</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rij in _csvPreview.VoorbeeldRijen)
+                    {
+                        <tr>
+                            @foreach (var cel in rij)
+                            {
+                                <td class="small text-nowrap">@cel</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (_importError != null)
+    {
+        <div class="alert alert-danger">@_importError</div>
+    }
+
+    <button class="btn btn-warning" @onclick="ImporteerAsync" disabled="@_importBezig">
+        @if (_importBezig)
+        {
+            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+        }
+        Importeer @_csvPreview.TotaalRijen begeleider@(_csvPreview.TotaalRijen == 1 ? "" : "s")
+    </button>
+    <button class="btn btn-link text-muted ms-2" @onclick="ResetImport">Annuleer</button>
+}
+
+@if (_importResultaat != null)
+{
+    <div class="alert alert-success">
+        <strong>Geïmporteerd:</strong> @_importResultaat.Rijen begeleider@(_importResultaat.Rijen == 1 ? "" : "s") succesvol geladen.
+        @if (_importResultaat.Waarschuwingen.Count > 0)
+        {
+            <ul class="mt-2 mb-0 small">
+                @foreach (var w in _importResultaat.Waarschuwingen)
+                {
+                    <li>@w</li>
+                }
+            </ul>
+        }
+    </div>
+}
+
 @code {
     private List<string> _teams = new();
     private List<TeambegeleidingItem> _begeleiders = new();
@@ -143,6 +224,15 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     private string? _doorsturenError;
     private string? _doorsturenSuccess;
     private bool _gekopieerd;
+
+    // Import
+    private CsvPreviewModel? _csvPreview;
+    private string? _csvContent;
+    private string? _bestandsnaam;
+    private bool _importBezig;
+    private string? _importError;
+    private string? _importLeesError;
+    private TeambegeldingImportResultaat? _importResultaat;
 
     private string OutlookRegel => string.Join("; ", _begeleiders
         .Where(b => !string.IsNullOrWhiteSpace(b.Emailadres))
@@ -239,4 +329,96 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
             _doorsturenError = result.ErrorMessage ?? "Doorsturen mislukt. Probeer opnieuw.";
         }
     }
+
+    // ── Import ────────────────────────────────────────────────────────────────
+
+    private async Task BestandGeselecteerdAsync(InputFileChangeEventArgs e)
+    {
+        _csvPreview = null;
+        _csvContent = null;
+        _importError = null;
+        _importLeesError = null;
+        _importResultaat = null;
+
+        var file = e.File;
+        if (!file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            _importLeesError = "Alleen CSV-bestanden (.csv) zijn toegestaan.";
+            return;
+        }
+
+        _bestandsnaam = file.Name;
+
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.UTF8);
+            _csvContent = await reader.ReadToEndAsync();
+        }
+        catch (Exception)
+        {
+            _importLeesError = "Bestand kon niet worden ingelezen. Controleer of het een geldig CSV-bestand is (max. 5 MB).";
+            return;
+        }
+
+        _csvPreview = MaakCsvPreview(_csvContent);
+        if (_csvPreview.TotaalRijen == 0)
+            _importLeesError = "CSV bevat geen gegevensrijen.";
+    }
+
+    private static CsvPreviewModel MaakCsvPreview(string csv)
+    {
+        var regels = csv
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(r => r.TrimEnd('\r'))
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .ToList();
+
+        if (regels.Count == 0)
+            return new CsvPreviewModel([], [], 0);
+
+        var headers = regels[0].Split(';').Select(h => h.Trim('"').Trim()).ToList();
+        var voorbeeldRijen = regels.Skip(1).Take(5)
+            .Select(r => r.Split(';').Select(v => v.Trim('"').Trim()).ToList())
+            .ToList();
+
+        return new CsvPreviewModel(headers, voorbeeldRijen, regels.Count - 1);
+    }
+
+    private async Task ImporteerAsync()
+    {
+        if (_csvContent == null) return;
+
+        _importBezig = true;
+        _importError = null;
+
+        var result = await Api.ImporteerTeambegeleidingAsync(_csvContent, _bestandsnaam);
+        _importBezig = false;
+
+        if (result.Success)
+        {
+            _importResultaat = result.Data;
+            _csvPreview = null;
+            _csvContent = null;
+            await LoadAsync();
+        }
+        else
+        {
+            _importError = result.ErrorMessage ?? "Import mislukt. Controleer het CSV-bestand en probeer opnieuw.";
+        }
+    }
+
+    private void ResetImport()
+    {
+        _csvPreview = null;
+        _csvContent = null;
+        _importError = null;
+        _importLeesError = null;
+        _importResultaat = null;
+    }
+
+    private record CsvPreviewModel(
+        List<string> Headers,
+        List<List<string>> VoorbeeldRijen,
+        int TotaalRijen);
 }

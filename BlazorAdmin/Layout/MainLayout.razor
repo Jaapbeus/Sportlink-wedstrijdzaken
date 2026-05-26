@@ -4,6 +4,7 @@
 @using BlazorAdmin.Services
 @inject AdminApiClient Api
 @inject ClubSelectorService ClubSelector
+@implements IDisposable
 
 <div class="page">
     <div class="sidebar">
@@ -23,6 +24,13 @@
                         }
                     </select>
                 }
+                else if (_backendBezig)
+                {
+                    <span class="text-muted small d-flex align-items-center gap-1">
+                        <span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;" role="status"></span>
+                        Backend start op…
+                    </span>
+                }
             </div>
             <div class="flex-fill d-flex align-items-center justify-content-end gap-2">
                 <span class="text-muted small">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
@@ -39,23 +47,41 @@
 
 @code {
     private List<ClubDto> _clubs = new();
+    private bool _backendBezig = true;
+    private CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
     {
         await ClubSelector.InitializeAsync();
-        var result = await Api.GetClubsAsync();
-        if (result.Success && result.Data != null)
+        await LaadClubsAsync(_cts.Token);
+    }
+
+    private async Task LaadClubsAsync(CancellationToken ct)
+    {
+        // Max 12 pogingen × 3 s = 36 s wachttijd bij koude start
+        for (var poging = 0; poging < 12 && !ct.IsCancellationRequested; poging++)
         {
-            _clubs = result.Data;
-            // Valideer dat de opgeslagen ClubCode nog bestaat; terugval op eerste club
-            if (_clubs.Count > 0 &&
-                (ClubSelector.SelectedClubCode == null ||
-                 !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode)))
+            var result = await Api.GetClubsAsync();
+            if (result.Success && result.Data?.Count > 0)
             {
-                var primary = _clubs.FirstOrDefault(c => c.SyncEnabled)?.ClubCode ?? _clubs[0].ClubCode;
-                await ClubSelector.SelectClubAsync(primary);
+                _clubs = result.Data;
+                if (ClubSelector.SelectedClubCode == null ||
+                    !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode))
+                {
+                    var primary = _clubs.FirstOrDefault(c => c.SyncEnabled)?.ClubCode ?? _clubs[0].ClubCode;
+                    await ClubSelector.SelectClubAsync(primary);
+                }
+                _backendBezig = false;
+                return;
+            }
+
+            if (poging < 11)
+            {
+                StateHasChanged(); // toon spinner na eerste mislukte poging
+                try { await Task.Delay(3000, ct); } catch (OperationCanceledException) { return; }
             }
         }
+        _backendBezig = false; // stop spinner na time-out
     }
 
     private async Task OnClubChanged(ChangeEventArgs e)
@@ -64,4 +90,6 @@
         if (!string.IsNullOrWhiteSpace(code))
             await ClubSelector.SelectClubAsync(code);
     }
+
+    public void Dispose() => _cts.Cancel();
 }

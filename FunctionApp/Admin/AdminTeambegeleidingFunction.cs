@@ -210,5 +210,237 @@ public static class AdminTeambegeleidingFunction
         }
     }
 
+    /// <summary>
+    /// POST /api/beheer/teambegeleiding/import — verwerkt een CSV en importeert de begeleiders.
+    /// CSV-inhoud wordt in-memory verwerkt en nooit opgeslagen (AVG).
+    /// Audit log schrijft alleen metadata (rijen, bestandsnaam, duur) — geen PII.
+    /// </summary>
+    [Function("AdminTeambegeleidingImport")]
+    public static async Task<IActionResult> Import(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teambegeleiding/import")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("AdminTeambegeleidingImport");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+
+            using var bodyReader = new StreamReader(req.Body);
+            var body = await bodyReader.ReadToEndAsync();
+            var dto = JsonConvert.DeserializeObject<TeambegeleidingImportRequest>(body);
+            if (dto == null || string.IsNullOrWhiteSpace(dto.CsvContent))
+                return new BadRequestObjectResult(new { error = "csvContent is vereist" });
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            var parseResult = ParseCsv(dto.CsvContent);
+            if (!parseResult.IsValid)
+                return new BadRequestObjectResult(new
+                {
+                    error = parseResult.Error,
+                    ontbreekt = parseResult.Ontbreekt
+                });
+
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+
+            using (var deleteCmd = new SqlCommand(
+                "DELETE FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @ClubCode", connection))
+            {
+                deleteCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                await deleteCmd.ExecuteNonQueryAsync();
+            }
+
+            using (var tx = connection.BeginTransaction())
+            {
+                foreach (var row in parseResult.Rows)
+                {
+                    using var ins = new SqlCommand(@"
+                        INSERT INTO [avg].[Teambegeleiding]
+                            (Team, LeeftijdscategorieTeam, Teamrol, Naam, Emailadres, Telefoonnummer, ClubCode)
+                        VALUES
+                            (@Team, @Leeftijd, @Teamrol, @Naam, @Email, @Telefoon, @ClubCode)",
+                        connection, tx);
+                    ins.Parameters.AddWithValue("@Team",     (object?)row.Team ?? DBNull.Value);
+                    ins.Parameters.AddWithValue("@Leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
+                    ins.Parameters.AddWithValue("@Teamrol",  (object?)row.Teamrol ?? DBNull.Value);
+                    ins.Parameters.AddWithValue("@Naam",     (object?)row.Naam ?? DBNull.Value);
+                    ins.Parameters.AddWithValue("@Email",    (object?)row.Emailadres ?? DBNull.Value);
+                    ins.Parameters.AddWithValue("@Telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
+                    ins.Parameters.AddWithValue("@ClubCode", clubCode);
+                    await ins.ExecuteNonQueryAsync();
+                }
+                tx.Commit();
+            }
+
+            sw.Stop();
+
+            var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
+            using (var logCmd = new SqlCommand(@"
+                INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms, ClubCode)
+                VALUES (@rijen, @csv, @door, @duur, @club)", connection))
+            {
+                logCmd.Parameters.AddWithValue("@rijen", parseResult.Rows.Count);
+                logCmd.Parameters.AddWithValue("@csv",   (object?)dto.Bestandsnaam ?? DBNull.Value);
+                logCmd.Parameters.AddWithValue("@door",  importeerder);
+                logCmd.Parameters.AddWithValue("@duur",  (int)sw.ElapsedMilliseconds);
+                logCmd.Parameters.AddWithValue("@club",  clubCode);
+                await logCmd.ExecuteNonQueryAsync();
+            }
+
+            log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen (geen PII gelogd — AVG)", parseResult.Rows.Count);
+
+            return new OkObjectResult(new
+            {
+                rijen         = parseResult.Rows.Count,
+                herkend       = parseResult.Herkend,
+                ontbreekt     = new List<string>(),
+                waarschuwingen = parseResult.Waarschuwingen
+            });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij importeren teambegeleiding (geen PII gelogd — AVG)");
+            return new ObjectResult(new { error = "Import mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    // ── CSV parsing helpers ───────────────────────────────────────────────────
+
+    private static readonly Dictionary<string, string[]> _kolomAliassen = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Team"]                   = ["Team", "Teamnaam", "Team naam"],
+        ["Teamrol"]                = ["Teamrol", "Rol", "Rol in team", "Rol team"],
+        ["Roepnaam"]               = ["Roepnaam", "Voornaam", "First name"],
+        ["Achternaam"]             = ["Achternaam", "Familienaam", "Last name"],
+        ["Emailadres"]             = ["E-mailadres", "Email", "E-mail", "Emailadres", "Mailadres"],
+        ["LeeftijdscategorieTeam"] = ["Leeftijdscategorie team", "Leeftijdscategorie", "Age category"],
+        ["Tussenvoegsel"]          = ["Tussenvoegsel(s)", "Tussenvoegsel", "Infix", "Tussenv."],
+        ["MobielNummer"]           = ["Mobiel nummer", "Mobiel", "Mobiele telefoon", "Mobile"],
+        ["TelefoonnummerKolom"]    = ["Telefoonnummer", "Telefoon", "Vaste telefoon", "Phone"],
+    };
+
+    private static readonly string[] _vereistKolommen = ["Team", "Teamrol", "Roepnaam", "Achternaam", "Emailadres"];
+
+    private record ImportRij(
+        string? Team, string? LeeftijdscategorieTeam, string? Teamrol,
+        string? Naam, string? Emailadres, string? Telefoonnummer);
+
+    private class CsvParseResult
+    {
+        public bool IsValid { get; set; }
+        public string? Error { get; set; }
+        public List<string> Ontbreekt { get; set; } = [];
+        public List<string> Herkend { get; set; } = [];
+        public List<string> Waarschuwingen { get; set; } = [];
+        public List<ImportRij> Rows { get; set; } = [];
+    }
+
+    private static CsvParseResult ParseCsv(string csvContent)
+    {
+        var result = new CsvParseResult();
+        var lines = csvContent
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.TrimEnd('\r'))
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .ToList();
+
+        if (lines.Count < 2)
+        {
+            result.Error = "CSV bevat geen gegevensrijen.";
+            return result;
+        }
+
+        var headers = SplitCsvLine(lines[0]);
+
+        var mapping = new Dictionary<string, int>();
+        foreach (var (canonical, aliases) in _kolomAliassen)
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
+                {
+                    mapping[canonical] = i;
+                    break;
+                }
+            }
+        }
+
+        var ontbreekt = _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
+        if (ontbreekt.Count > 0)
+        {
+            result.IsValid = false;
+            result.Ontbreekt = ontbreekt;
+            result.Error = $"Vereiste kolommen niet gevonden: {string.Join(", ", ontbreekt)}";
+            return result;
+        }
+
+        result.Herkend = [.. mapping.Keys];
+
+        if (!mapping.ContainsKey("MobielNummer") && !mapping.ContainsKey("TelefoonnummerKolom"))
+            result.Waarschuwingen.Add("Geen telefoonnummer-kolom gevonden — Telefoonnummer wordt leeg.");
+        if (!mapping.ContainsKey("LeeftijdscategorieTeam"))
+            result.Waarschuwingen.Add("Kolom 'Leeftijdscategorie team' niet gevonden — wordt leeg.");
+
+        for (int i = 1; i < lines.Count; i++)
+        {
+            var fields = SplitCsvLine(lines[i]);
+
+            string? GetVeld(string key)
+            {
+                if (!mapping.TryGetValue(key, out var idx) || idx >= fields.Length) return null;
+                var v = fields[idx];
+                return string.IsNullOrWhiteSpace(v) ? null : v;
+            }
+
+            var naamDelen = new[] { GetVeld("Roepnaam"), GetVeld("Tussenvoegsel"), GetVeld("Achternaam") }
+                .Where(p => p != null).ToArray();
+            var naam = naamDelen.Length > 0 ? string.Join(" ", naamDelen) : null;
+
+            var telefoon = GetVeld("MobielNummer") ?? GetVeld("TelefoonnummerKolom");
+
+            result.Rows.Add(new ImportRij(
+                GetVeld("Team"),
+                GetVeld("LeeftijdscategorieTeam"),
+                GetVeld("Teamrol"),
+                naam,
+                GetVeld("Emailadres"),
+                telefoon));
+        }
+
+        result.IsValid = true;
+        return result;
+    }
+
+    private static string[] SplitCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuote = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                if (inQuote && i + 1 < line.Length && line[i + 1] == '"')
+                { current.Append('"'); i++; }
+                else
+                { inQuote = !inQuote; }
+            }
+            else if (c == ';' && !inQuote)
+            { fields.Add(current.ToString().Trim()); current.Clear(); }
+            else
+            { current.Append(c); }
+        }
+        fields.Add(current.ToString().Trim());
+        return [.. fields];
+    }
+
     private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht);
+    private record TeambegeleidingImportRequest(string CsvContent, string? Bestandsnaam);
 }
