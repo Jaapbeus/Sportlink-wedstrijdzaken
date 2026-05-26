@@ -1,11 +1,18 @@
 @inject IAuthService Auth
 @inject BlazorAdmin.Services.AdminApiClient Api
+@inject BlazorAdmin.Services.ThemeService ThemeService
 @inject NavigationManager Navigation
 @implements IDisposable
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">@(_clubName ?? "Admin")</a>
+        <a class="navbar-brand d-flex align-items-center gap-2" href="">
+            @if (!string.IsNullOrWhiteSpace(ThemeService.LogoUrl))
+            {
+                <img src="@ThemeService.LogoUrl" alt="Club logo" style="height:28px; width:auto; object-fit:contain;" />
+            }
+            @(_clubName ?? "Admin")
+        </a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -102,13 +109,20 @@
     {
         _instellingenOpen = IsInstellingenRoute(Navigation.Uri);
         Navigation.LocationChanged += OnLocationChanged;
+        ThemeService.OnThemeChanged += OnThemeChanged;
 
         var result = await Api.GetSettingsAsync();
         if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
             _clubName = result.Data.ClubName;
     }
 
-    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        ThemeService.OnThemeChanged -= OnThemeChanged;
+    }
+
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {

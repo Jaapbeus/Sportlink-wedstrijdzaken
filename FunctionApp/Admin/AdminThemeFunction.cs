@@ -19,8 +19,13 @@ namespace SportlinkFunction.Admin;
 public static class AdminThemeFunction
 {
     private static readonly HttpClient _httpClient;
-    private static readonly Regex _hexColorRegex = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.Compiled);
+    private static readonly Regex _hexColorRegex    = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.Compiled);
     private static readonly Regex _hexColorValidRegex = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.Compiled);
+    private static readonly Regex _faviconRegex     = new(@"<link[^>]*rel=[""'](?:shortcut icon|icon)[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _faviconAltRegex  = new(@"<link[^>]*href=[""']([^""']+)[""'][^>]*rel=[""'](?:shortcut icon|icon)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _ogImageRegex     = new(@"<meta[^>]*property=[""']og:image[""'][^>]*content=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _ogImageAltRegex  = new(@"<meta[^>]*content=[""']([^""']+)[""'][^>]*property=[""']og:image[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex _appleTouchRegex  = new(@"<link[^>]*rel=[""']apple-touch-icon[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     static AdminThemeFunction()
     {
@@ -44,7 +49,8 @@ public static class AdminThemeFunction
             await connection.OpenAsync();
             using var command = new SqlCommand(@"
                 SELECT [ThemeColorPrimary], [ThemeColorSecondary], [ThemeColorAccent],
-                       [ThemeColorTextOnPrimary], [ThemeClubWebsiteUrl]
+                       [ThemeColorTextOnPrimary], [ThemeClubWebsiteUrl],
+                       [FaviconUrl], [LogoUrl]
                 FROM [dbo].[AppSettings]
                 WHERE [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -58,7 +64,9 @@ public static class AdminThemeFunction
                 secondary      = reader.IsDBNull(1) ? "#6c757d" : reader.GetString(1),
                 accent         = reader.IsDBNull(2) ? "#0071c1" : reader.GetString(2),
                 textOnPrimary  = reader.IsDBNull(3) ? "#ffffff" : reader.GetString(3),
-                clubWebsiteUrl = reader.IsDBNull(4) ? ""        : reader.GetString(4)
+                clubWebsiteUrl = reader.IsDBNull(4) ? ""        : reader.GetString(4),
+                faviconUrl     = reader.IsDBNull(5) ? null      : reader.GetString(5),
+                logoUrl        = reader.IsDBNull(6) ? null      : reader.GetString(6)
             });
         }
         catch (Exception ex)
@@ -112,13 +120,17 @@ public static class AdminThemeFunction
                     [ThemeColorSecondary]      = @Secondary,
                     [ThemeColorAccent]         = @Accent,
                     [ThemeColorTextOnPrimary]  = @TextOnPrimary,
-                    [ThemeClubWebsiteUrl]      = @WebsiteUrl
+                    [ThemeClubWebsiteUrl]      = @WebsiteUrl,
+                    [FaviconUrl]               = @FaviconUrl,
+                    [LogoUrl]                  = @LogoUrl
                 WHERE [ClubCode]              = @ClubCode", connection);
             command.Parameters.AddWithValue("@Primary",        dto.Primary       ?? "#1b6ec2");
             command.Parameters.AddWithValue("@Secondary",      dto.Secondary     ?? "#6c757d");
             command.Parameters.AddWithValue("@Accent",         dto.Accent        ?? "#0071c1");
             command.Parameters.AddWithValue("@TextOnPrimary",  dto.TextOnPrimary ?? "#ffffff");
             command.Parameters.AddWithValue("@WebsiteUrl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
+            command.Parameters.AddWithValue("@FaviconUrl",     (object?)dto.FaviconUrl     ?? DBNull.Value);
+            command.Parameters.AddWithValue("@LogoUrl",        (object?)dto.LogoUrl        ?? DBNull.Value);
             command.Parameters.AddWithValue("@ClubCode",       clubCode);
             await command.ExecuteNonQueryAsync();
 
@@ -157,8 +169,11 @@ public static class AdminThemeFunction
         {
             var html = await _httpClient.GetStringAsync(parsedUri);
             var colors = ExtractColors(html);
-            log.LogInformation("Kleuren geëxtraheerd uit {Host}: {Count} gevonden", parsedUri.Host, colors.Count);
-            return new OkObjectResult(new { colors });
+            var faviconUrl = ExtractFaviconUrl(html, parsedUri);
+            var logoUrl = ExtractLogoUrl(html, parsedUri);
+            log.LogInformation("Assets geëxtraheerd uit {Host}: {Count} kleuren, favicon={Fav}, logo={Logo}",
+                parsedUri.Host, colors.Count, faviconUrl != null, logoUrl != null);
+            return new OkObjectResult(new { colors, faviconUrl, logoUrl });
         }
         catch (Exception ex)
         {
@@ -223,21 +238,52 @@ public static class AdminThemeFunction
         return _hexColorValidRegex.IsMatch(value);
     }
 
+    private static string? ExtractFaviconUrl(string html, Uri baseUri)
+    {
+        var m = _faviconRegex.Match(html);
+        if (!m.Success) m = _faviconAltRegex.Match(html);
+        var href = m.Success ? m.Groups[1].Value : "/favicon.ico";
+        return ResolveUrl(href, baseUri);
+    }
+
+    private static string? ExtractLogoUrl(string html, Uri baseUri)
+    {
+        var m = _ogImageRegex.Match(html);
+        if (!m.Success) m = _ogImageAltRegex.Match(html);
+        if (!m.Success) m = _appleTouchRegex.Match(html);
+        if (!m.Success) return null;
+        return ResolveUrl(m.Groups[1].Value, baseUri);
+    }
+
+    private static string? ResolveUrl(string url, Uri baseUri)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var abs))
+            return abs.Scheme == "http" || abs.Scheme == "https" ? abs.ToString() : null;
+        if (Uri.TryCreate(baseUri, url, out var rel))
+            return rel.Scheme == "http" || rel.Scheme == "https" ? rel.ToString() : null;
+        return null;
+    }
+
     private static object DefaultTheme() => new
     {
         primary        = "#1b6ec2",
         secondary      = "#6c757d",
         accent         = "#0071c1",
         textOnPrimary  = "#ffffff",
-        clubWebsiteUrl = ""
+        clubWebsiteUrl = "",
+        faviconUrl     = (string?)null,
+        logoUrl        = (string?)null
     };
 }
 
 internal sealed class ThemeUpdateRequest
 {
-    public string? Primary       { get; set; }
-    public string? Secondary     { get; set; }
-    public string? Accent        { get; set; }
-    public string? TextOnPrimary { get; set; }
+    public string? Primary        { get; set; }
+    public string? Secondary      { get; set; }
+    public string? Accent         { get; set; }
+    public string? TextOnPrimary  { get; set; }
     public string? ClubWebsiteUrl { get; set; }
+    public string? FaviconUrl     { get; set; }
+    public string? LogoUrl        { get; set; }
 }

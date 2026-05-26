@@ -22,6 +22,9 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Navigatiemenu is geherstructureerd: Dagplanning, Leermomenten, Email-tester en Teambegeleiding staan bovenaan; Instellingen, Speeltijden, Voorkeurstijden, E-mailtemplates en Thema zijn samengebracht onder een inklapbaar 'Instellingen'-submenu dat automatisch openklapt zodra de beheerder een van die pagina's bezoekt.
 - Instellingen-pagina heeft nu een 'Opslaan'-knop rechtsboven naast de paginatitel, zodat opslaan toegankelijk is zonder naar het einde van het formulier te scrollen.
 - Thema-pagina heeft nu een 'Opslaan'-knop rechtsboven naast de paginatitel.
+- Themabeheer uitgebreid: beheerders kunnen nu een favicon en club-logo opslaan via de Thema-pagina. De knop 'Ophalen' haalt kleuren, favicon én OG-afbeelding tegelijk op uit de club-website. Het favicon wordt direct in het browsertabblad toegepast; het logo verschijnt linksboven in de navigatiebalk naast de clubnaam. Nieuwe DB-velden `FaviconUrl` en `LogoUrl` op `dbo.AppSettings`.
+- Dashboard herontworpen: toont nu vier grote klikbare kaarten (Dagplanning, Leermomenten, Email-tester, Teambegeleiding) als snelkoppelingen, met optioneel club-logo bovenaan.
+- Synchronisatiestatus en emailverwerkingslog zijn verplaatst van het Dashboard naar de Instellingen-pagina (bovenaan, boven de configuratievelden).
 
 ---
 

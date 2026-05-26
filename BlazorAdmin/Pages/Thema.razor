@@ -93,10 +93,10 @@ else
                         <div class="input-group">
                             <input type="url" class="form-control" placeholder="https://www.mijnclub.nl"
                                    @bind="_theme.ClubWebsiteUrl" @bind:event="oninput" />
-                            <button class="btn btn-outline-secondary" type="button" @onclick="ExtractColorsAsync"
+                            <button class="btn btn-outline-secondary" type="button" @onclick="ExtractFromWebsiteAsync"
                                     disabled="@(_extracting || string.IsNullOrWhiteSpace(_theme.ClubWebsiteUrl))">
                                 @if (_extracting) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                Kleuren ophalen
+                                Ophalen
                             </button>
                         </div>
                         @if (_extractError != null)
@@ -123,6 +123,40 @@ else
                         }
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Favicon URL</label>
+                        <input type="url" class="form-control" placeholder="https://www.mijnclub.nl/favicon.ico"
+                               @bind="_theme.FaviconUrl" @bind:event="oninput" />
+                        @if (!string.IsNullOrWhiteSpace(_extractedFaviconUrl))
+                        {
+                            <div class="mt-2 d-flex align-items-center gap-2">
+                                <img src="@_extractedFaviconUrl" alt="Favicon" style="width:24px;height:24px;object-fit:contain;" />
+                                <small class="text-muted">Gevonden favicon</small>
+                                <button class="btn btn-sm btn-outline-primary" type="button"
+                                        @onclick="() => { _theme.FaviconUrl = _extractedFaviconUrl; StateHasChanged(); }">
+                                    Gebruiken
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Club-logo URL</label>
+                        <input type="url" class="form-control" placeholder="https://www.mijnclub.nl/logo.png"
+                               @bind="_theme.LogoUrl" @bind:event="oninput" />
+                        @if (!string.IsNullOrWhiteSpace(_extractedLogoUrl))
+                        {
+                            <div class="mt-2 d-flex align-items-center gap-2">
+                                <img src="@_extractedLogoUrl" alt="Logo" style="max-height:40px;max-width:80px;object-fit:contain;" />
+                                <small class="text-muted">Gevonden logo (OG-afbeelding)</small>
+                                <button class="btn btn-sm btn-outline-primary" type="button"
+                                        @onclick="() => { _theme.LogoUrl = _extractedLogoUrl; StateHasChanged(); }">
+                                    Gebruiken
+                                </button>
+                            </div>
+                        }
+                    </div>
+
                     <hr class="my-3" />
 
                     <div class="d-flex gap-2 align-items-center">
@@ -145,7 +179,11 @@ else
             <div class="card mb-4">
                 <div class="card-header">Live preview</div>
                 <div class="card-body p-0">
-                    <div style="background-color: @_theme.Primary; padding: 1rem;">
+                    <div style="background-color: @_theme.Primary; padding: 1rem; display:flex; align-items:center; gap:0.5rem;">
+                        @if (!string.IsNullOrWhiteSpace(_theme.LogoUrl))
+                        {
+                            <img src="@_theme.LogoUrl" alt="Logo" style="height:28px;width:auto;object-fit:contain;" />
+                        }
                         <span style="color: @_theme.TextOnPrimary; font-weight: bold;">Zijbalk achtergrond</span>
                     </div>
                     <div style="padding: 1rem;">
@@ -174,6 +212,8 @@ else
     private bool _saveSuccess;
     private string? _extractError;
     private List<string> _extractedColors = new();
+    private string? _extractedFaviconUrl;
+    private string? _extractedLogoUrl;
 
     protected override async Task OnInitializedAsync()
     {
@@ -227,22 +267,31 @@ else
 
     private async Task ResetToDefaultAsync()
     {
-        _theme = new ThemeDto();
+        _theme = new ThemeDto { FaviconUrl = null, LogoUrl = null };
         await ThemeService.ApplyAsync(_theme);
+        StateHasChanged();
     }
 
-    private async Task ExtractColorsAsync()
+    private async Task ExtractFromWebsiteAsync()
     {
         _extracting = true;
         _extractError = null;
         _extractedColors = new();
+        _extractedFaviconUrl = null;
+        _extractedLogoUrl = null;
         StateHasChanged();
 
         var result = await Api.ExtractThemeColorsAsync(_theme.ClubWebsiteUrl ?? "");
         if (result.Success && result.Data != null)
+        {
             _extractedColors = result.Data.Colors;
+            _extractedFaviconUrl = result.Data.FaviconUrl;
+            _extractedLogoUrl = result.Data.LogoUrl;
+        }
         else
-            _extractError = result.ErrorMessage ?? "Kleuren konden niet worden opgehaald.";
+        {
+            _extractError = result.ErrorMessage ?? "Ophalen mislukt.";
+        }
 
         _extracting = false;
     }

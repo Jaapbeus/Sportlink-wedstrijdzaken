@@ -17,6 +17,70 @@
     }
 </div>
 
+@* ── Synchronisatie (verplaatst van Dashboard #344) ── *@
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title">Synchronisatie</h5>
+                @if (_syncLoading)
+                {
+                    <p class="text-muted">Laden...</p>
+                }
+                else if (_status == null)
+                {
+                    <p class="text-danger">Kon synchronisatiestatus niet ophalen.</p>
+                }
+                else
+                {
+                    <p>
+                        <strong>Laatste sync:</strong>
+                        @(_status.LastSyncTimestamp.HasValue
+                              ? _status.LastSyncTimestamp.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
+                              : "nog niet uitgevoerd")
+                    </p>
+                    <p>
+                        <strong>Schema:</strong> @CronNaarNederlands(_status.FetchSchedule)
+                        <small class="text-muted ms-1">(<code>@_status.FetchSchedule</code>)</small>
+                    </p>
+                    <p>
+                        <strong>Status:</strong>
+                        <span class="badge @(_status.Status == "ok" ? "bg-success" : "bg-warning")">
+                            @_status.Status
+                        </span>
+                    </p>
+                }
+                <button class="btn btn-primary btn-sm" @onclick="TriggerSyncAsync" disabled="@(_syncing)">
+                    @(_syncing ? "Synchroniseren..." : "Nu synchroniseren")
+                </button>
+                @if (!string.IsNullOrEmpty(_syncResult))
+                {
+                    <div class="alert alert-info mt-3">@_syncResult</div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title">Email verwerking (laatste 24u)</h5>
+                @if (_emailLog == null && !_syncLoading)
+                {
+                    <p class="text-muted">Niet beschikbaar.</p>
+                }
+                else if (_emailLog != null)
+                {
+                    <p><strong>Verwerkt:</strong> @_emailVerwerkt</p>
+                    <p><strong>Fouten:</strong> @_emailFouten</p>
+                    <p><strong>Buiten scope:</strong> @_emailBuitenScope</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr class="mb-4" />
+
 @if (settings == null && string.IsNullOrEmpty(errorMessage))
 {
     <p class="text-muted">Laden...</p>
@@ -249,6 +313,14 @@ else
     private UitgeslotenEmailAdresDto? nieuwAdres;
     private string? uitgeslotenMessage;
 
+    // Sync + email log (verplaatst van Dashboard #344)
+    private SyncStatusDto? _status;
+    private EmailLogResponse? _emailLog;
+    private bool _syncLoading = true;
+    private bool _syncing;
+    private string? _syncResult;
+    private int _emailVerwerkt, _emailFouten, _emailBuitenScope;
+
     protected override async Task OnInitializedAsync()
     {
         ClubSelector.OnChange += OnClubChanged;
@@ -261,10 +333,91 @@ else
     private async Task LoadAsync()
     {
         errorMessage = null;
-        var r = await Api.GetSettingsAsync();
+        _syncLoading = true;
+
+        var settingsTask = Api.GetSettingsAsync();
+        var syncTask    = Api.GetSyncStatusAsync();
+        var emailTask   = Api.GetEmailLogAsync(vanaf: DateTime.Today.AddDays(-1), limit: 200);
+
+        await Task.WhenAll(settingsTask, syncTask, emailTask);
+
+        var r = await settingsTask;
         if (r.Success) settings = r.Data;
         else errorMessage = r.ErrorMessage;
+
+        var syncResult = await syncTask;
+        if (syncResult.Success) _status = syncResult.Data;
+
+        var emailResult = await emailTask;
+        if (emailResult.Success)
+        {
+            _emailLog = emailResult.Data;
+            if (_emailLog?.Items != null)
+            {
+                _emailVerwerkt    = _emailLog.Items.Count(i => i.Status == "AntwoordVerstuurd");
+                _emailFouten      = _emailLog.Items.Count(i => i.Status == "Fout");
+                _emailBuitenScope = _emailLog.Items.Count(i => i.Status == "BuitenScope");
+            }
+        }
+
+        _syncLoading = false;
         await LaadUitgeslotenEmailsAsync();
+    }
+
+    private async Task TriggerSyncAsync()
+    {
+        _syncing = true;
+        _syncResult = null;
+        var timestampVoor = _status?.LastSyncTimestamp;
+        var r = await Api.TriggerSyncAsync();
+        if (!r.Success)
+        {
+            _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
+            _syncing = false;
+            return;
+        }
+        _syncResult = "Synchronisatie gestart, even geduld…";
+        StateHasChanged();
+        var deadline = DateTime.UtcNow.AddMinutes(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5000);
+            var statusResult = await Api.GetSyncStatusAsync();
+            if (statusResult.Success && statusResult.Data?.LastSyncTimestamp != timestampVoor)
+            {
+                _status = statusResult.Data;
+                _syncResult = "Synchronisatie voltooid.";
+                _syncing = false;
+                StateHasChanged();
+                return;
+            }
+        }
+        _syncResult = "Synchronisatie loopt op de achtergrond. Herlaad de pagina later voor de actuele status.";
+        _syncing = false;
+        await LoadAsync();
+    }
+
+    private static string CronNaarNederlands(string? cron)
+    {
+        if (string.IsNullOrWhiteSpace(cron)) return "Onbekend schema";
+        var p = cron.Trim().Split(' ');
+        if (p.Length != 6) return cron;
+        var (sec, min, hour, day, month, weekday) = (p[0], p[1], p[2], p[3], p[4], p[5]);
+        if (sec == "0" && day == "*" && month == "*" && weekday == "*")
+        {
+            if (int.TryParse(hour, out var h) && int.TryParse(min, out var m))
+                return m == 0 ? $"Elke dag om {h:D2}:00" : $"Elke dag om {h:D2}:{m:D2}";
+        }
+        if (sec == "0" && min == "0" && hour == "*" && day == "*" && month == "*" && weekday == "*")
+            return "Elk uur";
+        string[] dagNamen = { "", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag" };
+        if (sec == "0" && min == "0" && day == "*" && month == "*"
+            && int.TryParse(hour, out var h2) && int.TryParse(weekday, out var wd) && wd >= 0 && wd <= 7)
+        {
+            var dag = wd == 0 ? dagNamen[7] : wd < dagNamen.Length ? dagNamen[wd] : $"dag {wd}";
+            return $"Elke {dag} om {h2:D2}:00";
+        }
+        return cron;
     }
 
     private async Task LaadUitgeslotenEmailsAsync()

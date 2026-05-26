@@ -4,12 +4,17 @@ using Microsoft.JSInterop;
 namespace BlazorAdmin.Services;
 
 /// <summary>
-/// Laadt het club-thema vanuit de API en past CSS-variabelen toe via JSInterop. v2 — #325.
+/// Laadt het club-thema vanuit de API en past CSS-variabelen + favicon toe via JSInterop. v2 — #325/#339.
 /// </summary>
 public class ThemeService
 {
     private readonly AdminApiClient _api;
     private readonly IJSRuntime _js;
+
+    public string? LogoUrl    { get; private set; }
+    public string? FaviconUrl { get; private set; }
+
+    public event Action? OnThemeChanged;
 
     public ThemeService(AdminApiClient api, IJSRuntime js)
     {
@@ -26,6 +31,9 @@ public class ThemeService
 
     public async Task ApplyAsync(ThemeDto theme)
     {
+        LogoUrl    = theme.LogoUrl;
+        FaviconUrl = theme.FaviconUrl;
+
         try
         {
             await _js.InvokeVoidAsync("themeHelper.apply",
@@ -33,10 +41,15 @@ public class ThemeService
                 theme.Secondary,
                 theme.Accent,
                 theme.TextOnPrimary);
+
+            if (!string.IsNullOrWhiteSpace(theme.FaviconUrl))
+                await _js.InvokeVoidAsync("themeHelper.setFavicon", theme.FaviconUrl);
         }
         catch
         {
             // JSInterop kan falen als WASM nog niet volledig geladen is — stilzwijgend negeren
         }
+
+        OnThemeChanged?.Invoke();
     }
 }
