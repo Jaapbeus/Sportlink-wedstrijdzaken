@@ -31,7 +31,7 @@
 }
 
 @* ── Globale controls ── *@
-<div class="card mb-3">
+<div class="card mb-2">
     <div class="card-body py-2">
         <div class="row g-2 align-items-end">
             <div class="col-auto">
@@ -68,9 +68,39 @@
                 <button class="btn btn-sm btn-outline-primary" @onclick="VoegLegeRijToe">
                     <i class="bi bi-plus me-1"></i> Lege rij
                 </button>
-                <button class="btn btn-sm btn-outline-danger" @onclick="VerwijderAllesAsync"
-                        disabled="@(_rijen.Count == 0 || _bezig)">
-                    <i class="bi bi-trash me-1"></i> Verwijder alles
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Filter + verwijder ── *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Filter van</label>
+                <input type="date" class="form-control form-control-sm" style="width:150px"
+                       value="@_filterVan"
+                       @onchange="e => _filterVan = e.Value?.ToString() ?? _filterVan" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">tot</label>
+                <input type="date" class="form-control form-control-sm" style="width:150px"
+                       value="@_filterTot"
+                       @onchange="e => _filterTot = e.Value?.ToString() ?? _filterTot" />
+            </div>
+            <div class="col-auto mt-auto">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="WisFilter"
+                        disabled="@(!FilterActief)">
+                    <i class="bi bi-x me-1"></i> Wis filter
+                </button>
+            </div>
+            <div class="col-auto mt-auto ms-auto">
+                <button class="btn btn-sm btn-outline-danger" @onclick="VerwijderGefilterdeAsync"
+                        disabled="@(!FilterActief || _bezig)"
+                        title="@(FilterActief ? "Verwijder wedstrijden in het geselecteerde datumbereik" : "Stel een datumbereik in om te verwijderen")">
+                    <i class="bi bi-trash me-1"></i>
+                    Verwijder @(FilterActief ? "gefilterd" : "(stel filter in)")
                 </button>
             </div>
         </div>
@@ -83,23 +113,32 @@
 }
 else
 {
+    <p class="text-muted small mb-1">
+        @GesorteerdeEnGefilterde.Count van @_rijen.Count wedstrijden
+        @if (FilterActief) { <span> (gefilterd)</span> }
+    </p>
+
     @* ── Invoergrid ── *@
     <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle mb-1" style="font-size:0.875rem">
             <thead class="table-light">
                 <tr>
                     <th style="width:32px">#</th>
-                    <th style="width:140px">
-                        Datum
+                    <th style="width:150px" class="sortable-header" @onclick='() => SorteerOp("datum")'>
+                        Datum @SortIcon("datum")
                         <button class="btn btn-link btn-sm p-0 ms-1" title="Kopieer eerste waarde naar lege cellen"
-                                @onclick='() => VulKolom("datum")'>↓</button>
+                                @onclick='() => VulKolom("datum")' @onclick:stopPropagation="true">↓</button>
                     </th>
-                    <th style="width:190px">Team (thuis)</th>
-                    <th style="width:170px">Tegenstander</th>
-                    <th style="width:110px">
-                        Starttijd
+                    <th style="width:200px" class="sortable-header" @onclick='() => SorteerOp("thuisteam")'>
+                        Team (thuis) @SortIcon("thuisteam")
+                    </th>
+                    <th style="width:180px" class="sortable-header" @onclick='() => SorteerOp("uitteam")'>
+                        Tegenstander @SortIcon("uitteam")
+                    </th>
+                    <th style="width:110px" class="sortable-header" @onclick='() => SorteerOp("aanvangstijd")'>
+                        Starttijd @SortIcon("aanvangstijd")
                         <button class="btn btn-link btn-sm p-0 ms-1" title="Kopieer eerste waarde naar lege cellen"
-                                @onclick='() => VulKolom("aanvangstijd")'>↓</button>
+                                @onclick='() => VulKolom("aanvangstijd")' @onclick:stopPropagation="true">↓</button>
                     </th>
                     <th style="width:140px">Veld</th>
                     <th style="width:150px">Soort</th>
@@ -108,9 +147,10 @@ else
                 </tr>
             </thead>
             <tbody>
-                @for (int i = 0; i < _rijen.Count; i++)
+                @{ var weergave = GesorteerdeEnGefilterde; }
+                @for (int i = 0; i < weergave.Count; i++)
                 {
-                    var rij = _rijen[i];
+                    var rij = weergave[i];
                     var nr  = i + 1;
                     <tr class="@RijKlasse(rij)">
                         <td class="text-muted text-center">@nr</td>
@@ -195,11 +235,18 @@ else
                         </td>
                     </tr>
                 }
-                @if (_rijen.Count == 0)
+                @if (weergave.Count == 0)
                 {
                     <tr>
                         <td colspan="9" class="text-muted text-center py-3">
-                            Geen rijen. Klik <strong>Alle teams</strong> of <strong>Lege rij</strong>.
+                            @if (_rijen.Count == 0)
+                            {
+                                <span>Geen rijen. Klik <strong>Alle teams</strong> of <strong>Lege rij</strong>.</span>
+                            }
+                            else
+                            {
+                                <span>Geen wedstrijden in het geselecteerde datumbereik.</span>
+                            }
                         </td>
                     </tr>
                 }
@@ -212,6 +259,11 @@ else
         <i class="bi bi-exclamation-circle text-danger me-1"></i>Fout
     </p>
 }
+
+<style>
+    .sortable-header { cursor: pointer; user-select: none; }
+    .sortable-header:hover { background-color: #e9ecef; }
+</style>
 
 @code {
     // ── Model ──
@@ -256,7 +308,6 @@ else
         }
 
         public WedstrijdRij() { }
-
         private WedstrijdRij(string bk) { BkMatches = bk; }
     }
 
@@ -275,8 +326,55 @@ else
     private string _globalTegenstander = "FC Onbekend";
     private string _globalStarttijd    = "10:00";
 
+    // Filter
+    private string _filterVan = "";
+    private string _filterTot = "";
+
+    // Sortering — standaard datum aflopend
+    private string _sortKolom    = "datum";
+    private bool   _sortAflopend = true;
+
     private static readonly string[] SoortOpties =
-        ["Oefenwedstrijd", "Allstars", "Toernooi", "Vriendschappelijk"];
+        ["Competitie", "Oefenwedstrijd", "Toernooi", "Vriendschappelijk"];
+
+    // ── Computed ──
+
+    private bool FilterActief =>
+        !string.IsNullOrEmpty(_filterVan) || !string.IsNullOrEmpty(_filterTot);
+
+    private List<WedstrijdRij> GesorteerdeEnGefilterde
+    {
+        get
+        {
+            var q = _rijen.AsEnumerable();
+
+            if (!string.IsNullOrEmpty(_filterVan))
+                q = q.Where(r => string.Compare(r.Datum, _filterVan, StringComparison.Ordinal) >= 0);
+            if (!string.IsNullOrEmpty(_filterTot))
+                q = q.Where(r => string.Compare(r.Datum, _filterTot, StringComparison.Ordinal) <= 0);
+
+            q = (_sortKolom, _sortAflopend) switch
+            {
+                ("datum",        true)  => q.OrderByDescending(r => r.Datum),
+                ("datum",        false) => q.OrderBy(r => r.Datum),
+                ("thuisteam",    true)  => q.OrderByDescending(r => r.ThuisTeam),
+                ("thuisteam",    false) => q.OrderBy(r => r.ThuisTeam),
+                ("uitteam",      true)  => q.OrderByDescending(r => r.UitTeam),
+                ("uitteam",      false) => q.OrderBy(r => r.UitTeam),
+                ("aanvangstijd", true)  => q.OrderByDescending(r => r.Aanvangstijd),
+                ("aanvangstijd", false) => q.OrderBy(r => r.Aanvangstijd),
+                _                      => q.OrderByDescending(r => r.Datum),
+            };
+
+            return q.ToList();
+        }
+    }
+
+    private RenderFragment SortIcon(string kolom) => builder =>
+    {
+        if (_sortKolom != kolom) return;
+        builder.AddContent(0, _sortAflopend ? " ▼" : " ▲");
+    };
 
     // ── Lifecycle ──
 
@@ -316,6 +414,27 @@ else
         _loading = false;
     }
 
+    // ── Sorteren ──
+
+    private void SorteerOp(string kolom)
+    {
+        if (_sortKolom == kolom)
+            _sortAflopend = !_sortAflopend;
+        else
+        {
+            _sortKolom    = kolom;
+            _sortAflopend = true;
+        }
+    }
+
+    // ── Filter ──
+
+    private void WisFilter()
+    {
+        _filterVan = "";
+        _filterTot = "";
+    }
+
     // ── Cel-events ──
 
     private void OnThuisTeamChanged(WedstrijdRij rij, string? waarde)
@@ -323,6 +442,17 @@ else
         rij.ThuisTeam = waarde;
         if (string.IsNullOrEmpty(rij.Aanvangstijd))
             rij.Aanvangstijd = _globalStarttijd;
+
+        // Auto-fill tegenstander met suffix van het thuisteam
+        if (!string.IsNullOrEmpty(waarde))
+        {
+            var suffix = waarde.Contains(' ')
+                ? waarde[(waarde.IndexOf(' ') + 1)..]
+                : waarde;
+            if (string.IsNullOrEmpty(rij.UitTeam) || rij.UitTeam == _globalTegenstander)
+                rij.UitTeam = $"FC Onbekend {suffix}";
+        }
+
         _ = AutoSaveAsync(rij);
     }
 
@@ -362,13 +492,19 @@ else
     private async Task VoegAlleTeamsToeAsync()
     {
         _bezig = true;
-        var nieuweRijen = _teams.Select(team => new WedstrijdRij
+        var nieuweRijen = _teams.Select(team =>
         {
-            Datum        = _globalDatum,
-            ThuisTeam    = team,
-            UitTeam      = string.IsNullOrWhiteSpace(_globalTegenstander) ? null : _globalTegenstander,
-            Soort        = _globalSoort,
-            Aanvangstijd = _globalStarttijd,
+            var suffix = team.Contains(' ') ? team[(team.IndexOf(' ') + 1)..] : team;
+            return new WedstrijdRij
+            {
+                Datum        = _globalDatum,
+                ThuisTeam    = team,
+                UitTeam      = string.IsNullOrWhiteSpace(_globalTegenstander)
+                    ? $"FC Onbekend {suffix}"
+                    : $"{_globalTegenstander} {suffix}",
+                Soort        = _globalSoort,
+                Aanvangstijd = _globalStarttijd,
+            };
         }).ToList();
 
         _rijen.AddRange(nieuweRijen);
@@ -387,11 +523,16 @@ else
         _rijen.Remove(rij);
     }
 
-    private async Task VerwijderAllesAsync()
+    private async Task VerwijderGefilterdeAsync()
     {
+        if (!FilterActief) return;
         _bezig = true;
-        await Api.DeleteAlleAllstarsWedstrijdenAsync();
-        _rijen.Clear();
+        var van = string.IsNullOrEmpty(_filterVan) ? null : _filterVan;
+        var tot = string.IsNullOrEmpty(_filterTot) ? null : _filterTot;
+        await Api.DeleteAlleAllstarsWedstrijdenAsync(van, tot);
+        _rijen.RemoveAll(r =>
+            (van == null || string.Compare(r.Datum, van, StringComparison.Ordinal) >= 0) &&
+            (tot == null || string.Compare(r.Datum, tot, StringComparison.Ordinal) <= 0));
         _bezig = false;
     }
 
@@ -401,9 +542,9 @@ else
     {
         string? bronWaarde = kolom switch
         {
-            "datum"       => _rijen.Select(r => r.Datum).FirstOrDefault(v => !string.IsNullOrEmpty(v)),
-            "aanvangstijd"=> _rijen.Select(r => r.Aanvangstijd).FirstOrDefault(v => !string.IsNullOrEmpty(v)),
-            _             => null,
+            "datum"        => _rijen.Select(r => r.Datum).FirstOrDefault(v => !string.IsNullOrEmpty(v)),
+            "aanvangstijd" => _rijen.Select(r => r.Aanvangstijd).FirstOrDefault(v => !string.IsNullOrEmpty(v)),
+            _              => null,
         };
         if (bronWaarde == null) return;
 
@@ -416,7 +557,6 @@ else
                 _              => false,
             };
             if (!leeg) continue;
-
             if (kolom == "datum")        rij.Datum        = bronWaarde;
             if (kolom == "aanvangstijd") rij.Aanvangstijd = bronWaarde;
             _ = AutoSaveAsync(rij);

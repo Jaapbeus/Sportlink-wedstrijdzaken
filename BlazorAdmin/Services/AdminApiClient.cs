@@ -215,8 +215,15 @@ public class AdminApiClient
     public async Task<ApiResult<object>> DeleteAllstarsWedstrijdAsync(string bk)
         => await DeleteAsync<object>($"api/beheer/testdata/wedstrijden/{Uri.EscapeDataString(bk)}");
 
-    public async Task<ApiResult<object>> DeleteAlleAllstarsWedstrijdenAsync()
-        => await DeleteAsync<object>("api/beheer/testdata/wedstrijden");
+    public async Task<ApiResult<object>> DeleteAlleAllstarsWedstrijdenAsync(string? van = null, string? tot = null)
+    {
+        var path = "api/beheer/testdata/wedstrijden";
+        var qp = new List<string>();
+        if (!string.IsNullOrEmpty(van)) qp.Add($"van={Uri.EscapeDataString(van)}");
+        if (!string.IsNullOrEmpty(tot)) qp.Add($"tot={Uri.EscapeDataString(tot)}");
+        if (qp.Count > 0) path += "?" + string.Join("&", qp);
+        return await DeleteAsync<object>(path);
+    }
 
     // ── Feedback widget ──
 

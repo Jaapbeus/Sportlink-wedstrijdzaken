@@ -54,7 +54,7 @@ public static class AdminTestDataFunction
         }
     }
 
-    // GET /api/beheer/testdata/teams — alle teams ongeacht ClubCode (voor dropdown)
+    // GET /api/beheer/testdata/teams — teams uit avg.Teambegeleiding voor ALLSTARS
     [Function("TestDataTeamsGet")]
     public static async Task<IActionResult> GetTeams(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/testdata/teams")] HttpRequest req,
@@ -69,10 +69,10 @@ public static class AdminTestDataFunction
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             using var command = new SqlCommand(@"
-                SELECT DISTINCT [teamnaam]
-                FROM   [his].[teams]
-                WHERE  [ClubCode] != 'ALLSTARS'
-                ORDER  BY [teamnaam]",
+                SELECT DISTINCT [Team]
+                FROM   [avg].[Teambegeleiding]
+                WHERE  [Team] IS NOT NULL AND [ClubCode] = 'ALLSTARS'
+                ORDER  BY [Team]",
                 connection);
             using var reader = await command.ExecuteReaderAsync();
             var teams = new List<string>();
@@ -188,7 +188,8 @@ public static class AdminTestDataFunction
         }
     }
 
-    // DELETE /api/beheer/testdata/wedstrijden — verwijder alle ALLSTARS wedstrijden
+    // DELETE /api/beheer/testdata/wedstrijden?van=YYYY-MM-DD&tot=YYYY-MM-DD
+    // Verwijdert ALLSTARS-wedstrijden voor het opgegeven datumbereik (beide params optioneel).
     [Function("TestDataWedstrijdenDeleteAlle")]
     public static async Task<IActionResult> DeleteAlle(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "beheer/testdata/wedstrijden")] HttpRequest req,
@@ -199,18 +200,25 @@ public static class AdminTestDataFunction
         if (authResult != null) return authResult;
         try
         {
+            var vanStr = req.Query.ContainsKey("van") ? req.Query["van"].ToString() : null;
+            var totStr = req.Query.ContainsKey("tot") ? req.Query["tot"].ToString() : null;
+
+            var sql = "DELETE FROM [his].[matches] WHERE [ClubCode] = 'ALLSTARS'";
+            if (!string.IsNullOrEmpty(vanStr)) sql += " AND [datum] >= @Van";
+            if (!string.IsNullOrEmpty(totStr)) sql += " AND [datum] <= @Tot";
+
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                DELETE FROM [his].[matches] WHERE [ClubCode] = 'ALLSTARS'",
-                connection);
+            using var command = new SqlCommand(sql, connection);
+            if (!string.IsNullOrEmpty(vanStr)) command.Parameters.AddWithValue("@Van", vanStr);
+            if (!string.IsNullOrEmpty(totStr)) command.Parameters.AddWithValue("@Tot", totStr);
             await command.ExecuteNonQueryAsync();
             return new OkObjectResult(new { ok = true });
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Fout bij verwijderen alle ALLSTARS wedstrijden");
+            log.LogError(ex, "Fout bij verwijderen ALLSTARS wedstrijden");
             return new ObjectResult(new { error = "Verwijderen mislukt" }) { StatusCode = 500 };
         }
     }

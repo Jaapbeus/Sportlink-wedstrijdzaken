@@ -19,7 +19,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
-- Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid waarmee je snel meerdere wedstrijden aanmaakt: globale datum/soort/tegenstander/starttijd invullen, op "Alle teams" klikken om één rij per team te genereren, of losse lege rijen toevoegen. Elke cel sla je op door hem te verlaten (auto-save). Fill-down (↓) kopieert een waarde naar alle lege cellen in dezelfde kolom. Verwijder één rij of verwijder alles. Alle testdata gebruikt `ClubCode = ALLSTARS` — echte wedstrijden blijven onaangetast.
+- Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid met de volgende mogelijkheden:
+  - Teams-dropdown toont uitsluitend teams gekoppeld aan ALLSTARS-teambegeleiding
+  - Tegenstander-veld wordt automatisch gevuld met het suffix van het thuisteam (bijv. "FC Onbekend JO9-2")
+  - Datumfilter (van/tot) om de weergave te beperken; de "Verwijder gefilterd"-knop verwijdert alleen wedstrijden in het geselecteerde bereik (verwijder-alles vereist een filter)
+  - Klikbare kolomkoppen (Datum, Thuis, Tegenstander, Starttijd) voor oplopend/aflopend sorteren; standaard datum aflopend
+  - Competitietypes: Competitie, Oefenwedstrijd, Toernooi, Vriendschappelijk
+  - Globale datum/soort/tegenstander/starttijd invullen, op "Alle teams" klikken voor één rij per team, of losse lege rijen toevoegen
+  - Elke cel sla je op door hem te verlaten (auto-save) — fill-down (↓) kopieert de eerste ingevulde waarde naar lege cellen
+  - Alle testdata gebruikt `ClubCode = ALLSTARS` — echte wedstrijden blijven onaangetast
 
 ### Fixed
 - Veldplanner toonde alle 5 velden ongeacht de club (#364): de dagplanning en optimalisatie tonen nu alleen de velden die bij de actieve club horen (gefilterd op ClubCode). AllStars FC (3 velden) ziet voortaan niet meer de velden van andere clubs.
