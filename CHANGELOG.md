@@ -3,7 +3,7 @@
 Alle noemenswaardige wijzigingen in dit project worden bijgehouden in dit bestand.
 
 De indeling volgt [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).  
-Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 > **Definities en beslisregels** -- wat is een bug, wat is een feature, wat hoort hier wel/niet in:  
 > zie [docs/VERSIONING.md](docs/VERSIONING.md).
