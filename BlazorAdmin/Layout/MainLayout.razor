@@ -14,9 +14,8 @@
         <div class="top-row px-4 d-flex align-items-center justify-content-end">
             @if (_clubs.Count > 1)
             {
-                <div class="me-3 d-flex align-items-center gap-2">
-                    <span class="text-muted small">Club:</span>
-                    <select class="form-select form-select-sm club-selector" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
+                <div class="me-3">
+                    <select class="form-select form-select-sm club-selector" style="min-width:200px" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
                         @foreach (var club in _clubs)
                         {
                             <option value="@club.ClubCode">@club.ClubName</option>
@@ -50,7 +49,8 @@
                 (ClubSelector.SelectedClubCode == null ||
                  !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode)))
             {
-                await ClubSelector.SelectClubAsync(_clubs[0].ClubCode);
+                var primary = _clubs.FirstOrDefault(c => c.SyncEnabled)?.ClubCode ?? _clubs[0].ClubCode;
+                await ClubSelector.SelectClubAsync(primary);
             }
         }
     }

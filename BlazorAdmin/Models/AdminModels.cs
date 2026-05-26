@@ -266,4 +266,5 @@ public class ClubDto
 {
     public string ClubCode { get; set; } = "";
     public string ClubName { get; set; } = "";
+    public bool SyncEnabled { get; set; }
 }

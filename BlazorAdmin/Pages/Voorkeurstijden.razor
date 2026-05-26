@@ -1,6 +1,9 @@
 @page "/voorkeurstijden"
 @inject AdminApiClient Api
+@inject ClubSelectorService ClubSelector
 @using BlazorAdmin.Models
+@using BlazorAdmin.Services
+@implements IDisposable
 
 <PageTitle>Voorkeurstijden — VRC Admin</PageTitle>
 
@@ -254,7 +257,14 @@ else
     // #288: alleen actieve teamregels tonen in de tabel
     private List<TeamRegelDto> ActieveTeamRegels => teamRegels.Where(r => r.Actief).ToList();
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        ClubSelector.OnChange += OnClubChanged;
+        await LoadAsync();
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
 
     private async Task LoadAsync()
     {
