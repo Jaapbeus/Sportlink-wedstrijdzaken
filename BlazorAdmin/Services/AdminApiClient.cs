@@ -196,6 +196,28 @@ public class AdminApiClient
     public async Task<ApiResult<ThemeExtractResultDto>> ExtractThemeColorsAsync(string url)
         => await PostAsync<ThemeExtractResultDto>($"api/beheer/theme/extract?url={Uri.EscapeDataString(url)}", new { });
 
+    // ── Velden ──
+
+    public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()
+        => await GetAsync<List<VeldDto>>("api/beheer/velden");
+
+    // ── Test data / ALLSTARS (#365) ──
+
+    public async Task<ApiResult<List<AllstarsWedstrijdDto>>> GetAllstarsWedstrijdenAsync()
+        => await GetAsync<List<AllstarsWedstrijdDto>>("api/beheer/testdata/wedstrijden");
+
+    public async Task<ApiResult<List<string>>> GetAllstarsTeamsAsync()
+        => await GetAsync<List<string>>("api/beheer/testdata/teams");
+
+    public async Task<ApiResult<object>> UpsertAllstarsWedstrijdAsync(AllstarsWedstrijdDto dto)
+        => await PostAsync<object>("api/beheer/testdata/wedstrijden", dto);
+
+    public async Task<ApiResult<object>> DeleteAllstarsWedstrijdAsync(string bk)
+        => await DeleteAsync<object>($"api/beheer/testdata/wedstrijden/{Uri.EscapeDataString(bk)}");
+
+    public async Task<ApiResult<object>> DeleteAlleAllstarsWedstrijdenAsync()
+        => await DeleteAsync<object>("api/beheer/testdata/wedstrijden");
+
     // ── Feedback widget ──
 
     public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)

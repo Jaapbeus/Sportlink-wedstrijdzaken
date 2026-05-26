@@ -1,6 +1,7 @@
 @inject IAuthService Auth
 @inject BlazorAdmin.Services.AdminApiClient Api
 @inject BlazorAdmin.Services.ThemeService ThemeService
+@inject BlazorAdmin.Services.ClubSelectorService ClubSelector
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -86,10 +87,44 @@
             }
         </div>
 
+        @* Test data — alleen zichtbaar in ALLSTARS modus *@
+        @if (ClubSelector.SelectedClubCode == "ALLSTARS")
+        {
+            <div class="nav-item px-3">
+                <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
+                        @onclick="ToggleTestData" @onclick:stopPropagation="true">
+                    <span><i class="bi bi-database-gear me-1" aria-hidden="true"></i> Test data</span>
+                    <i class="bi @(_testDataOpen ? "bi-chevron-down" : "bi-chevron-right") ms-1 small" aria-hidden="true"></i>
+                </button>
+                @if (_testDataOpen)
+                {
+                    <div class="ps-2">
+                        <div class="nav-item">
+                            <NavLink class="nav-link py-1" href="testdata/wedstrijden">
+                                <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Wedstrijden
+                            </NavLink>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
         @if (Auth.IsAuthenticated)
         {
             <div class="nav-item px-3 mt-3">
                 <small class="text-light px-2 d-block">Ingelogd als @Auth.UserName@(Auth.IsAdmin ? " (admin)" : "")</small>
+                @if (ClubSelector.SelectedClubCode == "ALLSTARS")
+                {
+                    <button class="btn btn-sm btn-warning mt-2 ms-2" @onclick="VerlatenTestmodusAsync">
+                        <i class="bi bi-database-gear me-1"></i> Testmodus — verlaten
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-sm btn-outline-secondary mt-2 ms-2" @onclick="ActiveerTestmodusAsync">
+                        <i class="bi bi-database-gear me-1"></i> Testmodus
+                    </button>
+                }
                 <button class="btn btn-sm btn-outline-light mt-2 ms-2" @onclick="LogoutAsync">Uitloggen</button>
             </div>
         }
@@ -99,17 +134,21 @@
 @code {
     private bool collapseNavMenu = true;
     private bool _instellingenOpen;
+    private bool _testDataOpen;
     private string? _clubName;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
     private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates"];
+    private static readonly string[] TestDataRoutes     = ["/testdata"];
 
     protected override async Task OnInitializedAsync()
     {
         _instellingenOpen = IsInstellingenRoute(Navigation.Uri);
+        _testDataOpen     = IsTestDataRoute(Navigation.Uri);
         Navigation.LocationChanged += OnLocationChanged;
         ThemeService.OnThemeChanged += OnThemeChanged;
+        ClubSelector.OnChange       += OnClubChanged;
 
         var result = await Api.GetSettingsAsync();
         if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
@@ -120,22 +159,42 @@
     {
         Navigation.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
+        ClubSelector.OnChange       -= OnClubChanged;
     }
 
     private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnClubChanged()  => _ = InvokeAsync(StateHasChanged);
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        if (IsInstellingenRoute(e.Location))
-            _instellingenOpen = true;
+        if (IsInstellingenRoute(e.Location)) _instellingenOpen = true;
+        if (IsTestDataRoute(e.Location))     _testDataOpen     = true;
         _ = InvokeAsync(StateHasChanged);
     }
 
     private static bool IsInstellingenRoute(string uri) =>
         InstellingenRoutes.Any(r => uri.Contains(r, StringComparison.OrdinalIgnoreCase));
 
-    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+    private static bool IsTestDataRoute(string uri) =>
+        TestDataRoutes.Any(r => uri.Contains(r, StringComparison.OrdinalIgnoreCase));
+
+    private void ToggleNavMenu()    => collapseNavMenu    = !collapseNavMenu;
     private void ToggleInstellingen() => _instellingenOpen = !_instellingenOpen;
+    private void ToggleTestData()   => _testDataOpen      = !_testDataOpen;
+
+    private async Task ActiveerTestmodusAsync()
+    {
+        await ClubSelector.SelectClubAsync("ALLSTARS");
+        _testDataOpen = true;
+        Navigation.NavigateTo("testdata/wedstrijden");
+    }
+
+    private async Task VerlatenTestmodusAsync()
+    {
+        await ClubSelector.SelectClubAsync("");
+        _testDataOpen = false;
+        Navigation.NavigateTo("");
+    }
 
     private async Task LogoutAsync() => await Auth.LogoutAsync();
 }

@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid waarmee je snel meerdere wedstrijden aanmaakt: globale datum/soort/tegenstander/starttijd invullen, op "Alle teams" klikken om één rij per team te genereren, of losse lege rijen toevoegen. Elke cel sla je op door hem te verlaten (auto-save). Fill-down (↓) kopieert een waarde naar alle lege cellen in dezelfde kolom. Verwijder één rij of verwijder alles. Alle testdata gebruikt `ClubCode = ALLSTARS` — echte wedstrijden blijven onaangetast.
+
+### Fixed
+- Veldplanner toonde alle 5 velden ongeacht de club (#364): de dagplanning en optimalisatie tonen nu alleen de velden die bij de actieve club horen (gefilterd op ClubCode). AllStars FC (3 velden) ziet voortaan niet meer de velden van andere clubs.
+- Veldplanner-optimalisatie was afhankelijk van hardcoded "veld 5 = grasveld": alle logica is nu gebaseerd op het `VeldType`-veld in de database (`kunstgras`/`gras`). Clubs met een ander aantal velden of een andere indeling worden correct behandeld.
+- Dagplanning UI: "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten"; statistiek "Van veld 5 verplaatst" wordt nu "Van grasveld verplaatst".
 ## [2.6.0.1] — 2026-05-26
 
 ### Added
