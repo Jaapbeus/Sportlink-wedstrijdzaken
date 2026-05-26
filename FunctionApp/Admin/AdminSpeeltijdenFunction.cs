@@ -26,8 +26,7 @@ public static class AdminSpeeltijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -84,8 +83,7 @@ public static class AdminSpeeltijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var bodyReader = new StreamReader(req.Body);
             var body = await bodyReader.ReadToEndAsync();
@@ -136,8 +134,7 @@ public static class AdminSpeeltijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var bodyReader = new StreamReader(req.Body);
             var body = await bodyReader.ReadToEndAsync();
@@ -189,8 +186,7 @@ public static class AdminSpeeltijdenFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();

@@ -36,9 +36,11 @@ public static class AdminTeambegeleidingFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             using var command = new SqlCommand(
-                "SELECT DISTINCT [Team] FROM [avg].[Teambegeleiding] WHERE [Team] IS NOT NULL ORDER BY [Team]",
+                "SELECT DISTINCT [Team] FROM [avg].[Teambegeleiding] WHERE [Team] IS NOT NULL AND [ClubCode] = @ClubCode ORDER BY [Team]",
                 connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             using var reader = await command.ExecuteReaderAsync();
             var teams = new List<string>();
             while (await reader.ReadAsync())
@@ -72,10 +74,12 @@ public static class AdminTeambegeleidingFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             using var command = new SqlCommand(@"
                 SELECT [Naam], [Teamrol], [Emailadres], [Telefoonnummer]
                 FROM [avg].[Teambegeleiding]
                 WHERE [Team] = @team
+                  AND [ClubCode] = @ClubCode
                 ORDER BY
                     CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
                          WHEN [Teamrol] LIKE '%Coach%' THEN 2
@@ -84,6 +88,7 @@ public static class AdminTeambegeleidingFunction
                     [Naam]
             ", connection);
             command.Parameters.AddWithValue("@team", team);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             using var reader = await command.ExecuteReaderAsync();
             var list = new List<object>();
             while (await reader.ReadAsync())
@@ -140,11 +145,13 @@ public static class AdminTeambegeleidingFunction
             using (var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
             {
                 await connection.OpenAsync();
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
                 using var cmd = new SqlCommand(@"
                     SELECT TOP 1 [Emailadres]
                     FROM [avg].[Teambegeleiding]
                     WHERE [Team] = @team
                       AND [Emailadres] IS NOT NULL
+                      AND [ClubCode] = @ClubCode
                     ORDER BY
                         CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
                              WHEN [Teamrol] LIKE '%Coach%' THEN 2
@@ -152,6 +159,7 @@ public static class AdminTeambegeleidingFunction
                              ELSE 4 END
                 ", connection);
                 cmd.Parameters.AddWithValue("@team", dto.TeamNaam);
+                cmd.Parameters.AddWithValue("@ClubCode", clubCode);
                 var result = await cmd.ExecuteScalarAsync();
                 coachEmail = result as string;
             }

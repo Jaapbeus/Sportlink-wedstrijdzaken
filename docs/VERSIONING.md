@@ -232,24 +232,51 @@ Voorbeelden:
 
 ## 6. Versie-bump beslisboom
 
+Het versienummer heeft **vier** cijfers: `MAJOR.MINOR.PATCH.REVISION`
+
+| Getal | Wanneer omhoog | Reset bij |
+|---|---|---|
+| **MAJOR** | Breaking change voor de gebruiker | — |
+| **MINOR** | Nieuwe feature | MAJOR-bump → 0 |
+| **PATCH** | Bugfix of security-patch | MINOR-bump → 0 |
+| **REVISION** | **Elke commit die gebruikerszichtbare bestanden raakt** (.razor, .cs, .css, .sql, .json in wwwroot) | PATCH-bump → 0 |
+
+> **Waarom Revision?** De beheerder ziet het versienummer in de header (bijv. `v2.5.0.1`).
+> Na een deployment kan de beheerder bevestigen dat de juiste versie actief is door het getal te checken.
+> Zonder Revision ziet elke kleine fix er hetzelfde uit — geen bevestiging mogelijk.
+
 ```
 Wat is er gewijzigd?
 │
 ├── Verwijdert of breekt bestaande functionaliteit voor een gebruiker?
-│   └── JA → MAJOR (x.0.0)
+│   └── JA → MAJOR (x.0.0.0)
 │
 ├── Voegt nieuwe gebruikersfunctionaliteit toe?
-│   └── JA → MINOR (2.x.0)
+│   └── JA → MINOR (2.x.0.0)
 │
 ├── Repareert iets wat verkeerd werkte voor een gebruiker?
-│   └── JA → PATCH (2.0.x)
+│   └── JA → PATCH (2.0.x.0)
 │
 ├── Beveiligingspatch?
-│   └── JA → PATCH (2.0.x) — tenzij breaking → MAJOR
+│   └── JA → PATCH (2.0.x.0) — tenzij breaking → MAJOR
 │
-└── Alleen intern (refactor, docs, tooling)?
+├── Kleine fix, CSS, UX-verbetering of chore met zichtbaar effect?
+│   └── JA → REVISION (2.0.0.x)
+│
+└── Alleen intern (refactor zonder effect, docs, tooling, CLAUDE.md)?
     └── Geen versie-bump
 ```
+
+### In de csproj
+
+Zet alle drie velden synchroon op het volledige 4-cijferige nummer:
+```xml
+<Version>2.5.0.1</Version>
+<AssemblyVersion>2.5.0.1</AssemblyVersion>
+<FileVersion>2.5.0.1</FileVersion>
+```
+
+Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString(4)` getoond in de header.
 
 ### Twijfelgevallen
 

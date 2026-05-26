@@ -13,12 +13,8 @@
 
 .bi {
     display: inline-block;
-    position: relative;
     width: 1.25rem;
-    height: 1.25rem;
-    margin-right: 0.75rem;
-    top: -1px;
-    background-size: cover;
+    text-align: center;
 }
 
 .bi-house-door-fill-nav-menu {
@@ -63,12 +59,30 @@
         line-height: 3rem;
     }
 
+    .nav-item ::deep button.nav-link {
+        color: #d7d7d7;
+        background: none;
+        border: none;
+        border-radius: 4px;
+        height: 3rem;
+        display: flex;
+        align-items: center;
+        padding-left: 1rem;
+        width: 100%;
+        text-align: start;
+    }
+
 .nav-item ::deep a.active {
     background-color: rgba(255,255,255,0.37);
     color: white;
 }
 
 .nav-item ::deep a:hover {
+    background-color: rgba(255,255,255,0.1);
+    color: white;
+}
+
+.nav-item ::deep button.nav-link:hover {
     background-color: rgba(255,255,255,0.1);
     color: white;
 }

@@ -72,6 +72,7 @@ public static class AdminSettingsFunction
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             // Geen SportlinkClientId, geen geheimen
             using var command = new SqlCommand(@"
                 SELECT TOP 1
@@ -80,7 +81,9 @@ public static class AdminSettingsFunction
                     [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                     [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                     [AccommodatieLatitude], [AccommodatieLongitude]
-                FROM [dbo].[AppSettings]", connection);
+                FROM [dbo].[AppSettings]
+                WHERE [ClubCode] = @ClubCode", connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
 
             using var reader = await command.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
@@ -98,13 +101,14 @@ public static class AdminSettingsFunction
             // UseRealtimeApi: dynamisch laden — kolom bestaat pas na DB-migratie
             using var rtaCmd = new SqlCommand(@"
                 DECLARE @v BIT = 1;
-                DECLARE @sql NVARCHAR(200) = CASE
+                DECLARE @sql NVARCHAR(300) = CASE
                     WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
-                    THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings]'
+                    THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings] WHERE [ClubCode] = @cc'
                     ELSE N'SELECT @v = CAST(1 AS BIT)'
                 END;
-                EXEC sp_executesql @sql, N'@v BIT OUTPUT', @v = @v OUTPUT;
+                EXEC sp_executesql @sql, N'@v BIT OUTPUT, @cc NVARCHAR(20)', @v = @v OUTPUT, @cc = @ClubCode;
                 SELECT @v;", connection);
+            rtaCmd.Parameters.AddWithValue("@ClubCode", clubCode);
             var rtaScalar = await rtaCmd.ExecuteScalarAsync();
             result["UseRealtimeApi"] = rtaScalar is bool rtaBool ? rtaBool : true;
 
@@ -148,6 +152,7 @@ public static class AdminSettingsFunction
             var gewijzigdDoor = updateRequest.GewijzigdDoor ?? req.Query["gewijzigdDoor"].ToString();
             if (string.IsNullOrWhiteSpace(gewijzigdDoor)) gewijzigdDoor = "onbekend";
 
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
             var changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             if (updateRequest.Velden != null)
@@ -179,14 +184,15 @@ public static class AdminSettingsFunction
 
             try
             {
-                var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys);
+                var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys, clubCode);
 
                 foreach (var (veld, nieuweWaarde) in changes)
                 {
                     var updateCmd = new SqlCommand(
-                        $"UPDATE [dbo].[AppSettings] SET [{veld}] = @Waarde",
+                        $"UPDATE [dbo].[AppSettings] SET [{veld}] = @Waarde WHERE [ClubCode] = @ClubCode",
                         connection, (SqlTransaction)transaction);
                     updateCmd.Parameters.AddWithValue("@Waarde", (object?)nieuweWaarde ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@ClubCode", clubCode);
                     await updateCmd.ExecuteNonQueryAsync();
 
                     currentValues.TryGetValue(veld, out var oud);
@@ -199,9 +205,7 @@ public static class AdminSettingsFunction
                     auditCmd.Parameters.AddWithValue("@Veld", veld);
                     auditCmd.Parameters.AddWithValue("@OudeWaarde", (object?)oud ?? DBNull.Value);
                     auditCmd.Parameters.AddWithValue("@NieuweWaarde", (object?)nieuweWaarde ?? DBNull.Value);
-                    auditCmd.Parameters.AddWithValue("@ClubCode",
-                        SystemUtilities.AppSettings.GetSetting("clubCode")
-                            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings"));
+                    auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
                     await auditCmd.ExecuteNonQueryAsync();
                 }
 
@@ -438,7 +442,7 @@ public static class AdminSettingsFunction
     }
 
     private static async Task<Dictionary<string, string?>> ReadCurrentValuesAsync(
-        SqlConnection connection, SqlTransaction transaction, IEnumerable<string> velden)
+        SqlConnection connection, SqlTransaction transaction, IEnumerable<string> velden, string clubCode)
     {
         var safe = velden.Where(v => AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
                          .Select(v => $"[{v}]")
@@ -446,8 +450,9 @@ public static class AdminSettingsFunction
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (safe.Count == 0) return result;
 
-        var sql = $"SELECT TOP 1 {string.Join(", ", safe)} FROM [dbo].[AppSettings]";
+        var sql = $"SELECT TOP 1 {string.Join(", ", safe)} FROM [dbo].[AppSettings] WHERE [ClubCode] = @ClubCode";
         using var cmd = new SqlCommand(sql, connection, transaction);
+        cmd.Parameters.AddWithValue("@ClubCode", clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
         {
