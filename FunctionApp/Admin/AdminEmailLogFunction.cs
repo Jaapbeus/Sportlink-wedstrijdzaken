@@ -32,8 +32,7 @@ public static class AdminEmailLogFunction
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
 
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             DateTime? vanaf = null, tot = null;
             if (DateTime.TryParse(req.Query["vanaf"].ToString(), out var vd)) vanaf = vd.Date;

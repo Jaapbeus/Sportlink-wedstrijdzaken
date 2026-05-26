@@ -30,8 +30,7 @@ public static class AdminTemplatesFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -88,8 +87,7 @@ public static class AdminTemplatesFunction
                 return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
 
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -152,8 +150,7 @@ public static class AdminTemplatesFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();

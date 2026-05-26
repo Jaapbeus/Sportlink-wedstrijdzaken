@@ -11,21 +11,24 @@
     </div>
 
     <main>
-        <div class="top-row px-4 d-flex align-items-center justify-content-end">
-            @if (_clubs.Count > 1)
-            {
-                <div class="me-3">
+        <div class="top-row px-4 d-flex align-items-center">
+            <div class="flex-fill"></div>
+            <div class="d-flex justify-content-center">
+                @if (_clubs.Count > 1)
+                {
                     <select class="form-select form-select-sm club-selector" style="min-width:200px" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
                         @foreach (var club in _clubs)
                         {
                             <option value="@club.ClubCode">@club.ClubName</option>
                         }
                     </select>
-                </div>
-            }
-            <span class="text-muted small me-3">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
-            <FeedbackWidget />
-            <a href="https://github.com/Jaapbeus/Sportlink-wedstrijdzaken" target="_blank">About</a>
+                }
+            </div>
+            <div class="flex-fill d-flex align-items-center justify-content-end gap-2">
+                <span class="text-muted small">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
+                <FeedbackWidget />
+                <a href="https://github.com/Jaapbeus/Sportlink-wedstrijdzaken" target="_blank">About</a>
+            </div>
         </div>
 
         <article class="content px-4">

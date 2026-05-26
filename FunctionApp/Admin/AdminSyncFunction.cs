@@ -31,9 +31,11 @@ public static class AdminSyncFunction
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             using var command = new SqlCommand(
-                "SELECT TOP 1 [LastSyncTimestamp], [FetchSchedule] FROM [dbo].[AppSettings]",
+                "SELECT TOP 1 [LastSyncTimestamp], [FetchSchedule] FROM [dbo].[AppSettings] WHERE [ClubCode] = @ClubCode",
                 connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
             using var reader = await command.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
                 return new NotFoundObjectResult(new { error = "Geen AppSettings rij" });

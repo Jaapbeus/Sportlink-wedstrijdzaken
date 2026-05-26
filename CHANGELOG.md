@@ -17,6 +17,12 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+- Multi-club data-isolatie volledig gerepareerd (#352): alle admin-schermen (Instellingen, Sync-status, Templates, Speeltijden, Voorkeurstijden, Veldenbeschikbaarheid, Email-log, Leermomenten, Uitgesloten-emails, Teambegeleiding) tonen nu uitsluitend data van de actief geselecteerde club. Voordien negeerden alle API-endpoints de `X-Club-Code`-header van de Blazor-frontend en laadden altijd de primaire/eerste club uit de startup-cache.
+- Club-switch in de topbalk staat nu gecentreerd in de navigatiebalk in plaats van rechtsuitgelijnd.
+- Instellingen-submenu in de navigatiebalk is nu zichtbaar (knop had Bootstrap `.btn-link`-kleur die onzichtbaar was op de donkere achtergrond).
+- Import-script teambegeleiding: `TRUNCATE TABLE` vervangen door `DELETE WHERE ClubCode = @cc` zodat data van andere clubs niet wordt gewist bij een import.
+
 ---
 
 ## [2.5.0] — 2026-05-26

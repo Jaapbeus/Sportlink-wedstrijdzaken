@@ -19,7 +19,8 @@
 
 param (
     [string] $CsvPath              = "",
-    [bool]   $DeleteCsvAfterImport = $false
+    [bool]   $DeleteCsvAfterImport = $false,
+    [string] $ClubCode             = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -86,6 +87,22 @@ if (-not $connectionStr) {
 }
 
 Write-Host "  Verbindingsstring gevonden." -ForegroundColor Green
+
+# ── ClubCode bepalen ──────────────────────────────────────────────────────────
+if (-not $ClubCode) {
+    $connTemp = New-Object System.Data.SqlClient.SqlConnection($connectionStr)
+    $connTemp.Open()
+    try {
+        $cmdTemp             = $connTemp.CreateCommand()
+        $cmdTemp.CommandText = "SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings]"
+        $ClubCode            = $cmdTemp.ExecuteScalar()
+    } finally { $connTemp.Close() }
+}
+if (-not $ClubCode) {
+    Write-Host "  FOUT: ClubCode niet gevonden. Geef -ClubCode mee of voeg een rij toe aan dbo.AppSettings." -ForegroundColor Red
+    exit 1
+}
+Write-Host "  ClubCode: $ClubCode" -ForegroundColor Green
 
 # ── Stap 3: CSV inlezen en kolomdetectie ──────────────────────────────────────
 Write-Host "`n[3/5] CSV inlezen en kolomdetectie..." -ForegroundColor Yellow
@@ -154,6 +171,7 @@ $null  = $table.Columns.Add("Teamrol",                [object])
 $null  = $table.Columns.Add("Naam",                   [object])
 $null  = $table.Columns.Add("Emailadres",             [object])
 $null  = $table.Columns.Add("Telefoonnummer",         [object])
+$null  = $table.Columns.Add("ClubCode",               [object])
 
 function Get-CsvValue([object]$row, [string]$col) {
     if (-not $col) { return [DBNull]::Value }
@@ -189,6 +207,7 @@ foreach ($row in $csvRows) {
     $r["Naam"]                   = $naam
     $r["Emailadres"]             = Get-CsvValue $row $resolved["Emailadres"]
     $r["Telefoonnummer"]         = $telefoon
+    $r["ClubCode"]               = $ClubCode
     $table.Rows.Add($r)
 }
 
@@ -202,9 +221,10 @@ $conn.Open()
 
 try {
     $cmd             = $conn.CreateCommand()
-    $cmd.CommandText = "TRUNCATE TABLE [avg].[Teambegeleiding]"
+    $cmd.CommandText = "DELETE FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @cc"
+    $null = $cmd.Parameters.AddWithValue("@cc", $ClubCode)
     $cmd.ExecuteNonQuery() | Out-Null
-    Write-Host "  avg.Teambegeleiding leeggemaakt (TRUNCATE)." -ForegroundColor Gray
+    Write-Host "  avg.Teambegeleiding leeggemaakt voor ClubCode '$ClubCode' (DELETE WHERE)." -ForegroundColor Gray
 
     $bulk                      = New-Object System.Data.SqlClient.SqlBulkCopy($conn)
     $bulk.DestinationTableName = "[avg].[Teambegeleiding]"

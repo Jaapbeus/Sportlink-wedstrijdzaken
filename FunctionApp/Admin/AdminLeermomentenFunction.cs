@@ -32,8 +32,7 @@ public static class AdminLeermomentenFunction
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
 
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             var statusFilter = req.Query["status"].ToString();
             int limit = DefaultLimit;
@@ -100,8 +99,7 @@ public static class AdminLeermomentenFunction
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
 
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -145,8 +143,7 @@ public static class AdminLeermomentenFunction
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
 
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
             string body;
             using (var sr = new System.IO.StreamReader(req.Body))
