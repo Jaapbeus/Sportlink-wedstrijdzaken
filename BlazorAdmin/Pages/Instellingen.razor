@@ -7,7 +7,15 @@
 
 <PageTitle>Instellingen — VRC Admin</PageTitle>
 
-<h1>Instellingen</h1>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Instellingen</h1>
+    @if (settings != null && string.IsNullOrEmpty(errorMessage))
+    {
+        <button type="submit" form="settings-form" class="btn btn-primary" disabled="@saving">
+            @(saving ? "Opslaan..." : "Opslaan")
+        </button>
+    }
+</div>
 
 @if (settings == null && string.IsNullOrEmpty(errorMessage))
 {
@@ -19,7 +27,7 @@ else if (!string.IsNullOrEmpty(errorMessage))
 }
 else
 {
-    <EditForm Model="settings" OnValidSubmit="OpslaanAsync">
+    <EditForm Model="settings" OnValidSubmit="OpslaanAsync" id="settings-form">
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Clubnaam</label>
