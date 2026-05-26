@@ -11,5 +11,6 @@ CREATE TABLE [avg].[Teambegeleiding] (
     [Emailadres]             NVARCHAR (200) NULL,
     [Telefoonnummer]         NVARCHAR (50)  NULL,
     [mta_imported]           DATETIME       CONSTRAINT [DF_avg_Teambegeleiding_mta_imported] DEFAULT (GETUTCDATE()) NOT NULL,
+    [ClubCode]               NVARCHAR (20)  NOT NULL CONSTRAINT [DF_avg_Teambegeleiding_ClubCode] DEFAULT '',
     CONSTRAINT [PK_avg_Teambegeleiding] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
