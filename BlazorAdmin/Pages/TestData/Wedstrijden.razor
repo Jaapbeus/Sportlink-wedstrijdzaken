@@ -151,6 +151,7 @@ else
                                 @onclick='() => VulKolom("aanvangstijd")' @onclick:stopPropagation="true">↓</button>
                     </th>
                     <th style="width:140px">Veld</th>
+                    <th style="width:105px" title="Velddeel op basis van speeltijden-tabel (0.25=A1-B2, 0.50=A-B)">Velddeel</th>
                     <th style="width:150px">Soort</th>
                     <th style="width:40px"></th>
                     <th style="width:32px"></th>
@@ -208,6 +209,26 @@ else
                         </td>
 
                         <td>
+                            @{ var velddeelopties = GetVelddeelopties(rij.ThuisTeam); }
+                            @if (velddeelopties != null)
+                            {
+                                <select class="form-select form-select-sm border-0"
+                                        value="@rij.VeldSubpositie"
+                                        @onchange="e => { rij.VeldSubpositie = e.Value?.ToString(); _ = AutoSaveAsync(rij); }">
+                                    <option value="">—</option>
+                                    @foreach (var o in velddeelopties)
+                                    {
+                                        <option value="@o">@o</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <span class="text-muted small">heel veld</span>
+                            }
+                        </td>
+
+                        <td>
                             <select class="form-select form-select-sm border-0"
                                     value="@rij.Soort"
                                     @onchange="e => { rij.Soort = e.Value?.ToString(); _ = AutoSaveAsync(rij); }">
@@ -248,7 +269,7 @@ else
                 @if (weergave.Count == 0)
                 {
                     <tr>
-                        <td colspan="9" class="text-muted text-center py-3">
+                        <td colspan="10" class="text-muted text-center py-3">
                             @if (_rijen.Count == 0)
                             {
                                 <span>Geen rijen. Klik <strong>Alle teams</strong> of <strong>Lege rij</strong>.</span>
@@ -280,13 +301,14 @@ else
 
     private class WedstrijdRij
     {
-        public string  BkMatches    { get; } = $"ALLSTARS-{Guid.NewGuid():N}"[..28];
-        public string? Datum        { get; set; }
-        public string? Aanvangstijd { get; set; }
-        public string? ThuisTeam    { get; set; }
-        public string? UitTeam      { get; set; }
-        public string? VeldNaam     { get; set; }
-        public string? Soort        { get; set; } = "Oefenwedstrijd";
+        public string  BkMatches      { get; } = $"ALLSTARS-{Guid.NewGuid():N}"[..28];
+        public string? Datum          { get; set; }
+        public string? Aanvangstijd   { get; set; }
+        public string? ThuisTeam      { get; set; }
+        public string? UitTeam        { get; set; }
+        public string? VeldNaam       { get; set; }
+        public string? VeldSubpositie { get; set; }
+        public string? Soort          { get; set; } = "Oefenwedstrijd";
 
         public bool    IsSaving     { get; set; }
         public bool    IsOpgeslagen { get; set; }
@@ -295,25 +317,27 @@ else
 
         public AllstarsWedstrijdDto ToDto() => new()
         {
-            BkMatches    = BkMatches,
-            Datum        = Datum,
-            Aanvangstijd = Aanvangstijd,
-            ThuisTeam    = ThuisTeam,
-            UitTeam      = UitTeam,
-            VeldNaam     = VeldNaam,
-            Soort        = Soort,
+            BkMatches      = BkMatches,
+            Datum          = Datum,
+            Aanvangstijd   = Aanvangstijd,
+            ThuisTeam      = ThuisTeam,
+            UitTeam        = UitTeam,
+            VeldNaam       = VeldNaam,
+            VeldSubpositie = VeldSubpositie,
+            Soort          = Soort,
         };
 
         public static WedstrijdRij VanDto(AllstarsWedstrijdDto dto)
         {
             var rij = new WedstrijdRij(dto.BkMatches);
-            rij.Datum        = dto.Datum;
-            rij.Aanvangstijd = dto.Aanvangstijd;
-            rij.ThuisTeam    = dto.ThuisTeam;
-            rij.UitTeam      = dto.UitTeam;
-            rij.VeldNaam     = dto.VeldNaam;
-            rij.Soort        = dto.Soort ?? "Oefenwedstrijd";
-            rij.IsOpgeslagen = true;
+            rij.Datum          = dto.Datum;
+            rij.Aanvangstijd   = dto.Aanvangstijd;
+            rij.ThuisTeam      = dto.ThuisTeam;
+            rij.UitTeam        = dto.UitTeam;
+            rij.VeldNaam       = dto.VeldNaam;
+            rij.VeldSubpositie = dto.VeldSubpositie;
+            rij.Soort          = dto.Soort ?? "Oefenwedstrijd";
+            rij.IsOpgeslagen   = true;
             return rij;
         }
 
@@ -347,6 +371,33 @@ else
 
     private static readonly string[] SoortOpties =
         ["Competitie", "Oefenwedstrijd", "Toernooi", "Vriendschappelijk"];
+
+    // ── Velddeel opties op basis van Veldafmeting uit Speeltijden ──
+
+    private IReadOnlyList<string>? GetVelddeelopties(string? teamnaam)
+    {
+        if (string.IsNullOrEmpty(teamnaam)) return null;
+        var spatie1 = teamnaam.IndexOf(' ');
+        if (spatie1 < 0) return null;
+        var rest    = teamnaam[(spatie1 + 1)..];
+        var spatie2 = rest.IndexOf(' ');
+        var leeftijd = spatie2 >= 0 ? rest[..spatie2] : rest;
+        leeftijd = leeftijd switch
+        {
+            "Heren" or "Heer" => "1-99",
+            "Dames" or "Vrouwen" => "VR",
+            _ => leeftijd
+        };
+        var s = _speeltijden.FirstOrDefault(x => x.Leeftijd == leeftijd);
+        if (s == null || s.Veldafmeting >= 1.00m) return null;
+        return (int)Math.Round(1m / s.Veldafmeting) switch
+        {
+            2 => ["A",  "B"],
+            4 => ["A1", "A2", "B1", "B2"],
+            3 => ["A",  "B",  "C"],
+            _ => null
+        };
+    }
 
     // ── Computed ──
 

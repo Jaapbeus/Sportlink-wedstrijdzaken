@@ -724,7 +724,8 @@ namespace SportlinkFunction.Planner
                     COALESCE(s.[Veldafmeting], 1.00)                                   AS VeldDeelGebruik,
                     m.[teamnaam]                                                        AS TeamNaam,
                     COALESCE(m.[thuisteam], '') + ' - ' + COALESCE(m.[uitteam], '')    AS Wedstrijd,
-                    m.[competitiesoort]                                                 AS LeeftijdsCategorie
+                    m.[competitiesoort]                                                 AS LeeftijdsCategorie,
+                    m.[veld_subpositie]                                                 AS VeldSubpositie
                 FROM [his].[matches] m
                 LEFT JOIN [dbo].[Velden] v
                     ON LTRIM(RTRIM(ISNULL(m.[veld], ''))) = v.[VeldNaam]
@@ -771,7 +772,7 @@ namespace SportlinkFunction.Planner
                     VeldDeelGebruik   = reader.GetDecimal(4),
                     TeamNaam          = reader.IsDBNull(5) ? null : reader.GetString(5),
                     Wedstrijd         = reader.GetString(6),
-                    VeldSubpositie    = null,
+                    VeldSubpositie    = reader.IsDBNull(8) ? null : reader.GetString(8),
                     Bron              = "ALLSTARS"
                 });
             }

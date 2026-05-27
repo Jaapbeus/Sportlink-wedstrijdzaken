@@ -27,7 +27,7 @@ public static class AdminTestDataFunction
             await connection.OpenAsync();
             using var command = new SqlCommand(@"
                 SELECT [bk_matches], [datum], [aanvangstijd],
-                       [thuisteam], [uitteam], [veld], [competitiesoort]
+                       [thuisteam], [uitteam], [veld], [competitiesoort], [veld_subpositie]
                 FROM   [his].[matches]
                 WHERE  [ClubCode] = 'ALLSTARS'
                 ORDER  BY [datum], [aanvangstijd], [thuisteam]",
@@ -37,13 +37,14 @@ public static class AdminTestDataFunction
             while (await reader.ReadAsync())
                 list.Add(new
                 {
-                    BkMatches   = reader.GetString(0),
-                    Datum       = reader.IsDBNull(1) ? null : reader.GetString(1),
-                    Aanvangstijd = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    ThuisTeam   = reader.IsDBNull(3) ? null : reader.GetString(3),
-                    UitTeam     = reader.IsDBNull(4) ? null : reader.GetString(4),
-                    VeldNaam    = reader.IsDBNull(5) ? null : reader.GetString(5),
-                    Soort       = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    BkMatches      = reader.GetString(0),
+                    Datum          = reader.IsDBNull(1) ? null : reader.GetString(1),
+                    Aanvangstijd   = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    ThuisTeam      = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    UitTeam        = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    VeldNaam       = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Soort          = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    VeldSubpositie = reader.IsDBNull(7) ? null : reader.GetString(7),
                 });
             return new OkObjectResult(list);
         }
@@ -118,35 +119,37 @@ public static class AdminTestDataFunction
                 MERGE [his].[matches] AS target
                 USING (SELECT @BkMatches AS bk) AS source ON target.bk_matches = source.bk
                 WHEN MATCHED THEN UPDATE SET
-                    [datum]           = @Datum,
-                    [wedstrijddatum]  = @Wedstrijddatum,
-                    [kaledatum]       = @Kaledatum,
-                    [aanvangstijd]    = @Aanvangstijd,
-                    [thuisteam]       = @ThuisTeam,
-                    [teamnaam]        = @ThuisTeam,
-                    [uitteam]         = @UitTeam,
-                    [veld]            = @VeldNaam,
-                    [competitiesoort] = @Soort,
-                    [mta_modified]    = GETUTCDATE()
+                    [datum]            = @Datum,
+                    [wedstrijddatum]   = @Wedstrijddatum,
+                    [kaledatum]        = @Kaledatum,
+                    [aanvangstijd]     = @Aanvangstijd,
+                    [thuisteam]        = @ThuisTeam,
+                    [teamnaam]         = @ThuisTeam,
+                    [uitteam]          = @UitTeam,
+                    [veld]             = @VeldNaam,
+                    [veld_subpositie]  = @VeldSubpositie,
+                    [competitiesoort]  = @Soort,
+                    [mta_modified]     = GETUTCDATE()
                 WHEN NOT MATCHED THEN INSERT
                     ([bk_matches], [datum], [wedstrijddatum], [kaledatum], [aanvangstijd],
-                     [thuisteam], [teamnaam], [uitteam], [veld], [competitiesoort],
+                     [thuisteam], [teamnaam], [uitteam], [veld], [veld_subpositie], [competitiesoort],
                      [ClubCode], [mta_inserted], [mta_modified])
                 VALUES
                     (@BkMatches, @Datum, @Wedstrijddatum, @Kaledatum, @Aanvangstijd,
-                     @ThuisTeam, @ThuisTeam, @UitTeam, @VeldNaam, @Soort,
+                     @ThuisTeam, @ThuisTeam, @UitTeam, @VeldNaam, @VeldSubpositie, @Soort,
                      'ALLSTARS', GETUTCDATE(), GETUTCDATE());",
                 connection);
 
-            command.Parameters.AddWithValue("@BkMatches",    dto.BkMatches);
-            command.Parameters.AddWithValue("@Datum",        (object?)dto.Datum         ?? DBNull.Value);
-            command.Parameters.AddWithValue("@Wedstrijddatum",(object?)wedstrijddatum   ?? DBNull.Value);
-            command.Parameters.AddWithValue("@Kaledatum",    (object?)kaledatum         ?? DBNull.Value);
-            command.Parameters.AddWithValue("@Aanvangstijd", (object?)dto.Aanvangstijd  ?? DBNull.Value);
-            command.Parameters.AddWithValue("@ThuisTeam",    (object?)dto.ThuisTeam     ?? DBNull.Value);
-            command.Parameters.AddWithValue("@UitTeam",      (object?)dto.UitTeam       ?? DBNull.Value);
-            command.Parameters.AddWithValue("@VeldNaam",     (object?)dto.VeldNaam      ?? DBNull.Value);
-            command.Parameters.AddWithValue("@Soort",        (object?)dto.Soort         ?? DBNull.Value);
+            command.Parameters.AddWithValue("@BkMatches",      dto.BkMatches);
+            command.Parameters.AddWithValue("@Datum",         (object?)dto.Datum          ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Wedstrijddatum",(object?)wedstrijddatum     ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Kaledatum",     (object?)kaledatum          ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Aanvangstijd",  (object?)dto.Aanvangstijd   ?? DBNull.Value);
+            command.Parameters.AddWithValue("@ThuisTeam",     (object?)dto.ThuisTeam      ?? DBNull.Value);
+            command.Parameters.AddWithValue("@UitTeam",       (object?)dto.UitTeam        ?? DBNull.Value);
+            command.Parameters.AddWithValue("@VeldNaam",      (object?)dto.VeldNaam       ?? DBNull.Value);
+            command.Parameters.AddWithValue("@VeldSubpositie",(object?)dto.VeldSubpositie ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Soort",         (object?)dto.Soort          ?? DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
             return new OkObjectResult(new { ok = true });
@@ -225,12 +228,13 @@ public static class AdminTestDataFunction
 
     private sealed class AllstarsWedstrijdInput
     {
-        public string  BkMatches    { get; set; } = "";
-        public string? Datum        { get; set; }
-        public string? Aanvangstijd { get; set; }
-        public string? ThuisTeam    { get; set; }
-        public string? UitTeam      { get; set; }
-        public string? VeldNaam     { get; set; }
-        public string? Soort        { get; set; }
+        public string  BkMatches       { get; set; } = "";
+        public string? Datum           { get; set; }
+        public string? Aanvangstijd    { get; set; }
+        public string? ThuisTeam       { get; set; }
+        public string? UitTeam         { get; set; }
+        public string? VeldNaam        { get; set; }
+        public string? VeldSubpositie  { get; set; }
+        public string? Soort           { get; set; }
     }
 }
