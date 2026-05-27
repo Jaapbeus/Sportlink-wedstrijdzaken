@@ -30,6 +30,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Instellingen-pagina toont een heldere testmodus-melding in ALLSTARS-modus; synchronisatie- en e-mailverwerkingssecties zijn verborgen omdat deze niet van toepassing zijn op testdata (#365)
 - Dagplanning in ALLSTARS-modus toonde "geen wedstrijden" als veld leeg was of niet overeenkwam — query gebruikt nu volledige veldnaam-match en valt terug op laagste VeldNummer bij ontbrekend veld (#365)
 - Testdata-formulier: globaal veld-dropdown toegevoegd zodat "Alle teams" meteen het gekozen veld meeneemt (#365)
+- AdminThemeGet crashte bij koude start met `InvalidOperationException: clubCode ontbreekt` — GetClubCodeFromRequest werd aangeroepen vóór WaitForDatabaseAsync, waardoor AppSettings nog null waren; volgorde gecorrigeerd (#365)
 
 ### Added (eerder in 2.7.0.0)
 - Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid met de volgende mogelijkheden:
