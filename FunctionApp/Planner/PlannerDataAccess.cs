@@ -704,20 +704,20 @@ namespace SportlinkFunction.Planner
                     CAST(m.[kaledatum] AS DATE)                                        AS Datum,
                     CAST(m.[aanvangstijd] AS TIME)                                     AS AanvangsTijd,
                     ISNULL(s.[WedstrijdTotaal], 90)                                    AS DuurMinuten,
-                    v.[VeldNummer],
+                    ISNULL(v.[VeldNummer], d.[DefaultVeld])                            AS VeldNummer,
                     COALESCE(s.[Veldafmeting], 1.00)                                   AS VeldDeelGebruik,
                     m.[teamnaam]                                                        AS TeamNaam,
                     COALESCE(m.[thuisteam], '') + ' - ' + COALESCE(m.[uitteam], '')    AS Wedstrijd,
                     m.[competitiesoort]                                                 AS LeeftijdsCategorie
                 FROM [his].[matches] m
                 LEFT JOIN [dbo].[Velden] v
-                    ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
+                    ON LTRIM(RTRIM(ISNULL(m.[veld], ''))) = v.[VeldNaam]
+                CROSS APPLY (SELECT MIN([VeldNummer]) AS DefaultVeld FROM [dbo].[Velden]) d
                 LEFT JOIN [dbo].[Speeltijden] s
                     ON s.[Leeftijd] = LEFT(m.[teamnaam], CHARINDEX('-', m.[teamnaam] + '-') - 1)
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = 'ALLSTARS'
                   AND m.[aanvangstijd] IS NOT NULL
-                  AND v.[VeldNummer] IS NOT NULL
             ", conn);
             cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
 

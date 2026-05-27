@@ -60,6 +60,16 @@
                        value="@_globalStarttijd"
                        @onchange="e => _globalStarttijd = e.Value?.ToString() ?? _globalStarttijd" />
             </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Veld (nieuw)</label>
+                <select class="form-select form-select-sm" style="width:140px" @bind="_globalVeldNaam">
+                    <option value="">— geen —</option>
+                    @foreach (var v in _velden)
+                    {
+                        <option value="@v.VeldNaam">@v.VeldNaam</option>
+                    }
+                </select>
+            </div>
             <div class="col-auto mt-auto d-flex gap-1 flex-wrap">
                 <button class="btn btn-sm btn-primary" @onclick="VoegAlleTeamsToeAsync"
                         disabled="@(_teams.Count == 0 || _bezig)">
@@ -325,6 +335,7 @@ else
     private string _globalSoort        = "Oefenwedstrijd";
     private string _globalTegenstander = "FC Onbekend";
     private string _globalStarttijd    = "10:00";
+    private string _globalVeldNaam     = "";
 
     // Filter
     private string _filterVan = "";
@@ -485,6 +496,7 @@ else
             Soort        = _globalSoort,
             UitTeam      = string.IsNullOrWhiteSpace(_globalTegenstander) ? null : _globalTegenstander,
             Aanvangstijd = _globalStarttijd,
+            VeldNaam     = string.IsNullOrEmpty(_globalVeldNaam) ? null : _globalVeldNaam,
         };
         _rijen.Add(rij);
     }
@@ -504,6 +516,7 @@ else
                     : $"{_globalTegenstander} {suffix}",
                 Soort        = _globalSoort,
                 Aanvangstijd = _globalStarttijd,
+                VeldNaam     = string.IsNullOrEmpty(_globalVeldNaam) ? null : _globalVeldNaam,
             };
         }).ToList();
 
