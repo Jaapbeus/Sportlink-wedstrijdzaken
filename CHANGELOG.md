@@ -19,48 +19,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
-- Speeltijden per club: `dbo.Speeltijden` heeft nu een composite primary key `(Leeftijd, ClubCode)` — elke club kan eigen speeltijden configureren; ALLSTARS-speeltijden zijn gekopieerd van VRC (#365)
-- Nieuw herbruikbaar tijdinvoerveld (`TimeInput`) voor alle tijdvelden in de applicatie: accepteert `14:30` én `1430` (wordt automatisch genormaliseerd naar `HH:mm`), valideert uren 0–23 en minuten 0–59, toont een foutmelding bij ongeldige invoer (#365)
-- Voorkeurstijden: veldkeuze in Teamregels (regeltype "Voorkeursveld") toont nu een dropdown met de clubvelden in plaats van een vrij invoerveld — velden worden gefilterd op ClubCode (#365)
-- Voorkeurstijden: prioriteit-uitleg toegevoegd in het invoerecran voor zowel Voorkeurstijden (1=hoogste, 10=laagste) als Teamregels (hoger=eerder toegepast) (#365)
-- Handleiding: nieuwe sectie 14 "Voorkeurstijden & Teamregels" met uitleg over Prioriteit, Teamregel-types en API-endpoints
-- Dagplanning in ALLSTARS-modus laadt nu fictieve testwedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'` in plaats van de Sportlink API — de planner-optimalisatie werkt volledig met testdata (#365)
-- Grasveld-logica in de planner is nu dynamisch op basis van `VeldType = 'gras'` in `dbo.Velden` — geen hardcoded verwijzing naar veldnummer 5 meer; werkt correct voor clubs met andere veldindelingen
+- Globale backend-statusbanner: bovenaan elk scherm verschijnt nu een zichtbare gele banner ("Backend start op…") tijdens het opstarten van de FunctionApp, en een rode banner ("Backend niet bereikbaar") wanneer de API 5xx-fouten geeft of onbereikbaar is — lege schermen zonder uitleg zijn niet meer mogelijk (#365)
+- Velddeel-selector in testdata invoergrid: per wedstrijd kan nu een deelveld worden gekozen op basis van de speeltijden-tabel — JO7-JO10 (0.25 veld) toont A1/A2/B1/B2, JO11-JO12 (0.50 veld) toont A/B, volledig-veld-leeftijden tonen geen dropdown (#365)
+- Nieuw herbruikbaar tijdinvoerveld (`TimeInput`) voor alle tijdvelden in de applicatie (#365)
+- Voorkeurstijden: veldkeuze in Teamregels toont nu een dropdown met de clubvelden (#365)
+- Dagplanning: ALLSTARS-modus laadt fictieve testwedstrijden uit de database (#365)
+- Speeltijden per club: composite primary key `(Leeftijd, ClubCode)` — elke club kan eigen speeltijden configureren (#365)
 
 ### Fixed
-- Planner-queries joinden `dbo.Speeltijden` zonder ClubCode-filter: bij multi-club data werden dubbele rijen teruggegeven; alle 5 JOIN-condities en de 2 standalone queries filteren nu op `ClubCode` (#365)
-- Wedstrijden-pagina toonde VRC-velden in de dropdown in ALLSTARS-modus door een race-conditie: `ClubSelector.InitializeAsync()` werd niet afgewacht vóór de API-aanroep in `OnInitializedAsync` (#365)
-- Zijbalk toonde "v.v. VRC" in ALLSTARS-modus door een race-conditie: NavMenu las `SelectedClubCode` uit vóórdat `ClubSelectorService.InitializeAsync()` de localStorage had ingelezen; opgelost door await toe te voegen in `NavMenu.OnInitializedAsync` (#365)
-- Dagplanning in ALLSTARS-modus toonde VRC-velden (1–6) in plaats van ALLSTARS-velden (101–103): planner-queries filteren nu op `VeldNummer >= 100` voor ALLSTARS en `< 100` voor VRC (#365)
-- Wedstrijden zonder veld in ALLSTARS-modus belandden op VRC-veld 1 (fout `CROSS APPLY MIN(VeldNummer)` over alle velden) — fallback gebruikt nu het laagste ALLSTARS-veld (101) (#365)
-- Dagplanning in ALLSTARS-modus toonde "✓ Geen optimalisatie nodig — huidige planning is al optimaal" terwijl veel wedstrijden nog geen veld hadden; vervangen door een informatieve testmodus-melding met aantal ongeplaatste wedstrijden en een verwijzing naar Test data → Wedstrijden (#365)
-- Clubnaam in de zijbalk wordt nu direct bijgewerkt na wisselen van club: "ALLSTARS (testmodus)" bij testmodus, clubnaam uit AppSettings bij terugkeren (#365)
-- Optimalisatiedoel "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten" en statistiek "Van veld 5 verplaatst" → "Van grasveld verplaatst" in dagplanning (#365)
-- Planner-suggesties tonen nu de juiste (dynamische) veldnaam en reden op basis van het werkelijke grasveld
-- ALLSTARS testmodus reset niet langer naar VRC bij iedere paginawissel — geselecteerde club blijft bewaard (#365)
-- Instellingen-pagina toont een heldere testmodus-melding in ALLSTARS-modus; synchronisatie- en e-mailverwerkingssecties zijn verborgen omdat deze niet van toepassing zijn op testdata (#365)
-- Dagplanning in ALLSTARS-modus toonde "geen wedstrijden" als veld leeg was of niet overeenkwam — query gebruikt nu volledige veldnaam-match en valt terug op laagste VeldNummer bij ontbrekend veld (#365)
-- Testdata-formulier: globaal veld-dropdown toegevoegd zodat "Alle teams" meteen het gekozen veld meeneemt (#365)
-- AdminThemeGet crashte bij koude start met `InvalidOperationException: clubCode ontbreekt` — GetClubCodeFromRequest werd aangeroepen vóór WaitForDatabaseAsync, waardoor AppSettings nog null waren; volgorde gecorrigeerd (#365)
-- Testdata invoergrid (Wedstrijden): velddeel-selector per rij op basis van Speeltijden.Veldafmeting — JO7-JO10 (0.25 veld) toont A1/A2/B1/B2, JO11-JO12 (0.50 veld) toont A/B, volledige-veld-leeftijden tonen "heel veld" (#365)
-- ALLSTARS dagplanning toonde onzichtbare blokken voor JO-teams omdat leeftijdscategorie werd geëxtraheerd met een koppelteken-gebaseerde splitser (werkt voor "VRC JO10-1" maar niet voor "AllStars JO10 1"): query gebruikt nu de tweede spatie-gescheiden token van de teamnaam, met mapping Heren→1-99 en Dames/Vrouwen→VR (#365)
-- Dagplanning ALLSTARS-testmelding toonde alleen een aantal ("2 van 10 wedstrijden op standaard veld"): melding toont nu ook welke teams geen veld hebben toegewezen zodat direct duidelijk is wat er bijgewerkt moet worden (#365)
+- ALLSTARS dagplanning toonde onzichtbare blokken voor JO-teams door slechte leeftijdscategorie-extractie — opgelost met tweede spatie-gescheiden token van de teamnaam (#365)
+- Dagplanning ALLSTARS-testmelding toont nu welke teams geen veld hebben toegewezen (#365)
+- Planner-queries joinden `dbo.Speeltijden` zonder ClubCode-filter — dubbele rijen bij multi-club data opgelost (#365)
+- Wedstrijden-pagina, zijbalk en dagplanning toonden VRC-data in ALLSTARS-modus door race-condities bij initialisatie (#365)
+- Start-Debug.ps1: runtimeconfig.json lock-fout bij dotnet watch herstart opgelost via 4s sleep en MSBUILDDISABLENODEREUSE=1 (#365)
 
-### Added (eerder in 2.7.0.0)
-- Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid met de volgende mogelijkheden:
-  - Teams-dropdown toont uitsluitend teams gekoppeld aan ALLSTARS-teambegeleiding
-  - Tegenstander-veld wordt automatisch gevuld met het suffix van het thuisteam (bijv. "FC Onbekend JO9-2")
-  - Datumfilter (van/tot) om de weergave te beperken; de "Verwijder gefilterd"-knop verwijdert alleen wedstrijden in het geselecteerde bereik (verwijder-alles vereist een filter)
-  - Klikbare kolomkoppen (Datum, Thuis, Tegenstander, Starttijd) voor oplopend/aflopend sorteren; standaard datum aflopend
-  - Competitietypes: Competitie, Oefenwedstrijd, Toernooi, Vriendschappelijk
-  - Globale datum/soort/tegenstander/starttijd invullen, op "Alle teams" klikken voor één rij per team, of losse lege rijen toevoegen
-  - Elke cel sla je op door hem te verlaten (auto-save) — fill-down (↓) kopieert de eerste ingevulde waarde naar lege cellen
-  - Alle testdata gebruikt `ClubCode = ALLSTARS` — echte wedstrijden blijven onaangetast
-
-### Fixed
-- Veldplanner toonde alle 5 velden ongeacht de club (#364): de dagplanning en optimalisatie tonen nu alleen de velden die bij de actieve club horen (gefilterd op ClubCode). AllStars FC (3 velden) ziet voortaan niet meer de velden van andere clubs.
-- Veldplanner-optimalisatie was afhankelijk van hardcoded "veld 5 = grasveld": alle logica is nu gebaseerd op het `VeldType`-veld in de database (`kunstgras`/`gras`). Clubs met een ander aantal velden of een andere indeling worden correct behandeld.
-- Dagplanning UI: "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten"; statistiek "Van veld 5 verplaatst" wordt nu "Van grasveld verplaatst".
 ## [2.6.0.1] — 2026-05-26
 
 ### Added

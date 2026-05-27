@@ -4,6 +4,7 @@
 @using BlazorAdmin.Services
 @inject AdminApiClient Api
 @inject ClubSelectorService ClubSelector
+@inject ApiStatusService ApiStatus
 @implements IDisposable
 
 <div class="page">
@@ -24,13 +25,6 @@
                         }
                     </select>
                 }
-                else if (_backendBezig)
-                {
-                    <span class="text-muted small d-flex align-items-center gap-1">
-                        <span class="spinner-border spinner-border-sm" style="width:.8rem;height:.8rem;" role="status"></span>
-                        Backend start op…
-                    </span>
-                }
             </div>
             <div class="flex-fill d-flex align-items-center justify-content-end gap-2">
                 <span class="text-muted small">v@(Assembly.GetExecutingAssembly().GetName().Version?.ToString(4) ?? "?")</span>
@@ -38,6 +32,24 @@
                 <a href="https://github.com/Jaapbeus/Sportlink-wedstrijdzaken" target="_blank">About</a>
             </div>
         </div>
+
+        @if (ApiStatus.Status != BackendStatus.Ok)
+        {
+            <div class="backend-status-banner @(ApiStatus.Status == BackendStatus.StartingUp ? "banner-warning" : "banner-error")">
+                @if (ApiStatus.Status == BackendStatus.StartingUp)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span><strong>Backend start op…</strong> Even geduld, dit duurt ca. 15 seconden na een (her)start.</span>
+                }
+                else
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="me-2" viewBox="0 0 16 16">
+                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
+                    </svg>
+                    <span><strong>Backend niet bereikbaar.</strong> @ApiStatus.Foutmelding</span>
+                }
+            </div>
+        }
 
         <article class="content px-4">
             @Body
@@ -47,14 +59,17 @@
 
 @code {
     private List<ClubDto> _clubs = new();
-    private bool _backendBezig = true;
     private CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
     {
+        ApiStatus.OnChanged += OnApiStatusChanged;
+        ApiStatus.MeldStartend();
         await ClubSelector.InitializeAsync();
         await LaadClubsAsync(_cts.Token);
     }
+
+    private void OnApiStatusChanged() => InvokeAsync(StateHasChanged);
 
     private async Task LaadClubsAsync(CancellationToken ct)
     {
@@ -72,17 +87,19 @@
                     var primary = _clubs.FirstOrDefault(c => c.SyncEnabled)?.ClubCode ?? _clubs[0].ClubCode;
                     await ClubSelector.SelectClubAsync(primary);
                 }
-                _backendBezig = false;
+                // ApiStatusService.Herstel() wordt al aangeroepen door AdminApiClient bij succesvolle call
                 return;
             }
 
             if (poging < 11)
             {
-                StateHasChanged(); // toon spinner na eerste mislukte poging
+                StateHasChanged();
                 try { await Task.Delay(3000, ct); } catch (OperationCanceledException) { return; }
             }
         }
-        _backendBezig = false; // stop spinner na time-out
+        // Na 36 s timeout: zet expliciete foutmelding als de ApiStatusService nog geen fout heeft
+        if (ApiStatus.Status != BackendStatus.Fout)
+            ApiStatus.MeldFout("Backend niet bereikbaar na meerdere pogingen. Controleer of de FunctionApp draait (poort 7094).");
     }
 
     private async Task OnClubChanged(ChangeEventArgs e)
@@ -92,5 +109,9 @@
             await ClubSelector.SelectClubAsync(code);
     }
 
-    public void Dispose() => _cts.Cancel();
+    public void Dispose()
+    {
+        ApiStatus.OnChanged -= OnApiStatusChanged;
+        _cts.Cancel();
+    }
 }

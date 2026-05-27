@@ -12,11 +12,13 @@ namespace BlazorAdmin.Services;
 public class AdminApiClient
 {
     private readonly HttpClient _http;
+    private readonly ApiStatusService _status;
     private static readonly JsonSerializerOptions _jsonOpts = new(JsonSerializerDefaults.Web);
 
-    public AdminApiClient(HttpClient http)
+    public AdminApiClient(HttpClient http, ApiStatusService status)
     {
         _http = http;
+        _status = status;
     }
 
     // ── Settings ──
@@ -242,7 +244,7 @@ public class AdminApiClient
             var resp = await _http.GetAsync(path);
             return await HandleAsync<T>(resp);
         }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
+        catch (Exception ex) { return Fout<T>(ex.Message); }
     }
 
     private async Task<ApiResult<T>> PostAsync<T>(string path, object body)
@@ -252,7 +254,7 @@ public class AdminApiClient
             var resp = await _http.PostAsJsonAsync(path, body);
             return await HandleAsync<T>(resp);
         }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
+        catch (Exception ex) { return Fout<T>(ex.Message); }
     }
 
     private async Task<ApiResult<T>> PutAsync<T>(string path, object body)
@@ -262,7 +264,7 @@ public class AdminApiClient
             var resp = await _http.PutAsJsonAsync(path, body);
             return await HandleAsync<T>(resp);
         }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
+        catch (Exception ex) { return Fout<T>(ex.Message); }
     }
 
     private async Task<ApiResult<T>> DeleteAsync<T>(string path)
@@ -272,14 +274,25 @@ public class AdminApiClient
             var resp = await _http.DeleteAsync(path);
             return await HandleAsync<T>(resp);
         }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
+        catch (Exception ex) { return Fout<T>(ex.Message); }
     }
 
-    private static async Task<ApiResult<T>> HandleAsync<T>(HttpResponseMessage resp)
+    private async Task<ApiResult<T>> HandleAsync<T>(HttpResponseMessage resp)
     {
         var text = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode)
-            return ApiResult<T>.Fail($"HTTP {(int)resp.StatusCode}: {text}", (int)resp.StatusCode);
+        {
+            var statusCode = (int)resp.StatusCode;
+            if (statusCode >= 500)
+            {
+                // Korte foutmelding voor de banner — zonder de volledige response body
+                var korteBeschrijving = text.Length > 200 ? text[..200] + "…" : text;
+                _status.MeldFout($"HTTP {statusCode} — controleer de FunctionApp-logs. {korteBeschrijving}");
+            }
+            return ApiResult<T>.Fail($"HTTP {statusCode}: {text}", statusCode);
+        }
+
+        _status.Herstel();
 
         if (string.IsNullOrWhiteSpace(text))
             return ApiResult<T>.Ok(default!, (int)resp.StatusCode);
@@ -293,5 +306,11 @@ public class AdminApiClient
         {
             return ApiResult<T>.Fail($"Deserialisatie mislukt: {ex.Message}");
         }
+    }
+
+    private ApiResult<T> Fout<T>(string melding)
+    {
+        _status.MeldFout($"Geen verbinding met de backend — controleer of de FunctionApp draait. ({melding})");
+        return ApiResult<T>.Fail(melding);
     }
 }

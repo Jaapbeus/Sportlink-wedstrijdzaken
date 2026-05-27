@@ -57,7 +57,7 @@ foreach ($port in @(7094, 5242, 4280)) {
     }
 }
 
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 4   # extra tijd zodat file handles (runtimeconfig.json) vrijgegeven zijn
 
 $debugPids = [System.Collections.Generic.List[int]]::new()
 
@@ -97,7 +97,7 @@ if ($NoWatch) {
     Write-Host "BlazorAdmin starten op http://localhost:5242 (hot reload actief) ..." -ForegroundColor Cyan
     $blazorProc = Start-Process powershell -ArgumentList @(
         '-NoExit', '-Command',
-        "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http --non-interactive"
+        "Set-Location '$root\BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http --non-interactive"
     ) -WindowStyle Normal -PassThru
 }
 $debugPids.Add($blazorProc.Id)
