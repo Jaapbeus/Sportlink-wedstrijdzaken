@@ -751,12 +751,14 @@ namespace SportlinkFunction.Planner
                 return response;
             }
 
+            bool isAllstars = string.Equals(clubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase);
+
             // Data laden — voor ALLSTARS test data direct uit DB, anders real-time API of DB fallback
-            var occupations = string.Equals(clubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase)
+            var occupations = isAllstars
                 ? await PlannerDataAccess.GetAllstarsOccupationsAsync(date)
                 : await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
-            var velden = await PlannerDataAccess.GetVeldenAsync();
-            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+            var velden = await PlannerDataAccess.GetVeldenAsync(allstarsOnly: isAllstars);
+            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, allstarsOnly: isAllstars);
 
             // Dedup bezettingen
             var bezettingen = occupations
@@ -771,6 +773,22 @@ namespace SportlinkFunction.Planner
                 response.VoldoendeRuimte = true;
                 response.VoldoendeRuimteMelding = $"Geen wedstrijden gepland op {date.ToString("dddd d MMMM", nl)}.";
                 response.HtmlPlanner = $"<p style='color:#8b949e;font-family:sans-serif;'>Geen wedstrijden gepland op {date.ToString("dddd d MMMM yyyy", nl)}.</p>";
+                return response;
+            }
+
+            // ALLSTARS testmodus: toon HTML-overzicht met informatieve melding over ontbrekende veld-toewijzingen
+            if (isAllstars)
+            {
+                int defaultVeld = availableFields.Any() ? availableFields.Min(f => f.VeldNummer) : 101;
+                int aantalOpStandaard = bezettingen.Count(b => b.VeldNummer == defaultVeld);
+                int totaal = bezettingen.Count;
+                string testmelding = aantalOpStandaard > 0
+                    ? $"Testmodus — {aantalOpStandaard} van {totaal} wedstrijden staan op het standaard veld (Kunstgras 1) omdat nog geen veld is ingesteld. Wijs velden toe via Test data → Wedstrijden."
+                    : $"Testmodus — alle {totaal} wedstrijden hebben een veld toegewezen.";
+                response.VoldoendeRuimte = true;
+                response.VoldoendeRuimteMelding = testmelding;
+                response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
+                    date, bezettingen, new List<OptimalisatieSuggestie>(), velden, request.Doel ?? "veld5-ontlasten");
                 return response;
             }
 

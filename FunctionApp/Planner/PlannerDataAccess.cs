@@ -96,8 +96,21 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
-        public static async Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date)
+        public static async Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date, bool allstarsOnly = false)
         {
+            if (allstarsOnly)
+            {
+                // ALLSTARS testmodus: synthetische beschikbaarheid 08:00-22:00 voor alle ALLSTARS velden
+                var allstarsVelden = await GetVeldenAsync(allstarsOnly: true);
+                return allstarsVelden.Select(v => new VeldBeschikbaarheidInfo
+                {
+                    VeldNummer = v.VeldNummer,
+                    BeschikbaarVanaf = new TimeOnly(8, 0),
+                    BeschikbaarTot = new TimeOnly(22, 0),
+                    GebruikZonsondergang = false
+                }).ToList();
+            }
+
             var results = new List<VeldBeschikbaarheidInfo>();
             // DayOfWeek: .NET Maandag=1 komt overeen met onze DB-conventie (1=Maandag...7=Zondag)
             int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
@@ -108,7 +121,7 @@ namespace SportlinkFunction.Planner
                 SELECT vb.[VeldNummer], vb.[BeschikbaarVanaf], vb.[BeschikbaarTot], vb.[GebruikZonsondergang]
                 FROM [dbo].[VeldBeschikbaarheid] vb
                 INNER JOIN [dbo].[Velden] v ON v.[VeldNummer] = vb.[VeldNummer]
-                WHERE v.[Actief] = 1 AND vb.[DagVanWeek] = @dag
+                WHERE v.[Actief] = 1 AND vb.[DagVanWeek] = @dag AND v.[VeldNummer] < 100
                 ORDER BY vb.[VeldNummer]
             ", conn);
             cmd.Parameters.AddWithValue("@dag", dagVanWeek);
@@ -127,13 +140,14 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
-        public static async Task<List<VeldInfo>> GetVeldenAsync()
+        public static async Task<List<VeldInfo>> GetVeldenAsync(bool allstarsOnly = false)
         {
             var results = new List<VeldInfo>();
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
+            string veldFilter = allstarsOnly ? "[VeldNummer] >= 100" : "[VeldNummer] < 100";
             using var cmd = new SqlCommand(
-                "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 ORDER BY [VeldNummer]", conn);
+                $"SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 AND {veldFilter} ORDER BY [VeldNummer]", conn);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -712,7 +726,7 @@ namespace SportlinkFunction.Planner
                 FROM [his].[matches] m
                 LEFT JOIN [dbo].[Velden] v
                     ON LTRIM(RTRIM(ISNULL(m.[veld], ''))) = v.[VeldNaam]
-                CROSS APPLY (SELECT MIN([VeldNummer]) AS DefaultVeld FROM [dbo].[Velden]) d
+                CROSS APPLY (SELECT MIN([VeldNummer]) AS DefaultVeld FROM [dbo].[Velden] WHERE [VeldNummer] >= 100) d
                 LEFT JOIN [dbo].[Speeltijden] s
                     ON s.[Leeftijd] = LEFT(m.[teamnaam], CHARINDEX('-', m.[teamnaam] + '-') - 1)
                 WHERE CAST(m.[kaledatum] AS DATE) = @date

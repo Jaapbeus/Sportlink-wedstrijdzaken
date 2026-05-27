@@ -150,6 +150,8 @@
         ThemeService.OnThemeChanged += OnThemeChanged;
         ClubSelector.OnChange       += OnClubChanged;
 
+        await ClubSelector.InitializeAsync();
+
         if (ClubSelector.SelectedClubCode == "ALLSTARS")
         {
             _clubName = "ALLSTARS (testmodus)";

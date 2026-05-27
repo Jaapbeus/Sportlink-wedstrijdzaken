@@ -195,14 +195,15 @@ namespace SportlinkFunction.Planner
                 {
                     var parsedDate = DateOnly.Parse(request.Datum);
                     var browserUrl = $"{req.Scheme}://{req.Host}/api/planner/optimaliseer?format=html";
-                    var emailOccupations = string.Equals(clubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase)
+                    bool isAllstarsEmail = string.Equals(clubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase);
+                    var emailOccupations = isAllstarsEmail
                         ? await PlannerDataAccess.GetAllstarsOccupationsAsync(parsedDate)
                         : await SportlinkApiClient.GetFieldOccupationsWithApiAsync(parsedDate, log);
                     var emailHtml = PlannerHtmlGenerator.GenereerEmailHtml(
                         parsedDate,
                         emailOccupations,
                         response.Suggesties,
-                        await PlannerDataAccess.GetVeldenAsync(),
+                        await PlannerDataAccess.GetVeldenAsync(allstarsOnly: isAllstarsEmail),
                         request.Doel ?? "veld5-ontlasten",
                         browserUrl);
                     return new ContentResult { Content = emailHtml, ContentType = "text/html", StatusCode = 200 };

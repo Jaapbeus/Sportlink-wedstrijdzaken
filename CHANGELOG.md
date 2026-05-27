@@ -23,6 +23,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Grasveld-logica in de planner is nu dynamisch op basis van `VeldType = 'gras'` in `dbo.Velden` — geen hardcoded verwijzing naar veldnummer 5 meer; werkt correct voor clubs met andere veldindelingen
 
 ### Fixed
+- Zijbalk toonde "v.v. VRC" in ALLSTARS-modus door een race-conditie: NavMenu las `SelectedClubCode` uit vóórdat `ClubSelectorService.InitializeAsync()` de localStorage had ingelezen; opgelost door await toe te voegen in `NavMenu.OnInitializedAsync` (#365)
+- Dagplanning in ALLSTARS-modus toonde VRC-velden (1–6) in plaats van ALLSTARS-velden (101–103): planner-queries filteren nu op `VeldNummer >= 100` voor ALLSTARS en `< 100` voor VRC (#365)
+- Wedstrijden zonder veld in ALLSTARS-modus belandden op VRC-veld 1 (fout `CROSS APPLY MIN(VeldNummer)` over alle velden) — fallback gebruikt nu het laagste ALLSTARS-veld (101) (#365)
+- Dagplanning in ALLSTARS-modus toonde "✓ Geen optimalisatie nodig — huidige planning is al optimaal" terwijl veel wedstrijden nog geen veld hadden; vervangen door een informatieve testmodus-melding met aantal ongeplaatste wedstrijden en een verwijzing naar Test data → Wedstrijden (#365)
 - Clubnaam in de zijbalk wordt nu direct bijgewerkt na wisselen van club: "ALLSTARS (testmodus)" bij testmodus, clubnaam uit AppSettings bij terugkeren (#365)
 - Optimalisatiedoel "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten" en statistiek "Van veld 5 verplaatst" → "Van grasveld verplaatst" in dagplanning (#365)
 - Planner-suggesties tonen nu de juiste (dynamische) veldnaam en reden op basis van het werkelijke grasveld
