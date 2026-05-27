@@ -33,7 +33,11 @@ eigen venster in de juiste volgorde:
 # Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 ```
 
-Wacht ~15 seconden en controleer dan met:
+Wacht ~15 seconden. Zolang de FunctionApp nog opstart verschijnt bovenaan elk scherm een gele
+**"Backend start op…"**-banner. Zodra de backend bereikbaar is verdwijnt de banner automatisch.
+Bij een 5xx-fout of verbindingsprobleem verschijnt een rode foutbanner met details.
+
+Controleer daarna met:
 
 ```powershell
 .\scripts\dev\Test-App.ps1          # verificatie: schema + build + endpoints + Blazor-pagina's
@@ -514,6 +518,7 @@ De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fic
 | Tegenstander | Vrij tekstveld voor de naam van de tegenstander |
 | Starttijd | Aanvangstijd (↓ fill-down beschikbaar) |
 | Veld | Veldnaam selecteren uit de dropdown |
+| Velddeel | Deelveld-dropdown — verschijnt alleen als het team op een deelveld speelt. JO7-JO10 (¼ veld): A1/A2/B1/B2; JO11-JO12 (½ veld): A/B. De beschikbare opties worden automatisch bepaald op basis van de speeltijden-tabel. |
 | Soort | Competitie / Beker / Oefenwedstrijd / Vriendschappelijk |
 
 **Globale invoerbalk** (boven de tabel): Stel datum, soort, tegenstander en starttijd in vóór het toevoegen van rijen — deze waarden worden als default voor nieuwe rijen gebruikt.
