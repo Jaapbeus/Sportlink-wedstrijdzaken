@@ -542,3 +542,54 @@ De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fic
 | `POST /api/beheer/testdata/wedstrijden` | Test-wedstrijd aanmaken of bijwerken (upsert) |
 | `DELETE /api/beheer/testdata/wedstrijden/{bk}` | Één test-wedstrijd verwijderen |
 | `DELETE /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden verwijderen |
+
+---
+
+## 14. Voorkeurstijden & Teamregels (`/voorkeurstijden`)
+
+De pagina `/voorkeurstijden` beheert twee soorten plannerregels per team.
+
+### Team voorkeurstijden
+
+Geef per team de gewenste aanvangstijden op voor een bepaalde dag van de week. De planner gebruikt deze tijden als richtpunt bij het inplannen.
+
+| Veld | Uitleg |
+|---|---|
+| **Team** | Teamnaam, dezelfde waarden als in het wedstrijdprogramma |
+| **Dag** | Dag van de week (1 = maandag … 7 = zondag) |
+| **Tijd** | Gewenste aanvangstijd in HH:mm (bijv. `14:30`). Typ ook `1430` — de applicatie normaliseert dit automatisch |
+| **Prioriteit** | Getal 1–10. **1 = hoogste prioriteit** (sterkste voorkeur), 10 = laagste. Gebruik 1 voor de primaire speeltijd van het team en hogere nummers voor alternatieven. Als een team meerdere tijden heeft, gebruikt de planner de laagste prioriteitswaarde als eerste keus |
+| **Actief** | Aangevinkt = de regel telt mee. Uitgevinkt = tijdelijk uitschakelen zonder verwijderen |
+
+### Teamregels
+
+Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur. Teamregels worden in aflopende prioriteitsvolgorde toegepast — de regel met het hoogste getal wint bij een conflict.
+
+| Regeltype | Waarde | Uitleg |
+|---|---|---|
+| **Buffer vóór** | Aantal minuten (0–240) | Reserveert extra tijd vóór de wedstrijd op het veld (bijv. 60 min = opslagveld vrijhouden voor warming-up) |
+| **Buffer na** | Aantal minuten (0–240) | Reserveert extra tijd ná de wedstrijd op het veld (bijv. 30 min = uitlooptijd) |
+| **Voorkeursveld** | Veldnummer + optionele aanvangstijd | Wijst een voorkeursveld toe aan het team, optioneel alleen op een bepaald tijdstip |
+
+#### Prioriteit bij Teamregels
+
+| Prioriteit | Effect |
+|---|---|
+| 0 | Laagste prioriteit — wordt als laatste toegepast |
+| 1–98 | Normale volgorde: hoger = eerder toegepast door de planner |
+| 99 | Hoogste prioriteit — overschrijft alle andere regels voor dit team |
+
+**Tip:** Gebruik hogere prioriteiten voor regels die absoluut gelden (bijv. "eerste elftal altijd op veld 1") en lagere voor richtlijnen.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/voorkeurstijden` | Alle voorkeurstijden voor de club |
+| `POST /api/beheer/voorkeurstijden` | Nieuwe voorkeurstijd aanmaken |
+| `PUT /api/beheer/voorkeurstijden/{id}` | Voorkeurstijd bijwerken |
+| `DELETE /api/beheer/voorkeurstijden/{id}` | Voorkeurstijd verwijderen (soft-delete) |
+| `GET /api/beheer/teamregels` | Alle teamregels voor de club |
+| `POST /api/beheer/teamregels` | Nieuwe teamregel aanmaken |
+| `PUT /api/beheer/teamregels/{id}` | Teamregel bijwerken |
+| `DELETE /api/beheer/teamregels/{id}` | Teamregel verwijderen (soft-delete) |

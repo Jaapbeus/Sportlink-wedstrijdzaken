@@ -19,10 +19,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- Nieuw herbruikbaar tijdinvoerveld (`TimeInput`) voor alle tijdvelden in de applicatie: accepteert `14:30` én `1430` (wordt automatisch genormaliseerd naar `HH:mm`), valideert uren 0–23 en minuten 0–59, toont een foutmelding bij ongeldige invoer (#365)
+- Voorkeurstijden: veldkeuze in Teamregels (regeltype "Voorkeursveld") toont nu een dropdown met de clubvelden in plaats van een vrij invoerveld — velden worden gefilterd op ClubCode (#365)
+- Voorkeurstijden: prioriteit-uitleg toegevoegd in het invoerecran voor zowel Voorkeurstijden (1=hoogste, 10=laagste) als Teamregels (hoger=eerder toegepast) (#365)
+- Handleiding: nieuwe sectie 14 "Voorkeurstijden & Teamregels" met uitleg over Prioriteit, Teamregel-types en API-endpoints
 - Dagplanning in ALLSTARS-modus laadt nu fictieve testwedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'` in plaats van de Sportlink API — de planner-optimalisatie werkt volledig met testdata (#365)
 - Grasveld-logica in de planner is nu dynamisch op basis van `VeldType = 'gras'` in `dbo.Velden` — geen hardcoded verwijzing naar veldnummer 5 meer; werkt correct voor clubs met andere veldindelingen
 
 ### Fixed
+- Wedstrijden-pagina toonde VRC-velden in de dropdown in ALLSTARS-modus door een race-conditie: `ClubSelector.InitializeAsync()` werd niet afgewacht vóór de API-aanroep in `OnInitializedAsync` (#365)
 - Zijbalk toonde "v.v. VRC" in ALLSTARS-modus door een race-conditie: NavMenu las `SelectedClubCode` uit vóórdat `ClubSelectorService.InitializeAsync()` de localStorage had ingelezen; opgelost door await toe te voegen in `NavMenu.OnInitializedAsync` (#365)
 - Dagplanning in ALLSTARS-modus toonde VRC-velden (1–6) in plaats van ALLSTARS-velden (101–103): planner-queries filteren nu op `VeldNummer >= 100` voor ALLSTARS en `< 100` voor VRC (#365)
 - Wedstrijden zonder veld in ALLSTARS-modus belandden op VRC-veld 1 (fout `CROSS APPLY MIN(VeldNummer)` over alle velden) — fallback gebruikt nu het laagste ALLSTARS-veld (101) (#365)

@@ -27,7 +27,8 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label">Gewenste eindtijd</label>
-                <input type="time" class="form-control" @bind="_gewensteEindtijd" @bind:format="HH:mm" />
+                <TimeInput Value="@_gewensteEindtijdStr"
+                           ValueChanged="@(v => _gewensteEindtijdStr = v ?? _gewensteEindtijdStr)" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Buffer (min)</label>
@@ -110,7 +111,7 @@
 @code {
     private DateTime _datumDt;
     private string _doel = "";
-    private TimeOnly _gewensteEindtijd = new TimeOnly(16, 15);
+    private string _gewensteEindtijdStr = "16:15";
     private int _bufferMinuten = 15;
     private bool _bezig;
     private string? _errorMessage;
@@ -118,7 +119,7 @@
     private OptimaliseerResponseDto? _resultaat;
 
     private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
-    private string EindtijdStr => _gewensteEindtijd.ToString("HH:mm");
+    private string EindtijdStr => _gewensteEindtijdStr;
 
     protected override void OnInitialized()
     {

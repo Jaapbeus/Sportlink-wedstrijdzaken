@@ -67,8 +67,8 @@ else
         <hr />
         <h3>@(isNew ? "Nieuwe voorkeur" : $"Bewerken: {editing.TeamNaam} #{editing.Id}")</h3>
         <EditForm Model="editing" OnValidSubmit="OpslaanAsync">
-            <div class="row">
-                <div class="col-md-4 mb-3">
+            <div class="row align-items-end">
+                <div class="col-md-3 mb-3">
                     <label class="form-label">Team</label>
                     <select class="form-select" @bind="editing.TeamNaam">
                         <option value="">— Kies een team —</option>
@@ -78,7 +78,7 @@ else
                         }
                     </select>
                 </div>
-                <div class="col-md-3 mb-3">
+                <div class="col-md-2 mb-3">
                     <label class="form-label">Dag</label>
                     <select class="form-select" @bind="editing.DagVanWeek">
                         <option value="1">Maandag</option>
@@ -91,20 +91,24 @@ else
                     </select>
                 </div>
                 <div class="col-md-2 mb-3">
-                    <label class="form-label">Tijd (HH:mm)</label>
-                    <input class="form-control" @bind="editing.VoorkeurTijd" placeholder="14:30" />
+                    <label class="form-label">Tijd</label>
+                    <TimeInput Value="@editing.VoorkeurTijd"
+                               ValueChanged="@(v => editing.VoorkeurTijd = v)" />
                 </div>
                 <div class="col-md-2 mb-3">
-                    <label class="form-label">Prioriteit</label>
+                    <label class="form-label">Prioriteit <span class="text-muted small fw-normal">(1–10)</span></label>
                     <input class="form-control" type="number" min="1" max="10" @bind="editing.Prioriteit" />
+                    <div class="form-text">1 = hoogste prioriteit, 10 = laagste. De planner kiest de voorkeurstijd met het laagste getal.</div>
                 </div>
                 <div class="col-md-1 mb-3">
                     <label class="form-label d-block">Actief</label>
                     <input type="checkbox" class="form-check-input mt-2" @bind="editing.Actief" />
                 </div>
+                <div class="col-md-2 mb-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Opslaan</button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
+                </div>
             </div>
-            <button type="submit" class="btn btn-primary">Opslaan</button>
-            <button type="button" class="btn btn-secondary" @onclick="() => editing = null">Annuleren</button>
         </EditForm>
     }
 
@@ -182,8 +186,9 @@ else
                     </select>
                 </div>
                 <div class="col-md-2 mb-3">
-                    <label class="form-label">Prioriteit</label>
+                    <label class="form-label">Prioriteit <span class="text-muted small fw-normal">(0–99)</span></label>
                     <input class="form-control" type="number" min="0" max="99" @bind="editingRegel.Prioriteit" />
+                    <div class="form-text">Hoger getal = eerder toegepast. 0 = laagste prioriteit.</div>
                 </div>
                 <div class="col-md-2 mb-3">
                     <label class="form-label d-block">Actief</label>
@@ -207,15 +212,23 @@ else
             {
                 <div class="row">
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">Veldnummer</label>
-                        <input class="form-control" type="number" min="1" max="99"
-                               value="@editingRegel.WaardeVeldNummer"
-                               @onchange="e => editingRegel.WaardeVeldNummer = int.TryParse(e.Value?.ToString(), out var v) ? v : null" />
+                        <label class="form-label">Veld</label>
+                        <select class="form-select"
+                                value="@editingRegel.WaardeVeldNummer"
+                                @onchange="e => editingRegel.WaardeVeldNummer = int.TryParse(e.Value?.ToString(), out var v) ? v : null">
+                            <option value="">— Kies een veld —</option>
+                            @foreach (var v in velden)
+                            {
+                                <option value="@v.VeldNummer">@v.VeldNaam (@v.VeldNummer)</option>
+                            }
+                        </select>
                     </div>
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">Aanvangstijd (optioneel, HH:mm)</label>
-                        <input class="form-control" @bind="editingRegel.WaardeTijd" placeholder="bijv. 12:00" />
-                        <small class="form-text text-muted">Laat leeg als er geen vaste tijd is</small>
+                        <label class="form-label">Aanvangstijd (optioneel)</label>
+                        <TimeInput Value="@editingRegel.WaardeTijd"
+                                   ValueChanged="@(v => editingRegel.WaardeTijd = v)"
+                                   Placeholder="bijv. 12:00" />
+                        <div class="form-text">Laat leeg als er geen vaste tijd is</div>
                     </div>
                 </div>
             }
@@ -240,6 +253,7 @@ else
     private List<VoorkeurTijdDto> items = new();
     private List<TeamRegelDto> teamRegels = new();
     private List<string> teams = new();
+    private List<VeldDto> velden = new();
     private VoorkeurTijdDto? editing;
     private TeamRegelDto? editingRegel;
     private bool isNew;
@@ -269,12 +283,15 @@ else
     private async Task LoadAsync()
     {
         loading = true;
-        var teamsResult = await Api.GetTeamsAsync();
-        teams = teamsResult.Success ? teamsResult.Data ?? new() : new();
-        var r = await Api.GetVoorkeurTijdenAsync();
-        items = r.Success ? r.Data ?? new() : new();
-        var regelsResult = await Api.GetTeamRegelsAsync();
-        teamRegels = regelsResult.Success ? regelsResult.Data ?? new() : new();
+        var teamsTask  = Api.GetTeamsAsync();
+        var voeorkeurTask = Api.GetVoorkeurTijdenAsync();
+        var regelsTask = Api.GetTeamRegelsAsync();
+        var veldenTask = Api.GetVeldenAsync();
+        await Task.WhenAll(teamsTask, voeorkeurTask, regelsTask, veldenTask);
+        teams     = (await teamsTask).Data     ?? new();
+        items     = (await voeorkeurTask).Data ?? new();
+        teamRegels= (await regelsTask).Data    ?? new();
+        velden    = (await veldenTask).Data    ?? new();
         loading = false;
     }
 

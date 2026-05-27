@@ -56,9 +56,9 @@
             </div>
             <div class="col-auto">
                 <label class="form-label mb-1 small">Starttijd (nieuw)</label>
-                <input type="time" class="form-control form-control-sm" style="width:120px"
-                       value="@_globalStarttijd"
-                       @onchange="e => _globalStarttijd = e.Value?.ToString() ?? _globalStarttijd" />
+                <TimeInput Value="@_globalStarttijd"
+                           ValueChanged="@(v => _globalStarttijd = v ?? _globalStarttijd)"
+                           Class="form-control-sm" Style="width:120px" />
             </div>
             <div class="col-auto">
                 <label class="form-label mb-1 small">Veld (nieuw)</label>
@@ -190,9 +190,9 @@ else
                         </td>
 
                         <td>
-                            <input type="time" class="form-control form-control-sm border-0"
-                                   value="@rij.Aanvangstijd"
-                                   @onchange="e => { rij.Aanvangstijd = e.Value?.ToString(); _ = AutoSaveAsync(rij); }" />
+                            <TimeInput Value="@rij.Aanvangstijd"
+                                       ValueChanged="@(v => { rij.Aanvangstijd = v; _ = AutoSaveAsync(rij); })"
+                                       Class="form-control-sm border-0" />
                         </td>
 
                         <td>
@@ -392,6 +392,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         ClubSelector.OnChange += OnClubChanged;
+        await ClubSelector.InitializeAsync();
         await LaadAsync();
     }
 

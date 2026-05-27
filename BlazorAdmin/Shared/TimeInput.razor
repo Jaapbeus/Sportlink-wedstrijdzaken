@@ -1,0 +1,117 @@
+@* Reusable 24-hour time input.
+   Accepts "14:30" or "1430" — normalizes to "HH:mm" on blur.
+   Validates: hours 0-23, minutes 0-59, no letters, no impossible values.
+   Use for all time fields so validation is always in one place.
+*@
+
+<input type="text"
+       class="@_inputClass"
+       id="@Id"
+       style="@Style"
+       placeholder="@Placeholder"
+       value="@_display"
+       disabled="@Disabled"
+       @oninput="OnInput"
+       @onblur="OnBlurAsync" />
+@if (_error != null)
+{
+    <div class="invalid-feedback d-block">@_error</div>
+}
+
+@code {
+    [Parameter] public string?  Value        { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string?  Id           { get; set; }
+    [Parameter] public string?  Class        { get; set; }
+    [Parameter] public string   Placeholder  { get; set; } = "14:30";
+    [Parameter] public bool     Disabled     { get; set; }
+    [Parameter] public string?  Style        { get; set; }
+
+    private string  _display    = "";
+    private string? _error;
+    private string  _inputClass => $"form-control {Class} {(_error != null ? "is-invalid" : "")}".Trim();
+
+    protected override void OnParametersSet()
+    {
+        // Sync display with bound value when parent changes it (e.g. initial load)
+        if (_error == null)
+            _display = Value ?? "";
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _display = e.Value?.ToString() ?? "";
+        _error   = null;
+    }
+
+    private async Task OnBlurAsync()
+    {
+        var raw = _display.Trim();
+
+        if (string.IsNullOrEmpty(raw))
+        {
+            _error = null;
+            await ValueChanged.InvokeAsync(null);
+            return;
+        }
+
+        var (normalized, error) = Normalize(raw);
+        if (error != null)
+        {
+            _error = error;
+        }
+        else
+        {
+            _error   = null;
+            _display = normalized!;
+            await ValueChanged.InvokeAsync(normalized);
+        }
+    }
+
+    internal static (string? normalized, string? error) Normalize(string raw)
+    {
+        var s = raw.Trim().Replace(" ", "");
+
+        // Only digits and one optional colon allowed
+        if (!System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{1,2}(:\d{0,2})?$"))
+            return (null, "Voer een geldige tijd in (bijv. 14:30 of 1430)");
+
+        int h, m;
+
+        if (s.Contains(':'))
+        {
+            var parts = s.Split(':');
+            if (!int.TryParse(parts[0], out h)) return (null, "Uur is ongeldig");
+            m = parts.Length > 1 && parts[1].Length > 0
+                ? int.TryParse(parts[1], out var pm) ? pm : -1
+                : 0;
+            if (m < 0) return (null, "Minuten zijn ongeldig");
+        }
+        else if (s.Length <= 2)
+        {
+            if (!int.TryParse(s, out h)) return (null, "Voer een geldige tijd in");
+            m = 0;
+        }
+        else if (s.Length == 3)
+        {
+            // e.g. "930" → 9:30
+            if (!int.TryParse(s[..1], out h) || !int.TryParse(s[1..], out m))
+                return (null, "Voer een geldige tijd in (bijv. 14:30 of 1430)");
+        }
+        else if (s.Length == 4)
+        {
+            // e.g. "1430" → 14:30
+            if (!int.TryParse(s[..2], out h) || !int.TryParse(s[2..], out m))
+                return (null, "Voer een geldige tijd in (bijv. 14:30 of 1430)");
+        }
+        else
+        {
+            return (null, "Voer een geldige tijd in (bijv. 14:30 of 1430)");
+        }
+
+        if (h is < 0 or > 23) return (null, $"Uur moet 0–23 zijn (opgegeven: {h})");
+        if (m is < 0 or > 59) return (null, $"Minuten moeten 0–59 zijn (opgegeven: {m})");
+
+        return ($"{h:D2}:{m:D2}", null);
+    }
+}
