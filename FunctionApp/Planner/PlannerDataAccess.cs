@@ -729,8 +729,27 @@ namespace SportlinkFunction.Planner
                 LEFT JOIN [dbo].[Velden] v
                     ON LTRIM(RTRIM(ISNULL(m.[veld], ''))) = v.[VeldNaam]
                 CROSS APPLY (SELECT MIN([VeldNummer]) AS DefaultVeld FROM [dbo].[Velden] WHERE [VeldNummer] >= 100) d
+                CROSS APPLY (
+                    SELECT first_space,
+                           CHARINDEX(' ', m.[teamnaam], first_space + 1) AS second_space
+                    FROM (VALUES(CHARINDEX(' ', m.[teamnaam]))) x(first_space)
+                ) pos
+                CROSS APPLY (
+                    SELECT SUBSTRING(m.[teamnaam], pos.first_space + 1,
+                                     CASE WHEN pos.second_space > 0
+                                          THEN pos.second_space - pos.first_space - 1
+                                          ELSE LEN(m.[teamnaam]) - pos.first_space END) AS raw_cat
+                ) cat
+                CROSS APPLY (
+                    SELECT CASE cat.raw_cat
+                               WHEN 'Heren'   THEN '1-99'
+                               WHEN 'Dames'   THEN 'VR'
+                               WHEN 'Vrouwen' THEN 'VR'
+                               ELSE cat.raw_cat
+                           END AS Leeftijdscode
+                ) leeftijd
                 LEFT JOIN [dbo].[Speeltijden] s
-                    ON s.[Leeftijd] = LEFT(m.[teamnaam], CHARINDEX('-', m.[teamnaam] + '-') - 1)
+                    ON s.[Leeftijd] = leeftijd.Leeftijdscode
                    AND s.[ClubCode] = m.[ClubCode]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = 'ALLSTARS'

@@ -42,6 +42,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Dagplanning in ALLSTARS-modus toonde "geen wedstrijden" als veld leeg was of niet overeenkwam — query gebruikt nu volledige veldnaam-match en valt terug op laagste VeldNummer bij ontbrekend veld (#365)
 - Testdata-formulier: globaal veld-dropdown toegevoegd zodat "Alle teams" meteen het gekozen veld meeneemt (#365)
 - AdminThemeGet crashte bij koude start met `InvalidOperationException: clubCode ontbreekt` — GetClubCodeFromRequest werd aangeroepen vóór WaitForDatabaseAsync, waardoor AppSettings nog null waren; volgorde gecorrigeerd (#365)
+- ALLSTARS dagplanning toonde onzichtbare blokken voor JO-teams omdat leeftijdscategorie werd geëxtraheerd met een koppelteken-gebaseerde splitser (werkt voor "VRC JO10-1" maar niet voor "AllStars JO10 1"): query gebruikt nu de tweede spatie-gescheiden token van de teamnaam, met mapping Heren→1-99 en Dames/Vrouwen→VR (#365)
+- Dagplanning ALLSTARS-testmelding toonde alleen een aantal ("2 van 10 wedstrijden op standaard veld"): melding toont nu ook welke teams geen veld hebben toegewezen zodat direct duidelijk is wat er bijgewerkt moet worden (#365)
 
 ### Added (eerder in 2.7.0.0)
 - Test data modus (ALLSTARS) — beheerders kunnen fictieve wedstrijden aanmaken via een invoergrid (#365): klik "Testmodus" in de zijbalk om de ALLSTARS-modus te activeren. Onder "Test data → Wedstrijden" verschijnt een grid met de volgende mogelijkheden:

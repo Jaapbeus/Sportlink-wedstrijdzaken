@@ -780,11 +780,25 @@ namespace SportlinkFunction.Planner
             if (isAllstars)
             {
                 int defaultVeld = availableFields.Any() ? availableFields.Min(f => f.VeldNummer) : 101;
-                int aantalOpStandaard = bezettingen.Count(b => b.VeldNummer == defaultVeld);
+                var opStandaard = bezettingen.Where(b => b.VeldNummer == defaultVeld).ToList();
+                int aantalOpStandaard = opStandaard.Count;
                 int totaal = bezettingen.Count;
-                string testmelding = aantalOpStandaard > 0
-                    ? $"Testmodus — {aantalOpStandaard} van {totaal} wedstrijden staan op het standaard veld (Kunstgras 1) omdat nog geen veld is ingesteld. Wijs velden toe via Test data → Wedstrijden."
-                    : $"Testmodus — alle {totaal} wedstrijden hebben een veld toegewezen.";
+                string testmelding;
+                if (aantalOpStandaard > 0)
+                {
+                    var defaultVeldNaam = velden.FirstOrDefault(f => f.VeldNummer == defaultVeld)?.VeldNaam ?? "Kunstgras 1";
+                    var teamNamen = opStandaard
+                        .Select(b => b.TeamNaam ?? b.Wedstrijd ?? "?")
+                        .Distinct()
+                        .OrderBy(n => n);
+                    testmelding = $"Testmodus — {aantalOpStandaard} van {totaal} wedstrijden staan op {defaultVeldNaam} (geen veld ingesteld): "
+                        + string.Join(", ", teamNamen)
+                        + ". Wijs velden toe via Test data → Wedstrijden.";
+                }
+                else
+                {
+                    testmelding = $"Testmodus — alle {totaal} wedstrijden hebben een veld toegewezen.";
+                }
                 response.VoldoendeRuimte = true;
                 response.VoldoendeRuimteMelding = testmelding;
                 response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
