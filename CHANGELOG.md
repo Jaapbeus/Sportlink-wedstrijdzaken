@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- Speeltijden per club: `dbo.Speeltijden` heeft nu een composite primary key `(Leeftijd, ClubCode)` — elke club kan eigen speeltijden configureren; ALLSTARS-speeltijden zijn gekopieerd van VRC (#365)
 - Nieuw herbruikbaar tijdinvoerveld (`TimeInput`) voor alle tijdvelden in de applicatie: accepteert `14:30` én `1430` (wordt automatisch genormaliseerd naar `HH:mm`), valideert uren 0–23 en minuten 0–59, toont een foutmelding bij ongeldige invoer (#365)
 - Voorkeurstijden: veldkeuze in Teamregels (regeltype "Voorkeursveld") toont nu een dropdown met de clubvelden in plaats van een vrij invoerveld — velden worden gefilterd op ClubCode (#365)
 - Voorkeurstijden: prioriteit-uitleg toegevoegd in het invoerecran voor zowel Voorkeurstijden (1=hoogste, 10=laagste) als Teamregels (hoger=eerder toegepast) (#365)
@@ -27,6 +28,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Grasveld-logica in de planner is nu dynamisch op basis van `VeldType = 'gras'` in `dbo.Velden` — geen hardcoded verwijzing naar veldnummer 5 meer; werkt correct voor clubs met andere veldindelingen
 
 ### Fixed
+- Planner-queries joinden `dbo.Speeltijden` zonder ClubCode-filter: bij multi-club data werden dubbele rijen teruggegeven; alle 5 JOIN-condities en de 2 standalone queries filteren nu op `ClubCode` (#365)
 - Wedstrijden-pagina toonde VRC-velden in de dropdown in ALLSTARS-modus door een race-conditie: `ClubSelector.InitializeAsync()` werd niet afgewacht vóór de API-aanroep in `OnInitializedAsync` (#365)
 - Zijbalk toonde "v.v. VRC" in ALLSTARS-modus door een race-conditie: NavMenu las `SelectedClubCode` uit vóórdat `ClubSelectorService.InitializeAsync()` de localStorage had ingelezen; opgelost door await toe te voegen in `NavMenu.OnInitializedAsync` (#365)
 - Dagplanning in ALLSTARS-modus toonde VRC-velden (1–6) in plaats van ALLSTARS-velden (101–103): planner-queries filteren nu op `VeldNummer >= 100` voor ALLSTARS en `< 100` voor VRC (#365)

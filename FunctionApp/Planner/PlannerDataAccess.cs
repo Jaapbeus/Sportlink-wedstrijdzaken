@@ -10,13 +10,14 @@ namespace SportlinkFunction.Planner
     {
         private static string ConnectionString => SystemUtilities.DatabaseConfig.ConnectionString;
 
-        public static async Task<Speeltijd?> GetSpeeltijdAsync(string leeftijdsCategorie)
+        public static async Task<Speeltijd?> GetSpeeltijdAsync(string leeftijdsCategorie, string clubCode = "VRC")
         {
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(
-                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @cat", conn);
+                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @cat AND [ClubCode] = @clubCode", conn);
             cmd.Parameters.AddWithValue("@cat", leeftijdsCategorie);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
@@ -48,7 +49,7 @@ namespace SportlinkFunction.Planner
                     'Competitie' AS Bron
                 FROM [his].[matches] m
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
-                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AND s.[ClubCode] = m.[ClubCode]
                 LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[status] <> 'Afgelast'
@@ -218,13 +219,14 @@ namespace SportlinkFunction.Planner
         }
 
         // Lookup: Leeftijd → Speeltijd. Gebruikt door SportlinkApiClient.
-        public static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync()
+        public static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(string clubCode = "VRC")
         {
             var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(
-                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden]", conn);
+                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [ClubCode] = @clubCode", conn);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 result[reader.GetString(0)] = new Speeltijd
@@ -409,7 +411,7 @@ namespace SportlinkFunction.Planner
                     COALESCE(s.[Veldafmeting], 1.00) AS Veldafmeting
                 FROM [his].[matches] m
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AND s.[ClubCode] = m.[ClubCode]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[accommodatie] LIKE @accommodatiePattern
                   AND m.[status] <> 'Afgelast'
@@ -467,7 +469,7 @@ namespace SportlinkFunction.Planner
                     COALESCE(s.[Veldafmeting], 1.00)
                 FROM [his].[matches] m
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AND s.[ClubCode] = m.[ClubCode]
                 WHERE m.[accommodatie] LIKE @accommodatiePattern
                   AND m.[status] <> 'Afgelast'
                   AND m.[wedstrijd] LIKE @tegPattern
@@ -568,7 +570,7 @@ namespace SportlinkFunction.Planner
                     COALESCE(s.[Veldafmeting], 1.00) AS Veldafmeting
                 FROM [his].[matches] m
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AND s.[ClubCode] = m.[ClubCode]
                 WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
                   AND m.[accommodatie] LIKE @accommodatiePattern
             ", conn);
@@ -729,6 +731,7 @@ namespace SportlinkFunction.Planner
                 CROSS APPLY (SELECT MIN([VeldNummer]) AS DefaultVeld FROM [dbo].[Velden] WHERE [VeldNummer] >= 100) d
                 LEFT JOIN [dbo].[Speeltijden] s
                     ON s.[Leeftijd] = LEFT(m.[teamnaam], CHARINDEX('-', m.[teamnaam] + '-') - 1)
+                   AND s.[ClubCode] = m.[ClubCode]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = 'ALLSTARS'
                   AND m.[aanvangstijd] IS NOT NULL
