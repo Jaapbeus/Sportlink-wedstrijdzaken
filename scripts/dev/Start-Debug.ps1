@@ -27,10 +27,25 @@ param(
 )
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$pidFile = Join-Path $env:TEMP 'sportlink-debug-pids.txt'
 
-# --- Stop eventueel draaiende apps (op de bekende poorten) ---
+# --- Sluit vorige debug-vensters via opgeslagen PIDs ---
 Write-Host "Controleer op draaiende services..." -ForegroundColor DarkGray
 
+if (Test-Path $pidFile) {
+    Get-Content $pidFile | ForEach-Object {
+        $savedPid = [int]$_
+        $proc = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
+        if ($proc) {
+            Write-Host "  Sluiten vorig venster: $($proc.ProcessName) (PID $savedPid)" -ForegroundColor DarkGray
+            Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Remove-Item $pidFile -Force
+    Start-Sleep -Seconds 1
+}
+
+# --- Fallback: stop op poort als PID-bestand ontbreekt (bijv. eerste keer) ---
 foreach ($port in @(7094, 5242, 4280)) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($conn) {
@@ -44,6 +59,8 @@ foreach ($port in @(7094, 5242, 4280)) {
 
 Start-Sleep -Seconds 2
 
+$debugPids = [System.Collections.Generic.List[int]]::new()
+
 # --- Azurite ---
 $azuriteRunning = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
 if ($azuriteRunning) {
@@ -52,35 +69,38 @@ if ($azuriteRunning) {
     Write-Host "Azurite niet gevonden — starten..." -ForegroundColor Yellow
     $azuriteDir = Join-Path $env:TEMP 'azurite'
     if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-    Start-Process powershell -ArgumentList @(
+    $azuriteProc = Start-Process powershell -ArgumentList @(
         '-NoExit', '-Command',
         "azurite --location '$azuriteDir' --debug '$azuriteDir\debug.log'"
-    ) -WindowStyle Minimized
+    ) -WindowStyle Minimized -PassThru
+    $debugPids.Add($azuriteProc.Id)
     Start-Sleep -Seconds 2
 }
 
 # --- FunctionApp ---
 Write-Host "FunctionApp starten op http://localhost:7094 ..." -ForegroundColor Cyan
 Write-Host "  ⚠  FunctionApp heeft GEEN hot reload. Na codewijzigingen: venster sluiten + Start-Debug.ps1 opnieuw." -ForegroundColor DarkYellow
-Start-Process powershell -ArgumentList @(
+$funcProc = Start-Process powershell -ArgumentList @(
     '-NoExit', '-Command',
     "Set-Location '$root\FunctionApp'; Write-Host 'FunctionApp — poort 7094  (geen hot reload — herstart vereist na codewijziging)' -ForegroundColor Cyan; func start --port 7094"
-) -WindowStyle Normal
+) -WindowStyle Normal -PassThru
+$debugPids.Add($funcProc.Id)
 
 # --- BlazorAdmin ---
 if ($NoWatch) {
     Write-Host "BlazorAdmin starten op http://localhost:5242 (geen hot reload) ..." -ForegroundColor Cyan
-    Start-Process powershell -ArgumentList @(
+    $blazorProc = Start-Process powershell -ArgumentList @(
         '-NoExit', '-Command',
         "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (geen hot reload)' -ForegroundColor Cyan; dotnet run --launch-profile http"
-    ) -WindowStyle Normal
+    ) -WindowStyle Normal -PassThru
 } else {
     Write-Host "BlazorAdmin starten op http://localhost:5242 (hot reload actief) ..." -ForegroundColor Cyan
-    Start-Process powershell -ArgumentList @(
+    $blazorProc = Start-Process powershell -ArgumentList @(
         '-NoExit', '-Command',
         "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http"
-    ) -WindowStyle Normal
+    ) -WindowStyle Normal -PassThru
 }
+$debugPids.Add($blazorProc.Id)
 
 # --- SWA emulator (optioneel) ---
 if ($Swa) {
@@ -92,12 +112,17 @@ if ($Swa) {
         Write-Host "SWA emulator wordt overgeslagen." -ForegroundColor Yellow
     } else {
         Write-Host "SWA emulator starten op http://localhost:4280 ..." -ForegroundColor Cyan
-        Start-Process powershell -ArgumentList @(
+        $swaProc = Start-Process powershell -ArgumentList @(
             '-NoExit', '-Command',
             "Set-Location '$root'; Write-Host 'SWA emulator — poort 4280' -ForegroundColor Cyan; swa start sportlink-admin"
-        ) -WindowStyle Normal
+        ) -WindowStyle Normal -PassThru
+        $debugPids.Add($swaProc.Id)
     }
 }
+
+# --- PIDs opslaan voor volgende herstart ---
+$debugPids | Set-Content $pidFile
+Write-Host "  Debug-venster PIDs opgeslagen: $($debugPids -join ', ')" -ForegroundColor DarkGray
 
 # --- Samenvatting ---
 Write-Host ""
