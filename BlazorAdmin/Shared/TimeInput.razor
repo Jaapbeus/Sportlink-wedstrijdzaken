@@ -72,8 +72,8 @@
     {
         var s = raw.Trim().Replace(" ", "");
 
-        // Only digits and one optional colon allowed
-        if (!System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{1,2}(:\d{0,2})?$"))
+        // 1-4 digits, optionally followed by colon + 0-2 digits
+        if (!System.Text.RegularExpressions.Regex.IsMatch(s, @"^\d{1,4}(:\d{0,2})?$"))
             return (null, "Voer een geldige tijd in (bijv. 14:30 of 1430)");
 
         int h, m;
