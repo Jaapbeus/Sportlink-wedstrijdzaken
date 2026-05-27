@@ -654,23 +654,40 @@ Versienummering volgt `MAJOR.MINOR.PATCH`:
 
 Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
 
-| Commit-type | Versie-impact | Voorbeeld |
-|---|---|---|
-| `feat:` | MINOR bump — Patch en Revision resetten naar 0 | `2.5.0.3 → 2.6.0.0` |
-| `fix:` of `security:` | PATCH bump — Revision reset naar 0 | `2.5.0.3 → 2.5.1.0` |
-| `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.5.x.x → 3.0.0.0` |
-| Kleine fix, CSS, UX, chore **met zichtbaar effect** | REVISION bump | `2.5.0.0 → 2.5.0.1` |
-| Puur intern (refactor zonder effect, docs, CLAUDE.md) | Geen bump | — |
+**Twee fasen — development vs. release:**
 
-> **Reden voor Revision:** de beheerder ziet het versienummer in de header. Na een deployment
-> kan de beheerder bevestigen dat de juiste versie actief is. Zonder Revision-bump is elke
-> kleine fix onzichtbaar in de UI.
+#### Tijdens development (feature/* en develop branches)
+
+Bump uitsluitend de **REVISION** bij elke commit met een zichtbaar effect voor de beheerder.
+MAJOR/MINOR/PATCH blijven ongewijzigd totdat de code naar main gaat.
+
+| Commit-type | Versie-impact tijdens development | Voorbeeld |
+|---|---|---|
+| `feat:`, `fix:`, `security:`, UX-verbetering | REVISION bump | `2.6.0.1 → 2.6.0.2 → ... → 2.6.0.42` |
+| Puur intern (refactor, docs, CLAUDE.md) | Geen bump | — |
+
+> **Reden:** Productie staat op bijv. `2.6.0.1`. Een dev-versie van `2.11.0.0` in de header
+> tijdens lokaal testen creëert een gat dat nooit in de release-history verschijnt en verwarrend
+> is. `2.6.0.42` communiceert duidelijk: dit is dezelfde release-lijn, maar met veel
+> lokale wijzigingen die nog niet zijn uitgerold.
+
+#### Op het moment van release (develop → main PR)
+
+Bekijk alle `## [Unreleased]` entries en pas de versie aan op basis van de inhoud:
+
+| Wat zit er in [Unreleased]? | Versie-impact | Voorbeeld |
+|---|---|---|
+| Een of meer `feat:` commits | MINOR bump — Patch en Revision resetten naar 0 | `2.6.0.42 → 2.7.0.0` |
+| Alleen `fix:` of `security:` | PATCH bump — Revision reset naar 0 | `2.6.0.42 → 2.6.1.0` |
+| `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.6.0.42 → 3.0.0.0` |
+
+De release-versie (bijv. `2.7.0.0`) wordt gezet in de release-commit op develop, vóór de PR naar main.
 
 Zet alle drie velden synchroon in **beide** csproj's:
 ```xml
-<Version>2.5.0.1</Version>
-<AssemblyVersion>2.5.0.1</AssemblyVersion>
-<FileVersion>2.5.0.1</FileVersion>
+<Version>2.6.0.15</Version>
+<AssemblyVersion>2.6.0.15</AssemblyVersion>
+<FileVersion>2.6.0.15</FileVersion>
 ```
 
 ### CHANGELOG.md bijhouden
@@ -681,10 +698,11 @@ Zet alle drie velden synchroon in **beide** csproj's:
 2. Gebruik de secties `### Added`, `### Changed`, `### Fixed`, `### Security`, `### Removed`
 3. Schrijf voor de gebruiker, niet voor de developer: "Beheerders kunnen nu X" i.p.v. "Methode Y refactored"
 
-**Verplicht vóór een release:**
-1. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
-2. Voeg een lege `## [Unreleased]` terug bovenaan
-3. Bump de versie in `FunctionApp/fa-dev-sportlink-01.csproj` en `BlazorAdmin/BlazorAdmin.csproj`
+**Verplicht vóór een release (develop → main PR):**
+1. Bepaal de release-versie op basis van de [Unreleased] inhoud (zie tabel hierboven)
+2. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
+3. Voeg een lege `## [Unreleased]` terug bovenaan
+4. Zet de release-versie in beide csproj's
 
 ### Release-workflow
 
