@@ -97,7 +97,7 @@ if ($NoWatch) {
     Write-Host "BlazorAdmin starten op http://localhost:5242 (hot reload actief) ..." -ForegroundColor Cyan
     $blazorProc = Start-Process powershell -ArgumentList @(
         '-NoExit', '-Command',
-        "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http"
+        "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http --non-interactive"
     ) -WindowStyle Normal -PassThru
 }
 $debugPids.Add($blazorProc.Id)
