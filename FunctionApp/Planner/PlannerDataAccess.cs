@@ -821,6 +821,37 @@ namespace SportlinkFunction.Planner
 
         // ── Auto-plan data access (#380) ──
 
+        /// <summary>
+        /// Laadt voorkeurstijden als lookup: TeamNaam → gesorteerde lijst van (Tijd, Prioriteit).
+        /// Lagere Prioriteit-waarde = hogere voorkeur (1=hoogst). Filtert op dag + clubCode + Actief=1.
+        /// DagVanWeek: 1=Maandag … 6=Zaterdag, 7=Zondag.
+        /// </summary>
+        public static async Task<Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>>> GetVoorkeurTijdenLookupAsync(int dagVanWeek, string clubCode)
+        {
+            var result = new Dictionary<string, List<(TimeOnly, int)>>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT [TeamNaam], [VoorkeurTijd], [Prioriteit]
+                FROM [dbo].[TeamVoorkeurTijden]
+                WHERE [DagVanWeek] = @dag AND [Actief] = 1 AND [ClubCode] = @clubCode
+                ORDER BY [TeamNaam], [Prioriteit]
+            ", conn);
+            cmd.Parameters.AddWithValue("@dag", dagVanWeek);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var team = reader.GetString(0);
+                var tijd = TimeOnly.FromTimeSpan(reader.GetTimeSpan(1));
+                var prio = reader.GetInt32(2);
+                if (!result.ContainsKey(team))
+                    result[team] = new List<(TimeOnly, int)>();
+                result[team].Add((tijd, prio));
+            }
+            return result;
+        }
+
         // ALLSTARS testmodus: velden met VeldNummer >= 100 (testmodus-velden)
         public static async Task<List<VeldInfo>> GetAllstarsVeldenAsync()
         {

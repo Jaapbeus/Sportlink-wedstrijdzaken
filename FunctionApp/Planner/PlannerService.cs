@@ -699,6 +699,66 @@ namespace SportlinkFunction.Planner
                 return best;
             }
 
+            /// <summary>
+            /// Probeert in te plannen op de exacte voorkeurstijd (of zo dicht mogelijk erbij).
+            /// Zoekt eerst bij de exacte tijd, dan in stappen van 5 minuten naar buiten (later én eerder).
+            /// Als niets binnen de tolerantie beschikbaar is, valt terug op vroegst beschikbaar.
+            /// </summary>
+            public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten, int tolerantieMinuten = 90)
+            {
+                // Probeer exact, dan uitwaaierend in stappen van 5 minuten
+                var candidates = new List<TimeOnly> { voorkeurTijd };
+                for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
+                {
+                    var later = voorkeurTijd.AddMinutes(delta);
+                    var vroeger = voorkeurTijd.AddMinutes(-delta);
+                    candidates.Add(later);
+                    if (vroeger >= StartTijd) candidates.Add(vroeger);
+                }
+
+                var sortedVelden = _velden
+                    .OrderByDescending(v => v.IsKunstgras)
+                    .ThenBy(v => v.VeldNummer)
+                    .ToList();
+
+                foreach (var kandidaatTijd in candidates)
+                {
+                    foreach (var veld in sortedVelden)
+                    {
+                        var beschikbaar = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
+                        if (beschikbaar == null) continue;
+
+                        var van = beschikbaar.BeschikbaarVanaf < StartTijd ? StartTijd : beschikbaar.BeschikbaarVanaf;
+                        var tot = beschikbaar.BeschikbaarTot;
+                        var start = RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
+                        var end = start.AddMinutes(duurMinuten);
+                        if (end > tot || end <= start) continue;
+
+                        var occupations = _occupations.TryGetValue(veld.VeldNummer, out var list)
+                            ? list : new List<IngeplandSlot>();
+                        var fractiesInUse = occupations
+                            .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
+                            .Sum(o => o.Fractie);
+                        if (fractiesInUse + fractie > 1.0m + 0.001m) continue;
+
+                        int concurrent = occupations.Count(o => o.AanvangsTijd < end && o.EindTijd > start);
+                        var slot = new IngeplandSlot
+                        {
+                            VeldNummer = veld.VeldNummer,
+                            AanvangsTijd = start,
+                            EindTijd = end,
+                            Fractie = fractie,
+                            VeldSubpositie = GetSubpositie(fractie, concurrent)
+                        };
+                        _occupations[veld.VeldNummer].Add(slot);
+                        return slot;
+                    }
+                }
+
+                // Valt terug op vroegst beschikbaar als niets binnen tolerantie past
+                return FindAndOccupyNextSlot(fractie, duurMinuten);
+            }
+
             private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot)
             {
                 var occupations = _occupations.TryGetValue(veldNummer, out var list)
@@ -834,9 +894,23 @@ namespace SportlinkFunction.Planner
             var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
             var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
 
-            // 2. Sorteer wedstrijden: jongste leeftijdscategorie eerst
+            // DagVanWeek: .NET DayOfWeek (0=zondag…6=zaterdag) → onze conventie (1=Ma…7=Zo)
+            int dagVanWeek = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
+            var voorkeurLookup = await PlannerDataAccess.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
+
+            // 2. Sorteer wedstrijden: teams met hoogste voorkeurprioriteit (laagste waarde) eerst,
+            //    daarna jongste leeftijdscategorie. Zo worden de meest-geconstrained matches
+            //    eerst ingepland — anders kunnen ze hun voorkeursslot missen.
             var gesorteerd = alleWedstrijden
-                .OrderBy(w => GetLeeftijdSortOrder(w.LeeftijdsCategorie))
+                .OrderBy(w =>
+                {
+                    var team = isAllstars ? w.TeamNaam : w.TeamNaam;
+                    return voorkeurLookup.TryGetValue(team, out var v) ? v.Min(x => x.Prioriteit) : 999;
+                })
+                .ThenBy(w => GetLeeftijdSortOrder(
+                    (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                        ? w.LeeftijdsCategorie
+                        : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "")))
                 .ThenBy(w => w.TeamNaam)
                 .ToList();
 
@@ -873,7 +947,18 @@ namespace SportlinkFunction.Planner
                     continue;
                 }
 
-                var slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+                // Gebruik voorkeurstijd als die bestaat voor dit team
+                IngeplandSlot? slot;
+                if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
+                {
+                    // Hoogste prioriteit (laagste Prioriteit-waarde) als primaire voorkeur
+                    var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
+                    slot = scheduler.FindAndOccupyNearTime(primair.Tijd, speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+                }
+                else
+                {
+                    slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+                }
 
                 if (slot == null)
                 {

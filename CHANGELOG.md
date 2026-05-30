@@ -25,6 +25,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Visuele planning naast per-wedstrijd tabel: twee tabbladen "Optimale planning" en "Huidige situatie" tonen de Gantt-visualisatie vóór en na optimalisatie.
 - Testmodus (ALLSTARS) "Toepassen": in testmodus kunnen de optimale tijden en velden direct worden toegepast op de testdata (UPDATE his.matches WHERE ClubCode='ALLSTARS'). Productiedata blijft ongewijzigd — handmatig aanpassen in Sportlink blijft vereist.
 - Filterknoppen op de wedstrijdentabel: alles / alleen wijzigingen / niet inplanbaar.
+- Auto-planner houdt rekening met TeamVoorkeurTijden (#380): teams met een geconfigureerde voorkeurstijd worden ingepland op (of zo dicht mogelijk bij) die tijd. Teams met prioriteit=1 worden als eerste ingepland zodat ze hun voorkeursslot krijgen. De planner zoekt in stappen van 5 minuten naar buiten (max. 90 min tolerantie) en valt daarna terug op vroegst beschikbaar.
 - Dagplanning per-wedstrijd tabel (#380): "Cat"-kolom verwijderd (categorie leesbaar uit wedstrijd-naam). Wedstrijd-kolom toont nu de volledige wedstrijd-omschrijving (thuisteam - uitteam) — bij ALLSTARS geconstrueerd uit thuisteam en uitteam waar [wedstrijd] null is.
 
 ### Fixed
