@@ -11,9 +11,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>2.6.1.5</Version>
-    <AssemblyVersion>2.6.1.5</AssemblyVersion>
-    <FileVersion>2.6.1.5</FileVersion>
+    <Version>2.6.1.6</Version>
+    <AssemblyVersion>2.6.1.6</AssemblyVersion>
+    <FileVersion>2.6.1.6</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

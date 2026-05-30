@@ -949,11 +949,16 @@ namespace SportlinkFunction.Planner
 
                 // Gebruik voorkeurstijd als die bestaat voor dit team
                 IngeplandSlot? slot;
+                string? voorkeurTijdStr = null;
+                int? voorkeurAfwijking = null;
+
                 if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
                 {
-                    // Hoogste prioriteit (laagste Prioriteit-waarde) als primaire voorkeur
                     var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
+                    voorkeurTijdStr = primair.Tijd.ToString("HH:mm");
                     slot = scheduler.FindAndOccupyNearTime(primair.Tijd, speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+                    if (slot != null)
+                        voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - primair.Tijd.ToTimeSpan()).TotalMinutes;
                 }
                 else
                 {
@@ -1018,7 +1023,9 @@ namespace SportlinkFunction.Planner
                     OptimaalVeldNaam = optimaalVeldNaam,
                     OptimaalVeld = optimaalVeld,
                     OptimaalTijd = optimaalTijd,
-                    Status = status
+                    Status = status,
+                    VoorkeurTijd = voorkeurTijdStr,
+                    VoorkeurAfwijkingMinuten = voorkeurAfwijking
                 });
             }
 

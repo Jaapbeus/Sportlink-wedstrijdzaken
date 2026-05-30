@@ -252,6 +252,15 @@ code {
     vertical-align: middle;
 }
 
+.gantt-legenda-balk {
+    display: inline-block;
+    width: 20px;
+    height: 4px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
 /* ── ALLSTARS testmodus (#380) ─────────────────────────────────── */
 
 /* Gele banner bovenin de sidebar */

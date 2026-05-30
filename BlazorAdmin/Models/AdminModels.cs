@@ -258,6 +258,9 @@ public class AutoPlanWedstrijdItemDto
     // "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
     public string Status { get; set; } = "ongewijzigd";
     public string? NietInplanbaaarReden { get; set; }
+    // Voorkeurstijd (null = geen voorkeur geconfigureerd voor dit team)
+    public string? VoorkeurTijd { get; set; }
+    public int? VoorkeurAfwijkingMinuten { get; set; }
 }
 
 public class AutoPlanResponseDto

@@ -340,6 +340,10 @@ namespace SportlinkFunction.Planner
         // Status: "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
         public string Status { get; set; } = "ongewijzigd";
         public string? NietInplanbaaarReden { get; set; }
+
+        // Voorkeurstijd-informatie (null = geen voorkeur geconfigureerd)
+        public string? VoorkeurTijd { get; set; }
+        public int? VoorkeurAfwijkingMinuten { get; set; }  // 0 = exact, positief = later, negatief = eerder
     }
 
     public class AutoPlanResponse

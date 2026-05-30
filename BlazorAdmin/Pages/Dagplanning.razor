@@ -236,10 +236,15 @@
                 int _totMin = _eMin - _sMin;
 
                 @* Legenda *@
-                <div class="d-flex gap-3 mb-2 small">
+                <div class="d-flex flex-wrap gap-3 mb-2 small">
+                    <span class="fw-semibold text-muted me-1">Status:</span>
                     <span><span class="gantt-legenda-dot" style="background:#198754;"></span> Ongewijzigd</span>
                     <span><span class="gantt-legenda-dot" style="background:#0d6efd;"></span> Wijziging</span>
                     <span><span class="gantt-legenda-dot" style="background:#d97706;"></span> Nieuw slot</span>
+                    <span class="ms-3 fw-semibold text-muted me-1">Voorkeurstijd:</span>
+                    <span><span class="gantt-legenda-balk" style="background:#22c55e;"></span> Op tijd</span>
+                    <span><span class="gantt-legenda-balk" style="background:#f59e0b;"></span> &le;15 min afwijking</span>
+                    <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
                 </div>
 
                 <div style="overflow-x:auto; min-width:0;">
@@ -281,7 +286,9 @@
                                     string _wdt = GanttPct(gi.DuurMinuten, _totMin);
                                     string _top = GanttPct((int)GanttTop(gi.SubPos), 100);
                                     string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
-                                    <div title="@gi.Label&#10;@gi.Aanvang.ToString("HH:mm") – @gi.Einde.ToString("HH:mm") (@gi.DuurMinuten min)"
+                                    string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd);
+                                    string _tooltip = GanttTooltip(gi);
+                                    <div title="@_tooltip"
                                          style="position:absolute;
                                                 left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
                                                 top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
@@ -291,7 +298,14 @@
                                                 font-size:0.68rem; line-height:1.25;
                                                 z-index:1; cursor:default;
                                                 box-shadow:0 1px 3px rgba(0,0,0,0.2);">
-                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-weight:700; font-size:0.7rem;">
+                                        @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
+                                        @if (!string.IsNullOrEmpty(_voorkeurBalk))
+                                        {
+                                            <div style="position:absolute; top:0; left:0; right:0; height:4px;
+                                                        background:@_voorkeurBalk; border-radius:5px 5px 0 0;"></div>
+                                        }
+                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+                                                    font-weight:700; font-size:0.7rem; margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px")">
                                             @gi.Aanvang.ToString("HH:mm")
                                         </div>
                                         <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
@@ -529,7 +543,8 @@
     // ── Gantt helpers ──
 
     private record GanttItem(string VeldNaam, string? SubPos, TimeOnly Aanvang, TimeOnly Einde,
-        decimal Fractie, string Label, string Status, int DuurMinuten);
+        decimal Fractie, string Label, string Status, int DuurMinuten,
+        string? VoorkeurTijd, int? VoorkeurAfwijking);
 
     private List<GanttItem> BouwGanttItems(bool isOptimaal)
     {
@@ -543,7 +558,8 @@
                 if (!TimeOnly.TryParse(w.OptimaalTijd, out var t)) continue;
                 var sub = GanttExtractSubPos(w.OptimaalVeld);
                 items.Add(new GanttItem(w.OptimaalVeldNaam, sub, t, t.AddMinutes(w.DuurMinuten),
-                    w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten));
+                    w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten,
+                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten));
             }
             else
             {
@@ -551,7 +567,8 @@
                 if (!TimeOnly.TryParse(w.HuidigeTijd!, out var t)) continue;
                 var (veldBase, sub) = GanttSplitVeld(w.HuidigeVeld!);
                 items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
-                    w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten));
+                    w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
+                    null, null));
             }
         }
         return items;
@@ -592,6 +609,33 @@
     {
         <= 0.26m => 25, <= 0.51m => 50, _ => 100
     };
+
+    private static string GanttTooltip(GanttItem gi)
+    {
+        var sb = gi.Label
+            + "\n" + gi.Aanvang.ToString("HH:mm") + " – " + gi.Einde.ToString("HH:mm")
+            + " (" + gi.DuurMinuten + " min)";
+        if (gi.VoorkeurTijd != null)
+        {
+            sb += "\nVoorkeur: " + gi.VoorkeurTijd;
+            if (gi.VoorkeurAfwijking == 0)
+                sb += " ✓ op voorkeurstijd";
+            else if (gi.VoorkeurAfwijking.HasValue)
+                sb += " (" + (gi.VoorkeurAfwijking > 0 ? "+" : "") + gi.VoorkeurAfwijking + " min)";
+        }
+        return sb;
+    }
+
+    // Kleur van de voorkeurstijd-indicatorbalk bovenaan een Gantt-blok.
+    // Leeg = geen voorkeur geconfigureerd → geen balk.
+    private static string GanttVoorkeurBalkKleur(int? afwijking, string? voorkeurTijd)
+    {
+        if (voorkeurTijd == null || !afwijking.HasValue) return string.Empty;
+        int abs = Math.Abs(afwijking.Value);
+        if (abs == 0) return "#22c55e";    // Exact op voorkeurstijd → groen
+        if (abs <= 15) return "#f59e0b";   // Binnen 15 minuten → amber
+        return "#ef4444";                  // Meer dan 15 min afwijking → rood
+    }
 
     private static string GanttKleur(string status) => status switch
     {
