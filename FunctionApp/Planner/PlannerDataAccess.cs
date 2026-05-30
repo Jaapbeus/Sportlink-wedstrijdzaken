@@ -821,6 +821,28 @@ namespace SportlinkFunction.Planner
 
         // ── Auto-plan data access (#380) ──
 
+        // ALLSTARS testmodus: velden met VeldNummer >= 100 (testmodus-velden)
+        public static async Task<List<VeldInfo>> GetAllstarsVeldenAsync()
+        {
+            var results = new List<VeldInfo>();
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(
+                "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 AND [VeldNummer] >= 100 ORDER BY [VeldNummer]", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results.Add(new VeldInfo
+                {
+                    VeldNummer = reader.GetInt32(0),
+                    VeldNaam = reader.GetString(1),
+                    VeldType = reader.GetString(2),
+                    HeeftKunstlicht = reader.GetBoolean(3)
+                });
+            }
+            return results;
+        }
+
         /// <summary>
         /// Haalt ALLE wedstrijden voor een datum op, inclusief die zonder veld of aanvangstijd.
         /// Voor ALLSTARS: filtert op ClubCode='ALLSTARS'.
@@ -837,13 +859,12 @@ namespace SportlinkFunction.Planner
                 ? @"
                     SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                            m.[aanvangstijd], m.[veld], m.[competitiesoort],
-                           REPLACE(REPLACE(REPLACE(ISNULL(t.[leeftijdscategorie], ''), 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AS leeftijdscategorie
+                           NULL AS leeftijdscategorie
                     FROM [his].[matches] m
-                    LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[ClubCode] = m.[ClubCode]
                     WHERE CAST(m.[kaledatum] AS DATE) = @date
                       AND m.[ClubCode] = 'ALLSTARS'
-                      AND m.[status] <> 'Afgelast'
-                    ORDER BY m.[teamvolgorde], m.[teamnaam]"
+                      AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
+                    ORDER BY m.[teamnaam]"
                 : @"
                     SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                            m.[aanvangstijd], m.[veld], m.[competitiesoort],

@@ -756,6 +756,26 @@ namespace SportlinkFunction.Planner
             };
         }
 
+        // Extraheert leeftijdscategorie uit ALLSTARS teamnaam: "VRC JO7-1" → "JO7", "ALLSTARS Heren 1" → "1-99"
+        private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
+        {
+            if (string.IsNullOrWhiteSpace(teamNaam)) return null;
+            var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) return null;
+            var second = parts[1];
+            // Strip trailing "-N" zoals "JO7-1" → "JO7"
+            var hyphenIdx = second.IndexOf('-');
+            if (hyphenIdx > 0) second = second[..hyphenIdx];
+            // Mapping naar Speeltijden-sleutels (zelfde als GetAllstarsOccupationsAsync op #365 branch)
+            return second.ToUpperInvariant() switch
+            {
+                "HEREN"   => "1-99",
+                "DAMES"   => "VR",
+                "VROUWEN" => "VR",
+                _ => string.IsNullOrWhiteSpace(second) ? null : second
+            };
+        }
+
         private static int GetLeeftijdSortOrder(string? leeftijd)
         {
             if (string.IsNullOrWhiteSpace(leeftijd)) return 99;
@@ -790,8 +810,27 @@ namespace SportlinkFunction.Planner
 
             // 1. Data laden
             var alleWedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
-            var beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
-            var velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+
+            // ALLSTARS: velden >= 100 (testmodus), synthetische beschikbaarheid 08:00–22:00
+            List<VeldInfo> velden;
+            List<VeldBeschikbaarheidInfo> beschikbaarheid;
+            if (isAllstars)
+            {
+                velden = await PlannerDataAccess.GetAllstarsVeldenAsync();
+                beschikbaarheid = velden.Select(v => new VeldBeschikbaarheidInfo
+                {
+                    VeldNummer = v.VeldNummer,
+                    BeschikbaarVanaf = new TimeOnly(8, 0),
+                    BeschikbaarTot = new TimeOnly(22, 0),
+                    GebruikZonsondergang = false
+                }).ToList();
+            }
+            else
+            {
+                velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+                beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
+            }
+
             var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
             var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
 
@@ -807,7 +846,10 @@ namespace SportlinkFunction.Planner
 
             foreach (var wedstrijd in gesorteerd)
             {
-                var leeftijd = wedstrijd.LeeftijdsCategorie ?? "";
+                // Voor ALLSTARS: leeftijdscategorie staat niet in DB maar in teamnaam ("VRC JO7-1" → "JO7")
+                var leeftijd = (!string.IsNullOrWhiteSpace(wedstrijd.LeeftijdsCategorie))
+                    ? wedstrijd.LeeftijdsCategorie
+                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(wedstrijd.TeamNaam) ?? "" : "");
                 speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
 
                 if (speeltijdInfo == null)
@@ -817,7 +859,7 @@ namespace SportlinkFunction.Planner
                         WedstrijdCode = wedstrijd.WedstrijdCode,
                         Wedstrijd = wedstrijd.Wedstrijd,
                         TeamNaam = wedstrijd.TeamNaam,
-                        LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
+                        LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
                         Competitiesoort = wedstrijd.Competitiesoort,
                         HuidigeVeld = wedstrijd.Veld,
                         HuidigeTijd = wedstrijd.AanvangsTijd,
@@ -879,7 +921,7 @@ namespace SportlinkFunction.Planner
                     WedstrijdCode = wedstrijd.WedstrijdCode,
                     Wedstrijd = wedstrijd.Wedstrijd,
                     TeamNaam = wedstrijd.TeamNaam,
-                    LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
+                    LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
                     Competitiesoort = wedstrijd.Competitiesoort,
                     DuurMinuten = speeltijdInfo.WedstrijdTotaal,
                     Veldafmeting = speeltijdInfo.Veldafmeting,

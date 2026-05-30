@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- ALLSTARS testmodus-banner altijd zichtbaar in de sidebar (#380): bij selectie van AllStars FC verschijnt een gele "TESTMODUS"-banner bovenin het navigatiemenu op elke pagina. De club-selector krijgt een gele rand. De sidebar abonneert zich correct op ClubSelector.OnChange zodat de indicator instant verschijnt — ook bij het eerste laadmoment. Andere clubs zien nooit testmodus-indicatoren.
 - Auto-planner dagplanning (#380): de pagina "Dagplanning" toont nu voor elke wedstrijd de huidige situatie én de optimale situatie (veld + tijd) zij aan zij. De planner pakt automatisch alle wedstrijden op de gekozen datum op — inclusief die zonder veld of tijd — en maakt een optimaal rooster op basis van leeftijdscategorie (jongste teams eerst om 09:00), deelveld-sharing (bijv. 4×JO7 tegelijk op één veld) en veldvoorkeur (kunstgras voor gras). Wedstrijdstatus: Nieuw slot / Wijziging / Ongewijzigd / Niet inplanbaar.
 - Visuele planning naast per-wedstrijd tabel: twee tabbladen "Optimale planning" en "Huidige situatie" tonen de Gantt-visualisatie vóór en na optimalisatie.
 - Testmodus (ALLSTARS) "Toepassen": in testmodus kunnen de optimale tijden en velden direct worden toegepast op de testdata (UPDATE his.matches WHERE ClubCode='ALLSTARS'). Productiedata blijft ongewijzigd — handmatig aanpassen in Sportlink blijft vereist.

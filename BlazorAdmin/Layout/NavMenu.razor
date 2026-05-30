@@ -1,8 +1,18 @@
 @inject IAuthService Auth
 @inject BlazorAdmin.Services.AdminApiClient Api
 @inject BlazorAdmin.Services.ThemeService ThemeService
+@inject BlazorAdmin.Services.ClubSelectorService ClubSelector
 @inject NavigationManager Navigation
 @implements IDisposable
+
+@* ── ALLSTARS testmodus-banner: altijd zichtbaar bovenin de sidebar ── *@
+@if (IsTestmodus)
+{
+    <div class="allstars-banner px-3 py-2 text-center">
+        <div class="fw-bold" style="font-size:0.85rem;">&#9881; TESTMODUS</div>
+        <div style="font-size:0.75rem; opacity:0.9;">AllStars FC — geen productiedata</div>
+    </div>
+}
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -86,6 +96,19 @@
             }
         </div>
 
+        @* ── Testmodus-sectie: alleen zichtbaar bij ALLSTARS ── *@
+        @if (IsTestmodus)
+        {
+            <div class="nav-item px-3 mt-2">
+                <div class="px-2 mb-1" style="font-size:0.72rem; color:#f59e0b; letter-spacing:.05em; font-weight:600;">
+                    TESTMODUS
+                </div>
+                <NavLink class="nav-link nav-link-testmodus py-1" href="testdata/wedstrijden">
+                    <i class="bi bi-database-gear me-1" aria-hidden="true"></i> Testdata
+                </NavLink>
+            </div>
+        }
+
         @if (Auth.IsAuthenticated)
         {
             <div class="nav-item px-3 mt-3">
@@ -101,6 +124,9 @@
     private bool _instellingenOpen;
     private string? _clubName;
 
+    private bool IsTestmodus =>
+        string.Equals(ClubSelector.SelectedClubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase);
+
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
     private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates"];
@@ -110,6 +136,7 @@
         _instellingenOpen = IsInstellingenRoute(Navigation.Uri);
         Navigation.LocationChanged += OnLocationChanged;
         ThemeService.OnThemeChanged += OnThemeChanged;
+        ClubSelector.OnChange += OnClubChanged;
 
         var result = await Api.GetSettingsAsync();
         if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
@@ -120,9 +147,11 @@
     {
         Navigation.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
+        ClubSelector.OnChange -= OnClubChanged;
     }
 
     private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnClubChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
