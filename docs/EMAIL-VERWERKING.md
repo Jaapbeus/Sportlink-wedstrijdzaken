@@ -130,7 +130,7 @@ Goedemiddag {voornaam},
 {datum 2}:
   {beschikbaarheidstatus datum 2}
 
-Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.
+Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met {coordinatorNaam} plannen en definitief opnemen in de planning.
 
 Met vriendelijke groet, ...
 ```

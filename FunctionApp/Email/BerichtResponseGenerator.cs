@@ -124,7 +124,10 @@ public static class BerichtResponseGenerator
             inhoud += BouwDatumSectie(datum, response, classificatie) + "\n";
         }
 
-        inhoud += "Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.";
+        var wedstrijdzakenNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
+        inhoud += !string.IsNullOrWhiteSpace(wedstrijdzakenNaam)
+            ? $"Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met {wedstrijdzakenNaam} plannen en definitief opnemen in de planning."
+            : "Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen plannen en definitief opnemen in de planning.";
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
     }

@@ -27,6 +27,7 @@ Versienummering volgt [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Multi-datum antwoord: nuance op afsluitende zin:** De afsluiting van het multi-datum beschikbaarheidantwoord verwijst nu expliciet naar de wedstrijdcoördinator: "Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met {coordinatorNaam} plannen en definitief opnemen in de planning." De naam wordt opgehaald uit `dbo.AppSettings.coordinatorNaam`; als die instelling leeg is, vervalt de naam en blijft de zin grammaticaal correct.
 - **README: Sportlink Club Dataservice als expliciete vereiste vermeld:** De README maakt nu duidelijk dat een actief Club Dataservice-abonnement bij Sportlink verplicht is. Inclusief prijsindicatie (€1,95–€2,80/lid/jaar + €375 eenmalig) en link naar de productpagina, zodat clubs weten wat ze nodig hebben voordat ze beginnen.
 
 ### Added
