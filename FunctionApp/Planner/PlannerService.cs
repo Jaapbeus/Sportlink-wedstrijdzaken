@@ -710,10 +710,10 @@ namespace SportlinkFunction.Planner
                 var candidates = new List<TimeOnly> { voorkeurTijd };
                 for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
                 {
-                    var later = voorkeurTijd.AddMinutes(delta);
                     var vroeger = voorkeurTijd.AddMinutes(-delta);
-                    candidates.Add(later);
+                    var later = voorkeurTijd.AddMinutes(delta);
                     if (vroeger >= StartTijd) candidates.Add(vroeger);
+                    candidates.Add(later);
                 }
 
                 var sortedVelden = _velden
