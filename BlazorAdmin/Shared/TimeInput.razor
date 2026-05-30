@@ -1,0 +1,19 @@
+@using BlazorAdmin.Services
+
+<input class="form-control @Class"
+       value="@Value"
+       placeholder="@Placeholder"
+       @onchange="OnChange" />
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "HH:mm";
+    [Parameter] public string Class { get; set; } = "";
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        var normalized = TimeHelper.Normalize(e.Value?.ToString());
+        await ValueChanged.InvokeAsync(normalized);
+    }
+}

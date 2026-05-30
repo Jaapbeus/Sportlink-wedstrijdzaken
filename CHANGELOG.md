@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Email-planner: "heel veld" uit email wordt nu correct doorgegeven aan de beschikbaarheidscheck. Voorheen werd voor teams als JO12 altijd de speeltijd-veldafmeting (0.50) gebruikt, ook als de afzender expliciet "heel veld" vroeg. Nu overschrijft het `heelVeld`-veld (gevuld door AI en doorgegeven via BerichtPipeline → CheckAvailabilityRequest) de veldafmeting naar 1.00m, en ontvangt de coördinator een waarschuwing dat dit team normaal op een halftijdsspeelveld speelt.
+- Auto-planner: voorkeurstijden zijn nu zachte richtlijnen in plaats van harde doelen. Compactheid heeft prioriteit — als de vroegst mogelijke start meer dan de teamspecifieke buffer vóór de voorkeurstijd ligt, wordt compact ingepland zodat er geen onnodig gat in het schema ontstaat. Teams met een expliciete BufferVoor-teamregel (bijv. Heren 1 met 60 min voor) behouden hun gerechtvaardigd gat.
+- Auto-planner: teamspecifieke bufferregels (BufferVoor/BufferNa uit TeamRegels) worden nu toegepast tijdens het auto-plannen — eerder werden deze regels alleen gerespecteerd bij handmatig inplannen.
+- Auto-planner: sorteervolgorde is gewijzigd van prioriteitsnummer naar werkelijke voorkeurstijd, zodat vroeg-spelende JO-teams vóór laat-spelende Heren-teams worden ingepland.
+
+### Added
+- Tijdinvoer-normalisering (`TimeHelper`, `TimeInput`-component): invoer als "0830" of "830" wordt automatisch gecorrigeerd naar "08:30". Eén centrale implementatie voor alle tijdinvoervelden in de applicatie (Voorkeurstijden, Dagplanning, en alle toekomstige velden).
+
 ### Added
 - Clubnaam in sidebar altijd correct (#380): de naam boven het navigatiemenu wordt nu gevuld vanuit de clubs-lijst in MainLayout — niet meer via een aparte API-call naar de instellingen. Hierdoor toont de sidebar altijd de naam van de geselecteerde club, ook bij ALLSTARS ("AllStars FC") en bij multi-club wisseling.
 - ALLSTARS testmodus-banner altijd zichtbaar in de sidebar (#380): bij selectie van AllStars FC verschijnt een gele "TESTMODUS"-banner bovenin het navigatiemenu op elke pagina. De club-selector krijgt een gele rand. De sidebar abonneert zich correct op ClubSelector.OnChange zodat de indicator instant verschijnt — ook bij het eerste laadmoment. Andere clubs zien nooit testmodus-indicatoren.

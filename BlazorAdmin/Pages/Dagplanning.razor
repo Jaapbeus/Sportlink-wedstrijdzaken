@@ -338,8 +338,9 @@
                     </div>
                     <div class="col-md-2">
                         <label class="form-label">Gewenste eindtijd</label>
-                        <input type="time" class="form-control" value="@_gewensteEindtijdStr"
-                               @oninput="e => _gewensteEindtijdStr = e.Value?.ToString() ?? _gewensteEindtijdStr" />
+                        <TimeInput Value="@_gewensteEindtijdStr"
+                                   ValueChanged="@(v => _gewensteEindtijdStr = v ?? "16:15")"
+                                   Placeholder="16:15" />
                     </div>
                     <div class="col-md-2">
                         <button class="btn btn-outline-primary w-100" @onclick="GenereerKlassiekAsync" disabled="@_bezig">

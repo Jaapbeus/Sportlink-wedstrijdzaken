@@ -14,6 +14,8 @@ namespace SportlinkFunction.Planner
         public string? TeamNaam { get; set; }
         public string? Tegenstander { get; set; }
         public int? WedstrijdDuurMinuten { get; set; }
+        // Heel veld gevraagd — overschrijft de veldafmeting uit Speeltijden (bijv. JO12 op heel veld i.p.v. halftijdsspeelveld)
+        public bool? HeelVeld { get; set; }
     }
 
     public class BevestigRequest
@@ -26,6 +28,8 @@ namespace SportlinkFunction.Planner
         public string? Tegenstander { get; set; }
         public string? AangevraagdDoor { get; set; }
         public int? WedstrijdDuurMinuten { get; set; }
+        // Heel veld gevraagd — overschrijft de veldafmeting uit Speeltijden
+        public bool? HeelVeld { get; set; }
     }
 
     // ── Antwoord ──

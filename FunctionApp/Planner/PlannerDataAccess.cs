@@ -316,6 +316,31 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
+        public static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync()
+        {
+            var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT [TeamNaam], [RegelType], [WaardeMinuten]
+                FROM [dbo].[TeamRegels]
+                WHERE [RegelType] IN ('BufferVoor', 'BufferNa') AND [Actief] = 1 AND [WaardeMinuten] IS NOT NULL
+            ", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var team = reader.GetString(0);
+                var type = reader.GetString(1);
+                var minuten = reader.GetInt32(2);
+                if (!result.ContainsKey(team)) result[team] = (0, 0);
+                var cur = result[team];
+                result[team] = type == "BufferVoor"
+                    ? (Math.Max(cur.bufferVoor, minuten), cur.bufferNa)
+                    : (cur.bufferVoor, Math.Max(cur.bufferNa, minuten));
+            }
+            return result;
+        }
+
         public static async Task<TimeOnly?> GetSunsetAsync(DateOnly date)
         {
             using var conn = new SqlConnection(ConnectionString);

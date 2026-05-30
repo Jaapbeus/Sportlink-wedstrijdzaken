@@ -65,6 +65,16 @@ namespace SportlinkFunction.Planner
                 duurMinuten = request.WedstrijdDuurMinuten.Value;
             }
 
+            // Heel-veld override: als expliciet gevraagd, overschrijf de speeltijd-veldafmeting
+            if (request.HeelVeld == true && veldFractie < 1.00m)
+            {
+                if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+                    response.Waarschuwingen.Add(
+                        $"{request.LeeftijdsCategorie} speelt normaal op een halftijdsspeelveld ({veldFractie:P0} veld). " +
+                        $"Inplannen op heel veld conform het verzoek (speelduur blijft {duurMinuten} min).");
+                veldFractie = 1.00m;
+            }
+
             if (duurMinuten <= 0)
             {
                 response.Reden = "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
@@ -648,6 +658,7 @@ namespace SportlinkFunction.Planner
             public TimeOnly EindTijd { get; set; }
             public decimal Fractie { get; set; }
             public string VeldSubpositie { get; set; } = string.Empty;
+            public string? TeamNaam { get; set; }
         }
 
         private class FieldScheduler
@@ -655,57 +666,96 @@ namespace SportlinkFunction.Planner
             private readonly List<VeldBeschikbaarheidInfo> _beschikbaarheid;
             private readonly List<VeldInfo> _velden;
             private readonly int _buffer;
+            private readonly Dictionary<string, (int bufferVoor, int bufferNa)> _teamBuffers;
             private readonly Dictionary<int, List<IngeplandSlot>> _occupations = new();
             private static readonly TimeOnly StartTijd = new(9, 0);
 
-            public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer)
+            public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer,
+                Dictionary<string, (int bufferVoor, int bufferNa)>? teamBuffers = null)
             {
                 _beschikbaarheid = beschikbaarheid;
                 _velden = velden;
                 _buffer = buffer;
+                _teamBuffers = teamBuffers ?? new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase);
                 foreach (var v in velden)
                     _occupations[v.VeldNummer] = new List<IngeplandSlot>();
             }
 
-            public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten)
+            private int TeamBufferVoor(string? teamNaam) =>
+                teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) && b.bufferVoor > _buffer
+                    ? b.bufferVoor : _buffer;
+
+            private int TeamBufferNa(string? teamNaam) =>
+                teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) && b.bufferNa > _buffer
+                    ? b.bufferNa : _buffer;
+
+            // Effectieve buffer tussen bestaande wedstrijd (occTeam) en nieuwe wedstrijd (nieuwTeam)
+            private int EffectieveBuffer(string? occTeamNaam, int nieuwBufVoor) =>
+                Math.Max(TeamBufferNa(occTeamNaam), nieuwBufVoor);
+
+            // Zoekt het vroegst beschikbare slot ZONDER het te bezetten (peek voor gap-berekening)
+            private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor)
             {
-                // Kunstgras preferred, dan gras; lager veldnummer first
                 var sortedVelden = _velden
                     .OrderByDescending(v => v.IsKunstgras)
                     .ThenBy(v => v.VeldNummer)
                     .ToList();
 
                 IngeplandSlot? best = null;
-
                 foreach (var veld in sortedVelden)
                 {
                     var beschikbaar = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
                     if (beschikbaar == null) continue;
-
                     var van = beschikbaar.BeschikbaarVanaf < StartTijd ? StartTijd : beschikbaar.BeschikbaarVanaf;
                     var tot = beschikbaar.BeschikbaarTot;
-
-                    var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, tot);
+                    var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, tot, nieuwBufVoor);
                     if (slot != null && (best == null || slot.AanvangsTijd < best.AanvangsTijd))
                     {
                         best = slot;
-                        if (best.AanvangsTijd == van) break; // Can't start earlier
+                        if (best.AanvangsTijd == van) break;
                     }
                 }
+                return best; // niet toegevoegd aan _occupations
+            }
 
+            public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten,
+                int nieuwBufVoor = -1, string? teamNaam = null)
+            {
+                if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+                var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
                 if (best != null)
+                {
+                    best.TeamNaam = teamNaam;
                     _occupations[best.VeldNummer].Add(best);
-
+                }
                 return best;
             }
 
             /// <summary>
-            /// Probeert in te plannen op de exacte voorkeurstijd (of zo dicht mogelijk erbij).
-            /// Zoekt eerst bij de exacte tijd, dan in stappen van 5 minuten naar buiten (later én eerder).
-            /// Als niets binnen de tolerantie beschikbaar is, valt terug op vroegst beschikbaar.
+            /// Probeert in te plannen nabij de voorkeurstijd. Compactheid heeft prioriteit:
+            /// als de vroegst mogelijke start meer dan nieuwBufVoor minuten vóór de voorkeurstijd
+            /// ligt, wordt compact ingepland (voorkeurstijd als richtlijn, niet als hard doel).
             /// </summary>
-            public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten, int tolerantieMinuten = 90)
+            public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
+                int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90)
             {
+                if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+
+                // Compactheid-check: vroegst mogelijk slot zonder voorkeurstijd
+                var vroegste = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
+                if (vroegste != null)
+                {
+                    int gapMinuten = (int)(voorkeurTijd - vroegste.AanvangsTijd).TotalMinutes;
+                    // Gap groter dan teamspecifieke buffer → voorkeurstijd creëert onnodig gat → compact
+                    if (gapMinuten > nieuwBufVoor)
+                    {
+                        vroegste.TeamNaam = teamNaam;
+                        _occupations[vroegste.VeldNummer].Add(vroegste);
+                        return vroegste;
+                    }
+                }
+
+                // Gap past binnen de buffer — voorkeurstijd is gerechtvaardigd
                 // Probeer exact, dan uitwaaierend in stappen van 5 minuten
                 var candidates = new List<TimeOnly> { voorkeurTijd };
                 for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
@@ -748,7 +798,8 @@ namespace SportlinkFunction.Planner
                             AanvangsTijd = start,
                             EindTijd = end,
                             Fractie = fractie,
-                            VeldSubpositie = GetSubpositie(fractie, concurrent)
+                            VeldSubpositie = GetSubpositie(fractie, concurrent),
+                            TeamNaam = teamNaam
                         };
                         _occupations[veld.VeldNummer].Add(slot);
                         return slot;
@@ -756,21 +807,23 @@ namespace SportlinkFunction.Planner
                 }
 
                 // Valt terug op vroegst beschikbaar als niets binnen tolerantie past
-                return FindAndOccupyNextSlot(fractie, duurMinuten);
+                return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
             }
 
-            private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot)
+            private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot,
+                int nieuwBufVoor = -1)
             {
+                if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
                 var occupations = _occupations.TryGetValue(veldNummer, out var list)
                     ? list.OrderBy(o => o.AanvangsTijd).ToList()
                     : new List<IngeplandSlot>();
 
-                // Candidate start times: field opens + each occupation's start (deelveld share) + after each ends + buffer
+                // Candidate start times: field opens + after each match ends (respects team-specific buffers)
                 var candidates = new HashSet<TimeOnly> { van };
                 foreach (var occ in occupations)
                 {
                     candidates.Add(occ.AanvangsTijd);
-                    var afterEnd = occ.EindTijd.AddMinutes(_buffer);
+                    var afterEnd = occ.EindTijd.AddMinutes(EffectieveBuffer(occ.TeamNaam, nieuwBufVoor));
                     if (afterEnd > van) candidates.Add(afterEnd);
                 }
 
@@ -847,6 +900,21 @@ namespace SportlinkFunction.Planner
             return 90; // Senioren / onbekend
         }
 
+        // Standaard sorteersleutel (minuten na middernacht) voor teams zonder voorkeurstijd,
+        // gebaseerd op leeftijdscategorie. Zorgt dat JO-teams vóór late Heren-teams worden ingepland.
+        private static int GetDefaultTimeSortKey(string? leeftijd)
+        {
+            var order = GetLeeftijdSortOrder(leeftijd);
+            return order <= 11 ? 540       // JO7–JO11  → 09:00
+                 : order <= 13 ? 600       // JO12–JO13 → 10:00
+                 : order <= 15 ? 630       // JO14–JO15 → 10:30
+                 : order <= 17 ? 660       // JO16–JO17 → 11:00
+                 : order <= 19 ? 690       // JO18–JO19 → 11:30
+                 : order <= 25 ? 720       // JO21–JO23 → 12:00
+                 : order <= 85 ? 750       // Vrouwen/Meisjes → 12:30
+                 : 780;                    // Senioren / onbekend → 13:00
+        }
+
         private static string BuildSportlinkVeldString(string veldNaam, string subpositie)
         {
             var naam = veldNaam.Trim();
@@ -897,15 +965,22 @@ namespace SportlinkFunction.Planner
             // DagVanWeek: .NET DayOfWeek (0=zondag…6=zaterdag) → onze conventie (1=Ma…7=Zo)
             int dagVanWeek = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
             var voorkeurLookup = await PlannerDataAccess.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
+            var teamBuffers = await PlannerDataAccess.GetAllTeamBuffersAsync();
 
-            // 2. Sorteer wedstrijden: teams met hoogste voorkeurprioriteit (laagste waarde) eerst,
-            //    daarna jongste leeftijdscategorie. Zo worden de meest-geconstrained matches
-            //    eerst ingepland — anders kunnen ze hun voorkeursslot missen.
+            // 2. Sorteer wedstrijden op geschatte aanvangstijd.
+            //    Teams met voorkeurstijd worden gesorteerd op die tijd (vroeger = eerder gepland).
+            //    Teams zonder voorkeurstijd krijgen een standaard-tijd op basis van leeftijdscategorie.
+            //    Dit zorgt dat vroeg-spelende JO-teams vóór Heren-teams met late voorkeurstijden
+            //    worden ingepland, zodat de gap-check in FindAndOccupyNearTime correct werkt.
             var gesorteerd = alleWedstrijden
                 .OrderBy(w =>
                 {
-                    var team = isAllstars ? w.TeamNaam : w.TeamNaam;
-                    return voorkeurLookup.TryGetValue(team, out var v) ? v.Min(x => x.Prioriteit) : 999;
+                    var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                        ? w.LeeftijdsCategorie
+                        : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                    if (voorkeurLookup.TryGetValue(w.TeamNaam, out var v) && v.Count > 0)
+                        return (int)v.OrderBy(x => x.Prioriteit).First().Tijd.ToTimeSpan().TotalMinutes;
+                    return GetDefaultTimeSortKey(leeftijd.Length > 0 ? leeftijd : null);
                 })
                 .ThenBy(w => GetLeeftijdSortOrder(
                     (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
@@ -915,7 +990,7 @@ namespace SportlinkFunction.Planner
                 .ToList();
 
             // 3. Scheduling algoritme
-            var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer);
+            var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
             var items = new List<AutoPlanWedstrijdItem>();
 
             foreach (var wedstrijd in gesorteerd)
@@ -952,17 +1027,22 @@ namespace SportlinkFunction.Planner
                 string? voorkeurTijdStr = null;
                 int? voorkeurAfwijking = null;
 
+                int teamBufVoor = teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) && tb.bufferVoor > buffer
+                    ? tb.bufferVoor : buffer;
+
                 if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
                 {
                     var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
                     voorkeurTijdStr = primair.Tijd.ToString("HH:mm");
-                    slot = scheduler.FindAndOccupyNearTime(primair.Tijd, speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+                    slot = scheduler.FindAndOccupyNearTime(primair.Tijd, speeltijdInfo.Veldafmeting,
+                        speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam);
                     if (slot != null)
                         voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - primair.Tijd.ToTimeSpan()).TotalMinutes;
                 }
                 else
                 {
-                    slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+                    slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal,
+                        teamBufVoor, wedstrijd.TeamNaam);
                 }
 
                 if (slot == null)

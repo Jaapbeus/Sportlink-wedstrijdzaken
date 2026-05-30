@@ -102,6 +102,9 @@ namespace SportlinkFunction.Planner
                         veldFractie = speeltijd.Veldafmeting;
                     }
                 }
+                // Heel-veld override: als expliciet gevraagd, overschrijf de speeltijd-veldafmeting
+                if (request.HeelVeld == true && veldFractie < 1.00m)
+                    veldFractie = 1.00m;
 
                 var eindTijd = tijd.AddMinutes(duurMinuten);
 
