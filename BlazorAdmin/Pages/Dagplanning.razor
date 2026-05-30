@@ -10,6 +10,7 @@
 
 <h1>Dagplanning</h1>
 
+@* ── Invoerbalk ── *@
 <div class="card mb-3">
     <div class="card-body">
         <div class="row g-3 align-items-end">
@@ -17,26 +18,20 @@
                 <label class="form-label">Datum</label>
                 <input type="date" class="form-control" @bind="_datumDt" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Optimalisatiedoel</label>
-                <select class="form-select" @bind="_doel">
-                    <option value="">(geen voorkeur)</option>
-                    <option value="grasveld-ontlasten">Grasveld(en) ontlasten</option>
-                    <option value="strakker-plannen">Strakker plannen</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Gewenste eindtijd</label>
-                <input type="time" class="form-control" @bind="_gewensteEindtijd" @bind:format="HH:mm" />
-            </div>
             <div class="col-md-2">
                 <label class="form-label">Buffer (min)</label>
                 <input type="number" class="form-control" @bind="_bufferMinuten" min="0" max="60" />
             </div>
             <div class="col-md-2">
-                <button class="btn btn-primary w-100" @onclick="GenereerAsync" disabled="@_bezig">
-                    @(_bezig ? "Genereren..." : "Genereer dagplanning")
+                <button class="btn btn-primary w-100" @onclick="AutoPlanAsync" disabled="@_bezig">
+                    @(_bezig ? "Bezig..." : "Optimaliseer")
                 </button>
+            </div>
+            <div class="col-md-5 d-flex align-items-end">
+                @if (IsAllstars)
+                {
+                    <span class="badge bg-warning text-dark fs-6">&#9888; TESTMODUS — ALLSTARS</span>
+                }
             </div>
         </div>
     </div>
@@ -47,78 +42,268 @@
     <div class="alert alert-danger">@_errorMessage</div>
 }
 
-@if (_resultaat != null)
+@if (_plan != null)
 {
-    @if (_resultaat.VoldoendeRuimte)
-    {
-        <div class="alert alert-success mb-3">
-            <strong>&#10003; @_resultaat.VoldoendeRuimteMelding</strong>
-        </div>
-    }
-
-    <div class="card mb-3">
-        <div class="card-header fw-semibold">Statistieken</div>
-        <div class="card-body">
-            <div class="row text-center">
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@_resultaat.HuidigeEindtijd</div>
-                    <small class="text-muted">Huidige eindtijd</small>
+    @* ── Samenvatting banner ── *@
+    <div class="card mb-3 border-0 bg-light">
+        <div class="card-body py-2">
+            <div class="row text-center g-2">
+                <div class="col">
+                    <div class="fs-5 fw-bold">@_plan.TotaalWedstrijden</div>
+                    <small class="text-muted">Wedstrijden</small>
                 </div>
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@(_resultaat.GeschatteNieuweEindtijd ?? "—")</div>
-                    <small class="text-muted">Geschatte nieuwe eindtijd</small>
+                <div class="col">
+                    <div class="fs-5 fw-bold @(_plan.ZonderVeld > 0 ? "text-warning" : "text-success")">
+                        @_plan.ZonderVeld
+                    </div>
+                    <small class="text-muted">Zonder veld</small>
                 </div>
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@_resultaat.AantalVerplaatsingen</div>
-                    <small class="text-muted">Verplaatsingen</small>
+                <div class="col">
+                    <div class="fs-5 fw-bold @(_plan.ZonderTijd > 0 ? "text-warning" : "text-success")">
+                        @_plan.ZonderTijd
+                    </div>
+                    <small class="text-muted">Zonder tijd</small>
                 </div>
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@_resultaat.AantalVanGrasveldVerplaatst</div>
-                    <small class="text-muted">Van grasveld verplaatst</small>
+                <div class="col">
+                    <div class="fs-5 fw-bold @(_plan.TeWijzigen > 0 ? "text-primary" : "text-success")">
+                        @_plan.TeWijzigen
+                    </div>
+                    <small class="text-muted">Te wijzigen</small>
                 </div>
-                @if (_resultaat.CapaciteitOverzicht != null)
+                @if (_plan.NietInplanbaar > 0)
                 {
-                    <div class="col-md-2 col-6 mb-2">
-                        <div class="fs-5 fw-bold">@_resultaat.CapaciteitOverzicht.BezettingsPercentage.ToString("0")%</div>
-                        <small class="text-muted">Bezettingsgraad</small>
+                    <div class="col">
+                        <div class="fs-5 fw-bold text-danger">@_plan.NietInplanbaar</div>
+                        <small class="text-muted">Niet inplanbaar</small>
                     </div>
                 }
+                <div class="col">
+                    <div class="fs-5 fw-bold">@(_plan.GeschatteEindTijd ?? "—")</div>
+                    <small class="text-muted">Optimale eindtijd</small>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="mb-3">
-        <button class="btn btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync" disabled="@_bezig">
-            @(_kopieerStatus ?? "Kopieer e-mail HTML")
-        </button>
-        <button class="btn btn-outline-secondary" @onclick="DownloadHtmlAsync" disabled="@_bezig">
-            Download HTML-bestand
-        </button>
+    @* ── Per-wedstrijd vergelijking ── *@
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-semibold me-2">Per wedstrijd: huidig vs. optimaal</span>
+            <div class="btn-group btn-group-sm">
+                <button class="btn @(_filter == "alles" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _filter = "alles"'>Alles (@_plan.TotaalWedstrijden)</button>
+                <button class="btn @(_filter == "wijzigingen" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _filter = "wijzigingen"'>Wijzigingen (@_plan.TeWijzigen)</button>
+                @if (_plan.NietInplanbaar > 0)
+                {
+                    <button class="btn @(_filter == "probleem" ? "btn-danger" : "btn-outline-danger")"
+                            @onclick='() => _filter = "probleem"'>Probleem (@_plan.NietInplanbaar)</button>
+                }
+            </div>
+            @if (IsAllstars && _plan.TeWijzigen > 0)
+            {
+                <button class="btn btn-sm btn-warning ms-auto" @onclick="ToepassenAsync" disabled="@_bezig">
+                    @(_bezig ? "Toepassen..." : $"Toepassen in testmodus ({_plan.TeWijzigen})")
+                </button>
+            }
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Wedstrijd</th>
+                            <th>Cat</th>
+                            <th>Huidige situatie</th>
+                            <th>Optimale situatie</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in GefilterdeLijst())
+                        {
+                            <tr class="@RowClass(item.Status)">
+                                <td class="fw-semibold" style="font-size:0.85rem;">@item.Wedstrijd</td>
+                                <td>
+                                    <span class="badge bg-secondary">@(item.LeeftijdsCategorie ?? "?")</span>
+                                </td>
+                                <td style="font-size:0.85rem;">
+                                    @if (!item.HeeftVeld && !item.HeeftTijd)
+                                    {
+                                        <span class="text-warning">&#10007; Geen veld &amp; tijd</span>
+                                    }
+                                    else if (!item.HeeftVeld)
+                                    {
+                                        <span class="text-warning">&#10007; Geen veld</span>
+                                        @if (!string.IsNullOrWhiteSpace(item.HuidigeTijd))
+                                        {<span class="text-muted ms-1">@item.HuidigeTijd</span>}
+                                    }
+                                    else if (!item.HeeftTijd)
+                                    {
+                                        <span class="text-warning">&#10007; Geen tijd</span>
+                                        @if (!string.IsNullOrWhiteSpace(item.HuidigeVeld))
+                                        {<span class="text-muted ms-1">@item.HuidigeVeld</span>}
+                                    }
+                                    else
+                                    {
+                                        <span>@item.HuidigeVeld</span>
+                                        <span class="ms-2 fw-bold">@item.HuidigeTijd</span>
+                                    }
+                                </td>
+                                <td style="font-size:0.85rem;">
+                                    @if (item.Status == "niet-inplanbaar")
+                                    {
+                                        <span class="text-danger" title="@item.NietInplanbaaarReden">
+                                            &#10007; @(item.NietInplanbaaarReden ?? "Niet inplanbaar")
+                                        </span>
+                                    }
+                                    else if (item.OptimaalVeld != null)
+                                    {
+                                        <span class="@(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalVeld</span>
+                                        <span class="ms-2 @(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalTijd</span>
+                                    }
+                                </td>
+                                <td>
+                                    @switch (item.Status)
+                                    {
+                                        case "ongewijzigd":
+                                            <span class="badge bg-success">&#10003; OK</span>
+                                            break;
+                                        case "nieuw-slot":
+                                            <span class="badge bg-warning text-dark">Nieuw</span>
+                                            break;
+                                        case "wijziging":
+                                            <span class="badge bg-primary">Wijzig</span>
+                                            break;
+                                        case "niet-inplanbaar":
+                                            <span class="badge bg-danger">Probleem</span>
+                                            break;
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(_toepassenMelding))
+        {
+            <div class="card-footer">
+                <div class="alert @(_toepassenFout ? "alert-danger" : "alert-success") mb-0 py-2">
+                    @_toepassenMelding
+                    @if (!_toepassenFout)
+                    {
+                        <button class="btn btn-sm btn-outline-success ms-3" @onclick="AutoPlanAsync">Herlaad plan</button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
-    @if (!string.IsNullOrEmpty(_resultaat.HtmlPlanner))
-    {
-        <div class="border rounded" style="overflow:hidden;">
-            <iframe srcdoc="@_resultaat.HtmlPlanner"
-                    style="width:100%; min-height:800px; border:none; display:block;"
-                    title="Dagplanning visualisatie">
-            </iframe>
+    @* ── Visuele planning (tabs) ── *@
+    <div class="card mb-3">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs mb-0">
+                <li class="nav-item">
+                    <button class="nav-link @(_visTab == "optimaal" ? "active" : "")"
+                            @onclick='() => _visTab = "optimaal"'>&#128197; Optimale planning</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_visTab == "huidig" ? "active" : "")"
+                            @onclick='() => _visTab = "huidig"'>Huidige situatie</button>
+                </li>
+            </ul>
         </div>
-    }
+        <div class="card-body p-0">
+            @if (_visTab == "huidig" && !string.IsNullOrEmpty(_plan.HuidigeHtml))
+            {
+                <iframe srcdoc="@_plan.HuidigeHtml"
+                        style="width:100%; min-height:600px; border:none; display:block;"
+                        title="Huidige dagplanning"></iframe>
+            }
+            else if (_visTab == "optimaal" && !string.IsNullOrEmpty(_plan.OptimaleHtml))
+            {
+                <iframe srcdoc="@_plan.OptimaleHtml"
+                        style="width:100%; min-height:600px; border:none; display:block;"
+                        title="Optimale dagplanning"></iframe>
+            }
+            else
+            {
+                <p class="p-3 text-muted">Geen visuele planning beschikbaar voor deze weergave.</p>
+            }
+        </div>
+    </div>
+
+    @* ── Klassieke optimalisatie (verborgen sub-feature) ── *@
+    <details class="mb-3">
+        <summary class="text-muted" style="cursor:pointer;">Geavanceerde optimalisatie (klassiek)</summary>
+        <div class="card mt-2">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Optimalisatiedoel</label>
+                        <select class="form-select" @bind="_doel">
+                            <option value="">(geen voorkeur)</option>
+                            <option value="veld5-ontlasten">Grasveld(en) ontlasten</option>
+                            <option value="strakker-plannen">Strakker plannen</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Gewenste eindtijd</label>
+                        <input type="time" class="form-control" value="@_gewensteEindtijdStr"
+                               @oninput="e => _gewensteEindtijdStr = e.Value?.ToString() ?? _gewensteEindtijdStr" />
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-primary w-100" @onclick="GenereerKlassiekAsync" disabled="@_bezig">
+                            Genereer
+                        </button>
+                    </div>
+                </div>
+                @if (_klassiekResultaat != null)
+                {
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync">
+                            @(_kopieerStatus ?? "Kopieer e-mail HTML")
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadHtmlAsync">
+                            Download HTML
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner))
+                    {
+                        <div class="border rounded mt-2" style="overflow:hidden;">
+                            <iframe srcdoc="@_klassiekResultaat.HtmlPlanner"
+                                    style="width:100%; min-height:700px; border:none; display:block;"
+                                    title="Klassieke dagplanning"></iframe>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </details>
 }
 
 @code {
     private DateTime _datumDt;
-    private string _doel = "";
-    private TimeOnly _gewensteEindtijd = new TimeOnly(16, 15);
     private int _bufferMinuten = 15;
     private bool _bezig;
     private string? _errorMessage;
+    private string _filter = "alles";
+    private string _visTab = "optimaal";
+    private AutoPlanResponseDto? _plan;
+
+    // Klassiek optimaliseer-flow
+    private string _doel = "";
+    private string _gewensteEindtijdStr = "16:15";
     private string? _kopieerStatus;
-    private OptimaliseerResponseDto? _resultaat;
+    private OptimaliseerResponseDto? _klassiekResultaat;
+
+    // Toepassen feedback
+    private string? _toepassenMelding;
+    private bool _toepassenFout;
 
     private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
-    private string EindtijdStr => _gewensteEindtijd.ToString("HH:mm");
+    private bool IsAllstars => ClubSelector.SelectedClubCode == "ALLSTARS";
 
     protected override void OnInitialized()
     {
@@ -128,9 +313,10 @@
 
     private void OnClubChanged() => InvokeAsync(() =>
     {
-        _resultaat = null;
+        _plan = null;
+        _klassiekResultaat = null;
         _errorMessage = null;
-        _kopieerStatus = null;
+        _toepassenMelding = null;
         StateHasChanged();
     });
 
@@ -144,62 +330,125 @@
         return vandaag.AddDays(dagenTotZaterdag);
     }
 
-    private async Task GenereerAsync()
+    private async Task AutoPlanAsync()
     {
         _errorMessage = null;
-        _resultaat = null;
+        _toepassenMelding = null;
+        _bezig = true;
+        try
+        {
+            var req = new AutoPlanRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
+            var result = await Api.AutoPlanAsync(req);
+            if (result.Success)
+            {
+                _plan = result.Data;
+                _filter = "alles";
+                _visTab = "optimaal";
+            }
+            else
+                _errorMessage = result.ErrorMessage ?? "Onbekende fout bij auto-planning.";
+        }
+        finally { _bezig = false; }
+    }
+
+    private async Task ToepassenAsync()
+    {
+        _toepassenMelding = null;
+        _toepassenFout = false;
+        _bezig = true;
+        try
+        {
+            var req = new AutoPlanToepassenRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
+            var result = await Api.AutoPlanToepassenAsync(req);
+            if (result.Success && result.Data != null)
+            {
+                var d = result.Data;
+                _toepassenMelding = d.Mislukt == 0
+                    ? $"{d.Bijgewerkt} wedstrijd(en) bijgewerkt in testdata."
+                    : $"{d.Bijgewerkt} bijgewerkt, {d.Mislukt} mislukt: {string.Join("; ", d.Fouten)}";
+                _toepassenFout = d.Mislukt > 0;
+            }
+            else
+            {
+                _toepassenMelding = result.ErrorMessage ?? "Toepassen mislukt.";
+                _toepassenFout = true;
+            }
+        }
+        finally { _bezig = false; }
+    }
+
+    private IEnumerable<AutoPlanWedstrijdItemDto> GefilterdeLijst()
+    {
+        if (_plan == null) return Enumerable.Empty<AutoPlanWedstrijdItemDto>();
+        return _filter switch
+        {
+            "wijzigingen" => _plan.Wedstrijden.Where(w => w.Status is "nieuw-slot" or "wijziging"),
+            "probleem"    => _plan.Wedstrijden.Where(w => w.Status == "niet-inplanbaar"),
+            _             => _plan.Wedstrijden
+        };
+    }
+
+    private static string RowClass(string status) => status switch
+    {
+        "ongewijzigd"     => "",
+        "nieuw-slot"      => "table-warning",
+        "wijziging"       => "table-primary",
+        "niet-inplanbaar" => "table-danger",
+        _                 => ""
+    };
+
+    // ── Klassiek optimaliseer ──
+
+    private async Task GenereerKlassiekAsync()
+    {
+        _errorMessage = null;
+        _klassiekResultaat = null;
         _kopieerStatus = null;
         _bezig = true;
         try
         {
-            var req = BuildRequest();
+            var req = new OptimaliseerRequestDto
+            {
+                Datum = DatumStr,
+                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
+                GewensteEindtijd = _gewensteEindtijdStr,
+                BufferMinuten = _bufferMinuten
+            };
             var result = await Api.OptimaliseerAsync(req);
-            if (result.Success)
-                _resultaat = result.Data;
-            else
-                _errorMessage = result.ErrorMessage ?? "Onbekende fout bij genereren dagplanning.";
+            if (result.Success) _klassiekResultaat = result.Data;
+            else _errorMessage = result.ErrorMessage ?? "Onbekende fout.";
         }
-        finally
-        {
-            _bezig = false;
-        }
+        finally { _bezig = false; }
     }
 
     private async Task KopieerEmailHtmlAsync()
     {
-        if (_resultaat == null) return;
+        if (_klassiekResultaat == null) return;
         _bezig = true;
         try
         {
-            var result = await Api.OptimaliseerHtmlAsync(BuildRequest(), "email");
+            var req = new OptimaliseerRequestDto
+            {
+                Datum = DatumStr,
+                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
+                GewensteEindtijd = _gewensteEindtijdStr,
+                BufferMinuten = _bufferMinuten
+            };
+            var result = await Api.OptimaliseerHtmlAsync(req, "email");
             if (result.Success && result.Data != null)
             {
                 await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", result.Data);
                 _kopieerStatus = "Gekopieerd!";
                 _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
             }
-            else
-            {
-                _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
-            }
+            else _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
         }
-        finally
-        {
-            _bezig = false;
-        }
+        finally { _bezig = false; }
     }
 
     private async Task DownloadHtmlAsync()
     {
-        if (_resultaat == null || string.IsNullOrEmpty(_resultaat.HtmlPlanner)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _resultaat.HtmlPlanner);
+        if (_klassiekResultaat == null || string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _klassiekResultaat.HtmlPlanner);
     }
-
-    private OptimaliseerRequestDto BuildRequest() => new()
-    {
-        Datum = DatumStr,
-        Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
-        GewensteEindtijd = EindtijdStr,
-        BufferMinuten = _bufferMinuten
-    };
 }

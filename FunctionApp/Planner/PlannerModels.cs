@@ -293,4 +293,79 @@ namespace SportlinkFunction.Planner
         public string Naam { get; set; } = string.Empty;
         public string Emailadres { get; set; } = string.Empty;
     }
+
+    // ── Auto-plan modellen (#380) ──
+
+    // Ruwe wedstrijddata voor auto-plan (inclusief wedstrijden zonder veld/aanvangstijd)
+    public class WedstrijdRaw
+    {
+        public long? WedstrijdCode { get; set; }
+        public string Wedstrijd { get; set; } = string.Empty;
+        public string TeamNaam { get; set; } = string.Empty;
+        public string? Uitteam { get; set; }
+        public string? AanvangsTijd { get; set; }
+        public string? Veld { get; set; }
+        public string? LeeftijdsCategorie { get; set; }
+        public string? Competitiesoort { get; set; }
+    }
+
+    public class AutoPlanRequest
+    {
+        public string Datum { get; set; } = string.Empty;
+        public int? BufferMinuten { get; set; }
+    }
+
+    public class AutoPlanWedstrijdItem
+    {
+        public long? WedstrijdCode { get; set; }
+        public string Wedstrijd { get; set; } = string.Empty;
+        public string TeamNaam { get; set; } = string.Empty;
+        public string? LeeftijdsCategorie { get; set; }
+        public string? Competitiesoort { get; set; }
+        public int DuurMinuten { get; set; }
+        public decimal Veldafmeting { get; set; }
+
+        // Huidige situatie
+        public string? HuidigeVeld { get; set; }
+        public string? HuidigeTijd { get; set; }
+        public bool HeeftVeld { get; set; }
+        public bool HeeftTijd { get; set; }
+
+        // Optimale situatie
+        public int? OptimaalVeldNummer { get; set; }
+        public string? OptimaalVeldNaam { get; set; }
+        public string? OptimaalVeld { get; set; }  // Sportlink-formaat "veld 3 A"
+        public string? OptimaalTijd { get; set; }  // "09:00"
+
+        // Status: "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
+        public string Status { get; set; } = "ongewijzigd";
+        public string? NietInplanbaaarReden { get; set; }
+    }
+
+    public class AutoPlanResponse
+    {
+        public string Datum { get; set; } = string.Empty;
+        public int TotaalWedstrijden { get; set; }
+        public int ZonderVeld { get; set; }
+        public int ZonderTijd { get; set; }
+        public int TeWijzigen { get; set; }
+        public int NietInplanbaar { get; set; }
+        public string? GeschatteEindTijd { get; set; }
+        public List<AutoPlanWedstrijdItem> Wedstrijden { get; set; } = new();
+        public string HuidigeHtml { get; set; } = string.Empty;
+        public string OptimaleHtml { get; set; } = string.Empty;
+    }
+
+    public class AutoPlanToepassenRequest
+    {
+        public string Datum { get; set; } = string.Empty;
+        public int? BufferMinuten { get; set; }
+    }
+
+    public class AutoPlanToepassenResponse
+    {
+        public int Bijgewerkt { get; set; }
+        public int Mislukt { get; set; }
+        public List<string> Fouten { get; set; } = new();
+    }
 }

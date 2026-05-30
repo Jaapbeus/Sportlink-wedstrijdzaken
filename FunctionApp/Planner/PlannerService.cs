@@ -639,6 +639,389 @@ namespace SportlinkFunction.Planner
             public decimal VeldFractie { get; set; }
         }
 
+        // ── Auto-plan (#380) ──
+
+        private class IngeplandSlot
+        {
+            public int VeldNummer { get; set; }
+            public TimeOnly AanvangsTijd { get; set; }
+            public TimeOnly EindTijd { get; set; }
+            public decimal Fractie { get; set; }
+            public string VeldSubpositie { get; set; } = string.Empty;
+        }
+
+        private class FieldScheduler
+        {
+            private readonly List<VeldBeschikbaarheidInfo> _beschikbaarheid;
+            private readonly List<VeldInfo> _velden;
+            private readonly int _buffer;
+            private readonly Dictionary<int, List<IngeplandSlot>> _occupations = new();
+            private static readonly TimeOnly StartTijd = new(9, 0);
+
+            public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer)
+            {
+                _beschikbaarheid = beschikbaarheid;
+                _velden = velden;
+                _buffer = buffer;
+                foreach (var v in velden)
+                    _occupations[v.VeldNummer] = new List<IngeplandSlot>();
+            }
+
+            public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten)
+            {
+                // Kunstgras preferred, dan gras; lager veldnummer first
+                var sortedVelden = _velden
+                    .OrderByDescending(v => v.IsKunstgras)
+                    .ThenBy(v => v.VeldNummer)
+                    .ToList();
+
+                IngeplandSlot? best = null;
+
+                foreach (var veld in sortedVelden)
+                {
+                    var beschikbaar = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
+                    if (beschikbaar == null) continue;
+
+                    var van = beschikbaar.BeschikbaarVanaf < StartTijd ? StartTijd : beschikbaar.BeschikbaarVanaf;
+                    var tot = beschikbaar.BeschikbaarTot;
+
+                    var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, tot);
+                    if (slot != null && (best == null || slot.AanvangsTijd < best.AanvangsTijd))
+                    {
+                        best = slot;
+                        if (best.AanvangsTijd == van) break; // Can't start earlier
+                    }
+                }
+
+                if (best != null)
+                    _occupations[best.VeldNummer].Add(best);
+
+                return best;
+            }
+
+            private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot)
+            {
+                var occupations = _occupations.TryGetValue(veldNummer, out var list)
+                    ? list.OrderBy(o => o.AanvangsTijd).ToList()
+                    : new List<IngeplandSlot>();
+
+                // Candidate start times: field opens + each occupation's start (deelveld share) + after each ends + buffer
+                var candidates = new HashSet<TimeOnly> { van };
+                foreach (var occ in occupations)
+                {
+                    candidates.Add(occ.AanvangsTijd);
+                    var afterEnd = occ.EindTijd.AddMinutes(_buffer);
+                    if (afterEnd > van) candidates.Add(afterEnd);
+                }
+
+                foreach (var candidate in candidates.OrderBy(t => t))
+                {
+                    if (candidate < van) continue;
+
+                    var start = RondAfOp5Min(candidate);
+                    if (start < van) start = van;
+                    var end = start.AddMinutes(duurMinuten);
+
+                    if (end > tot) continue;
+                    if (end <= start) continue; // overflow past midnight guard
+
+                    // Check fractie-capaciteit: sum of overlapping fractions <= 1.0 - fractie
+                    var fractiesInUse = occupations
+                        .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
+                        .Sum(o => o.Fractie);
+
+                    if (fractiesInUse + fractie > 1.0m + 0.001m) continue;
+
+                    // Count concurrent matches at this time for subpositie
+                    int concurrent = occupations.Count(o => o.AanvangsTijd < end && o.EindTijd > start);
+
+                    return new IngeplandSlot
+                    {
+                        VeldNummer = veldNummer,
+                        AanvangsTijd = start,
+                        EindTijd = end,
+                        Fractie = fractie,
+                        VeldSubpositie = GetSubpositie(fractie, concurrent)
+                    };
+                }
+
+                return null;
+            }
+
+            private static string GetSubpositie(decimal fractie, int concurrent) => fractie switch
+            {
+                <= 0.25m => concurrent switch { 0 => "A1", 1 => "A2", 2 => "B1", _ => "B2" },
+                <= 0.50m => concurrent == 0 ? "A" : "B",
+                _ => string.Empty
+            };
+        }
+
+        private static int GetLeeftijdSortOrder(string? leeftijd)
+        {
+            if (string.IsNullOrWhiteSpace(leeftijd)) return 99;
+            var l = leeftijd.Trim().ToUpperInvariant();
+            if (l.StartsWith("JO") && int.TryParse(l[2..], out var jo)) return jo;
+            if (l.StartsWith("MO") && int.TryParse(l[2..], out var mo)) return 50 + mo;
+            if (l == "VR" || l.StartsWith("VROUWEN")) return 80;
+            if (l.StartsWith("G")) return 85;
+            return 90; // Senioren / onbekend
+        }
+
+        private static string BuildSportlinkVeldString(string veldNaam, string subpositie)
+        {
+            var naam = veldNaam.Trim();
+            return string.IsNullOrEmpty(subpositie) ? naam : $"{naam} {subpositie}";
+        }
+
+        private static string NormaliseerVeld(string? veld)
+        {
+            if (string.IsNullOrWhiteSpace(veld)) return string.Empty;
+            return veld.Trim().ToLowerInvariant().Replace("  ", " ");
+        }
+
+        public static async Task<AutoPlanResponse> AutoPlanAsync(
+            AutoPlanRequest request, string clubCode, ILogger log)
+        {
+            bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+            int buffer = request.BufferMinuten ?? StandardBufferMinutes;
+
+            if (!DateOnly.TryParse(request.Datum, out var datum))
+                return new AutoPlanResponse { Datum = request.Datum };
+
+            // 1. Data laden
+            var alleWedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+            var beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
+            var velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+            var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+            var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
+
+            // 2. Sorteer wedstrijden: jongste leeftijdscategorie eerst
+            var gesorteerd = alleWedstrijden
+                .OrderBy(w => GetLeeftijdSortOrder(w.LeeftijdsCategorie))
+                .ThenBy(w => w.TeamNaam)
+                .ToList();
+
+            // 3. Scheduling algoritme
+            var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer);
+            var items = new List<AutoPlanWedstrijdItem>();
+
+            foreach (var wedstrijd in gesorteerd)
+            {
+                var leeftijd = wedstrijd.LeeftijdsCategorie ?? "";
+                speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+
+                if (speeltijdInfo == null)
+                {
+                    items.Add(new AutoPlanWedstrijdItem
+                    {
+                        WedstrijdCode = wedstrijd.WedstrijdCode,
+                        Wedstrijd = wedstrijd.Wedstrijd,
+                        TeamNaam = wedstrijd.TeamNaam,
+                        LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
+                        Competitiesoort = wedstrijd.Competitiesoort,
+                        HuidigeVeld = wedstrijd.Veld,
+                        HuidigeTijd = wedstrijd.AanvangsTijd,
+                        HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
+                        HeeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd),
+                        Status = "niet-inplanbaar",
+                        NietInplanbaaarReden = string.IsNullOrWhiteSpace(leeftijd)
+                            ? "Leeftijdscategorie onbekend — team niet gevonden in his.teams"
+                            : $"Leeftijdscategorie '{leeftijd}' ontbreekt in Speeltijden — voeg toe via Instellingen → Speeltijden"
+                    });
+                    continue;
+                }
+
+                var slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal);
+
+                if (slot == null)
+                {
+                    items.Add(new AutoPlanWedstrijdItem
+                    {
+                        WedstrijdCode = wedstrijd.WedstrijdCode,
+                        Wedstrijd = wedstrijd.Wedstrijd,
+                        TeamNaam = wedstrijd.TeamNaam,
+                        LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
+                        Competitiesoort = wedstrijd.Competitiesoort,
+                        DuurMinuten = speeltijdInfo.WedstrijdTotaal,
+                        Veldafmeting = speeltijdInfo.Veldafmeting,
+                        HuidigeVeld = wedstrijd.Veld,
+                        HuidigeTijd = wedstrijd.AanvangsTijd,
+                        HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
+                        HeeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd),
+                        Status = "niet-inplanbaar",
+                        NietInplanbaaarReden = "Geen beschikbaar veld gevonden voor deze datum"
+                    });
+                    continue;
+                }
+
+                var optimaalVeldNaam = veldInfoLookup.TryGetValue(slot.VeldNummer, out var vi)
+                    ? vi.VeldNaam : $"veld {slot.VeldNummer}";
+                var optimaalVeld = BuildSportlinkVeldString(optimaalVeldNaam, slot.VeldSubpositie);
+                var optimaalTijd = slot.AanvangsTijd.ToString("HH:mm");
+
+                var huidigeVeldNorm = NormaliseerVeld(wedstrijd.Veld);
+                var optimaalVeldNorm = NormaliseerVeld(optimaalVeld);
+                bool heeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld);
+                bool heeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd);
+                bool tijdWijzigt = wedstrijd.AanvangsTijd?.Trim() != optimaalTijd;
+                bool veldWijzigt = huidigeVeldNorm != optimaalVeldNorm;
+
+                string status;
+                if (!heeftVeld || !heeftTijd)
+                    status = "nieuw-slot";
+                else if (tijdWijzigt || veldWijzigt)
+                    status = "wijziging";
+                else
+                    status = "ongewijzigd";
+
+                items.Add(new AutoPlanWedstrijdItem
+                {
+                    WedstrijdCode = wedstrijd.WedstrijdCode,
+                    Wedstrijd = wedstrijd.Wedstrijd,
+                    TeamNaam = wedstrijd.TeamNaam,
+                    LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
+                    Competitiesoort = wedstrijd.Competitiesoort,
+                    DuurMinuten = speeltijdInfo.WedstrijdTotaal,
+                    Veldafmeting = speeltijdInfo.Veldafmeting,
+                    HuidigeVeld = wedstrijd.Veld,
+                    HuidigeTijd = wedstrijd.AanvangsTijd,
+                    HeeftVeld = heeftVeld,
+                    HeeftTijd = heeftTijd,
+                    OptimaalVeldNummer = slot.VeldNummer,
+                    OptimaalVeldNaam = optimaalVeldNaam,
+                    OptimaalVeld = optimaalVeld,
+                    OptimaalTijd = optimaalTijd,
+                    Status = status
+                });
+            }
+
+            // 4. Statistieken
+            int zonderVeld = items.Count(i => !i.HeeftVeld);
+            int zonderTijd = items.Count(i => !i.HeeftTijd);
+            int teWijzigen = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
+            int nietInplanbaar = items.Count(i => i.Status == "niet-inplanbaar");
+
+            var eindTijden = items
+                .Where(i => i.OptimaalTijd != null && i.DuurMinuten > 0
+                    && TimeOnly.TryParse(i.OptimaalTijd, out _))
+                .Select(i => TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten))
+                .ToList();
+            string? eindTijd = eindTijden.Count > 0 ? eindTijden.Max().ToString("HH:mm") : null;
+
+            // 5. HTML-visualisaties (huidig + optimaal)
+            var huidigeOccupations = items
+                .Where(i => i.HeeftVeld && i.HeeftTijd && i.OptimaalVeldNummer.HasValue)
+                .Select(i =>
+                {
+                    // Map huidig veld naar veldnummer via naam
+                    var huidigVeldNr = velden.FirstOrDefault(v =>
+                        NormaliseerVeld(v.VeldNaam) == NormaliseerVeld(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
+                    if (huidigVeldNr == 0) return null;
+                    if (!TimeOnly.TryParse(i.HuidigeTijd, out var aTime)) return null;
+                    return new BestaandeWedstrijd
+                    {
+                        Datum = datum,
+                        AanvangsTijd = aTime,
+                        EindTijd = aTime.AddMinutes(i.DuurMinuten),
+                        VeldNummer = huidigVeldNr,
+                        VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                        LeeftijdsCategorie = i.LeeftijdsCategorie,
+                        TeamNaam = i.TeamNaam,
+                        Wedstrijd = i.Wedstrijd,
+                        Bron = "Sportlink"
+                    };
+                })
+                .Where(o => o != null).Cast<BestaandeWedstrijd>().ToList();
+
+            var optimaleOccupations = items
+                .Where(i => i.OptimaalVeldNummer.HasValue && i.OptimaalTijd != null
+                    && TimeOnly.TryParse(i.OptimaalTijd, out _))
+                .Select(i => new BestaandeWedstrijd
+                {
+                    Datum = datum,
+                    AanvangsTijd = TimeOnly.Parse(i.OptimaalTijd!),
+                    EindTijd = TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten),
+                    VeldNummer = i.OptimaalVeldNummer!.Value,
+                    VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                    VeldSubpositie = i.OptimaalVeld?.Contains(' ') == true
+                        ? i.OptimaalVeld.Split(' ').LastOrDefault() : null,
+                    LeeftijdsCategorie = i.LeeftijdsCategorie,
+                    TeamNaam = i.TeamNaam,
+                    Wedstrijd = i.Wedstrijd,
+                    Bron = "Optimaal"
+                })
+                .ToList();
+
+            string huidigeHtml = PlannerHtmlGenerator.GenereerHtml(
+                datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig");
+            string optimaleHtml = PlannerHtmlGenerator.GenereerHtml(
+                datum, optimaleOccupations, new List<OptimalisatieSuggestie>(), velden, "optimaal");
+
+            log.LogInformation("AutoPlan {Datum}: {Totaal} wedstrijden, {Wijzigen} te wijzigen, eindtijd {Eind}",
+                datum, items.Count, teWijzigen, eindTijd ?? "?");
+
+            return new AutoPlanResponse
+            {
+                Datum = request.Datum,
+                TotaalWedstrijden = items.Count,
+                ZonderVeld = zonderVeld,
+                ZonderTijd = zonderTijd,
+                TeWijzigen = teWijzigen,
+                NietInplanbaar = nietInplanbaar,
+                GeschatteEindTijd = eindTijd,
+                Wedstrijden = items,
+                HuidigeHtml = huidigeHtml,
+                OptimaleHtml = optimaleHtml
+            };
+        }
+
+        public static async Task<AutoPlanToepassenResponse> AutoPlanToepassenAsync(
+            AutoPlanToepassenRequest request, string clubCode, ILogger log)
+        {
+            if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+
+            // Herbereken het plan (deterministisch — zelfde input = zelfde output)
+            var planResponse = await AutoPlanAsync(new AutoPlanRequest
+            {
+                Datum = request.Datum,
+                BufferMinuten = request.BufferMinuten
+            }, clubCode, log);
+
+            var response = new AutoPlanToepassenResponse();
+
+            foreach (var item in planResponse.Wedstrijden)
+            {
+                if (item.Status == "ongewijzigd") continue;
+                if (item.Status == "niet-inplanbaar") continue;
+                if (item.WedstrijdCode == null) continue;
+                if (item.OptimaalVeld == null || item.OptimaalTijd == null) continue;
+
+                try
+                {
+                    int updated = await PlannerDataAccess.UpdateAllstarsMatchAsync(
+                        item.WedstrijdCode.Value, item.OptimaalVeld, item.OptimaalTijd);
+                    if (updated > 0) response.Bijgewerkt++;
+                    else
+                    {
+                        response.Mislukt++;
+                        response.Fouten.Add($"{item.Wedstrijd}: wedstrijdcode {item.WedstrijdCode} niet gevonden");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    response.Mislukt++;
+                    response.Fouten.Add($"{item.Wedstrijd}: {ex.Message}");
+                    log.LogWarning(ex, "AutoPlan toepassen mislukt voor wedstrijd {Code}", item.WedstrijdCode);
+                }
+            }
+
+            log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
+                request.Datum, response.Bijgewerkt, response.Mislukt);
+
+            return response;
+        }
+
         // ── Doordeweekse beschikbaarheid ──
 
         public static async Task<DoordeweeksBeschikbaarResponse> CheckDoordeweeksBeschikbaarAsync(

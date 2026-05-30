@@ -341,6 +341,74 @@ namespace SportlinkFunction.Planner
             }
         }
 
+        // ── Auto-plan endpoints (#380) ──
+
+        [Function("AutoPlan")]
+        public static async Task<IActionResult> AutoPlan(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("AutoPlan");
+            try
+            {
+                var authResult = EasyAuthHelper.RequireAdmin(req);
+                if (authResult != null) return authResult;
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<AutoPlanRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Datum))
+                    return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+                log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
+
+                var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "AutoPlan failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
+        [Function("AutoPlanToepassen")]
+        public static async Task<IActionResult> AutoPlanToepassen(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/toepassen")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("AutoPlanToepassen");
+            try
+            {
+                var authResult = EasyAuthHelper.RequireAdmin(req);
+                if (authResult != null) return authResult;
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<AutoPlanToepassenRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Datum))
+                    return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+
+                if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+                    return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
+
+                log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", request.Datum, clubCode);
+
+                var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "AutoPlanToepassen failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
         [Function("GetTeamSchedule")]
         public static async Task<IActionResult> GetTeamSchedule(
             [HttpTrigger(AuthorizationLevel.Function, "get", Route = "planner/team-schedule")] HttpRequest req,
