@@ -241,6 +241,17 @@ code {
     text-align: start;
 }
 
+/* ── Gantt dagplanning (#380) ──────────────────────────────────── */
+
+.gantt-legenda-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
 /* ── ALLSTARS testmodus (#380) ─────────────────────────────────── */
 
 /* Gele banner bovenin de sidebar */
