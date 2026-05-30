@@ -857,7 +857,10 @@ namespace SportlinkFunction.Planner
 
             string sql = isAllstars
                 ? @"
-                    SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
+                    SELECT m.[wedstrijdcode],
+                           COALESCE(NULLIF(m.[wedstrijd], ''),
+                                    COALESCE(m.[teamnaam], '') + ' - ' + COALESCE(m.[uitteam], '')) AS wedstrijd,
+                           m.[teamnaam], m.[uitteam],
                            m.[aanvangstijd], m.[veld], m.[competitiesoort],
                            NULL AS leeftijdscategorie
                     FROM [his].[matches] m

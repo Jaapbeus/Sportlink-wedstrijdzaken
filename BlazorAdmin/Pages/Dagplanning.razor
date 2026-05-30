@@ -108,7 +108,6 @@
                     <thead class="table-light">
                         <tr>
                             <th>Wedstrijd</th>
-                            <th>Cat</th>
                             <th>Huidige situatie</th>
                             <th>Optimale situatie</th>
                             <th>Status</th>
@@ -118,9 +117,8 @@
                         @foreach (var item in GefilterdeLijst())
                         {
                             <tr class="@RowClass(item.Status)">
-                                <td class="fw-semibold" style="font-size:0.85rem;">@item.Wedstrijd</td>
-                                <td>
-                                    <span class="badge bg-secondary">@(item.LeeftijdsCategorie ?? "?")</span>
+                                <td style="font-size:0.85rem;">
+                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
                                 </td>
                                 <td style="font-size:0.85rem;">
                                     @if (!item.HeeftVeld && !item.HeeftTijd)

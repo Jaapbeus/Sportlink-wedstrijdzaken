@@ -75,8 +75,15 @@
                 if (ClubSelector.SelectedClubCode == null ||
                     !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode))
                 {
-                    var primary = _clubs.FirstOrDefault(c => c.SyncEnabled)?.ClubCode ?? _clubs[0].ClubCode;
-                    await ClubSelector.SelectClubAsync(primary);
+                    var primary = _clubs.FirstOrDefault(c => c.SyncEnabled) ?? _clubs[0];
+                    await ClubSelector.SelectClubAsync(primary.ClubCode, primary.ClubName);
+                }
+                else
+                {
+                    // Naam synchroniseren voor de al-geselecteerde club (bijv. na pagina-refresh)
+                    var naam = _clubs.FirstOrDefault(c => c.ClubCode == ClubSelector.SelectedClubCode)?.ClubName;
+                    if (!string.IsNullOrWhiteSpace(naam))
+                        await ClubSelector.SelectClubAsync(ClubSelector.SelectedClubCode!, naam);
                 }
                 _backendBezig = false;
                 return;
@@ -95,7 +102,10 @@
     {
         var code = e.Value?.ToString();
         if (!string.IsNullOrWhiteSpace(code))
-            await ClubSelector.SelectClubAsync(code);
+        {
+            var naam = _clubs.FirstOrDefault(c => c.ClubCode == code)?.ClubName;
+            await ClubSelector.SelectClubAsync(code, naam);
+        }
     }
 
     public void Dispose()

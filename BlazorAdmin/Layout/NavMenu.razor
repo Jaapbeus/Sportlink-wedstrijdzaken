@@ -21,7 +21,7 @@
             {
                 <img src="@ThemeService.LogoUrl" alt="Club logo" style="height:28px; width:auto; object-fit:contain;" />
             }
-            @(_clubName ?? "Admin")
+            @(ClubSelector.SelectedClubName ?? "Admin")
         </a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
@@ -122,7 +122,6 @@
 @code {
     private bool collapseNavMenu = true;
     private bool _instellingenOpen;
-    private string? _clubName;
 
     private bool IsTestmodus =>
         string.Equals(ClubSelector.SelectedClubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase);
@@ -131,16 +130,13 @@
 
     private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates"];
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         _instellingenOpen = IsInstellingenRoute(Navigation.Uri);
         Navigation.LocationChanged += OnLocationChanged;
         ThemeService.OnThemeChanged += OnThemeChanged;
         ClubSelector.OnChange += OnClubChanged;
-
-        var result = await Api.GetSettingsAsync();
-        if (result.Success && !string.IsNullOrWhiteSpace(result.Data?.ClubName))
-            _clubName = result.Data.ClubName;
+        // Club-naam via ClubSelector.SelectedClubName (gevuld door MainLayout) — geen eigen API-call
     }
 
     public void Dispose()
