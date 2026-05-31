@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.12.0.0] — 2026-05-31
+
+### Changed
+- EmailProcessorFunction: alle SQL-operaties verplaatst naar `EmailProcessingRepository` en `LearningMomentRepository`. Function-klasse bevat geen inline SQL meer; private methoden zijn dunne delegating wrappers. Orchestrator/mailbox/notification splits volgen in vervolg-iteratie. (#465)
+
 ## [2.11.0.0] — 2026-05-31
 
 ### Changed
