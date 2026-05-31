@@ -42,7 +42,7 @@ Je ziet nu de ledenzoekopdracht. We filteren zodat alleen begeleiders zichtbaar 
 
 4. Klik op de knop **Zoek**
 
-5. Wacht even — dit duurt soms 5 tot 10 seconden. Je ziet daarna het resultaat verschijnen. Verwacht **ongeveer 420 personen gevonden**.
+5. Wacht even — dit duurt soms 5 tot 10 seconden. Je ziet daarna het resultaat verschijnen met het aantal gevonden personen.
 
 ---
 
@@ -88,19 +88,19 @@ Na het uitvoeren van het script zie je een samenvatting zoals:
 
 ```
 Klaar!
-  Geïmporteerd : 420 personen
+  Geïmporteerd : [aantal] personen
   Tabel        : avg.Teambegeleiding
-  Duur         : 522 ms
-  Datum        : 2026-05-19 08:12
+  Duur         : [duur] ms
+  Datum        : [datum]
 ```
 
-Klopt het aantal (verwacht ~420)? Dan is alles goed gegaan.
+Klopt het aantal met wat je in Sportlink Club hebt gezien? Dan is alles goed gegaan.
 
 ---
 
 ## Hoe vaak moet dit?
 
-Deze export wordt **wekelijks** uitgevoerd, bij voorkeur op **maandagochtend**. Zo is de lijst altijd actueel met nieuwe leden, gewijzigde rollen en vertrokken begeleiders.
+Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij jouw club. Zo is de lijst altijd actueel met nieuwe leden, gewijzigde rollen en vertrokken begeleiders.
 
 ---
 

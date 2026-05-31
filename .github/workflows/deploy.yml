@@ -9,6 +9,12 @@ env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: FunctionApp
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Repository-variabelen — geconfigureerd in GitHub repo Settings → Variables.
+  # Hier gedeclareerd zodat de linter ze kent; gebruik $SQL_SERVER/$SQL_DATABASE/$SQL_RESOURCE_GROUP
+  # in run-scripts en env.SQL_* in if-conditions.
+  SQL_SERVER: ${{ vars.AZURE_SQL_SERVER_NAME }}
+  SQL_DATABASE: ${{ vars.AZURE_SQL_DATABASE_NAME }}
+  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -31,9 +37,9 @@ jobs:
       - name: "⛔ Database status controleren (ARM API — vóór migratie en deploy)"
         run: |
           STATUS=$(az sql db show \
-            --name "${{ vars.AZURE_SQL_DATABASE_NAME }}" \
-            --resource-group "${{ vars.AZURE_SQL_RESOURCE_GROUP }}" \
-            --server "${{ vars.AZURE_SQL_SERVER_NAME }}" \
+            --name "$SQL_DATABASE" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
             --query 'status' --output tsv 2>/dev/null || echo "unknown")
           echo "Database status: $STATUS"
           if [ "$STATUS" != "Online" ]; then
@@ -81,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     # Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is (fork / nieuw project).
-    # Vereiste secrets/vars: AZURE_SQL_CONNECTION_STRING, AZURE_SQL_RESOURCE_GROUP, AZURE_SQL_SERVER_NAME.
+    # Vereiste: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP + AZURE_SQL_SERVER_NAME.
     if: vars.AZURE_SQL_SERVER_NAME != ''
     steps:
       - name: Checkout repository
@@ -98,8 +104,8 @@ jobs:
           RUNNER_IP=$(curl -s https://api.ipify.org)
           RULE_NAME="github-actions-${{ github.run_id }}"
           az sql server firewall-rule create \
-            --resource-group "${{ vars.AZURE_SQL_RESOURCE_GROUP }}" \
-            --server "${{ vars.AZURE_SQL_SERVER_NAME }}" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
             --name "$RULE_NAME" \
             --start-ip-address "$RUNNER_IP" \
             --end-ip-address "$RUNNER_IP"
@@ -108,15 +114,15 @@ jobs:
       - name: Database-migratie uitvoeren (PostDeployment script — idempotent)
         uses: azure/sql-action@v2.3
         with:
-          connection-string: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: Database/Script.PostDeployment1.sql
 
       - name: Runner-IP verwijderen uit SQL-firewall (altijd, ook bij fout)
         if: always() && steps.firewall.outputs.rule_name != ''
         run: |
           az sql server firewall-rule delete \
-            --resource-group "${{ vars.AZURE_SQL_RESOURCE_GROUP }}" \
-            --server "${{ vars.AZURE_SQL_SERVER_NAME }}" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
             --name "${{ steps.firewall.outputs.rule_name }}" \
             --yes || true
 
@@ -169,11 +175,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     # TODO: Stel AZURE_STATIC_WEB_APPS_API_TOKEN in als GitHub Secret voor de SWA deploy.
-    # Zie docs/v2-admin-handleiding.md voor het aanmaken van de SWA resource.
+    # Zie docs/BEHEERDER-HANDLEIDING.md voor het aanmaken van de SWA resource.
     # Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
     # mag niet in job-level if direct staan).
     env:
       SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+      SWA_HOSTNAME: ${{ vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
     steps:
       - name: Token aanwezig?
         id: check
@@ -232,10 +239,8 @@ jobs:
           skip_app_build: true
 
       - name: Smoke test SWA bereikbaar
-        if: steps.check.outputs.skip == 'false' && vars.AZURE_STATIC_WEB_APP_HOSTNAME != ''
-        env:
-          SWA_HOST: ${{ vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
+        if: steps.check.outputs.skip == 'false' && env.SWA_HOSTNAME != ''
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://${SWA_HOST}/")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$SWA_HOSTNAME/")
           echo "SWA: $STATUS"
           if [ "$STATUS" -ge 500 ]; then echo "FOUT: SWA gaf $STATUS"; exit 1; fi

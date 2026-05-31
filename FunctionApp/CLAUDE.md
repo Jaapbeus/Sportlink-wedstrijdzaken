@@ -219,11 +219,11 @@ Fetched live from `https://data.sportlink.com/programma?clientId=YOUR_CLIENT_ID`
 | `wedstrijddatum` | datetime | Match datetime ISO 8601 | `2026-03-30T20:15:00+0200` |
 | `wedstrijdcode` | int | Unique match ID | `19816434` |
 | `wedstrijdnummer` | int | Match number | `19780` |
-| `teamnaam` | string | Own team name | `VRC 8` |
+| `teamnaam` | string | Own team name | `[ClubCode] 8` |
 | `thuisteamclubrelatiecode` | string | Home club code | `BBBZXXXX` |
 | `uitteamclubrelatiecode` | string | Away club code | `BBBZYYY` |
 | `thuisteamid` | int | Home team ID | `99007` |
-| `thuisteam` | string | Home team name | `VRC 8` |
+| `thuisteam` | string | Home team name | `[ClubCode] 8` |
 | `thuisteamlogo` | string | Home team logo URL | `https://binaries.sportlink.com/...` |
 | `uitteamid` | int | Away team ID | `222309` |
 | `uitteam` | string | Away team name | `Cobu Boys 8` |
@@ -239,11 +239,11 @@ Fetched live from `https://data.sportlink.com/programma?clientId=YOUR_CLIENT_ID`
 | `vertrektijd` | string | Departure time | `08:35` |
 | `verzameltijd` | string | Gathering/meet time | `19:30` |
 | `aanvangstijd` | string | Kick-off time | `20:15` |
-| `wedstrijd` | string | Match description | `VRC 8 - Cobu Boys 8` |
+| `wedstrijd` | string | Match description | `[ClubCode] 8 - [Tegenstander] 8` |
 | `status` | string | Match status | `Te spelen` |
 | `scheidsrechters` | string | Full referee description | `A. (Arie) Jansen (Scheidsrechter)` |
 | `scheidsrechter` | string | Referee name | `A. (Arie) Jansen` |
-| `accommodatie` | string | Venue name | `Sportpark Spitsbergen` |
+| `accommodatie` | string | Venue name | `[Sportparklocatie]` |
 | `veld` | string | Field designation | `veld 3` |
 | `locatie` | string | Location type | `Veld`, `Outdoor` |
 | `plaats` | string | City | `VEENENDAAL` |

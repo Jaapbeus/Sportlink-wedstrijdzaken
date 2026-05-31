@@ -3,7 +3,7 @@ namespace BlazorAdmin.Services;
 /// <summary>
 /// Lokale ontwikkel-implementatie: altijd ingelogd als admin.
 /// In Production wordt deze service VERVANGEN door EntraAuthService.
-/// Zie docs/v2-admin-handleiding.md voor productie Entra ID setup.
+/// Zie docs/ENTRA-AUTH-BEHEER.md voor productie Entra ID setup.
 /// </summary>
 public class LocalAuthService : IAuthService
 {

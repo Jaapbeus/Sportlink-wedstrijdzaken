@@ -406,7 +406,8 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
+    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
                 log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
 
                 var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
@@ -437,7 +438,8 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
+    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
 
                 if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
                     return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };

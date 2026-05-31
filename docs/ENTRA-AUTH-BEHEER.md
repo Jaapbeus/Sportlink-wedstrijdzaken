@@ -120,7 +120,6 @@ Documenteer de uitkomst per release. Geen 3-user-test → geen acceptatie.
 
 ## Tracking
 
-- Issue [#185](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/185) — Frontend role-gate (Layer 4), gemerged in v2/develop
-- Issue [#187](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/187) — Idempotente Entra-setup scripts (deze docs)
-- Memory `security_defense_in_depth.md` — 5-laags model, lessons learned
+- Issue [#185](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/185) — Frontend role-gate (Layer 4) — gesloten, geleverd in v2.1.1
+- Issue [#187](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/187) — Idempotente Entra-setup scripts (deze docs) — gesloten, geleverd in v2.1.1
 - CLAUDE.md sectie "Defense in depth — vijf auth-lagen, allemaal verplicht"

@@ -445,8 +445,8 @@ main  ←──── feature/#<nr>-<slug>   (via PR)
 ---
 
 *Zie ook:*
-- [SETUP.md](../SETUP.md) — installatie voor nieuwe clubs
+- [SETUP-NIEUWE-CLUB.md](../SETUP-NIEUWE-CLUB.md) — installatie voor nieuwe clubs
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — bijdrageproces en branch-strategie
 - [SECURITY.md](../SECURITY.md) — volledig beveiligingsprotocol
 - [docs/VERSIONING.md](VERSIONING.md) — definitie van bug, feature en enhancement
-- [docs/AZURE-ENTRA-SETUP.md](AZURE-ENTRA-SETUP.md) — Entra ID configuratie in detail
+- [docs/ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md) — Entra ID configuratie in detail

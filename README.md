@@ -37,12 +37,17 @@ Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen
 
 ### 3 — Admin GUI
 Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig beheer over:
-- **Instellingen** — API-verbinding, e-mailaccounts, herplan-deadlines, GPS-coördinaten
+- **Instellingen** — API-verbinding, e-mailaccounts, herplan-deadlines, GPS-coördinaten, club-thema
 - **E-mailtemplates** — AI-antwoordtemplates per berichttype; gedeelde e-mailvoetnoot
 - **Voorkeurstijden** — per team gewenste speeltijden instellen
+- **Speeltijden** — wedstrijdduur en veldfractie per leeftijdscategorie
 - **Veldbeschikbaarheid** — tijdvensters per veld configureren
+- **Velden** — velddefinities (type, verlichting, actief/inactief)
+- **Teambegeleiding** — begeleiders per team raadplegen; contactverzoeken doorsturen
+- **Leermomenten** — AI-classificatiefouten inzien en corrigeren voor betere toekomstige classificaties
 - **E-mail tester** — AI-classificatie dry-run zonder e-mail te versturen
 - **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
+- **Testmodus (ALLSTARS)** — fictieve wedstrijden invoeren om planner te testen zonder echte data
 
 ---
 
@@ -88,7 +93,7 @@ Azure Static Web Apps (gratis tier)
 **Als eindgebruiker** is dit project bedoeld voor verenigingen die:
 - Draaien op Sportlink Club (KNVB-aangesloten) **en beschikken over een actief [Club Dataservice](https://www.sportlink.nl/producten/club-dataservice/)-abonnement**
 - Meer dan ~10 teams hebben en daardoor veel handmatig werk in wedstrijdplanning
-- Bereid zijn een Azure-omgeving in te richten (kosten: enkele euro's per maand)
+- Bereid zijn een Azure-omgeving in te richten (kosten: €0 — de volledige stack draait op Azure Free tiers)
 
 ---
 
@@ -98,11 +103,11 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 | Categorie | Documenten |
 |---|---|
-| **Beheerders** | [Admin handleiding](docs/v2-admin-handleiding.md) · [Testmodus ALLSTARS](docs/TESTMODUS-ALLSTARS.md) · [Teambegeleiding export](docs/HANDLEIDING-TEAMBEGELEIDING-EXPORT.md) |
+| **Beheerders** | [Beheerder handleiding](docs/BEHEERDER-HANDLEIDING.md) · [Testmodus ALLSTARS](docs/TESTMODUS-ALLSTARS.md) · [Teambegeleiding import](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) |
 | **Developers — opzet** | [Setup](docs/SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
 | **Developers — architectuur** | [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTURE-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
-| **Azure & auth** | [Azure Entra setup](docs/AZURE-ENTRA-SETUP.md) · [Versiebeheer](docs/VERSIONING.md) |
-| **Kwaliteit & security** | [Testing](docs/TESTING.md) · [Security](SECURITY.md) |
+| **Azure & auth** | [Entra auth & beheer](docs/ENTRA-AUTH-BEHEER.md) · [Versiebeheer](docs/VERSIONING.md) |
+| **Kwaliteit & security** | [Verificatie-scripts](docs/VERIFICATIE-SCRIPTS.md) · [Security](SECURITY.md) |
 
 **→ [Volledige inhoudsopgave: docs/INDEX.md](docs/INDEX.md)**
 
@@ -110,17 +115,17 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 ## Lokaal aan de slag
 
-**Vereisten:** .NET 10.0 SDK · Azure Functions Core Tools v4 · Azurite · SQL Server met `SportlinkSqlDb`
+**Vereisten:** .NET 10.0 SDK + .NET 9 Runtime · Azure Functions Core Tools v4 · Azurite · SQL Server met `SportlinkSqlDb`
 
 ```powershell
 # Settings-template kopiëren en verbindingsgegevens invullen
 cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 
-# Alle services starten (Azurite + FunctionApp + BlazorAdmin)
-.\Start-Debug.ps1
+# Alle services starten (Azurite + FunctionApp :7094 + BlazorAdmin :5242)
+.\scripts\dev\Start-Debug.ps1
 
 # Verificatie (wacht 15s na Start-Debug)
-.\Test-App.ps1
+.\scripts\dev\Test-App.ps1
 ```
 
 **Git hooks activeren** (verplicht — blokkeert secrets en persoonsgegevens bij commit):
@@ -155,7 +160,7 @@ Zie [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) voor de architectuurprincipes: 
 Alle noemenswaardige wijzigingen staan in [CHANGELOG.md](CHANGELOG.md).  
 Releases zijn beschikbaar via [GitHub Releases](../../releases).
 
-Versienummering volgt [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.  
+Versienummering volgt een vier-delig schema: `MAJOR.MINOR.PATCH.REVISION` (huidig: v2.7.0.x).  
 Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ---
@@ -164,7 +169,7 @@ Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSION
 
 Sportlink Wedstrijdzaken is ontworpen voor gebruik door meerdere clubs. Je forkt de repository, richt je eigen Azure-resources in, en configureert je eigen Entra ID-tenant — **er komen geen club-specifieke waarden in de code**.
 
-Volg de stap-voor-stap installatiehandleiding: **[SETUP.md](SETUP.md)**
+Volg de stap-voor-stap installatiehandleiding: **[SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md)**
 
 ### Vereiste: Sportlink Club Dataservice
 
