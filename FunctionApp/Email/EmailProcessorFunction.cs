@@ -324,7 +324,18 @@ public class EmailProcessorFunction
             ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? email.Afzender
             : email.Afzender;
 
-        await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
+        // Fail-explicit: alleen AntwoordVerstuurd en MarkAsRead als Graph-send slaagt. (#432)
+        try
+        {
+            await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Graph-send mislukt voor verwerking {Id} — VerzendFout, mail blijft ongelezen", verwerkingId);
+            try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); } catch { }
+            return; // mail NIET als gelezen markeren — wordt bij volgende poll opnieuw opgepikt
+        }
+
         await UpdateAntwoordVerstuurdAsync(verwerkingId, ontvanger, antwoordBody);
         await graphService.MarkAsReadAsync(email.MessageId);
 

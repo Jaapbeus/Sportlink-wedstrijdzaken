@@ -217,6 +217,7 @@ public partial class EmailGraphService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fout bij versturen van antwoord (ontvanger en onderwerp niet gelogd — AVG #210)");
+            throw; // aanroeper bepaalt over status — niet stil doorgaan (#432)
         }
     }
 
