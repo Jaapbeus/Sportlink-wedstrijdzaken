@@ -443,6 +443,31 @@ Entra ID         ← eigen App Registration (single-tenant)
 
 Elke club heeft een volledig geïsoleerde Azure-omgeving. Er is geen shared infrastructure.
 
+### Deployment-model — één fork, één primaire club (vastgelegd architectuurbesluit)
+
+> **Dit is een harde architectuurkeuze, vastgelegd na review van #393 (2026-05-31).**
+> Wijzig dit model niet zonder expliciete heroverweging van alle multi-club security-implicaties.
+
+**Het model:** één GitHub-fork = één productieclub + één demo/testclub (AllStars FC).
+
+| Aspect | Beslissing |
+|---|---|
+| **Clubs per deployment** | Precies één echte club + AllStars FC als demo/testdata — in dezelfde database, beheerd door dezelfde admin |
+| **`admin`-rol** | Club-scoped: admin van deze installatie = admin van de ene club in deze deployment |
+| **`X-Club-Code` semantiek** | UX-feature voor wisselen tussen productie- en demodata — **geen multi-user autorisatieboundary** |
+| **`SELECT TOP 1` AppSettings** | Acceptabel: er is altijd precies één primaire club per deployment |
+| **Shared hosting** | **Niet ondersteund en niet het doel.** Meerdere echte clubs met aparte admins in één deployment vereist een volledige herontwerpslag van auth, data-isolatie en settings. |
+
+**Implicaties voor code:**
+- Server-side validatie of een gebruiker een specifieke club mag beheren is **geen vereiste** in dit model — elke geauthenticeerde admin beheert per definitie de ene club in zijn deployment.
+- `X-Club-Code` uit de request header mag vertrouwd worden als de waarde een geldige `ClubCode` is in `dbo.AppSettings` van déze deployment.
+- Een hardening-check "bestaat deze ClubCode in onze AppSettings?" is zinvol maar geen security-grens.
+
+**AllStars FC:**
+- `allstars-fc` is de vaste demo-ClubCode in broncode, seeds en testdata.
+- Wordt gebruikt voor lokale ontwikkeling en UI-demonstraties.
+- Nooit vervangen door een echte club-specifieke waarde.
+
 ### Invarianten bij codereview
 
 Bij elke PR controleer:
