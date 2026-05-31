@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.9.1.0] — 2026-05-31
+
+### Fixed
+- `LaadUitgeslotenAdressenAsync` inslikt exceptions niet langer — bij DB-fout op cold start wordt AI-verwerking nu correct uitgesteld (fail-closed garantie hersteld). (#463)
+- Matchdetails-fouten (HTTP-fout of JSON-deserialisatiefout) zetten nu `partialFailure = true` — `LastSyncTimestamp` wordt niet bijgewerkt als matchdetails deels mislukken. Logs tonen succesvol/mislukt-tellingen. (#464)
+- `GetSpeeltijdenLookupAsync`, `GetTeamRulesAsync`, `GetAllTeamBuffersAsync` en `GetTeamLeeftijdLookupAsync` filteren nu op `ClubCode` — ALLSTARS-testdata lekt niet meer door in planner-berekeningen. (#469)
+
 ## [2.9.0.0] — 2026-05-31
 
 ### Added
