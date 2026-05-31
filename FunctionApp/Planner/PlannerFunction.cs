@@ -102,6 +102,9 @@ namespace SportlinkFunction.Planner
                         veldFractie = speeltijd.Veldafmeting;
                     }
                 }
+                // Heel-veld override: als expliciet gevraagd, overschrijf de speeltijd-veldafmeting
+                if (request.HeelVeld == true && veldFractie < 1.00m)
+                    veldFractie = 1.00m;
 
                 var eindTijd = tijd.AddMinutes(duurMinuten);
 
@@ -173,9 +176,10 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' is verplicht." });
 
-                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}", request.Datum, request.Doel);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}, clubCode={ClubCode}", request.Datum, request.Doel, clubCode);
 
-                var response = await PlannerService.OptimaliseerAsync(request, log);
+                var response = await PlannerService.OptimaliseerAsync(request, clubCode, log);
 
                 var format = req.Query.ContainsKey("format") ? req.Query["format"].ToString() : "";
 
@@ -197,8 +201,8 @@ namespace SportlinkFunction.Planner
                         DateOnly.Parse(request.Datum),
                         await SportlinkApiClient.GetFieldOccupationsWithApiAsync(DateOnly.Parse(request.Datum), log),
                         response.Suggesties,
-                        await PlannerDataAccess.GetVeldenAsync(),
-                        request.Doel ?? "veld5-ontlasten",
+                        await PlannerDataAccess.GetVeldenAsync(clubCode),
+                        request.Doel ?? "grasveld-ontlasten",
                         browserUrl);
                     return new ContentResult { Content = emailHtml, ContentType = "text/html", StatusCode = 200 };
                 }
@@ -336,6 +340,74 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogError(ex, "HerplanBevestig failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
+        // ── Auto-plan endpoints (#380) ──
+
+        [Function("AutoPlan")]
+        public static async Task<IActionResult> AutoPlan(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("AutoPlan");
+            try
+            {
+                var authResult = EasyAuthHelper.RequireAdmin(req);
+                if (authResult != null) return authResult;
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<AutoPlanRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Datum))
+                    return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+                log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
+
+                var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "AutoPlan failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
+        [Function("AutoPlanToepassen")]
+        public static async Task<IActionResult> AutoPlanToepassen(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/toepassen")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("AutoPlanToepassen");
+            try
+            {
+                var authResult = EasyAuthHelper.RequireAdmin(req);
+                if (authResult != null) return authResult;
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                string body = await new StreamReader(req.Body).ReadToEndAsync();
+                var request = JsonConvert.DeserializeObject<AutoPlanToepassenRequest>(body);
+                if (request == null || string.IsNullOrEmpty(request.Datum))
+                    return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+
+                if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+                    return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
+
+                log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", request.Datum, clubCode);
+
+                var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
+                return new OkObjectResult(response);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "AutoPlanToepassen failed");
                 return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }

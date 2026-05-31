@@ -95,7 +95,8 @@ public class BerichtAiService
               "tegenstander": "naam tegenstander of null",
               "samenvatting": "korte samenvatting van het verzoek",
               "namensWie": "afzender | tegenstander | onbekend",
-              "knvbNotitie": "korte notitie als het verzoek mogelijk een KNVB-regel overtreedt, anders null"
+              "knvbNotitie": "korte notitie als het verzoek mogelijk een KNVB-regel overtreedt, anders null",
+              "heelVeld": true of false (true als de afzender expliciet om een heel veld vraagt, bijv. 'heel veld', 'volledig veld', 'groot veld'; false/null anders)
             }
 
             KRITIEKE REGELS:
@@ -259,7 +260,8 @@ public class BerichtAiService
             Tegenstander = GetOptionalString(root, "tegenstander"),
             Samenvatting = root.GetProperty("samenvatting").GetString() ?? "",
             NamensWie = MapNamensWie(namensWieString),
-            KnvbNotitie = GetOptionalString(root, "knvbNotitie")
+            KnvbNotitie = GetOptionalString(root, "knvbNotitie"),
+            HeelVeld = root.TryGetProperty("heelVeld", out var hvProp) && hvProp.ValueKind == JsonValueKind.True ? true : null
         };
     }
 

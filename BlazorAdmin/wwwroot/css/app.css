@@ -240,3 +240,50 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* ── Gantt dagplanning (#380) ──────────────────────────────────── */
+
+.gantt-legenda-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+.gantt-legenda-balk {
+    display: inline-block;
+    width: 20px;
+    height: 4px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+/* ── ALLSTARS testmodus (#380) ─────────────────────────────────── */
+
+/* Gele banner bovenin de sidebar */
+.allstars-banner {
+    background: #f59e0b;
+    color: #1c1917;
+    border-bottom: 2px solid #d97706;
+}
+
+/* Club-selector krijgt gele rand als ALLSTARS actief is */
+.club-selector-testmodus {
+    border: 2px solid #f59e0b !important;
+    background-color: #fef3c7 !important;
+    font-weight: 600;
+}
+
+/* Testmodus nav-links in de sidebar */
+.nav-link-testmodus {
+    color: #f59e0b !important;
+    font-size: 0.9rem;
+}
+
+.nav-link-testmodus:hover {
+    color: #d97706 !important;
+    background-color: rgba(245, 158, 11, 0.1);
+}

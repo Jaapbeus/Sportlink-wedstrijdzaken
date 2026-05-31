@@ -18,6 +18,47 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.7.0.0] — 2026-05-31
+
+### Fixed
+- GitHubIssueReporter maakte dagelijks een nieuw GitHub Issue aan voor dezelfde fout (#370): de in-memory deduplicatie werkte niet na een koude start (Azure Functions). Zoekopdracht uitgebreid naar open én gesloten issues — bij een bestaand issue (open of gesloten) wordt nu commentaar toegevoegd, en een gesloten issue wordt automatisch heropend.
+
+### Security
+- GitHubIssueReporter sanitiseert nu `ex.Message` en stacktraces vóór publicatie in GitHub Issues (#372): e-mailadressen, GUIDs, SQL-connectiestring-fragmenten en grote getallen worden vervangen door placeholders (`<email>`, `<guid>`, `<redacted>`, `<n>`). Voorheen kon PII uit exception-berichten ongesanitiseerd in publieke GitHub Issues terechtkomen.
+
+### Fixed
+- Email-planner: "heel veld" uit email wordt nu correct doorgegeven aan de beschikbaarheidscheck. Voorheen werd voor teams als JO12 altijd de speeltijd-veldafmeting (0.50) gebruikt, ook als de afzender expliciet "heel veld" vroeg. Nu overschrijft het `heelVeld`-veld (gevuld door AI en doorgegeven via BerichtPipeline → CheckAvailabilityRequest) de veldafmeting naar 1.00m, en ontvangt de coördinator een waarschuwing dat dit team normaal op een halftijdsspeelveld speelt.
+- Auto-planner: voorkeurstijden zijn nu zachte richtlijnen in plaats van harde doelen. Compactheid heeft prioriteit — als de vroegst mogelijke start meer dan de teamspecifieke buffer vóór de voorkeurstijd ligt, wordt compact ingepland zodat er geen onnodig gat in het schema ontstaat. Teams met een expliciete BufferVoor-teamregel (bijv. Heren 1 met 60 min voor) behouden hun gerechtvaardigd gat.
+- Auto-planner: teamspecifieke bufferregels (BufferVoor/BufferNa uit TeamRegels) worden nu toegepast tijdens het auto-plannen — eerder werden deze regels alleen gerespecteerd bij handmatig inplannen.
+- Auto-planner: sorteervolgorde is gewijzigd van prioriteitsnummer naar werkelijke voorkeurstijd, zodat vroeg-spelende JO-teams vóór laat-spelende Heren-teams worden ingepland.
+
+### Added
+- Tijdinvoer-normalisering (`TimeHelper`, `TimeInput`-component): invoer als "0830" of "830" wordt automatisch gecorrigeerd naar "08:30". Eén centrale implementatie voor alle tijdinvoervelden (#365, #380).
+- Globale backend-statusbanner (#365): bovenaan elk scherm verschijnt een gele banner ("Backend start op…") tijdens opstarten van de FunctionApp, en een rode banner wanneer de API onbereikbaar is — lege schermen zonder uitleg zijn niet meer mogelijk.
+- Velddeel-selector in testdata invoergrid (#365): per wedstrijd kiesbaar deelveld op basis van speeltijden-tabel (JO7-JO10: A1/A2/B1/B2, JO11-JO12: A/B).
+- Voorkeurstijden: veldkeuze in Teamregels toont dropdown met clubvelden (#365).
+- Speeltijden per club: composite primary key `(Leeftijd, ClubCode)` — elke club configureert eigen speeltijden (#365).
+- Clubnaam in sidebar altijd correct (#380): de naam boven het navigatiemenu wordt nu gevuld vanuit de clubs-lijst in MainLayout — niet meer via een aparte API-call naar de instellingen. Hierdoor toont de sidebar altijd de naam van de geselecteerde club, ook bij ALLSTARS ("AllStars FC") en bij multi-club wisseling.
+- ALLSTARS testmodus-banner altijd zichtbaar in de sidebar (#380): bij selectie van AllStars FC verschijnt een gele "TESTMODUS"-banner bovenin het navigatiemenu op elke pagina. De club-selector krijgt een gele rand. De sidebar abonneert zich correct op ClubSelector.OnChange zodat de indicator instant verschijnt — ook bij het eerste laadmoment. Andere clubs zien nooit testmodus-indicatoren.
+- Auto-planner dagplanning (#380): de pagina "Dagplanning" toont nu voor elke wedstrijd de huidige situatie én de optimale situatie (veld + tijd) zij aan zij. De planner pakt automatisch alle wedstrijden op de gekozen datum op — inclusief die zonder veld of tijd — en maakt een optimaal rooster op basis van leeftijdscategorie (jongste teams eerst om 09:00), deelveld-sharing (bijv. 4×JO7 tegelijk op één veld) en veldvoorkeur (kunstgras voor gras). Wedstrijdstatus: Nieuw slot / Wijziging / Ongewijzigd / Niet inplanbaar.
+- Visuele planning naast per-wedstrijd tabel: twee tabbladen "Optimale planning" en "Huidige situatie" tonen de Gantt-visualisatie vóór en na optimalisatie.
+- Testmodus (ALLSTARS) "Toepassen": in testmodus kunnen de optimale tijden en velden direct worden toegepast op de testdata (UPDATE his.matches WHERE ClubCode='ALLSTARS'). Productiedata blijft ongewijzigd — handmatig aanpassen in Sportlink blijft vereist.
+- Filterknoppen op de wedstrijdentabel: alles / alleen wijzigingen / niet inplanbaar.
+- Native Blazor Gantt-chart in Dagplanning (#380): vervangt de iframe-visualisatie door een eigen tijdlijn opgebouwd met Bootstrap + inline CSS. Elke tab (Optimale planning / Huidige situatie) toont nu uitsluitend die situatie. Veldblokken zijn gekleurd op status (groen=ongewijzigd, blauw=wijziging, amber=nieuw), tonen aanvangstijd en wedstrijdomschrijving, en ondersteunen tooltip met volledige info. Deelveld-matches (0.25/0.50) staan gestapeld in de juiste kwartrant. Tijdas loopt dynamisch van eerste tot laatste wedstrijd.
+- Auto-planner houdt rekening met TeamVoorkeurTijden (#380): teams met een geconfigureerde voorkeurstijd worden ingepland op (of zo dicht mogelijk bij) die tijd. Teams met prioriteit=1 worden als eerste ingepland zodat ze hun voorkeursslot krijgen. De planner zoekt in stappen van 5 minuten naar buiten (max. 90 min tolerantie) en valt daarna terug op vroegst beschikbaar.
+- Dagplanning per-wedstrijd tabel (#380): "Cat"-kolom verwijderd (categorie leesbaar uit wedstrijd-naam). Wedstrijd-kolom toont nu de volledige wedstrijd-omschrijving (thuisteam - uitteam) — bij ALLSTARS geconstrueerd uit thuisteam en uitteam waar [wedstrijd] null is.
+
+### Fixed
+- Veldplanner toonde alle 5 velden ongeacht de club (#364): de dagplanning en optimalisatie tonen nu alleen de velden die bij de actieve club horen (gefilterd op ClubCode). AllStars FC (3 velden) ziet voortaan niet meer de velden van andere clubs.
+- Veldplanner-optimalisatie was afhankelijk van hardcoded "veld 5 = grasveld": alle logica is nu gebaseerd op het `VeldType`-veld in de database (`kunstgras`/`gras`). Clubs met een ander aantal velden of een andere indeling worden correct behandeld.
+- ALLSTARS dagplanning toonde onzichtbare blokken voor JO-teams door slechte leeftijdscategorie-extractie — opgelost met spatie-gescheiden tokenizer (#365).
+- Planner-queries joinden `dbo.Speeltijden` zonder ClubCode-filter — dubbele rijen bij multi-club data opgelost (#365).
+- Wedstrijden-pagina en dagplanning toonden VRC-data in ALLSTARS-modus door race-condities bij initialisatie (#365).
+- Start-Debug.ps1: runtimeconfig.json lock-fout bij dotnet watch herstart opgelost (#365).
+- Dagplanning UI: "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten"; statistiek "Van veld 5 verplaatst" wordt nu "Van grasveld verplaatst".
+
+## [Unreleased]
+
 ## [2.6.0.1] — 2026-05-26
 
 ### Added

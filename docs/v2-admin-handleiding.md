@@ -33,7 +33,11 @@ eigen venster in de juiste volgorde:
 # Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 ```
 
-Wacht ~15 seconden en controleer dan met:
+Wacht ~15 seconden. Zolang de FunctionApp nog opstart verschijnt bovenaan elk scherm een gele
+**"Backend start op…"**-banner. Zodra de backend bereikbaar is verdwijnt de banner automatisch.
+Bij een 5xx-fout of verbindingsprobleem verschijnt een rode foutbanner met details.
+
+Controleer daarna met:
 
 ```powershell
 .\scripts\dev\Test-App.ps1          # verificatie: schema + build + endpoints + Blazor-pagina's
@@ -45,7 +49,24 @@ In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelpe
 
 ---
 
-## 2. Way of working
+## 2. Testmodus — ALLSTARS fictieve wedstrijden
+
+De Admin GUI heeft een ingebouwde testmodus waarmee de dagplanning volledig op fictieve data kan worden getest, zonder de echte Sportlink-wedstrijden te beïnvloeden.
+
+**Activeren:** Klik op **Testmodus** onderaan de zijbalk (onder de gebruikersnaam).  
+**Verlaten:** Klik op **Testmodus — verlaten** (gele knop, verschijnt in de zijbalk).
+
+In testmodus:
+- Toont de zijbalk **"ALLSTARS (testmodus)"** als clubnaam
+- Laadt de dagplanning fictieve wedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'`
+- Is het submenu **Testdata → Wedstrijden** zichtbaar voor het invoeren van fictieve wedstrijden
+- Zijn synchronisatie en e-mailverwerking op de Instellingen-pagina verborgen (niet van toepassing)
+
+Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
+
+---
+
+## 3. Way of working
 
 ### Branches
 
@@ -468,3 +489,112 @@ Bij een API-fout (time-out, netwerk, service onbeschikbaar) schakelt de planner 
 - Testomgeving zonder geldige Sportlink API-credentials
 - Lokale ontwikkelomgeving zonder internet
 - Problematische API-respons tijdelijk omzeilen tijdens een incident
+
+---
+
+## 13. Test data modus (ALLSTARS) — `/testdata/wedstrijden`
+
+De **Testmodus** maakt het mogelijk fictieve wedstrijden aan te maken die worden gebruikt voor lokale tests van de dagplanning en optimalisatie, zonder productiewedstrijden te raken.
+
+### Activeren
+
+Klik op **"Testmodus"** in de zijbalk (onderaan bij de ingelogde gebruiker). De knop activeert de ALLSTARS-modus:
+- Alle API-aanroepen sturen voortaan `X-Club-Code: ALLSTARS` mee
+- Het menu **"Test data"** verschijnt in de zijbalk
+- De actieve club-indicator in de topbalk toont "ALLSTARS"
+
+### Deactiveren
+
+Klik op **"Testmodus — verlaten"** (oranje knop) om terug te keren naar de normale clubmodus.
+
+### Test data → Wedstrijden
+
+De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fictieve wedstrijden:
+
+| Kolom | Beschrijving |
+|---|---|
+| Datum | Datum van de wedstrijd (↓ fill-down beschikbaar) |
+| Team (thuis) | Selecteer een echt clubteam uit de dropdown |
+| Tegenstander | Vrij tekstveld voor de naam van de tegenstander |
+| Starttijd | Aanvangstijd (↓ fill-down beschikbaar) |
+| Veld | Veldnaam selecteren uit de dropdown |
+| Velddeel | Deelveld-dropdown — verschijnt alleen als het team op een deelveld speelt. JO7-JO10 (¼ veld): A1/A2/B1/B2; JO11-JO12 (½ veld): A/B. De beschikbare opties worden automatisch bepaald op basis van de speeltijden-tabel. |
+| Soort | Competitie / Beker / Oefenwedstrijd / Vriendschappelijk |
+
+**Globale invoerbalk** (boven de tabel): Stel datum, soort, tegenstander en starttijd in vóór het toevoegen van rijen — deze waarden worden als default voor nieuwe rijen gebruikt.
+
+**Knoppen:**
+- **Alle teams** — voegt één rij per huidig clubteam toe en slaat alles op
+- **+ Lege rij** — voegt één lege rij toe
+- **↓** in een kolomkop — kopieert de eerste ingevulde waarde naar alle lege cellen in die kolom
+- **Verwijder alles** — verwijdert alle testdata-wedstrijden (`WHERE ClubCode='ALLSTARS'`)
+
+**Auto-save:** Elke celwijziging triggert direct een opslaan naar de database. Een ✅ of ⚠️ achter de rij geeft de opslagstatus aan.
+
+### Technische details
+
+- Alle testdata gebruikt `ClubCode = 'ALLSTARS'` — echte wedstrijden (`ClubCode = '<clubcode>'`) blijven onaangetast
+- `bk_matches` wordt synthetisch gegenereerd als `ALLSTARS-{guid}` (28 tekens)
+- Testdata staat in `his.matches` — hetzelfde schema als productiewedstrijden, klaar voor gebruik door de dagplanning
+- De ALLSTARS-modus is persistent in de browser (localStorage via `ClubSelectorService`) en wordt hersteld bij herstart van de browser
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden ophalen |
+| `GET /api/beheer/testdata/teams` | Echte clubteams ophalen voor dropdown |
+| `POST /api/beheer/testdata/wedstrijden` | Test-wedstrijd aanmaken of bijwerken (upsert) |
+| `DELETE /api/beheer/testdata/wedstrijden/{bk}` | Één test-wedstrijd verwijderen |
+| `DELETE /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden verwijderen |
+
+---
+
+## 14. Voorkeurstijden & Teamregels (`/voorkeurstijden`)
+
+De pagina `/voorkeurstijden` beheert twee soorten plannerregels per team.
+
+### Team voorkeurstijden
+
+Geef per team de gewenste aanvangstijden op voor een bepaalde dag van de week. De planner gebruikt deze tijden als richtpunt bij het inplannen.
+
+| Veld | Uitleg |
+|---|---|
+| **Team** | Teamnaam, dezelfde waarden als in het wedstrijdprogramma |
+| **Dag** | Dag van de week (1 = maandag … 7 = zondag) |
+| **Tijd** | Gewenste aanvangstijd in HH:mm (bijv. `14:30`). Typ ook `1430` — de applicatie normaliseert dit automatisch |
+| **Prioriteit** | Getal 1–10. **1 = hoogste prioriteit** (sterkste voorkeur), 10 = laagste. Gebruik 1 voor de primaire speeltijd van het team en hogere nummers voor alternatieven. Als een team meerdere tijden heeft, gebruikt de planner de laagste prioriteitswaarde als eerste keus |
+| **Actief** | Aangevinkt = de regel telt mee. Uitgevinkt = tijdelijk uitschakelen zonder verwijderen |
+
+### Teamregels
+
+Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur. Teamregels worden in aflopende prioriteitsvolgorde toegepast — de regel met het hoogste getal wint bij een conflict.
+
+| Regeltype | Waarde | Uitleg |
+|---|---|---|
+| **Buffer vóór** | Aantal minuten (0–240) | Reserveert extra tijd vóór de wedstrijd op het veld (bijv. 60 min = opslagveld vrijhouden voor warming-up) |
+| **Buffer na** | Aantal minuten (0–240) | Reserveert extra tijd ná de wedstrijd op het veld (bijv. 30 min = uitlooptijd) |
+| **Voorkeursveld** | Veldnummer + optionele aanvangstijd | Wijst een voorkeursveld toe aan het team, optioneel alleen op een bepaald tijdstip |
+
+#### Prioriteit bij Teamregels
+
+| Prioriteit | Effect |
+|---|---|
+| 0 | Laagste prioriteit — wordt als laatste toegepast |
+| 1–98 | Normale volgorde: hoger = eerder toegepast door de planner |
+| 99 | Hoogste prioriteit — overschrijft alle andere regels voor dit team |
+
+**Tip:** Gebruik hogere prioriteiten voor regels die absoluut gelden (bijv. "eerste elftal altijd op veld 1") en lagere voor richtlijnen.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/voorkeurstijden` | Alle voorkeurstijden voor de club |
+| `POST /api/beheer/voorkeurstijden` | Nieuwe voorkeurstijd aanmaken |
+| `PUT /api/beheer/voorkeurstijden/{id}` | Voorkeurstijd bijwerken |
+| `DELETE /api/beheer/voorkeurstijden/{id}` | Voorkeurstijd verwijderen (soft-delete) |
+| `GET /api/beheer/teamregels` | Alle teamregels voor de club |
+| `POST /api/beheer/teamregels` | Nieuwe teamregel aanmaken |
+| `PUT /api/beheer/teamregels/{id}` | Teamregel bijwerken |
+| `DELETE /api/beheer/teamregels/{id}` | Teamregel verwijderen (soft-delete) |

@@ -293,7 +293,7 @@ Velddefinities met type (kunstgras/natuurgras) en verlichting. Elke vereniging c
 |-------|-------------|
 | VeldNummer | Uniek nummer (PK) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
-| VeldType | `kunstgras` of `natuurgras` — bepaalt welke velden ontlast worden |
+| VeldType | `kunstgras` of `gras` — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
 | Actief | Of het veld in gebruik is |
 
@@ -316,6 +316,34 @@ Gecombineerde weergave van competitiewedstrijden (`his.matches`) met planner-boe
 
 ### planner.HerplanVerzoeken
 Reschedule requests with status tracking (Aangevraagd/InOverleg/Bevestigd/Afgewezen). Records the original match details and desired new time. Does NOT modify the actual match — that is a manual process in Sportlink.
+
+---
+
+## Auto-planner (`POST /api/planner/auto-plan`)
+
+De auto-planner verdeelt alle wedstrijden van een dag optimaal over beschikbare velden.
+
+### Algoritme (FieldScheduler)
+
+1. **Sorteervolgorde** — teams worden gesorteerd op hun *werkelijke voorkeurstijd* (minuten na middernacht). Teams zonder voorkeurstijd krijgen een standaard-tijd op basis van leeftijdscategorie (JO7–JO11 → 09:00, JO12–JO15 → 10:00, Senioren → 13:00). Vroeger-inplanbare teams krijgen daarmee eerder een slot dan laat-ingeplande seniors.
+
+2. **Compactheid boven voorkeurstijd** — voorkeurstijden zijn zachte richtlijnen:
+   - De planner berekent de vroegst mogelijke start (rekening houdend met bezetting + buffers).
+   - Als de gap tussen vroegste start en voorkeurstijd groter is dan de teamspecifieke `BufferVoor`, wordt compact ingepland.
+   - Is de gap ≤ `BufferVoor`, dan is de voorkeurstijd gerechtvaardigd (bijv. Heren 1 heeft 60 min voor — als Heren 2 eindigt om 13:30 kan Heren 1 pas om 14:30 starten, gap = 0 → voorkeurstijd gerespecteerd).
+
+3. **Teamspecifieke buffers in auto-plan** — `BufferVoor`/`BufferNa` uit `dbo.TeamRegels` worden meegenomen in de `FieldScheduler` (via `GetAllTeamBuffersAsync`). Dit was eerder alleen het geval bij handmatig inplannen.
+
+### Voorkeurstijden vs. compactheid — beslisboom
+
+```
+voorkeurstijd aanwezig?
+  ├── Ja → bereken vroegste slot (buffer-aware)
+  │         gap = voorkeurstijd - vroegste slot
+  │         gap > BufferVoor? → compact inplannen
+  │         gap ≤ BufferVoor? → zoek nabij voorkeurstijd
+  └── Nee → compact inplannen (vroegst beschikbaar)
+```
 
 ---
 

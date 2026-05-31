@@ -201,7 +201,7 @@ public class OptimaliseerResponseDto
     public string HuidigeEindtijd { get; set; } = "";
     public string? GeschatteNieuweEindtijd { get; set; }
     public int AantalVerplaatsingen { get; set; }
-    public int AantalVanVeld5Verplaatst { get; set; }
+    public int AantalVanGrasveldVerplaatst { get; set; }
     public List<OptimalisatieSuggestieDto> Suggesties { get; set; } = new();
     public string HtmlPlanner { get; set; } = "";
     public bool VoldoendeRuimte { get; set; }
@@ -226,8 +226,68 @@ public class VeldCapaciteitDto
     public int TotaalBeschikbareMinuten { get; set; }
     public int TotaalBezettMinuten { get; set; }
     public double BezettingsPercentage { get; set; }
-    public int AantalWedstrijdenOpVeld5 { get; set; }
+    public int AantalWedstrijdenOpGrasveld { get; set; }
     public int AantalLegeVelden { get; set; }
+}
+
+// ── Auto-plan (#380) ──
+
+public class AutoPlanRequestDto
+{
+    public string Datum { get; set; } = "";
+    public int? BufferMinuten { get; set; }
+}
+
+public class AutoPlanWedstrijdItemDto
+{
+    public long? WedstrijdCode { get; set; }
+    public string Wedstrijd { get; set; } = "";
+    public string TeamNaam { get; set; } = "";
+    public string? LeeftijdsCategorie { get; set; }
+    public string? Competitiesoort { get; set; }
+    public int DuurMinuten { get; set; }
+    public decimal Veldafmeting { get; set; }
+    public string? HuidigeVeld { get; set; }
+    public string? HuidigeTijd { get; set; }
+    public bool HeeftVeld { get; set; }
+    public bool HeeftTijd { get; set; }
+    public int? OptimaalVeldNummer { get; set; }
+    public string? OptimaalVeldNaam { get; set; }
+    public string? OptimaalVeld { get; set; }
+    public string? OptimaalTijd { get; set; }
+    // "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
+    public string Status { get; set; } = "ongewijzigd";
+    public string? NietInplanbaaarReden { get; set; }
+    // Voorkeurstijd (null = geen voorkeur geconfigureerd voor dit team)
+    public string? VoorkeurTijd { get; set; }
+    public int? VoorkeurAfwijkingMinuten { get; set; }
+}
+
+public class AutoPlanResponseDto
+{
+    public string Datum { get; set; } = "";
+    public int TotaalWedstrijden { get; set; }
+    public int ZonderVeld { get; set; }
+    public int ZonderTijd { get; set; }
+    public int TeWijzigen { get; set; }
+    public int NietInplanbaar { get; set; }
+    public string? GeschatteEindTijd { get; set; }
+    public List<AutoPlanWedstrijdItemDto> Wedstrijden { get; set; } = new();
+    public string HuidigeHtml { get; set; } = "";
+    public string OptimaleHtml { get; set; } = "";
+}
+
+public class AutoPlanToepassenRequestDto
+{
+    public string Datum { get; set; } = "";
+    public int? BufferMinuten { get; set; }
+}
+
+public class AutoPlanToepassenResponseDto
+{
+    public int Bijgewerkt { get; set; }
+    public int Mislukt { get; set; }
+    public List<string> Fouten { get; set; } = new();
 }
 
 // ── Leermomenten (#323) ──
@@ -285,4 +345,24 @@ public class ClubDto
     public string ClubCode { get; set; } = "";
     public string ClubName { get; set; } = "";
     public bool SyncEnabled { get; set; }
+}
+
+// Velden
+public class VeldDto
+{
+    public int    VeldNummer { get; set; }
+    public string VeldNaam   { get; set; } = "";
+}
+
+// Test data / ALLSTARS (#365)
+public class AllstarsWedstrijdDto
+{
+    public string  BkMatches      { get; set; } = "";
+    public string? Datum          { get; set; }
+    public string? Aanvangstijd   { get; set; }
+    public string? ThuisTeam      { get; set; }
+    public string? UitTeam        { get; set; }
+    public string? VeldNaam       { get; set; }
+    public string? VeldSubpositie { get; set; }
+    public string? Soort          { get; set; }
 }

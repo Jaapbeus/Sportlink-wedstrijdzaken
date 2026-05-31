@@ -12,11 +12,13 @@ namespace BlazorAdmin.Services;
 public class AdminApiClient
 {
     private readonly HttpClient _http;
+    private readonly ApiStatusService _status;
     private static readonly JsonSerializerOptions _jsonOpts = new(JsonSerializerDefaults.Web);
 
-    public AdminApiClient(HttpClient http)
+    public AdminApiClient(HttpClient http, ApiStatusService status)
     {
         _http = http;
+        _status = status;
     }
 
     // ── Settings ──
@@ -135,6 +137,14 @@ public class AdminApiClient
         catch (Exception ex) { return ApiResult<string>.Fail(ex.Message); }
     }
 
+    // ── Auto-plan (#380) ──
+
+    public async Task<ApiResult<AutoPlanResponseDto>> AutoPlanAsync(AutoPlanRequestDto req)
+        => await PostAsync<AutoPlanResponseDto>("api/planner/auto-plan", req);
+
+    public async Task<ApiResult<AutoPlanToepassenResponseDto>> AutoPlanToepassenAsync(AutoPlanToepassenRequestDto req)
+        => await PostAsync<AutoPlanToepassenResponseDto>("api/planner/auto-plan/toepassen", req);
+
     // ── Teambegeleiding ──
 
     public async Task<ApiResult<List<string>>> GetTeambegeleidingTeamsAsync()
@@ -244,6 +254,28 @@ public class AdminApiClient
             return await HandleAsync<T>(resp);
         }
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
+    }
+
+    // ── Velden ──
+    public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()
+        => await GetAsync<List<VeldDto>>("api/beheer/velden");
+
+    // ── Test data / ALLSTARS (#365) ──
+    public async Task<ApiResult<List<AllstarsWedstrijdDto>>> GetAllstarsWedstrijdenAsync()
+        => await GetAsync<List<AllstarsWedstrijdDto>>("api/beheer/testdata/wedstrijden");
+    public async Task<ApiResult<List<string>>> GetAllstarsTeamsAsync()
+        => await GetAsync<List<string>>("api/beheer/testdata/teams");
+    public async Task<ApiResult<object>> UpsertAllstarsWedstrijdAsync(AllstarsWedstrijdDto dto)
+        => await PostAsync<object>("api/beheer/testdata/wedstrijden", dto);
+    public async Task<ApiResult<object>> DeleteAllstarsWedstrijdAsync(string bk)
+        => await DeleteAsync<object>($"api/beheer/testdata/wedstrijden/{Uri.EscapeDataString(bk)}");
+    public async Task<ApiResult<object>> DeleteAlleAllstarsWedstrijdenAsync(string? van, string? tot)
+    {
+        var q = new List<string>();
+        if (!string.IsNullOrEmpty(van)) q.Add($"van={Uri.EscapeDataString(van)}");
+        if (!string.IsNullOrEmpty(tot)) q.Add($"tot={Uri.EscapeDataString(tot)}");
+        var qs = q.Count > 0 ? "?" + string.Join("&", q) : "";
+        return await DeleteAsync<object>($"api/beheer/testdata/wedstrijden{qs}");
     }
 
     private static async Task<ApiResult<T>> HandleAsync<T>(HttpResponseMessage resp)

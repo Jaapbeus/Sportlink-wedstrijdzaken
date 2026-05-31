@@ -66,7 +66,11 @@ public static class GitHubIssueReporter
             var existing = await SearchIssueAsync(http, owner, repo, fp, log);
 
             if (existing.HasValue)
-                await AddCommentAsync(http, owner, repo, existing.Value, ex, functionName, log);
+            {
+                if (existing.Value.isClosed)
+                    await ReopenIssueAsync(http, owner, repo, existing.Value.number, log);
+                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, log);
+            }
             else
                 await CreateIssueAsync(http, owner, repo, fp, ex, functionName, log);
         }
@@ -86,11 +90,13 @@ public static class GitHubIssueReporter
         return http;
     }
 
-    private static async Task<int?> SearchIssueAsync(
+    private static async Task<(int number, bool isClosed)?> SearchIssueAsync(
         HttpClient http, string owner, string repo, string fp, ILogger log)
     {
-        var query = Uri.EscapeDataString($"[fp:{fp}] in:title repo:{owner}/{repo} is:open");
-        var url = $"https://api.github.com/search/issues?q={query}&per_page=1";
+        // Zoek in open én gesloten issues — zo wordt nooit een duplicaat aangemaakt
+        // ook niet na een cold start of nadat een issue eerder gesloten werd.
+        var query = Uri.EscapeDataString($"[fp:{fp}] in:title repo:{owner}/{repo}");
+        var url = $"https://api.github.com/search/issues?q={query}&per_page=1&sort=created&order=desc";
         var resp = await http.GetAsync(url);
         if (!resp.IsSuccessStatusCode)
         {
@@ -104,10 +110,24 @@ public static class GitHubIssueReporter
         if (count > 0)
         {
             int number = (int)result.items[0].number;
-            log.LogInformation("Bestaand GitHub issue #{Nr} gevonden voor fp:{Fp}", number, fp);
-            return number;
+            string state = (string)result.items[0].state;
+            bool isClosed = state == "closed";
+            log.LogInformation("Bestaand GitHub issue #{Nr} ({State}) gevonden voor fp:{Fp}", number, state, fp);
+            return (number, isClosed);
         }
         return null;
+    }
+
+    private static async Task ReopenIssueAsync(
+        HttpClient http, string owner, string repo, int issueNumber, ILogger log)
+    {
+        var payload = JsonConvert.SerializeObject(new { state = "open" });
+        var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}";
+        var resp = await http.PatchAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        if (resp.IsSuccessStatusCode)
+            log.LogInformation("GitHub issue #{Nr} heropend (opnieuw opgetreden)", issueNumber);
+        else
+            log.LogWarning("GitHub issue heropenen mislukt: HTTP {Status}", (int)resp.StatusCode);
     }
 
     private static async Task AddCommentAsync(
@@ -118,8 +138,8 @@ public static class GitHubIssueReporter
         var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
 
         var body = $"🔁 Opnieuw opgetreden op {nlTijd:dd-MM-yyyy HH:mm} in functie `{functionName}`\n\n"
-                 + $"**Exception:** `{ex.GetType().FullName}: {ex.Message}`\n\n"
-                 + $"**Stacktrace:**\n```\n{TruncateStackTrace(ex.StackTrace)}\n```";
+                 + $"**Exception:** `{ex.GetType().FullName}: {SanitizeForPublic(ex.Message)}`\n\n"
+                 + $"**Stacktrace:**\n```\n{TruncateStackTrace(SanitizeForPublic(ex.StackTrace))}\n```";
 
         var payload = JsonConvert.SerializeObject(new { body });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
@@ -138,14 +158,15 @@ public static class GitHubIssueReporter
         var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
         var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
 
-        var title = $"[bug][fp:{fp}] {ex.GetType().Name}: {TruncateMessage(ex.Message)}";
+        var sanitizedMessage = SanitizeForPublic(ex.Message);
+        var title = $"[bug][fp:{fp}] {ex.GetType().Name}: {TruncateMessage(sanitizedMessage)}";
         var body = $"## Automatisch gerapporteerde exception\n\n"
                  + $"**Tijdstip:** {nlTijd:dd-MM-yyyy HH:mm} (Europe/Amsterdam)\n"
                  + $"**Functie:** `{functionName}`\n"
                  + $"**Fingerprint:** `{fp}`\n\n"
                  + $"**Exception:** `{ex.GetType().FullName}`\n"
-                 + $"**Bericht:** {ex.Message}\n\n"
-                 + $"**Stacktrace:**\n```\n{TruncateStackTrace(ex.StackTrace)}\n```\n\n"
+                 + $"**Bericht:** {sanitizedMessage}\n\n"
+                 + $"**Stacktrace:**\n```\n{TruncateStackTrace(SanitizeForPublic(ex.StackTrace))}\n```\n\n"
                  + $"*Automatisch aangemaakt door GitHubIssueReporter (v2.1 zelfherstellend systeem)*";
 
         var payload = JsonConvert.SerializeObject(new
@@ -182,5 +203,33 @@ public static class GitHubIssueReporter
     {
         if (message.Length <= 120) return message;
         return message[..117] + "...";
+    }
+
+    // Verwijdert PII en club-specifieke gegevens voordat tekst in publieke GitHub issues terechtkomt.
+    // Sanitiseert: e-mailadressen, GUIDs, SQL-connectiestring-fragmenten, datums, getallen.
+    private static string SanitizeForPublic(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        var s = text;
+        // E-mailadressen
+        s = System.Text.RegularExpressions.Regex.Replace(s,
+            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", "<email>");
+        // GUIDs / client IDs
+        s = System.Text.RegularExpressions.Regex.Replace(s,
+            @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
+        // SQL-connectiestring-fragmenten (key=value paren die credentials kunnen bevatten)
+        s = System.Text.RegularExpressions.Regex.Replace(s,
+            @"(?i)\b(Server|Database|User Id|Data Source|Initial Catalog|Pwd|Uid)\s*=\s*[^\s;,'""<>]+",
+            "$1=<redacted>");
+        // Afzonderlijke credentials (pwd, pass, secret varianten)
+        s = System.Text.RegularExpressions.Regex.Replace(s,
+            @"(?i)\b(pass\w*|secret\w*|token\w*|key\w*)\s*[=:]\s*\S{4,}",
+            "$1=<redacted>");
+        // Datums
+        s = System.Text.RegularExpressions.Regex.Replace(s,
+            @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?", "<date>");
+        // Losse getallen
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d{5,}\b", "<n>");
+        return s.Trim();
     }
 }

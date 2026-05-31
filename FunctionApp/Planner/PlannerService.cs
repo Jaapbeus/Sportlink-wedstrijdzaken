@@ -65,6 +65,16 @@ namespace SportlinkFunction.Planner
                 duurMinuten = request.WedstrijdDuurMinuten.Value;
             }
 
+            // Heel-veld override: als expliciet gevraagd, overschrijf de speeltijd-veldafmeting
+            if (request.HeelVeld == true && veldFractie < 1.00m)
+            {
+                if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+                    response.Waarschuwingen.Add(
+                        $"{request.LeeftijdsCategorie} speelt normaal op een halftijdsspeelveld ({veldFractie:P0} veld). " +
+                        $"Inplannen op heel veld conform het verzoek (speelduur blijft {duurMinuten} min).");
+                veldFractie = 1.00m;
+            }
+
             if (duurMinuten <= 0)
             {
                 response.Reden = "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
@@ -256,8 +266,9 @@ namespace SportlinkFunction.Planner
         {
             var endTime = preferredTime.AddMinutes(duurMinuten);
 
-            // Elk veld proberen in voorkeursvolgorde (veld 1-4 voor veld 5)
-            foreach (var field in availableFields.OrderBy(f => f.VeldNummer == 5 ? 1 : 0))
+            // Kunstgrasvelden prefereren boven grasvelden (grasvelden laatste keuze)
+            var grasveldNummers = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            foreach (var field in availableFields.OrderBy(f => grasveldNummers.Contains(f.VeldNummer) ? 1 : 0))
             {
                 // Controleer binnen beschikbaarheidsvenster
                 if (preferredTime < field.BeschikbaarVanaf || endTime > field.BeschikbaarTot)
@@ -377,8 +388,9 @@ namespace SportlinkFunction.Planner
                 }
             }
 
-            // Sorteren: veld 1-4 prefereren boven veld 5
-            return candidates.OrderBy(c => c.VeldNummer == 5 ? 1 : 0)
+            // Sorteren: kunstgrasvelden prefereren boven grasvelden
+            var grasveldNummersSort = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            return candidates.OrderBy(c => grasveldNummersSort.Contains(c.VeldNummer) ? 1 : 0)
                              .ThenBy(c => c.AanvangsTijd.ToTimeSpan().TotalMinutes)
                              .ToList();
         }
@@ -625,7 +637,7 @@ namespace SportlinkFunction.Planner
             if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
             {
                 response.Waarschuwingen.Add(
-                    $"{date.ToString("dddd", NL)}: alleen veld 5 beschikbaar (veld 1-4 training).");
+                    $"{date.ToString("dddd", NL)}: doordeweeks — kunstgrasvelden mogelijk in gebruik voor training. Controleer veldbeschikbaarheid.");
             }
         }
 
@@ -635,6 +647,593 @@ namespace SportlinkFunction.Planner
             public TimeOnly AanvangsTijd { get; set; }
             public TimeOnly EindTijd { get; set; }
             public decimal VeldFractie { get; set; }
+        }
+
+        // ── Auto-plan (#380) ──
+
+        private class IngeplandSlot
+        {
+            public int VeldNummer { get; set; }
+            public TimeOnly AanvangsTijd { get; set; }
+            public TimeOnly EindTijd { get; set; }
+            public decimal Fractie { get; set; }
+            public string VeldSubpositie { get; set; } = string.Empty;
+            public string? TeamNaam { get; set; }
+        }
+
+        private class FieldScheduler
+        {
+            private readonly List<VeldBeschikbaarheidInfo> _beschikbaarheid;
+            private readonly List<VeldInfo> _velden;
+            private readonly int _buffer;
+            private readonly Dictionary<string, (int bufferVoor, int bufferNa)> _teamBuffers;
+            private readonly Dictionary<int, List<IngeplandSlot>> _occupations = new();
+            private static readonly TimeOnly StartTijd = new(9, 0);
+
+            public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer,
+                Dictionary<string, (int bufferVoor, int bufferNa)>? teamBuffers = null)
+            {
+                _beschikbaarheid = beschikbaarheid;
+                _velden = velden;
+                _buffer = buffer;
+                _teamBuffers = teamBuffers ?? new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase);
+                foreach (var v in velden)
+                    _occupations[v.VeldNummer] = new List<IngeplandSlot>();
+            }
+
+            private int TeamBufferVoor(string? teamNaam) =>
+                teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) && b.bufferVoor > _buffer
+                    ? b.bufferVoor : _buffer;
+
+            private int TeamBufferNa(string? teamNaam) =>
+                teamNaam != null && _teamBuffers.TryGetValue(teamNaam, out var b) && b.bufferNa > _buffer
+                    ? b.bufferNa : _buffer;
+
+            // Effectieve buffer tussen bestaande wedstrijd (occTeam) en nieuwe wedstrijd (nieuwTeam)
+            private int EffectieveBuffer(string? occTeamNaam, int nieuwBufVoor) =>
+                Math.Max(TeamBufferNa(occTeamNaam), nieuwBufVoor);
+
+            // Zoekt het vroegst beschikbare slot ZONDER het te bezetten (peek voor gap-berekening)
+            private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor)
+            {
+                var sortedVelden = _velden
+                    .OrderByDescending(v => v.IsKunstgras)
+                    .ThenBy(v => v.VeldNummer)
+                    .ToList();
+
+                IngeplandSlot? best = null;
+                foreach (var veld in sortedVelden)
+                {
+                    var beschikbaar = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
+                    if (beschikbaar == null) continue;
+                    var van = beschikbaar.BeschikbaarVanaf < StartTijd ? StartTijd : beschikbaar.BeschikbaarVanaf;
+                    var tot = beschikbaar.BeschikbaarTot;
+                    var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, tot, nieuwBufVoor);
+                    if (slot != null && (best == null || slot.AanvangsTijd < best.AanvangsTijd))
+                    {
+                        best = slot;
+                        if (best.AanvangsTijd == van) break;
+                    }
+                }
+                return best; // niet toegevoegd aan _occupations
+            }
+
+            public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten,
+                int nieuwBufVoor = -1, string? teamNaam = null)
+            {
+                if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+                var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
+                if (best != null)
+                {
+                    best.TeamNaam = teamNaam;
+                    _occupations[best.VeldNummer].Add(best);
+                }
+                return best;
+            }
+
+            /// <summary>
+            /// Probeert in te plannen nabij de voorkeurstijd. Compactheid heeft prioriteit:
+            /// als de vroegst mogelijke start meer dan nieuwBufVoor minuten vóór de voorkeurstijd
+            /// ligt, wordt compact ingepland (voorkeurstijd als richtlijn, niet als hard doel).
+            /// </summary>
+            public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
+                int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90)
+            {
+                if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+
+                // Compactheid-check: vroegst mogelijk slot zonder voorkeurstijd
+                var vroegste = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
+                if (vroegste != null)
+                {
+                    int gapMinuten = (int)(voorkeurTijd - vroegste.AanvangsTijd).TotalMinutes;
+                    // Gap groter dan teamspecifieke buffer → voorkeurstijd creëert onnodig gat → compact
+                    if (gapMinuten > nieuwBufVoor)
+                    {
+                        vroegste.TeamNaam = teamNaam;
+                        _occupations[vroegste.VeldNummer].Add(vroegste);
+                        return vroegste;
+                    }
+                }
+
+                // Gap past binnen de buffer — voorkeurstijd is gerechtvaardigd
+                // Probeer exact, dan uitwaaierend in stappen van 5 minuten
+                var candidates = new List<TimeOnly> { voorkeurTijd };
+                for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
+                {
+                    var vroeger = voorkeurTijd.AddMinutes(-delta);
+                    var later = voorkeurTijd.AddMinutes(delta);
+                    if (vroeger >= StartTijd) candidates.Add(vroeger);
+                    candidates.Add(later);
+                }
+
+                var sortedVelden = _velden
+                    .OrderByDescending(v => v.IsKunstgras)
+                    .ThenBy(v => v.VeldNummer)
+                    .ToList();
+
+                foreach (var kandidaatTijd in candidates)
+                {
+                    foreach (var veld in sortedVelden)
+                    {
+                        var beschikbaar = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
+                        if (beschikbaar == null) continue;
+
+                        var van = beschikbaar.BeschikbaarVanaf < StartTijd ? StartTijd : beschikbaar.BeschikbaarVanaf;
+                        var tot = beschikbaar.BeschikbaarTot;
+                        var start = RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
+                        var end = start.AddMinutes(duurMinuten);
+                        if (end > tot || end <= start) continue;
+
+                        var occupations = _occupations.TryGetValue(veld.VeldNummer, out var list)
+                            ? list : new List<IngeplandSlot>();
+                        var fractiesInUse = occupations
+                            .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
+                            .Sum(o => o.Fractie);
+                        if (fractiesInUse + fractie > 1.0m + 0.001m) continue;
+
+                        int concurrent = occupations.Count(o => o.AanvangsTijd < end && o.EindTijd > start);
+                        var slot = new IngeplandSlot
+                        {
+                            VeldNummer = veld.VeldNummer,
+                            AanvangsTijd = start,
+                            EindTijd = end,
+                            Fractie = fractie,
+                            VeldSubpositie = GetSubpositie(fractie, concurrent),
+                            TeamNaam = teamNaam
+                        };
+                        _occupations[veld.VeldNummer].Add(slot);
+                        return slot;
+                    }
+                }
+
+                // Valt terug op vroegst beschikbaar als niets binnen tolerantie past
+                return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
+            }
+
+            private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot,
+                int nieuwBufVoor = -1)
+            {
+                if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+                var occupations = _occupations.TryGetValue(veldNummer, out var list)
+                    ? list.OrderBy(o => o.AanvangsTijd).ToList()
+                    : new List<IngeplandSlot>();
+
+                // Candidate start times: field opens + after each match ends (respects team-specific buffers)
+                var candidates = new HashSet<TimeOnly> { van };
+                foreach (var occ in occupations)
+                {
+                    candidates.Add(occ.AanvangsTijd);
+                    var afterEnd = occ.EindTijd.AddMinutes(EffectieveBuffer(occ.TeamNaam, nieuwBufVoor));
+                    if (afterEnd > van) candidates.Add(afterEnd);
+                }
+
+                foreach (var candidate in candidates.OrderBy(t => t))
+                {
+                    if (candidate < van) continue;
+
+                    var start = RondAfOp5Min(candidate);
+                    if (start < van) start = van;
+                    var end = start.AddMinutes(duurMinuten);
+
+                    if (end > tot) continue;
+                    if (end <= start) continue; // overflow past midnight guard
+
+                    // Check fractie-capaciteit: sum of overlapping fractions <= 1.0 - fractie
+                    var fractiesInUse = occupations
+                        .Where(o => o.AanvangsTijd < end && o.EindTijd > start)
+                        .Sum(o => o.Fractie);
+
+                    if (fractiesInUse + fractie > 1.0m + 0.001m) continue;
+
+                    // Count concurrent matches at this time for subpositie
+                    int concurrent = occupations.Count(o => o.AanvangsTijd < end && o.EindTijd > start);
+
+                    return new IngeplandSlot
+                    {
+                        VeldNummer = veldNummer,
+                        AanvangsTijd = start,
+                        EindTijd = end,
+                        Fractie = fractie,
+                        VeldSubpositie = GetSubpositie(fractie, concurrent)
+                    };
+                }
+
+                return null;
+            }
+
+            private static string GetSubpositie(decimal fractie, int concurrent) => fractie switch
+            {
+                <= 0.25m => concurrent switch { 0 => "A1", 1 => "A2", 2 => "B1", _ => "B2" },
+                <= 0.50m => concurrent == 0 ? "A" : "B",
+                _ => string.Empty
+            };
+        }
+
+        // Extraheert leeftijdscategorie uit ALLSTARS teamnaam: "VRC JO7-1" → "JO7", "ALLSTARS Heren 1" → "1-99"
+        private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
+        {
+            if (string.IsNullOrWhiteSpace(teamNaam)) return null;
+            var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) return null;
+            var second = parts[1];
+            // Strip trailing "-N" zoals "JO7-1" → "JO7"
+            var hyphenIdx = second.IndexOf('-');
+            if (hyphenIdx > 0) second = second[..hyphenIdx];
+            // Mapping naar Speeltijden-sleutels (zelfde als GetAllstarsOccupationsAsync op #365 branch)
+            return second.ToUpperInvariant() switch
+            {
+                "HEREN"   => "1-99",
+                "DAMES"   => "VR",
+                "VROUWEN" => "VR",
+                _ => string.IsNullOrWhiteSpace(second) ? null : second
+            };
+        }
+
+        private static int GetLeeftijdSortOrder(string? leeftijd)
+        {
+            if (string.IsNullOrWhiteSpace(leeftijd)) return 99;
+            var l = leeftijd.Trim().ToUpperInvariant();
+            if (l.StartsWith("JO") && int.TryParse(l[2..], out var jo)) return jo;
+            if (l.StartsWith("MO") && int.TryParse(l[2..], out var mo)) return 50 + mo;
+            if (l == "VR" || l.StartsWith("VROUWEN")) return 80;
+            if (l.StartsWith("G")) return 85;
+            return 90; // Senioren / onbekend
+        }
+
+        // Standaard sorteersleutel (minuten na middernacht) voor teams zonder voorkeurstijd,
+        // gebaseerd op leeftijdscategorie. Zorgt dat JO-teams vóór late Heren-teams worden ingepland.
+        private static int GetDefaultTimeSortKey(string? leeftijd)
+        {
+            var order = GetLeeftijdSortOrder(leeftijd);
+            return order <= 11 ? 540       // JO7–JO11  → 09:00
+                 : order <= 13 ? 600       // JO12–JO13 → 10:00
+                 : order <= 15 ? 630       // JO14–JO15 → 10:30
+                 : order <= 17 ? 660       // JO16–JO17 → 11:00
+                 : order <= 19 ? 690       // JO18–JO19 → 11:30
+                 : order <= 25 ? 720       // JO21–JO23 → 12:00
+                 : order <= 85 ? 750       // Vrouwen/Meisjes → 12:30
+                 : 780;                    // Senioren / onbekend → 13:00
+        }
+
+        private static string BuildSportlinkVeldString(string veldNaam, string subpositie)
+        {
+            var naam = veldNaam.Trim();
+            return string.IsNullOrEmpty(subpositie) ? naam : $"{naam} {subpositie}";
+        }
+
+        private static string NormaliseerVeld(string? veld)
+        {
+            if (string.IsNullOrWhiteSpace(veld)) return string.Empty;
+            return veld.Trim().ToLowerInvariant().Replace("  ", " ");
+        }
+
+        public static async Task<AutoPlanResponse> AutoPlanAsync(
+            AutoPlanRequest request, string clubCode, ILogger log)
+        {
+            bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+            int buffer = request.BufferMinuten ?? StandardBufferMinutes;
+
+            if (!DateOnly.TryParse(request.Datum, out var datum))
+                return new AutoPlanResponse { Datum = request.Datum };
+
+            // 1. Data laden
+            var alleWedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+
+            // ALLSTARS: velden >= 100 (testmodus), synthetische beschikbaarheid 08:00–22:00
+            List<VeldInfo> velden;
+            List<VeldBeschikbaarheidInfo> beschikbaarheid;
+            if (isAllstars)
+            {
+                velden = await PlannerDataAccess.GetAllstarsVeldenAsync();
+                beschikbaarheid = velden.Select(v => new VeldBeschikbaarheidInfo
+                {
+                    VeldNummer = v.VeldNummer,
+                    BeschikbaarVanaf = new TimeOnly(8, 0),
+                    BeschikbaarTot = new TimeOnly(22, 0),
+                    GebruikZonsondergang = false
+                }).ToList();
+            }
+            else
+            {
+                velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+                beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
+            }
+
+            var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+            var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
+
+            // DagVanWeek: .NET DayOfWeek (0=zondag…6=zaterdag) → onze conventie (1=Ma…7=Zo)
+            int dagVanWeek = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
+            var voorkeurLookup = await PlannerDataAccess.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
+            var teamBuffers = await PlannerDataAccess.GetAllTeamBuffersAsync();
+
+            // 2. Sorteer wedstrijden op geschatte aanvangstijd.
+            //    Teams met voorkeurstijd worden gesorteerd op die tijd (vroeger = eerder gepland).
+            //    Teams zonder voorkeurstijd krijgen een standaard-tijd op basis van leeftijdscategorie.
+            //    Dit zorgt dat vroeg-spelende JO-teams vóór Heren-teams met late voorkeurstijden
+            //    worden ingepland, zodat de gap-check in FindAndOccupyNearTime correct werkt.
+            var gesorteerd = alleWedstrijden
+                .OrderBy(w =>
+                {
+                    var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                        ? w.LeeftijdsCategorie
+                        : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                    if (voorkeurLookup.TryGetValue(w.TeamNaam, out var v) && v.Count > 0)
+                        return (int)v.OrderBy(x => x.Prioriteit).First().Tijd.ToTimeSpan().TotalMinutes;
+                    return GetDefaultTimeSortKey(leeftijd.Length > 0 ? leeftijd : null);
+                })
+                .ThenBy(w => GetLeeftijdSortOrder(
+                    (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                        ? w.LeeftijdsCategorie
+                        : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "")))
+                .ThenBy(w => w.TeamNaam)
+                .ToList();
+
+            // 3. Scheduling algoritme
+            var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
+            var items = new List<AutoPlanWedstrijdItem>();
+
+            foreach (var wedstrijd in gesorteerd)
+            {
+                // Voor ALLSTARS: leeftijdscategorie staat niet in DB maar in teamnaam ("VRC JO7-1" → "JO7")
+                var leeftijd = (!string.IsNullOrWhiteSpace(wedstrijd.LeeftijdsCategorie))
+                    ? wedstrijd.LeeftijdsCategorie
+                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(wedstrijd.TeamNaam) ?? "" : "");
+                speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+
+                if (speeltijdInfo == null)
+                {
+                    items.Add(new AutoPlanWedstrijdItem
+                    {
+                        WedstrijdCode = wedstrijd.WedstrijdCode,
+                        Wedstrijd = wedstrijd.Wedstrijd,
+                        TeamNaam = wedstrijd.TeamNaam,
+                        LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
+                        Competitiesoort = wedstrijd.Competitiesoort,
+                        HuidigeVeld = wedstrijd.Veld,
+                        HuidigeTijd = wedstrijd.AanvangsTijd,
+                        HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
+                        HeeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd),
+                        Status = "niet-inplanbaar",
+                        NietInplanbaaarReden = string.IsNullOrWhiteSpace(leeftijd)
+                            ? "Leeftijdscategorie onbekend — team niet gevonden in his.teams"
+                            : $"Leeftijdscategorie '{leeftijd}' ontbreekt in Speeltijden — voeg toe via Instellingen → Speeltijden"
+                    });
+                    continue;
+                }
+
+                // Gebruik voorkeurstijd als die bestaat voor dit team
+                IngeplandSlot? slot;
+                string? voorkeurTijdStr = null;
+                int? voorkeurAfwijking = null;
+
+                int teamBufVoor = teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) && tb.bufferVoor > buffer
+                    ? tb.bufferVoor : buffer;
+
+                if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
+                {
+                    var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
+                    voorkeurTijdStr = primair.Tijd.ToString("HH:mm");
+                    slot = scheduler.FindAndOccupyNearTime(primair.Tijd, speeltijdInfo.Veldafmeting,
+                        speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam);
+                    if (slot != null)
+                        voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - primair.Tijd.ToTimeSpan()).TotalMinutes;
+                }
+                else
+                {
+                    slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal,
+                        teamBufVoor, wedstrijd.TeamNaam);
+                }
+
+                if (slot == null)
+                {
+                    items.Add(new AutoPlanWedstrijdItem
+                    {
+                        WedstrijdCode = wedstrijd.WedstrijdCode,
+                        Wedstrijd = wedstrijd.Wedstrijd,
+                        TeamNaam = wedstrijd.TeamNaam,
+                        LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
+                        Competitiesoort = wedstrijd.Competitiesoort,
+                        DuurMinuten = speeltijdInfo.WedstrijdTotaal,
+                        Veldafmeting = speeltijdInfo.Veldafmeting,
+                        HuidigeVeld = wedstrijd.Veld,
+                        HuidigeTijd = wedstrijd.AanvangsTijd,
+                        HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
+                        HeeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd),
+                        Status = "niet-inplanbaar",
+                        NietInplanbaaarReden = "Geen beschikbaar veld gevonden voor deze datum"
+                    });
+                    continue;
+                }
+
+                var optimaalVeldNaam = veldInfoLookup.TryGetValue(slot.VeldNummer, out var vi)
+                    ? vi.VeldNaam : $"veld {slot.VeldNummer}";
+                var optimaalVeld = BuildSportlinkVeldString(optimaalVeldNaam, slot.VeldSubpositie);
+                var optimaalTijd = slot.AanvangsTijd.ToString("HH:mm");
+
+                var huidigeVeldNorm = NormaliseerVeld(wedstrijd.Veld);
+                var optimaalVeldNorm = NormaliseerVeld(optimaalVeld);
+                bool heeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld);
+                bool heeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd);
+                bool tijdWijzigt = wedstrijd.AanvangsTijd?.Trim() != optimaalTijd;
+                bool veldWijzigt = huidigeVeldNorm != optimaalVeldNorm;
+
+                string status;
+                if (!heeftVeld || !heeftTijd)
+                    status = "nieuw-slot";
+                else if (tijdWijzigt || veldWijzigt)
+                    status = "wijziging";
+                else
+                    status = "ongewijzigd";
+
+                items.Add(new AutoPlanWedstrijdItem
+                {
+                    WedstrijdCode = wedstrijd.WedstrijdCode,
+                    Wedstrijd = wedstrijd.Wedstrijd,
+                    TeamNaam = wedstrijd.TeamNaam,
+                    LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
+                    Competitiesoort = wedstrijd.Competitiesoort,
+                    DuurMinuten = speeltijdInfo.WedstrijdTotaal,
+                    Veldafmeting = speeltijdInfo.Veldafmeting,
+                    HuidigeVeld = wedstrijd.Veld,
+                    HuidigeTijd = wedstrijd.AanvangsTijd,
+                    HeeftVeld = heeftVeld,
+                    HeeftTijd = heeftTijd,
+                    OptimaalVeldNummer = slot.VeldNummer,
+                    OptimaalVeldNaam = optimaalVeldNaam,
+                    OptimaalVeld = optimaalVeld,
+                    OptimaalTijd = optimaalTijd,
+                    Status = status,
+                    VoorkeurTijd = voorkeurTijdStr,
+                    VoorkeurAfwijkingMinuten = voorkeurAfwijking
+                });
+            }
+
+            // 4. Statistieken
+            int zonderVeld = items.Count(i => !i.HeeftVeld);
+            int zonderTijd = items.Count(i => !i.HeeftTijd);
+            int teWijzigen = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
+            int nietInplanbaar = items.Count(i => i.Status == "niet-inplanbaar");
+
+            var eindTijden = items
+                .Where(i => i.OptimaalTijd != null && i.DuurMinuten > 0
+                    && TimeOnly.TryParse(i.OptimaalTijd, out _))
+                .Select(i => TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten))
+                .ToList();
+            string? eindTijd = eindTijden.Count > 0 ? eindTijden.Max().ToString("HH:mm") : null;
+
+            // 5. HTML-visualisaties (huidig + optimaal)
+            var huidigeOccupations = items
+                .Where(i => i.HeeftVeld && i.HeeftTijd && i.OptimaalVeldNummer.HasValue)
+                .Select(i =>
+                {
+                    // Map huidig veld naar veldnummer via naam
+                    var huidigVeldNr = velden.FirstOrDefault(v =>
+                        NormaliseerVeld(v.VeldNaam) == NormaliseerVeld(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
+                    if (huidigVeldNr == 0) return null;
+                    if (!TimeOnly.TryParse(i.HuidigeTijd, out var aTime)) return null;
+                    return new BestaandeWedstrijd
+                    {
+                        Datum = datum,
+                        AanvangsTijd = aTime,
+                        EindTijd = aTime.AddMinutes(i.DuurMinuten),
+                        VeldNummer = huidigVeldNr,
+                        VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                        LeeftijdsCategorie = i.LeeftijdsCategorie,
+                        TeamNaam = i.TeamNaam,
+                        Wedstrijd = i.Wedstrijd,
+                        Bron = "Sportlink"
+                    };
+                })
+                .Where(o => o != null).Cast<BestaandeWedstrijd>().ToList();
+
+            var optimaleOccupations = items
+                .Where(i => i.OptimaalVeldNummer.HasValue && i.OptimaalTijd != null
+                    && TimeOnly.TryParse(i.OptimaalTijd, out _))
+                .Select(i => new BestaandeWedstrijd
+                {
+                    Datum = datum,
+                    AanvangsTijd = TimeOnly.Parse(i.OptimaalTijd!),
+                    EindTijd = TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten),
+                    VeldNummer = i.OptimaalVeldNummer!.Value,
+                    VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                    VeldSubpositie = i.OptimaalVeld?.Contains(' ') == true
+                        ? i.OptimaalVeld.Split(' ').LastOrDefault() : null,
+                    LeeftijdsCategorie = i.LeeftijdsCategorie,
+                    TeamNaam = i.TeamNaam,
+                    Wedstrijd = i.Wedstrijd,
+                    Bron = "Optimaal"
+                })
+                .ToList();
+
+            string huidigeHtml = PlannerHtmlGenerator.GenereerHtml(
+                datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig");
+            string optimaleHtml = PlannerHtmlGenerator.GenereerHtml(
+                datum, optimaleOccupations, new List<OptimalisatieSuggestie>(), velden, "optimaal");
+
+            log.LogInformation("AutoPlan {Datum}: {Totaal} wedstrijden, {Wijzigen} te wijzigen, eindtijd {Eind}",
+                datum, items.Count, teWijzigen, eindTijd ?? "?");
+
+            return new AutoPlanResponse
+            {
+                Datum = request.Datum,
+                TotaalWedstrijden = items.Count,
+                ZonderVeld = zonderVeld,
+                ZonderTijd = zonderTijd,
+                TeWijzigen = teWijzigen,
+                NietInplanbaar = nietInplanbaar,
+                GeschatteEindTijd = eindTijd,
+                Wedstrijden = items,
+                HuidigeHtml = huidigeHtml,
+                OptimaleHtml = optimaleHtml
+            };
+        }
+
+        public static async Task<AutoPlanToepassenResponse> AutoPlanToepassenAsync(
+            AutoPlanToepassenRequest request, string clubCode, ILogger log)
+        {
+            if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+
+            // Herbereken het plan (deterministisch — zelfde input = zelfde output)
+            var planResponse = await AutoPlanAsync(new AutoPlanRequest
+            {
+                Datum = request.Datum,
+                BufferMinuten = request.BufferMinuten
+            }, clubCode, log);
+
+            var response = new AutoPlanToepassenResponse();
+
+            foreach (var item in planResponse.Wedstrijden)
+            {
+                if (item.Status == "ongewijzigd") continue;
+                if (item.Status == "niet-inplanbaar") continue;
+                if (item.WedstrijdCode == null) continue;
+                if (item.OptimaalVeld == null || item.OptimaalTijd == null) continue;
+
+                try
+                {
+                    int updated = await PlannerDataAccess.UpdateAllstarsMatchAsync(
+                        item.WedstrijdCode.Value, item.OptimaalVeld, item.OptimaalTijd);
+                    if (updated > 0) response.Bijgewerkt++;
+                    else
+                    {
+                        response.Mislukt++;
+                        response.Fouten.Add($"{item.Wedstrijd}: wedstrijdcode {item.WedstrijdCode} niet gevonden");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    response.Mislukt++;
+                    response.Fouten.Add($"{item.Wedstrijd}: {ex.Message}");
+                    log.LogWarning(ex, "AutoPlan toepassen mislukt voor wedstrijd {Code}", item.WedstrijdCode);
+                }
+            }
+
+            log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
+                request.Datum, response.Bijgewerkt, response.Mislukt);
+
+            return response;
         }
 
         // ── Doordeweekse beschikbaarheid ──
@@ -738,7 +1337,7 @@ namespace SportlinkFunction.Planner
         // ── Optimalisatie logica ──
 
         public static async Task<OptimaliseerResponse> OptimaliseerAsync(
-            OptimaliseerRequest request, ILogger log)
+            OptimaliseerRequest request, string? clubCode, ILogger log)
         {
             var nl = new System.Globalization.CultureInfo("nl-NL");
             var response = new OptimaliseerResponse { Datum = request.Datum };
@@ -751,8 +1350,10 @@ namespace SportlinkFunction.Planner
 
             // Data laden (real-time API of DB als fallback)
             var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
-            var velden = await PlannerDataAccess.GetVeldenAsync();
-            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+            var velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
+            var grasveldNummers = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            var kunstgrasNummers = velden.Where(v => v.VeldType == "kunstgras").Select(v => v.VeldNummer).ToHashSet();
 
             // Dedup bezettingen
             var bezettingen = occupations
@@ -793,31 +1394,30 @@ namespace SportlinkFunction.Planner
             int bufferMin = request.BufferMinuten ?? StandardBufferMinutes;
 
             // Capaciteitsberekening en optimalisatie-noodzaak analyse
-            var capaciteit = BerekenCapaciteit(bezettingen, availableFields);
+            var capaciteit = BerekenCapaciteit(bezettingen, availableFields, grasveldNummers);
             response.CapaciteitOverzicht = capaciteit;
 
             // Bepaal welke optimalisaties zinvol zijn voor deze specifieke dag en het opgegeven doel.
             //
-            // veld5-ontlasten: zinvol als veld 1-4 beschikbaar zijn (zaterdag) én er wedstrijden op
-            //   veld 5 staan. Op doordeweekse dagen zijn veld 1-4 in gebruik voor training en zijn er
-            //   geen alternatieve velden — veld 5 is dan per definitie de juiste plek.
+            // grasveld-ontlasten: zinvol als kunstgrasvelden beschikbaar zijn (zaterdag) én er wedstrijden op
+            //   grasveld staan. Op doordeweekse dagen zijn kunstgrasvelden mogelijk in gebruik voor training.
             //
             // strakker-plannen: zinvol als de gebruiker een gewenste eindtijd heeft opgegeven of
             //   het doel expliciet op 'strakker-plannen' gezet heeft. Zonder die grenswaarde weet
             //   de planner niet wat 'beter' is en genereert hij onnodig suggesties.
             var doel = (request.Doel ?? "").ToLowerInvariant().Trim();
-            bool alleenVeld5Beschikbaar = availableFields.Count > 0 && !availableFields.Any(f => f.VeldNummer <= 4);
+            bool alleenGrasveldBeschikbaar = availableFields.Count > 0 && !availableFields.Any(f => kunstgrasNummers.Contains(f.VeldNummer));
             bool gewensteEindtijdOpgegeven = !string.IsNullOrEmpty(request.GewensteEindtijd);
-            bool veld5OntlastenZinvol = !alleenVeld5Beschikbaar && capaciteit.AantalWedstrijdenOpVeld5 > 0;
+            bool grasveldOntlastenZinvol = !alleenGrasveldBeschikbaar && capaciteit.AantalWedstrijdenOpGrasveld > 0;
             bool strakkerPlannenZinvol = gewensteEindtijdOpgegeven || doel == "strakker-plannen";
 
-            // Check 1: laag bezettingspercentage én geen veld 5 gebruik (bestaande check)
-            if (capaciteit.AantalWedstrijdenOpVeld5 == 0 && capaciteit.BezettingsPercentage < MaxBezettingsPercentageVoorOverslaan)
+            // Check 1: laag bezettingspercentage én geen grasveld gebruik
+            if (capaciteit.AantalWedstrijdenOpGrasveld == 0 && capaciteit.BezettingsPercentage < MaxBezettingsPercentageVoorOverslaan)
             {
                 response.VoldoendeRuimte = true;
                 response.VoldoendeRuimteMelding =
                     $"Voldoende ruimte op {date.ToString("dddd d MMMM", nl)}: " +
-                    $"geen wedstrijden op veld 5, {capaciteit.BezettingsPercentage:F0}% bezet " +
+                    $"geen wedstrijden op grasveld, {capaciteit.BezettingsPercentage:F0}% bezet " +
                     $"({capaciteit.AantalLegeVelden} veld(en) ongebruikt). Geen optimalisatie nodig.";
                 response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
                     date, bezettingen, new List<OptimalisatieSuggestie>(), velden, doel);
@@ -825,11 +1425,11 @@ namespace SportlinkFunction.Planner
             }
 
             // Check 2: geen enkel optimalisatiedoel is zinvol voor deze dag
-            if (!veld5OntlastenZinvol && !strakkerPlannenZinvol)
+            if (!grasveldOntlastenZinvol && !strakkerPlannenZinvol)
             {
-                string redenDetail = alleenVeld5Beschikbaar
-                    ? "doordeweekse dag — veld 1-4 niet beschikbaar, veld 5 is de enige optie en er is geen gewenste eindtijd opgegeven"
-                    : "geen wedstrijden op veld 5 en geen gewenste eindtijd opgegeven";
+                string redenDetail = alleenGrasveldBeschikbaar
+                    ? "doordeweekse dag — alleen grasveld beschikbaar, kunstgrasvelden niet beschikbaar, en er is geen gewenste eindtijd opgegeven"
+                    : "geen wedstrijden op grasveld en geen gewenste eindtijd opgegeven";
                 response.VoldoendeRuimte = true;
                 response.VoldoendeRuimteMelding = $"Geen optimalisatie nodig op {date.ToString("dddd d MMMM", nl)}: {redenDetail}.";
                 response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(
@@ -841,17 +1441,17 @@ namespace SportlinkFunction.Planner
 
             switch (doel)
             {
-                case "veld5-ontlasten":
-                    if (veld5OntlastenZinvol)
-                        suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                case "grasveld-ontlasten":
+                    if (grasveldOntlastenZinvol)
+                        suggesties = OptimaliseerGrasveldOntlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 case "strakker-plannen":
                     if (strakkerPlannenZinvol)
                         suggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     break;
                 default:
-                    if (veld5OntlastenZinvol)
-                        suggesties = OptimaliseerVeld5Ontlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
+                    if (grasveldOntlastenZinvol)
+                        suggesties = OptimaliseerGrasveldOntlasten(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
                     if (strakkerPlannenZinvol)
                     {
                         var strakkerSuggesties = OptimaliseerStrakkerPlannen(bezettingen, velden, availableFields, vasteWedstrijden, allTeamRules, bufferMin);
@@ -899,7 +1499,7 @@ namespace SportlinkFunction.Planner
 
             response.Suggesties = suggesties;
             response.AantalVerplaatsingen = suggesties.Count;
-            response.AantalVanVeld5Verplaatst = suggesties.Count(s => s.HuidigVeldNummer == 5);
+            response.AantalVanGrasveldVerplaatst = suggesties.Count(s => grasveldNummers.Contains(s.HuidigVeldNummer));
 
             // HTML genereren
             response.HtmlPlanner = PlannerHtmlGenerator.GenereerHtml(date, bezettingen, suggesties, velden, request.Doel ?? "optimaliseren");
@@ -909,7 +1509,8 @@ namespace SportlinkFunction.Planner
 
         private static VeldCapaciteitInfo BerekenCapaciteit(
             List<BestaandeWedstrijd> bezettingen,
-            List<VeldBeschikbaarheidInfo> beschikbareVelden)
+            List<VeldBeschikbaarheidInfo> beschikbareVelden,
+            HashSet<int> grasveldNummers)
         {
             int totaalBeschikbaar = 0;
             foreach (var veld in beschikbareVelden)
@@ -928,12 +1529,12 @@ namespace SportlinkFunction.Planner
                 TotaalBezettMinuten = totaalBezet,
                 BezettingsPercentage = totaalBeschikbaar > 0
                     ? (double)totaalBezet / totaalBeschikbaar * 100.0 : 0,
-                AantalWedstrijdenOpVeld5 = bezettingen.Count(b => b.VeldNummer == 5),
+                AantalWedstrijdenOpGrasveld = bezettingen.Count(b => grasveldNummers.Contains(b.VeldNummer)),
                 AantalLegeVelden = aantalLegeVelden
             };
         }
 
-        private static List<OptimalisatieSuggestie> OptimaliseerVeld5Ontlasten(
+        private static List<OptimalisatieSuggestie> OptimaliseerGrasveldOntlasten(
             List<BestaandeWedstrijd> bezettingen,
             List<VeldInfo> velden,
             List<VeldBeschikbaarheidInfo> beschikbareVelden,
@@ -941,11 +1542,13 @@ namespace SportlinkFunction.Planner
             Dictionary<string, List<TeamRegel>> allTeamRules,
             int bufferMin = 15)
         {
+            var grasveldNummers = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+            var kunstgrasNummers = velden.Where(v => v.VeldType == "kunstgras").Select(v => v.VeldNummer).ToHashSet();
             var suggesties = new List<OptimalisatieSuggestie>();
 
-            // Wedstrijden op veld 5 die verplaatst mogen worden
-            var veld5Wedstrijden = bezettingen
-                .Where(b => b.VeldNummer == 5)
+            // Wedstrijden op grasvelden die verplaatst mogen worden
+            var grasveldWedstrijden = bezettingen
+                .Where(b => grasveldNummers.Contains(b.VeldNummer))
                 .Where(b => !vasteWedstrijden.Contains($"{b.VeldNummer}_{b.AanvangsTijd:HH:mm}_{b.Wedstrijd?.Trim()}"))
                 .OrderBy(b => b.AanvangsTijd)
                 .ToList();
@@ -953,21 +1556,22 @@ namespace SportlinkFunction.Planner
             // Werk met een kopie van bezettingen die we aanpassen naarmate we suggesties doen
             var werkBezettingen = bezettingen.ToList();
 
-            foreach (var wedstrijd in veld5Wedstrijden)
+            foreach (var wedstrijd in grasveldWedstrijden)
             {
                 int duur = (int)(wedstrijd.EindTijd - wedstrijd.AanvangsTijd).TotalMinutes;
                 decimal fractie = wedstrijd.VeldDeelGebruik;
+                var huidigVeldNaam = velden.FirstOrDefault(v => v.VeldNummer == wedstrijd.VeldNummer)?.VeldNaam ?? $"veld {wedstrijd.VeldNummer}";
 
-                // Zoek een plek op veld 1-4 die EERDER is dan huidige tijd op veld 5
+                // Zoek een plek op kunstgrasveld die EERDER is dan huidige tijd op grasveld
                 // Alleen verplaatsen als het een verbetering is (eerder of gelijktijdig op kunstgras)
                 CandidateSlot? besteSlot = null;
-                foreach (var veldBesch in beschikbareVelden.Where(f => f.VeldNummer <= 4).OrderBy(f => f.VeldNummer))
+                foreach (var veldBesch in beschikbareVelden.Where(f => kunstgrasNummers.Contains(f.VeldNummer)).OrderBy(f => f.VeldNummer))
                 {
                     var veldBezetting = werkBezettingen.Where(b => b.VeldNummer == veldBesch.VeldNummer).ToList();
 
                     for (var tijd = veldBesch.BeschikbaarVanaf; tijd.AddMinutes(duur) <= veldBesch.BeschikbaarTot; tijd = tijd.AddMinutes(5))
                     {
-                        // Alleen accepteren als het niet later is dan de huidige tijd op veld 5
+                        // Alleen accepteren als het niet later is dan de huidige tijd op grasveld
                         if (tijd > wedstrijd.AanvangsTijd) break;
 
                         var eindTijd = tijd.AddMinutes(duur);
@@ -992,13 +1596,13 @@ namespace SportlinkFunction.Planner
                     suggesties.Add(new OptimalisatieSuggestie
                     {
                         Wedstrijd = wedstrijd.Wedstrijd?.Trim() ?? "",
-                        HuidigVeldNummer = 5,
-                        HuidigVeld = "veld 5",
+                        HuidigVeldNummer = wedstrijd.VeldNummer,
+                        HuidigVeld = huidigVeldNaam,
                         HuidigeTijd = wedstrijd.AanvangsTijd.ToString("HH:mm"),
                         NieuwVeldNummer = besteSlot.VeldNummer,
                         NieuwVeld = veldNaam,
                         NieuweTijd = RondAfOp5Min(besteSlot.AanvangsTijd).ToString("HH:mm"),
-                        Reden = $"Verplaats van veld 5 (geen kunstlicht) naar {veldNaam}"
+                        Reden = $"Verplaats van {huidigVeldNaam} (grasveld) naar {veldNaam} (kunstgras)"
                     });
 
                     // Werkbezetting bijwerken zodat volgende suggesties deze plek als bezet zien

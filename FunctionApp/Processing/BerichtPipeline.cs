@@ -131,7 +131,8 @@ public static class BerichtPipeline
                             AanvangsTijd = classificatie.AanvangsTijd,
                             LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
                             TeamNaam = classificatie.TeamNaam,
-                            Tegenstander = classificatie.Tegenstander
+                            Tegenstander = classificatie.Tegenstander,
+                            HeelVeld = classificatie.HeelVeld
                         };
                         var resp = await PlannerService.CheckAvailabilityAsync(req, log);
                         multiResults.Add(new { datum, response = resp });
@@ -144,7 +145,8 @@ public static class BerichtPipeline
                     AanvangsTijd = classificatie.AanvangsTijd,
                     LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
                     TeamNaam = classificatie.TeamNaam,
-                    Tegenstander = classificatie.Tegenstander
+                    Tegenstander = classificatie.Tegenstander,
+                    HeelVeld = classificatie.HeelVeld
                 };
                 var checkResponse = await PlannerService.CheckAvailabilityAsync(checkRequest, log);
                 return JsonConvert.SerializeObject(checkResponse);

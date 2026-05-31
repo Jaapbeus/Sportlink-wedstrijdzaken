@@ -10,6 +10,7 @@
 
 <h1>Dagplanning</h1>
 
+@* ── Invoerbalk ── *@
 <div class="card mb-3">
     <div class="card-body">
         <div class="row g-3 align-items-end">
@@ -17,27 +18,16 @@
                 <label class="form-label">Datum</label>
                 <input type="date" class="form-control" @bind="_datumDt" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Optimalisatiedoel</label>
-                <select class="form-select" @bind="_doel">
-                    <option value="">(geen voorkeur)</option>
-                    <option value="veld5-ontlasten">Veld 5 ontlasten</option>
-                    <option value="strakker-plannen">Strakker plannen</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Gewenste eindtijd</label>
-                <input type="time" class="form-control" @bind="_gewensteEindtijd" @bind:format="HH:mm" />
-            </div>
             <div class="col-md-2">
                 <label class="form-label">Buffer (min)</label>
                 <input type="number" class="form-control" @bind="_bufferMinuten" min="0" max="60" />
             </div>
             <div class="col-md-2">
-                <button class="btn btn-primary w-100" @onclick="GenereerAsync" disabled="@_bezig">
-                    @(_bezig ? "Genereren..." : "Genereer dagplanning")
+                <button class="btn btn-primary w-100" @onclick="AutoPlanAsync" disabled="@_bezig">
+                    @(_bezig ? "Bezig..." : "Optimaliseer")
                 </button>
             </div>
+            <div class="col-md-5"></div>
         </div>
     </div>
 </div>
@@ -47,78 +37,362 @@
     <div class="alert alert-danger">@_errorMessage</div>
 }
 
-@if (_resultaat != null)
+@if (_plan != null)
 {
-    @if (_resultaat.VoldoendeRuimte)
-    {
-        <div class="alert alert-success mb-3">
-            <strong>&#10003; @_resultaat.VoldoendeRuimteMelding</strong>
-        </div>
-    }
-
-    <div class="card mb-3">
-        <div class="card-header fw-semibold">Statistieken</div>
-        <div class="card-body">
-            <div class="row text-center">
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@_resultaat.HuidigeEindtijd</div>
-                    <small class="text-muted">Huidige eindtijd</small>
+    @* ── Samenvatting banner ── *@
+    <div class="card mb-3 border-0 bg-light">
+        <div class="card-body py-2">
+            <div class="row text-center g-2">
+                <div class="col">
+                    <div class="fs-5 fw-bold">@_plan.TotaalWedstrijden</div>
+                    <small class="text-muted">Wedstrijden</small>
                 </div>
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@(_resultaat.GeschatteNieuweEindtijd ?? "—")</div>
-                    <small class="text-muted">Geschatte nieuwe eindtijd</small>
+                <div class="col">
+                    <div class="fs-5 fw-bold @(_plan.ZonderVeld > 0 ? "text-warning" : "text-success")">
+                        @_plan.ZonderVeld
+                    </div>
+                    <small class="text-muted">Zonder veld</small>
                 </div>
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@_resultaat.AantalVerplaatsingen</div>
-                    <small class="text-muted">Verplaatsingen</small>
+                <div class="col">
+                    <div class="fs-5 fw-bold @(_plan.ZonderTijd > 0 ? "text-warning" : "text-success")">
+                        @_plan.ZonderTijd
+                    </div>
+                    <small class="text-muted">Zonder tijd</small>
                 </div>
-                <div class="col-md-2 col-6 mb-2">
-                    <div class="fs-5 fw-bold">@_resultaat.AantalVanVeld5Verplaatst</div>
-                    <small class="text-muted">Van veld 5 verplaatst</small>
+                <div class="col">
+                    <div class="fs-5 fw-bold @(_plan.TeWijzigen > 0 ? "text-primary" : "text-success")">
+                        @_plan.TeWijzigen
+                    </div>
+                    <small class="text-muted">Te wijzigen</small>
                 </div>
-                @if (_resultaat.CapaciteitOverzicht != null)
+                @if (_plan.NietInplanbaar > 0)
                 {
-                    <div class="col-md-2 col-6 mb-2">
-                        <div class="fs-5 fw-bold">@_resultaat.CapaciteitOverzicht.BezettingsPercentage.ToString("0")%</div>
-                        <small class="text-muted">Bezettingsgraad</small>
+                    <div class="col">
+                        <div class="fs-5 fw-bold text-danger">@_plan.NietInplanbaar</div>
+                        <small class="text-muted">Niet inplanbaar</small>
                     </div>
                 }
+                <div class="col">
+                    <div class="fs-5 fw-bold">@(_plan.GeschatteEindTijd ?? "—")</div>
+                    <small class="text-muted">Optimale eindtijd</small>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="mb-3">
-        <button class="btn btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync" disabled="@_bezig">
-            @(_kopieerStatus ?? "Kopieer e-mail HTML")
-        </button>
-        <button class="btn btn-outline-secondary" @onclick="DownloadHtmlAsync" disabled="@_bezig">
-            Download HTML-bestand
-        </button>
+    @* ── Per-wedstrijd vergelijking ── *@
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-semibold me-2">Per wedstrijd: huidig vs. optimaal</span>
+            <div class="btn-group btn-group-sm">
+                <button class="btn @(_filter == "alles" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _filter = "alles"'>Alles (@_plan.TotaalWedstrijden)</button>
+                <button class="btn @(_filter == "wijzigingen" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => _filter = "wijzigingen"'>Wijzigingen (@_plan.TeWijzigen)</button>
+                @if (_plan.NietInplanbaar > 0)
+                {
+                    <button class="btn @(_filter == "probleem" ? "btn-danger" : "btn-outline-danger")"
+                            @onclick='() => _filter = "probleem"'>Probleem (@_plan.NietInplanbaar)</button>
+                }
+            </div>
+            @if (IsAllstars && _plan.TeWijzigen > 0)
+            {
+                <button class="btn btn-sm btn-warning ms-auto" @onclick="ToepassenAsync" disabled="@_bezig">
+                    @(_bezig ? "Toepassen..." : $"Toepassen in testmodus ({_plan.TeWijzigen})")
+                </button>
+            }
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Wedstrijd</th>
+                            <th>Huidige situatie</th>
+                            <th>Optimale situatie</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in GefilterdeLijst())
+                        {
+                            <tr class="@RowClass(item.Status)">
+                                <td style="font-size:0.85rem;">
+                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
+                                </td>
+                                <td style="font-size:0.85rem;">
+                                    @if (!item.HeeftVeld && !item.HeeftTijd)
+                                    {
+                                        <span class="text-warning">&#10007; Geen veld &amp; tijd</span>
+                                    }
+                                    else if (!item.HeeftVeld)
+                                    {
+                                        <span class="text-warning">&#10007; Geen veld</span>
+                                        @if (!string.IsNullOrWhiteSpace(item.HuidigeTijd))
+                                        {<span class="text-muted ms-1">@item.HuidigeTijd</span>}
+                                    }
+                                    else if (!item.HeeftTijd)
+                                    {
+                                        <span class="text-warning">&#10007; Geen tijd</span>
+                                        @if (!string.IsNullOrWhiteSpace(item.HuidigeVeld))
+                                        {<span class="text-muted ms-1">@item.HuidigeVeld</span>}
+                                    }
+                                    else
+                                    {
+                                        <span>@item.HuidigeVeld</span>
+                                        <span class="ms-2 fw-bold">@item.HuidigeTijd</span>
+                                    }
+                                </td>
+                                <td style="font-size:0.85rem;">
+                                    @if (item.Status == "niet-inplanbaar")
+                                    {
+                                        <span class="text-danger" title="@item.NietInplanbaaarReden">
+                                            &#10007; @(item.NietInplanbaaarReden ?? "Niet inplanbaar")
+                                        </span>
+                                    }
+                                    else if (item.OptimaalVeld != null)
+                                    {
+                                        <span class="@(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalVeld</span>
+                                        <span class="ms-2 @(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalTijd</span>
+                                    }
+                                </td>
+                                <td>
+                                    @switch (item.Status)
+                                    {
+                                        case "ongewijzigd":
+                                            <span class="badge bg-success">&#10003; OK</span>
+                                            break;
+                                        case "nieuw-slot":
+                                            <span class="badge bg-warning text-dark">Nieuw</span>
+                                            break;
+                                        case "wijziging":
+                                            <span class="badge bg-primary">Wijzig</span>
+                                            break;
+                                        case "niet-inplanbaar":
+                                            <span class="badge bg-danger">Probleem</span>
+                                            break;
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(_toepassenMelding))
+        {
+            <div class="card-footer">
+                <div class="alert @(_toepassenFout ? "alert-danger" : "alert-success") mb-0 py-2">
+                    @_toepassenMelding
+                    @if (!_toepassenFout)
+                    {
+                        <button class="btn btn-sm btn-outline-success ms-3" @onclick="AutoPlanAsync">Herlaad plan</button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
-    @if (!string.IsNullOrEmpty(_resultaat.HtmlPlanner))
-    {
-        <div class="border rounded" style="overflow:hidden;">
-            <iframe srcdoc="@_resultaat.HtmlPlanner"
-                    style="width:100%; min-height:800px; border:none; display:block;"
-                    title="Dagplanning visualisatie">
-            </iframe>
+    @* ── Visuele Gantt-planning ── *@
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-3">
+            <ul class="nav nav-tabs card-header-tabs mb-0">
+                <li class="nav-item">
+                    <button class="nav-link @(_visTab == "optimaal" ? "active" : "")"
+                            @onclick='() => _visTab = "optimaal"'>&#128197; Optimale planning</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_visTab == "huidig" ? "active" : "")"
+                            @onclick='() => _visTab = "huidig"'>Huidige situatie</button>
+                </li>
+            </ul>
+            @if (_visTab == "optimaal" && !string.IsNullOrEmpty(_plan.GeschatteEindTijd))
+            {
+                <span class="small text-muted ms-auto">Eindtijd: <strong>@_plan.GeschatteEindTijd</strong></span>
+            }
         </div>
-    }
+        <div class="card-body p-3">
+            @{
+                bool _isOptimaal = _visTab == "optimaal";
+                var _gantt = BouwGanttItems(_isOptimaal);
+            }
+            @if (!_gantt.Any())
+            {
+                <p class="text-muted mb-0">
+                    @(_isOptimaal
+                        ? "Geen ingeplande wedstrijden — klik 'Optimaliseer' eerst."
+                        : "Geen wedstrijden met veld én tijd in de huidige situatie.")
+                </p>
+            }
+            else
+            {
+                var _velden = _gantt
+                    .Select(g => g.VeldNaam).Distinct()
+                    .OrderBy(v => v.StartsWith("Kunstgras", StringComparison.OrdinalIgnoreCase) ? "0" + v : "1" + v)
+                    .ToList();
+                int _sMin = (_gantt.Min(g => (int)g.Aanvang.ToTimeSpan().TotalMinutes) / 60) * 60;
+                int _eMin = (((int)_gantt.Max(g => g.Einde.ToTimeSpan().TotalMinutes) + 59) / 60) * 60;
+                if (_eMin <= _sMin) _eMin = _sMin + 60;
+                int _totMin = _eMin - _sMin;
+
+                @* Legenda *@
+                <div class="d-flex flex-wrap gap-3 mb-2 small">
+                    <span class="fw-semibold text-muted me-1">Status:</span>
+                    <span><span class="gantt-legenda-dot" style="background:#198754;"></span> Ongewijzigd</span>
+                    <span><span class="gantt-legenda-dot" style="background:#0d6efd;"></span> Wijziging</span>
+                    <span><span class="gantt-legenda-dot" style="background:#d97706;"></span> Nieuw slot</span>
+                    <span class="ms-3 fw-semibold text-muted me-1">Voorkeurstijd:</span>
+                    <span><span class="gantt-legenda-balk" style="background:#22c55e;"></span> Op tijd</span>
+                    <span><span class="gantt-legenda-balk" style="background:#f59e0b;"></span> &le;15 min afwijking</span>
+                    <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
+                </div>
+
+                <div style="overflow-x:auto; min-width:0;">
+                    @* Tijdas-header *@
+                    <div style="display:flex; margin-bottom:4px;">
+                        <div style="width:120px; flex-shrink:0;"></div>
+                        <div style="flex:1; position:relative; height:22px; min-width:500px;">
+                            @for (int _h = _sMin; _h <= _eMin; _h += 60)
+                            {
+                                string _lftH = GanttPct(_h - _sMin, _totMin);
+                                <div style="position:absolute; left:@(_lftH)%; transform:translateX(-50%);
+                                            font-size:0.7rem; color:#6c757d; white-space:nowrap; user-select:none;">
+                                    @TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(_h)).ToString("HH:mm")
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Veld-rijen *@
+                    @foreach (var _veld in _velden)
+                    {
+                        <div style="display:flex; border-top:1px solid #dee2e6;">
+                            <div style="width:120px; flex-shrink:0; padding:6px 8px; font-size:0.8rem;
+                                        font-weight:600; color:#495057; background:#f8f9fa;
+                                        border-right:1px solid #dee2e6; display:flex; align-items:center;">
+                                @_veld
+                            </div>
+                            <div style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;">
+                                @* Uurlijnen *@
+                                @for (int _h = _sMin + 60; _h < _eMin; _h += 60)
+                                {
+                                    <div style="position:absolute; left:@(GanttPct(_h - _sMin, _totMin))%;
+                                                top:0; bottom:0; width:1px; background:#e9ecef; z-index:0;"></div>
+                                }
+                                @* Wedstrijdblokken *@
+                                @foreach (var gi in _gantt.Where(g => g.VeldNaam == _veld))
+                                {
+                                    string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _sMin, _totMin);
+                                    string _wdt = GanttPct(gi.DuurMinuten, _totMin);
+                                    string _top = GanttPct((int)GanttTop(gi.SubPos), 100);
+                                    string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
+                                    string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd);
+                                    string _tooltip = GanttTooltip(gi);
+                                    <div title="@_tooltip"
+                                         style="position:absolute;
+                                                left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
+                                                top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
+                                                background:@GanttKleur(gi.Status);
+                                                border-radius:5px; overflow:hidden;
+                                                padding:2px 5px; color:#fff;
+                                                font-size:0.68rem; line-height:1.25;
+                                                z-index:1; cursor:default;
+                                                box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+                                        @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
+                                        @if (!string.IsNullOrEmpty(_voorkeurBalk))
+                                        {
+                                            <div style="position:absolute; top:0; left:0; right:0; height:4px;
+                                                        background:@_voorkeurBalk; border-radius:5px 5px 0 0;"></div>
+                                        }
+                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+                                                    font-weight:700; font-size:0.7rem; margin-top:@(string.IsNullOrEmpty(_voorkeurBalk) ? "0" : "4px")">
+                                            @gi.Aanvang.ToString("HH:mm")
+                                        </div>
+                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                                            @GanttLabel(gi.Label)
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <div style="height:1px; background:#dee2e6; margin-left:120px;"></div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Klassieke optimalisatie (verborgen sub-feature) ── *@
+    <details class="mb-3">
+        <summary class="text-muted" style="cursor:pointer;">Geavanceerde optimalisatie (klassiek)</summary>
+        <div class="card mt-2">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Optimalisatiedoel</label>
+                        <select class="form-select" @bind="_doel">
+                            <option value="">(geen voorkeur)</option>
+                            <option value="veld5-ontlasten">Grasveld(en) ontlasten</option>
+                            <option value="strakker-plannen">Strakker plannen</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Gewenste eindtijd</label>
+                        <TimeInput Value="@_gewensteEindtijdStr"
+                                   ValueChanged="@(v => _gewensteEindtijdStr = v ?? "16:15")"
+                                   Placeholder="16:15" />
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-primary w-100" @onclick="GenereerKlassiekAsync" disabled="@_bezig">
+                            Genereer
+                        </button>
+                    </div>
+                </div>
+                @if (_klassiekResultaat != null)
+                {
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync">
+                            @(_kopieerStatus ?? "Kopieer e-mail HTML")
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadHtmlAsync">
+                            Download HTML
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner))
+                    {
+                        <div class="border rounded mt-2" style="overflow:hidden;">
+                            <iframe srcdoc="@_klassiekResultaat.HtmlPlanner"
+                                    style="width:100%; min-height:700px; border:none; display:block;"
+                                    title="Klassieke dagplanning"></iframe>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </details>
 }
 
 @code {
     private DateTime _datumDt;
-    private string _doel = "";
-    private TimeOnly _gewensteEindtijd = new TimeOnly(16, 15);
     private int _bufferMinuten = 15;
     private bool _bezig;
     private string? _errorMessage;
+    private string _filter = "alles";
+    private string _visTab = "optimaal";
+    private AutoPlanResponseDto? _plan;
+
+    // Klassiek optimaliseer-flow
+    private string _doel = "";
+    private string _gewensteEindtijdStr = "16:15";
     private string? _kopieerStatus;
-    private OptimaliseerResponseDto? _resultaat;
+    private OptimaliseerResponseDto? _klassiekResultaat;
+
+    // Toepassen feedback
+    private string? _toepassenMelding;
+    private bool _toepassenFout;
 
     private string DatumStr => _datumDt.ToString("yyyy-MM-dd");
-    private string EindtijdStr => _gewensteEindtijd.ToString("HH:mm");
+    private bool IsAllstars => ClubSelector.SelectedClubCode == "ALLSTARS";
 
     protected override void OnInitialized()
     {
@@ -128,9 +402,10 @@
 
     private void OnClubChanged() => InvokeAsync(() =>
     {
-        _resultaat = null;
+        _plan = null;
+        _klassiekResultaat = null;
         _errorMessage = null;
-        _kopieerStatus = null;
+        _toepassenMelding = null;
         StateHasChanged();
     });
 
@@ -144,62 +419,238 @@
         return vandaag.AddDays(dagenTotZaterdag);
     }
 
-    private async Task GenereerAsync()
+    private async Task AutoPlanAsync()
     {
         _errorMessage = null;
-        _resultaat = null;
+        _toepassenMelding = null;
+        _bezig = true;
+        try
+        {
+            var req = new AutoPlanRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
+            var result = await Api.AutoPlanAsync(req);
+            if (result.Success)
+            {
+                _plan = result.Data;
+                _filter = "alles";
+                _visTab = "optimaal";
+            }
+            else
+                _errorMessage = result.ErrorMessage ?? "Onbekende fout bij auto-planning.";
+        }
+        finally { _bezig = false; }
+    }
+
+    private async Task ToepassenAsync()
+    {
+        _toepassenMelding = null;
+        _toepassenFout = false;
+        _bezig = true;
+        try
+        {
+            var req = new AutoPlanToepassenRequestDto { Datum = DatumStr, BufferMinuten = _bufferMinuten };
+            var result = await Api.AutoPlanToepassenAsync(req);
+            if (result.Success && result.Data != null)
+            {
+                var d = result.Data;
+                _toepassenMelding = d.Mislukt == 0
+                    ? $"{d.Bijgewerkt} wedstrijd(en) bijgewerkt in testdata."
+                    : $"{d.Bijgewerkt} bijgewerkt, {d.Mislukt} mislukt: {string.Join("; ", d.Fouten)}";
+                _toepassenFout = d.Mislukt > 0;
+            }
+            else
+            {
+                _toepassenMelding = result.ErrorMessage ?? "Toepassen mislukt.";
+                _toepassenFout = true;
+            }
+        }
+        finally { _bezig = false; }
+    }
+
+    private IEnumerable<AutoPlanWedstrijdItemDto> GefilterdeLijst()
+    {
+        if (_plan == null) return Enumerable.Empty<AutoPlanWedstrijdItemDto>();
+        return _filter switch
+        {
+            "wijzigingen" => _plan.Wedstrijden.Where(w => w.Status is "nieuw-slot" or "wijziging"),
+            "probleem"    => _plan.Wedstrijden.Where(w => w.Status == "niet-inplanbaar"),
+            _             => _plan.Wedstrijden
+        };
+    }
+
+    private static string RowClass(string status) => status switch
+    {
+        "ongewijzigd"     => "",
+        "nieuw-slot"      => "table-warning",
+        "wijziging"       => "table-primary",
+        "niet-inplanbaar" => "table-danger",
+        _                 => ""
+    };
+
+    // ── Klassiek optimaliseer ──
+
+    private async Task GenereerKlassiekAsync()
+    {
+        _errorMessage = null;
+        _klassiekResultaat = null;
         _kopieerStatus = null;
         _bezig = true;
         try
         {
-            var req = BuildRequest();
+            var req = new OptimaliseerRequestDto
+            {
+                Datum = DatumStr,
+                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
+                GewensteEindtijd = _gewensteEindtijdStr,
+                BufferMinuten = _bufferMinuten
+            };
             var result = await Api.OptimaliseerAsync(req);
-            if (result.Success)
-                _resultaat = result.Data;
-            else
-                _errorMessage = result.ErrorMessage ?? "Onbekende fout bij genereren dagplanning.";
+            if (result.Success) _klassiekResultaat = result.Data;
+            else _errorMessage = result.ErrorMessage ?? "Onbekende fout.";
         }
-        finally
-        {
-            _bezig = false;
-        }
+        finally { _bezig = false; }
     }
 
     private async Task KopieerEmailHtmlAsync()
     {
-        if (_resultaat == null) return;
+        if (_klassiekResultaat == null) return;
         _bezig = true;
         try
         {
-            var result = await Api.OptimaliseerHtmlAsync(BuildRequest(), "email");
+            var req = new OptimaliseerRequestDto
+            {
+                Datum = DatumStr,
+                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
+                GewensteEindtijd = _gewensteEindtijdStr,
+                BufferMinuten = _bufferMinuten
+            };
+            var result = await Api.OptimaliseerHtmlAsync(req, "email");
             if (result.Success && result.Data != null)
             {
                 await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", result.Data);
                 _kopieerStatus = "Gekopieerd!";
                 _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
             }
-            else
-            {
-                _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
-            }
+            else _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
         }
-        finally
-        {
-            _bezig = false;
-        }
+        finally { _bezig = false; }
     }
 
     private async Task DownloadHtmlAsync()
     {
-        if (_resultaat == null || string.IsNullOrEmpty(_resultaat.HtmlPlanner)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _resultaat.HtmlPlanner);
+        if (_klassiekResultaat == null || string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _klassiekResultaat.HtmlPlanner);
     }
 
-    private OptimaliseerRequestDto BuildRequest() => new()
+    // ── Gantt helpers ──
+
+    private record GanttItem(string VeldNaam, string? SubPos, TimeOnly Aanvang, TimeOnly Einde,
+        decimal Fractie, string Label, string Status, int DuurMinuten,
+        string? VoorkeurTijd, int? VoorkeurAfwijking);
+
+    private List<GanttItem> BouwGanttItems(bool isOptimaal)
     {
-        Datum = DatumStr,
-        Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
-        GewensteEindtijd = EindtijdStr,
-        BufferMinuten = _bufferMinuten
+        if (_plan == null) return new();
+        var items = new List<GanttItem>();
+        foreach (var w in _plan.Wedstrijden.Where(w => w.DuurMinuten > 0))
+        {
+            if (isOptimaal)
+            {
+                if (w.OptimaalTijd == null || w.OptimaalVeldNaam == null) continue;
+                if (!TimeOnly.TryParse(w.OptimaalTijd, out var t)) continue;
+                var sub = GanttExtractSubPos(w.OptimaalVeld);
+                items.Add(new GanttItem(w.OptimaalVeldNaam, sub, t, t.AddMinutes(w.DuurMinuten),
+                    w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten,
+                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten));
+            }
+            else
+            {
+                if (!w.HeeftVeld || !w.HeeftTijd) continue;
+                if (!TimeOnly.TryParse(w.HuidigeTijd!, out var t)) continue;
+                var (veldBase, sub) = GanttSplitVeld(w.HuidigeVeld!);
+                items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
+                    w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
+                    null, null));
+            }
+        }
+        return items;
+    }
+
+    private static string GanttMatchLabel(string? wedstrijd, string teamNaam)
+        => !string.IsNullOrWhiteSpace(wedstrijd) ? wedstrijd : teamNaam;
+
+    private static string? GanttExtractSubPos(string? veld)
+    {
+        if (string.IsNullOrWhiteSpace(veld)) return null;
+        var parts = veld.Trim().Split(' ');
+        if (parts.Length < 2) return null;
+        var last = parts[^1];
+        return last.Length <= 2 && last.All(char.IsLetterOrDigit) ? last : null;
+    }
+
+    private static (string Base, string? SubPos) GanttSplitVeld(string veld)
+    {
+        var sub = GanttExtractSubPos(veld);
+        if (sub == null) return (veld.Trim(), null);
+        var idx = veld.LastIndexOf(' ');
+        return idx > 0 ? (veld[..idx].Trim(), sub) : (veld.Trim(), null);
+    }
+
+    // Converteert een getal naar CSS-percentagestring (bijv. 42.5% → "42.50")
+    private static string GanttPct(int deel, int totaal)
+        => totaal > 0
+            ? ((double)deel / totaal * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+            : "0.00";
+
+    private static double GanttTop(string? sub) => sub switch
+    {
+        "A" or "A1" => 0, "A2" => 25, "B" or "B1" => 50, "B2" => 75, _ => 0
     };
+
+    private static double GanttHoogte(decimal fractie) => fractie switch
+    {
+        <= 0.26m => 25, <= 0.51m => 50, _ => 100
+    };
+
+    private static string GanttTooltip(GanttItem gi)
+    {
+        var sb = gi.Label
+            + "\n" + gi.Aanvang.ToString("HH:mm") + " – " + gi.Einde.ToString("HH:mm")
+            + " (" + gi.DuurMinuten + " min)";
+        if (gi.VoorkeurTijd != null)
+        {
+            sb += "\nVoorkeur: " + gi.VoorkeurTijd;
+            if (gi.VoorkeurAfwijking == 0)
+                sb += " ✓ op voorkeurstijd";
+            else if (gi.VoorkeurAfwijking.HasValue)
+                sb += " (" + (gi.VoorkeurAfwijking > 0 ? "+" : "") + gi.VoorkeurAfwijking + " min)";
+        }
+        return sb;
+    }
+
+    // Kleur van de voorkeurstijd-indicatorbalk bovenaan een Gantt-blok.
+    // Leeg = geen voorkeur geconfigureerd → geen balk.
+    private static string GanttVoorkeurBalkKleur(int? afwijking, string? voorkeurTijd)
+    {
+        if (voorkeurTijd == null || !afwijking.HasValue) return string.Empty;
+        int abs = Math.Abs(afwijking.Value);
+        if (abs == 0) return "#22c55e";    // Exact op voorkeurstijd → groen
+        if (abs <= 15) return "#f59e0b";   // Binnen 15 minuten → amber
+        return "#ef4444";                  // Meer dan 15 min afwijking → rood
+    }
+
+    private static string GanttKleur(string status) => status switch
+    {
+        "wijziging"   => "#0d6efd",
+        "nieuw-slot"  => "#d97706",
+        "ongewijzigd" => "#198754",
+        _ => "#6c757d"
+    };
+
+    private static string GanttLabel(string label)
+    {
+        // Toon alleen de teamnamen, strip " - FC Onbekend JO7 1" achtervoegsel als het lang is
+        var idx = label.IndexOf(" - ", StringComparison.Ordinal);
+        if (idx > 0 && label.Length > 30) return label[..idx];
+        return label;
+    }
 }

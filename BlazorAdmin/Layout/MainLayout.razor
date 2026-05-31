@@ -14,10 +14,11 @@
     <main>
         <div class="top-row px-4 d-flex align-items-center">
             <div class="flex-fill"></div>
-            <div class="d-flex justify-content-center">
+            <div class="d-flex justify-content-center align-items-center gap-2">
                 @if (_clubs.Count > 1)
                 {
-                    <select class="form-select form-select-sm club-selector" style="min-width:200px" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
+                    <select class="form-select form-select-sm club-selector @(IsTestmodus ? "club-selector-testmodus" : "")"
+                            style="min-width:200px" @onchange="OnClubChanged" value="@ClubSelector.SelectedClubCode">
                         @foreach (var club in _clubs)
                         {
                             <option value="@club.ClubCode">@club.ClubName</option>
@@ -50,11 +51,17 @@
     private bool _backendBezig = true;
     private CancellationTokenSource _cts = new();
 
+    private bool IsTestmodus =>
+        string.Equals(ClubSelector.SelectedClubCode, "ALLSTARS", StringComparison.OrdinalIgnoreCase);
+
     protected override async Task OnInitializedAsync()
     {
+        ClubSelector.OnChange += OnClubSelectorChanged;
         await ClubSelector.InitializeAsync();
         await LaadClubsAsync(_cts.Token);
     }
+
+    private void OnClubSelectorChanged() => _ = InvokeAsync(StateHasChanged);
 
     private async Task LaadClubsAsync(CancellationToken ct)
     {
@@ -68,8 +75,15 @@
                 if (ClubSelector.SelectedClubCode == null ||
                     !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode))
                 {
-                    var primary = _clubs.FirstOrDefault(c => c.SyncEnabled)?.ClubCode ?? _clubs[0].ClubCode;
-                    await ClubSelector.SelectClubAsync(primary);
+                    var primary = _clubs.FirstOrDefault(c => c.SyncEnabled) ?? _clubs[0];
+                    await ClubSelector.SelectClubAsync(primary.ClubCode, primary.ClubName);
+                }
+                else
+                {
+                    // Naam synchroniseren voor de al-geselecteerde club (bijv. na pagina-refresh)
+                    var naam = _clubs.FirstOrDefault(c => c.ClubCode == ClubSelector.SelectedClubCode)?.ClubName;
+                    if (!string.IsNullOrWhiteSpace(naam))
+                        await ClubSelector.SelectClubAsync(ClubSelector.SelectedClubCode!, naam);
                 }
                 _backendBezig = false;
                 return;
@@ -88,8 +102,15 @@
     {
         var code = e.Value?.ToString();
         if (!string.IsNullOrWhiteSpace(code))
-            await ClubSelector.SelectClubAsync(code);
+        {
+            var naam = _clubs.FirstOrDefault(c => c.ClubCode == code)?.ClubName;
+            await ClubSelector.SelectClubAsync(code, naam);
+        }
     }
 
-    public void Dispose() => _cts.Cancel();
+    public void Dispose()
+    {
+        _cts.Cancel();
+        ClubSelector.OnChange -= OnClubSelectorChanged;
+    }
 }
