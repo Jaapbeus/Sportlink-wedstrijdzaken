@@ -101,7 +101,10 @@ public static class AdminSyncFunction
                 status = "gestart",
                 weekOffsetFrom = -1,
                 weekOffsetTo = toWeekOffset,
-                tijdstip = DateTime.UtcNow
+                tijdstip = DateTime.UtcNow,
+                // Sync draait op de achtergrond (~3-5 min). LastSyncTimestamp in /status
+                // wordt bijgewerkt zodra de sync volledig geslaagd is. (#438)
+                melding = "Sync gestart op achtergrond. Controleer LastSyncTimestamp via /beheer/sync/status voor resultaat."
             }) { StatusCode = 202 };
         }
         catch (Exception ex)

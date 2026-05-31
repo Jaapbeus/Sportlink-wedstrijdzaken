@@ -116,11 +116,22 @@ namespace SportlinkFunction
             string ApiUrl;
 
             // Drop and create staging table
+            // partialFailure: als één stap faalt, slaan we LastSyncTimestamp NIET op. (#438)
+            var partialFailure = false;
+
             await CreateStagingTable.ExecuteAsync("teams");
             // Fetch and store Teams data
             ApiUrl = $"{sportlinkApiUrl}/teams?{sportlinkClientId}";
-            await FetchAndStoreTeamsData(ApiUrl, log);
-            log.LogInformation("TEAMS - GET endpoint=/teams");
+            try
+            {
+                await FetchAndStoreTeamsData(ApiUrl, log);
+                log.LogInformation("TEAMS - GET endpoint=/teams");
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "TEAMS - fetch mislukt");
+                partialFailure = true;
+            }
 
             // Drop and create staging table
             await CreateStagingTable.ExecuteAsync("matches");
@@ -131,8 +142,16 @@ namespace SportlinkFunction
             for (int weekOffset = fromWeekOffset; weekOffset <= toWeekOffset; weekOffset++)
             {
                 ApiUrl = $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}";
-                await FetchAndStoreProgrammaMatches(ApiUrl, log);
-                log.LogInformation("MATCHES/PROGRAMMA - GET endpoint=/programma weekOffset={WeekOffset}", weekOffset);
+                try
+                {
+                    await FetchAndStoreProgrammaMatches(ApiUrl, log);
+                    log.LogInformation("MATCHES/PROGRAMMA - GET endpoint=/programma weekOffset={WeekOffset}", weekOffset);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "MATCHES/PROGRAMMA - fetch mislukt weekOffset={WeekOffset}", weekOffset);
+                    partialFailure = true;
+                }
             }
 
             // Step 2: /uitslagen — fetch past weeks only for scores (uitslag, uitslag-regulier, etc.)
@@ -142,8 +161,16 @@ namespace SportlinkFunction
             for (int weekOffset = scoreFromOffset; weekOffset <= 0; weekOffset++)
             {
                 ApiUrl = $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}";
-                await FetchAndStoreUitslagenScores(ApiUrl, log);
-                log.LogInformation("MATCHES/UITSLAGEN - GET endpoint=/uitslagen weekOffset={WeekOffset}", weekOffset);
+                try
+                {
+                    await FetchAndStoreUitslagenScores(ApiUrl, log);
+                    log.LogInformation("MATCHES/UITSLAGEN - GET endpoint=/uitslagen weekOffset={WeekOffset}", weekOffset);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "MATCHES/UITSLAGEN - fetch mislukt weekOffset={WeekOffset}", weekOffset);
+                    partialFailure = true;
+                }
             }
             // Drop and create staging table
             await CreateStagingTable.ExecuteAsync("matchdetails");
@@ -161,7 +188,12 @@ namespace SportlinkFunction
             await new MergeStgToHis("stg", "matchdetails", "his", "matchdetails").ExecuteAsync(log);
 
             await SportlinkFunction.Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
-            await SystemUtilities.AppSettings.SaveLastSyncTimestampAsync(log);
+
+            // LastSyncTimestamp = laatste volledig succesvolle sync, niet laatste poging. (#438)
+            if (!partialFailure)
+                await SystemUtilities.AppSettings.SaveLastSyncTimestampAsync(log);
+            else
+                log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
         }
 
         private static async Task FetchAndStoreMatchDetails(string apiUrl, ILogger log)
@@ -252,6 +284,7 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError($"TEAMS - Error fetching or deserializing: {ex.Message}");
+                throw;
             }
         }
 
@@ -273,6 +306,7 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError($"MATCHES/PROGRAMMA - Error fetching or deserializing: {ex.Message}");
+                throw;
             }
         }
 
@@ -294,6 +328,7 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError($"MATCHES/UITSLAGEN - Error fetching or deserializing: {ex.Message}");
+                throw;
             }
         }
 
