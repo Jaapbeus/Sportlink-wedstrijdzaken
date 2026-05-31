@@ -1,6 +1,6 @@
 # API — Endpoints en Planningsregels
 
-Specificatie voor alle HTTP-endpoints van de VRC Sportlink Wedstrijdzaken API, inclusief beveiliging en planningsregels.
+Specificatie voor alle HTTP-endpoints van de Sportlink Wedstrijdzaken API, inclusief beveiliging en planningsregels.
 
 **Bronbestand:** `docs/API.md`
 
@@ -177,7 +177,7 @@ Het endpoint MOET een wedstrijdslot boeken door te schrijven naar `planner.Gepla
 
 ## Requirement: POST /api/planner/populate-sunset
 
-Het endpoint MOET de zonsondergangtabel vullen met NOAA-berekende tijden voor Veenendaal.
+Het endpoint MOET de zonsondergangtabel vullen met NOAA-berekende tijden voor de clublocatie.
 
 **Beveiligingsniveau:** Admin
 
@@ -416,12 +416,12 @@ Het systeem MOET teamspecifieke regels uit `dbo.TeamRegels` toepassen bij beschi
 
 | Team | Regel | Waarde |
 |------|-------|--------|
-| VRC 1 | BufferVoor | 60 min vóór wedstrijd, geen andere wedstrijden op hetzelfde veld |
-| VRC 1 | BufferNa | 30 min na wedstrijd, geen andere wedstrijden op hetzelfde veld |
+| [Heren 1] | BufferVoor | 60 min vóór wedstrijd, geen andere wedstrijden op hetzelfde veld |
+| [Heren 1] | BufferNa | 30 min na wedstrijd, geen andere wedstrijden op hetzelfde veld |
 
-### Scenario: VRC 1 thuiswedstrijd
+### Scenario: [Heren 1] thuiswedstrijd
 
-- **GIVEN** VRC 1 speelt op veld X om 14:00
+- **GIVEN** [Heren 1] speelt op veld X om 14:00
 - **WHEN** beschikbaarheid gecontroleerd wordt voor hetzelfde veld
 - **THEN** MAG er GEEN wedstrijd gepland worden van 13:00 tot 14:00 (60 min buffer vóór)
 - **AND** MAG er GEEN wedstrijd gepland worden direct na de wedstrijd + 30 min buffer
