@@ -24,6 +24,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `UpdateFoutAsync` slaat foutmeldingen nu op via `SanitizeFoutMelding()` — verwijdert e-mailadressen en knipt af op 200 tekens vóór DB-opslag. (#420)
 - Uitsluitingslijst wordt nu geladen vóór eerste AI-classificatie (fail-closed). Op cold start wordt de database gewekt en de lijst opgehaald; lukt dat niet, dan worden mails niet naar AI gestuurd. (#423)
 - Noodmails (database + OpenAI quota) bevatten geen ruwe `ex.Message` meer — worden vervangen door privacy-safe foutcategorie via `CategorizeerFout()`. (#425)
+- Nieuwe `sp_CleanupClassificatieCorrectie`: anonimiseert samenvattingen na 30 dagen, verwijdert na 90 dagen. Lost FK-blokkade op die de EmailVerwerking-cleanup kon laten falen. Aanroepvolgorde geborgd: correcties vóór email-verwerking. (#424)
+- Nieuwe `sp_CleanupImportLog`: anonimiseert `ImporterendeDoor` + `CsvBestand` na 90 dagen, verwijdert rijen na 1 jaar. Opgenomen in de maandelijkse teambegeleiding-cleanup. (#426)
 
 ### Changed
 - `docs/DEVELOPER-SETUP.md`: volledig herschreven voor v2.7 — Visual Studio/F5-workflow vervangen door `Start-Debug.ps1` + `Test-App.ps1`, BlazorAdmin-setup toegevoegd (poort 5242, `dotnet watch`), .NET 9 runtime als vereiste gedocumenteerd, fingerprint-veiligheidsregel toegevoegd, oplossing-naam gecorrigeerd naar `sportlink-wedstrijdzaken.sln`. Sluit issue #394.
