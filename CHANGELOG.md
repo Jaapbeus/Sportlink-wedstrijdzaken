@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- GitHubIssueReporter maakte dagelijks een nieuw GitHub Issue aan voor dezelfde fout (#370): de in-memory deduplicatie werkte niet na een koude start (Azure Functions). Zoekopdracht uitgebreid naar open én gesloten issues — bij een bestaand issue (open of gesloten) wordt nu commentaar toegevoegd, en een gesloten issue wordt automatisch heropend.
+
 ### Security
 - GitHubIssueReporter sanitiseert nu `ex.Message` en stacktraces vóór publicatie in GitHub Issues (#372): e-mailadressen, GUIDs, SQL-connectiestring-fragmenten en grote getallen worden vervangen door placeholders (`<email>`, `<guid>`, `<redacted>`, `<n>`). Voorheen kon PII uit exception-berichten ongesanitiseerd in publieke GitHub Issues terechtkomen.
 
