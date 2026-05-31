@@ -10,13 +10,16 @@ namespace SportlinkFunction.Planner
     {
         private static string ConnectionString => SystemUtilities.DatabaseConfig.ConnectionString;
 
-        public static async Task<Speeltijd?> GetSpeeltijdAsync(string leeftijdsCategorie)
+        public static async Task<Speeltijd?> GetSpeeltijdAsync(string leeftijdsCategorie, string? clubCode = null)
         {
+            // clubCode is optioneel voor backward compat; valt terug op AppSettings (#428)
+            var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(
-                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @cat", conn);
+                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @cat AND [ClubCode] = @cc", conn);
             cmd.Parameters.AddWithValue("@cat", leeftijdsCategorie);
+            cmd.Parameters.AddWithValue("@cc", cc);
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
@@ -357,20 +360,22 @@ namespace SportlinkFunction.Planner
         public static async Task<int> SavePlannedMatchAsync(
             DateOnly datum, TimeOnly aanvangsTijd, TimeOnly eindTijd, int veldNummer,
             decimal veldDeelGebruik, string? leeftijdsCategorie, string? teamNaam,
-            string? tegenstander, int wedstrijdDuurMinuten, string? aangevraagdDoor)
+            string? tegenstander, int wedstrijdDuurMinuten, string? aangevraagdDoor,
+            string? clubCode = null)
         {
+            var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(@"
                 INSERT INTO [planner].[GeplandeWedstrijden]
                     ([Datum], [AanvangsTijd], [EindTijd], [VeldNummer], [VeldDeelGebruik],
                      [LeeftijdsCategorie], [TeamNaam], [Tegenstander], [WedstrijdDuurMinuten],
-                     [Status], [AangevraagdDoor])
+                     [Status], [AangevraagdDoor], [ClubCode])
                 OUTPUT INSERTED.[Id]
                 VALUES
                     (@datum, @aanvang, @eind, @veld, @deel,
                      @cat, @team, @tegen, @duur,
-                     'Te bevestigen', @door)
+                     'Te bevestigen', @door, @cc)
             ", conn);
             cmd.Parameters.AddWithValue("@datum", datum.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@aanvang", aanvangsTijd.ToTimeSpan());
@@ -382,6 +387,7 @@ namespace SportlinkFunction.Planner
             cmd.Parameters.AddWithValue("@tegen", (object?)tegenstander ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@duur", wedstrijdDuurMinuten);
             cmd.Parameters.AddWithValue("@door", (object?)aangevraagdDoor ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@cc", cc);
 
             return (int)(await cmd.ExecuteScalarAsync())!;
         }

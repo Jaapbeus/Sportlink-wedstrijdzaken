@@ -46,6 +46,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `BerichtAiService` en `FeedbackFunction` gebruiken nu `IChatClient` (Microsoft.Extensions.AI) i.p.v. directe `OpenAI.Chat.ChatClient`. DI-registratie in `Program.cs`. README gecorrigeerd: OpenAI direct (gpt-4o-mini), niet Azure OpenAI. (#429)
 - `infrastructure/modules/function-app.bicep`: `authsettingsV2` resource toegevoegd — Easy Auth declaratief vastgelegd (AllowAnonymous + Entra ID single-tenant). Wordt overgeslagen als tenantId/clientId niet geconfigureerd zijn. (#418)
 - `infrastructure/main.bicep`: `tenantId` en `clientId` parameters toegevoegd, doorgegeven aan function-app module via GitHub Variables. (#418)
+- `planner.GeplandeWedstrijden`: `ClubCode NOT NULL` kolom toegevoegd aan schema + PostDeployment migratie (backfill → NOT NULL → unique constraint update). (#428)
+- `PlannerDataAccess.GetSpeeltijdAsync` + `SavePlannedMatchAsync`: clubCode parameter toegevoegd (optioneel, valt terug op AppSettings). `BevestigWedstrijd` endpoint geeft clubCode door. (#428)
+- `planner.AlleWedstrijdenOpVeld`: `SELECT TOP 1` subqueries vervangen door `CROSS APPLY` op AppSettings — robuuster bij meerdere AppSettings-rijen + ClubCode-filter op Speeltijden en Velden. (#428)
 
 ### Changed
 - `docs/DEVELOPER-SETUP.md`: volledig herschreven voor v2.7 — Visual Studio/F5-workflow vervangen door `Start-Debug.ps1` + `Test-App.ps1`, BlazorAdmin-setup toegevoegd (poort 5242, `dotnet watch`), .NET 9 runtime als vereiste gedocumenteerd, fingerprint-veiligheidsregel toegevoegd, oplossing-naam gecorrigeerd naar `sportlink-wedstrijdzaken.sln`. Sluit issue #394.

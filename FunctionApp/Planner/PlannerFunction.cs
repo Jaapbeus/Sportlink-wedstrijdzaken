@@ -101,9 +101,10 @@ namespace SportlinkFunction.Planner
 
                 int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
                 decimal veldFractie = 1.00m;
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
                 if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
                 {
-                    var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie);
+                    var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie, clubCode);
                     if (speeltijd != null)
                     {
                         duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
@@ -119,7 +120,7 @@ namespace SportlinkFunction.Planner
                 var id = await PlannerDataAccess.SavePlannedMatchAsync(
                     date, tijd, eindTijd, request.VeldNummer, veldFractie,
                     request.LeeftijdsCategorie, request.TeamNaam, request.Tegenstander,
-                    duurMinuten, request.AangevraagdDoor);
+                    duurMinuten, request.AangevraagdDoor, clubCode);
 
                 log.LogInformation("BevestigWedstrijd: saved with id={Id}", id);
 

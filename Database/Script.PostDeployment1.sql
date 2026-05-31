@@ -684,3 +684,34 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('his.matches') AND name = 'veld_subpositie')
     ALTER TABLE [his].[matches] ADD [veld_subpositie] NVARCHAR(5) NULL;
 GO
+
+-- ============================================================
+-- #428: ClubCode in planner.GeplandeWedstrijden + unique constraint
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'ClubCode')
+BEGIN
+    ALTER TABLE [planner].[GeplandeWedstrijden] ADD [ClubCode] NVARCHAR(20) NULL;
+    -- Backfill: koppel bestaande rijen aan de primaire club
+    UPDATE [planner].[GeplandeWedstrijden]
+    SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [Id])
+    WHERE [ClubCode] IS NULL;
+    -- NOT NULL na backfill
+    ALTER TABLE [planner].[GeplandeWedstrijden] ALTER COLUMN [ClubCode] NVARCHAR(20) NOT NULL;
+END
+GO
+
+-- Update unique constraint om ClubCode op te nemen (drop + recreate, idempotent)
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'UQ_GeplandeWedstrijden_Slot')
+AND NOT EXISTS (
+    SELECT 1 FROM sys.index_columns ic
+    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+    WHERE ic.object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND ic.index_id =
+        (SELECT index_id FROM sys.indexes WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'UQ_GeplandeWedstrijden_Slot')
+    AND c.name = 'ClubCode'
+)
+BEGIN
+    ALTER TABLE [planner].[GeplandeWedstrijden] DROP CONSTRAINT [UQ_GeplandeWedstrijden_Slot];
+    ALTER TABLE [planner].[GeplandeWedstrijden] ADD CONSTRAINT [UQ_GeplandeWedstrijden_Slot]
+        UNIQUE ([ClubCode], [Datum], [AanvangsTijd], [VeldNummer], [VeldDeelGebruik]);
+END
+GO
