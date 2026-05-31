@@ -161,6 +161,56 @@ public static class AdminTestDataFunction
         }
     }
 
+    // POST /api/beheer/testdata/wedstrijden/verplaats-datum
+    // Body: { "oudeDatum": "2026-05-30", "nieuweDatum": "2026-06-06" }
+    // Verplaatst alle ALLSTARS-wedstrijden van oudeDatum naar nieuweDatum.
+    [Function("TestDataVerplaatsDatum")]
+    public static async Task<IActionResult> VerplaatsDatum(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/testdata/wedstrijden/verplaats-datum")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("TestDataVerplaatsDatum");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var dto = JsonSerializer.Deserialize<VerplaatsDatumInput>(body, _json);
+            if (dto == null || string.IsNullOrWhiteSpace(dto.OudeDatum) || string.IsNullOrWhiteSpace(dto.NieuweDatum))
+                return new BadRequestObjectResult(new { error = "OudeDatum en NieuweDatum zijn verplicht" });
+
+            var nieuweKaledatum = $"{dto.NieuweDatum} 00:00:00.00";
+
+            await SystemUtilities.WaitForDatabaseAsync(log);
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(@"
+                UPDATE [his].[matches]
+                SET
+                    [datum]          = @NieuweDatum,
+                    [kaledatum]      = @NieuweKaledatum,
+                    [wedstrijddatum] = CASE
+                        WHEN [wedstrijddatum] IS NOT NULL AND LEN([wedstrijddatum]) >= 10
+                            THEN @NieuweDatum + SUBSTRING([wedstrijddatum], 11, LEN([wedstrijddatum]) - 10)
+                        ELSE @NieuweDatum
+                    END,
+                    [mta_modified]   = GETUTCDATE()
+                WHERE [ClubCode] = 'ALLSTARS'
+                  AND [datum] = @OudeDatum",
+                connection);
+            command.Parameters.AddWithValue("@OudeDatum",       dto.OudeDatum);
+            command.Parameters.AddWithValue("@NieuweDatum",     dto.NieuweDatum);
+            command.Parameters.AddWithValue("@NieuweKaledatum", nieuweKaledatum);
+            var count = await command.ExecuteNonQueryAsync();
+            return new OkObjectResult(new { ok = true, aantalVerplaatst = count });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij verplaatsen datum ALLSTARS wedstrijden");
+            return new ObjectResult(new { error = "Verplaatsen mislukt" }) { StatusCode = 500 };
+        }
+    }
+
     // DELETE /api/beheer/testdata/wedstrijden/{bk} — verwijder één wedstrijd
     [Function("TestDataWedstrijdDeleteEen")]
     public static async Task<IActionResult> DeleteEen(
@@ -236,5 +286,11 @@ public static class AdminTestDataFunction
         public string? VeldNaam        { get; set; }
         public string? VeldSubpositie  { get; set; }
         public string? Soort           { get; set; }
+    }
+
+    private sealed class VerplaatsDatumInput
+    {
+        public string? OudeDatum  { get; set; }
+        public string? NieuweDatum { get; set; }
     }
 }
