@@ -29,6 +29,12 @@ param sqlConnectionString string = ''
 @secure()
 param azureWebJobsStorage string = ''
 
+@description('Entra ID tenant ID voor Easy Auth (single-tenant) — via GitHub Variable AZURE_AD_TENANT_ID')
+param tenantId string = ''
+
+@description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID')
+param clientId string = ''
+
 // ── Bestaande resources ophalen ──────────────────────────────────────────────
 
 resource appServicePlan 'Microsoft.Web/serverFarms@2023-01-01' = {
@@ -101,6 +107,47 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
       ]
     }
     httpsOnly: true
+  }
+}
+
+// ── Easy Auth (authsettingsV2) ────────────────────────────────────────────────
+// AllowAnonymous: unauthenticated requests mogen door; EasyAuthHelper doet
+// endpoint-level role-checks. Niet Return401 — dat breekt health + timer endpoints.
+// tenantId/clientId zijn leeg als vars niet geconfigureerd zijn — resource wordt
+// dan overgeslagen (Bicep condition). (#418)
+
+resource functionAppAuthSettings 'Microsoft.Web/sites/config@2023-01-01' = if (!empty(tenantId) && !empty(clientId)) {
+  name: 'authsettingsV2'
+  parent: functionApp
+  properties: {
+    globalValidation: {
+      requireAuthentication: false
+      unauthenticatedClientAction: 'AllowAnonymous'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          clientId: clientId
+          openIdIssuer: 'https://sts.windows.net/${tenantId}/v2.0'
+        }
+        validation: {
+          allowedAudiences: [
+            'api://${clientId}'
+          ]
+        }
+        isAutoProvisioned: false
+      }
+    }
+    login: {
+      tokenStore: {
+        enabled: false
+      }
+    }
+    platform: {
+      enabled: true
+      runtimeVersion: '~1'
+    }
   }
 }
 
