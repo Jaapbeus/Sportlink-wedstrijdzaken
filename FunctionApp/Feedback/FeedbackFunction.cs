@@ -108,6 +108,17 @@ public static class FeedbackFunction
             var labels = KiesLabels(dto.Type);
             var title = Sanitize(structured.Title, 80);
 
+            // PII-gate: blokkeer publicatie als beschrijving of antwoorden persoonsgegevens bevatten. (#427)
+            var teChecken = dto.Beschrijving + " " + string.Join(" ",
+                dto.VragenAntwoorden?.Select(qa => qa.Antwoord ?? "") ?? []);
+            if (BevatPii(teChecken))
+            {
+                log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in submission");
+                return new ObjectResult(new {
+                    error = "Feedback bevat mogelijk persoonsgegevens. Verwijder e-mailadressen en telefoonnummers en probeer opnieuw."
+                }) { StatusCode = 422 };
+            }
+
             var (issueNummer, issueUrl) = await MaakGitHubIssueAsync(pat, owner, repo, title, issueBody, labels, log);
 
             return new OkObjectResult(new { issueNummer, issueUrl });
@@ -366,6 +377,20 @@ public static class FeedbackFunction
         foreach (var qa in qaList)
             sb.AppendLine($"- {Sanitize(qa.Vraag, 200)}: {Sanitize(qa.Antwoord, 500)}");
         return sb.ToString();
+    }
+
+    // PII-gate: detecteert e-mailadressen en Nederlandse telefoonnummers. (#427)
+    // Blokkeert publicatie naar GitHub als mogelijke persoonsgegevens aanwezig zijn.
+    private static bool BevatPii(string tekst)
+    {
+        if (string.IsNullOrWhiteSpace(tekst)) return false;
+        if (System.Text.RegularExpressions.Regex.IsMatch(tekst,
+            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"))
+            return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(tekst,
+            @"(\+31|0031|06)[\s\-]?\d{2}[\s\-]?\d{6,8}|0\d{1,2}[\s\-]\d{6,8}"))
+            return true;
+        return false;
     }
 
     private static string Sanitize(string? input, int maxLen)
