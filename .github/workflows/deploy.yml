@@ -62,7 +62,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -241,7 +241,7 @@ jobs:
 
       - name: .NET SDK installeren
         if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
