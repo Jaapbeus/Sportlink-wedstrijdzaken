@@ -9,8 +9,8 @@ Post-Deployment Script Template
                SELECT * FROM [$(TableName)]					
 --------------------------------------------------------------------------------------
 */
--- New setup needed for the first time
-IF (SELECT [ClubName] FROM [dbo].[AppSettings]) IS NULL
+-- New setup needed for the first time (#435: gebruik IF NOT EXISTS i.p.v. scalar subquery die faalt bij >1 rij)
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSettings])
 BEGIN
 	INSERT INTO [dbo].[AppSettings]
 		([ClubName]
@@ -139,7 +139,7 @@ GO
 IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
 BEGIN
     UPDATE [dbo].[AppSettings]
-    SET [PlannerAfzenderNaam] = 'VRC Veldplanner',
+    SET [PlannerAfzenderNaam] = 'Veldplanner',
         [CoordinatorFunctie] = N'Coördinator thuiswedstrijden'
     WHERE [PlannerAfzenderNaam] IS NULL
 END
@@ -314,6 +314,20 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TeamRe
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'ClubCode')
     ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+GO
+
+-- #435: verwijder VRC-default constraints — clubnaam heeft geen plek als DB-default
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Speeltijden_ClubCode')
+    ALTER TABLE [dbo].[Speeltijden] DROP CONSTRAINT [DF_Speeltijden_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamRegels_ClubCode')
+    ALTER TABLE [dbo].[TeamRegels] DROP CONSTRAINT [DF_TeamRegels_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_VeldBeschikbaarheid_ClubCode')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] DROP CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Velden_ClubCode')
+    ALTER TABLE [dbo].[Velden] DROP CONSTRAINT [DF_Velden_ClubCode];
 GO
 
 -- ============================================================
