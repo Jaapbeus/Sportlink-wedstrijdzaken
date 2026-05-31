@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- GitHubIssueReporter sanitiseert nu `ex.Message` en stacktraces vóór publicatie in GitHub Issues (#372): e-mailadressen, GUIDs, SQL-connectiestring-fragmenten en grote getallen worden vervangen door placeholders (`<email>`, `<guid>`, `<redacted>`, `<n>`). Voorheen kon PII uit exception-berichten ongesanitiseerd in publieke GitHub Issues terechtkomen.
+
 ### Fixed
 - Email-planner: "heel veld" uit email wordt nu correct doorgegeven aan de beschikbaarheidscheck. Voorheen werd voor teams als JO12 altijd de speeltijd-veldafmeting (0.50) gebruikt, ook als de afzender expliciet "heel veld" vroeg. Nu overschrijft het `heelVeld`-veld (gevuld door AI en doorgegeven via BerichtPipeline → CheckAvailabilityRequest) de veldafmeting naar 1.00m, en ontvangt de coördinator een waarschuwing dat dit team normaal op een halftijdsspeelveld speelt.
 - Auto-planner: voorkeurstijden zijn nu zachte richtlijnen in plaats van harde doelen. Compactheid heeft prioriteit — als de vroegst mogelijke start meer dan de teamspecifieke buffer vóór de voorkeurstijd ligt, wordt compact ingepland zodat er geen onnodig gat in het schema ontstaat. Teams met een expliciete BufferVoor-teamregel (bijv. Heren 1 met 60 min voor) behouden hun gerechtvaardigd gat.
