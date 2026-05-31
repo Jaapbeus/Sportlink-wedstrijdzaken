@@ -57,8 +57,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Start-Debug.ps1: runtimeconfig.json lock-fout bij dotnet watch herstart opgelost (#365).
 - Dagplanning UI: "Veld 5 ontlasten" hernoemd naar "Grasveld(en) ontlasten"; statistiek "Van veld 5 verplaatst" wordt nu "Van grasveld verplaatst".
 
-## [Unreleased]
-
 ## [2.6.0.1] — 2026-05-26
 
 ### Added
