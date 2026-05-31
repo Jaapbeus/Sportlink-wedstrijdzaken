@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.11.0.0] — 2026-05-31
+
+### Changed
+- Sportlink-sync refactored: `Function1.cs` is nu een dunne trigger-wrapper. Orchestratie-logica verplaatst naar `SportlinkSyncPipeline`; SQL-staging naar `SportlinkStagingRepository`. Gedeelde match-velden geëxtraheerd in helper-methode (minder duplicaat-code). (#466)
+
 ## [2.10.0.0] — 2026-05-31
 
 ### Changed
