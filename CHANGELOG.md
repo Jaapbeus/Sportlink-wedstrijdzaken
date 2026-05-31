@@ -31,6 +31,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `GitHubIssueReporter.SanitizeForPublic` redigeert nu ook URL query-parameters (`clientId`, `code`, `token`, `key`, `secret`). (#436)
 - `deploy.yml`: `cat appsettings.Production.json` verwijderd — tenant/client IDs verschijnen niet meer in workflow-logs. (#437)
 - 7 planner-endpoints gemigreerd van `AuthorizationLevel.Function` naar `Anonymous` + `EasyAuthHelper.RequireAdmin()`: CheckAvailability, DoordeweeksBeschikbaar, BevestigWedstrijd, ZoekWedstrijd, HerplanCheck, HerplanBevestig, GetTeamSchedule. (#433)
+- Bootstrap Icons gehost vanuit `lib/bootstrap-icons/` — externe CDN (cdn.jsdelivr.net) verwijderd uit index.html. (#434)
+- `staticwebapp.config.json`: Content-Security-Policy, Referrer-Policy, X-Content-Type-Options en Permissions-Policy toegevoegd als globale headers. Clickjacking geblokkeerd via `frame-ancestors 'none'`. (#434)
 
 ### Changed
 - `docs/DEVELOPER-SETUP.md`: volledig herschreven voor v2.7 — Visual Studio/F5-workflow vervangen door `Start-Debug.ps1` + `Test-App.ps1`, BlazorAdmin-setup toegevoegd (poort 5242, `dotnet watch`), .NET 9 runtime als vereiste gedocumenteerd, fingerprint-veiligheidsregel toegevoegd, oplossing-naam gecorrigeerd naar `sportlink-wedstrijdzaken.sln`. Sluit issue #394.
