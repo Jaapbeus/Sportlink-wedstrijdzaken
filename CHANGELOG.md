@@ -39,6 +39,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `.github/workflows/security-scan.yml`: Trivy blokkeert nu bij HIGH/CRITICAL findings (was: exit-code 0). Dependency-scan opgenomen in security-gate. (#431)
 - `Database`: `DEFAULT 'VRC'` verwijderd uit `Speeltijden`, `VeldBeschikbaarheid`, `TeamRegels`; DROP CONSTRAINT-migraties toegevoegd voor bestaande installaties. PostDeployment scalar subquery gefixet. `PlannerAfzenderNaam` default `VRC Veldplanner` → `Veldplanner`. (#435)
 
+### Fixed
+- `EmailGraphService.SendReplyAsync` slikt verzendfouten niet meer stilzwijgend weg — exception wordt opnieuw gegooid zodat de aanroeper de status correct kan bijwerken. (#432)
+- `VerwerkEmailAsync`: status `AntwoordVerstuurd` en `MarkAsRead` worden pas bijgewerkt na bevestigde Graph-send. Bij mislukking: `VerzendFout`, mail blijft ongelezen voor herverwerking. (#432)
+
 ### Changed
 - `docs/DEVELOPER-SETUP.md`: volledig herschreven voor v2.7 — Visual Studio/F5-workflow vervangen door `Start-Debug.ps1` + `Test-App.ps1`, BlazorAdmin-setup toegevoegd (poort 5242, `dotnet watch`), .NET 9 runtime als vereiste gedocumenteerd, fingerprint-veiligheidsregel toegevoegd, oplossing-naam gecorrigeerd naar `sportlink-wedstrijdzaken.sln`. Sluit issue #394.
 - `docs/SETUP-CHECKLIST.md`: herschreven voor v2.7 — verwijzingen naar niet-bestaande scripts en Visual Studio verwijderd; `Start-Debug.ps1`, `Test-App.ps1` en .NET 9 runtime-eis toegevoegd. Sluit issue #394.
