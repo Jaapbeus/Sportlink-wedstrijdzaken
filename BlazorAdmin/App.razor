@@ -1,7 +1,9 @@
 @using BlazorAdmin.Pages
+@using BlazorAdmin.Services
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavManager
-@inject BlazorAdmin.Services.ThemeService ThemeService
+@inject ThemeService ThemeService
+@inject DatabaseStatusService DbStatusService
 @implements IDisposable
 
 @*
@@ -34,13 +36,43 @@
     }
     else if (_state == AppState.Authenticated)
     {
-        @* Ingelogd MET admin- of user-rol: volledige app met MainLayout. *@
-        <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-            <Found Context="routeData">
-                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-            </Found>
-        </Router>
+        @* DB-overlay: blokkeert de volledige app als de Azure SQL Free-tier database
+           niet online is. Overlay verdwijnt zodra DB hersteld is (polling elke 15s). *@
+        @if (DbStatusService.State == DbState.Starting || DbStatusService.State == DbState.LimietBereikt)
+        {
+            <div class="api-startup">
+                <div class="startup-card">
+                    @if (DbStatusService.State == DbState.Starting)
+                    {
+                        <div class="startup-spinner"><div class="spinner-ring"></div></div>
+                        <p class="startup-label">Database wordt opgestart&hellip;</p>
+                        <p class="startup-sub">Dit duurt gemiddeld 1&nbsp;minuut. Even geduld.</p>
+                    }
+                    else
+                    {
+                        <p class="startup-icon">&#9888;&#65039;</p>
+                        <p class="startup-label startup-label-error">Database niet beschikbaar</p>
+                        <p class="startup-sub">
+                            De maandlimiet van de gratis database is bereikt.<br />
+                            De database is automatisch hervat aan het begin van de volgende maand.
+                        </p>
+                        <p class="startup-sub startup-sub-muted">
+                            Neem contact op met de beheerder als dit onverwacht is.
+                        </p>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            @* Ingelogd MET admin- of user-rol: volledige app met MainLayout. *@
+            <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+                <Found Context="routeData">
+                    <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                    <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+                </Found>
+            </Router>
+        }
     }
     else if (_state == AppState.AccessDenied)
     {
@@ -53,6 +85,7 @@
 
 @code {
     private AppState _state = AppState.Initializing;
+    private bool _dbPollingStarted;
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,7 +123,18 @@
         StateHasChanged();
 
         if (_state == AppState.Authenticated)
+        {
             await ThemeService.LoadAndApplyAsync();
+
+            // Start DB-polling eenmalig na succesvolle authenticatie.
+            // Overlay in de Authenticated-branch bewaakt de database-status.
+            if (!_dbPollingStarted)
+            {
+                _dbPollingStarted = true;
+                DbStatusService.OnStateChanged += HandleDbStateChanged;
+                DbStatusService.StartPolling();
+            }
+        }
     }
 
     private void HandleLocationChange(object? sender, LocationChangedEventArgs e)
@@ -98,9 +142,12 @@
         InvokeAsync(EvaluateStateAsync);
     }
 
+    private void HandleDbStateChanged() => InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
         NavManager.LocationChanged -= HandleLocationChange;
+        DbStatusService.OnStateChanged -= HandleDbStateChanged;
     }
 
     private enum AppState { Initializing, OnAuthRoute, Authenticated, AccessDenied, RedirectingToLogin }

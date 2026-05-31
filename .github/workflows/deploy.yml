@@ -11,8 +11,46 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # db-check: controleert de Azure SQL Free-tier database-status VÓÓR alles.
+  # Als de DB niet Online is wordt de volledige pipeline geblokkeerd:
+  #   build → db-migrate, blazor-deploy en test worden allemaal overgeslagen.
+  # Vereist variabele AZURE_SQL_DATABASE_NAME (naast de al bestaande server/rg-vars).
+  # Wordt overgeslagen als AZURE_SQL_SERVER_NAME of AZURE_SQL_DATABASE_NAME niet
+  # geconfigureerd is (fork / nieuw project zonder SQL-vars) — dan loopt build gewoon door.
+  # ──────────────────────────────────────────────────────────────────────────
+  db-check:
+    runs-on: ubuntu-latest
+    if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
+    steps:
+      - name: Azure inloggen
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "⛔ Database status controleren (ARM API — vóór migratie en deploy)"
+        run: |
+          STATUS=$(az sql db show \
+            --name "${{ vars.AZURE_SQL_DATABASE_NAME }}" \
+            --resource-group "${{ vars.AZURE_SQL_RESOURCE_GROUP }}" \
+            --server "${{ vars.AZURE_SQL_SERVER_NAME }}" \
+            --query 'status' --output tsv 2>/dev/null || echo "unknown")
+          echo "Database status: $STATUS"
+          if [ "$STATUS" != "Online" ]; then
+            echo "::error::⛔ Database is '$STATUS' — volledige deployment geblokkeerd."
+            echo "::error::Breng de database online vóór deployment:"
+            echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
+            echo "::error::Of wacht tot de maandlimiet vernieuwd is (begin volgende kalendermaand)."
+            exit 1
+          fi
+          echo "✓ Database Online — deployment mag doorgaan"
+
   build:
     runs-on: ubuntu-latest
+    # Wacht op db-check. Als db-check FAILED → build wordt overgeslagen (en alles daarna ook).
+    # Als db-check SKIPPED (vars niet ingesteld) → build loopt gewoon door (backward compatible).
+    needs: db-check
+    if: always() && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
