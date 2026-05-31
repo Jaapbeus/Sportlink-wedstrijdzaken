@@ -10,11 +10,12 @@ namespace SportlinkFunction.Email;
 
 public class EmailProcessorFunction
 {
-    private static bool _databaseNoodmailVerstuurd;
+    // volatile voor thread-safe reads vanuit meerdere invocaties (#382)
+    private static volatile bool _databaseNoodmailVerstuurd;
+    private static volatile bool _uitgeslotenCacheGeladen;
     private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
     // Uitsluitingslijst-cache: geladen vóór eerste AI-classificatie (fail-closed bij cold start). (#423)
     private static HashSet<string> _uitgeslotenCache = new(StringComparer.OrdinalIgnoreCase);
-    private static bool _uitgeslotenCacheGeladen;
 
     [Function("ProcessIncomingEmails")]
     public async Task Run(

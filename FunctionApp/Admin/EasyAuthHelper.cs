@@ -15,10 +15,10 @@ internal static class EasyAuthHelper
     private static readonly JsonSerializerOptions _opts = new(JsonSerializerDefaults.Web);
 
     /// <summary>
-    /// Controleert of de aanroeper geauthenticeerd is en de 'admin' rol heeft.
+    /// Controleert of de aanroeper de opgegeven rol(len) heeft.
     /// Returns null als OK, anders een 401/403 result.
     /// </summary>
-    public static IActionResult? RequireAdmin(HttpRequest req)
+    public static IActionResult? RequireRole(HttpRequest req, params string[] allowedRoles)
     {
         // Lokale ontwikkeling: geen Easy Auth — altijd toestaan
         var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
@@ -36,13 +36,13 @@ internal static class EasyAuthHelper
             if (principal?.Claims == null)
                 return new UnauthorizedResult();
 
-            var hasAdmin = principal.Claims.Any(c =>
+            var hasRole = principal.Claims.Any(c =>
                 string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(c.Val, "admin", StringComparison.OrdinalIgnoreCase));
+                allowedRoles.Any(r => string.Equals(c.Val, r, StringComparison.OrdinalIgnoreCase)));
 
-            return hasAdmin
+            return hasRole
                 ? null
-                : new ObjectResult(new { error = "Forbidden: admin role required" }) { StatusCode = 403 };
+                : new ObjectResult(new { error = $"Forbidden: vereiste rol ontbreekt" }) { StatusCode = 403 };
         }
         catch
         {
@@ -50,32 +50,13 @@ internal static class EasyAuthHelper
         }
     }
 
-    /// <summary>
-    /// Controleert of de aanroeper geauthenticeerd is en de 'admin' of 'user' rol heeft.
-    /// Returns null als OK, anders een 401/403 result.
-    /// </summary>
+    /// <summary>Controleert 'admin' rol. Delegeert naar RequireRole.</summary>
+    public static IActionResult? RequireAdmin(HttpRequest req)
+        => RequireRole(req, "admin");
+
+    /// <summary>Controleert 'admin' of 'user' rol. Delegeert naar RequireRole.</summary>
     public static IActionResult? RequireAuthenticated(HttpRequest req)
-    {
-        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-        if (string.IsNullOrEmpty(siteName))
-            return null;
-
-        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
-            string.IsNullOrEmpty(encoded))
-            return new UnauthorizedResult();
-
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
-            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
-            var hasRole = principal?.Claims?.Any(c =>
-                string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
-                (string.Equals(c.Val, "admin", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(c.Val, "user", StringComparison.OrdinalIgnoreCase))) ?? false;
-            return hasRole ? null : new ObjectResult(new { error = "Forbidden" }) { StatusCode = 403 };
-        }
-        catch { return new UnauthorizedResult(); }
-    }
+        => RequireRole(req, "admin", "user");
 
     /// <summary>
     /// Haalt de weergavenaam van de aanroeper op uit de Entra ID claims.
