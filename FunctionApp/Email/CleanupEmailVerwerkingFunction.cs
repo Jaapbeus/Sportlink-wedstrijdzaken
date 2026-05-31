@@ -12,7 +12,7 @@ public static class CleanupEmailVerwerkingFunction
         FunctionContext context)
     {
         var log = context.GetLogger("CleanupEmailVerwerking");
-        log.LogInformation("AVG-cleanup gestart: planner.EmailVerwerking (30d anonimiseren, 90d verwijderen)");
+        log.LogInformation("AVG-cleanup gestart: ClassificatieCorrectie + EmailVerwerking");
 
         try
         {
@@ -22,16 +22,28 @@ public static class CleanupEmailVerwerkingFunction
             await using var conn = new SqlConnection(connStr);
             await conn.OpenAsync();
 
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "EXEC [planner].[sp_CleanupEmailVerwerking]";
-            cmd.CommandTimeout = 120;
-            await cmd.ExecuteNonQueryAsync();
+            // Volgorde is kritiek: ClassificatieCorrectie heeft FK naar EmailVerwerking.
+            // ClassificatieCorrectie eerst opruimen zodat de DELETE op EmailVerwerking niet
+            // faalt door een referentie-constraint. (#424)
+            await using (var cmd1 = conn.CreateCommand())
+            {
+                cmd1.CommandText = "EXEC [planner].[sp_CleanupClassificatieCorrectie]";
+                cmd1.CommandTimeout = 120;
+                await cmd1.ExecuteNonQueryAsync();
+                log.LogInformation("AVG-cleanup ClassificatieCorrectie geslaagd");
+            }
 
-            log.LogInformation("AVG-cleanup EmailVerwerking geslaagd");
+            await using (var cmd2 = conn.CreateCommand())
+            {
+                cmd2.CommandText = "EXEC [planner].[sp_CleanupEmailVerwerking]";
+                cmd2.CommandTimeout = 120;
+                await cmd2.ExecuteNonQueryAsync();
+                log.LogInformation("AVG-cleanup EmailVerwerking geslaagd");
+            }
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "AVG-cleanup EmailVerwerking mislukt");
+            log.LogError(ex, "AVG-cleanup EmailVerwerking/ClassificatieCorrectie mislukt");
             throw;
         }
     }
