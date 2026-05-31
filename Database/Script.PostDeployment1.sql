@@ -661,3 +661,12 @@ BEGIN
     );
 END
 GO
+
+-- ============================================================
+-- #365: veld_subpositie — ALLSTARS testdata veldsplitsing
+-- Slaat het velddeel op (A, B, A1, A2, B1, B2) zodat de planner
+-- deelvelden correct visualiseert voor leeftijden met Veldafmeting < 1.00
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('his.matches') AND name = 'veld_subpositie')
+    ALTER TABLE [his].[matches] ADD [veld_subpositie] NVARCHAR(5) NULL;
+GO

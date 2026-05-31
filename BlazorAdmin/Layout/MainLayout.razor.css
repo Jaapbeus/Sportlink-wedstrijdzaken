@@ -37,6 +37,26 @@ main {
         text-overflow: ellipsis;
     }
 
+.backend-status-banner {
+    padding: 0.65rem 1.25rem;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    border-bottom: 2px solid transparent;
+}
+
+.banner-warning {
+    background-color: #fff3cd;
+    color: #664d03;
+    border-bottom-color: #ffc107;
+}
+
+.banner-error {
+    background-color: #f8d7da;
+    color: #58151c;
+    border-bottom-color: #dc3545;
+}
+
 .club-selector {
     min-width: 130px;
     max-width: 200px;

@@ -101,7 +101,7 @@ namespace SportlinkFunction.Planner
             var results = new List<VeldBeschikbaarheidInfo>();
             // DayOfWeek: .NET Maandag=1 komt overeen met onze DB-conventie (1=Maandag...7=Zondag)
             int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
-            clubCode ??= SystemUtilities.AppSettings.GetPrimaryClubCode();
+            clubCode ??= SystemUtilities.AppSettings.GetSetting("clubCode") ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
 
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
@@ -131,7 +131,7 @@ namespace SportlinkFunction.Planner
 
         public static async Task<List<VeldInfo>> GetVeldenAsync(string? clubCode = null)
         {
-            clubCode ??= SystemUtilities.AppSettings.GetPrimaryClubCode();
+            clubCode ??= SystemUtilities.AppSettings.GetSetting("clubCode") ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
             var results = new List<VeldInfo>();
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();

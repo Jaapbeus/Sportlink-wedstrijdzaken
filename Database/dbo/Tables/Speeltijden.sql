@@ -5,5 +5,5 @@ CREATE TABLE [dbo].[Speeltijden] (
     [WedstrijdHelft]  INT          NOT NULL,
     [WedstrijdRust]   INT          NOT NULL,
     [ClubCode]        NVARCHAR(20)  NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'VRC', -- migratie-backwards-compat; inserts geven altijd expliciet ClubCode mee
-    CONSTRAINT [PK_Speeltijden] PRIMARY KEY CLUSTERED ([Leeftijd] ASC)
+    CONSTRAINT [PK_Speeltijden] PRIMARY KEY CLUSTERED ([Leeftijd] ASC, [ClubCode] ASC)
 ) ON [PRIMARY]
