@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -161,9 +160,13 @@ public static class AdminThemeFunction
             (parsedUri.Scheme != "http" && parsedUri.Scheme != "https"))
             return new BadRequestObjectResult(new { error = "Ongeldige URL. Alleen http/https toegestaan." });
 
-        // SSRF-bescherming: blokkeer privé-IPs en interne adressen
-        if (await IsPrivateOrReservedAsync(parsedUri.Host))
-            return new BadRequestObjectResult(new { error = "Privé-IP's en interne adressen zijn niet toegestaan." });
+        // SSRF-bescherming via allowlist: alleen ThemeClubWebsiteUrl uit AppSettings is toegestaan.
+        // Elimineert TOCTOU/DNS-rebinding volledig — geen DNS-lookup nodig. (#422)
+        await SystemUtilities.WaitForDatabaseAsync(log);
+        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+        var toegestaneHost = await GetToegestaneWebsiteHostAsync(clubCode);
+        if (toegestaneHost == null || !parsedUri.Host.Equals(toegestaneHost, StringComparison.OrdinalIgnoreCase))
+            return new BadRequestObjectResult(new { error = "URL-domein is niet toegestaan. Stel eerst de club-website in via het thema-scherm." });
 
         try
         {
@@ -182,37 +185,26 @@ public static class AdminThemeFunction
         }
     }
 
-    private static async Task<bool> IsPrivateOrReservedAsync(string host)
+    // Leest ThemeClubWebsiteUrl uit DB en geeft de hostnaam terug voor de SSRF-allowlist.
+    // Retourneert null als de instelling leeg is of DB niet beschikbaar is → extract geblokkeerd.
+    private static async Task<string?> GetToegestaneWebsiteHostAsync(string clubCode)
     {
         try
         {
-            var addresses = await Dns.GetHostAddressesAsync(host);
-            return addresses.Any(IsPrivateOrReserved);
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            using var cmd = new SqlCommand(
+                "SELECT [ThemeClubWebsiteUrl] FROM [dbo].[AppSettings] WHERE [ClubCode] = @cc", connection);
+            cmd.Parameters.AddWithValue("@cc", clubCode);
+            var result = await cmd.ExecuteScalarAsync();
+            var websiteUrl = result as string;
+            if (string.IsNullOrWhiteSpace(websiteUrl)) return null;
+            return Uri.TryCreate(websiteUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
         }
         catch
         {
-            return true; // DNS-fout → blokkeer
+            return null; // DB-fout of lege instelling → blokkeer
         }
-    }
-
-    private static bool IsPrivateOrReserved(IPAddress addr)
-    {
-        var bytes = addr.GetAddressBytes();
-        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-        {
-            if (bytes[0] == 127) return true;                               // 127.0.0.0/8 loopback
-            if (bytes[0] == 10) return true;                                // 10.0.0.0/8 RFC1918
-            if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true; // 172.16.0.0/12 RFC1918
-            if (bytes[0] == 192 && bytes[1] == 168) return true;           // 192.168.0.0/16 RFC1918
-            if (bytes[0] == 169 && bytes[1] == 254) return true;           // 169.254.0.0/16 link-local
-        }
-        else if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
-        {
-            if (addr.Equals(IPAddress.IPv6Loopback)) return true;           // ::1
-            if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return true; // fe80::/10 link-local
-            if ((bytes[0] & 0xfe) == 0xfc) return true;                    // fc00::/7 unique local
-        }
-        return false;
     }
 
     private static readonly HashSet<string> _skipColors =
