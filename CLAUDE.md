@@ -598,6 +598,12 @@ Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlo
 
 **Reden:** Zomertijdwissel (CEST↔CET, ±1u) maakt fouten pas bij 2% van het jaar zichtbaar. GETUTCDATE() voorkomt dat seizoensgebonden bugs pas 6 maanden later opduiken.
 
+### Tijdinvoer-normalisering — altijd via TimeHelper + TimeInput
+
+Alle invoervelden voor tijden in Blazor gebruiken het `<TimeInput>`-component (`BlazorAdmin/Shared/TimeInput.razor`). Dit component roept `TimeHelper.Normalize()` aan (`BlazorAdmin/Services/TimeHelper.cs`) en accepteert invoer als "830", "0830", "8:30" — allemaal omgezet naar "HH:mm".
+
+**Regel:** Nooit een `<input type="time">` of bare `<input @bind="...Tijd">` voor tijdinvoer. Altijd `<TimeInput @bind-Value="..." />`. Nieuwe tijdinvoervelden die dit niet volgen zijn een architectuurschending.
+
 ### GUI en code altijd synchroon
 
 - Als er een placeholder, template-key, enum-waarde of regeltype wordt toegevoegd aan de **code of database**, dan wordt de **GUI** in dezelfde commit bijgewerkt.

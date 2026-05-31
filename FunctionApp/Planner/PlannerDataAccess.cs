@@ -316,6 +316,31 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
+        public static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync()
+        {
+            var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT [TeamNaam], [RegelType], [WaardeMinuten]
+                FROM [dbo].[TeamRegels]
+                WHERE [RegelType] IN ('BufferVoor', 'BufferNa') AND [Actief] = 1 AND [WaardeMinuten] IS NOT NULL
+            ", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var team = reader.GetString(0);
+                var type = reader.GetString(1);
+                var minuten = reader.GetInt32(2);
+                if (!result.ContainsKey(team)) result[team] = (0, 0);
+                var cur = result[team];
+                result[team] = type == "BufferVoor"
+                    ? (Math.Max(cur.bufferVoor, minuten), cur.bufferNa)
+                    : (cur.bufferVoor, Math.Max(cur.bufferNa, minuten));
+            }
+            return result;
+        }
+
         public static async Task<TimeOnly?> GetSunsetAsync(DateOnly date)
         {
             using var conn = new SqlConnection(ConnectionString);
@@ -817,6 +842,143 @@ namespace SportlinkFunction.Planner
             if (lower.Contains("oefen")) return "oefenwedstrijd";
             if (lower.Contains("beker")) return "beker";
             return "competitie";
+        }
+
+        // ── Auto-plan data access (#380) ──
+
+        /// <summary>
+        /// Laadt voorkeurstijden als lookup: TeamNaam → gesorteerde lijst van (Tijd, Prioriteit).
+        /// Lagere Prioriteit-waarde = hogere voorkeur (1=hoogst). Filtert op dag + clubCode + Actief=1.
+        /// DagVanWeek: 1=Maandag … 6=Zaterdag, 7=Zondag.
+        /// </summary>
+        public static async Task<Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>>> GetVoorkeurTijdenLookupAsync(int dagVanWeek, string clubCode)
+        {
+            var result = new Dictionary<string, List<(TimeOnly, int)>>(StringComparer.OrdinalIgnoreCase);
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT [TeamNaam], [VoorkeurTijd], [Prioriteit]
+                FROM [dbo].[TeamVoorkeurTijden]
+                WHERE [DagVanWeek] = @dag AND [Actief] = 1 AND [ClubCode] = @clubCode
+                ORDER BY [TeamNaam], [Prioriteit]
+            ", conn);
+            cmd.Parameters.AddWithValue("@dag", dagVanWeek);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var team = reader.GetString(0);
+                var tijd = TimeOnly.FromTimeSpan(reader.GetTimeSpan(1));
+                var prio = reader.GetInt32(2);
+                if (!result.ContainsKey(team))
+                    result[team] = new List<(TimeOnly, int)>();
+                result[team].Add((tijd, prio));
+            }
+            return result;
+        }
+
+        // ALLSTARS testmodus: velden met VeldNummer >= 100 (testmodus-velden)
+        public static async Task<List<VeldInfo>> GetAllstarsVeldenAsync()
+        {
+            var results = new List<VeldInfo>();
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(
+                "SELECT [VeldNummer], [VeldNaam], ISNULL([VeldType], 'kunstgras') AS [VeldType], [HeeftKunstlicht] FROM [dbo].[Velden] WHERE [Actief] = 1 AND [VeldNummer] >= 100 ORDER BY [VeldNummer]", conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results.Add(new VeldInfo
+                {
+                    VeldNummer = reader.GetInt32(0),
+                    VeldNaam = reader.GetString(1),
+                    VeldType = reader.GetString(2),
+                    HeeftKunstlicht = reader.GetBoolean(3)
+                });
+            }
+            return results;
+        }
+
+        /// <summary>
+        /// Haalt ALLE wedstrijden voor een datum op, inclusief die zonder veld of aanvangstijd.
+        /// Voor ALLSTARS: filtert op ClubCode='ALLSTARS'.
+        /// Voor echte clubs: filtert op eigen accommodatie uit dbo.AppSettings.
+        /// </summary>
+        public static async Task<List<WedstrijdRaw>> GetAllMatchesForDatumAsync(DateOnly datum, string clubCode)
+        {
+            bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+            var results = new List<WedstrijdRaw>();
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+
+            string sql = isAllstars
+                ? @"
+                    SELECT m.[wedstrijdcode],
+                           COALESCE(NULLIF(m.[wedstrijd], ''),
+                                    COALESCE(m.[teamnaam], '') + ' - ' + COALESCE(m.[uitteam], '')) AS wedstrijd,
+                           m.[teamnaam], m.[uitteam],
+                           m.[aanvangstijd], m.[veld], m.[competitiesoort],
+                           NULL AS leeftijdscategorie
+                    FROM [his].[matches] m
+                    WHERE CAST(m.[kaledatum] AS DATE) = @date
+                      AND m.[ClubCode] = 'ALLSTARS'
+                      AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
+                    ORDER BY m.[teamnaam]"
+                : @"
+                    SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
+                           m.[aanvangstijd], m.[veld], m.[competitiesoort],
+                           REPLACE(REPLACE(REPLACE(ISNULL(t.[leeftijdscategorie], ''), 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AS leeftijdscategorie
+                    FROM [his].[matches] m
+                    LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[ClubCode] = m.[ClubCode]
+                    WHERE CAST(m.[kaledatum] AS DATE) = @date
+                      AND m.[ClubCode] = @clubCode
+                      AND m.[status] <> 'Afgelast'
+                      AND m.[accommodatie] LIKE '%' + (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = @clubCode) + '%'
+                    ORDER BY m.[teamvolgorde], m.[teamnaam]";
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@date", datum.ToDateTime(TimeOnly.MinValue));
+            if (!isAllstars) cmd.Parameters.AddWithValue("@clubCode", clubCode);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results.Add(new WedstrijdRaw
+                {
+                    WedstrijdCode = reader.IsDBNull(0) ? null : reader.GetInt64(0),
+                    Wedstrijd = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    TeamNaam = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    Uitteam = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    AanvangsTijd = reader.IsDBNull(4) ? null : reader.GetString(4)?.Trim(),
+                    Veld = reader.IsDBNull(5) ? null : reader.GetString(5)?.Trim(),
+                    Competitiesoort = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    LeeftijdsCategorie = reader.IsDBNull(7) ? null :
+                        (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7))
+                });
+            }
+            return results;
+        }
+
+        /// <summary>
+        /// Past aanvangstijd en veld aan in his.matches voor ALLSTARS testdata.
+        /// Alleen toegestaan voor ClubCode='ALLSTARS' — productiedata kan niet via de API worden gewijzigd.
+        /// </summary>
+        public static async Task<int> UpdateAllstarsMatchAsync(long wedstrijdCode, string nieuweVeld, string nieuweTijd)
+        {
+            using var conn = new SqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                UPDATE [his].[matches]
+                SET [aanvangstijd] = @tijd,
+                    [veld] = @veld,
+                    [mta_modified] = GETUTCDATE()
+                WHERE [wedstrijdcode] = @code
+                  AND [ClubCode] = 'ALLSTARS'
+            ", conn);
+            cmd.Parameters.AddWithValue("@tijd", nieuweTijd);
+            cmd.Parameters.AddWithValue("@veld", nieuweVeld);
+            cmd.Parameters.AddWithValue("@code", wedstrijdCode);
+            return await cmd.ExecuteNonQueryAsync();
         }
 
         /// <summary>

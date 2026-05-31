@@ -135,6 +135,14 @@ public class AdminApiClient
         catch (Exception ex) { return ApiResult<string>.Fail(ex.Message); }
     }
 
+    // ── Auto-plan (#380) ──
+
+    public async Task<ApiResult<AutoPlanResponseDto>> AutoPlanAsync(AutoPlanRequestDto req)
+        => await PostAsync<AutoPlanResponseDto>("api/planner/auto-plan", req);
+
+    public async Task<ApiResult<AutoPlanToepassenResponseDto>> AutoPlanToepassenAsync(AutoPlanToepassenRequestDto req)
+        => await PostAsync<AutoPlanToepassenResponseDto>("api/planner/auto-plan/toepassen", req);
+
     // ── Teambegeleiding ──
 
     public async Task<ApiResult<List<string>>> GetTeambegeleidingTeamsAsync()

@@ -92,7 +92,9 @@ else
                 </div>
                 <div class="col-md-2 mb-3">
                     <label class="form-label">Tijd (HH:mm)</label>
-                    <input class="form-control" @bind="editing.VoorkeurTijd" placeholder="14:30" />
+                    <TimeInput Value="@editing.VoorkeurTijd"
+                               ValueChanged="@(v => editing.VoorkeurTijd = v ?? string.Empty)"
+                               Placeholder="14:30" />
                 </div>
                 <div class="col-md-2 mb-3">
                     <label class="form-label">Prioriteit</label>
@@ -214,7 +216,7 @@ else
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Aanvangstijd (optioneel, HH:mm)</label>
-                        <input class="form-control" @bind="editingRegel.WaardeTijd" placeholder="bijv. 12:00" />
+                        <TimeInput @bind-Value="editingRegel.WaardeTijd" Placeholder="bijv. 12:00" />
                         <small class="form-text text-muted">Laat leeg als er geen vaste tijd is</small>
                     </div>
                 </div>

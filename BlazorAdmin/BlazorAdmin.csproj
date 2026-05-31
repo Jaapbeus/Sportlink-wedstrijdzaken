@@ -5,9 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <Version>2.6.1.0</Version>
-    <AssemblyVersion>2.6.1.0</AssemblyVersion>
-    <FileVersion>2.6.1.0</FileVersion>
+    <Version>2.6.1.7</Version>
+    <AssemblyVersion>2.6.1.7</AssemblyVersion>
+    <FileVersion>2.6.1.7</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.

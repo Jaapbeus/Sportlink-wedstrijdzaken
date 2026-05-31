@@ -230,6 +230,66 @@ public class VeldCapaciteitDto
     public int AantalLegeVelden { get; set; }
 }
 
+// ── Auto-plan (#380) ──
+
+public class AutoPlanRequestDto
+{
+    public string Datum { get; set; } = "";
+    public int? BufferMinuten { get; set; }
+}
+
+public class AutoPlanWedstrijdItemDto
+{
+    public long? WedstrijdCode { get; set; }
+    public string Wedstrijd { get; set; } = "";
+    public string TeamNaam { get; set; } = "";
+    public string? LeeftijdsCategorie { get; set; }
+    public string? Competitiesoort { get; set; }
+    public int DuurMinuten { get; set; }
+    public decimal Veldafmeting { get; set; }
+    public string? HuidigeVeld { get; set; }
+    public string? HuidigeTijd { get; set; }
+    public bool HeeftVeld { get; set; }
+    public bool HeeftTijd { get; set; }
+    public int? OptimaalVeldNummer { get; set; }
+    public string? OptimaalVeldNaam { get; set; }
+    public string? OptimaalVeld { get; set; }
+    public string? OptimaalTijd { get; set; }
+    // "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
+    public string Status { get; set; } = "ongewijzigd";
+    public string? NietInplanbaaarReden { get; set; }
+    // Voorkeurstijd (null = geen voorkeur geconfigureerd voor dit team)
+    public string? VoorkeurTijd { get; set; }
+    public int? VoorkeurAfwijkingMinuten { get; set; }
+}
+
+public class AutoPlanResponseDto
+{
+    public string Datum { get; set; } = "";
+    public int TotaalWedstrijden { get; set; }
+    public int ZonderVeld { get; set; }
+    public int ZonderTijd { get; set; }
+    public int TeWijzigen { get; set; }
+    public int NietInplanbaar { get; set; }
+    public string? GeschatteEindTijd { get; set; }
+    public List<AutoPlanWedstrijdItemDto> Wedstrijden { get; set; } = new();
+    public string HuidigeHtml { get; set; } = "";
+    public string OptimaleHtml { get; set; } = "";
+}
+
+public class AutoPlanToepassenRequestDto
+{
+    public string Datum { get; set; } = "";
+    public int? BufferMinuten { get; set; }
+}
+
+public class AutoPlanToepassenResponseDto
+{
+    public int Bijgewerkt { get; set; }
+    public int Mislukt { get; set; }
+    public List<string> Fouten { get; set; } = new();
+}
+
 // ── Leermomenten (#323) ──
 
 public class LeermomentDto

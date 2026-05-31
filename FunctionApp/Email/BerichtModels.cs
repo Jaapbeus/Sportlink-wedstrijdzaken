@@ -32,6 +32,8 @@ public class BerichtClassificatie
     public NamensWie NamensWie { get; set; }
     // Gevuld door AI als het verzoek mogelijk een KNVB-regel overtreedt (#73)
     public string? KnvbNotitie { get; set; }
+    // Heel veld gevraagd — overschrijft de standaard veldafmeting uit Speeltijden
+    public bool? HeelVeld { get; set; }
 
     /// <summary>
     /// Retourneert alle unieke datums: Datums als die er zijn, anders alleen Datum.
