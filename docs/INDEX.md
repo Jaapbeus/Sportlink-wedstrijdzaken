@@ -9,6 +9,7 @@ Alle documentatie staat in deze map (`docs/`). Gebruik de categorieën hieronder
 | Document | Inhoud |
 |---|---|
 | [Admin handleiding v2](v2-admin-handleiding.md) | Stap-voor-stap handleiding voor de Admin GUI: instellingen, templates, veldplanner, e-maillog |
+| [Testmodus — ALLSTARS fictieve wedstrijden](TESTMODUS-ALLSTARS.md) | Hoe de ALLSTARS-testmodus werkt: activeren, fictieve wedstrijden invoeren, planner testen zonder echte data |
 | [Handleiding teambegeleiding export](HANDLEIDING-TEAMBEGELEIDING-EXPORT.md) | AVG-veilig exporteren van teambegeleidersgegevens uit Sportlink naar SQL |
 | [KNVB speeldagenkalenders](knvb-speeldagenkalenders/README.md) | Importeren van KNVB-speeldagenkalenders |
 

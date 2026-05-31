@@ -70,7 +70,7 @@ if (builder.HostEnvironment.IsProduction())
             InnerHandler = authHandler
         };
         var http = new HttpClient(clubHandler) { BaseAddress = new Uri(capturedFunctionBaseUrl) };
-        return new AdminApiClient(http);
+        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>());
     });
 }
 else
@@ -87,11 +87,12 @@ else
             InnerHandler = new HttpClientHandler()
         };
         var http = new HttpClient(clubHandler) { BaseAddress = new Uri(functionBaseUrl) };
-        return new AdminApiClient(http);
+        return new AdminApiClient(http, sp.GetRequiredService<ApiStatusService>());
     });
 }
 
 builder.Services.AddScoped<ClubSelectorService>();
 builder.Services.AddScoped<ThemeService>();
+builder.Services.AddScoped<ApiStatusService>();
 
 await builder.Build().RunAsync();

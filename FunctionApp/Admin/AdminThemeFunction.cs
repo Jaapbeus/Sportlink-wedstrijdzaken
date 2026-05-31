@@ -41,10 +41,10 @@ public static class AdminThemeFunction
         var log = context.GetLogger("AdminThemeGet");
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
-        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             using var command = new SqlCommand(@"

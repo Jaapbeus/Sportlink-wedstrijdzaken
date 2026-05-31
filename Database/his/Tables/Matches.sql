@@ -33,6 +33,7 @@ CREATE TABLE [his].[matches](
     [scheidsrechters]           NVARCHAR(500)   NULL,
     [scheidsrechter]            NVARCHAR(200)   NULL,
     [veld]                      NVARCHAR(100)   NULL,
+    [veld_subpositie]           NVARCHAR(5)     NULL,   -- ALLSTARS testdata: A, B, A1, A2, B1, B2
     [locatie]                   NVARCHAR(100)   NULL,
     [plaats]                    NVARCHAR(100)   NULL,
     [rijders]                   NVARCHAR(200)   NULL,

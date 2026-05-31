@@ -96,8 +96,6 @@ namespace SportlinkFunction
                 return settings.TryGetValue(key, out var value) ? value : null;
             }
 
-            public static string GetPrimaryClubCode() => GetSetting("clubCode") ?? "";
-
             public static async Task SaveLastSyncTimestampAsync(ILogger log)
             {
                 try
