@@ -12,7 +12,7 @@ public static class CleanupTeambegeleidingFunction
         FunctionContext context)
     {
         var log = context.GetLogger("CleanupTeambegeleiding");
-        log.LogInformation("AVG-cleanup gestart: avg.Teambegeleiding (rijen ouder dan 1 jaar verwijderen)");
+        log.LogInformation("AVG-cleanup gestart: avg.Teambegeleiding + avg.ImportLog");
 
         try
         {
@@ -22,16 +22,26 @@ public static class CleanupTeambegeleidingFunction
             await using var conn = new SqlConnection(connStr);
             await conn.OpenAsync();
 
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "EXEC [avg].[sp_CleanupTeambegeleiding]";
-            cmd.CommandTimeout = 120;
-            await cmd.ExecuteNonQueryAsync();
+            await using (var cmd1 = conn.CreateCommand())
+            {
+                cmd1.CommandText = "EXEC [avg].[sp_CleanupTeambegeleiding]";
+                cmd1.CommandTimeout = 120;
+                await cmd1.ExecuteNonQueryAsync();
+                log.LogInformation("AVG-cleanup Teambegeleiding geslaagd");
+            }
 
-            log.LogInformation("AVG-cleanup Teambegeleiding geslaagd");
+            // ImportLog: anonimiseer ImporterendeDoor + CsvBestand na 90d, verwijder na 1 jaar. (#426)
+            await using (var cmd2 = conn.CreateCommand())
+            {
+                cmd2.CommandText = "EXEC [avg].[sp_CleanupImportLog]";
+                cmd2.CommandTimeout = 120;
+                await cmd2.ExecuteNonQueryAsync();
+                log.LogInformation("AVG-cleanup ImportLog geslaagd");
+            }
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "AVG-cleanup Teambegeleiding mislukt");
+            log.LogError(ex, "AVG-cleanup Teambegeleiding/ImportLog mislukt");
             throw;
         }
     }

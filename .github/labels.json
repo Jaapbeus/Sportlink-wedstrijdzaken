@@ -1,0 +1,36 @@
+[
+  {"name": "type: bug",       "color": "d73a4a", "description": "Something isn't working"},
+  {"name": "type: feature",   "color": "0075ca", "description": "New feature or request"},
+  {"name": "type: docs",      "color": "cfd3d7", "description": "Documentation changes only"},
+  {"name": "type: chore",     "color": "ededed", "description": "Maintenance — no functional change"},
+  {"name": "type: refactor",  "color": "a2eeef", "description": "Code refactor without functional change"},
+  {"name": "type: security",  "color": "B60205", "description": "Security vulnerability or AVG/GDPR issue"},
+  {"name": "type: ci",        "color": "0052CC", "description": "CI/CD and deployment pipeline changes"},
+  {"name": "type: perf",      "color": "e4e669", "description": "Performance improvement"},
+
+  {"name": "priority: critical", "color": "B60205", "description": "Must be fixed before next deployment"},
+  {"name": "priority: high",     "color": "d73a4a", "description": "Should be resolved before other issues"},
+  {"name": "priority: medium",   "color": "fbca04", "description": "Normal priority"},
+  {"name": "priority: low",      "color": "0e8a16", "description": "Nice to have — good first issue candidate"},
+
+  {"name": "status: triage",         "color": "ededed", "description": "Needs investigation or clarification"},
+  {"name": "status: in-progress",    "color": "0075ca", "description": "Currently being worked on"},
+  {"name": "status: blocked",        "color": "d73a4a", "description": "Waiting on something before proceeding"},
+  {"name": "status: review-needed",  "color": "5319E7", "description": "Ready for code or PR review"},
+  {"name": "status: wont-fix",       "color": "cfd3d7", "description": "Will not be addressed"},
+  {"name": "status: waiting-owner",  "color": "FF6B35", "description": "Needs input from repository owner"},
+
+  {"name": "good first issue", "color": "7057ff", "description": "Good for newcomers — GitHub platform special"},
+  {"name": "help wanted",      "color": "008672", "description": "Extra attention is needed — GitHub platform special"},
+  {"name": "duplicate",        "color": "cfd3d7", "description": "This issue or pull request already exists"},
+  {"name": "invalid",          "color": "e4e669", "description": "This doesn't seem right"},
+  {"name": "question",         "color": "d876e3", "description": "Further information is requested"},
+  {"name": "wontfix",          "color": "ffffff", "description": "This will not be worked on"},
+
+  {"name": "epic",                 "color": "3E4B9E", "description": "Large initiative grouping multiple issues"},
+  {"name": "breaking-change",      "color": "B60205", "description": "Introduces a breaking change for existing clubs"},
+  {"name": "discipline: ciso",     "color": "B60205", "description": "Security review required (CISO hat)"},
+  {"name": "discipline: dpo",      "color": "FBCA04", "description": "Data protection review required (DPO hat)"},
+  {"name": "discipline: architect","color": "0052CC", "description": "Architectural decision required"},
+  {"name": "via: feedback-widget", "color": "0075CA", "description": "Created via the Blazor Admin GUI feedback widget"}
+]

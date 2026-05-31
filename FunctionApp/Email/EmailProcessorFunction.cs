@@ -10,10 +10,11 @@ namespace SportlinkFunction.Email;
 
 public class EmailProcessorFunction
 {
-    private static bool _databaseNoodmailVerstuurd;
+    // volatile voor thread-safe reads vanuit meerdere invocaties (#382)
+    private static volatile bool _databaseNoodmailVerstuurd;
+    private static volatile bool _uitgeslotenCacheGeladen;
     private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
-    // Uitsluitingslijst-cache: geladen in fase 2, hergebruikt in fase 1 van volgende polls.
-    // Leeg bij koude start — eerste poll classificeert alles via AI (acceptabel).
+    // Uitsluitingslijst-cache: geladen vóór eerste AI-classificatie (fail-closed bij cold start). (#423)
     private static HashSet<string> _uitgeslotenCache = new(StringComparer.OrdinalIgnoreCase);
 
     [Function("ProcessIncomingEmails")]
@@ -77,8 +78,40 @@ public class EmailProcessorFunction
             return;
         }
 
-        // AI-classificatie voor alle resterende emails — database wordt nog niet gewekt
-        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
+        // Fail-closed: uitsluitingslijst moet geladen zijn vóór AI-classificatie. (#423)
+        // Op cold start: probeer DB te wekken en lijst te laden. Lukt dat niet → return.
+        if (!_uitgeslotenCacheGeladen)
+        {
+            log.LogInformation("Uitsluitingslijst nog niet geladen (cold start) — laden vóór AI-classificatie");
+            try
+            {
+                await SystemUtilities.WaitForDatabaseAsync(log);
+                await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+                _uitgeslotenCache = await LaadUitgeslotenAdressenAsync(log);
+                _uitgeslotenCacheGeladen = true;
+                // Re-filter met de nu geladen lijst — verwijder eerder doorgelaten uitgesloten adressen
+                teClassificeren = teClassificeren
+                    .Where(e => !_uitgeslotenCache.Contains(e.Afzender))
+                    .ToList();
+                log.LogInformation("Uitsluitingslijst geladen op cold start: {Aantal} adressen", _uitgeslotenCache.Count);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Uitsluitingslijst niet beschikbaar — AI-verwerking uitgesteld (fail-closed)");
+                return;
+            }
+        }
+
+        if (teClassificeren.Count == 0)
+        {
+            log.LogInformation("Alle emails gefilterd na uitsluitingslijst-check");
+            return;
+        }
+
+        // AI-classificatie voor alle resterende emails — database wordt niet nogmaals gewekt
+        var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
+            ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
         var classificaties = new List<(InkomendBericht Email, BerichtClassificatie Classificatie)>();
         var aiAborted = false;
 
@@ -97,7 +130,7 @@ public class EmailProcessorFunction
                 if (_openAiQuotaNoodmailVerstuurdenOp == null
                     || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
                 {
-                    await StuurOpenAiNoodmailAsync(graphService, ex.Message, log);
+                    await StuurOpenAiNoodmailAsync(graphService, CategorizeerFout(ex), log);
                 }
                 else
                 {
@@ -159,7 +192,7 @@ public class EmailProcessorFunction
             if (!_databaseNoodmailVerstuurd)
             {
                 log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
-                await StuurDatabaseNoodmailAsync(graphService, teVerwerken.Count, dbEx.Message, log);
+                await StuurDatabaseNoodmailAsync(graphService, teVerwerken.Count, CategorizeerFout(dbEx), log);
             }
             else
             {
@@ -170,6 +203,7 @@ public class EmailProcessorFunction
 
         // Refresh uitsluitingslijst nu DB wakker is — cache bijwerken voor volgende polls
         _uitgeslotenCache = await LaadUitgeslotenAdressenAsync(log);
+        _uitgeslotenCacheGeladen = true;
 
         int verwerkt = 0, fouten = 0;
 
@@ -185,7 +219,7 @@ public class EmailProcessorFunction
                 fouten++;
                 log.LogError(ex, "Fout bij verwerken van email {MessageId} (onderwerp niet gelogd — AVG #210)",
                     email.MessageId);
-                try { await UpdateFoutAsync(email.MessageId, ex.Message); }
+                try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); }
                 catch { /* fout bij fout-logging mag niet cascaderen */ }
             }
         }
@@ -293,7 +327,18 @@ public class EmailProcessorFunction
             ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? email.Afzender
             : email.Afzender;
 
-        await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
+        // Fail-explicit: alleen AntwoordVerstuurd en MarkAsRead als Graph-send slaagt. (#432)
+        try
+        {
+            await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Graph-send mislukt voor verwerking {Id} — VerzendFout, mail blijft ongelezen", verwerkingId);
+            try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); } catch { }
+            return; // mail NIET als gelezen markeren — wordt bij volgende poll opnieuw opgepikt
+        }
+
         await UpdateAntwoordVerstuurdAsync(verwerkingId, ontvanger, antwoordBody);
         await graphService.MarkAsReadAsync(email.MessageId);
 
@@ -443,6 +488,36 @@ public class EmailProcessorFunction
         var msg = ex.Message + (ex.InnerException?.Message ?? "");
         return msg.Contains("insufficient_quota", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("429", StringComparison.Ordinal);
+    }
+
+    // Categoriseert een exception naar een privacy-safe foutomschrijving. (#425)
+    // Nooit ruwe ex.Message in noodmails of externe output — kan PII bevatten.
+    private static string CategorizeerFout(Exception ex)
+    {
+        var msg = (ex.Message + (ex.InnerException?.Message ?? "")).ToLowerInvariant();
+        if (msg.Contains("insufficient_quota") || msg.Contains("429"))
+            return "OpenAI quota overschreden";
+        if (msg.Contains("login failed") || msg.Contains("cannot open database") || msg.Contains("connection"))
+            return "Database niet beschikbaar";
+        if (msg.Contains("404") || msg.Contains("resourcenotfound") || msg.Contains("not found"))
+            return "Graph API: bericht niet gevonden";
+        if (msg.Contains("401") || msg.Contains("unauthorized") || msg.Contains("403") || msg.Contains("forbidden"))
+            return "Graph API: autorisatiefout";
+        if (msg.Contains("timeout") || msg.Contains("timed out"))
+            return "Time-out bij externe service";
+        return "Onverwachte verwerkingsfout";
+    }
+
+    // Sanitiseert een foutmelding voor opslag in de DB — verwijdert e-mailadressen en knipt af. (#420)
+    private static string SanitizeFoutMelding(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "Onbekende fout";
+        var gesaneerd = System.Text.RegularExpressions.Regex.Replace(
+            message,
+            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
+            "[e-mail]");
+        return gesaneerd.Length > 200 ? gesaneerd[..200] + "…" : gesaneerd;
     }
 
     private static async Task StuurOpenAiNoodmailAsync(

@@ -39,7 +39,7 @@ az functionapp create \
   --resource-group rg-<clubcode>-sportlink \
   --consumption-plan-location westeurope \
   --runtime dotnet-isolated \
-  --runtime-version 10 \
+  --runtime-version 9 \
   --functions-version 4 \
   --name func-<clubcode>-sportlink \
   --storage-account <storage-account-naam>
@@ -86,7 +86,7 @@ az sql db create \
   --tier Free
 ```
 
-> **Let op:** De Free tier is beschikbaar t/m december 2024 per abonnement. Controleer de actuele beschikbaarheid via de Azure Portal.
+> **Let op:** Controleer de actuele beschikbaarheid van de Free tier via de [Azure Portal](https://portal.azure.com) of via `mcp__claude_ai_Microsoft_Learn__microsoft_docs_search("Azure SQL Free tier pricing")` — Microsoft kan dit aanbod wijzigen zonder voorafgaande aankondiging.
 
 ### 2c. Azure Static Web Apps (Free tier)
 
@@ -103,7 +103,7 @@ Na aanmaken: kopieer het **Deployment Token** (Settings → Deployment tokens). 
 
 ## 3. Database inrichten
 
-Het database-schema wordt automatisch aangemaakt via het PostDeployment-script bij de eerste deployment. Je hoeft handmatig alleen de initiële data in te vullen via de Admin GUI (stap 7).
+**Bekend aandachtspunt:** het PostDeployment-script wordt door deploy.yml momenteel niet automatisch uitgevoerd. Na de eerste deployment moeten nieuwe tabellen en kolommen handmatig worden aangemaakt via `Database/Script.PostDeployment1.sql` in SSMS of via de Azure Portal Query Editor. Volg de stappen in de [GitHub Actions configuratiegids](docs/SETUP.md#11-github-actions-productie-deployment-configureren) voor details over de migratiestap.
 
 **Lokaal (voor development):**
 ```powershell
@@ -247,7 +247,8 @@ Na het invullen van de instellingen:
 
 ### Vereisten
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) — voor BlazorAdmin (net10.0)
+- [.NET 9 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) — voor FunctionApp (net9.0, vereist door Linux Consumption Plan)
 - [Azure Functions Core Tools v4](https://github.com/Azure/azure-functions-core-tools#installing)
 - SQL Server (lokaal of via Docker)
 - [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) (Azure Storage Emulator)
@@ -268,10 +269,10 @@ Bewerk `FunctionApp/local.settings.json` en vul in:
 
 ```powershell
 # Alle services starten (Azurite + FunctionApp + BlazorAdmin)
-.\Start-Debug.ps1
+.\scripts\dev\Start-Debug.ps1
 
-# Verifiëren
-.\Test-App.ps1
+# Verifiëren (wacht 15s na start)
+.\scripts\dev\Test-App.ps1
 ```
 
 ### Git hooks activeren (verplicht)

@@ -18,6 +18,85 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.8.0.0] — 2026-05-31
+
+### Security
+- SSRF-bescherming `POST /api/beheer/theme/extract` vervangen door domein-allowlist op basis van `ThemeClubWebsiteUrl` uit AppSettings. Elimineert TOCTOU/DNS-rebinding volledig — geen DNS-lookup meer nodig. (#422, sluit ook #421)
+- `sp_CleanupEmailVerwerking` fase-1 anonimisering uitgebreid met `[FoutMelding] = NULL` — voorkomt dat exception-tekst (mogelijk met PII) langer dan 30 dagen bewaard blijft. (#420)
+- `UpdateFoutAsync` slaat foutmeldingen nu op via `SanitizeFoutMelding()` — verwijdert e-mailadressen en knipt af op 200 tekens vóór DB-opslag. (#420)
+- Uitsluitingslijst wordt nu geladen vóór eerste AI-classificatie (fail-closed). Op cold start wordt de database gewekt en de lijst opgehaald; lukt dat niet, dan worden mails niet naar AI gestuurd. (#423)
+- Noodmails (database + OpenAI quota) bevatten geen ruwe `ex.Message` meer — worden vervangen door privacy-safe foutcategorie via `CategorizeerFout()`. (#425)
+- Nieuwe `sp_CleanupClassificatieCorrectie`: anonimiseert samenvattingen na 30 dagen, verwijdert na 90 dagen. Lost FK-blokkade op die de EmailVerwerking-cleanup kon laten falen. Aanroepvolgorde geborgd: correcties vóór email-verwerking. (#424)
+- Nieuwe `sp_CleanupImportLog`: anonimiseert `ImporterendeDoor` + `CsvBestand` na 90 dagen, verwijdert rijen na 1 jaar. Opgenomen in de maandelijkse teambegeleiding-cleanup. (#426)
+- Feedbackwidget blokkeert nu submissions met e-mailadressen of telefoonnummers (HTTP 422) vóór GitHub-publicatie. Overzichtsstap toont waarschuwing over publieke GitHub-publicatie. (#427)
+- `Function1.cs` logt geen volledige Sportlink API-URLs meer — `clientId=` queryparameter verdwijnt uit Application Insights logs. (#436)
+- `GitHubIssueReporter.SanitizeForPublic` redigeert nu ook URL query-parameters (`clientId`, `code`, `token`, `key`, `secret`). (#436)
+- `deploy.yml`: `cat appsettings.Production.json` verwijderd — tenant/client IDs verschijnen niet meer in workflow-logs. (#437)
+- 7 planner-endpoints gemigreerd van `AuthorizationLevel.Function` naar `Anonymous` + `EasyAuthHelper.RequireAdmin()`: CheckAvailability, DoordeweeksBeschikbaar, BevestigWedstrijd, ZoekWedstrijd, HerplanCheck, HerplanBevestig, GetTeamSchedule. (#433)
+- Bootstrap Icons gehost vanuit `lib/bootstrap-icons/` — externe CDN (cdn.jsdelivr.net) verwijderd uit index.html. (#434)
+- `staticwebapp.config.json`: Content-Security-Policy, Referrer-Policy, X-Content-Type-Options en Permissions-Policy toegevoegd als globale headers. Clickjacking geblokkeerd via `frame-ancestors 'none'`. (#434)
+- `deploy.yml`: Function App deploy verplaatst naar aparte `deploy` job die `needs: [build, db-migrate]` — nieuwe code bereikt productie pas na succesvolle DB-migratie. (#430)
+- `deploy.yml`: twee nieuwe smoke tests voor anonymous admin endpoint (zonder token → 401) en header-spoofing (gefakete X-MS-CLIENT-PRINCIPAL → 401). (#419)
+- `.github/dependabot.yml`: Dependabot bewaakt nu ook `/BlazorAdmin` NuGet-packages en GitHub Actions. (#431)
+- `.github/workflows/security-scan.yml`: Trivy blokkeert nu bij HIGH/CRITICAL findings (was: exit-code 0). Dependency-scan opgenomen in security-gate. (#431)
+- `Database`: `DEFAULT 'VRC'` verwijderd uit `Speeltijden`, `VeldBeschikbaarheid`, `TeamRegels`; DROP CONSTRAINT-migraties toegevoegd voor bestaande installaties. PostDeployment scalar subquery gefixet. `PlannerAfzenderNaam` default `VRC Veldplanner` → `Veldplanner`. (#435)
+
+### Fixed
+- `EmailGraphService.SendReplyAsync` slikt verzendfouten niet meer stilzwijgend weg — exception wordt opnieuw gegooid zodat de aanroeper de status correct kan bijwerken. (#432)
+- `VerwerkEmailAsync`: status `AntwoordVerstuurd` en `MarkAsRead` worden pas bijgewerkt na bevestigde Graph-send. Bij mislukking: `VerzendFout`, mail blijft ongelezen voor herverwerking. (#432)
+- Sportlink-sync: deelfouten (teams, programma, uitslagen) worden expliciet bijgehouden — `LastSyncTimestamp` wordt alleen bijgewerkt als de sync volledig geslaagd is. `AdminSyncTrigger` response bevat melding over asynchrone aard. (#438)
+- `BerichtAiService` en `FeedbackFunction` gebruiken nu `IChatClient` (Microsoft.Extensions.AI) i.p.v. directe `OpenAI.Chat.ChatClient`. DI-registratie in `Program.cs`. README gecorrigeerd: OpenAI direct (gpt-4o-mini), niet Azure OpenAI. (#429)
+- `infrastructure/modules/function-app.bicep`: `authsettingsV2` resource toegevoegd — Easy Auth declaratief vastgelegd (AllowAnonymous + Entra ID single-tenant). Wordt overgeslagen als tenantId/clientId niet geconfigureerd zijn. (#418)
+- `infrastructure/main.bicep`: `tenantId` en `clientId` parameters toegevoegd, doorgegeven aan function-app module via GitHub Variables. (#418)
+- `planner.GeplandeWedstrijden`: `ClubCode NOT NULL` kolom toegevoegd aan schema + PostDeployment migratie (backfill → NOT NULL → unique constraint update). (#428)
+- `PlannerDataAccess.GetSpeeltijdAsync` + `SavePlannedMatchAsync`: clubCode parameter toegevoegd (optioneel, valt terug op AppSettings). `BevestigWedstrijd` endpoint geeft clubCode door. (#428)
+- `planner.AlleWedstrijdenOpVeld`: `SELECT TOP 1` subqueries vervangen door `CROSS APPLY` op AppSettings — robuuster bij meerdere AppSettings-rijen + ClubCode-filter op Speeltijden en Velden. (#428)
+- `EasyAuthHelper`: `RequireAdmin` en `RequireAuthenticated` delegeren nu naar centrale `RequireRole(req, params string[] allowedRoles)` helper — elimineer duplicaatlogica. (#382)
+- `EmailProcessorFunction`: statische velden `_databaseNoodmailVerstuurd` en `_uitgeslotenCacheGeladen` gemarkeerd als `volatile` voor thread-safe reads bij parallelle invocaties. (#382)
+
+### Changed
+- `docs/DEVELOPER-SETUP.md`: volledig herschreven voor v2.7 — Visual Studio/F5-workflow vervangen door `Start-Debug.ps1` + `Test-App.ps1`, BlazorAdmin-setup toegevoegd (poort 5242, `dotnet watch`), .NET 9 runtime als vereiste gedocumenteerd, fingerprint-veiligheidsregel toegevoegd, oplossing-naam gecorrigeerd naar `sportlink-wedstrijdzaken.sln`. Sluit issue #394.
+- `docs/SETUP-CHECKLIST.md`: herschreven voor v2.7 — verwijzingen naar niet-bestaande scripts en Visual Studio verwijderd; `Start-Debug.ps1`, `Test-App.ps1` en .NET 9 runtime-eis toegevoegd. Sluit issue #394.
+- `docs/LOKAAL-DEBUGGEN.md`: volledig herschreven voor v2.7 — v1-FunctionApp-only beschrijving vervangen door volledige v2.7-stack (BlazorAdmin :5242, FunctionApp :7094, fingerprint-regel, admin-endpoints overzicht, .NET 9 runtime, geen Azure DevOps-verwijzingen). Sluit issue #395.
+- `docs/QUICK-REFERENCE.md`: herschreven voor v2.7 — Visual Studio F5 + niet-bestaande scripts vervangen door `Start-Debug.ps1`, `Test-App.ps1`, beide poorten (5242 + 7094), Azure DevOps-verwijzingen verwijderd; herkwalificeerd als Developer-document. Sluit issue #395.
+- `docs/api-standaarden/openapi.yaml`: 22 ontbrekende routes toegevoegd (clubs, speeltijden, theme/extract, leermomenten/stats/valideer, teambegeleiding/doorsturen, testdata, planner/auto-plan en auto-plan/toepassen); tag `testdata` toegevoegd; bijbehorende schemas toegevoegd. `openapi.json` gesynchroniseerd. Sluit issue #396.
+- `deploy.yml`: `vars.*`-referenties in `run:`-scripts vervangen door bash-omgevingsvariabelen (`$SQL_SERVER`, `$SQL_DATABASE`, `$SQL_RESOURCE_GROUP`); `AZURE_STATIC_WEB_APP_HOSTNAME` naar job-level `env:` verplaatst — elimineert VS Code GitHub Actions linter-waarschuwingen.
+- `docs/SETUP.md`: nieuwe sectie 11 "GitHub Actions: Productie-deployment configureren" met overzichtstabel van alle vereiste secrets en variables, uitleg welke optioneel zijn, en verificatiestap via `gh run view`.
+- **AVG/multi-club cleanup:** club-specifieke data verwijderd uit 10+ bestanden: GPS-coördinaten Veenendaal (→ geografisch centrum NL als fallback), "Sportpark Spitsbergen" (→ `[Sportparklocatie]`), clubteamnamen (→ `[ClubCode]`), Blazor PageTitles (→ "Beheer"), `PlannerAfzenderNaam`-default. `PlannerFunction.cs`: `?? "VRC"` fallback vervangen door `InvalidOperationException` — hardcoded clubnaam in productie-code.
+
+### Fixed
+- `FunctionApp/Planner/PlannerFunction.cs`: twee endpoints (AutoPlan, AutoPlanToepassen) hadden `?? "VRC"` als fallback voor ClubCode — architectuurschending en multi-club-bypass. Gooit nu `InvalidOperationException` als ClubCode niet via Easy Auth bepaald kan worden.
+- `FunctionApp/Email/BerichtAiService.cs`: hardcoded jaar (2026) in twee few-shot voorbeelden in de AI system prompt vervangen. Datum staat nu dynamisch als eerste instructie in de system prompt; het `doordeweeks`-voorbeeld berekent de komende maandagdatums dynamisch vanuit `DateTime.Now`. Voorkomt dat het model verkeerde datum-context aanneemt bij datumberekening.
+
+### Added
+- `docs/ARCHITECTUUR-AI-SERVICES.md`: architectuurdocument voor alle AI-integraties — provider-agnostisch via `IChatClient`, datumregel, few-shot conventies, modelnaam uit configuratie, jaarlijkse KNVB-onderhoudsplicht.
+- `docs/DOCUMENTATIEPLAN.md`: documentatieplan met categorieën (Gebruikers/Administrator/Developers/Setup) en versie-verificatieconventie.
+- `docs/INDEX.md` herschreven naar nieuwe categoriestructuur met 4 doelgroepen.
+- `docs/api-standaarden/`: nieuwe map voor API-standaarden (`openapi.yaml`, `openapi.json`, `openspec/`) — verplaatst uit `docs/` root; openapi.yaml versie bijgewerkt naar 2.7.0; enforcement-regels toegevoegd aan CLAUDE.md.
+- CLAUDE.md: sectie "API-standaarden — altijd actueel, altijd bewaakt" toegevoegd met verplichte checklist bij elke endpoint-wijziging.
+
+### Changed (documentatie-reorganisatie)
+- 6 bestanden hernoemd voor duidelijkere naamgeving:
+  - `docs/v2-admin-handleiding.md` → `docs/BEHEERDER-HANDLEIDING.md`
+  - `docs/TESTING.md` → `docs/VERIFICATIE-SCRIPTS.md`
+  - `docs/AZURE-ENTRA-SETUP.md` → `docs/ENTRA-AUTH-BEHEER.md`
+  - `docs/HANDLEIDING-TEAMBEGELEIDING-EXPORT.md` → `docs/ADMIN-TEAMBEGELEIDING-IMPORT.md`
+  - `SETUP.md` (root) → `SETUP-NIEUWE-CLUB.md` (club-installatiegids)
+  - `docs/SETUP.md` → `docs/DEVELOPER-SETUP.md` (developer lokale setup)
+- Alle 30+ verwijzingen naar deze bestanden bijgewerkt in CLAUDE.md, README.md, CONTRIBUTING.md, SECURITY.md, ARCHITECTURE.md, scripts, .cs-bestanden en deploy.yml.
+- Kritieke inhoudsfouten gecorrigeerd: `--runtime-version 10→9` in SETUP-NIEUWE-CLUB.md, kostenclaim README.md (€0 correct), scriptpaden overal gecorrigeerd naar `scripts/dev/`, branch-strategie CONTRIBUTING.md bijgewerkt naar develop-workflow, `~420 personen` verwijderd uit ADMIN-TEAMBEGELEIDING-IMPORT.md, v2/develop-branches hersteld naar develop in SECURITY.md en BEHEERDER-HANDLEIDING.md.
+
+## [2.7.0.1] — 2026-05-31
+
+### Added
+- Blazor toont een blokkerende overlay als de Azure SQL Free-tier database niet online is: "Database wordt opgestart..." (eerste 2 min) of "Database niet beschikbaar — maandlimiet bereikt" (daarna). Voorkomen dat beheerders eindeloos op "Laden..." kijken zonder uitleg.
+- `/api/health` geeft nu ook de database-status terug (`database: "online" | "paused" | "timeout" | "unavailable"`). Status `paused` triggert automatisch de Azure SQL auto-resume.
+- `db-check` job in `deploy.yml` controleert de database-status via Azure ARM API als allereerste stap — vóór build, migratie én Blazor-deploy. Hele pipeline wordt geblokkeerd als de database niet `Online` is.
+- `scripts/azure/Setup-SqlAlerts.ps1`: eenmalig uit te voeren script dat een gratis Resource Health Alert aanmaakt (e-mail bij database Unavailable/Resolved).
+
+### Fixed
+- `blazor-deploy` werd eerder uitgevoerd zelfs als de database offline was (had alleen `needs: build`). Nu geblokkeerd via `db-check → build` dependency-keten.
+
 ## [2.7.0.0] — 2026-05-31
 
 ### Fixed

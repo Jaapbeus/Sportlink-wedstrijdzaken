@@ -9,8 +9,8 @@ Post-Deployment Script Template
                SELECT * FROM [$(TableName)]					
 --------------------------------------------------------------------------------------
 */
--- New setup needed for the first time
-IF (SELECT [ClubName] FROM [dbo].[AppSettings]) IS NULL
+-- New setup needed for the first time (#435: gebruik IF NOT EXISTS i.p.v. scalar subquery die faalt bij >1 rij)
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSettings])
 BEGIN
 	INSERT INTO [dbo].[AppSettings]
 		([ClubName]
@@ -139,7 +139,7 @@ GO
 IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
 BEGIN
     UPDATE [dbo].[AppSettings]
-    SET [PlannerAfzenderNaam] = 'VRC Veldplanner',
+    SET [PlannerAfzenderNaam] = 'Veldplanner',
         [CoordinatorFunctie] = N'Coördinator thuiswedstrijden'
     WHERE [PlannerAfzenderNaam] IS NULL
 END
@@ -301,7 +301,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'Accommodatie')
-    ALTER TABLE [dbo].[AppSettings] ADD [Accommodatie] NVARCHAR(200) NULL CONSTRAINT [DF_AppSettings_Accommodatie] DEFAULT 'Sportpark Spitsbergen'; -- TODO #221: club-specifieke default verwijderen
+    ALTER TABLE [dbo].[AppSettings] ADD [Accommodatie] NVARCHAR(200) NULL; -- geen default — in te stellen via Beheer → Instellingen per club
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Velden') AND name = 'ClubCode')
     ALTER TABLE [dbo].[Velden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
@@ -314,6 +314,20 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TeamRe
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'ClubCode')
     ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+GO
+
+-- #435: verwijder VRC-default constraints — clubnaam heeft geen plek als DB-default
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Speeltijden_ClubCode')
+    ALTER TABLE [dbo].[Speeltijden] DROP CONSTRAINT [DF_Speeltijden_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamRegels_ClubCode')
+    ALTER TABLE [dbo].[TeamRegels] DROP CONSTRAINT [DF_TeamRegels_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_VeldBeschikbaarheid_ClubCode')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] DROP CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Velden_ClubCode')
+    ALTER TABLE [dbo].[Velden] DROP CONSTRAINT [DF_Velden_ClubCode];
 GO
 
 -- ============================================================
@@ -669,4 +683,35 @@ GO
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('his.matches') AND name = 'veld_subpositie')
     ALTER TABLE [his].[matches] ADD [veld_subpositie] NVARCHAR(5) NULL;
+GO
+
+-- ============================================================
+-- #428: ClubCode in planner.GeplandeWedstrijden + unique constraint
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'ClubCode')
+BEGIN
+    ALTER TABLE [planner].[GeplandeWedstrijden] ADD [ClubCode] NVARCHAR(20) NULL;
+    -- Backfill: koppel bestaande rijen aan de primaire club
+    UPDATE [planner].[GeplandeWedstrijden]
+    SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [Id])
+    WHERE [ClubCode] IS NULL;
+    -- NOT NULL na backfill
+    ALTER TABLE [planner].[GeplandeWedstrijden] ALTER COLUMN [ClubCode] NVARCHAR(20) NOT NULL;
+END
+GO
+
+-- Update unique constraint om ClubCode op te nemen (drop + recreate, idempotent)
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'UQ_GeplandeWedstrijden_Slot')
+AND NOT EXISTS (
+    SELECT 1 FROM sys.index_columns ic
+    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+    WHERE ic.object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND ic.index_id =
+        (SELECT index_id FROM sys.indexes WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'UQ_GeplandeWedstrijden_Slot')
+    AND c.name = 'ClubCode'
+)
+BEGIN
+    ALTER TABLE [planner].[GeplandeWedstrijden] DROP CONSTRAINT [UQ_GeplandeWedstrijden_Slot];
+    ALTER TABLE [planner].[GeplandeWedstrijden] ADD CONSTRAINT [UQ_GeplandeWedstrijden_Slot]
+        UNIQUE ([ClubCode], [Datum], [AanvangsTijd], [VeldNummer], [VeldDeelGebruik]);
+END
 GO

@@ -1,10 +1,10 @@
 # Planner API — Architectuur & Richtlijnen
 
-Dit document definieert de regels, beperkingen en API-contract voor de VRC Veldplanner API. Het is de enige bron van waarheid voor de planningslogica.
+Dit document definieert de regels, beperkingen en API-contract voor de Veldplanner API. Het is de enige bron van waarheid voor de planningslogica.
 
 ## Doel
 
-Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **Sportpark Spitsbergen, Veenendaal**. Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
+Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **[Sportparklocatie]**. Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
 
 ---
 
@@ -49,8 +49,8 @@ Veld 5 wordt alleen toegewezen als veld 1–4 volledig bezet zijn in het gevraag
 
 | Team | Regel | Waarde | Toelichting |
 |------|-------|--------|-------------|
-| VRC 1 | BufferVoor | 60 min | 1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld |
-| VRC 1 | BufferNa | 30 min | 30 min na de wedstrijd geen andere wedstrijden op hetzelfde veld |
+| [Heren 1] | BufferVoor | 60 min | 1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld |
+| [Heren 1] | BufferNa | 30 min | 30 min na de wedstrijd geen andere wedstrijden op hetzelfde veld |
 
 Toekomstige regels (voorbeelden):
 - `VoorkeurVeld`: team speelt altijd op een bepaald veld
@@ -58,7 +58,7 @@ Toekomstige regels (voorbeelden):
 
 ### Zonsondergang-beperking (velden zonder kunstlicht)
 - Wedstrijd moet eindigen **voor zonsondergang**
-- Zonsondergang berekend via NOAA solar algorithm voor Veenendaal (52.0284°N, 5.5579°E)
+- Zonsondergang berekend via NOAA solar algorithm voor de clublocatie ([breedtegraad]°N, [lengtegraad]°E) — coördinaten configureerbaar in `dbo.AppSettings`
 - Opgeslagen in `dbo.Zonsondergang` tabel (handmatige overrides mogelijk)
 - **Geen harde buffer**, wel een waarschuwing als marge < 20 minuten
 
@@ -147,8 +147,8 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
   "aanvangsTijd": "10:00",
   "dagdeel": null,
   "leeftijdsCategorie": "JO11",
-  "teamNaam": "VRC JO11-1",
-  "tegenstander": "Ede JO11-2",
+  "teamNaam": "[ClubCode] JO11-1",
+  "tegenstander": "[Tegenstander] JO11-2",
   "wedstrijdDuurMinuten": null
 }
 ```
@@ -229,12 +229,12 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 {
   "beschikbaar": false,
   "teamConflict": {
-    "wedstrijd": "JO11-9 - Valleivogels JO11-3",
+    "wedstrijd": "[ClubCode] JO11-9 - [Tegenstander] JO11-3",
     "aanvangsTijd": "11:30",
     "eindTijd": "12:45",
     "veldNaam": "veld 4"
   },
-  "reden": "JO11-9 heeft al een wedstrijd op 16 mei: JO11-9 - Valleivogels JO11-3 om 11:30 (veld 4).",
+  "reden": "[ClubCode] JO11-9 heeft al een wedstrijd op 16 mei: [ClubCode] JO11-9 - [Tegenstander] JO11-3 om 11:30 (veld 4).",
   "alternatieven": [],
   "waarschuwingen": []
 }
@@ -250,8 +250,8 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
   "aanvangsTijd": "11:30",
   "veldNummer": 3,
   "leeftijdsCategorie": "JO11",
-  "teamNaam": "VRC JO11-1",
-  "tegenstander": "Ede JO11-2",
+  "teamNaam": "[ClubCode] JO11-1",
+  "tegenstander": "[Tegenstander] JO11-2",
   "aangevraagdDoor": "coach@example.com"
 }
 ```
@@ -297,7 +297,7 @@ Velddefinities met type (kunstgras/natuurgras) en verlichting. Elke vereniging c
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
 | Actief | Of het veld in gebruik is |
 
-Seeddata VRC: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder kunstlicht, veld 6 inactief.
+Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder kunstlicht, veld 6 inactief — elke club configureert dit naar eigen situatie.
 
 ### dbo.VeldBeschikbaarheid
 Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen beschikbaar zijn.
@@ -493,7 +493,7 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 
 ### Azure AD / Entra ID vereisten (eenmalige configuratie)
 
-1. **App Registration** `VRC-Veldplanner-EmailProcessor` (daemon, geen redirect URI)
+1. **App Registration** `[ClubCode]-Veldplanner-EmailProcessor` (daemon, geen redirect URI)
 2. **API Permissions** (Application type): `Mail.Read`, `Mail.ReadWrite`, `Mail.Send` + admin consent
 3. **Client Secret** aanmaken (24 maanden geldigheid)
 4. **Application Access Policy** — beperk tot coordinator-mailbox via mail-enabled security group

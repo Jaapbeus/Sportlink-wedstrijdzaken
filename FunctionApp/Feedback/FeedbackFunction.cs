@@ -1,13 +1,14 @@
-using System.Collections.Concurrent;
-using System.Net.Http.Headers;
-using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using OpenAI.Chat;
+using System.Collections.Concurrent;
+using System.Net.Http.Headers;
+using System.Text;
 
 namespace SportlinkFunction.Feedback;
 
@@ -49,10 +50,8 @@ public static class FeedbackFunction
             if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
                 return new BadRequestObjectResult(new { error = "Type en beschrijving zijn verplicht." });
 
-            var apiKey = Environment.GetEnvironmentVariable("OpenAiApiKey")
-                ?? throw new InvalidOperationException("OpenAiApiKey niet geconfigureerd");
-
-            var chatClient = new ChatClient("gpt-4o-mini", apiKey);
+            var chatClient = context.InstanceServices.GetService<IChatClient>()
+                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
             var result = await ValideerVolledigheid(chatClient, dto, log);
 
             return new OkObjectResult(result);
@@ -98,15 +97,24 @@ public static class FeedbackFunction
                 return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };
             }
 
-            var apiKey = Environment.GetEnvironmentVariable("OpenAiApiKey")
-                ?? throw new InvalidOperationException("OpenAiApiKey niet geconfigureerd");
-
-            var chatClient = new ChatClient("gpt-4o-mini", apiKey);
+            var chatClient = context.InstanceServices.GetService<IChatClient>()
+                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
             var structured = await StructureerIssue(chatClient, dto, log);
 
             var issueBody = BouwIssueBody(dto, structured);
             var labels = KiesLabels(dto.Type);
             var title = Sanitize(structured.Title, 80);
+
+            // PII-gate: blokkeer publicatie als beschrijving of antwoorden persoonsgegevens bevatten. (#427)
+            var teChecken = dto.Beschrijving + " " + string.Join(" ",
+                dto.VragenAntwoorden?.Select(qa => qa.Antwoord ?? "") ?? []);
+            if (BevatPii(teChecken))
+            {
+                log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in submission");
+                return new ObjectResult(new {
+                    error = "Feedback bevat mogelijk persoonsgegevens. Verwijder e-mailadressen en telefoonnummers en probeer opnieuw."
+                }) { StatusCode = 422 };
+            }
 
             var (issueNummer, issueUrl) = await MaakGitHubIssueAsync(pat, owner, repo, title, issueBody, labels, log);
 
@@ -122,7 +130,7 @@ public static class FeedbackFunction
     // ── AI: volledigheid valideren ─────────────────────────────────────────────
 
     private static async Task<ValidateResponse> ValideerVolledigheid(
-        ChatClient chatClient, FeedbackRequest dto, ILogger log)
+        IChatClient chatClient, FeedbackRequest dto, ILogger log)
     {
         // Als de gebruiker al antwoorden heeft gegeven op aanvulvragen, accepteer direct.
         // Re-validatie leidt tot dezelfde vragen omdat het AI-model eerder gestelde vragen
@@ -156,20 +164,20 @@ public static class FeedbackFunction
             {qaBlok}
             """;
 
-        var messages = new List<ChatMessage>
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new SystemChatMessage(systemPrompt),
-            new UserChatMessage(userPrompt)
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, userPrompt)
         };
 
-        var options = new ChatCompletionOptions
+        var options = new ChatOptions
         {
             Temperature = 0.1f,
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            ResponseFormat = ChatResponseFormat.Json
         };
 
-        var completion = await chatClient.CompleteChatAsync(messages, options);
-        var json = completion.Value.Content[0].Text;
+        var response = await chatClient.GetResponseAsync(messages, options);
+        var json = response.Text ?? "";
         log.LogDebug("Validate AI response: {Json}", json);
 
         var parsed = JObject.Parse(json);
@@ -182,7 +190,7 @@ public static class FeedbackFunction
     // ── AI: issue structureren ─────────────────────────────────────────────────
 
     private static async Task<StructuredIssue> StructureerIssue(
-        ChatClient chatClient, FeedbackRequest dto, ILogger log)
+        IChatClient chatClient, FeedbackRequest dto, ILogger log)
     {
         var beschrijving = Sanitize(dto.Beschrijving, 2000);
         var qaBlok = BouwQaBlok(dto.VragenAntwoorden);
@@ -219,20 +227,20 @@ public static class FeedbackFunction
             {qaBlok}
             """;
 
-        var messages = new List<ChatMessage>
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new SystemChatMessage(systemPrompt),
-            new UserChatMessage(userPrompt)
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, userPrompt)
         };
 
-        var options = new ChatCompletionOptions
+        var options = new ChatOptions
         {
             Temperature = 0.2f,
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            ResponseFormat = ChatResponseFormat.Json
         };
 
-        var completion = await chatClient.CompleteChatAsync(messages, options);
-        var json = completion.Value.Content[0].Text;
+        var response = await chatClient.GetResponseAsync(messages, options);
+        var json = response.Text ?? "";
         log.LogDebug("Submit AI response: {Json}", json);
 
         var parsed = JObject.Parse(json);
@@ -366,6 +374,20 @@ public static class FeedbackFunction
         foreach (var qa in qaList)
             sb.AppendLine($"- {Sanitize(qa.Vraag, 200)}: {Sanitize(qa.Antwoord, 500)}");
         return sb.ToString();
+    }
+
+    // PII-gate: detecteert e-mailadressen en Nederlandse telefoonnummers. (#427)
+    // Blokkeert publicatie naar GitHub als mogelijke persoonsgegevens aanwezig zijn.
+    private static bool BevatPii(string tekst)
+    {
+        if (string.IsNullOrWhiteSpace(tekst)) return false;
+        if (System.Text.RegularExpressions.Regex.IsMatch(tekst,
+            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"))
+            return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(tekst,
+            @"(\+31|0031|06)[\s\-]?\d{2}[\s\-]?\d{6,8}|0\d{1,2}[\s\-]\d{6,8}"))
+            return true;
+        return false;
     }
 
     private static string Sanitize(string? input, int maxLen)

@@ -16,7 +16,7 @@ Welkom! Dit project is open-source en andere voetbalverenigingen mogen de code g
 
 ## Voor andere clubs
 
-Wil je deze software gebruiken voor jouw vereniging? Zie [SETUP.md](SETUP.md) voor de volledige installatie-instructies. Je hebt een eigen Azure-omgeving nodig (gratis tier is voldoende) en een Microsoft Entra ID tenant.
+Wil je deze software gebruiken voor jouw vereniging? Zie [SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md) voor de volledige installatie-instructies. Je hebt een eigen Azure-omgeving nodig (gratis tier is voldoende) en een Microsoft Entra ID tenant.
 
 **Nooit** fork-specifieke configuratie (tenant-IDs, connection strings, API-keys) terugsturen als Pull Request naar dit project — die horen in jouw eigen GitHub Secrets/Variables.
 
@@ -52,21 +52,26 @@ Wil je deze software gebruiken voor jouw vereniging? Zie [SETUP.md](SETUP.md) vo
 ## Branch-strategie
 
 ```
-main  ←  feature/#<issue>-<slug>
-          hotfix/#<issue>-<slug>
+main     ←── develop            (via PR: release naar productie)
+  └── hotfix/#<issue>-<slug>    (via PR: urgente productiefix)
+
+develop  ←── feature/#<issue>-<slug>  (via PR: nieuwe features en bugfixes)
 ```
 
 | Type | Basis | PR naar | Wanneer |
 |---|---|---|---|
-| `feature/#<nr>-<slug>` | `main` | `main` | Nieuwe features en bugfixes |
+| `feature/#<nr>-<slug>` | `develop` | `develop` | Nieuwe features, bugfixes, docs |
 | `hotfix/#<nr>-<slug>` | `main` | `main` | Urgente productiefixes |
+| `develop` | — | `main` | Release naar productie (na lokaal testen) |
 
 ### Regels
 
 - **Altijd** een GitHub Issue aanmaken vóór je begint — de branch-naam bevat het issue-nummer
-- **Nooit** direct committen naar `main`
+- **Nooit** direct committen naar `main` of `develop`
+- Feature-branches starten vanuit `develop` (niet vanuit `main`)
 - Branch-naam altijd beginnen met `feature/` of `hotfix/`
 - Na merge wordt de feature-branch verwijderd
+- External contributors: fork → branch in je fork → PR naar `develop` van de upstream
 
 ### Voorbeeld
 
@@ -149,10 +154,11 @@ De Security Gate job in CI is **leidend**. Zolang deze rood is, wordt een PR nie
 
 ## Lokale ontwikkelomgeving
 
-Zie [SETUP.md](SETUP.md) voor de volledige lokale setup. Samenvatting:
+Zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) voor de volledige lokale setup. Samenvatting:
 
 **Vereisten:**
-- .NET 10.0 SDK
+- .NET 10.0 SDK (BlazorAdmin — net10.0)
+- .NET 9 Runtime (FunctionApp — net9.0, vereist door Linux Consumption Plan)
 - Azure Functions Core Tools v4
 - SQL Server (lokaal of Docker)
 - Azurite (Azure Storage Emulator)
@@ -163,11 +169,11 @@ Zie [SETUP.md](SETUP.md) voor de volledige lokale setup. Samenvatting:
 cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 # Vul SqlConnectionString en andere waarden in
 
-# Alles starten
-.\Start-Debug.ps1
+# Alles starten (Azurite + FunctionApp :7094 + BlazorAdmin :5242)
+.\scripts\dev\Start-Debug.ps1
 
-# Verifiëren
-.\Test-App.ps1
+# Verifiëren (wacht 15s na start)
+.\scripts\dev\Test-App.ps1
 # → verwacht: alle checks groen (exit 0)
 ```
 

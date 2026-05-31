@@ -98,6 +98,77 @@ Bron: [Azure Monitor cost — alerts](https://learn.microsoft.com/azure/azure-mo
 | p95 response time | > 1 s | > 2 s |
 | Health endpoint DOWN | — | 3 achtereenvolgende fouten |
 
+---
+
+## Azure SQL Free-tier bescherming
+
+De gratis Azure SQL database heeft een maandlimiet van **100.000 vCore-seconden**. Bij uitputting
+wordt de database gepauzeerd tot het begin van de volgende kalendermaand. Dit heeft impact op drie lagen.
+
+### Laag 1 — Deployment guard (CI/CD)
+
+De `db-check` job in `deploy.yml` controleert de database-status via de Azure ARM API **vóór** elke
+build, migratie of Blazor-deploy. Als de database niet `Online` is, wordt de volledige pipeline
+geblokkeerd met een duidelijke foutmelding.
+
+**Vereiste GitHub variabele (eenmalig instellen):**
+```
+Settings → Secrets and variables → Actions → Variables → New repository variable
+  Name:  AZURE_SQL_DATABASE_NAME
+  Value: [database-naam]   (bijv. myFreeDB)
+```
+
+Zonder deze variabele wordt de `db-check` job overgeslagen (backward compatible voor forks
+zonder SQL-configuratie). De variabele is naast de al bestaande `AZURE_SQL_SERVER_NAME` en
+`AZURE_SQL_RESOURCE_GROUP`.
+
+**Pipeline-volgorde:**
+```
+db-check → build → db-migrate
+                 → test
+                 → blazor-deploy
+```
+Als `db-check` faalt → `build` wordt overgeslagen → alle downstream jobs worden overgeslagen.
+
+### Laag 2 — In-app overlay (Blazor)
+
+De `DatabaseStatusService` pollt `/api/health` na authenticatie (elke 15 seconden, max 2 minuten).
+Het `/api/health` endpoint probeert een `SELECT 1` met 5 seconden timeout en retourneert:
+
+| `database` waarde | Betekenis |
+|---|---|
+| `online` | Database bereikbaar |
+| `paused` | Auto-paused (fout 40613); Azure begint automatisch te resumeren |
+| `timeout` | Verbinding time-out na 5 seconden |
+| `unavailable` | Andere SQL-fout |
+| `unconfigured` | Geen connection string (lokale dev zonder SQL) |
+
+**UI-gedrag:**
+- `Starting` (0–2 min): spinner-overlay "Database wordt opgestart..."
+- `LimietBereikt` (> 2 min): blokkerende overlay met uitleg + contactadvies
+- `Online`: normale app-weergave; alive-check elke 5 minuten
+
+### Laag 3 — E-mail alert (eenmalig instellen)
+
+Voer eenmalig het script uit om een gratis Resource Health Alert te maken:
+
+```powershell
+.\scripts\azure\Setup-SqlAlerts.ps1 `
+    -ResourceGroup "[sql-resource-group]" `
+    -SqlServerName "[sql-servernaam]" `
+    -DatabaseName "[database-naam]" `
+    -NotificationEmail "beheerder@[club-domein]"
+```
+
+Dit maakt aan:
+- **Action Group** met e-mailnotificatie (gratis)
+- **Resource Health Alert** voor de SQL database (gratis) — e-mail bij `Unavailable` én bij `Resolved`
+
+**Vroege waarschuwing (Metric Alert — controleer kosten eerst):**
+Azure Portal → SQL Database → Monitoring → Metrics → Metric: `Free amount remaining`
+→ New alert rule → Threshold: `10.000` (= 10% van maandlimiet).
+Controleer actuele kosten via het kostenbeleid in `CLAUDE.md` vóór aanmaken.
+
 ### Activity Log Alert aanmaken (gratis)
 
 Alert bij deploy-fout (Function App restart mislukt):

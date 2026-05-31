@@ -79,9 +79,11 @@ sp_create_current.txt
 sp_merge_current.txt
 
 # ── Claude Code local settings en memory ─────────────────────────────────────
-# settings.local.json bevat machine-specifieke permissies.
-# memory/ bevat conversatiecontext die persoonlijke info kan bevatten.
-.claude/
+# settings.local.json bevat machine-specifieke permissies (paden, etc.) — nooit committen.
+# memory/ bevat AI-conversatiecontext die persoonlijke info kan bevatten — nooit committen.
+# settings.json is gecommit (gedeeld) en bevat project-brede permissies voor alle developers.
+.claude/settings.local.json
+.claude/memory/
 
 # ── Build artifacts ───────────────────────────────────────────────────────────
 *.lscache

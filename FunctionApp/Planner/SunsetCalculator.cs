@@ -5,13 +5,13 @@ namespace SportlinkFunction.Planner
 {
     /// <summary>
     /// NOAA Zonnecalculator. Leest coördinaten uit AppSettings (AccommodatieLatitude/Longitude).
-    /// Fallback: Veenendaal (52.0284, 5.5579).
+    /// Fallback: geografisch centrum Nederland (52.1551°N, 5.3878°E) — stel clublocatie in via AppSettings.
     /// Gebaseerd op: https://gml.noaa.gov/grad/solcalc/solareqns.PDF
     /// </summary>
     public static class SunsetCalculator
     {
-        private const double DefaultLatitude  = 52.0284;
-        private const double DefaultLongitude = 5.5579;
+        private const double DefaultLatitude  = 52.1551; // Geografisch centrum NL — configureer via AppSettings.AccommodatieLatitude
+        private const double DefaultLongitude = 5.3878;  // Geografisch centrum NL — configureer via AppSettings.AccommodatieLongitude
 
         private static readonly TimeZoneInfo AmsterdamTz = GetAmsterdamTimeZone();
 

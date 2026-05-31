@@ -94,5 +94,6 @@ else
 builder.Services.AddScoped<ClubSelectorService>();
 builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<ApiStatusService>();
+builder.Services.AddScoped<DatabaseStatusService>();
 
 await builder.Build().RunAsync();

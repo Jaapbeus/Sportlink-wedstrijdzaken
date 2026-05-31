@@ -71,22 +71,22 @@ Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 ### Branches
 
 - `main` — productie; alleen via PR, nooit direct pushen
-- `v2/develop` — standaard basis voor nieuwe features en fixes
-- `feature/#<nr>-<slug>` — losse branches voor features en bugfixes (basis: `v2/develop`)
-- `hotfix/#<nr>-<slug>` — urgente productiefixes (basis: `main`; na merge ook PR naar `v2/develop`)
+- `develop` — integratiebranch; geen deploy, voor lokaal combineren en testen
+- `feature/#<nr>-<slug>` — losse branches voor features en bugfixes (basis: `develop`)
+- `hotfix/#<nr>-<slug>` — urgente productiefixes (basis: `main`)
 
 ### Feature-workflow
 
-1. Branch aanmaken vanaf `v2/develop`: `git checkout -b feature/#<nr>-<slug> v2/develop`
+1. Branch aanmaken vanaf `develop`: `git checkout -b feature/#<nr>-<slug> develop`
 2. Implementeren, bouwen, verifiëren (`.\scripts\dev\Test-App.ps1`)
-3. Commit + push + PR naar `v2/develop`
+3. Commit + push + PR naar `develop`
 4. CI security gate groen → PR mergen
 
 ### Hotfix-workflow
 
 1. Branch aanmaken vanaf `main`: `git checkout -b hotfix/#<nr>-<slug> main`
 2. Fix + PR naar `main`
-3. Na merge: PR `main` → `v2/develop` aanmaken zodat `v2/develop` gesynchroniseerd blijft
+3. Na merge ook PR `main` → `develop` aanmaken zodat `develop` gesynchroniseerd blijft
 4. CI op `main` controleert de deploy (`.github/workflows/deploy.yml`)
 
 ---
@@ -303,7 +303,7 @@ Of gebruik het geautomatiseerde verificatie-script:
 .\scripts\dev\Test-App.ps1 -Verbose     # volledige output per check
 ```
 
-Zie [FunctionApp/docs/TESTING.md](../FunctionApp/docs/TESTING.md) voor een volledig overzicht van
+Zie [docs/VERIFICATIE-SCRIPTS.md](../docs/VERIFICATIE-SCRIPTS.md) voor een volledig overzicht van
 wat `scripts/dev/Test-App.ps1` controleert.
 
 ---
@@ -432,7 +432,7 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 3. **Vraag doorsturen** — klik "Stel een vraag" → vul Onderwerp (optioneel) en Bericht in → "Versturen"
    - To: coach (opgezoekt server-side uit `avg.Teambegeleiding`)
    - Reply-To: e-mailadres van de aanvrager (automatisch uit Entra ID)
-   - BCC: coördinator (uit `dbo.AppSettings.coordinatorEmail`)
+   - BCC: coördinator (uit `dbo.AppSettings.plannerEmailAdres`)
    - Coach antwoordt rechtstreeks naar aanvrager — aanvrager ziet nooit het coach-adres
 
 ### API-endpoints

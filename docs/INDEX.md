@@ -1,71 +1,76 @@
 # Documentatie — Sportlink Wedstrijdzaken
 
-Alle documentatie staat in deze map (`docs/`). Gebruik de categorieën hieronder om snel de juiste informatie te vinden.
+Centrale inhoudsopgave. Structuur en categorieregels: zie [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
 
 ---
 
-## Voor beheerders (gebruikers van de Admin GUI)
+## 1. Gebruikers — dagelijks gebruik
+
+Voor de beheerder die dagelijks met de Admin GUI werkt.
 
 | Document | Inhoud |
-|---|---|
-| [Admin handleiding v2](v2-admin-handleiding.md) | Stap-voor-stap handleiding voor de Admin GUI: instellingen, templates, veldplanner, e-maillog |
-| [Testmodus — ALLSTARS fictieve wedstrijden](TESTMODUS-ALLSTARS.md) | Hoe de ALLSTARS-testmodus werkt: activeren, fictieve wedstrijden invoeren, planner testen zonder echte data |
-| [Handleiding teambegeleiding export](HANDLEIDING-TEAMBEGELEIDING-EXPORT.md) | AVG-veilig exporteren van teambegeleidersgegevens uit Sportlink naar SQL |
-| [KNVB speeldagenkalenders](knvb-speeldagenkalenders/README.md) | Importeren van KNVB-speeldagenkalenders |
+|----------|--------|
+| [Beheerder handleiding](BEHEERDER-HANDLEIDING.md) | Stap-voor-stap: instellingen, templates, veldplanner, e-maillog, teambegeleiding |
+| [Quick reference](QUICK-REFERENCE.md) | Veelgebruikte commando's en snippets |
 
 ---
 
-## Voor developers — opzet & lokaal draaien
+## 2. Administrator — import, export en instellingen
+
+Voor de beheerder die beheertaken uitvoert buiten de dagelijkse GUI-flow.
 
 | Document | Inhoud |
-|---|---|
-| [Setup](SETUP.md) | Volledige installatiehandleiding: .NET, Azure Functions Core Tools, Azurite, SQL Server |
-| [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet van de ontwikkelomgeving |
-| [Lokaal debuggen](LOKAAL-DEBUGGEN.md) | Services starten, poorten, Azurite, func start, hot-reload |
-| [Quick reference](QUICK-REFERENCE.md) | Veelgebruikte commando's, SQL-snippets en configuratiewaarden |
-| [Azure Entra setup](AZURE-ENTRA-SETUP.md) | Entra App Registration, Easy Auth, rollen — configuratie via scripts |
+|----------|--------|
+| [Teambegeleiding import](ADMIN-TEAMBEGELEIDING-IMPORT.md) | AVG-veilig exporteren uit Sportlink en importeren in SQL |
+| [Testmodus — ALLSTARS](TESTMODUS-ALLSTARS.md) | Fictieve wedstrijden invoeren, planner testen zonder echte data |
+| [Monitoring & alerts](MONITORING.md) | Resource Health Alerts, KQL-queries, escalatiematrix |
+| [KNVB speeldagenkalenders](knvb-speeldagenkalenders/README.md) | KNVB-speeldagenkalenders importeren |
 
 ---
 
-## Architectuur & ontwerp
+## 3. Developers — architectuur, debuggen, API en specs
+
+Voor bijdragers aan de codebase.
 
 | Document | Inhoud |
-|---|---|
-| [Planner architectuur](ARCHITECTURE-PLANNER.md) | Velddefinities, API-contract en dataflow van de veldplanner |
-| [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten, authenticatie |
-| [OpenAPI spec](openapi.yaml) | Machine-readable OpenAPI 3.0 spec van alle 40 API-endpoints |
-| [E-mailverwerking](EMAIL-VERWERKING.md) | E-mailpipeline, kanaalstrategie, AI-verwerking, BuitenScope-logica |
-| [Versiebeheer](VERSIONING.md) | Semantic versioning, conventional commits, release-workflow, CHANGELOG-richtlijnen |
-| [Gestructureerde specs (openspec)](openspec/config.yaml) | Machine-readable requirements specs per domein (api, setup, lokaal-debuggen) |
+|----------|--------|
+| [Architectuurprincipes](ARCHITECTURE.md) | Multi-club, ClubCode, kanaalstrategie, security-lagen |
+| [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
+| [Planner architectuur](ARCHITECTURE-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
+| [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
+| [OpenAPI spec (YAML)](api-standaarden/openapi.yaml) | Machine-readable OpenAPI 3.0 spec — **altijd bijhouden bij endpoint-wijziging** |
+| [OpenAPI spec (JSON)](api-standaarden/openapi.json) | Zelfde spec in JSON-formaat — sync met YAML |
+| [Structured specs (openspec)](api-standaarden/openspec/config.yaml) | Machine-readable requirements per domein |
+| [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
+| [Versioning & CHANGELOG](VERSIONING.md) | Semver-regels, conventional commits, release-workflow |
+| [Verificatie-scripts](VERIFICATIE-SCRIPTS.md) | Test-App.ps1 + Start-Debug.ps1: schema-controle, endpoints, Blazor-pagina's — voor developers |
+| [Lokaal debuggen](LOKAAL-DEBUGGEN.md) | Services starten, poorten, hot-reload, func start |
+| [Sportlink schermen-analyse](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Beschikbare datavelden in Sportlink Club-interface |
 
 ---
 
-## Testen, kwaliteit & monitoring
+## 4. Setup — eenmalige inrichting
+
+Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 
 | Document | Inhoud |
-|---|---|
-| [Testing](TESTING.md) | Test-App.ps1: schema-controle, endpoint-verificatie, Blazor-pagina's, -Fix modus |
-| [Monitoring](MONITORING.md) | Application Insights setup, gratis alert-typen, KQL-queries, escalatiematrix |
+|----------|--------|
+| [Nieuwe club — Azure setup](../SETUP-NIEUWE-CLUB.md) | Fork, Azure aanmaken, Entra configureren, eerste deployment — voor club-beheerders |
+| [Developer setup](DEVELOPER-SETUP.md) | .NET, SQL, Azurite, GitHub Actions — lokale ontwikkelomgeving ⚠️ herschrijving gepland |
+| [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet ⚠️ herschrijving gepland |
+| [Entra auth & beheer](ENTRA-AUTH-BEHEER.md) | App Registration, Easy Auth, rollen, gebruikers toevoegen — via scripts |
 
 ---
 
-## Security & compliance
+## Projectdocumentatie (repo-root)
 
 | Document | Inhoud |
-|---|---|
-| [Security](../SECURITY.md) | Security-beleid, AVG-regels, secrets-protocol, responsible disclosure |
-| [Azure Entra setup](AZURE-ENTRA-SETUP.md) | Auth-architectuur, defense-in-depth (5 lagen), verplichte 3-user-test |
-
----
-
-## Overige projectdocumentatie (root)
-
-| Document | Inhoud |
-|---|---|
+|----------|--------|
 | [README](../README.md) | Projectoverzicht, quick start, architectuurdiagram |
 | [CHANGELOG](../CHANGELOG.md) | Versiehistorie — alle features en fixes per release |
-| [CLAUDE.md](../CLAUDE.md) | Instructies voor Claude Code — architectuurregels, buildproces, conventies |
+| [SECURITY](../SECURITY.md) | Security-beleid, AVG-regels, secrets-protocol |
+| [CLAUDE.md](../CLAUDE.md) | Instructies voor Claude Code — architectuurregels, buildproces |
 
 ---
 
-*Documentatie bijhouden is verplicht bij elke wijziging — zie CLAUDE.md Stap 2b voor de volledige regel.*
+*Structuur gedefinieerd in [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md) · Bijhoudconventie: zie CLAUDE.md Stap 2b*

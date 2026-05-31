@@ -176,6 +176,29 @@ code {
     to { transform: rotate(360deg); }
 }
 
+.startup-sub {
+    margin: 0;
+    font-size: .85rem;
+    color: #6c757d;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.startup-sub-muted {
+    font-size: .78rem;
+    color: #adb5bd;
+}
+
+.startup-icon {
+    margin: 0;
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.startup-label-error {
+    color: #dc3545;
+}
+
 /* ── Dashboard quick-access cards (#344) ─────────────────────── */
 
 .dashboard-card {

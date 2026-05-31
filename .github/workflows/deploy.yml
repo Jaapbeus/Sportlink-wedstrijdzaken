@@ -9,10 +9,54 @@ env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: FunctionApp
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Repository-variabelen — geconfigureerd in GitHub repo Settings → Variables.
+  # Hier gedeclareerd zodat de linter ze kent; gebruik $SQL_SERVER/$SQL_DATABASE/$SQL_RESOURCE_GROUP
+  # in run-scripts en env.SQL_* in if-conditions.
+  SQL_SERVER: ${{ vars.AZURE_SQL_SERVER_NAME }}
+  SQL_DATABASE: ${{ vars.AZURE_SQL_DATABASE_NAME }}
+  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # db-check: controleert de Azure SQL Free-tier database-status VÓÓR alles.
+  # Als de DB niet Online is wordt de volledige pipeline geblokkeerd:
+  #   build → db-migrate, blazor-deploy en test worden allemaal overgeslagen.
+  # Vereist variabele AZURE_SQL_DATABASE_NAME (naast de al bestaande server/rg-vars).
+  # Wordt overgeslagen als AZURE_SQL_SERVER_NAME of AZURE_SQL_DATABASE_NAME niet
+  # geconfigureerd is (fork / nieuw project zonder SQL-vars) — dan loopt build gewoon door.
+  # ──────────────────────────────────────────────────────────────────────────
+  db-check:
+    runs-on: ubuntu-latest
+    if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
+    steps:
+      - name: Azure inloggen
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "⛔ Database status controleren (ARM API — vóór migratie en deploy)"
+        run: |
+          STATUS=$(az sql db show \
+            --name "$SQL_DATABASE" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --query 'status' --output tsv 2>/dev/null || echo "unknown")
+          echo "Database status: $STATUS"
+          if [ "$STATUS" != "Online" ]; then
+            echo "::error::⛔ Database is '$STATUS' — volledige deployment geblokkeerd."
+            echo "::error::Breng de database online vóór deployment:"
+            echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
+            echo "::error::Of wacht tot de maandlimiet vernieuwd is (begin volgende kalendermaand)."
+            exit 1
+          fi
+          echo "✓ Database Online — deployment mag doorgaan"
+
   build:
     runs-on: ubuntu-latest
+    # Wacht op db-check. Als db-check FAILED → build wordt overgeslagen (en alles daarna ook).
+    # Als db-check SKIPPED (vars niet ingesteld) → build loopt gewoon door (backward compatible).
+    needs: db-check
+    if: always() && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,6 +71,24 @@ jobs:
           dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/fa-dev-sportlink-01.csproj \
             --configuration Release \
             --output ./output
+
+      - name: Artefact uploaden
+        uses: actions/upload-artifact@v4
+        with:
+          name: functionapp
+          path: ./output
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, db-migrate]
+    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy doorgaan. (#430)
+    if: always() && needs.build.result == 'success' && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
+    steps:
+      - name: Artefact downloaden
+        uses: actions/download-artifact@v4
+        with:
+          name: functionapp
+          path: ./output
 
       - name: Azure inloggen
         uses: azure/login@v2
@@ -43,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     # Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is (fork / nieuw project).
-    # Vereiste secrets/vars: AZURE_SQL_CONNECTION_STRING, AZURE_SQL_RESOURCE_GROUP, AZURE_SQL_SERVER_NAME.
+    # Vereiste: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP + AZURE_SQL_SERVER_NAME.
     if: vars.AZURE_SQL_SERVER_NAME != ''
     steps:
       - name: Checkout repository
@@ -60,8 +122,8 @@ jobs:
           RUNNER_IP=$(curl -s https://api.ipify.org)
           RULE_NAME="github-actions-${{ github.run_id }}"
           az sql server firewall-rule create \
-            --resource-group "${{ vars.AZURE_SQL_RESOURCE_GROUP }}" \
-            --server "${{ vars.AZURE_SQL_SERVER_NAME }}" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
             --name "$RULE_NAME" \
             --start-ip-address "$RUNNER_IP" \
             --end-ip-address "$RUNNER_IP"
@@ -70,23 +132,23 @@ jobs:
       - name: Database-migratie uitvoeren (PostDeployment script — idempotent)
         uses: azure/sql-action@v2.3
         with:
-          connection-string: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: Database/Script.PostDeployment1.sql
 
       - name: Runner-IP verwijderen uit SQL-firewall (altijd, ook bij fout)
         if: always() && steps.firewall.outputs.rule_name != ''
         run: |
           az sql server firewall-rule delete \
-            --resource-group "${{ vars.AZURE_SQL_RESOURCE_GROUP }}" \
-            --server "${{ vars.AZURE_SQL_SERVER_NAME }}" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
             --name "${{ steps.firewall.outputs.rule_name }}" \
             --yes || true
 
   test:
     runs-on: ubuntu-latest
-    needs: [build, db-migrate]
-    # db-migrate wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan
-    if: always() && needs.build.result == 'success'
+    needs: [deploy]
+    # Deploy wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan als deploy slaagt
+    if: always() && needs.deploy.result == 'success'
     steps:
       - name: "Smoke test: function app bereikbaar (health → 200)"
         run: |
@@ -117,6 +179,31 @@ jobs:
             fi
           done
 
+      - name: "Smoke test: anonymous admin endpoint beveiligd zonder token (→ 401)"
+        run: |
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/beheer/settings"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
+          echo "GET /api/beheer/settings zonder token: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "FOUT: verwacht 401, kreeg $STATUS — EasyAuthHelper werkt niet correct"
+            exit 1
+          fi
+
+      - name: "Smoke test: gefakete X-MS-CLIENT-PRINCIPAL wordt niet vertrouwd (→ 401)"
+        run: |
+          # Simuleert een aanvaller die admin-header meestuurt zonder geldig Entra-token.
+          # Als Easy Auth actief is, strip Azure deze header vóór de Function.
+          FAKE_PRINCIPAL=$(echo '{"auth_typ":"aad","claims":[{"typ":"roles","val":"admin"}],"name_typ":"","role_typ":"roles"}' | base64 -w 0)
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/beheer/settings"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -H "X-MS-CLIENT-PRINCIPAL: $FAKE_PRINCIPAL" \
+            "$URL" || true)
+          echo "GET /api/beheer/settings met gefakete principal: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "FOUT: verwacht 401, kreeg $STATUS — Easy Auth mogelijk uitgeschakeld of niet geconfigureerd"
+            exit 1
+          fi
+
       - name: "Info: planner endpoint database-check"
         continue-on-error: true
         run: |
@@ -131,11 +218,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     # TODO: Stel AZURE_STATIC_WEB_APPS_API_TOKEN in als GitHub Secret voor de SWA deploy.
-    # Zie docs/v2-admin-handleiding.md voor het aanmaken van de SWA resource.
+    # Zie docs/BEHEERDER-HANDLEIDING.md voor het aanmaken van de SWA resource.
     # Job wordt overgeslagen als het secret leeg is — guard via env op step-niveau (secrets context
     # mag niet in job-level if direct staan).
     env:
       SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+      SWA_HOSTNAME: ${{ vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
     steps:
       - name: Token aanwezig?
         id: check
@@ -172,8 +260,7 @@ jobs:
             -e "s|{{POST_LOGOUT_REDIRECT_URL}}|${POST_LOGOUT_REDIRECT_URL}|g" \
             BlazorAdmin/wwwroot/appsettings.Production.template.json \
             > BlazorAdmin/wwwroot/appsettings.Production.json
-          echo "Gegenereerd:"
-          cat BlazorAdmin/wwwroot/appsettings.Production.json
+          echo "appsettings.Production.json gegenereerd (inhoud niet gelogd — bevat tenant/client IDs)"
 
       - name: Blazor WASM publiceren
         if: steps.check.outputs.skip == 'false'
@@ -194,10 +281,8 @@ jobs:
           skip_app_build: true
 
       - name: Smoke test SWA bereikbaar
-        if: steps.check.outputs.skip == 'false' && vars.AZURE_STATIC_WEB_APP_HOSTNAME != ''
-        env:
-          SWA_HOST: ${{ vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
+        if: steps.check.outputs.skip == 'false' && env.SWA_HOSTNAME != ''
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://${SWA_HOST}/")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$SWA_HOSTNAME/")
           echo "SWA: $STATUS"
           if [ "$STATUS" -ge 500 ]; then echo "FOUT: SWA gaf $STATUS"; exit 1; fi

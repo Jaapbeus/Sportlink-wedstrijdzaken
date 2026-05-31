@@ -1,158 +1,155 @@
-# ⚡ Quick Reference - Sportlink Function
+# Quick Reference — Sportlink Wedstrijdzaken (v2.7)
 
-## 🔑 Critical Configuration Required
-
-### 1. Sportlink API Credentials (REQUIRED)
-
-Update in database before first run:
-
-```sql
-USE SportlinkSqlDb;
-UPDATE [dbo].[AppSettings]
-SET sportlinkApiUrl = 'https://data.sportlink.com',    -- ⚠️ REPLACE
-    sportlinkClientId = 'YOUR_ACTUAL_CLIENT_ID'        -- ⚠️ REPLACE
-WHERE Id = 1;
-```
-
-**Where to get credentials:**
-- Sportlink Portal → API Settings
-- Azure Portal → Production Function App → Configuration
-- Contact your Sportlink administrator
+Categorie: **Developers** — snel overzicht van commando's, poorten en veelgebruikte queries.
 
 ---
 
-## 📝 Setup Scripts (Run in Order)
+## Services starten
 
-### SQL Scripts (in SSMS)
-```sql
--- 1. Create database, schemas, basic tables
-<repository>\FunctionApp\scripts/db/setup-local-database.sql
-
--- 2. Create metadata schema and mappings
-<repository>\FunctionApp\setup-metadata-tables.sql
-
--- 3. Deploy stored procedures from:
-<repository>\Database\dbo\System Stored Procedures\
-   - sp_CreateTargetTableFromSource.sql
-   - sp_MergeStgToHis.sql
-```
-
-### PowerShell Script
 ```powershell
-# Verify environment setup
-.\scripts\dev\scripts/dev/setup-local-debug.ps1
+# Start Azurite + FunctionApp :7094 + BlazorAdmin :5242
+.\scripts\dev\Start-Debug.ps1
+
+# Met SWA CLI voor auth-flow testen (poort 4280)
+.\scripts\dev\Start-Debug.ps1 -Swa
 ```
 
----
+## Services stoppen
 
-## ⚙️ Local Configuration
-
-### local.settings.json
-```json
-{
-  "Values": {
-    "SqlConnectionString": "Server=YOUR_SERVER;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;",
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"
-  }
-}
-```
-
----
-
-## 🚀 Run the Application
-
-### 1. Start Azurite (Azure Storage Emulator)
 ```powershell
-azurite --silent
+Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
 ```
 
-### 2. Start Debugging in Visual Studio
-- Configuration: **Debug** (not Release)
-- Press **F5**
+## Verificatie
+
+```powershell
+.\scripts\dev\Test-App.ps1        # basis check
+.\scripts\dev\Test-App.ps1 -Fix   # met automatisch schema-herstel
+```
 
 ---
 
-## ✅ Verification Queries
+## Poorten
 
-### Check API Credentials
+| Poort | Service | Opmerking |
+|-------|---------|-----------|
+| 10000–10002 | Azurite | Azure Storage Emulator |
+| 7094 | FunctionApp | `func start` — géén hot reload |
+| 5242 | BlazorAdmin | `dotnet watch` — hot reload actief |
+| 4280 | SWA CLI (optioneel) | Auth-emulatie |
+
+---
+
+## Health & versie
+
+```powershell
+Invoke-RestMethod http://localhost:7094/api/health
+# { "status": "ok", "version": "2.x.x", "timestamp": "..." }
+```
+
+---
+
+## Handmatige Sportlink-sync
+
+```powershell
+# Incrementeel (vorige week t/m seizoenseinde)
+Invoke-RestMethod http://localhost:7094/api/sync
+
+# Met weekoffset
+Invoke-RestMethod "http://localhost:7094/api/sync?weekOffsetFrom=-2&weekOffsetTo=4"
+```
+
+---
+
+## local.settings.json aanmaken
+
+```powershell
+cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
+# Stel daarna SqlConnectionString in
+```
+
+---
+
+## Database-verificatie
+
 ```sql
+-- AppSettings controleren
 SELECT * FROM [dbo].[AppSettings];
--- Should NOT contain 'your-client-id-here'
-```
 
-### Check Metadata Mappings
-```sql
-SELECT * FROM [mta].[source_target_mapping];
--- Should return 3 rows (teams, matches, matchdetails)
-```
+-- Schema's aanwezig?
+SELECT name FROM sys.schemas WHERE name IN ('stg','his','mta','dbo','planner','avg','pub');
 
-### Check Stored Procedures
-```sql
-SELECT name FROM sys.procedures 
-WHERE name IN ('sp_MergeStgToHis', 'sp_CreateTargetTableFromSource');
--- Should return 2 rows
-```
+-- Stored procedures aanwezig?
+SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTargetTableFromSource');
 
-### Check Data After Run
-```sql
--- Staging tables
-SELECT COUNT(*) FROM [stg].[teams];
-SELECT COUNT(*) FROM [stg].[matches];
-SELECT COUNT(*) FROM [stg].[matchdetails];
-
--- History tables
-SELECT COUNT(*) FROM [his].[teams];
-SELECT COUNT(*) FROM [his].[matches];
-SELECT COUNT(*) FROM [his].[matchdetails];
+-- Laatste sync-timestamp
+SELECT [LastSyncTimestamp] FROM [dbo].[AppSettings];
 ```
 
 ---
 
-## 🔧 Common Issues & Quick Fixes
+## Fingerprint-regel (KRITIEK)
 
-| Error | Quick Fix |
-|-------|-----------|
-| `401 Unauthorized` | Update API credentials in AppSettings table |
-| `Cannot connect to database` | Verify SQL Server running, check connection string |
-| `Stored procedure not found` | Deploy from SportlinkSqlDb repository |
-| `mta.source_target_mapping not found` | Run setup-metadata-tables.sql |
-| `Azurite connection failed` | Start Azurite: `azurite --silent` |
-| `Just My Code Warning` | Switch to Debug configuration |
+NOOIT `dotnet build BlazorAdmin` aanroepen terwijl de dev server draait. Na een build-check altijd:
 
----
-
-## 📂 Important Files
-
-| File | Purpose |
-|------|---------|
-| `SETUP.md` | Complete setup guide |
-| `SETUP-CHECKLIST.md` | Interactive checklist |
-| `LOCAL-DEBUG-README.md` | Debugging guide |
-| `scripts/db/setup-local-database.sql` | Database initialization |
-| `setup-metadata-tables.sql` | Metadata setup |
-| `scripts/dev/scripts/dev/setup-local-debug.ps1` | Environment verification |
-| `local.settings.json` | Local configuration |
-
----
-
-## 🔄 Timer Schedule
-
-Current: `0 0 4 * * *` (daily at 04:00)
-
-Change in `Function1.cs`:
-```csharp
-[TimerTrigger("*/10 * * * * *")]  // Every 10 seconds (testing)
+```powershell
+Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
+.\scripts\dev\Start-Debug.ps1
 ```
 
 ---
 
-## 📞 Resources
+## Veelgebruikte endpoints (lokaal, geen auth vereist)
 
-- **Database Project:** `<repository>\Database`
-- **Function Project:** `<repository>\FunctionApp`
-- **Azure DevOps:** `https://dev.azure.com/YOUR_ORG/YOUR_PROJECT`
+| Methode | URL | Beschrijving |
+|---------|-----|-------------|
+| GET | `http://localhost:7094/api/health` | Status en versie |
+| GET | `http://localhost:7094/api/sync` | Handmatige sync |
+| GET | `http://localhost:7094/api/beheer/settings` | Club-instellingen |
+| GET | `http://localhost:7094/api/beheer/teams` | Teamlijst |
+| GET | `http://localhost:7094/api/beheer/sync/status` | Sync-status |
+| POST | `http://localhost:7094/api/planner/check-availability` | Beschikbaarheidscheck |
 
 ---
 
-**Last Updated:** March 2026
+## Snel troubleshooting
+
+| Probleem | Oplossing |
+|---------|-----------|
+| FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? `winget install Microsoft.DotNet.Runtime.9` |
+| Database verbinding mislukt | `SqlConnectionString` in `local.settings.json` controleren |
+| Sportlink API 401 | `UPDATE [dbo].[AppSettings] SET SportlinkClientId = '...'` |
+| Azurite niet actief | `Get-NetTCPConnection -LocalPort 10000` — start via `Start-Debug.ps1` |
+| Blazor "An unhandled error" | Stop services → `dotnet clean BlazorAdmin` → `Start-Debug.ps1` |
+| Schema-drift (Test-App.ps1 faalt) | `.\scripts\dev\Test-App.ps1 -Fix` |
+
+---
+
+## Entra-configuratie (productie, eenmalig)
+
+```powershell
+# Diagnose (read-only)
+.\scripts\azure\Verify-AzureAuthSetup.ps1
+
+# Configuratie toepassen (idempotent)
+.\scripts\azure\Configure-EntraApp.ps1 -WhatIf   # preview
+.\scripts\azure\Configure-EntraApp.ps1            # apply
+```
+
+---
+
+## CI/CD bewaken
+
+```powershell
+# PR-checks bewaken
+gh pr checks <pr-nr> --watch
+
+# Deploy-jobs controleren
+gh run list --branch main --limit 3
+gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
+```
+
+---
+
+**Versie:** 2.7 — bijgewerkt 2026-05-31

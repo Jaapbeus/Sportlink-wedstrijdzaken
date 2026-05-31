@@ -14,9 +14,10 @@ CREATE TABLE [planner].[GeplandeWedstrijden] (
     [Opmerking]             NVARCHAR(500)  NULL,
     [IsVervallen]           BIT            NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_IsVervallen] DEFAULT 0,
     [SportlinkWedstrijdCode] BIGINT        NULL,
+    [ClubCode]              NVARCHAR(20)   NOT NULL,
     [mta_inserted]          DATETIME       NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_Ins] DEFAULT GETUTCDATE(),
     [mta_modified]          DATETIME       NOT NULL CONSTRAINT [DF_GeplandeWedstrijden_Mod] DEFAULT GETUTCDATE(),
     CONSTRAINT [PK_GeplandeWedstrijden] PRIMARY KEY CLUSTERED ([Id] ASC),
     CONSTRAINT [FK_GeplandeWedstrijden_Velden] FOREIGN KEY ([VeldNummer]) REFERENCES [dbo].[Velden]([VeldNummer]),
-    CONSTRAINT [UQ_GeplandeWedstrijden_Slot] UNIQUE ([Datum], [AanvangsTijd], [VeldNummer], [VeldDeelGebruik])
+    CONSTRAINT [UQ_GeplandeWedstrijden_Slot] UNIQUE ([ClubCode], [Datum], [AanvangsTijd], [VeldNummer], [VeldDeelGebruik])
 );

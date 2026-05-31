@@ -1,0 +1,3935 @@
+openapi: 3.0.3
+info:
+  title: Sportlink Wedstrijdzaken API
+  description: |
+    API voor het beheer van wedstrijden, veldplanning en club-instellingen.
+
+    ## Beveiliging
+
+    Twee beveiligingsschema's:
+
+    - **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.
+      Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en
+      populate-sunset).
+    - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor
+      alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele
+      `WEBSITE_SITE_NAME` afwezig is.
+
+    Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
+  version: 2.7.0
+  contact:
+    name: Sportlink Wedstrijdzaken
+    url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
+
+servers:
+  - url: https://func-{clubcode}-sportlink.azurewebsites.net/api
+    description: Productie (Azure Functions — vervang {clubcode} door de clubcode van jouw installatie)
+  - url: http://localhost:7094/api
+    description: Lokale ontwikkeling (func start)
+
+tags:
+  - name: core
+    description: Health en handmatige Sportlink-synchronisatie
+  - name: planner
+    description: Veldplanning, beschikbaarheidscontrole en optimalisatie
+  - name: beheer
+    description: Beheerfuncties (vereisen Entra ID authenticatie met admin-rol)
+  - name: testdata
+    description: Testdata beheer voor ALLSTARS demo-club (vereist admin-rol)
+  - name: feedback
+    description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Beveiligingsschema's
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    functionKey:
+      type: apiKey
+      in: query
+      name: code
+      description: |
+        Azure Functions key. Gebruik de Function key voor planner-endpoints en de Master key voor
+        sync-matches en populate-sunset (AuthorizationLevel.Admin).
+    easyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Azure Easy Auth Bearer token (Entra ID). De Function App valideert dit token via Easy Auth
+        en injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert de `admin`-rol op alle
+        /beheer/- en /feedback/-endpoints. Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Herbruikbare headers
+  # ───────────────────────────────────────────────────────────────────────────
+  headers:
+    CorrelationId:
+      description: Uniek verzoek-ID voor tracing in logs
+      schema:
+        type: string
+        format: uuid
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Herbruikbare antwoorden
+  # ───────────────────────────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Authenticatie ontbreekt of is ongeldig
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Geen admin-rol in het token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadRequest:
+      description: Verzoek ongeldig (verplicht veld ontbreekt of validatiefout)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource niet gevonden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Interne serverfout
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Schema's
+  # ───────────────────────────────────────────────────────────────────────────
+  schemas:
+
+    # ── Generiek ──────────────────────────────────────────────────────────────
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Foutomschrijving
+      required:
+        - error
+      example:
+        error: "Request body met 'datum' veld is verplicht."
+
+    # ── Planner ───────────────────────────────────────────────────────────────
+
+    SlotToewijzing:
+      type: object
+      description: Toegewezen of alternatief tijdslot
+      properties:
+        datum:
+          type: string
+          format: date
+          example: "2026-04-18"
+        aanvangsTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "12:00"
+        eindTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "13:15"
+        veldNummer:
+          type: integer
+          example: 3
+        veldNaam:
+          type: string
+          example: "veld 3"
+        veldDeelGebruik:
+          type: number
+          format: float
+          description: Fractie van het veld (0.25, 0.50 of 1.00)
+          example: 1.0
+        wedstrijdDuurMinuten:
+          type: integer
+          example: 75
+
+    TeamConflictInfo:
+      type: object
+      description: Bestaande wedstrijd voor het team op de gevraagde datum
+      properties:
+        wedstrijd:
+          type: string
+          example: "[ClubCode] JO11-9JM - [Tegenstander] JO11-3"
+        aanvangsTijd:
+          type: string
+          example: "11:30"
+        eindTijd:
+          type: string
+          example: "12:45"
+        veldNaam:
+          type: string
+          example: "veld 4"
+
+    BeschikbaarVenster:
+      type: object
+      description: Beschikbaar tijdvenster per veld (modus zonder leeftijdscategorie)
+      properties:
+        veldNummer:
+          type: integer
+          example: 5
+        veldNaam:
+          type: string
+          example: "veld 5"
+        van:
+          type: string
+          example: "17:00"
+        tot:
+          type: string
+          example: "19:20"
+        maxDuurMinuten:
+          type: integer
+          example: 140
+        opmerking:
+          type: string
+          nullable: true
+          example: "Zonsondergang 21:28, geen kunstlicht"
+
+    CheckAvailabilityRequest:
+      type: object
+      required:
+        - datum
+      properties:
+        datum:
+          type: string
+          format: date
+          description: Datum in yyyy-MM-dd formaat
+          example: "2026-04-18"
+        aanvangsTijd:
+          type: string
+          nullable: true
+          description: Gewenste aftrapttijd HH:mm. Weglaten om beste slot te vinden.
+          example: "12:00"
+        dagdeel:
+          type: string
+          nullable: true
+          enum: [ochtend, middag, avond]
+          description: Dagdeelfilter
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+          description: Leeftijdscategorie (bijv. JO13, MO17, VR, 1-99). Bepaalt duur en veldgrootte.
+          example: "JO13"
+        teamNaam:
+          type: string
+          nullable: true
+          description: Teamnaam voor conflictcontrole en teamspecifieke regels
+          example: "[ClubCode] JO13-1"
+        tegenstander:
+          type: string
+          nullable: true
+          description: Tegenstander (alleen voor administratie)
+          example: "[Tegenstander] JO13-2"
+        wedstrijdDuurMinuten:
+          type: integer
+          nullable: true
+          description: Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)
+
+    CheckAvailabilityResponse:
+      type: object
+      properties:
+        beschikbaar:
+          type: boolean
+        toewijzing:
+          $ref: '#/components/schemas/SlotToewijzing'
+          nullable: true
+        teamConflict:
+          $ref: '#/components/schemas/TeamConflictInfo'
+          nullable: true
+        reden:
+          type: string
+          nullable: true
+        alternatieven:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotToewijzing'
+        beschikbareVensters:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/BeschikbaarVenster'
+        waarschuwingen:
+          type: array
+          items:
+            type: string
+
+    BevestigRequest:
+      type: object
+      required:
+        - datum
+        - aanvangsTijd
+        - veldNummer
+      properties:
+        datum:
+          type: string
+          format: date
+          example: "2026-04-25"
+        aanvangsTijd:
+          type: string
+          example: "12:00"
+        veldNummer:
+          type: integer
+          example: 3
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+          example: "JO13"
+        teamNaam:
+          type: string
+          nullable: true
+          example: "[ClubCode] JO13-1"
+        tegenstander:
+          type: string
+          nullable: true
+          example: "[Tegenstander] JO13-2"
+        aangevraagdDoor:
+          type: string
+          nullable: true
+          example: "trainer@voorbeeld.nl"
+        wedstrijdDuurMinuten:
+          type: integer
+          nullable: true
+
+    BevestigResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        datum:
+          type: string
+          format: date
+        aanvangsTijd:
+          type: string
+        eindTijd:
+          type: string
+        veldNummer:
+          type: integer
+        status:
+          type: string
+          example: "Te bevestigen"
+
+    ZoekWedstrijdRequest:
+      type: object
+      required:
+        - teamNaam
+        - datum
+      properties:
+        teamNaam:
+          type: string
+          description: Teamnaam (gedeeltelijke match ondersteund)
+          example: "[ClubCode] JO8-2"
+        datum:
+          type: string
+          format: date
+          example: "2026-05-09"
+
+    WedstrijdSamenvatting:
+      type: object
+      properties:
+        wedstrijdcode:
+          type: integer
+          format: int64
+          example: 12345678
+        wedstrijd:
+          type: string
+          example: "[ClubCode] JO8-2 - Tegenstander JO8-1"
+        datum:
+          type: string
+          format: date
+        aanvangsTijd:
+          type: string
+        eindTijd:
+          type: string
+        veldNaam:
+          type: string
+          nullable: true
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+        duurMinuten:
+          type: integer
+        veldDeelGebruik:
+          type: number
+          format: float
+
+    HerplanCheckRequest:
+      type: object
+      required:
+        - wedstrijdcode
+      properties:
+        wedstrijdcode:
+          type: integer
+          format: int64
+          example: 12345678
+        voorkeurTijd:
+          type: string
+          nullable: true
+          description: Gewenste nieuwe tijd HH:mm
+          example: "10:00"
+        dagdeel:
+          type: string
+          nullable: true
+          enum: [ochtend, middag, avond]
+        richting:
+          type: string
+          nullable: true
+          enum: [vervroegen, verlaten]
+          description: Of alternatieven voor of na de huidige aanvangstijd mogen vallen
+
+    HerplanCheckResponse:
+      type: object
+      properties:
+        huidigeWedstrijd:
+          $ref: '#/components/schemas/WedstrijdSamenvatting'
+        beschikbaar:
+          type: boolean
+        alternatieven:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotToewijzing'
+        reden:
+          type: string
+          nullable: true
+        waarschuwingen:
+          type: array
+          items:
+            type: string
+
+    HerplanBevestigRequest:
+      type: object
+      required:
+        - wedstrijdcode
+        - gewensteAanvangsTijd
+      properties:
+        wedstrijdcode:
+          type: integer
+          format: int64
+          example: 12345678
+        gewensteAanvangsTijd:
+          type: string
+          example: "10:00"
+        gewenstVeldNummer:
+          type: integer
+          nullable: true
+        aangevraagdDoor:
+          type: string
+          nullable: true
+          example: "tegenstander via email"
+        opmerking:
+          type: string
+          nullable: true
+          example: "08:30 is niet haalbaar"
+
+    HerplanBevestigResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        wedstrijdcode:
+          type: integer
+          format: int64
+        huidigeWedstrijd:
+          type: string
+        gewensteAanvangsTijd:
+          type: string
+        gewenstVeldNummer:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          example: "Aangevraagd"
+
+    OptimaliseerRequest:
+      type: object
+      required:
+        - datum
+      properties:
+        datum:
+          type: string
+          format: date
+          example: "2026-04-18"
+        doel:
+          type: string
+          nullable: true
+          enum: [veld5-ontlasten, strakker-plannen]
+          description: Optimalisatiedoel. Leeg = beide combineren.
+        gewensteEindtijd:
+          type: string
+          nullable: true
+          description: Gewenste eindtijd HH:mm. Standaard 16:15.
+          example: "16:15"
+        bufferMinuten:
+          type: integer
+          nullable: true
+          description: Buffer tussen wedstrijden in minuten. Standaard 15.
+
+    OptimalisatieSuggestie:
+      type: object
+      properties:
+        wedstrijd:
+          type: string
+        huidigVeldNummer:
+          type: integer
+        huidigVeld:
+          type: string
+        huidigeTijd:
+          type: string
+        nieuwVeldNummer:
+          type: integer
+        nieuwVeld:
+          type: string
+        nieuweTijd:
+          type: string
+        reden:
+          type: string
+
+    OptimaliseerResponse:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+        huidigeEindtijd:
+          type: string
+        geschatteNieuweEindtijd:
+          type: string
+          nullable: true
+        aantalVerplaatsingen:
+          type: integer
+        aantalVanVeld5Verplaatst:
+          type: integer
+        suggesties:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptimalisatieSuggestie'
+        htmlPlanner:
+          type: string
+          description: HTML-plannerweergave (altijd meegegeven in JSON-modus)
+        voldoendeRuimte:
+          type: boolean
+        voldoendeRuimteMelding:
+          type: string
+          nullable: true
+
+    DoordeweeksBeschikbaarRequest:
+      type: object
+      properties:
+        dagFilter:
+          type: string
+          nullable: true
+          enum: [maandag, dinsdag, woensdag, donderdag]
+          description: Filter op dag van de week. Leeg = alle doordeweekse dagen.
+        duurMinuten:
+          type: integer
+          nullable: true
+          description: Minimale duur in minuten
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+          description: Leeftijdscategorie voor automatische duur
+
+    DoordeweekseDatum:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+        dag:
+          type: string
+          example: "maandag"
+        beschikbareVensters:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeschikbaarVenster'
+
+    DoordeweeksBeschikbaarResponse:
+      type: object
+      properties:
+        beschikbareDatums:
+          type: array
+          items:
+            $ref: '#/components/schemas/DoordeweekseDatum'
+        dagFilter:
+          type: string
+          nullable: true
+        seizoenEinde:
+          type: string
+          format: date
+        aantalBeschikbaar:
+          type: integer
+
+    TeamScheduleWedstrijd:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+        aanvangsTijd:
+          type: string
+        thuisUit:
+          type: string
+          enum: [thuis, uit]
+        tegenstander:
+          type: string
+        type:
+          type: string
+          enum: [competitie, beker, oefenwedstrijd]
+        veld:
+          type: string
+          nullable: true
+        wedstrijdcode:
+          type: integer
+          format: int64
+          nullable: true
+
+    TeamScheduleZaterdag:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [vrij, oefenwedstrijd, bezet]
+        bezetDoor:
+          $ref: '#/components/schemas/TeamScheduleWedstrijd'
+          nullable: true
+
+    TeamScheduleResponse:
+      type: object
+      properties:
+        team:
+          type: string
+        seizoenEinde:
+          type: string
+          format: date
+        zaterdagen:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamScheduleZaterdag'
+        wedstrijden:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamScheduleWedstrijd'
+
+    # ── Beheer — AppSettings ───────────────────────────────────────────────────
+
+    AppSettingsResponse:
+      type: object
+      description: |
+        Niet-gevoelige AppSettings velden. SportlinkClientId en geheimen worden nooit teruggegeven.
+      properties:
+        ClubName:
+          type: string
+          nullable: true
+        ClubCode:
+          type: string
+          nullable: true
+        SportlinkApiUrl:
+          type: string
+          nullable: true
+        SeasonStartMonth:
+          type: integer
+          nullable: true
+        Accommodatie:
+          type: string
+          nullable: true
+        LastSyncTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+        FetchSchedule:
+          type: string
+          nullable: true
+          description: CRON-expressie in 6-veld Azure-formaat
+          example: "0 0 4 * * *"
+        PlannerAfzenderNaam:
+          type: string
+          nullable: true
+        CoordinatorNaam:
+          type: string
+          nullable: true
+        CoordinatorFunctie:
+          type: string
+          nullable: true
+        PlannerEmailAdres:
+          type: string
+          nullable: true
+        HerplanDeadlineDagen:
+          type: integer
+          nullable: true
+        BufferMinuten:
+          type: integer
+          nullable: true
+        EmailVoetnoot:
+          type: string
+          nullable: true
+        AccommodatiePlaats:
+          type: string
+          nullable: true
+        AccommodatieLatitude:
+          type: number
+          format: double
+          nullable: true
+        AccommodatieLongitude:
+          type: number
+          format: double
+          nullable: true
+        UseRealtimeApi:
+          type: boolean
+          description: "true = live Sportlink API raadplegen bij plannercheck; false = alleen DB"
+          default: true
+        fetchScheduleLeesbaar:
+          type: string
+          nullable: true
+          description: Leesbare weergave van de CRON-expressie
+          example: "Elke dag om 04:00"
+        volgendeMomenten:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: date-time
+          description: Eerstvolgende 3 uitvoertijden
+
+    UpdateSettingsRequest:
+      type: object
+      description: |
+        Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.
+        Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
+        CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
+        AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi.
+      properties:
+        gewijzigdDoor:
+          type: string
+          description: Naam of ID van de beheerder die de wijziging doorvoert
+          example: "beheerder@voorbeeld.nl"
+        velden:
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
+          description: Map van veldnaam naar nieuwe waarde
+          example:
+            BufferMinuten: "15"
+            FetchSchedule: "0 0 4 * * *"
+
+    UpdateSettingsResponse:
+      type: object
+      properties:
+        gewijzigdeVelden:
+          type: array
+          items:
+            type: string
+        herstartVereist:
+          type: boolean
+          description: Handmatige herstart vereist als FetchSchedule gewijzigd maar Azure Management API niet geconfigureerd
+        herstartAutomatisch:
+          type: boolean
+          description: Function App herstart automatisch via Azure Management API
+        opmerking:
+          type: string
+          nullable: true
+        fetchScheduleLeesbaar:
+          type: string
+          nullable: true
+        volgendeMomenten:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: date-time
+
+    GeocodeResponse:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+        displayName:
+          type: string
+
+    # ── Beheer — Sync ─────────────────────────────────────────────────────────
+
+    SyncStatusResponse:
+      type: object
+      properties:
+        lastSyncTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+        fetchSchedule:
+          type: string
+          example: "0 0 4 * * *"
+        status:
+          type: string
+          enum: [ok, geen-sync-uitgevoerd]
+
+    SyncTriggerResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "gestart"
+        weekOffsetFrom:
+          type: integer
+        weekOffsetTo:
+          type: integer
+        tijdstip:
+          type: string
+          format: date-time
+
+    # ── Beheer — Templates ────────────────────────────────────────────────────
+
+    EmailTemplate:
+      type: object
+      properties:
+        Id:
+          type: integer
+        TemplateKey:
+          type: string
+        Onderwerp:
+          type: string
+        BodyTemplate:
+          type: string
+        Actief:
+          type: boolean
+        ClubCode:
+          type: string
+        mta_inserted:
+          type: string
+          format: date-time
+        mta_modified:
+          type: string
+          format: date-time
+          nullable: true
+
+    TemplatePutRequest:
+      type: object
+      required:
+        - onderwerp
+        - bodyTemplate
+      properties:
+        onderwerp:
+          type: string
+        bodyTemplate:
+          type: string
+        actief:
+          type: boolean
+          default: true
+        gewijzigdDoor:
+          type: string
+          nullable: true
+
+    TemplateResetResponse:
+      type: object
+      properties:
+        templateKey:
+          type: string
+        verwijderd:
+          type: integer
+          description: Aantal verwijderde rijen
+        status:
+          type: string
+          example: "hardcoded default actief"
+
+    # ── Beheer — Email-log ────────────────────────────────────────────────────
+
+    EmailLogItem:
+      type: object
+      description: AVG — EmailBody en AntwoordEmail worden nooit teruggegeven. Afzender gemaskeerd tot domein.
+      properties:
+        Id:
+          type: integer
+        MessageId:
+          type: string
+          nullable: true
+        ConversationId:
+          type: string
+          nullable: true
+        Afzender:
+          type: string
+          description: Gemaskeerd — alleen domein, bijv. "***@voorbeeld.nl"
+          example: "***@voorbeeld.nl"
+        Onderwerp:
+          type: string
+          nullable: true
+        OntvangstDatum:
+          type: string
+          format: date-time
+        VerzoekType:
+          type: string
+          nullable: true
+        Status:
+          type: string
+          nullable: true
+        VerstuurdNaar:
+          type: string
+          nullable: true
+        FoutMelding:
+          type: string
+          nullable: true
+        mta_inserted:
+          type: string
+          format: date-time
+        mta_modified:
+          type: string
+          format: date-time
+          nullable: true
+
+    EmailLogResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        limit:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmailLogItem'
+
+    # ── Beheer — Uitgesloten emails ───────────────────────────────────────────
+
+    UitgeslotenEmail:
+      type: object
+      properties:
+        id:
+          type: integer
+        emailAdres:
+          type: string
+          format: email
+        omschrijving:
+          type: string
+          nullable: true
+        actief:
+          type: boolean
+        clubCode:
+          type: string
+
+    UitgeslotenEmailRequest:
+      type: object
+      required:
+        - emailAdres
+      properties:
+        emailAdres:
+          type: string
+          format: email
+        omschrijving:
+          type: string
+          nullable: true
+        actief:
+          type: boolean
+          default: true
+
+    # ── Beheer — Veldbeschikbaarheid ──────────────────────────────────────────
+
+    VeldBeschikbaarheidItem:
+      type: object
+      properties:
+        Id:
+          type: integer
+        VeldNummer:
+          type: integer
+        VeldNaam:
+          type: string
+        DagVanWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: "ISO dag: 1=maandag … 7=zondag"
+        BeschikbaarVanaf:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          description: HH:mm
+          example: "08:30"
+        BeschikbaarTot:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "22:00"
+        GebruikZonsondergang:
+          type: boolean
+
+    VeldBeschikbaarheidUpdateRequest:
+      type: object
+      required:
+        - beschikbaarVanaf
+        - beschikbaarTot
+      properties:
+        beschikbaarVanaf:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "08:30"
+        beschikbaarTot:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "22:00"
+        gebruikZonsondergang:
+          type: boolean
+          default: false
+
+    VeldBeschikbaarheidCreateRequest:
+      type: object
+      required:
+        - veldNummer
+        - dagVanWeek
+        - beschikbaarVanaf
+        - beschikbaarTot
+      properties:
+        veldNummer:
+          type: integer
+        dagVanWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        beschikbaarVanaf:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "08:30"
+        beschikbaarTot:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "22:00"
+        gebruikZonsondergang:
+          type: boolean
+          default: false
+
+    VeldItem:
+      type: object
+      properties:
+        VeldNummer:
+          type: integer
+        VeldNaam:
+          type: string
+
+    # ── Beheer — Voorkeurstijden ───────────────────────────────────────────────
+
+    VoorkeurTijdItem:
+      type: object
+      properties:
+        Id:
+          type: integer
+        TeamNaam:
+          type: string
+        DagVanWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        VoorkeurTijd:
+          type: string
+          description: HH:mm
+        Prioriteit:
+          type: integer
+          default: 5
+        Actief:
+          type: boolean
+        ClubCode:
+          type: string
+        mta_inserted:
+          type: string
+          format: date-time
+        mta_modified:
+          type: string
+          format: date-time
+          nullable: true
+
+    VoorkeurTijdRequest:
+      type: object
+      required:
+        - teamNaam
+        - dagVanWeek
+        - voorkeurTijd
+      properties:
+        teamNaam:
+          type: string
+        dagVanWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: "6 = zaterdag"
+        voorkeurTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "10:00"
+        prioriteit:
+          type: integer
+          default: 5
+        actief:
+          type: boolean
+          default: true
+
+    # ── Beheer — Teamregels ────────────────────────────────────────────────────
+
+    TeamRegelItem:
+      type: object
+      properties:
+        Id:
+          type: integer
+        TeamNaam:
+          type: string
+        RegelType:
+          type: string
+          enum: [BufferVoor, BufferNa, VoorkeurVeld]
+        WaardeMinuten:
+          type: integer
+          nullable: true
+        WaardeVeldNummer:
+          type: integer
+          nullable: true
+        WaardeTijd:
+          type: string
+          nullable: true
+          description: HH:mm
+        Prioriteit:
+          type: integer
+        Actief:
+          type: boolean
+        Opmerking:
+          type: string
+          nullable: true
+        ClubCode:
+          type: string
+
+    TeamRegelRequest:
+      type: object
+      required:
+        - teamNaam
+        - regelType
+      properties:
+        teamNaam:
+          type: string
+        regelType:
+          type: string
+          enum: [BufferVoor, BufferNa, VoorkeurVeld]
+        waardeMinuten:
+          type: integer
+          nullable: true
+          description: Verplicht bij BufferVoor en BufferNa
+        waardeVeldNummer:
+          type: integer
+          nullable: true
+          description: Verplicht bij VoorkeurVeld
+        waardeTijd:
+          type: string
+          nullable: true
+          pattern: '^[0-2]\d:[0-5]\d$'
+        prioriteit:
+          type: integer
+          default: 0
+        actief:
+          type: boolean
+          default: true
+        opmerking:
+          type: string
+          nullable: true
+
+    # ── Email test ────────────────────────────────────────────────────────────
+
+    TestEmailRequest:
+      type: object
+      required:
+        - body
+      properties:
+        onderwerp:
+          type: string
+          nullable: true
+        afzender:
+          type: string
+          nullable: true
+          example: "trainer@voorbeeld.nl"
+        afzenderNaam:
+          type: string
+          nullable: true
+          example: "Jan de Vries"
+        body:
+          type: string
+          description: Emailtekst om te classificeren (verplicht)
+
+    TestEmailResponse:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+          example: true
+        opmerking:
+          type: string
+          example: "Dit verstuurt niets en slaat niets op"
+        classificatie:
+          type: object
+          description: AI-classificatieresultaat
+        plannerResponse:
+          type: object
+          description: Planner-respons op basis van de classificatie (geen DB-mutatie)
+        voorbeeldAntwoord:
+          type: object
+          properties:
+            onderwerp:
+              type: string
+            body:
+              type: string
+
+    # ── Feedback ──────────────────────────────────────────────────────────────
+
+    VraagAntwoord:
+      type: object
+      properties:
+        vraag:
+          type: string
+        antwoord:
+          type: string
+
+    FeedbackContext:
+      type: object
+      properties:
+        pagina:
+          type: string
+          description: Huidige pagina/route in de admin UI
+        versie:
+          type: string
+          description: Applicatieversie
+        rol:
+          type: string
+        browser:
+          type: string
+
+    FeedbackRequest:
+      type: object
+      required:
+        - beschrijving
+      properties:
+        type:
+          type: string
+          enum: [Fout, Verzoek, Vraag]
+          description: Type melding
+        beschrijving:
+          type: string
+          description: Omschrijving van het probleem of verzoek (max 2000 tekens)
+        vragenAntwoorden:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/VraagAntwoord'
+        context:
+          $ref: '#/components/schemas/FeedbackContext'
+          nullable: true
+
+    FeedbackValidateResponse:
+      type: object
+      properties:
+        volledig:
+          type: boolean
+          description: Of de beschrijving voldoende informatie bevat
+        vragen:
+          type: array
+          description: Aanvulvragen als niet volledig (max 3)
+          items:
+            type: string
+
+    FeedbackSubmitResponse:
+      type: object
+      properties:
+        issueNummer:
+          type: integer
+          description: GitHub issue nummer
+        issueUrl:
+          type: string
+          format: uri
+          description: URL naar het aangemaakte GitHub issue
+
+    # ── Beheer — Clubs ────────────────────────────────────────────────────────
+
+    ClubItem:
+      type: object
+      description: Club-entry uit dbo.AppSettings (multi-club overzicht)
+      properties:
+        clubCode:
+          type: string
+          example: "[clubcode]"
+        clubName:
+          type: string
+          example: "[ClubNaam]"
+        syncEnabled:
+          type: boolean
+          description: Of Sportlink-synchronisatie actief is voor deze club
+
+    # ── Beheer — Speeltijden ──────────────────────────────────────────────────
+
+    SpeeltijdItem:
+      type: object
+      description: Speeltijd-configuratie per leeftijdscategorie
+      properties:
+        Leeftijd:
+          type: string
+          description: Leeftijdscategorie (bijv. JO8, JO11, MO17, VR, 1-99)
+          example: "JO13"
+        Veldafmeting:
+          type: number
+          format: decimal
+          description: Fractie van het veld (bijv. 0.5 = half veld)
+          example: 1.0
+        WedstrijdTotaal:
+          type: integer
+          description: Totale wedstrijdduur in minuten (speeltijd + rust)
+          example: 75
+        WedstrijdHelft:
+          type: integer
+          description: Duur van één helft in minuten
+          example: 35
+        WedstrijdRust:
+          type: integer
+          description: Rustduur in minuten
+          example: 5
+
+    SpeeltijdRequest:
+      type: object
+      required:
+        - leeftijd
+        - wedstrijdTotaal
+      properties:
+        leeftijd:
+          type: string
+          example: "JO13"
+        veldafmeting:
+          type: number
+          format: decimal
+          default: 1.0
+        wedstrijdTotaal:
+          type: integer
+          description: Totale duur in minuten
+          example: 75
+        wedstrijdHelft:
+          type: integer
+          example: 35
+        wedstrijdRust:
+          type: integer
+          example: 5
+
+    # ── Beheer — Theme ────────────────────────────────────────────────────────
+
+    ThemeResponse:
+      type: object
+      properties:
+        primary:
+          type: string
+          description: Primaire kleur (hex)
+          example: "#1b6ec2"
+        secondary:
+          type: string
+          example: "#6c757d"
+        accent:
+          type: string
+          example: "#0071c1"
+        textOnPrimary:
+          type: string
+          description: Tekstkleur op primaire achtergrond
+          example: "#ffffff"
+        clubWebsiteUrl:
+          type: string
+          nullable: true
+        faviconUrl:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+
+    ThemeSaveRequest:
+      type: object
+      properties:
+        primary:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          example: "#1b6ec2"
+        secondary:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          example: "#6c757d"
+        accent:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          example: "#0071c1"
+        textOnPrimary:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          example: "#ffffff"
+        clubWebsiteUrl:
+          type: string
+          nullable: true
+        faviconUrl:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+
+    ThemeExtractResponse:
+      type: object
+      properties:
+        colors:
+          type: array
+          items:
+            type: string
+          description: Meest voorkomende kleuren (max 8, zonder wit/zwart/grijs)
+          example: ["#1b6ec2", "#e8f0fe"]
+        faviconUrl:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+
+    # ── Beheer — Leermomenten ─────────────────────────────────────────────────
+
+    LeermomentItem:
+      type: object
+      description: Classificatie-leermoment uit planner.ClassificatieCorrectie
+      properties:
+        Id:
+          type: integer
+        OrigineleVerwerkingId:
+          type: integer
+          nullable: true
+        CorrectionVerwerkingId:
+          type: integer
+          nullable: true
+        OrigineelVerzoekType:
+          type: string
+          nullable: true
+        AfgeleidJuistType:
+          type: string
+          nullable: true
+        OrigineleSamenvatting:
+          type: string
+          nullable: true
+        CorrectieSamenvatting:
+          type: string
+          nullable: true
+        IsGevalideerd:
+          type: boolean
+        IsAfgewezen:
+          type: boolean
+        mta_inserted:
+          type: string
+          format: date-time
+        mta_modified:
+          type: string
+          format: date-time
+          nullable: true
+
+    LeermomentListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        limit:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeermomentItem'
+
+    LeermomentStatsResponse:
+      type: object
+      properties:
+        pending:
+          type: integer
+          description: Nog niet beoordeelde leermomenten
+        validated:
+          type: integer
+          description: Gevalideerde leermomenten
+        rejected:
+          type: integer
+          description: Afgewezen leermomenten
+
+    ValideerRequest:
+      type: object
+      required:
+        - actie
+      properties:
+        actie:
+          type: string
+          enum: [valideer, afwijzen]
+          description: "'valideer' = leermoment accepteren; 'afwijzen' = leermoment verwerpen"
+
+    # ── Beheer — Teambegeleiding ──────────────────────────────────────────────
+
+    TeambegeleidingTeam:
+      type: object
+      properties:
+        team:
+          type: string
+          description: Teamnaam
+
+    TeambegeleidingLid:
+      type: object
+      description: |
+        AVG: e-mailadressen en telefoonnummers alleen zichtbaar voor admin/user-rol
+        achter Entra ID auth. Nooit in auto-reply body opgenomen.
+      properties:
+        Naam:
+          type: string
+        Teamrol:
+          type: string
+          nullable: true
+        Emailadres:
+          type: string
+          nullable: true
+        Telefoonnummer:
+          type: string
+          nullable: true
+
+    TeambegeleidingDoorsturenRequest:
+      type: object
+      required:
+        - team
+        - onderwerp
+        - bericht
+      properties:
+        team:
+          type: string
+          description: Teamnaam waarnaar het bericht gestuurd wordt
+        onderwerp:
+          type: string
+        bericht:
+          type: string
+          description: Berichttekst (max 2000 tekens)
+
+    # ── Testdata ──────────────────────────────────────────────────────────────
+
+    TestDataWedstrijd:
+      type: object
+      description: Test-wedstrijd (alleen voor ALLSTARS demo-club)
+      properties:
+        BkMatches:
+          type: string
+          description: Business key
+        Datum:
+          type: string
+          nullable: true
+        Aanvangstijd:
+          type: string
+          nullable: true
+        ThuisTeam:
+          type: string
+          nullable: true
+        UitTeam:
+          type: string
+          nullable: true
+        VeldNaam:
+          type: string
+          nullable: true
+        Soort:
+          type: string
+          nullable: true
+        VeldSubpositie:
+          type: string
+          nullable: true
+
+    TestDataWedstrijdCreateRequest:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+          example: "2026-06-07"
+        aanvangstijd:
+          type: string
+          example: "10:00"
+        thuisteam:
+          type: string
+          example: "AllStars FC JO11-1"
+        uitteam:
+          type: string
+          example: "Tegenstander JO11-2"
+        veld:
+          type: string
+          nullable: true
+          example: "veld 3"
+        competitiesoort:
+          type: string
+          nullable: true
+          example: "Oefenwedstrijd"
+        veld_subpositie:
+          type: string
+          nullable: true
+
+    # ── Planner — Auto-plan ───────────────────────────────────────────────────
+
+    AutoPlanRequest:
+      type: object
+      required:
+        - datum
+      properties:
+        datum:
+          type: string
+          format: date
+          description: Datum voor de automatische planning
+          example: "2026-06-07"
+        doel:
+          type: string
+          nullable: true
+          description: Optioneel optimalisatiedoel
+
+    AutoPlanWedstrijd:
+      type: object
+      properties:
+        wedstrijdcode:
+          type: integer
+          format: int64
+          nullable: true
+        team:
+          type: string
+        tegenstander:
+          type: string
+          nullable: true
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+        huidigVeld:
+          type: string
+          nullable: true
+        huidigeTijd:
+          type: string
+          nullable: true
+        nieuwVeld:
+          type: string
+          nullable: true
+        nieuweTijd:
+          type: string
+          nullable: true
+        actie:
+          type: string
+          description: Wat het auto-plan doet met deze wedstrijd
+          nullable: true
+
+    AutoPlanResponse:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+        aantalWedstrijden:
+          type: integer
+        suggesties:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutoPlanWedstrijd'
+        waarschuwingen:
+          type: array
+          items:
+            type: string
+
+    AutoPlanToepassenRequest:
+      type: object
+      required:
+        - datum
+      properties:
+        datum:
+          type: string
+          format: date
+          example: "2026-06-07"
+        bevestigingsToken:
+          type: string
+          nullable: true
+          description: Token uit AutoPlanResponse ter verificatie
+
+    AutoPlanToepassenResponse:
+      type: object
+      properties:
+        datum:
+          type: string
+          format: date
+        toegepast:
+          type: integer
+          description: Aantal wedstrijden waarvoor een slot is geboekt
+        overgeslagen:
+          type: integer
+          description: Aantal wedstrijden waarvoor geen slot beschikbaar was
+        waarschuwingen:
+          type: array
+          items:
+            type: string
+
+# =============================================================================
+# Paden
+# =============================================================================
+paths:
+
+  # ── Core ────────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [core]
+      operationId: getHealth
+      summary: Status en versie van de API
+      description: Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
+      security: []
+      responses:
+        '200':
+          description: API is beschikbaar
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  version:
+                    type: string
+                    example: "2.2.0.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /sync-matches:
+    get:
+      tags: [core]
+      operationId: syncMatches
+      summary: Handmatige Sportlink synchronisatie starten
+      description: |
+        Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        Vereist de Azure Master key via `?code=`.
+
+        - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
+        - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
+      security:
+        - functionKey: []
+      parameters:
+        - name: reset
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: true = volledig seizoen synchroniseren i.p.v. incrementeel
+        - name: season
+          in: query
+          required: false
+          schema:
+            type: integer
+            example: 2025
+          description: Startjaar seizoen (bijv. 2025 = seizoen 2025/2026). Gebruik samen met reset=true.
+      responses:
+        '200':
+          description: Synchronisatie voltooid
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Sync completed. WeekOffset range: -1 to 42."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Planner ─────────────────────────────────────────────────────────────────
+
+  /planner/check-availability:
+    post:
+      tags: [planner]
+      operationId: checkAvailability
+      summary: Veldbeschikbaarheid controleren
+      description: |
+        Controleer of een veld beschikbaar is voor een (oefen)wedstrijd.
+
+        Drie modi:
+        1. **Slot toewijzen** — `leeftijdsCategorie` opgegeven: zoekt beste beschikbare slot
+        2. **Alternatieven** — gevraagd tijdstip bezet: geeft tot 3 alternatieven terug
+        3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld
+
+        Controleert ook teamconflicten als `teamNaam` opgegeven is.
+      security:
+        - functionKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckAvailabilityRequest'
+      responses:
+        '200':
+          description: Beschikbaarheidsresultaat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckAvailabilityResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/bevestig:
+    post:
+      tags: [planner]
+      operationId: bevestigWedstrijd
+      summary: Wedstrijdslot boeken
+      description: |
+        Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.
+        Status wordt altijd als `"Te bevestigen"` aangemaakt.
+      security:
+        - functionKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BevestigRequest'
+      responses:
+        '200':
+          description: Wedstrijd geboekt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BevestigResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/populate-sunset:
+    post:
+      tags: [planner]
+      operationId: populateSunset
+      summary: Zonsondergangtabel vullen
+      description: |
+        Vult de `DateTable` met NOAA-berekende zonsondergangtijden voor het accommodatiecoördinaat.
+        Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
+        Vereist de Azure Master key.
+      security:
+        - functionKey: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Tabel gevuld
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Sunset data populated from 2026-01-01 to 2027-12-31."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/zoek-wedstrijd:
+    post:
+      tags: [planner]
+      operationId: zoekWedstrijd
+      summary: Bestaande wedstrijd opzoeken
+      description: |
+        Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
+        Gedeeltelijke teamnaam-match is ondersteund.
+      security:
+        - functionKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZoekWedstrijdRequest'
+      responses:
+        '200':
+          description: Zoekresultaat (gevonden of niet gevonden)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      gevonden:
+                        type: boolean
+                        example: true
+                      wedstrijd:
+                        $ref: '#/components/schemas/WedstrijdSamenvatting'
+                  - type: object
+                    properties:
+                      gevonden:
+                        type: boolean
+                        example: false
+                      reden:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/herplan-check:
+    post:
+      tags: [planner]
+      operationId: herplanCheck
+      summary: Herplan-alternatieven simuleren
+      description: |
+        Berekent alternatieve tijdsloten voor een bestaande wedstrijd.
+        **Voert niets door** — puur simulatie waarbij het huidige slot als vrij wordt beschouwd.
+      security:
+        - functionKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HerplanCheckRequest'
+      responses:
+        '200':
+          description: Herplan-alternatieven
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HerplanCheckResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/herplan-bevestig:
+    post:
+      tags: [planner]
+      operationId: herplanBevestig
+      summary: Herplanverzoek registreren
+      description: |
+        Registreert een herplanverzoek met status `"Aangevraagd"`.
+        **Wijzigt de wedstrijd niet** — de feitelijke aanpassing in Sportlink is een handmatig proces.
+      security:
+        - functionKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HerplanBevestigRequest'
+      responses:
+        '200':
+          description: Herplanverzoek geregistreerd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HerplanBevestigResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/optimaliseer:
+    post:
+      tags: [planner]
+      operationId: optimaliseer
+      summary: Planningsoptimalisatie berekenen
+      description: |
+        Analyseert de planning voor een datum en genereert optimalisatiesuggesties.
+        **Voert niets door** — alleen advies.
+
+        **Output-formaten** (via `?format=`):
+        - *(geen)* — JSON met suggesties
+        - `html` — interactieve browser-HTML met plannervisualisatie
+        - `email` — email-compatibele HTML met link naar browser-versie
+
+        Beveiliging: `AuthorizationLevel.Anonymous` + `EasyAuthHelper.RequireAdmin()` — Bearer token vereist.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [html, email]
+          description: Outputformaat. Leeg = JSON.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimaliseerRequest'
+      responses:
+        '200':
+          description: Optimalisatieresultaat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimaliseerResponse'
+            text/html:
+              schema:
+                type: string
+                description: HTML plannerweergave (bij ?format=html of ?format=email)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/doordeweeks-beschikbaar:
+    post:
+      tags: [planner]
+      operationId: doordeweeksBeschikbaar
+      summary: Doordeweekse beschikbaarheid opvragen
+      description: |
+        Geeft beschikbare doordeweekse avondsloten (ma–do) t/m het einde van het seizoen.
+        Optioneel gefilterd op dag en duur/leeftijdscategorie.
+      security:
+        - functionKey: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DoordeweeksBeschikbaarRequest'
+      responses:
+        '200':
+          description: Beschikbare doordeweekse datums
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DoordeweeksBeschikbaarResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/team-schedule:
+    get:
+      tags: [planner]
+      operationId: getTeamSchedule
+      summary: Teamschema ophalen
+      description: |
+        Geeft alle wedstrijden voor een team t/m het seizoenseinde, inclusief een overzicht per
+        zaterdag (vrij / oefenwedstrijd / bezet).
+
+        Optioneel `?format=html` voor een HTML-weergave.
+      security:
+        - functionKey: []
+      parameters:
+        - name: team
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Exacte teamnaam
+          example: "[ClubCode] JO13-1"
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [html]
+          description: html = HTML-weergave teruggeven i.p.v. JSON
+      responses:
+        '200':
+          description: Teamschema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamScheduleResponse'
+            text/html:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer ───────────────────────────────────────────────────────────────────
+
+  /beheer/settings:
+    get:
+      tags: [beheer]
+      operationId: getSettings
+      summary: Club-instellingen ophalen
+      description: |
+        Leest niet-gevoelige AppSettings velden. SportlinkClientId en geheimen worden nooit
+        teruggegeven. Voegt een leesbare CRON-preview toe als FetchSchedule aanwezig is.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: AppSettings
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettingsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Geen AppSettings-rij gevonden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [beheer]
+      operationId: updateSettings
+      summary: Club-instellingen bijwerken
+      description: |
+        Werkt toegestane AppSettings-velden bij en schrijft een audit-regel naar `dbo.AppSettingsAudit`.
+        Bij wijziging van `FetchSchedule` herstart de Function App automatisch (als Azure Management API
+        geconfigureerd is). Velden buiten de witte lijst worden genegeerd.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSettingsRequest'
+      responses:
+        '200':
+          description: Instellingen opgeslagen
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateSettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/geocode:
+    get:
+      tags: [beheer]
+      operationId: geocode
+      summary: GPS-coördinaten opzoeken
+      description: |
+        Zoekt GPS-coördinaten op voor een plaatsnaam via Nominatim (OpenStreetMap).
+        Gebruik om `AccommodatieLatitude` en `AccommodatieLongitude` in AppSettings te vullen.
+        Rate-limit: 1 req/sec per Nominatim ToS.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: plaatsnaam
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 100
+          description: Nederlandse plaatsnaam of adres om op te zoeken
+          example: "[Stad]"
+      responses:
+        '200':
+          description: Coördinaten gevonden
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeocodeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Geen resultaat voor de opgegeven plaatsnaam
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Geocoding service tijdelijk niet beschikbaar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: Geocoding service time-out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /beheer/sync/status:
+    get:
+      tags: [beheer]
+      operationId: getSyncStatus
+      summary: Synchronisatiestatus ophalen
+      description: Geeft het tijdstip van de laatste Sportlink-synchronisatie en het huidige FetchSchedule.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Synchronisatiestatus
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/sync/trigger:
+    post:
+      tags: [beheer]
+      operationId: triggerSync
+      summary: Synchronisatie starten (fire-and-forget)
+      description: |
+        Start een Sportlink-synchronisatie op de achtergrond (~5 minuten). Retourneert direct 202.
+        Prik op `GET /beheer/sync/status` om de voortgang te bewaken via `lastSyncTimestamp`.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '202':
+          description: Synchronisatie gestart
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncTriggerResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teams:
+    get:
+      tags: [beheer]
+      operationId: getTeams
+      summary: Teamlijst ophalen
+      description: |
+        Geeft alle actieve teamnamen uit `his.teams`, gefilterd op ClubCode.
+        Gebruikt door de Blazor Admin UI voor dropdowns in voorkeurstijden en teamregels.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van teamnamen
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["[Heren 1]", "[ClubCode] JO13-1", "[ClubCode] JO17-1"]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/templates:
+    get:
+      tags: [beheer]
+      operationId: getTemplates
+      summary: E-mailtemplates ophalen
+      description: Geeft alle actieve e-mailtemplates uit `dbo.EmailTemplateInstellingen` voor de club.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van e-mailtemplates
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmailTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/templates/{key}:
+    put:
+      tags: [beheer]
+      operationId: upsertTemplate
+      summary: E-mailtemplate aanmaken of bijwerken
+      description: |
+        Maakt een template aan of werkt deze bij (UPSERT op TemplateKey + ClubCode).
+        Schrijft een audit-regel en invalideert de template-cache.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Template-sleutel (bijv. check-availability, herplan-bevestig)
+          example: "check-availability"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplatePutRequest'
+      responses:
+        '200':
+          description: Template opgeslagen
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templateKey:
+                    type: string
+                  status:
+                    type: string
+                    example: "opgeslagen"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/templates/{key}/reset:
+    post:
+      tags: [beheer]
+      operationId: resetTemplate
+      summary: E-mailtemplate terugzetten naar standaard
+      description: |
+        Verwijdert de aangepaste template-rij uit `dbo.EmailTemplateInstellingen`.
+        De hardcoded standaard in de applicatiecode treedt daarna weer in werking.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "check-availability"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Template verwijderd, standaard actief
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResetResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/email-log:
+    get:
+      tags: [beheer]
+      operationId: getEmailLog
+      summary: E-mailverwerkingslog ophalen
+      description: |
+        Geeft metadata van verwerkte emails uit `planner.EmailVerwerking`.
+
+        AVG: `EmailBody` en `AntwoordEmail` worden nooit teruggegeven.
+        `Afzender` wordt gemaskeerd tot alleen het domein (bijv. `***@voorbeeld.nl`).
+      security:
+        - easyAuth: []
+      parameters:
+        - name: vanaf
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Begindatum filter (inclusief) in yyyy-MM-dd
+        - name: tot
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Einddatum filter (exclusief) in yyyy-MM-dd
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter op statuswaarde
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+          description: Maximum aantal terug te geven rijen (standaard 50, max 200)
+      responses:
+        '200':
+          description: Email-log items
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailLogResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/uitgesloten-emails:
+    get:
+      tags: [beheer]
+      operationId: getUitgeslotenEmails
+      summary: Uitsluitingslijst e-mailadressen ophalen
+      description: Geeft alle expliciet uitgesloten afzenders uit `dbo.UitgeslotenEmailAdressen`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Uitsluitingslijst
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UitgeslotenEmail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: addUitgeslotenEmail
+      summary: E-mailadres uitsluiten
+      description: |
+        Voegt een e-mailadres toe aan de uitsluitingslijst. Het adres wordt genormaliseerd naar
+        lowercase. Geeft 409 Conflict terug als het adres al in de lijst staat.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UitgeslotenEmailRequest'
+      responses:
+        '200':
+          description: Adres toegevoegd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: E-mailadres staat al in de uitsluitingslijst
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/uitgesloten-emails/{id}:
+    delete:
+      tags: [beheer]
+      operationId: deleteUitgeslotenEmail
+      summary: Uitgesloten e-mailadres verwijderen
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Adres verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/veldbeschikbaarheid:
+    get:
+      tags: [beheer]
+      operationId: getVeldBeschikbaarheid
+      summary: Veldbeschikbaarheid ophalen
+      description: Geeft alle beschikbaarheidsregels per veld per dag van de week.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Veldbeschikbaarheidsregels
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VeldBeschikbaarheidItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: createVeldBeschikbaarheid
+      summary: Veldbeschikbaarheid aanmaken
+      description: |
+        Maakt een nieuwe beschikbaarheidsregel aan voor een veld op een dag van de week.
+        Combinatie veld + dag per club moet uniek zijn (409 Conflict bij duplicaat).
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeldBeschikbaarheidCreateRequest'
+      responses:
+        '200':
+          description: Regel aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "aangemaakt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Combinatie veld + dag bestaat al
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/veldbeschikbaarheid/{id}:
+    put:
+      tags: [beheer]
+      operationId: updateVeldBeschikbaarheid
+      summary: Veldbeschikbaarheid bijwerken
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeldBeschikbaarheidUpdateRequest'
+      responses:
+        '200':
+          description: Regel bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "bijgewerkt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [beheer]
+      operationId: deleteVeldBeschikbaarheid
+      summary: Veldbeschikbaarheid verwijderen
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Regel verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "verwijderd"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/velden:
+    get:
+      tags: [beheer]
+      operationId: getVelden
+      summary: Veldenoverzicht ophalen
+      description: Geeft de nummers en namen van alle velden uit `dbo.Velden` voor de club.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van velden
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VeldItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/voorkeurstijden:
+    get:
+      tags: [beheer]
+      operationId: getVoorkeurTijden
+      summary: Teamvoorkeurstijden ophalen
+      description: |
+        Geeft voorkeurstijden per team en dag van de week. Optioneel gefilterd op teamnaam.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: team
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter op exacte teamnaam
+      responses:
+        '200':
+          description: Voorkeurstijden
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VoorkeurTijdItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: createVoorkeurTijd
+      summary: Teamvoorkeurstijd aanmaken
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoorkeurTijdRequest'
+      responses:
+        '200':
+          description: Voorkeurstijd aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "aangemaakt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/voorkeurstijden/{id}:
+    put:
+      tags: [beheer]
+      operationId: updateVoorkeurTijd
+      summary: Teamvoorkeurstijd bijwerken
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoorkeurTijdRequest'
+      responses:
+        '200':
+          description: Voorkeurstijd bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "bijgewerkt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [beheer]
+      operationId: deleteVoorkeurTijd
+      summary: Teamvoorkeurstijd deactiveren
+      description: Soft-delete — zet `Actief = 0`, verwijdert de rij niet.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Voorkeurstijd gedeactiveerd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "soft-deleted"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teamregels:
+    get:
+      tags: [beheer]
+      operationId: getTeamRegels
+      summary: Teamregels ophalen
+      description: |
+        Geeft alle teamregels uit `dbo.TeamRegels`, inclusief inactieve (zodat ze heractiveerbaar zijn).
+        Regeltypen: `BufferVoor`, `BufferNa`, `VoorkeurVeld`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Teamregels
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamRegelItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: createTeamRegel
+      summary: Teamregel aanmaken
+      description: |
+        Maakt een nieuwe teamregel aan. Validatie:
+        - `BufferVoor`/`BufferNa` vereisen `waardeMinuten`
+        - `VoorkeurVeld` vereist `waardeVeldNummer`
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamRegelRequest'
+      responses:
+        '200':
+          description: Teamregel aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "aangemaakt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teamregels/{id}:
+    put:
+      tags: [beheer]
+      operationId: updateTeamRegel
+      summary: Teamregel bijwerken
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamRegelRequest'
+      responses:
+        '200':
+          description: Teamregel bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "bijgewerkt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [beheer]
+      operationId: deleteTeamRegel
+      summary: Teamregel deactiveren
+      description: Soft-delete — zet `Actief = 0`, verwijdert de rij niet.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Teamregel gedeactiveerd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "soft-deleted"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Test ─────────────────────────────────────────────────────────────────────
+
+  /test/email:
+    post:
+      tags: [beheer]
+      operationId: testEmailDryRun
+      summary: E-mailclassificatie dry-run
+      description: |
+        Simuleert de volledige e-mailverwerkingspipeline zonder iets te versturen of op te slaan.
+        Geeft classificatie (AI), mogelijke planneractie en een voorbeeldantwoord terug.
+
+        Rate limiting: max 10 aanroepen per minuut.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestEmailRequest'
+      responses:
+        '200':
+          description: Dry-run resultaat
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestEmailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          description: Rate limit overschreden (max 10/minuut)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Feedback ─────────────────────────────────────────────────────────────────
+
+  /feedback/validate:
+    post:
+      tags: [feedback]
+      operationId: feedbackValidate
+      summary: Feedback valideren op volledigheid
+      description: |
+        Controleert via GPT-4o-mini of de beschrijving voldoende informatie bevat.
+        Geeft gerichte aanvulvragen terug als er gaten zijn.
+        Geen rate limiting — validatie is goedkoop.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '200':
+          description: Validatieresultaat
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackValidateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /feedback/submit:
+    post:
+      tags: [feedback]
+      operationId: feedbackSubmit
+      summary: Feedback indienen als GitHub issue
+      description: |
+        Structureert de feedback met GPT-4o-mini en maakt een GitHub Issue aan in de repository.
+        Rate limiting: max 5 indieningenen per 10 minuten (globaal).
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequest'
+      responses:
+        '200':
+          description: GitHub issue aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackSubmitResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          description: Rate limit overschreden (max 5 per 10 minuten)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: GitHub-integratie niet geconfigureerd
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Beheer — Clubs ───────────────────────────────────────────────────────────
+
+  /beheer/clubs:
+    get:
+      tags: [beheer]
+      operationId: getClubs
+      summary: Club-lijst ophalen (multi-club)
+      description: |
+        Geeft alle clubs uit `dbo.AppSettings`, gesorteerd op sync-status en naam.
+        Gebruikt door de Blazor Admin UI voor de club-selector dropdown.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van clubs
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClubItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer — Speeltijden ──────────────────────────────────────────────────────
+
+  /beheer/speeltijden:
+    get:
+      tags: [beheer]
+      operationId: getSpeeltijden
+      summary: Speeltijden ophalen
+      description: |
+        Geeft speeltijdconfiguratie per leeftijdscategorie uit `dbo.Speeltijden`,
+        gesorteerd op leeftijdscategorie (JO → MO → Gemengd → VR → Senioren).
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van speeltijden
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SpeeltijdItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: createSpeeltijd
+      summary: Speeltijd aanmaken
+      description: |
+        Voegt een nieuwe leeftijdscategorie toe aan `dbo.Speeltijden`.
+        Geeft 409 Conflict terug als de leeftijdscategorie al bestaat voor de club.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeeltijdRequest'
+      responses:
+        '201':
+          description: Speeltijd aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Leeftijd:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Leeftijdscategorie bestaat al
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/speeltijden/{leeftijd}:
+    put:
+      tags: [beheer]
+      operationId: updateSpeeltijd
+      summary: Speeltijd bijwerken
+      security:
+        - easyAuth: []
+      parameters:
+        - name: leeftijd
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Leeftijdscategorie (bijv. JO13, MO17, VR)
+          example: "JO13"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeeltijdRequest'
+      responses:
+        '200':
+          description: Speeltijd bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [beheer]
+      operationId: deleteSpeeltijd
+      summary: Speeltijd verwijderen
+      security:
+        - easyAuth: []
+      parameters:
+        - name: leeftijd
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "JO13"
+      responses:
+        '200':
+          description: Speeltijd verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer — Theme ────────────────────────────────────────────────────────────
+
+  /beheer/theme:
+    get:
+      tags: [beheer]
+      operationId: getTheme
+      summary: Club-thema ophalen
+      description: |
+        Geeft de huidige themakleuren, favicon-URL en logo-URL uit `dbo.AppSettings`.
+        Geeft standaardwaarden terug als er nog geen thema is ingesteld.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Thema-instellingen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags: [beheer]
+      operationId: updateTheme
+      summary: Club-thema opslaan
+      description: |
+        Slaat themakleuren, favicon-URL en logo-URL op in `dbo.AppSettings`.
+        Alle kleurwaarden worden gevalideerd op hex-formaat (#rrggbb).
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThemeSaveRequest'
+      responses:
+        '200':
+          description: Thema opgeslagen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/theme/extract:
+    post:
+      tags: [beheer]
+      operationId: extractTheme
+      summary: Kleuren extraheren uit club-website
+      description: |
+        Haalt de HTML van een club-website op en extraheert de meest voorkomende kleuren,
+        de favicon-URL en de logo-URL (via og:image).
+
+        **SSRF-bescherming:** privé-IP's (RFC1918, loopback, link-local) en DNS-fouten
+        worden geblokkeerd.
+
+        Rate-limit: afhankelijk van de beschikbaarheid van de externe website.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: URL van de club-website (http of https)
+          example: "https://www.[clubdomein].nl"
+      responses:
+        '200':
+          description: Geëxtraheerde kleuren en assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeExtractResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: Club-website kon niet worden opgehaald
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer — Leermomenten ─────────────────────────────────────────────────────
+
+  /beheer/leermomenten:
+    get:
+      tags: [beheer]
+      operationId: getLeermomenten
+      summary: Classificatie-leermomenten ophalen
+      description: |
+        Geeft classificatie-correcties uit `planner.ClassificatieCorrectie`.
+        Optioneel gefilterd op status.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, validated, rejected]
+          description: "pending = onbeoordeeld, validated = gevalideerd, rejected = afgewezen. Leeg = alles."
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+          description: Maximum aantal terug te geven rijen
+      responses:
+        '200':
+          description: Leermomenten
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeermomentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/leermomenten/stats:
+    get:
+      tags: [beheer]
+      operationId: getLeermomentStats
+      summary: Leermoment-statistieken ophalen
+      description: Geeft tellingen per status (pending, validated, rejected) voor de club.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Statistieken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeermomentStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/leermomenten/{id}/valideer:
+    put:
+      tags: [beheer]
+      operationId: valideerLeermoment
+      summary: Leermoment valideren of afwijzen
+      description: |
+        Zet `IsGevalideerd` of `IsAfgewezen` op het leermoment.
+        Actie `valideer` → leermoment wordt gebruikt voor AI-training.
+        Actie `afwijzen` → leermoment wordt genegeerd.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Leermoment ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValideerRequest'
+      responses:
+        '200':
+          description: Actie uitgevoerd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  actie:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer — Teambegeleiding ──────────────────────────────────────────────────
+
+  /beheer/teambegeleiding:
+    get:
+      tags: [beheer]
+      operationId: getTeambegeleidingTeams
+      summary: Teams met beschikbare begeleiding ophalen
+      description: |
+        Geeft de unieke teamnamen waarvoor begeleiding (teamrollen) beschikbaar is
+        in `avg.Teambegeleiding`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Teamlijst
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["[ClubCode] JO11-1", "[ClubCode] JO13-2"]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teambegeleiding/{team}:
+    get:
+      tags: [beheer]
+      operationId: getTeambegeleidingDetail
+      summary: Begeleiding voor een specifiek team ophalen
+      description: |
+        Geeft Naam, Teamrol, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
+
+        **AVG:** persoonsgegevens worden uitsluitend aan admin/user-rol getoond achter Entra ID auth.
+        E-mailadressen worden server-side gebruikt voor doorsturen — nooit opgenomen in auto-reply body.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: team
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Teamnaam (exacte match)
+          example: "[ClubCode] JO13-1"
+      responses:
+        '200':
+          description: Begeleidingsleden voor het team
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeambegeleidingLid'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teambegeleiding/doorsturen:
+    post:
+      tags: [beheer]
+      operationId: teambegeleiding doorsturen
+      summary: Bericht doorsturen naar teambegeleiding
+      description: |
+        Stuurt een bericht door naar de begeleidingsleden van een team via e-mail.
+        De e-mailadressen worden server-side opgezocht — ze staan nooit in de request body.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeambegeleidingDoorsturenRequest'
+      responses:
+        '200':
+          description: Bericht verstuurd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verstuurdNaar:
+                    type: integer
+                    description: Aantal ontvangers
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Geen begeleiding gevonden voor het opgegeven team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Testdata ──────────────────────────────────────────────────────────────────
+
+  /beheer/testdata/wedstrijden:
+    get:
+      tags: [testdata]
+      operationId: getTestDataWedstrijden
+      summary: Test-wedstrijden ophalen (ALLSTARS)
+      description: |
+        Geeft wedstrijden uit `his.matches` voor de ALLSTARS demo-club.
+        Alleen beschikbaar in lokale/staging-omgevingen.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van test-wedstrijden
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TestDataWedstrijd'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [testdata]
+      operationId: createTestDataWedstrijd
+      summary: Test-wedstrijd aanmaken (ALLSTARS)
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestDataWedstrijdCreateRequest'
+      responses:
+        '200':
+          description: Test-wedstrijd aangemaakt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bk:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [testdata]
+      operationId: deleteAllTestDataWedstrijden
+      summary: Alle test-wedstrijden verwijderen (ALLSTARS)
+      description: Verwijdert alle wedstrijden van de ALLSTARS demo-club uit `his.matches`.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Alle test-wedstrijden verwijderd
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                    description: Aantal verwijderde rijen
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/testdata/wedstrijden/{bk}:
+    delete:
+      tags: [testdata]
+      operationId: deleteTestDataWedstrijd
+      summary: Specifieke test-wedstrijd verwijderen (ALLSTARS)
+      security:
+        - easyAuth: []
+      parameters:
+        - name: bk
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Business key van de wedstrijd
+      responses:
+        '200':
+          description: Test-wedstrijd verwijderd
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/testdata/teams:
+    get:
+      tags: [testdata]
+      operationId: getTestDataTeams
+      summary: Test-teams ophalen (ALLSTARS)
+      description: Geeft teams uit `avg.Teambegeleiding` voor de ALLSTARS demo-club.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van ALLSTARS teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Planner — Auto-plan ───────────────────────────────────────────────────────
+
+  /planner/auto-plan:
+    post:
+      tags: [planner]
+      operationId: autoPlan
+      summary: Automatisch weekplan genereren
+      description: |
+        Genereert voor een opgegeven datum een automatisch veldrooster op basis van de geplande
+        wedstrijden, veldbeschikbaarheid, speeltijden en teamregels.
+
+        **Voert niets door** — puur simulatie/voorstel.
+        Gebruik `/planner/auto-plan/toepassen` om het plan daadwerkelijk te boeken.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoPlanRequest'
+      responses:
+        '200':
+          description: Gegenereerd auto-plan
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoPlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/auto-plan/toepassen:
+    post:
+      tags: [planner]
+      operationId: autoPlanToepassen
+      summary: Automatisch plan toepassen
+      description: |
+        Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in
+        `planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog
+        geen slot hebben.
+
+        **Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).
+        Productie-clubs ontvangen HTTP 403.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoPlanToepassenRequest'
+      responses:
+        '200':
+          description: Plan toegepast
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoPlanToepassenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'

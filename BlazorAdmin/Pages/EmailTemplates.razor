@@ -5,7 +5,7 @@
 @using BlazorAdmin.Services
 @implements IDisposable
 
-<PageTitle>E-mailtemplates — VRC Admin</PageTitle>
+<PageTitle>E-mailtemplates — Beheer</PageTitle>
 
 <h1>E-mailtemplates</h1>
 <p class="text-muted">Elke template heeft een hardcoded standaard in de code. Klik <strong>Aanpassen</strong> om de standaard te vervangen. Klik <strong>Verwijder aanpassing</strong> om terug te keren naar de hardcoded standaard.</p>
@@ -24,7 +24,7 @@ else
         </div>
         <div class="card-body">
             <textarea class="form-control font-monospace" rows="4" @bind="voetnoot"
-                      placeholder="Bijv: Met vriendelijke groet,&#10;&#10;Jan de Vries&#10;Coördinator thuiswedstrijden VRC&#10;&#10;WIST U DAT: ..."></textarea>
+                      placeholder="Bijv: Met vriendelijke groet,&#10;&#10;Jan de Vries&#10;Coördinator thuiswedstrijden&#10;&#10;WIST U DAT: ..."></textarea>
             <div class="mt-2 d-flex gap-2 align-items-center">
                 <button class="btn btn-primary btn-sm" @onclick="OpslaanVoetnootAsync">Opslaan</button>
                 @if (!string.IsNullOrEmpty(voetnootMessage))

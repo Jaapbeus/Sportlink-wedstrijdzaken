@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SportlinkFunction.Admin;
@@ -15,10 +17,12 @@ namespace SportlinkFunction.Planner
     {
         [Function("CheckAvailability")]
         public static async Task<IActionResult> CheckAvailability(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/check-availability")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/check-availability")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("CheckAvailability");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -44,10 +48,12 @@ namespace SportlinkFunction.Planner
 
         [Function("DoordeweeksBeschikbaar")]
         public static async Task<IActionResult> DoordeweeksBeschikbaar(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/doordeweeks-beschikbaar")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/doordeweeks-beschikbaar")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("DoordeweeksBeschikbaar");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -72,10 +78,12 @@ namespace SportlinkFunction.Planner
 
         [Function("BevestigWedstrijd")]
         public static async Task<IActionResult> BevestigWedstrijd(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/bevestig")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/bevestig")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("BevestigWedstrijd");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -93,9 +101,10 @@ namespace SportlinkFunction.Planner
 
                 int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
                 decimal veldFractie = 1.00m;
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
                 if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
                 {
-                    var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie);
+                    var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie, clubCode);
                     if (speeltijd != null)
                     {
                         duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
@@ -111,7 +120,7 @@ namespace SportlinkFunction.Planner
                 var id = await PlannerDataAccess.SavePlannedMatchAsync(
                     date, tijd, eindTijd, request.VeldNummer, veldFractie,
                     request.LeeftijdsCategorie, request.TeamNaam, request.Tegenstander,
-                    duurMinuten, request.AangevraagdDoor);
+                    duurMinuten, request.AangevraagdDoor, clubCode);
 
                 log.LogInformation("BevestigWedstrijd: saved with id={Id}", id);
 
@@ -218,10 +227,12 @@ namespace SportlinkFunction.Planner
 
         [Function("ZoekWedstrijd")]
         public static async Task<IActionResult> ZoekWedstrijd(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("ZoekWedstrijd");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -251,10 +262,12 @@ namespace SportlinkFunction.Planner
 
         [Function("HerplanCheck")]
         public static async Task<IActionResult> HerplanCheck(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-check")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-check")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("HerplanCheck");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -279,20 +292,62 @@ namespace SportlinkFunction.Planner
         }
 
         [Function("Health")]
-        public static IActionResult Health(
+        public static async Task<IActionResult> Health(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req,
             FunctionContext context)
         {
             var version = typeof(PlannerFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
-            return new OkObjectResult(new { status = "ok", version, timestamp = DateTime.UtcNow });
+            var dbStatus = await GetDatabaseStatusAsync();
+            return new OkObjectResult(new
+            {
+                status = dbStatus == "online" ? "ok" : "degraded",
+                version,
+                timestamp = DateTime.UtcNow,
+                database = dbStatus
+            });
+        }
+
+        // Geeft "online", "paused", "timeout" of "unavailable" terug.
+        // Error 40613 = Azure SQL serverless auto-paused; verbinding triggert automatisch resume.
+        private static async Task<string> GetDatabaseStatusAsync()
+        {
+            string connStr;
+            try { connStr = SystemUtilities.DatabaseConfig.ConnectionString; }
+            catch { return "unconfigured"; }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                using var conn = new SqlConnection(connStr);
+                await conn.OpenAsync(cts.Token);
+                using var cmd = new SqlCommand("SELECT 1", conn) { CommandTimeout = 5 };
+                await cmd.ExecuteScalarAsync(cts.Token);
+                return "online";
+            }
+            catch (SqlException ex) when (ex.Number == 40613)
+            {
+                // Database is paused (free tier limiet of normale auto-pause).
+                // Azure begint automatisch te resumeren zodra we verbinding proberen.
+                return "paused";
+            }
+            catch (OperationCanceledException)
+            {
+                return "timeout";
+            }
+            catch
+            {
+                return "unavailable";
+            }
         }
 
         [Function("HerplanBevestig")]
         public static async Task<IActionResult> HerplanBevestig(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("HerplanBevestig");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -364,7 +419,8 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
+    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
                 log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
 
                 var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
@@ -395,7 +451,8 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req) ?? "VRC";
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
+    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
 
                 if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
                     return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
@@ -414,10 +471,12 @@ namespace SportlinkFunction.Planner
 
         [Function("GetTeamSchedule")]
         public static async Task<IActionResult> GetTeamSchedule(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "planner/team-schedule")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/team-schedule")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("GetTeamSchedule");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 var team = req.Query["team"].ToString();

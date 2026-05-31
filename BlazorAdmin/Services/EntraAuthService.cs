@@ -8,7 +8,7 @@ namespace BlazorAdmin.Services;
 /// Productie-implementatie van IAuthService via Entra ID + MSAL.
 /// Lokale dev gebruikt LocalAuthService (altijd admin, geen login nodig).
 ///
-/// Zie docs/v2-admin-handleiding.md, sectie "Entra ID app-registratie" voor:
+/// Zie docs/ENTRA-AUTH-BEHEER.md voor het volledige Entra ID setup-protocol.
 ///  - Azure Portal → Entra ID → App registrations → New registration
 ///  - Redirect URI: https://&lt;swa-name&gt;.azurestaticapps.net/.auth/login/aad/callback
 ///  - API permissions + client secret
