@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "VRC Sportlink Veldplanner API",
-    "description": "API voor veldbeschikbaarheid, wedstrijdplanning en optimalisatie op Sportpark Spitsbergen",
+    "title": "Sportlink Veldplanner API",
+    "description": "API voor veldbeschikbaarheid, wedstrijdplanning en optimalisatie",
     "version": "1.0.0"
   },
   "servers": [
@@ -44,7 +44,7 @@
           "aanvangsTijd": { "type": "string", "example": "12:00", "description": "Gewenste aanvangstijd (HH:mm)" },
           "dagdeel": { "type": "string", "enum": ["ochtend", "middag", "avond"], "description": "Dagdeelfilter" },
           "leeftijdsCategorie": { "type": "string", "example": "JO13", "description": "Leeftijdscategorie (JO8-JO19, MO13-MO20, G, VR, 1-99)" },
-          "teamNaam": { "type": "string", "example": "VRC JO13-1", "description": "Teamnaam voor conflictcontrole" },
+          "teamNaam": { "type": "string", "example": "[ClubCode] JO13-1", "description": "Teamnaam voor conflictcontrole" },
           "tegenstander": { "type": "string", "example": "Tegenstander JO13-2", "description": "Tegenstander (administratief)" },
           "wedstrijdDuurMinuten": { "type": "integer", "description": "Overschrijf wedstrijdduur" }
         }
@@ -57,7 +57,7 @@
           "aanvangsTijd": { "type": "string", "example": "12:00" },
           "veldNummer": { "type": "integer", "example": 3 },
           "leeftijdsCategorie": { "type": "string", "example": "JO13" },
-          "teamNaam": { "type": "string", "example": "VRC JO13-1" },
+          "teamNaam": { "type": "string", "example": "[ClubCode] JO13-1" },
           "tegenstander": { "type": "string", "example": "Tegenstander JO13-2" },
           "aangevraagdDoor": { "type": "string", "example": "aanvrager via email" },
           "wedstrijdDuurMinuten": { "type": "integer" }
@@ -67,7 +67,7 @@
         "type": "object",
         "required": ["teamNaam", "datum"],
         "properties": {
-          "teamNaam": { "type": "string", "example": "VRC JO8-2" },
+          "teamNaam": { "type": "string", "example": "[ClubCode] JO8-2" },
           "datum": { "type": "string", "format": "date", "example": "2026-05-09" }
         }
       },
@@ -138,7 +138,7 @@
                 },
                 "teamConflict": {
                   "summary": "Team heeft al een wedstrijd",
-                  "value": { "datum": "2026-05-16", "aanvangsTijd": "12:00", "leeftijdsCategorie": "JO11", "teamNaam": "VRC JO11-9" }
+                  "value": { "datum": "2026-05-16", "aanvangsTijd": "12:00", "leeftijdsCategorie": "JO11", "teamNaam": "[ClubCode] JO11-9" }
                 }
               }
             }
@@ -159,7 +159,7 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/BevestigRequest" },
-              "example": { "datum": "2026-04-25", "aanvangsTijd": "12:00", "veldNummer": 3, "leeftijdsCategorie": "JO13", "teamNaam": "VRC JO13-1", "tegenstander": "Tegenstander JO13-2" }
+              "example": { "datum": "2026-04-25", "aanvangsTijd": "12:00", "veldNummer": 3, "leeftijdsCategorie": "JO13", "teamNaam": "[ClubCode] JO13-1", "tegenstander": "Tegenstander JO13-2" }
             }
           }
         },
@@ -172,7 +172,7 @@
     "/planner/populate-sunset": {
       "post": {
         "summary": "[ADMIN] Zonsondergangtabel vullen",
-        "description": "Vul de zonsondergangtabel met NOAA-berekende tijden voor Veenendaal. Vereist master key.",
+        "description": "Vul de zonsondergangtabel met NOAA-berekende tijden voor de clublocatie. Vereist master key.",
         "security": [{ "adminKey": [] }],
         "responses": {
           "200": { "description": "Tabel gevuld" }
@@ -188,7 +188,7 @@
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/ZoekWedstrijdRequest" },
-              "example": { "teamNaam": "VRC JO8-2", "datum": "2026-05-09" }
+              "example": { "teamNaam": "[ClubCode] JO8-2", "datum": "2026-05-09" }
             }
           }
         },

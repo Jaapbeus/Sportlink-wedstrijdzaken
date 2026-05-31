@@ -1,4 +1,4 @@
-# VRC Sportlink API Documentatie
+# Sportlink API Documentatie
 
 **Basis-URL:** `http://localhost:7094/api`
 
@@ -86,8 +86,8 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
   "aanvangsTijd": "12:00",
   "dagdeel": null,
   "leeftijdsCategorie": "JO13",
-  "teamNaam": "VRC JO13-1",
-  "tegenstander": "Ede JO13-2",
+  "teamNaam": "[ClubCode] JO13-1",
+  "tegenstander": "[Tegenstander] JO13-2",
   "wedstrijdDuurMinuten": null
 }
 ```
@@ -199,12 +199,12 @@ Als het team al een wedstrijd heeft op de gevraagde datum:
   "beschikbaar": false,
   "toewijzing": null,
   "teamConflict": {
-    "wedstrijd": "VRC JO11-9JM - Valleivogels JO11-3",
+    "wedstrijd": "[ClubCode] JO11-9JM - [Tegenstander] JO11-3",
     "aanvangsTijd": "11:30",
     "eindTijd": "12:45",
     "veldNaam": "veld 4"
   },
-  "reden": "VRC JO11-9 heeft al een wedstrijd op 16 mei: VRC JO11-9JM - Valleivogels JO11-3 om 11:30 (veld 4).",
+  "reden": "[ClubCode] JO11-9 heeft al een wedstrijd op 16 mei: [ClubCode] JO11-9JM - [Tegenstander] JO11-3 om 11:30 (veld 4).",
   "alternatieven": [],
   "beschikbareVensters": null,
   "waarschuwingen": []
@@ -261,8 +261,8 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
   "aanvangsTijd": "12:00",
   "veldNummer": 3,
   "leeftijdsCategorie": "JO13",
-  "teamNaam": "VRC JO13-1",
-  "tegenstander": "Ede JO13-2",
+  "teamNaam": "[ClubCode] JO13-1",
+  "tegenstander": "[Tegenstander] JO13-2",
   "aangevraagdDoor": "coach@example.com",
   "wedstrijdDuurMinuten": null
 }
@@ -317,7 +317,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
 
 ## POST /api/planner/populate-sunset
 
-Vul de zonsondergangtabel met NOAA-berekende tijden voor Veenendaal. Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
+Vul de zonsondergangtabel met NOAA-berekende tijden voor de clublocatie. Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
 
 ### Aanvraag
 
@@ -341,7 +341,7 @@ Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
 
 ```json
 {
-  "teamNaam": "VRC JO8-2",
+  "teamNaam": "[ClubCode] JO8-2",
   "datum": "2026-05-09"
 }
 ```
@@ -360,7 +360,7 @@ Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
   "gevonden": true,
   "wedstrijd": {
     "wedstrijdcode": 12345678,
-    "wedstrijd": "VRC JO8-2 - Tegenstander JO8-1",
+    "wedstrijd": "[ClubCode] JO8-2 - Tegenstander JO8-1",
     "datum": "2026-05-09",
     "aanvangsTijd": "08:30",
     "eindTijd": "09:20",
@@ -377,7 +377,7 @@ Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
 ```json
 {
   "gevonden": false,
-  "reden": "Geen wedstrijd gevonden voor VRC JO8-2 op 2026-05-09."
+  "reden": "Geen wedstrijd gevonden voor [ClubCode] JO8-2 op 2026-05-09."
 }
 ```
 
@@ -411,7 +411,7 @@ Simulate rescheduling: calculate alternative time slots for an existing match. *
 {
   "huidigeWedstrijd": {
     "wedstrijdcode": 12345678,
-    "wedstrijd": "VRC JO8-2 - Tegenstander JO8-1",
+    "wedstrijd": "[ClubCode] JO8-2 - Tegenstander JO8-1",
     "datum": "2026-05-09",
     "aanvangsTijd": "08:30",
     "eindTijd": "09:20",
@@ -483,7 +483,7 @@ Register a reschedule request. **Does NOT modify the match** — only records th
 {
   "id": 1,
   "wedstrijdcode": 12345678,
-  "huidigeWedstrijd": "VRC JO8-2 - Tegenstander JO8-1",
+  "huidigeWedstrijd": "[ClubCode] JO8-2 - Tegenstander JO8-1",
   "gewensteAanvangsTijd": "10:00",
   "gewenstVeldNummer": 2,
   "status": "Aangevraagd"
@@ -540,7 +540,7 @@ Analyseer de planning voor een datum en genereer optimalisatiesuggesties. Voert 
   "aantalVanVeld5Verplaatst": 1,
   "suggesties": [
     {
-      "wedstrijd": "VRC JO19-3 - Tegenstander JO19-4",
+      "wedstrijd": "[ClubCode] JO19-3 - Tegenstander JO19-4",
       "huidigVeldNummer": 5,
       "huidigVeld": "veld 5",
       "huidigeTijd": "16:45",
@@ -604,8 +604,8 @@ Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (laatste keuze)
 
 | Team | Regel | Waarde |
 |------|------|-------|
-| VRC 1 | BufferVoor | 60 min voor wedstrijd, geen andere wedstrijden op hetzelfde veld |
-| VRC 1 | BufferNa | 30 min na wedstrijd, geen andere wedstrijden op hetzelfde veld |
+| [Heren 1] | BufferVoor | 60 min voor wedstrijd, geen andere wedstrijden op hetzelfde veld |
+| [Heren 1] | BufferNa | 30 min na wedstrijd, geen andere wedstrijden op hetzelfde veld |
 
 ---
 
@@ -632,7 +632,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability \
 ```bash
 curl -X POST http://localhost:7094/api/planner/check-availability \
   -H "Content-Type: application/json" \
-  -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"VRC JO11-9"}'
+  -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"[ClubCode] JO11-9"}'
 ```
 
 ### Wedstrijd boeken
@@ -640,7 +640,7 @@ curl -X POST http://localhost:7094/api/planner/check-availability \
 ```bash
 curl -X POST http://localhost:7094/api/planner/bevestig \
   -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"VRC JO13-1","tegenstander":"Ede JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
+  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
 ```
 
 ### Zonsondergangtabel vullen
@@ -654,7 +654,7 @@ curl -X POST http://localhost:7094/api/planner/populate-sunset
 ```bash
 curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd \
   -H "Content-Type: application/json" \
-  -d '{"teamNaam":"VRC JO8-2","datum":"2026-05-09"}'
+  -d '{"teamNaam":"[ClubCode] JO8-2","datum":"2026-05-09"}'
 ```
 
 ### Herplan-alternatieven controleren (simulatie)

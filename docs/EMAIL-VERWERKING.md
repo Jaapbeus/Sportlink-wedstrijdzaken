@@ -180,13 +180,13 @@ Met vriendelijke groet, ...
 
 #### Template F — Team onbekend
 
-**Wanneer:** De afzender noemt een tegenstander maar het bijbehorende VRC-team kan niet worden herleid.
+**Wanneer:** De afzender noemt een tegenstander maar het bijbehorende team van de club kan niet worden herleid.
 
 ```
 Goedemiddag {voornaam},
 
 We kunnen de wedstrijd van {tegenstander} niet vinden in ons programma.
-Tegen welk VRC-team zou deze wedstrijd zijn?
+Tegen welk team van onze club zou deze wedstrijd zijn?
 Dan kunnen we de beschikbaarheid voor je controleren.
 
 Met vriendelijke groet, ...
@@ -204,7 +204,7 @@ Iemand wil een bestaande wedstrijd verplaatsen.
 
 **Verzendlogica:**
 - **Primaire ontvanger:** de externe afzender (trainer/begeleider andere club)
-- **BCC:** alle niet-trainer begeleiders van het betreffende VRC-team uit `avg.Teambegeleiding`; als alleen trainers beschikbaar zijn, gaan die als BCC
+- **BCC:** alle niet-trainer begeleiders van het betreffende team uit `avg.Teambegeleiding`; als alleen trainers beschikbaar zijn, gaan die als BCC
 - **Geen begeleiders in DB:** email gaat alleen naar de coördinator-mailbox, met een noot dat de Teambegeleiding-CSV geïmporteerd moet worden
 - **Review-mode:** email naar de reviewer; BCC-informatie wordt in de review-header getoond (namen + adressen) zonder werkelijke BCC te versturen
 
@@ -331,7 +331,7 @@ Met vriendelijke groet, ...
 
 **Wanneer:** De email bevat geen teamnaam en geen leeftijdscategorie. Zonder deze informatie kan de speelduur niet worden bepaald en is een beschikbaarheidsbeoordeling niet mogelijk.
 
-De conditie: noch `teamNaam` (beginnend met "VRC") noch `leeftijdsCategorie` is aanwezig in de AI-classificatie.
+De conditie: noch `teamNaam` noch `leeftijdsCategorie` is aanwezig in de AI-classificatie.
 
 Voorbeeldcase: onderwerp "Morgenavond", body "Kunnen wij morgenavond een oefenwedstrijd spelen?" — geen team, geen categorie.
 
@@ -349,7 +349,7 @@ Met vriendelijke groet, ...
 Als meerdere velden ontbreken worden ze allemaal opgesomd:
 ```
 - Leeftijdscategorie (bijv. JO13, MO15, senioren)
-- Teamnaam (bijv. VRC JO13-1)
+- Teamnaam (bijv. [ClubCode] JO13-1)
 ```
 
 ---
@@ -380,7 +380,7 @@ Met vriendelijke groet, ...
 | C | BeschikbaarheidCheck | Geen beschikbaarheid op de datum | "Helaas geen veld beschikbaar" |
 | D | BeschikbaarheidCheck | Meerdere datums gevraagd (zelfde team) | Per-datum sectie + keuzevraag |
 | E | BeschikbaarheidCheck | Wedstrijd staat al ingepland | "Staat al ingepland op datum om tijd" |
-| F | BeschikbaarheidCheck | VRC-team niet herleidbaar uit verzoek | "Tegen welk VRC-team zou dit zijn?" |
+| F | BeschikbaarheidCheck | Team van de club niet herleidbaar uit verzoek | "Tegen welk team van onze club zou dit zijn?" |
 | G | HerplanVerzoek | Verzoek te laat én geen alternatieven | Uitleg richtlijn + contact coördinator |
 | M | HerplanVerzoek | Verzoek te laat maar alternatieven beschikbaar | Alternatieven tonen + BCC naar team-begeleiders |
 | H | HerplanVerzoek | Gewenste herplandatum opgegeven | Beschikbaarheid op gewenste datum |

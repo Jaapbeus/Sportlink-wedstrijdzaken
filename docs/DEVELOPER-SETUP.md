@@ -49,7 +49,8 @@ For detailed steps, continue reading below.
 8. [Metadata Table Setup](#metadata-table-setup)
 9. [Environment Verification](#environment-verification)
 10. [First Run](#first-run)
-11. [Troubleshooting](#troubleshooting)
+11. [GitHub Actions: Productie-deployment configureren](#github-actions-productie-deployment-configureren)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -287,11 +288,7 @@ If your SQL Server is different, update the `SqlConnectionString`:
 "SqlConnectionString": "Server=YOUR_SERVER;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;"
 ```
 
-**SQL Authentication example (if not using Windows Auth):**
-
-```json
-"SqlConnectionString": "Server=YOUR_SERVER;Database=SportlinkSqlDb;User Id=sa;Password=<your-password>;TrustServerCertificate=True;"
-```
+**SQL Authentication (if not using Windows Auth):** vervang `Integrated Security=True` door `User Id=<sql-login>;Password=<sql-wachtwoord>` in de connection string. Zie Microsoft Docs voor de exacte connection string syntax.
 
 ### 5.3 Production Connection String
 
@@ -533,7 +530,97 @@ SELECT COUNT(*) AS MatchDetailCount FROM [his].[matchdetails];
 
 ---
 
-## 10. Troubleshooting
+## 11. GitHub Actions: Productie-deployment configureren
+
+De CI/CD-pipeline in `.github/workflows/deploy.yml` deployt automatisch naar Azure bij elke push naar `main`. Hiervoor zijn twee soorten GitHub-configuratie nodig:
+
+- **Secrets** — versleuteld opgeslagen, nooit zichtbaar in logs
+- **Variables** — leesbaar in logs, niet bedoeld voor gevoelige waarden
+
+Navigeer naar: **GitHub → jouw fork → Settings → Secrets and variables → Actions**
+
+---
+
+### 11.1 Secrets instellen
+
+Klik op **New repository secret** voor elk van de volgende:
+
+| Naam | Beschrijving | Waar te vinden |
+|------|-------------|----------------|
+| `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 11.2 hieronder |
+| `AZURE_FUNCTION_KEY` | Host key van de Function App | Azure Portal → Function App → App keys → Host keys → `default` |
+| `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring | Azure Portal → SQL Database → Connection strings → ADO.NET |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
+
+**`AZURE_CREDENTIALS` aanmaken via Azure CLI:**
+
+```bash
+az ad sp create-for-rbac \
+  --name "sp-[clubcode]-sportlink-deploy" \
+  --role contributor \
+  --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group> \
+  --sdk-auth
+```
+
+Kopieer de volledige JSON-output (inclusief accolades) als waarde voor het secret.
+
+**`SQL_CONNECTION_STRING` formaat:**
+
+```
+Server=tcp:[sql-servernaam].database.windows.net,1433;Initial Catalog=[database-naam];
+Persist Security Info=False;User ID=[username];Password=[password];
+Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+```
+
+---
+
+### 11.2 Variables instellen
+
+Klik op het tabblad **Variables** → **New repository variable** voor elk van de volgende:
+
+| Naam | Voorbeeld | Beschrijving |
+|------|-----------|-------------|
+| `AZURE_FUNCTIONAPP_NAME` | `func-[clubcode]-sportlink` | Naam van de Function App (zonder `.azurewebsites.net`) |
+| `AZURE_FUNCTIONAPP_URL` | `https://func-[clubcode]-sportlink.azurewebsites.net` | Volledige URL inclusief `https://` — voor Blazor-configuratie |
+| `AZURE_SQL_SERVER_NAME` | `[sql-servernaam]` | SQL-servernaam **zonder** `.database.windows.net` |
+| `AZURE_SQL_DATABASE_NAME` | `[database-naam]` | Naam van de SQL-database |
+| `AZURE_SQL_RESOURCE_GROUP` | `rg-[clubcode]-sportlink` | Azure resource group van de SQL-server |
+| `AZURE_STATIC_WEB_APP_HOSTNAME` | `[naam].azurestaticapps.net` | Hostname van de Static Web App **zonder** `https://` |
+| `AZURE_AD_TENANT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure Entra tenant ID (GUID) — te vinden in Entra ID → Overview |
+| `AZURE_AD_CLIENT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | App Registration client ID (GUID) — te vinden in App registrations |
+| `POST_LOGOUT_REDIRECT_URL` | `https://[naam].azurestaticapps.net/` | URL waarnaar gebruiker gaat na uitloggen (inclusief trailing slash) |
+
+---
+
+### 11.3 Welke configuratie is optioneel?
+
+De pipeline is zo gebouwd dat jobs automatisch worden overgeslagen als de bijbehorende configuratie ontbreekt. Dit maakt de repository bruikbaar voor forks zonder SQL- of Blazor-deployment.
+
+| Jobs | Vereiste configuratie | Gedrag zonder configuratie |
+|------|-----------------------|---------------------------|
+| `db-check` + `db-migrate` | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen — `build` en `test` lopen gewoon door |
+| `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
+| `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — zonder deze mislukken `build` en `test` |
+
+---
+
+### 11.4 Verificatie na instellen
+
+Activeer de workflow via **Actions → Deploy naar Azure → Run workflow** of doe een lege push naar `main`. Controleer daarna per job:
+
+```bash
+# Haal de run-ID op
+gh run list --branch main --limit 3
+
+# Controleer alle jobs
+gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
+```
+
+Alle jobs moeten `"success"` of `"skipped"` tonen. Een `"failure"` op `build` of `test` is altijd een blokkade.
+
+---
+
+## 12. Troubleshooting
 
 ### Issue: "401 Unauthorized" Error
 
@@ -740,6 +827,7 @@ ORDER BY s.name, t.name;
 
 Before running the application, ensure all items are checked:
 
+**Lokale ontwikkelomgeving:**
 - [ ] Visual Studio 2022/2026 installed
 - [ ] SQL Server accessible
 - [ ] Node.js and Azurite installed
@@ -754,6 +842,22 @@ Before running the application, ensure all items are checked:
 - [ ] Azurite running
 - [ ] Solution builds successfully
 - [ ] First test run completed successfully
+
+**GitHub Actions (productie-deployment):**
+- [ ] GitHub Secret `AZURE_CREDENTIALS` ingesteld (service principal JSON)
+- [ ] GitHub Secret `AZURE_FUNCTION_KEY` ingesteld (host key)
+- [ ] GitHub Secret `SQL_CONNECTION_STRING` ingesteld (productie connection string)
+- [ ] GitHub Secret `AZURE_STATIC_WEB_APPS_API_TOKEN` ingesteld (voor Blazor-deploy)
+- [ ] GitHub Variable `AZURE_FUNCTIONAPP_NAME` ingesteld
+- [ ] GitHub Variable `AZURE_FUNCTIONAPP_URL` ingesteld
+- [ ] GitHub Variable `AZURE_SQL_SERVER_NAME` ingesteld
+- [ ] GitHub Variable `AZURE_SQL_DATABASE_NAME` ingesteld
+- [ ] GitHub Variable `AZURE_SQL_RESOURCE_GROUP` ingesteld
+- [ ] GitHub Variable `AZURE_STATIC_WEB_APP_HOSTNAME` ingesteld (hostname zonder `https://`)
+- [ ] GitHub Variable `AZURE_AD_TENANT_ID` ingesteld
+- [ ] GitHub Variable `AZURE_AD_CLIENT_ID` ingesteld
+- [ ] GitHub Variable `POST_LOGOUT_REDIRECT_URL` ingesteld
+- [ ] Eerste deployment gelukt: alle jobs `success` of `skipped`
 
 ---
 

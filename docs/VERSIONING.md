@@ -123,7 +123,7 @@ Drie vereisten, alle drie vereist:
 | `LoadSettingsAsync` miste 7 van 18 kolommen (`ClubCode` etc.) | Verwachting: alle instellingen geladen. Effect: ClubCode leeg → 500. |
 | `his.teams` had geen ClubCode → teams-endpoint 500 | Tabel was aangemaakt vóór multi-club migratie zonder migratiescript. Effect: endpoint onbruikbaar. |
 | E-mail tester gebruikte hardcoded antwoord i.p.v. echte pipeline | Verwachting: dry-run ≡ live. Effect: tester gaf verkeerde output. |
-| `teamnaam LIKE 'VRC%'` filter in teams-query | Hardcoded clubnaam; voor andere clubs werkt het niet. Effect: architectuurschending + functionele fout. |
+| `teamnaam LIKE '[ClubCode]%'` filter in teams-query | Hardcoded clubnaam; voor andere clubs werkt het niet. Effect: architectuurschending + functionele fout. |
 
 ### Voorbeelden: GEEN Bug (maar toch een fix)
 
@@ -226,7 +226,7 @@ In CHANGELOG als `### Changed`. Geen versie-bump tenzij breaking.
 Voorbeelden:
 - Route-prefix `admin→beheer` — was correct, is anders geworden
 - UTC-tijdstempels in GUI in plaats van raw UTC — weergave-keuze
-- `?? "VRC"` → `?? throw InvalidOperationException` — architectuurkeuze aangescherpt
+- `?? "[ClubCode]"` → `?? throw InvalidOperationException` — architectuurkeuze aangescherpt
 
 ---
 
@@ -297,7 +297,7 @@ Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString
 
 | ❌ Niet | ✅ Wel |
 |---|---|
-| `EmailProcessorFunction: NormaliseerTeamNaam gebruikt nu clubCode` | `Teamnamen worden nu correct genormaliseerd voor clubs met een andere code dan VRC` |
+| `EmailProcessorFunction: NormaliseerTeamNaam gebruikt nu clubCode` | `Teamnamen worden nu correct genormaliseerd op basis van de clubCode uit AppSettings` |
 | `Refactor: kanaal-agnostische BerichtPipeline` | (niet in changelog — intern) |
 | `fix: WaitForDatabaseAsync roept LoadSettingsAsync aan` | `Admin-endpoints gaven 500 bij opstart omdat instellingen niet geladen waren; opgelost` |
 | `feat: EmailVoetnoot NVARCHAR(MAX) in AppSettings` | `Beheerders kunnen nu een gedeelde voettekst instellen die automatisch onder alle uitgaande e-mails wordt geplaatst` |

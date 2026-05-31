@@ -263,4 +263,4 @@ FROM [mta].[source_target_mapping];
 
 ---
 
-**Need Help?** Refer to `SETUP.md` for detailed instructions or `LOCAL-DEBUG-README.md` for troubleshooting.
+**Hulp nodig?** Zie `DEVELOPER-SETUP.md` voor gedetailleerde instructies of `docs/LOKAAL-DEBUGGEN.md` voor troubleshooting (⚠️ beide documenten zijn gepland voor een herschrijving naar v2.7).

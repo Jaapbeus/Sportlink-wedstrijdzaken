@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 2.2.0
+  version: 2.7.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -160,7 +160,7 @@ components:
       properties:
         wedstrijd:
           type: string
-          example: "VRC JO11-9JM - Valleivogels JO11-3"
+          example: "[ClubCode] JO11-9JM - [Tegenstander] JO11-3"
         aanvangsTijd:
           type: string
           example: "11:30"
@@ -224,12 +224,12 @@ components:
           type: string
           nullable: true
           description: Teamnaam voor conflictcontrole en teamspecifieke regels
-          example: "VRC JO13-1"
+          example: "[ClubCode] JO13-1"
         tegenstander:
           type: string
           nullable: true
           description: Tegenstander (alleen voor administratie)
-          example: "Ede JO13-2"
+          example: "[Tegenstander] JO13-2"
         wedstrijdDuurMinuten:
           type: integer
           nullable: true
@@ -287,11 +287,11 @@ components:
         teamNaam:
           type: string
           nullable: true
-          example: "VRC JO13-1"
+          example: "[ClubCode] JO13-1"
         tegenstander:
           type: string
           nullable: true
-          example: "Ede JO13-2"
+          example: "[Tegenstander] JO13-2"
         aangevraagdDoor:
           type: string
           nullable: true
@@ -327,7 +327,7 @@ components:
         teamNaam:
           type: string
           description: Teamnaam (gedeeltelijke match ondersteund)
-          example: "VRC JO8-2"
+          example: "[ClubCode] JO8-2"
         datum:
           type: string
           format: date
@@ -342,7 +342,7 @@ components:
           example: 12345678
         wedstrijd:
           type: string
-          example: "VRC JO8-2 - Tegenstander JO8-1"
+          example: "[ClubCode] JO8-2 - Tegenstander JO8-1"
         datum:
           type: string
           format: date
@@ -1620,7 +1620,7 @@ paths:
           schema:
             type: string
           description: Exacte teamnaam
-          example: "VRC JO13-1"
+          example: "[ClubCode] JO13-1"
         - name: format
           in: query
           required: false
@@ -1736,7 +1736,7 @@ paths:
             type: string
             maxLength: 100
           description: Nederlandse plaatsnaam of adres om op te zoeken
-          example: "Veenendaal"
+          example: "[Stad]"
       responses:
         '200':
           description: Coördinaten gevonden
@@ -1854,7 +1854,7 @@ paths:
                 type: array
                 items:
                   type: string
-                example: ["VRC 1", "VRC JO13-1", "VRC JO17-1"]
+                example: ["[Heren 1]", "[ClubCode] JO13-1", "[ClubCode] JO17-1"]
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
