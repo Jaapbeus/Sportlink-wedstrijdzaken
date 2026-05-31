@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.9.0.0] — 2026-05-31
+
+### Added
+- Testdata: knop "Verplaats datum" op de Wedstrijden-pagina — verplaatst alle ALLSTARS-wedstrijden van een gekozen datum naar een nieuwe datum in één klik. (#459)
+
 ## [2.8.0.0] — 2026-05-31
 
 ### Security

@@ -366,3 +366,9 @@ public class AllstarsWedstrijdDto
     public string? VeldSubpositie { get; set; }
     public string? Soort          { get; set; }
 }
+
+public class AllstarsVerplaatsDatumResultaat
+{
+    public bool Ok               { get; set; }
+    public int  AantalVerplaatst { get; set; }
+}

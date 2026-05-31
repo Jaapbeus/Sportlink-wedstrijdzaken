@@ -83,6 +83,47 @@
     </div>
 </div>
 
+@* ── Verplaats datum ── *@
+<div class="card mb-2">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <span class="form-label mb-1 small fw-semibold d-block">Verplaats datum</span>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Van</label>
+                <input type="date" class="form-control form-control-sm" style="width:150px"
+                       value="@_verplaatsVan"
+                       @onchange="e => { _verplaatsVan = e.Value?.ToString() ?? _verplaatsVan; _verplaatsResultaat = null; _verplaatsFout = null; }" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Naar</label>
+                <input type="date" class="form-control form-control-sm" style="width:150px"
+                       value="@_verplaatsNaar"
+                       @onchange="e => { _verplaatsNaar = e.Value?.ToString() ?? _verplaatsNaar; _verplaatsResultaat = null; _verplaatsFout = null; }" />
+            </div>
+            <div class="col-auto mt-auto">
+                <button class="btn btn-sm btn-outline-secondary" @onclick="VerplaatsDatumAsync"
+                        disabled="@(!VerplaatsKnopActief || _bezig)">
+                    <i class="bi bi-calendar me-1"></i> Verplaats
+                </button>
+            </div>
+            @if (_verplaatsResultaat != null)
+            {
+                <div class="col-auto mt-auto">
+                    <span class="text-success small"><i class="bi bi-check-circle me-1"></i>@_verplaatsResultaat</span>
+                </div>
+            }
+            @if (_verplaatsFout != null)
+            {
+                <div class="col-auto mt-auto">
+                    <span class="text-danger small"><i class="bi bi-exclamation-circle me-1"></i>@_verplaatsFout</span>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
 @* ── Filter + verwijder ── *@
 <div class="card mb-3">
     <div class="card-body py-2">
@@ -365,6 +406,12 @@ else
     private string _filterVan = "";
     private string _filterTot = "";
 
+    // Verplaats datum
+    private string  _verplaatsVan      = "";
+    private string  _verplaatsNaar     = "";
+    private string? _verplaatsResultaat;
+    private string? _verplaatsFout;
+
     // Sortering — standaard datum aflopend
     private string _sortKolom    = "datum";
     private bool   _sortAflopend = true;
@@ -403,6 +450,11 @@ else
 
     private bool FilterActief =>
         !string.IsNullOrEmpty(_filterVan) || !string.IsNullOrEmpty(_filterTot);
+
+    private bool VerplaatsKnopActief =>
+        !string.IsNullOrEmpty(_verplaatsVan) &&
+        !string.IsNullOrEmpty(_verplaatsNaar) &&
+        _verplaatsVan != _verplaatsNaar;
 
     private List<WedstrijdRij> GesorteerdeEnGefilterde
     {
@@ -496,6 +548,33 @@ else
     {
         _filterVan = "";
         _filterTot = "";
+    }
+
+    // ── Verplaats datum ──
+
+    private async Task VerplaatsDatumAsync()
+    {
+        if (!VerplaatsKnopActief) return;
+        _bezig = true;
+        _verplaatsResultaat = null;
+        _verplaatsFout      = null;
+        StateHasChanged();
+
+        var result = await Api.VerplaatsAllstarsDatumAsync(_verplaatsVan, _verplaatsNaar);
+
+        if (result.Success)
+        {
+            var count = result.Data?.AantalVerplaatst ?? 0;
+            _verplaatsResultaat = $"{count} wedstrijd{(count == 1 ? "" : "en")} verplaatst naar {_verplaatsNaar}";
+            foreach (var rij in _rijen.Where(r => r.Datum == _verplaatsVan))
+                rij.Datum = _verplaatsNaar;
+        }
+        else
+        {
+            _verplaatsFout = result.ErrorMessage ?? "Verplaatsen mislukt";
+        }
+
+        _bezig = false;
     }
 
     // ── Cel-events ──
