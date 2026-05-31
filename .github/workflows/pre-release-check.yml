@@ -1,0 +1,68 @@
+name: Pre-release check (develop → main)
+
+# Draait uitsluitend op PRs die naar main gaan.
+# Blokkeert de merge als de database niet Online is of de build faalt.
+# Configureer 'db-check' en 'build-check' als required status checks
+# in GitHub branch protection voor de main-branch.
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  SQL_SERVER:         ${{ vars.AZURE_SQL_SERVER_NAME }}
+  SQL_DATABASE:       ${{ vars.AZURE_SQL_DATABASE_NAME }}
+  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
+
+jobs:
+  # ── 1. Database beschikbaarheidscheck ─────────────────────────────────────
+  # Blokkeert de merge als de database Paused, AutoPaused of unavailable is.
+  # Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is (fork).
+  db-check:
+    name: "Database beschikbaar voor deploy"
+    runs-on: ubuntu-latest
+    if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
+    steps:
+      - name: Azure inloggen
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "Database status controleren (moet Online zijn)"
+        run: |
+          STATUS=$(az sql db show \
+            --name "$SQL_DATABASE" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --query 'status' --output tsv 2>/dev/null || echo "unknown")
+          echo "Database status: $STATUS"
+          if [ "$STATUS" = "Online" ]; then
+            echo "✓ Database Online — release mag doorgaan"
+            exit 0
+          fi
+          echo "::error::⛔ Database is '$STATUS' — release geblokkeerd."
+          echo "::error::Zorg dat de database Online is vóór de release-merge:"
+          echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
+          echo "::error::  Of wacht tot de maandlimiet vernieuwd is."
+          exit 1
+
+  # ── 2. Build-verificatie ──────────────────────────────────────────────────
+  # Controleert dat FunctionApp en BlazorAdmin compileren op de te mergen code.
+  build-check:
+    name: "Build geslaagd vóór release"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: FunctionApp bouwen
+        run: dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Release
+
+      - name: BlazorAdmin bouwen
+        run: dotnet build BlazorAdmin/BlazorAdmin.csproj -c Release

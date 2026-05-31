@@ -509,26 +509,60 @@ git log $(git describe --tags --abbrev=0 2>/dev/null)..HEAD --pretty=format:"%s"
 - `BREAKING CHANGE:` in commit-body → MAJOR bump (escaleer naar eigenaar eerst)
 - Bij twijfel tussen MINOR en PATCH → MINOR
 
-### Poort 2 uitvoeren — versie-bump + release
+### Poort 2 uitvoeren — release-volgorde (versie-bump ALTIJD NA succesvolle deploy)
+
+> **KRITIEKE VOLGORDE — nooit omdraaien:**
+> versie-bump en CHANGELOG afsluiten ALLEEN als de deploy succesvol is afgerond.
+> Een versie-label op code die niet deployed is misleidt toekomstige releases.
 
 Alleen als **alle P2-A t/m P2-E checks ✅ of ⚠️ (geen ❌)**:
 
 ```powershell
 $newVersion = "<nieuw versienummer>"   # bijv. "2.3.0"
 
-# 1. Versie aanpassen in beide csproj-bestanden
-#    Pas <Version> aan in FunctionApp/fa-dev-sportlink-01.csproj
-#    Pas <Version> aan in BlazorAdmin/BlazorAdmin.csproj
+# ── Stap 1: Pre-release DB-check — vóór PR aanmaken ──────────────────────
+# De database MOET online zijn vóór de merge. Zo niet: abort en meld.
+$dbStatus = az sql db show `
+  --name "$env:SQL_DATABASE" `
+  --resource-group "$env:SQL_RESOURCE_GROUP" `
+  --server "$env:SQL_SERVER" `
+  --query 'status' --output tsv 2>$null
+if ($dbStatus -ne "Online") {
+    Write-Host "❌ Database is '$dbStatus' — release afgebroken."
+    Write-Host "Zorg dat de database Online is en voer --release opnieuw uit."
+    # GEEN versie-bump, GEEN PR, GEEN merge
+    exit 1
+}
 
-# 2. CHANGELOG: verplaats [Unreleased] naar [x.y.z] — YYYY-MM-DD
-#    Voeg lege ## [Unreleased] toe bovenaan
-
-# 3. Commit versie-bump
+# ── Stap 2: Versie-bump + CHANGELOG op develop (ZONDER te mergen) ─────────
+# Pas <Version> aan in FunctionApp/fa-dev-sportlink-01.csproj
+# Pas <Version> aan in BlazorAdmin/BlazorAdmin.csproj
+# CHANGELOG: verplaats [Unreleased] naar [x.y.z] — YYYY-MM-DD
 git add FunctionApp/fa-dev-sportlink-01.csproj BlazorAdmin/BlazorAdmin.csproj CHANGELOG.md
 git commit -m "chore: release v$newVersion"
-git push origin main
+git push origin develop
 
-# 4. Tag aanmaken → triggert release.yml (GitHub Release automatisch)
+# ── Stap 3: Release-PR develop → main ────────────────────────────────────
+# pre-release-check.yml draait automatisch op de PR en controleert opnieuw:
+#   - db-check (database Online)
+#   - build-check (FunctionApp + BlazorAdmin compileren)
+# De PR kan NIET gemerged worden als deze checks falen (branch protection).
+gh pr create --base main --head develop --title "release: v$newVersion" --body "..."
+
+# ── Stap 4: Wacht op pre-release-check en merge ───────────────────────────
+gh pr checks <pr-nr> --watch
+# Alle checks groen? → merge
+gh pr merge <pr-nr> --merge
+
+# ── Stap 5: Wacht op SUCCESVOLLE deploy — dan pas tag ────────────────────
+gh run list --branch main --workflow deploy.yml --limit 1 --json databaseId | ConvertFrom-Json
+gh run watch <run-id> --exit-status
+
+# Verplichte per-job check (alle jobs success/skipped?)
+gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
+
+# ── Stap 6: Tag ALLEEN na succesvolle deploy ─────────────────────────────
+git checkout main && git pull
 git tag "v$newVersion" -m "Release v$newVersion"
 git push origin "v$newVersion"
 ```
@@ -539,14 +573,23 @@ gh run list --workflow release.yml --limit 1
 gh run watch <run-id> --exit-status
 ```
 
-Rapporteer: `✅ Poort 2 geslaagd — v$newVersion getagd + GitHub Release aangemaakt`
+Rapporteer: `✅ Poort 2 geslaagd — v$newVersion gedeployed, getagd + GitHub Release aangemaakt`
 
-### Poort 2 — NO-GO
+### Poort 2 — NO-GO (database niet beschikbaar)
 
-Als één of meer ❌ checks aanwezig zijn:
-- Fix het probleem op `main` (of via een hotfix-branch + PR)
-- Voer Poort 2 opnieuw uit
-- **Geen versie-bump en geen tag zolang er een ❌ is**
+Als de DB-check in Stap 1 of de pre-release-check op de PR faalt:
+- **Geen versie-bump op develop**
+- **Geen PR naar main**
+- **Geen tag**
+- Meld aan gebruiker: "Database niet beschikbaar — release uitgesteld. Issues staan klaar op develop. Voer `/autonoom --release` opnieuw uit zodra de database Online is."
+
+Als deploy (Stap 5) faalt na succesvolle merge:
+- Tag NIET aanmaken (Stap 6 overslagen)
+- Meld aan gebruiker: "Deploy gefaald na merge — zie GitHub Actions voor details. Tag wordt aangemaakt zodra deploy slaagt."
+
+Als andere ❌ checks (P2-A/B/C) falen:
+- Fix het probleem op develop
+- Voer Poort 2 opnieuw uit vanaf Stap 1
 
 ---
 
