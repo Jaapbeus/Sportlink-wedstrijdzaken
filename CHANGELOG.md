@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.8.0.0] — 2026-05-31
+
 ### Security
 - SSRF-bescherming `POST /api/beheer/theme/extract` vervangen door domein-allowlist op basis van `ThemeClubWebsiteUrl` uit AppSettings. Elimineert TOCTOU/DNS-rebinding volledig — geen DNS-lookup meer nodig. (#422, sluit ook #421)
 - `sp_CleanupEmailVerwerking` fase-1 anonimisering uitgebreid met `[FoutMelding] = NULL` — voorkomt dat exception-tekst (mogelijk met PII) langer dan 30 dagen bewaard blijft. (#420)
