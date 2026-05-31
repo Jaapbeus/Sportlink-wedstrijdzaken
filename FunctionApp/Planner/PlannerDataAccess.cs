@@ -211,13 +211,15 @@ namespace SportlinkFunction.Planner
         }
 
         // Lookup: Leeftijd → Speeltijd. Gebruikt door SportlinkApiClient.
-        public static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync()
+        public static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(string? clubCode = null)
         {
+            var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
             var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(
-                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden]", conn);
+                "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [ClubCode] = @cc", conn);
+            cmd.Parameters.AddWithValue("@cc", cc);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 result[reader.GetString(0)] = new Speeltijd
@@ -240,7 +242,9 @@ namespace SportlinkFunction.Planner
                 SELECT [teamnaam],
                        REPLACE(REPLACE(REPLACE([leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
                 FROM [his].[teams]
-                WHERE [leeftijdscategorie] IS NOT NULL AND [leeftijdscategorie] <> ''", conn);
+                WHERE [leeftijdscategorie] IS NOT NULL AND [leeftijdscategorie] <> ''
+                  AND [ClubCode] = @clubCode", conn);
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -290,18 +294,20 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
-        public static async Task<List<TeamRegel>> GetTeamRulesAsync(string teamNaam)
+        public static async Task<List<TeamRegel>> GetTeamRulesAsync(string teamNaam, string? clubCode = null)
         {
+            var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
             var results = new List<TeamRegel>();
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
             using var cmd = new SqlCommand(@"
                 SELECT [TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer], [WaardeTijd], [Prioriteit]
                 FROM [dbo].[TeamRegels]
-                WHERE [TeamNaam] = @team AND [Actief] = 1
+                WHERE [TeamNaam] = @team AND [Actief] = 1 AND [ClubCode] = @cc
                 ORDER BY [Prioriteit] DESC
             ", conn);
             cmd.Parameters.AddWithValue("@team", teamNaam);
+            cmd.Parameters.AddWithValue("@cc", cc);
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -319,8 +325,9 @@ namespace SportlinkFunction.Planner
             return results;
         }
 
-        public static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync()
+        public static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
         {
+            var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
             var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
             using var conn = new SqlConnection(ConnectionString);
             await conn.OpenAsync();
@@ -328,7 +335,9 @@ namespace SportlinkFunction.Planner
                 SELECT [TeamNaam], [RegelType], [WaardeMinuten]
                 FROM [dbo].[TeamRegels]
                 WHERE [RegelType] IN ('BufferVoor', 'BufferNa') AND [Actief] = 1 AND [WaardeMinuten] IS NOT NULL
+                  AND [ClubCode] = @cc
             ", conn);
+            cmd.Parameters.AddWithValue("@cc", cc);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {

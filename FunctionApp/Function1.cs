@@ -176,12 +176,23 @@ namespace SportlinkFunction
             await CreateStagingTable.ExecuteAsync("matchdetails");
             // Fetch and store match details for each match in the staging table
             var wedstrijdcodes = await FetchWedstrijdcodesFromStagingMatches(log);
+            int matchDetailsOk = 0, matchDetailsFout = 0;
             foreach (var wedstrijdcode in wedstrijdcodes)
             {
                 ApiUrl = $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}";
-                await FetchAndStoreMatchDetails(ApiUrl, log);
-                log.LogInformation("MATCHDETAILS - GET endpoint=/wedstrijd-informatie wedstrijdcode={Wedstrijdcode}", wedstrijdcode);
+                if (await FetchAndStoreMatchDetails(ApiUrl, log))
+                {
+                    matchDetailsOk++;
+                    log.LogInformation("MATCHDETAILS - GET endpoint=/wedstrijd-informatie wedstrijdcode={Wedstrijdcode}", wedstrijdcode);
+                }
+                else
+                {
+                    matchDetailsFout++;
+                    partialFailure = true;
+                }
             }
+            log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Totaal} wedstrijdcodes",
+                matchDetailsOk, matchDetailsFout, wedstrijdcodes.Count);
             // Merge staging data into history tables
             await new MergeStgToHis("stg", "teams",        "his", "teams").ExecuteAsync(log);
             await new MergeStgToHis("stg", "matches",      "his", "matches").ExecuteAsync(log);
@@ -196,37 +207,35 @@ namespace SportlinkFunction
                 log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
         }
 
-        private static async Task FetchAndStoreMatchDetails(string apiUrl, ILogger log)
+        // Retourneert true bij succes, false bij elke fout — zodat de caller partialFailure kan bijhouden. (#464)
+        private static async Task<bool> FetchAndStoreMatchDetails(string apiUrl, ILogger log)
         {
             try
             {
-                using (var client = new HttpClient())
-                {
-                    var response = await client.GetAsync(apiUrl);
-                    response.EnsureSuccessStatusCode();
+                using var client = new HttpClient();
+                var response = await client.GetAsync(apiUrl);
+                response.EnsureSuccessStatusCode();
 
-                    string jsonResponse = await response.Content.ReadAsStringAsync();
-                    try
-                    {
-                        MatchDetails? matchDetails = JsonConvert.DeserializeObject<MatchDetails>(jsonResponse, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-                        if (matchDetails != null)
-                        {
-                            await SaveToDatabaseMatchDetails(matchDetails, log);
-                        }
-                        else
-                        {
-                            log.LogWarning("MATCHDETAILS - No match details found.");
-                        }
-                    }
-                    catch (JsonSerializationException ex)
-                    {
-                        log.LogError($"Error deserializing JSON: {ex.Message}");
-                    }
+                string jsonResponse = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    MatchDetails? matchDetails = JsonConvert.DeserializeObject<MatchDetails>(jsonResponse, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+                    if (matchDetails != null)
+                        await SaveToDatabaseMatchDetails(matchDetails, log);
+                    else
+                        log.LogWarning("MATCHDETAILS - No match details found.");
                 }
+                catch (JsonSerializationException ex)
+                {
+                    log.LogError("MATCHDETAILS - JSON-deserialisatiefout: {Message}", ex.Message);
+                    return false;
+                }
+                return true;
             }
             catch (Exception ex)
             {
-                log.LogError($"Error fetching match details from {apiUrl}: {ex.Message}");
+                log.LogError("MATCHDETAILS - Ophalen mislukt voor {ApiUrl}: {Message}", apiUrl, ex.Message);
+                return false;
             }
         }
         private static async Task<List<string>> FetchWedstrijdcodesFromStagingMatches(ILogger log)

@@ -552,30 +552,24 @@ public class EmailProcessorFunction
 
     // --- Database operaties ---
 
+    // Laadt uitsluitingslijst strikt — exception propageren zodat de outer cold-start catch
+    // fail-closed kan garanderen (_uitgeslotenCacheGeladen blijft false bij fout). (#463)
     private static async Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
     {
-        try
-        {
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(
-                "SELECT [EmailAdres] FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Actief] = 1 AND [ClubCode] = @ClubCode",
-                connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            var adressen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                adressen.Add(reader.GetString(0));
-            log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
-            return adressen;
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Uitsluitingslijst kon niet worden geladen — doorgaan zonder");
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
+        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+        using var command = new SqlCommand(
+            "SELECT [EmailAdres] FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Actief] = 1 AND [ClubCode] = @ClubCode",
+            connection);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
+        var adressen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            adressen.Add(reader.GetString(0));
+        log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
+        return adressen;
     }
 
     private static async Task<bool> BestaatMessageIdAsync(string messageId)
