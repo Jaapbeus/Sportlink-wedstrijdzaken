@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Admin;
@@ -14,6 +13,8 @@ namespace SportlinkFunction.Admin;
 /// </summary>
 public static class AdminClubsFunction
 {
+    // Clubs-endpoint gebruikt geen clubCode-filter; bevraagt alle AppSettings.
+    // AdminEndpoint wrapper niet gebruikt omdat GetClubCodeFromRequest hier niet van toepassing is.
     [Function("AdminClubsGet")]
     public static async Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/clubs")] HttpRequest req,
@@ -22,31 +23,10 @@ public static class AdminClubsFunction
         var log = context.GetLogger("AdminClubsGet");
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
-
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            using var command = new SqlCommand(@"
-                SELECT [ClubCode], [ClubName], [SyncEnabled]
-                FROM [dbo].[AppSettings]
-                ORDER BY [SyncEnabled] DESC, [ClubName]",
-                connection);
-
-            using var reader = await command.ExecuteReaderAsync();
-            var clubs = new List<object>();
-            while (await reader.ReadAsync())
-            {
-                clubs.Add(new
-                {
-                    clubCode = reader.GetString(0),
-                    clubName = reader.GetString(1),
-                    syncEnabled = !reader.IsDBNull(2) && reader.GetBoolean(2)
-                });
-            }
-
+            var clubs = await AdminClubsRepository.GetClubsAsync(SystemUtilities.DatabaseConfig.ConnectionString);
             return new OkObjectResult(clubs);
         }
         catch (Exception ex)

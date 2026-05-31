@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Admin;
 
@@ -13,42 +11,14 @@ namespace SportlinkFunction.Admin;
 public static class AdminTeamsFunction
 {
     [Function("AdminTeamsGet")]
-    public static async Task<IActionResult> Get(
+    public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teams")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTeamsGet");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            using var command = new SqlCommand(@"
-                SELECT DISTINCT [teamnaam]
-                FROM [his].[teams]
-                WHERE [ClubCode] = @ClubCode
-                ORDER BY [teamnaam]",
-                connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-
-            using var reader = await command.ExecuteReaderAsync();
-            var teams = new List<string>();
-            while (await reader.ReadAsync())
-                teams.Add(reader.GetString(0));
-
-            return new OkObjectResult(teams);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen teams");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTeamsGet"), "teams ophalen",
+            async clubCode =>
+            {
+                var teams = await AdminTeamsRepository.GetTeamnamenAsync(
+                    clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
+                return new OkObjectResult(teams);
+            });
 }
