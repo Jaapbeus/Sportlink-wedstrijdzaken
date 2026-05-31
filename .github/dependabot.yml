@@ -9,3 +9,23 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "NuGet"
+
+  - package-ecosystem: "nuget"
+    directory: "/BlazorAdmin"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "NuGet"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "Actions"

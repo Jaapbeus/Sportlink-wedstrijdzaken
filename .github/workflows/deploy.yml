@@ -72,6 +72,24 @@ jobs:
             --configuration Release \
             --output ./output
 
+      - name: Artefact uploaden
+        uses: actions/upload-artifact@v4
+        with:
+          name: functionapp
+          path: ./output
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, db-migrate]
+    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy doorgaan. (#430)
+    if: always() && needs.build.result == 'success' && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
+    steps:
+      - name: Artefact downloaden
+        uses: actions/download-artifact@v4
+        with:
+          name: functionapp
+          path: ./output
+
       - name: Azure inloggen
         uses: azure/login@v2
         with:
@@ -128,9 +146,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: [build, db-migrate]
-    # db-migrate wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan
-    if: always() && needs.build.result == 'success'
+    needs: [deploy]
+    # Deploy wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan als deploy slaagt
+    if: always() && needs.deploy.result == 'success'
     steps:
       - name: "Smoke test: function app bereikbaar (health → 200)"
         run: |
@@ -160,6 +178,31 @@ jobs:
               echo "FOUT: verwacht 401, kreeg $STATUS"; exit 1
             fi
           done
+
+      - name: "Smoke test: anonymous admin endpoint beveiligd zonder token (→ 401)"
+        run: |
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/beheer/settings"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
+          echo "GET /api/beheer/settings zonder token: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "FOUT: verwacht 401, kreeg $STATUS — EasyAuthHelper werkt niet correct"
+            exit 1
+          fi
+
+      - name: "Smoke test: gefakete X-MS-CLIENT-PRINCIPAL wordt niet vertrouwd (→ 401)"
+        run: |
+          # Simuleert een aanvaller die admin-header meestuurt zonder geldig Entra-token.
+          # Als Easy Auth actief is, strip Azure deze header vóór de Function.
+          FAKE_PRINCIPAL=$(echo '{"auth_typ":"aad","claims":[{"typ":"roles","val":"admin"}],"name_typ":"","role_typ":"roles"}' | base64 -w 0)
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/beheer/settings"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -H "X-MS-CLIENT-PRINCIPAL: $FAKE_PRINCIPAL" \
+            "$URL" || true)
+          echo "GET /api/beheer/settings met gefakete principal: $STATUS"
+          if [ "$STATUS" != "401" ]; then
+            echo "FOUT: verwacht 401, kreeg $STATUS — Easy Auth mogelijk uitgeschakeld of niet geconfigureerd"
+            exit 1
+          fi
 
       - name: "Info: planner endpoint database-check"
         continue-on-error: true
