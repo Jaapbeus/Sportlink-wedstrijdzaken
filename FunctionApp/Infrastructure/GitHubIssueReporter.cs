@@ -206,11 +206,16 @@ public static class GitHubIssueReporter
     }
 
     // Verwijdert PII en club-specifieke gegevens voordat tekst in publieke GitHub issues terechtkomt.
-    // Sanitiseert: e-mailadressen, GUIDs, SQL-connectiestring-fragmenten, datums, getallen.
+    // Sanitiseert: e-mailadressen, GUIDs, SQL-connectiestring-fragmenten, URL queryparameters, datums, getallen.
     private static string SanitizeForPublic(string? text)
     {
         if (string.IsNullOrEmpty(text)) return "";
         var s = text;
+        // URL query-parameters met gevoelige namen — clientId, code, token, key, secret (#436)
+        s = System.Text.RegularExpressions.Regex.Replace(s,
+            @"([?&](clientId|code|token|key|secret|apikey|client_secret|client_id)=)[^&\s""'<>]+",
+            "$1<redacted>",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         // E-mailadressen
         s = System.Text.RegularExpressions.Regex.Replace(s,
             @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", "<email>");
