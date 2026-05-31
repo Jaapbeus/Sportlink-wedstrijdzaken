@@ -18,6 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.10.0.0] — 2026-05-31
+
+### Changed
+- Admin API-endpoints gebruiken nu een gedeelde `AdminEndpoint.ExecuteAsync` wrapper — auth guard, correlatie-ID en foutafhandeling zijn eenmalig gedefinieerd en kunnen niet vergeten worden bij nieuwe endpoints. (#467)
+- SQL voor Speeltijden, UitgeslotenEmail, VeldBeschikbaarheid, VoorkeurTijden, TeamRegels, Leermomenten, Teams, Clubs en EmailLog verplaatst naar aparte repository-klassen in `FunctionApp/Admin/Repositories/`. (#467)
+
 ## [2.9.1.0] — 2026-05-31
 
 ### Fixed
