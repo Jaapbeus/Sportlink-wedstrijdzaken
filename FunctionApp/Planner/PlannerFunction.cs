@@ -17,10 +17,12 @@ namespace SportlinkFunction.Planner
     {
         [Function("CheckAvailability")]
         public static async Task<IActionResult> CheckAvailability(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/check-availability")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/check-availability")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("CheckAvailability");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -46,10 +48,12 @@ namespace SportlinkFunction.Planner
 
         [Function("DoordeweeksBeschikbaar")]
         public static async Task<IActionResult> DoordeweeksBeschikbaar(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/doordeweeks-beschikbaar")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/doordeweeks-beschikbaar")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("DoordeweeksBeschikbaar");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -74,10 +78,12 @@ namespace SportlinkFunction.Planner
 
         [Function("BevestigWedstrijd")]
         public static async Task<IActionResult> BevestigWedstrijd(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/bevestig")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/bevestig")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("BevestigWedstrijd");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -220,10 +226,12 @@ namespace SportlinkFunction.Planner
 
         [Function("ZoekWedstrijd")]
         public static async Task<IActionResult> ZoekWedstrijd(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("ZoekWedstrijd");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -253,10 +261,12 @@ namespace SportlinkFunction.Planner
 
         [Function("HerplanCheck")]
         public static async Task<IActionResult> HerplanCheck(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-check")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-check")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("HerplanCheck");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -331,10 +341,12 @@ namespace SportlinkFunction.Planner
 
         [Function("HerplanBevestig")]
         public static async Task<IActionResult> HerplanBevestig(
-            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("HerplanBevestig");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
@@ -458,10 +470,12 @@ namespace SportlinkFunction.Planner
 
         [Function("GetTeamSchedule")]
         public static async Task<IActionResult> GetTeamSchedule(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "planner/team-schedule")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/team-schedule")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("GetTeamSchedule");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 var team = req.Query["team"].ToString();
