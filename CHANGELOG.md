@@ -18,6 +18,33 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- `deploy.yml`: `vars.*`-referenties in `run:`-scripts vervangen door bash-omgevingsvariabelen (`$SQL_SERVER`, `$SQL_DATABASE`, `$SQL_RESOURCE_GROUP`); `AZURE_STATIC_WEB_APP_HOSTNAME` naar job-level `env:` verplaatst — elimineert VS Code GitHub Actions linter-waarschuwingen.
+- `docs/SETUP.md`: nieuwe sectie 11 "GitHub Actions: Productie-deployment configureren" met overzichtstabel van alle vereiste secrets en variables, uitleg welke optioneel zijn, en verificatiestap via `gh run view`.
+- **AVG/multi-club cleanup:** club-specifieke data verwijderd uit 10+ bestanden: GPS-coördinaten Veenendaal (→ geografisch centrum NL als fallback), "Sportpark Spitsbergen" (→ `[Sportparklocatie]`), clubteamnamen (→ `[ClubCode]`), Blazor PageTitles (→ "Beheer"), `PlannerAfzenderNaam`-default. `PlannerFunction.cs`: `?? "VRC"` fallback vervangen door `InvalidOperationException` — hardcoded clubnaam in productie-code.
+
+### Fixed
+- `FunctionApp/Planner/PlannerFunction.cs`: twee endpoints (AutoPlan, AutoPlanToepassen) hadden `?? "VRC"` als fallback voor ClubCode — architectuurschending en multi-club-bypass. Gooit nu `InvalidOperationException` als ClubCode niet via Easy Auth bepaald kan worden.
+- `FunctionApp/Email/BerichtAiService.cs`: hardcoded jaar (2026) in twee few-shot voorbeelden in de AI system prompt vervangen. Datum staat nu dynamisch als eerste instructie in de system prompt; het `doordeweeks`-voorbeeld berekent de komende maandagdatums dynamisch vanuit `DateTime.Now`. Voorkomt dat het model verkeerde datum-context aanneemt bij datumberekening.
+
+### Added
+- `docs/ARCHITECTUUR-AI-SERVICES.md`: architectuurdocument voor alle AI-integraties — provider-agnostisch via `IChatClient`, datumregel, few-shot conventies, modelnaam uit configuratie, jaarlijkse KNVB-onderhoudsplicht.
+- `docs/DOCUMENTATIEPLAN.md`: documentatieplan met categorieën (Gebruikers/Administrator/Developers/Setup) en versie-verificatieconventie.
+- `docs/INDEX.md` herschreven naar nieuwe categoriestructuur met 4 doelgroepen.
+- `docs/api-standaarden/`: nieuwe map voor API-standaarden (`openapi.yaml`, `openapi.json`, `openspec/`) — verplaatst uit `docs/` root; openapi.yaml versie bijgewerkt naar 2.7.0; enforcement-regels toegevoegd aan CLAUDE.md.
+- CLAUDE.md: sectie "API-standaarden — altijd actueel, altijd bewaakt" toegevoegd met verplichte checklist bij elke endpoint-wijziging.
+
+### Changed (documentatie-reorganisatie)
+- 6 bestanden hernoemd voor duidelijkere naamgeving:
+  - `docs/v2-admin-handleiding.md` → `docs/BEHEERDER-HANDLEIDING.md`
+  - `docs/TESTING.md` → `docs/VERIFICATIE-SCRIPTS.md`
+  - `docs/AZURE-ENTRA-SETUP.md` → `docs/ENTRA-AUTH-BEHEER.md`
+  - `docs/HANDLEIDING-TEAMBEGELEIDING-EXPORT.md` → `docs/ADMIN-TEAMBEGELEIDING-IMPORT.md`
+  - `SETUP.md` (root) → `SETUP-NIEUWE-CLUB.md` (club-installatiegids)
+  - `docs/SETUP.md` → `docs/DEVELOPER-SETUP.md` (developer lokale setup)
+- Alle 30+ verwijzingen naar deze bestanden bijgewerkt in CLAUDE.md, README.md, CONTRIBUTING.md, SECURITY.md, ARCHITECTURE.md, scripts, .cs-bestanden en deploy.yml.
+- Kritieke inhoudsfouten gecorrigeerd: `--runtime-version 10→9` in SETUP-NIEUWE-CLUB.md, kostenclaim README.md (€0 correct), scriptpaden overal gecorrigeerd naar `scripts/dev/`, branch-strategie CONTRIBUTING.md bijgewerkt naar develop-workflow, `~420 personen` verwijderd uit ADMIN-TEAMBEGELEIDING-IMPORT.md, v2/develop-branches hersteld naar develop in SECURITY.md en BEHEERDER-HANDLEIDING.md.
+
 ## [2.7.0.1] — 2026-05-31
 
 ### Added

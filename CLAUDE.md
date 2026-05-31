@@ -278,15 +278,15 @@ bewust worden bekeken.
 | `CLAUDE.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
 | `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
-| `docs/AZURE-ENTRA-SETUP.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
-| `docs/v2-admin-handleiding.md` | Admin GUI: scherm, instelling, knop of workflow gewijzigd |
+| `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
+| `docs/BEHEERDER-HANDLEIDING.md` | Admin GUI: scherm, instelling, knop of workflow gewijzigd |
 | `docs/VERSIONING.md` | Release-proces of semver-afspraken gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
-| `docs/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
+| `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
-| `docs/TESTING.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
+| `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
-| `docs/SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
+| `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 | `SECURITY.md` | Security-beleid, AVG-regels of secrets-protocol gewijzigd |
@@ -455,6 +455,36 @@ Bij elke PR controleer:
 
 ## Architectuurregels — altijd van toepassing
 
+### AI-services — provider-agnostisch, datum altijd dynamisch
+
+> Volledige regels en migratiepad: **[docs/ARCHITECTUUR-AI-SERVICES.md](docs/ARCHITECTUUR-AI-SERVICES.md)**
+
+Samenvatting van de drie harde regels:
+
+1. **Provider-abstractie via `IChatClient`** (NuGet: `Microsoft.Extensions.AI`) — productie-code gebruikt
+   nooit `ChatClient`, `AnthropicClient` of andere provider-klassen direct. Provider-wissel = één DI-registratie.
+
+2. **Datum altijd dynamisch in de system prompt** — elke tijdgevoelige system prompt begint met:
+   ```csharp
+   $"Vandaag is {today:dddd d MMMM yyyy}."
+   ```
+   Geef `today = DateTime.Now` als parameter mee; genereer nooit intern. Zie patroon in
+   `BerichtAiService.BouwClassificatieSystemPrompt(DateTime today, ...)`.
+
+3. **Geen absolute datums in few-shot voorbeelden** — bereken voorbeelddatums dynamisch vanuit
+   de `today`-parameter. Nooit hardcoded jaar (`"2026-05-19"`) in system prompts.
+
+**Codereview-checklist bij elke AI-aanroep:**
+```
+□ Gebruikt IChatClient — niet ChatClient of AnthropicClient direct?
+□ System prompt begint met dynamische datum?
+□ Few-shot voorbeelden zonder hardcoded jaar?
+□ Modelnaam uit configuratie — niet hardcoded?
+□ KNVB-regels nog geldig voor het huidige seizoen?
+```
+
+---
+
 ### .NET versie — net9.0 verplicht voor FunctionApp (NOOIT upgraden zonder infrastructuurwijziging)
 
 **KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
@@ -489,7 +519,7 @@ az login                                  # eenmalig per machine
 
 Beide scripts staan in [scripts/azure/](scripts/azure/). Configure-EntraApp is idempotent: runnen op een al-correcte config doet niets. Faalt-snel als de Azure CLI niet op de juiste tenant zit.
 
-Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets: [docs/AZURE-ENTRA-SETUP.md](docs/AZURE-ENTRA-SETUP.md).
+Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets: [docs/ENTRA-AUTH-BEHEER.md](docs/ENTRA-AUTH-BEHEER.md).
 
 **Verplicht na elke configuratie-wijziging:** sluit alle browser-tabs van de Admin GUI, open verse Incognito sessie, log opnieuw in. MSAL bewaart het ID-token in `localStorage` — zonder verse sessie blijft de oude (rolloze) token in gebruik.
 
@@ -641,6 +671,31 @@ Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only d
 - Workflow: zoek eerst → haal diepere docs op bij twijfel → gebruik officiële bronnen als grond voor architectuurbeslissingen.
 - Combineer met eigen kennis als architect; MCP-resultaten zijn leidend bij conflicten met training-data.
 
+## API-standaarden — altijd actueel, altijd bewaakt
+
+De API-standaarden staan in `docs/api-standaarden/`:
+
+| Bestand | Inhoud | Bijwerken bij |
+|---------|--------|---------------|
+| `docs/api-standaarden/openapi.yaml` | OpenAPI 3.0 spec (YAML) — machine-readable | Elk nieuw of gewijzigd endpoint |
+| `docs/api-standaarden/openapi.json` | Zelfde spec in JSON | Synchroniseer met YAML na elke wijziging |
+| `docs/api-standaarden/openspec/` | Structured requirements specs per domein | Architectural change of nieuwe requirement |
+
+### Verplichte controles bij elke endpoint-wijziging
+
+```
+□ Is docs/api-standaarden/openapi.yaml bijgewerkt (nieuw route, gewijzigde params, nieuwe response)?
+□ Is openapi.json gesynchroniseerd met openapi.yaml?
+□ Is info.version in openapi.yaml bijgewerkt naar de huidige versie?
+□ Is docs/API.md bijgewerkt (endpoint-tabel + voorbeelden)?
+```
+
+**Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Claude-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
+
+**Huidig bekende gap:** openapi.yaml mist ~22 routes die wel in productie draaien (o.a. /beheer/clubs, /beheer/speeltijden, /beheer/theme, /beheer/leermomenten, /beheer/teambegeleiding, /beheer/testdata, /planner/auto-plan). Dit wordt ingehaald via issue #[zie GitHub].
+
+---
+
 ## Versiebeheer en Release-protocol
 
 ### Semantic Versioning (semver)
@@ -748,7 +803,7 @@ dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 **Configuration:** Kopieer `FunctionApp/local.settings.template.json` naar `local.settings.json` en stel `SqlConnectionString` in op je SQL Server.
 
 **Verificatiescripts:** `scripts/dev/Test-App.ps1` (schema + build + endpoints + Blazor), `scripts/dev/Start-Debug.ps1` (alle services).  
-Zie [docs/TESTING.md](docs/TESTING.md) voor volledig overzicht.
+Zie [docs/VERIFICATIE-SCRIPTS.md](docs/VERIFICATIE-SCRIPTS.md) voor volledig overzicht.
 
 ## Security Setup (eenmalig per developer/machine)
 
