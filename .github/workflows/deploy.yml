@@ -217,8 +217,7 @@ jobs:
             -e "s|{{POST_LOGOUT_REDIRECT_URL}}|${POST_LOGOUT_REDIRECT_URL}|g" \
             BlazorAdmin/wwwroot/appsettings.Production.template.json \
             > BlazorAdmin/wwwroot/appsettings.Production.json
-          echo "Gegenereerd:"
-          cat BlazorAdmin/wwwroot/appsettings.Production.json
+          echo "appsettings.Production.json gegenereerd (inhoud niet gelogd — bevat tenant/client IDs)"
 
       - name: Blazor WASM publiceren
         if: steps.check.outputs.skip == 'false'

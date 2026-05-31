@@ -120,7 +120,7 @@ namespace SportlinkFunction
             // Fetch and store Teams data
             ApiUrl = $"{sportlinkApiUrl}/teams?{sportlinkClientId}";
             await FetchAndStoreTeamsData(ApiUrl, log);
-            log.LogInformation($"TEAMS - GET: {ApiUrl}");
+            log.LogInformation("TEAMS - GET endpoint=/teams");
 
             // Drop and create staging table
             await CreateStagingTable.ExecuteAsync("matches");
@@ -132,7 +132,7 @@ namespace SportlinkFunction
             {
                 ApiUrl = $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}";
                 await FetchAndStoreProgrammaMatches(ApiUrl, log);
-                log.LogInformation($"MATCHES/PROGRAMMA - GET {ApiUrl}");
+                log.LogInformation("MATCHES/PROGRAMMA - GET endpoint=/programma weekOffset={WeekOffset}", weekOffset);
             }
 
             // Step 2: /uitslagen — fetch past weeks only for scores (uitslag, uitslag-regulier, etc.)
@@ -143,7 +143,7 @@ namespace SportlinkFunction
             {
                 ApiUrl = $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}";
                 await FetchAndStoreUitslagenScores(ApiUrl, log);
-                log.LogInformation($"MATCHES/UITSLAGEN - GET {ApiUrl}");
+                log.LogInformation("MATCHES/UITSLAGEN - GET endpoint=/uitslagen weekOffset={WeekOffset}", weekOffset);
             }
             // Drop and create staging table
             await CreateStagingTable.ExecuteAsync("matchdetails");
@@ -153,7 +153,7 @@ namespace SportlinkFunction
             {
                 ApiUrl = $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}";
                 await FetchAndStoreMatchDetails(ApiUrl, log);
-                log.LogInformation($"MATCHDETAILS - GET: {ApiUrl}");
+                log.LogInformation("MATCHDETAILS - GET endpoint=/wedstrijd-informatie wedstrijdcode={Wedstrijdcode}", wedstrijdcode);
             }
             // Merge staging data into history tables
             await new MergeStgToHis("stg", "teams",        "his", "teams").ExecuteAsync(log);

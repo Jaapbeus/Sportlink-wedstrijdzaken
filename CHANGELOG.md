@@ -27,6 +27,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Nieuwe `sp_CleanupClassificatieCorrectie`: anonimiseert samenvattingen na 30 dagen, verwijdert na 90 dagen. Lost FK-blokkade op die de EmailVerwerking-cleanup kon laten falen. Aanroepvolgorde geborgd: correcties vóór email-verwerking. (#424)
 - Nieuwe `sp_CleanupImportLog`: anonimiseert `ImporterendeDoor` + `CsvBestand` na 90 dagen, verwijdert rijen na 1 jaar. Opgenomen in de maandelijkse teambegeleiding-cleanup. (#426)
 - Feedbackwidget blokkeert nu submissions met e-mailadressen of telefoonnummers (HTTP 422) vóór GitHub-publicatie. Overzichtsstap toont waarschuwing over publieke GitHub-publicatie. (#427)
+- `Function1.cs` logt geen volledige Sportlink API-URLs meer — `clientId=` queryparameter verdwijnt uit Application Insights logs. (#436)
+- `GitHubIssueReporter.SanitizeForPublic` redigeert nu ook URL query-parameters (`clientId`, `code`, `token`, `key`, `secret`). (#436)
+- `deploy.yml`: `cat appsettings.Production.json` verwijderd — tenant/client IDs verschijnen niet meer in workflow-logs. (#437)
 
 ### Changed
 - `docs/DEVELOPER-SETUP.md`: volledig herschreven voor v2.7 — Visual Studio/F5-workflow vervangen door `Start-Debug.ps1` + `Test-App.ps1`, BlazorAdmin-setup toegevoegd (poort 5242, `dotnet watch`), .NET 9 runtime als vereiste gedocumenteerd, fingerprint-veiligheidsregel toegevoegd, oplossing-naam gecorrigeerd naar `sportlink-wedstrijdzaken.sln`. Sluit issue #394.
