@@ -1,273 +1,187 @@
-# Sportlink Azure Function - Complete Setup Guide
+# Sportlink Wedstrijdzaken — Developer Setup (v2.7)
 
-This guide covers **all prerequisites and configuration steps** required before running the Sportlink Azure Function application.
-
----
-
-## 🚀 Quick Start (TL;DR)
-
-If you just want to get running quickly:
-
-1. **Database Setup:**
-   ```sql
-   -- In SSMS connected to YOUR_SERVER, run these scripts in order:
-   -- 1. scripts/db/setup-local-database.sql
-   -- 2. setup-metadata-tables.sql
-   -- 3. Deploy stored procedures from <repository>\Database
-   ```
-
-2. **Configure API Credentials:**
-   ```sql
-   UPDATE [dbo].[AppSettings]
-   SET sportlinkApiUrl = 'https://data.sportlink.com',
-       sportlinkClientId = 'YOUR_ACTUAL_CLIENT_ID'
-   WHERE Id = 1;
-   ```
-
-3. **Start Azurite:**
-   ```powershell
-   azurite --silent
-   ```
-
-4. **Debug in Visual Studio:**
-   - Set configuration to **Debug** (not Release)
-   - Press **F5**
-
-For detailed steps, continue reading below.
+Volledige setupgids voor een nieuwe developer die de v2.7-stack lokaal wil draaien.
 
 ---
 
-## 📋 Table of Contents
+## Snelstart (TL;DR)
 
-1. [Prerequisites](#prerequisites)
-2. [Software Installation](#software-installation)
-3. [Git Hooks Setup](#git-hooks-setup)
-4. [Database Setup](#database-setup)
-5. [Sportlink API Credentials Setup](#sportlink-api-credentials-setup)
-6. [Local Settings Configuration](#local-settings-configuration)
-7. [Stored Procedures Deployment](#stored-procedures-deployment)
-8. [Metadata Table Setup](#metadata-table-setup)
-9. [Environment Verification](#environment-verification)
-10. [First Run](#first-run)
-11. [GitHub Actions: Productie-deployment configureren](#github-actions-productie-deployment-configureren)
-12. [Troubleshooting](#troubleshooting)
+```powershell
+# 1. Kopieer en configureer local.settings.json
+cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
+# Stel SqlConnectionString in op jouw SQL Server
+
+# 2. Configureer Sportlink API-credentials in dbo.AppSettings (zie sectie 4)
+
+# 3. Start alle services
+.\scripts\dev\Start-Debug.ps1
+
+# 4. Verificeer (wacht 20s na Start-Debug)
+.\scripts\dev\Test-App.ps1
+# exit 0 = alles werkt
+```
 
 ---
 
-## 3. Git Hooks Setup
+## Inhoudsopgave
 
-This repository includes **pre-commit** and **pre-push** hooks that scan for sensitive data (passwords, API keys, server names, credentials) before allowing commits or pushes to GitHub. This prevents accidental exposure of secrets.
+1. [Vereisten](#1-vereisten)
+2. [Software installeren](#2-software-installeren)
+3. [Git hooks activeren](#3-git-hooks-activeren)
+4. [Database opzetten](#4-database-opzetten)
+5. [local.settings.json configureren](#5-localsettingsjson-configureren)
+6. [Services starten (Start-Debug.ps1)](#6-services-starten)
+7. [Verificatie (Test-App.ps1)](#7-verificatie)
+8. [Projectstructuur](#8-projectstructuur)
+9. [GitHub Actions — productie-deployment configureren](#9-github-actions-productie-deployment-configureren)
+10. [Troubleshooting](#10-troubleshooting)
 
-### 3.1 Activate Git Hooks
+---
 
-After cloning the repository, configure git to use the versioned hooks directory:
+## 1. Vereisten
+
+### Software
+
+- [ ] **.NET 9 Runtime** — vereist voor FunctionApp (Linux Consumption Plan ondersteunt net10.0 niet)
+  ```powershell
+  winget install Microsoft.DotNet.Runtime.9
+  ```
+- [ ] **.NET 10 SDK** — vereist voor BlazorAdmin
+  ```powershell
+  winget install Microsoft.DotNet.SDK.10
+  ```
+- [ ] **Azure Functions Core Tools v4**
+  ```powershell
+  npm install -g azure-functions-core-tools@4 --unsafe-perm true
+  ```
+- [ ] **Node.js** (LTS) — voor Azurite
+  ```powershell
+  # Download van https://nodejs.org/
+  ```
+- [ ] **Azurite** (Azure Storage Emulator)
+  ```powershell
+  npm install -g azurite
+  ```
+- [ ] **SQL Server** (lokale instantie of bereikbare server) + database `SportlinkSqlDb`
+
+### Toegang en credentials
+
+- [ ] Sportlink API URL en Client ID
+- [ ] SQL Server instantienaam en inloggegevens
+
+---
+
+## 2. Software installeren
+
+### Versies controleren
+
+```powershell
+dotnet --list-runtimes   # moet 'Microsoft.NETCore.App 9.x.x' bevatten
+dotnet --version         # moet 10.x.x zijn (SDK)
+func --version           # moet 4.x.x zijn
+azurite --version        # moet aanwezig zijn
+node --version           # moet LTS zijn
+```
+
+### Azure Functions Core Tools installeren (indien ontbreekt)
+
+```powershell
+npm install -g azure-functions-core-tools@4 --unsafe-perm true
+func --version  # verwacht: 4.x.x
+```
+
+---
+
+## 3. Git hooks activeren
+
+De repository bevat pre-commit en pre-push hooks die scannen op gevoelige data (wachtwoorden, API-keys, servernamen) vóórdat een commit of push naar GitHub kan.
+
+### 3.1 Hooks inschakelen
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-### 3.2 Configure Sensitive Patterns
-
-The hooks read patterns from `.githooks/sensitive-patterns.txt` (which is gitignored and never pushed). Create it from the template:
+### 3.2 Gevoelige patronen configureren
 
 ```bash
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
 
-Then edit `.githooks/sensitive-patterns.txt` and add your project-specific patterns — real passwords, server names, client IDs, and SQL logins that should never appear in a commit. For example:
+Vul `sensitive-patterns.txt` aan met je eigen waarden: servernaam, SQL-login, Sportlink Client ID, Azure resource namen.
 
-```
-# Generic patterns (detect credentials in connection strings)
-Password=[^;'"`<>{}]{4,}
-PWD=[^;'"`<>{}]{4,}
-clientId=[A-Za-z0-9]{6,}
-
-# Project-specific patterns (add your own real values)
-# MySecretPassword
-# MyClientId123
-# Server=MYSERVERNAME
-# my_sql_login_name
-```
-
-### 3.3 Verify Hooks Are Active
-
-Test that the hooks work by staging a file and committing:
+### 3.3 Verificatie
 
 ```bash
 git commit --allow-empty -m "test hooks"
-```
-
-You should see: `🔍 Scanning staged files for sensitive data...` followed by `✅ No sensitive data detected.`
-
-If you don't see the scanning message, verify `core.hooksPath` is set:
-
-```bash
-git config core.hooksPath
-# Should output: .githooks
+# Verwacht: "Scanning staged files for sensitive data..." → "No sensitive data detected."
 ```
 
 ---
 
-## 1. Prerequisites
+## 4. Database opzetten
 
-Before starting, ensure you have:
+### 4.1 Database aanmaken
 
-### Required Software
-- [ ] **Visual Studio 2022/2026** (Community, Professional, or Enterprise)
-- [ ] **SQL Server** (Local instance or accessible server)
-- [ ] **SQL Server Management Studio (SSMS)** 18.0 or higher
-- [ ] **Node.js** (Latest LTS version) - for Azurite
-- [ ] **.NET 10 SDK** (should be included with VS 2026)
-- [ ] **Azure Functions Core Tools** (v4.x)
-
-### Required Access
-- [ ] **Sportlink API Access** - You need valid API credentials
-- [ ] **SQL Server Access** - Integrated Security or SQL authentication
-- [ ] **Network Access** - To reach Sportlink API endpoints
-
-### Required Knowledge
-- [ ] Sportlink API URL
-- [ ] Sportlink Client ID
-- [ ] SQL Server instance name (e.g., `YOUR_SERVER`)
-
----
-
-## 2. Software Installation
-
-### 2.1 Install Node.js and Azurite
-
-Azurite is the Azure Storage Emulator needed for local development.
-
-```powershell
-# Install Node.js from https://nodejs.org/ (if not already installed)
-# Then install Azurite globally
-npm install -g azurite
-```
-
-### 2.2 Verify Azure Functions Core Tools
-
-```powershell
-# Check if installed
-func --version
-
-# Should return: 4.x.x
-# If not installed, run:
-npm install -g azure-functions-core-tools@4 --unsafe-perm true
-```
-
----
-
-## 3. Database Setup
-
-### 3.1 Create Local Database
-
-**Option A: Using the provided script**
-
-1. Open **SQL Server Management Studio (SSMS)**
-2. Connect to your SQL Server instance: `YOUR_SERVER`
-3. Open the file: `scripts/db/setup-local-database.sql`
-4. Execute the script (F5)
-
-This creates:
-- ✅ `SportlinkSqlDb` database
-- ✅ `AppSettings` table
-- ✅ Schemas: `stg`, `his`
-- ✅ Staging tables: `teams`, `matches`, `matchdetails`
-
-**Option B: Restore from SportlinkSqlDb repository**
-
-If you have the full database project:
-
-```powershell
-# Navigate to the SQL database project
-cd <repository>\Database
-
-# Publish the database project using SSMS or Visual Studio
-# Or use SqlPackage.exe to deploy the .dacpac file
-```
-
-### 3.2 Verify Database Creation
-
-Run in SSMS:
+Open SSMS, verbind met je SQL Server en voer de volgende scripts uit in deze volgorde:
 
 ```sql
--- Verify database exists
-USE SportlinkSqlDb;
-GO
+-- Stap 1: database, schemas, tabellen aanmaken
+-- Voer uit: scripts/db/setup-local-database.sql
 
--- Check schemas
-SELECT * FROM sys.schemas WHERE name IN ('stg', 'his', 'mta');
-
--- Check if AppSettings table exists
-SELECT * FROM INFORMATION_SCHEMA.TABLES 
-WHERE TABLE_NAME = 'AppSettings';
+-- Stap 2: metadata-tabellen aanmaken
+-- Voer uit: Database/dbo/System Stored Procedures/ (sp_CreateTargetTableFromSource + sp_MergeStgToHis)
 ```
 
----
+Het Database-project (`.sqlproj`) bevat alle actuele schemandefities. Publiceer via SSMS of SqlPackage:
 
-## 4. Sportlink API Credentials Setup
+```powershell
+# Deploy via SqlPackage (optioneel)
+cd Database
+sqlpackage /Action:Publish /SourceFile:SportlinkSqlDb.dacpac /TargetServerName:YOUR_SERVER /TargetDatabaseName:SportlinkSqlDb
+```
 
-### 4.1 Obtain API Credentials
-
-**Where to get your credentials:**
-
-1. **From Sportlink Portal:**
-   - Log in to your Sportlink account
-   - Navigate to API Settings
-   - Copy your Client ID
-
-2. **From Production Environment:**
-   - Azure Portal → Your Function App
-   - Configuration → Application Settings
-   - Copy values for `sportlinkApiUrl` and `sportlinkClientId`
-
-3. **From Team Lead/Admin:**
-   - Contact your Sportlink administrator
-   - Request API credentials for development
-
-### 4.2 Update Database AppSettings
-
-Once you have your credentials, update the database:
+### 4.2 Sportlink API-credentials instellen
 
 ```sql
 USE SportlinkSqlDb;
 GO
 
--- View current settings
-SELECT * FROM [dbo].[AppSettings];
-
--- Update with ACTUAL credentials
 UPDATE [dbo].[AppSettings]
-SET 
-    [sportlinkApiUrl] = 'https://data.sportlink.com',  -- ⚠️ REPLACE with actual URL
-    [sportlinkClientId] = 'YOUR_ACTUAL_CLIENT_ID',     -- ⚠️ REPLACE with actual Client ID
-    [ModifiedDate] = GETDATE()
+SET
+    [SportlinkApiUrl]    = 'https://data.sportlink.com',
+    [SportlinkClientId]  = 'YOUR_ACTUAL_CLIENT_ID'   -- ⚠️ vervang door echte waarde
 WHERE Id = 1;
 
--- Verify the update
-SELECT * FROM [dbo].[AppSettings];
+SELECT * FROM [dbo].[AppSettings];   -- controleer resultaat
 GO
 ```
 
-**Example values (replace with your own):**
+### 4.3 Database verificatie
 
-| Setting | Example Value | Description |
-|---------|---------------|-------------|
-| `sportlinkApiUrl` | `https://data.sportlink.com` | Base URL for Sportlink API |
-| `sportlinkClientId` | `abc123def456` | Your unique client identifier |
+```sql
+USE SportlinkSqlDb;
+GO
 
-⚠️ **IMPORTANT:** 
-- Do NOT use placeholder values like `'your-client-id-here'`
-- Do NOT commit real credentials to source control
-- Keep production credentials separate from development
+-- Schemas aanwezig?
+SELECT name FROM sys.schemas WHERE name IN ('stg','his','mta','dbo','planner','avg','pub');
+
+-- Stored procedures aanwezig?
+SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTargetTableFromSource');
+
+-- AppSettings correct?
+SELECT [SportlinkApiUrl], [SportlinkClientId] FROM [dbo].[AppSettings];
+```
 
 ---
 
-## 5. Local Settings Configuration
+## 5. local.settings.json configureren
 
-### 5.1 Verify local.settings.json
+```powershell
+cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
+```
 
-The file should already exist in your project root. Verify it contains:
+Stel de `SqlConnectionString` in:
 
 ```json
 {
@@ -280,257 +194,132 @@ The file should already exist in your project root. Verify it contains:
 }
 ```
 
-### 5.2 Customize Connection String (if needed)
+**SQL-authenticatie (geen Windows Auth):** vervang `Integrated Security=True` door `User Id=[sql-login];Password=[sql-wachtwoord]` in de connection string. Zie Microsoft Docs voor de exacte syntax.
 
-If your SQL Server is different, update the `SqlConnectionString`:
-
-```json
-"SqlConnectionString": "Server=YOUR_SERVER;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;"
-```
-
-**SQL Authentication (if not using Windows Auth):** vervang `Integrated Security=True` door `User Id=<sql-login>;Password=<sql-wachtwoord>` in de connection string. Zie Microsoft Docs voor de exacte connection string syntax.
-
-### 5.3 Production Connection String
-
-The `PRDSqlConnectionString` in `local.settings.json` is for reference only and is **NOT used** during local debugging.
+> `local.settings.json` staat in `.gitignore` en wordt nooit gecommit.
 
 ---
 
-## 6. Stored Procedures Deployment
+## 6. Services starten
 
-The application requires two critical stored procedures that handle data merging.
-
-### 6.1 Required Stored Procedures
-
-| Stored Procedure | Purpose |
-|------------------|---------|
-| `sp_CreateTargetTableFromSource` | Creates history tables based on staging table structure |
-| `sp_MergeStgToHis` | Merges data from staging to history tables |
-
-### 6.2 Deploy Stored Procedures
-
-**Option A: From SportlinkSqlDb Repository**
-
-1. Open Visual Studio
-2. Open the solution: `<repository>\Database\SportlinkSqlDb.sln`
-3. Right-click the database project → **Publish**
-4. Target database: `YOUR_SERVER.SportlinkSqlDb`
-5. Click **Publish**
-
-**Option B: Manual Deployment**
-
-1. Navigate to: `<repository>\Database\dbo\System Stored Procedures\`
-2. Open in SSMS:
-   - `sp_CreateTargetTableFromSource.sql`
-   - `sp_MergeStgToHis.sql`
-3. Execute each script on `SportlinkSqlDb`
-
-### 6.3 Verify Stored Procedures
-
-```sql
-USE SportlinkSqlDb;
-GO
-
--- Check if stored procedures exist
-SELECT name, create_date, modify_date
-FROM sys.procedures
-WHERE name IN ('sp_CreateTargetTableFromSource', 'sp_MergeStgToHis');
-
--- Should return 2 rows
-```
-
----
-
-## 7. Metadata Table Setup
-
-The stored procedures use a metadata table to map source and target tables.
-
-### 7.1 Create Metadata Schema and Table
-
-```sql
-USE SportlinkSqlDb;
-GO
-
--- Create mta schema if it doesn't exist
-IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'mta')
-BEGIN
-    EXEC('CREATE SCHEMA [mta]');
-    PRINT 'Schema [mta] created successfully';
-END
-GO
-
--- Create source_target_mapping table
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'source_target_mapping' AND schema_id = SCHEMA_ID('mta'))
-BEGIN
-    CREATE TABLE [mta].[source_target_mapping]
-    (
-        [id] INT IDENTITY(1,1) PRIMARY KEY,
-        [source_schema] NVARCHAR(128) NOT NULL,
-        [source_entity] NVARCHAR(128) NOT NULL,
-        [source_pk] NVARCHAR(255) NULL,
-        [target_schema] NVARCHAR(128) NOT NULL,
-        [target_entity] NVARCHAR(128) NOT NULL,
-        [target_pk] NVARCHAR(255) NULL,
-        [merge_type] NVARCHAR(10) DEFAULT 'IUD', -- Insert, Update, Delete
-        [is_active] BIT DEFAULT 1,
-        [created_date] DATETIME2 DEFAULT GETDATE(),
-        [modified_date] DATETIME2 DEFAULT GETDATE()
-    );
-    PRINT 'Table [mta].[source_target_mapping] created successfully';
-END
-GO
-```
-
-### 7.2 Insert Mapping Data
-
-```sql
-USE SportlinkSqlDb;
-GO
-
--- Insert mappings for teams, matches, and matchdetails
-INSERT INTO [mta].[source_target_mapping] 
-    ([source_schema], [source_entity], [source_pk], [target_schema], [target_entity], [target_pk], [merge_type])
-VALUES 
-    ('stg', 'teams', 'teamcode', 'his', 'teams', 'bk_teams', 'IUD'),
-    ('stg', 'matches', 'wedstrijdcode', 'his', 'matches', 'bk_matches', 'IUD'),
-    ('stg', 'matchdetails', 'WedstrijdCode', 'his', 'matchdetails', 'bk_matchdetails', 'IUD');
-
--- Verify the data
-SELECT * FROM [mta].[source_target_mapping];
-GO
-```
-
----
-
-## 8. Environment Verification
-
-### 8.1 Run Automated Setup Script
-
-Execute the provided PowerShell script to verify your environment:
+De aanbevolen manier is via het Start-Debug.ps1-script. Dit start Azurite, FunctionApp en BlazorAdmin elk in een eigen PowerShell-venster.
 
 ```powershell
-cd <repository>\FunctionApp
-.\scripts\dev\scripts/dev/setup-local-debug.ps1
+.\scripts\dev\Start-Debug.ps1
 ```
 
-This script checks:
-- ✅ SQL Server connectivity
-- ✅ Database existence
-- ✅ Azurite installation and status
-- ✅ local.settings.json configuration
+**Poorten:**
 
-### 8.2 Manual Verification Checklist
+| Service | Poort | Opmerkingen |
+|---------|-------|-------------|
+| Azurite (blob/queue/table) | 10000–10002 | Azure Storage Emulator |
+| FunctionApp | 7094 | `func start` — géén hot reload |
+| BlazorAdmin | 5242 | `dotnet watch run` — hot reload actief |
 
-| Component | Verification Step | Expected Result |
-|-----------|------------------|-----------------|
-| **SQL Server** | Connect via SSMS | ✅ Connected successfully |
-| **Database** | `USE SportlinkSqlDb` | ✅ Database exists |
-| **Schemas** | Check `stg`, `his`, `mta` | ✅ All 3 schemas exist |
-| **AppSettings** | `SELECT * FROM [dbo].[AppSettings]` | ✅ Contains valid API credentials |
-| **Stored Procs** | Check `sp_MergeStgToHis` | ✅ Stored procedures exist |
-| **Metadata** | `SELECT * FROM [mta].[source_target_mapping]` | ✅ Contains 3 mappings |
-| **Azurite** | `azurite --version` | ✅ Version displayed |
-| **Functions Tools** | `func --version` | ✅ Version 4.x.x |
+**BlazorAdmin hot reload:** wijzigingen in `.razor`, `.cs` en `.css` worden automatisch doorgevoerd zonder herstart. Voor FunctionApp-wijzigingen moet je de services stoppen en `Start-Debug.ps1` opnieuw uitvoeren.
 
-### 8.3 Test Database Connection
+### Handmatig starten (als Start-Debug.ps1 niet beschikbaar is)
 
-```sql
--- Test the connection string that the app will use
--- Run this from SSMS connected to YOUR_SERVER
+```powershell
+# 1. Azurite
+$azuriteDir = Join-Path $env:TEMP 'azurite'
+if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
+Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
+Start-Sleep -Seconds 3
 
-USE SportlinkSqlDb;
-GO
+# 2. FunctionApp (geen hot reload)
+Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
 
--- Verify you can read AppSettings
-SELECT 
-    [sportlinkApiUrl],
-    [sportlinkClientId],
-    CASE 
-        WHEN [sportlinkClientId] LIKE '%your-%' THEN '⚠️ PLACEHOLDER - Update Required'
-        ELSE '✅ Configured'
-    END AS Status
-FROM [dbo].[AppSettings];
+# 3. BlazorAdmin met hot reload
+Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
+```
 
--- Check staging tables
-SELECT 'stg.teams' AS TableName, COUNT(*) AS RowCount FROM [stg].[teams]
-UNION ALL
-SELECT 'stg.matches', COUNT(*) FROM [stg].[matches]
-UNION ALL
-SELECT 'stg.matchdetails', COUNT(*) FROM [stg].[matchdetails];
+### Services stoppen
+
+```powershell
+Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+```
+
+> **Fingerprint-regel:** roep NOOIT `dotnet build BlazorAdmin` aan terwijl de BlazorAdmin dev server draait.
+> Twee compilatiepassen genereren twee sets content-hash fingerprints, wat leidt tot 404's op framework-JS.
+> Bouw detectie: `dotnet build BlazorAdmin/BlazorAdmin.csproj` — daarna stoppen, cleanen en herstart via `Start-Debug.ps1`.
+
+---
+
+## 7. Verificatie
+
+Wacht 15–20 seconden na `Start-Debug.ps1`, dan:
+
+```powershell
+# Basis verificatie
+.\scripts\dev\Test-App.ps1
+
+# Met automatisch herstel van schema-drift
+.\scripts\dev\Test-App.ps1 -Fix
+```
+
+**Test-App.ps1 controleert:**
+- Database-schema (tabellen, kolommen, stored procedures)
+- FunctionApp gezondheid (`GET /api/health`)
+- Admin API-endpoints
+- BlazorAdmin pagina's (Blazor WASM laden zonder foutbanner)
+
+**Geslaagd als:** exit code 0, health-endpoint 200, geen "An unhandled error has occurred" in Blazor.
+
+### Handmatige health-check
+
+```powershell
+# FunctionApp
+Invoke-RestMethod http://localhost:7094/api/health
+# Verwacht: { "status": "ok", "version": "2.x.x" }
+
+# BlazorAdmin
+Invoke-WebRequest http://localhost:5242/ -UseBasicParsing
+# Verwacht: HTTP 200 + Blazor WASM HTML (index.html)
 ```
 
 ---
 
-## 9. First Run
-
-### 9.1 Start Azurite
-
-Open a PowerShell terminal and start Azurite:
-
-```powershell
-azurite --silent --location c:\azurite --debug c:\azurite\debug.log
-```
-
-Or let it run in the background:
-
-```powershell
-Start-Process -FilePath "azurite" -ArgumentList "--silent" -WindowStyle Hidden
-```
-
-### 9.2 Build the Solution
-
-1. Open Visual Studio
-2. Open solution: `fa-dev-sportlink-01.sln`
-3. Set build configuration to **Debug** (not Release)
-4. Build → Rebuild Solution (Ctrl+Shift+B)
-5. Verify: **Build succeeded**
-
-### 9.3 Start Debugging
-
-1. Press **F5** to start debugging
-2. Wait for Azure Functions Core Tools to start
-
-**Expected output:**
+## 8. Projectstructuur
 
 ```
-Azure Functions Core Tools
-Core Tools Version:       4.8.0
-Function Runtime Version: 4.x.x
-
-Functions:
-    FetchAndStoreApiData: timerTrigger
-
-[INFO] Azure Function executed at: 2026-03-22 10:02:45
-[INFO] Database connection established.
-[INFO] App settings loaded successfully.
-[INFO] TEAMS - GET: https://data.sportlink.com/teams?clientId=<your-client-id>
-[INFO] TEAMS - 25 count.
-[INFO] TEAMS - Data inserted into staging table.
-[INFO] TEAMS - Merged into his table
-```
-
-### 9.4 Verify Data Flow
-
-After the first successful run, check the database:
-
-```sql
-USE SportlinkSqlDb;
-GO
-
--- Check staging tables (should have data)
-SELECT COUNT(*) AS TeamCount FROM [stg].[teams];
-SELECT COUNT(*) AS MatchCount FROM [stg].[matches];
-SELECT COUNT(*) AS MatchDetailCount FROM [stg].[matchdetails];
-
--- Check history tables (should have merged data)
-SELECT COUNT(*) AS TeamCount FROM [his].[teams];
-SELECT COUNT(*) AS MatchCount FROM [his].[matches];
-SELECT COUNT(*) AS MatchDetailCount FROM [his].[matchdetails];
+sportlink-wedstrijdzaken/
+├── sportlink-wedstrijdzaken.sln       # Solution (FunctionApp + Database)
+├── FunctionApp/
+│   ├── fa-dev-sportlink-01.csproj     # .NET 9 Azure Functions isolated worker
+│   ├── Function1.cs                   # Timer + HTTP sync triggers
+│   ├── Utilities.cs                   # AppSettings, DatabaseConfig, SeasonHelper
+│   ├── Admin/                         # 12 Admin-endpoint bestanden (beheer/*)
+│   ├── Planner/                       # Planner-endpoints (check-availability, auto-plan, ...)
+│   ├── Email/                         # Email-verwerkingspipeline
+│   ├── Feedback/                      # Feedback-widget (→ GitHub Issues)
+│   ├── local.settings.json            # NIET in git — bevat SqlConnectionString
+│   └── local.settings.template.json   # Template, wél in git
+├── BlazorAdmin/
+│   ├── BlazorAdmin.csproj             # .NET 10 Blazor WebAssembly
+│   ├── Pages/                         # Razor-pagina's
+│   ├── Shared/                        # Gedeelde componenten (TimeInput, MainLayout, ...)
+│   └── wwwroot/
+│       ├── appsettings.json           # Localhost-config (in git)
+│       ├── appsettings.Production.template.json  # CI-template (in git)
+│       └── appsettings.Production.json           # NIET in git — gegenereerd door CI
+├── Database/
+│   └── SportlinkSqlDb.sqlproj         # SQL Server Database Project
+├── scripts/
+│   ├── dev/
+│   │   ├── Start-Debug.ps1            # Start alle lokale services
+│   │   └── Test-App.ps1               # Verificatie na opstarten
+│   ├── azure/
+│   │   ├── Verify-AzureAuthSetup.ps1  # Diagnose Entra-configuratie (read-only)
+│   │   └── Configure-EntraApp.ps1     # Idempotente Entra-configuratie (apply)
+│   └── db/
+│       └── setup-local-database.sql   # Database-initialisatie
+└── docs/                              # Documentatie
 ```
 
 ---
 
-## 11. GitHub Actions: Productie-deployment configureren
+## 9. GitHub Actions — Productie-deployment configureren
 
 De CI/CD-pipeline in `.github/workflows/deploy.yml` deployt automatisch naar Azure bij elke push naar `main`. Hiervoor zijn twee soorten GitHub-configuratie nodig:
 
@@ -539,15 +328,13 @@ De CI/CD-pipeline in `.github/workflows/deploy.yml` deployt automatisch naar Azu
 
 Navigeer naar: **GitHub → jouw fork → Settings → Secrets and variables → Actions**
 
----
-
-### 11.1 Secrets instellen
+### 9.1 Secrets instellen
 
 Klik op **New repository secret** voor elk van de volgende:
 
 | Naam | Beschrijving | Waar te vinden |
 |------|-------------|----------------|
-| `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 11.2 hieronder |
+| `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 9.2 hieronder |
 | `AZURE_FUNCTION_KEY` | Host key van de Function App | Azure Portal → Function App → App keys → Host keys → `default` |
 | `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring | Azure Portal → SQL Database → Connection strings → ADO.NET |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
@@ -572,9 +359,7 @@ Persist Security Info=False;User ID=[username];Password=[password];
 Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 ```
 
----
-
-### 11.2 Variables instellen
+### 9.2 Variables instellen
 
 Klik op het tabblad **Variables** → **New repository variable** voor elk van de volgende:
 
@@ -586,290 +371,104 @@ Klik op het tabblad **Variables** → **New repository variable** voor elk van d
 | `AZURE_SQL_DATABASE_NAME` | `[database-naam]` | Naam van de SQL-database |
 | `AZURE_SQL_RESOURCE_GROUP` | `rg-[clubcode]-sportlink` | Azure resource group van de SQL-server |
 | `AZURE_STATIC_WEB_APP_HOSTNAME` | `[naam].azurestaticapps.net` | Hostname van de Static Web App **zonder** `https://` |
-| `AZURE_AD_TENANT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure Entra tenant ID (GUID) — te vinden in Entra ID → Overview |
-| `AZURE_AD_CLIENT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | App Registration client ID (GUID) — te vinden in App registrations |
-| `POST_LOGOUT_REDIRECT_URL` | `https://[naam].azurestaticapps.net/` | URL waarnaar gebruiker gaat na uitloggen (inclusief trailing slash) |
+| `AZURE_AD_TENANT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure Entra tenant ID (GUID) |
+| `AZURE_AD_CLIENT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | App Registration client ID (GUID) |
+| `POST_LOGOUT_REDIRECT_URL` | `https://[naam].azurestaticapps.net/` | URL na uitloggen (inclusief trailing slash) |
 
----
-
-### 11.3 Welke configuratie is optioneel?
-
-De pipeline is zo gebouwd dat jobs automatisch worden overgeslagen als de bijbehorende configuratie ontbreekt. Dit maakt de repository bruikbaar voor forks zonder SQL- of Blazor-deployment.
+### 9.3 Welke configuratie is optioneel?
 
 | Jobs | Vereiste configuratie | Gedrag zonder configuratie |
 |------|-----------------------|---------------------------|
-| `db-check` + `db-migrate` | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen — `build` en `test` lopen gewoon door |
+| `db-check` + `db-migrate` | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
 | `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
-| `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — zonder deze mislukken `build` en `test` |
+| `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — mislukken bij ontbreken |
 
----
+### 9.4 Verificatie na instellen
 
-### 11.4 Verificatie na instellen
-
-Activeer de workflow via **Actions → Deploy naar Azure → Run workflow** of doe een lege push naar `main`. Controleer daarna per job:
-
-```bash
-# Haal de run-ID op
+```powershell
+# Haal run-ID op
 gh run list --branch main --limit 3
 
 # Controleer alle jobs
 gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
-```
-
-Alle jobs moeten `"success"` of `"skipped"` tonen. Een `"failure"` op `build` of `test` is altijd een blokkade.
-
----
-
-## 12. Troubleshooting
-
-### Issue: "401 Unauthorized" Error
-
-**Symptom:**
-```
-Error: Response status code does not indicate success: 401 (Unauthorized).
-```
-
-**Solution:**
-1. Verify your API credentials are correct
-2. Check the `AppSettings` table has **actual** credentials (not placeholders)
-3. Test the API URL in a browser or Postman
-4. Confirm the Client ID is valid
-
-```sql
--- Check current credentials
-SELECT * FROM [dbo].[AppSettings];
-
--- Update if needed
-UPDATE [dbo].[AppSettings]
-SET sportlinkApiUrl = 'https://data.sportlink.com',
-    sportlinkClientId = 'YOUR_REAL_CLIENT_ID'
-WHERE Id = 1;
+# Alle jobs moeten "success" of "skipped" zijn
 ```
 
 ---
 
-### Issue: "Cannot connect to database"
+## 10. Troubleshooting
 
-**Symptom:**
-```
-Error loading app settings: Cannot open database "SportlinkSqlDb"
-```
+### FunctionApp start niet — 503 of "Function host is not running"
 
-**Solutions:**
-
-1. **Verify SQL Server is running:**
-   ```powershell
-   # Check SQL Server service
-   Get-Service -Name 'MSSQLSERVER' | Select-Object Status, Name
-   ```
-
-2. **Check database exists:**
-   ```sql
-   SELECT name FROM sys.databases WHERE name = 'SportlinkSqlDb';
-   ```
-
-3. **Verify connection string in local.settings.json**
-4. **Check firewall settings** (if remote server)
-5. **Test connection in SSMS** first
-
----
-
-### Issue: "Stored procedure not found"
-
-**Symptom:**
-```
-Could not find stored procedure 'sp_MergeStgToHis'.
-```
-
-**Solution:**
-
-Deploy stored procedures from the SportlinkSqlDb repository:
-
-```sql
--- Check if procedures exist
-SELECT name FROM sys.procedures 
-WHERE name IN ('sp_MergeStgToHis', 'sp_CreateTargetTableFromSource');
-
--- If missing, deploy from:
--- <repository>\Database\dbo\System Stored Procedures\
-```
-
----
-
-### Issue: "Azurite not running"
-
-**Symptom:**
-```
-Error: AzureWebJobsStorage connection failed
-```
-
-**Solution:**
+Controleer de .NET runtime-versie:
 
 ```powershell
-# Check if Azurite is running
-Get-Process -Name "azurite" -ErrorAction SilentlyContinue
-
-# Start Azurite
-azurite --silent --location c:\azurite
-
-# Or start in background
-Start-Process azurite -ArgumentList "--silent" -WindowStyle Hidden
+dotnet --list-runtimes
+# Moet bevatten: Microsoft.NETCore.App 9.x.x
+# Als .NET 9 ontbreekt:
+winget install Microsoft.DotNet.Runtime.9
 ```
 
----
+> .NET 10 als runtime voor FunctionApp geeft een 503 op Azure Consumption Plan. Zie CLAUDE.md voor details.
 
-### Issue: "Metadata table not found"
+### "Cannot connect to database"
 
-**Symptom:**
-```
-Invalid object name 'mta.source_target_mapping'.
-```
+```powershell
+# Controleer SQL Server service
+Get-Service -Name 'MSSQLSERVER' | Select-Object Status, Name
 
-**Solution:**
-
-Create the metadata schema and table (see Section 7.1 and 7.2)
-
----
-
-### Issue: "Just My Code Warning"
-
-**Symptom:**
-```
-You are debugging a Release build... degraded debugging experience
+# Test verbinding
+sqlcmd -S YOUR_SERVER -E -Q "USE SportlinkSqlDb; SELECT @@VERSION"
 ```
 
-**Solution:**
+1. Controleer `SqlConnectionString` in `local.settings.json`
+2. Controleer of `SportlinkSqlDb` bestaat
+3. Controleer Windows Authentication / SQL-login
 
-1. Visual Studio → Top toolbar → Change **Release** to **Debug**
-2. Rebuild the solution
-3. Restart debugging
-
----
-
-### Issue: Timer trigger not firing
-
-**Symptom:**
-Function starts but timer never executes
-
-**Solution:**
-
-1. Check the timer trigger schedule in `Function1.cs`:
-   ```csharp
-   [TimerTrigger("0 0 4 * * *")]  // Daily at 04:00
-   ```
-
-2. For faster testing, change to every 10 seconds:
-   ```csharp
-   [TimerTrigger("*/10 * * * * *")]  // Every 10 seconds
-   ```
-
-3. Verify Azurite is running (timer history is stored there)
-
----
-
-## 📚 Additional Resources
-
-### Project Structure
-
-```
-fa-dev-sportlink-01/
-├── Function1.cs              # Main timer trigger function
-├── Utilities.cs              # Database config & AppSettings loader
-├── MergeStgToHis.cs         # Merge staging to history
-├── CreateTable.cs           # Table creation utilities
-├── Enitities.cs             # Data models (Team, Match, etc.)
-├── Program.cs               # Function app startup
-├── local.settings.json      # Local configuration
-├── scripts/db/setup-local-database.sql # Database initialization script
-├── scripts/dev/setup-local-debug.ps1    # Environment verification script
-└── SETUP.md                 # This file
-```
-
-### Related Repositories
-
-| Repository | Location | Purpose |
-|------------|----------|---------|
-| **fa-dev-sportlink-01** | `<repository>\FunctionApp` | Azure Function application |
-| **SportlinkSqlDb** | `<repository>\Database` | Database project (schemas, stored procedures) |
-
-### Useful SQL Queries
+### "401 Unauthorized" op Sportlink API
 
 ```sql
--- View all tables in database
-SELECT 
-    s.name AS SchemaName,
-    t.name AS TableName,
-    SUM(p.rows) AS RowCount
-FROM sys.tables t
-INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-INNER JOIN sys.partitions p ON t.object_id = p.object_id
-WHERE p.index_id IN (0,1)
-  AND s.name IN ('stg', 'his', 'dbo', 'mta')
-GROUP BY s.name, t.name
-ORDER BY s.name, t.name;
-
--- Check function execution logs (if logging table exists)
--- SELECT TOP 100 * FROM [dbo].[ExecutionLog] ORDER BY ExecutionDate DESC;
+SELECT [SportlinkApiUrl], [SportlinkClientId] FROM [dbo].[AppSettings];
 ```
 
-### Timer Schedule Reference
+Controleer of de waarden niet de placeholder `YOUR_ACTUAL_CLIENT_ID` bevatten.
 
-| Cron Expression | Description |
-|----------------|-------------|
-| `0 0 4 * * *` | Daily at 04:00 |
-| `*/10 * * * * *` | Every 10 seconds (testing) |
-| `0 0 8 * * 1` | Every Monday at 8:00 AM |
-| `0 0 8 * * 1,4` | Monday and Thursday at 8:00 AM |
+### "Azurite connection failed"
 
----
+```powershell
+# Controleer of Azurite draait op poort 10000
+Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue
 
-## ✅ Setup Complete Checklist
+# Start Azurite handmatig
+azurite --silent --location $env:TEMP\azurite
+```
 
-Before running the application, ensure all items are checked:
+### Blazor toont "An unhandled error has occurred"
 
-**Lokale ontwikkelomgeving:**
-- [ ] Visual Studio 2022/2026 installed
-- [ ] SQL Server accessible
-- [ ] Node.js and Azurite installed
-- [ ] Git hooks activated (`git config core.hooksPath .githooks`)
-- [ ] Sensitive patterns file configured (`.githooks/sensitive-patterns.txt`)
-- [ ] Database `SportlinkSqlDb` created
-- [ ] Schemas `stg`, `his`, `mta` exist
-- [ ] Stored procedures deployed (`sp_MergeStgToHis`, `sp_CreateTargetTableFromSource`)
-- [ ] Metadata table created and populated
-- [ ] **Sportlink API credentials obtained and configured in AppSettings table**
-- [ ] `local.settings.json` configured with correct SQL connection string
-- [ ] Azurite running
-- [ ] Solution builds successfully
-- [ ] First test run completed successfully
+Dit is bijna altijd een fingerprint-mismatch. Oplossing:
 
-**GitHub Actions (productie-deployment):**
-- [ ] GitHub Secret `AZURE_CREDENTIALS` ingesteld (service principal JSON)
-- [ ] GitHub Secret `AZURE_FUNCTION_KEY` ingesteld (host key)
-- [ ] GitHub Secret `SQL_CONNECTION_STRING` ingesteld (productie connection string)
-- [ ] GitHub Secret `AZURE_STATIC_WEB_APPS_API_TOKEN` ingesteld (voor Blazor-deploy)
-- [ ] GitHub Variable `AZURE_FUNCTIONAPP_NAME` ingesteld
-- [ ] GitHub Variable `AZURE_FUNCTIONAPP_URL` ingesteld
-- [ ] GitHub Variable `AZURE_SQL_SERVER_NAME` ingesteld
-- [ ] GitHub Variable `AZURE_SQL_DATABASE_NAME` ingesteld
-- [ ] GitHub Variable `AZURE_SQL_RESOURCE_GROUP` ingesteld
-- [ ] GitHub Variable `AZURE_STATIC_WEB_APP_HOSTNAME` ingesteld (hostname zonder `https://`)
-- [ ] GitHub Variable `AZURE_AD_TENANT_ID` ingesteld
-- [ ] GitHub Variable `AZURE_AD_CLIENT_ID` ingesteld
-- [ ] GitHub Variable `POST_LOGOUT_REDIRECT_URL` ingesteld
-- [ ] Eerste deployment gelukt: alle jobs `success` of `skipped`
+```powershell
+# Stop alle services
+Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
+# Clean Blazor fingerprints
+dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
+
+# Herstart
+.\scripts\dev\Start-Debug.ps1
+```
+
+Open daarna `http://localhost:5242` in een **nieuw Incognito-venster** (Ctrl+Shift+F5 werkt soms niet voldoende).
+
+### Stored procedure niet gevonden
+
+```sql
+SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTargetTableFromSource');
+```
+
+Publiceer het Database-project opnieuw (zie sectie 4.1).
 
 ---
 
-## 🎉 You're Ready!
-
-If all checks pass, you're ready to start developing and debugging the Sportlink Azure Function!
-
-Press **F5** in Visual Studio and watch the data flow from Sportlink API → Staging tables → History tables.
-
-For ongoing support, refer to `LOCAL-DEBUG-README.md` for debugging tips and troubleshooting.
-
----
-
-**Last Updated:** March 2026  
-**Version:** 1.0
+**Versie:** 2.7 — bijgewerkt 2026-05-31
