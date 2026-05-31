@@ -104,10 +104,18 @@ jobs:
 
       - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-            "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}" || true)
-          echo "sync-matches: $STATUS"
-          if [ "$STATUS" != "401" ]; then echo "FOUT: verwacht 401, kreeg $STATUS"; exit 1; fi
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          MAX=6; WAIT=20
+          for i in $(seq 1 $MAX); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
+            echo "Poging $i/$MAX — sync-matches: $STATUS"
+            if [ "$STATUS" = "401" ]; then exit 0; fi
+            if [ "$STATUS" = "503" ] && [ "$i" -lt "$MAX" ]; then
+              echo "503 (cold start) — wacht ${WAIT}s..."; sleep $WAIT
+            else
+              echo "FOUT: verwacht 401, kreeg $STATUS"; exit 1
+            fi
+          done
 
       - name: "Info: planner endpoint database-check"
         continue-on-error: true
