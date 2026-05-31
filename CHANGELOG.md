@@ -18,6 +18,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.7.0.1] — 2026-05-31
+
+### Added
+- Blazor toont een blokkerende overlay als de Azure SQL Free-tier database niet online is: "Database wordt opgestart..." (eerste 2 min) of "Database niet beschikbaar — maandlimiet bereikt" (daarna). Voorkomen dat beheerders eindeloos op "Laden..." kijken zonder uitleg.
+- `/api/health` geeft nu ook de database-status terug (`database: "online" | "paused" | "timeout" | "unavailable"`). Status `paused` triggert automatisch de Azure SQL auto-resume.
+- `db-check` job in `deploy.yml` controleert de database-status via Azure ARM API als allereerste stap — vóór build, migratie én Blazor-deploy. Hele pipeline wordt geblokkeerd als de database niet `Online` is.
+- `scripts/azure/Setup-SqlAlerts.ps1`: eenmalig uit te voeren script dat een gratis Resource Health Alert aanmaakt (e-mail bij database Unavailable/Resolved).
+
+### Fixed
+- `blazor-deploy` werd eerder uitgevoerd zelfs als de database offline was (had alleen `needs: build`). Nu geblokkeerd via `db-check → build` dependency-keten.
+
 ## [2.7.0.0] — 2026-05-31
 
 ### Fixed
