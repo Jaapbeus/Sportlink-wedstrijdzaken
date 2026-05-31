@@ -1,6 +1,6 @@
-using System.Text.Json;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using OpenAI.Chat;
+using System.Text.Json;
 
 namespace SportlinkFunction.Email;
 
@@ -11,7 +11,7 @@ namespace SportlinkFunction.Email;
 public class BerichtAiService
 {
     private readonly ILogger<BerichtAiService> _logger;
-    private readonly ChatClient _chatClient;
+    private readonly IChatClient _chatClient;
 
     // KNVB-verplaatsingsregels voor seizoen 2025/'26 — wordt door AI gebruikt om overtreding te signaleren
     // Bron: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden
@@ -133,15 +133,10 @@ public class BerichtAiService
     }
 
 
-    public BerichtAiService(ILogger<BerichtAiService> logger)
+    public BerichtAiService(ILogger<BerichtAiService> logger, IChatClient chatClient)
     {
         _logger = logger;
-
-        var apiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new InvalidOperationException("OpenAiApiKey environment variable is niet geconfigureerd of leeg.");
-
-        _chatClient = new ChatClient("gpt-4o-mini", apiKey);
+        _chatClient = chatClient;
     }
 
     /// <summary>
@@ -158,22 +153,22 @@ public class BerichtAiService
         var today = DateTime.Now; // Lokale tijd — NL-context voor datumberekening
         var userPrompt = $"Van: {afzender}\nOnderwerp: {subject}\n\n{body}";
 
-        var messages = new List<ChatMessage>
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new SystemChatMessage(BouwClassificatieSystemPrompt(today, voorbeelden)),
-            new UserChatMessage(userPrompt)
+            new(ChatRole.System, BouwClassificatieSystemPrompt(today, voorbeelden)),
+            new(ChatRole.User, userPrompt)
         };
 
-        var options = new ChatCompletionOptions
+        var options = new ChatOptions
         {
             Temperature = 0.1f,
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            ResponseFormat = ChatResponseFormat.Json
         };
 
         try
         {
-            var completion = await _chatClient.CompleteChatAsync(messages, options);
-            var jsonResponse = completion.Value.Content[0].Text;
+            var response = await _chatClient.GetResponseAsync(messages, options);
+            var jsonResponse = response.Text ?? "";
 
             _logger.LogInformation("OpenAI classificatie response ontvangen");
 
@@ -216,22 +211,22 @@ public class BerichtAiService
 
         var userPrompt = $"Originele classificatie: {origineelType}.\nOriginele samenvatting: {originaleSamenvatting ?? "(geen)"}.\n\nReply:\nOnderwerp: {subject}\n\n{body}";
 
-        var messages = new List<ChatMessage>
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
         {
-            new SystemChatMessage(systemPrompt),
-            new UserChatMessage(userPrompt)
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, userPrompt)
         };
 
-        var options = new ChatCompletionOptions
+        var options = new ChatOptions
         {
             Temperature = 0.1f,
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            ResponseFormat = ChatResponseFormat.Json
         };
 
         try
         {
-            var completion = await _chatClient.CompleteChatAsync(messages, options);
-            var jsonResponse = completion.Value.Content[0].Text;
+            var response = await _chatClient.GetResponseAsync(messages, options);
+            var jsonResponse = response.Text ?? "";
 
             using var doc = JsonDocument.Parse(jsonResponse);
             var root = doc.RootElement;

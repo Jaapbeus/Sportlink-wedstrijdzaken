@@ -108,7 +108,9 @@ public class EmailProcessorFunction
         }
 
         // AI-classificatie voor alle resterende emails — database wordt niet nogmaals gewekt
-        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
+        var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
+            ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+        var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
         var classificaties = new List<(InkomendBericht Email, BerichtClassificatie Classificatie)>();
         var aiAborted = false;
 

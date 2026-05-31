@@ -60,7 +60,9 @@ public static class EmailTestFunction
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
             var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-            var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>());
+            var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
+                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+            var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
 
             var onderwerp = dto.Onderwerp ?? "";
             var afzender = dto.Afzender ?? "test@example.com";
