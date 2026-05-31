@@ -1955,8 +1955,10 @@ paths:
         - *(geen)* — JSON met suggesties
         - `html` — interactieve browser-HTML met plannervisualisatie
         - `email` — email-compatibele HTML met link naar browser-versie
+
+        Beveiliging: `AuthorizationLevel.Anonymous` + `EasyAuthHelper.RequireAdmin()` — Bearer token vereist.
       security:
-        - functionKey: []
+        - easyAuth: []
       parameters:
         - name: format
           in: query
@@ -3902,6 +3904,9 @@ paths:
         Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in
         `planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog
         geen slot hebben.
+
+        **Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).
+        Productie-clubs ontvangen HTTP 403.
       security:
         - easyAuth: []
       requestBody:

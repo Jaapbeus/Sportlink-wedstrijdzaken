@@ -2565,10 +2565,10 @@
         ],
         "operationId": "optimaliseer",
         "summary": "Planningsoptimalisatie berekenen",
-        "description": "Analyseert de planning voor een datum en genereert optimalisatiesuggesties.\n**Voert niets door** — alleen advies.\n\n**Output-formaten** (via `?format=`):\n- *(geen)* — JSON met suggesties\n- `html` — interactieve browser-HTML met plannervisualisatie\n- `email` — email-compatibele HTML met link naar browser-versie\n",
+        "description": "Analyseert de planning voor een datum en genereert optimalisatiesuggesties.\n**Voert niets door** — alleen advies.\n\n**Output-formaten** (via `?format=`):\n- *(geen)* — JSON met suggesties\n- `html` — interactieve browser-HTML met plannervisualisatie\n- `email` — email-compatibele HTML met link naar browser-versie\n\nBeveiliging: `AuthorizationLevel.Anonymous` + `EasyAuthHelper.RequireAdmin()` — Bearer token vereist.\n",
         "security": [
           {
-            "functionKey": []
+            "easyAuth": []
           }
         ],
         "parameters": [
@@ -5561,7 +5561,7 @@
         ],
         "operationId": "autoPlanToepassen",
         "summary": "Automatisch plan toepassen",
-        "description": "Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in\n`planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog\ngeen slot hebben.\n",
+        "description": "Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in\n`planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog\ngeen slot hebben.\n\n**Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).\nProductie-clubs ontvangen HTTP 403.\n",
         "security": [
           {
             "easyAuth": []
