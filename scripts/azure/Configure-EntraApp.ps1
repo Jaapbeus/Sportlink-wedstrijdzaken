@@ -40,7 +40,7 @@
     .\scripts\Configure-EntraApp.ps1 -ClientId '<jouw-app-id>' -ExpectedTenantId '<jouw-tenant-id>' -AdminUserPrincipalName 'admin@jouwclub.nl' -WhatIf
 
 .NOTES
-    Zie SETUP.md en docs/AZURE-ENTRA-SETUP.md voor het volledige protocol.
+    Zie SETUP-NIEUWE-CLUB.md en docs/ENTRA-AUTH-BEHEER.md voor het volledige protocol.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(

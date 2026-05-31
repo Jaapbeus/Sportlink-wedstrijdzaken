@@ -1,7 +1,7 @@
 @page "/email-tester"
 @inject AdminApiClient Api
 
-<PageTitle>Email-tester — VRC Admin</PageTitle>
+<PageTitle>Email-tester — Beheer</PageTitle>
 
 <h1>Email-tester (dry-run)</h1>
 
@@ -23,13 +23,13 @@
         </div>
         <div class="col-md-4 mb-3">
             <label class="form-label">Onderwerp</label>
-            <input class="form-control" @bind="request.Onderwerp" placeholder="Beschikbaarheid 30 maart" />
+            <input class="form-control" @bind="request.Onderwerp" placeholder="Beschikbaarheid oefenwedstrijd" />
         </div>
     </div>
     <div class="mb-3">
         <label class="form-label">Body</label>
         <textarea class="form-control" rows="8" @bind="request.Body"
-                  placeholder="Hoi, kan VRC JO13-1 op zaterdag 30 maart om 11:00 spelen?"></textarea>
+                  placeholder="Hoi, kan de JO13-1 aankomende zaterdag om 11:00 spelen?"></textarea>
     </div>
     <button type="submit" class="btn btn-primary" disabled="@busy">
         @(busy ? "Bezig..." : "Dry-run classificeren")

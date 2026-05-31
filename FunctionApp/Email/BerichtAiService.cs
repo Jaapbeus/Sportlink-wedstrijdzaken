@@ -52,11 +52,18 @@ public class BerichtAiService
         - Onderling overleg + KNVB-goedkeuring; moet voor de bekerronde plaatsvinden
         """;
 
-    private static string BouwClassificatieSystemPrompt(IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden = null)
+    private static string BouwClassificatieSystemPrompt(DateTime today, IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden = null)
     {
         var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName");
         if (string.IsNullOrWhiteSpace(clubNaam))
             throw new InvalidOperationException("Vereiste instelling 'clubName' ontbreekt of is leeg in dbo.AppSettings");
+
+        // Bereken 'volgende week doordeweeks' dynamisch zodat het voorbeeld altijd correct is.
+        // Zie docs/ARCHITECTUUR-AI-SERVICES.md — few-shot voorbeelden nooit met hardcoded absolute datums.
+        int dagenTotMaandag = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+        if (dagenTotMaandag == 0) dagenTotMaandag = 7;
+        var volgendeMa = today.AddDays(dagenTotMaandag);
+        var doordeweeksVoorbeeld = $"[\"{volgendeMa:yyyy-MM-dd}\",\"{volgendeMa.AddDays(1):yyyy-MM-dd}\",\"{volgendeMa.AddDays(2):yyyy-MM-dd}\",\"{volgendeMa.AddDays(3):yyyy-MM-dd}\"]";
 
         var fewShotSectie = "";
         if (voorbeelden != null && voorbeelden.Count > 0)
@@ -73,6 +80,8 @@ public class BerichtAiService
         }
 
         return $$"""
+            Vandaag is {{today:dddd d MMMM yyyy}}.
+
             Je bent een assistent voor de coördinator thuiswedstrijden van {{clubNaam}}.
             Analyseer de inkomende email en classificeer het verzoek.
 
@@ -80,7 +89,7 @@ public class BerichtAiService
             - beschikbaarheid_check: iemand vraagt of een datum/tijd/veld beschikbaar is (bijv. voor een oefenwedstrijd of veldreservering). Ook als er MEERDERE datums worden gevraagd voor hetzelfde team.
             - herplan_verzoek: iemand wil een bestaande wedstrijd verplaatsen naar een andere datum/tijd
             - bevestiging: een antwoord op een eerder voorstel ("ja dat is goed", "akkoord", etc.)
-            - team_contact_opvragen: iemand vraagt wie de trainer, coach, begeleider of teamleider is van een specifiek team. Bijv. "wie is de trainer van JO13-4?", "contactgegevens begeleiding MO15", "wie kan ik bereiken voor VRC 5?"
+            - team_contact_opvragen: iemand vraagt wie de trainer, coach, begeleider of teamleider is van een specifiek team. Bijv. "wie is de trainer van JO13-4?", "contactgegevens begeleiding MO15", "wie kan ik bereiken voor het eerste elftal?"
             - buiten_scope: alles wat niet over veldbeschikbaarheid, herplannen of teambegeleiding gaat, OF als de email over meerdere VERSCHILLENDE teams gaat en het onduidelijk is welke wedstrijd bedoeld wordt
 
             Geef ALTIJD een JSON response met exact dit formaat:
@@ -102,7 +111,7 @@ public class BerichtAiService
             KRITIEKE REGELS:
             - Het ONDERWERP van de email bevat vaak de meest betrouwbare datum en teamnamen. Gebruik datums uit het onderwerp als eerste bron.
             - "datum" = de eerste/primaire datum. Bij herplan_verzoek is dit de HUIDIGE wedstrijddatum, NIET de gewenste nieuwe datum.
-            - "datums" = array met ALLE gevraagde datums als er meerdere zijn (bijv. "30 mei en 6 juni" → ["2026-05-30", "2026-06-06"]). Vul dit veld ALTIJD als er meerdere datums worden genoemd.
+            - "datums" = array met ALLE gevraagde datums als er meerdere zijn (bijv. "30 mei en 6 juni" → twee datums in yyyy-MM-dd formaat met het lopende of eerstkomende jaar). Vul dit veld ALTIJD als er meerdere datums worden genoemd.
             - "gewensteDatum" = de datum waarnaar men wil verplaatsen (alleen bij herplan_verzoek). Kan null zijn als niet genoemd.
             - Datums in emails zijn vaak relatief ("aanstaande zaterdag") — bereken de absolute datum op basis van vandaag
             - Nederlandse tekst, informeel taalgebruik
@@ -111,7 +120,7 @@ public class BerichtAiService
             - Leeftijdscategorieën: "O13", "Onder 13", "onder 13" etc. normaliseren naar "JO13". Idem voor alle leeftijden (O7→JO7, O19→JO19, etc.). Meisjes: "MO13" blijft "MO13"
             - Meerdere datums voor hetzelfde team = beschikbaarheid_check (NIET buiten_scope)
             - Alleen buiten_scope als het verzoek echt niet over veldbeschikbaarheid of herplannen gaat, of als er meerdere VERSCHILLENDE teams worden genoemd zonder duidelijk verband
-            - 'doordeweeks' betekent maandag t/m donderdag (vrijdag is GEEN doordeweekse dag). Bij 'volgende week doordeweeks': vul 'datums' met ALLE VIER weekdagen (ma/di/wo/do) van de volgende kalenderweek. Voorbeeld: vandaag zondag 18 mei → 'volgende week doordeweeks' → datums: ["2026-05-19","2026-05-20","2026-05-21","2026-05-22"]
+            - 'doordeweeks' betekent maandag t/m donderdag (vrijdag is GEEN doordeweekse dag). Bij 'volgende week doordeweeks': vul 'datums' met ALLE VIER weekdagen (ma/di/wo/do) van de volgende kalenderweek. Voorbeeld: als vandaag {{today:dddd d MMMM}} is → 'volgende week doordeweeks' → datums: {{doordeweeksVoorbeeld}}
 
             KNVB-regelcheck (voor herplan_verzoek):
             Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
@@ -146,11 +155,12 @@ public class BerichtAiService
     {
         _logger.LogInformation("Bericht classificatie gestart (onderwerp niet gelogd — AVG #210)");
 
-        var userPrompt = $"Vandaag is {DateTime.Now:yyyy-MM-dd} ({DateTime.Now:dddd}).\n\nVan: {afzender}\nOnderwerp: {subject}\n\n{body}";
+        var today = DateTime.Now; // Lokale tijd — NL-context voor datumberekening
+        var userPrompt = $"Van: {afzender}\nOnderwerp: {subject}\n\n{body}";
 
         var messages = new List<ChatMessage>
         {
-            new SystemChatMessage(BouwClassificatieSystemPrompt(voorbeelden)),
+            new SystemChatMessage(BouwClassificatieSystemPrompt(today, voorbeelden)),
             new UserChatMessage(userPrompt)
         };
 
