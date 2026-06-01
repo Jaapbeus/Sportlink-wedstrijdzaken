@@ -29,7 +29,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: "Database status controleren (moet Online zijn)"
+      - name: "▶ Database hervatten indien gepauzeerd en status verifiëren"
         run: |
           STATUS=$(az sql db show \
             --name "$SQL_DATABASE" \
@@ -37,16 +37,37 @@ jobs:
             --server "$SQL_SERVER" \
             --query 'status' --output tsv 2>/dev/null || echo "unknown")
           echo "Database status: $STATUS"
-          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "Disabled" ] || [ "$STATUS" = "AutoPaused" ]; then
-            echo "::error::⛔ Database is '$STATUS' — release geblokkeerd."
-            echo "::error::Zorg dat de database Online is vóór de release-merge:"
-            echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
-            echo "::error::  Of wacht tot de maandlimiet vernieuwd is."
+
+          if [ "$STATUS" = "Disabled" ]; then
+            echo "::error::⛔ Database uitgeschakeld — maandlimiet bereikt. Wacht tot begin volgende maand."
             exit 1
           fi
+
+          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "AutoPaused" ]; then
+            echo "Database is gepauzeerd — automatisch hervatten..."
+            az sql db resume \
+              --name "$SQL_DATABASE" \
+              --resource-group "$SQL_RESOURCE_GROUP" \
+              --server "$SQL_SERVER" \
+              --output none
+            for i in $(seq 1 20); do
+              sleep 15
+              STATUS=$(az sql db show \
+                --name "$SQL_DATABASE" \
+                --resource-group "$SQL_RESOURCE_GROUP" \
+                --server "$SQL_SERVER" \
+                --query 'status' --output tsv 2>/dev/null || echo "unknown")
+              echo "  Check $i/20: $STATUS"
+              [ "$STATUS" = "Online" ] && break
+            done
+            if [ "$STATUS" != "Online" ]; then
+              echo "::error::⛔ Database nog niet Online na wachten (status: $STATUS)."
+              exit 1
+            fi
+          fi
+
           if [ "$STATUS" = "unknown" ]; then
-            echo "::warning::⚠️ Database-status kon niet worden geverifieerd (service-principal mist Reader-rol op SQL resource group)."
-            echo "::warning::Merge toegestaan — controleer handmatig of de database Online is."
+            echo "::warning::⚠️ Database-status onbekend — merge toegestaan, controleer handmatig."
           else
             echo "✓ Database $STATUS — release mag doorgaan"
           fi

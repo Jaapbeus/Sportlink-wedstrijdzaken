@@ -34,7 +34,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: "⛔ Database status controleren (ARM API — vóór migratie en deploy)"
+      - name: "▶ Database hervatten indien gepauzeerd (Free-tier auto-pause)"
         run: |
           STATUS=$(az sql db show \
             --name "$SQL_DATABASE" \
@@ -42,17 +42,42 @@ jobs:
             --server "$SQL_SERVER" \
             --query 'status' --output tsv 2>/dev/null || echo "unknown")
           echo "Database status: $STATUS"
-          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "Disabled" ]; then
-            echo "::error::⛔ Database is '$STATUS' — volledige deployment geblokkeerd."
-            echo "::error::Breng de database online vóór deployment:"
-            echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
-            echo "::error::Of wacht tot de maandlimiet vernieuwd is (begin volgende kalendermaand)."
+
+          if [ "$STATUS" = "Disabled" ]; then
+            echo "::error::⛔ Database is uitgeschakeld (Disabled) — maandlimiet bereikt of handmatig uitgeschakeld."
+            echo "::error::Wacht tot de maandlimiet vernieuwd is (begin volgende kalendermaand) of activeer de database via Azure Portal."
             exit 1
           fi
+
+          if [ "$STATUS" = "Paused" ]; then
+            echo "Database is gepauzeerd (Free-tier auto-pause) — automatisch hervatten..."
+            az sql db resume \
+              --name "$SQL_DATABASE" \
+              --resource-group "$SQL_RESOURCE_GROUP" \
+              --server "$SQL_SERVER" \
+              --output none
+            echo "Resume-commando verstuurd. Wachten op Online status (max 5 minuten)..."
+            for i in $(seq 1 20); do
+              sleep 15
+              STATUS=$(az sql db show \
+                --name "$SQL_DATABASE" \
+                --resource-group "$SQL_RESOURCE_GROUP" \
+                --server "$SQL_SERVER" \
+                --query 'status' --output tsv 2>/dev/null || echo "unknown")
+              echo "  Check $i/20: $STATUS"
+              if [ "$STATUS" = "Online" ]; then
+                echo "✓ Database Online na resume"
+                break
+              fi
+            done
+            if [ "$STATUS" != "Online" ]; then
+              echo "::error::⛔ Database nog niet Online na 5 minuten wachten (status: $STATUS)."
+              exit 1
+            fi
+          fi
+
           if [ "$STATUS" = "unknown" ]; then
-            echo "::warning::⚠️ Database-status kon niet worden geverifieerd via ARM API (service-principal mist Reader-rol op SQL resource group)."
-            echo "::warning::Deployment gaat door — controleer handmatig of de database Online is."
-            echo "::warning::Fix: verleen de service-principal Reader-rol op de SQL resource group in Azure Portal."
+            echo "::warning::⚠️ Database-status onbekend via ARM API — deployment gaat door."
           else
             echo "✓ Database $STATUS — deployment mag doorgaan"
           fi
