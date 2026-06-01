@@ -49,29 +49,33 @@ jobs:
             exit 1
           fi
 
-          if [ "$STATUS" = "Paused" ]; then
-            echo "Database is gepauzeerd (Free-tier auto-pause) — automatisch hervatten via REST API..."
+          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "AutoPaused" ]; then
+            echo "Database is gepauzeerd — proberen te hervatten via REST API..."
             SUBSCRIPTION=$(az account show --query id --output tsv)
-            az rest \
-              --method post \
-              --url "https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${SQL_RESOURCE_GROUP}/providers/Microsoft.Sql/servers/${SQL_SERVER}/databases/${SQL_DATABASE}/resume?api-version=2021-11-01" \
-              --output none 2>/dev/null || true
-            echo "Resume-commando verstuurd. Wachten op Online status (max 5 minuten)..."
-            for i in $(seq 1 20); do
+            RESUME_URL="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${SQL_RESOURCE_GROUP}/providers/Microsoft.Sql/servers/${SQL_SERVER}/databases/${SQL_DATABASE}/resume?api-version=2021-11-01"
+            RESUME_RESULT=$(az rest --method post --url "$RESUME_URL" 2>&1) && \
+              echo "Resume API: $RESUME_RESULT" || \
+              echo "::warning::Resume API gaf een fout (Free Limit database hervatten soms pas na Portal-actie): $RESUME_RESULT"
+            echo "Wachten op Online status (max 10 minuten)..."
+            for i in $(seq 1 40); do
               sleep 15
               STATUS=$(az sql db show \
                 --name "$SQL_DATABASE" \
                 --resource-group "$SQL_RESOURCE_GROUP" \
                 --server "$SQL_SERVER" \
                 --query 'status' --output tsv 2>/dev/null || echo "unknown")
-              echo "  Check $i/20: $STATUS"
+              echo "  Check $i/40: $STATUS"
               if [ "$STATUS" = "Online" ]; then
-                echo "✓ Database Online na resume"
+                echo "✓ Database Online"
                 break
+              fi
+              if [ "$STATUS" = "Resuming" ]; then
+                echo "  Database aan het hervatten — wachten..."
               fi
             done
             if [ "$STATUS" != "Online" ]; then
-              echo "::error::⛔ Database nog niet Online na 5 minuten wachten (status: $STATUS)."
+              echo "::error::⛔ Database niet Online na 10 minuten wachten (status: $STATUS)."
+              echo "::error::Herstel: Azure Portal → SQL Database → Overzicht → Resume, dan deploy opnieuw starten."
               exit 1
             fi
           fi
