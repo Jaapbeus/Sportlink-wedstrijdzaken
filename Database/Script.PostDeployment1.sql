@@ -288,6 +288,55 @@ BEGIN
 END
 GO
 
+-- ============================================================
+-- #424: planner.sp_CleanupClassificatieCorrectie (AVG-retentie)
+-- Moet VOOR sp_CleanupEmailVerwerking worden aangeroepen (FK-afhankelijkheid)
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('planner.sp_CleanupClassificatieCorrectie') AND type = 'P')
+BEGIN
+    EXEC(N'
+CREATE PROCEDURE [planner].[sp_CleanupClassificatieCorrectie]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE [planner].[ClassificatieCorrectie]
+    SET [OrigineleSamenvatting] = NULL,
+        [CorrectieSamenvatting] = NULL,
+        [mta_modified]          = GETUTCDATE()
+    WHERE [mta_inserted] < DATEADD(DAY, -30, GETUTCDATE())
+      AND [mta_inserted] >= DATEADD(DAY, -90, GETUTCDATE())
+      AND ([OrigineleSamenvatting] IS NOT NULL
+           OR [CorrectieSamenvatting] IS NOT NULL);
+    DELETE FROM [planner].[ClassificatieCorrectie]
+    WHERE [mta_inserted] < DATEADD(DAY, -90, GETUTCDATE());
+END;
+    ');
+END
+GO
+
+-- ============================================================
+-- #426: avg.sp_CleanupImportLog (AVG-retentie)
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('avg.sp_CleanupImportLog') AND type = 'P')
+BEGIN
+    EXEC(N'
+CREATE PROCEDURE [avg].[sp_CleanupImportLog]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE [avg].[ImportLog]
+    SET [ImporterendeDoor] = NULL,
+        [CsvBestand]       = NULL
+    WHERE [ImportDatum] < DATEADD(DAY, -90, GETUTCDATE())
+      AND ([ImporterendeDoor] IS NOT NULL
+           OR [CsvBestand] IS NOT NULL);
+    DELETE FROM [avg].[ImportLog]
+    WHERE [ImportDatum] < DATEADD(YEAR, -1, GETUTCDATE());
+END;
+    ');
+END
+GO
+
 -- Update the Season and datetable
 DECLARE @SeasonStartMonth INT = (SELECT [SeasonStartMonth] FROM [dbo].[AppSettings])
 EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;
