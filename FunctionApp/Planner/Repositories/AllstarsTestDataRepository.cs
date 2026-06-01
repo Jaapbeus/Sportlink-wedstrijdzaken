@@ -49,9 +49,9 @@ internal static class AllstarsTestDataRepository
                   AND m.[ClubCode] = 'ALLSTARS'
                   AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
                 ORDER BY m.[teamnaam]"
-            : @"SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
+            : $@"SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
-                       REPLACE(REPLACE(REPLACE(ISNULL(t.[leeftijdscategorie], ''), 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR') AS leeftijdscategorie
+                       {LeeftijdNormalisatie.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
                 FROM [his].[matches] m
                 LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[ClubCode] = m.[ClubCode]
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
