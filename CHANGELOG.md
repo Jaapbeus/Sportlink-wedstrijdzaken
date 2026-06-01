@@ -18,6 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.14.1.0] — 2026-06-01
+
+### Fixed
+- Planner: leeftijdscategorie 'JO15 Meiden' wordt nu correct herkend als MO15 — alle normalisatie-queries gebruiken de nieuwe centrale `LeeftijdNormalisatie`-helper. (#486)
+- Planner: teams zonder bekende leeftijdscategorie (bijv. 'Toernooi commissie') worden neutraal weergegeven in de dagplanning in plaats van rood 'Probleem'. Hun tijdslot blijft geblokkeerd voor de optimizer; herplannen en toepassen slaan ze over. (#487)
+
 ## [2.14.0.0] — 2026-06-01
 
 ### Changed

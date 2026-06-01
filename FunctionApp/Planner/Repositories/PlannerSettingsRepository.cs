@@ -12,6 +12,8 @@ internal static class PlannerSettingsRepository
 
     internal static async Task<Speeltijd?> GetSpeeltijdAsync(string leeftijdsCategorie, string? clubCode = null)
     {
+        // Normaliseer eerst zodat "JO15 Meiden" → "MO15" (#486)
+        leeftijdsCategorie = LeeftijdNormalisatie.Normaliseer(leeftijdsCategorie);
         var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -73,9 +75,9 @@ internal static class PlannerSettingsRepository
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT [teamnaam],
-                   REPLACE(REPLACE(REPLACE([leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+                   {LeeftijdNormalisatie.SqlExpr("[leeftijdscategorie]")}
             FROM [his].[teams]
             WHERE [leeftijdscategorie] IS NOT NULL AND [leeftijdscategorie] <> ''
               AND [ClubCode] = @clubCode", conn);

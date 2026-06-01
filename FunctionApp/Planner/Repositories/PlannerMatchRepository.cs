@@ -16,7 +16,7 @@ internal static class PlannerMatchRepository
         var results = new List<BestaandeWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT
                 CAST(m.[kaledatum] AS DATE) AS Datum,
                 CAST(m.[aanvangstijd] AS TIME) AS AanvangsTijd,
@@ -24,7 +24,7 @@ internal static class PlannerMatchRepository
                 v.[VeldNummer], v.[VeldNaam], m.[wedstrijd], 'Competitie' AS Bron
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
             LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[status] <> 'Afgelast'
@@ -105,7 +105,7 @@ internal static class PlannerMatchRepository
             ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
                 CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
@@ -113,7 +113,7 @@ internal static class PlannerMatchRepository
                 t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
@@ -155,7 +155,7 @@ internal static class PlannerMatchRepository
         await conn.OpenAsync();
 
         // Zoek in his.matches
-        using (var cmd = new SqlCommand(@"
+        using (var cmd = new SqlCommand($@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
                 CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
@@ -163,7 +163,7 @@ internal static class PlannerMatchRepository
                 t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
             WHERE m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
               AND m.[wedstrijd] LIKE @tegPattern
@@ -245,7 +245,7 @@ internal static class PlannerMatchRepository
             ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
                 CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
@@ -253,7 +253,7 @@ internal static class PlannerMatchRepository
                 t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
             WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
               AND m.[accommodatie] LIKE @accommodatiePattern
         ", conn);

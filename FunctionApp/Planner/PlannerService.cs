@@ -1003,6 +1003,9 @@ namespace SportlinkFunction.Planner
 
                 if (speeltijdInfo == null)
                 {
+                    // "onbekend-team": speeltijd ontbreekt of team staat niet in his.teams.
+                    // Toon de huidige situatie ongewijzigd — niet als "Probleem".
+                    // De scheduler blokkeert dit tijdslot al via planner.AlleWedstrijdenOpVeld. (#487)
                     items.Add(new AutoPlanWedstrijdItem
                     {
                         WedstrijdCode = wedstrijd.WedstrijdCode,
@@ -1014,10 +1017,9 @@ namespace SportlinkFunction.Planner
                         HuidigeTijd = wedstrijd.AanvangsTijd,
                         HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
                         HeeftTijd = !string.IsNullOrWhiteSpace(wedstrijd.AanvangsTijd),
-                        Status = "niet-inplanbaar",
-                        NietInplanbaaarReden = string.IsNullOrWhiteSpace(leeftijd)
-                            ? "Leeftijdscategorie onbekend — team niet gevonden in his.teams"
-                            : $"Leeftijdscategorie '{leeftijd}' ontbreekt in Speeltijden — voeg toe via Instellingen → Speeltijden"
+                        OptimaalVeld = wedstrijd.Veld,
+                        OptimaalTijd = wedstrijd.AanvangsTijd,
+                        Status = "onbekend-team",
                     });
                     continue;
                 }
@@ -1112,7 +1114,8 @@ namespace SportlinkFunction.Planner
             // 4. Statistieken
             int zonderVeld = items.Count(i => !i.HeeftVeld);
             int zonderTijd = items.Count(i => !i.HeeftTijd);
-            int teWijzigen = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
+            int teWijzigen    = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
+            // "onbekend-team" telt NIET mee als inplanbaar probleem — het wordt neutraal getoond (#487)
             int nietInplanbaar = items.Count(i => i.Status == "niet-inplanbaar");
 
             var eindTijden = items
@@ -1208,6 +1211,7 @@ namespace SportlinkFunction.Planner
             {
                 if (item.Status == "ongewijzigd") continue;
                 if (item.Status == "niet-inplanbaar") continue;
+                if (item.Status == "onbekend-team") continue;   // niet-classificeerbaar — ongewijzigd laten (#487)
                 if (item.WedstrijdCode == null) continue;
                 if (item.OptimaalVeld == null || item.OptimaalTijd == null) continue;
 

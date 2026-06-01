@@ -150,6 +150,16 @@
                                             &#10007; @(item.NietInplanbaaarReden ?? "Niet inplanbaar")
                                         </span>
                                     }
+                                    else if (item.Status == "onbekend-team")
+                                    {
+                                        @* Onbekend team: toon huidige situatie ongewijzigd — geen foutmelding (#487) *@
+                                        @if (!string.IsNullOrWhiteSpace(item.OptimaalVeld))
+                                        {
+                                            <span class="text-muted">@item.OptimaalVeld</span>
+                                            @if (!string.IsNullOrWhiteSpace(item.OptimaalTijd))
+                                            {<span class="text-muted ms-2">@item.OptimaalTijd</span>}
+                                        }
+                                    }
                                     else if (item.OptimaalVeld != null)
                                     {
                                         <span class="@(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalVeld</span>
@@ -170,6 +180,9 @@
                                             break;
                                         case "niet-inplanbaar":
                                             <span class="badge bg-danger">Probleem</span>
+                                            break;
+                                        case "onbekend-team":
+                                            <span class="badge bg-secondary">Onbekend</span>
                                             break;
                                     }
                                 </td>
@@ -483,6 +496,7 @@
         "nieuw-slot"      => "table-warning",
         "wijziging"       => "table-primary",
         "niet-inplanbaar" => "table-danger",
+        "onbekend-team"   => "",   // neutraal — geen rode achtergrond (#487)
         _                 => ""
     };
 
