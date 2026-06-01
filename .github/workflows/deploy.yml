@@ -42,14 +42,20 @@ jobs:
             --server "$SQL_SERVER" \
             --query 'status' --output tsv 2>/dev/null || echo "unknown")
           echo "Database status: $STATUS"
-          if [ "$STATUS" != "Online" ]; then
+          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "Disabled" ]; then
             echo "::error::⛔ Database is '$STATUS' — volledige deployment geblokkeerd."
             echo "::error::Breng de database online vóór deployment:"
             echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
             echo "::error::Of wacht tot de maandlimiet vernieuwd is (begin volgende kalendermaand)."
             exit 1
           fi
-          echo "✓ Database Online — deployment mag doorgaan"
+          if [ "$STATUS" = "unknown" ]; then
+            echo "::warning::⚠️ Database-status kon niet worden geverifieerd via ARM API (service-principal mist Reader-rol op SQL resource group)."
+            echo "::warning::Deployment gaat door — controleer handmatig of de database Online is."
+            echo "::warning::Fix: verleen de service-principal Reader-rol op de SQL resource group in Azure Portal."
+          else
+            echo "✓ Database $STATUS — deployment mag doorgaan"
+          fi
 
   build:
     runs-on: ubuntu-latest
