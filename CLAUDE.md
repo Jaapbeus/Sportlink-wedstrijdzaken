@@ -723,40 +723,44 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 ## Versiebeheer en Release-protocol
 
-### Semantic Versioning (semver)
+### Semantic Versioning (semver) — twee fasen
 
-Versienummering volgt `MAJOR.MINOR.PATCH`:
+Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
 
-| Type | Wanneer | Voorbeeld |
+**Fase 1 — development (commit-voor-commit op feature/* branch):**
+
+| Commit-type | Versie-impact | Voorbeeld |
 |---|---|---|
-| **MAJOR** (x.0.0) | Nieuwe architectuurlaag, breaking API-wijziging, grote nieuwe functie-set | v2.0.0 — Admin GUI toegevoegd |
-| **MINOR** (2.x.0) | Nieuwe feature, backwards compatible (nieuw endpoint, nieuw scherm) | v2.1.0 — WhatsApp-kanaal toegevoegd |
-| **PATCH** (2.0.x) | Bugfix, beveiligingspatch, documentatie zonder gedragswijziging | v2.0.1 — 500-error op teams-endpoint |
+| `feat:` — nieuwe feature | PATCH bump | `2.15.0.0 → 2.15.1.0` |
+| `fix:` of `security:` — bugfix | REVISION bump | `2.15.1.0 → 2.15.1.1` |
+| Kleine fix, CSS, UX, chore **met zichtbaar effect** | REVISION bump | `2.15.1.0 → 2.15.1.1` |
+| `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.15.x.x → 3.0.0.0` |
+| Puur intern (refactor zonder effect, docs, CLAUDE.md) | Geen bump | — |
+
+**Fase 2 — release (develop → main PR, één keer per release):**
+
+| Inhoud van `[Unreleased]` | Versie-impact | Voorbeeld |
+|---|---|---|
+| Bevat minimaal één `feat:` | **MINOR bump**, PATCH + REVISION → 0 | `2.15.x.x → 2.16.0.0` |
+| Alleen `fix:`/`security:`, geen `feat:` | PATCH bump, REVISION → 0 | `2.15.2.3 → 2.15.3.0` |
+| BREAKING CHANGE aanwezig | MAJOR bump | `2.15.x.x → 3.0.0.0` |
+
+> **Waarom deze scheiding?** Productie gaat netjes `2.15 → 2.16 → 2.17` — één zichtbare stap per release.
+> Development heeft tussentijds volledige granulariteit (`2.15.1.0`, `2.15.2.3`) zonder de
+> productie-MINOR op te blazen. MAJOR is altijd een expliciete architectuurkeuze.
 
 > Volledige definities (bug vs. issue vs. feature vs. enhancement, wat in changelog hoort):
 > zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ### Conventional Commits → versie-bump
 
-Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
-
-| Commit-type | Versie-impact | Voorbeeld |
-|---|---|---|
-| `feat:` | MINOR bump — Patch en Revision resetten naar 0 | `2.5.0.3 → 2.6.0.0` |
-| `fix:` of `security:` | PATCH bump — Revision reset naar 0 | `2.5.0.3 → 2.5.1.0` |
-| `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.5.x.x → 3.0.0.0` |
-| Kleine fix, CSS, UX, chore **met zichtbaar effect** | REVISION bump | `2.5.0.0 → 2.5.0.1` |
-| Puur intern (refactor zonder effect, docs, CLAUDE.md) | Geen bump | — |
-
-> **Reden voor Revision:** de beheerder ziet het versienummer in de header. Na een deployment
-> kan de beheerder bevestigen dat de juiste versie actief is. Zonder Revision-bump is elke
-> kleine fix onzichtbaar in de UI.
+Samenvatting: **development** = `feat:` → PATCH, `fix:` → REVISION. **Release** = MINOR als er features in zitten.
 
 Zet alle drie velden synchroon in **beide** csproj's:
 ```xml
-<Version>2.5.0.1</Version>
-<AssemblyVersion>2.5.0.1</AssemblyVersion>
-<FileVersion>2.5.0.1</FileVersion>
+<Version>2.15.1.0</Version>
+<AssemblyVersion>2.15.1.0</AssemblyVersion>
+<FileVersion>2.15.1.0</FileVersion>
 ```
 
 ### CHANGELOG.md bijhouden

@@ -232,48 +232,59 @@ Voorbeelden:
 
 ## 6. Versie-bump beslisboom
 
-Het versienummer heeft **vier** cijfers: `MAJOR.MINOR.PATCH.REVISION`
+Het versienummer heeft **vier** cijfers: `MAJOR.MINOR.PATCH.REVISION` — met twee duidelijk gescheiden fasen.
+
+### Fase 1 — development (commit-voor-commit op feature/* branch)
 
 | Getal | Wanneer omhoog | Reset bij |
 |---|---|---|
 | **MAJOR** | Breaking change voor de gebruiker | — |
-| **MINOR** | Nieuwe feature | MAJOR-bump → 0 |
-| **PATCH** | Bugfix of security-patch | MINOR-bump → 0 |
-| **REVISION** | **Elke commit die gebruikerszichtbare bestanden raakt** (.razor, .cs, .css, .sql, .json in wwwroot) | PATCH-bump → 0 |
+| **PATCH** | Nieuwe feature (`feat:`) | MINOR-bump → 0 |
+| **REVISION** | Bugfix, security-patch, kleine fix, CSS/UX met zichtbaar effect | PATCH-bump → 0 |
 
-> **Waarom Revision?** De beheerder ziet het versienummer in de header (bijv. `v2.5.0.1`).
-> Na een deployment kan de beheerder bevestigen dat de juiste versie actief is door het getal te checken.
-> Zonder Revision ziet elke kleine fix er hetzelfde uit — geen bevestiging mogelijk.
+> **Waarom MINOR niet tijdens development?** Productie-MINOR-nummers moeten overeen komen met
+> echte releases. Als elke `feat:`-commit de MINOR ophoogt, raakt productie (v2.5) ver achter op
+> development (v2.15) zonder dat er ook maar één release is geweest.
 
 ```
-Wat is er gewijzigd?
+Development — wat is er gewijzigd?
 │
 ├── Verwijdert of breekt bestaande functionaliteit voor een gebruiker?
 │   └── JA → MAJOR (x.0.0.0)
 │
-├── Voegt nieuwe gebruikersfunctionaliteit toe?
-│   └── JA → MINOR (2.x.0.0)
+├── Voegt nieuwe gebruikersfunctionaliteit toe? (feat:)
+│   └── JA → PATCH (2.15.x.0)
 │
-├── Repareert iets wat verkeerd werkte voor een gebruiker?
-│   └── JA → PATCH (2.0.x.0)
-│
-├── Beveiligingspatch?
-│   └── JA → PATCH (2.0.x.0) — tenzij breaking → MAJOR
+├── Repareert iets wat verkeerd werkte? (fix: / security:)
+│   └── JA → REVISION (2.15.1.x)
 │
 ├── Kleine fix, CSS, UX-verbetering of chore met zichtbaar effect?
-│   └── JA → REVISION (2.0.0.x)
+│   └── JA → REVISION (2.15.1.x)
 │
 └── Alleen intern (refactor zonder effect, docs, tooling, CLAUDE.md)?
     └── Geen versie-bump
 ```
 
+### Fase 2 — release (develop → main, één keer per release)
+
+Kijk naar de inhoud van `[Unreleased]` in CHANGELOG.md en bepaal dan pas de MINOR/PATCH:
+
+| Inhoud van `[Unreleased]` | Versie-actie | Voorbeeld |
+|---|---|---|
+| Bevat minimaal één `feat:` | **MINOR bump**, PATCH + REVISION → 0 | `2.15.2.3 → 2.16.0.0` |
+| Alleen `fix:`/`security:`, geen `feat:` | PATCH bump, REVISION → 0 | `2.15.2.3 → 2.15.3.0` |
+| BREAKING CHANGE aanwezig | MAJOR bump | `2.15.x.x → 3.0.0.0` |
+
+> **Resultaat:** productie gaat netjes `2.15 → 2.16 → 2.17`. Development heeft tussentijds
+> volledige granulariteit (`2.15.1.0`, `2.15.2.3`) zonder de productie-teller op te blazen.
+
 ### In de csproj
 
-Zet alle drie velden synchroon op het volledige 4-cijferige nummer:
+Zet alle drie velden synchroon op het volledige 4-cijferige nummer in **beide** csproj's:
 ```xml
-<Version>2.5.0.1</Version>
-<AssemblyVersion>2.5.0.1</AssemblyVersion>
-<FileVersion>2.5.0.1</FileVersion>
+<Version>2.15.1.0</Version>
+<AssemblyVersion>2.15.1.0</AssemblyVersion>
+<FileVersion>2.15.1.0</FileVersion>
 ```
 
 Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString(4)` getoond in de header.
@@ -281,10 +292,10 @@ Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString
 ### Twijfelgevallen
 
 **"Is dit een bug of een feature?"**
-→ Was het gedrag ooit zo bedoeld? JA = bug. NEEN (het werkte nooit anders) = feature.
+→ Was het gedrag ooit zo bedoeld? JA = bug (REVISION). NEEN (het werkte nooit anders) = feature (PATCH).
 
-**"Is dit MINOR of PATCH?"**
-→ Voegt het iets toe aan wat de gebruiker kan? JA = MINOR. Alleen repareren = PATCH.
+**"Is dit PATCH of REVISION tijdens development?"**
+→ Voegt het iets toe aan wat de gebruiker kan? JA = PATCH. Alleen repareren/verfijnen = REVISION.
 
 **"Is dit MAJOR?"**
 → Alleen als een bestaande gebruiker iets moet aanpassen (API, config, workflow) om te kunnen blijven werken na de update.
