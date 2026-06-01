@@ -144,11 +144,13 @@ internal static class SportlinkSyncPipeline
     }
 
     // Retourneert true bij succes, false bij elke fout — zodat de caller partialFailure kan bijhouden. (#464)
-    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, ILogger log)
+    // httpClient is optioneel; standaard wordt de static _client gebruikt. (#476 — testbaar via inject)
+    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, ILogger log, HttpClient? httpClient = null)
     {
+        var client = httpClient ?? _client;
         try
         {
-            var response = await _client.GetAsync(apiUrl);
+            var response = await client.GetAsync(apiUrl);
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
             try

@@ -510,15 +510,7 @@ public class EmailProcessorFunction
 
     // Sanitiseert een foutmelding voor opslag in de DB — verwijdert e-mailadressen en knipt af. (#420)
     private static string SanitizeFoutMelding(string message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-            return "Onbekende fout";
-        var gesaneerd = System.Text.RegularExpressions.Regex.Replace(
-            message,
-            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
-            "[e-mail]");
-        return gesaneerd.Length > 200 ? gesaneerd[..200] + "…" : gesaneerd;
-    }
+        => EmailSanitizer.SanitizeFoutMelding(message);
 
     private static async Task StuurOpenAiNoodmailAsync(
         EmailGraphService graphService, string foutmelding, ILogger log)
