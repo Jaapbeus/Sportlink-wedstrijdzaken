@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.13.0.0] — 2026-06-01
+
+### Added
+- Testproject `FunctionApp.Tests` uitgebreid: 13 nieuwe tests voor P1-fixes — `EmailSanitizerTests` (e-mail masking, truncation), `MatchDetailsFetchTests` (HTTP-fout en JSON-deserialisatiefout geven false terug zodat partialFailure correct wordt gezet). Integratietests voor DB-afhankelijke scenarios toegevoegd als Skip-stubs. (#476)
+- `EmailSanitizer` utility-klasse geëxtraheerd uit `EmailProcessorFunction` — e-mail masking logica is nu los testbaar.
+- `FetchAndStoreMatchDetailsAsync` accepteert optionele `HttpClient`-parameter voor testinjectie.
+
 ## [2.12.0.0] — 2026-05-31
 
 ### Changed
