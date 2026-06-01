@@ -18,6 +18,75 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.16.0.0] — 2026-06-01
+
+### Security
+- Beveiligingsgat in het automatisch ophalen van club-thema via externe URL gedicht — alleen URL's die overeenkomen met de geconfigureerde clubwebsite worden nog toegestaan. Elimineert risico op SSRF/DNS-rebinding volledig.
+- Foutmeldingen in de email-verwerkingslog worden na 30 dagen geanonimiseerd — voorkomt dat technische foutdetails (die mogelijk persoonsgegevens kunnen bevatten) langer dan nodig bewaard blijven.
+- Email-uitsluitingslijst wordt nu vóór de eerste AI-classificatie geladen (fail-closed) — als de database niet bereikbaar is bij opstarten, worden e-mails niet naar de AI gestuurd.
+- Noodmeldingen bij database- of quota-fouten bevatten geen ruwe technische details meer — alleen een categorienaam.
+- Classificatiecorrecties worden na 30 dagen geanonimiseerd en na 90 dagen verwijderd.
+
+### Added
+- Testdata: nieuwe knop "Verplaats datum" op de Wedstrijden-pagina — verplaatst alle ALLSTARS-testwedstrijden van een gekozen datum naar een andere datum in één klik. Handig voor het testen van de planner met realistische toekomstige wedstrijden.
+
+### Fixed
+- Planner: teams voor wie de leeftijdscategorie niet herkend wordt (bijv. toernooicommissie) worden neutraal weergegeven in de dagplanning — niet langer rood gemarkeerd als probleem.
+- Planner: leeftijdscategorie 'JO15 Meiden' wordt nu correct herkend als MO15.
+- Spelersfilter en teamregels filteren nu op ClubCode — ALLSTARS-testdata kon voorheen doorlekken in planner-berekeningen van de primaire club.
+- Matchdetails-fouten (HTTP-fout of onleesbare data) leiden nu tot een partieel-fout-markering zodat de synchronisatietijdstempel niet wordt bijgewerkt als gegevens onvolledig zijn.
+
+## [2.15.0.0] — 2026-06-01
+
+### Changed
+- PlannerService.cs refactored naar dunne facade (2118 → 50 regels) — alle logica verplaatst naar vijf use-case services in `FunctionApp/Planner/Services/`: `AvailabilityService`, `AutoPlanService`, `OptimizationService`, `RescheduleService`, `TeamScheduleService`. Gedeelde utilities en `FieldScheduler` in `PlannerShared`. Bestaande callers ongewijzigd. (#475)
+
+## [2.14.1.0] — 2026-06-01
+
+### Fixed
+- Planner: leeftijdscategorie 'JO15 Meiden' wordt nu correct herkend als MO15 — alle normalisatie-queries gebruiken de nieuwe centrale `LeeftijdNormalisatie`-helper. (#486)
+- Planner: teams zonder bekende leeftijdscategorie (bijv. 'Toernooi commissie') worden neutraal weergegeven in de dagplanning in plaats van rood 'Probleem'. Hun tijdslot blijft geblokkeerd voor de optimizer; herplannen en toepassen slaan ze over. (#487)
+
+## [2.14.0.0] — 2026-06-01
+
+### Changed
+- `PlannerDataAccess.cs` refactored naar dunne facade (1039 → 100 regels) — alle SQL verplaatst naar vier repository-klassen in `FunctionApp/Planner/Repositories/`: `PlannerSettingsRepository` (10 methoden), `PlannerAvailabilityRepository` (4), `PlannerMatchRepository` (11), `TeamRulesRepository` (2), `AllstarsTestDataRepository` (4). Bestaande callers zijn ongewijzigd. (#474)
+
+## [2.13.0.0] — 2026-06-01
+
+### Added
+- Testproject `FunctionApp.Tests` uitgebreid: 13 nieuwe tests voor P1-fixes — `EmailSanitizerTests` (e-mail masking, truncation), `MatchDetailsFetchTests` (HTTP-fout en JSON-deserialisatiefout geven false terug zodat partialFailure correct wordt gezet). Integratietests voor DB-afhankelijke scenarios toegevoegd als Skip-stubs. (#476)
+- `EmailSanitizer` utility-klasse geëxtraheerd uit `EmailProcessorFunction` — e-mail masking logica is nu los testbaar.
+- `FetchAndStoreMatchDetailsAsync` accepteert optionele `HttpClient`-parameter voor testinjectie.
+
+## [2.12.0.0] — 2026-05-31
+
+### Changed
+- EmailProcessorFunction: alle SQL-operaties verplaatst naar `EmailProcessingRepository` en `LearningMomentRepository`. Function-klasse bevat geen inline SQL meer; private methoden zijn dunne delegating wrappers. Orchestrator/mailbox/notification splits volgen in vervolg-iteratie. (#465)
+
+## [2.11.0.0] — 2026-05-31
+
+### Changed
+- Sportlink-sync refactored: `Function1.cs` is nu een dunne trigger-wrapper. Orchestratie-logica verplaatst naar `SportlinkSyncPipeline`; SQL-staging naar `SportlinkStagingRepository`. Gedeelde match-velden geëxtraheerd in helper-methode (minder duplicaat-code). (#466)
+
+## [2.10.0.0] — 2026-05-31
+
+### Changed
+- Admin API-endpoints gebruiken nu een gedeelde `AdminEndpoint.ExecuteAsync` wrapper — auth guard, correlatie-ID en foutafhandeling zijn eenmalig gedefinieerd en kunnen niet vergeten worden bij nieuwe endpoints. (#467)
+- SQL voor Speeltijden, UitgeslotenEmail, VeldBeschikbaarheid, VoorkeurTijden, TeamRegels, Leermomenten, Teams, Clubs en EmailLog verplaatst naar aparte repository-klassen in `FunctionApp/Admin/Repositories/`. (#467)
+
+## [2.9.1.0] — 2026-05-31
+
+### Fixed
+- `LaadUitgeslotenAdressenAsync` inslikt exceptions niet langer — bij DB-fout op cold start wordt AI-verwerking nu correct uitgesteld (fail-closed garantie hersteld). (#463)
+- Matchdetails-fouten (HTTP-fout of JSON-deserialisatiefout) zetten nu `partialFailure = true` — `LastSyncTimestamp` wordt niet bijgewerkt als matchdetails deels mislukken. Logs tonen succesvol/mislukt-tellingen. (#464)
+- `GetSpeeltijdenLookupAsync`, `GetTeamRulesAsync`, `GetAllTeamBuffersAsync` en `GetTeamLeeftijdLookupAsync` filteren nu op `ClubCode` — ALLSTARS-testdata lekt niet meer door in planner-berekeningen. (#469)
+
+## [2.9.0.0] — 2026-05-31
+
+### Added
+- Testdata: knop "Verplaats datum" op de Wedstrijden-pagina — verplaatst alle ALLSTARS-wedstrijden van een gekozen datum naar een nieuwe datum in één klik. (#459)
+
 ## [2.8.0.0] — 2026-05-31
 
 ### Security

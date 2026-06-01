@@ -1,7 +1,7 @@
 ---
 description: Volledige autonome ontwikkelcyclus — PR's mergen, branches opruimen, lokaal/online synchen, open issues uitvoeren, iteratie-branch aanmaken, debug starten.
 disable-model-invocation: false
-argument-hint: [--dry-run] [--features]
+argument-hint: [--dry-run] [--features] [--release]
 ---
 
 Voer de volledige autonome ontwikkelcyclus uit. Dit is de standaard werkmodus: van
@@ -11,6 +11,9 @@ klaar voor de volgende iteratie.
 **Argumenten:**
 - `--dry-run` — toon wat er zou gebeuren zonder daadwerkelijk te wijzigen
 - `--features` — voer ook grote feature-issues uit (label `enhancement` of `type: feature`); zonder dit argument worden die overgeslagen
+- `--release` — voer Fase 3.5 uit: versie-bump, CHANGELOG afsluiten, PR develop→main, tag aanmaken en productie-deploy bewaken. **Zonder dit argument stopt de cyclus na Fase 2b** — alle issues zijn geïmplementeerd op develop, maar er wordt niets naar productie gepusht. Dit geeft ruimte om de wijzigingen eerst lokaal te testen vóór release.
+
+> **Standaard = develop-only.** Productie-deploy vereist bewuste `--release` keuze.
 
 Symbolen:
 - ✅ In orde / geslaagd
@@ -38,7 +41,7 @@ Fase 0  (voorbereiding: PR's mergen, branches opruimen, main synchen)
          → Zijn er nieuwe uitvoerbare issues? → terug naar Fase 2
          → Geen uitvoerbare issues meer?
            → Fase 3 (sync lokaal = online)
-             → Fase 3.5 — POORT 2 (release GO/NO-GO vóór versie-bump)
+             → Fase 3.5 — POORT 2 (alleen met --release; anders: stop + melding)
                → Fase 4 (nieuwe iteratie-branch)
                  → Fase 5 (debug starten)
 ```
@@ -419,10 +422,17 @@ Wacht op groen als er net een merge was. Verplichte per-job check (zie Fase 0d).
 
 ## FASE 3.5 — POORT 2: RELEASE GO/NO-GO (vóór versie-bump + tag)
 
+> **⚠️ DEZE FASE WORDT ALLEEN UITGEVOERD ALS `--release` IS MEEGEGEVEN.**
+>
+> Zonder `--release`: sla Fase 3.5 volledig over en ga direct naar Fase 4.
+> Meld dan aan de gebruiker:
+> "✅ Cyclus voltooid op develop — alle issues geïmplementeerd en gemerged.
+> Start `/autonoom --release` als je klaar bent om naar productie te gaan."
+
 > **Poort 2 is zwaarder dan Poort 1.** Poort 1 bewaakt één PR (per merge naar main).
 > Poort 2 bewaakt de codebase als geheel vóórdat een versienummer en tag worden
 > aangemaakt — dat is het formele moment dat een release "live" is voor alle clubs
-> die de repo gebruiken. Sla deze fase nooit over.
+> die de repo gebruiken. Sla deze fase nooit over als `--release` aanwezig is.
 
 Dit is een volledige security- en kwaliteitsaudit van de huidige staat van `main`.
 Voer alleen uit als Fase 2b heeft bevestigd dat er geen uitvoerbare issues meer zijn.

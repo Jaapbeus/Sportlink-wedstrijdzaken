@@ -510,15 +510,7 @@ public class EmailProcessorFunction
 
     // Sanitiseert een foutmelding voor opslag in de DB — verwijdert e-mailadressen en knipt af. (#420)
     private static string SanitizeFoutMelding(string message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-            return "Onbekende fout";
-        var gesaneerd = System.Text.RegularExpressions.Regex.Replace(
-            message,
-            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
-            "[e-mail]");
-        return gesaneerd.Length > 200 ? gesaneerd[..200] + "…" : gesaneerd;
-    }
+        => EmailSanitizer.SanitizeFoutMelding(message);
 
     private static async Task StuurOpenAiNoodmailAsync(
         EmailGraphService graphService, string foutmelding, ILogger log)
@@ -550,266 +542,64 @@ public class EmailProcessorFunction
         }
     }
 
-    // --- Database operaties ---
+    // --- Database operaties → gedelegeerd naar repositories (#465) ---
 
+    // Laadt uitsluitingslijst strikt — exception propageren zodat de outer cold-start catch
+    // fail-closed kan garanderen (_uitgeslotenCacheGeladen blijft false bij fout). (#463)
     private static async Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
-    {
-        try
-        {
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(
-                "SELECT [EmailAdres] FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Actief] = 1 AND [ClubCode] = @ClubCode",
-                connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            var adressen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                adressen.Add(reader.GetString(0));
-            log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
-            return adressen;
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Uitsluitingslijst kon niet worden geladen — doorgaan zonder");
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
-
-    private static async Task<bool> BestaatMessageIdAsync(string messageId)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(
-            "SELECT COUNT(1) FROM [planner].[EmailVerwerking] WHERE [MessageId] = @MessageId", connection);
-        command.Parameters.AddWithValue("@MessageId", messageId);
-        var count = (int)(await command.ExecuteScalarAsync())!;
-        return count > 0;
-    }
-
-    private static async Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
     {
         var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
             ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
-
         using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await connection.OpenAsync();
-        using var command = new SqlCommand(@"
-            INSERT INTO [planner].[EmailVerwerking]
-                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status], [ClubCode])
-            VALUES
-                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen', @ClubCode);
-            SELECT CAST(SCOPE_IDENTITY() AS INT);", connection);
-
-        command.Parameters.AddWithValue("@MessageId", email.MessageId);
-        command.Parameters.AddWithValue("@ConversationId", (object?)email.ConversationId ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Afzender", email.Afzender);
-        command.Parameters.AddWithValue("@Onderwerp", email.Onderwerp);
-        command.Parameters.AddWithValue("@OntvangstDatum", email.OntvangstDatum);
-        command.Parameters.AddWithValue("@EmailBody", (object?)email.Body ?? DBNull.Value);
-        command.Parameters.AddWithValue("@ClubCode", clubCode);
-
-        return (int)(await command.ExecuteScalarAsync())!;
-    }
-
-    private static async Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-
-        var setClauses = "[Status] = @Status, [mta_modified] = GETUTCDATE()";
-        if (geextraheerdeData != null)
-            setClauses += ", [GeextraheerdeData] = @Data, [VerzoekType] = @VerzoekType";
-
         using var command = new SqlCommand(
-            $"UPDATE [planner].[EmailVerwerking] SET {setClauses} WHERE [Id] = @Id", connection);
-        command.Parameters.AddWithValue("@Id", verwerkingId);
-        command.Parameters.AddWithValue("@Status", status.ToString());
-
-        if (geextraheerdeData != null)
-        {
-            command.Parameters.AddWithValue("@Data", geextraheerdeData);
-            try
-            {
-                var classificatie = JsonConvert.DeserializeObject<BerichtClassificatie>(geextraheerdeData);
-                command.Parameters.AddWithValue("@VerzoekType", classificatie?.Type.ToString() ?? "Onbekend");
-            }
-            catch
-            {
-                command.Parameters.AddWithValue("@VerzoekType", "Onbekend");
-            }
-        }
-
-        await command.ExecuteNonQueryAsync();
+            "SELECT [EmailAdres] FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Actief] = 1 AND [ClubCode] = @ClubCode",
+            connection);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
+        var adressen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            adressen.Add(reader.GetString(0));
+        log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
+        return adressen;
     }
 
-    private static async Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(@"
-            UPDATE [planner].[EmailVerwerking]
-            SET [PlannerResponse] = @Response, [mta_modified] = GETUTCDATE()
-            WHERE [Id] = @Id", connection);
-        command.Parameters.AddWithValue("@Id", verwerkingId);
-        command.Parameters.AddWithValue("@Response", plannerResponseJson);
-        await command.ExecuteNonQueryAsync();
-    }
+    private static Task<bool>  BestaatMessageIdAsync(string messageId)
+        => EmailProcessingRepository.BestaatMessageIdAsync(messageId);
 
-    private static async Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(@"
-            UPDATE [planner].[EmailVerwerking]
-            SET [Status] = 'AntwoordVerstuurd', [VerstuurdNaar] = @Naar, [AntwoordEmail] = @Antwoord, [mta_modified] = GETUTCDATE()
-            WHERE [Id] = @Id", connection);
-        command.Parameters.AddWithValue("@Id", verwerkingId);
-        command.Parameters.AddWithValue("@Naar", verstuurdNaar);
-        command.Parameters.AddWithValue("@Antwoord", antwoordEmail);
-        await command.ExecuteNonQueryAsync();
-    }
+    private static Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
+        => EmailProcessingRepository.InsertEmailVerwerkingAsync(email);
 
-    private static async Task UpdateFoutAsync(string messageId, string foutMelding)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(@"
-            UPDATE [planner].[EmailVerwerking]
-            SET [Status] = 'Fout', [FoutMelding] = @Fout, [mta_modified] = GETUTCDATE()
-            WHERE [MessageId] = @MessageId", connection);
-        command.Parameters.AddWithValue("@MessageId", messageId);
-        command.Parameters.AddWithValue("@Fout", foutMelding.Length > 1000 ? foutMelding[..1000] : foutMelding);
-        await command.ExecuteNonQueryAsync();
-    }
+    private static Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
+        => EmailProcessingRepository.UpdateStatusAsync(verwerkingId, status, geextraheerdeData);
 
-    // #323: reply-detectie helpers
+    private static Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson)
+        => EmailProcessingRepository.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
 
-    private static async Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
+    private static Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
+        => EmailProcessingRepository.UpdateAntwoordVerstuurdAsync(verwerkingId, verstuurdNaar, antwoordEmail);
+
+    private static Task UpdateFoutAsync(string messageId, string foutMelding)
+        => EmailProcessingRepository.UpdateFoutAsync(messageId, foutMelding);
+
+    private static Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log)
-    {
-        try
-        {
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                SELECT TOP 1 [Id], [VerzoekType], [GeextraheerdeData]
-                FROM [planner].[EmailVerwerking]
-                WHERE [ConversationId] = @ConversationId
-                  AND [VerstuurdNaar] IS NOT NULL
-                  AND [ClubCode] = @ClubCode
-                ORDER BY [mta_inserted] DESC", connection);
-            command.Parameters.AddWithValue("@ConversationId", conversationId);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
+        => EmailProcessingRepository.DetecteerReplyOpOnsAntwoordAsync(conversationId, clubCode, log);
 
-            using var reader = await command.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return (false, null, null, null);
+    private static Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)
+        => EmailProcessingRepository.UpdateReplyStatusAsync(verwerkingId, isReply, replyOpVerwerkingId);
 
-            var id = reader.GetInt32(0);
-            var verzoekType = reader.IsDBNull(1) ? null : reader.GetString(1);
-            var geextraheerdeData = reader.IsDBNull(2) ? null : reader.GetString(2);
-
-            string? samenvatting = null;
-            if (!string.IsNullOrEmpty(geextraheerdeData))
-            {
-                try
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(geextraheerdeData);
-                    if (doc.RootElement.TryGetProperty("Samenvatting", out var s))
-                        samenvatting = s.GetString();
-                }
-                catch { /* samenvatting optioneel */ }
-            }
-
-            return (true, id, verzoekType, samenvatting);
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Reply-detectie kon niet worden uitgevoerd — doorgaan als nieuw bericht");
-            return (false, null, null, null);
-        }
-    }
-
-    private static async Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(@"
-            UPDATE [planner].[EmailVerwerking]
-            SET [IsReplyOpOnsAntwoord] = @IsReply, [ReplyOpVerwerkingId] = @ReplyOpId, [mta_modified] = GETUTCDATE()
-            WHERE [Id] = @Id", connection);
-        command.Parameters.AddWithValue("@Id", verwerkingId);
-        command.Parameters.AddWithValue("@IsReply", isReply);
-        command.Parameters.AddWithValue("@ReplyOpId", replyOpVerwerkingId);
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task InsertClassificatieCorrectieAsync(
+    private static Task InsertClassificatieCorrectieAsync(
         int origineleVerwerkingId, int correctionVerwerkingId,
         string origineelType, string? afgeleidType,
         string? originaleSamenvatting, string? correctieSamenvatting,
         string clubCode)
-    {
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(@"
-            INSERT INTO [planner].[ClassificatieCorrectie]
-                ([OrigineleVerwerkingId], [CorrectionVerwerkingId], [OrigineelVerzoekType],
-                 [AfgeleidJuistType], [OrigineleSamenvatting], [CorrectieSamenvatting], [ClubCode])
-            VALUES
-                (@OrigineleId, @CorrectionId, @OrigineelType,
-                 @AfgeleidType, @OriginaleSamenvatting, @CorrectieSamenvatting, @ClubCode)", connection);
-        command.Parameters.AddWithValue("@OrigineleId", origineleVerwerkingId);
-        command.Parameters.AddWithValue("@CorrectionId", correctionVerwerkingId);
-        command.Parameters.AddWithValue("@OrigineelType", origineelType);
-        command.Parameters.AddWithValue("@AfgeleidType", (object?)afgeleidType ?? DBNull.Value);
-        command.Parameters.AddWithValue("@OriginaleSamenvatting",
-            (object?)TruncateString(originaleSamenvatting, 500) ?? DBNull.Value);
-        command.Parameters.AddWithValue("@CorrectieSamenvatting",
-            (object?)TruncateString(correctieSamenvatting, 500) ?? DBNull.Value);
-        command.Parameters.AddWithValue("@ClubCode", clubCode);
-        await command.ExecuteNonQueryAsync();
-    }
+        => LearningMomentRepository.InsertClassificatieCorrectieAsync(
+               origineleVerwerkingId, correctionVerwerkingId,
+               origineelType, afgeleidType,
+               originaleSamenvatting, correctieSamenvatting, clubCode);
 
-    private static async Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(
+    private static Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(
         string clubCode, ILogger log)
-    {
-        try
-        {
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                SELECT TOP 20 [OrigineelVerzoekType], [AfgeleidJuistType],
-                              [OrigineleSamenvatting], [CorrectieSamenvatting]
-                FROM [planner].[ClassificatieCorrectie]
-                WHERE [IsGevalideerd] = 1 AND [IsAfgewezen] = 0 AND [ClubCode] = @ClubCode
-                ORDER BY [mta_modified] DESC", connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-
-            var voorbeelden = new List<ClassificatieCorrectieVoorbeeld>();
-            using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                if (reader.IsDBNull(1)) continue;
-                voorbeelden.Add(new ClassificatieCorrectieVoorbeeld(
-                    OrigineelType: reader.GetString(0),
-                    JuistType: reader.GetString(1),
-                    OrigineleSamenvatting: reader.IsDBNull(2) ? "" : reader.GetString(2),
-                    CorrectieSamenvatting: reader.IsDBNull(3) ? "" : reader.GetString(3)
-                ));
-            }
-            return voorbeelden;
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Leermomenten konden niet worden geladen — classificatie zonder few-shots");
-            return new List<ClassificatieCorrectieVoorbeeld>();
-        }
-    }
-
-    private static string? TruncateString(string? value, int maxLength) =>
-        value == null ? null : (value.Length > maxLength ? value[..maxLength] : value);
+        => LearningMomentRepository.HaalVoorbeeldenOpAsync(clubCode, log);
 }

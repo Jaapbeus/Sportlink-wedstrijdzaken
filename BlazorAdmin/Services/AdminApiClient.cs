@@ -277,6 +277,9 @@ public class AdminApiClient
         var qs = q.Count > 0 ? "?" + string.Join("&", q) : "";
         return await DeleteAsync<object>($"api/beheer/testdata/wedstrijden{qs}");
     }
+    public async Task<ApiResult<AllstarsVerplaatsDatumResultaat>> VerplaatsAllstarsDatumAsync(string oudeDatum, string nieuweDatum)
+        => await PostAsync<AllstarsVerplaatsDatumResultaat>("api/beheer/testdata/wedstrijden/verplaats-datum",
+               new { oudeDatum, nieuweDatum });
 
     private static async Task<ApiResult<T>> HandleAsync<T>(HttpResponseMessage resp)
     {
