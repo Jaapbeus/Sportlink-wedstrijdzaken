@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- `populate-sunset` endpoint gebruikt nu Easy Auth + RequireAdmin in plaats van function-key authenticatie — brengt het endpoint in lijn met alle andere admin-endpoints en voegt een Entra-audittrail toe.
+- Log-aanroepen in Utilities.cs en MergeStgToHis.cs gebruiken nu structured logging (`LogError(ex, "...")`) in plaats van string-interpolatie met `ex.Message` — voorkomt dat infrastructuurdetails (servernaam, gebruikersnaam) als losse string in Application Insights terechtkomen.
+
 ## [2.16.0.0] — 2026-06-01
 
 ### Security
