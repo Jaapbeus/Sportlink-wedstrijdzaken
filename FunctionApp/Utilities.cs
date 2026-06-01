@@ -87,7 +87,7 @@ namespace SportlinkFunction
                 }
                 catch (Exception ex)
                 {
-                    log.LogError($"Error loading app settings: {ex.Message}");
+                    log.LogError(ex, "Error loading app settings");
                 }
             }
 
@@ -113,7 +113,7 @@ namespace SportlinkFunction
                 }
                 catch (Exception ex)
                 {
-                    log.LogError($"Error saving last sync timestamp: {ex.Message}");
+                    log.LogError(ex, "Error saving last sync timestamp");
                 }
             }
         }
@@ -144,7 +144,7 @@ namespace SportlinkFunction
                 catch (Exception ex)
                 {
                     retryCount++;
-                    log.LogWarning($"Database connection failed. Retry {retryCount}/{maxRetries}. Error: {ex.Message}");
+                    log.LogWarning(ex, "Database connection failed. Retry {RetryCount}/{MaxRetries}", retryCount, maxRetries);
                     if (retryCount < maxRetries)
                         await Task.Delay(delayBetweenRetries);
                 }
@@ -213,7 +213,7 @@ namespace SportlinkFunction
                 }
                 catch (Exception ex)
                 {
-                    log.LogError($"Error fetching season end date: {ex.Message}");
+                    log.LogError(ex, "Error fetching season end date");
                 }
                 return 30; // Fallback: ~30 weeks ahead
             }
@@ -240,7 +240,7 @@ namespace SportlinkFunction
                 }
                 catch (Exception ex)
                 {
-                    log.LogError($"Error fetching season start for year {startYear}: {ex.Message}");
+                    log.LogError(ex, "Error fetching season start for year {StartYear}", startYear);
                 }
                 return -40; // Fallback: ~40 weeks back
             }

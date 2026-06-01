@@ -143,10 +143,12 @@ namespace SportlinkFunction.Planner
 
         [Function("PopulateSunset")]
         public static async Task<IActionResult> PopulateSunset(
-            [HttpTrigger(AuthorizationLevel.Admin, "post", Route = "planner/populate-sunset")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/populate-sunset")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("PopulateSunset");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
             try
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
