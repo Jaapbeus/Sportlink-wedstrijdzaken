@@ -136,6 +136,25 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 
 ---
 
+## Codestructuur (intern)
+
+`PlannerService` is een dunne facade die delegeert naar use-case services. Bestaande callers (PlannerFunctions, EmailProcessorFunction) roepen `PlannerService.*Async(...)` aan — de interne indeling is transparant.
+
+| Service | Locatie | Verantwoordelijkheid |
+|---|---|---|
+| `PlannerService` | `Planner/PlannerService.cs` | Facade — delegeert naar services |
+| `AvailabilityService` | `Planner/Services/` | CheckAvailabilityAsync, Doordeweeks |
+| `AutoPlanService` | `Planner/Services/` | AutoPlanAsync, Toepassen |
+| `OptimizationService` | `Planner/Services/` | OptimaliseerAsync |
+| `RescheduleService` | `Planner/Services/` | CheckRescheduleAvailabilityAsync |
+| `TeamScheduleService` | `Planner/Services/` | GetTeamScheduleAsync |
+| `PlannerShared` | `Planner/Services/` | CanFitMatch, FieldScheduler, constanten |
+| `PlannerDataAccess` | `Planner/PlannerDataAccess.cs` | Facade → repositories in `Planner/Repositories/` |
+
+`FieldScheduler` is de pure scheduling engine — geen DB of API-calls, alleen slot-berekening op basis van beschikbaarheid en buffers.
+
+---
+
 ## API-contract
 
 ### Endpoint: `POST /api/planner/check-availability`
