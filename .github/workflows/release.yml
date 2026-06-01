@@ -79,7 +79,7 @@ jobs:
           git push origin "${{ steps.version.outputs.tag }}"
 
       - name: GitHub Release aanmaken
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           # Notes via env-var doorgeven — zo wordt CHANGELOG-content NIET als
           # JavaScript template literal geparsed. Backticks, ${...} en andere
