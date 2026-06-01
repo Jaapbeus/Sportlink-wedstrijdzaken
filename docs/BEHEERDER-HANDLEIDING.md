@@ -64,6 +64,20 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
+### Dagplanning — status-badges
+
+De dagplanning toont per wedstrijd een badge in de Status-kolom:
+
+| Badge | Betekenis |
+|---|---|
+| ✓ OK (groen) | Huidige slot is al optimaal |
+| Nieuw (geel) | Nieuw timeslot toegewezen |
+| Wijzig (blauw) | Bestaand slot kan eerder/anders |
+| Probleem (rood) | Geen slot mogelijk (velden vol) |
+| Onbekend (grijs) | Team heeft geen speeltijdsconfiguratie (bijv. veldboeking door 'Toernooi commissie') — wordt ongewijzigd getoond, optimizer slaat het over |
+
+Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere teams; ze worden niet als fout beschouwd.
+
 ---
 
 ## 3. Way of working
