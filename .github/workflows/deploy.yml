@@ -112,6 +112,7 @@ jobs:
         with:
           name: functionapp
           path: ./output
+          include-hidden-files: true  # .azurefunctions folder is hidden en verplicht voor isolated worker
 
   deploy:
     runs-on: ubuntu-latest
