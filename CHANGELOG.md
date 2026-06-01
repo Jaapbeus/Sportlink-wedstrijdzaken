@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.14.0.0] — 2026-06-01
+
+### Changed
+- `PlannerDataAccess.cs` refactored naar dunne facade (1039 → 100 regels) — alle SQL verplaatst naar vier repository-klassen in `FunctionApp/Planner/Repositories/`: `PlannerSettingsRepository` (10 methoden), `PlannerAvailabilityRepository` (4), `PlannerMatchRepository` (11), `TeamRulesRepository` (2), `AllstarsTestDataRepository` (4). Bestaande callers zijn ongewijzigd. (#474)
+
 ## [2.13.0.0] — 2026-06-01
 
 ### Added
