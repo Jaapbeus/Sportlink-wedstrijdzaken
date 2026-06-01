@@ -18,6 +18,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.16.0.0] — 2026-06-01
+
+### Security
+- Beveiligingsgat in het automatisch ophalen van club-thema via externe URL gedicht — alleen URL's die overeenkomen met de geconfigureerde clubwebsite worden nog toegestaan. Elimineert risico op SSRF/DNS-rebinding volledig.
+- Foutmeldingen in de email-verwerkingslog worden na 30 dagen geanonimiseerd — voorkomt dat technische foutdetails (die mogelijk persoonsgegevens kunnen bevatten) langer dan nodig bewaard blijven.
+- Email-uitsluitingslijst wordt nu vóór de eerste AI-classificatie geladen (fail-closed) — als de database niet bereikbaar is bij opstarten, worden e-mails niet naar de AI gestuurd.
+- Noodmeldingen bij database- of quota-fouten bevatten geen ruwe technische details meer — alleen een categorienaam.
+- Classificatiecorrecties worden na 30 dagen geanonimiseerd en na 90 dagen verwijderd.
+
+### Added
+- Testdata: nieuwe knop "Verplaats datum" op de Wedstrijden-pagina — verplaatst alle ALLSTARS-testwedstrijden van een gekozen datum naar een andere datum in één klik. Handig voor het testen van de planner met realistische toekomstige wedstrijden.
+
+### Fixed
+- Planner: teams voor wie de leeftijdscategorie niet herkend wordt (bijv. toernooicommissie) worden neutraal weergegeven in de dagplanning — niet langer rood gemarkeerd als probleem.
+- Planner: leeftijdscategorie 'JO15 Meiden' wordt nu correct herkend als MO15.
+- Spelersfilter en teamregels filteren nu op ClubCode — ALLSTARS-testdata kon voorheen doorlekken in planner-berekeningen van de primaire club.
+- Matchdetails-fouten (HTTP-fout of onleesbare data) leiden nu tot een partieel-fout-markering zodat de synchronisatietijdstempel niet wordt bijgewerkt als gegevens onvolledig zijn.
+
 ## [2.15.0.0] — 2026-06-01
 
 ### Changed
