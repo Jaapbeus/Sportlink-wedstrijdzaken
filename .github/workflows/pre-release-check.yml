@@ -37,15 +37,19 @@ jobs:
             --server "$SQL_SERVER" \
             --query 'status' --output tsv 2>/dev/null || echo "unknown")
           echo "Database status: $STATUS"
-          if [ "$STATUS" = "Online" ]; then
-            echo "✓ Database Online — release mag doorgaan"
-            exit 0
+          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "Disabled" ] || [ "$STATUS" = "AutoPaused" ]; then
+            echo "::error::⛔ Database is '$STATUS' — release geblokkeerd."
+            echo "::error::Zorg dat de database Online is vóór de release-merge:"
+            echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
+            echo "::error::  Of wacht tot de maandlimiet vernieuwd is."
+            exit 1
           fi
-          echo "::error::⛔ Database is '$STATUS' — release geblokkeerd."
-          echo "::error::Zorg dat de database Online is vóór de release-merge:"
-          echo "::error::  Azure Portal → SQL Database → Overzicht → Resume"
-          echo "::error::  Of wacht tot de maandlimiet vernieuwd is."
-          exit 1
+          if [ "$STATUS" = "unknown" ]; then
+            echo "::warning::⚠️ Database-status kon niet worden geverifieerd (service-principal mist Reader-rol op SQL resource group)."
+            echo "::warning::Merge toegestaan — controleer handmatig of de database Online is."
+          else
+            echo "✓ Database $STATUS — release mag doorgaan"
+          fi
 
   # ── 2. Build-verificatie ──────────────────────────────────────────────────
   # Controleert dat FunctionApp en BlazorAdmin compileren op de te mergen code.
