@@ -30,7 +30,7 @@ jobs:
     if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
     steps:
       - name: Azure inloggen
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -59,10 +59,10 @@ jobs:
     if: always() && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -73,7 +73,7 @@ jobs:
             --output ./output
 
       - name: Artefact uploaden
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: functionapp
           path: ./output
@@ -85,13 +85,13 @@ jobs:
     if: always() && needs.build.result == 'success' && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
     steps:
       - name: Artefact downloaden
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: functionapp
           path: ./output
 
       - name: Azure inloggen
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -109,10 +109,10 @@ jobs:
     if: vars.AZURE_SQL_SERVER_NAME != ''
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Azure inloggen
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -237,11 +237,11 @@ jobs:
 
       - name: Checkout repository
         if: steps.check.outputs.skip == 'false'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: .NET SDK installeren
         if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
