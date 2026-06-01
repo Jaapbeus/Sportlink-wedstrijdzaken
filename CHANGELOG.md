@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.15.0.0] — 2026-06-01
+
+### Changed
+- PlannerService.cs refactored naar dunne facade (2118 → 50 regels) — alle logica verplaatst naar vijf use-case services in `FunctionApp/Planner/Services/`: `AvailabilityService`, `AutoPlanService`, `OptimizationService`, `RescheduleService`, `TeamScheduleService`. Gedeelde utilities en `FieldScheduler` in `PlannerShared`. Bestaande callers ongewijzigd. (#475)
+
 ## [2.14.1.0] — 2026-06-01
 
 ### Fixed
