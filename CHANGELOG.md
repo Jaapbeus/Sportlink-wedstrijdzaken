@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Testdata: het auto-invullen van het uitteam bij selectie van een thuisteam respecteert nu de ingestelde 'Tegenstander (nieuw)' — was voorheen hardcoded op 'FC Onbekend' ook als de gebruiker iets anders had ingevuld. (#498)
+
 ### Security
 - `populate-sunset` endpoint gebruikt nu Easy Auth + RequireAdmin in plaats van function-key authenticatie — brengt het endpoint in lijn met alle andere admin-endpoints en voegt een Entra-audittrail toe.
 - Log-aanroepen in Utilities.cs en MergeStgToHis.cs gebruiken nu structured logging (`LogError(ex, "...")`) in plaats van string-interpolatie met `ex.Message` — voorkomt dat infrastructuurdetails (servernaam, gebruikersnaam) als losse string in Application Insights terechtkomen.
