@@ -50,12 +50,23 @@ jobs:
           fi
 
           if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "AutoPaused" ]; then
-            echo "Database is gepauzeerd — proberen te hervatten via REST API..."
-            SUBSCRIPTION=$(az account show --query id --output tsv)
-            RESUME_URL="https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${SQL_RESOURCE_GROUP}/providers/Microsoft.Sql/servers/${SQL_SERVER}/databases/${SQL_DATABASE}/resume?api-version=2021-11-01"
-            RESUME_RESULT=$(az rest --method post --url "$RESUME_URL" 2>&1) && \
-              echo "Resume API: $RESUME_RESULT" || \
-              echo "::warning::Resume API gaf een fout (Free Limit database hervatten soms pas na Portal-actie): $RESUME_RESULT"
+            echo "Database is gepauzeerd — verbindingspoging om auto-resume te triggeren..."
+
+            # Voeg runner-IP toe aan firewall zodat de TCP-verbinding de database bereikt
+            RUNNER_IP=$(curl -s https://api.ipify.org)
+            RULE_NAME="db-check-resume-${{ github.run_id }}"
+            az sql server firewall-rule create \
+              --resource-group "$SQL_RESOURCE_GROUP" \
+              --server "$SQL_SERVER" \
+              --name "$RULE_NAME" \
+              --start-ip-address "$RUNNER_IP" \
+              --end-ip-address "$RUNNER_IP" 2>/dev/null || echo "Firewall rule aanmaken mislukt — doorgaan"
+
+            # TCP-verbindingspoging triggert Azure SQL Serverless auto-resume (SYN naar poort 1433)
+            timeout 5 bash -c "echo > /dev/tcp/$SQL_SERVER.database.windows.net/1433" 2>/dev/null \
+              && echo "TCP-verbinding gelukt" \
+              || echo "TCP-verbindingspoging verstuurd (auto-resume gestart)"
+
             echo "Wachten op Online status (max 10 minuten)..."
             for i in $(seq 1 40); do
               sleep 15
@@ -73,6 +84,14 @@ jobs:
                 echo "  Database aan het hervatten — wachten..."
               fi
             done
+
+            # Firewall-regel opruimen (ook bij fout)
+            az sql server firewall-rule delete \
+              --resource-group "$SQL_RESOURCE_GROUP" \
+              --server "$SQL_SERVER" \
+              --name "$RULE_NAME" \
+              --yes 2>/dev/null || true
+
             if [ "$STATUS" != "Online" ]; then
               echo "::error::⛔ Database niet Online na 10 minuten wachten (status: $STATUS)."
               echo "::error::Herstel: Azure Portal → SQL Database → Overzicht → Resume, dan deploy opnieuw starten."

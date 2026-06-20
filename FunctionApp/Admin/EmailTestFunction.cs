@@ -65,7 +65,7 @@ public static class EmailTestFunction
             var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
 
             var onderwerp = dto.Onderwerp ?? "";
-            var afzender = dto.Afzender ?? "test@example.com";
+            var afzender = dto.Afzender ?? "trainer@voorbeeld.nl";
             var body = dto.Body ?? "";
 
             var classificatie = await aiService.ClassificeerBerichtAsync(body, onderwerp, afzender);

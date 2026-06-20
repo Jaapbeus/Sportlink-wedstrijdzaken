@@ -89,9 +89,9 @@ public static class FeedbackFunction
             var pat = Environment.GetEnvironmentVariable("GitHubPat");
             var owner = Environment.GetEnvironmentVariable("GitHubOwner")
                      ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY_OWNER") ?? "";
-            var repo = Environment.GetEnvironmentVariable("GitHubRepo") ?? "Sportlink-wedstrijdzaken";
+            var repo = Environment.GetEnvironmentVariable("GitHubRepo");
 
-            if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(owner))
+            if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             {
                 log.LogWarning("GitHubPat/GitHubOwner niet geconfigureerd — feedback-submit niet mogelijk");
                 return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };

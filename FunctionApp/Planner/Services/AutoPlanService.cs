@@ -245,8 +245,8 @@ internal static class AutoPlanService
             catch (Exception ex)
             {
                 response.Mislukt++;
-                response.Fouten.Add($"{item.Wedstrijd}: {ex.Message}");
-                log.LogWarning(ex, "AutoPlan toepassen mislukt voor wedstrijd {Code}", item.WedstrijdCode);
+                log.LogError(ex, "AutoPlan: fout bij toepassen wedstrijd {Wedstrijd} ({Code})", item.Wedstrijd, item.WedstrijdCode);
+                response.Fouten.Add($"{item.Wedstrijd}: technische fout bij toepassen — zie logs");
             }
         }
         log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
