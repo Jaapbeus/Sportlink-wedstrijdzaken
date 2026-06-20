@@ -317,6 +317,14 @@ jobs:
             > BlazorAdmin/wwwroot/appsettings.Production.json
           echo "appsettings.Production.json gegenereerd (inhoud niet gelogd — bevat tenant/client IDs)"
 
+      - name: staticwebapp.config.json CSP-substitutie (#528)
+        if: steps.check.outputs.skip == 'false'
+        env:
+          AZURE_FUNCTIONAPP_URL: ${{ vars.AZURE_FUNCTIONAPP_URL }}
+        run: |
+          sed -i "s|{{AZURE_FUNCTIONAPP_URL}}|${AZURE_FUNCTIONAPP_URL}|g" \
+            BlazorAdmin/wwwroot/staticwebapp.config.json
+
       - name: Blazor WASM publiceren
         if: steps.check.outputs.skip == 'false'
         run: |

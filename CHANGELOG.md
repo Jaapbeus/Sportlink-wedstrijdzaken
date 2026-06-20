@@ -33,6 +33,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Hardcoded club-locatiepad vervangen door generieke placeholder in setup-script. (#517)
 - CI deploy-workflow: database-resume gebruikt nu TCP-verbindingspoging (triggert Azure SQL Serverless auto-resume) in plaats van REST API-aanroep waarvoor onvoldoende RBAC beschikbaar was — lost structureel op dat deploys blijven hangen bij gepauzeerde database.
 - `Start-Debug.ps1` toont nu een waarschuwing als `.githooks/sensitive-patterns.txt` ontbreekt op de ontwikkelmachine. (#514)
+- CSP `connect-src` in `staticwebapp.config.json` gebruikt geen wildcard `*.azurewebsites.net` meer — bij deploy wordt de waarde vervangen door de specifieke URL van de eigen Function App via CI-substitutie. (#528)
+- `DEFAULT 'VRC'` verwijderd uit drie tabeldefinities (`AppSettingsAudit`, `TeamVoorkeurTijden`, `UitgeslotenEmailAdressen`) — vervangen door `CHECK (LEN([ClubCode]) > 0)` conform het patroon van issue #242. Voorkomt stille datavervuiling bij multi-club deployments. (#501)
+- `Test-App.ps1`: schema-repair voor ontbrekende `ClubCode` kolom gebruikt niet meer `DEFAULT 'VRC'` maar `DEFAULT ''` — zelfde principe als boven. (#501)
 
 ## [2.16.0.0] — 2026-06-01
 

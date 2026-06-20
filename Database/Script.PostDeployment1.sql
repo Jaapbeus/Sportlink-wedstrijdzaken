@@ -453,6 +453,13 @@ BEGIN
     );
 END
 GO
+-- #501: Verwijder club-specifieke DEFAULT 'VRC' uit AppSettingsAudit.ClubCode
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_AppSettingsAudit_ClubCode')
+    ALTER TABLE [dbo].[AppSettingsAudit] DROP CONSTRAINT [DF_AppSettingsAudit_ClubCode];
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_AppSettingsAudit_ClubCode')
+    ALTER TABLE [dbo].[AppSettingsAudit] ADD CONSTRAINT [CK_AppSettingsAudit_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
 
 -- v2 — #62: TeamVoorkeurTijden
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamVoorkeurTijden'))
@@ -471,6 +478,13 @@ BEGIN
     );
 END
 GO
+-- #501: Verwijder club-specifieke DEFAULT 'VRC' uit TeamVoorkeurTijden.ClubCode
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamVoorkeurTijden_ClubCode')
+    ALTER TABLE [dbo].[TeamVoorkeurTijden] DROP CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode];
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_TeamVoorkeurTijden_ClubCode')
+    ALTER TABLE [dbo].[TeamVoorkeurTijden] ADD CONSTRAINT [CK_TeamVoorkeurTijden_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
 
 -- v2 — UitgeslotenEmailAdressen: expliciete uitsluitingslijst voor email-verwerking
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.UitgeslotenEmailAdressen'))
@@ -486,6 +500,13 @@ BEGIN
         CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
     );
 END
+GO
+-- #501: Verwijder club-specifieke DEFAULT 'VRC' uit UitgeslotenEmailAdressen.ClubCode
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_UitgeslotenEmailAdressen_ClubCode')
+    ALTER TABLE [dbo].[UitgeslotenEmailAdressen] DROP CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode];
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_UitgeslotenEmailAdressen_ClubCode')
+    ALTER TABLE [dbo].[UitgeslotenEmailAdressen] ADD CONSTRAINT [CK_UitgeslotenEmailAdressen_ClubCode] CHECK (LEN([ClubCode]) > 0);
 GO
 
 -- v2 — #119: ClubCode toevoegen aan planner.EmailVerwerking (multi-club isolatie email-log)
