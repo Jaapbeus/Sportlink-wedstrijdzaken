@@ -39,7 +39,12 @@ public static class GitHubIssueReporter
         var owner = Environment.GetEnvironmentVariable("GitHubOwner")
                  ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY_OWNER")
                  ?? "";
-        var repo = Environment.GetEnvironmentVariable("GitHubRepo") ?? "Sportlink-wedstrijdzaken";
+        var repo = Environment.GetEnvironmentVariable("GitHubRepo");
+        if (string.IsNullOrWhiteSpace(repo))
+        {
+            log.LogError("GitHubRepo niet geconfigureerd — issue-reporting overgeslagen (misconfiguratie)");
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(owner))
         {

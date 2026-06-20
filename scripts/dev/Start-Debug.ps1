@@ -29,6 +29,19 @@ param(
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $pidFile = Join-Path $env:TEMP 'sportlink-debug-pids.txt'
 
+# Controleer of de machine-lokale git-hook patronen aanwezig zijn (#514)
+$hooksPatterns = Join-Path $root ".githooks/sensitive-patterns.txt"
+if (-not (Test-Path $hooksPatterns)) {
+    Write-Host ""
+    Write-Host "⚠️  SETUP ONVOLLEDIG: .githooks/sensitive-patterns.txt ontbreekt!" -ForegroundColor Yellow
+    Write-Host "   Secrets worden niet beschermd door de lokale commit/push hooks." -ForegroundColor Yellow
+    Write-Host "   Fix (eenmalig):" -ForegroundColor Yellow
+    Write-Host "     git config core.hooksPath .githooks" -ForegroundColor Cyan
+    Write-Host "     cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt" -ForegroundColor Cyan
+    Write-Host "   Vul sensitive-patterns.txt daarna aan met installatie-specifieke secrets." -ForegroundColor Yellow
+    Write-Host ""
+}
+
 # --- Sluit vorige debug-vensters via opgeslagen PIDs ---
 Write-Host "Controleer op draaiende services..." -ForegroundColor DarkGray
 

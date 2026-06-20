@@ -163,14 +163,14 @@ internal static class SportlinkSyncPipeline
             }
             catch (JsonSerializationException ex)
             {
-                log.LogError("MATCHDETAILS - JSON-deserialisatiefout: {Message}", ex.Message);
+                log.LogError(ex, "MATCHDETAILS - JSON-deserialisatiefout ({ErrorType})", ex.GetType().Name);
                 return false;
             }
             return true;
         }
         catch (Exception ex)
         {
-            log.LogError("MATCHDETAILS - ophalen mislukt voor {Url}: {Message}", apiUrl, ex.Message);
+            log.LogError(ex, "MATCHDETAILS - ophalen mislukt voor {Url}", apiUrl);
             return false;
         }
     }

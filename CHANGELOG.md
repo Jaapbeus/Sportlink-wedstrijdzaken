@@ -22,8 +22,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Testdata: het auto-invullen van het uitteam bij selectie van een thuisteam respecteert nu de ingestelde 'Tegenstander (nieuw)' — was voorheen hardcoded op 'FC Onbekend' ook als de gebruiker iets anders had ingevuld. (#498)
 
 ### Security
-- `populate-sunset` endpoint gebruikt nu Easy Auth + RequireAdmin in plaats van function-key authenticatie — brengt het endpoint in lijn met alle andere admin-endpoints en voegt een Entra-audittrail toe.
-- Log-aanroepen in Utilities.cs en MergeStgToHis.cs gebruiken nu structured logging (`LogError(ex, "...")`) in plaats van string-interpolatie met `ex.Message` — voorkomt dat infrastructuurdetails (servernaam, gebruikersnaam) als losse string in Application Insights terechtkomen.
+- `populate-sunset` endpoint gebruikt nu Easy Auth + RequireAdmin in plaats van function-key authenticatie — brengt het endpoint in lijn met alle andere admin-endpoints en voegt een Entra-audittrail toe. (#495)
+- Log-aanroepen in Utilities.cs en MergeStgToHis.cs gebruiken nu structured logging (`LogError(ex, "...")`) in plaats van string-interpolatie met `ex.Message` — voorkomt dat infrastructuurdetails (servernaam, gebruikersnaam) als losse string in Application Insights terechtkomen. (#496)
+- Email-log API (`GET /api/beheer/email-log`) retourneert het `FoutMelding` veld niet meer — dit veld kan voor records jonger dan 30 dagen resterend PII bevatten dat nog niet is geanonimiseerd. (#513)
+- `GitHubIssueReporter` en `FeedbackFunction` geven geen stille fallback meer naar een hardcoded repo-naam als `GitHubRepo` niet geconfigureerd is — misconfiguratie wordt nu gedetecteerd en gelogd. (#532)
+- `AutoPlanService` stuurt `ex.Message` niet meer door in de admin-response bij mislukte wedstrijdtoepassing — technische details worden gelogd, de client ontvangt alleen een generieke melding. (#520)
+- `SportlinkSyncPipeline` logt bij JSON-deserialisatiefouten alleen het uitzonderingstype, niet `ex.Message` — voorkomt dat Sportlink-data met spelernamen/namen in logs verschijnt. (#535)
+- `AdminSettingsFunction` valideert veldnamen na de whitelist ook op alfanumerieke tekens — defense-in-depth bovenop de bestaande whitelist. (#515)
+- Test-afzenderadressen geharmoniseerd naar goedgekeurde AVG-placeholder `trainer@voorbeeld.nl` in EmailTestFunction, smoke-test.ps1 en documentatie. (#534, #538, #533)
+- Hardcoded club-locatiepad vervangen door generieke placeholder in setup-script. (#517)
+- CI deploy-workflow: database-resume gebruikt nu TCP-verbindingspoging (triggert Azure SQL Serverless auto-resume) in plaats van REST API-aanroep waarvoor onvoldoende RBAC beschikbaar was — lost structureel op dat deploys blijven hangen bij gepauzeerde database.
+- `Start-Debug.ps1` toont nu een waarschuwing als `.githooks/sensitive-patterns.txt` ontbreekt op de ontwikkelmachine. (#514)
 
 ## [2.16.0.0] — 2026-06-01
 

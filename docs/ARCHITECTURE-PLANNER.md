@@ -271,7 +271,7 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
   "leeftijdsCategorie": "JO11",
   "teamNaam": "[ClubCode] JO11-1",
   "tegenstander": "[Tegenstander] JO11-2",
-  "aangevraagdDoor": "coach@example.com"
+  "aangevraagdDoor": "trainer@voorbeeld.nl"
 }
 ```
 
