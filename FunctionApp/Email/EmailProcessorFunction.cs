@@ -319,18 +319,34 @@ public class EmailProcessorFunction
         await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
         await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
+        var reviewMode = string.Equals(
+            Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+
+        // #543: in review mode geen email versturen — alleen 'Geen AI antwoord' label zetten
+        if (reviewMode)
+        {
+            try
+            {
+                await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
+                await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
+                await graphService.MarkAsReadAsync(email.MessageId);
+                log.LogInformation("Email {Id} review mode — Geen AI antwoord label gezet, geen reply verstuurd", verwerkingId);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
+                try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); } catch { }
+            }
+            return;
+        }
+
         var (onderwerp, antwoordBody) = await BerichtPipeline.BouwTemplateAntwoord(
             classificatie, plannerResponseJson, email, log);
-
-        var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
-        var ontvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
-            ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? email.Afzender
-            : email.Afzender;
 
         // Fail-explicit: alleen AntwoordVerstuurd en MarkAsRead als Graph-send slaagt. (#432)
         try
         {
-            await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
+            await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId);
         }
         catch (Exception ex)
         {
@@ -339,7 +355,7 @@ public class EmailProcessorFunction
             return; // mail NIET als gelezen markeren — wordt bij volgende poll opnieuw opgepikt
         }
 
-        await UpdateAntwoordVerstuurdAsync(verwerkingId, ontvanger, antwoordBody);
+        await UpdateAntwoordVerstuurdAsync(verwerkingId, email.Afzender, antwoordBody);
         await graphService.MarkAsReadAsync(email.MessageId);
 
         log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd (ontvanger niet gelogd — AVG #210)",
@@ -351,7 +367,7 @@ public class EmailProcessorFunction
             && !string.IsNullOrWhiteSpace(classificatie.Datum))
         {
             await StuurTeamleiderNotificatieAsync(
-                graphService, classificatie.TeamNaam, classificatie.Datum, reviewMode, log);
+                graphService, classificatie.TeamNaam, classificatie.Datum, log);
         }
 
         // Stuur vraag door naar coach bij team-contact-opvragen (#168)
@@ -359,12 +375,12 @@ public class EmailProcessorFunction
             && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
         {
             await StuurTeamContactBerichtDoorAsync(
-                graphService, classificatie.TeamNaam, email, reviewMode, log);
+                graphService, classificatie.TeamNaam, email, log);
         }
     }
 
     private static async Task StuurTeamleiderNotificatieAsync(
-        EmailGraphService graphService, string teamNaam, string datum, string? reviewMode, ILogger log)
+        EmailGraphService graphService, string teamNaam, string datum, ILogger log)
     {
         try
         {
@@ -390,12 +406,8 @@ public class EmailProcessorFunction
                 + $"Als je vragen hebt over dit herplanverzoek, neem dan contact op met de veldplanner.\n\n"
                 + $"Met vriendelijke groet,\n{plannerNaam}";
 
-            var notificatieOntvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
-                ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? teamleider.Emailadres
-                : teamleider.Emailadres;
-
             await graphService.SendReplyAsync(
-                notificatieOntvanger,
+                teamleider.Emailadres,
                 $"Herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}",
                 notificatieBody,
                 null);
@@ -409,8 +421,7 @@ public class EmailProcessorFunction
     }
 
     private static async Task StuurTeamContactBerichtDoorAsync(
-        EmailGraphService graphService, string teamNaam, InkomendBericht email,
-        string? reviewMode, ILogger log)
+        EmailGraphService graphService, string teamNaam, InkomendBericht email, ILogger log)
     {
         try
         {
@@ -428,14 +439,10 @@ public class EmailProcessorFunction
                      + $"---\n{email.Body}\n---\n\n"
                      + "U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.";
 
-            var coachOntvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
-                ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? coach.Emailadres
-                : coach.Emailadres;
-
             // AVG: Reply-To = email.Afzender zodat coach rechtstreeks kan antwoorden
             // BCC coördinator voor audit; coach-email nooit in logs
             await graphService.StuurTeamContactDoorAsync(
-                coachOntvanger, subject, body, email.Afzender, coordinatorEmail);
+                coach.Emailadres, subject, body, email.Afzender, coordinatorEmail);
 
             log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", teamNaam);
         }
