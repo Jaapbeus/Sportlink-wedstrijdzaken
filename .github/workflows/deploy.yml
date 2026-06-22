@@ -113,7 +113,7 @@ jobs:
     if: always() && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: .NET SDK installeren
         uses: actions/setup-dotnet@v5
@@ -164,7 +164,7 @@ jobs:
     if: vars.AZURE_SQL_SERVER_NAME != ''
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Azure inloggen
         uses: azure/login@v3
@@ -292,7 +292,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.check.outputs.skip == 'false'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: .NET SDK installeren
         if: steps.check.outputs.skip == 'false'

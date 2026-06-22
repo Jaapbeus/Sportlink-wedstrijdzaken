@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout (volledige geschiedenis voor CHANGELOG-parsing)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
