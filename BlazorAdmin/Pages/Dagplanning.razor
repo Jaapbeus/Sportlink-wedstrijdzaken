@@ -16,7 +16,7 @@
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label class="form-label">Datum</label>
-                <input type="date" class="form-control" @bind="_datumDt" />
+                <input type="date" class="form-control" @bind="_datumDt" @bind:after="OnDatumChanged" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Buffer (min)</label>
@@ -29,6 +29,55 @@
             </div>
             <div class="col-md-5"></div>
         </div>
+    </div>
+</div>
+
+@* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2">
+        <span class="fw-semibold">Veldbezetting op @_datumDt.ToString("dd-MM-yyyy")</span>
+        @if (_veldbezettingBezig)
+        {
+            <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+        }
+    </div>
+    <div class="card-body p-0">
+        @if (!string.IsNullOrEmpty(_veldbezettingError))
+        {
+            <div class="alert alert-danger m-3 mb-0">@_veldbezettingError</div>
+        }
+        else if (!_veldbezettingBezig && _veldbezetting.Count == 0)
+        {
+            <p class="text-muted p-3 mb-0">Geen wedstrijden gepland op deze datum.</p>
+        }
+        else if (_veldbezetting.Count > 0)
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tijd</th>
+                            <th>Team</th>
+                            <th>Tegenstander</th>
+                            <th>Veld</th>
+                            <th>Competitie</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _veldbezetting)
+                        {
+                            <tr>
+                                <td>@(item.AanvangsTijd ?? "—")</td>
+                                <td>@item.TeamNaam</td>
+                                <td>@(item.Uitteam ?? "—")</td>
+                                <td>@(item.Veld ?? "—")</td>
+                                <td>@(item.Competitiesoort ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
 </div>
 
@@ -394,6 +443,11 @@
     private string _visTab = "optimaal";
     private AutoPlanResponseDto? _plan;
 
+    // Directe veldbezetting (#566)
+    private List<VeldbezettingItemDto> _veldbezetting = new();
+    private bool _veldbezettingBezig;
+    private string? _veldbezettingError;
+
     // Klassiek optimaliseer-flow
     private string _doel = "";
     private string _gewensteEindtijdStr = "16:15";
@@ -413,12 +467,45 @@
         ClubSelector.OnChange += OnClubChanged;
     }
 
-    private void OnClubChanged() => InvokeAsync(() =>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVeldbezettingAsync();
+    }
+
+    private async Task OnDatumChanged()
     {
         _plan = null;
         _klassiekResultaat = null;
         _errorMessage = null;
         _toepassenMelding = null;
+        await LoadVeldbezettingAsync();
+    }
+
+    private async Task LoadVeldbezettingAsync()
+    {
+        _veldbezettingBezig = true;
+        _veldbezettingError = null;
+        try
+        {
+            var result = await Api.GetVeldbezettingAsync(DatumStr);
+            if (result.Success)
+                _veldbezetting = result.Data ?? new();
+            else
+            {
+                _veldbezetting = new();
+                _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
+            }
+        }
+        finally { _veldbezettingBezig = false; }
+    }
+
+    private void OnClubChanged() => InvokeAsync(async () =>
+    {
+        _plan = null;
+        _klassiekResultaat = null;
+        _errorMessage = null;
+        _toepassenMelding = null;
+        await LoadVeldbezettingAsync();
         StateHasChanged();
     });
 

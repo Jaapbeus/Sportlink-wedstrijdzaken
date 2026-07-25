@@ -220,6 +220,27 @@ internal static class AutoPlanService
         };
     }
 
+    // Lichtgewicht "wat staat er nu gepland"-weergave (#566): geen FieldScheduler-berekening,
+    // alleen de ruwe wedstrijddata die AutoPlanAsync anders ook al zonder optimalisatie zou tonen.
+    public static async Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
+    {
+        var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+        return wedstrijden
+            .Select(w => new VeldbezettingItem
+            {
+                WedstrijdCode = w.WedstrijdCode,
+                Wedstrijd = w.Wedstrijd,
+                TeamNaam = w.TeamNaam,
+                Uitteam = w.Uitteam,
+                AanvangsTijd = w.AanvangsTijd,
+                Veld = w.Veld,
+                Competitiesoort = w.Competitiesoort,
+                LeeftijdsCategorie = w.LeeftijdsCategorie
+            })
+            .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
+            .ToList();
+    }
+
     public static async Task<AutoPlanToepassenResponse> AutoPlanToepassenAsync(
         AutoPlanToepassenRequest request, string clubCode, ILogger log)
     {

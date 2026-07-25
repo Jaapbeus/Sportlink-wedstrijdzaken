@@ -34,6 +34,9 @@ namespace SportlinkFunction.Planner
             AutoPlanToepassenRequest request, string clubCode, ILogger log)
             => AutoPlanService.AutoPlanToepassenAsync(request, clubCode, log);
 
+        public static Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
+            => AutoPlanService.VeldbezettingAsync(datum, clubCode);
+
         public static Task<OptimaliseerResponse> OptimaliseerAsync(
             OptimaliseerRequest request, string? clubCode, ILogger log)
             => OptimizationService.OptimaliseerAsync(request, clubCode, log);

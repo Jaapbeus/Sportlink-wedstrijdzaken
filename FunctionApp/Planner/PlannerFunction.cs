@@ -469,6 +469,37 @@ namespace SportlinkFunction.Planner
             }
         }
 
+        // Lichtgewicht "wat staat er nu gepland"-weergave (#566) — zonder FieldScheduler-berekening.
+        [Function("Veldbezetting")]
+        public static async Task<IActionResult> Veldbezetting(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/veldbezetting")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("Veldbezetting");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
+            try
+            {
+                var datumParam = req.Query["datum"].ToString();
+                if (string.IsNullOrWhiteSpace(datumParam) || !DateOnly.TryParse(datumParam, out var datum))
+                    return new BadRequestObjectResult(new { error = "Query parameter 'datum' (yyyy-MM-dd) is verplicht." });
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
+                    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
+                log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
+
+                var items = await PlannerService.VeldbezettingAsync(datum, clubCode);
+                return new OkObjectResult(items);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Veldbezetting failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
         [Function("GetTeamSchedule")]
         public static async Task<IActionResult> GetTeamSchedule(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/team-schedule")] HttpRequest req,

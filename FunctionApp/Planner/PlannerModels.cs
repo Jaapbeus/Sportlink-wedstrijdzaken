@@ -319,6 +319,20 @@ namespace SportlinkFunction.Planner
         public int? BufferMinuten { get; set; }
     }
 
+    // ── Veldbezetting: lichtgewicht "wat staat er nu gepland"-weergave (#566) ──
+    // Bewust zonder FieldScheduler-berekening — puur een projectie van WedstrijdRaw.
+    public class VeldbezettingItem
+    {
+        public long? WedstrijdCode { get; set; }
+        public string Wedstrijd { get; set; } = string.Empty;
+        public string TeamNaam { get; set; } = string.Empty;
+        public string? Uitteam { get; set; }
+        public string? AanvangsTijd { get; set; }
+        public string? Veld { get; set; }
+        public string? Competitiesoort { get; set; }
+        public string? LeeftijdsCategorie { get; set; }
+    }
+
     public class AutoPlanWedstrijdItem
     {
         public long? WedstrijdCode { get; set; }
