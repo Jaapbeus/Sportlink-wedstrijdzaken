@@ -50,30 +50,30 @@ namespace SportlinkFunction.Planner
         public static Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date, string? clubCode = null)
             => PlannerAvailabilityRepository.GetAvailableFieldsAsync(date, clubCode);
 
-        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(DateOnly date)
-            => PlannerAvailabilityRepository.GetFieldOccupationsAsync(date);
+        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(DateOnly date, string? clubCode = null)
+            => PlannerAvailabilityRepository.GetFieldOccupationsAsync(date, clubCode);
 
-        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingAsync(DateOnly date, long excludeWedstrijdcode)
-            => PlannerAvailabilityRepository.GetFieldOccupationsExcludingAsync(date, excludeWedstrijdcode);
+        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingAsync(DateOnly date, long excludeWedstrijdcode, string? clubCode = null)
+            => PlannerAvailabilityRepository.GetFieldOccupationsExcludingAsync(date, excludeWedstrijdcode, clubCode);
 
-        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchAsync(DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer)
-            => PlannerAvailabilityRepository.GetFieldOccupationsExcludingMatchAsync(date, wedstrijdNaam, aanvangsTijd, veldNummer);
+        public static Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchAsync(DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer, string? clubCode = null)
+            => PlannerAvailabilityRepository.GetFieldOccupationsExcludingMatchAsync(date, wedstrijdNaam, aanvangsTijd, veldNummer, clubCode);
 
         // ── Match ──
-        public static Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(string teamNaam, DateOnly date)
-            => PlannerMatchRepository.GetTeamMatchesOnDateAsync(teamNaam, date);
+        public static Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(string teamNaam, DateOnly date, string? clubCode = null)
+            => PlannerMatchRepository.GetTeamMatchesOnDateAsync(teamNaam, date, clubCode);
 
-        public static Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(DateOnly date)
-            => PlannerMatchRepository.GetGeplandeWedstrijdenOnlyAsync(date);
+        public static Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(DateOnly date, string? clubCode = null)
+            => PlannerMatchRepository.GetGeplandeWedstrijdenOnlyAsync(date, clubCode);
 
-        public static Task<ZoekWedstrijdResponse?> FindMatchAsync(string teamNaam, DateOnly date)
-            => PlannerMatchRepository.FindMatchAsync(teamNaam, date);
+        public static Task<ZoekWedstrijdResponse?> FindMatchAsync(string teamNaam, DateOnly date, string? clubCode = null)
+            => PlannerMatchRepository.FindMatchAsync(teamNaam, date, clubCode);
 
-        public static Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(string tegenstander, DateOnly? datum)
-            => PlannerMatchRepository.FindMatchByOpponentAsync(tegenstander, datum);
+        public static Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(string tegenstander, DateOnly? datum, string? clubCode = null)
+            => PlannerMatchRepository.FindMatchByOpponentAsync(tegenstander, datum, clubCode);
 
-        public static Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(long wedstrijdcode)
-            => PlannerMatchRepository.FindMatchByCodeAsync(wedstrijdcode);
+        public static Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(long wedstrijdcode, string? clubCode = null)
+            => PlannerMatchRepository.FindMatchByCodeAsync(wedstrijdcode, clubCode);
 
         public static Task<int> SavePlannedMatchAsync(
             DateOnly datum, TimeOnly aanvangsTijd, TimeOnly eindTijd, int veldNummer,
@@ -93,18 +93,22 @@ namespace SportlinkFunction.Planner
                    huidigeAanvangsTijd, huidigeVeldNaam, gewensteAanvangsTijd, gewenstVeldNummer,
                    aangevraagdDoor, opmerking);
 
-        public static Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log)
-            => PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(log);
+        public static Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log, string? clubCode = null)
+            => PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(log, clubCode);
 
-        public static Task<bool> TeamExistsAsync(string team)
-            => PlannerMatchRepository.TeamExistsAsync(team);
+        public static Task<bool> TeamExistsAsync(string team, string? clubCode = null)
+            => PlannerMatchRepository.TeamExistsAsync(team, clubCode);
 
-        public static Task<List<TeamScheduleWedstrijd>> GetFutureMatchesForTeamAsync(string team, DateOnly van, DateOnly tot)
-            => PlannerMatchRepository.GetFutureMatchesForTeamAsync(team, van, tot);
+        public static Task<List<TeamScheduleWedstrijd>> GetFutureMatchesForTeamAsync(string team, DateOnly van, DateOnly tot, string? clubCode = null)
+            => PlannerMatchRepository.GetFutureMatchesForTeamAsync(team, van, tot, clubCode);
 
         // ── Team Rules ──
         public static Task<List<TeamRegel>> GetTeamRulesAsync(string teamNaam, string? clubCode = null)
             => TeamRulesRepository.GetTeamRulesAsync(teamNaam, clubCode);
+
+        public static Task<Dictionary<string, List<TeamRegel>>> GetTeamRulesForTeamsAsync(
+            IEnumerable<string> teamNamen, string? clubCode = null)
+            => TeamRulesRepository.GetTeamRulesForTeamsAsync(teamNamen, clubCode);
 
         public static Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
             => TeamRulesRepository.GetAllTeamBuffersAsync(clubCode);

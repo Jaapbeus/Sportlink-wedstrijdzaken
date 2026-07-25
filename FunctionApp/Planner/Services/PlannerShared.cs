@@ -154,17 +154,26 @@ internal static class PlannerShared
         };
     }
 
+    /// <summary>
+    /// Doordeweekse waarschuwing — clubneutraal en configuratiegedreven (#576).
+    /// Nooit vaste veldnummers in de tekst: welke velden doordeweeks vrij zijn volgt uit
+    /// dbo.VeldBeschikbaarheid en verschilt per club en per seizoen. Een hardcoded aanname
+    /// ("alleen veld 5") is bij een andere clubconfiguratie feitelijk onjuist.
+    /// </summary>
+    internal static string BouwWeekdayWarning(DateOnly date)
+        => $"{date.ToString("dddd", NL)}: doordeweeks — kunstgrasvelden mogelijk in gebruik voor training. Controleer veldbeschikbaarheid.";
+
+    internal static bool IsWeekday(DateOnly date)
+        => date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday;
+
     internal static void AddWeekdayWarning(CheckAvailabilityResponse response, DateOnly date)
     {
-        if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
-            response.Waarschuwingen.Add(
-                $"{date.ToString("dddd", NL)}: doordeweeks — kunstgrasvelden mogelijk in gebruik voor training. Controleer veldbeschikbaarheid.");
+        if (IsWeekday(date)) response.Waarschuwingen.Add(BouwWeekdayWarning(date));
     }
 
     internal static void AddWeekdayWarning(List<string> waarschuwingen, DateOnly date)
     {
-        if (date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday)
-            waarschuwingen.Add($"{date.ToString("dddd", NL)}: alleen veld 5 beschikbaar (veld 1-4 training).");
+        if (IsWeekday(date)) waarschuwingen.Add(BouwWeekdayWarning(date));
     }
 }
 

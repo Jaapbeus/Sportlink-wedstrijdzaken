@@ -5,13 +5,18 @@ namespace SportlinkFunction.Planner;
 /// <summary>
 /// Use-case service voor beschikbaarheidscontroles.
 /// Extracted uit PlannerService (#475).
+///
+/// <paramref name="clubCode"/> is optioneel: kanalen zonder clubcontext (e-mailflow,
+/// timer-triggers) vallen terug op de primaire club van deze deployment. Alle
+/// onderliggende queries zijn hard gescoped — zie <see cref="ClubScope"/> (#573, #580).
 /// </summary>
 internal static class AvailabilityService
 {
     public static async Task<CheckAvailabilityResponse> CheckAvailabilityAsync(
-        CheckAvailabilityRequest request, ILogger log)
+        CheckAvailabilityRequest request, ILogger log, string? clubCode = null)
     {
         var response = new CheckAvailabilityResponse();
+        clubCode = ClubScope.Resolve(clubCode);
 
         if (!DateOnly.TryParse(request.Datum, out var date))
         {
@@ -30,7 +35,7 @@ internal static class AvailabilityService
 
         if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
         {
-            speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie);
+            speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie, clubCode);
             if (speeltijd == null)
             {
                 response.Reden = $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
@@ -61,7 +66,7 @@ internal static class AvailabilityService
 
         if (!string.IsNullOrEmpty(request.TeamNaam))
         {
-            var teamMatches = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date);
+            var teamMatches = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date, clubCode);
             if (teamMatches.Count > 0)
             {
                 var conflict = teamMatches[0];
@@ -78,7 +83,7 @@ internal static class AvailabilityService
             }
         }
 
-        var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+        var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
         if (availableFields.Count == 0)
         {
             response.Reden = $"Geen wedstrijden mogelijk op {date.DayOfWeek switch
@@ -90,15 +95,15 @@ internal static class AvailabilityService
             return response;
         }
 
-        var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
-        var velden      = await PlannerDataAccess.GetVeldenAsync();
+        var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log, clubCode);
+        var velden      = await PlannerDataAccess.GetVeldenAsync(clubCode);
         var teamRules   = new List<TeamRegel>();
         if (!string.IsNullOrEmpty(request.TeamNaam))
-            teamRules = await PlannerDataAccess.GetTeamRulesAsync(request.TeamNaam);
+            teamRules = await PlannerDataAccess.GetTeamRulesAsync(request.TeamNaam, clubCode);
 
-        var allTeamRules = new Dictionary<string, List<TeamRegel>>();
-        foreach (var occ in occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!).Distinct())
-            allTeamRules[occ] = await PlannerDataAccess.GetTeamRulesAsync(occ);
+        // Één bulkquery voor alle bezette teams i.p.v. één query per team (#575)
+        var allTeamRules = await PlannerDataAccess.GetTeamRulesForTeamsAsync(
+            occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), clubCode);
 
         TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date);
         if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
@@ -191,8 +196,9 @@ internal static class AvailabilityService
     }
 
     public static async Task<DoordeweeksBeschikbaarResponse> CheckDoordeweeksBeschikbaarAsync(
-        DoordeweeksBeschikbaarRequest request, ILogger log)
+        DoordeweeksBeschikbaarRequest request, ILogger log, string? clubCode = null)
     {
+        clubCode = ClubScope.Resolve(clubCode);
         var response = new DoordeweeksBeschikbaarResponse { DagFilter = request.DagFilter };
         var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync()
             ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6));
@@ -201,7 +207,7 @@ internal static class AvailabilityService
         int? gewensteDuur = request.DuurMinuten;
         if (!gewensteDuur.HasValue && !string.IsNullOrEmpty(request.LeeftijdsCategorie))
         {
-            var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie);
+            var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie, clubCode);
             if (speeltijd != null) gewensteDuur = speeltijd.WedstrijdTotaal;
         }
 
@@ -220,7 +226,7 @@ internal static class AvailabilityService
             if (date.DayOfWeek < DayOfWeek.Monday || date.DayOfWeek > DayOfWeek.Thursday) continue;
             if (dagFilter.HasValue && date.DayOfWeek != dagFilter.Value) continue;
 
-            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+            var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
             if (availableFields.Count == 0) continue;
 
             TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date);
@@ -230,7 +236,7 @@ internal static class AvailabilityService
                 if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
                     field.BeschikbaarTot = sunset.Value;
 
-            var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
+            var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log, clubCode);
 
             foreach (var field in availableFields)
             {

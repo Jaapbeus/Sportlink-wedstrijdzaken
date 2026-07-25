@@ -9,11 +9,12 @@ namespace SportlinkFunction.Planner;
 internal static class RescheduleService
 {
     public static async Task<HerplanCheckResponse> CheckRescheduleAvailabilityAsync(
-        HerplanCheckRequest request, ILogger log)
+        HerplanCheckRequest request, ILogger log, string? clubCode = null)
     {
         var response = new HerplanCheckResponse();
+        clubCode = ClubScope.Resolve(clubCode);
 
-        var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode);
+        var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode, clubCode);
         if (match == null)
         {
             response.Reden = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden.";
@@ -30,7 +31,7 @@ internal static class RescheduleService
         int duurMinuten = match.DuurMinuten;
         decimal veldFractie = match.VeldDeelGebruik;
 
-        var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date);
+        var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
         if (availableFields.Count == 0)
         {
             response.Reden = "Geen velden beschikbaar op deze dag.";
@@ -38,17 +39,17 @@ internal static class RescheduleService
         }
 
         TimeOnly.TryParse(match.AanvangsTijd, out var matchStart);
-        var velden     = await PlannerDataAccess.GetVeldenAsync();
+        var velden     = await PlannerDataAccess.GetVeldenAsync(clubCode);
         var matchVeld  = velden.FirstOrDefault(v => match.VeldNaam != null && match.VeldNaam.StartsWith(v.VeldNaam));
         int matchVeldNr = matchVeld?.VeldNummer ?? 0;
 
         var occupations = await SportlinkApiClient.GetFieldOccupationsExcludingMatchWithApiAsync(
-            date, match.Wedstrijd, matchStart, matchVeldNr, log);
+            date, match.Wedstrijd, matchStart, matchVeldNr, log, clubCode);
 
-        var teamRules    = new List<TeamRegel>();
-        var allTeamRules = new Dictionary<string, List<TeamRegel>>();
-        foreach (var occ in occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!).Distinct())
-            allTeamRules[occ] = await PlannerDataAccess.GetTeamRulesAsync(occ);
+        var teamRules = new List<TeamRegel>();
+        // Één bulkquery voor alle bezette teams i.p.v. één query per team (#575)
+        var allTeamRules = await PlannerDataAccess.GetTeamRulesForTeamsAsync(
+            occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), clubCode);
 
         TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date);
         if (sunset == null) sunset = SunsetCalculator.GetSunset(date);

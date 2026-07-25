@@ -1223,3 +1223,80 @@ BEGIN
         UNIQUE ([ClubCode], [Datum], [AanvangsTijd], [VeldNummer], [VeldDeelGebruik]);
 END
 GO
+
+-- ============================================================
+-- #580 / #574: ClubCode en Wedstrijdcode in planner.AlleWedstrijdenOpVeld
+--
+-- De bezettingsquery filterde alleen op datum. In een database met productieclub +
+-- ALLSTARS-demodata leverde dat clubvreemde bezetting op → onjuiste beschikbaarheid
+-- en foutieve automatische "niet mogelijk"-antwoorden.
+-- Herplan-exclusie gebruikte daarnaast een tekst-contains op de wedstrijdnaam; dat
+-- matcht ook deelstrings (code 123 in 3123). Wedstrijdcode is nu een echte kolom.
+--
+-- his.matches.ClubCode is nullable (migratie 001): niet-gestempelde rijen horen bij de
+-- primaire club — vandaar ISNULL(m.ClubCode, a.ClubCode). Zonder die tolerantie zouden
+-- legacy-wedstrijden uit de bezetting vallen → onderschatte bezetting → dubbele boekingen.
+--
+-- CREATE OR ALTER is idempotent en houdt de definitie gelijk aan
+-- Database/planner/Views/AlleWedstrijdenOpVeld.sql — houd beide synchroon.
+--
+-- ORDER BY [ClubCode] i.p.v. ORDER BY [Id]: dbo.AppSettings heeft geen Id-kolom, dus de
+-- definitie in het DB-project compileerde niet (Msg 207) — zelfde valkuil als #564.
+-- ============================================================
+CREATE OR ALTER VIEW [planner].[AlleWedstrijdenOpVeld]
+AS
+SELECT
+    CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
+    CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
+    DATEADD(MINUTE,
+        s.[WedstrijdTotaal],
+        CAST(CAST(m.[kaledatum] AS DATE) AS DATETIME) + CAST(m.[aanvangstijd] AS DATETIME)
+    )                                                                               AS EindTijd,
+    v.[VeldNummer],
+    COALESCE(s.[Veldafmeting], 1.00)                                                AS VeldDeelGebruik,
+    t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
+    m.[teamnaam]                                                                    AS TeamNaam,
+    m.[wedstrijd]                                                                   AS Wedstrijd,
+    RTRIM(SUBSTRING(m.[veld], 7, 10))                                               AS VeldSubpositie,
+    'Competitie'                                                                    AS Bron,
+    ISNULL(m.[ClubCode], a.[ClubCode])                                              AS ClubCode,
+    CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
+FROM [his].[matches] m
+CROSS APPLY (SELECT TOP 1 [ClubCode], [Accommodatie] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [ClubCode]) a
+LEFT JOIN [his].[teams] t
+    ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+   AND ISNULL(t.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
+LEFT JOIN [dbo].[Speeltijden] s
+    ON s.[Leeftijd] = CASE
+        WHEN m.[teamnaam] LIKE a.[ClubCode] + ' G[0-9]%' THEN 'G'
+        ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
+    END
+   AND s.[ClubCode] = a.[ClubCode]
+LEFT JOIN [dbo].[Velden] v
+    ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
+   AND v.[ClubCode] = a.[ClubCode]
+WHERE m.[accommodatie] LIKE '%' + a.[Accommodatie] + '%'
+  AND m.[status] <> 'Afgelast'
+  AND m.[aanvangstijd] IS NOT NULL
+  AND v.[VeldNummer] IS NOT NULL
+  AND s.[WedstrijdTotaal] IS NOT NULL
+
+UNION ALL
+
+SELECT
+    [Datum],
+    [AanvangsTijd],
+    [EindTijd],
+    [VeldNummer],
+    [VeldDeelGebruik],
+    [LeeftijdsCategorie],
+    [TeamNaam],
+    COALESCE([TeamNaam], '') + ' - ' + COALESCE([Tegenstander], '')                 AS Wedstrijd,
+    ''                                                                              AS VeldSubpositie,
+    'Planner'                                                                       AS Bron,
+    [ClubCode],
+    [SportlinkWedstrijdCode]                                                        AS Wedstrijdcode
+FROM [planner].[GeplandeWedstrijden]
+WHERE [Status] <> 'Geannuleerd'
+  AND [IsVervallen] = 0;
+GO

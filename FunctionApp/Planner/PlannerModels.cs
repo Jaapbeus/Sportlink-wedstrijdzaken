@@ -111,6 +111,9 @@ namespace SportlinkFunction.Planner
         public string? LeeftijdsCategorie { get; set; }
         public string? TeamNaam { get; set; }
         public string? Wedstrijd { get; set; }
+        // Sportlink-wedstrijdcode — exacte sleutel voor herplan-exclusie (#574).
+        // Null voor planner-slots die nog geen Sportlink-tegenhanger hebben.
+        public long? Wedstrijdcode { get; set; }
         public string Bron { get; set; } = string.Empty;
     }
 

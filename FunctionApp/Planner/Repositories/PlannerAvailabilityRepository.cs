@@ -39,14 +39,22 @@ internal static class PlannerAvailabilityRepository
         return results;
     }
 
-    internal static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(DateOnly date)
+    /// <summary>
+    /// Veldbezetting op één datum, hard gescoped op ClubCode (#580).
+    /// De view <c>planner.AlleWedstrijdenOpVeld</c> levert ClubCode per rij; zonder dit
+    /// filter mengt demodata (ALLSTARS) met productiedata en worden bezettingsslots
+    /// onjuist berekend.
+    /// </summary>
+    internal static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(
+        DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT [Datum], [AanvangsTijd], [EindTijd], [VeldNummer], [VeldDeelGebruik],
-                   [LeeftijdsCategorie], [TeamNaam], [Wedstrijd], [VeldSubpositie], [Bron]
+                   [LeeftijdsCategorie], [TeamNaam], [Wedstrijd], [VeldSubpositie], [Bron],
+                   [Wedstrijdcode]
             FROM (
                 SELECT *, ROW_NUMBER() OVER (
                     PARTITION BY [VeldNummer], [AanvangsTijd], [Wedstrijd]
@@ -54,9 +62,11 @@ internal static class PlannerAvailabilityRepository
                 ) AS rn
                 FROM [planner].[AlleWedstrijdenOpVeld]
                 WHERE [Datum] = @date
+                  AND [ClubCode] = {ClubScope.ClubCodeParam}
             ) sub WHERE rn = 1
         ", conn);
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
+        ClubScope.AddClubParam(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -73,24 +83,35 @@ internal static class PlannerAvailabilityRepository
                 TeamNaam           = reader.IsDBNull(6) ? null : reader.GetString(6),
                 Wedstrijd          = reader.IsDBNull(7) ? null : reader.GetString(7),
                 VeldSubpositie     = reader.IsDBNull(8) ? null : reader.GetString(8)?.Trim(),
-                Bron               = reader.GetString(9)
+                Bron               = reader.GetString(9),
+                Wedstrijdcode      = reader.IsDBNull(10) ? null : reader.GetInt64(10)
             });
         }
         return results;
     }
 
     internal static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingAsync(
-        DateOnly date, long excludeWedstrijdcode)
+        DateOnly date, long excludeWedstrijdcode, string? clubCode = null)
     {
-        var all = await GetFieldOccupationsAsync(date);
-        return all.Where(o => o.Wedstrijd == null ||
-            !o.Wedstrijd.Contains(excludeWedstrijdcode.ToString())).ToList();
+        var all = await GetFieldOccupationsAsync(date, clubCode);
+        return FilterExcludingWedstrijdcode(all, excludeWedstrijdcode);
     }
 
+    /// <summary>
+    /// Sluit exact één wedstrijd uit op wedstrijdcode (#574).
+    /// Nooit op tekst-contains in de wedstrijdnaam: code 123 matcht dan ook 3123, en de
+    /// filtering valt stilzwijgend om als de opmaak van de wedstrijdnaam verandert.
+    /// Rijen zonder wedstrijdcode (planner-slots zonder Sportlink-tegenhanger) blijven staan.
+    /// </summary>
+    internal static List<BestaandeWedstrijd> FilterExcludingWedstrijdcode(
+        List<BestaandeWedstrijd> occupations, long excludeWedstrijdcode)
+        => occupations.Where(o => o.Wedstrijdcode != excludeWedstrijdcode).ToList();
+
     internal static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchAsync(
-        DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer)
+        DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer,
+        string? clubCode = null)
     {
-        var all = await GetFieldOccupationsAsync(date);
+        var all = await GetFieldOccupationsAsync(date, clubCode);
         return all.Where(o =>
             !(o.VeldNummer == veldNummer &&
               o.AanvangsTijd == aanvangsTijd &&

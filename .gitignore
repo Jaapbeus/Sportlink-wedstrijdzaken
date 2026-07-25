@@ -109,3 +109,7 @@ exports/*.csv
 exports/*.xlsx
 exports/*.xls
 exports/teambegeleiding*.csv
+
+# ── Playwright MCP — lokale browser-testoutput ────────────────────────────────
+# Console-logs en page-snapshots van MCP-browsersessies; puur lokaal debugmateriaal.
+.playwright-mcp/

@@ -69,7 +69,10 @@ public enum EmailStatus
     AntwoordVerstuurd,
     Review,
     Fout,
-    BuitenScope
+    BuitenScope,
+    // Verwerkt, maar bewust geen automatisch antwoord verstuurd omdat planning mogelijk is —
+    // de coördinator plant handmatig in en koppelt zelf terug (#572).
+    GeenAntwoordNodig
 }
 
 // Few-shot voorbeeld voor classificatie-leren via gevalideerde correcties (#323)
