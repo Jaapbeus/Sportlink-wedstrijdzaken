@@ -1,6 +1,6 @@
 using FluentAssertions;
+using FunctionApp.Tests.Email.TestDoubles;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using SportlinkFunction.Email;
 using Xunit;
 
@@ -11,8 +11,8 @@ public class EmailPersistenceServiceTests
     [Fact]
     public void ResolveClubCode_ZonderProviderWaarde_GooitInvalidOperation()
     {
-        var repo = new Mock<IEmailPersistenceRepository>(MockBehavior.Strict);
-        var service = new EmailPersistenceService(repo.Object, () => null);
+        var repo = new FakeEmailPersistenceRepository();
+        var service = new EmailPersistenceService(repo, () => null);
 
         var act = () => service.ResolveClubCode();
 
@@ -23,49 +23,39 @@ public class EmailPersistenceServiceTests
     [Fact]
     public async Task LaadUitgeslotenAdressenAsync_LeestMetResolvedClubCode()
     {
-        var repo = new Mock<IEmailPersistenceRepository>(MockBehavior.Strict);
         var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "a@x.nl", "b@x.nl" };
-        repo.Setup(r => r.GetExcludedEmailAddressesAsync("VRC")).ReturnsAsync(expected);
-        var service = new EmailPersistenceService(repo.Object, () => "VRC");
+        var repo = new FakeEmailPersistenceRepository();
+        foreach (var address in expected)
+            repo.ExcludedAddressesToReturn.Add(address);
+        var service = new EmailPersistenceService(repo, () => "VRC");
 
         var result = await service.LaadUitgeslotenAdressenAsync(NullLogger.Instance);
 
         result.Should().BeEquivalentTo(expected);
-        repo.VerifyAll();
+        repo.LastExcludedClubCode.Should().Be("VRC");
     }
 
     [Fact]
     public async Task DetecteerReplyOpOnsAntwoordAsync_GeeftClubCodeDoorAanRepository()
     {
-        var repo = new Mock<IEmailPersistenceRepository>(MockBehavior.Strict);
         var expected = (true, (int?)77, "HerplanVerzoek", "samenvatting");
-        repo.Setup(r => r.DetecteerReplyOpOnsAntwoordAsync("conv-1", "VRC", It.IsAny<Microsoft.Extensions.Logging.ILogger>()))
-            .ReturnsAsync(expected);
-        var service = new EmailPersistenceService(repo.Object, () => "VRC");
+        var repo = new FakeEmailPersistenceRepository { DetecteerResult = expected };
+        var service = new EmailPersistenceService(repo, () => "VRC");
 
         var result = await service.DetecteerReplyOpOnsAntwoordAsync("conv-1", NullLogger.Instance);
 
         result.Should().Be(expected);
-        repo.VerifyAll();
+        repo.LastDetecteerCall.Should().Be(("conv-1", "VRC"));
     }
 
     [Fact]
     public async Task InsertClassificatieCorrectieAsync_GebruiktResolvedClubCode()
     {
-        var repo = new Mock<IEmailPersistenceRepository>(MockBehavior.Strict);
-        repo.Setup(r => r.InsertClassificatieCorrectieAsync(
-                1,
-                2,
-                "Origineel",
-                "Juist",
-                "orig",
-                "corr",
-                "VRC"))
-            .Returns(Task.CompletedTask);
-        var service = new EmailPersistenceService(repo.Object, () => "VRC");
+        var repo = new FakeEmailPersistenceRepository();
+        var service = new EmailPersistenceService(repo, () => "VRC");
 
         await service.InsertClassificatieCorrectieAsync(1, 2, "Origineel", "Juist", "orig", "corr");
 
-        repo.VerifyAll();
+        repo.LastCorrectieCall.Should().Be((1, 2, "Origineel", "Juist", "orig", "corr", "VRC"));
     }
 }
