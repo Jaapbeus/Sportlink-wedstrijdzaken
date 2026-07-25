@@ -768,8 +768,20 @@ END
 GO
 
 -- Update the Season and datetable
-DECLARE @SeasonStartMonth INT = (SELECT [SeasonStartMonth] FROM [dbo].[AppSettings])
-EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;
+-- Een scalar subquery zonder aggregatie faalt met Msg 512 zodra dbo.AppSettings meer dan één rij
+-- heeft — en dat is altijd het geval nadat de AllStars FC demo-club verderop in dit script is
+-- geseed. Gevolg: vanaf de tweede deploy brak dit statement en werd dbo.Season/dbo.DateTable niet
+-- meer bijgewerkt, waardoor een nieuw seizoen niet automatisch werd aangemaakt. Zelfde klasse
+-- fout als #435.
+--
+-- MIN() is hier de juiste keuze: dbo.Season en dbo.DateTable zijn clubneutraal (geen ClubCode),
+-- dus het bereik moet de vroegst startende club omvatten. Bewust géén filter op SyncEnabled of
+-- ORDER BY [Id]: SyncEnabled wordt pas verderop in dit script toegevoegd en een Id-kolom bestaat
+-- niet in dbo.AppSettings — beide zouden een compile-fout geven op oudere installaties.
+DECLARE @SeasonStartMonth INT = (SELECT MIN([SeasonStartMonth]) FROM [dbo].[AppSettings]);
+
+IF @SeasonStartMonth IS NOT NULL
+    EXEC [dbo].[sp_UpdateSeasonTable] @SeasonStartMonth;
 GO
 -- ============================================================
 -- #30: Multi-club fundament — ClubCode + Accommodatie
@@ -1167,16 +1179,33 @@ GO
 -- ============================================================
 -- #428: ClubCode in planner.GeplandeWedstrijden + unique constraint
 -- ============================================================
+-- Deze migratie was permanent gebroken: SQL Server compileert een batch volledig vóór uitvoering,
+-- dus de UPDATE en ALTER COLUMN die [ClubCode] noemen faalden op naam-binding (Msg 207/1911/1750)
+-- terwijl de kolom in diezelfde batch nog moest worden toegevoegd. Omdat een batch die niet
+-- compileert in zijn geheel niet draait, werd de kolom ook nooit aangemaakt — bij elke deploy
+-- opnieuw. Opgelost door de DDL af te sluiten met GO en de DML in een aparte batch te zetten.
+-- Ook verwijderd: ORDER BY [Id] — dbo.AppSettings heeft geen Id-kolom.
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'ClubCode')
-BEGIN
     ALTER TABLE [planner].[GeplandeWedstrijden] ADD [ClubCode] NVARCHAR(20) NULL;
-    -- Backfill: koppel bestaande rijen aan de primaire club
+GO
+
+-- Backfill: koppel bestaande rijen aan de primaire club (de enige met SyncEnabled = 1).
+-- SyncEnabled bestaat op dit punt zeker — het wordt hierboven toegevoegd.
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden') AND name = 'ClubCode')
+   AND EXISTS (SELECT 1 FROM [planner].[GeplandeWedstrijden] WHERE [ClubCode] IS NULL)
+BEGIN
     UPDATE [planner].[GeplandeWedstrijden]
-    SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [Id])
+    SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1)
     WHERE [ClubCode] IS NULL;
-    -- NOT NULL na backfill
-    ALTER TABLE [planner].[GeplandeWedstrijden] ALTER COLUMN [ClubCode] NVARCHAR(20) NOT NULL;
 END
+GO
+
+-- NOT NULL na backfill — alleen als er geen NULL's meer over zijn (anders faalt de ALTER)
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID('planner.GeplandeWedstrijden')
+             AND name = 'ClubCode' AND is_nullable = 1)
+   AND NOT EXISTS (SELECT 1 FROM [planner].[GeplandeWedstrijden] WHERE [ClubCode] IS NULL)
+    ALTER TABLE [planner].[GeplandeWedstrijden] ALTER COLUMN [ClubCode] NVARCHAR(20) NOT NULL;
 GO
 
 -- Update unique constraint om ClubCode op te nemen (drop + recreate, idempotent)
