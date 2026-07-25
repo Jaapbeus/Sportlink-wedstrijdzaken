@@ -21,6 +21,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Added
 - KNVB-speeldagenkalender voor seizoen 2026/'27 is opgenomen in de database voor **alle zes districten**: West, Noord, Oost, Zuid, Landelijk en Landelijk jeugd. Per speeldatum is nu bekend of het een competitie-, beker-, inhaal-, nacompetitie- of vrije dag is, welke leeftijdscategorieën actief zijn, en welke schoolvakanties of feestdagen spelen. Clubs buiten district West kunnen de kalender daarmee ook gebruiken.
 
+### Fixed
+- De databasemigratie liep bij elke deploy vast zodra er meer dan één club in de instellingen stond — wat altijd het geval is doordat de AllStars FC democlub wordt aangemaakt. Gevolg: het nieuwe seizoen werd niet meer automatisch aangemaakt en een deel van de migratie werd overgeslagen. Beide zijn verholpen.
+- De kolom die geplande wedstrijden aan een club koppelt werd door een fout in het migratiescript nooit aangemaakt. Daardoor ontbrak de scheiding tussen productie- en demogegevens voor geplande wedstrijden. De migratie werkt nu.
+
 ### Changed
 - De KNVB-verplaatsingsregels waarop de AI herplanverzoeken beoordeelt zijn bijgewerkt naar seizoen 2026/'27. Verzoeken worden niet langer getoetst aan de verlopen deadlines van seizoen 2025/'26. Nieuw toegevoegd: de seizoensdata (competitiestart, winterstop, laatste speelronde, nacompetitie) en de verplaatsingsdeadlines voor de landelijke divisies.
 - Review mode stuurt geen email meer terug aan de coördinator — in plaats daarvan wordt de originele email gemarkeerd met 'Geen AI antwoord' zodat de coördinator deze handmatig kan afhandelen. Interne notificaties (teamleider, team-contact) worden ook onderdrukt tijdens review mode.
