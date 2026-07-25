@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.7.0",
+    "version": "2.8.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -2091,6 +2091,53 @@
             "type": "string",
             "description": "Wat het auto-plan doet met deze wedstrijd",
             "nullable": true
+          }
+        }
+      },
+      "VeldbezettingItem": {
+        "type": "object",
+        "description": "Lichtgewicht projectie van een geplande wedstrijd — zonder scheduling-optimalisatie,\nalleen wat er nu al in Sportlink gepland staat.\n",
+        "properties": {
+          "wedstrijdCode": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "wedstrijd": {
+            "type": "string"
+          },
+          "teamNaam": {
+            "type": "string"
+          },
+          "uitteam": {
+            "type": "string",
+            "nullable": true
+          },
+          "aanvangsTijd": {
+            "type": "string",
+            "nullable": true,
+            "example": "13:00"
+          },
+          "veld": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitiesoort": {
+            "type": "string",
+            "nullable": true
+          },
+          "leeftijdsCategorie": {
+            "type": "string",
+            "nullable": true
+          },
+          "duurMinuten": {
+            "type": "integer",
+            "description": "Wedstrijdduur in minuten uit de speeltijden-configuratie (0 = onbekende leeftijdscategorie)"
+          },
+          "veldafmeting": {
+            "type": "number",
+            "format": "decimal",
+            "description": "Aandeel van een heel veld dat deze wedstrijd gebruikt (1.00 = heel veld)"
           }
         }
       },
@@ -5589,6 +5636,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AutoPlanToepassenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/planner/veldbezetting": {
+      "get": {
+        "tags": [
+          "planner"
+        ],
+        "operationId": "veldbezetting",
+        "summary": "Wedstrijden op een datum ophalen, zonder optimalisatie",
+        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` en `/planner/optimaliseer` uitvoeren. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "datum",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Datum in yyyy-MM-dd formaat",
+            "example": "2026-08-22"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wedstrijden op deze datum, gesorteerd op aanvangstijd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VeldbezettingItem"
+                  }
                 }
               }
             }

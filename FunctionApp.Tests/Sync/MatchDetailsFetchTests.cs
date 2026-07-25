@@ -61,7 +61,7 @@ public class MatchDetailsFetchTests
         var log    = NullLogger.Instance;
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            "http://test/wedstrijd-informatie?wedstrijdcode=1", log, client);
+            "http://test/wedstrijd-informatie?wedstrijdcode=1", "TEST", log, client);
 
         result.Should().BeFalse("een HTTP-fout moet false teruggeven zodat de caller partialFailure zet (#464)");
     }
@@ -73,7 +73,7 @@ public class MatchDetailsFetchTests
         var log    = NullLogger.Instance;
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            "http://test/wedstrijd-informatie?wedstrijdcode=2", log, client);
+            "http://test/wedstrijd-informatie?wedstrijdcode=2", "TEST", log, client);
 
         result.Should().BeFalse("HTTP 500 moet false teruggeven (#464)");
     }
@@ -85,7 +85,7 @@ public class MatchDetailsFetchTests
         var log    = NullLogger.Instance;
 
         var result = await SportlinkSyncPipeline.FetchAndStoreMatchDetailsAsync(
-            "http://test/wedstrijd-informatie?wedstrijdcode=3", log, client);
+            "http://test/wedstrijd-informatie?wedstrijdcode=3", "TEST", log, client);
 
         // JSON-deserialisatiefout geeft false (#464 — JSON-fouten tellen als failure)
         result.Should().BeFalse("een JSON-deserialisatiefout moet false teruggeven (#464)");

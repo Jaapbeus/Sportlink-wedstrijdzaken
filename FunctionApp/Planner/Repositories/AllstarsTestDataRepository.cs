@@ -53,7 +53,11 @@ internal static class AllstarsTestDataRepository
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
                        {LeeftijdNormalisatie.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
                 FROM [his].[matches] m
-                LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[ClubCode] = m.[ClubCode]
+                OUTER APPLY (
+                    SELECT TOP 1 [leeftijdscategorie]
+                    FROM [his].[teams]
+                    WHERE [teamnaam] = m.[teamnaam] AND [ClubCode] = m.[ClubCode]
+                ) t
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
                   AND m.[ClubCode] = @clubCode
                   AND m.[status] <> 'Afgelast'

@@ -41,7 +41,8 @@ namespace SportlinkFunction
 	                        [kalespelsoort]			[nvarchar](50)      NULL,
 	                        [speeldag]				[nvarchar](50)      NULL,
 	                        [speeldagteam]			[nvarchar](100)     NULL,
-	                        [more]					[nvarchar](200)     NULL
+	                        [more]					[nvarchar](200)     NULL,
+	                        [ClubCode]				[nvarchar](20)      NULL
                         ) ON [PRIMARY] ;";
                         break;
 
@@ -98,7 +99,8 @@ namespace SportlinkFunction
                             [competitienaam]            NVARCHAR(200)   NULL,
                             [eigenteam]                 NVARCHAR(50)    NULL,
                             [sportomschrijving]         NVARCHAR(100)   NULL,
-                            [verenigingswedstrijd]      NVARCHAR(50)    NULL
+                            [verenigingswedstrijd]      NVARCHAR(50)    NULL,
+                            [ClubCode]                  NVARCHAR(20)    NULL
                         ) ON [PRIMARY];";
                         break;
 
@@ -166,8 +168,9 @@ namespace SportlinkFunction
                             UitTeamShirtKleur NVARCHAR(200), 
                             UitTeamStraat NVARCHAR(150), 
                             UitTeamPostcodePlaats NVARCHAR(150), 
-                            UitTeamTelefoon NVARCHAR(200), 
-                            UitTeamEmail NVARCHAR(200) );
+                            UitTeamTelefoon NVARCHAR(200),
+                            UitTeamEmail NVARCHAR(200),
+                            ClubCode NVARCHAR(20) NULL );
                         ";
                         break;
                     default:

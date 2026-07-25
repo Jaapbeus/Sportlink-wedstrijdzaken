@@ -27,7 +27,7 @@ internal static class SportlinkStagingRepository
         return list;
     }
 
-    internal static async Task SaveTeamsAsync(List<Team> teams, ILogger log)
+    internal static async Task SaveTeamsAsync(List<Team> teams, string clubCode, ILogger log)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -37,11 +37,12 @@ internal static class SportlinkStagingRepository
                 INSERT INTO [stg].[teams]
                     ([teamcode],[lokaleteamcode],[poulecode],[teamnaam],[competitienaam],[klasse],
                      [poule],[klassepoule],[spelsoort],[competitiesoort],[geslacht],[teamsoort],
-                     [leeftijdscategorie],[kalespelsoort],[speeldag],[speeldagteam],[more])
+                     [leeftijdscategorie],[kalespelsoort],[speeldag],[speeldagteam],[more],[ClubCode])
                 VALUES
                     (@teamcode,@lokaleteamcode,@poulecode,@teamnaam,@competitienaam,@klasse,
                      @poule,@klassepoule,@spelsoort,@competitiesoort,@geslacht,@teamsoort,
-                     @leeftijdscategorie,@kalespelsoort,@speeldag,@speeldagteam,@more)", conn);
+                     @leeftijdscategorie,@kalespelsoort,@speeldag,@speeldagteam,@more,@ClubCode)", conn);
+            cmd.Parameters.AddWithValue("@ClubCode",          clubCode ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@teamcode",          team.teamcode);
             cmd.Parameters.AddWithValue("@lokaleteamcode",    team.lokaleteamcode);
             cmd.Parameters.AddWithValue("@poulecode",         team.poulecode         ?? (object)DBNull.Value);
@@ -64,7 +65,7 @@ internal static class SportlinkStagingRepository
         log.LogInformation("TEAMS - {Count} rows inserted into staging.", teams.Count);
     }
 
-    internal static async Task<int> SaveProgrammaAsync(List<Match> matches, ILogger log)
+    internal static async Task<int> SaveProgrammaAsync(List<Match> matches, string clubCode, ILogger log)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -82,6 +83,7 @@ internal static class SportlinkStagingRepository
                     ,[kaledatum],[vertrektijd],[verzameltijd],[scheidsrechters],[scheidsrechter]
                     ,[veld],[locatie],[plaats],[rijders]
                     ,[kleedkamerthuisteam],[kleedkameruitteam],[kleedkamerscheidsrechter]
+                    ,[ClubCode]
                 ) VALUES (
                      @wedstrijddatum,@wedstrijdcode,@wedstrijdnummer,@datum,@wedstrijd
                     ,@accommodatie,@aanvangstijd,@thuisteam,@thuisteamid,@thuisteamlogo
@@ -91,8 +93,10 @@ internal static class SportlinkStagingRepository
                     ,@kaledatum,@vertrektijd,@verzameltijd,@scheidsrechters,@scheidsrechter
                     ,@veld,@locatie,@plaats,@rijders
                     ,@kleedkamerthuisteam,@kleedkameruitteam,@kleedkamerscheidsrechter
+                    ,@ClubCode
                 )", conn);
             AddMatchParams(cmd, match);
+            cmd.Parameters.AddWithValue("@ClubCode",                   clubCode                         ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@teamnaam",                   match.teamnaam                  ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@teamvolgorde",               match.teamvolgorde);
             cmd.Parameters.AddWithValue("@competitie",                 match.competitie                ?? (object)DBNull.Value);
@@ -117,7 +121,7 @@ internal static class SportlinkStagingRepository
         return inserted;
     }
 
-    internal static async Task<int> MergeUitslagenAsync(List<Match> matches, ILogger log)
+    internal static async Task<int> MergeUitslagenAsync(List<Match> matches, string clubCode, ILogger log)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -146,6 +150,7 @@ internal static class SportlinkStagingRepository
                         ,[uitteamlogo],[competitiesoort],[status],[meer]
                         ,[datumopgemaakt],[uitslag],[uitslag-regulier],[uitslag-nv],[uitslag-s]
                         ,[competitienaam],[eigenteam],[sportomschrijving],[verenigingswedstrijd]
+                        ,[ClubCode]
                     ) VALUES (
                          @wedstrijddatum,@wedstrijdcode,@wedstrijdnummer,@datum,@wedstrijd
                         ,@accommodatie,@aanvangstijd,@thuisteam,@thuisteamid,@thuisteamlogo
@@ -153,8 +158,10 @@ internal static class SportlinkStagingRepository
                         ,@uitteamlogo,@competitiesoort,@status,@meer
                         ,@datumopgemaakt,@uitslag,@uitslagregulier,@uitslagnv,@uitslags
                         ,@competitienaam,@eigenteam,@sportomschrijving,@verenigingswedstrijd
+                        ,@ClubCode
                     )", conn);
             AddMatchParams(cmd, match);
+            cmd.Parameters.AddWithValue("@ClubCode",            clubCode                 ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@datumopgemaakt",      match.datumopgemaakt     ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@uitslag",             match.uitslag            ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@uitslagregulier",     match.uitslag_regulier   ?? (object)DBNull.Value);
@@ -170,7 +177,7 @@ internal static class SportlinkStagingRepository
         return updated;
     }
 
-    internal static async Task SaveMatchDetailsAsync(MatchDetails matchDetails, ILogger log)
+    internal static async Task SaveMatchDetailsAsync(MatchDetails matchDetails, string clubCode, ILogger log)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -186,7 +193,8 @@ internal static class SportlinkStagingRepository
                 AccommodatieNaam, AccommodatieStraat, AccommodatiePlaats, AccommodatieTelefoon, AccommodatieRouteplanner,
                 ThuisTeamNaam, ThuisTeamCode, ThuisTeamWebsite, ThuisTeamShirtKleur, ThuisTeamStraat,
                 ThuisTeamPostcodePlaats, ThuisTeamTelefoon, ThuisTeamEmail, UitTeamNaam, UitTeamCode,
-                UitTeamWebsite, UitTeamShirtKleur, UitTeamStraat, UitTeamPostcodePlaats, UitTeamTelefoon, UitTeamEmail
+                UitTeamWebsite, UitTeamShirtKleur, UitTeamStraat, UitTeamPostcodePlaats, UitTeamTelefoon, UitTeamEmail,
+                ClubCode
             ) VALUES (
                 @WedstrijdCode, @InternCode, @VeldNaam, @VeldLocatie, @VertrekTijd, @Rijder,
                 @ThuisScore, @ThuisScoreRegulier, @ThuisScoreNV, @ThuisScoreS, @UitScore, @UitScoreRegulier,
@@ -197,8 +205,10 @@ internal static class SportlinkStagingRepository
                 @AccommodatieNaam, @AccommodatieStraat, @AccommodatiePlaats, @AccommodatieTelefoon, @AccommodatieRouteplanner,
                 @ThuisTeamNaam, @ThuisTeamCode, @ThuisTeamWebsite, @ThuisTeamShirtKleur, @ThuisTeamStraat,
                 @ThuisTeamPostcodePlaats, @ThuisTeamTelefoon, @ThuisTeamEmail, @UitTeamNaam, @UitTeamCode,
-                @UitTeamWebsite, @UitTeamShirtKleur, @UitTeamStraat, @UitTeamPostcodePlaats, @UitTeamTelefoon, @UitTeamEmail
+                @UitTeamWebsite, @UitTeamShirtKleur, @UitTeamStraat, @UitTeamPostcodePlaats, @UitTeamTelefoon, @UitTeamEmail,
+                @ClubCode
             )", conn);
+        cmd.Parameters.AddWithValue("@ClubCode", clubCode ?? (object)DBNull.Value);
 
         var wi = matchDetails.Wedstrijdinformatie;
         cmd.Parameters.AddWithValue("@WedstrijdCode",               wi.Wedstrijdnummer);

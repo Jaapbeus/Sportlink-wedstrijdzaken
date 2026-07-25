@@ -145,6 +145,9 @@ public class AdminApiClient
     public async Task<ApiResult<AutoPlanToepassenResponseDto>> AutoPlanToepassenAsync(AutoPlanToepassenRequestDto req)
         => await PostAsync<AutoPlanToepassenResponseDto>("api/planner/auto-plan/toepassen", req);
 
+    public async Task<ApiResult<List<VeldbezettingItemDto>>> GetVeldbezettingAsync(string datum)
+        => await GetAsync<List<VeldbezettingItemDto>>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}");
+
     // ── Teambegeleiding ──
 
     public async Task<ApiResult<List<string>>> GetTeambegeleidingTeamsAsync()
