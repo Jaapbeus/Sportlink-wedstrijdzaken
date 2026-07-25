@@ -289,6 +289,153 @@ END
 GO
 
 -- ============================================================
+-- #521: KnvbKalenderDag seizoen 2026/2027 (West + Landelijk)
+-- Bron: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/seizoensplanning/speeldagenkalenders
+-- Weekendrijen gebruiken de zaterdagdatum; vrijdagrijen zijn pupillen 7x7-toernooien.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM [dbo].[KnvbKalenderDag] WHERE [Seizoen] = '2026/2027' AND [Regio] = 'West')
+BEGIN
+    INSERT INTO [dbo].[KnvbKalenderDag]
+        ([Seizoen],[Regio],[Datum],[DagType],[HeeftSenioren],[HeeftJeugd],[HeeftMeiden],[PupillenToernooi],[Schoolvakantie],[Feestdag],[Opmerking],[Bron])
+    VALUES
+        -- Augustus / september 2026
+        ('2026/2027','West','2026-08-15','Vrij',       0,0,0,0,'N',  NULL,                  N'Volledig vrij; schoolvak. Noord t/m 16 aug',              'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-08-22','Vrij',       0,0,0,0,'Z',  NULL,                  N'Volledig vrij; schoolvak. Zuid t/m 23 aug',               'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-08-29','Beker',      1,1,1,0,'M',  NULL,                  N'Bekerpoule senioren+junioren; Beker KO O23 cat A; start fase 1 meiden div+hoofdkl', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-09-05','Beker',      1,1,1,0,NULL, NULL,                  N'Bekerpoule senioren+junioren; WD NJ O23 cat A; Beker KO O23 cat B; start fase 1 junioren+pupillen', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-09-12','Beker',      1,1,1,0,NULL, NULL,                  N'Bekerpoule senioren+junioren; WD NJ O23; meiden week 3 / fase 1', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-09-18','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-09-19','Competitie', 1,1,1,0,NULL, NULL,                  N'Start competitie: WD senioren; WD NJ O23+junioren; meiden week 4 / fase 1', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-09-26','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden week 5 / fase 1',  'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- Oktober 2026
+        ('2026/2027','West','2026-10-02','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag, week 1)',                 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-03','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden week 6 / fase 1',  'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-09','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag, week 2)',                 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-10','Competitie', 1,1,1,0,'N',  NULL,                  N'WD senioren; junioren inhaal; meiden week 7 / inhaal; herfstvak. Noord 10-18 okt', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-17','Inhaal',     1,1,1,0,'MNZ',NULL,                  N'Inh./Bek. senioren+O23+junioren cat A; meiden inhaal; herfstvakantie alle regio''s', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-24','Competitie', 1,1,0,0,'MZ', NULL,                  N'WD senioren; WD NJ O23; start fase 2 junioren cat A+pupillen; meiden vrij; herfstvak. M+Z 17-25 okt', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-30','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-10-31','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden div fase 2 / hoofdkl fase 2', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- November 2026
+        ('2026/2027','West','2026-11-07','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden fase 2',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-11-13','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-11-14','Competitie', 1,1,1,0,NULL, NULL,                  N'WD schema 14; Inh./Bek. schema 12; WD NJ O23+junioren; meiden fase 2', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-11-21','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden fase 2',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-11-27','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-11-28','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden fase 2',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- December 2026
+        ('2026/2027','West','2026-12-05','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD NJ O23+junioren; meiden fase 2',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-12-12','Competitie', 1,1,1,0,NULL, NULL,                  N'Laatste speelronde najaar: WD schema 14 cat A; rest Inh./Bek.; pupillen uitwijk', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2026-12-19','Inhaal',     1,1,1,0,'MNZ',NULL,                  N'Inh./Bek. schema 14 cat A + O23 cat A + junioren cat B; meiden hoofdkl inhaal; kerstvakantie 19 dec-3 jan', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- Januari 2027
+        ('2026/2027','West','2027-01-09','Vrij',       0,0,0,0,NULL, NULL,                  N'Volledig vrij',                                           'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-01-16','Competitie', 1,1,0,0,NULL, NULL,                  N'Start voorjaar cat B: WD schema 14 cat B; Inh./Bek. schema 12 cat B; Beker O23 cat A; junioren cat B inhaal', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-01-23','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren (Inh./Bek. schema 12 cat A); WD VJ O23 cat A; beker junioren; start fase 3 meiden+pupillen', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-01-30','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23; beker junioren; meiden+pupillen fase 3', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- Februari 2027
+        ('2026/2027','West','2027-02-06','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; start fase 3 junioren districtscomp.; carnavalsweekend', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-02-13','Competitie', 1,1,1,0,'Z',  NULL,                  N'WD cat B senioren; Inh./Bek. cat A; WD VJ O23 cat B+junioren; voorjaarsvak. Zuid 13-21 feb', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-02-20','Inhaal',     1,1,1,0,'MNZ',NULL,                  N'Inh./Bek. alle categorieen; meiden inhaal; voorjaarsvakantie alle regio''s', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-02-27','Competitie', 1,1,1,0,'MN', NULL,                  N'WD cat A senioren; Inh./Bek. cat B+junioren; WD VJ O23 cat A; voorjaarsvak. Noord+Midden 20-28 feb', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- Maart 2027
+        ('2026/2027','West','2027-03-06','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden+pupillen fase 3',  'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-03-13','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden+pupillen fase 3',  'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-03-19','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-03-20','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden+pupillen fase 3',  'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-03-27','Inhaal',     1,1,1,0,NULL, N'Paaszaterdag',       N'Inh./Bek. cat A senioren+O23; Vrij/Bek. cat B; meiden inhaal; junioren Inh./Bek.', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-03-29','Feestdag',   1,0,0,0,NULL, N'2e Paasdag',         N'Inh./Bek. cat A senioren; Vrij/Bek. cat B senioren; rest geen wedstrijden', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- April 2027
+        ('2026/2027','West','2027-04-02','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-04-03','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden fase 3; start fase 4 pupillen', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-04-10','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden fase 3; pupillen fase 4', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-04-16','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-04-17','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden fase 3; pupillen fase 4', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-04-24','Competitie', 1,1,1,0,'MNZ',NULL,                  N'WD schema 14; Inh./Bek. schema 12+junioren; WD VJ O23 cat A; meivakantie 24 apr-2 mei', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- Mei 2027
+        ('2026/2027','West','2027-05-01','Inhaal',     1,1,1,0,'MNZ',NULL,                  N'Inh./Bek. alle categorieen; evt. finale bekerkampioenschap standaardteams; meivakantie', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-06','Feestdag',   1,0,0,0,NULL, N'Hemelvaartsdag',     N'Evt. bekerfinale standaardteams; rest geen wedstrijden',   'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-07','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-08','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden fase 3; pupillen fase 4', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-15','Competitie', 1,1,1,0,NULL, N'Pinksterzaterdag',   N'WD cat A senioren + WD (zat) schema 14 cat B; Inh./Bek. O23+junioren; meiden inhaal', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-17','Feestdag',   1,1,0,0,NULL, N'2e Pinksterdag',     N'WD cat A senioren + WD (zon) schema 14 cat B; Inh./Bek. schema 12 cat B + junioren cat A', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-21','Toernooi',   0,0,0,1,NULL, NULL,                  N'Pupillen 7x7 toernooi (vrijdag)',                         'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-22','Competitie', 1,1,1,0,NULL, NULL,                  N'WD senioren; WD VJ O23+junioren; meiden fase 3; pupillen fase 4', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-05-29','NC',         1,1,1,0,NULL, NULL,                  N'NC senioren cat A; inhaal cat B; WD VJ O23 cat A+junioren; meiden hoofdkl fase 3', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        -- Juni 2027
+        ('2026/2027','West','2027-06-05','NC',         1,1,1,0,NULL, NULL,                  N'NC senioren cat A; Inh./Bek. cat B; beker O23+junioren; final league meiden; finales districtsbeker', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-06-12','NC',         1,0,0,0,NULL, NULL,                  N'NC alleen senioren cat A',                                'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027'),
+        ('2026/2027','West','2027-06-19','NC',         1,0,0,0,NULL, NULL,                  N'NC alleen senioren cat A',                                'https://www.knvb.nl/downloads/sites/bestand/knvb/29863/speeldagenkalender-veld-west-2026-2027');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[KnvbKalenderDag] WHERE [Seizoen] = '2026/2027' AND [Regio] = 'Landelijk')
+BEGIN
+    INSERT INTO [dbo].[KnvbKalenderDag]
+        ([Seizoen],[Regio],[Datum],[DagType],[HeeftSenioren],[HeeftJeugd],[HeeftMeiden],[PupillenToernooi],[Schoolvakantie],[Feestdag],[Opmerking],[Bron])
+    VALUES
+        -- Augustus / september 2026
+        ('2026/2027','Landelijk','2026-08-08','Vrij',       0,0,0,0,NULL, NULL,                 N'Geen competitie',                                        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-08-15','Competitie', 1,0,0,0,'N',  NULL,                 N'2e/3e divisie ronde 1; schoolvak. Noord t/m 16 aug',      'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-08-22','Competitie', 1,1,0,0,'Z',  NULL,                 N'2e/3e div ronde 2; O23 inhaal; jeugd inhaal/Jeugdcup; schoolvak. Zuid t/m 23 aug', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-08-29','Competitie', 1,1,1,0,'M',  NULL,                 N'2e/3e div ronde 3; 4e div ronde 1; bekerpoule vrouwen 1e klassen; O23+jeugd ronde 1', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-09-05','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 4/2; Beker Q1 vrouwen top+hoofdklasse; bekerpoule vrouwen 1e klassen; O23+jeugd ronde 2', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-09-12','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 5/3; Beker Q2 vrouwen top+hoofdklasse; bekerpoule vrouwen 1e klassen; O23+jeugd ronde 3', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-09-19','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 6/4; vrouwen ronde 1; O23+jeugd ronde 4',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-09-26','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 7/5; vrouwen ronde 2; O23+jeugd ronde 5',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- Oktober 2026
+        ('2026/2027','Landelijk','2026-10-03','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 8/6; vrouwen ronde 3; O23+jeugd ronde 6',           'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-10-10','Competitie', 1,1,1,0,'N',  NULL,                 N'Ronde 9/7; vrouwen ronde 4; O23+jeugd ronde 7; herfstvak. Noord', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-10-17','Competitie', 1,1,1,0,'MNZ',NULL,                 N'2e/3e div ronde 10; rest Inh./Bek.; jeugd inhaal/Jeugdcup; herfstvak. alle regio''s', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-10-24','Competitie', 1,1,1,0,'MZ', NULL,                 N'Ronde 11/8; vrouwen Inh./Bek.; O23+jeugd ronde 8; herfstvak. Midden en Zuid', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-10-31','Competitie', 1,1,1,0,NULL, NULL,                 N'2e/3e div inhaal; 4e div ronde 9; vrouwen ronde 5; O23+jeugd ronde 9', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- November 2026
+        ('2026/2027','Landelijk','2026-11-07','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 12/10; vrouwen ronde 6; O23+jeugd ronde 10',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-11-14','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 13/11; vrouwen ronde 7; O23+jeugd ronde 11',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-11-21','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 14/12; vrouwen ronde 8; O23+jeugd ronde 12',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-11-28','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 15/13; vrouwen ronde 9; O23 inhaal; jeugd inhaal/Jeugdcup', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- December 2026
+        ('2026/2027','Landelijk','2026-12-05','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 16/14; vrouwen ronde 10; O23+jeugd ronde 13',       'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-12-12','Competitie', 1,1,1,0,NULL, NULL,                 N'Laatste speelronde najaar (verplaatsingsdeadline 13 dec 2026): ronde 17/15; vrouwen Inh./Bek.; O23+jeugd ronde 14', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-12-19','Inhaal',     1,1,0,0,'MNZ',NULL,                 N'Inhaalmoment uitsluitend voor calamiteiten of gelijktijdige laatste speelronde; vrouwen vrij; kerstvakantie', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2026-12-26','Vrij',       0,0,0,0,'MNZ',NULL,                 N'Kerstvakantie',                                          'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- Januari 2027
+        ('2026/2027','Landelijk','2027-01-02','Vrij',       0,0,0,0,'MNZ',NULL,                 N'Kerstvakantie',                                          'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-01-09','Competitie', 1,0,0,0,NULL, NULL,                 N'2e/3e divisie ronde 18; rest vrij',                      'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-01-16','Competitie', 1,1,1,0,NULL, NULL,                 N'2e/3e div ronde 19; vrouwen Inh./Bek.; O23+jeugd voorjaar ronde 1', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-01-23','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 20/16; vrouwen ronde 11; O23+jeugd ronde 2',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-01-30','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 21/17; vrouwen ronde 12; O23+jeugd ronde 3',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- Februari 2027
+        ('2026/2027','Landelijk','2027-02-06','Inhaal',     1,1,1,0,NULL, NULL,                 N'Inhaal alle divisies; vrouwen Inh./Bek.; jeugd inhaal/Jeugdcup; carnavalsweekend', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-02-13','Competitie', 1,1,1,0,'Z',  NULL,                 N'Ronde 22/18; vrouwen ronde 13; O23+jeugd inhaal; voorjaarsvak. Zuid', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-02-20','Competitie', 1,1,1,0,'MNZ',NULL,                 N'Ronde 23/19; vrouwen ronde 14; O23 inhaal; Jeugdcup kwartfinale; voorjaarsvak. alle regio''s', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-02-27','Competitie', 1,1,1,0,'M',  NULL,                 N'Ronde 24/20; vrouwen Inh./Bek.; O23+jeugd ronde 4; voorjaarsvak. Midden/West', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- Maart 2027
+        ('2026/2027','Landelijk','2027-03-06','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 25/21; vrouwen ronde 15; O23+jeugd ronde 5',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-03-13','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 26/22; vrouwen ronde 16; O23+jeugd ronde 6',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-03-20','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 27/23; vrouwen ronde 17; O23+jeugd ronde 7',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-03-27','Inhaal',     1,1,1,0,NULL, N'Paaszaterdag',      N'Inhaal alle divisies; vrouwen Inh./Bek.; jeugd inhaal/Jeugdcup; paasweekend', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- April 2027
+        ('2026/2027','Landelijk','2027-04-03','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 28/24; vrouwen ronde 18; O23+jeugd ronde 8',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-04-10','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 29/25; vrouwen ronde 19; O23+jeugd ronde 9',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-04-17','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 30/26; vrouwen ronde 20; O23+jeugd ronde 10',       'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-04-24','Competitie', 1,1,1,0,'MNZ',NULL,                 N'Ronde 31/27; vrouwen Inh./Bek.; O23+jeugd ronde 11; meivakantie', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- Mei 2027
+        ('2026/2027','Landelijk','2027-05-01','Inhaal',     1,1,1,0,'MNZ',NULL,                 N'Inhaal alle divisies; vrouwen Inh./Bek.; Jeugdcup finale; meivakantie', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-05-06','Inhaal',     1,1,1,0,NULL, N'Hemelvaartsdag',    N'Midweeks inhaalmoment 5-6 mei; vrouwen Inh./Bek.',        'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-05-08','Competitie', 1,1,1,0,NULL, NULL,                 N'Ronde 32/28; vrouwen ronde 21; O23+jeugd ronde 12',       'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-05-15','Competitie', 1,1,1,0,NULL, N'Pinksterzaterdag',  N'Speelweekend 15-17 mei: ronde 33/29; vrouwen ronde 22; O23+jeugd ronde 13', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-05-22','Competitie', 1,1,1,0,NULL, NULL,                 N'Laatste inhaalmoment voorjaar 23 mei 2027: ronde 34/30; vrouwen NC; O23+jeugd inhaal', 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-05-26','NC',         1,0,1,0,NULL, NULL,                 N'NC divisies mannen + vrouwen (woensdag)',                 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-05-29','NC',         1,1,1,0,NULL, NULL,                 N'NC divisies + vrouwen; O23+jeugd ronde 14',               'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        -- Juni 2027
+        ('2026/2027','Landelijk','2027-06-03','NC',         1,0,1,0,NULL, NULL,                 N'NC divisies mannen + vrouwen (donderdag)',                'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-06-05','NC',         1,1,1,0,NULL, NULL,                 N'NC divisies + vrouwen; finale divisie 1 O23+jeugd',       'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-06-09','NC',         1,0,1,0,NULL, NULL,                 N'NC divisies mannen + vrouwen (woensdag)',                 'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027'),
+        ('2026/2027','Landelijk','2027-06-12','NC',         1,0,1,0,NULL, NULL,                 N'NC divisies mannen + vrouwen',                            'https://www.knvb.nl/downloads/sites/bestand/knvb/29859/speeldagenkalender-veld-landelijk-2026-2027');
+END
+GO
+
+-- ============================================================
 -- #424: planner.sp_CleanupClassificatieCorrectie (AVG-retentie)
 -- Moet VOOR sp_CleanupEmailVerwerking worden aangeroepen (FK-afhankelijkheid)
 -- ============================================================

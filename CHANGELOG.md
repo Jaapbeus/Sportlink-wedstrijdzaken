@@ -18,7 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- KNVB-speeldagenkalender voor seizoen 2026/'27 (district West en Landelijk) is opgenomen in de database. Per speeldatum is nu bekend of het een competitie-, beker-, inhaal-, nacompetitie- of vrije dag is, welke leeftijdscategorieën actief zijn en welke schoolvakanties of feestdagen spelen.
+
 ### Changed
+- De KNVB-verplaatsingsregels waarop de AI herplanverzoeken beoordeelt zijn bijgewerkt naar seizoen 2026/'27. Verzoeken worden niet langer getoetst aan de verlopen deadlines van seizoen 2025/'26. Nieuw toegevoegd: de seizoensdata (competitiestart, winterstop, laatste speelronde, nacompetitie) en de verplaatsingsdeadlines voor de landelijke divisies.
 - Review mode stuurt geen email meer terug aan de coördinator — in plaats daarvan wordt de originele email gemarkeerd met 'Geen AI antwoord' zodat de coördinator deze handmatig kan afhandelen. Interne notificaties (teamleider, team-contact) worden ook onderdrukt tijdens review mode.
 
 ## [2.16.0.0] — 2026-06-01
