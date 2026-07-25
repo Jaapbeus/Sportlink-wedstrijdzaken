@@ -16,6 +16,9 @@ public class EmailProcessorFunction
     private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
     // Uitsluitingslijst-cache: geladen vóór eerste AI-classificatie (fail-closed bij cold start). (#423)
     private static HashSet<string> _uitgeslotenCache = new(StringComparer.OrdinalIgnoreCase);
+    // Outlook-categorie voor berichten die verwerkt zijn maar bewust geen automatisch antwoord
+    // kregen: planning is mogelijk, de coördinator plant handmatig in en koppelt zelf terug (#572).
+    private const string HandmatigePlanningLabel = "Handmatige planning";
 
     [Function("ProcessIncomingEmails")]
     public async Task Run(
@@ -337,6 +340,28 @@ public class EmailProcessorFunction
                 log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
                 try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); } catch { }
             }
+            return;
+        }
+
+        // #572: alleen automatisch antwoorden als de uitkomst dat vraagt.
+        // Planning wél mogelijk (of op álle gevraagde datums mogelijk) → geen mail; de
+        // coördinator plant handmatig in. Niet mogelijk, of gemengd bij meerdere datums → wel mail.
+        var replyBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
+        if (!replyBesluit.MoetVersturen)
+        {
+            await UpdateStatusAsync(verwerkingId, EmailStatus.GeenAntwoordNodig, null);
+            try
+            {
+                await graphService.EnsureMasterCategoryAsync(HandmatigePlanningLabel, "preset5");
+                await graphService.SetCategoriesAsync(email.MessageId, HandmatigePlanningLabel);
+                await graphService.MarkAsReadAsync(email.MessageId);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Outlook-labeling mislukt voor verwerking {Id} — verwerking zelf is afgerond", verwerkingId);
+            }
+            log.LogInformation("Email {Id} verwerkt zonder automatisch antwoord: {Reden}",
+                verwerkingId, replyBesluit.Reden);
             return;
         }
 

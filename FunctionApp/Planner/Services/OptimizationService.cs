@@ -20,7 +20,7 @@ internal static class OptimizationService
             return response;
         }
 
-        var occupations    = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log);
+        var occupations    = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log, clubCode);
         var velden         = await PlannerDataAccess.GetVeldenAsync(clubCode);
         var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
         var grasveldNummers  = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
@@ -43,9 +43,9 @@ internal static class OptimizationService
         var laastste = bezettingen.OrderByDescending(o => o.EindTijd).FirstOrDefault();
         response.HuidigeEindtijd = laastste?.EindTijd.ToString("HH:mm") ?? "—";
 
-        var allTeamRules = new Dictionary<string, List<TeamRegel>>();
-        foreach (var teamNaam in bezettingen.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!).Distinct())
-            allTeamRules[teamNaam] = await PlannerDataAccess.GetTeamRulesAsync(teamNaam);
+        // Één bulkquery voor alle bezette teams i.p.v. één query per team (#575)
+        var allTeamRules = await PlannerDataAccess.GetTeamRulesForTeamsAsync(
+            bezettingen.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), clubCode);
 
         var vasteWedstrijden = new HashSet<string>();
         foreach (var b in bezettingen)

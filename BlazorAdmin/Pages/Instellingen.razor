@@ -72,7 +72,11 @@
                     }
                     else if (_emailLog != null)
                     {
-                        <p><strong>Verwerkt:</strong> @_emailVerwerkt</p>
+                        <p><strong>Antwoord verstuurd:</strong> @_emailVerwerkt</p>
+                        <p>
+                            <strong>Handmatige planning:</strong> @_emailGeenAntwoord
+                            <span class="text-muted small d-block">Planning is mogelijk — bewust geen automatisch antwoord verstuurd</span>
+                        </p>
                         <p><strong>Fouten:</strong> @_emailFouten</p>
                         <p><strong>Buiten scope:</strong> @_emailBuitenScope</p>
                     }
@@ -330,7 +334,7 @@ else
     private bool _syncLoading = true;
     private bool _syncing;
     private string? _syncResult;
-    private int _emailVerwerkt, _emailFouten, _emailBuitenScope;
+    private int _emailVerwerkt, _emailFouten, _emailBuitenScope, _emailGeenAntwoord;
 
     private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
 
@@ -377,6 +381,8 @@ else
             if (_emailLog?.Items != null)
             {
                 _emailVerwerkt    = _emailLog.Items.Count(i => i.Status == "AntwoordVerstuurd");
+                // #572: verwerkt zonder automatisch antwoord — planning was mogelijk
+                _emailGeenAntwoord = _emailLog.Items.Count(i => i.Status == "GeenAntwoordNodig");
                 _emailFouten      = _emailLog.Items.Count(i => i.Status == "Fout");
                 _emailBuitenScope = _emailLog.Items.Count(i => i.Status == "BuitenScope");
             }

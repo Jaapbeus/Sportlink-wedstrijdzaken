@@ -47,6 +47,14 @@ Inkomend email (ongelezen in Graph-mailbox)
         └─ Bevestiging           ──→ template "Bedankt voor je bevestiging"
                 │
                 ▼
+        ┌─ Reply-policy (#572) — ReplyPolicy.Bepaal ──────────────────────────────┐
+        │  BeschikbaarheidCheck, planning mogelijk        → GEEN antwoord         │
+        │  BeschikbaarheidCheck, planning niet mogelijk   → antwoord met reden    │
+        │  Multidatum, gemengde uitkomst                  → antwoord per datum    │
+        │  Andere verzoektypes                            → altijd antwoord       │
+        └────────────────────────────────────────────────────────────────────────┘
+                │
+                ▼
         Antwoord versturen
         (Review-mode: naar coördinator; Live-mode: naar afzender)
 ```
@@ -67,7 +75,35 @@ Wanneer een afzender repliet op een AI-antwoord en het verzoek was verkeerd gecl
 
 ## 1. Wanneer wordt er GEEN AI-antwoord verstuurd?
 
-### 1a. Label "Geen AI antwoord" in Outlook
+### 1a. Label "Handmatige planning" — planning is mogelijk (#572)
+
+**Functionele eis (eigenaar, 2026-07-25):** een automatisch antwoord is er om een blokkade te
+melden. Kan de wedstrijd gewoon ingepland worden, dan volgt géén automatische mail — de
+coördinator plant handmatig in en koppelt zelf terug.
+
+| Situatie | Automatisch antwoord? |
+|---|---|
+| Één datum gevraagd, planning **mogelijk** | ❌ Nee — label `Handmatige planning`, status `GeenAntwoordNodig` |
+| Één datum gevraagd, planning **niet mogelijk** | ✓ Ja — met duidelijke reden (bezet, teamconflict, geen venster) |
+| Meerdere datums, **gemengde** uitkomst (≥1 wel, ≥1 niet) | ✓ Ja — per datum staat in het antwoord wat wel en niet kan |
+| Meerdere datums, **alle** datums mogelijk | ❌ Nee — zelfde redenering als één datum |
+| Meerdere datums, **geen enkele** datum mogelijk | ✓ Ja |
+| Wedstrijd staat al in Sportlink | ✓ Ja — informatief, de aanvrager moet dit weten |
+| Team/tegenstander onbekend | ✓ Ja — niet planbaar |
+| Herplanverzoek, teamcontact, bevestiging | ✓ Ja — altijd; deze types hebben geen "wel/niet planbaar"-uitkomst |
+
+De beslissing zit in `FunctionApp/Email/ReplyPolicy.cs` (puur, zonder DB of Graph) en is
+volledig gedekt door `FunctionApp.Tests/Email/ReplyPolicyTests.cs`.
+
+Onderdrukte antwoorden zijn zichtbaar in de Admin GUI onder **Instellingen → Email verwerking
+(laatste 24u) → Handmatige planning**, en in de mailbox aan het Outlook-label.
+Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
+`planner.EmailVerwerking` met status `GeenAntwoordNodig`.
+
+**Review-mode blijft leidend:** staat `EmailReviewMode=true`, dan gaat er nooit een mail uit —
+die check komt vóór de reply-policy.
+
+### 1b. Label "Geen AI antwoord" in Outlook
 
 Dit label wordt geplaatst wanneer de AI de email classificeert als **BuitenScope**. Er wordt dan geen reply verstuurd. De coördinator handelt de email zelf af.
 
@@ -82,7 +118,7 @@ Voorbeelden die als BuitenScope worden aangemerkt:
 
 Emails met **meerdere datums voor hetzelfde team** zijn géén BuitenScope — die worden verwerkt als `BeschikbaarheidCheck` met een multi-datum antwoord.
 
-### 1b. Stille skip — geen label, geen DB-entry
+### 1c. Stille skip — geen label, geen DB-entry
 
 Deze emails worden stil overgeslagen (mark as read, verder niets):
 
@@ -104,6 +140,11 @@ Iemand vraagt of een datum/tijd/veld beschikbaar is.
 #### Template A — Beschikbaar
 
 **Wanneer:** Er is een veld beschikbaar op de gevraagde datum en tijd.
+
+> **Sinds #572 wordt deze template in de e-mailflow niet meer automatisch verstuurd.**
+> Is planning mogelijk, dan gaat er geen mail uit (zie §1a) en plant de coördinator handmatig in.
+> De template blijft in gebruik voor multidatum-antwoorden met gemengde uitkomst (Template D),
+> voor de e-mailtester in de Admin GUI, en als DB-override via `dbo.EmailTemplateInstellingen`.
 
 ```
 Goedemiddag {voornaam},

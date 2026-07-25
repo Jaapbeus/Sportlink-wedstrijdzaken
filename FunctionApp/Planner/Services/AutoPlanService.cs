@@ -38,6 +38,10 @@ internal static class AutoPlanService
             beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
         }
 
+        // Bewust op de primaire club (geen clubCode-argument): Speeltijden en TeamRegels zijn
+        // KNVB-referentiedata en clubconfiguratie die de ALLSTARS-demomodus hergebruikt — er zijn
+        // geen ALLSTARS-rijen. Deze richting kan productie-antwoorden niet vervuilen: demodata
+        // leest referentiedata, nooit omgekeerd. Zie #573.
         var speeltijden    = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
         var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
         int dagVanWeek     = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
@@ -228,6 +232,7 @@ internal static class AutoPlanService
     {
         bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
         var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+        // Primaire club: zie toelichting in AutoPlanAsync — Speeltijden is referentiedata (#573)
         var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
 
         return wedstrijden

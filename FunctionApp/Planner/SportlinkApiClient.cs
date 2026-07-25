@@ -15,13 +15,13 @@ namespace SportlinkFunction.Planner
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
 
         public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsWithApiAsync(
-            DateOnly date, ILogger log)
+            DateOnly date, ILogger log, string? clubCodeScope = null)
         {
             var useRealtime = SystemUtilities.AppSettings.GetSetting("useRealtimeApi");
             if (useRealtime == "0" || string.Equals(useRealtime, "false", StringComparison.OrdinalIgnoreCase))
             {
                 log.LogDebug("SportlinkApiClient: real-time API uitgeschakeld, gebruik DB.");
-                return await PlannerDataAccess.GetFieldOccupationsAsync(date);
+                return await PlannerDataAccess.GetFieldOccupationsAsync(date, clubCodeScope);
             }
 
             try
@@ -31,7 +31,9 @@ namespace SportlinkFunction.Planner
                 var clientId  = SystemUtilities.AppSettings.GetSetting("sportlinkClientId")
                                 ?? throw new InvalidOperationException("sportlinkClientId niet ingesteld");
                 var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
-                var clubCode     = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+                // De Sportlink-API levert per definitie data van de club achter de clientId;
+                // de DB-lookups en planner-slots worden op dezelfde club gescoped (#580).
+                var clubCode     = ClubScope.Resolve(clubCodeScope);
 
                 // weekoffset: hoe ver ligt 'date' van vandaag (in volle weken)?
                 int weekoffset = (int)Math.Floor(
@@ -43,7 +45,7 @@ namespace SportlinkFunction.Planner
 
                 // DB-lookups parallel laden met de API-call
                 var lookupTask     = LoadLookupsAsync(clubCode);
-                var plannerTask    = PlannerDataAccess.GetGeplandeWedstrijdenOnlyAsync(date);
+                var plannerTask    = PlannerDataAccess.GetGeplandeWedstrijdenOnlyAsync(date, clubCode);
                 var apiResponseTask = _http.GetStringAsync(url);
 
                 await Task.WhenAll(lookupTask, plannerTask, apiResponseTask);
@@ -111,15 +113,16 @@ namespace SportlinkFunction.Planner
             catch (Exception ex)
             {
                 log.LogWarning("SportlinkApiClient: API-fout, fallback naar DB. {Message}", ex.Message);
-                return await PlannerDataAccess.GetFieldOccupationsAsync(date);
+                return await PlannerDataAccess.GetFieldOccupationsAsync(date, clubCodeScope);
             }
         }
 
         // Identiek aan GetFieldOccupationsWithApiAsync maar filtert één wedstrijd eruit (voor herplan).
         public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchWithApiAsync(
-            DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer, ILogger log)
+            DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer, ILogger log,
+            string? clubCodeScope = null)
         {
-            var all = await GetFieldOccupationsWithApiAsync(date, log);
+            var all = await GetFieldOccupationsWithApiAsync(date, log, clubCodeScope);
             return all.Where(o =>
                 !(o.VeldNummer == veldNummer &&
                   o.AanvangsTijd == aanvangsTijd &&

@@ -19,12 +19,12 @@ namespace SportlinkFunction.Planner
     public static class PlannerService
     {
         public static Task<CheckAvailabilityResponse> CheckAvailabilityAsync(
-            CheckAvailabilityRequest request, ILogger log)
-            => AvailabilityService.CheckAvailabilityAsync(request, log);
+            CheckAvailabilityRequest request, ILogger log, string? clubCode = null)
+            => AvailabilityService.CheckAvailabilityAsync(request, log, clubCode);
 
         public static Task<DoordeweeksBeschikbaarResponse> CheckDoordeweeksBeschikbaarAsync(
-            DoordeweeksBeschikbaarRequest request, ILogger log)
-            => AvailabilityService.CheckDoordeweeksBeschikbaarAsync(request, log);
+            DoordeweeksBeschikbaarRequest request, ILogger log, string? clubCode = null)
+            => AvailabilityService.CheckDoordeweeksBeschikbaarAsync(request, log, clubCode);
 
         public static Task<AutoPlanResponse> AutoPlanAsync(
             AutoPlanRequest request, string clubCode, ILogger log)
@@ -42,10 +42,10 @@ namespace SportlinkFunction.Planner
             => OptimizationService.OptimaliseerAsync(request, clubCode, log);
 
         public static Task<HerplanCheckResponse> CheckRescheduleAvailabilityAsync(
-            HerplanCheckRequest request, ILogger log)
-            => RescheduleService.CheckRescheduleAvailabilityAsync(request, log);
+            HerplanCheckRequest request, ILogger log, string? clubCode = null)
+            => RescheduleService.CheckRescheduleAvailabilityAsync(request, log, clubCode);
 
-        public static Task<TeamScheduleResponse?> GetTeamScheduleAsync(string team)
-            => TeamScheduleService.GetTeamScheduleAsync(team);
+        public static Task<TeamScheduleResponse?> GetTeamScheduleAsync(string team, string? clubCode = null)
+            => TeamScheduleService.GetTeamScheduleAsync(team, clubCode);
     }
 }

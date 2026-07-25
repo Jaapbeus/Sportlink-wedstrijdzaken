@@ -6,12 +6,15 @@ namespace SportlinkFunction.Planner;
 /// <summary>
 /// Repository voor wedstrijd-opzoeken, plannen, herplannen en vervallen markeren.
 /// Extracted uit PlannerDataAccess (#474).
+///
+/// Alle leesquery's zijn hard gescoped op ClubCode (#573) — zie <see cref="ClubScope"/>.
 /// </summary>
 internal static class PlannerMatchRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
-    internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(string teamNaam, DateOnly date)
+    internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(
+        string teamNaam, DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
         using var conn = new SqlConnection(Cs);
@@ -24,23 +27,30 @@ internal static class PlannerMatchRepository
                 v.[VeldNummer], v.[VeldNaam], m.[wedstrijd], 'Competitie' AS Bron
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
+                 AND {ClubScope.HisFilter("t")}
             LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
+                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[status] <> 'Afgelast'
               AND m.[teamnaam] = @exactTeamNaam
+              AND {ClubScope.HisFilter("m")}
             UNION ALL
             SELECT gw.[Datum], gw.[AanvangsTijd], gw.[WedstrijdDuurMinuten],
                    gw.[VeldNummer], v.[VeldNaam],
                    COALESCE(gw.[TeamNaam], '') + ' - ' + COALESCE(gw.[Tegenstander], ''), 'Planner'
             FROM [planner].[GeplandeWedstrijden] gw
             LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
+                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Datum] = @date
               AND gw.[Status] <> 'Geannuleerd'
               AND gw.[TeamNaam] = @exactTeamNaam
+              AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
         ", conn);
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
         cmd.Parameters.AddWithValue("@exactTeamNaam", teamNaam);
+        ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -64,23 +74,27 @@ internal static class PlannerMatchRepository
         return results;
     }
 
-    internal static async Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(DateOnly date)
+    internal static async Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(
+        DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT gw.[Datum], gw.[AanvangsTijd], gw.[EindTijd],
                    gw.[VeldNummer], gw.[VeldDeelGebruik], gw.[LeeftijdsCategorie],
                    gw.[TeamNaam],
                    COALESCE(gw.[TeamNaam], '') + ' - ' + COALESCE(gw.[Tegenstander], '') AS Wedstrijd,
-                   v.[VeldNaam], 'Planner' AS Bron
+                   v.[VeldNaam], 'Planner' AS Bron, gw.[SportlinkWedstrijdCode]
             FROM [planner].[GeplandeWedstrijden] gw
             LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
+                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Datum] = @date
               AND gw.[Status] <> 'Geannuleerd'
-              AND gw.[IsVervallen] = 0", conn);
+              AND gw.[IsVervallen] = 0
+              AND gw.[ClubCode] = {ClubScope.ClubCodeParam}", conn);
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
+        ClubScope.AddClubParam(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             results.Add(new BestaandeWedstrijd
@@ -94,12 +108,14 @@ internal static class PlannerMatchRepository
                 TeamNaam           = reader.IsDBNull(6) ? null : reader.GetString(6),
                 Wedstrijd          = reader.IsDBNull(7) ? null : reader.GetString(7),
                 VeldSubpositie     = null,
-                Bron               = "Planner"
+                Bron               = "Planner",
+                Wedstrijdcode      = reader.IsDBNull(10) ? null : reader.GetInt64(10)
             });
         return results;
     }
 
-    internal static async Task<ZoekWedstrijdResponse?> FindMatchAsync(string teamNaam, DateOnly date)
+    internal static async Task<ZoekWedstrijdResponse?> FindMatchAsync(
+        string teamNaam, DateOnly date, string? clubCode = null)
     {
         var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
             ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
@@ -113,16 +129,20 @@ internal static class PlannerMatchRepository
                 t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                 AND {ClubScope.HisFilter("t")}
             LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
               AND (m.[teamnaam] LIKE @teamPattern OR m.[wedstrijd] LIKE @teamPattern)
+              AND {ClubScope.HisFilter("m")}
             ORDER BY m.[aanvangstijd]
         ", conn);
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
         cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+        ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
         {
@@ -147,7 +167,8 @@ internal static class PlannerMatchRepository
         return null;
     }
 
-    internal static async Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(string tegenstander, DateOnly? datum)
+    internal static async Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(
+        string tegenstander, DateOnly? datum, string? clubCode = null)
     {
         var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
             ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
@@ -163,11 +184,14 @@ internal static class PlannerMatchRepository
                 t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                 AND {ClubScope.HisFilter("t")}
             LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
               AND m.[wedstrijd] LIKE @tegPattern
               AND (@datum IS NULL OR CAST(m.[kaledatum] AS DATE) = @datum)
+              AND {ClubScope.HisFilter("m")}
             ORDER BY m.[kaledatum]
         ", conn))
         {
@@ -175,6 +199,7 @@ internal static class PlannerMatchRepository
             cmd.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
                 datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
             cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+            ClubScope.AddHisParams(cmd, clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
@@ -197,7 +222,7 @@ internal static class PlannerMatchRepository
         }
 
         // Zoek in planner.GeplandeWedstrijden
-        using (var cmd2 = new SqlCommand(@"
+        using (var cmd2 = new SqlCommand($@"
             SELECT TOP 1
                 CAST(0 AS BIGINT),
                 COALESCE(gw.[TeamNaam], '') + ' - ' + COALESCE(gw.[Tegenstander], ''),
@@ -209,15 +234,18 @@ internal static class PlannerMatchRepository
                 CAST(1.00 AS DECIMAL(18,2))
             FROM [planner].[GeplandeWedstrijden] gw
             LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
+                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Status] <> 'Geannuleerd'
               AND gw.[Tegenstander] LIKE @tegPattern
               AND (@datum IS NULL OR gw.[Datum] = @datum)
+              AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
             ORDER BY gw.[Datum]
         ", conn))
         {
             cmd2.Parameters.AddWithValue("@tegPattern", $"%{tegenstander}%");
             cmd2.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value =
                 datum.HasValue ? datum.Value.ToDateTime(TimeOnly.MinValue) : DBNull.Value;
+            ClubScope.AddClubParam(cmd2, clubCode);
             using var reader2 = await cmd2.ExecuteReaderAsync();
             if (await reader2.ReadAsync())
             {
@@ -239,7 +267,8 @@ internal static class PlannerMatchRepository
         return null;
     }
 
-    internal static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(long wedstrijdcode)
+    internal static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(
+        long wedstrijdcode, string? clubCode = null)
     {
         var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
             ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
@@ -253,12 +282,16 @@ internal static class PlannerMatchRepository
                 t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                 AND {ClubScope.HisFilter("t")}
             LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
               AND m.[accommodatie] LIKE @accommodatiePattern
+              AND {ClubScope.HisFilter("m")}
         ", conn);
         cmd.Parameters.AddWithValue("@code", wedstrijdcode);
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+        ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
         {
@@ -340,7 +373,7 @@ internal static class PlannerMatchRepository
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
-    internal static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log)
+    internal static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log, string? clubCode = null)
     {
         var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
         if (string.IsNullOrWhiteSpace(accommodatie))
@@ -350,7 +383,7 @@ internal static class PlannerMatchRepository
         }
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             UPDATE gw
             SET gw.[IsVervallen] = 1,
                 gw.[SportlinkWedstrijdCode] = CAST(m.[wedstrijdcode] AS BIGINT),
@@ -359,34 +392,40 @@ internal static class PlannerMatchRepository
             INNER JOIN [his].[matches] m
                 ON CAST(m.[kaledatum] AS DATE) = gw.[Datum]
                 AND m.[teamnaam] = gw.[TeamNaam]
+                AND {ClubScope.HisFilter("m")}
             WHERE gw.[IsVervallen] = 0
               AND gw.[Status] <> 'Geannuleerd'
+              AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
               AND m.[accommodatie] LIKE @accommodatiePattern
         ", conn);
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
+        ClubScope.AddHisParams(cmd, clubCode);
         var rows = await cmd.ExecuteNonQueryAsync();
         if (rows > 0)
             log.LogInformation("Post-sync: {Count} geplande wedstrijd(en) als vervallen gemarkeerd", rows);
     }
 
-    internal static async Task<bool> TeamExistsAsync(string team)
+    internal static async Task<bool> TeamExistsAsync(string team, string? clubCode = null)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(
-            "SELECT COUNT(1) FROM [his].[teams] WHERE UPPER([teamnaam]) = UPPER(@team)", conn);
+            $@"SELECT COUNT(1) FROM [his].[teams] t
+               WHERE UPPER(t.[teamnaam]) = UPPER(@team)
+                 AND {ClubScope.HisFilter("t")}", conn);
         cmd.Parameters.AddWithValue("@team", team);
+        ClubScope.AddHisParams(cmd, clubCode);
         return (int)(await cmd.ExecuteScalarAsync())! > 0;
     }
 
     internal static async Task<List<TeamScheduleWedstrijd>> GetFutureMatchesForTeamAsync(
-        string team, DateOnly van, DateOnly tot)
+        string team, DateOnly van, DateOnly tot, string? clubCode = null)
     {
         var results = new List<TeamScheduleWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
 
-        using (var cmd = new SqlCommand(@"
+        using (var cmd = new SqlCommand($@"
             SELECT CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
                    m.[thuisteam], m.[uitteam], m.[competitiesoort], m.[veld],
                    CAST(m.[wedstrijdcode] AS BIGINT)
@@ -394,12 +433,14 @@ internal static class PlannerMatchRepository
             WHERE CAST(m.[kaledatum] AS DATE) BETWEEN @van AND @tot
               AND m.[status] <> 'Afgelast'
               AND (UPPER(m.[teamnaam]) = UPPER(@team))
+              AND {ClubScope.HisFilter("m")}
             ORDER BY m.[kaledatum], m.[aanvangstijd]
         ", conn))
         {
             cmd.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@team", team);
+            ClubScope.AddHisParams(cmd, clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -420,20 +461,23 @@ internal static class PlannerMatchRepository
             }
         }
 
-        using (var cmd2 = new SqlCommand(@"
+        using (var cmd2 = new SqlCommand($@"
             SELECT gw.[Datum], CONVERT(VARCHAR(8), gw.[AanvangsTijd], 108),
                    gw.[Tegenstander], v.[VeldNaam]
             FROM [planner].[GeplandeWedstrijden] gw
             LEFT JOIN [dbo].[Velden] v ON v.[VeldNummer] = gw.[VeldNummer]
+                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Datum] BETWEEN @van AND @tot
               AND gw.[Status] <> 'Geannuleerd'
               AND UPPER(gw.[TeamNaam]) = UPPER(@team)
+              AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
             ORDER BY gw.[Datum], gw.[AanvangsTijd]
         ", conn))
         {
             cmd2.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
             cmd2.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
             cmd2.Parameters.AddWithValue("@team", team);
+            ClubScope.AddClubParam(cmd2, clubCode);
             using var reader2 = await cmd2.ExecuteReaderAsync();
             while (await reader2.ReadAsync())
                 results.Add(new TeamScheduleWedstrijd

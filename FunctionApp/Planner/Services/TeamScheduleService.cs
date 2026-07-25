@@ -6,15 +6,16 @@ namespace SportlinkFunction.Planner;
 /// </summary>
 internal static class TeamScheduleService
 {
-    public static async Task<TeamScheduleResponse?> GetTeamScheduleAsync(string team)
+    public static async Task<TeamScheduleResponse?> GetTeamScheduleAsync(string team, string? clubCode = null)
     {
-        if (!await PlannerDataAccess.TeamExistsAsync(team))
+        clubCode = ClubScope.Resolve(clubCode);
+        if (!await PlannerDataAccess.TeamExistsAsync(team, clubCode))
             return null;
 
         var seizoenEinde = await PlannerDataAccess.GetSeasonEndDateAsync()
             ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(3));
         var vandaag     = DateOnly.FromDateTime(DateTime.Today);
-        var wedstrijden = await PlannerDataAccess.GetFutureMatchesForTeamAsync(team, vandaag, seizoenEinde);
+        var wedstrijden = await PlannerDataAccess.GetFutureMatchesForTeamAsync(team, vandaag, seizoenEinde, clubCode);
 
         var zaterdagen = new List<TeamScheduleZaterdag>();
         var zaterdag = vandaag;

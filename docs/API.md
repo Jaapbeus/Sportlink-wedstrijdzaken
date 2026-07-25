@@ -21,11 +21,11 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
-| `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren |
+| `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
-| `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken |
-| `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren |
+| `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken — gescoped op `X-Club-Code` header |
+| `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
 | `POST` | `/planner/optimaliseer` | Easy Auth (admin) | Planning optimaliseren (HTML/email/JSON) |
 | `GET` | `/planner/veldbezetting?datum=` | Easy Auth (admin) | Wedstrijden op een datum, zonder optimalisatie-berekening |
@@ -78,6 +78,13 @@ GET /api/sync-matches?reset=true&season=2025
 ## POST /api/planner/check-availability
 
 Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifieke slottoewijzing, beschikbare tijdvensters, of een teamconflict terug.
+
+> **Clubscope (#573, #580):** de optionele header `X-Club-Code` bepaalt welke club wordt
+> doorzocht. Zonder header valt het endpoint terug op de primaire club van deze deployment.
+> Wedstrijden, bezetting, velden, speeltijden en teamregels van andere clubs (inclusief de
+> `ALLSTARS`-demodata) worden nooit meegenomen. Dit geldt ook voor
+> `/planner/zoek-wedstrijd`, `/planner/herplan-check`, `/planner/doordeweeks-beschikbaar`
+> en `/planner/team-schedule`.
 
 ### Aanvraag
 
