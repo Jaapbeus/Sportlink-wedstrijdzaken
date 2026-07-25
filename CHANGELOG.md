@@ -23,6 +23,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Dagplanning toont nu direct de wedstrijden die op de gekozen datum gepland staan — zodra je een andere datum kiest, wordt dit meteen bijgewerkt zonder dat je eerst op "Optimaliseer" hoeft te klikken. (#566)
 
 ### Fixed
+- Senioren-categorieen uit Sportlink worden weer correct herkend in plannerberekeningen: `Senioren` normaliseert nu naar speeltijdsleutel `1-99` en `Senioren Vrouwen` naar `VR`. Daardoor vallen seniorenwedstrijden niet meer onterecht in `onbekend-team` bij Optimaliseer/Auto-plan. (#591)
 - De databasemigratie liep bij elke deploy vast zodra er meer dan één club in de instellingen stond — wat altijd het geval is doordat de AllStars FC democlub wordt aangemaakt. Gevolg: het nieuwe seizoen werd niet meer automatisch aangemaakt en een deel van de migratie werd overgeslagen. Beide zijn verholpen.
 - De kolom die geplande wedstrijden aan een club koppelt werd door een fout in het migratiescript nooit aangemaakt. Daardoor ontbrak de scheiding tussen productie- en demogegevens voor geplande wedstrijden. De migratie werkt nu.
 - Nieuw gesynchroniseerde teams en wedstrijden werden niet meer aan de eigen club gekoppeld, waardoor ze onterecht niet zichtbaar waren in de Dagplanner en de teamlijst — ook al stonden ze al in Sportlink gepland. Nieuwe rijen krijgen deze koppeling nu weer automatisch bij elke synchronisatie. (#567)
