@@ -1,0 +1,56 @@
+using SportlinkFunction.Email;
+
+namespace FunctionApp.Tests.Email.TestDoubles;
+
+internal sealed class FakeEmailGraphService : IEmailGraphService
+{
+    public List<InkomendBericht> UnreadEmails { get; } = new();
+    public List<string> MarkedAsReadIds { get; } = new();
+    public List<(string MessageId, string[] Categories)> CategoryUpdates { get; } = new();
+    public List<(string Name, string ColorPreset)> EnsuredCategories { get; } = new();
+    public List<(string To, string Subject, string Body, string? ConversationId)> SentReplies { get; } = new();
+    public List<(string CoachEmail, string Subject, string Body, string? AanvragerEmail, string? CoordinatorEmail)> TeamForwardings { get; } = new();
+
+    public bool ThrowOnSendReply { get; set; }
+
+    public Task<List<InkomendBericht>> GetUnreadEmailsAsync()
+        => Task.FromResult(UnreadEmails.ToList());
+
+    public Task SetCategoriesAsync(string messageId, params string[] categories)
+    {
+        CategoryUpdates.Add((messageId, categories));
+        return Task.CompletedTask;
+    }
+
+    public Task EnsureMasterCategoryAsync(string name, string colorPreset)
+    {
+        EnsuredCategories.Add((name, colorPreset));
+        return Task.CompletedTask;
+    }
+
+    public Task MarkAsReadAsync(string messageId)
+    {
+        MarkedAsReadIds.Add(messageId);
+        return Task.CompletedTask;
+    }
+
+    public Task SendReplyAsync(string to, string subject, string body, string? conversationId)
+    {
+        if (ThrowOnSendReply)
+            throw new InvalidOperationException("SendReply simulated failure");
+
+        SentReplies.Add((to, subject, body, conversationId));
+        return Task.CompletedTask;
+    }
+
+    public Task StuurTeamContactDoorAsync(
+        string coachEmail,
+        string subject,
+        string body,
+        string? aanvragerEmail,
+        string? coordinatorEmail)
+    {
+        TeamForwardings.Add((coachEmail, subject, body, aanvragerEmail, coordinatorEmail));
+        return Task.CompletedTask;
+    }
+}
