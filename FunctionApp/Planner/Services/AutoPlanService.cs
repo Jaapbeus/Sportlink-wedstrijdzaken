@@ -222,20 +222,35 @@ internal static class AutoPlanService
 
     // Lichtgewicht "wat staat er nu gepland"-weergave (#566): geen FieldScheduler-berekening,
     // alleen de ruwe wedstrijddata die AutoPlanAsync anders ook al zonder optimalisatie zou tonen.
+    // Duur/veldafmeting komen uit de goedkope speeltijden-lookup (één simpele SELECT) — niet uit
+    // de FieldScheduler, die pas nodig is zodra er ook daadwerkelijk geoptimaliseerd wordt.
     public static async Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
     {
+        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
         var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+        var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+
         return wedstrijden
-            .Select(w => new VeldbezettingItem
+            .Select(w =>
             {
-                WedstrijdCode = w.WedstrijdCode,
-                Wedstrijd = w.Wedstrijd,
-                TeamNaam = w.TeamNaam,
-                Uitteam = w.Uitteam,
-                AanvangsTijd = w.AanvangsTijd,
-                Veld = w.Veld,
-                Competitiesoort = w.Competitiesoort,
-                LeeftijdsCategorie = w.LeeftijdsCategorie
+                var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                    ? w.LeeftijdsCategorie
+                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+
+                return new VeldbezettingItem
+                {
+                    WedstrijdCode = w.WedstrijdCode,
+                    Wedstrijd = w.Wedstrijd,
+                    TeamNaam = w.TeamNaam,
+                    Uitteam = w.Uitteam,
+                    AanvangsTijd = w.AanvangsTijd,
+                    Veld = w.Veld,
+                    Competitiesoort = w.Competitiesoort,
+                    LeeftijdsCategorie = w.LeeftijdsCategorie,
+                    DuurMinuten = speeltijdInfo?.WedstrijdTotaal ?? 0,
+                    Veldafmeting = speeltijdInfo?.Veldafmeting ?? 1.00m
+                };
             })
             .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
             .ToList();

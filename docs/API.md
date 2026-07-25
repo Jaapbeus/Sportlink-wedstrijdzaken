@@ -597,7 +597,9 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
     "aanvangsTijd": "13:00",
     "veld": "veld 3",
     "competitiesoort": "Oefenwedstrijd",
-    "leeftijdsCategorie": null
+    "leeftijdsCategorie": null,
+    "duurMinuten": 90,
+    "veldafmeting": 1.00
   }
 ]
 ```

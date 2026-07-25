@@ -331,6 +331,8 @@ namespace SportlinkFunction.Planner
         public string? Veld { get; set; }
         public string? Competitiesoort { get; set; }
         public string? LeeftijdsCategorie { get; set; }
+        public int DuurMinuten { get; set; }
+        public decimal Veldafmeting { get; set; }
     }
 
     public class AutoPlanWedstrijdItem

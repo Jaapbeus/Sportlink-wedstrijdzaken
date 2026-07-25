@@ -2129,6 +2129,15 @@
           "leeftijdsCategorie": {
             "type": "string",
             "nullable": true
+          },
+          "duurMinuten": {
+            "type": "integer",
+            "description": "Wedstrijdduur in minuten uit de speeltijden-configuratie (0 = onbekende leeftijdscategorie)"
+          },
+          "veldafmeting": {
+            "type": "number",
+            "format": "decimal",
+            "description": "Aandeel van een heel veld dat deze wedstrijd gebruikt (1.00 = heel veld)"
           }
         }
       },
