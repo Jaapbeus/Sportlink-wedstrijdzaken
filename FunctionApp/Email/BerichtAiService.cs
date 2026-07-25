@@ -13,10 +13,21 @@ public class BerichtAiService
     private readonly ILogger<BerichtAiService> _logger;
     private readonly IChatClient _chatClient;
 
-    // KNVB-verplaatsingsregels voor seizoen 2025/'26 — wordt door AI gebruikt om overtreding te signaleren
+    // KNVB-verplaatsingsregels voor seizoen 2026/'27 — wordt door AI gebruikt om overtreding te signaleren
     // Bron: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden
+    // + https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/seizoensplanning/speeldagenkalenders
+    //   (Speeldagenkalender Landelijk 2026/'27, geraadpleegd 2026-07-25 — zie issue #521)
     private const string KnvbRegelsContext = """
-        ## KNVB-verplaatsingsregels seizoen 2025/'26
+        ## KNVB-verplaatsingsregels seizoen 2026/'27
+
+        ### Seizoensdata (speeldagenkalender)
+        - Bekerpoules district: vanaf 29/30 augustus 2026
+        - Competitiestart district: 19/20 september 2026 (landelijke divisies: 15/16 augustus 2026)
+        - Laatste speelronde najaar: 12/13 december 2026
+        - Winterstop: 19 december 2026 t/m 8 januari 2027
+        - Start voorjaar: 16/17 januari 2027
+        - Laatste competitieweekend: 29/30 mei 2027; nacompetitie t/m 19/20 juni 2027
+        - Finales districtsbeker: 5/6 juni 2027
 
         ### Aanvangstijdwijzigingen
         - Tot 8 dagen voor wedstrijd: aanpasbaar via Sportlink Club (geen KNVB-goedkeuring nodig)
@@ -29,23 +40,25 @@ public class BerichtAiService
 
         ### Categorie A (strenge regels)
         Geldt voor: mannen senioren standaard, vrouwen top/hoofd/1e klasse, landelijke jeugddivisies + hoofdklasse
-        - Mannen/vrouwen senioren: GEEN verplaatsing na 1 mei 2026
-        - Vrouwen 2e klasse: GEEN verplaatsing na 1 mei 2026
-        - Jeugd divisies + hoofdklasse najaar: deadline 13 december 2025
-        - Jeugd divisies + hoofdklasse voorjaar: deadline 16 mei 2026
+        - Mannen/vrouwen senioren: GEEN verplaatsing na 1 mei 2027
+        - Vrouwen 2e klasse: GEEN verplaatsing na 1 mei 2027
+        - Jeugd divisies + hoofdklasse najaar: deadline 13 december 2026
+        - Jeugd divisies + hoofdklasse voorjaar: deadline 16 mei 2027
+        - Landelijke divisies: verplaatsen alleen vóór de laatste speelronde najaar (13 december 2026)
+          en/of vóór het laatste inhaalmoment voorjaar (23 mei 2027)
         - Laatste 2 wedstrijddagen van de competitie: GEEN verplaatsing
 
         ### Categorie B (flexibeler — onderling overleg)
         Geldt voor: pupillen, junioren regionaal, senioren 3e klasse en lager, vrouwen 3e klasse
-        - Senioren 21 sep–31 dec: verplaatst uiterlijk 31 januari 2026
-        - Senioren 1 jan–1 jun: verplaatst uiterlijk 21 juni 2026
-        - Vrouwen 3e klasse: uiterlijk 9 mei 2026; geen verplaatsing na 1 mei
+        - Senioren 21 sep–31 dec: verplaatst uiterlijk 31 januari 2027
+        - Senioren 1 jan–1 jun: verplaatst uiterlijk 21 juni 2027
+        - Vrouwen 3e klasse: uiterlijk 9 mei 2027; geen verplaatsing na 1 mei
         - Pupillen (O7–O12): voor volgende fase schriftelijk vastleggen
 
         ### Snipperdagen (alleen Categorie B)
         - Max 1 per team per seizoen
         - Aanvraag uiterlijk dinsdag 23:59 van de voorafgaande week
-        - Periode: seizoenstart t/m eerste volledige weekend maart 2026
+        - Periode: seizoenstart t/m eerste volledige weekend maart 2027
         - NIET voor: beker, O7–O12, MO13–MO20
 
         ### Bekerwedstrijden
@@ -124,7 +137,7 @@ public class BerichtAiService
 
             KNVB-regelcheck (voor herplan_verzoek):
             Vul "knvbNotitie" in als op basis van datum en teamtype een KNVB-regel waarschijnlijk van toepassing is.
-            Wees kort (1-2 zinnen). Voorbeeld: "Senioren mogen na 1 mei 2026 geen wedstrijden meer verplaatsen (KNVB Cat A)."
+            Wees kort (1-2 zinnen). Voorbeeld: "Senioren mogen na 1 mei 2027 geen wedstrijden meer verplaatsen (KNVB Cat A)."
             Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
 
             {{KnvbRegelsContext}}
