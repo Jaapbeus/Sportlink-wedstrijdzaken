@@ -687,7 +687,25 @@ Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only d
 **Regels:**
 - Uitsluitend toegestaan als hardcoded UI-default in admin-only developer-testpagina's — **nooit** in bedrijfslogica, API-fallbacks of gedeelde configuratie.
 - `voorbeeld.nl` is opgenomen in `.gitleaks.toml` en `security-scan.yml` zodat security-checks hierop niet falen.
-- Deze lijst is **uitputtend** — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens.
+- Deze lijst is **uitputtend** voor UI-defaults van admin-only developer-testpagina's — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens. Zie de aparte uitzondering hieronder voor seed-migratiescripts.
+
+### AllStars FC demo-data (seed-migraties) — aparte goedgekeurde uitzondering
+
+`scripts/migrations/002-seed-allstars-fc.sql` bevat fictieve trainersgegevens voor de AllStars FC
+democlubcode (`ClubCode = 'ALLSTARS'`, zie [[architecture_multiclub]] en de sectie "Deployment-model"
+hierboven). Deze data valt buiten de scope van de admin-testpagina-lijst hierboven, maar is
+formeel goedgekeurd onder dezelfde AVG-redenering:
+
+| Kenmerk | Waarde | Reden |
+|---|---|---|
+| Domein | `@allstars-fc.test` | `.test` is een gereserveerd TLD (RFC 2606) — bestaat niet publiek, kan nooit een echt e-mailadres zijn |
+| Namen | Generieke voornamen zonder achternaam (bijv. `Frenkie`, `John`) | Niet herleidbaar tot een bestaand persoon |
+| Scope | Uitsluitend rijen met `ClubCode = 'ALLSTARS'` | Nooit gebruikt voor een echte club |
+
+**Regels:**
+- Uitsluitend toegestaan in `scripts/migrations/002-seed-allstars-fc.sql` (of vergelijkbare seed-scripts die exclusief AllStars FC-demodata vullen) — **nooit** als fallback in bedrijfslogica.
+- Nieuwe seed-rijen voor AllStars FC volgen hetzelfde patroon: `.test`-domein, voornaam zonder achternaam.
+- Bij bredere e-mailpatronen in `.gitleaks.toml` (zie de `consumer-email`-regel): controleer of `@allstars-fc\.test` een allowlist-entry nodig heeft, zodat deze seed-rijen niet alsnog worden geflagd.
 
 ### Microsoft Learn MCP server
 
