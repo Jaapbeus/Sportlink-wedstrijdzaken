@@ -19,7 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
-- KNVB-speeldagenkalender voor seizoen 2026/'27 (district West en Landelijk) is opgenomen in de database. Per speeldatum is nu bekend of het een competitie-, beker-, inhaal-, nacompetitie- of vrije dag is, welke leeftijdscategorieën actief zijn en welke schoolvakanties of feestdagen spelen.
+- KNVB-speeldagenkalender voor seizoen 2026/'27 is opgenomen in de database voor **alle zes districten**: West, Noord, Oost, Zuid, Landelijk en Landelijk jeugd. Per speeldatum is nu bekend of het een competitie-, beker-, inhaal-, nacompetitie- of vrije dag is, welke leeftijdscategorieën actief zijn, en welke schoolvakanties of feestdagen spelen. Clubs buiten district West kunnen de kalender daarmee ook gebruiken.
 
 ### Changed
 - De KNVB-verplaatsingsregels waarop de AI herplanverzoeken beoordeelt zijn bijgewerkt naar seizoen 2026/'27. Verzoeken worden niet langer getoetst aan de verlopen deadlines van seizoen 2025/'26. Nieuw toegevoegd: de seizoensdata (competitiestart, winterstop, laatste speelronde, nacompetitie) en de verplaatsingsdeadlines voor de landelijke divisies.
