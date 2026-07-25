@@ -1,0 +1,114 @@
+name: Build (PR)
+
+# #599: compileercheck op elke PR, zonder enige database-afhankelijkheid.
+#
+# Voorheen was `deploy.yml` de enige workflow die daadwerkelijk bouwde, en die triggerde alleen op
+# push naar main én was gated achter `db-check`. Stond de Free-tier SQL-database gepauzeerd, dan
+# werden build/test/blazor-deploy allemaal 'skipped' en bleven compileerfouten onopgemerkt.
+#
+# Deze workflow bouwt beide projecten en controleert de schema-drift tussen het DB-project en het
+# PostDeployment-script. Geen secrets, geen Azure-login, geen database — draait dus ook op forks.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build FunctionApp + BlazorAdmin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
+      # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: FunctionApp bouwen (net9.0)
+        run: dotnet build FunctionApp/fa-dev-sportlink-01.csproj --configuration Release
+
+      - name: BlazorAdmin bouwen (net10.0)
+        run: dotnet build BlazorAdmin/BlazorAdmin.csproj --configuration Release
+
+      # ──────────────────────────────────────────────────────────────────────
+      # #595: schema-drift guard.
+      #
+      # De deploy-pipeline publiceert geen dacpac — `db-migrate` runt alleen
+      # Database/Script.PostDeployment1.sql. Elk tabel-object uit het DB-project moet daarom ook
+      # idempotent in dat script staan, anders ontbreekt de tabel op een verse deploy en falen
+      # productiefuncties met "Invalid object name" (zo ontbraken avg.ImportLog,
+      # planner.HerplanVerzoeken en dbo.Zonsondergang).
+      #
+      # Deze check faalt zodra iemand een nieuwe tabel aan het DB-project toevoegt zonder de
+      # bijbehorende guard in PostDeployment — het gat kan dus niet opnieuw ontstaan.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Schema-drift check (DB-project vs PostDeployment)
+        run: |
+          POST_DEPLOY="Database/Script.PostDeployment1.sql"
+          MISSING=0
+
+          # Tabellen die bewust NIET in PostDeployment horen, met de reden erbij.
+          # Elke andere tabel moet er staan — zie de toelichting hierboven.
+          #   stg.*         — dynamisch aangemaakt door FunctionApp/CreateTable.cs op basis van het
+          #                   actuele Sportlink API-schema; een statische DDL zou juist gaan driften
+          #   dbo.DateTable — aangemaakt (DROP + CREATE) door dbo.sp_CreateDateTable, die in
+          #                   PostDeployment wordt gecreëerd én aangeroepen
+          ALLOWLIST="stg.teams stg.matches stg.matchdetails dbo.DateTable"
+
+          while IFS= read -r f; do
+            # Haal de schema- en tabelnaam uit 'CREATE TABLE [schema].[naam]'
+            OBJ=$(grep -ioP 'CREATE\s+TABLE\s+\[?\K\w+\]?\.\[?\w+' "$f" | head -1 \
+                  | tr -d '[]')
+            [ -z "$OBJ" ] && continue
+
+            # Bewuste uitzondering? Dan overslaan.
+            case " $ALLOWLIST " in *" $OBJ "*) continue ;; esac
+
+            # Zoek een referentie naar het object in het PostDeployment-script. Zowel
+            # OBJECT_ID('schema.tabel') als [schema].[tabel] tellen als dekking.
+            SCHEMA_NAME="${OBJ%%.*}"
+            TABLE_NAME="${OBJ##*.}"
+
+            if grep -qiE "(OBJECT_ID\('${SCHEMA_NAME}\.${TABLE_NAME}'\)|\[${SCHEMA_NAME}\]\.\[${TABLE_NAME}\])" "$POST_DEPLOY"; then
+              continue
+            fi
+
+            echo "::error file=$f::Tabel ${OBJ} staat in het DB-project maar wordt niet genoemd in ${POST_DEPLOY} — op een verse deploy ontbreekt deze tabel (#595)."
+            MISSING=1
+          done < <(find Database -path '*/Tables/*.sql' -type f | sort)
+
+          # Zelfde controle voor stored procedures en views. Deze ontbraken óók volledig — inclusief
+          # de vier ETL-procedures, waardoor de hele Sportlink-pipeline op een verse deploy stilstond.
+          while IFS= read -r f; do
+            OBJ=$(grep -ioP 'CREATE\s+(OR\s+ALTER\s+)?(PROCEDURE|VIEW)\s+\[?\K\w+\]?\.\[?\w+' "$f" \
+                  | head -1 | tr -d '[]')
+            [ -z "$OBJ" ] && continue
+
+            SCHEMA_NAME="${OBJ%%.*}"
+            OBJECT_NAME="${OBJ##*.}"
+
+            if grep -qiE "(CREATE\s+(OR\s+ALTER\s+)?(PROCEDURE|VIEW)\s+\[?${SCHEMA_NAME}\]?\.\[?${OBJECT_NAME}\]?|OBJECT_ID\('${SCHEMA_NAME}\.${OBJECT_NAME}'\))" "$POST_DEPLOY"; then
+              continue
+            fi
+
+            echo "::error file=$f::Object ${OBJ} staat in het DB-project maar wordt niet aangemaakt in ${POST_DEPLOY} — op een verse deploy ontbreekt dit object (#595)."
+            MISSING=1
+          done < <(find Database \( -path '*/Stored Procedures/*.sql' -o -path '*/Views/*.sql' \) -type f | sort)
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "::error::Voeg een idempotente guard toe aan ${POST_DEPLOY}: 'IF NOT EXISTS ... CREATE TABLE' voor tabellen, 'CREATE OR ALTER' voor procedures en views."
+            exit 1
+          fi
+          echo "✅ Alle tabellen, procedures en views uit het DB-project komen voor in het PostDeployment-script."

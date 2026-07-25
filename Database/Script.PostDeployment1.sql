@@ -1,4 +1,4 @@
-﻿/*
+/*
 Post-Deployment Script Template							
 --------------------------------------------------------------------------------------
  This file contains SQL statements that will be appended to the build script.		
@@ -10,100 +10,133 @@ Post-Deployment Script Template
 --------------------------------------------------------------------------------------
 */
 -- New setup needed for the first time (#435: gebruik IF NOT EXISTS i.p.v. scalar subquery die faalt bij >1 rij)
+--
+-- #598: ClubCode wordt expliciet meegegeven met de neutrale placeholder 'CLUB'. Voorheen leunde deze
+-- INSERT op een DEFAULT-constraint met een clubnaam erin; op een verse dacpac-deploy (waar
+-- dbo.AppSettings.ClubCode NOT NULL is zonder default) faalde de INSERT juist daardoor.
+-- De beheerder stelt de echte ClubCode in via Beheer → Instellingen.
+--
+-- Dynamische SQL omdat [ClubCode] op een pre-multi-club database nog niet bestaat: SQL Server bindt
+-- kolomnamen bij batch-compilatie, dus een statische verwijzing zou de hele batch laten falen
+-- (zelfde valkuil als #564).
 IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSettings])
 BEGIN
-	INSERT INTO [dbo].[AppSettings]
-		([ClubName]
-		,[SportlinkApiUrl]
-		,[SportlinkClientId]
-		,[SeasonStartMonth]
-		,[FetchSchedule])
-	VALUES
-		('Uw clubnaam'
-		,'https://data.sportlink.com'
-		,'APIKEY'
-		,7
-		,'0 0 4 * * *')
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ClubCode')
+        EXEC('
+            INSERT INTO [dbo].[AppSettings]
+                ([ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId], [SeasonStartMonth], [FetchSchedule])
+            VALUES
+                (''Uw clubnaam'', ''CLUB'', ''https://data.sportlink.com'', ''APIKEY'', 7, ''0 0 4 * * *'');
+        ');
+    ELSE
+        INSERT INTO [dbo].[AppSettings]
+            ([ClubName], [SportlinkApiUrl], [SportlinkClientId], [SeasonStartMonth], [FetchSchedule])
+        VALUES
+            ('Uw clubnaam', 'https://data.sportlink.com', 'APIKEY', 7, '0 0 4 * * *');
 END
 GO
 
+-- ============================================================
+-- Initiële referentie-/voorbeelddata voor de primaire club.
+--
+-- #598: alle onderstaande seeds geven [ClubCode] expliciet mee, gelezen uit dbo.AppSettings.
+-- Voorheen leunden ze op een DEFAULT-constraint met een clubnaam erin — dat brak de multi-club
+-- invariant én faalde op een verse dacpac-deploy waar die default niet bestaat.
+--
+-- Alles staat in dynamische SQL: op een pre-multi-club database bestaat de kolom [ClubCode] nog
+-- niet en zou een statische verwijzing de hele batch laten falen op naam-binding (vgl. #564).
+-- Op zulke databases zijn de tabellen al gevuld, dus de seeds worden overgeslagen.
+-- ============================================================
 -- Speeltijden: insert static reference data once
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden])
-BEGIN
-    INSERT INTO [dbo].[Speeltijden] ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
-    VALUES
-        ('JO7',  0.25, 50,  20, 10),
-        ('JO8',  0.25, 50,  20, 10),
-        ('JO9',  0.25, 50,  20, 10),
-        ('JO10', 0.25, 65,  25, 15),
-        ('JO11', 0.50, 75,  30, 15),
-        ('JO12', 0.50, 75,  30, 15),
-        ('JO13', 1.00, 75,  30, 15),
-        ('JO14', 1.00, 85,  35, 15),
-        ('JO15', 1.00, 85,  35, 15),
-        ('JO16', 1.00, 95,  40, 15),
-        ('JO17', 1.00, 95,  40, 15),
-        ('JO18', 1.00, 105, 45, 15),
-        ('JO19', 1.00, 105, 45, 15),
-        ('JO23', 1.00, 105, 45, 15),
-        ('MO13', 1.00, 75,  30, 15),
-        ('MO15', 1.00, 85,  35, 15),
-        ('MO17', 1.00, 95,  40, 15),
-        ('MO19', 1.00, 105, 45, 15),
-        ('MO20', 1.00, 105, 45, 15),
-        ('VR',   1.00, 115, 45, 15),
-        ('G',    0.50, 75,  30, 15),
-        ('1-99', 1.00, 115, 45, 15)
-END
+   AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'ClubCode')
+    EXEC('
+    INSERT INTO [dbo].[Speeltijden] ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [ClubCode])
+    SELECT v.[Leeftijd], v.[Veldafmeting], v.[WedstrijdTotaal], v.[WedstrijdHelft], v.[WedstrijdRust], a.[ClubCode]
+    FROM (VALUES
+        (''JO7'',  0.25, 50,  20, 10),
+        (''JO8'',  0.25, 50,  20, 10),
+        (''JO9'',  0.25, 50,  20, 10),
+        (''JO10'', 0.25, 65,  25, 15),
+        (''JO11'', 0.50, 75,  30, 15),
+        (''JO12'', 0.50, 75,  30, 15),
+        (''JO13'', 1.00, 75,  30, 15),
+        (''JO14'', 1.00, 85,  35, 15),
+        (''JO15'', 1.00, 85,  35, 15),
+        (''JO16'', 1.00, 95,  40, 15),
+        (''JO17'', 1.00, 95,  40, 15),
+        (''JO18'', 1.00, 105, 45, 15),
+        (''JO19'', 1.00, 105, 45, 15),
+        (''JO23'', 1.00, 105, 45, 15),
+        (''MO13'', 1.00, 75,  30, 15),
+        (''MO15'', 1.00, 85,  35, 15),
+        (''MO17'', 1.00, 95,  40, 15),
+        (''MO19'', 1.00, 105, 45, 15),
+        (''MO20'', 1.00, 105, 45, 15),
+        (''VR'',   1.00, 115, 45, 15),
+        (''G'',    0.50, 75,  30, 15),
+        (''1-99'', 1.00, 115, 45, 15)
+    ) AS v([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
+    CROSS APPLY (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] ORDER BY [ClubCode]) a;
+    ');
 GO
 
--- Velden: field definitions (ClubCode via DEFAULT 'VRC' — single-club initiële seed; bij multi-club handmatig per club inserten)
+-- Velden: voorbeeld-velddefinities voor de primaire club (bij multi-club handmatig per club inserten)
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Velden])
-BEGIN
-    INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief])
-    VALUES
-        (1, 'veld 1', 'kunstgras', 1, 1),
-        (2, 'veld 2', 'kunstgras', 1, 1),
-        (3, 'veld 3', 'kunstgras', 1, 1),
-        (4, 'veld 4', 'kunstgras', 1, 1),
-        (5, 'veld 5', 'natuurgras', 0, 1),
-        (6, 'veld 6', 'natuurgras', 0, 0)  -- niet functioneel
-END
+   AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Velden') AND name = 'ClubCode')
+    EXEC('
+    INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief], [ClubCode])
+    SELECT v.[VeldNummer], v.[VeldNaam], v.[VeldType], v.[HeeftKunstlicht], v.[Actief], a.[ClubCode]
+    FROM (VALUES
+        (1, ''veld 1'', ''kunstgras'',  1, 1),
+        (2, ''veld 2'', ''kunstgras'',  1, 1),
+        (3, ''veld 3'', ''kunstgras'',  1, 1),
+        (4, ''veld 4'', ''kunstgras'',  1, 1),
+        (5, ''veld 5'', ''natuurgras'', 0, 1),
+        (6, ''veld 6'', ''natuurgras'', 0, 0)   -- niet functioneel
+    ) AS v([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief])
+    CROSS APPLY (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] ORDER BY [ClubCode]) a;
+    ');
 GO
 
--- VeldBeschikbaarheid: field availability per day-of-week (ClubCode via DEFAULT 'VRC' — single-club initiële seed)
+-- VeldBeschikbaarheid: voorbeeld-beschikbaarheid per dag van de week
 -- DagVanWeek: 1=Monday, 2=Tuesday, ..., 6=Saturday, 7=Sunday
+-- Vrijdag (5) en zondag (7): geen rijen = geen wedstrijden
 IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid])
-BEGIN
-    -- Monday-Thursday (1-4): only veld 5, until sunset
-    INSERT INTO [dbo].[VeldBeschikbaarheid] ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang])
-    VALUES
-        (5, 1, '18:00', '22:00', 1),
-        (5, 2, '18:00', '22:00', 1),
-        (5, 3, '18:00', '22:00', 1),
-        (5, 4, '18:00', '22:00', 1)
-    -- Friday (5): no rows = no matches
-    -- Sunday (7): no rows = no matches
-
-    -- Saturday (6): all fields
-    INSERT INTO [dbo].[VeldBeschikbaarheid] ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang])
-    VALUES
-        (1, 6, '08:30', '22:00', 0),
-        (2, 6, '08:30', '22:00', 0),
-        (3, 6, '08:30', '22:00', 0),
-        (4, 6, '08:30', '22:00', 0),
-        (5, 6, '08:30', '17:00', 0)
-END
+   AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'ClubCode')
+    EXEC('
+    INSERT INTO [dbo].[VeldBeschikbaarheid] ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
+    SELECT v.[VeldNummer], v.[DagVanWeek], v.[BeschikbaarVanaf], v.[BeschikbaarTot], v.[GebruikZonsondergang], a.[ClubCode]
+    FROM (VALUES
+        -- maandag t/m donderdag: alleen veld 5, tot zonsondergang
+        (5, 1, ''18:00'', ''22:00'', 1),
+        (5, 2, ''18:00'', ''22:00'', 1),
+        (5, 3, ''18:00'', ''22:00'', 1),
+        (5, 4, ''18:00'', ''22:00'', 1),
+        -- zaterdag: alle velden
+        (1, 6, ''08:30'', ''22:00'', 0),
+        (2, 6, ''08:30'', ''22:00'', 0),
+        (3, 6, ''08:30'', ''22:00'', 0),
+        (4, 6, ''08:30'', ''22:00'', 0),
+        (5, 6, ''08:30'', ''17:00'', 0)
+    ) AS v([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang])
+    CROSS APPLY (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] ORDER BY [ClubCode]) a;
+    ');
 GO
 
--- TeamRegels: team-specific scheduling exceptions (ClubCode via DEFAULT 'VRC' — single-club initiële seed)
+-- TeamRegels: voorbeeld-uitzonderingen voor het standaardteam van de primaire club.
+-- #598: de teamnaam wordt club-neutraal opgebouwd als "<ClubCode> 1" — nooit een hardcoded clubnaam.
 IF NOT EXISTS (SELECT 1 FROM [dbo].[TeamRegels])
-BEGIN
-    INSERT INTO [dbo].[TeamRegels] ([TeamNaam], [RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking])
-    VALUES
-        ('VRC 1', 'BufferVoor', 60, 10, 1, '1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld'),
-        ('VRC 1', 'BufferNa',   30, 10, 1, '30 min na de wedstrijd geen andere wedstrijden op hetzelfde veld')
-END
+   AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TeamRegels') AND name = 'ClubCode')
+    EXEC('
+    INSERT INTO [dbo].[TeamRegels] ([TeamNaam], [RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking], [ClubCode])
+    SELECT a.[ClubCode] + '' 1'', v.[RegelType], v.[WaardeMinuten], v.[Prioriteit], v.[Actief], v.[Opmerking], a.[ClubCode]
+    FROM (VALUES
+        (''BufferVoor'', 60, 10, 1, ''1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld''),
+        (''BufferNa'',   30, 10, 1, ''30 min na de wedstrijd geen andere wedstrijden op hetzelfde veld'')
+    ) AS v([RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking])
+    CROSS APPLY (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] ORDER BY [ClubCode]) a;
+    ');
 GO
 
 -- AppSettings: UseRealtimeApi kolom toevoegen (idempotent)
@@ -785,26 +818,27 @@ IF @SeasonStartMonth IS NOT NULL
 GO
 -- ============================================================
 -- #30: Multi-club fundament — ClubCode + Accommodatie
--- DEFAULT 'VRC' is uitsluitend voor migratie-backwards-compat (bestaande rijen krijgen hier een waarde).
+-- De DEFAULT is uitsluitend migratie-backwards-compat (bestaande rijen krijgen hier een waarde) en
+-- gebruikt de neutrale placeholder 'CLUB' — nooit een clubnaam (#598). Constraints worden hierna gedropt.
 -- Alle nieuwe inserts geven ClubCode altijd expliciet mee vanuit AppSettings.
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+    ALTER TABLE [dbo].[AppSettings] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettings_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'Accommodatie')
     ALTER TABLE [dbo].[AppSettings] ADD [Accommodatie] NVARCHAR(200) NULL; -- geen default — in te stellen via Beheer → Instellingen per club
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Velden') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[Velden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+    ALTER TABLE [dbo].[Velden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Velden_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[Speeltijden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+    ALTER TABLE [dbo].[Speeltijden] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_Speeltijden_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.TeamRegels') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[TeamRegels] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+    ALTER TABLE [dbo].[TeamRegels] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamRegels_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'ClubCode')
-    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'VRC'; -- migratie-backwards-compat
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_VeldBeschikbaarheid_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt direct hierna gedropt (#598/#610)
 GO
 
 -- #435: verwijder VRC-default constraints — clubnaam heeft geen plek als DB-default
@@ -890,7 +924,7 @@ BEGIN
         [Veld]          NVARCHAR(100) NOT NULL,
         [OudeWaarde]    NVARCHAR(MAX) NULL,
         [NieuweWaarde]  NVARCHAR(MAX) NULL,
-        [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_AppSettingsAudit_ClubCode] DEFAULT 'VRC',
+        [ClubCode]      NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
         CONSTRAINT [PK_AppSettingsAudit] PRIMARY KEY CLUSTERED ([Id] ASC)
     );
 END
@@ -906,7 +940,7 @@ BEGIN
         [VoorkeurTijd]  TIME NOT NULL,
         [Prioriteit]    INT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Prioriteit] DEFAULT 5,
         [Actief]        BIT NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Actief] DEFAULT 1,
-        [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode] DEFAULT 'VRC',
+        [ClubCode]      NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
         [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Inserted] DEFAULT GETUTCDATE(),
         [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_TeamVoorkeurTijden_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_TeamVoorkeurTijden] PRIMARY KEY CLUSTERED ([Id] ASC)
@@ -922,7 +956,7 @@ BEGIN
         [EmailAdres]   NVARCHAR(200) NOT NULL,
         [Omschrijving] NVARCHAR(500) NULL,
         [Actief]       BIT NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Actief]    DEFAULT 1,
-        [ClubCode]     NVARCHAR(20) NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode]  DEFAULT 'VRC',
+        [ClubCode]     NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
         [mta_inserted] DATETIME2 NOT NULL CONSTRAINT [DF_UitgeslotenEmailAdressen_Inserted] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_UitgeslotenEmailAdressen] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [UQ_UitgeslotenEmailAdressen_Adres] UNIQUE ([EmailAdres], [ClubCode])
@@ -932,7 +966,7 @@ GO
 
 -- v2 — #119: ClubCode toevoegen aan planner.EmailVerwerking (multi-club isolatie email-log)
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'ClubCode')
-    ALTER TABLE [planner].[EmailVerwerking] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'VRC';
+    ALTER TABLE [planner].[EmailVerwerking] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt bij #242 gedropt
 GO
 
 -- ============================================================
@@ -968,7 +1002,7 @@ END;
 END
 GO
 
--- #242: Verwijder club-specifieke DEFAULT 'VRC' uit EmailVerwerking.ClubCode
+-- #242: Verwijder de placeholder-DEFAULT uit EmailVerwerking.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_EmailVerwerking_ClubCode')
     ALTER TABLE [planner].[EmailVerwerking] DROP CONSTRAINT [DF_EmailVerwerking_ClubCode];
 GO
@@ -1158,7 +1192,7 @@ BEGIN
         [Onderwerp]     NVARCHAR(500) NOT NULL,
         [BodyTemplate]  NVARCHAR(MAX) NOT NULL,
         [Actief]        BIT NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Actief] DEFAULT 1,
-        [ClubCode]      NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_ClubCode] DEFAULT 'VRC',
+        [ClubCode]      NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
         [mta_inserted]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Inserted] DEFAULT GETUTCDATE(),
         [mta_modified]  DATETIME2 NOT NULL CONSTRAINT [DF_EmailTemplateInstellingen_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_EmailTemplateInstellingen] PRIMARY KEY CLUSTERED ([Id] ASC),
@@ -1299,4 +1333,839 @@ SELECT
 FROM [planner].[GeplandeWedstrijden]
 WHERE [Status] <> 'Geannuleerd'
   AND [IsVervallen] = 0;
+GO
+
+-- ============================================================
+-- #598: verwijder de resterende club-specifieke DEFAULT-constraints op ClubCode.
+--
+-- Een clubnaam als DB-default breekt de multi-club architectuur voor elke fork. Deze vijf objecten
+-- zijn bij eerdere opschoonrondes (#435 voor Speeltijden/TeamRegels/VeldBeschikbaarheid/Velden,
+-- #242 voor EmailVerwerking) gemist. Patroon gelijk aan #242: DROP DEFAULT + CHECK (LEN > 0),
+-- zodat de NOT NULL-garantie blijft maar er geen waarde meer stilzwijgend wordt ingevuld.
+-- ============================================================
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_AppSettings_ClubCode')
+    ALTER TABLE [dbo].[AppSettings] DROP CONSTRAINT [DF_AppSettings_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_AppSettingsAudit_ClubCode')
+    ALTER TABLE [dbo].[AppSettingsAudit] DROP CONSTRAINT [DF_AppSettingsAudit_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamVoorkeurTijden_ClubCode')
+    ALTER TABLE [dbo].[TeamVoorkeurTijden] DROP CONSTRAINT [DF_TeamVoorkeurTijden_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_UitgeslotenEmailAdressen_ClubCode')
+    ALTER TABLE [dbo].[UitgeslotenEmailAdressen] DROP CONSTRAINT [DF_UitgeslotenEmailAdressen_ClubCode];
+GO
+IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_EmailTemplateInstellingen_ClubCode')
+    ALTER TABLE [dbo].[EmailTemplateInstellingen] DROP CONSTRAINT [DF_EmailTemplateInstellingen_ClubCode];
+GO
+
+-- Onbedoeld naamloze DEFAULT op dbo.AppSettings.ClubCode (uit de oudere ADD COLUMN-migratie zonder
+-- expliciete constraintnaam) — opzoeken via de kolom i.p.v. de naam.
+DECLARE @dfNaam SYSNAME = (
+    SELECT dc.name FROM sys.default_constraints dc
+    JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+    WHERE dc.parent_object_id = OBJECT_ID('dbo.AppSettings') AND c.name = 'ClubCode');
+IF @dfNaam IS NOT NULL
+    EXEC('ALTER TABLE [dbo].[AppSettings] DROP CONSTRAINT [' + @dfNaam + ']');
+GO
+
+-- NOT NULL-garantie behouden zonder default: lege ClubCode expliciet verbieden.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_AppSettings_ClubCode')
+    ALTER TABLE [dbo].[AppSettings] ADD CONSTRAINT [CK_AppSettings_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_AppSettingsAudit_ClubCode')
+    ALTER TABLE [dbo].[AppSettingsAudit] ADD CONSTRAINT [CK_AppSettingsAudit_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_TeamVoorkeurTijden_ClubCode')
+    ALTER TABLE [dbo].[TeamVoorkeurTijden] ADD CONSTRAINT [CK_TeamVoorkeurTijden_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_UitgeslotenEmailAdressen_ClubCode')
+    ALTER TABLE [dbo].[UitgeslotenEmailAdressen] ADD CONSTRAINT [CK_UitgeslotenEmailAdressen_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_EmailTemplateInstellingen_ClubCode')
+    ALTER TABLE [dbo].[EmailTemplateInstellingen] ADD CONSTRAINT [CK_EmailTemplateInstellingen_ClubCode] CHECK (LEN([ClubCode]) > 0);
+GO
+
+-- ============================================================
+-- #595: tabellen die alleen in het DB-project (.sqlproj) bestonden en daardoor ontbraken op een
+-- verse deploy. De deploy-pipeline publiceerde nooit een dacpac, dus elk schema-object moet ook
+-- hier idempotent staan. Zonder deze guards faalden productiefuncties met "Invalid object name":
+--   - avg.ImportLog          — exports/import-teambegeleiding-to-sql.ps1, avg.sp_CleanupImportLog
+--   - planner.HerplanVerzoeken — PlannerMatchRepository.cs (mist bovendien ClubCode)
+--   - dbo.Zonsondergang      — AutoPlanService.cs e.a.
+-- Definities gelijk houden aan Database/{avg,planner,dbo}/Tables/*.sql.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'avg')
+    EXEC('CREATE SCHEMA [avg]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('avg.ImportLog'))
+BEGIN
+    CREATE TABLE [avg].[ImportLog] (
+        [Id]               INT            IDENTITY (1, 1) NOT NULL,
+        [ImportDatum]      DATETIME       CONSTRAINT [DF_avg_ImportLog_ImportDatum] DEFAULT (GETUTCDATE()) NOT NULL,
+        [AantalRijen]      INT            NOT NULL,
+        [CsvBestand]       NVARCHAR (500) NULL,
+        [ImporterendeDoor] NVARCHAR (200) NULL,
+        [Duur_ms]          INT            NULL,
+        [ClubCode]         NVARCHAR (20)  NOT NULL CONSTRAINT [DF_avg_ImportLog_ClubCode] DEFAULT '',
+        CONSTRAINT [PK_avg_ImportLog] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'planner')
+    EXEC('CREATE SCHEMA [planner]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('planner.HerplanVerzoeken'))
+BEGIN
+    CREATE TABLE [planner].[HerplanVerzoeken] (
+        [Id]                    INT            IDENTITY(1,1) NOT NULL,
+        [Wedstrijdcode]         BIGINT         NOT NULL,
+        [HuidigeWedstrijd]      NVARCHAR(200)  NOT NULL,
+        [HuidigeDatum]          DATE           NOT NULL,
+        [HuidigeAanvangsTijd]   TIME           NOT NULL,
+        [HuidigeVeldNaam]       NVARCHAR(50)   NULL,
+        [GewensteAanvangsTijd]  TIME           NOT NULL,
+        [GewenstVeldNummer]     INT            NULL,
+        [Status]                NVARCHAR(20)   NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Status] DEFAULT 'Aangevraagd',
+        [AangevraagdDoor]       NVARCHAR(200)  NULL,
+        [Opmerking]             NVARCHAR(500)  NULL,
+        [mta_inserted]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Ins] DEFAULT GETUTCDATE(),
+        [mta_modified]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Mod] DEFAULT GETUTCDATE(),
+        CONSTRAINT [PK_HerplanVerzoeken] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Zonsondergang'))
+BEGIN
+    CREATE TABLE [dbo].[Zonsondergang] (
+        [Datum]         DATE  NOT NULL,
+        [Zonsondergang] TIME  NOT NULL,
+        CONSTRAINT [PK_Zonsondergang] PRIMARY KEY CLUSTERED ([Datum] ASC)
+    );
+END
+GO
+
+-- #595: ClubCode-discriminator op planner.HerplanVerzoeken (multi-club invariant).
+-- Zelfde nullable -> backfill -> NOT NULL patroon als planner.GeplandeWedstrijden (#428), en om
+-- dezelfde reden in aparte batches: SQL Server bindt kolomnamen bij batch-compilatie, dus DML die
+-- de nieuwe kolom noemt moet ná een GO staan (vgl. #564).
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.HerplanVerzoeken') AND name = 'ClubCode')
+    ALTER TABLE [planner].[HerplanVerzoeken] ADD [ClubCode] NVARCHAR(20) NULL;
+GO
+
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.HerplanVerzoeken') AND name = 'ClubCode')
+   AND EXISTS (SELECT 1 FROM [planner].[HerplanVerzoeken] WHERE [ClubCode] IS NULL)
+    UPDATE [planner].[HerplanVerzoeken]
+    SET [ClubCode] = (SELECT TOP 1 [ClubCode] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1)
+    WHERE [ClubCode] IS NULL;
+GO
+
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID('planner.HerplanVerzoeken')
+             AND name = 'ClubCode' AND is_nullable = 1)
+   AND NOT EXISTS (SELECT 1 FROM [planner].[HerplanVerzoeken] WHERE [ClubCode] IS NULL)
+    ALTER TABLE [planner].[HerplanVerzoeken] ALTER COLUMN [ClubCode] NVARCHAR(20) NOT NULL;
+GO
+
+-- ============================================================
+-- #606: indexen op de his.*-tabellen (business key + ClubCode).
+--
+-- De his-tabellen zijn heaps: elke join/filter op de business key of ClubCode doet een full scan.
+-- Er is bovendien geen enkele schema-garantie tegen duplicaten als de MERGE ON-matching ooit
+-- misaligneert (type-cast/whitespace) — een stil datakwaliteitsrisico.
+--
+-- De unieke index wordt alleen aangemaakt als de data dat toestaat. De Sportlink /teams-feed
+-- levert aantoonbaar duplicaten (#569, nog open), en een mislukte CREATE UNIQUE INDEX zou de
+-- volledige deploy laten falen. Blijven er duplicaten staan, dan komt er een niet-unieke index —
+-- de performancewinst is er dan wel, en de uniciteit volgt zodra #569 is opgelost.
+-- ============================================================
+DECLARE @hisTabellen TABLE ([Tabel] SYSNAME, [Bk] SYSNAME);
+INSERT INTO @hisTabellen ([Tabel], [Bk]) VALUES
+    ('teams',        'bk_teams'),
+    ('matches',      'bk_matches'),
+    ('matchdetails', 'bk_WedstrijdCode');
+
+DECLARE @tabel SYSNAME, @bk SYSNAME, @sql NVARCHAR(MAX), @objId INT, @duplicaten INT;
+DECLARE hisCur CURSOR LOCAL FAST_FORWARD FOR SELECT [Tabel], [Bk] FROM @hisTabellen;
+OPEN hisCur;
+FETCH NEXT FROM hisCur INTO @tabel, @bk;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @objId = OBJECT_ID('his.' + @tabel);
+
+    -- Alleen als de tabel én de business-key-kolom bestaan, en er nog geen bk-index is.
+    IF @objId IS NOT NULL
+       AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @objId AND name = @bk)
+       AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = @objId AND name = 'UQ_' + @tabel + '_bk')
+       AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = @objId AND name = 'IX_' + @tabel + '_bk')
+    BEGIN
+        -- Duplicaten tellen; bepaalt of de index uniek kan zijn.
+        SET @sql = N'SELECT @cnt = COUNT(*) FROM (SELECT ' + QUOTENAME(@bk) +
+                   N' FROM [his].' + QUOTENAME(@tabel) +
+                   N' GROUP BY ' + QUOTENAME(@bk) + N' HAVING COUNT(*) > 1) d;';
+        EXEC sp_executesql @sql, N'@cnt INT OUTPUT', @cnt = @duplicaten OUTPUT;
+
+        IF @duplicaten = 0
+        BEGIN
+            SET @sql = N'CREATE UNIQUE NONCLUSTERED INDEX ' + QUOTENAME('UQ_' + @tabel + '_bk') +
+                       N' ON [his].' + QUOTENAME(@tabel) + N' (' + QUOTENAME(@bk) + N');';
+            EXEC sp_executesql @sql;
+            PRINT 'his.' + @tabel + ': unieke index op ' + @bk + ' aangemaakt.';
+        END
+        ELSE
+        BEGIN
+            SET @sql = N'CREATE NONCLUSTERED INDEX ' + QUOTENAME('IX_' + @tabel + '_bk') +
+                       N' ON [his].' + QUOTENAME(@tabel) + N' (' + QUOTENAME(@bk) + N');';
+            EXEC sp_executesql @sql;
+            PRINT 'his.' + @tabel + ': ' + CAST(@duplicaten AS VARCHAR(10)) +
+                  ' dubbele business keys gevonden (zie #569) — niet-unieke index aangemaakt.';
+        END
+    END
+
+    -- Ondersteunende index op ClubCode.
+    IF @objId IS NOT NULL
+       AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = @objId AND name = 'ClubCode')
+       AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = @objId AND name = 'IX_' + @tabel + '_ClubCode')
+    BEGIN
+        SET @sql = N'CREATE NONCLUSTERED INDEX ' + QUOTENAME('IX_' + @tabel + '_ClubCode') +
+                   N' ON [his].' + QUOTENAME(@tabel) + N' ([ClubCode]);';
+        EXEC sp_executesql @sql;
+    END
+
+    FETCH NEXT FROM hisCur INTO @tabel, @bk;
+END
+
+CLOSE hisCur;
+DEALLOCATE hisCur;
+GO
+
+-- ============================================================
+-- #595 (uitbreiding): dbo.Season en mta.source_target_mapping ontbraken om dezelfde reden.
+--
+-- Gevonden door de nieuwe schema-drift check in .github/workflows/build.yml. Beide tabellen stonden
+-- alleen in het DB-project:
+--   - dbo.Season               — sp_UpdateSeasonTable doet alleen INSERT, maakt de tabel niet aan
+--   - mta.source_target_mapping — stuurt sp_CreateTargetTableFromSource + sp_MergeStgToHis; zonder
+--                                 deze tabel (of zonder rijen) doet de volledige ETL stilzwijgend niets
+--
+-- De seed-rijen stonden in Database/mta/Tables/source_target_mapping.sql uitsluitend als SQL-comment,
+-- dus zelfs een dacpac-publish liet de tabel leeg achter. De drie rijen hieronder zijn exact de
+-- configuratie die in productie draait. Alle waarden zijn clubneutraal.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
+BEGIN
+    CREATE TABLE [dbo].[Season] (
+        [Name]      NCHAR(9) NULL,
+        [DateFrom]  DATE     NULL,
+        [DateUntil] DATE     NULL
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'mta')
+    EXEC('CREATE SCHEMA [mta]');
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('mta.source_target_mapping'))
+BEGIN
+    CREATE TABLE [mta].[source_target_mapping] (
+        [Id]            INT IDENTITY(1,1) NOT NULL,
+        [source_type]   INT            NULL,
+        [source_root]   NVARCHAR(250)  NULL,
+        [source_schema] NVARCHAR(10)   NULL,
+        [source_entity] NVARCHAR(250)  NULL,
+        [source_pk]     NVARCHAR(250)  NULL,
+        [target_type]   INT            NULL,
+        [target_root]   NVARCHAR(250)  NULL,
+        [target_schema] NVARCHAR(10)   NULL,
+        [target_entity] NVARCHAR(250)  NULL,
+        [target_pk]     NVARCHAR(250)  NULL
+    );
+END
+GO
+
+-- Seed per rij idempotent: bestaande installaties houden hun eigen aanpassingen.
+INSERT INTO [mta].[source_target_mapping]
+    ([source_type], [source_root], [source_schema], [source_entity], [source_pk],
+     [target_type], [target_root], [target_schema], [target_entity], [target_pk])
+SELECT v.* FROM (VALUES
+    (0, 'SportlinkSqlDb', 'stg', 'teams',        '[teamcode],[lokaleteamcode],[poulecode]', 0, 'SportlinkSqlDb', 'his', 'teams',        'bk_teams NVARCHAR(100)'),
+    (0, 'SportlinkSqlDb', 'stg', 'matches',      '[wedstrijdcode]',                         0, 'SportlinkSqlDb', 'his', 'matches',      'bk_matches NVARCHAR(100)'),
+    (0, 'SportlinkSqlDb', 'stg', 'matchdetails', '[WedstrijdCode]',                         0, 'SportlinkSqlDb', 'his', 'matchdetails', 'bk_WedstrijdCode INT')
+) AS v([source_type], [source_root], [source_schema], [source_entity], [source_pk],
+       [target_type], [target_root], [target_schema], [target_entity], [target_pk])
+WHERE NOT EXISTS (
+    SELECT 1 FROM [mta].[source_target_mapping] m
+    WHERE m.[source_schema] = v.[source_schema] AND m.[source_entity] = v.[source_entity]
+      AND m.[target_schema] = v.[target_schema] AND m.[target_entity] = v.[target_entity]
+);
+GO
+
+-- ============================================================
+-- #595 (uitbreiding): stored procedures en views uit het DB-project.
+--
+-- Ook deze objecten stonden alleen in het DB-project en ontbraken dus volledig op een verse deploy.
+-- Dat trof de kern van de ETL: Script.PostDeployment1.sql riep dbo.sp_UpdateSeasonTable al aan
+-- zonder die procedure ooit aan te maken, en zonder sp_CreateTargetTableFromSource /
+-- sp_MergeStgToHis draait de hele Sportlink-pipeline niet.
+--
+-- Gevonden door de uitgebreide schema-drift check in .github/workflows/build.yml.
+--
+-- CREATE OR ALTER is idempotent en houdt de definitie gelijk aan de bronbestanden onder
+-- Database/. Wijzig een object dus altijd op BEIDE plekken, of genereer dit blok opnieuw.
+-- ============================================================
+
+-- Bron: Database/dbo/System Stored Procedures/sp_CreateDateTable.sql
+CREATE OR ALTER PROCEDURE [dbo].[sp_CreateDateTable]
+	@YearStart as int,
+	@YearEnd   as int 
+AS
+
+IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[DateTable]') AND type in (N'U'))
+	DROP TABLE [dbo].[DateTable]
+
+CREATE TABLE dbo.DateTable (
+    Date DATE PRIMARY KEY,
+    Day INT NOT NULL,
+    Month INT NOT NULL,
+    Year INT NOT NULL,
+    Quarter INT NOT NULL,
+    DayOfWeek INT NOT NULL, -- 1 = Monday, 7 = Sunday
+    DayName VARCHAR(10) NOT NULL,
+    MonthName VARCHAR(15) NOT NULL,
+	IsWeekend BIT NOT NULL
+);
+
+-- Populate the table with dates
+WITH RecursiveDates AS (
+    SELECT DATEFROMPARTS(@YearStart,1,1) AS Date -- Starting date
+    UNION ALL
+    SELECT DATEADD(DAY, 1, Date) 
+    FROM RecursiveDates
+    WHERE Date < DATEFROMPARTS(@YearEnd,12,31) -- Ending date
+)
+
+INSERT INTO dbo.DateTable (Date, Day, Month, Year, Quarter, DayOfWeek, DayName, MonthName, IsWeekend)
+SELECT
+    d.Date,
+    DAY(d.Date) AS Day,
+    MONTH(d.Date) AS Month,
+    YEAR(d.Date) AS Year,
+    DATEPART(QUARTER, d.Date) AS Quarter,
+    -- DATEPART(WEEKDAY) is afhankelijk van de sessie-instelling DATEFIRST (default 7 = zondag bij
+    -- us_english). Daardoor gaf de oude berekening Monday = 2 in plaats van de gedocumenteerde 1,
+    -- en markeerde IsWeekend vrijdag als weekend en zondag NIET als weekend.
+    -- DATEDIFF vanaf 1900-01-01 (een maandag) is DATEFIRST-onafhankelijk en dus deterministisch.
+    (DATEDIFF(DAY, '19000101', d.Date) % 7) + 1 AS DayOfWeek,
+    DATENAME(WEEKDAY, d.Date) AS DayName,
+    DATENAME(MONTH, d.Date) AS MonthName,
+    CASE WHEN ((DATEDIFF(DAY, '19000101', d.Date) % 7) + 1) IN (6, 7) THEN 1 ELSE 0 END AS IsWeekend
+FROM    RecursiveDates d
+OPTION (MAXRECURSION 0); -- Allows for recursive CTE to handle larger datasets
+GO
+
+-- Bron: Database/dbo/System Stored Procedures/sp_UpdateSeasonTable.sql
+CREATE OR ALTER PROCEDURE [dbo].[sp_UpdateSeasonTable]
+    @SeasonStartMonth INT
+AS
+BEGIN
+	DECLARE @YearStart INT;
+	DECLARE @YearEnd   INT;
+
+	-- No seasons found! Add last two seasons
+	IF (SELECT YEAR(MAX(DateUntil)) FROM [dbo].[Season]) IS NULL 
+	BEGIN
+		INSERT INTO [dbo].[Season]
+			(
+			[Name],
+			[DateFrom],
+			[DateUntil]
+			)
+		VALUES 
+			(
+			CONCAT(YEAR(GETDATE())-2,'-',YEAR(GETDATE())-1),
+			DATEFROMPARTS(YEAR(GETDATE())-2,@SeasonStartMonth,1),
+			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth-1,1))
+			),
+			(
+			CONCAT(YEAR(GETDATE())-1,'-',YEAR(GETDATE())),
+			DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth,1),
+			EOMONTH(DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-1,1))
+			);
+	END
+
+	-- Create 2 months before start of a new season a new record in season table
+	IF (SELECT YEAR(MAX(DateUntil)) FROM [dbo].[Season]) <> YEAR(GETDATE()) +1
+		AND GETDATE() >= DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-2,1)  
+	BEGIN
+		INSERT INTO [dbo].[Season]
+			(
+			[Name],
+			[DateFrom],
+			[DateUntil]
+			)
+		 VALUES 
+			(
+			CONCAT(YEAR(GETDATE()),'-',YEAR(GETDATE())+1),
+			DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1),
+			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth-1,1))
+			)
+	END;
+
+	-- Create a new DateTable based on the new start and enddate in seasons table
+	SELECT @YearStart = YEAR(MIN(DateFrom))  FROM [dbo].[Season];
+	SELECT @YearEnd   = YEAR(MAX(DateUntil)) FROM [dbo].[Season];
+	EXEC [dbo].[sp_CreateDateTable] @YearStart, @YearEnd;
+END;
+GO
+
+-- Bron: Database/dbo/System Stored Procedures/sp_CreateTargetTableFromSource.sql
+CREATE OR ALTER PROCEDURE [dbo].[sp_CreateTargetTableFromSource]
+	@SourceSchema NVARCHAR(128),
+	@SourceName   NVARCHAR(128),
+	@TargetSchema NVARCHAR(128),
+	@TargetName   NVARCHAR(128)
+AS
+BEGIN
+	/*
+	version | date			| name					| description
+	1.0		| 12-01-2025	| Jaap van Beusekom		| Initial setup
+	1.1		| 2025			| Jaap van Beusekom		| Fixed target table name using @TargetName instead of @SourceName
+	*/
+
+	IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[' + @TargetSchema + '].[' + @TargetName +']') AND type in (N'U'))
+	BEGIN
+		SET NOCOUNT ON;
+		DECLARE @SqlString NVARCHAR(MAX) = 'CREATE TABLE ' + QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName) + ' (';
+
+		-- Fetch the primary key field from the mapping table
+		DECLARE @MtaTargetKey NVARCHAR(128);
+    
+		SELECT @MtaTargetKey = stm.target_pk
+		  FROM mta.source_target_mapping stm
+		 WHERE stm.source_entity = @SourceName 
+		   AND stm.source_schema = @SourceSchema 
+		   AND stm.target_entity = @TargetName
+		   AND stm.target_schema = @TargetSchema;
+
+		-- Add keyfield if exist at first
+		IF @MtaTargetKey IS NOT NULL
+			SET @SqlString += '' + @MtaTargetKey + ' NOT NULL,'		
+
+		-- Fetch metadata sourcetable columns
+		SELECT @SqlString += 
+			QUOTENAME(c.name) + ' ' + 
+			t.name + 
+			CASE 
+			WHEN t.name IN ('varchar', 'nvarchar', 'char', 'nchar') 
+			THEN '(' + 
+				CASE 
+				WHEN c.max_length = -1 THEN 'MAX' 
+				WHEN t.name IN ('nvarchar','nchar') THEN CAST(c.max_length / 2 AS VARCHAR) 
+				ELSE CAST(c.max_length AS VARCHAR) 
+				END + ')'
+			ELSE '' 
+			END + ' ' +
+			CASE WHEN c.is_nullable = 1 THEN 'NULL' ELSE 'NOT NULL' END + ', '
+		FROM sys.tables st
+		INNER JOIN sys.schemas ss ON ss.schema_id = st.schema_id
+		INNER JOIN sys.all_columns c ON c.object_id = st.object_id
+		LEFT JOIN sys.types t ON c.user_type_id = t.user_type_id
+		WHERE ss.name = @SourceSchema 
+		  AND st.name = @SourceName;
+
+		-- Add additional metadata columns
+		SET @SqlString += '
+			mta_inserted DATETIME NULL,
+			mta_modified DATETIME NULL,
+			mta_deleted  DATETIME NULL
+		);';
+
+		-- Execute this SQL command
+		EXEC sp_executesql @SqlString;
+		-- Output the generated SQL for verification
+		-- PRINT @SqlString;
+
+		/*
+			#606: index op de business key en op ClubCode.
+
+			Zonder index doet elke join/filter op de business key of ClubCode een full heap scan, en
+			niets in het schema voorkomt duplicaten als de MERGE ON-matching ooit misaligneert.
+
+			De business-key-index is UNIEK omdat de tabel hier net leeg is aangemaakt — dat kan dus
+			niet falen. Voor bestaande tabellen gebeurt hetzelfde in Script.PostDeployment1.sql, daar
+			wél voorwaardelijk: de Sportlink-feed levert aantoonbaar duplicaten (#569), en een
+			mislukte CREATE UNIQUE INDEX zou de hele deploy laten falen.
+
+			@MtaTargetKey heeft de vorm 'kolomnaam DATATYPE' — zelfde parsing als sp_MergeStgToHis.
+		*/
+		IF @MtaTargetKey IS NOT NULL
+		BEGIN
+			DECLARE @BkColumn NVARCHAR(128) =
+				CASE WHEN CHARINDEX(' ', @MtaTargetKey) > 0
+					 THEN LEFT(@MtaTargetKey, CHARINDEX(' ', @MtaTargetKey) - 1)
+					 ELSE @MtaTargetKey END;
+
+			DECLARE @IndexSql NVARCHAR(MAX) =
+				'CREATE UNIQUE NONCLUSTERED INDEX ' + QUOTENAME('UQ_' + @TargetName + '_bk') +
+				' ON ' + QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName) +
+				' (' + QUOTENAME(@BkColumn) + ');';
+			EXEC sp_executesql @IndexSql;
+		END
+
+		-- Ondersteunende index op ClubCode voor his-tabellen die de discriminator hebben.
+		IF EXISTS (SELECT 1 FROM sys.columns
+				   WHERE object_id = OBJECT_ID(QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName))
+					 AND name = 'ClubCode')
+		BEGIN
+			DECLARE @ClubIndexSql NVARCHAR(MAX) =
+				'CREATE NONCLUSTERED INDEX ' + QUOTENAME('IX_' + @TargetName + '_ClubCode') +
+				' ON ' + QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName) +
+				' ([ClubCode]);';
+			EXEC sp_executesql @ClubIndexSql;
+		END
+	END
+	--ELSE
+	--BEGIN
+	--	PRINT '[' + @TargetSchema + '].[' + @TargetName +'] already exists'
+	--END
+END;
+GO
+
+-- Bron: Database/dbo/System Stored Procedures/sp_MergeStgToHis.sql
+CREATE OR ALTER PROCEDURE [dbo].[sp_MergeStgToHis]
+    @SourceSchema nvarchar(128),
+    @SourceName   nvarchar(128),
+    @TargetSchema nvarchar(128),
+    @TargetName   nvarchar(128)
+AS
+BEGIN
+    /*
+    version | date       | name              | description
+    1.0     | 12-01-2025 | Jaap van Beusekom | Initial setup
+    1.1     | 25-01-2025 | Jaap van Beusekom | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
+    1.2     | 2025       | Jaap van Beusekom | Multi-column business key support using CONCAT
+    */
+    SET NOCOUNT ON;
+    -- Create the target table from source structure if it does not yet exist
+    EXECUTE [dbo].[sp_CreateTargetTableFromSource] @SourceSchema, @SourceName, @TargetSchema, @TargetName;
+
+    DECLARE @ColName        NVARCHAR(MAX);
+    DECLARE @Index          INT = 1;
+    DECLARE @SqlString      NVARCHAR(MAX) = '';
+    DECLARE @SqlStringTmp   NVARCHAR(MAX) = '';
+
+    SET @SqlString +=
+'MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
+USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
+';
+    -- Retrieve primary key columns and target key definition from metadata
+    DECLARE @SourcePk       VARCHAR(255);
+    DECLARE @SourcePkColumns VARCHAR(MAX);
+    DECLARE @TargetPk       VARCHAR(255);
+    DECLARE @TargetPkFull   VARCHAR(255);
+
+    SELECT @SourcePk     = source_pk
+         , @TargetPkFull = target_pk
+      FROM mta.source_target_mapping
+     WHERE source_entity = @SourceName
+       AND source_schema = @SourceSchema
+       AND target_schema = @TargetSchema
+       AND target_entity = @TargetName;
+
+    -- Extract just the column name from target_pk (format: 'columnname DATATYPE')
+    IF @TargetPkFull IS NOT NULL
+    BEGIN
+        IF CHARINDEX(' ', @TargetPkFull) > 0
+            SET @TargetPk = LTRIM(RTRIM(SUBSTRING(@TargetPkFull, 1, CHARINDEX(' ', @TargetPkFull) - 1)));
+        ELSE
+            SET @TargetPk = @TargetPkFull;
+    END
+    ELSE
+        SET @TargetPk = 'bk_' + @TargetName;
+
+    IF @SourcePk IS NULL
+        RETURN;
+
+    -- Build the ON clause using source PK columns, casting to NVARCHAR to support any data type
+    DECLARE @ColNames TABLE (ColName NVARCHAR(MAX));
+    INSERT INTO @ColNames (ColName)
+        SELECT TRIM(value) FROM STRING_SPLIT(@SourcePk, ',');
+
+    WHILE EXISTS (SELECT 1 FROM @ColNames WHERE ColName IS NOT NULL)
+    BEGIN
+        SELECT TOP 1 @ColName = ColName FROM @ColNames WHERE ColName IS NOT NULL;
+        IF @Index = 1
+        BEGIN
+            SET @SqlString +=
+'ON ISNULL(CAST(target.' + @ColName + ' AS NVARCHAR(MAX)), '''') = ISNULL(CAST(source.' + @ColName + ' AS NVARCHAR(MAX)), '''') ';
+            SET @SourcePkColumns = 'source.' + @ColName + ' ';
+        END
+        ELSE
+        BEGIN
+            SET @SqlString +=
+'AND ISNULL(CAST(target.' + @ColName + ' AS NVARCHAR(MAX)), '''') = ISNULL(CAST(source.' + @ColName + ' AS NVARCHAR(MAX)), '''') ';
+            SET @SourcePkColumns += ', source.' + @ColName + ' ';
+        END
+        DELETE FROM @ColNames WHERE ColName = @ColName;
+        SET @Index += 1;
+    END
+
+    SET @SqlString += '
+WHEN MATCHED AND (';
+
+    -- Build all source columns and non-PK source columns
+    DECLARE @SourceTableColumns TABLE (TableColumn NVARCHAR(MAX));
+    INSERT INTO @SourceTableColumns (TableColumn)
+        SELECT '[' + c.name + ']'
+        FROM sys.tables st
+        INNER JOIN sys.schemas ss ON ss.schema_id = st.schema_id
+        INNER JOIN sys.all_columns c ON c.object_id = st.object_id
+        WHERE ss.name = @SourceSchema AND st.name = @SourceName;
+
+    DECLARE @SourceTableColumnsNoPk TABLE (TableColumn NVARCHAR(MAX));
+    INSERT INTO @SourceTableColumnsNoPk (TableColumn)
+        SELECT '[' + c.name + ']'
+        FROM sys.tables st
+        INNER JOIN sys.schemas ss ON ss.schema_id = st.schema_id
+        INNER JOIN sys.all_columns c ON c.object_id = st.object_id
+        WHERE ss.name = @SourceSchema AND st.name = @SourceName
+          AND '[' + c.name + ']' NOT IN (SELECT '[' + TRIM(value) + ']' FROM STRING_SPLIT(@SourcePk, ','));
+
+    -- Build the WHEN MATCHED condition and UPDATE SET clause
+    SET @Index = 1;
+    WHILE EXISTS (SELECT 1 FROM @SourceTableColumnsNoPk WHERE TableColumn IS NOT NULL)
+    BEGIN
+        SELECT TOP 1 @ColName = TableColumn FROM @SourceTableColumnsNoPk WHERE TableColumn IS NOT NULL;
+        IF @Index = 1
+        BEGIN
+            SET @SqlString  += '
+    COALESCE(CAST(target.' + @ColName + ' AS NVARCHAR(MAX)), '''') <> COALESCE(CAST(source.' + @ColName + ' AS NVARCHAR(MAX)), '''') ';
+            SET @SqlStringTmp += '
+    target.' + @ColName + ' = source.' + @ColName + ',';
+        END
+        ELSE
+        BEGIN
+            SET @SqlString  += '
+ OR COALESCE(CAST(target.' + @ColName + ' AS NVARCHAR(MAX)), '''') <> COALESCE(CAST(source.' + @ColName + ' AS NVARCHAR(MAX)), '''') ';
+            SET @SqlStringTmp += '
+    target.' + @ColName + ' = source.' + @ColName + ',';
+        END
+        DELETE FROM @SourceTableColumnsNoPk WHERE TableColumn = @ColName;
+        SET @Index += 1;
+    END
+
+    SET @SqlString += ')
+THEN UPDATE SET '
+        + @SqlStringTmp + '
+    target.mta_modified = GETUTCDATE()';
+
+    SET @SqlString += '
+WHEN NOT MATCHED BY TARGET THEN ';
+
+    -- Build the INSERT column list and VALUES for new records
+    DECLARE @SqlStringTargets NVARCHAR(MAX) = '';
+    DECLARE @SqlStringValues  NVARCHAR(MAX) = '';
+
+    WHILE EXISTS (SELECT 1 FROM @SourceTableColumns WHERE TableColumn IS NOT NULL)
+    BEGIN
+        SELECT TOP 1 @ColName = TableColumn FROM @SourceTableColumns WHERE TableColumn IS NOT NULL;
+        SET @SqlStringTargets += ', ' + @ColName;
+        SET @SqlStringValues  += ', source.' + @ColName;
+        DELETE FROM @SourceTableColumns WHERE TableColumn = @ColName;
+    END
+
+    -- CONCAT supports both single and multi-column source keys
+    SET @SqlString += '
+INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
+VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
+
+    EXEC sp_executesql @SqlString;
+
+    PRINT 'Merged ' + @SourceName + ' into ' + @TargetName;
+END;
+GO
+
+-- Bron: Database/pub/Views/DateTable.sql
+CREATE OR ALTER VIEW [pub].[DateTable]
+	AS 
+SELECT dt.[Date]
+      ,dt.[Day]
+      ,dt.[Month]
+      ,dt.[Year]
+      ,dt.[Quarter]
+      ,dt.[DayOfWeek]
+      ,dt.[DayName]
+      ,dt.[MonthName]
+      ,dt.[IsWeekend]
+	  ,s.Name           As Season
+  FROM [dbo].[DateTable] dt
+  INNER JOIN [dbo].[Season] s
+	ON dt.Date BETWEEN s.DateFrom AND s.DateUntil;
+GO
+
+-- Bron: Database/pub/Views/Teams.sql
+CREATE OR ALTER VIEW [pub].[Teams]
+	AS 
+SELECT [bk_teams]			AS [TeamBk]
+      ,[teamcode]			AS [TeamCode]
+      ,[lokaleteamcode]		AS [TeamCodeLokaal]
+      ,[teamnaam]			AS [TeamNaam]
+      ,[teamsoort]			AS [TeamSoort]
+      ,[geslacht]			AS [Geslacht]
+      ,[leeftijdscategorie]	AS [LeeftijdsCategorie]
+      ,[competitiesoort]	AS [CompetitieSoort]
+      ,[competitienaam]		AS [CompetitieNaam]
+      ,[klasse]				AS [CompetitieKlasse]
+      ,[poule]				AS [Poule]
+      ,[klassepoule]		AS [PouleKlasse]
+      ,[poulecode]			AS [PouleCode]
+      ,[spelsoort]			AS [SpelSoort]
+      ,[speeldag]			AS [Speeldag]
+      ,[ClubCode]			AS [ClubCode]
+  FROM [his].[teams];
+GO
+
+-- Bron: Database/pub/Views/Matches.sql
+CREATE OR ALTER VIEW [pub].[Matches]
+	AS 
+SELECT m.[wedstrijdcode]					AS WedstrijdCode
+	,tt.teamnaam							AS VerenigingsTeam
+	,md.Categorie							AS CompetitieCategorie
+	,m.[competitienaam]						AS CompetitieNaam
+	,m.[competitiesoort]					AS CompetitieSoort
+	,md.[PouleCode]							AS CompetitiePouleCode
+	,m.[wedstrijdnummer]					AS WedstrijdNummer
+	,m.[wedstrijd]							AS Wedstrijd
+	,md.[WedstrijdType]						AS WestrijdType
+	,CAST(m.[datum] AS date)				AS WedstrijdDatum
+	,CAST(m.[aanvangstijd] AS time)			AS WedstrijdAanvangsTijd
+	,md.[Duration]							AS WestrijdDuur
+	,m.[status]								AS WedstrijdStatus
+	,md.[VeldNaam]							AS VeldNaam
+	,md.[VeldLocatie]						AS VeldLocatie
+	,m.[thuisteam]							AS TeamThuis
+	,m.[thuisteamid]						AS TeamThuisId
+	,m.[uitteam]							AS TeamUit
+	,m.[uitteamid]							AS TeamUitId
+	,m.[uitslag]							AS Uitslag
+	,m.[uitslag-regulier]					AS UitslagRegulier
+	,m.[uitslag-nv]							AS UitslagNv
+	,m.[uitslag-s]							AS UitslagS
+	,md.[ThuisScore]						AS UitslagThuisScore
+	,md.[ThuisScoreRegulier]				AS UitslagThuisScoreRegulier
+	,md.[ThuisScoreNV]						AS UitslagThuisScoreNv
+	,md.[ThuisScoreS]						AS UitslagThuisScoreS
+	,md.[UitScore]							AS UitslagUitScore
+	,md.[UitScoreRegulier]					AS UitslagUitScoreRegulier
+	,md.[UitScoreNV]						AS UitslagUitScoreNv
+	,md.[UitScoreS]							AS UitslagUitScoreS
+	,m.[verenigingswedstrijd]				AS IsVerenigingsWedstrijd
+	,'Thuis'								AS IsThuisUitWedstrijd
+	,md.[Opmerkingen]						AS DivOpmerkingen
+	,md.[VerenigingScheidsrechterCode]		AS DivOfficialScheidsrechterCode
+	,md.[VerenigingScheidsrechter]			AS DivOfficialScheidsrechter
+	,md.[OverigeOfficialCode]				AS DivOfficialOverigeCode
+	,md.[OverigeOfficial]					AS DivOfficialOverige
+	,m.[ClubCode]							AS ClubCode
+FROM [his].[matches] m
+LEFT JOIN [his].[matchdetails] md ON CAST(md.InternCode AS bigint)=CAST(m.wedstrijdcode AS bigint)
+LEFT JOIN [his].[teams] tt ON tt.teamcode = m.thuisteamid AND (LEFT(tt.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tt.poulecode)
+WHERE tt.teamnaam IS NOT NULL
+
+UNION ALL
+
+SELECT m.[wedstrijdcode]					AS WedstrijdCode
+	,tu.teamnaam							AS VerenigingsTeam
+	,md.Categorie							AS CompetitieCategorie
+	,m.[competitienaam]						AS CompetitieNaam
+	,m.[competitiesoort]					AS CompetitieSoort
+	,md.[PouleCode]							AS CompetitiePouleCode
+	,m.[wedstrijdnummer]					AS WedstrijdNummer
+	,m.[wedstrijd]							AS Wedstrijd
+	,md.[WedstrijdType]						AS WestrijdType
+	,CAST(m.[datum] AS date)				AS WedstrijdDatum
+	,CAST(m.[aanvangstijd] AS time)			AS WedstrijdAanvangsTijd
+	,md.[Duration]							AS WestrijdDuur
+	,m.[status]								AS WedstrijdStatus
+	,md.[VeldNaam]							AS VeldNaam
+	,md.[VeldLocatie]						AS VeldLocatie
+	,m.[thuisteam]							AS TeamThuis
+	,m.[thuisteamid]						AS TeamThuisId
+	,m.[uitteam]							AS TeamUit
+	,m.[uitteamid]							AS TeamUitId
+	,m.[uitslag]							AS Uitslag
+	,m.[uitslag-regulier]					AS UitslagRegulier
+	,m.[uitslag-nv]							AS UitslagNv
+	,m.[uitslag-s]							AS UitslagS
+	,md.[ThuisScore]						AS UitslagThuisScore
+	,md.[ThuisScoreRegulier]				AS UitslagThuisScoreRegulier
+	,md.[ThuisScoreNV]						AS UitslagThuisScoreNv
+	,md.[ThuisScoreS]						AS UitslagThuisScoreS
+	,md.[UitScore]							AS UitslagUitScore
+	,md.[UitScoreRegulier]					AS UitslagUitScoreRegulier
+	,md.[UitScoreNV]						AS UitslagUitScoreNv
+	,md.[UitScoreS]							AS UitslagUitScoreS
+	,m.[verenigingswedstrijd]				AS IsVerenigingsWedstrijd
+	,'Uit'								AS IsThuisUitWedstrijd
+	,md.[Opmerkingen]						AS DivOpmerkingen
+	,md.[VerenigingScheidsrechterCode]		AS DivOfficialScheidsrechterCode
+	,md.[VerenigingScheidsrechter]			AS DivOfficialScheidsrechter
+	,md.[OverigeOfficialCode]				AS DivOfficialOverigeCode
+	,md.[OverigeOfficial]					AS DivOfficialOverige
+	,m.[ClubCode]							AS ClubCode
+  FROM [his].[matches] m
+  LEFT JOIN [his].[matchdetails] md ON CAST(md.InternCode AS bigint)=CAST(m.wedstrijdcode AS bigint)
+  LEFT JOIN [his].[teams] tu ON tu.teamcode = m.uitteamid   AND (LEFT(tu.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tu.poulecode)
+  WHERE tu.teamnaam IS NOT NULL
+
+  UNION ALL
+
+  SELECT m.[wedstrijdcode]					AS WedstrijdCode
+	,tu.teamnaam							AS VerenigingsTeam
+	,md.Categorie							AS CompetitieCategorie
+	,m.[competitienaam]						AS CompetitieNaam
+	,m.[competitiesoort]					AS CompetitieSoort
+	,md.[PouleCode]							AS CompetitiePouleCode
+	,m.[wedstrijdnummer]					AS WedstrijdNummer
+	,m.[wedstrijd]							AS Wedstrijd
+	,md.[WedstrijdType]						AS WestrijdType
+	,CAST(m.[datum] AS date)				AS WedstrijdDatum
+	,CAST(m.[aanvangstijd] AS time)			AS WedstrijdAanvangsTijd
+	,md.[Duration]							AS WestrijdDuur
+	,m.[status]								AS WedstrijdStatus
+	,md.[VeldNaam]							AS VeldNaam
+	,md.[VeldLocatie]						AS VeldLocatie
+	,m.[thuisteam]							AS TeamThuis
+	,m.[thuisteamid]						AS TeamThuisId
+	,m.[uitteam]							AS TeamUit
+	,m.[uitteamid]							AS TeamUitId
+	,m.[uitslag]							AS Uitslag
+	,m.[uitslag-regulier]					AS UitslagRegulier
+	,m.[uitslag-nv]							AS UitslagNv
+	,m.[uitslag-s]							AS UitslagS
+	,md.[ThuisScore]						AS UitslagThuisScore
+	,md.[ThuisScoreRegulier]				AS UitslagThuisScoreRegulier
+	,md.[ThuisScoreNV]						AS UitslagThuisScoreNv
+	,md.[ThuisScoreS]						AS UitslagThuisScoreS
+	,md.[UitScore]							AS UitslagUitScore
+	,md.[UitScoreRegulier]					AS UitslagUitScoreRegulier
+	,md.[UitScoreNV]						AS UitslagUitScoreNv
+	,md.[UitScoreS]							AS UitslagUitScoreS
+	,m.[verenigingswedstrijd]				AS IsVerenigingsWedstrijd
+	,NULL								    AS IsThuisUitWedstrijd
+	,md.[Opmerkingen]						AS DivOpmerkingen
+	,md.[VerenigingScheidsrechterCode]		AS DivOfficialScheidsrechterCode
+	,md.[VerenigingScheidsrechter]			AS DivOfficialScheidsrechter
+	,md.[OverigeOfficialCode]				AS DivOfficialOverigeCode
+	,md.[OverigeOfficial]					AS DivOfficialOverige
+	,m.[ClubCode]							AS ClubCode
+  FROM [his].[matches] m
+  LEFT JOIN [his].[matchdetails] md ON CAST(md.InternCode AS bigint)=CAST(m.wedstrijdcode AS bigint)
+  LEFT JOIN [his].[teams] tt ON tt.teamcode = m.thuisteamid AND (LEFT(tt.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tt.poulecode)
+  LEFT JOIN [his].[teams] tu ON tu.teamcode = m.uitteamid   AND (LEFT(tu.competitienaam,6) = LEFT(md.competitietype,6) OR md.PouleCode=tu.poulecode)
+  WHERE tt.teamnaam IS NULL
+	AND tu.teamnaam IS NULL
 GO

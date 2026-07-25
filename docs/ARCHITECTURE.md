@@ -50,7 +50,7 @@ Browser (beheerder)
         his.* / stg.* / pub.*               (ETL-pipeline)
 ```
 
-**Technologiestack:** FunctionApp `net9.0` · BlazorAdmin `net10.0` · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · Azure OpenAI · Azure Static Web Apps · Entra ID (single-tenant)
+**Technologiestack:** FunctionApp `net9.0` · BlazorAdmin `net10.0` · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · OpenAI (direct, model via `AiModelName`) · Azure Static Web Apps · Entra ID (single-tenant)
 
 > **Runtimeversies zijn niet uitwisselbaar — niet upgraden zonder infrastructuurwijziging (#579).**
 >

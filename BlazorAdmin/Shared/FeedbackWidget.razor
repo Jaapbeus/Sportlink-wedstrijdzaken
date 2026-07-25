@@ -2,6 +2,7 @@
 @inject AdminApiClient Api
 @inject IJSRuntime JS
 @inject IAuthService Auth
+@inject NavigationManager Nav
 
 <button class="btn btn-warning btn-sm me-3" @onclick="OpenAsync">FEEDBACK</button>
 
@@ -167,8 +168,11 @@
         _antwoorden = [];
         _foutmelding = null;
 
-        var pagina = await JS.InvokeAsync<string>("eval", "window.location.pathname");
-        var browser = await JS.InvokeAsync<string>("eval", "navigator.userAgent");
+        // Geen JS eval() gebruiken: de productie-CSP staat alleen 'wasm-unsafe-eval' toe, waardoor
+        // eval() een EvalError gooit en de hele widget crasht. Pathname komt uit NavigationManager,
+        // user-agent via een dedicated interop-helper. (#597)
+        var pagina = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].Split('#')[0];
+        var browser = await GetUserAgentAsync();
         var versie = typeof(FeedbackWidget).Assembly.GetName().Version?.ToString(4) ?? "?";
         var rol = Auth.IsAdmin ? "admin" : "gebruiker";
 
@@ -179,6 +183,22 @@
             Rol = rol,
             Browser = browser.Length > 120 ? browser[..120] : browser
         };
+    }
+
+    /// <summary>
+    /// Leest de user-agent via een dedicated interop-helper. Faalt de interop (bijv. helper nog
+    /// niet geladen), dan blijft de widget bruikbaar met een lege browserwaarde. (#597)
+    /// </summary>
+    private async Task<string> GetUserAgentAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<string>("blazorHelpers.getUserAgent") ?? "";
+        }
+        catch (JSException)
+        {
+            return "";
+        }
     }
 
     private void Sluit()

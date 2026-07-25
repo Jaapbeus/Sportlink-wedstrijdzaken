@@ -83,3 +83,52 @@ Lokaal wordt de live database **niet automatisch geüpdatet** bij een git pull.
 - Ontbrekende kolommen toevoegen via `ALTER TABLE`
 
 Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescript.
+
+---
+
+## CI: schema-drift guard (`.github/workflows/build.yml`)
+
+> Toegevoegd bij #595/#599.
+
+De deploy-pipeline publiceert **geen dacpac** — de `db-migrate`-job runt uitsluitend
+`Database/Script.PostDeployment1.sql`. Elk object uit het DB-project moet daarom óók idempotent in
+dat script staan, anders ontbreekt het op een verse deploy en falen functies met
+`Invalid object name`.
+
+Dat ging structureel mis: **12 objecten** stonden alleen in het DB-project — waaronder alle vier de
+ETL-procedures (`sp_CreateTargetTableFromSource`, `sp_MergeStgToHis`, `sp_UpdateSeasonTable`,
+`sp_CreateDateTable`), de stuurtabel `mta.source_target_mapping` (inclusief de seed-rijen, die alleen
+als SQL-comment bestonden), `dbo.Season`, de drie `pub`-views, `avg.ImportLog`,
+`planner.HerplanVerzoeken` en `dbo.Zonsondergang`.
+
+De job `build` controleert nu op elke PR dat elke `CREATE TABLE` / `CREATE PROCEDURE` / `CREATE VIEW`
+uit `Database/**` voorkomt in het PostDeployment-script. Voegt iemand een object toe zonder guard,
+dan faalt de PR.
+
+**Bewuste uitzonderingen** (allowlist in de workflow, met reden):
+
+| Object | Waarom uitgezonderd |
+|---|---|
+| `stg.teams`, `stg.matches`, `stg.matchdetails` | Dynamisch aangemaakt door `FunctionApp/CreateTable.cs` op basis van het actuele Sportlink API-schema |
+| `dbo.DateTable` | Aangemaakt (DROP + CREATE) door `dbo.sp_CreateDateTable`, die zelf wél in PostDeployment staat |
+
+**Bij een nieuw database-object:** voeg een `IF NOT EXISTS ... CREATE TABLE`-guard toe voor tabellen,
+of `CREATE OR ALTER` voor procedures en views. Houd de definitie gelijk aan het bronbestand onder
+`Database/`.
+
+> **Nog open:** een echte `SqlPackage /Action:Publish` in de pipeline zou dit dubbel onderhoud
+> overbodig maken. Dat is bewust niet in deze wijziging meegenomen — een schema-publish tegen de
+> live Free-tier database kan destructieve ALTER/DROP-operaties uitvoeren en vraagt een expliciete
+> afweging van de eigenaar. Zie #595.
+
+### Lokaal narekenen
+
+```powershell
+# Voer het PostDeployment-script twee keer uit tegen een database met >1 club.
+# Twee keer, omdat idempotentie-fouten pas bij de tweede run zichtbaar worden (#564).
+sqlcmd -S <server> -d SportlinkSqlDb -E -C -i Database\Script.PostDeployment1.sql -b
+sqlcmd -S <server> -d SportlinkSqlDb -E -C -i Database\Script.PostDeployment1.sql -b
+```
+
+Alleen parsen is niet genoeg: batch-binding-fouten (Msg 207/1911) en `Msg 512` verschijnen pas bij
+echte uitvoering.

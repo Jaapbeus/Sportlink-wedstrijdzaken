@@ -165,6 +165,15 @@ var modelName = Environment.GetEnvironmentVariable("AiModelName") ?? "gpt-4o-min
 Configureer via GitHub Variable `AI_MODEL_NAME` en Azure Function Application Settings.
 Dit maakt model-upgrades (gpt-4o-mini → gpt-4.1-mini, etc.) zonder deployment mogelijk.
 
+> **Status: geïmplementeerd (#604).** `FunctionApp/Program.cs` leest de modelnaam uit de app setting
+> `AiModelName` bij de `IChatClient`-registratie; ontbreekt die, dan valt hij terug op `gpt-4o-mini`.
+> De fallback is toegestaan omdat het puur een provider-model-identifier is — geen club-specifieke
+> waarde. De naam komt bewust **niet** uit `dbo.AppSettings`: de DI-registratie loopt bij host-start,
+> vóór de eerste databaseverbinding.
+>
+> Zet de waarde lokaal in `FunctionApp/local.settings.json` (zie de template) en in productie als
+> Azure Function Application Setting.
+
 ---
 
 ## Jaarlijkse onderhoudsplicht: KNVB-regels

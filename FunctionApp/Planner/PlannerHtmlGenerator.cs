@@ -469,7 +469,7 @@ document.addEventListener('click', () => {
                 if (naam.Contains("O23")) return 230;
                 if (naam.Contains("VR")) return 300;
                 // Senioren (eerste team en reserves): helemaal onderaan
-                var _cc = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+                var _cc = SystemUtilities.AppSettings.GetOptionalClubCode();
                 if (!string.IsNullOrWhiteSpace(_cc)
                     && System.Text.RegularExpressions.Regex.IsMatch(naam,
                         $@"{System.Text.RegularExpressions.Regex.Escape(_cc)} \d"))

@@ -88,10 +88,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    # Wacht op db-check. Als db-check FAILED → build wordt overgeslagen (en alles daarna ook).
-    # Als db-check SKIPPED (vars niet ingesteld) → build loopt gewoon door (backward compatible).
-    needs: db-check
-    if: always() && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
+    # #599: GEEN db-check-afhankelijkheid. Voorheen blokkeerde een gepauzeerde Free-tier database
+    # de build, waardoor build/blazor-deploy/test allemaal 'skipped' werden en compileerfouten
+    # wekenlang onopgemerkt konden blijven. Bouwen heeft geen database nodig; alleen deployen wel.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -116,9 +115,14 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, db-migrate]
-    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy doorgaan. (#430)
-    if: always() && needs.build.result == 'success' && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
+    needs: [build, db-check, db-migrate]
+    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy
+    # doorgaan (#430). db-check staat hier expliciet bij sinds #599: build is er niet meer van
+    # afhankelijk, dus de database-gate moet hier alsnog gelden — nooit code deployen naar een
+    # database die niet Online is.
+    if: always() && needs.build.result == 'success'
+        && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
+        && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
     steps:
       - name: Artefact downloaden
         uses: actions/download-artifact@v8
@@ -139,10 +143,14 @@ jobs:
 
   db-migrate:
     runs-on: ubuntu-latest
-    needs: build
-    # Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is (fork / nieuw project).
-    # Vereiste: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP + AZURE_SQL_SERVER_NAME.
-    if: vars.AZURE_SQL_SERVER_NAME != ''
+    # #599: hangt nu aan db-check i.p.v. build — de database-gate hoort bij de migratie, niet bij
+    # het compileren. Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is
+    # (fork / nieuw project). Vereist: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP
+    # + AZURE_SQL_SERVER_NAME.
+    needs: [build, db-check]
+    if: always() && vars.AZURE_SQL_SERVER_NAME != ''
+        && needs.build.result == 'success'
+        && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

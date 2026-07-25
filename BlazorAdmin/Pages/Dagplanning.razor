@@ -505,7 +505,11 @@
                     @if (!string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner))
                     {
                         <div class="border rounded mt-2" style="overflow:hidden;">
+                            @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
+                               Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
+                               onafhankelijk van server-side encoding. (#603) *@
                             <iframe srcdoc="@_klassiekResultaat.HtmlPlanner"
+                                    sandbox="allow-same-origin"
                                     style="width:100%; min-height:700px; border:none; display:block;"
                                     title="Klassieke dagplanning"></iframe>
                         </div>

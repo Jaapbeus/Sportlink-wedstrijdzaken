@@ -3,13 +3,21 @@
 <input class="form-control @Class"
        value="@Value"
        placeholder="@Placeholder"
-       @onchange="OnChange" />
+       @onchange="OnChange"
+       @attributes="AdditionalAttributes" />
 
 @code {
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "HH:mm";
     [Parameter] public string Class { get; set; } = "";
+
+    /// <summary>
+    /// Vangt niet-gedeclareerde attributen (bijv. <c>Style</c>, <c>title</c>, <c>disabled</c>) op en
+    /// splat ze op de onderliggende input. Zonder dit werden ze stilzwijgend genegeerd. (#602)
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private async Task OnChange(ChangeEventArgs e)
     {

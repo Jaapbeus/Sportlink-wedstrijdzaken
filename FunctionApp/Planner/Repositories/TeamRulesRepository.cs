@@ -12,7 +12,7 @@ internal static class TeamRulesRepository
 
     internal static async Task<List<TeamRegel>> GetTeamRulesAsync(string teamNaam, string? clubCode = null)
     {
-        var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         var results = new List<TeamRegel>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -58,7 +58,7 @@ internal static class TeamRulesRepository
         foreach (var team in teams) results[team] = new List<TeamRegel>();
         if (teams.Count == 0) return results;
 
-        var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         var paramNames = teams.Select((_, i) => $"@team{i}").ToList();
 
         using var conn = new SqlConnection(Cs);
@@ -100,7 +100,7 @@ internal static class TeamRulesRepository
 
     internal static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
     {
-        var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
