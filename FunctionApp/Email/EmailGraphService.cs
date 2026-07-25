@@ -11,7 +11,7 @@ namespace SportlinkFunction.Email;
 /// Wrapper rond Microsoft Graph SDK voor email-operaties via de coordinator-mailbox.
 /// Ondersteunt inbox polling, emails markeren als gelezen, en antwoorden versturen.
 /// </summary>
-public partial class EmailGraphService
+public partial class EmailGraphService : IEmailGraphService
 {
     private readonly GraphServiceClient _graphClient;
     private readonly ILogger<EmailGraphService> _logger;
