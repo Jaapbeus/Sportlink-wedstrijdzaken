@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.7.0",
+    "version": "2.17.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -164,7 +164,7 @@
             "type": "number",
             "format": "float",
             "description": "Fractie van het veld (0.25, 0.50 of 1.00)",
-            "example": 1
+            "example": 1.0
           },
           "wedstrijdDuurMinuten": {
             "type": "integer",
@@ -1664,7 +1664,7 @@
             "type": "number",
             "format": "decimal",
             "description": "Fractie van het veld (bijv. 0.5 = half veld)",
-            "example": 1
+            "example": 1.0
           },
           "WedstrijdTotaal": {
             "type": "integer",
@@ -1697,7 +1697,7 @@
           "veldafmeting": {
             "type": "number",
             "format": "decimal",
-            "default": 1
+            "default": 1.0
           },
           "wedstrijdTotaal": {
             "type": "integer",
@@ -1959,6 +1959,74 @@
           }
         }
       },
+      "TeambegeleidingImportRequest": {
+        "type": "object",
+        "required": [
+          "csvContent"
+        ],
+        "properties": {
+          "csvContent": {
+            "type": "string",
+            "description": "Volledige inhoud van de CSV-export uit club.sportlink.com. Wordt in-memory verwerkt\nen nooit opgeslagen (AVG).\n"
+          },
+          "bestandsnaam": {
+            "type": "string",
+            "nullable": true,
+            "description": "Alleen voor de audit-regel in `avg.ImportLog` — puur metadata."
+          }
+        }
+      },
+      "TeambegeleidingImportResultaat": {
+        "type": "object",
+        "properties": {
+          "rijen": {
+            "type": "integer",
+            "description": "Aantal geïmporteerde gegevensrijen"
+          },
+          "herkend": {
+            "type": "array",
+            "description": "Herkende CSV-kolomnamen",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ontbreekt": {
+            "type": "array",
+            "description": "Ontbrekende verplichte kolommen (leeg bij een geslaagde import)",
+            "items": {
+              "type": "string"
+            }
+          },
+          "waarschuwingen": {
+            "type": "array",
+            "description": "Niet-blokkerende opmerkingen over de verwerkte CSV",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "VerplaatsDatumRequest": {
+        "type": "object",
+        "required": [
+          "oudeDatum",
+          "nieuweDatum"
+        ],
+        "properties": {
+          "oudeDatum": {
+            "type": "string",
+            "format": "date",
+            "description": "Huidige wedstrijddatum (yyyy-MM-dd)",
+            "example": "2026-05-30"
+          },
+          "nieuweDatum": {
+            "type": "string",
+            "format": "date",
+            "description": "Nieuwe wedstrijddatum (yyyy-MM-dd)",
+            "example": "2026-06-06"
+          }
+        }
+      },
       "TestDataWedstrijd": {
         "type": "object",
         "description": "Test-wedstrijd (alleen voor ALLSTARS demo-club)",
@@ -2091,6 +2159,53 @@
             "type": "string",
             "description": "Wat het auto-plan doet met deze wedstrijd",
             "nullable": true
+          }
+        }
+      },
+      "VeldbezettingItem": {
+        "type": "object",
+        "description": "Lichtgewicht projectie van een geplande wedstrijd — zonder scheduling-optimalisatie,\nalleen wat er nu al in Sportlink gepland staat.\n",
+        "properties": {
+          "wedstrijdCode": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "wedstrijd": {
+            "type": "string"
+          },
+          "teamNaam": {
+            "type": "string"
+          },
+          "uitteam": {
+            "type": "string",
+            "nullable": true
+          },
+          "aanvangsTijd": {
+            "type": "string",
+            "nullable": true,
+            "example": "13:00"
+          },
+          "veld": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitiesoort": {
+            "type": "string",
+            "nullable": true
+          },
+          "leeftijdsCategorie": {
+            "type": "string",
+            "nullable": true
+          },
+          "duurMinuten": {
+            "type": "integer",
+            "description": "Wedstrijdduur in minuten uit de speeltijden-configuratie (0 = onbekende leeftijdscategorie)"
+          },
+          "veldafmeting": {
+            "type": "number",
+            "format": "decimal",
+            "description": "Aandeel van een heel veld dat deze wedstrijd gebruikt (1.00 = heel veld)"
           }
         }
       },
@@ -4903,9 +5018,6 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
-          "500": {
-            "$ref": "#/components/responses/InternalServerError"
-          },
           "502": {
             "description": "Club-website kon niet worden opgehaald",
             "content": {
@@ -4915,6 +5027,9 @@
                 }
               }
             }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           }
         }
       }
@@ -5277,6 +5392,137 @@
         }
       }
     },
+    "/beheer/teambegeleiding/import": {
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "importTeambegeleiding",
+        "summary": "Teambegeleiding importeren uit CSV",
+        "description": "Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar\n`avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden eerst verwijderd\n(TRUNCATE-en-vervang per `ClubCode`).\n\n**AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel\nin `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen\npersoonsgegevens.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeambegeleidingImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import geslaagd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeambegeleidingImportResultaat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CSV ontbreekt of mist verplichte kolommen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "ontbreekt": {
+                      "type": "array",
+                      "description": "Namen van de ontbrekende verplichte kolommen",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/testdata/wedstrijden/verplaats-datum": {
+      "post": {
+        "tags": [
+          "testdata"
+        ],
+        "operationId": "verplaatsTestDataDatum",
+        "summary": "ALLSTARS-testwedstrijden naar een andere datum verplaatsen",
+        "description": "Verplaatst alle wedstrijden van de ALLSTARS demo-club van `oudeDatum` naar `nieuweDatum`.\nRaakt uitsluitend rijen met `ClubCode = 'ALLSTARS'` — productiedata blijft ongemoeid.\nBedoeld om demodata mee te laten schuiven met het actuele seizoen.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerplaatsDatumRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wedstrijden verplaatst",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "aantalVerplaatst": {
+                      "type": "integer",
+                      "description": "Aantal bijgewerkte wedstrijden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/beheer/testdata/wedstrijden": {
       "get": {
         "tags": [
@@ -5535,6 +5781,61 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AutoPlanResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/planner/veldbezetting": {
+      "get": {
+        "tags": [
+          "planner"
+        ],
+        "operationId": "veldbezetting",
+        "summary": "Wedstrijden op een datum ophalen, zonder optimalisatie",
+        "description": "Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de\nlaatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die\n`/planner/auto-plan` en `/planner/optimaliseer` uitvoeren. Bedoeld als snelle,\ngoedkope \"wat staat er nu al gepland\"-weergave.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "datum",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Datum in yyyy-MM-dd formaat",
+            "example": "2026-08-22"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wedstrijden op deze datum, gesorteerd op aanvangstijd",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VeldbezettingItem"
+                  }
                 }
               }
             }

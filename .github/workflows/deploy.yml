@@ -29,12 +29,17 @@ jobs:
     runs-on: ubuntu-latest
     if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
     steps:
+      # Nodig voor scripts/ci/wake-database.sql in de login-poging hieronder (#624).
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Azure inloggen
         uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: "▶ Database hervatten indien gepauzeerd (Free-tier auto-pause)"
+      - name: "▶ Databasestatus bepalen (Free-tier auto-pause)"
+        id: status
         run: |
           STATUS=$(az sql db show \
             --name "$SQL_DATABASE" \
@@ -42,6 +47,7 @@ jobs:
             --server "$SQL_SERVER" \
             --query 'status' --output tsv 2>/dev/null || echo "unknown")
           echo "Database status: $STATUS"
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
 
           if [ "$STATUS" = "Disabled" ]; then
             echo "::error::⛔ Database is uitgeschakeld (Disabled) — maandlimiet bereikt of handmatig uitgeschakeld."
@@ -50,73 +56,83 @@ jobs:
           fi
 
           if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "AutoPaused" ]; then
-            echo "Database is gepauzeerd — verbindingspoging om auto-resume te triggeren..."
-
-            # Voeg runner-IP toe aan firewall zodat de TCP-verbinding de database bereikt
-            RUNNER_IP=$(curl -s https://api.ipify.org)
-            RULE_NAME="db-check-resume-${{ github.run_id }}"
-            az sql server firewall-rule create \
-              --resource-group "$SQL_RESOURCE_GROUP" \
-              --server "$SQL_SERVER" \
-              --name "$RULE_NAME" \
-              --start-ip-address "$RUNNER_IP" \
-              --end-ip-address "$RUNNER_IP" 2>/dev/null || echo "Firewall rule aanmaken mislukt — doorgaan"
-
-            # TCP-verbindingspoging triggert Azure SQL Serverless auto-resume (SYN naar poort 1433)
-            timeout 5 bash -c "echo > /dev/tcp/$SQL_SERVER.database.windows.net/1433" 2>/dev/null \
-              && echo "TCP-verbinding gelukt" \
-              || echo "TCP-verbindingspoging verstuurd (auto-resume gestart)"
-
-            echo "Wachten op Online status (max 10 minuten)..."
-            for i in $(seq 1 40); do
-              sleep 15
-              STATUS=$(az sql db show \
-                --name "$SQL_DATABASE" \
-                --resource-group "$SQL_RESOURCE_GROUP" \
-                --server "$SQL_SERVER" \
-                --query 'status' --output tsv 2>/dev/null || echo "unknown")
-              echo "  Check $i/40: $STATUS"
-              if [ "$STATUS" = "Online" ]; then
-                echo "✓ Database Online"
-                break
-              fi
-              if [ "$STATUS" = "Resuming" ]; then
-                echo "  Database aan het hervatten — wachten..."
-              fi
-            done
-
-            # Firewall-regel opruimen (ook bij fout)
-            az sql server firewall-rule delete \
-              --resource-group "$SQL_RESOURCE_GROUP" \
-              --server "$SQL_SERVER" \
-              --name "$RULE_NAME" \
-              --yes 2>/dev/null || true
-
-            if [ "$STATUS" != "Online" ]; then
-              echo "::error::⛔ Database niet Online na 10 minuten wachten (status: $STATUS)."
-              echo "::error::Herstel: Azure Portal → SQL Database → Overzicht → Resume, dan deploy opnieuw starten."
-              exit 1
-            fi
+            echo "paused=true" >> $GITHUB_OUTPUT
+          else
+            echo "paused=false" >> $GITHUB_OUTPUT
           fi
 
-          if [ "$STATUS" = "unknown" ]; then
+      - name: "▶ Runner-IP toevoegen aan SQL-firewall (alleen bij gepauzeerde database)"
+        if: steps.status.outputs.paused == 'true'
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          az sql server firewall-rule create \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --name "db-check-resume-${{ github.run_id }}" \
+            --start-ip-address "$RUNNER_IP" \
+            --end-ip-address "$RUNNER_IP" 2>/dev/null || echo "Firewall rule aanmaken mislukt — doorgaan"
+
+      # Een echte login triggert Azure SQL Serverless auto-resume. Een kale TCP-verbinding
+      # doet dat NIET: die wordt door de SQL-gateway afgehandeld en bereikt de database nooit,
+      # waardoor de gate 'Paused' bleef zien tot de timeout. Zie #624.
+      # De eerste login faalt verwacht (database wakker aan het worden) — daarom continue-on-error.
+      - name: "▶ Login-poging om auto-resume te triggeren"
+        if: steps.status.outputs.paused == 'true'
+        continue-on-error: true
+        uses: azure/sql-action@v2.3
+        with:
+          connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
+          path: scripts/ci/wake-database.sql
+
+      - name: "▶ Wachten tot database Online is (max 10 minuten)"
+        if: steps.status.outputs.paused == 'true'
+        run: |
+          for i in $(seq 1 40); do
+            STATUS=$(az sql db show \
+              --name "$SQL_DATABASE" \
+              --resource-group "$SQL_RESOURCE_GROUP" \
+              --server "$SQL_SERVER" \
+              --query 'status' --output tsv 2>/dev/null || echo "unknown")
+            echo "  Check $i/40: $STATUS"
+            [ "$STATUS" = "Online" ] && break
+            sleep 15
+          done
+
+          if [ "$STATUS" != "Online" ]; then
+            echo "::error::⛔ Database niet Online na 10 minuten wachten (status: $STATUS)."
+            echo "::error::Herstel: Azure Portal → SQL Database → Overzicht → Resume, dan deploy opnieuw starten."
+            exit 1
+          fi
+          echo "✓ Database Online"
+
+      - name: "▶ Firewall-regel opruimen"
+        if: always() && steps.status.outputs.paused == 'true'
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --name "db-check-resume-${{ github.run_id }}" \
+            --yes 2>/dev/null || true
+
+      - name: "▶ Eindstatus"
+        run: |
+          if [ "${{ steps.status.outputs.status }}" = "unknown" ]; then
             echo "::warning::⚠️ Database-status onbekend via ARM API — deployment gaat door."
           else
-            echo "✓ Database $STATUS — deployment mag doorgaan"
+            echo "✓ Database beschikbaar — deployment mag doorgaan"
           fi
 
   build:
     runs-on: ubuntu-latest
-    # Wacht op db-check. Als db-check FAILED → build wordt overgeslagen (en alles daarna ook).
-    # Als db-check SKIPPED (vars niet ingesteld) → build loopt gewoon door (backward compatible).
-    needs: db-check
-    if: always() && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
+    # #599: GEEN db-check-afhankelijkheid. Voorheen blokkeerde een gepauzeerde Free-tier database
+    # de build, waardoor build/blazor-deploy/test allemaal 'skipped' werden en compileerfouten
+    # wekenlang onopgemerkt konden blijven. Bouwen heeft geen database nodig; alleen deployen wel.
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -135,9 +151,14 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, db-migrate]
-    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy doorgaan. (#430)
-    if: always() && needs.build.result == 'success' && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
+    needs: [build, db-check, db-migrate]
+    # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy
+    # doorgaan (#430). db-check staat hier expliciet bij sinds #599: build is er niet meer van
+    # afhankelijk, dus de database-gate moet hier alsnog gelden — nooit code deployen naar een
+    # database die niet Online is.
+    if: always() && needs.build.result == 'success'
+        && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
+        && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
     steps:
       - name: Artefact downloaden
         uses: actions/download-artifact@v8
@@ -158,13 +179,17 @@ jobs:
 
   db-migrate:
     runs-on: ubuntu-latest
-    needs: build
-    # Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is (fork / nieuw project).
-    # Vereiste: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP + AZURE_SQL_SERVER_NAME.
-    if: vars.AZURE_SQL_SERVER_NAME != ''
+    # #599: hangt nu aan db-check i.p.v. build — de database-gate hoort bij de migratie, niet bij
+    # het compileren. Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is
+    # (fork / nieuw project). Vereist: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP
+    # + AZURE_SQL_SERVER_NAME.
+    needs: [build, db-check]
+    if: always() && vars.AZURE_SQL_SERVER_NAME != ''
+        && needs.build.result == 'success'
+        && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Azure inloggen
         uses: azure/login@v3
@@ -292,11 +317,11 @@ jobs:
 
       - name: Checkout repository
         if: steps.check.outputs.skip == 'false'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: .NET SDK installeren
         if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 

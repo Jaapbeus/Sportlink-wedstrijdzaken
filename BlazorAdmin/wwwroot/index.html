@@ -47,6 +47,11 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+            },
+            // Dedicated helpers i.p.v. JS eval(): de productie-CSP van Azure SWA staat alleen
+            // 'wasm-unsafe-eval' toe, niet 'unsafe-eval'. eval() gooit daar een EvalError. (#597)
+            getUserAgent: function () {
+                return navigator.userAgent || '';
             }
         };
     </script>

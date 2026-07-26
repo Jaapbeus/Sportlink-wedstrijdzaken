@@ -150,8 +150,44 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 | `TeamScheduleService` | `Planner/Services/` | GetTeamScheduleAsync |
 | `PlannerShared` | `Planner/Services/` | CanFitMatch, FieldScheduler, constanten |
 | `PlannerDataAccess` | `Planner/PlannerDataAccess.cs` | Facade → repositories in `Planner/Repositories/` |
+| `ClubScope` | `Planner/ClubScope.cs` | ClubCode-resolutie + SQL-predicaten voor clubisolatie |
 
 `FieldScheduler` is de pure scheduling engine — geen DB of API-calls, alleen slot-berekening op basis van beschikbaarheid en buffers.
+
+---
+
+## ClubCode-isolatie — harde eis (#573, #580)
+
+> **Elke planner- en bezettingsquery is hard gescoped op ClubCode.** Een database bevat de
+> productieclub én de ALLSTARS-demoklub; zonder filter belandt clubvreemde data in
+> zoekresultaten *en* in beslislogica. Dat is zowel een planningsfout (onjuiste bezetting →
+> foutieve "niet mogelijk"-antwoorden) als een data-isolatieprobleem.
+
+Twee predicaten, omdat de tabellen verschillen:
+
+| Tabelgroep | ClubCode | Predicaat |
+|---|---|---|
+| `planner.*`, `dbo.*` | NOT NULL | `[ClubCode] = @clubCode` |
+| `his.*` | NULLABLE (migratie 001) | `ISNULL(x.[ClubCode], @primaireClubCode) = @clubCode` — via `ClubScope.HisFilter("x")` |
+
+De NULL-tolerantie op `his.*` is bewust: niet-gestempelde legacy-rijen horen bij de primaire
+club, precies zoals de backfill in migratie 001. Zonder die tolerantie zouden die wedstrijden
+uit de bezetting vallen → **onderschatte bezetting → dubbele boekingen**.
+ALLSTARS-rijen zijn altijd expliciet gestempeld en lekken dus nooit mee.
+
+**Regels bij nieuwe of gewijzigde queries:**
+
+1. Elke repository-methode die clubdata leest heeft een `string? clubCode = null` parameter.
+2. Resolutie loopt via `ClubScope.Resolve(...)`: geen expliciete waarde → de primaire club van
+   deze deployment. Nooit een lege string — dat schakelt het filter uit. Ontbreekt de instelling,
+   dan volgt een `InvalidOperationException` (fail-explicit).
+3. De view `planner.AlleWedstrijdenOpVeld` levert `ClubCode` en `Wedstrijdcode` per rij; consumers
+   filteren zelf op club. Wijzig de view **op twee plekken tegelijk**:
+   `Database/planner/Views/AlleWedstrijdenOpVeld.sql` (DB-project) én
+   `Database/Script.PostDeployment1.sql` (`CREATE OR ALTER` — dit is het pad dat productie bereikt).
+4. Uitzondering, bewust: `Speeltijden` en `TeamRegels` in `AutoPlanService` lezen de primaire club.
+   Dat is KNVB-referentiedata en clubconfiguratie die de demomodus hergebruikt; er zijn geen
+   ALLSTARS-rijen. Deze richting kan productie-antwoorden niet vervuilen.
 
 ---
 

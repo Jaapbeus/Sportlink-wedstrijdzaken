@@ -21,16 +21,18 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
-| `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren |
+| `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
-| `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken |
-| `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren |
+| `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken — gescoped op `X-Club-Code` header |
+| `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
 | `POST` | `/planner/optimaliseer` | Easy Auth (admin) | Planning optimaliseren (HTML/email/JSON) |
+| `GET` | `/planner/veldbezetting?datum=` | Easy Auth (admin) | Wedstrijden op een datum, zonder optimalisatie-berekening |
 | `GET` | `/beheer/teambegeleiding` | **Admin+User** | Alle teams met begeleiding in database |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
 | `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen naar coach (BCC coördinator) |
+| `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders (vervangt de rijen van de club). CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST/PUT/DELETE` | `/beheer/speeltijden` en `/{leeftijd}` | **Admin** | Speeltijden per leeftijdscategorie beheren |
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
@@ -45,6 +47,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `POST` | `/beheer/testdata/wedstrijden` | **Admin** | Test-wedstrijd aanmaken of bijwerken (upsert op `bk_matches`) — forceert `ClubCode='ALLSTARS'` |
 | `DELETE` | `/beheer/testdata/wedstrijden/{bk}` | **Admin** | Één test-wedstrijd verwijderen op `bk_matches` |
 | `DELETE` | `/beheer/testdata/wedstrijden?van=YYYY-MM-DD&tot=YYYY-MM-DD` | **Admin** | Test-wedstrijden verwijderen voor datumbereik (beide params optioneel; zonder params: alles verwijderen) |
+| `POST` | `/beheer/testdata/wedstrijden/verplaats-datum` | **Admin** | Alle ALLSTARS-wedstrijden van `oudeDatum` naar `nieuweDatum` verplaatsen — raakt uitsluitend `ClubCode='ALLSTARS'` |
 
 ---
 
@@ -77,6 +80,13 @@ GET /api/sync-matches?reset=true&season=2025
 ## POST /api/planner/check-availability
 
 Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifieke slottoewijzing, beschikbare tijdvensters, of een teamconflict terug.
+
+> **Clubscope (#573, #580):** de optionele header `X-Club-Code` bepaalt welke club wordt
+> doorzocht. Zonder header valt het endpoint terug op de primaire club van deze deployment.
+> Wedstrijden, bezetting, velden, speeltijden en teamregels van andere clubs (inclusief de
+> `ALLSTARS`-demodata) worden nooit meegenomen. Dit geldt ook voor
+> `/planner/zoek-wedstrijd`, `/planner/herplan-check`, `/planner/doordeweeks-beschikbaar`
+> en `/planner/team-schedule`.
 
 ### Aanvraag
 
@@ -568,6 +578,42 @@ Versimpelde email-compatibele versie met:
 - Bovenaan: link "Bekijk in browser (meer functies)"
 - Chronologische tabel met kleurcodes (inline CSS)
 - Werkt in alle email-clients (Outlook, Gmail, etc.)
+
+---
+
+## GET /api/planner/veldbezetting
+
+Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de laatst
+gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te draaien die
+`/planner/auto-plan` en `/planner/optimaliseer` gebruiken. Bedoeld als snelle, goedkope
+"wat staat er nu al gepland"-weergave (zie Dagplanning in de Admin GUI).
+
+### Query-parameters
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|-------------|
+| `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
+
+### Antwoord — JSON (200)
+
+```json
+[
+  {
+    "wedstrijdCode": 20672784,
+    "wedstrijd": "[ClubCode] 6 - Tegenstander 8",
+    "teamNaam": "[ClubCode] 6",
+    "uitteam": "Tegenstander 8",
+    "aanvangsTijd": "13:00",
+    "veld": "veld 3",
+    "competitiesoort": "Oefenwedstrijd",
+    "leeftijdsCategorie": null,
+    "duurMinuten": 90,
+    "veldafmeting": 1.00
+  }
+]
+```
+
+Resultaat is gesorteerd op `aanvangsTijd`. Wedstrijden zonder aanvangstijd staan achteraan.
 
 ---
 

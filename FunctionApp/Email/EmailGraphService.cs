@@ -11,7 +11,7 @@ namespace SportlinkFunction.Email;
 /// Wrapper rond Microsoft Graph SDK voor email-operaties via de coordinator-mailbox.
 /// Ondersteunt inbox polling, emails markeren als gelezen, en antwoorden versturen.
 /// </summary>
-public partial class EmailGraphService
+public partial class EmailGraphService : IEmailGraphService
 {
     private readonly GraphServiceClient _graphClient;
     private readonly ILogger<EmailGraphService> _logger;
@@ -106,7 +106,9 @@ public partial class EmailGraphService
         }
     }
 
-    private bool _masterCategoryEnsured;
+    // Per categorienaam onthouden — met één gedeelde vlag zou de tweede categorie
+    // (bijv. 'Handmatige planning', #572) nooit worden aangemaakt.
+    private readonly HashSet<string> _masterCategoriesEnsured = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Zorgt dat een Outlook master-categorie bestaat met de gegeven kleur-preset.
@@ -114,7 +116,7 @@ public partial class EmailGraphService
     /// </summary>
     public async Task EnsureMasterCategoryAsync(string name, string colorPreset)
     {
-        if (_masterCategoryEnsured) return;
+        if (_masterCategoriesEnsured.Contains(name)) return;
 
         try
         {
@@ -125,7 +127,7 @@ public partial class EmailGraphService
 
             if (existing?.Value?.Any(c => string.Equals(c.DisplayName, name, StringComparison.OrdinalIgnoreCase)) == true)
             {
-                _masterCategoryEnsured = true;
+                _masterCategoriesEnsured.Add(name);
                 return;
             }
 
@@ -139,14 +141,14 @@ public partial class EmailGraphService
                 });
 
             _logger.LogInformation("Master-categorie '{Naam}' aangemaakt met kleur {Kleur}", name, colorPreset);
-            _masterCategoryEnsured = true;
+            _masterCategoriesEnsured.Add(name);
         }
         catch (Exception ex)
         {
             // Master-categorie aanmaken kan falen door rechten; categorie op bericht zelf werkt
             // dan nog steeds, alleen zonder gedefinieerde kleur in Outlook.
             _logger.LogWarning(ex, "Kon master-categorie '{Naam}' niet borgen — categorie op bericht werkt wel", name);
-            _masterCategoryEnsured = true;
+            _masterCategoriesEnsured.Add(name);
         }
     }
 

@@ -34,10 +34,14 @@ SELECT
     MONTH(d.Date) AS Month,
     YEAR(d.Date) AS Year,
     DATEPART(QUARTER, d.Date) AS Quarter,
-    DATEPART(WEEKDAY, d.Date) AS DayOfWeek,
+    -- DATEPART(WEEKDAY) is afhankelijk van de sessie-instelling DATEFIRST (default 7 = zondag bij
+    -- us_english). Daardoor gaf de oude berekening Monday = 2 in plaats van de gedocumenteerde 1,
+    -- en markeerde IsWeekend vrijdag als weekend en zondag NIET als weekend.
+    -- DATEDIFF vanaf 1900-01-01 (een maandag) is DATEFIRST-onafhankelijk en dus deterministisch.
+    (DATEDIFF(DAY, '19000101', d.Date) % 7) + 1 AS DayOfWeek,
     DATENAME(WEEKDAY, d.Date) AS DayName,
     DATENAME(MONTH, d.Date) AS MonthName,
-    CASE WHEN DATEPART(WEEKDAY, d.Date) IN (6, 7) THEN 1 ELSE 0 END AS IsWeekend
+    CASE WHEN ((DATEDIFF(DAY, '19000101', d.Date) % 7) + 1) IN (6, 7) THEN 1 ELSE 0 END AS IsWeekend
 FROM    RecursiveDates d
 OPTION (MAXRECURSION 0); -- Allows for recursive CTE to handle larger datasets
 

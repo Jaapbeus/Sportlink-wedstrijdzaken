@@ -165,20 +165,33 @@ var modelName = Environment.GetEnvironmentVariable("AiModelName") ?? "gpt-4o-min
 Configureer via GitHub Variable `AI_MODEL_NAME` en Azure Function Application Settings.
 Dit maakt model-upgrades (gpt-4o-mini → gpt-4.1-mini, etc.) zonder deployment mogelijk.
 
+> **Status: geïmplementeerd (#604).** `FunctionApp/Program.cs` leest de modelnaam uit de app setting
+> `AiModelName` bij de `IChatClient`-registratie; ontbreekt die, dan valt hij terug op `gpt-4o-mini`.
+> De fallback is toegestaan omdat het puur een provider-model-identifier is — geen club-specifieke
+> waarde. De naam komt bewust **niet** uit `dbo.AppSettings`: de DI-registratie loopt bij host-start,
+> vóór de eerste databaseverbinding.
+>
+> Zet de waarde lokaal in `FunctionApp/local.settings.json` (zie de template) en in productie als
+> Azure Function Application Setting.
+
 ---
 
 ## Jaarlijkse onderhoudsplicht: KNVB-regels
 
 De `KnvbRegelsContext` constante in `BerichtAiService.cs` bevat KNVB-verplaatsingsregels
-voor één specifiek seizoen (bijv. 2025/'26). Deze datums zijn jaarlijks verouderd.
+voor één specifiek seizoen (huidig: 2026/'27). Deze datums zijn jaarlijks verouderd.
 
 **Verplichting:** bij elke nieuwe seizoensstart (augustus/september):
 1. Controleer KNVB-website op gewijzigde verplaatsingsregels
-2. Update `KnvbRegelsContext` met nieuwe deadlines
+2. Update `KnvbRegelsContext` met nieuwe deadlines én de seizoensdata uit de speeldagenkalender
 3. Update de seizoensvermelding (`## KNVB-verplaatsingsregels seizoen 20XX/'YY`)
-4. Voeg CHANGELOG-entry toe onder `### Changed`
+4. Archiveer de nieuwe speeldagenkalender-PDF's in `docs/knvb-speeldagenkalenders/<seizoen>/`
+   en seed `dbo.KnvbKalenderDag` via `Database/Script.PostDeployment1.sql`
+5. Voeg CHANGELOG-entry toe onder `### Changed`
 
-**Bron:** [KNVB verplaatsen van wedstrijden](https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden)
+**Bronnen:**
+- [KNVB verplaatsen van wedstrijden](https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden)
+- [KNVB speeldagenkalenders](https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/seizoensplanning/speeldagenkalenders)
 
 **GitHub-herinnering:** maak elk jaar in augustus een issue aan met label `chore` en title
 `"KNVB-regels bijwerken voor seizoen 20XX/'YY"`.

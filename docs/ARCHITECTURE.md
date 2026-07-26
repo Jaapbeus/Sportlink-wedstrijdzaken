@@ -34,7 +34,7 @@ Browser (beheerder)
         │
         │ HTTPS + Bearer token (Entra ID)
         ▼
-  Azure Functions (Consumption plan) — .NET 10, isolated worker
+  Azure Functions (Consumption plan) — net9.0, isolated worker
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
         EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
         FunctionApp/Admin/       → admin-beheer endpoints
@@ -50,7 +50,19 @@ Browser (beheerder)
         his.* / stg.* / pub.*               (ETL-pipeline)
 ```
 
-**Technologiestack:** .NET 10 · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · Azure OpenAI · Azure Static Web Apps · Entra ID (single-tenant)
+**Technologiestack:** FunctionApp `net9.0` · BlazorAdmin `net10.0` · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · OpenAI (direct, model via `AiModelName`) · Azure Static Web Apps · Entra ID (single-tenant)
+
+> **Runtimeversies zijn niet uitwisselbaar — niet upgraden zonder infrastructuurwijziging (#579).**
+>
+> | Project | Target | Reden |
+> |---|---|---|
+> | `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** | Linux Consumption Plan ondersteunt `net10.0` niet → 503 "Function host is not running" |
+> | `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
+>
+> `.NET 10` voor Azure Functions vereist het **Flex Consumption Plan**. Dat plan valt buiten de
+> gratis tiers en is daarmee in strijd met het kostenbeleid — zie CLAUDE.md → Kostenbeleid.
+> Een upgrade vraagt dus eerst expliciete goedkeuring van de eigenaar, niet alleen een csproj-wijziging.
+> Bij elke documentatiewijziging: controleer of vermelde runtimeversies nog met de csproj's overeenkomen.
 
 **ETL-data flow:**
 ```

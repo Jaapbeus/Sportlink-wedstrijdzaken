@@ -38,6 +38,10 @@ internal static class AutoPlanService
             beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
         }
 
+        // Bewust op de primaire club (geen clubCode-argument): Speeltijden en TeamRegels zijn
+        // KNVB-referentiedata en clubconfiguratie die de ALLSTARS-demomodus hergebruikt — er zijn
+        // geen ALLSTARS-rijen. Deze richting kan productie-antwoorden niet vervuilen: demodata
+        // leest referentiedata, nooit omgekeerd. Zie #573.
         var speeltijden    = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
         var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
         int dagVanWeek     = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
@@ -220,6 +224,43 @@ internal static class AutoPlanService
         };
     }
 
+    // Lichtgewicht "wat staat er nu gepland"-weergave (#566): geen FieldScheduler-berekening,
+    // alleen de ruwe wedstrijddata die AutoPlanAsync anders ook al zonder optimalisatie zou tonen.
+    // Duur/veldafmeting komen uit de goedkope speeltijden-lookup (één simpele SELECT) — niet uit
+    // de FieldScheduler, die pas nodig is zodra er ook daadwerkelijk geoptimaliseerd wordt.
+    public static async Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
+    {
+        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+        var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+        // Primaire club: zie toelichting in AutoPlanAsync — Speeltijden is referentiedata (#573)
+        var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+
+        return wedstrijden
+            .Select(w =>
+            {
+                var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                    ? w.LeeftijdsCategorie
+                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+
+                return new VeldbezettingItem
+                {
+                    WedstrijdCode = w.WedstrijdCode,
+                    Wedstrijd = w.Wedstrijd,
+                    TeamNaam = w.TeamNaam,
+                    Uitteam = w.Uitteam,
+                    AanvangsTijd = w.AanvangsTijd,
+                    Veld = w.Veld,
+                    Competitiesoort = w.Competitiesoort,
+                    LeeftijdsCategorie = w.LeeftijdsCategorie,
+                    DuurMinuten = speeltijdInfo?.WedstrijdTotaal ?? 0,
+                    Veldafmeting = speeltijdInfo?.Veldafmeting ?? 1.00m
+                };
+            })
+            .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
+            .ToList();
+    }
+
     public static async Task<AutoPlanToepassenResponse> AutoPlanToepassenAsync(
         AutoPlanToepassenRequest request, string clubCode, ILogger log)
     {
@@ -254,9 +295,11 @@ internal static class AutoPlanService
         return response;
     }
 
-    // ── Privé helpers ──
+    // ── Helpers ──
+    // Internal i.p.v. private zodat FunctionApp.Tests deze pure logica direct kan testen
+    // via InternalsVisibleTo (#476). Geen gedragswijziging — alleen de zichtbaarheid. (#578)
 
-    private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
+    internal static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
     {
         if (string.IsNullOrWhiteSpace(teamNaam)) return null;
         var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -271,7 +314,7 @@ internal static class AutoPlanService
         };
     }
 
-    private static int GetLeeftijdSortOrder(string? leeftijd)
+    internal static int GetLeeftijdSortOrder(string? leeftijd)
     {
         if (string.IsNullOrWhiteSpace(leeftijd)) return 99;
         var l = leeftijd.Trim().ToUpperInvariant();
@@ -282,20 +325,20 @@ internal static class AutoPlanService
         return 90;
     }
 
-    private static int GetDefaultTimeSortKey(string? leeftijd)
+    internal static int GetDefaultTimeSortKey(string? leeftijd)
     {
         var order = GetLeeftijdSortOrder(leeftijd);
         return order <= 11 ? 540 : order <= 13 ? 600 : order <= 15 ? 630 : order <= 17 ? 660
              : order <= 19 ? 690 : order <= 25 ? 720 : order <= 85 ? 750 : 780;
     }
 
-    private static string BuildSportlinkVeldString(string veldNaam, string subpositie)
+    internal static string BuildSportlinkVeldString(string veldNaam, string subpositie)
     {
         var naam = veldNaam.Trim();
         return string.IsNullOrEmpty(subpositie) ? naam : $"{naam} {subpositie}";
     }
 
-    private static string NormaliseerVeld(string? veld)
+    internal static string NormaliseerVeld(string? veld)
     {
         if (string.IsNullOrWhiteSpace(veld)) return string.Empty;
         return veld.Trim().ToLowerInvariant().Replace("  ", " ");

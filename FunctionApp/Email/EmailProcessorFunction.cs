@@ -1,5 +1,4 @@
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
@@ -39,7 +38,11 @@ public class EmailProcessorFunction
         }
 
         var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-        var graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
+        IEmailGraphService graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
+        IEmailPersistenceService persistenceService = new EmailPersistenceService();
+        var batchFilterService = new EmailBatchFilterService();
+        var classificationService = new EmailClassificationService();
+        var replyPolicyService = new EmailReplyPolicyService();
 
         // ── FASE 1: licht — Graph API en AI, geen database ──────────────────────────
 
@@ -53,24 +56,12 @@ public class EmailProcessorFunction
         var eigenMailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
 
         // Pre-filter: eigen mailbox en gecachede uitsluitingslijst (geen DB nodig)
-        var teClassificeren = new List<InkomendBericht>();
-        foreach (var email in emails)
-        {
-            if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
-            {
-                log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
-                await graphService.MarkAsReadAsync(email.MessageId);
-            }
-            else if (_uitgeslotenCache.Contains(email.Afzender))
-            {
-                log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
-                await graphService.MarkAsReadAsync(email.MessageId);
-            }
-            else
-            {
-                teClassificeren.Add(email);
-            }
-        }
+        var teClassificeren = await batchFilterService.PreFilterVoorClassificatieAsync(
+            emails,
+            eigenMailbox,
+            _uitgeslotenCache,
+            graphService,
+            log);
 
         if (teClassificeren.Count == 0)
         {
@@ -87,12 +78,10 @@ public class EmailProcessorFunction
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
                 await SystemUtilities.AppSettings.LoadSettingsAsync(log);
-                _uitgeslotenCache = await LaadUitgeslotenAdressenAsync(log);
+                _uitgeslotenCache = await persistenceService.LaadUitgeslotenAdressenAsync(log);
                 _uitgeslotenCacheGeladen = true;
                 // Re-filter met de nu geladen lijst — verwijder eerder doorgelaten uitgesloten adressen
-                teClassificeren = teClassificeren
-                    .Where(e => !_uitgeslotenCache.Contains(e.Afzender))
-                    .ToList();
+                teClassificeren = batchFilterService.FilterUitgeslotenAdressen(teClassificeren, _uitgeslotenCache);
                 log.LogInformation("Uitsluitingslijst geladen op cold start: {Aantal} adressen", _uitgeslotenCache.Count);
             }
             catch (Exception ex)
@@ -112,54 +101,30 @@ public class EmailProcessorFunction
         var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
             ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
         var aiService = new BerichtAiService(loggerFactory.CreateLogger<BerichtAiService>(), chatClient);
-        var classificaties = new List<(InkomendBericht Email, BerichtClassificatie Classificatie)>();
-        var aiAborted = false;
+        var classificationResult = await classificationService.ClassificeerBatchAsync(
+            teClassificeren,
+            email => aiService.ClassificeerBerichtAsync(email.Body, email.Onderwerp, email.Afzender),
+            IsOpenAiQuotaFout,
+            log);
 
-        foreach (var email in teClassificeren)
+        if (classificationResult.AiAborted && classificationResult.QuotaException != null)
         {
-            try
+            var quotaEx = classificationResult.QuotaException;
+            if (_openAiQuotaNoodmailVerstuurdenOp == null
+                || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
             {
-                var classificatie = await aiService.ClassificeerBerichtAsync(
-                    email.Body, email.Onderwerp, email.Afzender);
-                BerichtPipeline.ValideerDagDatum(classificatie, email.Body, email.Onderwerp);
-                classificaties.Add((email, classificatie));
+                await StuurOpenAiNoodmailAsync(graphService, CategorizeerFout(quotaEx), log);
             }
-            catch (Exception ex) when (IsOpenAiQuotaFout(ex))
+            else
             {
-                log.LogError(ex, "OpenAI quota overschreden — email processor stopt voor deze batch");
-                if (_openAiQuotaNoodmailVerstuurdenOp == null
-                    || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
-                {
-                    await StuurOpenAiNoodmailAsync(graphService, CategorizeerFout(ex), log);
-                }
-                else
-                {
-                    log.LogWarning("OpenAI quota-noodmail al verstuurd binnen 24u — geen herhaling");
-                }
-                aiAborted = true;
-                break;
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "AI-classificatie mislukt voor email {MessageId} — blijft ongelezen voor volgende poll", email.MessageId);
+                log.LogWarning("OpenAI quota-noodmail al verstuurd binnen 24u — geen herhaling");
             }
         }
+
+        var classificaties = classificationResult.Classificaties;
 
         // BuitenScope-emails: alleen Outlook-label, database wordt niet gewekt
-        foreach (var (email, _) in classificaties.Where(c => c.Classificatie.Type == VerzoekType.BuitenScope))
-        {
-            try
-            {
-                await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
-                await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
-                await graphService.MarkAsReadAsync(email.MessageId);
-                log.LogInformation("Email {MessageId} buiten scope — gelabeld in Outlook, database slaapt", email.MessageId);
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, "Fout bij Outlook-labeling BuitenScope email {MessageId}", email.MessageId);
-            }
-        }
+        await batchFilterService.LabelBuitenScopeAsync(classificaties, graphService, log);
 
         var teVerwerken = classificaties
             .Where(c => c.Classificatie.Type != VerzoekType.BuitenScope)
@@ -171,7 +136,7 @@ public class EmailProcessorFunction
             log.LogInformation(
                 "Alle {Aantal} emails buiten scope{Afgebroken} — database blijft slapen",
                 aantalBuitenScope,
-                aiAborted ? " (AI batch vroegtijdig gestopt)" : "");
+                classificationResult.AiAborted ? " (AI batch vroegtijdig gestopt)" : "");
             return; // Database slaapt
         }
 
@@ -202,7 +167,7 @@ public class EmailProcessorFunction
         }
 
         // Refresh uitsluitingslijst nu DB wakker is — cache bijwerken voor volgende polls
-        _uitgeslotenCache = await LaadUitgeslotenAdressenAsync(log);
+        _uitgeslotenCache = await persistenceService.LaadUitgeslotenAdressenAsync(log);
         _uitgeslotenCacheGeladen = true;
 
         int verwerkt = 0, fouten = 0;
@@ -211,7 +176,15 @@ public class EmailProcessorFunction
         {
             try
             {
-                await VerwerkEmailAsync(email, classificatie, graphService, _uitgeslotenCache, aiService, log);
+                await VerwerkEmailAsync(
+                    email,
+                    classificatie,
+                    graphService,
+                    _uitgeslotenCache,
+                    aiService,
+                    persistenceService,
+                    replyPolicyService,
+                    log);
                 verwerkt++;
             }
             catch (Exception ex)
@@ -219,7 +192,7 @@ public class EmailProcessorFunction
                 fouten++;
                 log.LogError(ex, "Fout bij verwerken van email {MessageId} (onderwerp niet gelogd — AVG #210)",
                     email.MessageId);
-                try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); }
+                try { await persistenceService.UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); }
                 catch { /* fout bij fout-logging mag niet cascaderen */ }
             }
         }
@@ -231,9 +204,11 @@ public class EmailProcessorFunction
     private static async Task VerwerkEmailAsync(
         InkomendBericht email,
         BerichtClassificatie classificatie,
-        EmailGraphService graphService,
+        IEmailGraphService graphService,
         HashSet<string> uitgeslotenAdressen,
         BerichtAiService aiService,
+        IEmailPersistenceService persistenceService,
+        EmailReplyPolicyService replyPolicyService,
         ILogger log)
     {
         // Hercheck met verse DB-geladen uitsluitingslijst (kan afwijken van cache)
@@ -244,28 +219,25 @@ public class EmailProcessorFunction
             return;
         }
 
-        if (await BestaatMessageIdAsync(email.MessageId))
+        if (await persistenceService.BestaatMessageIdAsync(email.MessageId))
         {
             log.LogInformation("Email {MessageId} al verwerkt, overslaan", email.MessageId);
             await graphService.MarkAsReadAsync(email.MessageId);
             return;
         }
 
-        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
-
         // DB INSERT — classificatie is al gedaan in fase 1, resultaat wordt evt. verfijnd in fase 2
-        var verwerkingId = await InsertEmailVerwerkingAsync(email);
+        var verwerkingId = await persistenceService.InsertEmailVerwerkingAsync(email);
 
         // #323: reply-detectie — is dit een reply op een eerder door ons beantwoord bericht?
         if (!string.IsNullOrWhiteSpace(email.ConversationId))
         {
             var (isReply, origineleVerwerkingId, origineelType, originaleSamenvatting) =
-                await DetecteerReplyOpOnsAntwoordAsync(email.ConversationId, clubCode, log);
+                await persistenceService.DetecteerReplyOpOnsAntwoordAsync(email.ConversationId, log);
 
             if (isReply && origineleVerwerkingId.HasValue)
             {
-                await UpdateReplyStatusAsync(verwerkingId, true, origineleVerwerkingId.Value);
+                await persistenceService.UpdateReplyStatusAsync(verwerkingId, true, origineleVerwerkingId.Value);
                 log.LogInformation("Email {Id} is reply op verwerking {OrigineleId}", verwerkingId, origineleVerwerkingId);
 
                 // Detecteer of het een correctie is op de eerdere classificatie
@@ -276,11 +248,10 @@ public class EmailProcessorFunction
 
                     if (isCorrectie)
                     {
-                        await InsertClassificatieCorrectieAsync(
+                        await persistenceService.InsertClassificatieCorrectieAsync(
                             origineleVerwerkingId.Value, verwerkingId,
                             origineelType ?? "", afgeleidType,
-                            originaleSamenvatting, correctieSamenvatting,
-                            clubCode);
+                            originaleSamenvatting, correctieSamenvatting);
                         log.LogInformation("Correctie gedetecteerd voor verwerking {OrigineleId}: {OrigineelType} → {JuistType}",
                             origineleVerwerkingId, origineelType, afgeleidType);
                     }
@@ -293,7 +264,7 @@ public class EmailProcessorFunction
         }
 
         // #323: few-shot herclassificatie als er gevalideerde leermomenten zijn
-        var voorbeelden = await HaalLeermomentVoorbeeldenOpAsync(clubCode, log);
+        var voorbeelden = await persistenceService.HaalLeermomentVoorbeeldenOpAsync(log);
         if (voorbeelden.Count > 0)
         {
             try
@@ -311,39 +282,30 @@ public class EmailProcessorFunction
         }
 
         var classificatieJson = JsonConvert.SerializeObject(classificatie);
-        await UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
+        await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
         log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
             verwerkingId, classificatie.Type, classificatie.Datum);
 
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, email, log);
-        await UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
-        await UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
+        await persistenceService.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
+        await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
-        var (onderwerp, antwoordBody) = await BerichtPipeline.BouwTemplateAntwoord(
-            classificatie, plannerResponseJson, email, log);
+        var reviewMode = string.Equals(
+            Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+        var replyUitkomst = await replyPolicyService.HandelReplyFlowAfAsync(
+            verwerkingId,
+            email,
+            classificatie,
+            plannerResponseJson,
+            reviewMode,
+            graphService,
+            persistenceService,
+            () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log),
+            SanitizeFoutMelding,
+            log);
 
-        var reviewMode = Environment.GetEnvironmentVariable("EmailReviewMode");
-        var ontvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
-            ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? email.Afzender
-            : email.Afzender;
-
-        // Fail-explicit: alleen AntwoordVerstuurd en MarkAsRead als Graph-send slaagt. (#432)
-        try
-        {
-            await graphService.SendReplyAsync(ontvanger, onderwerp, antwoordBody, email.ConversationId);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Graph-send mislukt voor verwerking {Id} — VerzendFout, mail blijft ongelezen", verwerkingId);
-            try { await UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); } catch { }
-            return; // mail NIET als gelezen markeren — wordt bij volgende poll opnieuw opgepikt
-        }
-
-        await UpdateAntwoordVerstuurdAsync(verwerkingId, ontvanger, antwoordBody);
-        await graphService.MarkAsReadAsync(email.MessageId);
-
-        log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd (ontvanger niet gelogd — AVG #210)",
-            verwerkingId);
+        if (replyUitkomst != ReplyVerwerkingUitkomst.AntwoordVerstuurd)
+            return;
 
         // Stuur interne notificatie naar teamleider bij herplanverzoeken van externe afzender (#66)
         if (classificatie.Type == VerzoekType.HerplanVerzoek
@@ -351,7 +313,7 @@ public class EmailProcessorFunction
             && !string.IsNullOrWhiteSpace(classificatie.Datum))
         {
             await StuurTeamleiderNotificatieAsync(
-                graphService, classificatie.TeamNaam, classificatie.Datum, reviewMode, log);
+                graphService, classificatie.TeamNaam, classificatie.Datum, log);
         }
 
         // Stuur vraag door naar coach bij team-contact-opvragen (#168)
@@ -359,12 +321,12 @@ public class EmailProcessorFunction
             && !string.IsNullOrWhiteSpace(classificatie.TeamNaam))
         {
             await StuurTeamContactBerichtDoorAsync(
-                graphService, classificatie.TeamNaam, email, reviewMode, log);
+                graphService, classificatie.TeamNaam, email, log);
         }
     }
 
     private static async Task StuurTeamleiderNotificatieAsync(
-        EmailGraphService graphService, string teamNaam, string datum, string? reviewMode, ILogger log)
+        IEmailGraphService graphService, string teamNaam, string datum, ILogger log)
     {
         try
         {
@@ -390,12 +352,8 @@ public class EmailProcessorFunction
                 + $"Als je vragen hebt over dit herplanverzoek, neem dan contact op met de veldplanner.\n\n"
                 + $"Met vriendelijke groet,\n{plannerNaam}";
 
-            var notificatieOntvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
-                ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? teamleider.Emailadres
-                : teamleider.Emailadres;
-
             await graphService.SendReplyAsync(
-                notificatieOntvanger,
+                teamleider.Emailadres,
                 $"Herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}",
                 notificatieBody,
                 null);
@@ -409,8 +367,7 @@ public class EmailProcessorFunction
     }
 
     private static async Task StuurTeamContactBerichtDoorAsync(
-        EmailGraphService graphService, string teamNaam, InkomendBericht email,
-        string? reviewMode, ILogger log)
+        IEmailGraphService graphService, string teamNaam, InkomendBericht email, ILogger log)
     {
         try
         {
@@ -428,14 +385,10 @@ public class EmailProcessorFunction
                      + $"---\n{email.Body}\n---\n\n"
                      + "U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.";
 
-            var coachOntvanger = string.Equals(reviewMode, "true", StringComparison.OrdinalIgnoreCase)
-                ? Environment.GetEnvironmentVariable("EmailReviewRecipient") ?? coach.Emailadres
-                : coach.Emailadres;
-
             // AVG: Reply-To = email.Afzender zodat coach rechtstreeks kan antwoorden
             // BCC coördinator voor audit; coach-email nooit in logs
             await graphService.StuurTeamContactDoorAsync(
-                coachOntvanger, subject, body, email.Afzender, coordinatorEmail);
+                coach.Emailadres, subject, body, email.Afzender, coordinatorEmail);
 
             log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", teamNaam);
         }
@@ -450,7 +403,7 @@ public class EmailProcessorFunction
     /// Emails blijven ongelezen in de inbox en worden bij de volgende poll opnieuw opgepikt.
     /// </summary>
     private static async Task StuurDatabaseNoodmailAsync(
-        EmailGraphService graphService, int aantalEmails, string foutmelding, ILogger log)
+        IEmailGraphService graphService, int aantalEmails, string foutmelding, ILogger log)
     {
         var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
         var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
@@ -513,7 +466,7 @@ public class EmailProcessorFunction
         => EmailSanitizer.SanitizeFoutMelding(message);
 
     private static async Task StuurOpenAiNoodmailAsync(
-        EmailGraphService graphService, string foutmelding, ILogger log)
+        IEmailGraphService graphService, string foutmelding, ILogger log)
     {
         var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
         var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
@@ -542,64 +495,4 @@ public class EmailProcessorFunction
         }
     }
 
-    // --- Database operaties → gedelegeerd naar repositories (#465) ---
-
-    // Laadt uitsluitingslijst strikt — exception propageren zodat de outer cold-start catch
-    // fail-closed kan garanderen (_uitgeslotenCacheGeladen blijft false bij fout). (#463)
-    private static async Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
-    {
-        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
-        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        using var command = new SqlCommand(
-            "SELECT [EmailAdres] FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Actief] = 1 AND [ClubCode] = @ClubCode",
-            connection);
-        command.Parameters.AddWithValue("@ClubCode", clubCode);
-        var adressen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-            adressen.Add(reader.GetString(0));
-        log.LogInformation("Uitsluitingslijst geladen: {Aantal} adressen", adressen.Count);
-        return adressen;
-    }
-
-    private static Task<bool>  BestaatMessageIdAsync(string messageId)
-        => EmailProcessingRepository.BestaatMessageIdAsync(messageId);
-
-    private static Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
-        => EmailProcessingRepository.InsertEmailVerwerkingAsync(email);
-
-    private static Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
-        => EmailProcessingRepository.UpdateStatusAsync(verwerkingId, status, geextraheerdeData);
-
-    private static Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson)
-        => EmailProcessingRepository.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
-
-    private static Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
-        => EmailProcessingRepository.UpdateAntwoordVerstuurdAsync(verwerkingId, verstuurdNaar, antwoordEmail);
-
-    private static Task UpdateFoutAsync(string messageId, string foutMelding)
-        => EmailProcessingRepository.UpdateFoutAsync(messageId, foutMelding);
-
-    private static Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
-        DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log)
-        => EmailProcessingRepository.DetecteerReplyOpOnsAntwoordAsync(conversationId, clubCode, log);
-
-    private static Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId)
-        => EmailProcessingRepository.UpdateReplyStatusAsync(verwerkingId, isReply, replyOpVerwerkingId);
-
-    private static Task InsertClassificatieCorrectieAsync(
-        int origineleVerwerkingId, int correctionVerwerkingId,
-        string origineelType, string? afgeleidType,
-        string? originaleSamenvatting, string? correctieSamenvatting,
-        string clubCode)
-        => LearningMomentRepository.InsertClassificatieCorrectieAsync(
-               origineleVerwerkingId, correctionVerwerkingId,
-               origineelType, afgeleidType,
-               originaleSamenvatting, correctieSamenvatting, clubCode);
-
-    private static Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(
-        string clubCode, ILogger log)
-        => LearningMomentRepository.HaalVoorbeeldenOpAsync(clubCode, log);
 }

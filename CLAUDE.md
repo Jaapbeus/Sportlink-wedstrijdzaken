@@ -310,6 +310,25 @@ gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
 
+### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
+
+> **Harde regel, vastgelegd na incident 2026-07-26:** issues werden gesloten zodra hun fix-PR
+> naar `develop` merget, terwijl `develop` soms weken/tientallen commits achterloopt op `main`.
+> Daardoor oogden issues als "opgelost" terwijl de fix niet live stond in productie.
+
+- **Een feature- of hotfix-PR mergen naar `develop` sluit het gekoppelde issue NOOIT.** Dat gebeurt
+  automatisch door de workflow `.github/workflows/label-awaiting-release.yml`, die bij elke
+  PR-merge naar `develop` het label `status: awaiting-release` toevoegt aan alle `#<nr>`-issues
+  die in de PR-titel/body staan (en het issue heropent als het per ongeluk al gesloten was).
+- **Het issue sluit pas** wanneer `.github/workflows/close-released-issues.yml` draait — dat
+  gebeurt bij een version-tag push naar `main` (dezelfde trigger als `release.yml`). Die workflow
+  verwijdert het label en sluit alle issues die sinds de vorige release-tag zijn gemerged.
+- Claude zelf roept dus **nooit** `gh issue close <nr>` aan direct na een develop-merge. Stap 5
+  hieronder rapporteert alleen de PR-status — het issue blijft open met `status: awaiting-release`
+  totdat de workflow het automatisch sluit bij de volgende productie-release.
+- Uitzondering: een **hotfix-PR naar `main`** mag na een succesvolle merge + groene
+  `close-released-issues.yml`-run als gesloten worden gerapporteerd, want die code staat dan al live.
+
 ### Stap 4 — CI bewaken
 ```powershell
 gh pr checks <pr-nr> --watch           # wacht op groen
@@ -687,7 +706,25 @@ Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only d
 **Regels:**
 - Uitsluitend toegestaan als hardcoded UI-default in admin-only developer-testpagina's — **nooit** in bedrijfslogica, API-fallbacks of gedeelde configuratie.
 - `voorbeeld.nl` is opgenomen in `.gitleaks.toml` en `security-scan.yml` zodat security-checks hierop niet falen.
-- Deze lijst is **uitputtend** — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens.
+- Deze lijst is **uitputtend** voor UI-defaults van admin-only developer-testpagina's — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens. Zie de aparte uitzondering hieronder voor seed-migratiescripts.
+
+### AllStars FC demo-data (seed-migraties) — aparte goedgekeurde uitzondering
+
+`scripts/migrations/002-seed-allstars-fc.sql` bevat fictieve trainersgegevens voor de AllStars FC
+democlubcode (`ClubCode = 'ALLSTARS'`, zie [[architecture_multiclub]] en de sectie "Deployment-model"
+hierboven). Deze data valt buiten de scope van de admin-testpagina-lijst hierboven, maar is
+formeel goedgekeurd onder dezelfde AVG-redenering:
+
+| Kenmerk | Waarde | Reden |
+|---|---|---|
+| Domein | `@allstars-fc.test` | `.test` is een gereserveerd TLD (RFC 2606) — bestaat niet publiek, kan nooit een echt e-mailadres zijn |
+| Namen | Generieke voornamen zonder achternaam (bijv. `Frenkie`, `John`) | Niet herleidbaar tot een bestaand persoon |
+| Scope | Uitsluitend rijen met `ClubCode = 'ALLSTARS'` | Nooit gebruikt voor een echte club |
+
+**Regels:**
+- Uitsluitend toegestaan in `scripts/migrations/002-seed-allstars-fc.sql` (of vergelijkbare seed-scripts die exclusief AllStars FC-demodata vullen) — **nooit** als fallback in bedrijfslogica.
+- Nieuwe seed-rijen voor AllStars FC volgen hetzelfde patroon: `.test`-domein, voornaam zonder achternaam.
+- Bij bredere e-mailpatronen in `.gitleaks.toml` (zie de `consumer-email`-regel): controleer of `@allstars-fc\.test` een allowlist-entry nodig heeft, zodat deze seed-rijen niet alsnog worden geflagd.
 
 ### Microsoft Learn MCP server
 
@@ -717,7 +754,10 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 **Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Claude-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
 
-**Huidig bekende gap:** openapi.yaml mist ~22 routes die wel in productie draaien (o.a. /beheer/clubs, /beheer/speeltijden, /beheer/theme, /beheer/leermomenten, /beheer/teambegeleiding, /beheer/testdata, /planner/auto-plan). Dit wordt ingehaald via issue #[zie GitHub].
+**Stand van de spec (bijgewerkt bij #605):** `openapi.yaml`/`.json` dekken alle 51 productieroutes; `info.version` volgt de app-versie. De eerder hier genoemde ~22 ontbrekende routes waren al ingehaald — die notitie was zelf verouderd en misleidde. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
+```powershell
+python -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
+```
 
 ---
 

@@ -4,6 +4,11 @@ AS
 -- Speelduur exclusief via dbo.Speeltijden (WedstrijdTotaal = speeltijd + rust).
 -- Sportlink [Duration] uit matchdetails wordt niet meer gebruikt — DB is leidend (#291).
 -- ClubCode uit CROSS APPLY ipv SELECT TOP 1 — voorkomt scalar subquery fout bij >1 rij (#428).
+-- ClubCode en Wedstrijdcode als kolom (#580, #574): consumers filteren expliciet op club en
+-- kunnen één wedstrijd op exacte code uitsluiten in plaats van op tekst-contains.
+-- his.matches.ClubCode is nullable (migratie 001): niet-gestempelde rijen horen bij de
+-- primaire club — daarom ISNULL(m.ClubCode, a.ClubCode). Zonder die tolerantie vallen
+-- legacy-wedstrijden uit de bezetting → onderschatte bezetting → dubbele boekingen.
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
@@ -17,11 +22,14 @@ SELECT
     m.[teamnaam]                                                                    AS TeamNaam,
     m.[wedstrijd]                                                                   AS Wedstrijd,
     RTRIM(SUBSTRING(m.[veld], 7, 10))                                               AS VeldSubpositie,
-    'Competitie'                                                                    AS Bron
+    'Competitie'                                                                    AS Bron,
+    ISNULL(m.[ClubCode], a.[ClubCode])                                              AS ClubCode,
+    CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
 FROM [his].[matches] m
-CROSS APPLY (SELECT TOP 1 [ClubCode], [Accommodatie] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [Id]) a
+CROSS APPLY (SELECT TOP 1 [ClubCode], [Accommodatie] FROM [dbo].[AppSettings] WHERE [SyncEnabled] = 1 ORDER BY [ClubCode]) a
 LEFT JOIN [his].[teams] t
     ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+   AND ISNULL(t.[ClubCode], a.[ClubCode]) = ISNULL(m.[ClubCode], a.[ClubCode])
 LEFT JOIN [dbo].[Speeltijden] s
     ON s.[Leeftijd] = CASE
         WHEN m.[teamnaam] LIKE a.[ClubCode] + ' G[0-9]%' THEN 'G'
@@ -50,7 +58,9 @@ SELECT
     [TeamNaam],
     COALESCE([TeamNaam], '') + ' - ' + COALESCE([Tegenstander], '')                 AS Wedstrijd,
     ''                                                                              AS VeldSubpositie,
-    'Planner'                                                                       AS Bron
+    'Planner'                                                                       AS Bron,
+    [ClubCode],
+    [SportlinkWedstrijdCode]                                                        AS Wedstrijdcode
 FROM [planner].[GeplandeWedstrijden]
 WHERE [Status] <> 'Geannuleerd'
   AND [IsVervallen] = 0;

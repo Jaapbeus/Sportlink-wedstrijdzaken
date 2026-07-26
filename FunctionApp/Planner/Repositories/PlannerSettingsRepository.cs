@@ -14,7 +14,7 @@ internal static class PlannerSettingsRepository
     {
         // Normaliseer eerst zodat "JO15 Meiden" → "MO15" (#486)
         leeftijdsCategorie = LeeftijdNormalisatie.Normaliseer(leeftijdsCategorie);
-        var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(
@@ -29,8 +29,7 @@ internal static class PlannerSettingsRepository
 
     internal static async Task<List<VeldInfo>> GetVeldenAsync(string? clubCode = null)
     {
-        clubCode ??= SystemUtilities.AppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+        clubCode = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         var results = new List<VeldInfo>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -57,7 +56,7 @@ internal static class PlannerSettingsRepository
 
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(string? clubCode = null)
     {
-        var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         var result = new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();

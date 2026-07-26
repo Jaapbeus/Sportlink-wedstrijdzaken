@@ -1,0 +1,85 @@
+name: Label issues awaiting release
+
+# Voegt 'status: awaiting-release' toe aan issues waarvan de fix net naar develop
+# is gemerged. Develop wordt niet automatisch naar productie (main) uitgerold —
+# dit label (en desnoods heropening) voorkomt dat een issue als 'klaar' oogt
+# terwijl de fix nog niet live staat. Het label wordt weer verwijderd door
+# close-released-issues.yml zodra de fix daadwerkelijk naar main gaat.
+# Zie CLAUDE.md, sectie "Issue-lifecycle: awaiting-release".
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  label-awaiting-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Issues labelen als 'awaiting-release'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const label = 'status: awaiting-release';
+            const pr = context.payload.pull_request;
+            const text = `${pr.title}\n${pr.body || ''}`;
+
+            // Verzamel alle #NNN-referenties uit titel + body van de PR.
+            const numbers = [...new Set(
+              [...text.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10))
+            )];
+
+            if (numbers.length === 0) {
+              core.notice('Geen #issuenummer gevonden in PR-titel of -body — niets te labelen.');
+              return;
+            }
+
+            for (const number of numbers) {
+              let issue;
+              try {
+                issue = (await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                })).data;
+              } catch (e) {
+                core.warning(`#${number}: kon issue niet ophalen (${e.message}) — overgeslagen`);
+                continue;
+              }
+
+              // issues.get retourneert ook PR's — die slaan we over.
+              if (issue.pull_request) {
+                continue;
+              }
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                labels: [label],
+              });
+
+              if (issue.state === 'closed') {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  state: 'open',
+                  state_reason: 'reopened',
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  body: `🔄 Heropend: de fix zit sinds PR #${pr.number} in \`develop\`, maar \`develop\` is nog niet uitgerold naar productie (\`main\`). Dit issue sluit automatisch zodra de eerstvolgende release naar \`main\` gaat.`,
+                });
+                core.notice(`#${number}: heropend + gelabeld`);
+              } else {
+                core.notice(`#${number}: gelabeld`);
+              }
+            }

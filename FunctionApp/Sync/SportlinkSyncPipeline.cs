@@ -19,11 +19,14 @@ internal static class SportlinkSyncPipeline
         ILogger log)
     {
         var partialFailure = false;
+        var clubCode = AppSettings.GetSetting("clubCode");
+        if (string.IsNullOrWhiteSpace(clubCode))
+            throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
         await CreateStagingTable.ExecuteAsync("teams");
         try
         {
-            await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", log);
+            await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
             log.LogInformation("TEAMS - GET endpoint=/teams");
         }
         catch (Exception ex)
@@ -40,7 +43,7 @@ internal static class SportlinkSyncPipeline
             try
             {
                 await FetchAndStoreProgrammaAsync(
-                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", log);
+                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
                 log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
             }
             catch (Exception ex)
@@ -57,7 +60,7 @@ internal static class SportlinkSyncPipeline
             try
             {
                 await FetchAndStoreUitslagenAsync(
-                    $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", log);
+                    $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
                 log.LogInformation("MATCHES/UITSLAGEN - GET weekOffset={WeekOffset}", weekOffset);
             }
             catch (Exception ex)
@@ -74,7 +77,7 @@ internal static class SportlinkSyncPipeline
         {
             if (await FetchAndStoreMatchDetailsAsync(
                     $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}",
-                    log))
+                    clubCode, log))
             {
                 mdOk++;
                 log.LogInformation("MATCHDETAILS - GET wedstrijdcode={Code}", wedstrijdcode);
@@ -100,7 +103,7 @@ internal static class SportlinkSyncPipeline
             log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
     }
 
-    private static async Task FetchAndStoreTeamsAsync(string apiUrl, ILogger log)
+    private static async Task FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log)
     {
         var response = await _client.GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
@@ -109,7 +112,7 @@ internal static class SportlinkSyncPipeline
         if (teams != null)
         {
             log.LogInformation("TEAMS - {Count} gevonden.", teams.Count);
-            await SportlinkStagingRepository.SaveTeamsAsync(teams, log);
+            await SportlinkStagingRepository.SaveTeamsAsync(teams, clubCode, log);
         }
         else
         {
@@ -117,7 +120,7 @@ internal static class SportlinkSyncPipeline
         }
     }
 
-    private static async Task FetchAndStoreProgrammaAsync(string apiUrl, ILogger log)
+    private static async Task FetchAndStoreProgrammaAsync(string apiUrl, string clubCode, ILogger log)
     {
         var response = await _client.GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
@@ -126,11 +129,11 @@ internal static class SportlinkSyncPipeline
         if (matches is { Count: > 0 })
         {
             log.LogInformation("MATCHES/PROGRAMMA - {Count} gevonden.", matches.Count);
-            await SportlinkStagingRepository.SaveProgrammaAsync(matches, log);
+            await SportlinkStagingRepository.SaveProgrammaAsync(matches, clubCode, log);
         }
     }
 
-    private static async Task FetchAndStoreUitslagenAsync(string apiUrl, ILogger log)
+    private static async Task FetchAndStoreUitslagenAsync(string apiUrl, string clubCode, ILogger log)
     {
         var response = await _client.GetAsync(apiUrl);
         response.EnsureSuccessStatusCode();
@@ -139,13 +142,13 @@ internal static class SportlinkSyncPipeline
         if (matches is { Count: > 0 })
         {
             log.LogInformation("MATCHES/UITSLAGEN - {Count} gevonden.", matches.Count);
-            await SportlinkStagingRepository.MergeUitslagenAsync(matches, log);
+            await SportlinkStagingRepository.MergeUitslagenAsync(matches, clubCode, log);
         }
     }
 
     // Retourneert true bij succes, false bij elke fout — zodat de caller partialFailure kan bijhouden. (#464)
     // httpClient is optioneel; standaard wordt de static _client gebruikt. (#476 — testbaar via inject)
-    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, ILogger log, HttpClient? httpClient = null)
+    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
     {
         var client = httpClient ?? _client;
         try
@@ -157,7 +160,7 @@ internal static class SportlinkSyncPipeline
             {
                 var details = JsonConvert.DeserializeObject<MatchDetails>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
                 if (details != null)
-                    await SportlinkStagingRepository.SaveMatchDetailsAsync(details, log);
+                    await SportlinkStagingRepository.SaveMatchDetailsAsync(details, clubCode, log);
                 else
                     log.LogWarning("MATCHDETAILS - geen data gevonden.");
             }

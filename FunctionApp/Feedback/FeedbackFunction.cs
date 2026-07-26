@@ -89,11 +89,13 @@ public static class FeedbackFunction
             var pat = Environment.GetEnvironmentVariable("GitHubPat");
             var owner = Environment.GetEnvironmentVariable("GitHubOwner")
                      ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY_OWNER") ?? "";
+            // GitHubRepo is net als GitHubOwner verplicht: een stille fallback op de upstream-repo-naam
+            // geeft een fork met een andere naam een verwarrende 404 i.p.v. een configuratiefout. (#607)
             var repo = Environment.GetEnvironmentVariable("GitHubRepo");
 
             if (string.IsNullOrWhiteSpace(pat) || string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
             {
-                log.LogWarning("GitHubPat/GitHubOwner niet geconfigureerd — feedback-submit niet mogelijk");
+                log.LogWarning("GitHubPat/GitHubOwner/GitHubRepo niet volledig geconfigureerd — feedback-submit niet mogelijk");
                 return new ObjectResult(new { error = "GitHub-integratie niet geconfigureerd. Neem contact op met de beheerder." }) { StatusCode = 503 };
             }
 
@@ -399,6 +401,17 @@ public static class FeedbackFunction
         return clean.Length > maxLen ? clean[..maxLen] + "…" : clean;
     }
 
+    /// <summary>
+    /// Rate limiter voor feedback-submits.
+    ///
+    /// #610 — bewuste keuze: de teller is in-memory en geldt dus per Consumption-plan-instance, niet
+    /// globaal. Bij opschaling kan de effectieve limiet een veelvoud van
+    /// <see cref="MaxSubmissiesPerVenster"/> zijn. Acceptabel omdat dit endpoint admin-only is
+    /// (<c>RequireAdmin</c>) en de limiet bedoeld is als rem tegen per ongeluk doorklikken, niet als
+    /// beveiligingsgrens tegen een aanvaller. Een gedeelde store (SQL/Table Storage) zou een extra
+    /// round-trip en onderhoud kosten zonder dat het risico dat rechtvaardigt. Wordt dit ooit een
+    /// publiek endpoint, dan is een gedeelde teller wél nodig.
+    /// </summary>
     private static bool TryAcquireSubmitSlot()
     {
         lock (_rateLock)

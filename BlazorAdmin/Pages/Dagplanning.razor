@@ -16,7 +16,7 @@
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label class="form-label">Datum</label>
-                <input type="date" class="form-control" @bind="_datumDt" />
+                <input type="date" class="form-control" @bind="_datumDt" @bind:after="OnDatumChanged" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Buffer (min)</label>
@@ -29,6 +29,137 @@
             </div>
             <div class="col-md-5"></div>
         </div>
+    </div>
+</div>
+
+@* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2">
+        <span class="fw-semibold">Veldbezetting op @_datumDt.ToString("dd-MM-yyyy")</span>
+        @if (_veldbezettingBezig)
+        {
+            <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+        }
+    </div>
+    <div class="card-body">
+        @if (!string.IsNullOrEmpty(_veldbezettingError))
+        {
+            <div class="alert alert-danger mb-0">@_veldbezettingError</div>
+        }
+        else if (!_veldbezettingBezig && _veldbezetting.Count == 0)
+        {
+            <p class="text-muted mb-0">Geen wedstrijden gepland op deze datum.</p>
+        }
+        else if (_veldbezetting.Count > 0)
+        {
+            var _vGantt = BouwVeldbezettingGanttItems();
+            @if (_vGantt.Any())
+            {
+                var _vVelden = _vGantt
+                    .Select(g => g.VeldNaam).Distinct()
+                    .OrderBy(v => v.StartsWith("Kunstgras", StringComparison.OrdinalIgnoreCase) ? "0" + v : "1" + v)
+                    .ToList();
+                int _vsMin = (_vGantt.Min(g => (int)g.Aanvang.ToTimeSpan().TotalMinutes) / 60) * 60;
+                int _veMin = (((int)_vGantt.Max(g => g.Einde.ToTimeSpan().TotalMinutes) + 59) / 60) * 60;
+                if (_veMin <= _vsMin) _veMin = _vsMin + 60;
+                int _vTotMin = _veMin - _vsMin;
+
+                <div style="overflow-x:auto; min-width:0;" class="mb-3">
+                    @* Tijdas-header *@
+                    <div style="display:flex; margin-bottom:4px;">
+                        <div style="width:120px; flex-shrink:0;"></div>
+                        <div style="flex:1; position:relative; height:22px; min-width:500px;">
+                            @for (int _h = _vsMin; _h <= _veMin; _h += 60)
+                            {
+                                string _lftH = GanttPct(_h - _vsMin, _vTotMin);
+                                <div style="position:absolute; left:@(_lftH)%; transform:translateX(-50%);
+                                            font-size:0.7rem; color:#6c757d; white-space:nowrap; user-select:none;">
+                                    @TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(_h)).ToString("HH:mm")
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Veld-rijen *@
+                    @foreach (var _veld in _vVelden)
+                    {
+                        <div style="display:flex; border-top:1px solid #dee2e6;">
+                            <div style="width:120px; flex-shrink:0; padding:6px 8px; font-size:0.8rem;
+                                        font-weight:600; color:#495057; background:#f8f9fa;
+                                        border-right:1px solid #dee2e6; display:flex; align-items:center;">
+                                @_veld
+                            </div>
+                            <div style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;">
+                                @* Uurlijnen *@
+                                @for (int _h = _vsMin + 60; _h < _veMin; _h += 60)
+                                {
+                                    <div style="position:absolute; left:@(GanttPct(_h - _vsMin, _vTotMin))%;
+                                                top:0; bottom:0; width:1px; background:#e9ecef; z-index:0;"></div>
+                                }
+                                @* Wedstrijdblokken *@
+                                @foreach (var gi in _vGantt.Where(g => g.VeldNaam == _veld))
+                                {
+                                    string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _vsMin, _vTotMin);
+                                    string _wdt = GanttPct(gi.DuurMinuten, _vTotMin);
+                                    string _top = GanttPct((int)GanttTop(gi.SubPos), 100);
+                                    string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
+                                    string _tooltip = GanttTooltip(gi);
+                                    <div title="@_tooltip"
+                                         style="position:absolute;
+                                                left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
+                                                top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
+                                                background:@GanttKleur(gi.Status);
+                                                border-radius:5px; overflow:hidden;
+                                                padding:2px 5px; color:#fff;
+                                                font-size:0.68rem; line-height:1.25;
+                                                z-index:1; cursor:default;
+                                                box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+                                                    font-weight:700; font-size:0.7rem;">
+                                            @gi.Aanvang.ToString("HH:mm")
+                                        </div>
+                                        <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                                            @GanttLabel(gi.Label)
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <div style="height:1px; background:#dee2e6; margin-left:120px;"></div>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted small">Nog geen wedstrijden met veld, tijd én bekende duur voor deze datum — zie de lijst hieronder.</p>
+            }
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tijd</th>
+                            <th>Team</th>
+                            <th>Tegenstander</th>
+                            <th>Veld</th>
+                            <th>Competitie</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _veldbezetting)
+                        {
+                            <tr>
+                                <td>@(item.AanvangsTijd ?? "—")</td>
+                                <td>@item.TeamNaam</td>
+                                <td>@(item.Uitteam ?? "—")</td>
+                                <td>@(item.Veld ?? "—")</td>
+                                <td>@(item.Competitiesoort ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
 </div>
 
@@ -374,7 +505,11 @@
                     @if (!string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner))
                     {
                         <div class="border rounded mt-2" style="overflow:hidden;">
+                            @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
+                               Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
+                               onafhankelijk van server-side encoding. (#603) *@
                             <iframe srcdoc="@_klassiekResultaat.HtmlPlanner"
+                                    sandbox="allow-same-origin"
                                     style="width:100%; min-height:700px; border:none; display:block;"
                                     title="Klassieke dagplanning"></iframe>
                         </div>
@@ -393,6 +528,11 @@
     private string _filter = "alles";
     private string _visTab = "optimaal";
     private AutoPlanResponseDto? _plan;
+
+    // Directe veldbezetting (#566)
+    private List<VeldbezettingItemDto> _veldbezetting = new();
+    private bool _veldbezettingBezig;
+    private string? _veldbezettingError;
 
     // Klassiek optimaliseer-flow
     private string _doel = "";
@@ -413,12 +553,45 @@
         ClubSelector.OnChange += OnClubChanged;
     }
 
-    private void OnClubChanged() => InvokeAsync(() =>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVeldbezettingAsync();
+    }
+
+    private async Task OnDatumChanged()
     {
         _plan = null;
         _klassiekResultaat = null;
         _errorMessage = null;
         _toepassenMelding = null;
+        await LoadVeldbezettingAsync();
+    }
+
+    private async Task LoadVeldbezettingAsync()
+    {
+        _veldbezettingBezig = true;
+        _veldbezettingError = null;
+        try
+        {
+            var result = await Api.GetVeldbezettingAsync(DatumStr);
+            if (result.Success)
+                _veldbezetting = result.Data ?? new();
+            else
+            {
+                _veldbezetting = new();
+                _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
+            }
+        }
+        finally { _veldbezettingBezig = false; }
+    }
+
+    private void OnClubChanged() => InvokeAsync(async () =>
+    {
+        _plan = null;
+        _klassiekResultaat = null;
+        _errorMessage = null;
+        _toepassenMelding = null;
+        await LoadVeldbezettingAsync();
         StateHasChanged();
     });
 
@@ -585,6 +758,24 @@
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
                     null, null));
             }
+        }
+        return items;
+    }
+
+    // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie,
+    // alleen wat er al gepland staat. Hergebruikt dezelfde GanttItem/helpers als de
+    // Optimaliseer-Gantt hierboven.
+    private List<GanttItem> BouwVeldbezettingGanttItems()
+    {
+        var items = new List<GanttItem>();
+        foreach (var w in _veldbezetting.Where(w => w.DuurMinuten > 0))
+        {
+            if (string.IsNullOrWhiteSpace(w.Veld) || string.IsNullOrWhiteSpace(w.AanvangsTijd)) continue;
+            if (!TimeOnly.TryParse(w.AanvangsTijd, out var t)) continue;
+            var (veldBase, sub) = GanttSplitVeld(w.Veld);
+            items.Add(new GanttItem(veldBase, sub, t, t.AddMinutes(w.DuurMinuten),
+                w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), "ongewijzigd", w.DuurMinuten,
+                null, null));
         }
         return items;
     }

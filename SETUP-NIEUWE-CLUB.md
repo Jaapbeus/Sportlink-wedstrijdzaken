@@ -58,14 +58,22 @@ az functionapp config appsettings set \
     "GraphClientSecret=<entra-app-secret>" \
     "GraphMailbox=<coordinator@voorbeeld.nl>" \
     "OpenAiApiKey=<openai-api-key>" \
+    "AiModelName=gpt-4o-mini" \
     "GitHubPat=<github-pat>" \
     "GitHubOwner=<github-username>" \
-    "GitHubRepo=Sportlink-wedstrijdzaken" \
+    "GitHubRepo=<naam-van-jouw-fork>" \
     "EmailProcessorEnabled=false" \
     "EmailReviewMode=true"
 ```
 
 > Stel `EmailProcessorEnabled=true` pas in als je de e-mailverwerking wilt activeren. Begin met `false` tijdens de initiële setup.
+
+> **`GitHubRepo` is verplicht (#607).** Heb je de repo onder een andere naam geforkt, vul dan die naam
+> in. Ontbreekt de instelling, dan geeft de feedback-widget een duidelijke configuratiefout (503) —
+> voorheen probeerde hij stilzwijgend de upstream-repo en kreeg je een verwarrende 404.
+
+> **`AiModelName` is optioneel (#604).** Zonder deze instelling gebruikt het systeem `gpt-4o-mini`.
+> Zet hier een andere modelnaam om te upgraden zonder de software opnieuw te deployen.
 
 ### 2b. Azure SQL Database (Free tier)
 

@@ -57,7 +57,35 @@ Landelijke jeugd kan afwijken door interlands (voetnoot in PDF).
 
 ## Hoe wordt dit gebruikt?
 
-De inhoud is samengevat in de SQL-tabel `dbo.KnvbKalenderDag` voor seizoen 2025/'26
-(West + Landelijk). Zie [Database/Script.PostDeployment1.sql](../../Database/Script.PostDeployment1.sql).
+De inhoud is samengevat in de SQL-tabel `dbo.KnvbKalenderDag`.
+Zie [Database/Script.PostDeployment1.sql](../../Database/Script.PostDeployment1.sql).
+
+| Seizoen | Geseede regio's |
+|---|---|
+| 2025/'26 | West, Landelijk |
+| 2026/'27 | West, Noord, Oost, Zuid, Landelijk, LandelijkJeugd (alle zes) |
+
+De kolomstructuur van de PDF's verschilt per seizoen én per regio (zie de analyse in issue #71),
+dus `DagType` wordt bepaald op basis van de **senioren-kolommen** als leidende signaal:
+
+| PDF-celinhoud senioren-kolommen | DagType |
+|---|---|
+| alles `Vrij` | `Vrij` |
+| meerderheid `WD` | `Competitie` |
+| meerderheid `Inh. / Bek.` | `Inhaal` |
+| alles `Beker poule` | `Beker` |
+| `NC` of finale | `NC` |
+| feestdag met beperkt programma | `Feestdag` |
+| vrijdag-pupillentoernooi | `Toernooi` (aparte rij) |
+
+Weekendrijen gebruiken de **zaterdagdatum**; vrijdagrijen zijn pupillen 7x7-toernooien
+(`PupillenToernooi = 1`). Midweekse reeksen zonder één vaste datum (bijv. "1 - 3 juni") worden
+niet geseed — de tabel is een weekend-overzicht.
+
+De verplaatsingsdeadlines uit deze kalenders zijn daarnaast verwerkt in `KnvbRegelsContext`
+in [FunctionApp/Email/BerichtAiService.cs](../../FunctionApp/Email/BerichtAiService.cs) —
+de AI gebruikt die om te signaleren dat een herplanverzoek een KNVB-regel raakt.
+Zie [docs/ARCHITECTUUR-AI-SERVICES.md](../ARCHITECTUUR-AI-SERVICES.md) voor de jaarlijkse
+onderhoudsplicht.
 
 Toekomstige automatische import: zie open feature request op GitHub.

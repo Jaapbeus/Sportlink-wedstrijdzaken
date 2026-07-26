@@ -20,10 +20,20 @@ internal static class LeeftijdNormalisatie
     {
         if (string.IsNullOrWhiteSpace(cat)) return "";
 
+        var trimmed = cat.Trim();
+
+        // Senioren-categorieen gebruiken vaste Speeltijden-sleutels.
+        if (trimmed.Equals("Senioren", StringComparison.OrdinalIgnoreCase))
+            return "1-99";
+
+        if (trimmed.Equals("Senioren Vrouwen", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("Senioren VR", StringComparison.OrdinalIgnoreCase))
+            return "VR";
+
         // "JO{n} Meiden" → "MO{n}" (Sportlink-specifiek formaat voor meisjesteams)
-        if (cat.Contains("Meiden", StringComparison.OrdinalIgnoreCase))
+        if (trimmed.Contains("Meiden", StringComparison.OrdinalIgnoreCase))
         {
-            var num = cat
+            var num = trimmed
                 .Replace("JO", "", StringComparison.OrdinalIgnoreCase)
                 .Replace("MO", "", StringComparison.OrdinalIgnoreCase)
                 .Replace("Meiden", "", StringComparison.OrdinalIgnoreCase)
@@ -31,7 +41,7 @@ internal static class LeeftijdNormalisatie
             return $"MO{num}";
         }
 
-        return cat
+        return trimmed
             .Replace("Onder ", "JO")
             .Replace("Meisjes ", "MO")
             .Replace("Vrouwen", "VR");
@@ -43,6 +53,10 @@ internal static class LeeftijdNormalisatie
     /// </summary>
     internal static string SqlExpr(string kolom) => $@"
         CASE
+            WHEN UPPER(LTRIM(RTRIM({kolom}))) = 'SENIOREN'
+                THEN '1-99'
+            WHEN UPPER(LTRIM(RTRIM({kolom}))) IN ('SENIOREN VROUWEN', 'SENIOREN VR')
+                THEN 'VR'
             WHEN {kolom} LIKE '%Meiden'
                 THEN 'MO' + LTRIM(RTRIM(REPLACE(REPLACE(REPLACE({kolom}, 'JO', ''), 'MO', ''), ' Meiden', '')))
             ELSE

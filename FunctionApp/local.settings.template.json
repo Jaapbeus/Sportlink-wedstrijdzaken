@@ -14,6 +14,7 @@
     "GraphClientSecret": "",
     "GraphMailbox": "",
     "OpenAiApiKey": "",
+    "AiModelName": "gpt-4o-mini",
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",

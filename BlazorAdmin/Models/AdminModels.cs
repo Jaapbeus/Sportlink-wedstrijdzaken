@@ -277,6 +277,21 @@ public class AutoPlanResponseDto
     public string OptimaleHtml { get; set; } = "";
 }
 
+// Lichtgewicht "wat staat er nu gepland"-weergave (#566) — zonder optimalisatie-berekening.
+public class VeldbezettingItemDto
+{
+    public long? WedstrijdCode { get; set; }
+    public string Wedstrijd { get; set; } = "";
+    public string TeamNaam { get; set; } = "";
+    public string? Uitteam { get; set; }
+    public string? AanvangsTijd { get; set; }
+    public string? Veld { get; set; }
+    public string? Competitiesoort { get; set; }
+    public string? LeeftijdsCategorie { get; set; }
+    public int DuurMinuten { get; set; }
+    public decimal Veldafmeting { get; set; }
+}
+
 public class AutoPlanToepassenRequestDto
 {
     public string Datum { get; set; } = "";

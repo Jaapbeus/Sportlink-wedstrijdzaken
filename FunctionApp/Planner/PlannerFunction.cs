@@ -32,10 +32,11 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}",
-                    request.Datum, request.AanvangsTijd, request.TeamNaam, request.LeeftijdsCategorie);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
+                    request.Datum, request.AanvangsTijd, request.TeamNaam, request.LeeftijdsCategorie, clubCode);
 
-                var response = await PlannerService.CheckAvailabilityAsync(request, log);
+                var response = await PlannerService.CheckAvailabilityAsync(request, log, clubCode);
 
                 return new OkObjectResult(response);
             }
@@ -62,10 +63,11 @@ namespace SportlinkFunction.Planner
                 var request = JsonConvert.DeserializeObject<DoordeweeksBeschikbaarRequest>(body)
                     ?? new DoordeweeksBeschikbaarRequest();
 
-                log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}",
-                    request.DagFilter, request.DuurMinuten, request.LeeftijdsCategorie);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
+                    request.DagFilter, request.DuurMinuten, request.LeeftijdsCategorie, clubCode);
 
-                var response = await PlannerService.CheckDoordeweeksBeschikbaarAsync(request, log);
+                var response = await PlannerService.CheckDoordeweeksBeschikbaarAsync(request, log, clubCode);
 
                 return new OkObjectResult(response);
             }
@@ -247,9 +249,11 @@ namespace SportlinkFunction.Planner
                 if (!DateOnly.TryParse(request.Datum, out var date))
                     return new BadRequestObjectResult(new { error = $"Ongeldige datum: {request.Datum}" });
 
-                log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}", request.TeamNaam, request.Datum);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}, club={Club}",
+                    request.TeamNaam, request.Datum, clubCode);
 
-                var match = await PlannerDataAccess.FindMatchAsync(request.TeamNaam, date);
+                var match = await PlannerDataAccess.FindMatchAsync(request.TeamNaam, date, clubCode);
                 if (match == null)
                     return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
 
@@ -279,10 +283,11 @@ namespace SportlinkFunction.Planner
                 if (request == null || request.Wedstrijdcode == 0)
                     return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
 
-                log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}",
-                    request.Wedstrijdcode, request.VoorkeurTijd);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}, club={Club}",
+                    request.Wedstrijdcode, request.VoorkeurTijd, clubCode);
 
-                var response = await PlannerService.CheckRescheduleAvailabilityAsync(request, log);
+                var response = await PlannerService.CheckRescheduleAvailabilityAsync(request, log, clubCode);
 
                 return new OkObjectResult(response);
             }
@@ -362,7 +367,8 @@ namespace SportlinkFunction.Planner
                 if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
 
-                var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                var match = await PlannerDataAccess.FindMatchByCodeAsync(request.Wedstrijdcode, clubCode);
                 if (match == null)
                     return new OkObjectResult(new { error = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden." });
 
@@ -471,6 +477,37 @@ namespace SportlinkFunction.Planner
             }
         }
 
+        // Lichtgewicht "wat staat er nu gepland"-weergave (#566) — zonder FieldScheduler-berekening.
+        [Function("Veldbezetting")]
+        public static async Task<IActionResult> Veldbezetting(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/veldbezetting")] HttpRequest req,
+            FunctionContext context)
+        {
+            var log = context.GetLogger("Veldbezetting");
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
+            try
+            {
+                var datumParam = req.Query["datum"].ToString();
+                if (string.IsNullOrWhiteSpace(datumParam) || !DateOnly.TryParse(datumParam, out var datum))
+                    return new BadRequestObjectResult(new { error = "Query parameter 'datum' (yyyy-MM-dd) is verplicht." });
+
+                await SystemUtilities.WaitForDatabaseAsync(log);
+
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
+                    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
+                log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
+
+                var items = await PlannerService.VeldbezettingAsync(datum, clubCode);
+                return new OkObjectResult(items);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Veldbezetting failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
         [Function("GetTeamSchedule")]
         public static async Task<IActionResult> GetTeamSchedule(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/team-schedule")] HttpRequest req,
@@ -489,9 +526,10 @@ namespace SportlinkFunction.Planner
 
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
-                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}", team, format);
+                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                log.LogInformation("GetTeamSchedule: team={Team}, format={Format}, club={Club}", team, format, clubCode);
 
-                var schedule = await PlannerService.GetTeamScheduleAsync(team);
+                var schedule = await PlannerService.GetTeamScheduleAsync(team, clubCode);
                 if (schedule == null)
                     return new NotFoundObjectResult(new { error = $"Team '{team}' niet gevonden." });
 

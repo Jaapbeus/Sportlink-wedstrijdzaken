@@ -63,7 +63,46 @@ BEGIN
 		EXEC sp_executesql @SqlString;
 		-- Output the generated SQL for verification
 		-- PRINT @SqlString;
-	END	
+
+		/*
+			#606: index op de business key en op ClubCode.
+
+			Zonder index doet elke join/filter op de business key of ClubCode een full heap scan, en
+			niets in het schema voorkomt duplicaten als de MERGE ON-matching ooit misaligneert.
+
+			De business-key-index is UNIEK omdat de tabel hier net leeg is aangemaakt — dat kan dus
+			niet falen. Voor bestaande tabellen gebeurt hetzelfde in Script.PostDeployment1.sql, daar
+			wél voorwaardelijk: de Sportlink-feed levert aantoonbaar duplicaten (#569), en een
+			mislukte CREATE UNIQUE INDEX zou de hele deploy laten falen.
+
+			@MtaTargetKey heeft de vorm 'kolomnaam DATATYPE' — zelfde parsing als sp_MergeStgToHis.
+		*/
+		IF @MtaTargetKey IS NOT NULL
+		BEGIN
+			DECLARE @BkColumn NVARCHAR(128) =
+				CASE WHEN CHARINDEX(' ', @MtaTargetKey) > 0
+					 THEN LEFT(@MtaTargetKey, CHARINDEX(' ', @MtaTargetKey) - 1)
+					 ELSE @MtaTargetKey END;
+
+			DECLARE @IndexSql NVARCHAR(MAX) =
+				'CREATE UNIQUE NONCLUSTERED INDEX ' + QUOTENAME('UQ_' + @TargetName + '_bk') +
+				' ON ' + QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName) +
+				' (' + QUOTENAME(@BkColumn) + ');';
+			EXEC sp_executesql @IndexSql;
+		END
+
+		-- Ondersteunende index op ClubCode voor his-tabellen die de discriminator hebben.
+		IF EXISTS (SELECT 1 FROM sys.columns
+				   WHERE object_id = OBJECT_ID(QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName))
+					 AND name = 'ClubCode')
+		BEGIN
+			DECLARE @ClubIndexSql NVARCHAR(MAX) =
+				'CREATE NONCLUSTERED INDEX ' + QUOTENAME('IX_' + @TargetName + '_ClubCode') +
+				' ON ' + QUOTENAME(@TargetSchema) + '.' + QUOTENAME(@TargetName) +
+				' ([ClubCode]);';
+			EXEC sp_executesql @ClubIndexSql;
+		END
+	END
 	--ELSE
 	--BEGIN
 	--	PRINT '[' + @TargetSchema + '].[' + @TargetName +'] already exists'

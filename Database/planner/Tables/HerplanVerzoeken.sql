@@ -12,5 +12,6 @@ CREATE TABLE [planner].[HerplanVerzoeken] (
     [Opmerking]             NVARCHAR(500)  NULL,
     [mta_inserted]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Ins] DEFAULT GETUTCDATE(),
     [mta_modified]          DATETIME       NOT NULL CONSTRAINT [DF_HerplanVerzoeken_Mod] DEFAULT GETUTCDATE(),
+    [ClubCode]              NVARCHAR(20)   NOT NULL, -- multi-club discriminator (#595); geen DEFAULT
     CONSTRAINT [PK_HerplanVerzoeken] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
