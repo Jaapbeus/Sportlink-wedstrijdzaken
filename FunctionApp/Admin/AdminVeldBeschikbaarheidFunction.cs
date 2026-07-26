@@ -54,6 +54,48 @@ public static class AdminVeldBeschikbaarheidFunction
                 return new OkObjectResult(list);
             });
 
+    [Function("AdminVeldenPost")]
+    public static Task<IActionResult> PostVeld(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/velden")] HttpRequest req,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldenPost"), "veld aanmaken",
+            async clubCode =>
+            {
+                var dto = JsonConvert.DeserializeObject<VeldCreateRequest>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
+                var validatie = ValideerVeld(dto);
+                if (validatie != null) return validatie;
+
+                var cs = SystemUtilities.DatabaseConfig.ConnectionString;
+                if (await AdminVeldBeschikbaarheidRepository.VeldNummerBestaatAsync(dto!.VeldNummer, cs))
+                    return new ConflictObjectResult(new { error = $"VeldNummer {dto.VeldNummer} bestaat al" });
+
+                await AdminVeldBeschikbaarheidRepository.InsertVeldAsync(
+                    dto.VeldNummer, dto.VeldNaam!, dto.VeldType!, dto.HeeftKunstlicht, dto.Actief ?? true,
+                    clubCode, cs);
+                return new OkObjectResult(new { veldNummer = dto.VeldNummer, status = "aangemaakt" });
+            });
+
+    [Function("AdminVeldenPut")]
+    public static Task<IActionResult> PutVeld(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/velden/{veldNummer:int}")] HttpRequest req,
+        int veldNummer,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminVeldenPut"), "veld bijwerken",
+            async clubCode =>
+            {
+                var dto = JsonConvert.DeserializeObject<VeldUpdateRequest>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
+                var validatie = ValideerVeldUpdate(dto);
+                if (validatie != null) return validatie;
+
+                var rows = await AdminVeldBeschikbaarheidRepository.UpdateVeldAsync(
+                    veldNummer, dto!.VeldNaam!, dto.VeldType!, dto.HeeftKunstlicht, dto.Actief,
+                    clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
+                if (rows == 0) return new NotFoundObjectResult(new { error = $"Veld {veldNummer} bestaat niet" });
+                return new OkObjectResult(new { veldNummer, status = "bijgewerkt" });
+            });
+
     [Function("AdminVeldBeschikbaarheidPost")]
     public static Task<IActionResult> Post(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/veldbeschikbaarheid")] HttpRequest req,
@@ -108,6 +150,44 @@ public static class AdminVeldBeschikbaarheidFunction
         if (string.IsNullOrWhiteSpace(tot) || !TimeSpan.TryParse(tot, out _))
             return new BadRequestObjectResult(new { error = "BeschikbaarTot vereist HH:mm formaat" });
         return null;
+    }
+
+    private static IActionResult? ValideerVeld(VeldCreateRequest? dto)
+    {
+        if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
+        if (dto.VeldNummer <= 0) return new BadRequestObjectResult(new { error = "VeldNummer vereist" });
+        if (string.IsNullOrWhiteSpace(dto.VeldNaam))
+            return new BadRequestObjectResult(new { error = "VeldNaam verplicht" });
+        if (string.IsNullOrWhiteSpace(dto.VeldType))
+            return new BadRequestObjectResult(new { error = "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)" });
+        return null;
+    }
+
+    private static IActionResult? ValideerVeldUpdate(VeldUpdateRequest? dto)
+    {
+        if (dto == null) return new BadRequestObjectResult(new { error = "Lege body" });
+        if (string.IsNullOrWhiteSpace(dto.VeldNaam))
+            return new BadRequestObjectResult(new { error = "VeldNaam verplicht" });
+        if (string.IsNullOrWhiteSpace(dto.VeldType))
+            return new BadRequestObjectResult(new { error = "VeldType verplicht (vrije tekst, bijv. kunstgras of natuurgras)" });
+        return null;
+    }
+
+    public class VeldCreateRequest
+    {
+        public int     VeldNummer      { get; set; }
+        public string? VeldNaam        { get; set; }
+        public string? VeldType        { get; set; }
+        public bool    HeeftKunstlicht { get; set; }
+        public bool?   Actief          { get; set; }
+    }
+
+    public class VeldUpdateRequest
+    {
+        public string? VeldNaam        { get; set; }
+        public string? VeldType        { get; set; }
+        public bool    HeeftKunstlicht { get; set; }
+        public bool    Actief          { get; set; } = true;
     }
 
     public class VeldBeschikbaarheidRequest

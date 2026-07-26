@@ -43,7 +43,8 @@ internal static class PlannerAvailabilityRepository
     /// Veldbezetting op één datum, hard gescoped op ClubCode (#580).
     /// De view <c>planner.AlleWedstrijdenOpVeld</c> levert ClubCode per rij; zonder dit
     /// filter mengt demodata (ALLSTARS) met productiedata en worden bezettingsslots
-    /// onjuist berekend.
+    /// onjuist berekend. Trainingsblokken (<see cref="GetTrainingOccupationsAsync"/>) zijn een
+    /// derde, club-vrij-instelbare bezettingsbron naast wedstrijden (#679).
     /// </summary>
     internal static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsAsync(
         DateOnly date, string? clubCode = null)
@@ -87,6 +88,44 @@ internal static class PlannerAvailabilityRepository
                 Wedstrijdcode      = reader.IsDBNull(10) ? null : reader.GetInt64(10)
             });
         }
+        results.AddRange(await GetTrainingOccupationsAsync(date, clubCode));
+        return results;
+    }
+
+    /// <summary>
+    /// Terugkerende trainingsbezetting uit dbo.VeldTraining voor de weekdag van <paramref name="date"/>.
+    /// Vrij per club instelbaar (#679, spoor B): een club zonder rijen in deze tabel houdt
+    /// exact het gedrag van vóór deze feature — geen impliciete bezetting.
+    /// </summary>
+    internal static async Task<List<BestaandeWedstrijd>> GetTrainingOccupationsAsync(
+        DateOnly date, string? clubCode = null)
+    {
+        var results = new List<BestaandeWedstrijd>();
+        int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
+        var resolvedClubCode = ClubScope.Resolve(clubCode);
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            SELECT t.[VeldNummer], t.[VanTijd], t.[TotTijd], t.[Omschrijving]
+            FROM [dbo].[VeldTraining] t
+            INNER JOIN [dbo].[Velden] v ON v.[VeldNummer] = t.[VeldNummer]
+            WHERE v.[Actief] = 1 AND t.[Actief] = 1 AND t.[DagVanWeek] = @dag AND t.[ClubCode] = @clubCode
+            ORDER BY t.[VeldNummer], t.[VanTijd]
+        ", conn);
+        cmd.Parameters.AddWithValue("@dag", dagVanWeek);
+        cmd.Parameters.AddWithValue("@clubCode", resolvedClubCode);
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            results.Add(new BestaandeWedstrijd
+            {
+                Datum           = date,
+                AanvangsTijd    = TimeOnly.FromTimeSpan(reader.GetTimeSpan(1)),
+                EindTijd        = TimeOnly.FromTimeSpan(reader.GetTimeSpan(2)),
+                VeldNummer      = reader.GetInt32(0),
+                VeldDeelGebruik = 1.00m,
+                Wedstrijd       = reader.IsDBNull(3) ? "Training" : reader.GetString(3),
+                Bron            = "Training"
+            });
         return results;
     }
 

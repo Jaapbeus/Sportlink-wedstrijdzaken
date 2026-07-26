@@ -111,6 +111,9 @@ $expectedColumns = @{
     "dbo.Velden" = @(
         "VeldNummer","VeldNaam","VeldType","HeeftKunstlicht","Actief"
     )
+    "dbo.VeldTraining" = @(
+        "Id","VeldNummer","DagVanWeek","VanTijd","TotTijd","Omschrijving","Actief","ClubCode"
+    )
 }
 
 # SQL schema-bestanden (voor ontbrekende tabellen opnieuw aanmaken)
@@ -120,6 +123,7 @@ $schemaSqlMap = @{
     "dbo.TeamRegels"               = Join-Path $root "Database\dbo\Tables\TeamRegels.sql"
     "dbo.Velden"                   = Join-Path $root "Database\dbo\Tables\Velden.sql"
     "dbo.VeldBeschikbaarheid"      = Join-Path $root "Database\dbo\Tables\VeldBeschikbaarheid.sql"
+    "dbo.VeldTraining"             = Join-Path $root "Database\dbo\Tables\VeldTraining.sql"
     "dbo.TeamVoorkeurTijden"       = Join-Path $root "Database\dbo\Tables\TeamVoorkeurTijden.sql"
     "dbo.EmailTemplateInstellingen"= Join-Path $root "Database\dbo\Tables\EmailTemplateInstellingen.sql"
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.17.4",
+    "version": "2.17.5",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1317,8 +1317,152 @@
           },
           "VeldNaam": {
             "type": "string"
+          },
+          "VeldType": {
+            "type": "string",
+            "description": "Vrije tekst (bijv. \"kunstgras\", \"natuurgras\") — geen vaste enum, elke club configureert dit naar eigen situatie.",
+            "example": "kunstgras"
+          },
+          "HeeftKunstlicht": {
+            "type": "boolean"
+          },
+          "Actief": {
+            "type": "boolean"
           }
         }
+      },
+      "VeldCreateRequest": {
+        "type": "object",
+        "required": [
+          "veldNummer",
+          "veldNaam",
+          "veldType"
+        ],
+        "properties": {
+          "veldNummer": {
+            "type": "integer",
+            "description": "Uniek binnen deze deployment (PK van dbo.Velden, geen ClubCode-scope)."
+          },
+          "veldNaam": {
+            "type": "string",
+            "example": "veld 1"
+          },
+          "veldType": {
+            "type": "string",
+            "example": "kunstgras"
+          },
+          "heeftKunstlicht": {
+            "type": "boolean",
+            "default": false
+          },
+          "actief": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VeldUpdateRequest": {
+        "type": "object",
+        "required": [
+          "veldNaam",
+          "veldType"
+        ],
+        "properties": {
+          "veldNaam": {
+            "type": "string"
+          },
+          "veldType": {
+            "type": "string"
+          },
+          "heeftKunstlicht": {
+            "type": "boolean"
+          },
+          "actief": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VeldTrainingItem": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "integer"
+          },
+          "VeldNummer": {
+            "type": "integer"
+          },
+          "VeldNaam": {
+            "type": "string"
+          },
+          "DagVanWeek": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO dag: 1=maandag … 7=zondag"
+          },
+          "VanTijd": {
+            "type": "string",
+            "pattern": "^[0-2]\\d:[0-5]\\d$",
+            "example": "19:00"
+          },
+          "TotTijd": {
+            "type": "string",
+            "pattern": "^[0-2]\\d:[0-5]\\d$",
+            "example": "20:30"
+          },
+          "Omschrijving": {
+            "type": "string",
+            "nullable": true,
+            "example": "JO15-2 training"
+          },
+          "Actief": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VeldTrainingCreateRequest": {
+        "type": "object",
+        "required": [
+          "veldNummer",
+          "dagVanWeek",
+          "vanTijd",
+          "totTijd"
+        ],
+        "properties": {
+          "veldNummer": {
+            "type": "integer"
+          },
+          "dagVanWeek": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "vanTijd": {
+            "type": "string",
+            "pattern": "^[0-2]\\d:[0-5]\\d$",
+            "example": "19:00"
+          },
+          "totTijd": {
+            "type": "string",
+            "pattern": "^[0-2]\\d:[0-5]\\d$",
+            "example": "20:30"
+          },
+          "omschrijving": {
+            "type": "string",
+            "nullable": true
+          },
+          "actief": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VeldTrainingUpdateRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/VeldTrainingCreateRequest"
+          }
+        ]
       },
       "VoorkeurTijdItem": {
         "type": "object",
@@ -3925,6 +4069,392 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "createVeld",
+        "summary": "Veld aanmaken",
+        "description": "Maakt een nieuw veld aan in `dbo.Velden`. VeldNummer moet deployment-breed uniek zijn\n(409 Conflict bij duplicaat) — de tabel heeft geen ClubCode in de primary key.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Veld aangemaakt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "veldNummer": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "aangemaakt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "VeldNummer bestaat al",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/velden/{veldNummer}": {
+      "put": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "updateVeld",
+        "summary": "Veld bijwerken",
+        "description": "Wijzigt naam, type, kunstlicht of activeert/deactiveert een veld.",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "veldNummer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Veld bijgewerkt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "veldNummer": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "bijgewerkt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/veldtraining": {
+      "get": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "getVeldTraining",
+        "summary": "Trainingsschema ophalen",
+        "description": "Geeft alle terugkerende trainingsblokken per veld per weekdag. De planner en de\ne-mailpijplijn behandelen een actief trainingsblok als bezetting, naast wedstrijden.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trainingsblokken",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VeldTrainingItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "createVeldTraining",
+        "summary": "Trainingsblok aanmaken",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldTrainingCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trainingsblok aangemaakt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "aangemaakt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/veldtraining/{id}": {
+      "put": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "updateVeldTraining",
+        "summary": "Trainingsblok bijwerken",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldTrainingUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trainingsblok bijgewerkt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "bijgewerkt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "deleteVeldTraining",
+        "summary": "Trainingsblok verwijderen",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trainingsblok verwijderd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "verwijderd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

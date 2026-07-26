@@ -241,9 +241,41 @@ public class AdminApiClient
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
     }
 
-    // ── Velden ──
+    // ── Velden (#679) ──
     public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()
         => await GetAsync<List<VeldDto>>("api/beheer/velden");
+
+    public async Task<ApiResult<object>> CreateVeldAsync(VeldDto dto)
+        => await PostAsync<object>("api/beheer/velden", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldAsync(int veldNummer, VeldDto dto)
+        => await PutAsync<object>($"api/beheer/velden/{veldNummer}", dto);
+
+    // ── VeldBeschikbaarheid (#679: eerste GUI voor deze al bestaande API) ──
+    public async Task<ApiResult<List<VeldBeschikbaarheidDto>>> GetVeldBeschikbaarheidAsync()
+        => await GetAsync<List<VeldBeschikbaarheidDto>>("api/beheer/veldbeschikbaarheid");
+
+    public async Task<ApiResult<object>> CreateVeldBeschikbaarheidAsync(VeldBeschikbaarheidDto dto)
+        => await PostAsync<object>("api/beheer/veldbeschikbaarheid", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldBeschikbaarheidAsync(int id, VeldBeschikbaarheidDto dto)
+        => await PutAsync<object>($"api/beheer/veldbeschikbaarheid/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteVeldBeschikbaarheidAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/veldbeschikbaarheid/{id}");
+
+    // ── VeldTraining (#679: trainingsschema per veld per weekdag) ──
+    public async Task<ApiResult<List<VeldTrainingDto>>> GetVeldTrainingAsync()
+        => await GetAsync<List<VeldTrainingDto>>("api/beheer/veldtraining");
+
+    public async Task<ApiResult<object>> CreateVeldTrainingAsync(VeldTrainingDto dto)
+        => await PostAsync<object>("api/beheer/veldtraining", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldTrainingAsync(int id, VeldTrainingDto dto)
+        => await PutAsync<object>($"api/beheer/veldtraining/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteVeldTrainingAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/veldtraining/{id}");
 
     // ── Test data / ALLSTARS (#365) ──
     public async Task<ApiResult<List<AllstarsWedstrijdDto>>> GetAllstarsWedstrijdenAsync()

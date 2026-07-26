@@ -35,13 +35,74 @@ internal static class AdminVeldBeschikbaarheidRepository
         using var conn = new SqlConnection(cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(
-            "SELECT [VeldNummer], [VeldNaam] FROM [dbo].[Velden] WHERE [ClubCode] = @Cc ORDER BY [VeldNummer]", conn);
+            @"SELECT [VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief]
+              FROM [dbo].[Velden] WHERE [ClubCode] = @Cc ORDER BY [VeldNummer]", conn);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-            list.Add(new() { ["VeldNummer"] = r.GetInt32(0), ["VeldNaam"] = r.GetString(1) });
+            list.Add(new()
+            {
+                ["VeldNummer"] = r.GetInt32(0),
+                ["VeldNaam"] = r.GetString(1),
+                ["VeldType"] = r.GetString(2),
+                ["HeeftKunstlicht"] = r.GetBoolean(3),
+                ["Actief"] = r.GetBoolean(4)
+            });
         return list;
+    }
+
+    /// <summary>
+    /// VeldNummer is de PK van dbo.Velden zonder ClubCode (single-primary-club-per-deployment
+    /// model, zie CLAUDE.md) — uniciteit moet dus deployment-breed gecontroleerd worden, niet
+    /// per club, anders faalt de insert op een onduidelijke PK-violation.
+    /// </summary>
+    internal static async Task<bool> VeldNummerBestaatAsync(int veldNummer, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(
+            "SELECT COUNT(1) FROM [dbo].[Velden] WHERE [VeldNummer] = @Vn", conn);
+        cmd.Parameters.AddWithValue("@Vn", veldNummer);
+        return (int)(await cmd.ExecuteScalarAsync())! > 0;
+    }
+
+    internal static async Task InsertVeldAsync(
+        int veldNummer, string veldNaam, string veldType, bool heeftKunstlicht, bool actief,
+        string clubCode, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            INSERT INTO [dbo].[Velden]
+                ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief], [ClubCode])
+            VALUES (@Vn, @Naam, @Type, @Licht, @Act, @Cc)", conn);
+        cmd.Parameters.AddWithValue("@Vn",    veldNummer);
+        cmd.Parameters.AddWithValue("@Naam",  veldNaam);
+        cmd.Parameters.AddWithValue("@Type",  veldType);
+        cmd.Parameters.AddWithValue("@Licht", heeftKunstlicht);
+        cmd.Parameters.AddWithValue("@Act",   actief);
+        cmd.Parameters.AddWithValue("@Cc",    clubCode);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    internal static async Task<int> UpdateVeldAsync(
+        int veldNummer, string veldNaam, string veldType, bool heeftKunstlicht, bool actief,
+        string clubCode, string cs)
+    {
+        using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            UPDATE [dbo].[Velden]
+            SET [VeldNaam] = @Naam, [VeldType] = @Type, [HeeftKunstlicht] = @Licht, [Actief] = @Act
+            WHERE [VeldNummer] = @Vn AND [ClubCode] = @Cc", conn);
+        cmd.Parameters.AddWithValue("@Vn",    veldNummer);
+        cmd.Parameters.AddWithValue("@Cc",    clubCode);
+        cmd.Parameters.AddWithValue("@Naam",  veldNaam);
+        cmd.Parameters.AddWithValue("@Type",  veldType);
+        cmd.Parameters.AddWithValue("@Licht", heeftKunstlicht);
+        cmd.Parameters.AddWithValue("@Act",   actief);
+        return await cmd.ExecuteNonQueryAsync();
     }
 
     internal static async Task<int> UpdateAsync(int id, TimeSpan vanf, TimeSpan tot, bool zon, string clubCode, string cs)
