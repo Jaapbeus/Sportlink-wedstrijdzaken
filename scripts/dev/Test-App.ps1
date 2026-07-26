@@ -166,7 +166,7 @@ foreach ($tableKey in $expectedColumns.Keys) {
                 "AccommodatieLatitude" { "FLOAT NULL" }
                 "AccommodatieLongitude"{ "FLOAT NULL" }
                 "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
-                "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT 'VRC'" }
+                "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT ''" }
                 "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETDATE()" }
                 "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETDATE()" }
                 "Actief"               { "BIT NOT NULL CONSTRAINT [DF_${table}_Actief] DEFAULT 1" }
