@@ -448,6 +448,18 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
    - Reply-To: e-mailadres van de aanvrager (automatisch uit Entra ID)
    - BCC: coördinator (uit `dbo.AppSettings.plannerEmailAdres`)
    - Coach antwoordt rechtstreeks naar aanvrager — aanvrager ziet nooit het coach-adres
+4. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
+   en een voorbeeldweergave vóór bevestiging. De CSV wordt in de browser verwerkt en nooit op de server
+   opgeslagen.
+   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — alle bestaande rijen
+     van de club worden eerst verwijderd (`DELETE WHERE ClubCode`), daarna volgt de nieuwe lijst. Er
+     wordt niets samengevoegd, dus een onvolledige export herstel je door een complete export opnieuw
+     te importeren.
+   - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
+
+> **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel
+> op het dashboard — het is het meest gebruikte scherm, omdat contactgegevens hier sneller te vinden
+> zijn dan in Sportlink Club zelf (#669).
 
 ### API-endpoints
 
@@ -456,6 +468,7 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
 | `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam + rol, nooit contactgegevens) |
 | `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag naar coach |
+| `POST /api/beheer/teambegeleiding/import` | CSV-import; vervangt alle rijen van de club |
 
 Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.
 

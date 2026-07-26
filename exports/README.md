@@ -36,10 +36,10 @@ WHERE  Team      = @team
 #### Handmatig downloaden (universeel, werkt voor alle clubs)
 
 1. Ga naar [club.sportlink.com](https://club.sportlink.com) en log in met je verenigingsaccount
-2. Navigeer naar **Leden → Ledenlijst** (of ga direct naar `/member/search`)
-3. Klik op de filter **Teams**
-4. Klik op **Rol binnen team**
-5. Klik op **Alles geselecteerd** — nu staan alle rollen aangevinkt
+2. Navigeer naar **Personen**
+3. Kies **Teams**
+4. Klik bij **Bondsteam** op **alles selecteren** — zonder deze stap komen ook lokale (niet-bonds)teams in de export
+5. Klik bij **Rol binnen het team** op **alles selecteren** — nu staan alle rollen aangevinkt
 6. Vink de volgende vier opties **uit** (dit zijn de spelers):
    - `Teamspeler / Aanvaller`
    - `Teamspeler / Keeper`
@@ -50,6 +50,10 @@ WHERE  Team      = @team
 9. Klik op het kleine **"Exporteer tabel"** icoon rechts boven de resultatenlijst (pijl-omlaag icoon)
 10. Klik in de popup op **Download**
 11. De CSV wordt opgeslagen in je standaard downloadmap
+
+> De eenvoudigste route om de export daarna in te lezen is de Admin GUI: **Teambegeleiding →
+> Teambegeleiding importeren**. Het PowerShell-script hieronder is het alternatief voor wie liever
+> vanaf de commandline werkt. Beide vervangen de bestaande gegevens van de club volledig.
 
 > **Tip:** de bestandsnaam die Sportlink meegeeft bevat het aantal gevonden personen, bijv. `Teams 420 personen gevonden.csv`. Dit is normaal.
 
@@ -72,7 +76,7 @@ Het script:
 1. Leest `SqlConnectionString` uit `FunctionApp/local.settings.json`
 2. Detecteert automatisch welke kolommen aanwezig zijn in de CSV (zie aliassen hieronder)
 3. Valideert dat de verplichte kolommen beschikbaar zijn — geeft duidelijke fout als iets ontbreekt
-4. Leegt `avg.Teambegeleiding` volledig (TRUNCATE) en importeert alle rijen opnieuw
+4. Verwijdert alle bestaande rijen van deze club uit `avg.Teambegeleiding` (`DELETE WHERE ClubCode`) en importeert daarna alle rijen opnieuw — er wordt niets samengevoegd
 5. Schrijft een auditregel naar `avg.ImportLog` (datum, aantal rijen, Windows-gebruikersnaam, duur)
 
 **Controleren na import:**
@@ -200,8 +204,8 @@ Wijzigingen in `exports/` gaan **altijd rechtstreeks naar `main`** — nooit via
 `avg.Teambegeleiding` hanteert een bewaartermijn van **1 jaar** vanaf de laatste import (`mta_imported`).
 
 **Hoe het werkt:**
-- Het importscript doet een TRUNCATE + volledige herinsert. Bij elke import krijgen alle actieve begeleiders een verse `mta_imported`.
-- Personen die niet meer actief zijn, verdwijnen automatisch bij de volgende import via de TRUNCATE.
+- Een import verwijdert eerst alle rijen van de club en doet daarna een volledige herinsert. Bij elke import krijgen alle actieve begeleiders een verse `mta_imported`.
+- Personen die niet meer actief zijn, verdwijnen automatisch bij de volgende import doordat de oude rijen eerst verwijderd worden.
 - De `CleanupTeambegeleiding` Azure Function (maandelijks, 1e van de maand 04:00 UTC) verwijdert als vangnet alle rijen ouder dan 1 jaar — dit beschermt tegen het scenario waarbij het importscript een langere tijd niet draait.
 
 **Aanbeveling:** voer het importscript minimaal **1× per seizoen** uit (seizoensstart ≈ augustus). Dit garandeert dat de data actueel is én dat de bewaartermijn correct verloopt.
