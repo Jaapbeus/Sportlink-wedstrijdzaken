@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Een club kan de beheeromgeving nu onder een eigen webadres bereikbaar maken**, bijvoorbeeld `wz.[clubdomein]` in plaats van het automatisch gegenereerde Azure-adres. Er is een handleiding en een script dat de drie benodigde wijzigingen in één keer doorvoert. Dat is meer werk dan alleen een DNS-record: zonder de bijbehorende instellingen laadt de omgeving wel, maar blijven alle schermen leeg of mislukt het inloggen. Het script controleert dat vooraf en laat zich veilig herhalen. Kost niets — het gratis Azure-pakket staat twee eigen webadressen toe, inclusief automatisch vernieuwende beveiligingscertificaten. (#657)
+
 ## [2.17.2.0] — 2026-07-26
 
 ### Fixed
