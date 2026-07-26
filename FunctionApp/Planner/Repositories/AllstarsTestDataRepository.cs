@@ -38,10 +38,18 @@ internal static class AllstarsTestDataRepository
         await conn.OpenAsync();
 
         string sql = isAllstars
+            // De tegenstander is niet altijd [uitteam]: bij een UITwedstrijd staat het eigen team in
+            // [uitteam] en de tegenstander in [thuisteam] (zo levert Sportlink het aan). Deze tak
+            // filtert bewust niet op accommodatie en ziet dus ook uitwedstrijden, waardoor de oude
+            // aanname 'uitteam == tegenstander' een uitwedstrijd toonde als 'Team - Team'. (#635)
             ? @"SELECT m.[wedstrijdcode],
                        COALESCE(NULLIF(m.[wedstrijd], ''),
-                                COALESCE(m.[teamnaam], '') + ' - ' + COALESCE(m.[uitteam], '')) AS wedstrijd,
-                       m.[teamnaam], m.[uitteam],
+                                COALESCE(m.[teamnaam], '') + ' - ' +
+                                COALESCE(CASE WHEN m.[teamnaam] = m.[thuisteam]
+                                              THEN m.[uitteam] ELSE m.[thuisteam] END, '')) AS wedstrijd,
+                       m.[teamnaam],
+                       CASE WHEN m.[teamnaam] = m.[thuisteam]
+                            THEN m.[uitteam] ELSE m.[thuisteam] END AS uitteam,
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
                        NULL AS leeftijdscategorie
                 FROM [his].[matches] m

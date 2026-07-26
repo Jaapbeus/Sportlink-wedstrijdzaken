@@ -2284,10 +2284,13 @@ BEGIN
 
     -- VeldBeschikbaarheid: DagVanWeek volgt .NET DayOfWeek (0 = zondag, 6 = zaterdag), dezelfde
     -- conventie als de bestaande rijen van de primaire club.
+    -- 08:30-22:00 sluit aan op wat een club in de praktijk aanhoudt en is ruim genoeg voor de
+    -- 14 thuiswedstrijden per speeldag; met een krapper venster loopt de planner over zijn
+    -- beschikbaarheid heen en eindigt de demo met een onrealistisch schema.
     IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid] WHERE [ClubCode] = @DemoClub)
         INSERT INTO [dbo].[VeldBeschikbaarheid]
             ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
-        SELECT v.[VeldNummer], d.[Dag], '08:30', '18:00', 0, @DemoClub
+        SELECT v.[VeldNummer], d.[Dag], '08:30', '22:00', 0, @DemoClub
         FROM (VALUES (101), (102), (103)) AS v([VeldNummer])
         CROSS JOIN (VALUES (6), (0)) AS d([Dag]);
 
@@ -2362,13 +2365,20 @@ BEGIN
         DECLARE @Zaterdag1 DATE =
             DATEADD(DAY, (5 - (DATEDIFF(DAY, '19000101', @Vandaag) % 7) + 7) % 7, @Vandaag);
 
+        -- De planner filtert thuiswedstrijden op m.[accommodatie] LIKE de AppSettings-waarde van de
+        -- club (PlannerMatchRepository). Zonder die waarde vindt de Dagplanner niets.
+        DECLARE @DemoAccommodatie NVARCHAR(200) =
+            (SELECT [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = @DemoClub);
+
         INSERT INTO [his].[matches]
-            ([bk_matches], [wedstrijdcode], [datum], [wedstrijd], [aanvangstijd],
+            ([bk_matches], [wedstrijdcode], [datum], [kaledatum], [wedstrijd], [aanvangstijd],
              [thuisteam], [uitteam], [status], [teamnaam], [competitiesoort],
-             [mta_inserted], [mta_modified], [ClubCode])
+             [accommodatie], [mta_inserted], [mta_modified], [ClubCode])
         SELECT
             CONCAT('ALLSTARS-', 9000000 + x.[Code]),
             9000000 + x.[Code],
+            x.[Datum],
+            -- kaledatum is de kolom waarop de planner filtert; datum alleen is niet genoeg.
             x.[Datum],
             CASE WHEN x.[Thuis] = 1
                  THEN CONCAT(x.[Team], ' - Tegenstander ', x.[Ronde])
@@ -2379,6 +2389,9 @@ BEGIN
             'Te spelen',
             x.[Team],
             'regulier',
+            -- Uitwedstrijden staan op het complex van de tegenstander, dus bewust NIET de eigen
+            -- accommodatie: anders zou de planner ze als thuiswedstrijd meenemen in de bezetting.
+            CASE WHEN x.[Thuis] = 1 THEN @DemoAccommodatie ELSE 'Sportpark Tegenstander' END,
             GETUTCDATE(), GETUTCDATE(), @DemoClub
         FROM (
             SELECT
@@ -2386,7 +2399,10 @@ BEGIN
                 r.[Ronde],
                 ROW_NUMBER() OVER (ORDER BY t.[teamnaam], r.[Ronde]) AS [Code],
                 DATEADD(WEEK, r.[Ronde] - 1, @Zaterdag1) AS [Datum],
-                r.[Ronde] % 2 AS [Thuis],
+                -- Thuis/uit wisselt per ronde EN per team, zodat op elke speeldag ongeveer de helft
+                -- thuis speelt. Alleen op ronde alterneren zou alle teams op dezelfde dag thuis
+                -- zetten - onrealistisch en niet in te plannen op drie velden.
+                (r.[Ronde] + ROW_NUMBER() OVER (PARTITION BY r.[Ronde] ORDER BY t.[teamnaam])) % 2 AS [Thuis],
                 CASE WHEN t.[teamsoort] = 'Senioren' THEN '14:30' ELSE '09:00' END AS [Tijd]
             FROM [his].[teams] t
             CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7), (8)) AS r([Ronde])
