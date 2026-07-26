@@ -1,4 +1,22 @@
 -- ============================================================
+-- ⚠️  ACHTERHAALD — NIET MEER UITVOEREN (#635)
+--
+-- De AllStars FC demodata zit sinds #635 in Database/Script.PostDeployment1.sql en wordt daarmee
+-- automatisch bij elke deploy aangebracht, voor elke club die de repo forkt. Dit script is nooit
+-- tegen productie gelopen omdat scripts/migrations/ handmatig werk is — precies de reden dat de
+-- democlub in productie leeg bleef.
+--
+-- Twee verschillen met de versie in het PostDeployment-script:
+--   - de speeldata hieronder staan hardcoded op juni/juli 2026 en liggen dus in het verleden;
+--     het PostDeployment-script rekent ze uit vanaf de deploydatum
+--   - hieronder staan 37 teams met individueel uitgeschreven rijen; het PostDeployment-script
+--     genereert 28 teams set-based en houdt de speeltijden gelijk aan die van de primaire club
+--
+-- Uitsluitend bewaard als historische referentie bij #324. Uitvoeren doet niets kwaads (alle
+-- blokken zijn IF NOT EXISTS-gated) maar levert verouderde speeldata op.
+-- ============================================================
+
+-- ============================================================
 -- Migratie 002 — AllStars FC demo-data seed
 -- Issue: #324 — AllStars FC demo-club / multi-club GUI switch
 --
