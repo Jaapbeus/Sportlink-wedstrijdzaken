@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.17.1.0] — 2026-07-26
+
 ### Fixed
 - **De demo-omgeving (AllStars FC) was leeg.** De democlub bestond wel, maar had geen velden, geen speeltijden, geen teams en geen wedstrijden — de testmodus in de beheeromgeving toonde daardoor een leeg scherm. De demogegevens worden nu bij elke uitrol automatisch aangemaakt: 3 velden met beschikbaarheid, 28 teams met een begeleider, en 224 wedstrijden verdeeld over de acht komende zaterdagen, ongeveer de helft thuis en de helft uit. De speeldata schuiven mee met de uitroldatum, zodat de demo niet na een paar maanden alleen nog verleden wedstrijden toont. Optimaliseren in de Dagplanning verdeelt de wedstrijden nu daadwerkelijk over de drie demovelden. (#635)
 - In de testmodus werd bij een uitwedstrijd het eigen team ook als tegenstander getoond ("AllStars JO10 1 – AllStars JO10 1"). Bij een uitwedstrijd staat de tegenstander in het thuisteam-veld; daar wordt nu op gecontroleerd. (#635)
