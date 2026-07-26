@@ -24,5 +24,16 @@ window.blazorHelpers = {
     // niet 'unsafe-eval'. eval() gooit daar een EvalError. (#597)
     getUserAgent: function () {
         return navigator.userAgent || '';
+    },
+    // Breedte en linkerrand van een element in pixels (#666). Nodig om een sleepactie in de
+    // dagplanning-tijdlijn om te rekenen naar minuten: de tijdlijn is procentueel opgemaakt, dus
+    // zonder de werkelijke pixelbreedte valt een drop-positie niet naar een tijdstip te herleiden.
+    getElementRect: function (id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        var r = el.getBoundingClientRect();
+        // top/height erbij: de verticale droppositie bepaalt op welke kwartbaan van het veld
+        // (A1/A2/B1/B2) een wedstrijd terechtkomt.
+        return { left: r.left, width: r.width, top: r.top, height: r.height };
     }
 };

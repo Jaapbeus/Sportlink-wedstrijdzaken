@@ -96,6 +96,23 @@ voorkeurstijd) of **standaard** (standaardtijd van de leeftijdscategorie).
 > verplaatste. Een wedstrijd die bleef staan toonde dus "OK", ook als die 60 minuten van de gewenste
 > tijd af lag. Die twee vragen zijn nu gescheiden.
 
+### Zelf schuiven in de tijdlijn
+
+De berekende planning is met de muis aan te passen (#666). Sleep een wedstrijdblok in de tijdlijn:
+
+- **naar links of rechts** voor een andere tijd — de tijd springt op stappen van 5 minuten;
+- **naar een andere rij** voor een ander veld.
+
+De tabel, de eindtijd en het aantal te wijzigen wedstrijden lopen direct mee. Wedstrijden die je zelf
+hebt verplaatst krijgen een stippellijn, zodat je onderscheid ziet met wat de planner koos.
+
+Ontstaat er een onmogelijke planning — twee wedstrijden die niet samen op één veld passen, of te weinig
+ruimte ertussen — dan verschijnt boven de tijdlijn een waarschuwing die benoemt welke twee wedstrijden
+het betreft. De wijziging wordt niet geblokkeerd; je ziet alleen dat het zo niet kan.
+
+Alleen de tab **Optimale planning** is te bewerken. **Huidige situatie** toont de stand uit Sportlink en
+blijft ongewijzigd.
+
 Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere teams; ze worden niet als fout beschouwd.
 
 ---

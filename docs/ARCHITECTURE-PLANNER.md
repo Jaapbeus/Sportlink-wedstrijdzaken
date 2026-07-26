@@ -94,6 +94,29 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 **Voorbeeld efficiënt plannen:**
 - 2× JO9 (0.25) op één helft + 1× JO11 (0.50) op de andere helft = 1.00 → veld vol
 
+### Kwartbanen: hoe een veld verdeeld wordt (#666)
+
+Een veld bestaat uit **vier kwartbanen**: `A1`, `A2`, `B1`, `B2`. Die labels zijn de `VeldSubpositie` en
+komen terug in de Sportlink-veldstring ("Kunstgras 1 A2").
+
+| Veldafmeting | Banen | Toegestane plekken |
+|---|---|---|
+| 0.25 | 1 | `A1`, `A2`, `B1` of `B2` |
+| 0.50 | 2 aangrenzend | `A` (banen 1+2) of `B` (banen 3+4) — niet dwars door het midden |
+| 1.00 | 4 | geen subpositie |
+
+`FieldScheduler.PastOpVeld` houdt per kandidaattijd bij welke banen al bezet zijn door wedstrijden die op
+dat moment overlappen, en kiest daaruit de eerste vrije plek (`EersteVrijeSubpositie`).
+
+**Waarom dit zo moest:** de oude toewijzing keek alleen naar het *aantal* gelijktijdige wedstrijden — de
+eerste kreeg `A1`, de tweede `A2`, de derde `B1`. Twee fouten volgden daaruit. Een halfveldwedstrijd op
+`A` (banen 1+2) plus een kwartveldwedstrijd leverde `A2` op, precies bovenop de eerste. En met `A1` en `B1`
+bezet en `A2` vrij koos hij alsnog `B1`. De capaciteitscheck telde uitsluitend de fracties op, dus
+numeriek leek dat te passen (0,5 + 0,25 = 0,75 ≤ 1,00) terwijl de banen botsten.
+
+Bij handmatig verslepen bepaalt de verticale droppositie in de rij welke baan het wordt, zodat een
+kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vrije plek.
+
 ### Speeltijden per leeftijdscategorie
 
 | Categorie | Veldafmeting | Totaal (min) | Helft (min) | Rust (min) |
@@ -427,7 +450,34 @@ prioriteit 10.
    met 09:00 als ondergrens.
 3. **Ondergrens** — met een streeftijd is de ondergrens de veldbeschikbaarheid zelf, niet de vaste
    09:00-dagstart. Een team dat 08:30 wil en een veld dat om 08:00 opengaat, krijgt 08:30.
-4. **Buffers** — `BufferVoor`/`BufferNa` uit `dbo.TeamRegels` worden altijd meegenomen.
+4. **Buffers** — `PastOpVeld` is de enige plek die bepaalt of een wedstrijd op een veld past, en bewaakt
+   twee dingen tegelijk:
+   - **Capaciteit** — wedstrijden die elkaar in tijd overlappen delen het veld; toegestaan zolang de som
+     van de veldfracties binnen 1.00 blijft. Tussen zulke gelijktijdige wedstrijden hoort géén buffer:
+     die staan naast elkaar, niet achter elkaar.
+   - **Buffer** — wedstrijden die elkaar niet overlappen gebruiken het veld ná elkaar; daartussen geldt
+     de grootste van de standaardbuffer en de teamspecifieke `BufferNa`/`BufferVoor` uit `dbo.TeamRegels`.
+
+   Deze controle zat vóór #666 alleen in `FindEarliestSlot`. Het pad dat op een voorkeurstijd plant keek
+   uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul minuten ertussen
+   en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
+   door de precedence-wijziging de normale route werd.
+
+### Handmatig verslepen in de tijdlijn
+
+De berekende planning is met de muis aan te passen: een wedstrijdblok kan naar een andere tijd (stappen
+van 5 minuten, zelfde afronding als de planner) of naar een ander veld gesleept worden. Dat gebeurt
+volledig client-side in `Dagplanning.razor`; er is geen extra endpoint.
+
+- Alleen de **optimale planning** is sleepbaar. De tab "Huidige situatie" is de stand uit Sportlink en
+  blijft read-only.
+- Na een zet worden `Status`, `VoorkeurAfwijkingMinuten`, `VoorkeurStatus`, het aantal te wijzigen
+  wedstrijden en de geschatte eindtijd opnieuw bepaald met dezelfde regels als de server, zodat een
+  handmatige zet net zo eerlijk beoordeeld wordt als een berekende.
+- `ControleerConflicten` bewaakt dezelfde twee regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
+  opeenvolging) en toont per overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus
+  wel een onmogelijke planning opleveren, maar niet stilzwijgend.
+- Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
 
 ### Twee losse statussen — bewust gescheiden
 

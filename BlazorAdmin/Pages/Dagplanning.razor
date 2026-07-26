@@ -415,6 +415,29 @@
                     <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
                 </div>
 
+                @if (_isOptimaal)
+                {
+                    <p class="text-muted small mb-2">
+                        <i class="bi bi-arrows-move me-1" aria-hidden="true"></i>
+                        Sleep een wedstrijd naar een andere tijd of een ander veld. De tijd springt op stappen
+                        van 5 minuten; de tabel en de eindtijd lopen mee. Handmatig verplaatste wedstrijden
+                        krijgen een stippellijn.
+                    </p>
+
+                    @if (_conflicten.Count > 0)
+                    {
+                        <div class="alert alert-warning py-2 small">
+                            <strong>Let op — deze planning kan zo niet:</strong>
+                            <ul class="mb-0 ps-3">
+                                @foreach (var c in _conflicten)
+                                {
+                                    <li>@c</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                }
+
                 <div style="overflow-x:auto; min-width:0;">
                     @* Tijdas-header *@
                     <div style="display:flex; margin-bottom:4px;">
@@ -431,16 +454,22 @@
                         </div>
                     </div>
 
-                    @* Veld-rijen *@
+                    @* Veld-rijen — sleepbaar bij de optimale planning (#666) *@
+                    @{ int _rijIdx = 0; }
                     @foreach (var _veld in _velden)
                     {
+                        int _rij = _rijIdx++;
+                        string _veldNaam = _veld;
                         <div style="display:flex; border-top:1px solid #dee2e6;">
                             <div style="width:120px; flex-shrink:0; padding:6px 8px; font-size:0.8rem;
                                         font-weight:600; color:#495057; background:#f8f9fa;
                                         border-right:1px solid #dee2e6; display:flex; align-items:center;">
                                 @_veld
                             </div>
-                            <div style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;">
+                            <div id="gantt-rij-@_rij"
+                                 style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;"
+                                 ondragover="event.preventDefault();"
+                                 @ondrop="@(e => SleepDrop(_veldNaam, _rij, _sMin, _totMin, e))">
                                 @* Uurlijnen *@
                                 @for (int _h = _sMin + 60; _h < _eMin; _h += 60)
                                 {
@@ -456,7 +485,11 @@
                                     string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
                                     string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd);
                                     string _tooltip = GanttTooltip(gi);
+                                    bool _sleepbaar = gi.Bron != null;
+                                    bool _handmatig = gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
                                     <div title="@_tooltip"
+                                         draggable="@(_sleepbaar ? "true" : "false")"
+                                         @ondragstart="@(e => SleepStart(gi, e))"
                                          style="position:absolute;
                                                 left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
                                                 top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
@@ -464,7 +497,8 @@
                                                 border-radius:5px; overflow:hidden;
                                                 padding:2px 5px; color:#fff;
                                                 font-size:0.68rem; line-height:1.25;
-                                                z-index:1; cursor:default;
+                                                z-index:1; cursor:@(_sleepbaar ? "grab" : "default");
+                                                outline:@(_handmatig ? "2px dashed #fff" : "none"); outline-offset:-3px;
                                                 box-shadow:0 1px 3px rgba(0,0,0,0.2);">
                                         @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
                                         @if (!string.IsNullOrEmpty(_voorkeurBalk))
@@ -767,9 +801,12 @@
 
     // ── Gantt helpers ──
 
+    // Wedstrijd meegegeven zodat een sleepactie in de tijdlijn de onderliggende regel kan bijwerken
+    // (#666). Null op de "Huidige situatie"-tab: die weergave is de stand uit Sportlink en niet te
+    // bewerken — alleen de berekende planning mag met de hand worden aangepast.
     private record GanttItem(string VeldNaam, string? SubPos, TimeOnly Aanvang, TimeOnly Einde,
         decimal Fractie, string Label, string Status, int DuurMinuten,
-        string? VoorkeurTijd, int? VoorkeurAfwijking);
+        string? VoorkeurTijd, int? VoorkeurAfwijking, AutoPlanWedstrijdItemDto? Bron = null);
 
     private List<GanttItem> BouwGanttItems(bool isOptimaal)
     {
@@ -784,7 +821,7 @@
                 var sub = GanttExtractSubPos(w.OptimaalVeld);
                 items.Add(new GanttItem(w.OptimaalVeldNaam, sub, t, t.AddMinutes(w.DuurMinuten),
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten,
-                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten));
+                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten, w));
             }
             else
             {
@@ -797,6 +834,189 @@
             }
         }
         return items;
+    }
+
+    // ── Handmatig verslepen in de tijdlijn (#666) ──
+    // De wedstrijdsecretaris kan een blok naar een andere tijd of een ander veld slepen. De tijd snapt
+    // op 5 minuten (voetbalconventie, gelijk aan de planner zelf). De tabel en de samenvatting hieronder
+    // lezen dezelfde objecten, dus die lopen automatisch mee.
+
+    private AutoPlanWedstrijdItemDto? _sleepItem;
+    private double _sleepGrijpOffsetPx;
+    private readonly HashSet<AutoPlanWedstrijdItemDto> _handmatigAangepast = new();
+    private List<string> _conflicten = new();
+
+    private void SleepStart(GanttItem gi, DragEventArgs e)
+    {
+        if (gi.Bron == null) return;
+        _sleepItem = gi.Bron;
+        // Waar in het blok is gepakt — anders verspringt het blok naar de cursor bij het neerzetten.
+        _sleepGrijpOffsetPx = e.OffsetX;
+    }
+
+    private async Task SleepDrop(string veldNaam, int rijIndex, int startMinuut, int totaalMinuten, DragEventArgs e)
+    {
+        var item = _sleepItem;
+        _sleepItem = null;
+        if (item == null || _plan == null) return;
+
+        var rect = await JS.InvokeAsync<ElementRect?>("blazorHelpers.getElementRect", $"gantt-rij-{rijIndex}");
+        if (rect == null || rect.Width <= 0) return;
+
+        double blokLinksPx = e.ClientX - rect.Left - _sleepGrijpOffsetPx;
+        double minutenVanaf = blokLinksPx / rect.Width * totaalMinuten;
+        int nieuweMinuut = startMinuut + (int)Math.Round(minutenVanaf / 5.0) * 5;
+        nieuweMinuut = Math.Clamp(nieuweMinuut, 0, 24 * 60 - item.DuurMinuten);
+
+        var nieuweTijd = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(nieuweMinuut));
+        item.OptimaalTijd = nieuweTijd.ToString("HH:mm");
+
+        // Veld overnemen van de rij waarop is neergezet.
+        var doelVeld = _plan.Wedstrijden
+            .Where(w => w.OptimaalVeldNaam == veldNaam && w.OptimaalVeldNummer.HasValue)
+            .Select(w => w.OptimaalVeldNummer)
+            .FirstOrDefault();
+        item.OptimaalVeldNaam = veldNaam;
+        if (doelVeld.HasValue) item.OptimaalVeldNummer = doelVeld;
+
+        // Verticale droppositie bepaalt de kwartbaan van het veld. Een rij is vier banen hoog:
+        // A1, A2, B1, B2. Zo kan een kwartveldwedstrijd bewust op A2 gezet worden in plaats van
+        // altijd op de eerste vrije plek te belanden.
+        int baan = 0;
+        if (rect.Height > 0)
+        {
+            double relY = (e.ClientY - rect.Top) / rect.Height;
+            baan = Math.Clamp((int)(relY * 4), 0, 3);
+        }
+        item.OptimaalVeld = BouwVeldString(veldNaam, item.Veldafmeting, baan);
+
+        HerberekenNaSleep(item);
+        _handmatigAangepast.Add(item);
+    }
+
+    // Veldnaam + subpositie op basis van de veldafmeting en de aangewezen baan.
+    // Een heel veld krijgt geen subpositie; een half veld hoort op A (banen 0-1) of B (banen 2-3);
+    // een kwart veld gaat naar de aangewezen baan zelf.
+    private static string BouwVeldString(string veldNaam, decimal veldafmeting, int baan) =>
+        veldafmeting switch
+        {
+            <= 0.26m => $"{veldNaam} {BaanLabels[baan]}",
+            <= 0.51m => $"{veldNaam} {(baan <= 1 ? "A" : "B")}",
+            _        => veldNaam
+        };
+
+    private static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
+
+    // Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg/onbekend = heel veld.
+    // Dezelfde indeling als de planner server-side gebruikt.
+    private static bool[] BanenVanSubpositie(string? subpositie)
+    {
+        var b = new bool[4];
+        switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
+        {
+            case "A1": b[0] = true; break;
+            case "A2": b[1] = true; break;
+            case "B1": b[2] = true; break;
+            case "B2": b[3] = true; break;
+            case "A":  b[0] = b[1] = true; break;
+            case "B":  b[2] = b[3] = true; break;
+            default:   b[0] = b[1] = b[2] = b[3] = true; break;
+        }
+        return b;
+    }
+
+    // Status, voorkeursafwijking en de samenvatting opnieuw bepalen — dezelfde regels als de server,
+    // zodat een handmatige zet net zo eerlijk wordt beoordeeld als een berekende.
+    private void HerberekenNaSleep(AutoPlanWedstrijdItemDto item)
+    {
+        if (_plan == null) return;
+
+        bool tijdWijzigt = item.HuidigeTijd?.Trim() != item.OptimaalTijd;
+        bool veldWijzigt = NormaliseerVeld(item.HuidigeVeld) != NormaliseerVeld(item.OptimaalVeld);
+        item.Status = (!item.HeeftVeld || !item.HeeftTijd) ? "nieuw-slot"
+                    : (tijdWijzigt || veldWijzigt) ? "wijziging" : "ongewijzigd";
+
+        if (!string.IsNullOrWhiteSpace(item.VoorkeurTijd)
+            && TimeOnly.TryParse(item.VoorkeurTijd, out var vt)
+            && TimeOnly.TryParse(item.OptimaalTijd, out var nt))
+        {
+            item.VoorkeurAfwijkingMinuten = (int)(nt.ToTimeSpan() - vt.ToTimeSpan()).TotalMinutes;
+            int abs = Math.Abs(item.VoorkeurAfwijkingMinuten.Value);
+            item.VoorkeurStatus = abs == 0 ? "op-tijd" : abs <= 15 ? "kleine-afwijking" : "grote-afwijking";
+        }
+
+        if (item.VoorkeurVeldNummer.HasValue)
+            item.VoorkeurVeldToegepast = item.OptimaalVeldNummer == item.VoorkeurVeldNummer.Value;
+
+        _plan.TeWijzigen = _plan.Wedstrijden.Count(i => i.Status is "nieuw-slot" or "wijziging");
+        var eindes = _plan.Wedstrijden
+            .Where(i => i.OptimaalTijd != null && i.DuurMinuten > 0 && TimeOnly.TryParse(i.OptimaalTijd, out _))
+            .Select(i => TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten)).ToList();
+        _plan.GeschatteEindTijd = eindes.Count > 0 ? eindes.Max().ToString("HH:mm") : null;
+
+        ControleerConflicten();
+    }
+
+    // Overlap- en buffercontrole per veld, zodat een handmatige zet niet stil een onmogelijke
+    // planning oplevert. Zelfde regel als de server: gelijktijdig mag als de veldfracties samen
+    // binnen één veld blijven; achter elkaar vraagt de ingestelde buffer.
+    private void ControleerConflicten()
+    {
+        _conflicten = new List<string>();
+        if (_plan == null) return;
+
+        var perVeld = _plan.Wedstrijden
+            .Where(w => w.OptimaalTijd != null && w.OptimaalVeldNaam != null && w.DuurMinuten > 0
+                        && TimeOnly.TryParse(w.OptimaalTijd, out _))
+            .GroupBy(w => w.OptimaalVeldNaam!);
+
+        foreach (var veld in perVeld)
+        {
+            var lijst = veld.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
+            for (int i = 0; i < lijst.Count; i++)
+            {
+                var a = lijst[i];
+                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
+                var aEind = aStart.AddMinutes(a.DuurMinuten);
+                for (int j = i + 1; j < lijst.Count; j++)
+                {
+                    var b = lijst[j];
+                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
+                    var bEind = bStart.AddMinutes(b.DuurMinuten);
+
+                    bool overlapt = aStart < bEind && aEind > bStart;
+                    if (overlapt)
+                    {
+                        // Op banen vergelijken, niet op de som van de fracties: een half veld op A plus
+                        // een kwart veld telt op tot 0,75 — numeriek prima — maar botst wél als dat kwart
+                        // op A1 of A2 staat. De veldhelften zijn wat er fysiek bezet is.
+                        var baanA = BanenVanSubpositie(GanttExtractSubPos(a.OptimaalVeld));
+                        var baanB = BanenVanSubpositie(GanttExtractSubPos(b.OptimaalVeld));
+                        bool botst = false;
+                        for (int k = 0; k < 4; k++) if (baanA[k] && baanB[k]) botst = true;
+                        if (botst)
+                            _conflicten.Add($"{veld.Key}: {a.TeamNaam} en {b.TeamNaam} staan op hetzelfde veldgedeelte op dezelfde tijd.");
+                    }
+                    else
+                    {
+                        int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
+                        if (gat >= 0 && gat < _bufferMinuten)
+                            _conflicten.Add($"{veld.Key}: tussen {a.TeamNaam} en {b.TeamNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
+                    }
+                }
+            }
+        }
+    }
+
+    private static string NormaliseerVeld(string? veld) =>
+        string.IsNullOrWhiteSpace(veld) ? "" : veld.Trim().ToLowerInvariant().Replace("  ", " ");
+
+    private sealed class ElementRect
+    {
+        public double Left { get; set; }
+        public double Width { get; set; }
+        public double Top { get; set; }
+        public double Height { get; set; }
     }
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie,
@@ -820,13 +1040,22 @@
     private static string GanttMatchLabel(string? wedstrijd, string teamNaam)
         => !string.IsNullOrWhiteSpace(wedstrijd) ? wedstrijd : teamNaam;
 
+    // Alleen échte subposities van een gedeeld veld ("Kunstgras 1 A2") worden afgesplitst — precies de
+    // waarden die de planner uitdeelt en die GanttTop kan positioneren.
+    //
+    // De oude check ("laatste deel is maximaal 2 tekens en alfanumeriek") herkende óók een gewoon
+    // veldnummer als subpositie: "Kunstgras 1" werd ("Kunstgras", "1"). Gevolg was tweeledig — alle
+    // velden kregen dezelfde basisnaam en vielen samen op één tijdlijnrij (#665), en bij het verslepen
+    // naar een ander veld werd dat nummer als subpositie aan de nieuwe veldnaam geplakt ("Gras 1").
+    private static readonly string[] SubPosLabels = ["A", "A1", "A2", "B", "B1", "B2"];
+
     private static string? GanttExtractSubPos(string? veld)
     {
         if (string.IsNullOrWhiteSpace(veld)) return null;
-        var parts = veld.Trim().Split(' ');
+        var parts = veld.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2) return null;
         var last = parts[^1];
-        return last.Length <= 2 && last.All(char.IsLetterOrDigit) ? last : null;
+        return SubPosLabels.Contains(last, StringComparer.OrdinalIgnoreCase) ? last.ToUpperInvariant() : null;
     }
 
     private static (string Base, string? SubPos) GanttSplitVeld(string veld)
