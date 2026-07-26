@@ -20,6 +20,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Added
 - **Een club kan de beheeromgeving nu onder een eigen webadres bereikbaar maken**, bijvoorbeeld `wz.[clubdomein]` in plaats van het automatisch gegenereerde Azure-adres. Er is een handleiding en een script dat de drie benodigde wijzigingen in één keer doorvoert. Dat is meer werk dan alleen een DNS-record: zonder de bijbehorende instellingen laadt de omgeving wel, maar blijven alle schermen leeg of mislukt het inloggen. Het script controleert dat vooraf en laat zich veilig herhalen. Kost niets — het gratis Azure-pakket staat twee eigen webadressen toe, inclusief automatisch vernieuwende beveiligingscertificaten. (#657)
+- **Het scherm Teambegeleiding legt nu stap voor stap uit hoe je de juiste lijst uit Sportlink haalt.** De oude toelichting was één regel en sloeg de belangrijkste keuzes over. De negen stappen staan nu op het scherm zelf, inclusief het selecteren van alle bondsteams — wordt die stap overgeslagen, dan komen ook lokale teams in de lijst terecht. (#667)
+- **Er staat nu een duidelijke waarschuwing bij het importeren:** alle gegevens worden opnieuw ingelezen en vervangen de oude gegevens van de club volledig. Dat was altijd al zo, maar het scherm vertelde het niet. Een onvolledige lijst herstel je dus door simpelweg een complete lijst opnieuw te importeren. (#668)
+
+### Changed
+- **Teambegeleiding staat nu bovenaan** in het menu en als eerste tegel op het dashboard, direct onder Dashboard. Het is het meest gebruikte scherm: contactgegevens van begeleiders zijn hier sneller te vinden dan in Sportlink zelf. De overige schermen behouden hun onderlinge volgorde. (#669)
+
+### Fixed
+- De handleidingen beschreven een verouderd navigatiepad voor de Sportlink-export en verwezen naar een handleidingbestand dat niet meer bestaat. Ook stond er dat een import de tabel volledig leegt, terwijl uitsluitend de gegevens van de eigen club worden vervangen — bij meerdere clubs in één database was die beschrijving misleidend. (#667, #668)
 
 ## [2.17.2.1] — 2026-07-26
 

@@ -1,6 +1,7 @@
 # import-teambegeleiding-to-sql.ps1
 # Importeert de lokale teambegeleiding CSV naar avg.Teambegeleiding in SQL Server.
-# Strategie: TRUNCATE TABLE + volledige bulk-insert — altijd de laatste CSV als bron.
+# Strategie: alle rijen van de club verwijderen (DELETE WHERE ClubCode) + volledige bulk-insert —
+# altijd de laatste CSV als bron. Geen TRUNCATE: dat zou de rijen van andere clubs ook wissen.
 #
 # Flexibel: het script detecteert automatisch de aanwezige CSV-kolommen via een alias-map.
 # Ontbrekende vereiste kolommen worden gemeld; extra kolommen worden genegeerd.
@@ -213,7 +214,7 @@ foreach ($row in $csvRows) {
 
 Write-Host "  $($table.Rows.Count) rijen verwerkt." -ForegroundColor Green
 
-# ── Stap 4: TRUNCATE + SqlBulkCopy ────────────────────────────────────────────
+# ── Stap 4: rijen van deze club verwijderen + SqlBulkCopy ─────────────────────
 Write-Host "`n[4/5] Importeren naar SQL Server..." -ForegroundColor Yellow
 
 $conn = New-Object System.Data.SqlClient.SqlConnection($connectionStr)

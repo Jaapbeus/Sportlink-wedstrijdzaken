@@ -25,13 +25,20 @@ Deze handleiding legt stap voor stap uit hoe je de lijst met teambegeleiders (tr
 
 ## Stap 2 — Filter instellen: alleen teambegeleiding
 
-Je ziet nu de ledenzoekopdracht. We filteren zodat alleen begeleiders zichtbaar zijn en geen spelers.
+We filteren zodat alleen begeleiders zichtbaar zijn en geen spelers.
 
-1. Klik op de knop **Teams** in de filterbalk bovenaan de pagina
+1. Ga naar **Personen**
 
-2. Klik in het uitklapmenu op **Rol binnen team**
+2. Kies **Teams**
 
-3. Je ziet een lijst met rollen en aangevinkte checkboxes. Verwijder het vinkje bij de volgende vier rollen door er één voor één op te klikken:
+3. Klik bij **Bondsteam** op **alles selecteren**
+
+   > Deze stap wordt gemakkelijk overgeslagen. Zonder deze selectie komen ook lokale (niet-bonds)teams
+   > in de export terecht, waardoor de lijst ruis bevat.
+
+4. Klik bij **Rol binnen het team** op **alles selecteren** — nu staan alle rollen aangevinkt
+
+5. Verwijder het vinkje bij de volgende vier rollen door er één voor één op te klikken:
 
    - **Teamspeler / Aanvaller**
    - **Teamspeler / Keeper**
@@ -40,9 +47,9 @@ Je ziet nu de ledenzoekopdracht. We filteren zodat alleen begeleiders zichtbaar 
 
    > Controleer dat deze vier rollen **niet** aangevinkt zijn. Alle andere rollen zoals trainer, leider en coach mogen aangevinkt blijven.
 
-4. Klik op de knop **Zoek**
+6. Klik op de knop **Zoeken**
 
-5. Wacht even — dit duurt soms 5 tot 10 seconden. Je ziet daarna het resultaat verschijnen met het aantal gevonden personen.
+7. Wacht even — dit duurt soms 5 tot 10 seconden. Je ziet daarna het resultaat verschijnen met het aantal gevonden personen.
 
 ---
 
@@ -58,9 +65,26 @@ Je ziet nu de ledenzoekopdracht. We filteren zodat alleen begeleiders zichtbaar 
 
 ---
 
-## Stap 4 — Bestand importeren naar de database
+## Stap 4 — Bestand importeren
 
-Nu het bestand gedownload is, voer je het importscript uit zodat de gegevens in de database worden bijgewerkt.
+Er zijn twee manieren om het bestand te importeren. **Optie A is de eenvoudigste** en vereist geen
+technische kennis.
+
+> **Let op — geldt voor beide opties:** een import **vervangt de bestaande teambegeleiding van de club
+> volledig**. Alle eerder geïmporteerde rijen worden eerst verwijderd, daarna wordt de nieuwe lijst
+> ingelezen. Er wordt niets samengevoegd. Is je export onvolledig (bijv. Bondsteam niet geselecteerd in
+> stap 2), importeer dan simpelweg een nieuwe, complete export — die overschrijft de foutieve lijst weer.
+
+### Optie A — via de Admin GUI (aanbevolen)
+
+1. Open de Admin GUI en ga naar **Teambegeleiding**
+2. Scroll naar **Teambegeleiding importeren**
+3. Kies het gedownloade bestand
+4. Controleer de voorbeeldweergave en bevestig de import
+
+De CSV wordt in de browser ingelezen en verwerkt — er wordt geen bestand op de server opgeslagen.
+
+### Optie B — via het PowerShell-script
 
 1. Open **PowerShell** (zoek via het Startmenu op "PowerShell")
 
@@ -108,7 +132,8 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 
 | Probleem | Mogelijke oorzaak | Oplossing |
 |---|---|---|
-| Minder dan 400 personen gevonden | Filter niet goed ingesteld | Herhaal stap 2 en controleer of de 4 Teamspeler-rollen uitgevinkt zijn |
+| Veel minder personen gevonden dan verwacht | Filter niet goed ingesteld | Herhaal stap 2 en controleer of de 4 Teamspeler-rollen uitgevinkt zijn |
+| Lijst bevat teams die geen bondsteam zijn | **Bondsteam** niet op *alles selecteren* gezet (stap 2.3) | Herhaal stap 2 mét die selectie en importeer opnieuw — de nieuwe import vervangt de foutieve lijst volledig |
 | Geen exportknop zichtbaar | Onvoldoende rechten | Vraag een beheerder om de export uit te voeren |
 | Script geeft een fout | Geen bestand gevonden | Controleer of de download in stap 3 geslaagd is en het bestand in de Downloadmap staat |
 | Verificatiecode werkt niet | Code verlopen | Wacht tot de authenticator-app een nieuwe code toont en probeer opnieuw |
