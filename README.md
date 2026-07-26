@@ -212,3 +212,4 @@ Heb je een club die baat zou hebben bij deze oplossing, of wil je meedenken over
 ## Licentie
 
 Zie [LICENSE](LICENSE) voor de licentievoorwaarden.
+
