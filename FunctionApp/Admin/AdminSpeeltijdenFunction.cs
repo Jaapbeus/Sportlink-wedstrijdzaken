@@ -41,7 +41,8 @@ public static class AdminSpeeltijdenFunction
                 try
                 {
                     await AdminSpeeltijdenRepository.InsertAsync(
-                        new SpeeltijdInput(dto.Leeftijd, dto.Veldafmeting, dto.WedstrijdTotaal, dto.WedstrijdHelft, dto.WedstrijdRust),
+                        new SpeeltijdInput(dto.Leeftijd, dto.Veldafmeting, dto.WedstrijdTotaal,
+                            dto.WedstrijdHelft, dto.WedstrijdRust, ParseTijd(dto.StandaardVoorkeurTijd)),
                         clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
                     return new CreatedResult("/api/beheer/speeltijden", new { Leeftijd = dto.Leeftijd });
                 }
@@ -68,7 +69,8 @@ public static class AdminSpeeltijdenFunction
 
                 var rows = await AdminSpeeltijdenRepository.UpdateAsync(
                     leeftijd,
-                    new SpeeltijdInput(leeftijd, dto.Veldafmeting, dto.WedstrijdTotaal, dto.WedstrijdHelft, dto.WedstrijdRust),
+                    new SpeeltijdInput(leeftijd, dto.Veldafmeting, dto.WedstrijdTotaal,
+                        dto.WedstrijdHelft, dto.WedstrijdRust, ParseTijd(dto.StandaardVoorkeurTijd)),
                     clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = "Leeftijdscategorie niet gevonden" });
                 return new OkObjectResult(new { updated = leeftijd });
@@ -88,7 +90,15 @@ public static class AdminSpeeltijdenFunction
                 return new OkObjectResult(new { deleted = leeftijd });
             });
 
+    /// <summary>
+    /// Leeg of ontbrekend veld betekent "geen standaard voorkeurstijd" (#666) — de planner valt dan
+    /// terug op het eerst beschikbare slot voor teams zonder eigen voorkeurstijd.
+    /// </summary>
+    private static TimeOnly? ParseTijd(string? tijd) =>
+        !string.IsNullOrWhiteSpace(tijd) && TimeOnly.TryParse(tijd, out var t) ? t : null;
+
     private record SpeeltijdDto(
         string Leeftijd, decimal Veldafmeting,
-        int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust);
+        int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust,
+        string? StandaardVoorkeurTijd);
 }

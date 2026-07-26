@@ -38,30 +38,38 @@ internal static class AutoPlanService
             beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
         }
 
-        // Bewust op de primaire club (geen clubCode-argument): Speeltijden en TeamRegels zijn
-        // KNVB-referentiedata en clubconfiguratie die de ALLSTARS-demomodus hergebruikt — er zijn
-        // geen ALLSTARS-rijen. Deze richting kan productie-antwoorden niet vervuilen: demodata
-        // leest referentiedata, nooit omgekeerd. Zie #573.
-        var speeltijden    = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+        // Speeltijden per club, met terugval op de primaire club (#573/#666): oudere databases hebben
+        // nog geen ALLSTARS-rijen, en zonder speeltijden is géén enkele wedstrijd inplanbaar.
+        var speeltijden    = await GetSpeeltijdenMetTerugvalAsync(clubCode);
         var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
         int dagVanWeek     = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
         var voorkeurLookup = await PlannerDataAccess.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
-        var teamBuffers    = await PlannerDataAccess.GetAllTeamBuffersAsync();
+
+        // TeamRegels expliciet op de opgevraagde club (#666). Dit stond eerder op de primaire club met
+        // de aanname "er zijn geen ALLSTARS-rijen" (#573). Die aanname klopt niet meer: de demomodus
+        // heeft inmiddels eigen teamregels, en die werden daardoor stilzwijgend genegeerd — buffers en
+        // voorkeursveld hadden in testmodus dus geen effect, precies de modus waarin je het test.
+        // Géén terugval hier: een leeg resultaat betekent gewoon "dit team heeft geen regels".
+        var teamBuffers    = await PlannerDataAccess.GetAllTeamBuffersAsync(clubCode);
+        var voorkeurVelden = await PlannerDataAccess.GetAllTeamVoorkeurVeldenAsync(clubCode);
+
+        // Per wedstrijd het planningsdoel bepalen volgens de vastgelegde rangorde (#666):
+        //   1. Regels     — dbo.TeamRegels: buffers (altijd van kracht) en VoorkeurVeld (veld + evt. tijd)
+        //   2. Voorkeuren — dbo.TeamVoorkeurTijden voor deze speeldag
+        //   3. Defaults   — dbo.Speeltijden.StandaardVoorkeurTijd per leeftijdscategorie
+        // Binnen elke laag beslist Prioriteit (laag getal = belangrijker) wie zijn doel als eerste mag
+        // claimen. Dát is wat conflicten tussen teams oplost: wie eerder verwerkt wordt, krijgt de plek.
+        var doelen = alleWedstrijden.ToDictionary(
+            w => w,
+            w => BepaalPlanDoel(w, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden));
 
         var gesorteerd = alleWedstrijden
-            .OrderBy(w =>
-            {
-                var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
-                    ? w.LeeftijdsCategorie
-                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
-                if (voorkeurLookup.TryGetValue(w.TeamNaam, out var v) && v.Count > 0)
-                    return (int)v.OrderBy(x => x.Prioriteit).First().Tijd.ToTimeSpan().TotalMinutes;
-                return GetDefaultTimeSortKey(leeftijd.Length > 0 ? leeftijd : null);
-            })
-            .ThenBy(w => GetLeeftijdSortOrder(
-                (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
-                    ? w.LeeftijdsCategorie
-                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "")))
+            .OrderBy(w => doelen[w].Laag)          // regels vóór voorkeuren vóór defaults
+            .ThenBy(w => doelen[w].Prioriteit)     // laag getal = belangrijker
+            .ThenBy(w => doelen[w].DoelTijd.HasValue
+                ? (int)doelen[w].DoelTijd!.Value.ToTimeSpan().TotalMinutes
+                : GetDefaultTimeSortKey(doelen[w].Leeftijd.Length > 0 ? doelen[w].Leeftijd : null))
+            .ThenBy(w => GetLeeftijdSortOrder(doelen[w].Leeftijd))
             .ThenBy(w => w.TeamNaam)
             .ToList();
 
@@ -70,9 +78,8 @@ internal static class AutoPlanService
 
         foreach (var wedstrijd in gesorteerd)
         {
-            var leeftijd = (!string.IsNullOrWhiteSpace(wedstrijd.LeeftijdsCategorie))
-                ? wedstrijd.LeeftijdsCategorie
-                : (isAllstars ? ExtractLeeftijdFromTeamNaam(wedstrijd.TeamNaam) ?? "" : "");
+            var doel = doelen[wedstrijd];
+            var leeftijd = doel.Leeftijd;
             speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
 
             if (speeltijdInfo == null)
@@ -101,19 +108,28 @@ internal static class AutoPlanService
             int teamBufVoor = teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) && tb.bufferVoor > buffer
                 ? tb.bufferVoor : buffer;
 
-            if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
+            if (doel.DoelTijd.HasValue)
             {
-                var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
-                voorkeurTijdStr = primair.Tijd.ToString("HH:mm");
-                slot = scheduler.FindAndOccupyNearTime(primair.Tijd, speeltijdInfo.Veldafmeting,
-                    speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam);
+                // Streeftijd bekend (uit een regel, een teamvoorkeur of de leeftijdsdefault) — plan zo
+                // dicht mogelijk daarbij, en probeer daarbij eerst het voorkeursveld als dat gezet is.
+                var doelTijd = doel.DoelTijd.Value;
+                voorkeurTijdStr = doelTijd.ToString("HH:mm");
+                slot = scheduler.FindAndOccupyNearTime(doelTijd, speeltijdInfo.Veldafmeting,
+                    speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
+                    voorkeurVeldNummer: doel.VoorkeurVeldNummer);
                 if (slot != null)
-                    voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - primair.Tijd.ToTimeSpan()).TotalMinutes;
+                    voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
             }
             else
             {
-                slot = scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal,
-                    teamBufVoor, wedstrijd.TeamNaam);
+                // Geen streeftijd bekend: eerst beschikbare gat, zoals voorheen. Een voorkeursveld
+                // zonder tijd wordt nog steeds gerespecteerd zolang het veld ruimte heeft.
+                slot = doel.VoorkeurVeldNummer.HasValue
+                    ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, speeltijdInfo.Veldafmeting,
+                        speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
+                        voorkeurVeldNummer: doel.VoorkeurVeldNummer)
+                    : scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal,
+                        teamBufVoor, wedstrijd.TeamNaam);
             }
 
             if (slot == null)
@@ -167,7 +183,13 @@ internal static class AutoPlanService
                 OptimaalTijd = optimaalTijd,
                 Status = status,
                 VoorkeurTijd = voorkeurTijdStr,
-                VoorkeurAfwijkingMinuten = voorkeurAfwijking
+                VoorkeurAfwijkingMinuten = voorkeurAfwijking,
+                VoorkeurBron = doel.Bron,
+                VoorkeurStatus = BepaalVoorkeurStatus(voorkeurTijdStr, voorkeurAfwijking),
+                VoorkeurVeldNummer = doel.VoorkeurVeldNummer,
+                VoorkeurVeldToegepast = doel.VoorkeurVeldNummer.HasValue
+                    ? slot.VeldNummer == doel.VoorkeurVeldNummer.Value
+                    : null
             });
         }
 
@@ -232,8 +254,9 @@ internal static class AutoPlanService
     {
         bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
         var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
-        // Primaire club: zie toelichting in AutoPlanAsync — Speeltijden is referentiedata (#573)
-        var speeltijden = await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+        // Eigen club met terugval op de primaire club — zelfde bron als AutoPlanAsync (#573/#666),
+        // zodat de duur die hier getoond wordt overeenkomt met waarmee de planner rekent.
+        var speeltijden = await GetSpeeltijdenMetTerugvalAsync(clubCode);
 
         return wedstrijden
             .Select(w =>
@@ -293,6 +316,96 @@ internal static class AutoPlanService
         log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
             request.Datum, response.Bijgewerkt, response.Mislukt);
         return response;
+    }
+
+    /// <summary>
+    /// Speeltijden van de opgevraagde club; is die tabel voor deze club leeg, dan de primaire club.
+    /// De terugval bestaat omdat zonder speeltijden geen enkele wedstrijd een duur of veldafmeting
+    /// heeft en de hele dag als "onbekend-team" terugkomt (#573/#666).
+    /// </summary>
+    private static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenMetTerugvalAsync(string clubCode)
+    {
+        var eigen = await PlannerDataAccess.GetSpeeltijdenLookupAsync(clubCode);
+        if (eigen.Count > 0) return eigen;
+        return await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+    }
+
+    // ── Planningsdoel per wedstrijd (#666) ──
+
+    /// <summary>
+    /// Het doel waarop één wedstrijd ingepland moet worden, samengesteld uit de drie lagen in de
+    /// vastgelegde rangorde: regels → ingevoerde voorkeuren → defaults per leeftijdscategorie.
+    /// </summary>
+    /// <param name="Laag">0 = voorkeursveld-regel, 1 = eigen voorkeurstijd, 2 = leeftijdsdefault, 3 = niets.</param>
+    /// <param name="Prioriteit">Laag getal = belangrijker; beslist wie zijn doel als eerste claimt.</param>
+    internal record PlanDoel(
+        int Laag,
+        int Prioriteit,
+        TimeOnly? DoelTijd,
+        int? VoorkeurVeldNummer,
+        string? Bron,
+        string Leeftijd);
+
+    internal static PlanDoel BepaalPlanDoel(
+        WedstrijdRaw wedstrijd,
+        bool isAllstars,
+        Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
+        Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
+        Dictionary<string, Speeltijd> speeltijden)
+    {
+        var leeftijd = (!string.IsNullOrWhiteSpace(wedstrijd.LeeftijdsCategorie))
+            ? wedstrijd.LeeftijdsCategorie
+            : (isAllstars ? ExtractLeeftijdFromTeamNaam(wedstrijd.TeamNaam) ?? "" : "");
+
+        // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
+        TimeOnly? defaultTijd = null;
+        if (leeftijd.Length > 0 && speeltijden.TryGetValue(leeftijd, out var st))
+            defaultTijd = st.StandaardVoorkeurTijd;
+
+        // Laag 1 — eigen voorkeurstijd van het team voor deze speeldag
+        TimeOnly? teamTijd = null;
+        int teamPrioriteit = int.MaxValue;
+        if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
+        {
+            var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
+            teamTijd = primair.Tijd;
+            teamPrioriteit = primair.Prioriteit;
+        }
+
+        // Laag 0 — voorkeursveld-regel. Een tijd óp die regel is het meest specifieke wat de
+        // wedstrijdsecretaris kan opgeven en gaat dus vóór de losse voorkeurstijd van het team.
+        if (voorkeurVelden.TryGetValue(wedstrijd.TeamNaam, out var vv))
+        {
+            return new PlanDoel(
+                Laag: 0,
+                Prioriteit: vv.Prioriteit,
+                DoelTijd: vv.Tijd ?? teamTijd ?? defaultTijd,
+                VoorkeurVeldNummer: vv.VeldNummer,
+                Bron: vv.Tijd.HasValue ? "regel" : (teamTijd.HasValue ? "team" : (defaultTijd.HasValue ? "leeftijd" : null)),
+                Leeftijd: leeftijd);
+        }
+
+        if (teamTijd.HasValue)
+            return new PlanDoel(1, teamPrioriteit, teamTijd, null, "team", leeftijd);
+
+        if (defaultTijd.HasValue)
+            return new PlanDoel(2, 0, defaultTijd, null, "leeftijd", leeftijd);
+
+        return new PlanDoel(3, 0, null, null, null, leeftijd);
+    }
+
+    /// <summary>
+    /// Beoordeelt de afwijking t.o.v. de voorkeurstijd (#666). Dezelfde drempels als de Gantt-legenda,
+    /// zodat tabel en tijdlijn hetzelfde verhaal vertellen. Bewust los van <c>Status</c>: die zegt
+    /// alleen of de planner iets verplaatst t.o.v. de huidige stand.
+    /// </summary>
+    internal static string BepaalVoorkeurStatus(string? voorkeurTijd, int? afwijkingMinuten)
+    {
+        if (voorkeurTijd == null || !afwijkingMinuten.HasValue) return "geen-voorkeur";
+        int abs = Math.Abs(afwijkingMinuten.Value);
+        if (abs == 0)  return "op-tijd";
+        if (abs <= 15) return "kleine-afwijking";
+        return "grote-afwijking";
     }
 
     // ── Helpers ──

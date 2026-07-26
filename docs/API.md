@@ -27,7 +27,8 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
-| `POST` | `/planner/optimaliseer` | Easy Auth (admin) | Planning optimaliseren (HTML/email/JSON) |
+| `POST` | `/planner/auto-plan` | Easy Auth (admin) | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
+| `POST` | `/planner/auto-plan/toepassen` | Easy Auth (admin) | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
 | `GET` | `/planner/veldbezetting?datum=` | Easy Auth (admin) | Wedstrijden op een datum, zonder optimalisatie-berekening |
 | `GET` | `/beheer/teambegeleiding` | **Admin+User** | Alle teams met begeleiding in database |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
@@ -502,82 +503,98 @@ Register a reschedule request. **Does NOT modify the match** — only records th
 
 ---
 
-## POST /api/planner/optimaliseer
+## POST /api/planner/auto-plan
 
-Analyseer de planning voor een datum en genereer optimalisatiesuggesties. Voert **niets** door — alleen advies. Drie output-formaten beschikbaar.
+Berekent de optimale dagplanning voor één datum en geeft per wedstrijd het voorgestelde veld en tijdslot
+terug. Voert **niets** door — `/planner/auto-plan/toepassen` schrijft de planning weg (alleen testmodus).
+
+Sinds #666 is dit de enige dagplanning-optimalisatie.
 
 ### Aanvraag
 
 ```json
-{
-  "datum": "2026-04-18",
-  "doel": null
-}
+{ "datum": "2026-08-22", "bufferMinuten": 15 }
 ```
-
-### Aanvraagvelden
 
 | Veld | Type | Verplicht | Beschrijving |
 |------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
-| `doel` | `string` | Nee | Optimalisatiedoel (zie tabel). Leeg = beide combineren |
-| `gewensteEindtijd` | `string` | Nee | Gewenste eindtijd `HH:mm`. Standaard `16:15`. Resterende ruimte wordt verdeeld als extra buffer |
-| `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden in minuten. Standaard 15. Overschrijft de standaard |
+| `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden. Standaard 15. Teamspecifieke buffers uit `dbo.TeamRegels` gaan vóór als die groter zijn |
 
-### Optimalisatiedoelen
+### Rangorde van het planningsdoel
 
-| Doel | Beschrijving |
-|------|-------------|
-| *(leeg/niet opgegeven)* | **Standaard**: veld 5 ontlasten + strakker plannen gecombineerd |
-| `veld5-ontlasten` | Verplaats wedstrijden van veld 5 naar kunstgras, alleen als het eerder kan |
-| `strakker-plannen` | Minimaliseer gaten tussen wedstrijden op alle velden |
+Per wedstrijd wordt de streeftijd bepaald in deze vaste volgorde:
 
-### Output-formaten (via querystring)
+| Laag | Bron | `voorkeurBron` |
+|---|---|---|
+| 0 | `dbo.TeamRegels`, `RegelType = 'VoorkeurVeld'` (veld + optioneel tijd) | `regel` |
+| 1 | `dbo.TeamVoorkeurTijden` voor de betreffende dag van de week | `team` |
+| 2 | `dbo.Speeltijden.StandaardVoorkeurTijd` van de leeftijdscategorie | `leeftijd` |
+| 3 | geen streeftijd → eerst beschikbare slot | `null` |
 
-| Format | URL | Beschrijving |
-|--------|-----|-------------|
-| JSON | `POST /api/planner/optimaliseer` | Suggesties als JSON |
-| Browser | `POST /api/planner/optimaliseer?format=html` | Interactieve HTML met grid, hover-interactie |
-| Email | `POST /api/planner/optimaliseer?format=email` | Email-compatibele HTML met link naar browser-versie |
+Binnen elke laag beslist `Prioriteit` oplopend (**laag getal = belangrijker**) welk team zijn plek als
+eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
 
 ### Antwoord — JSON (200)
 
 ```json
 {
-  "datum": "2026-04-11",
-  "huidigeEindtijd": "19:00",
-  "aantalVerplaatsingen": 1,
-  "aantalVanVeld5Verplaatst": 1,
-  "suggesties": [
+  "datum": "2026-08-22",
+  "totaalWedstrijden": 14,
+  "zonderVeld": 0,
+  "zonderTijd": 0,
+  "teWijzigen": 12,
+  "nietInplanbaar": 0,
+  "geschatteEindTijd": "16:25",
+  "wedstrijden": [
     {
-      "wedstrijd": "[ClubCode] JO19-3 - Tegenstander JO19-4",
-      "huidigVeldNummer": 5,
-      "huidigVeld": "veld 5",
-      "huidigeTijd": "16:45",
-      "nieuwVeldNummer": 2,
-      "nieuwVeld": "veld 2",
-      "nieuweTijd": "16:00",
-      "reden": "Verplaats van veld 5 (geen kunstlicht) naar veld 2"
+      "wedstrijdCode": 12345678,
+      "wedstrijd": "[Team] - [Tegenstander]",
+      "teamNaam": "[Team]",
+      "leeftijdsCategorie": "JO15",
+      "duurMinuten": 85,
+      "veldafmeting": 1.00,
+      "huidigeVeld": "veld 2",
+      "huidigeTijd": "11:00",
+      "optimaalVeld": "veld 3",
+      "optimaalTijd": "11:15",
+      "status": "wijziging",
+      "voorkeurTijd": "11:00",
+      "voorkeurAfwijkingMinuten": 15,
+      "voorkeurBron": "leeftijd",
+      "voorkeurStatus": "kleine-afwijking",
+      "voorkeurVeldNummer": null,
+      "voorkeurVeldToegepast": null
     }
   ],
-  "htmlPlanner": "<html>...</html>"
+  "huidigeHtml": "<html>...</html>",
+  "optimaleHtml": "<html>...</html>"
 }
 ```
 
-### Antwoord — Browser HTML
+### Twee gescheiden statussen
 
-Interactieve veldplanner in Sportlink-stijl met:
-- Donker grid met tijdlijn en gestapelde wedstrijdblokken
-- Kleurcodes: grijs=ongewijzigd, blauw=vast, oranje=suggestie
-- Hover-interactie: blok in grid ↔ rij in chronologische lijst
-- Chronologisch overzicht met status per wedstrijd
+| Veld | Waarden | Betekenis |
+|---|---|---|
+| `status` | `ongewijzigd`, `wijziging`, `nieuw-slot`, `niet-inplanbaar`, `onbekend-team` | Verplaatst de planner deze wedstrijd t.o.v. de huidige stand? |
+| `voorkeurStatus` | `op-tijd`, `kleine-afwijking` (≤15 min), `grote-afwijking` (>15 min), `geen-voorkeur` | Staat de wedstrijd op de gewenste tijd? |
 
-### Antwoord — Email HTML
+Deze twee zijn bewust gescheiden: een wedstrijd kan ongewijzigd blijven én tóch ver van de voorkeurstijd
+liggen. Vóór #666 kwam de groene "OK"-badge uit `status == "ongewijzigd"`, waardoor een afwijking van 60
+minuten als "OK" werd gepresenteerd.
 
-Versimpelde email-compatibele versie met:
-- Bovenaan: link "Bekijk in browser (meer functies)"
-- Chronologische tabel met kleurcodes (inline CSS)
-- Werkt in alle email-clients (Outlook, Gmail, etc.)
+`voorkeurVeldToegepast` is `false` als er een voorkeursveld was maar de planner een ander veld moest
+kiezen; `null` als er geen voorkeursveld-regel is.
+
+---
+
+## POST /api/planner/optimaliseer — VERVALLEN (#666)
+
+Dit endpoint bestaat niet meer. Gebruik `POST /api/planner/auto-plan` hierboven.
+
+Het oude endpoint negeerde voorkeurstijden en prioriteiten volledig, waardoor twee knoppen in de Admin
+GUI verschillende planningen opleverden. De HTML-weergaven zitten nu in de auto-plan-response
+(`huidigeHtml` / `optimaleHtml`).
 
 ---
 
@@ -585,7 +602,7 @@ Versimpelde email-compatibele versie met:
 
 Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de laatst
 gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te draaien die
-`/planner/auto-plan` en `/planner/optimaliseer` gebruiken. Bedoeld als snelle, goedkope
+`/planner/auto-plan` uitvoert. Bedoeld als snelle, goedkope
 "wat staat er nu al gepland"-weergave (zie Dagplanning in de Admin GUI).
 
 ### Query-parameters
@@ -719,21 +736,17 @@ curl -X POST http://localhost:7094/api/planner/herplan-bevestig \
   -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
-### Planning optimaliseren (browser-versie)
+### Dagplanning optimaliseren
 
 ```bash
-curl -X POST "http://localhost:7094/api/planner/optimaliseer?format=html" \
+curl -X POST http://localhost:7094/api/planner/auto-plan \
   -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-18"}' > optimalisatie.html
+  -d '{"datum":"2026-04-18","bufferMinuten":15}'
 ```
 
-### Planning optimaliseren (email-versie)
-
-```bash
-curl -X POST "http://localhost:7094/api/planner/optimaliseer?format=email" \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-18"}'
-```
+De response bevat per wedstrijd het optimale veld en tijdslot, plus `voorkeurTijd`,
+`voorkeurAfwijkingMinuten`, `voorkeurBron` en `voorkeurStatus`. De HTML-weergaven zitten in
+`huidigeHtml` en `optimaleHtml` — die kun je direct als e-mail versturen of naar een bestand schrijven.
 
 ### Handmatige Sportlink synchronisatie
 

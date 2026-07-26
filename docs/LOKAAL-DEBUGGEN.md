@@ -206,7 +206,7 @@ Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSIT
 | `POST /api/planner/zoek-wedstrijd` | Bestaande wedstrijd opzoeken |
 | `POST /api/planner/herplan-check` | Herplan-alternatieven simuleren |
 | `POST /api/planner/herplan-bevestig` | Herplanverzoek registreren |
-| `POST /api/planner/optimaliseer` | Planningsoptimalisatie berekenen |
+| `POST /api/planner/auto-plan` | Dagplanning optimaliseren (regels -> voorkeurstijden -> leeftijdsdefaults) |
 | `POST /api/planner/doordeweeks-beschikbaar` | Doordeweekse beschikbaarheid |
 | `GET /api/planner/team-schedule` | Teamschema ophalen |
 

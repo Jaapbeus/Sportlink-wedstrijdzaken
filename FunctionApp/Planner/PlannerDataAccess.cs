@@ -113,6 +113,9 @@ namespace SportlinkFunction.Planner
         public static Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
             => TeamRulesRepository.GetAllTeamBuffersAsync(clubCode);
 
+        public static Task<Dictionary<string, TeamVoorkeurVeld>> GetAllTeamVoorkeurVeldenAsync(string? clubCode = null)
+            => TeamRulesRepository.GetAllTeamVoorkeurVeldenAsync(clubCode);
+
         // ── ALLSTARS testdata ──
         public static Task<List<VeldInfo>> GetAllstarsVeldenAsync()
             => AllstarsTestDataRepository.GetAllstarsVeldenAsync();

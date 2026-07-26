@@ -68,13 +68,33 @@ Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
 De dagplanning toont per wedstrijd een badge in de Status-kolom:
 
+De dagplanning heeft **twee losse kolommen** die makkelijk verward worden (#666):
+
+**Kolom "Wijziging"** — verplaatst de planner deze wedstrijd t.o.v. wat er nu in Sportlink staat?
+
 | Badge | Betekenis |
 |---|---|
-| ✓ OK (groen) | Huidige slot is al optimaal |
-| Nieuw (geel) | Nieuw timeslot toegewezen |
-| Wijzig (blauw) | Bestaand slot kan eerder/anders |
+| Ongewijzigd (grijs) | De planner laat deze wedstrijd staan |
+| Nieuw (geel) | Nieuw timeslot toegewezen (had nog geen veld of tijd) |
+| Wijzig (blauw) | Bestaand slot wordt verplaatst |
 | Probleem (rood) | Geen slot mogelijk (velden vol) |
 | Onbekend (grijs) | Team heeft geen speeltijdsconfiguratie (bijv. veldboeking door 'Toernooi commissie') — wordt ongewijzigd getoond, optimizer slaat het over |
+
+**Kolom "Voorkeurstijd"** — staat de wedstrijd op de gewenste tijd?
+
+| Badge | Betekenis |
+|---|---|
+| Tijd, groen | Exact op de voorkeurstijd |
+| Tijd + afwijking, geel | Tot en met 15 minuten ernaast |
+| Tijd + afwijking, rood | Meer dan 15 minuten ernaast |
+| — | Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie |
+
+Achter de tijd staat de herkomst: **regel** (teamregel voorkeursveld met tijd), **team** (eigen
+voorkeurstijd) of **standaard** (standaardtijd van de leeftijdscategorie).
+
+> **Waarom twee kolommen?** Tot #666 was er één groene "OK"-badge die alleen keek of de planner iets
+> verplaatste. Een wedstrijd die bleef staan toonde dus "OK", ook als die 60 minuten van de gewenste
+> tijd af lag. Die twee vragen zijn nu gescheiden.
 
 Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere teams; ze worden niet als fout beschouwd.
 

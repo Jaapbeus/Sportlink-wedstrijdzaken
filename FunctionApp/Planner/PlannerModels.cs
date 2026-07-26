@@ -81,6 +81,13 @@ namespace SportlinkFunction.Planner
         public string Leeftijd { get; set; } = string.Empty;
         public decimal Veldafmeting { get; set; }
         public int WedstrijdTotaal { get; set; }
+
+        /// <summary>
+        /// Standaard voorkeurstijd voor deze leeftijdscategorie (#666). Wordt door de planner gebruikt
+        /// als een team géén eigen rij in dbo.TeamVoorkeurTijden heeft voor de speeldag.
+        /// null = geen streeftijd; de planner valt dan terug op het eerst beschikbare slot.
+        /// </summary>
+        public TimeOnly? StandaardVoorkeurTijd { get; set; }
     }
 
     public class VeldInfo
@@ -127,38 +134,22 @@ namespace SportlinkFunction.Planner
         public int Prioriteit { get; set; }
     }
 
+    /// <summary>
+    /// Uitgelezen 'VoorkeurVeld'-regel van één team (#666) — het veld waarop dit team bij voorkeur
+    /// speelt, optioneel met een tijdstip. Prioriteit: laag getal = belangrijker.
+    /// </summary>
+    public class TeamVoorkeurVeld
+    {
+        public string TeamNaam { get; set; } = string.Empty;
+        public int VeldNummer { get; set; }
+        public TimeOnly? Tijd { get; set; }
+        public int Prioriteit { get; set; }
+    }
+
     // ── Optimalisatie modellen ──
-
-    public class OptimaliseerRequest
-    {
-        public string Datum { get; set; } = string.Empty;
-        public string? Doel { get; set; } // optioneel: grasveld-ontlasten, strakker-plannen. Leeg = beide combineren
-        public string? GewensteEindtijd { get; set; } // optioneel, standaard "16:15". Alles voor dit tijdstip = extra buffer
-        public int? BufferMinuten { get; set; } // optioneel, standaard 15 min. Overschrijft de standaard buffer tussen wedstrijden
-    }
-
-    public class OptimaliseerResponse
-    {
-        public string Datum { get; set; } = string.Empty;
-        public string HuidigeEindtijd { get; set; } = string.Empty;
-        public string? GeschatteNieuweEindtijd { get; set; }
-        public int AantalVerplaatsingen { get; set; }
-        public int AantalVanGrasveldVerplaatst { get; set; }
-        public List<OptimalisatieSuggestie> Suggesties { get; set; } = new();
-        public string HtmlPlanner { get; set; } = string.Empty;
-        public bool VoldoendeRuimte { get; set; }
-        public string? VoldoendeRuimteMelding { get; set; }
-        public VeldCapaciteitInfo? CapaciteitOverzicht { get; set; }
-    }
-
-    public class VeldCapaciteitInfo
-    {
-        public int TotaalBeschikbareMinuten { get; set; }
-        public int TotaalBezettMinuten { get; set; }
-        public double BezettingsPercentage { get; set; }
-        public int AantalWedstrijdenOpGrasveld { get; set; }
-        public int AantalLegeVelden { get; set; }
-    }
+    // OptimaliseerRequest/Response en VeldCapaciteitInfo zijn vervallen bij #666, samen met het
+    // endpoint /planner/optimaliseer. OptimalisatieSuggestie blijft: PlannerHtmlGenerator gebruikt
+    // het type om verplaatsingen in de HTML-weergave te markeren.
 
     public class OptimalisatieSuggestie
     {
@@ -361,12 +352,35 @@ namespace SportlinkFunction.Planner
         public string? OptimaalTijd { get; set; }  // "09:00"
 
         // Status: "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
+        // Let op: dit zegt alleen of de planner de wedstrijd verplaatst t.o.v. de HUIDIGE stand.
+        // Of de wedstrijd op de gewenste voorkeurstijd staat, staat in VoorkeurStatus (#666) — die twee
+        // werden eerder door elkaar gehaald, waardoor een wedstrijd met 60 min afwijking "OK" toonde.
         public string Status { get; set; } = "ongewijzigd";
         public string? NietInplanbaaarReden { get; set; }
 
-        // Voorkeurstijd-informatie (null = geen voorkeur geconfigureerd)
+        // Voorkeurstijd-informatie (null = geen voorkeur en geen default geconfigureerd)
         public string? VoorkeurTijd { get; set; }
         public int? VoorkeurAfwijkingMinuten { get; set; }  // 0 = exact, positief = later, negatief = eerder
+
+        /// <summary>
+        /// Waar de voorkeurstijd uit komt (#666): "regel" (dbo.TeamRegels VoorkeurVeld met tijd),
+        /// "team" (dbo.TeamVoorkeurTijden) of "leeftijd" (dbo.Speeltijden.StandaardVoorkeurTijd).
+        /// null = geen voorkeurstijd bekend.
+        /// </summary>
+        public string? VoorkeurBron { get; set; }
+
+        /// <summary>
+        /// Beoordeling van de afwijking t.o.v. de voorkeurstijd (#666), met dezelfde drempels als de
+        /// Gantt-legenda: "op-tijd" (exact), "kleine-afwijking" (t/m 15 min), "grote-afwijking"
+        /// (meer dan 15 min), "geen-voorkeur".
+        /// </summary>
+        public string VoorkeurStatus { get; set; } = "geen-voorkeur";
+
+        /// <summary>Voorkeursveld uit een 'VoorkeurVeld'-teamregel; null als die regel er niet is.</summary>
+        public int? VoorkeurVeldNummer { get; set; }
+
+        /// <summary>False als er een voorkeursveld was maar de planner een ander veld moest kiezen.</summary>
+        public bool? VoorkeurVeldToegepast { get; set; }
     }
 
     public class AutoPlanResponse

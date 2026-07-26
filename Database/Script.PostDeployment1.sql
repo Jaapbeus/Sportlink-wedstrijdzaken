@@ -2411,3 +2411,43 @@ BEGIN
     END
 END
 GO
+
+-- ============================================================
+-- v2 — #666: standaard voorkeurstijd per leeftijdscategorie
+-- ------------------------------------------------------------
+-- De planner gebruikt deze tijd als een team géén eigen rij in dbo.TeamVoorkeurTijden heeft voor de
+-- speeldag. Zonder deze kolom viel zo'n team terug op "het eerst beschikbare gat", zonder tijdsdoel.
+-- NULL blijft toegestaan en betekent nog steeds: geen streeftijd.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'StandaardVoorkeurTijd')
+    ALTER TABLE [dbo].[Speeltijden] ADD [StandaardVoorkeurTijd] TIME NULL;
+GO
+
+-- Initiële waarden — uitsluitend voor rijen die nog geen tijd hebben, zodat een beheerder die de
+-- tijden zelf heeft aangepast niet overschreven wordt. Per club, voor ALLE clubs in deze database.
+-- Bewust géén waarde voor JO6/JO7/MO7 (jongste jeugd) en JO23/MO20/MO23: daarvoor is geen beleid
+-- vastgesteld. Die categorieën houden NULL en dus het bestaande gedrag (eerst beschikbare slot).
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'StandaardVoorkeurTijd')
+BEGIN
+    UPDATE s
+    SET s.[StandaardVoorkeurTijd] = d.[Tijd]
+    FROM [dbo].[Speeltijden] s
+    INNER JOIN (VALUES
+        ('JO8',  CAST('09:00' AS TIME)), ('JO9',  CAST('09:00' AS TIME)),
+        ('MO8',  CAST('09:00' AS TIME)), ('MO9',  CAST('09:00' AS TIME)),
+        ('JO10', CAST('10:00' AS TIME)), ('JO11', CAST('10:00' AS TIME)),
+        ('JO12', CAST('10:00' AS TIME)), ('JO13', CAST('10:00' AS TIME)),
+        ('MO10', CAST('10:00' AS TIME)), ('MO11', CAST('10:00' AS TIME)),
+        ('MO12', CAST('10:00' AS TIME)), ('MO13', CAST('10:00' AS TIME)),
+        ('JO14', CAST('11:00' AS TIME)), ('JO15', CAST('11:00' AS TIME)),
+        ('MO14', CAST('11:00' AS TIME)), ('MO15', CAST('11:00' AS TIME)),
+        ('JO16', CAST('12:00' AS TIME)), ('JO17', CAST('12:00' AS TIME)),
+        ('JO18', CAST('12:00' AS TIME)), ('JO19', CAST('12:00' AS TIME)),
+        ('MO16', CAST('12:00' AS TIME)), ('MO17', CAST('12:00' AS TIME)),
+        ('MO18', CAST('12:00' AS TIME)), ('MO19', CAST('12:00' AS TIME)),
+        ('G',    CAST('10:00' AS TIME)),
+        ('VR',   CAST('14:30' AS TIME)), ('1-99', CAST('14:30' AS TIME))
+    ) AS d([Leeftijd], [Tijd]) ON d.[Leeftijd] = s.[Leeftijd]
+    WHERE s.[StandaardVoorkeurTijd] IS NULL;
+END
+GO

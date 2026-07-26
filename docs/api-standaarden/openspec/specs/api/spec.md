@@ -277,58 +277,72 @@ Het endpoint MOET een herplanverzoek registreren. Het WIJZIGT de wedstrijd NIET 
 
 ---
 
-## Requirement: POST /api/planner/optimaliseer
+## Requirement: POST /api/planner/auto-plan
 
-Het endpoint MOET de planning voor een datum analyseren en optimalisatiesuggesties genereren. Het voert NIETS door — alleen advies.
+Het endpoint MOET de optimale dagplanning voor één datum berekenen en per wedstrijd een veld en tijdslot
+voorstellen. Het voert NIETS door — `/planner/auto-plan/toepassen` schrijft de planning weg.
 
-**Beveiligingsniveau:** Function
+Sinds #666 is dit de enige dagplanning-optimalisatie. Het eerdere `POST /api/planner/optimaliseer` is
+vervallen: dat negeerde voorkeurstijden en prioriteiten volledig, waardoor twee knoppen in de Admin GUI
+verschillende planningen opleverden.
+
+**Beveiligingsniveau:** Easy Auth (admin)
 
 ### Aanvraagvelden
 
 | Veld | Type | Verplicht | Beschrijving |
 |------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum `yyyy-MM-dd` |
-| `doel` | `string` | Nee | Optimalisatiedoel (zie tabel) |
-| `gewensteEindtijd` | `string` | Nee | Gewenste eindtijd `HH:mm` (standaard `16:15`) |
 | `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden (standaard 15) |
 
-### Optimalisatiedoelen
+### Rangorde van het planningsdoel
 
-| Doel | Beschrijving |
-|------|-------------|
-| *(leeg)* | Standaard: veld 5 ontlasten + strakker plannen gecombineerd |
-| `veld5-ontlasten` | Verplaats wedstrijden van veld 5 naar kunstgras, alleen als eerder kan |
-| `strakker-plannen` | Minimaliseer gaten tussen wedstrijden op alle velden |
+De planner MOET de streeftijd per wedstrijd in deze volgorde bepalen:
 
-### Output-formaten (via querystring `?format=`)
+| Laag | Bron | `voorkeurBron` |
+|---|---|---|
+| 0 | `dbo.TeamRegels` met `RegelType = 'VoorkeurVeld'` (veld + optioneel tijd) | `regel` |
+| 1 | `dbo.TeamVoorkeurTijden` voor de betreffende `DagVanWeek` | `team` |
+| 2 | `dbo.Speeltijden.StandaardVoorkeurTijd` van de leeftijdscategorie | `leeftijd` |
+| 3 | geen streeftijd → eerst beschikbare slot | `null` |
 
-| Format | URL | Beschrijving |
-|--------|-----|-------------|
-| JSON | `POST /api/planner/optimaliseer` | Suggesties als JSON |
-| Browser | `POST /api/planner/optimaliseer?format=html` | Interactieve HTML met grid |
-| Email | `POST /api/planner/optimaliseer?format=email` | Email-compatibele HTML |
+`BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd als randvoorwaarde.
 
-### Scenario: JSON-output
+### Scenario: voorkeurstijd wordt gerespecteerd
 
-- **GIVEN** een datum met geplande wedstrijden
-- **WHEN** `POST /api/planner/optimaliseer` wordt aangeroepen (zonder format-parameter)
-- **THEN** MOET het antwoord JSON bevatten met `datum`, `huidigeEindtijd`, `aantalVerplaatsingen`, `aantalVanVeld5Verplaatst`, `suggesties[]`
-- **AND** MOET elke suggestie bevatten: `wedstrijd`, `huidigVeldNummer`, `huidigVeld`, `huidigeTijd`, `nieuwVeldNummer`, `nieuwVeld`, `nieuweTijd`, `reden`
+- **GIVEN** een team met voorkeurstijd 14:30 en een vrij veld op dat tijdstip
+- **WHEN** `POST /api/planner/auto-plan` wordt aangeroepen
+- **THEN** MOET `optimaalTijd` gelijk zijn aan `14:30`
+- **AND** MOET `voorkeurAfwijkingMinuten` `0` zijn en `voorkeurStatus` gelijk aan `op-tijd`
+- **AND** MOET de planner NIET het vroegste vrije gat van de dag kiezen
 
-### Scenario: Browser HTML-output
+### Scenario: prioriteit beslist tussen twee teams
 
-- **GIVEN** een datum met geplande wedstrijden
-- **WHEN** `POST /api/planner/optimaliseer?format=html` wordt aangeroepen
-- **THEN** MOET een interactieve HTML-pagina geretourneerd worden
-- **AND** MOET de pagina bevatten: donker grid met tijdlijn, kleurcodes (grijs/blauw/oranje), hover-interactie, chronologisch overzicht
+- **GIVEN** twee teams die hetzelfde veld op hetzelfde tijdstip als voorkeur hebben
+- **WHEN** `POST /api/planner/auto-plan` wordt aangeroepen
+- **THEN** MOET het team met de laagste `Prioriteit`-waarde dat slot krijgen
+- **AND** MOET het andere team het dichtstbijzijnde alternatieve slot krijgen
 
-### Scenario: Email HTML-output
+### Scenario: voorkeursveld uit een teamregel
 
-- **GIVEN** een datum met geplande wedstrijden
-- **WHEN** `POST /api/planner/optimaliseer?format=email` wordt aangeroepen
-- **THEN** MOET een versimpelde email-compatibele HTML geretourneerd worden
-- **AND** MOET een link "Bekijk in browser" bovenaan staan
-- **AND** MOET het werken in alle email-clients (Outlook, Gmail, etc.)
+- **GIVEN** een team met een `VoorkeurVeld`-regel voor veld X
+- **WHEN** `POST /api/planner/auto-plan` wordt aangeroepen en veld X ruimte heeft
+- **THEN** MOET `optimaalVeldNummer` gelijk zijn aan X en `voorkeurVeldToegepast` `true`
+- **AND** MOET bij een vol veld X een ander veld gekozen worden met `voorkeurVeldToegepast` = `false`
+
+### Scenario: status en voorkeurstatus zijn gescheiden
+
+- **GIVEN** een wedstrijd die de planner niet verplaatst maar 60 minuten van de voorkeurstijd af ligt
+- **WHEN** `POST /api/planner/auto-plan` wordt aangeroepen
+- **THEN** MOET `status` `ongewijzigd` zijn
+- **AND** MOET `voorkeurStatus` `grote-afwijking` zijn — de wedstrijd mag NIET als "OK" gepresenteerd worden
+
+### Scenario: geen streeftijd bekend
+
+- **GIVEN** een team zonder eigen voorkeurstijd en een leeftijdscategorie zonder `StandaardVoorkeurTijd`
+- **WHEN** `POST /api/planner/auto-plan` wordt aangeroepen
+- **THEN** MOET de wedstrijd op het eerst beschikbare slot ingepland worden
+- **AND** MOET `voorkeurTijd` `null` zijn en `voorkeurStatus` gelijk aan `geen-voorkeur`
 
 ---
 

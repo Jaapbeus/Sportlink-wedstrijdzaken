@@ -241,7 +241,8 @@
                             <th>Wedstrijd</th>
                             <th>Huidige situatie</th>
                             <th>Optimale situatie</th>
-                            <th>Status</th>
+                            <th title="Gewenste tijd en de afwijking daarvan">Voorkeurstijd</th>
+                            <th title="Verplaatst de planner deze wedstrijd t.o.v. de huidige stand?">Wijziging</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -297,11 +298,34 @@
                                         <span class="ms-2 @(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalTijd</span>
                                     }
                                 </td>
+                                @* Voorkeurstijd los van de wijzig-status (#666): een wedstrijd kan
+                                   ongewijzigd blijven én tóch ver van de voorkeurstijd liggen. *@
+                                <td style="font-size:0.85rem;">
+                                    @if (string.IsNullOrWhiteSpace(item.VoorkeurTijd))
+                                    {
+                                        <span class="text-muted" title="Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie">—</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge @VoorkeurBadgeClass(item.VoorkeurStatus)"
+                                              title="@VoorkeurTitel(item)">
+                                            @item.VoorkeurTijd@VoorkeurAfwijkingTekst(item.VoorkeurAfwijkingMinuten)
+                                        </span>
+                                        <span class="text-muted ms-1" style="font-size:0.75rem;">@VoorkeurBronLabel(item.VoorkeurBron)</span>
+                                        @if (item.VoorkeurVeldToegepast == false)
+                                        {
+                                            <span class="badge bg-secondary ms-1"
+                                                  title="Voorkeursveld was niet beschikbaar; de planner koos een ander veld">
+                                                ander veld
+                                            </span>
+                                        }
+                                    }
+                                </td>
                                 <td>
                                     @switch (item.Status)
                                     {
                                         case "ongewijzigd":
-                                            <span class="badge bg-success">&#10003; OK</span>
+                                            <span class="badge bg-light text-dark border" title="De planner laat deze wedstrijd staan">Ongewijzigd</span>
                                             break;
                                         case "nieuw-slot":
                                             <span class="badge bg-warning text-dark">Nieuw</span>
@@ -466,58 +490,38 @@
         </div>
     </div>
 
-    @* ── Klassieke optimalisatie (verborgen sub-feature) ── *@
-    <details class="mb-3">
-        <summary class="text-muted" style="cursor:pointer;">Geavanceerde optimalisatie (klassiek)</summary>
-        <div class="card mt-2">
-            <div class="card-body">
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label">Optimalisatiedoel</label>
-                        <select class="form-select" @bind="_doel">
-                            <option value="">(geen voorkeur)</option>
-                            <option value="veld5-ontlasten">Grasveld(en) ontlasten</option>
-                            <option value="strakker-plannen">Strakker plannen</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Gewenste eindtijd</label>
-                        <TimeInput Value="@_gewensteEindtijdStr"
-                                   ValueChanged="@(v => _gewensteEindtijdStr = v ?? "16:15")"
-                                   Placeholder="16:15" />
-                    </div>
-                    <div class="col-md-2">
-                        <button class="btn btn-outline-primary w-100" @onclick="GenereerKlassiekAsync" disabled="@_bezig">
-                            Genereer
-                        </button>
-                    </div>
-                </div>
-                @if (_klassiekResultaat != null)
-                {
-                    <div class="mt-3">
+    @* ── Deelbare weergave van de berekende planning ── *@
+    @if (!string.IsNullOrEmpty(HuidigeExportHtml))
+    {
+        <details class="mb-3">
+            <summary class="text-muted" style="cursor:pointer;">Planning delen (HTML voor e-mail of download)</summary>
+            <div class="card mt-2">
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Weergave van de @(_visTab == "optimaal" ? "optimale" : "huidige") planning zoals hierboven
+                        gekozen. Handig om als e-mail te versturen of als bestand te bewaren.
+                    </p>
+                    <div class="mb-2">
                         <button class="btn btn-sm btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync">
-                            @(_kopieerStatus ?? "Kopieer e-mail HTML")
+                            @(_kopieerStatus ?? "Kopieer HTML")
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadHtmlAsync">
                             Download HTML
                         </button>
                     </div>
-                    @if (!string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner))
-                    {
-                        <div class="border rounded mt-2" style="overflow:hidden;">
-                            @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
-                               Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
-                               onafhankelijk van server-side encoding. (#603) *@
-                            <iframe srcdoc="@_klassiekResultaat.HtmlPlanner"
-                                    sandbox="allow-same-origin"
-                                    style="width:100%; min-height:700px; border:none; display:block;"
-                                    title="Klassieke dagplanning"></iframe>
-                        </div>
-                    }
-                }
+                    <div class="border rounded" style="overflow:hidden;">
+                        @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
+                           Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
+                           onafhankelijk van server-side encoding. (#603) *@
+                        <iframe srcdoc="@ExportHtmlZonderScript"
+                                sandbox="allow-same-origin"
+                                style="width:100%; min-height:700px; border:none; display:block;"
+                                title="Dagplanning"></iframe>
+                    </div>
+                </div>
             </div>
-        </div>
-    </details>
+        </details>
+    }
 }
 
 @code {
@@ -534,11 +538,32 @@
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
 
-    // Klassiek optimaliseer-flow
-    private string _doel = "";
-    private string _gewensteEindtijdStr = "16:15";
+    // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
     private string? _kopieerStatus;
-    private OptimaliseerResponseDto? _klassiekResultaat;
+
+    // Volgt de gekozen tab: de export toont dezelfde planning als de tijdlijn erboven.
+    private string? HuidigeExportHtml =>
+        _plan == null ? null : (_visTab == "optimaal" ? _plan.OptimaleHtml : _plan.HuidigeHtml);
+
+    // De gegenereerde HTML bevat een klik-interactie-script. In het iframe hieronder staat bewust
+    // geen 'allow-scripts' (XSS-verdediging, #603), en e-mailclients strippen scripts toch — het
+    // script wordt daar dus altijd geblokkeerd en levert alleen een console-fout op. Voor de
+    // voorbeeldweergave en de e-mailversie halen we het eruit; de download houdt het wél, want in
+    // een los geopend HTML-bestand werkt de interactie normaal.
+    private string? ExportHtmlZonderScript
+    {
+        get
+        {
+            var html = HuidigeExportHtml;
+            if (string.IsNullOrEmpty(html)) return html;
+            // Geen static Regex-veld en geen RegexOptions.Compiled: dat faalt in Blazor WebAssembly
+            // (NullReferenceException bij het renderen, geen buildfout — alleen zichtbaar in de browser).
+            return System.Text.RegularExpressions.Regex.Replace(
+                html, @"<script\b[^>]*>.*?</script>", string.Empty,
+                System.Text.RegularExpressions.RegexOptions.Singleline |
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+    }
 
     // Toepassen feedback
     private string? _toepassenMelding;
@@ -561,7 +586,6 @@
     private async Task OnDatumChanged()
     {
         _plan = null;
-        _klassiekResultaat = null;
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
@@ -588,7 +612,6 @@
     private void OnClubChanged() => InvokeAsync(async () =>
     {
         _plan = null;
-        _klassiekResultaat = null;
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
@@ -663,6 +686,55 @@
         };
     }
 
+    // ── Voorkeurstijd-weergave (#666) ──
+
+    private static string VoorkeurBadgeClass(string voorkeurStatus) => voorkeurStatus switch
+    {
+        "op-tijd"          => "bg-success",
+        "kleine-afwijking" => "bg-warning text-dark",
+        "grote-afwijking"  => "bg-danger",
+        _                  => "bg-light text-dark border"
+    };
+
+    private static string VoorkeurAfwijkingTekst(int? afwijking)
+    {
+        if (!afwijking.HasValue || afwijking.Value == 0) return "";
+        var teken = afwijking.Value > 0 ? "+" : "−";
+        return $" ({teken}{Math.Abs(afwijking.Value)} min)";
+    }
+
+    private static string VoorkeurBronLabel(string? bron) => bron switch
+    {
+        "regel"    => "regel",
+        "team"     => "team",
+        "leeftijd" => "standaard",
+        _          => ""
+    };
+
+    private static string VoorkeurTitel(AutoPlanWedstrijdItemDto item)
+    {
+        var bron = item.VoorkeurBron switch
+        {
+            "regel"    => "uit een teamregel (voorkeursveld met tijd)",
+            "team"     => "eigen voorkeurstijd van het team",
+            "leeftijd" => "standaardtijd van de leeftijdscategorie",
+            _          => "onbekende bron"
+        };
+        string afwijking;
+        if (!item.VoorkeurAfwijkingMinuten.HasValue)
+        {
+            afwijking = "afwijking onbekend";
+        }
+        else
+        {
+            int m = item.VoorkeurAfwijkingMinuten.Value;
+            afwijking = m == 0 ? "exact op de voorkeurstijd"
+                      : m > 0  ? $"{m} minuten later dan gewenst"
+                               : $"{Math.Abs(m)} minuten eerder dan gewenst";
+        }
+        return $"Voorkeurstijd {item.VoorkeurTijd} — {bron}. Ingepland: {afwijking}.";
+    }
+
     private static string RowClass(string status) => status switch
     {
         "ongewijzigd"     => "",
@@ -673,59 +745,24 @@
         _                 => ""
     };
 
-    // ── Klassiek optimaliseer ──
-
-    private async Task GenereerKlassiekAsync()
-    {
-        _errorMessage = null;
-        _klassiekResultaat = null;
-        _kopieerStatus = null;
-        _bezig = true;
-        try
-        {
-            var req = new OptimaliseerRequestDto
-            {
-                Datum = DatumStr,
-                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
-                GewensteEindtijd = _gewensteEindtijdStr,
-                BufferMinuten = _bufferMinuten
-            };
-            var result = await Api.OptimaliseerAsync(req);
-            if (result.Success) _klassiekResultaat = result.Data;
-            else _errorMessage = result.ErrorMessage ?? "Onbekende fout.";
-        }
-        finally { _bezig = false; }
-    }
+    // ── HTML-export van de berekende planning ──
+    // Sinds #666 komt de HTML uit de auto-plan-response zelf (HuidigeHtml / OptimaleHtml). Er is dus
+    // geen extra API-call meer nodig; het losse optimaliseer-endpoint is vervallen.
 
     private async Task KopieerEmailHtmlAsync()
     {
-        if (_klassiekResultaat == null) return;
-        _bezig = true;
-        try
-        {
-            var req = new OptimaliseerRequestDto
-            {
-                Datum = DatumStr,
-                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
-                GewensteEindtijd = _gewensteEindtijdStr,
-                BufferMinuten = _bufferMinuten
-            };
-            var result = await Api.OptimaliseerHtmlAsync(req, "email");
-            if (result.Success && result.Data != null)
-            {
-                await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", result.Data);
-                _kopieerStatus = "Gekopieerd!";
-                _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
-            }
-            else _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
-        }
-        finally { _bezig = false; }
+        var html = ExportHtmlZonderScript;
+        if (string.IsNullOrEmpty(html)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", html);
+        _kopieerStatus = "Gekopieerd!";
+        _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
     }
 
     private async Task DownloadHtmlAsync()
     {
-        if (_klassiekResultaat == null || string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _klassiekResultaat.HtmlPlanner);
+        var html = HuidigeExportHtml;
+        if (string.IsNullOrEmpty(html)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", html);
     }
 
     // ── Gantt helpers ──

@@ -210,6 +210,10 @@ internal class FieldScheduler
     private readonly Dictionary<int, List<IngeplandSlot>> _occupations = new();
     private static readonly TimeOnly StartTijd = new(9, 0);
 
+    /// <summary>Vroegste tijd waarop de planner inplant — als streeftijd te gebruiken wanneer er
+    /// geen voorkeurstijd is maar wel een voorkeursveld (#666).</summary>
+    internal static TimeOnly DagStart => StartTijd;
+
     public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer,
         Dictionary<string, (int bufferVoor, int bufferNa)>? teamBuffers = null)
     {
@@ -259,16 +263,26 @@ internal class FieldScheduler
         return best;
     }
 
+    /// <summary>
+    /// Zoekt een slot zo dicht mogelijk bij <paramref name="voorkeurTijd"/> en bezet het.
+    ///
+    /// <para><paramref name="voorkeurVeldNummer"/> (#666): het veld uit een 'VoorkeurVeld'-teamregel.
+    /// Dat veld wordt bij elke kandidaat-tijd als eerste geprobeerd. Het is een zachte voorkeur — is
+    /// het veld bezet of te klein, dan valt de planner terug op de normale veldsortering, zodat een
+    /// team nooit onplanbaar wordt door alleen een veldvoorkeur.</para>
+    ///
+    /// <para>De voorkeurstijd is hier het doel — er wordt niet naar het vroegste gat van de dag
+    /// gezocht. Tot #666 stond hier het omgekeerde: lag het vroegste vrije slot meer dan één buffer
+    /// vóór de voorkeurstijd, dan pakte de planner dát slot en verdween de voorkeur volledig. Een team
+    /// met voorkeur 14:30 werd zo op 09:00 gezet — vijf en een half uur ernaast, terwijl de tabel
+    /// "OK" meldde. De kandidaatlijst hieronder loopt van de voorkeurstijd naar buiten (±5, ±10, …),
+    /// dus het dichtstbijzijnde haalbare tijdslot wint, met eerder vóór later bij gelijke afstand.</para>
+    /// </summary>
     public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
-        int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90)
+        int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90,
+        int? voorkeurVeldNummer = null)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
-        var vroegste = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
-        if (vroegste != null)
-        {
-            int gap = (int)(voorkeurTijd - vroegste.AanvangsTijd).TotalMinutes;
-            if (gap > nieuwBufVoor) { vroegste.TeamNaam = teamNaam; _occupations[vroegste.VeldNummer].Add(vroegste); return vroegste; }
-        }
         var candidates = new List<TimeOnly> { voorkeurTijd };
         for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
         {
@@ -277,14 +291,26 @@ internal class FieldScheduler
             if (vroeger >= StartTijd) candidates.Add(vroeger);
             candidates.Add(later);
         }
-        var sorted = _velden.OrderByDescending(v => v.IsKunstgras).ThenBy(v => v.VeldNummer).ToList();
+        // Voorkeursveld vooraan in de veldsortering — de rest van de volgorde blijft ongewijzigd
+        // (kunstgras vóór gras, daarna veldnummer), zodat het gedrag zonder voorkeursveld identiek is.
+        var sorted = _velden
+            .OrderByDescending(v => voorkeurVeldNummer.HasValue && v.VeldNummer == voorkeurVeldNummer.Value)
+            .ThenByDescending(v => v.IsKunstgras)
+            .ThenBy(v => v.VeldNummer)
+            .ToList();
         foreach (var kandidaatTijd in candidates)
         {
             foreach (var veld in sorted)
             {
                 var besch = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
                 if (besch == null) continue;
-                var van   = besch.BeschikbaarVanaf < StartTijd ? StartTijd : besch.BeschikbaarVanaf;
+                // Ondergrens is hier de veldbeschikbaarheid zelf, NIET de standaard dagstart van 09:00
+                // (#666). Een team dat 08:30 als voorkeurstijd heeft opgegeven werd anders stilzwijgend
+                // naar 09:00 geschoven terwijl het veld al om 08:00 open was — een afwijking van 30
+                // minuten die niemand had gevraagd. Waar de dag begint hoort uit dbo.VeldBeschikbaarheid
+                // te komen, niet uit een vaste waarde in code. De 09:00-ondergrens blijft wél gelden
+                // voor wedstrijden zónder voorkeurstijd: die lopen via FindAndOccupyNextSlot.
+                var van   = besch.BeschikbaarVanaf;
                 var start = PlannerShared.RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
                 var end   = start.AddMinutes(duurMinuten);
                 if (end > besch.BeschikbaarTot || end <= start) continue;
