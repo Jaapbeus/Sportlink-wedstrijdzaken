@@ -151,4 +151,52 @@ public class BerichtPipelineTests
         BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "3 december 2025");
         classificatie.Datum.Should().Be("2025-12-03");
     }
+
+    // ── NormaliseerTeamNaam — clubCode-override (#677) ──
+    //
+    // Regressietest voor issue #677: de Email-tester (dry-run pad) moet de club-switcher uit de
+    // GUI respecteren in plaats van altijd de instelling uit de proces-globale AppSettings-cache
+    // te gebruiken. Zonder een live DB is die cache in dit testproces altijd leeg — waardoor deze
+    // tests bewijzen dat het EXPLICIET meegegeven clubCode-argument de prefix bepaalt, niet de
+    // (hier per definitie ontbrekende) globale instelling.
+
+    [Fact]
+    public void NormaliseerTeamNaam_MetExplicieteClubCodeAllstars_PrefixtMetAllstarsNietMetPrimaireClub()
+    {
+        var resultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1", "ALLSTARS");
+        resultaat.Should().Be("ALLSTARS JO10-1");
+    }
+
+    [Fact]
+    public void NormaliseerTeamNaam_VerschillendeExplicieteClubCodes_GevenVerschillendePrefixVoorZelfdeTeam()
+    {
+        // Bewijst dat de prefix uitsluitend van het meegegeven argument afhangt — vóór #677 had
+        // NormaliseerTeamNaam geen clubCode-parameter en kon dit gedrag per definitie niet bestaan.
+        var allstarsResultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1", "ALLSTARS");
+        var andereClubResultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1", "ANDEREDEMOCLUB");
+
+        allstarsResultaat.Should().Be("ALLSTARS JO10-1");
+        andereClubResultaat.Should().Be("ANDEREDEMOCLUB JO10-1");
+        allstarsResultaat.Should().NotBe(andereClubResultaat);
+    }
+
+    [Fact]
+    public void NormaliseerTeamNaam_AlAangevuldMetOpgegevenClubCode_WordtNietDubbelGeprefixt()
+    {
+        // Idempotentie: eenmaal genormaliseerd ("ALLSTARS JO10-1") bevat de naam al een spatie,
+        // waardoor de eigen-team-heuristiek ("looksLikeEigenTeam") niet meer toeslaat en er dus
+        // nooit een tweede "ALLSTARS "-prefix wordt toegevoegd.
+        var resultaat = BerichtPipeline.NormaliseerTeamNaam("ALLSTARS JO10-1", "ALLSTARS");
+        resultaat.Should().Be("ALLSTARS JO10-1");
+    }
+
+    [Fact]
+    public void NormaliseerTeamNaam_ZonderClubCodeOverride_ValtTerugOpGlobaleCache_DieLeegIsInTests()
+    {
+        // Baseline: bevestigt dat het gedrag voor callers zonder override (bijv. de echte
+        // e-mailpipeline) ongewijzigd is — zonder een geladen globale cache blijft de teamnaam
+        // onveranderd in plaats van te crashen.
+        var resultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1");
+        resultaat.Should().Be("JO10-1");
+    }
 }
