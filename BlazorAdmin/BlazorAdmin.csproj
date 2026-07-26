@@ -4,10 +4,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <Version>2.17.2.0</Version>
-    <AssemblyVersion>2.17.2.0</AssemblyVersion>
-    <FileVersion>2.17.2.0</FileVersion>
+    <!-- MOET false blijven. (#659)
+         Op true genereert de build een INLINE <script type="importmap"> in index.html en
+         fingerprint het blazor.webassembly.js/dotnet.js. De productie-CSP van Azure Static Web Apps
+         staat geen inline scripts toe ('script-src self wasm-unsafe-eval'), dus die importmap werd
+         geblokkeerd. Zonder importmap kan de browser de gefingerprinte dotnet.js niet resolven →
+         404 → "Failed to start platform" → de app blijft permanent op het laadscherm hangen.
+         Lokaal onzichtbaar: de dev-server past staticwebapp.config.json niet toe.
+         Wie dit terugzet naar true moet óók de CSP oplossen — en nonce/SRI kan niet op statische
+         hosting. Zie index.html voor de volledige afweging. -->
+    <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
+    <Version>2.17.2.1</Version>
+    <AssemblyVersion>2.17.2.1</AssemblyVersion>
+    <FileVersion>2.17.2.1</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.

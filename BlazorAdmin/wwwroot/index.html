@@ -6,13 +6,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BlazorAdmin</title>
     <base href="/" />
-    <link rel="preload" id="webassembly" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="lib/bootstrap-icons/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link href="BlazorAdmin.styles.css" rel="stylesheet" />
-    <script type="importmap"></script>
+    <!--
+      Hier hoort GEEN import-map te staan, en de scriptnaam onderaan krijgt GEEN
+      fingerprint-placeholder. Zie #659.
+
+      De productie-CSP van Azure Static Web Apps staat 'script-src self wasm-unsafe-eval' toe,
+      zonder 'unsafe-inline'. Een import-map is per definitie een inline script en werd daar dus
+      geblokkeerd. Zonder die map kon de browser het pad naar dotnet.js niet omzetten naar de
+      gefingerprinte bestandsnaam, vroeg het letterlijke pad op, kreeg een 404 en startte Blazor
+      nooit: de app bleef permanent op het laadscherm hangen.
+
+      Nonce of SRI zijn hier geen alternatief — die vragen server-side rendering per request en
+      kunnen niet op statische hosting. De CSP verzwakken met 'unsafe-inline' zou de XSS-bescherming
+      uit #434 en #603 ongedaan maken. Daarom vervalt de fingerprinting van deze twee bestanden;
+      dat is de door Microsoft gedocumenteerde route wanneer er geen plek is voor een import-map.
+      Gekoppeld: OverrideHtmlAssetPlaceholders staat op false in BlazorAdmin.csproj.
+
+      Cache-busting is gedekt: staticwebapp.config.json zet Cache-Control no-cache op / en
+      /index.html, en Blazor controleert zelf de integriteit van de assetset.
+
+      Let op: schrijf in dit commentaar niet de letterlijke script-tag of placeholder-syntaxis.
+      Scans en CI-checks die op die tekst zoeken slaan dan aan op het commentaar zelf.
+    -->
 </head>
 
 <body>
@@ -31,30 +51,9 @@
     </div>
     <script src="js/theme.js"></script>
     <script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js"></script>
-    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
-    <script>
-        window.blazorHelpers = {
-            copyToClipboard: function (text) {
-                return navigator.clipboard.writeText(text);
-            },
-            downloadHtml: function (filename, content) {
-                var blob = new Blob([content], { type: 'text/html' });
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            },
-            // Dedicated helpers i.p.v. JS eval(): de productie-CSP van Azure SWA staat alleen
-            // 'wasm-unsafe-eval' toe, niet 'unsafe-eval'. eval() gooit daar een EvalError. (#597)
-            getUserAgent: function () {
-                return navigator.userAgent || '';
-            }
-        };
-    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <!-- Extern i.p.v. inline: inline scripts worden door de productie-CSP geblokkeerd (#659). -->
+    <script src="js/blazor-helpers.js"></script>
 </body>
 
 </html>
