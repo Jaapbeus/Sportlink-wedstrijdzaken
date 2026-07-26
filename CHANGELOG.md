@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 Alle noemenswaardige wijzigingen in dit project worden bijgehouden in dit bestand.
 
@@ -17,6 +17,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ---
 
 ## [Unreleased]
+
+## [2.17.2.1] — 2026-07-26
+
+### Fixed
+- **De beheeromgeving was in productie onbruikbaar: de pagina bleef op het laadscherm hangen.** De beveiligingsinstellingen van de website blokkeren scripts die direct in de pagina staan. Twee van zulke scripts waren nodig om de applicatie te starten en om kopiëren, downloaden en de FEEDBACK-knop te laten werken. Beide zijn nu naar losse bestanden verplaatst, waarmee de beveiliging onverkort blijft gelden. Lokaal was dit niet te zien omdat die beveiliging daar niet actief is. (#659)
+
+### Changed
+- De bouwstraat controleert nu bij elke wijziging of er scripts direct in de pagina staan. Dezelfde fout kan daarmee niet opnieuw ongemerkt in productie komen. (#659)
 
 ## [2.17.2.0] — 2026-07-26
 

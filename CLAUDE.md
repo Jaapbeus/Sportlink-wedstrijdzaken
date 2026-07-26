@@ -224,19 +224,25 @@ ITERATIE:
        Write-Host "Versie: $($health.version)"
        → niet 200? Fix, kill services, ga terug naar a.
 
-  f. Blazor fingerprint consistency check (VERPLICHT — detecteert root cause van "An unhandled error"):
-       # .NET 10 Blazor WASM: importmap key is './_framework/dotnet.js' (niet 'dotnet')
-       $html = (Invoke-WebRequest "http://localhost:5242/" -UseBasicParsing -ErrorAction SilentlyContinue).Content
-       $importmapMatch = [regex]::Match($html, '<script type="importmap"[^>]*>(.*?)</script>',
-           [System.Text.RegularExpressions.RegexOptions]::Singleline)
-       if ($importmapMatch.Success) {
-           $dotnetEntry = ($importmapMatch.Groups[1].Value | ConvertFrom-Json).imports."./_framework/dotnet.js" -replace '^\.\/', ''
-           $check = Invoke-WebRequest "http://localhost:5242/$dotnetEntry" -UseBasicParsing -ErrorAction SilentlyContinue
-           if ($check.StatusCode -ne 200) {
-               Write-Host "FINGERPRINT MISMATCH: $dotnetEntry → $($check.StatusCode)" -ForegroundColor Red
-           }
+  f. CSP-compatibiliteit van de gepubliceerde index.html (VERPLICHT — zie #659):
+       # Er MOET géén import-map en géén inline <script> in de publish-output staan: de
+       # productie-CSP van Azure SWA staat 'script-src self wasm-unsafe-eval' toe, zonder
+       # 'unsafe-inline'. Een inline script wordt daar geblokkeerd. Bij de import-map betekende
+       # dat: dotnet.js niet resolvebaar → 404 → Blazor start nooit → permanent laadscherm.
+       #
+       # Dit is NIET zichtbaar op :5242 en ook NIET op de SWA CLI-emulator (:4280) — geen van
+       # beide zet de CSP-header. Daarom op de publish-output controleren.
+       dotnet publish BlazorAdmin/BlazorAdmin.csproj -c Release -o $env:TEMP\bapub | Out-Null
+       $raw = Get-Content "$env:TEMP\bapub\wwwroot\index.html" -Raw
+       $clean = [regex]::Replace($raw, '<!--.*?-->', '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+       $inline = [regex]::Matches($clean, '<script(?:[^>]*)?>') | Where-Object { $_.Value -notmatch '\ssrc=' }
+       if ($inline -or $clean -match 'type="importmap"') {
+           Write-Host "CSP-PROBLEEM: inline script of import-map in publish-output" -ForegroundColor Red
        }
-       → mismatch of importmap leeg? Stop services → dotnet clean BlazorAdmin → terug naar d.
+       → treffer? OverrideHtmlAssetPlaceholders moet false blijven; inline scripts naar een
+         extern bestand in wwwroot/js/. Terug naar a.
+
+       De CI-job 'Build FunctionApp + BlazorAdmin' bevat deze guard ook, dus een PR faalt hierop.
 
   g. .\scripts\dev\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
      → exit 1? Fix, kill services, ga terug naar a.
@@ -366,6 +372,36 @@ Deze regels gelden altijd, zonder uitzondering:
    gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
    ```
    **Stap C is verplicht**, ook als Stap B exit 0 geeft. `gh run watch` kan in de achtergrond exit 0 teruggeven terwijl individuele jobs (bijv. `blazor-deploy`) later falen. Pas als ALLE jobs `"conclusion": "success"` of `"conclusion": "skipped"` tonen is de deploy succesvol. Als één job `"conclusion": "failure"` toont: direct proberen te fixen (bijv. `gh run rerun <run-id> --failed` bij transient fouten). Lukt fix niet: onmiddellijk melden aan gebruiker. Nooit melden dat een PR succesvol is afgerond zonder Stap C te hebben uitgevoerd.
+
+2a. **Na elke productie-deploy: browser-rendercheck op de LIVE Admin GUI — verplicht (#659).**
+
+   > **Groene deploy-jobs en HTTP 200 bewijzen niets over de Admin GUI.** Bij release v2.17.2.0 waren
+   > alle zes deploy-jobs `success`, gaf de SWA HTTP 200 en stond het woord "blazor" in de HTML —
+   > terwijl de GUI in werkelijkheid permanent op het laadscherm hing. Een Blazor WASM-app levert op
+   > élke route dezelfde `index.html` met status 200; die controle kan de fout per definitie niet zien.
+
+   Verplicht ná Stap C, en **vóór** je meldt dat de release geslaagd is. Met een echte browser
+   (Playwright of handmatig in een verse incognito-sessie):
+
+   ```
+   □ Open de productie-URL van de Admin GUI
+   □ Console (F12): ZERO fouten — let specifiek op:
+       - "violates the following Content Security Policy directive"  → inline script geblokkeerd (#659)
+       - "Failed to start platform"                                  → Blazor start niet
+       - "Failed to load resource: 404" op iets in /_framework/       → asset niet resolvebaar
+   □ De pagina hangt NIET op het laadscherm: window.Blazor bestaat
+   □ Er is een redirect naar login.microsoftonline.com, óf de UI rendert voor een ingelogde sessie
+   □ Geen "An unhandled error has occurred"-banner
+   □ Na inloggen: een pagina met gegevens laadt daadwerkelijk gegevens (bewijst dat CORS klopt)
+   ```
+
+   Faalt één punt? Dan is de release **niet** geslaagd: direct een hotfix vanuit `main`, en melden
+   aan de gebruiker. Nooit "release geslaagd" rapporteren op basis van alleen CI en HTTP-status.
+
+   **Waarom dit niet lokaal te ondervangen is:** de CSP komt uit `staticwebapp.config.json` en wordt
+   alleen door Azure SWA toegepast — niet door de dev-server op :5242 en ook niet door de SWA
+   CLI-emulator op :4280. Stap `f` van de verificatielus dekt dit statisch af op de publish-output,
+   maar de live check blijft het enige echte bewijs.
 
 3. **Build- en runtime-fouten zijn zelfherstelbaar — Security Gate niet.** Bij een build-fout, startup-fout of testfout: fix het zelf en herhaal de verificatielus (zie "Autonome ontwikkelcyclus"). Bij een **Security Gate-fout of AVG-schending**: stop direct en meld aan de gebruiker — nooit stilzwijgend doorgaan of zelf mergen.
 
