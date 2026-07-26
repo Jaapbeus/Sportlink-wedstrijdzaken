@@ -27,12 +27,32 @@ jobs:
           script: |
             const label = 'status: awaiting-release';
             const pr = context.payload.pull_request;
-            const text = `${pr.title}\n${pr.body || ''}`;
+            const title = pr.title || '';
+            const body = pr.body || '';
+            const text = `${title}\n${body}`;
 
-            // Verzamel alle #NNN-referenties uit titel + body van de PR.
+            // Alle #NNN-referenties uit titel + body. Basis voor het LABELEN van open issues:
+            // ruim scannen is daar onschadelijk en levert de meeste zichtbaarheid op.
             const numbers = [...new Set(
               [...text.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10))
             )];
+
+            // Voor het HEROPENEN van een al gesloten issue geldt een strengere eis (#630).
+            // Een kale kruisverwijzing mag een gereleasede fix niet uit de dood halen: PR #633
+            // noemde '#624' alleen in proza ("nieuw in #624") en heropende daarmee een issue dat
+            // 20 minuten eerder correct door de release was gesloten.
+            //
+            // Alleen deze twee vormen gelden als "deze PR pakt dat issue aan":
+            //   1. het nummer staat in de PR-TITEL — dekt de conventie 'fix(#NNN): ...'
+            //   2. het nummer staat achter een sluitend keyword in de body ('Closes #N', 'Fixes #N')
+            const titleNumbers = new Set(
+              [...title.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10))
+            );
+            const closingNumbers = new Set(
+              [...body.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)/gi)]
+                .map(m => parseInt(m[1], 10))
+            );
+            const mayReopen = n => titleNumbers.has(n) || closingNumbers.has(n);
 
             if (numbers.length === 0) {
               core.notice('Geen #issuenummer gevonden in PR-titel of -body — niets te labelen.');
@@ -54,6 +74,13 @@ jobs:
 
               // issues.get retourneert ook PR's — die slaan we over.
               if (issue.pull_request) {
+                continue;
+              }
+
+              // Gesloten issue zonder titel- of sluitend-keyword-referentie: volledig overslaan.
+              // Niet labelen en niet heropenen — het is hier alleen als kruisverwijzing genoemd (#630).
+              if (issue.state === 'closed' && !mayReopen(number)) {
+                core.notice(`#${number}: gesloten en alleen als kruisverwijzing genoemd — overgeslagen`);
                 continue;
               }
 

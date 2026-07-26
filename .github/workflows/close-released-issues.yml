@@ -39,10 +39,33 @@ jobs:
             RANGE="${CURRENT_TAG}"
           fi
 
-          NUMBERS=$(git log $RANGE --oneline | grep -oE '#[0-9]+' | tr -d '#' | sort -un | tr '\n' ',' | sed 's/,$//')
+          # Bron 1 — commit-subjects in de range. Dekt de conventie 'fix(#NNN): ...'.
+          COMMIT_NUMBERS=$(git log $RANGE --oneline | grep -oE '#[0-9]+' | tr -d '#' | sort -un)
+          echo "Uit commit-subjects: $(echo $COMMIT_NUMBERS | tr '\n' ' ')"
+
+          # Bron 2 — de CHANGELOG-sectie van deze versie (#630).
+          # Commit-subjects alleen zijn niet genoeg: batch-PR's sommen niet alle nummers op in het
+          # subject. Bij v2.17.0.0 miste dat #574, #575, #576, #579 en #599 terwijl die wel in de
+          # release zaten. De CHANGELOG is de gecureerde lijst van wat er daadwerkelijk in zit.
+          #
+          # Alleen haakjesgroepen die UITSLUITEND issuenummers bevatten — '(#574)' of '(#599, #595)' —
+          # conform de attributie-conventie uit CLAUDE.md. Zo blijven kruisverwijzingen in prozavorm
+          # buiten beeld: '(zie #569)' en 'conform het patroon van issue #242' mogen niets sluiten.
+          VERSION="${CURRENT_TAG#v}"
+          CHANGELOG_NUMBERS=$(awk -v marker="## [${VERSION}]" '
+              index($0, marker) == 1 { inside = 1; next }
+              inside && /^## \[/ { exit }
+              inside
+            ' CHANGELOG.md \
+            | grep -oE '\(#[0-9]+(, *#[0-9]+)*\)' \
+            | grep -oE '[0-9]+' | sort -un || true)
+          echo "Uit CHANGELOG-sectie [${VERSION}]: $(echo $CHANGELOG_NUMBERS | tr '\n' ' ')"
+
+          NUMBERS=$(printf '%s\n%s\n' "$COMMIT_NUMBERS" "$CHANGELOG_NUMBERS" \
+            | grep -E '^[0-9]+$' | sort -un | tr '\n' ',' | sed 's/,$//')
           echo "numbers=${NUMBERS}" >> "$GITHUB_OUTPUT"
           echo "tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Gevonden issue-nummers: ${NUMBERS:-geen}"
+          echo "Samengevoegd: ${NUMBERS:-geen}"
 
       - name: Issues sluiten en label verwijderen
         if: steps.issues.outputs.numbers != ''
@@ -101,3 +124,39 @@ jobs:
                 core.notice(`#${number}: gesloten (${tag})`);
               }
             }
+
+      # Vangnet (#630): meld wat na deze run nog op 'awaiting-release' staat. Zonder dit rapport
+      # blijft een gemist issue stil openstaan met een label dat suggereert dat het nog wacht —
+      # precies de verwarring die #615 wilde wegnemen.
+      - name: Rapporteer issues die nog op awaiting-release staan
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ steps.issues.outputs.tag }}
+        with:
+          script: |
+            const label = 'status: awaiting-release';
+            const { data: remaining } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: label,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const issues = remaining.filter(i => !i.pull_request);
+            if (issues.length === 0) {
+              core.notice(`Geen issues meer op '${label}' — lifecycle sluitend na ${process.env.RELEASE_TAG}.`);
+              return;
+            }
+
+            const lijst = issues.map(i => `#${i.number} — ${i.title}`).join('\n');
+            core.warning(
+              `${issues.length} issue(s) staan na release ${process.env.RELEASE_TAG} nog op '${label}'.\n` +
+              `Als de fix wél in deze release zat, ontbreekt het nummer in zowel de commit-subjects ` +
+              `als de CHANGELOG-attributie — controleer handmatig:\n${lijst}`
+            );
+            await core.summary
+              .addHeading(`Nog op '${label}' na ${process.env.RELEASE_TAG}`, 3)
+              .addList(issues.map(i => `#${i.number} — ${i.title}`))
+              .write();

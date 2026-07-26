@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Issues bleven na een release onterecht als 'wacht op release' openstaan, of kwamen juist weer open te staan nadat ze al waren afgerond.** Bij de vorige release gold dat voor vijf issues: hun nummer stond niet in de commit-tekst, alleen in het wijzigingsoverzicht. Daarnaast werd een al afgerond issue opnieuw geopend zodra een latere wijziging het nummer terzijde vermeldde. Beide zijn verholpen: het wijzigingsoverzicht wordt nu meegelezen bij het afsluiten, een terzijde-vermelding heropent niets meer, en na elke release wordt gemeld welke issues nog openstaan zodat er niets stil blijft hangen. (#630)
+
 ### Changed
 - Onderhoudsupdates van externe softwarebibliotheken doorgevoerd (Azure Functions worker-SDK en HTTP-uitbreiding, de AI-bibliotheek, en de database-actie in de bouwstraat). Geen functionele wijzigingen; dit houdt het systeem bij op beveiligings- en foutherstel van de leveranciers. (#634)
 
