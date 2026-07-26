@@ -295,9 +295,11 @@ internal static class AutoPlanService
         return response;
     }
 
-    // ── Privé helpers ──
+    // ── Helpers ──
+    // Internal i.p.v. private zodat FunctionApp.Tests deze pure logica direct kan testen
+    // via InternalsVisibleTo (#476). Geen gedragswijziging — alleen de zichtbaarheid. (#578)
 
-    private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
+    internal static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
     {
         if (string.IsNullOrWhiteSpace(teamNaam)) return null;
         var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -312,7 +314,7 @@ internal static class AutoPlanService
         };
     }
 
-    private static int GetLeeftijdSortOrder(string? leeftijd)
+    internal static int GetLeeftijdSortOrder(string? leeftijd)
     {
         if (string.IsNullOrWhiteSpace(leeftijd)) return 99;
         var l = leeftijd.Trim().ToUpperInvariant();
@@ -323,20 +325,20 @@ internal static class AutoPlanService
         return 90;
     }
 
-    private static int GetDefaultTimeSortKey(string? leeftijd)
+    internal static int GetDefaultTimeSortKey(string? leeftijd)
     {
         var order = GetLeeftijdSortOrder(leeftijd);
         return order <= 11 ? 540 : order <= 13 ? 600 : order <= 15 ? 630 : order <= 17 ? 660
              : order <= 19 ? 690 : order <= 25 ? 720 : order <= 85 ? 750 : 780;
     }
 
-    private static string BuildSportlinkVeldString(string veldNaam, string subpositie)
+    internal static string BuildSportlinkVeldString(string veldNaam, string subpositie)
     {
         var naam = veldNaam.Trim();
         return string.IsNullOrEmpty(subpositie) ? naam : $"{naam} {subpositie}";
     }
 
-    private static string NormaliseerVeld(string? veld)
+    internal static string NormaliseerVeld(string? veld)
     {
         if (string.IsNullOrWhiteSpace(veld)) return string.Empty;
         return veld.Trim().ToLowerInvariant().Replace("  ", " ");
