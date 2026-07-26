@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Het huidige seizoen werd bij elke uitrol opnieuw aan de seizoenslijst toegevoegd.** In productie stond het seizoen 2026/'27 daardoor drie keer in de lijst, en groeide dat met elke uitrol verder. De gegevenslijst die datums aan seizoenen koppelt gaf daardoor elke datum van dit seizoen drievoudig terug. De planning en de synchronisatie waren hierdoor niet geraakt — die kijken alleen naar de eerste en laatste datum. De dubbele regels zijn opgeruimd en de lijst laat een seizoen nu maar één keer toe. (#631)
 - **Issues bleven na een release onterecht als 'wacht op release' openstaan, of kwamen juist weer open te staan nadat ze al waren afgerond.** Bij de vorige release gold dat voor vijf issues: hun nummer stond niet in de commit-tekst, alleen in het wijzigingsoverzicht. Daarnaast werd een al afgerond issue opnieuw geopend zodra een latere wijziging het nummer terzijde vermeldde. Beide zijn verholpen: het wijzigingsoverzicht wordt nu meegelezen bij het afsluiten, een terzijde-vermelding heropent niets meer, en na elke release wordt gemeld welke issues nog openstaan zodat er niets stil blijft hangen. (#630)
 
 ### Changed

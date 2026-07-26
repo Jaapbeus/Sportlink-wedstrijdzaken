@@ -800,6 +800,53 @@ END;
 END
 GO
 
+-- ============================================================
+-- #631: duplicaten in dbo.Season opruimen en een unique constraint aanbrengen.
+--
+-- De oude guard in sp_UpdateSeasonTable vergeleek YEAR(MAX(DateUntil)) met YEAR(GETDATE())+1.
+-- Zodra er een toekomstig seizoen in de tabel stond kon die conditie nooit meer onwaar worden,
+-- waardoor bij ELKE deploy hetzelfde seizoen opnieuw werd ingevoegd. In productie stonden zo
+-- 3 identieke rijen voor 2026-2027. Omdat pub.DateTable een INNER JOIN op dbo.Season doet,
+-- leverde die view 3 rijen per datum voor het huidige seizoen (2557 i.p.v. 2192 rijen).
+--
+-- De applicatie zelf was niet geraakt: alle C#-consumers gebruiken MAX()/MIN()-aggregaten.
+--
+-- Deze block draait VOOR de EXEC hieronder, zodat de deduplicatie klaar is voordat de procedure
+-- iets kan invoegen. Volgorde is essentieel: de constraint kan pas na het opruimen, anders faalt
+-- de deploy op de bestaande duplicaten.
+-- ============================================================
+IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
+BEGIN
+    -- Rijen zonder naam zijn onbruikbaar (de naam is de business key) en blokkeren NOT NULL.
+    DELETE FROM [dbo].[Season] WHERE [Name] IS NULL;
+
+    -- Houd per seizoensnaam één rij over. ORDER BY op de datums zodat de bewaarde rij
+    -- deterministisch is en niet afhangt van de fysieke rijvolgorde.
+    ;WITH Duplicaten AS (
+        SELECT ROW_NUMBER() OVER (
+                   PARTITION BY [Name]
+                   ORDER BY [DateFrom], [DateUntil]
+               ) AS rn
+        FROM [dbo].[Season]
+    )
+    DELETE FROM Duplicaten WHERE rn > 1;
+
+    IF EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID('dbo.Season')
+          AND name = 'Name'
+          AND is_nullable = 1
+    )
+        ALTER TABLE [dbo].[Season] ALTER COLUMN [Name] NCHAR(9) NOT NULL;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.Season') AND name = 'UQ_Season_Name'
+    )
+        ALTER TABLE [dbo].[Season] ADD CONSTRAINT [UQ_Season_Name] UNIQUE ([Name]);
+END
+GO
+
 -- Update the Season and datetable
 -- Een scalar subquery zonder aggregatie faalt met Msg 512 zodra dbo.AppSettings meer dan één rij
 -- heeft — en dat is altijd het geval nadat de AllStars FC demo-club verderop in dit script is
@@ -1578,10 +1625,13 @@ GO
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
 BEGIN
+    -- #631: Name is NOT NULL met unique constraint, zodat een verse installatie meteen beschermd
+    -- is tegen duplicaatseizoenen. Bestaande installaties worden hierboven opgeruimd en gemigreerd.
     CREATE TABLE [dbo].[Season] (
-        [Name]      NCHAR(9) NULL,
+        [Name]      NCHAR(9) NOT NULL,
         [DateFrom]  DATE     NULL,
-        [DateUntil] DATE     NULL
+        [DateUntil] DATE     NULL,
+        CONSTRAINT [UQ_Season_Name] UNIQUE ([Name])
     );
 END
 GO
@@ -1718,8 +1768,17 @@ BEGIN
 	END
 
 	-- Create 2 months before start of a new season a new record in season table
-	IF (SELECT YEAR(MAX(DateUntil)) FROM [dbo].[Season]) <> YEAR(GETDATE()) +1
-		AND GETDATE() >= DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-2,1)  
+	--
+	-- #631: de guard controleerde YEAR(MAX(DateUntil)) <> YEAR(GETDATE())+1. Zodra er een
+	-- TOEKOMSTIG seizoen in de tabel staat is MAX(DateUntil) niet meer het huidige seizoen en kan
+	-- die vergelijking nooit meer onwaar worden. In productie stond 2027-2028, dus de conditie was
+	-- permanent waar en werd 2026-2027 bij ELKE deploy opnieuw ingevoegd (3 identieke rijen).
+	-- Nu wordt gecontroleerd of het seizoen dat we gaan maken al bestaat. Dat is idempotent en
+	-- werkt ook met toekomstige seizoenen in de tabel.
+	DECLARE @NewSeasonName NCHAR(9) = CONCAT(YEAR(GETDATE()),'-',YEAR(GETDATE())+1);
+
+	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [Name] = @NewSeasonName)
+		AND GETDATE() >= DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-2,1)
 	BEGIN
 		INSERT INTO [dbo].[Season]
 			(
@@ -1727,9 +1786,9 @@ BEGIN
 			[DateFrom],
 			[DateUntil]
 			)
-		 VALUES 
+		 VALUES
 			(
-			CONCAT(YEAR(GETDATE()),'-',YEAR(GETDATE())+1),
+			@NewSeasonName,
 			DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1),
 			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth-1,1))
 			)
