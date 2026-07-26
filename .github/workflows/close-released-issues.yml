@@ -1,0 +1,103 @@
+name: Sluit gereleasede issues
+
+# Zodra een release-tag naar main wordt gepusht (zelfde trigger als release.yml),
+# doorzoekt deze workflow de commits sinds de vorige release-tag op #NNN-referenties,
+# verwijdert het label 'status: awaiting-release' en sluit die issues definitief.
+# Zie CLAUDE.md, sectie "Issue-lifecycle: awaiting-release".
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  close-released-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (volledige geschiedenis + tags)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Issue-nummers verzamelen sinds vorige release-tag
+        id: issues
+        run: |
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          PREVIOUS_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "^${CURRENT_TAG}$" | head -n1 || true)
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Vorige release-tag: $PREVIOUS_TAG"
+            RANGE="${PREVIOUS_TAG}..${CURRENT_TAG}"
+          else
+            echo "Geen vorige release-tag gevonden — volledige geschiedenis tot ${CURRENT_TAG}"
+            RANGE="${CURRENT_TAG}"
+          fi
+
+          NUMBERS=$(git log $RANGE --oneline | grep -oE '#[0-9]+' | tr -d '#' | sort -un | tr '\n' ',' | sed 's/,$//')
+          echo "numbers=${NUMBERS}" >> "$GITHUB_OUTPUT"
+          echo "tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Gevonden issue-nummers: ${NUMBERS:-geen}"
+
+      - name: Issues sluiten en label verwijderen
+        if: steps.issues.outputs.numbers != ''
+        uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBERS: ${{ steps.issues.outputs.numbers }}
+          RELEASE_TAG: ${{ steps.issues.outputs.tag }}
+        with:
+          script: |
+            const label = 'status: awaiting-release';
+            const tag = process.env.RELEASE_TAG;
+            const numbers = process.env.ISSUE_NUMBERS.split(',').map(n => parseInt(n, 10)).filter(Boolean);
+
+            for (const number of numbers) {
+              let issue;
+              try {
+                issue = (await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                })).data;
+              } catch (e) {
+                core.warning(`#${number}: kon issue niet ophalen (${e.message}) — overgeslagen`);
+                continue;
+              }
+
+              // issues.get retourneert ook PR's — die slaan we over.
+              if (issue.pull_request) {
+                continue;
+              }
+
+              const hasLabel = issue.labels.some(l => (typeof l === 'string' ? l : l.name) === label);
+              if (hasLabel) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  name: label,
+                }).catch(() => {});
+              }
+
+              if (issue.state === 'open') {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: number,
+                  body: `✅ Uitgerold naar productie in release \`${tag}\`.`,
+                });
+                core.notice(`#${number}: gesloten (${tag})`);
+              }
+            }

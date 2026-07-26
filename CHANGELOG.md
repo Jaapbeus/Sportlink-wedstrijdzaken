@@ -24,6 +24,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Het AI-model is nu instelbaar via de app-instelling `AiModelName`. Een model-upgrade vereist daarmee geen nieuwe versie van de software meer. (#604)
 - Elke pull request bouwt nu automatisch beide projecten en controleert of het databaseontwerp en het migratiescript nog gelijk lopen. Fouten worden zo bij het voorstellen van een wijziging gemeld in plaats van pas bij een deploy. (#599, #595)
 - Verlopen KNVB-verplaatsingsregels worden nu actief gemeld in de logging, en het AI-model geeft in dat geval geen KNVB-waarschuwing meer af op basis van verouderde deadlines. Voorheen verouderden die regels stilzwijgend. (#608)
+- GitHub-issues sluiten niet langer voortijdig: zodra een fix naar `develop` merget krijgt het gekoppelde issue automatisch het label `status: awaiting-release` (en wordt heropend als het al gesloten was). Pas bij de daadwerkelijke release naar productie (`main`) sluit het issue automatisch. (#615)
 
 ### Fixed
 - **De FEEDBACK-knop werkte niet in de live omgeving.** Het venster liep vast met "An unhandled error has occurred" doordat de beveiligingsinstellingen van de website een techniek blokkeerden die het venster gebruikte om de paginanaam en browserversie op te halen. Lokaal was dit niet te zien omdat die beveiliging daar niet geldt. (#597)
