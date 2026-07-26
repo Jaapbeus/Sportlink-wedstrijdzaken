@@ -38,6 +38,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Ontbreekt de instelling voor de GitHub-repository, dan meldt het systeem dat nu als configuratiefout in plaats van een onduidelijke "niet gevonden"-melding te geven. Dit raakt clubs die het project onder een andere naam overnemen. (#607)
 - Een gepauzeerde database blokkeert de bouwstap niet langer. Voorheen werden daardoor alle controles overgeslagen en konden programmeerfouten wekenlang onopgemerkt blijven. Deployen naar een gepauzeerde database blijft geblokkeerd. (#599)
 - Testdata: het auto-invullen van het uitteam bij selectie van een thuisteam respecteert nu de ingestelde 'Tegenstander (nieuw)' — was voorheen hardcoded op 'FC Onbekend' ook als de gebruiker iets anders had ingevuld. (#498)
+- **Een release liep vast zodra de database in slaapstand stond.** De controle die de database wakker maakt vóór een deploy legde alleen een netwerkverbinding aan; die wordt door Azure afgevangen vóórdat de database hem ziet, waardoor de database bleef slapen en de release na vijf minuten afbrak. Er wordt nu daadwerkelijk ingelogd op de database — dat is wat het wakker worden in gang zet. (#624)
 
 ### Changed
 - De API-documentatie (`openapi.yaml`/`.json`) is bijgewerkt naar de huidige versie en bevat nu ook de twee endpoints voor het importeren van teambegeleiding en het verschuiven van testwedstrijden. (#605)
