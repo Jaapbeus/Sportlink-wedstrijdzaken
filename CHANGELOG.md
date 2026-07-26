@@ -18,6 +18,23 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.17.1.0] — 2026-07-26
+
+### Fixed
+- **De demo-omgeving (AllStars FC) was leeg.** De democlub bestond wel, maar had geen velden, geen speeltijden, geen teams en geen wedstrijden — de testmodus in de beheeromgeving toonde daardoor een leeg scherm. De demogegevens worden nu bij elke uitrol automatisch aangemaakt: 3 velden met beschikbaarheid, 28 teams met een begeleider, en 224 wedstrijden verdeeld over de acht komende zaterdagen, ongeveer de helft thuis en de helft uit. De speeldata schuiven mee met de uitroldatum, zodat de demo niet na een paar maanden alleen nog verleden wedstrijden toont. Optimaliseren in de Dagplanning verdeelt de wedstrijden nu daadwerkelijk over de drie demovelden. (#635)
+- In de testmodus werd bij een uitwedstrijd het eigen team ook als tegenstander getoond ("AllStars JO10 1 – AllStars JO10 1"). Bij een uitwedstrijd staat de tegenstander in het thuisteam-veld; daar wordt nu op gecontroleerd. (#635)
+- **Het huidige seizoen werd bij elke uitrol opnieuw aan de seizoenslijst toegevoegd.** In productie stond het seizoen 2026/'27 daardoor drie keer in de lijst, en groeide dat met elke uitrol verder. De gegevenslijst die datums aan seizoenen koppelt gaf daardoor elke datum van dit seizoen drievoudig terug. De planning en de synchronisatie waren hierdoor niet geraakt — die kijken alleen naar de eerste en laatste datum. De dubbele regels zijn opgeruimd en de lijst laat een seizoen nu maar één keer toe. (#631)
+- **Issues bleven na een release onterecht als 'wacht op release' openstaan, of kwamen juist weer open te staan nadat ze al waren afgerond.** Bij de vorige release gold dat voor vijf issues: hun nummer stond niet in de commit-tekst, alleen in het wijzigingsoverzicht. Daarnaast werd een al afgerond issue opnieuw geopend zodra een latere wijziging het nummer terzijde vermeldde. Beide zijn verholpen: het wijzigingsoverzicht wordt nu meegelezen bij het afsluiten, een terzijde-vermelding heropent niets meer, en na elke release wordt gemeld welke issues nog openstaan zodat er niets stil blijft hangen. (#630)
+
+### Changed
+- Onderhoudsupdates van externe softwarebibliotheken doorgevoerd (Azure Functions worker-SDK en HTTP-uitbreiding, de AI-bibliotheek, en de database-actie in de bouwstraat). Geen functionele wijzigingen; dit houdt het systeem bij op beveiligings- en foutherstel van de leveranciers. (#634)
+- De controle vóór het versturen van wijzigingen is sterk versneld: van ruim negen minuten naar negen seconden bij een release. Voorheen liep die zo lang dat hij op een vastloper leek — met het risico dat iemand hem zou omzeilen. De controle is even grondig als voorheen. (#636)
+
+### Security
+- Het goedgekeurde fictieve demodomein wordt niet langer door de eigen beveiligingscontroles geblokkeerd. Het domein van de demogegevens is opgenomen in de uitzonderingslijsten, zodat documentatie over de demo-omgeving niet onterecht als privacyschending wordt gemeld. De controles zelf zijn niet verzwakt. (#649)
+- De controle vóór het versturen van wijzigingen meldt nu expliciet wanneer het aanvullende scanprogramma niet op de machine staat. Voorheen werd die stap stil overgeslagen, waardoor een ontwikkelaar dacht meer bescherming te hebben dan er was. (#649)
+- **Tijdelijke toegangsregels van de bouwstraat werden nooit opgeruimd.** Bij elke deploy krijgt de bouwserver kortdurend toegang tot de database; die toegang moest daarna weer worden ingetrokken. Door een fout in het opruimcommando gebeurde dat nooit, terwijl de stap wél een vinkje gaf — er stonden 15 verouderde toegangsregels open. Het commando is gecorrigeerd en fouten worden nu zichtbaar gemeld in plaats van weggeslikt. (#632)
+
 ## [2.17.0.0] — 2026-07-26
 
 ### Added

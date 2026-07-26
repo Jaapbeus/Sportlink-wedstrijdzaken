@@ -46,35 +46,64 @@ while read local_ref local_sha remote_ref remote_sha; do
   done <<< "$CHANGED_FILES"
 
   # Pattern-based scan op commits
-  if [ -f "$PATTERN_FILE" ]; then
+  #
+  # #636: voorheen liep dit als 'git show <sha>:<bestand> | grep' voor ELKE combinatie van patroon
+  # en bestand. Bij 42 patronen en ~100 gewijzigde bestanden (een tag-push dereferencet naar de
+  # volledige merge-diff) zijn dat ~4200 losse processen. Procesopstart is op Windows duur, dus een
+  # tag-push duurde meer dan vijf minuten en leek vastgelopen — met het risico dat iemand
+  # --no-verify gaat gebruiken en daarmee de AVG-/secretsbescherming omzeilt.
+  #
+  # Nu één 'git grep' per patroon: 42 processen in plaats van 4200. Dezelfde dekking, want git grep
+  # zoekt server-side in dezelfde commit over dezelfde bestandenlijst.
+  FILES_TO_SCAN=()
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    # Sla configuratie- en template-bestanden over: die bevatten de patronen per definitie.
+    case "$file" in
+      *sensitive-patterns.template.txt|*.gitleaks.toml|*pre-commit|*pre-push|*security-scan.yml) continue ;;
+    esac
+    FILES_TO_SCAN+=("$file")
+  done <<< "$CHANGED_FILES"
+
+  if [ -f "$PATTERN_FILE" ] && [ ${#FILES_TO_SCAN[@]} -gt 0 ]; then
     while IFS= read -r pattern || [ -n "$pattern" ]; do
       [ -z "$pattern" ] && continue
       [[ "$pattern" =~ ^# ]] && continue
-      while IFS= read -r file; do
-        [ -z "$file" ] && continue
-        # Sla configuratie- en template-bestanden over
-        if echo "$file" | grep -qE "(sensitive-patterns\.template\.txt|\.gitleaks\.toml|pre-commit|pre-push|security-scan\.yml)$"; then
-          continue
-        fi
-        if git show "$local_sha:$file" 2>/dev/null | grep -qiE "$pattern"; then
-          echo ""
-          echo "BLOCKED: Sensitive pattern in commit"
-          echo "  File   : $file"
-          echo "  Pattern: $pattern"
-          FOUND_ISSUE=1
-        fi
-      done <<< "$CHANGED_FILES"
+      # -I slaat binaire bestanden over; -l geeft alleen de treffers, niet de regel zelf (die kan
+      # de gevoelige waarde bevatten en hoort niet in de hook-output).
+      HITS=$(git grep -l -I -i -E -e "$pattern" "$local_sha" -- "${FILES_TO_SCAN[@]}" 2>/dev/null || true)
+      if [ -n "$HITS" ]; then
+        echo ""
+        echo "BLOCKED: Sensitive pattern in commit"
+        echo "  Pattern: $pattern"
+        while IFS= read -r hit; do
+          [ -z "$hit" ] && continue
+          # git grep geeft '<sha>:<pad>' terug wanneer een commit is meegegeven.
+          echo "  File   : ${hit#*:}"
+        done <<< "$HITS"
+        FOUND_ISSUE=1
+      fi
     done < "$PATTERN_FILE"
   fi
 done
 
 # ── 3. Gebruik gitleaks indien beschikbaar ────────────────────────────────────
+# gitleaks is optioneel (zie CLAUDE.md), dus ontbreken mag de push niet blokkeren. Maar het stil
+# overslaan gaf een vals gevoel van dekking: de patroonscan hierboven is aanzienlijk beperkter dan
+# gitleaks. Nu wordt het expliciet gemeld, net zoals #514 dat deed voor een ontbrekende
+# sensitive-patterns.txt. (#649)
 if command -v gitleaks &>/dev/null; then
   if ! gitleaks detect --exit-code 1 --no-banner 2>/dev/null; then
     echo ""
     echo "BLOCKED: gitleaks detected secrets in repository"
     FOUND_ISSUE=1
   fi
+else
+  echo ""
+  echo "WAARSCHUWING: gitleaks is niet geinstalleerd — alleen de patroonscan is uitgevoerd."
+  echo "  Die dekt minder dan gitleaks (geen entropie-analyse, geen generieke sleutelformaten)."
+  echo "  Installeren:  winget install gitleaks   (Windows)"
+  echo "                brew install gitleaks     (macOS)"
 fi
 
 if [ "$FOUND_ISSUE" -eq 1 ]; then

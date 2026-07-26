@@ -73,7 +73,7 @@ jobs:
       - name: "▶ Login-poging om auto-resume te triggeren"
         if: steps.status.outputs.paused == 'true'
         continue-on-error: true
-        uses: azure/sql-action@v2.3
+        uses: azure/sql-action@v2.4
         with:
           connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: scripts/ci/wake-database.sql
@@ -98,6 +98,9 @@ jobs:
           fi
           echo "✓ Database Online — release mag doorgaan"
 
+      # GEEN --yes: dat argument bestaat niet voor 'firewall-rule delete' en liet de delete stil
+      # falen, waardoor elke run een openstaande IP-regel achterliet (#632). Fouten worden nu
+      # gelogd i.p.v. naar /dev/null; opruimen mag de pipeline nog steeds niet laten falen.
       - name: "▶ Firewall-regel opruimen"
         if: always() && steps.status.outputs.paused == 'true'
         run: |
@@ -105,7 +108,7 @@ jobs:
             --resource-group "$SQL_RESOURCE_GROUP" \
             --server "$SQL_SERVER" \
             --name "db-check-pr-${{ github.run_id }}" \
-            --yes 2>/dev/null || true
+            || echo "::warning::Firewall-regel db-check-pr-${{ github.run_id }} niet verwijderd — handmatig opruimen"
 
       - name: "▶ Eindstatus"
         run: |
