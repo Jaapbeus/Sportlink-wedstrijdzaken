@@ -133,6 +133,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
+          AFGEHANDELD: ${{ steps.issues.outputs.numbers }}
         with:
           script: |
             const label = 'status: awaiting-release';
@@ -144,7 +145,23 @@ jobs:
               per_page: 100,
             });
 
-            const issues = remaining.filter(i => !i.pull_request);
+            // De label-index van GitHub loopt achter op de sluitingen uit de vorige stap: bij de
+            // release van v2.17.1.0 meldde dit rapport #649 als 'blijft open' terwijl datzelfde
+            // issue een seconde eerder in deze run was gesloten. Een vangnet dat bij elke release
+            // valse alarmen geeft, wordt genegeerd — en dan doet het zijn werk niet meer.
+            //
+            // Daarom deterministisch filteren op wat deze run zelf heeft afgehandeld, in plaats van
+            // te vertrouwen op de versheid van de index.
+            const afgehandeld = new Set(
+              (process.env.AFGEHANDELD || '')
+                .split(',')
+                .map(n => parseInt(n, 10))
+                .filter(Number.isInteger)
+            );
+
+            const issues = remaining
+              .filter(i => !i.pull_request)
+              .filter(i => !afgehandeld.has(i.number));
             if (issues.length === 0) {
               core.notice(`Geen issues meer op '${label}' — lifecycle sluitend na ${process.env.RELEASE_TAG}.`);
               return;
