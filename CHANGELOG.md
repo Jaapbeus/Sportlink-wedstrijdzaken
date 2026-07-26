@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.17.0.0] — 2026-07-26
+
 ### Added
 - KNVB-speeldagenkalender voor seizoen 2026/'27 is opgenomen in de database voor **alle zes districten**: West, Noord, Oost, Zuid, Landelijk en Landelijk jeugd. Per speeldatum is nu bekend of het een competitie-, beker-, inhaal-, nacompetitie- of vrije dag is, welke leeftijdscategorieën actief zijn, en welke schoolvakanties of feestdagen spelen. Clubs buiten district West kunnen de kalender daarmee ook gebruiken.
 - Dagplanning toont nu direct de wedstrijden die op de gekozen datum gepland staan — zodra je een andere datum kiest, wordt dit meteen bijgewerkt zonder dat je eerst op "Optimaliseer" hoeft te klikken. (#566)
@@ -36,9 +38,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Ontbreekt de instelling voor de GitHub-repository, dan meldt het systeem dat nu als configuratiefout in plaats van een onduidelijke "niet gevonden"-melding te geven. Dit raakt clubs die het project onder een andere naam overnemen. (#607)
 - Een gepauzeerde database blokkeert de bouwstap niet langer. Voorheen werden daardoor alle controles overgeslagen en konden programmeerfouten wekenlang onopgemerkt blijven. Deployen naar een gepauzeerde database blijft geblokkeerd. (#599)
 
-### Security
-- Het voorbeeldvenster van de klassieke dagplanning draait nu in een afgeschermde omgeving zonder scriptuitvoering. Extra bescherming tegen kwaadaardige inhoud in namen die uit Sportlink komen. (#603)
-
 ### Changed
 - De API-documentatie (`openapi.yaml`/`.json`) is bijgewerkt naar de huidige versie en bevat nu ook de twee endpoints voor het importeren van teambegeleiding en het verschuiven van testwedstrijden. (#605)
 - De geschiedenistabellen hebben nu een index op hun sleutel en op de clubkoppeling. Dat versnelt zoekopdrachten en voorkomt dubbele rijen. Waar de Sportlink-gegevens nu al dubbelingen bevatten (zie #569) wordt de index zonder uniciteitseis aangemaakt, zodat een deploy niet vastloopt. (#606)
@@ -50,15 +49,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - Beschikbaarheids- en herplanchecks haalden de teamregels per team afzonderlijk uit de database. Op een drukke zaterdag waren dat tientallen losse databasevragen. Dit gebeurt nu in één keer — sneller antwoord en minder verbruik op de gratis databaselimiet. (#575)
 - De documentatie noemde .NET 10 als runtime voor de Azure Functions, terwijl die versie op het gratis hostingplan niet werkt. Bijgewerkt naar de werkelijke versie, met een expliciete waarschuwing dat upgraden een betaald plan vereist. (#579)
 
-### Security
-- Planning- en bezettingsgegevens van andere clubs — inclusief de AllStars FC demodata — konden in zoekresultaten en in de planningsbeslissing van de eigen club terechtkomen. Alle planner- en bezettingsvragen zijn nu hard afgebakend op de eigen club: wedstrijden zoeken, teamconflicten, veldbezetting, teamrooster en het markeren van vervallen wedstrijden. (#573, #580)
-
-### Changed
 - `EmailProcessorFunction` is opgesplitst in testbare services (`EmailBatchFilterService`, `EmailClassificationService`, `EmailPersistenceService`, `EmailReplyPolicyService`) met nieuwe interfaces voor Graph- en persistence-koppelingen. Het gedrag blijft gelijk, maar de orkestratie is nu dunner en eenvoudiger te onderhouden en testen. (#577)
 - **De coördinator krijgt geen automatische mail meer als een wedstrijd gewoon ingepland kan worden.** Een automatisch antwoord is er om een blokkade te melden: is er ruimte op de gevraagde datum, dan volgt geen mail en plant de coördinator handmatig in. Bij meerdere gevraagde datums met een gemengde uitkomst gaat er wél een antwoord uit, met per datum wat wel en niet kan. Deze berichten krijgen in Outlook het label 'Handmatige planning' en zijn terug te vinden onder Instellingen → Email verwerking. (#572)
 - De waarschuwing bij doordeweekse aanvragen noemde vaste veldnummers ("alleen veld 5 beschikbaar"). Dat klopt niet voor elke club en elk seizoen. De tekst verwijst nu naar de ingestelde veldbeschikbaarheid. (#576)
 - De KNVB-verplaatsingsregels waarop de AI herplanverzoeken beoordeelt zijn bijgewerkt naar seizoen 2026/'27. Verzoeken worden niet langer getoetst aan de verlopen deadlines van seizoen 2025/'26. Nieuw toegevoegd: de seizoensdata (competitiestart, winterstop, laatste speelronde, nacompetitie) en de verplaatsingsdeadlines voor de landelijke divisies.
 - Review mode stuurt geen email meer terug aan de coördinator — in plaats daarvan wordt de originele email gemarkeerd met 'Geen AI antwoord' zodat de coördinator deze handmatig kan afhandelen. Interne notificaties (teamleider, team-contact) worden ook onderdrukt tijdens review mode.
+
+### Security
+- Planning- en bezettingsgegevens van andere clubs — inclusief de AllStars FC demodata — konden in zoekresultaten en in de planningsbeslissing van de eigen club terechtkomen. Alle planner- en bezettingsvragen zijn nu hard afgebakend op de eigen club: wedstrijden zoeken, teamconflicten, veldbezetting, teamrooster en het markeren van vervallen wedstrijden. (#573, #580)
+- Het voorbeeldvenster van de klassieke dagplanning draait nu in een afgeschermde omgeving zonder scriptuitvoering. Extra bescherming tegen kwaadaardige inhoud in namen die uit Sportlink komen. (#603)
 
 ## [2.16.0.0] — 2026-06-01
 
