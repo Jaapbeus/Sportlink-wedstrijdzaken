@@ -170,64 +170,11 @@ namespace SportlinkFunction.Planner
                 return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
             }
         }
-        [Function("Optimaliseer")]
-        public static async Task<IActionResult> Optimaliseer(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/optimaliseer")] HttpRequest req,
-            FunctionContext context)
-        {
-            var log = context.GetLogger("Optimaliseer");
-            var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-            try
-            {
-                await SystemUtilities.WaitForDatabaseAsync(log);
-
-                string body = await new StreamReader(req.Body).ReadToEndAsync();
-                var request = JsonConvert.DeserializeObject<OptimaliseerRequest>(body);
-                if (request == null || string.IsNullOrEmpty(request.Datum))
-                    return new BadRequestObjectResult(new { error = "Request body met 'datum' is verplicht." });
-
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-                log.LogInformation("Optimaliseer: datum={Datum}, doel={Doel}, clubCode={ClubCode}", request.Datum, request.Doel, clubCode);
-
-                var response = await PlannerService.OptimaliseerAsync(request, clubCode, log);
-
-                var format = req.Query.ContainsKey("format") ? req.Query["format"].ToString() : "";
-
-                if (response.VoldoendeRuimte && (format == "html" || format == "email"))
-                {
-                    var meldingHtml = $"<div style='background:#1a3a1a;border:1px solid #2ea043;padding:16px;border-radius:8px;margin-bottom:20px;color:#e6edf3;font-family:sans-serif;'>" +
-                        $"<strong>&#10003; {response.VoldoendeRuimteMelding}</strong></div>";
-                    var volleHtml = meldingHtml + response.HtmlPlanner;
-                    return new ContentResult { Content = volleHtml, ContentType = "text/html", StatusCode = 200 };
-                }
-
-                if (format == "html")
-                    return new ContentResult { Content = response.HtmlPlanner, ContentType = "text/html", StatusCode = 200 };
-
-                if (format == "email")
-                {
-                    var browserUrl = $"{req.Scheme}://{req.Host}/api/planner/optimaliseer?format=html";
-                    var emailHtml = PlannerHtmlGenerator.GenereerEmailHtml(
-                        DateOnly.Parse(request.Datum),
-                        await SportlinkApiClient.GetFieldOccupationsWithApiAsync(DateOnly.Parse(request.Datum), log),
-                        response.Suggesties,
-                        await PlannerDataAccess.GetVeldenAsync(clubCode),
-                        request.Doel ?? "grasveld-ontlasten",
-                        browserUrl);
-                    return new ContentResult { Content = emailHtml, ContentType = "text/html", StatusCode = 200 };
-                }
-
-                return new OkObjectResult(response);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Optimaliseer failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
-        }
+        // POST /api/planner/optimaliseer is vervallen bij #666. Er is nu één dagplanning-optimalisatie:
+        // POST /api/planner/auto-plan (AutoPlanService), die regels, voorkeurstijden en de defaults per
+        // leeftijdscategorie in die rangorde toepast. Het oude endpoint negeerde voorkeuren en
+        // prioriteiten volledig, waardoor twee knoppen in de GUI verschillende planningen opleverden.
+        // De HTML-weergaven zitten in de auto-plan-response (HuidigeHtml / OptimaleHtml).
 
         [Function("ZoekWedstrijd")]
         public static async Task<IActionResult> ZoekWedstrijd(

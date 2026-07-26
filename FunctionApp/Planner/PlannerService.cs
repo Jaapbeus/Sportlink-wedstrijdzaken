@@ -8,10 +8,14 @@ namespace SportlinkFunction.Planner
     ///
     /// Service-verdeling:
     ///   AvailabilityService  — CheckAvailabilityAsync, CheckDoordeweeksBeschikbaarAsync
-    ///   AutoPlanService      — AutoPlanAsync, AutoPlanToepassenAsync
-    ///   OptimizationService  — OptimaliseerAsync
+    ///   AutoPlanService      — AutoPlanAsync, AutoPlanToepassenAsync  (de enige dagplanning-optimalisatie)
     ///   RescheduleService    — CheckRescheduleAvailabilityAsync
     ///   TeamScheduleService  — GetTeamScheduleAsync
+    ///
+    /// De losse OptimizationService (endpoint /planner/optimaliseer, "klassiek optimaliseren") is
+    /// vervallen bij #666: twee optimalisatiepaden naast elkaar met verschillend gedrag — het klassieke
+    /// pad negeerde voorkeurstijden en prioriteiten volledig — leidde tot planningen die de ingestelde
+    /// voorkeuren niet respecteerden. AutoPlanService is nu de enige optimalisatie.
     ///
     /// Gedeelde utilities en de FieldScheduler engine:
     ///   PlannerShared        — constanten, helpers, FieldScheduler, CandidateSlot, IngeplandSlot
@@ -36,10 +40,6 @@ namespace SportlinkFunction.Planner
 
         public static Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
             => AutoPlanService.VeldbezettingAsync(datum, clubCode);
-
-        public static Task<OptimaliseerResponse> OptimaliseerAsync(
-            OptimaliseerRequest request, string? clubCode, ILogger log)
-            => OptimizationService.OptimaliseerAsync(request, clubCode, log);
 
         public static Task<HerplanCheckResponse> CheckRescheduleAvailabilityAsync(
             HerplanCheckRequest request, ILogger log, string? clubCode = null)

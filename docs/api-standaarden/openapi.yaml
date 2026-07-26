@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 2.17.2
+  version: 2.17.4
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1318,6 +1318,14 @@ components:
         wedstrijdRust:
           type: integer
           example: 5
+        standaardVoorkeurTijd:
+          type: string
+          nullable: true
+          description: |
+            Standaard voorkeurstijd "HH:mm" voor deze leeftijdscategorie (#666). Wordt door de
+            auto-planner gebruikt voor teams zonder eigen rij in dbo.TeamVoorkeurTijden.
+            null of leeg = geen streeftijd; de planner kiest dan het eerst beschikbare slot.
+          example: "10:00"
 
     # ── Beheer — Theme ────────────────────────────────────────────────────────
 
@@ -1642,34 +1650,89 @@ components:
     AutoPlanWedstrijd:
       type: object
       properties:
-        wedstrijdcode:
+        wedstrijdCode:
           type: integer
           format: int64
           nullable: true
-        team:
+        wedstrijd:
           type: string
-        tegenstander:
+          description: Volledige wedstrijdomschrijving zoals in Sportlink
+        teamNaam:
           type: string
-          nullable: true
         leeftijdsCategorie:
           type: string
           nullable: true
-        huidigVeld:
+        competitiesoort:
+          type: string
+          nullable: true
+        duurMinuten:
+          type: integer
+        veldafmeting:
+          type: number
+          format: decimal
+        huidigeVeld:
           type: string
           nullable: true
         huidigeTijd:
           type: string
           nullable: true
-        nieuwVeld:
+        heeftVeld:
+          type: boolean
+        heeftTijd:
+          type: boolean
+        optimaalVeldNummer:
+          type: integer
+          nullable: true
+        optimaalVeldNaam:
           type: string
           nullable: true
-        nieuweTijd:
+        optimaalVeld:
           type: string
           nullable: true
-        actie:
+          description: Veld in Sportlink-formaat, eventueel met subpositie ("veld 3 A")
+          example: "veld 3 A"
+        optimaalTijd:
           type: string
-          description: Wat het auto-plan doet met deze wedstrijd
           nullable: true
+          example: "11:15"
+        status:
+          type: string
+          description: |
+            Verplaatst de planner deze wedstrijd t.o.v. de huidige stand? Zegt niets over de
+            voorkeurstijd — daarvoor is `voorkeurStatus` (#666).
+          enum: [ongewijzigd, wijziging, nieuw-slot, niet-inplanbaar, onbekend-team]
+        nietInplanbaaarReden:
+          type: string
+          nullable: true
+        voorkeurTijd:
+          type: string
+          nullable: true
+          description: Streeftijd waarop is ingepland; null als er geen voorkeur en geen leeftijdsdefault is
+          example: "11:00"
+        voorkeurAfwijkingMinuten:
+          type: integer
+          nullable: true
+          description: 0 = exact op de voorkeurstijd, positief = later, negatief = eerder
+        voorkeurBron:
+          type: string
+          nullable: true
+          description: |
+            Uit welke laag van de rangorde de streeftijd komt (#666):
+            `regel` = teamregel VoorkeurVeld met tijd, `team` = dbo.TeamVoorkeurTijden,
+            `leeftijd` = dbo.Speeltijden.StandaardVoorkeurTijd.
+          enum: [regel, team, leeftijd]
+        voorkeurStatus:
+          type: string
+          description: Beoordeling van de afwijking, met dezelfde drempels als de Gantt-legenda
+          enum: [op-tijd, kleine-afwijking, grote-afwijking, geen-voorkeur]
+        voorkeurVeldNummer:
+          type: integer
+          nullable: true
+          description: Voorkeursveld uit een teamregel; null als die regel er niet is
+        voorkeurVeldToegepast:
+          type: boolean
+          nullable: true
+          description: false als er een voorkeursveld was maar de planner een ander veld moest kiezen
 
     VeldbezettingItem:
       type: object
@@ -2027,55 +2090,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HerplanBevestigResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /planner/optimaliseer:
-    post:
-      tags: [planner]
-      operationId: optimaliseer
-      summary: Planningsoptimalisatie berekenen
-      description: |
-        Analyseert de planning voor een datum en genereert optimalisatiesuggesties.
-        **Voert niets door** — alleen advies.
-
-        **Output-formaten** (via `?format=`):
-        - *(geen)* — JSON met suggesties
-        - `html` — interactieve browser-HTML met plannervisualisatie
-        - `email` — email-compatibele HTML met link naar browser-versie
-
-        Beveiliging: `AuthorizationLevel.Anonymous` + `EasyAuthHelper.RequireAdmin()` — Bearer token vereist.
-      security:
-        - easyAuth: []
-      parameters:
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [html, email]
-          description: Outputformaat. Leeg = JSON.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OptimaliseerRequest'
-      responses:
-        '200':
-          description: Optimalisatieresultaat
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OptimaliseerResponse'
-            text/html:
-              schema:
-                type: string
-                description: HTML plannerweergave (bij ?format=html of ?format=email)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -4086,7 +4100,7 @@ paths:
       description: |
         Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de
         laatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die
-        `/planner/auto-plan` en `/planner/optimaliseer` uitvoeren. Bedoeld als snelle,
+        `/planner/auto-plan` uitvoert. Bedoeld als snelle,
         goedkope "wat staat er nu al gepland"-weergave.
       security:
         - easyAuth: []

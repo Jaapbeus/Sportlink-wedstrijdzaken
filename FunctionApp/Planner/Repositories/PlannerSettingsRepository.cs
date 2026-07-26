@@ -18,12 +18,18 @@ internal static class PlannerSettingsRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(
-            "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @cat AND [ClubCode] = @cc", conn);
+            "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [StandaardVoorkeurTijd] FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @cat AND [ClubCode] = @cc", conn);
         cmd.Parameters.AddWithValue("@cat", leeftijdsCategorie);
         cmd.Parameters.AddWithValue("@cc", cc);
         using var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
-            return new Speeltijd { Leeftijd = reader.GetString(0), Veldafmeting = reader.GetDecimal(1), WedstrijdTotaal = reader.GetInt32(2) };
+            return new Speeltijd
+            {
+                Leeftijd = reader.GetString(0),
+                Veldafmeting = reader.GetDecimal(1),
+                WedstrijdTotaal = reader.GetInt32(2),
+                StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TimeOnly.FromTimeSpan(reader.GetTimeSpan(3))
+            };
         return null;
     }
 
@@ -61,11 +67,17 @@ internal static class PlannerSettingsRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(
-            "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal] FROM [dbo].[Speeltijden] WHERE [ClubCode] = @cc", conn);
+            "SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [StandaardVoorkeurTijd] FROM [dbo].[Speeltijden] WHERE [ClubCode] = @cc", conn);
         cmd.Parameters.AddWithValue("@cc", cc);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            result[reader.GetString(0)] = new Speeltijd { Leeftijd = reader.GetString(0), Veldafmeting = reader.GetDecimal(1), WedstrijdTotaal = reader.GetInt32(2) };
+            result[reader.GetString(0)] = new Speeltijd
+            {
+                Leeftijd = reader.GetString(0),
+                Veldafmeting = reader.GetDecimal(1),
+                WedstrijdTotaal = reader.GetInt32(2),
+                StandaardVoorkeurTijd = reader.IsDBNull(3) ? null : TimeOnly.FromTimeSpan(reader.GetTimeSpan(3))
+            };
         return result;
     }
 

@@ -35,6 +35,7 @@ else
                 <th title="speeltijd + rust incl. buffer">Totaal (min) <small class="text-muted">incl. rust</small></th>
                 <th>Helft (min)</th>
                 <th>Rust (min)</th>
+                <th title="Gebruikt als een team geen eigen voorkeurstijd heeft">Standaard voorkeurstijd</th>
                 <th></th>
             </tr>
         </thead>
@@ -48,6 +49,16 @@ else
                     <td>@s.WedstrijdHelft</td>
                     <td>@s.WedstrijdRust</td>
                     <td>
+                        @if (string.IsNullOrWhiteSpace(s.StandaardVoorkeurTijd))
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                        else
+                        {
+                            @s.StandaardVoorkeurTijd
+                        }
+                    </td>
+                    <td>
                         <button class="btn btn-sm btn-primary me-1" @onclick="() => Edit(s)">Bewerken</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(s.Leeftijd)">Verwijderen</button>
                     </td>
@@ -55,7 +66,7 @@ else
             }
             @if (_items.Count == 0)
             {
-                <tr><td colspan="6" class="text-muted">Geen speeltijden gevonden.</td></tr>
+                <tr><td colspan="7" class="text-muted">Geen speeltijden gevonden.</td></tr>
             }
         </tbody>
     </table>
@@ -65,7 +76,10 @@ else
         <hr />
         <h3>@(_isNew ? "Nieuwe leeftijdscategorie" : $"Bewerken: {_editing.Leeftijd}")</h3>
         <p class="text-muted small">
-            WedstrijdTotaal = speeltijd + rust. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.
+            WedstrijdTotaal = speeltijd + rust. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.<br />
+            <strong>Standaard voorkeurstijd</strong> geldt voor teams in deze categorie die géén eigen
+            voorkeurstijd hebben onder Instellingen → Voorkeurstijden. Laat leeg om geen streeftijd te
+            gebruiken; de planner kiest dan het eerst beschikbare tijdslot.
         </p>
         <EditForm Model="_editing" OnValidSubmit="OpslaanAsync">
             <div class="row g-3 align-items-end">
@@ -89,6 +103,12 @@ else
                 <div class="col-md-2">
                     <label class="form-label">Rust (min)</label>
                     <input class="form-control" type="number" min="0" @bind="_editing.WedstrijdRust" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Standaard voorkeurstijd</label>
+                    <TimeInput Value="@_editing.StandaardVoorkeurTijd"
+                               ValueChanged="@(v => _editing.StandaardVoorkeurTijd = string.IsNullOrWhiteSpace(v) ? null : v)"
+                               Placeholder="bijv. 10:00" />
                 </div>
                 <div class="col-md-2 d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Opslaan</button>
@@ -147,7 +167,8 @@ else
             Veldafmeting = s.Veldafmeting,
             WedstrijdTotaal = s.WedstrijdTotaal,
             WedstrijdHelft = s.WedstrijdHelft,
-            WedstrijdRust = s.WedstrijdRust
+            WedstrijdRust = s.WedstrijdRust,
+            StandaardVoorkeurTijd = s.StandaardVoorkeurTijd
         };
         _isNew = false;
         _saveError = null;

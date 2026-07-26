@@ -20,7 +20,7 @@ internal static class TeamRulesRepository
             SELECT [TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer], [WaardeTijd], [Prioriteit]
             FROM [dbo].[TeamRegels]
             WHERE [TeamNaam] = @team AND [Actief] = 1 AND [ClubCode] = @cc
-            ORDER BY [Prioriteit] DESC
+            ORDER BY [Prioriteit]
         ", conn);
         cmd.Parameters.AddWithValue("@team", teamNaam);
         cmd.Parameters.AddWithValue("@cc", cc);
@@ -68,7 +68,7 @@ internal static class TeamRulesRepository
             FROM [dbo].[TeamRegels]
             WHERE [TeamNaam] IN ({string.Join(", ", paramNames)})
               AND [Actief] = 1 AND [ClubCode] = @cc
-            ORDER BY [TeamNaam], [Prioriteit] DESC
+            ORDER BY [TeamNaam], [Prioriteit]
         ", conn);
         for (int i = 0; i < teams.Count; i++)
             cmd.Parameters.AddWithValue(paramNames[i], teams[i]);
@@ -96,6 +96,46 @@ internal static class TeamRulesRepository
             list.Add(regel);
         }
         return results;
+    }
+
+    /// <summary>
+    /// Voorkeursveld-regels per team (#666). Vóór deze methode filterde de planner uitsluitend op
+    /// BufferVoor/BufferNa, waardoor een ingesteld RegelType 'VoorkeurVeld' wél opgeslagen en in de
+    /// GUI getoond werd maar géén enkel effect had op de planning.
+    ///
+    /// Prioriteit: laag getal = belangrijker — dezelfde conventie als dbo.TeamVoorkeurTijden. Bij
+    /// meerdere VoorkeurVeld-regels voor hetzelfde team wint de rij met de laagste Prioriteit.
+    /// WaardeTijd is optioneel en betekent: dit veld op dit tijdstip.
+    /// </summary>
+    internal static async Task<Dictionary<string, TeamVoorkeurVeld>> GetAllTeamVoorkeurVeldenAsync(string? clubCode = null)
+    {
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
+        var result = new Dictionary<string, TeamVoorkeurVeld>(StringComparer.OrdinalIgnoreCase);
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            SELECT [TeamNaam], [WaardeVeldNummer], [WaardeTijd], [Prioriteit]
+            FROM [dbo].[TeamRegels]
+            WHERE [RegelType] = 'VoorkeurVeld' AND [Actief] = 1 AND [WaardeVeldNummer] IS NOT NULL
+              AND [ClubCode] = @cc
+            ORDER BY [TeamNaam], [Prioriteit]
+        ", conn);
+        cmd.Parameters.AddWithValue("@cc", cc);
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var team = reader.GetString(0);
+            // Eerste rij per team wint: de query sorteert op Prioriteit oplopend.
+            if (result.ContainsKey(team)) continue;
+            result[team] = new TeamVoorkeurVeld
+            {
+                TeamNaam    = team,
+                VeldNummer  = reader.GetInt32(1),
+                Tijd        = reader.IsDBNull(2) ? null : TimeOnly.FromTimeSpan(reader.GetTimeSpan(2)),
+                Prioriteit  = reader.GetInt32(3)
+            };
+        }
+        return result;
     }
 
     internal static async Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
