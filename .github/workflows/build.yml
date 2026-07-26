@@ -43,6 +43,66 @@ jobs:
         run: dotnet build BlazorAdmin/BlazorAdmin.csproj --configuration Release
 
       # ──────────────────────────────────────────────────────────────────────
+      # #659: CSP-regressiewacht op de gepubliceerde index.html.
+      #
+      # De productie-CSP van Azure Static Web Apps staat 'script-src self wasm-unsafe-eval' toe,
+      # zonder 'unsafe-inline'. Elk inline <script> in index.html wordt daar dus geblokkeerd.
+      # Dat gebeurde met de import-map die de build injecteert bij
+      # OverrideHtmlAssetPlaceholders=true: Blazor kon de gefingerprinte dotnet.js niet resolven,
+      # kreeg een 404 en startte nooit — de Admin GUI bleef permanent op het laadscherm hangen.
+      #
+      # Lokaal is dit onzichtbaar: noch de Blazor dev-server noch de SWA CLI-emulator zet de
+      # CSP-header. Deze check is daarom de enige plek waar het automatisch opvalt.
+      #
+      # Er wordt op de PUBLISH-output gecontroleerd en niet op de bron, omdat de build de
+      # import-map injecteert — een schone bron zegt dus niets.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: CSP-guard — geen inline scripts in gepubliceerde index.html
+        run: |
+          dotnet publish BlazorAdmin/BlazorAdmin.csproj --configuration Release -o ./blazor-publish
+          INDEX="./blazor-publish/wwwroot/index.html"
+          if [ ! -f "$INDEX" ]; then
+            echo "::error::$INDEX niet gevonden na publish."
+            exit 1
+          fi
+
+          # HTML-commentaar eerst strippen: uitleg over deze regel mag geen valse treffer geven.
+          CLEAN=$(python3 -c "
+          import re, io, sys
+          html = io.open('$INDEX', encoding='utf-8').read()
+          sys.stdout.write(re.sub(r'<!--.*?-->', '', html, flags=re.S))
+          ")
+
+          FOUND=0
+
+          # Een <script> zonder src-attribuut is inline en wordt door de CSP geblokkeerd.
+          INLINE=$(printf '%s' "$CLEAN" | grep -oE '<script(([^>]*)?)>' | grep -vE '\ssrc=' || true)
+          if [ -n "$INLINE" ]; then
+            echo "::error::Inline <script> in de gepubliceerde index.html — de productie-CSP blokkeert dit (#659)."
+            printf '%s\n' "$INLINE" | while read -r tag; do echo "::error::  $tag"; done
+            FOUND=1
+          fi
+
+          if printf '%s' "$CLEAN" | grep -q 'type="importmap"'; then
+            echo "::error::Import-map aanwezig in de gepubliceerde index.html. Zet OverrideHtmlAssetPlaceholders op false (#659)."
+            FOUND=1
+          fi
+
+          # Zonder import-map moeten de framework-scripts ongefingerprint bestaan.
+          for f in blazor.webassembly.js dotnet.js; do
+            if [ ! -f "./blazor-publish/wwwroot/_framework/$f" ]; then
+              echo "::error::_framework/$f ontbreekt. Zonder import-map kan de browser de gefingerprinte variant niet resolven (#659)."
+              FOUND=1
+            fi
+          done
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo "::error::Zie docs/CUSTOM-DOMAIN.md niet — maar issue #659 en het commentaar in BlazorAdmin/wwwroot/index.html."
+            exit 1
+          fi
+          echo "✅ Geen inline scripts, geen import-map, framework-scripts ongefingerprint aanwezig."
+
+      # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.
       #
       # De deploy-pipeline publiceert geen dacpac — `db-migrate` runt alleen
