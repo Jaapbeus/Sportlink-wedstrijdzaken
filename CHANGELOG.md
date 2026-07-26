@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- Het goedgekeurde fictieve demodomein wordt niet langer door de eigen beveiligingscontroles geblokkeerd. Het domein van de demogegevens is opgenomen in de uitzonderingslijsten, zodat documentatie over de demo-omgeving niet onterecht als privacyschending wordt gemeld. De controles zelf zijn niet verzwakt. (#649)
+- De controle vóór het versturen van wijzigingen meldt nu expliciet wanneer het aanvullende scanprogramma niet op de machine staat. Voorheen werd die stap stil overgeslagen, waardoor een ontwikkelaar dacht meer bescherming te hebben dan er was. (#649)
+
+### Changed
+- De controle vóór het versturen van wijzigingen is sterk versneld: van ruim negen minuten naar negen seconden bij een release. Voorheen liep die zo lang dat hij op een vastloper leek — met het risico dat iemand hem zou omzeilen. De controle is even grondig als voorheen. (#636)
+
 ## [2.17.1.0] — 2026-07-26
 
 ### Fixed

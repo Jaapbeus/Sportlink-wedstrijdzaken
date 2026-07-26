@@ -87,6 +87,12 @@ description = "Bestanden die uitgesloten worden van scanning"
 regexes = [
   # voorbeeld.nl is een goedgekeurd fictief placeholder-domein (John Doe-principe, zie CLAUDE.md).
   '''trainer@voorbeeld\.nl''',
+  # allstars-fc.test is het domein van de AllStars FC demodata. .test is een door RFC 2606
+  # gereserveerd TLD en bestaat publiek niet, dus deze adressen kunnen nooit een echt persoon zijn.
+  # Goedgekeurd als AVG-uitzondering in CLAUDE.md. Preventief opgenomen (#649): de consumer-email-
+  # regel matcht nu een vaste domeinlijst, maar zodra die verbreed wordt naar een generiek patroon
+  # zouden alle seed-adressen in Script.PostDeployment1.sql geflagd worden.
+  '''@allstars-fc\.test''',
   # Jan de Vries is een fictieve naam (NL John Doe equivalent) — geen echte persoonsgegevens.
   '''Jan de Vries''',
   # Placeholder-patronen in documentatie zijn geen echte waarden

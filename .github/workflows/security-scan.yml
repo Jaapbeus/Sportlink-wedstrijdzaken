@@ -134,9 +134,13 @@ jobs:
           for f in $DOC_FILES; do
             [ ! -f "$f" ] && continue
             # Blokkeer elk emailadres (ook club-domeinen zoals vv-club.nl)
-            # Uitzondering: noreply@github.com, noreply@anthropic.com (CI-systemen)
+            # Uitzondering: noreply@github.com, noreply@anthropic.com (CI-systemen),
+            # example.* en voorbeeld.nl (goedgekeurde placeholders), en allstars-fc.test —
+            # het demodomein van AllStars FC. .test is door RFC 2606 gereserveerd en bestaat
+            # publiek niet, dus die adressen kunnen nooit een echt persoon zijn. Zonder deze
+            # uitzondering blokkeert de scan het documenteren van goedgekeurde demodata (#649).
             matches=$(grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' "$f" \
-              | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
+              | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl|allstars-fc\.test)$' || true)
             if [ -n "$matches" ]; then
               echo "::error::🚨 EMAILADRES in documentatiebestand: $f"
               echo "$matches" | while read addr; do echo "::error::  Gevonden: $addr — gebruik placeholder [emailadres]"; done
