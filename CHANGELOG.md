@@ -18,13 +18,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-### Security
-- Het goedgekeurde fictieve demodomein wordt niet langer door de eigen beveiligingscontroles geblokkeerd. Het domein van de demogegevens is opgenomen in de uitzonderingslijsten, zodat documentatie over de demo-omgeving niet onterecht als privacyschending wordt gemeld. De controles zelf zijn niet verzwakt. (#649)
-- De controle vóór het versturen van wijzigingen meldt nu expliciet wanneer het aanvullende scanprogramma niet op de machine staat. Voorheen werd die stap stil overgeslagen, waardoor een ontwikkelaar dacht meer bescherming te hebben dan er was. (#649)
-
-### Changed
-- De controle vóór het versturen van wijzigingen is sterk versneld: van ruim negen minuten naar negen seconden bij een release. Voorheen liep die zo lang dat hij op een vastloper leek — met het risico dat iemand hem zou omzeilen. De controle is even grondig als voorheen. (#636)
-
 ## [2.17.1.0] — 2026-07-26
 
 ### Fixed
@@ -35,8 +28,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ### Changed
 - Onderhoudsupdates van externe softwarebibliotheken doorgevoerd (Azure Functions worker-SDK en HTTP-uitbreiding, de AI-bibliotheek, en de database-actie in de bouwstraat). Geen functionele wijzigingen; dit houdt het systeem bij op beveiligings- en foutherstel van de leveranciers. (#634)
+- De controle vóór het versturen van wijzigingen is sterk versneld: van ruim negen minuten naar negen seconden bij een release. Voorheen liep die zo lang dat hij op een vastloper leek — met het risico dat iemand hem zou omzeilen. De controle is even grondig als voorheen. (#636)
 
 ### Security
+- Het goedgekeurde fictieve demodomein wordt niet langer door de eigen beveiligingscontroles geblokkeerd. Het domein van de demogegevens is opgenomen in de uitzonderingslijsten, zodat documentatie over de demo-omgeving niet onterecht als privacyschending wordt gemeld. De controles zelf zijn niet verzwakt. (#649)
+- De controle vóór het versturen van wijzigingen meldt nu expliciet wanneer het aanvullende scanprogramma niet op de machine staat. Voorheen werd die stap stil overgeslagen, waardoor een ontwikkelaar dacht meer bescherming te hebben dan er was. (#649)
 - **Tijdelijke toegangsregels van de bouwstraat werden nooit opgeruimd.** Bij elke deploy krijgt de bouwserver kortdurend toegang tot de database; die toegang moest daarna weer worden ingetrokken. Door een fout in het opruimcommando gebeurde dat nooit, terwijl de stap wél een vinkje gaf — er stonden 15 verouderde toegangsregels open. Het commando is gecorrigeerd en fouten worden nu zichtbaar gemeld in plaats van weggeslikt. (#632)
 
 ## [2.17.0.0] — 2026-07-26
