@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **Tijdelijke toegangsregels van de bouwstraat werden nooit opgeruimd.** Bij elke deploy krijgt de bouwserver kortdurend toegang tot de database; die toegang moest daarna weer worden ingetrokken. Door een fout in het opruimcommando gebeurde dat nooit, terwijl de stap wél een vinkje gaf — er stonden 15 verouderde toegangsregels open. Het commando is gecorrigeerd en fouten worden nu zichtbaar gemeld in plaats van weggeslikt. (#632)
+
 ## [2.17.0.0] — 2026-07-26
 
 ### Added
