@@ -310,6 +310,25 @@ gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
 
+### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
+
+> **Harde regel, vastgelegd na incident 2026-07-26:** issues werden gesloten zodra hun fix-PR
+> naar `develop` merget, terwijl `develop` soms weken/tientallen commits achterloopt op `main`.
+> Daardoor oogden issues als "opgelost" terwijl de fix niet live stond in productie.
+
+- **Een feature- of hotfix-PR mergen naar `develop` sluit het gekoppelde issue NOOIT.** Dat gebeurt
+  automatisch door de workflow `.github/workflows/label-awaiting-release.yml`, die bij elke
+  PR-merge naar `develop` het label `status: awaiting-release` toevoegt aan alle `#<nr>`-issues
+  die in de PR-titel/body staan (en het issue heropent als het per ongeluk al gesloten was).
+- **Het issue sluit pas** wanneer `.github/workflows/close-released-issues.yml` draait — dat
+  gebeurt bij een version-tag push naar `main` (dezelfde trigger als `release.yml`). Die workflow
+  verwijdert het label en sluit alle issues die sinds de vorige release-tag zijn gemerged.
+- Claude zelf roept dus **nooit** `gh issue close <nr>` aan direct na een develop-merge. Stap 5
+  hieronder rapporteert alleen de PR-status — het issue blijft open met `status: awaiting-release`
+  totdat de workflow het automatisch sluit bij de volgende productie-release.
+- Uitzondering: een **hotfix-PR naar `main`** mag na een succesvolle merge + groene
+  `close-released-issues.yml`-run als gesloten worden gerapporteerd, want die code staat dan al live.
+
 ### Stap 4 — CI bewaken
 ```powershell
 gh pr checks <pr-nr> --watch           # wacht op groen
