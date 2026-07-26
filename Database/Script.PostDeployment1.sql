@@ -2249,3 +2249,149 @@ SELECT m.[wedstrijdcode]					AS WedstrijdCode
   WHERE tt.teamnaam IS NULL
 	AND tu.teamnaam IS NULL
 GO
+
+-- ============================================================
+-- #635: AllStars FC demodata (idempotent)
+--
+-- De AppSettings-rij voor ALLSTARS werd hierboven al aangemaakt, maar de bijbehorende demodata
+-- stond uitsluitend in scripts/migrations/002-seed-allstars-fc.sql. Die map wordt handmatig
+-- uitgevoerd en is nooit tegen productie gelopen: de democlub bestond wel, maar had geen velden,
+-- geen speeltijden en geen teams. De testmodus in de Admin GUI was daardoor een leeg scherm, en
+-- clubs die de repo forken kregen geen werkende demo-omgeving.
+--
+-- Staat bewust aan het EINDE van dit script: alle betrokken tabellen en kolommen zijn dan
+-- gegarandeerd aangemaakt door de blokken hierboven.
+--
+-- AVG: uitsluitend fictieve gegevens conform de vastgelegde uitzondering in CLAUDE.md --
+-- voornamen zonder achternaam en het gereserveerde .test-TLD (RFC 2606), dat publiek niet bestaat.
+-- Alleen rijen met ClubCode = 'ALLSTARS'; nooit gebruikt voor een echte club.
+--
+-- Speeldata worden relatief aan de deploydatum berekend. De oorspronkelijke seed had juni/juli 2026
+-- hardcoded, waardoor de demo na die periode alleen verleden wedstrijden toonde.
+-- ============================================================
+DECLARE @DemoClub NVARCHAR(20) = 'ALLSTARS';
+
+-- Alleen seeden als de democlub bestaat -- een fork die hem weghaalt houdt een schone database.
+IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [ClubCode] = @DemoClub)
+BEGIN
+    -- Velden: nummers 101-103 vermijden een PK-conflict met de primaire club
+    -- (PK_Velden staat op VeldNummer alleen).
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[Velden] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [dbo].[Velden] ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief], [ClubCode])
+        VALUES (101, 'Kunstgras 1', 'kunstgras',  1, 1, @DemoClub),
+               (102, 'Kunstgras 2', 'kunstgras',  1, 1, @DemoClub),
+               (103, 'Gras',        'natuurgras', 0, 1, @DemoClub);
+
+    -- VeldBeschikbaarheid: DagVanWeek volgt .NET DayOfWeek (0 = zondag, 6 = zaterdag), dezelfde
+    -- conventie als de bestaande rijen van de primaire club.
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [dbo].[VeldBeschikbaarheid]
+            ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
+        SELECT v.[VeldNummer], d.[Dag], '08:30', '18:00', 0, @DemoClub
+        FROM (VALUES (101), (102), (103)) AS v([VeldNummer])
+        CROSS JOIN (VALUES (6), (0)) AS d([Dag]);
+
+    -- Speeltijden: overgenomen van de primaire club in plaats van hardcoded. Dit zijn
+    -- KNVB-standaarden, dus zo blijft de demo consistent met wat de club zelf heeft ingesteld
+    -- (inclusief de correcties uit #291).
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [dbo].[Speeltijden]
+            ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [ClubCode])
+        SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], @DemoClub
+        FROM [dbo].[Speeltijden]
+        WHERE [ClubCode] = (SELECT MIN([ClubCode]) FROM [dbo].[AppSettings] WHERE [ClubCode] <> @DemoClub);
+
+    -- his.teams: twee teams per categorie. Set-based gegenereerd zodat de lijst compact blijft;
+    -- de leeftijdscategorieen sluiten aan op de sleutels in dbo.Speeltijden.
+    IF NOT EXISTS (SELECT 1 FROM [his].[teams] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [his].[teams]
+            ([bk_teams], [teamnaam], [teamsoort], [geslacht], [leeftijdscategorie],
+             [competitiesoort], [mta_inserted], [mta_modified], [ClubCode])
+        SELECT
+            CONCAT('ALLSTARS-', c.[Cat], '-', n.[Nr]),
+            CONCAT('AllStars ', c.[Cat], ' ', n.[Nr]),
+            c.[Soort], c.[Geslacht], c.[Leeftijd], 'regulier',
+            GETUTCDATE(), GETUTCDATE(), @DemoClub
+        FROM (VALUES
+                ('JO8',   'JO8',  'Jeugd',    'Jongens'),
+                ('JO9',   'JO9',  'Jeugd',    'Jongens'),
+                ('JO10',  'JO10', 'Jeugd',    'Jongens'),
+                ('JO11',  'JO11', 'Jeugd',    'Jongens'),
+                ('JO12',  'JO12', 'Jeugd',    'Jongens'),
+                ('JO13',  'JO13', 'Jeugd',    'Jongens'),
+                ('JO14',  'JO14', 'Jeugd',    'Jongens'),
+                ('JO15',  'JO15', 'Jeugd',    'Jongens'),
+                ('JO17',  'JO17', 'Jeugd',    'Jongens'),
+                ('JO19',  'JO19', 'Jeugd',    'Jongens'),
+                ('MO13',  'MO13', 'Jeugd',    'Meisjes'),
+                ('MO15',  'MO15', 'Jeugd',    'Meisjes'),
+                ('Heren', '1-99', 'Senioren', 'Mannen'),
+                ('VR',    'VR',   'Senioren', 'Vrouwen')
+             ) AS c([Cat], [Leeftijd], [Soort], [Geslacht])
+        CROSS JOIN (VALUES (1), (2)) AS n([Nr]);
+
+    -- avg.Teambegeleiding: een fictieve trainer per team. Voornaam zonder achternaam, .test-domein.
+    -- Het rijnummer in het e-mailadres houdt de adressen uniek zonder achternamen te verzinnen.
+    IF NOT EXISTS (SELECT 1 FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [avg].[Teambegeleiding] ([Team], [Naam], [Emailadres], [Teamrol], [ClubCode])
+        SELECT
+            t.[teamnaam],
+            v.[Naam],
+            CONCAT(LOWER(v.[Naam]), '.',
+                   ROW_NUMBER() OVER (ORDER BY t.[teamnaam]), '@allstars-fc.test'),
+            'Trainer',
+            @DemoClub
+        FROM [his].[teams] t
+        CROSS APPLY (
+            SELECT [Naam] FROM (VALUES
+                ('Frenkie'), ('Bas'), ('Stef'), ('Peer'), ('Bram'), ('Ralf'), ('Gijs'),
+                ('Jacco'), ('Sjaak'), ('Guus'), ('Ferry'), ('Nico'), ('Edwin'), ('Dirkje')
+            ) AS namen([Naam])
+            ORDER BY (SELECT NULL)
+            OFFSET (ABS(CHECKSUM(t.[bk_teams])) % 14) ROWS FETCH NEXT 1 ROWS ONLY
+        ) v
+        WHERE t.[ClubCode] = @DemoClub;
+
+    -- his.matches: acht speelronden vanaf de eerstvolgende zaterdag, afwisselend thuis en uit.
+    -- De zaterdagberekening is onafhankelijk van SET DATEFIRST: 1900-01-01 was een maandag, dus
+    -- DATEDIFF % 7 geeft 0 = maandag en 5 = zaterdag.
+    -- Wedstrijdcodes vanaf 9000001 overlappen niet met echte Sportlink-codes.
+    IF NOT EXISTS (SELECT 1 FROM [his].[matches] WHERE [ClubCode] = @DemoClub)
+    BEGIN
+        DECLARE @Vandaag DATE = CAST(GETDATE() AS DATE);
+        DECLARE @Zaterdag1 DATE =
+            DATEADD(DAY, (5 - (DATEDIFF(DAY, '19000101', @Vandaag) % 7) + 7) % 7, @Vandaag);
+
+        INSERT INTO [his].[matches]
+            ([bk_matches], [wedstrijdcode], [datum], [wedstrijd], [aanvangstijd],
+             [thuisteam], [uitteam], [status], [teamnaam], [competitiesoort],
+             [mta_inserted], [mta_modified], [ClubCode])
+        SELECT
+            CONCAT('ALLSTARS-', 9000000 + x.[Code]),
+            9000000 + x.[Code],
+            x.[Datum],
+            CASE WHEN x.[Thuis] = 1
+                 THEN CONCAT(x.[Team], ' - Tegenstander ', x.[Ronde])
+                 ELSE CONCAT('Tegenstander ', x.[Ronde], ' - ', x.[Team]) END,
+            x.[Tijd],
+            CASE WHEN x.[Thuis] = 1 THEN x.[Team] ELSE CONCAT('Tegenstander ', x.[Ronde]) END,
+            CASE WHEN x.[Thuis] = 1 THEN CONCAT('Tegenstander ', x.[Ronde]) ELSE x.[Team] END,
+            'Te spelen',
+            x.[Team],
+            'regulier',
+            GETUTCDATE(), GETUTCDATE(), @DemoClub
+        FROM (
+            SELECT
+                t.[teamnaam] AS [Team],
+                r.[Ronde],
+                ROW_NUMBER() OVER (ORDER BY t.[teamnaam], r.[Ronde]) AS [Code],
+                DATEADD(WEEK, r.[Ronde] - 1, @Zaterdag1) AS [Datum],
+                r.[Ronde] % 2 AS [Thuis],
+                CASE WHEN t.[teamsoort] = 'Senioren' THEN '14:30' ELSE '09:00' END AS [Tijd]
+            FROM [his].[teams] t
+            CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7), (8)) AS r([Ronde])
+            WHERE t.[ClubCode] = @DemoClub
+        ) AS x;
+    END
+END
+GO
