@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.17.2.0] — 2026-07-26
+
 ### Fixed
 - De melding na een release die aangeeft welke issues nog openstaan, noemde ook issues die in diezelfde release net waren afgerond. Dat kwam doordat het overzicht van GitHub even achterloopt. Er wordt nu gefilterd op wat de release zelf heeft afgehandeld, zodat de melding alleen nog echt achtergebleven issues toont. (#630)
 
