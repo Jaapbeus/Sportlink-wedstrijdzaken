@@ -73,7 +73,7 @@ public static class BerichtPipeline
 
         if (!string.IsNullOrWhiteSpace(team) && !string.IsNullOrWhiteSpace(tegenstander))
         {
-            var cc = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+            var cc = SystemUtilities.AppSettings.GetOptionalClubCode();
             bool teamIsEigenClub = !team.Contains(' ')
                 || (!string.IsNullOrWhiteSpace(cc) && team.StartsWith(cc, StringComparison.OrdinalIgnoreCase));
             bool tegenstanderIsEigenClub = !tegenstander.Contains(' ')
@@ -94,7 +94,7 @@ public static class BerichtPipeline
                 var alleDatums = ExpandDoordeweeksDatums(
                     classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body);
 
-                var cc2 = SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+                var cc2 = SystemUtilities.AppSettings.GetOptionalClubCode();
                 bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander)
                     && (string.IsNullOrWhiteSpace(cc2)
                         || !classificatie.Tegenstander.StartsWith(cc2, StringComparison.OrdinalIgnoreCase));
@@ -397,7 +397,7 @@ public static class BerichtPipeline
 
     private static string? ExtractEigenTeamUitWedstrijd(string wedstrijd, string tegenstander)
     {
-        var clubPrefix = (SystemUtilities.AppSettings.GetSetting("clubCode") ?? "") + " ";
+        var clubPrefix = (SystemUtilities.AppSettings.GetOptionalClubCode()) + " ";
         var parts = wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries);
         foreach (var part in parts)
             if (!string.IsNullOrWhiteSpace(clubPrefix.Trim())

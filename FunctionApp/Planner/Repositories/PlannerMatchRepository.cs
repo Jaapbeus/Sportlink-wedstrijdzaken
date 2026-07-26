@@ -320,7 +320,7 @@ internal static class PlannerMatchRepository
         string? tegenstander, int wedstrijdDuurMinuten, string? aangevraagdDoor,
         string? clubCode = null)
     {
-        var cc = clubCode ?? SystemUtilities.AppSettings.GetSetting("clubCode") ?? "";
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"

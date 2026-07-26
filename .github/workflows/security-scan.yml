@@ -122,7 +122,14 @@ jobs:
           FOUND=0
           # Documentatiebestanden: strenger dan code — GEEN enkel emailadres toegestaan
           # Gebruik placeholder [emailadres] of example@example.nl in voorbeelden
-          DOC_FILES=$(git ls-files 'docs/*.md' 'CHANGELOG.md' 'README.md' 'SETUP.md' 'CONTRIBUTING.md')
+          # #609: de oude glob 'docs/*.md' dekte de geneste submappen al wél — git's standaard
+          # pathspec-matching laat '*' ook '/' matchen (geen WM_PATHNAME), dus
+          # docs/api-standaarden/openspec/specs/**/*.md werd al gescand. Geverifieerd: 23 bestanden
+          # via beide methoden. find is hier gebruikt omdat het expliciet is en niet afhangt van die
+          # subtiliteit — zet iemand ooit core.globPathspecs=true, dan zou de glob wél gaan lekken.
+          DOC_FILES=$( { find docs -name '*.md' -type f 2>/dev/null || true; \
+                         git ls-files 'CHANGELOG.md' 'README.md' 'SETUP.md' 'CONTRIBUTING.md'; } | sort -u)
+          echo "Aantal te scannen documentatiebestanden: $(echo "$DOC_FILES" | grep -c . || true)"
 
           for f in $DOC_FILES; do
             [ ! -f "$f" ] && continue

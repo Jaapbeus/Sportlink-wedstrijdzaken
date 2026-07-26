@@ -49,8 +49,8 @@ if (builder.HostEnvironment.IsProduction())
     var capturedFunctionBaseUrl = functionBaseUrl;
     var capturedScope = apiScope;
 
-    // App.razor injecteert HttpClient voor de health check — registreer plain client zonder auth.
-    // AdminApiClient krijgt een eigen HttpClient mét AuthorizationMessageHandler (zie hieronder).
+    // Plain HttpClient zonder auth — DatabaseStatusService krijgt deze via DI voor de health check.
+    // AdminApiClient krijgt een eigen HttpClient mét AuthorizationMessageHandler (zie hieronder). (#610)
     builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(capturedFunctionBaseUrl) });
 
     builder.Services.AddScoped<AdminApiClient>(sp =>

@@ -96,6 +96,40 @@ namespace SportlinkFunction
                 return settings.TryGetValue(key, out var value) ? value : null;
             }
 
+            /// <summary>
+            /// Leest een verplichte instelling en gooit als deze ontbreekt of leeg is. Gebruik dit
+            /// op elk pad dat de waarde als SQL-filter of kolomwaarde wegschrijft — een stille
+            /// fallback maskeert misconfiguratie en breekt de multi-club invariant. (#601)
+            /// </summary>
+            public static string RequireSetting(string key)
+            {
+                var value = GetSetting(key);
+                if (string.IsNullOrWhiteSpace(value))
+                    throw new InvalidOperationException($"Vereiste instelling '{key}' ontbreekt in dbo.AppSettings");
+                return value;
+            }
+
+            /// <summary>
+            /// Resolveert de ClubCode-discriminator: een expliciet meegegeven waarde heeft voorrang,
+            /// anders de instelling uit <c>dbo.AppSettings</c>. Ontbreken beide → harde fout. (#600, #601)
+            /// </summary>
+            public static string RequireClubCode(string? clubCode = null)
+            {
+                return !string.IsNullOrWhiteSpace(clubCode) ? clubCode : RequireSetting("clubCode");
+            }
+
+            /// <summary>
+            /// ClubCode voor paden waar de waarde alléén een heuristiek verrijkt (eigen-team-naam
+            /// herkennen, sorteervolgorde) en géén SQL-filter of kolomwaarde is. Ontbreekt de
+            /// instelling, dan degradeert de heuristiek bewust naar een lege string in plaats van
+            /// de verwerking te laten falen. Gebruik dit nooit op een lees- of schrijfpad — daar
+            /// hoort <see cref="RequireClubCode"/>. (#601)
+            /// </summary>
+            public static string GetOptionalClubCode()
+            {
+                return GetSetting("clubCode") ?? "";
+            }
+
             public static async Task SaveLastSyncTimestampAsync(ILogger log)
             {
                 try

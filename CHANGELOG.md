@@ -21,8 +21,26 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Added
 - KNVB-speeldagenkalender voor seizoen 2026/'27 is opgenomen in de database voor **alle zes districten**: West, Noord, Oost, Zuid, Landelijk en Landelijk jeugd. Per speeldatum is nu bekend of het een competitie-, beker-, inhaal-, nacompetitie- of vrije dag is, welke leeftijdscategorieën actief zijn, en welke schoolvakanties of feestdagen spelen. Clubs buiten district West kunnen de kalender daarmee ook gebruiken.
 - Dagplanning toont nu direct de wedstrijden die op de gekozen datum gepland staan — zodra je een andere datum kiest, wordt dit meteen bijgewerkt zonder dat je eerst op "Optimaliseer" hoeft te klikken. (#566)
+- Het AI-model is nu instelbaar via de app-instelling `AiModelName`. Een model-upgrade vereist daarmee geen nieuwe versie van de software meer. (#604)
+- Elke pull request bouwt nu automatisch beide projecten en controleert of het databaseontwerp en het migratiescript nog gelijk lopen. Fouten worden zo bij het voorstellen van een wijziging gemeld in plaats van pas bij een deploy. (#599, #595)
+- Verlopen KNVB-verplaatsingsregels worden nu actief gemeld in de logging, en het AI-model geeft in dat geval geen KNVB-waarschuwing meer af op basis van verouderde deadlines. Voorheen verouderden die regels stilzwijgend. (#608)
 
 ### Fixed
+- **De FEEDBACK-knop werkte niet in de live omgeving.** Het venster liep vast met "An unhandled error has occurred" doordat de beveiligingsinstellingen van de website een techniek blokkeerden die het venster gebruikte om de paginanaam en browserversie op te halen. Lokaal was dit niet te zien omdat die beveiliging daar niet geldt. (#597)
+- **Een nieuwe installatie van het systeem was onbruikbaar:** twaalf database-onderdelen — waaronder alle vier de procedures die de Sportlink-synchronisatie uitvoeren, de koppeltabel die de synchronisatie stuurt en drie tabellen die door de planner en de teambegeleiding-import worden gebruikt — werden nooit aangemaakt. Clubs die het systeem overnamen kregen daardoor foutmeldingen over ontbrekende tabellen en een synchronisatie die niets deed. Alle onderdelen worden nu bij elke deploy aangemaakt. (#595)
+- **De weekendmarkering in de datumtabel stond verkeerd:** vrijdag werd als weekend gemarkeerd en zondag niet. Ook liep de dagnummering één dag voor op wat de documentatie aangaf. Beide zijn gecorrigeerd. (#610)
+- De clubnaam stond nog als standaardwaarde in vijf database-onderdelen, wat de ondersteuning voor meerdere clubs doorbrak. De standaardwaarden zijn verwijderd; de club wordt nu altijd expliciet vastgelegd. Ook de initiële voorbeeldgegevens (velden, beschikbaarheid, teamregels) gebruiken nu geen clubnaam meer. (#598)
+- Ontbreekt de clubinstelling, dan geeft het systeem nu een duidelijke fout in plaats van een lege clubkoppeling weg te schrijven in de planning. Zo'n lege koppeling was daarna niet meer te herstellen. (#600, #601)
+- Een tijdveld negeerde opmaak-instellingen zoals de kolombreedte stilzwijgend; die worden nu wel toegepast. (#602)
+- Ontbreekt de instelling voor de GitHub-repository, dan meldt het systeem dat nu als configuratiefout in plaats van een onduidelijke "niet gevonden"-melding te geven. Dit raakt clubs die het project onder een andere naam overnemen. (#607)
+- Een gepauzeerde database blokkeert de bouwstap niet langer. Voorheen werden daardoor alle controles overgeslagen en konden programmeerfouten wekenlang onopgemerkt blijven. Deployen naar een gepauzeerde database blijft geblokkeerd. (#599)
+
+### Security
+- Het voorbeeldvenster van de klassieke dagplanning draait nu in een afgeschermde omgeving zonder scriptuitvoering. Extra bescherming tegen kwaadaardige inhoud in namen die uit Sportlink komen. (#603)
+
+### Changed
+- De API-documentatie (`openapi.yaml`/`.json`) is bijgewerkt naar de huidige versie en bevat nu ook de twee endpoints voor het importeren van teambegeleiding en het verschuiven van testwedstrijden. (#605)
+- De geschiedenistabellen hebben nu een index op hun sleutel en op de clubkoppeling. Dat versnelt zoekopdrachten en voorkomt dubbele rijen. Waar de Sportlink-gegevens nu al dubbelingen bevatten (zie #569) wordt de index zonder uniciteitseis aangemaakt, zodat een deploy niet vastloopt. (#606)
 - Senioren-categorieen uit Sportlink worden weer correct herkend in plannerberekeningen: `Senioren` normaliseert nu naar speeltijdsleutel `1-99` en `Senioren Vrouwen` naar `VR`. Daardoor vallen seniorenwedstrijden niet meer onterecht in `onbekend-team` bij Optimaliseer/Auto-plan. (#591)
 - De databasemigratie liep bij elke deploy vast zodra er meer dan één club in de instellingen stond — wat altijd het geval is doordat de AllStars FC democlub wordt aangemaakt. Gevolg: het nieuwe seizoen werd niet meer automatisch aangemaakt en een deel van de migratie werd overgeslagen. Beide zijn verholpen.
 - De kolom die geplande wedstrijden aan een club koppelt werd door een fout in het migratiescript nooit aangemaakt. Daardoor ontbrak de scheiding tussen productie- en demogegevens voor geplande wedstrijden. De migratie werkt nu.

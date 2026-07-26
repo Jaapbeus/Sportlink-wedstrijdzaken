@@ -21,12 +21,20 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
 }
 
 // IChatClient: provider-agnostische AI-abstractie (CLAUDE.md architectuurregel).
-// Provider: OpenAI gpt-4o-mini direct — geen Azure OpenAI.
+// Provider: OpenAI direct — geen Azure OpenAI.
+// Modelnaam komt uit de app setting `AiModelName` zodat een model-upgrade geen code-wijziging
+// vereist (zie docs/ARCHITECTUUR-AI-SERVICES.md). Niet uit dbo.AppSettings: de DI-registratie
+// loopt bij host-start, vóór de eerste databaseverbinding. (#604)
 var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
 if (!string.IsNullOrWhiteSpace(openAiApiKey))
 {
+    // Fallback is puur een provider-model-identifier — geen club-specifieke waarde, dus toegestaan.
+    const string defaultAiModelName = "gpt-4o-mini";
+    var aiModelName = Environment.GetEnvironmentVariable("AiModelName");
+    if (string.IsNullOrWhiteSpace(aiModelName)) aiModelName = defaultAiModelName;
+
     builder.Services.AddSingleton<IChatClient>(
-        new ChatClient("gpt-4o-mini", new System.ClientModel.ApiKeyCredential(openAiApiKey))
+        new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
             .AsIChatClient());
 }
 

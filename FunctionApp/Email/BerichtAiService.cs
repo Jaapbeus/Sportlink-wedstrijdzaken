@@ -65,6 +65,27 @@ public class BerichtAiService
         - Onderling overleg + KNVB-goedkeuring; moet voor de bekerronde plaatsvinden
         """;
 
+    /// <summary>
+    /// Seizoenslabel waarvoor <see cref="KnvbRegelsContext"/> geldt. Bij het jaarlijkse onderhoud
+    /// (zie docs/ARCHITECTUUR-AI-SERVICES.md) samen met de regels bijwerken. (#608)
+    /// </summary>
+    internal const string KnvbRegelsSeizoen = "2026/'27";
+
+    /// <summary>
+    /// Laatste dag waarop <see cref="KnvbRegelsContext"/> geldig is: einde nacompetitie van het
+    /// seizoen waarvoor de regels zijn opgesteld (20 juni 2027). Voorbij deze datum zijn alle
+    /// deadlines in de constante verlopen. (#608)
+    /// </summary>
+    internal static readonly DateOnly KnvbRegelsGeldigTot = new(2027, 6, 20);
+
+    /// <summary>
+    /// Zijn de KNVB-regels verlopen op de gegeven datum? Gebruikt om zowel de beheerder (log) als
+    /// het model (prompt) te waarschuwen, zodat verouderde deadlines niet stilzwijgend als
+    /// geldend advies worden gepresenteerd. (#608)
+    /// </summary>
+    internal static bool KnvbRegelsZijnVerlopen(DateTime today)
+        => DateOnly.FromDateTime(today) > KnvbRegelsGeldigTot;
+
     private static string BouwClassificatieSystemPrompt(DateTime today, IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden = null)
     {
         var clubNaam = SystemUtilities.AppSettings.GetSetting("clubName");
@@ -77,6 +98,15 @@ public class BerichtAiService
         if (dagenTotMaandag == 0) dagenTotMaandag = 7;
         var volgendeMa = today.AddDays(dagenTotMaandag);
         var doordeweeksVoorbeeld = $"[\"{volgendeMa:yyyy-MM-dd}\",\"{volgendeMa.AddDays(1):yyyy-MM-dd}\",\"{volgendeMa.AddDays(2):yyyy-MM-dd}\",\"{volgendeMa.AddDays(3):yyyy-MM-dd}\"]";
+
+        // Verlopen regels niet stilzwijgend als geldend advies presenteren: het model krijgt expliciet
+        // te horen dat de deadlines verouderd zijn en geen KNVB-waarschuwing meer mag afgeven. (#608)
+        var knvbStalenessWaarschuwing = KnvbRegelsZijnVerlopen(today)
+            ? $"\nLET OP: de hierboven genoemde KNVB-regels golden voor seizoen {KnvbRegelsSeizoen} en zijn "
+              + $"verlopen sinds {KnvbRegelsGeldigTot:d MMMM yyyy}. Geef GEEN knvbWaarschuwing op basis van deze "
+              + "deadlines; zet dat veld op null en vermeld in de samenvatting dat de KNVB-regels in het systeem "
+              + "verouderd zijn.\n"
+            : "";
 
         var fewShotSectie = "";
         if (voorbeelden != null && voorbeelden.Count > 0)
@@ -141,6 +171,7 @@ public class BerichtAiService
             Laat null als datum ruim voor eventuele deadlines valt of het teamtype niet duidelijk is.
 
             {{KnvbRegelsContext}}
+            {{knvbStalenessWaarschuwing}}
             {{fewShotSectie}}
             """;
     }
@@ -164,6 +195,18 @@ public class BerichtAiService
         _logger.LogInformation("Bericht classificatie gestart (onderwerp niet gelogd — AVG #210)");
 
         var today = DateTime.Now; // Lokale tijd — NL-context voor datumberekening
+
+        // Staleness-guard: maak zichtbaar dat de KNVB-regels onderhoud nodig hebben in plaats van
+        // stilzwijgend verlopen deadlines te blijven gebruiken. (#608)
+        if (KnvbRegelsZijnVerlopen(today))
+        {
+            _logger.LogWarning(
+                "KNVB-verplaatsingsregels in KnvbRegelsContext gelden voor seizoen {Seizoen} en zijn verlopen "
+                + "sinds {GeldigTot:yyyy-MM-dd}. Werk BerichtAiService.KnvbRegelsContext bij "
+                + "(zie docs/ARCHITECTUUR-AI-SERVICES.md).",
+                KnvbRegelsSeizoen, KnvbRegelsGeldigTot);
+        }
+
         var userPrompt = $"Van: {afzender}\nOnderwerp: {subject}\n\n{body}";
 
         var messages = new List<Microsoft.Extensions.AI.ChatMessage>

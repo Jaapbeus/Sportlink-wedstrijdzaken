@@ -15,7 +15,7 @@ namespace SportlinkFunction.Infrastructure;
 /// Vereiste environment variables:
 ///   GitHubPat   — fine-grained PAT met issues:write scope (zie #103)
 ///   GitHubOwner — GitHub organisatie of gebruikersnaam (default: env GITHUB_REPOSITORY_OWNER)
-///   GitHubRepo  — repository naam (default: "Sportlink-wedstrijdzaken")
+///   GitHubRepo  — repository naam (verplicht — geen fallback, zie #607)
 ///
 /// Wanneer GitHubPat niet geconfigureerd is, wordt alles stil overgeslagen.
 /// </summary>
@@ -39,11 +39,13 @@ public static class GitHubIssueReporter
         var owner = Environment.GetEnvironmentVariable("GitHubOwner")
                  ?? Environment.GetEnvironmentVariable("GITHUB_REPOSITORY_OWNER")
                  ?? "";
-        var repo = Environment.GetEnvironmentVariable("GitHubRepo") ?? "Sportlink-wedstrijdzaken";
+        // Geen stille fallback op de upstream-repo-naam: een fork met een andere naam zou dan
+        // issues naar de verkeerde repo proberen te sturen (404). (#607)
+        var repo = Environment.GetEnvironmentVariable("GitHubRepo");
 
-        if (string.IsNullOrWhiteSpace(owner))
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
         {
-            log.LogWarning("GitHubOwner niet geconfigureerd — issue-reporting overgeslagen");
+            log.LogWarning("GitHubOwner/GitHubRepo niet volledig geconfigureerd — issue-reporting overgeslagen");
             return;
         }
 
