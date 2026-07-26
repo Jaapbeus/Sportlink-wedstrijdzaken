@@ -11,7 +11,7 @@ internal static class AdminEmailLogRepository
     {
         var sql = @"SELECT TOP (@Limit) [Id], [MessageId], [ConversationId], [Afzender], [Onderwerp],
                            [OntvangstDatum], [VerzoekType], [Status], [VerstuurdNaar],
-                           [FoutMelding], [mta_inserted], [mta_modified]
+                           [mta_inserted], [mta_modified]
                     FROM [planner].[EmailVerwerking]
                     WHERE [ClubCode] = @Cc";
         if (vanaf.HasValue) sql += " AND [OntvangstDatum] >= @Vanaf";

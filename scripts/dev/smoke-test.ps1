@@ -163,7 +163,7 @@ CallEndpoint "GET /api/beheer/voorkeurstijden"      "$base/beheer/voorkeurstijde
 CallEndpoint "GET /api/beheer/teamregels"           "$base/beheer/teamregels"
 CallEndpoint "GET /api/beheer/email-log"            "$base/beheer/email-log"
 CallEndpoint "GET /api/beheer/uitgesloten-emails"   "$base/beheer/uitgesloten-emails"
-CallPostEndpoint "POST /api/test/email (rate-check)" "$base/test/email" '{"onderwerp":"smoke","afzender":"test@test.nl","body":"test"}'
+CallPostEndpoint "POST /api/test/email (rate-check)" "$base/test/email" '{"onderwerp":"smoke","afzender":"trainer@voorbeeld.nl","body":"test"}'
 
 # CORS-integratie: Blazor dev origin moet terugkomen in Access-Control-Allow-Origin
 $corsOrigin = "http://localhost:5242"

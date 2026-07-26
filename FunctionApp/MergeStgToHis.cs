@@ -46,7 +46,7 @@ namespace SportlinkFunction
             }
             catch (Exception ex)
             {
-                log.LogError($"Error: {ex.Message}");
+                log.LogError(ex, "Merge {SourceTable} into {TargetTable} failed", _sourceTable, _targetTable);
             }
         }
     }

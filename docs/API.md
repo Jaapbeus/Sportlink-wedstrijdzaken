@@ -273,7 +273,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
   "leeftijdsCategorie": "JO13",
   "teamNaam": "[ClubCode] JO13-1",
   "tegenstander": "[Tegenstander] JO13-2",
-  "aangevraagdDoor": "coach@example.com",
+  "aangevraagdDoor": "trainer@voorbeeld.nl",
   "wedstrijdDuurMinuten": null
 }
 ```

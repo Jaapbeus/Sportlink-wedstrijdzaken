@@ -592,7 +592,10 @@ else
                 ? waarde[(waarde.IndexOf(' ') + 1)..]
                 : waarde;
             if (string.IsNullOrEmpty(rij.UitTeam) || rij.UitTeam == _globalTegenstander)
-                rij.UitTeam = $"FC Onbekend {suffix}";
+            {
+                var basis = string.IsNullOrWhiteSpace(_globalTegenstander) ? "FC Onbekend" : _globalTegenstander;
+                rij.UitTeam = $"{basis} {suffix}";
+            }
         }
 
         _ = AutoSaveAsync(rij);

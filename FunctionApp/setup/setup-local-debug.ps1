@@ -25,7 +25,7 @@ try {
     if ($null -eq $result) {
         Write-Host "⚠ Database '$database' does not exist on $sqlServer" -ForegroundColor Red
         Write-Host "  You need to create it or restore from the SportlinkSqlDb repository" -ForegroundColor Yellow
-        Write-Host "  Repository location: C:\Repos\VRC\SportlinkSqlDb" -ForegroundColor Yellow
+        Write-Host "  Repository location: C:\Repos\<jouwnaam>\SportlinkSqlDb" -ForegroundColor Yellow
     } else {
         Write-Host "✓ Database '$database' exists" -ForegroundColor Green
     }
