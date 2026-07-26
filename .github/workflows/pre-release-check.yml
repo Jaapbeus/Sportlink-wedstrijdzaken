@@ -73,7 +73,7 @@ jobs:
       - name: "▶ Login-poging om auto-resume te triggeren"
         if: steps.status.outputs.paused == 'true'
         continue-on-error: true
-        uses: azure/sql-action@v2.3
+        uses: azure/sql-action@v2.4
         with:
           connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: scripts/ci/wake-database.sql
