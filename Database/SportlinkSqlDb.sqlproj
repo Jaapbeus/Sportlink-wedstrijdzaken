@@ -104,6 +104,7 @@
     <Build Include="Schemas\planner.sql" />
     <Build Include="dbo\Tables\Velden.sql" />
     <Build Include="dbo\Tables\VeldBeschikbaarheid.sql" />
+    <Build Include="dbo\Tables\VeldTraining.sql" />
     <Build Include="dbo\Tables\TeamRegels.sql" />
     <Build Include="dbo\Tables\Zonsondergang.sql" />
     <Build Include="dbo\Tables\KnvbKalenderDag.sql" />

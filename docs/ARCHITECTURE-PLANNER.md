@@ -372,20 +372,44 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
 ## Database schema (nieuwe tabellen)
 
 ### dbo.Velden
-Velddefinities met type (kunstgras/natuurgras) en verlichting. Elke vereniging configureert dit naar eigen situatie.
+Velddefinities met type (vrije tekst, bijv. kunstgras/natuurgras) en verlichting. Elke vereniging
+configureert dit naar eigen situatie — inclusief clubs met een ander aantal velden of uitsluitend
+natuurgras. Volledig beheerbaar via Instellingen → Velden in de Admin GUI (#679); daarvoor kon een
+veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
 |-------|-------------|
-| VeldNummer | Uniek nummer (PK) |
+| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in CLAUDE.md) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
-| VeldType | `kunstgras` of `gras` — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie |
+| VeldType | Vrije tekst (bijv. `kunstgras` of `natuurgras`) — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie. Puur beschrijvend, geen vaste enum. |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
 | Actief | Of het veld in gebruik is |
 
 Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder kunstlicht, veld 6 inactief — elke club configureert dit naar eigen situatie.
 
 ### dbo.VeldBeschikbaarheid
-Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen beschikbaar zijn.
+Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen
+beschikbaar zijn. Beheerbaar via Instellingen → Velden (#679).
+
+### dbo.VeldTraining
+Terugkerende trainingsbezetting per veld per weekdag — een tweede, club-vrij-instelbare
+bezettingsbron naast wedstrijden (#679, uitwerking van #581). Elke club legt zelf vast welke velden
+op welke dag door training bezet zijn, en dat mag per dag verschillen (bijv. maandag ruim,
+donderdag vol). Geen periode-begrip (zomerstop vs. competitie) — dat blijft toekomstig werk, zie
+#581.
+
+| Kolom | Beschrijving |
+|-------|-------------|
+| VeldNummer | FK naar dbo.Velden |
+| DagVanWeek | ISO-dag 1–7 |
+| VanTijd / TotTijd | Tijdvenster dat door training bezet is |
+| Omschrijving | Vrije tekst (bijv. "JO15-2 training"), optioneel |
+| Actief | Blok tijdelijk uitschakelen zonder te verwijderen |
+
+`PlannerAvailabilityRepository.GetFieldOccupationsAsync` voegt actieve trainingsblokken toe als
+derde bezettingsbron naast `his.matches` en `planner.GeplandeWedstrijden` — zowel de planner als de
+e-mailpijplijn zien hierdoor automatisch een kleiner beschikbaar venster, zonder aparte integratie.
+Een club zonder rijen in deze tabel houdt exact het gedrag van vóór deze feature.
 
 ### dbo.TeamRegels
 Configureerbare teamspecifieke uitzonderingen (buffers, veld-/tijdvoorkeuren). Geen codewijzigingen nodig om regels toe te voegen.

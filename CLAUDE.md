@@ -190,11 +190,12 @@ ITERATIE:
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
   d. Stop services + clean BlazorAdmin + herstart:
-       Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-       Start-Sleep -Seconds 2
-       dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null   # verwijdert stale fingerprints
-       .\scripts\dev\Start-Debug.ps1
-       Start-Sleep -Seconds 20
+       .\scripts\dev\Stop-Debug.ps1 -Clean    # stopt process-trees + verwijdert stale fingerprints
+       .\scripts\dev\Start-Debug.ps1          # wacht zelf op readiness; exit 1 als een service niet opkomt
+
+       # Geen Start-Sleep meer nodig: Start-Debug.ps1 pollt /api/health (FunctionApp) en
+       # GET / (BlazorAdmin), en meldt de gemeten opstarttijd + versienummer. Gebruik
+       # -Tail voor één samengevoegde logstroom in plaats van losse vensters.
 
        # Hot reload gedrag (vastgelegd in Start-Debug.ps1):
        # - BlazorAdmin :5242 → HOT RELOAD via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
@@ -220,9 +221,11 @@ ITERATIE:
        Start-Sleep -Seconds 20
 
   e. Controleer FunctionApp health + versienummer:
+       # Start-Debug.ps1 doet dit al en faalt met exit 1 als health niet 200 geeft.
+       # Handmatig herhalen kan met:
        $health = Invoke-RestMethod http://localhost:7094/api/health
        Write-Host "Versie: $($health.version)"
-       → niet 200? Fix, kill services, ga terug naar a.
+       → niet 200? Fix, .\scripts\dev\Stop-Debug.ps1, ga terug naar a.
 
   f. CSP-compatibiliteit van de gepubliceerde index.html (VERPLICHT — zie #659):
        # Er MOET géén import-map en géén inline <script> in de publish-output staan: de
@@ -258,9 +261,12 @@ ITERATIE:
      → fout? F12 → Console → foutmelding rapporteren
 
   i. Kill services:
-       Stop-Process -Name "func" -ErrorAction SilentlyContinue
-       Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
-       Stop-Process -Name "node" -ErrorAction SilentlyContinue  # SWA CLI
+       .\scripts\dev\Stop-Debug.ps1        # stopt process-trees; Azurite blijft draaien
+       # .\scripts\dev\Stop-Debug.ps1 -All  → inclusief Azurite
+
+       # Gebruik NIET Stop-Process -Name "dotnet": dat sloopt élk dotnet-proces op de
+       # machine, en het laat 'dotnet watch' zijn kindproces opnieuw starten (poort 5242
+       # raakt dan meteen weer bezet).
 
 GESLAAGD als: alle stappen exit 0 of 2xx, fingerprint consistent ✅, browser toont geen foutbanner
 ```
@@ -316,6 +322,46 @@ gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
 # Release: develop → main (pas als alle features lokaal getest zijn):
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
+
+### Issue-lifecycle — elk open issue heeft precies één `status:`-label
+
+> **Vastgelegd na #690:** de automatisering dekte alleen de achterkant van de keten
+> (develop-merge en release). Daardoor had **7 van de 18** open issues geen enkel
+> status-label — inclusief issues waar op dat moment een open PR bij hoorde. Zonder status
+> is niet te zien of er iets loopt, of iets wacht, of niemand ernaar kijkt.
+
+De volledige keten, volledig geautomatiseerd:
+
+| Overgang | Status wordt | Workflow |
+|---|---|---|
+| Issue aangemaakt of heropend | `status: triage` (alleen als er nog géén status staat) | `label-issue-status.yml` |
+| PR geopend als draft | `status: in-progress` | `label-issue-status.yml` |
+| PR ready for review | `status: review-needed` | `label-issue-status.yml` |
+| PR terug naar draft | `status: in-progress` | `label-issue-status.yml` |
+| PR gesloten zonder merge | `status: triage` | `label-issue-status.yml` |
+| PR gemerged naar `develop` | `status: awaiting-release` | `label-awaiting-release.yml` |
+| Release-tag naar `main` | alle status-labels weg + issue gesloten | `close-released-issues.yml` |
+
+**Invarianten:**
+
+1. **Hoogstens één `status:`-label per issue.** Alle drie de workflows zetten de status via
+   `setIssueStatus()` in [.github/scripts/issue-status.js](.github/scripts/issue-status.js),
+   die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
+   `gh issue edit --add-label` zonder de bestaande te verwijderen.
+2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`
+   en `status: waiting-owner` staan in `PROTECTED`: automatisering laat ze staan. Enige
+   uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat is een feit.
+3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
+   PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
+   Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
+   wijzigen of het heropenen — zie #630.
+4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
+   de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
+   trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
+
+**Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
+`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
+`priority:`-label mee.
 
 ### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
 

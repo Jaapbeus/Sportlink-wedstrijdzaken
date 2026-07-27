@@ -16,9 +16,12 @@ cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 # 3. Start alle services
 .\scripts\dev\Start-Debug.ps1
 
-# 4. Verificeer (wacht 20s na Start-Debug)
+# 4. Verificeer (Start-Debug wacht zelf tot de services klaar zijn)
 .\scripts\dev\Test-App.ps1
 # exit 0 = alles werkt
+
+# 5. Stoppen
+.\scripts\dev\Stop-Debug.ps1
 ```
 
 ---
@@ -202,10 +205,24 @@ Stel de `SqlConnectionString` in:
 
 ## 6. Services starten
 
-De aanbevolen manier is via het Start-Debug.ps1-script. Dit start Azurite, FunctionApp en BlazorAdmin elk in een eigen PowerShell-venster.
+De aanbevolen manier is via het Start-Debug.ps1-script. Dit start Azurite, FunctionApp en BlazorAdmin, en wacht daarna tot elke service daadwerkelijk reageert.
 
 ```powershell
-.\scripts\dev\Start-Debug.ps1
+.\scripts\dev\Start-Debug.ps1            # losse vensters per service
+.\scripts\dev\Start-Debug.ps1 -Tail      # één samengevoegde logstroom in dit venster
+.\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
+```
+
+Het script pollt `GET /api/health` voor de FunctionApp en `GET /` voor BlazorAdmin, en meldt
+de gemeten opstarttijd plus het versienummer. Je hoeft dus **niet** meer zelf een aantal
+seconden af te wachten. Komt een service niet op, dan is de exit code 1.
+
+Met `-Tail` gaat alle output naar één venster met een prefix per service — handig om snel te
+zien welke service klaagt:
+
+```
+[FUNC]    [2026-07-27T17:31:21.396Z] Worker process started and initialized.
+[BLAZOR]  Now listening on: http://localhost:5242
 ```
 
 **Poorten:**
@@ -237,18 +254,28 @@ Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmi
 ### Services stoppen
 
 ```powershell
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+.\scripts\dev\Stop-Debug.ps1           # FunctionApp + BlazorAdmin + SWA (Azurite blijft draaien)
+.\scripts\dev\Stop-Debug.ps1 -All      # inclusief Azurite
+.\scripts\dev\Stop-Debug.ps1 -Clean    # stop + dotnet clean BlazorAdmin
 ```
+
+Gebruik dit script in plaats van `Stop-Process -Name "func","dotnet","node"`. Dat laatste is
+zowel te grof (het sloopt élk `dotnet`-proces op je machine, ook onverwante projecten) als te
+grof-korrelig: `dotnet watch` start zijn kindproces opnieuw op zodra dat wegvalt, dus alleen
+de poort-eigenaar killen laat poort 5242 opnieuw bezet raken. `Stop-Debug.ps1` stopt hele
+process-trees en wacht tot de poorten echt vrij zijn.
 
 > **Fingerprint-regel:** roep NOOIT `dotnet build BlazorAdmin` aan terwijl de BlazorAdmin dev server draait.
 > Twee compilatiepassen genereren twee sets content-hash fingerprints, wat leidt tot 404's op framework-JS.
-> Bouw detectie: `dotnet build BlazorAdmin/BlazorAdmin.csproj` — daarna stoppen, cleanen en herstart via `Start-Debug.ps1`.
+> Voor build-foutdetectie: eerst `Stop-Debug.ps1`, dan bouwen. `Test-App.ps1` slaat de
+> BlazorAdmin-build automatisch over zolang er iets op :5242 luistert.
+> Herstellen na een mismatch: `.\scripts\dev\Stop-Debug.ps1 -Clean` en daarna opnieuw starten.
 
 ---
 
 ## 7. Verificatie
 
-Wacht 15–20 seconden na `Start-Debug.ps1`, dan:
+`Start-Debug.ps1` wacht zelf tot de services klaar zijn, dus je kunt direct doorgaan:
 
 ```powershell
 # Basis verificatie
@@ -307,7 +334,9 @@ sportlink-wedstrijdzaken/
 │   └── SportlinkSqlDb.sqlproj         # SQL Server Database Project
 ├── scripts/
 │   ├── dev/
-│   │   ├── Start-Debug.ps1            # Start alle lokale services
+│   │   ├── Start-Debug.ps1            # Start alle lokale services + wacht op readiness
+│   │   ├── Stop-Debug.ps1             # Stopt de services (process-trees, -Clean voor fingerprints)
+│   │   ├── DevServices.psm1           # Gedeelde helpers: readiness-polling en teardown
 │   │   └── Test-App.ps1               # Verificatie na opstarten
 │   ├── azure/
 │   │   ├── Verify-AzureAuthSetup.ps1  # Diagnose Entra-configuratie (read-only)
@@ -448,15 +477,17 @@ azurite --silent --location $env:TEMP\azurite
 Dit is bijna altijd een fingerprint-mismatch. Oplossing:
 
 ```powershell
-# Stop alle services
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-
-# Clean Blazor fingerprints
-dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
+# Stop de services én ruim de stale fingerprints op
+.\scripts\dev\Stop-Debug.ps1 -Clean
 
 # Herstart
 .\scripts\dev\Start-Debug.ps1
+```
+
+Kortere variant, in één commando:
+
+```powershell
+.\scripts\dev\Start-Debug.ps1 -Clean
 ```
 
 Open daarna `http://localhost:5242` in een **nieuw Incognito-venster** (Ctrl+Shift+F5 werkt soms niet voldoende).

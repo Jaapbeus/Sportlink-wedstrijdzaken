@@ -75,7 +75,13 @@ jobs:
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
         with:
           script: |
-            const label = 'status: awaiting-release';
+            // clearIssueStatus verwijdert ELK status-label, niet alleen 'awaiting-release'.
+            // Een gesloten, uitgerold issue hoort geen lifecycle-status meer te hebben; bleef
+            // er een 'in-progress' of 'review-needed' op staan, dan zou dat na de release nog
+            // suggereren dat er werk loopt (#690).
+            const { clearIssueStatus } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
+
             const tag = process.env.RELEASE_TAG;
             const numbers = process.env.ISSUE_NUMBERS.split(',').map(n => parseInt(n, 10)).filter(Boolean);
 
@@ -97,15 +103,7 @@ jobs:
                 continue;
               }
 
-              const hasLabel = issue.labels.some(l => (typeof l === 'string' ? l : l.name) === label);
-              if (hasLabel) {
-                await github.rest.issues.removeLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: number,
-                  name: label,
-                }).catch(() => {});
-              }
+              await clearIssueStatus({ github, context, core, issueNumber: number });
 
               if (issue.state === 'open') {
                 await github.rest.issues.update({

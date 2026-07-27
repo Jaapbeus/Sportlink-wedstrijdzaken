@@ -1009,6 +1009,26 @@ IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_TeamVoorkeur
     ALTER TABLE [dbo].[TeamVoorkeurTijden] ADD CONSTRAINT [CK_TeamVoorkeurTijden_ClubCode] CHECK (LEN([ClubCode]) > 0);
 GO
 
+-- #679: VeldTraining — terugkerende trainingsbezetting per veld per weekdag, vrij per club
+-- instelbaar. Aparte tabel naast VeldBeschikbaarheid: beschikbaarheid is een venster, training
+-- is een bezetter (zie #581 voor de onderbouwing).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.VeldTraining'))
+BEGIN
+    CREATE TABLE [dbo].[VeldTraining] (
+        [Id]           INT IDENTITY(1,1) NOT NULL,
+        [VeldNummer]   INT NOT NULL,
+        [DagVanWeek]   INT NOT NULL,
+        [VanTijd]      TIME NOT NULL,
+        [TotTijd]      TIME NOT NULL,
+        [Omschrijving] NVARCHAR(100) NULL,
+        [Actief]       BIT NOT NULL CONSTRAINT [DF_VeldTraining_Actief] DEFAULT 1,
+        [ClubCode]     NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
+        CONSTRAINT [PK_VeldTraining] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [FK_VeldTraining_Velden] FOREIGN KEY ([VeldNummer]) REFERENCES [dbo].[Velden]([VeldNummer])
+    );
+END
+GO
+
 -- v2 — UitgeslotenEmailAdressen: expliciete uitsluitingslijst voor email-verwerking
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.UitgeslotenEmailAdressen'))
 BEGIN

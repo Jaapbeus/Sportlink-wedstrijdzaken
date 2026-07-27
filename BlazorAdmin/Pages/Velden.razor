@@ -1,0 +1,455 @@
+@page "/instellingen/velden"
+@inject AdminApiClient Api
+@inject ClubSelectorService ClubSelector
+@using BlazorAdmin.Models
+@using BlazorAdmin.Services
+@implements IDisposable
+
+<PageTitle>Velden — Beheer</PageTitle>
+
+<h1>Velden</h1>
+<p class="text-muted">
+    Aantal, type en beschikbaarheid van velden zijn volledig per club instelbaar — er is geen
+    vaste aanname over kunstgras versus natuurgras. Trainingsbezetting kan per weekdag verschillen.
+</p>
+
+@if (loading)
+{
+    <p>Laden...</p>
+}
+else
+{
+    <div class="row mb-3">
+        <div class="col">
+            <h2 class="mb-0">Velden</h2>
+            <p class="text-muted mb-0">Naam, type (vrije tekst) en verlichting per veld.</p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNewVeld">Nieuw veld</button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Veldnummer</th>
+                <th>Naam</th>
+                <th>Type</th>
+                <th>Kunstlicht</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var v in velden)
+            {
+                <tr class="@(!v.Actief ? "text-muted" : "")">
+                    <td>@v.VeldNummer</td>
+                    <td>@v.VeldNaam</td>
+                    <td>@v.VeldType</td>
+                    <td>@(v.HeeftKunstlicht ? "ja" : "nee")</td>
+                    <td>@(v.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => EditVeld(v)">Bewerken</button>
+                    </td>
+                </tr>
+            }
+            @if (velden.Count == 0)
+            {
+                <tr><td colspan="6" class="text-muted">Geen velden gevonden.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editingVeld != null)
+    {
+        <hr />
+        <h3>@(isNewVeld ? "Nieuw veld" : $"Bewerken: {editingVeld.VeldNaam}")</h3>
+        <EditForm Model="editingVeld" OnValidSubmit="OpslaanVeldAsync">
+            <div class="row">
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Veldnummer</label>
+                    <input class="form-control" type="number" min="1" @bind="editingVeld.VeldNummer" disabled="@(!isNewVeld)" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Naam</label>
+                    <input class="form-control" @bind="editingVeld.VeldNaam" placeholder="bijv. veld 1" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Type</label>
+                    <input class="form-control" list="veldtype-suggesties" @bind="editingVeld.VeldType" placeholder="kunstgras" />
+                    <datalist id="veldtype-suggesties">
+                        <option value="kunstgras" />
+                        <option value="natuurgras" />
+                    </datalist>
+                    <small class="form-text text-muted">Vrije tekst — geen vaste lijst, elke club kiest zelf.</small>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label d-block">Kunstlicht</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editingVeld.HeeftKunstlicht" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label d-block">Actief</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editingVeld.Actief" />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingVeld = null">Annuleren</button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(veldMessage))
+        {
+            <div class="alert alert-info mt-3">@veldMessage</div>
+        }
+    }
+
+    <hr class="mt-4" />
+    <div class="row mb-3">
+        <div class="col">
+            <h2 class="mb-0">Veldbeschikbaarheid</h2>
+            <p class="text-muted mb-0">Openingsvenster van het sportpark per veld per weekdag.</p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNewBeschikbaarheid">Nieuw venster</button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Veld</th>
+                <th>Dag</th>
+                <th>Van</th>
+                <th>Tot</th>
+                <th>Zonsondergang</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var b in beschikbaarheid.OrderBy(b => b.DagVanWeek).ThenBy(b => b.VeldNummer))
+            {
+                <tr>
+                    <td>@b.VeldNaam</td>
+                    <td>@DagNaam(b.DagVanWeek)</td>
+                    <td>@b.BeschikbaarVanaf</td>
+                    <td>@b.BeschikbaarTot</td>
+                    <td>@(b.GebruikZonsondergang ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => EditBeschikbaarheid(b)">Bewerken</button>
+                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteBeschikbaarheidAsync(b.Id)">
+                            Verwijderen
+                        </button>
+                    </td>
+                </tr>
+            }
+            @if (beschikbaarheid.Count == 0)
+            {
+                <tr><td colspan="6" class="text-muted">Geen beschikbaarheidsvensters gevonden.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editingBeschikbaarheid != null)
+    {
+        <hr />
+        <h3>@(isNewBeschikbaarheid ? "Nieuw venster" : $"Bewerken: {editingBeschikbaarheid.VeldNaam}")</h3>
+        <EditForm Model="editingBeschikbaarheid" OnValidSubmit="OpslaanBeschikbaarheidAsync">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Veld</label>
+                    <select class="form-select" @bind="editingBeschikbaarheid.VeldNummer" disabled="@(!isNewBeschikbaarheid)">
+                        <option value="0">— Kies een veld —</option>
+                        @foreach (var v in velden)
+                        {
+                            <option value="@v.VeldNummer">@v.VeldNaam</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Dag</label>
+                    <select class="form-select" @bind="editingBeschikbaarheid.DagVanWeek" disabled="@(!isNewBeschikbaarheid)">
+                        @for (int d = 1; d <= 7; d++)
+                        {
+                            <option value="@d">@DagNaam(d)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Van</label>
+                    <TimeInput @bind-Value="editingBeschikbaarheid.BeschikbaarVanaf" Placeholder="18:00" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Tot</label>
+                    <TimeInput @bind-Value="editingBeschikbaarheid.BeschikbaarTot" Placeholder="22:00" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label d-block">Beperkt tot zonsondergang</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editingBeschikbaarheid.GebruikZonsondergang" />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingBeschikbaarheid = null">Annuleren</button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(beschikbaarheidMessage))
+        {
+            <div class="alert alert-info mt-3">@beschikbaarheidMessage</div>
+        }
+    }
+
+    <hr class="mt-4" />
+    <div class="row mb-3">
+        <div class="col">
+            <h2 class="mb-0">Trainingsschema</h2>
+            <p class="text-muted mb-0">
+                Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting bij het
+                plannen van wedstrijden en in e-mailreacties. Verschilt bewust per dag: een club kan
+                maandag ruim en donderdag vol inrichten.
+            </p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNewTraining">Nieuw trainingsblok</button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Veld</th>
+                <th>Dag</th>
+                <th>Van</th>
+                <th>Tot</th>
+                <th>Omschrijving</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in training.OrderBy(t => t.DagVanWeek).ThenBy(t => t.VeldNummer).ThenBy(t => t.VanTijd))
+            {
+                <tr class="@(!t.Actief ? "text-muted" : "")">
+                    <td>@t.VeldNaam</td>
+                    <td>@DagNaam(t.DagVanWeek)</td>
+                    <td>@t.VanTijd</td>
+                    <td>@t.TotTijd</td>
+                    <td>@t.Omschrijving</td>
+                    <td>@(t.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => EditTraining(t)">Bewerken</button>
+                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteTrainingAsync(t.Id)">
+                            Verwijderen
+                        </button>
+                    </td>
+                </tr>
+            }
+            @if (training.Count == 0)
+            {
+                <tr><td colspan="7" class="text-muted">Geen trainingsblokken gevonden.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editingTraining != null)
+    {
+        <hr />
+        <h3>@(isNewTraining ? "Nieuw trainingsblok" : $"Bewerken: {editingTraining.VeldNaam}")</h3>
+        <EditForm Model="editingTraining" OnValidSubmit="OpslaanTrainingAsync">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Veld</label>
+                    <select class="form-select" @bind="editingTraining.VeldNummer">
+                        <option value="0">— Kies een veld —</option>
+                        @foreach (var v in velden)
+                        {
+                            <option value="@v.VeldNummer">@v.VeldNaam</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Dag</label>
+                    <select class="form-select" @bind="editingTraining.DagVanWeek">
+                        @for (int d = 1; d <= 7; d++)
+                        {
+                            <option value="@d">@DagNaam(d)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Van</label>
+                    <TimeInput @bind-Value="editingTraining.VanTijd" Placeholder="19:00" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Tot</label>
+                    <TimeInput @bind-Value="editingTraining.TotTijd" Placeholder="20:30" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label d-block">Actief</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editingTraining.Actief" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Omschrijving (optioneel)</label>
+                <input class="form-control" @bind="editingTraining.Omschrijving" placeholder="bijv. JO15-2 training" />
+            </div>
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingTraining = null">Annuleren</button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(trainingMessage))
+        {
+            <div class="alert alert-info mt-3">@trainingMessage</div>
+        }
+    }
+}
+
+@code {
+    private List<VeldDto> velden = new();
+    private List<VeldBeschikbaarheidDto> beschikbaarheid = new();
+    private List<VeldTrainingDto> training = new();
+
+    private VeldDto? editingVeld;
+    private VeldBeschikbaarheidDto? editingBeschikbaarheid;
+    private VeldTrainingDto? editingTraining;
+
+    private bool isNewVeld;
+    private bool isNewBeschikbaarheid;
+    private bool isNewTraining;
+
+    private bool loading = true;
+    private string? veldMessage;
+    private string? beschikbaarheidMessage;
+    private string? trainingMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ClubSelector.OnChange += OnClubChanged;
+        await LoadAsync();
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var veldenResult = await Api.GetVeldenAsync();
+        velden = veldenResult.Success ? veldenResult.Data ?? new() : new();
+        var beschikbaarheidResult = await Api.GetVeldBeschikbaarheidAsync();
+        beschikbaarheid = beschikbaarheidResult.Success ? beschikbaarheidResult.Data ?? new() : new();
+        var trainingResult = await Api.GetVeldTrainingAsync();
+        training = trainingResult.Success ? trainingResult.Data ?? new() : new();
+        loading = false;
+    }
+
+    // ── Velden ──
+
+    private void StartNewVeld()
+    {
+        editingVeld = new VeldDto { VeldType = "kunstgras", Actief = true };
+        isNewVeld = true;
+        veldMessage = null;
+    }
+
+    private void EditVeld(VeldDto v)
+    {
+        editingVeld = new VeldDto
+        {
+            VeldNummer = v.VeldNummer, VeldNaam = v.VeldNaam, VeldType = v.VeldType,
+            HeeftKunstlicht = v.HeeftKunstlicht, Actief = v.Actief
+        };
+        isNewVeld = false;
+        veldMessage = null;
+    }
+
+    private async Task OpslaanVeldAsync()
+    {
+        if (editingVeld == null) return;
+        var r = isNewVeld
+            ? await Api.CreateVeldAsync(editingVeld)
+            : await Api.UpdateVeldAsync(editingVeld.VeldNummer, editingVeld);
+        veldMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success) { editingVeld = null; await LoadAsync(); }
+    }
+
+    // ── Veldbeschikbaarheid ──
+
+    private void StartNewBeschikbaarheid()
+    {
+        editingBeschikbaarheid = new VeldBeschikbaarheidDto { DagVanWeek = 1, BeschikbaarVanaf = "18:00", BeschikbaarTot = "22:00" };
+        isNewBeschikbaarheid = true;
+        beschikbaarheidMessage = null;
+    }
+
+    private void EditBeschikbaarheid(VeldBeschikbaarheidDto b)
+    {
+        editingBeschikbaarheid = new VeldBeschikbaarheidDto
+        {
+            Id = b.Id, VeldNummer = b.VeldNummer, VeldNaam = b.VeldNaam, DagVanWeek = b.DagVanWeek,
+            BeschikbaarVanaf = b.BeschikbaarVanaf, BeschikbaarTot = b.BeschikbaarTot,
+            GebruikZonsondergang = b.GebruikZonsondergang
+        };
+        isNewBeschikbaarheid = false;
+        beschikbaarheidMessage = null;
+    }
+
+    private async Task OpslaanBeschikbaarheidAsync()
+    {
+        if (editingBeschikbaarheid == null) return;
+        var r = isNewBeschikbaarheid
+            ? await Api.CreateVeldBeschikbaarheidAsync(editingBeschikbaarheid)
+            : await Api.UpdateVeldBeschikbaarheidAsync(editingBeschikbaarheid.Id, editingBeschikbaarheid);
+        beschikbaarheidMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success) { editingBeschikbaarheid = null; await LoadAsync(); }
+    }
+
+    private async Task DeleteBeschikbaarheidAsync(int id)
+    {
+        var r = await Api.DeleteVeldBeschikbaarheidAsync(id);
+        beschikbaarheidMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
+        await LoadAsync();
+    }
+
+    // ── Trainingsschema ──
+
+    private void StartNewTraining()
+    {
+        editingTraining = new VeldTrainingDto { DagVanWeek = 1, VanTijd = "19:00", TotTijd = "20:30", Actief = true };
+        isNewTraining = true;
+        trainingMessage = null;
+    }
+
+    private void EditTraining(VeldTrainingDto t)
+    {
+        editingTraining = new VeldTrainingDto
+        {
+            Id = t.Id, VeldNummer = t.VeldNummer, VeldNaam = t.VeldNaam, DagVanWeek = t.DagVanWeek,
+            VanTijd = t.VanTijd, TotTijd = t.TotTijd, Omschrijving = t.Omschrijving, Actief = t.Actief
+        };
+        isNewTraining = false;
+        trainingMessage = null;
+    }
+
+    private async Task OpslaanTrainingAsync()
+    {
+        if (editingTraining == null) return;
+        var r = isNewTraining
+            ? await Api.CreateVeldTrainingAsync(editingTraining)
+            : await Api.UpdateVeldTrainingAsync(editingTraining.Id, editingTraining);
+        trainingMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success) { editingTraining = null; await LoadAsync(); }
+    }
+
+    private async Task DeleteTrainingAsync(int id)
+    {
+        var r = await Api.DeleteVeldTrainingAsync(id);
+        trainingMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
+        await LoadAsync();
+    }
+
+    private static string DagNaam(int dag) => dag switch
+    {
+        1 => "Maandag", 2 => "Dinsdag", 3 => "Woensdag", 4 => "Donderdag",
+        5 => "Vrijdag", 6 => "Zaterdag", 7 => "Zondag",
+        _ => $"Dag {dag}"
+    };
+}

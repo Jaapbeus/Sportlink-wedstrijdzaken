@@ -46,12 +46,16 @@ namespace SportlinkFunction.Planner
                 // DB-lookups parallel laden met de API-call
                 var lookupTask     = LoadLookupsAsync(clubCode);
                 var plannerTask    = PlannerDataAccess.GetGeplandeWedstrijdenOnlyAsync(date, clubCode);
+                // Trainingsblokken (#679) — ontbreken in de live Sportlink-respons, dus altijd
+                // apart uit de DB erbij halen, ook als het real-time API-pad actief is.
+                var trainingTask   = PlannerAvailabilityRepository.GetTrainingOccupationsAsync(date, clubCode);
                 var apiResponseTask = _http.GetStringAsync(url);
 
-                await Task.WhenAll(lookupTask, plannerTask, apiResponseTask);
+                await Task.WhenAll(lookupTask, plannerTask, trainingTask, apiResponseTask);
 
                 var (veldenLookup, speeltijdenLookup, teamLeeftijdLookup) = await lookupTask;
                 var plannerEntries = await plannerTask;
+                var trainingEntries = await trainingTask;
                 var json = await apiResponseTask;
 
                 var matches = JsonConvert.DeserializeObject<List<SportlinkProgrammaMatch>>(json)
@@ -97,16 +101,18 @@ namespace SportlinkFunction.Planner
                     });
                 }
 
-                // Samenvoegen: API-entries + planner-entries, dedupliceren op (VeldNummer, AanvangsTijd, Wedstrijd)
+                // Samenvoegen: API-entries + planner-entries + trainingsblokken, dedupliceren op
+                // (VeldNummer, AanvangsTijd, Wedstrijd)
                 var combined = apiEntries
                     .Concat(plannerEntries)
+                    .Concat(trainingEntries)
                     .GroupBy(w => (w.VeldNummer, w.AanvangsTijd, (w.Wedstrijd ?? "").ToLowerInvariant()))
                     .Select(g => g.OrderBy(w => w.Bron == "API" ? 0 : 1).First())
                     .ToList();
 
                 log.LogInformation(
-                    "SportlinkApiClient: {ApiCount} API + {PlannerCount} planner → {Total} bezettingen voor {Date}",
-                    apiEntries.Count, plannerEntries.Count, combined.Count, date);
+                    "SportlinkApiClient: {ApiCount} API + {PlannerCount} planner + {TrainingCount} training → {Total} bezettingen voor {Date}",
+                    apiEntries.Count, plannerEntries.Count, trainingEntries.Count, combined.Count, date);
 
                 return combined;
             }
