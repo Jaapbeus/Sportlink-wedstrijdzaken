@@ -26,8 +26,8 @@ Het controleert schema, build en runtime in één doorloop.
 | 1. DB-verbinding | `local.settings.json` aanwezig en geldig | nee |
 | 2. Schema | Alle 8 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
 | 3. Build | `dotnet build` FunctionApp + BlazorAdmin | nee |
-| 4. API smoke | 10 endpoints op `:7094` | nee (2xx verwacht) |
-| 5. Blazor pagina's | 7 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+| 4. API smoke | 11 endpoints op `:7094` | nee (2xx verwacht) |
+| 5. Blazor pagina's | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
 
 Secties 4 en 5 worden automatisch overgeslagen als de services niet draaien.
 

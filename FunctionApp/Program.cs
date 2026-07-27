@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Graph;
 using OpenAI.Chat;
+using SportlinkFunction.TeamResolution;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
@@ -36,7 +37,17 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey))
     builder.Services.AddSingleton<IChatClient>(
         new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
             .AsIChatClient());
+
+    // Forced-choice teamdisambiguatie (#697). Alleen geregistreerd als er een AI-provider is:
+    // zonder OpenAiApiKey blijft TeamResolver puur deterministisch en geeft bij ambiguïteit
+    // gewoon de kandidatenlijst terug in plaats van te kiezen.
+    builder.Services.AddSingleton<ITeamDisambiguator, TeamDisambiguationAiService>();
 }
+
+builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();
+builder.Services.AddSingleton<ITeamResolver, TeamResolver>();
+builder.Services.AddSingleton<TeamAliasLearningService>();
+builder.Services.AddSingleton<TeamResolutionShadowLogger>();
 
 // CORS voor lokale dev: geconfigureerd via Host.CORS in local.settings.json (Functions host-level).
 // In productie (Azure SWA) is CORS niet nodig: SWA proxying houdt alles op dezelfde origin.

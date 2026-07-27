@@ -28,8 +28,11 @@ public enum ResolutionBron
     /// <summary>Exacte hit op de canonieke teamnaam in <c>dbo.Teams</c>.</summary>
     ExacteMatch,
 
-    /// <summary>Meerdere kandidaten gevonden, geen automatische keuze gemaakt (nog geen AI-disambiguatie — zie #697).</summary>
+    /// <summary>Meerdere kandidaten gevonden en géén betrouwbare keuze gemaakt — terugvragen aan de afzender.</summary>
     MeerdereKandidaten,
+
+    /// <summary>Keuze uit een korte kandidatenlijst gemaakt door <see cref="ITeamDisambiguator"/> (#697).</summary>
+    AiDisambiguatie,
 
     /// <summary>Geen enkele kandidaat gevonden.</summary>
     Onopgelost,

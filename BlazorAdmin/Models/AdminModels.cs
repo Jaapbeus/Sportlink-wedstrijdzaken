@@ -309,6 +309,35 @@ public class LeermomentenStatsDto
     public int Rejected { get; set; }
 }
 
+// ── Teamaliassen (#701) ──
+
+public class TeamAliasDto
+{
+    public int Id { get; set; }
+    public string RuweTekst { get; set; } = "";
+    public string RuweTekstGenormaliseerd { get; set; } = "";
+    public int TeamId { get; set; }
+    /// <summary>Canonieke teamnaam uit dbo.Teams; null als het team inmiddels is verwijderd.</summary>
+    public string? Teamnaam { get; set; }
+    public string? LeeftijdsCategorie { get; set; }
+    public string Bron { get; set; } = "";
+    public string Status { get; set; } = "";
+    public int AantalKeerGebruikt { get; set; }
+    /// <summary>UTC uit de database — altijd .ToLocalTime() vóór weergave.</summary>
+    public DateTime? MtaInserted { get; set; }
+    public DateTime? MtaModified { get; set; }
+}
+
+public class TeamAliassenResponse
+{
+    public int Count { get; set; }
+    public int Limit { get; set; }
+    public int Pending { get; set; }
+    public int Validated { get; set; }
+    public int Rejected { get; set; }
+    public List<TeamAliasDto> Items { get; set; } = new();
+}
+
 // Thema (#325, #339)
 public class ThemeDto
 {

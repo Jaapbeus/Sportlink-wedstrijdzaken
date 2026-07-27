@@ -1,0 +1,134 @@
+# Architectuur — teamnaam naar TeamId (teamresolutie)
+
+> Status: fase 1-3 opgeleverd (#692, #696, #697, #698, #699, #701). Fase 4 (opruimen oude regex)
+> staat bewust geblokkeerd — zie #700 voor de exitconditie.
+
+## Het probleem
+
+Inkomende e-mail moet aan de juiste wedstrijd worden gekoppeld. Dat vereist dat een teamaanduiding
+uit vrije tekst ("JO13-2", "JO 13-2", "13-1") wordt herleid tot één specifiek team. Vóór deze
+vertaallaag gebeurde dat op vier plekken onafhankelijk van elkaar:
+
+1. een AI-classificatie die vrije tekst teruggaf zonder de teamlijst van de club te kennen;
+2. regex-normalisatie in `BerichtPipeline` die losse spellingsvarianten repareerde;
+3. een heuristiek die op stringvorm besloot of een team "de eigen club" was ("geen spatie" = eigen);
+4. `LIKE '%teamnaam%'`-matching in SQL, die bij meerdere treffers stilzwijgend de eerste koos.
+
+Elke stap gokte zelfstandig. Een tegenstander die zijn eigen team zonder spatie schreef, werd
+daardoor als eigen team geclassificeerd — thuis en uit omgedraaid, zonder enige foutmelding.
+
+## Waarom dit geen kwestie van "betere regex" is
+
+Sportlink levert elk team in **twee schrijfwijzen** aan, die naar hetzelfde fysieke team verwijzen
+maar géén gedeelde sleutel hebben (`teamcode` is `-1` bij lokale teams, `lokaleteamcode` is `-1` bij
+bondsteams). Geverifieerd tegen live `stg.teams`-data:
+
+| `teamsoort` | Notatie | Voorbeelden |
+|---|---|---|
+| `lokaal` | clubeigen, mét `J`, streepje bij G-teams | `JO10-1`, `MO13-1`, `G-1`, `1` |
+| `bond` | KNVB, mét clubprefix, **zonder** `J` | `[club] O10-1`, `[club] MO13-1`, `[club] G1`, `[club] 1` |
+
+Dit verklaart de al bestaande `O13 → JO13`-regel: die was nooit een e-mailtypfout-correctie, maar
+het verschil tussen bonds- en lokale notatie. Voor één club leverden 255 ruwe `his.teams`-namen
+**116** werkelijke teams op.
+
+Verder komen in echte data voor: veteranen (`[club] 35+1`), vrouwen (`[club] VR1`,
+`[club] VR30+1`), gemengde teams met een `JM`-suffix (`[club] O14-1JM`), G-teams, en teams met een
+eigen naam zonder patroon. Een normalisatie die dat niet aankan, mangelt bestaande teams.
+
+## De oplossing: één vertaalpunt, deterministisch
+
+```
+vrije tekst uit e-mail
+        │
+        ▼
+  AI-classificatie ......... levert alleen RUWE signalen (teamtekst, datum, intentie)
+        │
+        ▼
+  TeamNaamNormalisatie ..... deterministisch: clubprefix strippen, O→JO, scheidingstekens,
+        │                    hoofdletters. GEEN AI. Enige plek met deze regels.
+        ▼
+  TeamResolver ............. 1. gevalideerde alias   → TeamId  (confidence 1.0)
+        │                    2. exacte canonieke match → TeamId  (confidence 1.0)
+        │                    3. kandidaten op leeftijd+teamnummer
+        │                       └─ precies 1 → TeamId (confidence 0.9)
+        │                       └─ meerdere → disambiguatie of onbeslist
+        ▼
+  TeamId (of expliciet onbeslist — nooit een gok)
+```
+
+**Kernprincipe:** AI doet taalinterpretatie, code en database doen identiteit. Bij ambiguïteit
+wordt niet gegokt.
+
+### Ambiguïteit is echt, niet theoretisch
+
+Bij één club bestaan tien paren met dezelfde leeftijd én hetzelfde teamnummer, alleen verschillend
+in jongens/meisjes — bijvoorbeeld `JO13-1` en `MO13-1`. Een e-mail die alleen "13-1" noemt is dus
+aantoonbaar dubbelzinnig. Daarvoor is er één plek die mag kiezen:
+
+`TeamDisambiguationAiService` krijgt een genummerde kandidatenlijst en mag **alleen een index**
+teruggeven (forced choice). De keuze wordt daarna in C# gevalideerd tegen die lijst, dus een
+gehallucineerd nummer kan nooit tot een verkeerd `TeamId` leiden. Boven acht kandidaten wordt niet
+gedisambigueerd: dan is de tekst te vaag en is terugvragen aan de afzender correcter.
+
+## Datamodel
+
+| Tabel | Rol |
+|---|---|
+| `dbo.Teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
+| `dbo.TeamAliassen` | Uitsluitend schrijfwijzen die **niet** uit de normalisatie volgen: geleerd uit e-mail of handmatig toegevoegd. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. |
+
+De sync schrijft géén aliassen: alle Sportlink-schrijfwijzen van één team normaliseren per definitie
+naar dezelfde sleutel, dus een alias-rij zou dupliceren wat `dbo.Teams` al weet.
+
+Een alias die uit AI-disambiguatie komt, krijgt status `pending` en wordt dus **niet** vertrouwd
+totdat een coördinator hem goedkeurt (Beheer → Teamaliassen). Zo kan een foutieve keuze zich niet
+zelfversterken.
+
+## Uitrol — `TeamResolverMode`
+
+App setting (géén DB-kolom; zelfde patroon als `EmailReviewMode`, en één deployment bedient per
+definitie één club):
+
+| Waarde | Gedrag |
+|---|---|
+| ontbreekt / `off` | **Standaard.** Vertaallaag doet niets; de bestaande matching blijft leidend. |
+| `shadow` | Vertaallaag draait mee en logt alleen of ze tot dezelfde uitkomst komt (#698). |
+| `on` | Vertaallaag is leidend voor het zoeken van de wedstrijd (#699). |
+
+Een onbekende waarde valt terug op `off`: een typefout in de configuratie mag nooit stilzwijgend
+nieuw gedrag activeren.
+
+Shadow-mode logt per resolutie één regel:
+
+```
+TEAMRESOLUTIE SHADOW - overeenkomst=true bron=ExacteMatch confidence=1 teamId=42 kandidaten=0 ...
+```
+
+Zoek in de logs op `TEAMRESOLUTIE SHADOW` en let op `overeenkomst=false`: elke afwijking hoort
+verklaard te worden vóór de overstap naar `on`.
+
+## Bestanden
+
+| Bestand | Verantwoordelijkheid |
+|---|---|
+| `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. |
+| `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
+| `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen`, altijd op ClubCode. |
+| `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. |
+| `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
+| `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties. |
+| `FunctionApp/TeamResolution/TeamResolutionShadowLogger.cs` | Vergelijkt oude en nieuwe uitkomst zonder gedrag te wijzigen. |
+| `FunctionApp/TeamResolution/TeamResolverMode.cs` | Uitrolstand, faalt veilig naar `off`. |
+
+## Regels bij wijzigingen
+
+1. **Normalisatieregels horen uitsluitend in `TeamNaamNormalisatie`.** Een nieuwe regex elders in de
+   codebase is een architectuurschending — dat is precies het probleem dat deze laag oplost.
+2. **Voeg nooit een regel toe die een ontbrekend geslacht-prefix raadt.** "13-1" is dubbelzinnig; dat
+   hoort in de kandidaten-/disambiguatiestap, niet in een string-functie.
+3. **De disambiguator mag alleen kiezen uit aangeboden kandidaten**, en de keuze wordt altijd in C#
+   gevalideerd. Nooit vrije generatie van een teamnaam.
+4. **Nieuwe naamvormen eerst tegen echte data verifiëren** (`stg.teams` / `his.teams`) vóór je de
+   normalisatie aanpast. De vormen in dit document zijn zo gevonden, niet bedacht.
+5. **Test met de clubprefix als parameter**, nooit hardcoded: de prefix komt uit `dbo.AppSettings`.

@@ -2514,3 +2514,19 @@ BEGIN
     );
 END
 GO
+
+-- ============================================================
+-- #712: planner.EmailVerwerking.Pogingen — pogingenteller voor de e-mailverwerking.
+--
+-- Waarom: een bericht waarvan de verwerking faalt (verzendfout, plannerfout, mislukte
+-- AI-classificatie) blijft ongelezen in de inbox staan en komt bij elke poll terug. De Graph-query
+-- pakt de 10 oudste ongelezen berichten, dus tien structureel falende berichten blokkeren de hele
+-- wachtrij en kosten elke poll opnieuw een AI-call. Met deze teller geeft de processor na een vast
+-- aantal pogingen op: bericht als gelezen markeren, status Fout, spoor in het email-log.
+--
+-- DEFAULT 0 en niet 1: bestaande rijen zijn al afgehandeld en mogen niet als "poging gedaan"
+-- gelden. Nieuwe rijen worden door de code expliciet met Pogingen = 1 aangemaakt.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'Pogingen')
+    ALTER TABLE [planner].[EmailVerwerking] ADD [Pogingen] INT NOT NULL CONSTRAINT [DF_EmailVerwerking_Pogingen] DEFAULT 0;
+GO

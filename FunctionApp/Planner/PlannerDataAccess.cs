@@ -126,7 +126,7 @@ namespace SportlinkFunction.Planner
         public static Task<int> UpdateAllstarsMatchAsync(long wedstrijdCode, string nieuweVeld, string nieuweTijd)
             => AllstarsTestDataRepository.UpdateAllstarsMatchAsync(wedstrijdCode, nieuweVeld, nieuweTijd);
 
-        public static Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam)
-            => AllstarsTestDataRepository.GetTeamleiderContactAsync(teamNaam);
+        public static Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam, string? clubCode = null)
+            => AllstarsTestDataRepository.GetTeamleiderContactAsync(teamNaam, clubCode);
     }
 }

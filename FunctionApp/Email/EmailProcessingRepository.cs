@@ -13,14 +13,46 @@ internal static class EmailProcessingRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
-    internal static async Task<bool> BestaatMessageIdAsync(string messageId)
+    /// <summary>
+    /// Leest de stand van een bestaande verwerking, of <c>null</c> als het bericht nog niet bekend is.
+    /// <para>
+    /// Bewust <b>niet</b> op ClubCode gefilterd: <c>UQ_EmailVerwerking_MessageId</c> is een globale
+    /// unique constraint, dus dezelfde MessageId kan per definitie maar bij één club horen. Wél
+    /// filteren zou een bestaande rij van een andere club onzichtbaar maken, waarna de INSERT op die
+    /// unique constraint klapt en het bericht eeuwig blijft falen.
+    /// </para>
+    /// </summary>
+    internal static async Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(
-            "SELECT COUNT(1) FROM [planner].[EmailVerwerking] WHERE [MessageId] = @MessageId", conn);
+        using var cmd = new SqlCommand(@"
+            SELECT [Id], [Status], [Pogingen],
+                   CASE WHEN [VerstuurdNaar] IS NULL THEN 0 ELSE 1 END AS AntwoordVerstuurd
+            FROM [planner].[EmailVerwerking]
+            WHERE [MessageId] = @MessageId", conn);
         cmd.Parameters.AddWithValue("@MessageId", messageId);
-        return (int)(await cmd.ExecuteScalarAsync())! > 0;
+
+        using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+
+        return new EmailVerwerkingStand(
+            VerwerkingId: r.GetInt32(0),
+            Status: r.IsDBNull(1) ? "" : r.GetString(1),
+            Pogingen: r.IsDBNull(2) ? 0 : r.GetInt32(2),
+            AntwoordVerstuurd: r.GetInt32(3) == 1);
+    }
+
+    internal static async Task VerhoogPogingenAsync(int verwerkingId)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            UPDATE [planner].[EmailVerwerking]
+            SET [Pogingen] = [Pogingen] + 1, [mta_modified] = GETUTCDATE()
+            WHERE [Id] = @Id", conn);
+        cmd.Parameters.AddWithValue("@Id", verwerkingId);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     internal static async Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
@@ -30,11 +62,12 @@ internal static class EmailProcessingRepository
 
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        // Pogingen start op 1: deze insert hoort bij de eerste verwerkingspoging.
         using var cmd = new SqlCommand(@"
             INSERT INTO [planner].[EmailVerwerking]
-                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status], [ClubCode])
+                ([MessageId], [ConversationId], [Afzender], [Onderwerp], [OntvangstDatum], [EmailBody], [VerzoekType], [Status], [ClubCode], [Pogingen])
             VALUES
-                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen', @ClubCode);
+                (@MessageId, @ConversationId, @Afzender, @Onderwerp, @OntvangstDatum, @EmailBody, 'Onbekend', 'Ontvangen', @ClubCode, 1);
             SELECT CAST(SCOPE_IDENTITY() AS INT);", conn);
         cmd.Parameters.AddWithValue("@MessageId",     email.MessageId);
         cmd.Parameters.AddWithValue("@ConversationId",(object?)email.ConversationId ?? DBNull.Value);
@@ -96,6 +129,24 @@ internal static class EmailProcessingRepository
         cmd.Parameters.AddWithValue("@Id",      verwerkingId);
         cmd.Parameters.AddWithValue("@Naar",    verstuurdNaar);
         cmd.Parameters.AddWithValue("@Antwoord",antwoordEmail);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Slaat een voorgesteld antwoord op zonder te versturen (review mode, #712). <c>VerstuurdNaar</c>
+    /// blijft leeg — dat is de duplicaatgrens van de idempotentie-guard én het criterium waarop
+    /// <see cref="DetecteerReplyOpOnsAntwoordAsync"/> een eerder verzonden antwoord herkent.
+    /// </summary>
+    internal static async Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            UPDATE [planner].[EmailVerwerking]
+            SET [Status] = 'Review', [AntwoordEmail] = @Antwoord, [mta_modified] = GETUTCDATE()
+            WHERE [Id] = @Id", conn);
+        cmd.Parameters.AddWithValue("@Id",       verwerkingId);
+        cmd.Parameters.AddWithValue("@Antwoord", antwoordEmail);
         await cmd.ExecuteNonQueryAsync();
     }
 

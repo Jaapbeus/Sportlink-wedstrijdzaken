@@ -38,6 +38,9 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
+| `GET` | `/beheer/teamaliassen` | **Admin** | Teamnaam-aliassen ophalen (`?status=pending\|validated\|rejected&limit=100`) — inclusief canonieke teamnaam |
+| `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`) |
+| `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL) — gefilterd op `X-Club-Code` header |
 | `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl }`) — gefilterd op `X-Club-Code` header |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
@@ -633,6 +636,81 @@ gesynchroniseerde Sportlink-data — **zonder** de scheduling-optimalisatie te d
 ```
 
 Resultaat is gesorteerd op `aanvangsTijd`. Wedstrijden zonder aanvangstijd staan achteraan.
+
+---
+
+## Beheer — Teamaliassen
+
+Aliassen zijn afwijkende schrijfwijzen van een teamnaam (bijvoorbeeld `13-1` in plaats van
+`JO13-1`). Ze worden vastgelegd in `dbo.TeamAliassen` met status `pending`. Alleen een alias met
+status `validated` mag bij teamnaam-resolutie als vertrouwde exacte match gelden — een foutieve
+AI-keuze kan zich zo niet zelfversterken. Alles is gescoped op de club uit de `X-Club-Code` header.
+
+### GET /api/beheer/teamaliassen
+
+| Parameter | Type | Verplicht | Beschrijving |
+|-----------|------|-----------|-------------|
+| `status` | `string` | Nee | `pending`, `validated` of `rejected`. Leeg = alle statussen |
+| `limit` | `integer` | Nee | Max. aantal rijen (default 100, max 500) |
+
+```bash
+curl "http://localhost:7094/api/beheer/teamaliassen?status=pending&limit=50"
+```
+
+```json
+{
+  "count": 1,
+  "limit": 50,
+  "pending": 1,
+  "validated": 4,
+  "rejected": 0,
+  "items": [
+    {
+      "id": 12,
+      "ruweTekst": "13-1",
+      "ruweTekstGenormaliseerd": "131",
+      "teamId": 7,
+      "teamnaam": "[ClubCode] JO13-1",
+      "leeftijdsCategorie": "JO13",
+      "bron": "AiDisambiguatie",
+      "status": "pending",
+      "aantalKeerGebruikt": 3,
+      "mtaInserted": "2026-07-26T09:12:00Z",
+      "mtaModified": "2026-07-27T07:03:00Z"
+    }
+  ]
+}
+```
+
+`pending`/`validated`/`rejected` zijn de totalen per status voor de hele club — onafhankelijk van
+het `status`-filter en de `limit`. Datums zijn UTC (`Z`-suffix); de GUI toont ze in lokale tijd.
+Bestaat de tabel nog niet (post-deployment script niet uitgevoerd), dan volgt een lege lijst
+met nullen in plaats van een fout.
+
+### PUT /api/beheer/teamaliassen/{id}/valideer
+
+```bash
+curl -X PUT http://localhost:7094/api/beheer/teamaliassen/12/valideer \
+  -H "Content-Type: application/json" \
+  -d '{"status":"validated"}'
+```
+
+```json
+{ "id": 12, "status": "validated" }
+```
+
+Alleen `validated` of `rejected` zijn toegestaan → anders `400`. Onbekende id (of een id van een
+andere club) → `404`.
+
+### DELETE /api/beheer/teamaliassen/{id}
+
+```bash
+curl -X DELETE http://localhost:7094/api/beheer/teamaliassen/12
+```
+
+```json
+{ "deleted": true, "id": 12 }
+```
 
 ---
 
