@@ -190,11 +190,12 @@ ITERATIE:
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
   d. Stop services + clean BlazorAdmin + herstart:
-       Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-       Start-Sleep -Seconds 2
-       dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null   # verwijdert stale fingerprints
-       .\scripts\dev\Start-Debug.ps1
-       Start-Sleep -Seconds 20
+       .\scripts\dev\Stop-Debug.ps1 -Clean    # stopt process-trees + verwijdert stale fingerprints
+       .\scripts\dev\Start-Debug.ps1          # wacht zelf op readiness; exit 1 als een service niet opkomt
+
+       # Geen Start-Sleep meer nodig: Start-Debug.ps1 pollt /api/health (FunctionApp) en
+       # GET / (BlazorAdmin), en meldt de gemeten opstarttijd + versienummer. Gebruik
+       # -Tail voor één samengevoegde logstroom in plaats van losse vensters.
 
        # Hot reload gedrag (vastgelegd in Start-Debug.ps1):
        # - BlazorAdmin :5242 → HOT RELOAD via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
@@ -220,9 +221,11 @@ ITERATIE:
        Start-Sleep -Seconds 20
 
   e. Controleer FunctionApp health + versienummer:
+       # Start-Debug.ps1 doet dit al en faalt met exit 1 als health niet 200 geeft.
+       # Handmatig herhalen kan met:
        $health = Invoke-RestMethod http://localhost:7094/api/health
        Write-Host "Versie: $($health.version)"
-       → niet 200? Fix, kill services, ga terug naar a.
+       → niet 200? Fix, .\scripts\dev\Stop-Debug.ps1, ga terug naar a.
 
   f. CSP-compatibiliteit van de gepubliceerde index.html (VERPLICHT — zie #659):
        # Er MOET géén import-map en géén inline <script> in de publish-output staan: de
@@ -258,9 +261,12 @@ ITERATIE:
      → fout? F12 → Console → foutmelding rapporteren
 
   i. Kill services:
-       Stop-Process -Name "func" -ErrorAction SilentlyContinue
-       Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
-       Stop-Process -Name "node" -ErrorAction SilentlyContinue  # SWA CLI
+       .\scripts\dev\Stop-Debug.ps1        # stopt process-trees; Azurite blijft draaien
+       # .\scripts\dev\Stop-Debug.ps1 -All  → inclusief Azurite
+
+       # Gebruik NIET Stop-Process -Name "dotnet": dat sloopt élk dotnet-proces op de
+       # machine, en het laat 'dotnet watch' zijn kindproces opnieuw starten (poort 5242
+       # raakt dan meteen weer bezet).
 
 GESLAAGD als: alle stappen exit 0 of 2xx, fingerprint consistent ✅, browser toont geen foutbanner
 ```

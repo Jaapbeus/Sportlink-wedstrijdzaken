@@ -1,19 +1,25 @@
-﻿# Start-Debug.ps1
-# Start alle lokale services voor v2 ontwikkelen en testen.
-# Vereisten: .NET 10 SDK, Azure Functions Core Tools v4, Azurite, SQL Server met SportlinkSqlDb.
+# Start-Debug.ps1
+# Start alle lokale services voor v2 ontwikkelen en testen, en wacht tot ze daadwerkelijk
+# klaar zijn (readiness-polling — geen vaste sleeps).
+#
+# Vereisten: .NET 9 runtime + .NET 10 SDK, Azure Functions Core Tools v4, Azurite,
+#            SQL Server met SportlinkSqlDb.
 #
 # Gebruik:
-#   .\Start-Debug.ps1          → Azurite + FunctionApp + BlazorAdmin (met hot reload)
-#   .\Start-Debug.ps1 -Swa     → bovenstaande + SWA emulator op http://localhost:4280
-#   .\Start-Debug.ps1 -NoWatch → BlazorAdmin zonder hot reload (dotnet run i.p.v. dotnet watch)
+#   .\Start-Debug.ps1            → Azurite + FunctionApp + BlazorAdmin (met hot reload)
+#   .\Start-Debug.ps1 -Swa       → bovenstaande + SWA emulator op http://localhost:4280
+#   .\Start-Debug.ps1 -NoWatch   → BlazorAdmin zonder hot reload (dotnet run i.p.v. dotnet watch)
+#   .\Start-Debug.ps1 -Tail      → één samengevoegde logstroom i.p.v. losse vensters
+#   .\Start-Debug.ps1 -Clean     → stop + dotnet clean BlazorAdmin vóór het starten
+#
+# Exit code: 0 = alle services bereikbaar, 1 = minstens één service niet opgestart.
 #
 # Hot reload gedrag:
 #   BlazorAdmin  :5242  → HOT RELOAD actief via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
-#                          worden automatisch herladen zonder herstart. Browser ververst vanzelf.
-#   FunctionApp  :7094  → GEEN hot reload. Azure Functions isolated worker ondersteunt dit niet.
-#                          Na een codewijziging in FunctionApp: sluit het venster en herstart
-#                          Start-Debug.ps1. Alternatief: dotnet build in het FunctionApp-venster
-#                          gevolgd door func start --port 7094.
+#                          worden automatisch herladen zonder herstart.
+#   FunctionApp  :7094  → GEEN hot reload. Azure Functions isolated worker ondersteunt dit
+#                          niet. Na elke C#-wijziging in FunctionApp: Stop-Debug.ps1 +
+#                          Start-Debug.ps1 opnieuw.
 #
 # Poorten:
 #   Azurite      :10000 (blob), :10001 (queue), :10002 (table)
@@ -23,17 +29,25 @@
 
 param(
     [switch]$Swa,      # Start ook de Azure SWA emulator (vereist swa CLI)
-    [switch]$NoWatch   # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
+    [switch]$NoWatch,  # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
+    [switch]$Tail,     # Voeg alle service-output samen in één venster
+    [switch]$Clean     # dotnet clean op BlazorAdmin vóór het starten
 )
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$pidFile = Join-Path $env:TEMP 'sportlink-debug-pids.txt'
+$root    = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$logDir  = Join-Path $env:TEMP 'sportlink-debug-logs'
+$started = Get-Date
+
+Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
+
+$ports   = Get-DebugPorts
+$pidFile = Get-DebugPidFile
 
 # Controleer of de machine-lokale git-hook patronen aanwezig zijn (#514)
 $hooksPatterns = Join-Path $root ".githooks/sensitive-patterns.txt"
 if (-not (Test-Path $hooksPatterns)) {
     Write-Host ""
-    Write-Host "⚠️  SETUP ONVOLLEDIG: .githooks/sensitive-patterns.txt ontbreekt!" -ForegroundColor Yellow
+    Write-Host "SETUP ONVOLLEDIG: .githooks/sensitive-patterns.txt ontbreekt!" -ForegroundColor Yellow
     Write-Host "   Secrets worden niet beschermd door de lokale commit/push hooks." -ForegroundColor Yellow
     Write-Host "   Fix (eenmalig):" -ForegroundColor Yellow
     Write-Host "     git config core.hooksPath .githooks" -ForegroundColor Cyan
@@ -42,117 +56,241 @@ if (-not (Test-Path $hooksPatterns)) {
     Write-Host ""
 }
 
-# --- Sluit vorige debug-vensters via opgeslagen PIDs ---
+# --- Vorige services stoppen (gedeelde teardown, wacht tot poorten vrij zijn) ---
 Write-Host "Controleer op draaiende services..." -ForegroundColor DarkGray
-
-if (Test-Path $pidFile) {
-    Get-Content $pidFile | ForEach-Object {
-        $savedPid = [int]$_
-        $proc = Get-Process -Id $savedPid -ErrorAction SilentlyContinue
-        if ($proc) {
-            Write-Host "  Sluiten vorig venster: $($proc.ProcessName) (PID $savedPid)" -ForegroundColor DarkGray
-            Stop-Process -Id $savedPid -Force -ErrorAction SilentlyContinue
-        }
-    }
-    Remove-Item $pidFile -Force
-    Start-Sleep -Seconds 1
+$teardown = Stop-DebugServices
+if (-not $teardown.AllPortsFree) {
+    Write-Host ""
+    Write-Host "Poorten zijn niet vrijgegeven — starten afgebroken." -ForegroundColor Red
+    Write-Host "Controleer met: Get-NetTCPConnection -LocalPort 7094,5242,4280 -State Listen" -ForegroundColor Yellow
+    exit 1
 }
 
-# --- Fallback: stop op poort als PID-bestand ontbreekt (bijv. eerste keer) ---
-foreach ($port in @(7094, 5242, 4280)) {
-    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($conn) {
-        $proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
-        if ($proc) {
-            Write-Host "  Stoppen: $($proc.ProcessName) (PID $($proc.Id)) op poort $port" -ForegroundColor Yellow
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        }
+if ($Clean) {
+    Write-Host "BlazorAdmin cleanen (verwijdert stale fingerprints)..." -ForegroundColor Cyan
+    dotnet clean (Join-Path $root 'BlazorAdmin\BlazorAdmin.csproj') | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "dotnet clean mislukt — starten afgebroken." -ForegroundColor Red
+        exit 1
     }
 }
 
-Start-Sleep -Seconds 4   # extra tijd zodat file handles (runtimeconfig.json) vrijgegeven zijn
+if ($Tail) {
+    if (Test-Path $logDir) { Remove-Item "$logDir\*.log" -Force -ErrorAction SilentlyContinue }
+    else { New-Item -ItemType Directory -Path $logDir | Out-Null }
+}
 
-$debugPids = [System.Collections.Generic.List[int]]::new()
+# Regels in het PID-bestand krijgen het formaat 'naam=pid', zodat Stop-Debug.ps1 Azurite
+# kan overslaan zolang -All niet is meegegeven.
+$debugPids  = [System.Collections.Generic.List[string]]::new()
+$logSources = [ordered]@{}
+
+function Start-Service {
+    <#
+        Start één service. Met -Tail gaat de output naar een logbestand (venster verborgen),
+        anders naar een eigen venster met -NoExit zoals voorheen.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Command,
+        [string]$Banner = '',
+        [string]$BannerColor = 'Cyan',
+        [switch]$Minimized
+    )
+
+    if ($Tail) {
+        $logFile = Join-Path $logDir "$Name.log"
+        $proc = Start-Process powershell -ArgumentList @('-NoProfile', '-Command', $Command) `
+            -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError  "$logFile.err"
+        $logSources[$Name] = $logFile
+    } else {
+        $inner = if ($Banner) {
+            "Write-Host '$Banner' -ForegroundColor $BannerColor; $Command"
+        } else { $Command }
+        $style = if ($Minimized) { 'Minimized' } else { 'Normal' }
+        $proc = Start-Process powershell -ArgumentList @('-NoExit', '-Command', $inner) `
+            -WindowStyle $style -PassThru
+    }
+
+    $debugPids.Add("$Name=$($proc.Id)")
+    return $proc
+}
 
 # --- Azurite ---
-$azuriteRunning = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
-if ($azuriteRunning) {
-    Write-Host "Azurite actief (poort 10000)." -ForegroundColor DarkGray
+if (Test-PortListening -Port $ports.Azurite) {
+    Write-Host "Azurite actief (poort $($ports.Azurite))." -ForegroundColor DarkGray
 } else {
-    Write-Host "Azurite niet gevonden — starten..." -ForegroundColor Yellow
+    Write-Host "Azurite niet gevonden - starten..." -ForegroundColor Yellow
     $azuriteDir = Join-Path $env:TEMP 'azurite'
     if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-    $azuriteProc = Start-Process powershell -ArgumentList @(
-        '-NoExit', '-Command',
-        "azurite --location '$azuriteDir' --debug '$azuriteDir\debug.log'"
-    ) -WindowStyle Minimized -PassThru
-    $debugPids.Add($azuriteProc.Id)
-    Start-Sleep -Seconds 2
+    Start-Service -Name 'azurite' -Minimized `
+        -Command "azurite --location '$azuriteDir' --debug '$azuriteDir\debug.log'" | Out-Null
+
+    if (-not (Wait-ForPort -Port $ports.Azurite -TimeoutSeconds 30 -Label 'Azurite')) {
+        Write-Host "Azurite is niet binnen 30s gestart." -ForegroundColor Red
+        Write-Host "  Installeer eenmalig via: npm install -g azurite" -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host "  Azurite gestart." -ForegroundColor Green
 }
 
 # --- FunctionApp ---
-Write-Host "FunctionApp starten op http://localhost:7094 ..." -ForegroundColor Cyan
-Write-Host "  ⚠  FunctionApp heeft GEEN hot reload. Na codewijzigingen: venster sluiten + Start-Debug.ps1 opnieuw." -ForegroundColor DarkYellow
-$funcProc = Start-Process powershell -ArgumentList @(
-    '-NoExit', '-Command',
-    "Set-Location '$root\FunctionApp'; Write-Host 'FunctionApp — poort 7094  (geen hot reload — herstart vereist na codewijziging)' -ForegroundColor Cyan; func start --port 7094"
-) -WindowStyle Normal -PassThru
-$debugPids.Add($funcProc.Id)
+Write-Host "FunctionApp starten op http://localhost:$($ports.FunctionApp) ..." -ForegroundColor Cyan
+Write-Host "  FunctionApp heeft GEEN hot reload. Na codewijzigingen: Stop-Debug.ps1 + Start-Debug.ps1." -ForegroundColor DarkYellow
+Start-Service -Name 'func' `
+    -Banner "FunctionApp - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
+    -Command "Set-Location '$root\FunctionApp'; func start --port $($ports.FunctionApp)" | Out-Null
 
 # --- BlazorAdmin ---
 if ($NoWatch) {
-    Write-Host "BlazorAdmin starten op http://localhost:5242 (geen hot reload) ..." -ForegroundColor Cyan
-    $blazorProc = Start-Process powershell -ArgumentList @(
-        '-NoExit', '-Command',
-        "Set-Location '$root\BlazorAdmin'; Write-Host 'BlazorAdmin — poort 5242  (geen hot reload)' -ForegroundColor Cyan; dotnet run --launch-profile http"
-    ) -WindowStyle Normal -PassThru
+    Write-Host "BlazorAdmin starten op http://localhost:$($ports.BlazorAdmin) (geen hot reload) ..." -ForegroundColor Cyan
+    Start-Service -Name 'blazor' `
+        -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (geen hot reload)" `
+        -Command "Set-Location '$root\BlazorAdmin'; dotnet run --launch-profile http" | Out-Null
 } else {
-    Write-Host "BlazorAdmin starten op http://localhost:5242 (hot reload actief) ..." -ForegroundColor Cyan
-    $blazorProc = Start-Process powershell -ArgumentList @(
-        '-NoExit', '-Command',
-        "Set-Location '$root\BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; Write-Host 'BlazorAdmin — poort 5242  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)' -ForegroundColor Green; dotnet watch run --launch-profile http --non-interactive"
-    ) -WindowStyle Normal -PassThru
+    Write-Host "BlazorAdmin starten op http://localhost:$($ports.BlazorAdmin) (hot reload actief) ..." -ForegroundColor Cyan
+    Start-Service -Name 'blazor' -BannerColor 'Green' `
+        -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)" `
+        -Command "Set-Location '$root\BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; dotnet watch run --launch-profile http --non-interactive" | Out-Null
 }
-$debugPids.Add($blazorProc.Id)
 
 # --- SWA emulator (optioneel) ---
+$swaStarted = $false
 if ($Swa) {
-    $swaCmd = Get-Command swa -ErrorAction SilentlyContinue
-    if (-not $swaCmd) {
+    if (-not (Get-Command swa -ErrorAction SilentlyContinue)) {
         Write-Host ""
         Write-Host "SWA CLI niet gevonden. Installeer eenmalig via:" -ForegroundColor Yellow
         Write-Host "  npm install -g @azure/static-web-apps-cli" -ForegroundColor Yellow
         Write-Host "SWA emulator wordt overgeslagen." -ForegroundColor Yellow
     } else {
-        Write-Host "SWA emulator starten op http://localhost:4280 ..." -ForegroundColor Cyan
-        $swaProc = Start-Process powershell -ArgumentList @(
-            '-NoExit', '-Command',
-            "Set-Location '$root'; Write-Host 'SWA emulator — poort 4280' -ForegroundColor Cyan; swa start sportlink-admin"
-        ) -WindowStyle Normal -PassThru
-        $debugPids.Add($swaProc.Id)
+        Write-Host "SWA emulator starten op http://localhost:$($ports.Swa) ..." -ForegroundColor Cyan
+        Start-Service -Name 'swa' `
+            -Banner "SWA emulator - poort $($ports.Swa)" `
+            -Command "Set-Location '$root'; swa start sportlink-admin" | Out-Null
+        $swaStarted = $true
     }
 }
 
-# --- PIDs opslaan voor volgende herstart ---
+# --- PIDs opslaan zodat Stop-Debug.ps1 ze kan opruimen ---
 $debugPids | Set-Content $pidFile
-Write-Host "  Debug-venster PIDs opgeslagen: $($debugPids -join ', ')" -ForegroundColor DarkGray
+Write-Host "  Debug-proces PIDs opgeslagen: $($debugPids -join ', ')" -ForegroundColor DarkGray
 
-# --- Samenvatting ---
+# ──────────────────────────────────────────────────────────────────────
+# READINESS — pollen tot de services echt reageren
+# ──────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "Gestart:" -ForegroundColor Green
-Write-Host "  FunctionApp   http://localhost:7094/api/health  (herstart vereist na C#-wijziging)" -ForegroundColor White
-if ($NoWatch) {
-    Write-Host "  BlazorAdmin   http://localhost:5242  (geen hot reload)" -ForegroundColor White
+Write-Host "Wachten tot de services bereikbaar zijn..." -ForegroundColor Cyan
+
+$failures = [System.Collections.Generic.List[string]]::new()
+
+# FunctionApp: health-endpoint is de enige echte readiness-indicator.
+# De host heeft een bekende koude-start van ~20s (#175), daarom een ruime timeout.
+$health = Wait-ForHealth -Url "http://localhost:$($ports.FunctionApp)/api/health" -TimeoutSeconds 120
+if ($health) {
+    $versie = if ($health.version) { $health.version } else { 'onbekend' }
+    Write-Host "  FunctionApp OK - versie $versie" -ForegroundColor Green
 } else {
-    Write-Host "  BlazorAdmin   http://localhost:5242  (hot reload actief - browser ververst automatisch)" -ForegroundColor Green
+    Write-Host "  FunctionApp reageerde niet binnen 120s op /api/health" -ForegroundColor Red
+    $failures.Add('FunctionApp')
 }
-if ($Swa -and (Get-Command swa -ErrorAction SilentlyContinue)) {
-    Write-Host "  SWA emulator  http://localhost:4280  (auth-emulatie actief)" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Gebruik http://localhost:4280 voor de v2 Admin GUI met SWA routeregels." -ForegroundColor DarkGray
-    Write-Host "Mock-login: http://localhost:4280/.auth/login/aad  (vul username + rol 'admin' in)" -ForegroundColor DarkGray
+
+# BlazorAdmin: eerste build kan lang duren, vooral na een clean.
+if (Wait-ForHttp -Url "http://localhost:$($ports.BlazorAdmin)/" -TimeoutSeconds 180) {
+    Write-Host "  BlazorAdmin OK" -ForegroundColor Green
+} else {
+    Write-Host "  BlazorAdmin reageerde niet binnen 180s" -ForegroundColor Red
+    $failures.Add('BlazorAdmin')
 }
+
+if ($swaStarted) {
+    if (Wait-ForHttp -Url "http://localhost:$($ports.Swa)/" -TimeoutSeconds 90) {
+        Write-Host "  SWA emulator OK" -ForegroundColor Green
+    } else {
+        Write-Host "  SWA emulator reageerde niet binnen 90s" -ForegroundColor Red
+        $failures.Add('SWA emulator')
+    }
+}
+
+$duur = [int]((Get-Date) - $started).TotalSeconds
+
+# ──────────────────────────────────────────────────────────────────────
+# SAMENVATTING
+# ──────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "Wacht ~15 seconden tot alle services klaar zijn." -ForegroundColor DarkGray
-Write-Host "Hot reload status: BlazorAdmin=JA (.razor/.cs/.css), FunctionApp=NEE (herstart vereist)" -ForegroundColor DarkGray
-Write-Host "Sluit de aparte vensters om te stoppen." -ForegroundColor DarkGray
+if ($failures.Count -gt 0) {
+    Write-Host "NIET ALLE SERVICES ZIJN GESTART ($duur s)" -ForegroundColor Red
+    Write-Host "  Mislukt: $($failures -join ', ')" -ForegroundColor Red
+    Write-Host ""
+    if ($Tail) {
+        Write-Host "  Bekijk de logs in: $logDir" -ForegroundColor Yellow
+    } else {
+        Write-Host "  Controleer de foutmelding in het bijbehorende venster." -ForegroundColor Yellow
+    }
+    Write-Host "  Veelvoorkomend: .NET 9 runtime ontbreekt (503 'Function host is not running')" -ForegroundColor DarkGray
+    Write-Host "  of de SQL Server-database is niet bereikbaar." -ForegroundColor DarkGray
+    exit 1
+}
+
+Write-Host "Alle services gereed in $duur seconden:" -ForegroundColor Green
+Write-Host "  FunctionApp   http://localhost:$($ports.FunctionApp)/api/health  (herstart vereist na C#-wijziging)" -ForegroundColor White
+if ($NoWatch) {
+    Write-Host "  BlazorAdmin   http://localhost:$($ports.BlazorAdmin)  (geen hot reload)" -ForegroundColor White
+} else {
+    Write-Host "  BlazorAdmin   http://localhost:$($ports.BlazorAdmin)  (hot reload actief - browser ververst automatisch)" -ForegroundColor Green
+}
+if ($swaStarted) {
+    Write-Host "  SWA emulator  http://localhost:$($ports.Swa)  (auth-emulatie actief)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Gebruik http://localhost:$($ports.Swa) voor de Admin GUI met SWA routeregels." -ForegroundColor DarkGray
+    Write-Host "Mock-login: http://localhost:$($ports.Swa)/.auth/login/aad  (vul username + rol 'admin' in)" -ForegroundColor DarkGray
+}
+
+Write-Host ""
+Write-Host "HTTP 200 bewijst NIET dat de Blazor-app rendert. Open de GUI en controleer op" -ForegroundColor DarkYellow
+Write-Host "een foutbanner + zichtbaar versienummer voordat je iets oplevert." -ForegroundColor DarkYellow
+Write-Host ""
+Write-Host "Stoppen: .\scripts\dev\Stop-Debug.ps1  (of -Clean om ook fingerprints op te ruimen)" -ForegroundColor DarkGray
+
+# ──────────────────────────────────────────────────────────────────────
+# GEAGGREGEERDE LOGSTROOM (-Tail)
+# ──────────────────────────────────────────────────────────────────────
+if ($Tail) {
+    $prefixColor = @{ azurite = 'DarkGray'; func = 'Cyan'; blazor = 'Green'; swa = 'Magenta' }
+    $printed     = @{}
+    foreach ($name in $logSources.Keys) { $printed[$name] = 0 }
+
+    Write-Host ""
+    Write-Host "=== Samengevoegde logstroom (Ctrl+C om te stoppen; services blijven draaien) ===" -ForegroundColor Cyan
+    Write-Host ""
+
+    while ($true) {
+        foreach ($name in $logSources.Keys) {
+            foreach ($file in @($logSources[$name], "$($logSources[$name]).err")) {
+                if (-not (Test-Path $file)) { continue }
+                try {
+                    $lines = @(Get-Content $file -ErrorAction Stop)
+                } catch { continue }
+
+                $key = "$name|$file"
+                if (-not $printed.ContainsKey($key)) { $printed[$key] = 0 }
+                if ($lines.Count -le $printed[$key]) { continue }
+
+                $new = $lines[$printed[$key]..($lines.Count - 1)]
+                $printed[$key] = $lines.Count
+
+                $label = "[{0}]" -f $name.ToUpper()
+                $color = if ($prefixColor.ContainsKey($name)) { $prefixColor[$name] } else { 'White' }
+                foreach ($line in $new) {
+                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                    Write-Host ("{0,-10}" -f $label) -NoNewline -ForegroundColor $color
+                    Write-Host $line
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 400
+    }
+}
+
+exit 0
