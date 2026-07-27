@@ -11,20 +11,25 @@ public sealed class TeamCandidateRepository : ITeamCandidateRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
-    public async Task<TeamCandidate?> FindValidatedAliasAsync(string clubCode, string genormaliseerdeSleutel)
+    public async Task<TeamCandidate?> FindValidatedAliasAsync(
+        string clubCode, string ruweTekst, string genormaliseerdeSleutel)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        // Een treffer op de exacte bronschrijfwijze weegt zwaarder dan een treffer op de
+        // genormaliseerde vorm: die eerste komt rechtstreeks uit de Sportlink-data.
         using var cmd = new SqlCommand(@"
             SELECT TOP 1 t.[TeamId], t.[Teamnaam], t.[LeeftijdsCategorie]
             FROM [dbo].[TeamAliassen] a
             INNER JOIN [dbo].[Teams] t ON t.[TeamId] = a.[TeamId]
             WHERE a.[ClubCode] = @clubCode
-              AND a.[RuweTekstGenormaliseerd] = @sleutel
               AND a.[Status] = 'validated'
               AND t.[IsActief] = 1
+              AND (a.[RuweTekst] = @ruweTekst OR a.[RuweTekstGenormaliseerd] = @sleutel)
+            ORDER BY CASE WHEN a.[RuweTekst] = @ruweTekst THEN 0 ELSE 1 END
         ", conn);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        cmd.Parameters.AddWithValue("@ruweTekst", ruweTekst);
         cmd.Parameters.AddWithValue("@sleutel", genormaliseerdeSleutel);
         using var reader = await cmd.ExecuteReaderAsync();
         return await reader.ReadAsync() ? ReadCandidate(reader) : null;
@@ -72,6 +77,16 @@ public sealed class TeamCandidateRepository : ITeamCandidateRepository
         while (await reader.ReadAsync())
             resultaten.Add(ReadCandidate(reader));
         return resultaten;
+    }
+
+    public async Task<bool> HeeftActieveTeamsAsync(string clubCode)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(
+            "SELECT TOP 1 1 FROM [dbo].[Teams] WHERE [ClubCode] = @clubCode AND [IsActief] = 1", conn);
+        cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        return await cmd.ExecuteScalarAsync() is not null;
     }
 
     private static TeamCandidate ReadCandidate(SqlDataReader reader) => new(

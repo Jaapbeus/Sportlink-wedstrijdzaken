@@ -1,7 +1,7 @@
 # Architectuur — teamnaam naar TeamId (teamresolutie)
 
-> Status: fase 1-3 opgeleverd (#692, #696, #697, #698, #699, #701). Fase 4 (opruimen oude regex)
-> staat bewust geblokkeerd — zie #700 voor de exitconditie.
+> Status: volledig opgeleverd (#692, #696, #697, #698, #699, #700, #701). De oude regex-normalisatie
+> en stringheuristieken zijn verwijderd: deze laag is het enige pad waarlangs een team wordt herkend.
 
 ## Het probleem
 
@@ -85,28 +85,44 @@ Een alias die uit AI-disambiguatie komt, krijgt status `pending` en wordt dus **
 totdat een coördinator hem goedkeurt (Beheer → Teamaliassen). Zo kan een foutieve keuze zich niet
 zelfversterken.
 
-## Uitrol — `TeamResolverMode`
+## Uitrol — geen schakelaar
 
-App setting (géén DB-kolom; zelfde patroon als `EmailReviewMode`, en één deployment bedient per
-definitie één club):
+Er is **geen** instelling om deze laag uit te zetten. Dat is een bewuste keuze: sinds #700 is dit het
+enige pad waarlangs een team wordt herkend, en een schakelaar die dat kan uitzetten is dan geen
+veiligheidsventiel maar een voetangel — hij zou de teamherkenning stil kunnen uitschakelen zonder dat
+er iets kapot lijkt.
 
-| Waarde | Gedrag |
+Wat er in de plaats is gekomen aan veiligheid:
+
+| Situatie | Gedrag |
 |---|---|
-| ontbreekt / `off` | **Standaard.** Vertaallaag doet niets; de bestaande matching blijft leidend. |
-| `shadow` | Vertaallaag draait mee en logt alleen of ze tot dezelfde uitkomst komt (#698). |
-| `on` | Vertaallaag is leidend voor het zoeken van de wedstrijd (#699). |
+| Resolver niet geregistreerd in DI | E-mailverwerking stopt met een foutmelding. Verwerken zonder teamherkenning is erger dan niet verwerken. |
+| `dbo.Teams` leeg (bijv. direct na een deploy) | De canonicalisatie wordt eenmalig alsnog uitgevoerd op de al aanwezige `his.teams`-data. Lukt dat niet, dan wordt er niet verwerkt en volgt een expliciete foutmelding. |
+| Teamaanduiding niet herleidbaar | Geen gok: de tak handelt af als "team onbekend". |
+| Meerdere kandidaten, geen betrouwbare keuze | Geen gok: de vraag wordt teruggelegd bij de afzender. |
 
-Een onbekende waarde valt terug op `off`: een typefout in de configuratie mag nooit stilzwijgend
-nieuw gedrag activeren.
+De gereedheidscheck staat bewust in fase 2 van de verwerking, ná het laden van `dbo.AppSettings`.
+In fase 1 zou hij (a) altijd falen omdat de clubCode dan nog niet geladen is, en (b) bij élke poll de
+database openen — wat een Azure SQL Serverless-database 24/7 wakker houdt en het gratis vCore-budget
+verbruikt.
 
-Shadow-mode logt per resolutie één regel:
+Logregels om op te zoeken: `TEAMRESOLUTIE` (per bericht: teamId, bron, confidence) en
+`TEAMS CANONICALISATIE` (per sync: aantal teams, gekoppelde schrijfwijzen, niet-herleidbare namen).
 
-```
-TEAMRESOLUTIE SHADOW - overeenkomst=true bron=ExacteMatch confidence=1 teamId=42 kandidaten=0 ...
-```
+## Waarom exacte matching in plaats van LIKE
 
-Zoek in de logs op `TEAMRESOLUTIE SHADOW` en let op `overeenkomst=false`: elke afwijking hoort
-verklaard te worden vóór de overstap naar `on`.
+De schrijfwijze verschilt per bron: `his.matches` gebruikt "[club] JO10-1" (mét J), de bondsrijen in
+`his.teams` "[club] O10-1" (zonder), en de e-mailclassificatie levert weer een derde vorm. Die
+normalisatie leeft in C#, niet in T-SQL.
+
+Daarom registreert de canonicalisatie élke schrijfwijze die in de brondata voorkomt als gevalideerde
+alias bij het bijbehorende team. Het zoeken van een wedstrijd wordt daarmee een **exacte** vergelijking
+op de ruwe naam. Dat is niet alleen sneller en indexeerbaar, het sluit ook de klasse fouten uit waarbij
+"JO13-1" ook "JO13-10" raakt.
+
+Schrijfwijzen die niet herleidbaar zijn, zijn in de praktijk geen clubteams — losse
+toernooi-inschrijvingen en tegenstanders in oefenwedstrijden. Die krijgen bewust geen alias en worden
+alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de review-lijst te vervuilen.
 
 ## Bestanden
 
@@ -118,8 +134,7 @@ verklaard te worden vóór de overstap naar `on`.
 | `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
 | `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties. |
-| `FunctionApp/TeamResolution/TeamResolutionShadowLogger.cs` | Vergelijkt oude en nieuwe uitkomst zonder gedrag te wijzigen. |
-| `FunctionApp/TeamResolution/TeamResolverMode.cs` | Uitrolstand, faalt veilig naar `off`. |
+| `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is; faalt hard en zichtbaar als dat niet lukt. |
 
 ## Regels bij wijzigingen
 

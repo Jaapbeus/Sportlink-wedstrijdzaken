@@ -48,12 +48,26 @@ internal static class PlannerSettingsRepository
         return results;
     }
 
-    internal static async Task<Dictionary<string, int>> GetVeldenLookupAsync()
+    // Als constante zodat een unittest de ClubCode-scoping kan controleren zonder database.
+    internal const string VeldenLookupSql =
+        "SELECT [VeldNaam], [VeldNummer] FROM [dbo].[Velden] " +
+        "WHERE [Actief] = 1 AND [ClubCode] = " + ClubScope.ClubCodeParam + " " +
+        "ORDER BY [VeldNummer]";
+
+    /// <summary>
+    /// Veldnaam → VeldNummer, gescoped op ClubCode. Veldnamen zijn niet uniek over clubs heen:
+    /// zonder filter overschreef de laatst gelezen rij een gelijknamig veld van een andere club,
+    /// waardoor de real-time bezetting naar een niet-bestaand veldnummer mapte — dat veld leek
+    /// vrij en kon dubbel geboekt worden. De <c>ORDER BY</c> maakt het resultaat reproduceerbaar
+    /// bij dubbele veldnamen binnen één club. (#707)
+    /// </summary>
+    internal static async Task<Dictionary<string, int>> GetVeldenLookupAsync(string? clubCode = null)
     {
         var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand("SELECT [VeldNaam], [VeldNummer] FROM [dbo].[Velden] WHERE [Actief] = 1", conn);
+        using var cmd = new SqlCommand(VeldenLookupSql, conn);
+        ClubScope.AddClubParam(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             result[reader.GetString(0).TrimEnd()] = reader.GetInt32(1);

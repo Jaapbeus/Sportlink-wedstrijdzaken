@@ -23,6 +23,12 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
     /// <summary>Simuleert een database die het verzonden antwoord niet kan vastleggen.</summary>
     public bool ThrowOnUpdateAntwoordVerstuurd { get; set; }
 
+    /// <summary>
+    /// Simuleert dat een gelijktijdige invocatie dezelfde MessageId al heeft geregistreerd: de INSERT
+    /// botst op UQ_EmailVerwerking_MessageId. (#707)
+    /// </summary>
+    public bool ThrowDubbeleMessageIdOnInsert { get; set; }
+
     public Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
         => Task.FromResult(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
@@ -31,6 +37,9 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
 
     public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
     {
+        if (ThrowDubbeleMessageIdOnInsert)
+            throw new DubbeleMessageIdException(email.MessageId, new InvalidOperationException("UQ-schending (gesimuleerd)"));
+
         Inserts.Add(email);
         return Task.FromResult(1);
     }

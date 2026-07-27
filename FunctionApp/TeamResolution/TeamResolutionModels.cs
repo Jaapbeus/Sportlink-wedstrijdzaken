@@ -39,11 +39,10 @@ public enum ResolutionBron
 }
 
 /// <summary>
-/// Uitkomst van <see cref="ITeamResolver.ResolveAsync"/>. <see cref="TeamId"/> is alleen gezet bij
-/// een eenduidige match (<see cref="ResolutionBron.ExacteAlias"/> of <see cref="ResolutionBron.ExacteMatch"/>).
-/// Bij <see cref="ResolutionBron.MeerdereKandidaten"/> bevat <see cref="Kandidaten"/> de mogelijke teams
-/// zodat de aanroepende code kan kiezen hoe te disambigueren (vraag terug aan afzender, of — vervolgwerk
-/// #697 — een forced-choice AI-call op deze korte lijst).
+/// Uitkomst van <see cref="ITeamResolver.ResolveAsync"/>. <see cref="TeamId"/> is alleen gezet bij een
+/// eenduidige uitkomst. Bij <see cref="ResolutionBron.MeerdereKandidaten"/> bevat
+/// <see cref="Kandidaten"/> de mogelijke teams, zodat de aanroeper de vraag kan terugleggen bij de
+/// afzender in plaats van te gokken.
 /// </summary>
 public sealed record TeamResolutionResult(
     int? TeamId,
@@ -52,5 +51,9 @@ public sealed record TeamResolutionResult(
     IReadOnlyList<TeamCandidate> Kandidaten,
     ResolutionBron Bron)
 {
-    public static readonly TeamResolutionResult Onopgelost = new(null, null, 0.0, [], ResolutionBron.Onopgelost);
+    public static readonly TeamResolutionResult Onopgelost =
+        new(null, null, 0.0, [], ResolutionBron.Onopgelost);
+
+    /// <summary>True als er precies één team is vastgesteld.</summary>
+    public bool IsOpgelost => TeamId is not null && !string.IsNullOrWhiteSpace(CanoniekeTeamnaam);
 }

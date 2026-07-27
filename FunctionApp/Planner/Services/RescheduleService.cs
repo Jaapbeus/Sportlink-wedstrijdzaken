@@ -40,11 +40,12 @@ internal static class RescheduleService
 
         TimeOnly.TryParse(match.AanvangsTijd, out var matchStart);
         var velden     = await PlannerDataAccess.GetVeldenAsync(clubCode);
-        var matchVeld  = velden.FirstOrDefault(v => match.VeldNaam != null && match.VeldNaam.StartsWith(v.VeldNaam));
-        int matchVeldNr = matchVeld?.VeldNummer ?? 0;
+        // Alleen nodig om het eigen slot niet als "alternatief" terug te geven — niet om de
+        // eigen wedstrijd uit de bezetting te filteren. Dat gebeurt op wedstrijdcode (#707).
+        int matchVeldNr = PlannerShared.VindVeldNummer(match.VeldNaam, velden);
 
-        var occupations = await SportlinkApiClient.GetFieldOccupationsExcludingMatchWithApiAsync(
-            date, match.Wedstrijd, matchStart, matchVeldNr, log, clubCode);
+        var occupations = await SportlinkApiClient.GetFieldOccupationsExcludingWedstrijdcodeWithApiAsync(
+            date, match.Wedstrijdcode, log, clubCode);
 
         var teamRules = new List<TeamRegel>();
         // Één bulkquery voor alle bezette teams i.p.v. één query per team (#575)

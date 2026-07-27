@@ -172,8 +172,11 @@ public class TeamResolverTests
         public bool KandidatenOpgevraagd { get; private set; }
         public string? LaatsteExactSleutel { get; private set; }
 
-        public Task<TeamCandidate?> FindValidatedAliasAsync(string clubCode, string genormaliseerdeSleutel)
+        public Task<TeamCandidate?> FindValidatedAliasAsync(
+            string clubCode, string ruweTekst, string genormaliseerdeSleutel)
             => Task.FromResult(ValidatedAlias);
+
+        public Task<bool> HeeftActieveTeamsAsync(string clubCode) => Task.FromResult(true);
 
         public Task<TeamCandidate?> FindExactTeamAsync(string clubCode, string genormaliseerdeSleutel)
         {

@@ -556,47 +556,65 @@ public static class BerichtResponseGenerator
     }
 
     /// <summary>
-    /// Filter veld 5 (grasveld) uit alternatieven als er 3+ kunstgrasvelden beschikbaar zijn.
+    /// Beperkt de alternatieven tot kunstgras zodra er drie of meer kunstgrasvelden beschikbaar zijn:
+    /// op zo'n ruime dag hoeft het antwoord geen natuurgras aan te bieden.
+    ///
+    /// <para>Het veldtype komt uit <c>dbo.Velden</c> (#705). Eerder werd het uit het veldnummer geraden
+    /// (1-4 = kunstgras, 5 = gras); bij een club met natuurgras op de lage nummers gooide dat juist
+    /// de échte kunstgrasvelden weg en verzweeg het antwoord beschikbare velden.</para>
+    ///
+    /// <para><b>Alleen aantoonbaar natuurgras verdwijnt (#707).</b> De classificatie loopt via
+    /// <see cref="VeldTypeClassificatie"/> — de enige kunstgras-definitie in de codebase. Een veldtype
+    /// dat noch als kunstgras noch als natuurgras herkenbaar is (leeg, of bijv. "hybride") geldt als
+    /// onbekend: het telt niet mee voor de drempel én wordt nooit weggefilterd. Zo'n slot is
+    /// aantoonbaar beschikbaar, en dat weglaten is schadelijker dan een optie te veel aanbieden.</para>
     /// </summary>
     private static List<SlotToewijzing> FilterAlternatieven(List<SlotToewijzing> alternatieven)
     {
-        var kunstgrasSlots = alternatieven.Where(a => a.VeldNummer >= 1 && a.VeldNummer <= 4).ToList();
-        var kunstgrasVelden = kunstgrasSlots.Select(a => a.VeldNummer).Distinct().Count();
+        var kunstgrasVelden = alternatieven
+            .Where(a => VeldTypeClassificatie.IsKunstgras(a.VeldType))
+            .Select(a => a.VeldNummer).Distinct().Count();
+        if (kunstgrasVelden < 3)
+            return alternatieven;
 
-        // Als 3+ kunstgrasvelden beschikbaar zijn, laat grasvelden weg
-        if (kunstgrasVelden >= 3)
-            return kunstgrasSlots;
-
-        return alternatieven;
+        // Bewust IsNatuurgras en niet !IsKunstgras: onbekend is geen natuurgras en blijft staan.
+        return alternatieven
+            .Where(a => !VeldTypeClassificatie.IsNatuurgras(a.VeldType))
+            .ToList();
     }
 
     /// <summary>
-    /// Filter veld 5 (grasveld) uit beschikbare vensters als er kunstgrasalternatieven
-    /// in dezelfde tijdperiode zijn. Houdt veld 5 vensters die uniek zijn qua tijdsblok.
+    /// Laat natuurgrasvensters weg zodra er drie of meer kunstgrasvensters zijn, behalve als een
+    /// natuurgrasvenster het enige aanbod in zijn tijdsblok is — dan is het juist de toegevoegde
+    /// waarde. Veldtype uit <c>dbo.Velden</c>, niet uit het veldnummer (#705), geclassificeerd via
+    /// <see cref="VeldTypeClassificatie"/> (#707); vensters met een onbekend veldtype blijven altijd staan.
     /// </summary>
     private static List<BeschikbaarVenster> FilterKunstgrasVensters(List<BeschikbaarVenster> vensters)
     {
-        var kunstgrasVensters = vensters.Where(v => v.VeldNummer >= 1 && v.VeldNummer <= 4).ToList();
+        var kunstgrasVensters = vensters.Where(v => VeldTypeClassificatie.IsKunstgras(v.VeldType)).ToList();
         if (kunstgrasVensters.Count < 3)
             return vensters;
 
-        // Houd veld 5 vensters die GEEN overlappend kunstgras-alternatief hebben
-        var veld5Uniek = vensters.Where(v => v.VeldNummer == 5).Where(v5 =>
-        {
-            var v5Van = TimeOnly.TryParse(v5.Van, out var van) ? van : TimeOnly.MinValue;
-            var v5Tot = TimeOnly.TryParse(v5.Tot, out var tot) ? tot : TimeOnly.MaxValue;
-            // Geen enkel kunstgrasvenster overlapt met dit veld 5 venster?
-            return !kunstgrasVensters.Any(kg =>
-            {
-                var kgVan = TimeOnly.TryParse(kg.Van, out var kv) ? kv : TimeOnly.MinValue;
-                var kgTot = TimeOnly.TryParse(kg.Tot, out var kt) ? kt : TimeOnly.MaxValue;
-                return kgVan < v5Tot && kgTot > v5Van;
-            });
-        }).ToList();
+        var overigeVensters = vensters
+            .Where(v => !VeldTypeClassificatie.IsKunstgras(v.VeldType))
+            .Where(v => !VeldTypeClassificatie.IsNatuurgras(v.VeldType) || !OverlaptMetVenster(v, kunstgrasVensters))
+            .ToList();
 
-        return kunstgrasVensters.Concat(veld5Uniek)
+        return kunstgrasVensters.Concat(overigeVensters)
             .OrderBy(v => TimeOnly.TryParse(v.Van, out var t) ? t : TimeOnly.MinValue)
             .ToList();
+    }
+
+    private static bool OverlaptMetVenster(BeschikbaarVenster venster, List<BeschikbaarVenster> andere)
+    {
+        var van = TimeOnly.TryParse(venster.Van, out var v) ? v : TimeOnly.MinValue;
+        var tot = TimeOnly.TryParse(venster.Tot, out var t) ? t : TimeOnly.MaxValue;
+        return andere.Any(a =>
+        {
+            var aVan = TimeOnly.TryParse(a.Van, out var av) ? av : TimeOnly.MinValue;
+            var aTot = TimeOnly.TryParse(a.Tot, out var at) ? at : TimeOnly.MaxValue;
+            return aVan < tot && aTot > van;
+        });
     }
 
     /// <summary>

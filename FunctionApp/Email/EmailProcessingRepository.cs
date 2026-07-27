@@ -6,12 +6,40 @@ using SportlinkFunction.Processing;
 namespace SportlinkFunction.Email;
 
 /// <summary>
+/// De INSERT in <c>planner.EmailVerwerking</c> botste op <c>UQ_EmailVerwerking_MessageId</c>: een
+/// andere invocatie heeft dit bericht al geregistreerd.
+/// <para>
+/// Een eigen type omdat de aanroeper dit géén verwerkingsfout mag noemen — de foutafhandeling zoekt
+/// op MessageId en zou daarmee de rij van die andere verwerking overschrijven, ook als die het
+/// antwoord al verstuurd heeft. (#707)
+/// </para>
+/// </summary>
+internal sealed class DubbeleMessageIdException : Exception
+{
+    internal DubbeleMessageIdException(string messageId, Exception inner)
+        : base("MessageId is al geregistreerd in planner.EmailVerwerking", inner)
+        => MessageId = messageId;
+
+    internal string MessageId { get; }
+}
+
+/// <summary>
 /// SQL data-access voor planner.EmailVerwerking.
 /// Extracted uit EmailProcessorFunction (#465).
 /// </summary>
 internal static class EmailProcessingRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
+
+    /// <summary>
+    /// Herkent een schending van een unique constraint (2627) of unique index (2601). Beide betekenen
+    /// hier: deze MessageId staat al in de tabel.
+    /// </summary>
+    internal static bool IsUniekeSleutelFout(int sqlErrorNumber) => sqlErrorNumber is 2601 or 2627;
+
+    private static bool BevatUniekeSleutelSchending(SqlException ex)
+        => IsUniekeSleutelFout(ex.Number)
+           || ex.Errors.Cast<SqlError>().Any(e => IsUniekeSleutelFout(e.Number));
 
     /// <summary>
     /// Leest de stand van een bestaande verwerking, of <c>null</c> als het bericht nog niet bekend is.
@@ -55,10 +83,16 @@ internal static class EmailProcessingRepository
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// Registreert een nieuw bericht. Gooit <see cref="DubbeleMessageIdException"/> als een
+    /// gelijktijdige invocatie deze MessageId al heeft vastgelegd.
+    /// </summary>
     internal static async Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
     {
-        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+        // RequireClubCode weigert ook een lege waarde: LoadSettingsAsync zet een lege kolomwaarde als
+        // "" in de cache, en met ClubCode "" zou de uitsluitingslijst leeg blijken — fail-open op een
+        // AVG-maatregel. (#707)
+        var clubCode = SystemUtilities.AppSettings.RequireClubCode();
 
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -76,7 +110,15 @@ internal static class EmailProcessingRepository
         cmd.Parameters.AddWithValue("@OntvangstDatum",email.OntvangstDatum);
         cmd.Parameters.AddWithValue("@EmailBody",     (object?)email.Body ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@ClubCode",      clubCode);
-        return (int)(await cmd.ExecuteScalarAsync())!;
+
+        try
+        {
+            return (int)(await cmd.ExecuteScalarAsync())!;
+        }
+        catch (SqlException ex) when (BevatUniekeSleutelSchending(ex))
+        {
+            throw new DubbeleMessageIdException(email.MessageId, ex);
+        }
     }
 
     internal static async Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)

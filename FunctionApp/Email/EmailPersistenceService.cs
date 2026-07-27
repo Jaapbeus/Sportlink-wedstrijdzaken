@@ -33,6 +33,11 @@ internal interface IEmailPersistenceService
     /// </summary>
     Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId);
 
+    /// <summary>
+    /// Registreert een nieuw bericht en geeft het verwerkingId terug. Gooit
+    /// <see cref="DubbeleMessageIdException"/> als een gelijktijdige invocatie dezelfde MessageId al
+    /// heeft vastgelegd — dat is geen verwerkingsfout en mag niet als zodanig worden weggeschreven.
+    /// </summary>
     Task<int> InsertEmailVerwerkingAsync(InkomendBericht email);
 
     /// <summary>Verhoogt de pogingenteller van een bestaande verwerking met één.</summary>
@@ -77,9 +82,20 @@ internal sealed class EmailPersistenceService : IEmailPersistenceService
         _clubCodeProvider = clubCodeProvider ?? (() => SystemUtilities.AppSettings.GetSetting("clubCode"));
     }
 
+    /// <summary>
+    /// Resolveert de ClubCode-discriminator en weigert óók een lege waarde. <c>?? throw</c> was niet
+    /// genoeg: <c>LoadSettingsAsync</c> zet een lege kolomwaarde als <c>""</c> in de settings-cache,
+    /// en met ClubCode <c>""</c> levert de query voor de uitsluitingslijst een lege set op —
+    /// uitgesloten adressen werden dan alsnog verwerkt en beantwoord. Fail-open op een AVG-maatregel
+    /// is nooit acceptabel, dus liever hard falen. (#707)
+    /// </summary>
     public string ResolveClubCode()
-        => _clubCodeProvider()
-            ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+    {
+        var clubCode = _clubCodeProvider();
+        if (string.IsNullOrWhiteSpace(clubCode))
+            throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+        return clubCode;
+    }
 
     public async Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
     {

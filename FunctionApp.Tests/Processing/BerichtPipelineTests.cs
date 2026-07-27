@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
+using SportlinkFunction.TeamResolution;
 using Xunit;
 
 namespace FunctionApp.Tests.Processing;
@@ -370,7 +371,7 @@ public class BerichtPipelineTests
         };
         var bericht = new InkomendBericht { Onderwerp = "Oefenwedstrijd", Body = "Kan dat?" };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance);
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new GeenTeamResolver());
 
         json.Should().Contain("datumOnbekend");
     }
@@ -391,7 +392,7 @@ public class BerichtPipelineTests
             Body = "Kunnen we ergens in mei nog een oefenwedstrijd spelen?"
         };
 
-        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance);
+        var json = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, NullLogger.Instance, new GeenTeamResolver());
 
         json.Should().Contain("datumOnbekend");
     }
@@ -428,51 +429,17 @@ public class BerichtPipelineTests
         body.Should().Contain("TESTCLUB Veldplanner");
     }
 
-    // ── NormaliseerTeamNaam — clubCode-override (#677) ──
-    //
-    // Regressietest voor issue #677: de Email-tester (dry-run pad) moet de club-switcher uit de
-    // GUI respecteren in plaats van altijd de instelling uit de proces-globale AppSettings-cache
-    // te gebruiken. Zonder een live DB is die cache in dit testproces altijd leeg — waardoor deze
-    // tests bewijzen dat het EXPLICIET meegegeven clubCode-argument de prefix bepaalt, niet de
-    // (hier per definitie ontbrekende) globale instelling.
+    // De clubCode-override uit #677 wordt nu bewezen in FunctionApp.Tests/TeamResolution/:
+    // teamherkenning loopt sinds #700 volledig via TeamNaamNormalisatie en TeamResolver, en
+    // BerichtPipeline.NormaliseerTeamNaam bestaat niet meer.
 
-    [Fact]
-    public void NormaliseerTeamNaam_MetExplicieteClubCodeAllstars_PrefixtMetAllstarsNietMetPrimaireClub()
+    /// <summary>
+    /// Resolver die niets herkent. Sinds #700 is de resolver een verplichte afhankelijkheid van de
+    /// pipeline; voor tests die niet over teamherkenning gaan is "herkent niets" het neutrale gedrag.
+    /// </summary>
+    private sealed class GeenTeamResolver : ITeamResolver
     {
-        var resultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1", "ALLSTARS");
-        resultaat.Should().Be("ALLSTARS JO10-1");
-    }
-
-    [Fact]
-    public void NormaliseerTeamNaam_VerschillendeExplicieteClubCodes_GevenVerschillendePrefixVoorZelfdeTeam()
-    {
-        // Bewijst dat de prefix uitsluitend van het meegegeven argument afhangt — vóór #677 had
-        // NormaliseerTeamNaam geen clubCode-parameter en kon dit gedrag per definitie niet bestaan.
-        var allstarsResultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1", "ALLSTARS");
-        var andereClubResultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1", "ANDEREDEMOCLUB");
-
-        allstarsResultaat.Should().Be("ALLSTARS JO10-1");
-        andereClubResultaat.Should().Be("ANDEREDEMOCLUB JO10-1");
-        allstarsResultaat.Should().NotBe(andereClubResultaat);
-    }
-
-    [Fact]
-    public void NormaliseerTeamNaam_AlAangevuldMetOpgegevenClubCode_WordtNietDubbelGeprefixt()
-    {
-        // Idempotentie: eenmaal genormaliseerd ("ALLSTARS JO10-1") bevat de naam al een spatie,
-        // waardoor de eigen-team-heuristiek ("looksLikeEigenTeam") niet meer toeslaat en er dus
-        // nooit een tweede "ALLSTARS "-prefix wordt toegevoegd.
-        var resultaat = BerichtPipeline.NormaliseerTeamNaam("ALLSTARS JO10-1", "ALLSTARS");
-        resultaat.Should().Be("ALLSTARS JO10-1");
-    }
-
-    [Fact]
-    public void NormaliseerTeamNaam_ZonderClubCodeOverride_ValtTerugOpGlobaleCache_DieLeegIsInTests()
-    {
-        // Baseline: bevestigt dat het gedrag voor callers zonder override (bijv. de echte
-        // e-mailpipeline) ongewijzigd is — zonder een geladen globale cache blijft de teamnaam
-        // onveranderd in plaats van te crashen.
-        var resultaat = BerichtPipeline.NormaliseerTeamNaam("JO10-1");
-        resultaat.Should().Be("JO10-1");
+        public Task<TeamResolutionResult> ResolveAsync(TeamResolutionRequest request)
+            => Task.FromResult(TeamResolutionResult.Onopgelost);
     }
 }

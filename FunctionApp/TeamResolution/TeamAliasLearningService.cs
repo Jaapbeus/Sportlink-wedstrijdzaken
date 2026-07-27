@@ -17,7 +17,9 @@ public sealed class TeamAliasLearningService(ILogger<TeamAliasLearningService> l
 
     public async Task LegVastAsync(string clubCode, string ruweTekst, int teamId, string bron)
     {
-        var genormaliseerd = TeamNaamNormalisatie.NormaliseerVoorVergelijking(ruweTekst);
+        // clubCode meegeven: de resolver normaliseert mét prefix-strip, en een alias die op een andere
+        // sleutel is vastgelegd dan waarmee gezocht wordt, zou nooit gevonden worden.
+        var genormaliseerd = TeamNaamNormalisatie.NormaliseerVoorVergelijking(ruweTekst, clubCode);
         if (genormaliseerd.Length == 0) return;
 
         try
