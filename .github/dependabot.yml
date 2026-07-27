@@ -10,6 +10,11 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "NuGet"
+    groups:
+      functionapp-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "nuget"
     directory: "/BlazorAdmin"
@@ -21,6 +26,11 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "NuGet"
+    groups:
+      blazoradmin-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -32,3 +42,7 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "Actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
