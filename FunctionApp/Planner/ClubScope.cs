@@ -66,4 +66,24 @@ internal static class ClubScope
         cmd.Parameters.AddWithValue(PrimaryClubCodeParam, Primary);
         return cc;
     }
+
+    /// <summary>
+    /// Leest de Accommodatie-instelling van de opgegeven club rechtstreeks uit dbo.AppSettings.
+    /// <see cref="SystemUtilities.AppSettings"/>.GetSetting("accommodatie") is een globale cache
+    /// van precies één (de primaire, SyncEnabled) club en negeert daarmee elke andere ClubCode —
+    /// een lookup voor ALLSTARS-demodata kreeg zo altijd de accommodatienaam van de primaire club
+    /// terug, waardoor de m.[accommodatie] LIKE-filter nooit matchte op ALLSTARS-wedstrijden (#694).
+    /// </summary>
+    internal static async Task<string> RequireAccommodatieAsync(SqlConnection conn, string clubCode)
+    {
+        using var cmd = new SqlCommand(
+            "SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = @clubCode", conn);
+        cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        var result = await cmd.ExecuteScalarAsync();
+        var waarde = result as string;
+        if (string.IsNullOrWhiteSpace(waarde))
+            throw new InvalidOperationException(
+                $"Vereiste instelling 'Accommodatie' ontbreekt in dbo.AppSettings voor ClubCode '{clubCode}'");
+        return waarde;
+    }
 }
