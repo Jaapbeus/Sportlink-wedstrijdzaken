@@ -113,6 +113,9 @@ $expectedColumns = @{
     "dbo.Velden" = @(
         "VeldNummer","VeldNaam","VeldType","HeeftKunstlicht","Actief","ClubCode"
     )
+    "dbo.VeldTraining" = @(
+        "Id","VeldNummer","DagVanWeek","VanTijd","TotTijd","Omschrijving","Actief","ClubCode"
+    )
 }
 
 # SQL schema-bestand per tabel — afgeleid uit de tabelnaam (#684).

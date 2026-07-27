@@ -662,3 +662,66 @@ Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur
 | `POST /api/beheer/teamregels` | Nieuwe teamregel aanmaken |
 | `PUT /api/beheer/teamregels/{id}` | Teamregel bijwerken |
 | `DELETE /api/beheer/teamregels/{id}` | Teamregel verwijderen (soft-delete) |
+
+---
+
+## 15. Velden, veldbeschikbaarheid en trainingsschema (`/instellingen/velden`)
+
+De pagina `/instellingen/velden` beheert alles rond de velden van de club: hoeveel er zijn, welk
+type, wanneer het sportpark open is en wanneer een veld door training bezet is. Er is bewust geen
+vaste aanname over aantal velden of kunstgras-versus-gras — elke club richt dit naar eigen situatie
+in (#679).
+
+### Velden
+
+| Veld | Uitleg |
+|---|---|
+| **Veldnummer** | Uniek nummer, deployment-breed (niet alleen binnen de club) — eenmaal gekozen bij aanmaken, niet meer wijzigbaar |
+| **Naam** | Weergavenaam, bijv. "veld 1" |
+| **Type** | Vrije tekst, bijv. `kunstgras` of `natuurgras` — geen vaste lijst. Bepaalt welke velden de planner ontlast bij de grasveld-ontlasten optimalisatie |
+| **Kunstlicht** | Bepaalt of de zonsondergang-beperking geldt voor dit veld |
+| **Actief** | Uitvinken deactiveert het veld zonder het te verwijderen (geen harde delete — andere tabellen verwijzen ernaar) |
+
+### Veldbeschikbaarheid
+
+Het wekelijkse openingsvenster van het sportpark per veld per dag. Een combinatie veld + dag komt
+één keer voor; pas een bestaand venster aan in plaats van een tweede toe te voegen.
+
+| Veld | Uitleg |
+|---|---|
+| **Veld / Dag** | Alleen instelbaar bij aanmaken — verwijder en maak opnieuw aan om veld of dag te wijzigen |
+| **Van / Tot** | Openingsvenster, bijv. 18:00–22:00 |
+| **Beperkt tot zonsondergang** | Venster sluit eerder als de zon eerder ondergaat dan de ingestelde eindtijd (alleen relevant zonder kunstlicht) |
+
+### Trainingsschema
+
+Terugkerende trainingsbezetting per veld per weekdag — telt automatisch mee als bezetting bij het
+plannen van wedstrijden en in e-mailreacties, zonder aparte instelling elders. Dit is expliciet
+**per dag** vrij in te richten: een club met weinig training op maandag en een volle donderdagavond
+zet dat gewoon zo neer, in plaats van één vast wekelijks patroon te moeten forceren.
+
+| Veld | Uitleg |
+|---|---|
+| **Veld / Dag** | Welk veld en welke weekdag het trainingsblok bezet |
+| **Van / Tot** | Tijdvenster dat door training bezet is — mag korter zijn dan het hele openingsvenster |
+| **Omschrijving** | Optioneel, bijv. "JO15-2 training" — zichtbaar in het overzicht, niet in e-mailreacties |
+| **Actief** | Uitvinken schakelt het blok tijdelijk uit zonder het te verwijderen (bijv. tijdens een schoolvakantie) |
+
+Een club die geen trainingsblokken toevoegt, merkt geen enkel verschil — de tabel is dan leeg en
+telt nergens in mee.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/velden` | Alle velden voor de club |
+| `POST /api/beheer/velden` | Nieuw veld aanmaken |
+| `PUT /api/beheer/velden/{veldNummer}` | Veld bijwerken |
+| `GET /api/beheer/veldbeschikbaarheid` | Alle beschikbaarheidsvensters voor de club |
+| `POST /api/beheer/veldbeschikbaarheid` | Nieuw venster aanmaken |
+| `PUT /api/beheer/veldbeschikbaarheid/{id}` | Venster bijwerken |
+| `DELETE /api/beheer/veldbeschikbaarheid/{id}` | Venster verwijderen |
+| `GET /api/beheer/veldtraining` | Alle trainingsblokken voor de club |
+| `POST /api/beheer/veldtraining` | Nieuw trainingsblok aanmaken |
+| `PUT /api/beheer/veldtraining/{id}` | Trainingsblok bijwerken |
+| `DELETE /api/beheer/veldtraining/{id}` | Trainingsblok verwijderen |

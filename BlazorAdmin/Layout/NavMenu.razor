@@ -79,6 +79,11 @@
                         </NavLink>
                     </div>
                     <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="instellingen/velden">
+                            <i class="bi bi-grid-3x3 me-1" aria-hidden="true"></i> Velden
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
                         <NavLink class="nav-link py-1" href="voorkeurstijden">
                             <i class="bi bi-clock-history me-1" aria-hidden="true"></i> Voorkeurstijden
                         </NavLink>
@@ -130,6 +135,7 @@
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
     private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates"];
+    // "/instellingen/velden" matcht al via de "/instellingen"-prefix hierboven.
 
     protected override void OnInitialized()
     {
