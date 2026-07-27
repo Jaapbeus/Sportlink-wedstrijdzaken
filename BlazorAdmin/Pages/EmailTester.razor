@@ -1,5 +1,6 @@
 @page "/email-tester"
 @inject AdminApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>Email-tester — Beheer</PageTitle>
 
@@ -42,7 +43,15 @@
     <h3>Resultaat</h3>
     <div class="card">
         <div class="card-body">
-            <h5>Classificatie</h5>
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Ruwe e-mail <small class="text-muted">(voor debuggen — 1x kopiëren/plakken)</small></h5>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => KopieerNaarKlembordAsync(RuweEmailTekst)">
+                    @(gekopieerd ? "Gekopieerd!" : "Kopieer")
+                </button>
+            </div>
+            <pre class="bg-light p-3">@RuweEmailTekst</pre>
+
+            <h5 class="mt-4">Classificatie</h5>
             <pre class="bg-light p-3">@System.Text.Json.JsonSerializer.Serialize(response.Classificatie, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
 
             @if (response.PlannerResponse != null)
@@ -71,6 +80,12 @@
     private TestEmailResponse? response;
     private string? error;
     private bool busy;
+    private bool gekopieerd;
+
+    private string RuweEmailTekst =>
+        $"Van: {request.AfzenderNaam} <{request.Afzender}>\n" +
+        $"Onderwerp: {request.Onderwerp}\n\n" +
+        $"{request.Body}";
 
     private async Task TestAsync()
     {
@@ -83,5 +98,15 @@
         else error = r.ErrorMessage;
 
         busy = false;
+    }
+
+    private async Task KopieerNaarKlembordAsync(string tekst)
+    {
+        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", tekst);
+        gekopieerd = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        gekopieerd = false;
+        StateHasChanged();
     }
 }
