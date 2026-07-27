@@ -54,6 +54,14 @@ namespace SportlinkFunction.Planner
         public string VeldNaam { get; set; } = string.Empty;
         public decimal VeldDeelGebruik { get; set; }
         public int WedstrijdDuurMinuten { get; set; }
+
+        /// <summary>
+        /// Veldtype uit <c>dbo.Velden</c> ("kunstgras", "natuurgras", …) — reist mee met het slot zodat
+        /// consumers het niet uit het veldnummer hoeven te raden (#705): die nummering geldt maar voor
+        /// één accommodatie. <c>null</c> betekent onbekend; een filter op veldtype mag zo'n slot dan
+        /// nooit wegfilteren, want het slot is aantoonbaar beschikbaar.
+        /// </summary>
+        public string? VeldType { get; set; }
     }
 
     public class TeamConflictInfo
@@ -72,6 +80,9 @@ namespace SportlinkFunction.Planner
         public string Tot { get; set; } = string.Empty;
         public int MaxDuurMinuten { get; set; }
         public string? Opmerking { get; set; }
+
+        /// <summary>Veldtype uit <c>dbo.Velden</c>; <c>null</c> = onbekend. Zie <see cref="SlotToewijzing.VeldType"/> (#705).</summary>
+        public string? VeldType { get; set; }
     }
 
     // ── Interne modellen ──
@@ -94,9 +105,106 @@ namespace SportlinkFunction.Planner
     {
         public int VeldNummer { get; set; }
         public string VeldNaam { get; set; } = string.Empty;
-        public string VeldType { get; set; } = "kunstgras"; // kunstgras, natuurgras
+        public string VeldType { get; set; } = "kunstgras"; // vrije tekst uit dbo.Velden; zie VeldTypeClassificatie
         public bool HeeftKunstlicht { get; set; }
-        public bool IsKunstgras => VeldType == "kunstgras";
+
+        /// <summary>
+        /// Kunstgras volgens de enige classificatie in deze codebase — zie
+        /// <see cref="VeldTypeClassificatie"/>. Tot #705/#707 stond hier een eigen, case-sensitieve
+        /// vergelijking (<c>VeldType == "kunstgras"</c>) terwijl het e-mailantwoord een tweede,
+        /// case-insensitieve regel gebruikte. Twee definities van hetzelfde begrip is precies de
+        /// fout die dit project uitbant: gebruik altijd deze property of
+        /// <see cref="VeldTypeClassificatie"/>, nooit een nieuwe stringvergelijking.
+        /// </summary>
+        public bool IsKunstgras => VeldTypeClassificatie.IsKunstgras(VeldType);
+    }
+
+    /// <summary>
+    /// Grondsoort van een veld. Drie waarden, want "niet als kunstgras te herkennen" is niet
+    /// hetzelfde als "dus natuurgras": <c>dbo.Velden.VeldType</c> is vrije tekst (zie de
+    /// Admin-validatie in <c>AdminVeldBeschikbaarheidFunction</c>) en elke club typt het anders.
+    /// </summary>
+    public enum VeldSoort
+    {
+        /// <summary>
+        /// Leeg, ontbrekend of een aanduiding die we niet met zekerheid kunnen plaatsen
+        /// (bijv. "hybride"). Filters mogen een onbekend veld <b>nooit</b> wegfilteren: het slot is
+        /// aantoonbaar beschikbaar, en het verzwijgen daarvan is schadelijker dan één optie te veel.
+        /// </summary>
+        Onbekend = 0,
+        Kunstgras = 1,
+        Natuurgras = 2
+    }
+
+    /// <summary>
+    /// De enige plek waar deze codebase bepaalt wat "kunstgras" of "natuurgras" betekent (#705, #707).
+    ///
+    /// <para><b>Waarom niet gewoon <c>== "kunstgras"</c>:</b> het veldtype komt als vrije tekst uit
+    /// <c>dbo.Velden</c>. Een club typt "Kunstgras", "kunstgras 2" of "KG"; een exacte,
+    /// case-sensitieve vergelijking noemt die allemaal géén kunstgras. Op het e-mailpad bepaalt
+    /// dat welke velden een aanvrager te zien krijgt.</para>
+    ///
+    /// <para><b>Fail-safe:</b> alles wat noch als kunstgras noch als natuurgras herkenbaar is, geldt
+    /// als <see cref="VeldSoort.Onbekend"/> — nooit als natuurgras. Een filter dat natuurgras
+    /// weglaat gooit zo nooit een veld weg op basis van een gok over een aanduiding die we niet
+    /// kennen. Nieuwe schrijfwijzen horen hieronder toegevoegd te worden, niet elders herkend.</para>
+    /// </summary>
+    public static class VeldTypeClassificatie
+    {
+        private static readonly char[] Scheidingstekens = [' ', '-', '_', '.', ',', '/', '(', ')', '+'];
+
+        // Fragmenten mogen ergens in de tekst staan — veilig voor varianten als "kunstgrasveld 2".
+        private static readonly string[] KunstgrasFragmenten =
+            ["kunstgras", "kunst gras", "kunst-gras", "kunstveld", "artificial", "artificieel", "artgras"];
+
+        // Losse codes: alleen als heel woord. Als substring geven ze te veel valse treffers
+        // ("kg" zit ook in willekeurige woorden).
+        private static readonly string[] KunstgrasWoorden = ["kunst", "kg", "art", "3g", "4g", "5g"];
+
+        private static readonly string[] NatuurgrasFragmenten =
+            ["natuurgras", "natuur gras", "natuur-gras", "natuurveld", "natural"];
+
+        private static readonly string[] NatuurgrasWoorden = ["natuur", "ng"];
+
+        // Hybride/versterkt gras is géén van beide. Bewust Onbekend: zulke velden mogen niet
+        // wegvallen omdat we ze niet kunnen plaatsen.
+        private static readonly string[] OnbekendFragmenten = ["hybride", "hybrid", "semi"];
+
+        /// <summary>Classificeert een vrije-tekst veldtype uit <c>dbo.Velden</c>.</summary>
+        public static VeldSoort Bepaal(string? veldType)
+        {
+            if (string.IsNullOrWhiteSpace(veldType)) return VeldSoort.Onbekend;
+
+            var tekst = veldType.Trim().ToLowerInvariant();
+            if (OnbekendFragmenten.Any(f => tekst.Contains(f, StringComparison.Ordinal)))
+                return VeldSoort.Onbekend;
+
+            var woorden = tekst.Split(Scheidingstekens, StringSplitOptions.RemoveEmptyEntries);
+
+            // Kunstgras eerst: "kunstgras" bevat ook "gras", dus de natuurgras-check mag er niet vóór.
+            if (KunstgrasFragmenten.Any(f => tekst.Contains(f, StringComparison.Ordinal))
+                || woorden.Any(w => KunstgrasWoorden.Contains(w)))
+                return VeldSoort.Kunstgras;
+
+            if (NatuurgrasFragmenten.Any(f => tekst.Contains(f, StringComparison.Ordinal))
+                || woorden.Any(w => NatuurgrasWoorden.Contains(w))
+                || tekst.Contains("gras", StringComparison.Ordinal))
+                return VeldSoort.Natuurgras;
+
+            return VeldSoort.Onbekend;
+        }
+
+        /// <summary>Aantoonbaar kunstgras.</summary>
+        public static bool IsKunstgras(string? veldType) => Bepaal(veldType) == VeldSoort.Kunstgras;
+
+        /// <summary>
+        /// Aantoonbaar natuurgras. Gebruik dit — niet <c>!IsKunstgras(...)</c> — als je iets
+        /// wegfiltert: een onbekend veldtype is geen natuurgras.
+        /// </summary>
+        public static bool IsNatuurgras(string? veldType) => Bepaal(veldType) == VeldSoort.Natuurgras;
+
+        /// <summary>Niet te plaatsen veldtype (leeg, ontbrekend of onbekende aanduiding).</summary>
+        public static bool IsOnbekend(string? veldType) => Bepaal(veldType) == VeldSoort.Onbekend;
     }
 
     public class VeldBeschikbaarheidInfo

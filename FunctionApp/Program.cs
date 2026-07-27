@@ -47,7 +47,7 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey))
 builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();
 builder.Services.AddSingleton<ITeamResolver, TeamResolver>();
 builder.Services.AddSingleton<TeamAliasLearningService>();
-builder.Services.AddSingleton<TeamResolutionShadowLogger>();
+builder.Services.AddSingleton<TeamlijstGereedheid>();
 
 // CORS voor lokale dev: geconfigureerd via Host.CORS in local.settings.json (Functions host-level).
 // In productie (Azure SWA) is CORS niet nodig: SWA proxying houdt alles op dezelfde origin.

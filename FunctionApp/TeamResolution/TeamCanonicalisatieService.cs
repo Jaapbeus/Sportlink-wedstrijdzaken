@@ -17,11 +17,11 @@ namespace SportlinkFunction.TeamResolution;
 /// aangetroffen schrijfwijzen als gevalideerde alias.
 /// </para>
 /// </summary>
-internal static class TeamCanonicalisatieService
+public static class TeamCanonicalisatieService
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
-    internal static async Task RefreshAsync(string clubCode, ILogger log)
+    public static async Task RefreshAsync(string clubCode, ILogger log)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new ArgumentException("ClubCode is verplicht voor teamcanonicalisatie.", nameof(clubCode));
@@ -66,16 +66,129 @@ internal static class TeamCanonicalisatieService
         }
 
         var gedeactiveerd = await DeactiveerOntbrekendeTeamsAsync(conn, clubCode, groepen.Keys);
+        var (aliassen, onbekend) = await RegistreerBronSchrijfwijzenAsync(conn, clubCode, log);
 
-        // Bewust géén aliassen uit de sync: alle Sportlink-schrijfwijzen van één team normaliseren
-        // per definitie naar dezelfde sleutel (daar is de groepering hierboven op gebaseerd), dus een
-        // alias-rij zou exact dupliceren wat dbo.Teams al weet. dbo.TeamAliassen is uitsluitend voor
-        // schrijfwijzen die NIET uit de normalisatie volgen: geleerd uit e-mail of handmatig
-        // toegevoegd door de coördinator (#697/#701).
         log.LogInformation(
-            "TEAMS CANONICALISATIE - {Teams} canonieke teams uit {Rijen} his.teams-rijen "
+            "TEAMS CANONICALISATIE - {Teams} canonieke teams uit {Rijen} his.teams-rijen, "
+            + "{Aliassen} bronschrijfwijzen gekoppeld, {Onbekend} niet herleidbaar "
             + "({Gedeactiveerd} gedeactiveerd, {Fouten} overgeslagen) voor club {ClubCode}",
-            teams, rijen.Count, gedeactiveerd, fouten, clubCode);
+            teams, rijen.Count, aliassen, onbekend, gedeactiveerd, fouten, clubCode);
+    }
+
+    /// <summary>
+    /// Koppelt elke schrijfwijze die in de brondata voorkomt aan zijn canonieke team, als
+    /// gevalideerde alias (#700).
+    ///
+    /// <para>
+    /// <b>Waarom dit nodig is.</b> De schrijfwijze in <c>his.matches.teamnaam</c> wijkt af van die in
+    /// <c>his.teams</c>: matches gebruiken "[club] JO10-1" (mét J), de bondsrijen in his.teams
+    /// "[club] O10-1" (zonder). Vergelijken op de ruwe string levert daardoor nul treffers, en de
+    /// normalisatie die dat oplost leeft in C# — niet in T-SQL.
+    /// </para>
+    /// <para>
+    /// Door hier elke bronschrijfwijze één keer te herleiden en op te slaan, wordt het zoeken van een
+    /// wedstrijd een <b>exacte</b> join op de ruwe naam. Dat is niet alleen sneller dan een
+    /// <c>LIKE</c>-patroon, het sluit ook de klasse fouten uit waarbij "JO13-1" ook "JO13-10" raakt.
+    /// </para>
+    /// <para>
+    /// Schrijfwijzen die niet herleid kunnen worden zijn in de praktijk géén clubteams — losse
+    /// toernooi-inschrijvingen en tegenstanders in oefenwedstrijden. Die krijgen bewust geen alias en
+    /// worden alleen geteld, zodat een onverwachte stijging opvalt zonder de review-lijst te vervuilen.
+    /// </para>
+    /// </summary>
+    private static async Task<(int Gekoppeld, int Onbekend)> RegistreerBronSchrijfwijzenAsync(
+        SqlConnection conn, string clubCode, ILogger log)
+    {
+        var schrijfwijzen = new List<string>();
+        using (var cmd = new SqlCommand(@"
+            SELECT [teamnaam] FROM (
+                SELECT DISTINCT [teamnaam] FROM [his].[matches]
+                WHERE [ClubCode] = @clubCode AND [mta_deleted] IS NULL
+                UNION
+                SELECT DISTINCT [teamnaam] FROM [his].[teams]
+                WHERE [ClubCode] = @clubCode AND [mta_deleted] IS NULL
+            ) AS bron
+            WHERE [teamnaam] IS NOT NULL AND LTRIM(RTRIM([teamnaam])) <> ''
+        ", conn))
+        {
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                schrijfwijzen.Add(reader.GetString(0).Trim());
+        }
+
+        int gekoppeld = 0;
+        var onbekend = new List<string>();
+
+        foreach (var ruweTekst in schrijfwijzen)
+        {
+            var sleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(ruweTekst, clubCode);
+            if (sleutel.Length == 0) continue;
+
+            try
+            {
+                if (await UpsertBronAliasAsync(conn, clubCode, ruweTekst, sleutel))
+                    gekoppeld++;
+                else
+                    onbekend.Add(ruweTekst);
+            }
+            catch (Exception ex)
+            {
+                onbekend.Add(ruweTekst);
+                log.LogError(ex, "TEAMS CANONICALISATIE - bronschrijfwijze overgeslagen (sleutel {Sleutel})", sleutel);
+            }
+        }
+
+        if (onbekend.Count > 0)
+        {
+            // Teamnamen zijn geen persoonsgegevens, maar de lijst wordt begrensd zodat een
+            // onverwacht grote bronset de logs niet volloopt.
+            log.LogInformation(
+                "TEAMS CANONICALISATIE - {Aantal} schrijfwijzen niet herleidbaar tot een clubteam: {Voorbeelden}",
+                onbekend.Count, string.Join(", ", onbekend.Take(15)));
+        }
+
+        return (gekoppeld, onbekend.Count);
+    }
+
+    /// <summary>
+    /// Retourneert true als de schrijfwijze aan een actief canoniek team gekoppeld kon worden.
+    /// Idempotent: bij een bestaande rij wordt alleen de koppeling bijgewerkt.
+    /// </summary>
+    private static async Task<bool> UpsertBronAliasAsync(
+        SqlConnection conn, string clubCode, string ruweTekst, string sleutel)
+    {
+        using var cmd = new SqlCommand(@"
+            DECLARE @teamId INT = (
+                SELECT TOP 1 [TeamId] FROM [dbo].[Teams]
+                WHERE [ClubCode] = @clubCode AND [TeamnaamGenormaliseerd] = @sleutel AND [IsActief] = 1);
+
+            IF @teamId IS NULL
+            BEGIN
+                SELECT CAST(0 AS BIT);
+                RETURN;
+            END
+
+            MERGE [dbo].[TeamAliassen] AS target
+            USING (SELECT @clubCode AS ClubCode, @ruweTekst AS RuweTekst) AS src
+                ON target.[ClubCode] = src.[ClubCode] AND target.[RuweTekst] = src.[RuweTekst]
+            WHEN MATCHED AND target.[Bron] = 'Sync' THEN
+                UPDATE SET [TeamId] = @teamId,
+                           [RuweTekstGenormaliseerd] = @sleutel,
+                           [Status] = 'validated',
+                           [mta_modified] = GETUTCDATE()
+            WHEN NOT MATCHED THEN
+                INSERT ([ClubCode], [RuweTekst], [RuweTekstGenormaliseerd], [TeamId], [Bron], [Status])
+                VALUES (@clubCode, @ruweTekst, @sleutel, @teamId, 'Sync', 'validated');
+
+            SELECT CAST(1 AS BIT);
+        ", conn);
+        cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        cmd.Parameters.AddWithValue("@ruweTekst", ruweTekst);
+        cmd.Parameters.AddWithValue("@sleutel", sleutel);
+
+        var resultaat = await cmd.ExecuteScalarAsync();
+        return resultaat is bool ok && ok;
     }
 
     private static async Task<List<HisTeamRow>> LoadHisTeamsAsync(string clubCode)

@@ -84,41 +84,21 @@ public static class BerichtPipeline
     /// e-mailpipeline (EmailProcessorFunction, geen clubswitcher), die daardoor exact als voorheen
     /// op de primaire club van deze deployment blijft resolven.
     /// </param>
-    /// <param name="teamResolutie">
-    /// Optionele teamnaam→TeamId-vertaallaag (#698/#699). Alleen actief als
-    /// <c>TeamResolverMode</c> op <c>shadow</c> of <c>on</c> staat; blijft de parameter
-    /// <c>null</c> (of de stand <c>off</c>), dan gedraagt de pipeline zich exact als voorheen.
+    /// <param name="teamResolver">
+    /// Teamnaam→TeamId-vertaallaag (#692). Sinds #700 is dit het <b>enige</b> pad waarlangs een team
+    /// wordt herkend: de oude regex-normalisatie en stringheuristieken zijn verwijderd, en er is geen
+    /// uitrolstand meer die de laag kan uitzetten. De parameter is daarom verplicht — een ontbrekende
+    /// resolver zou betekenen dat er helemaal geen team meer herkend wordt.
     /// </param>
     public static async Task<string> VerwerkMetPlannerAsync(
         BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
-        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null,
-        TeamResolutieContext? teamResolutie = null)
+        ITeamResolver teamResolver,
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null)
     {
-        classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
+        ArgumentNullException.ThrowIfNull(teamResolver);
 
-        var team = classificatie.TeamNaam ?? "";
-        var tegenstander = classificatie.Tegenstander ?? "";
-        var ruweTeamTekst = team;
-
-        if (!string.IsNullOrWhiteSpace(team) && !string.IsNullOrWhiteSpace(tegenstander))
-        {
-            var cc = ResolveHeuristicClubCode(clubCode);
-            bool teamIsEigenClub = !team.Contains(' ')
-                || (!string.IsNullOrWhiteSpace(cc) && team.StartsWith(cc, StringComparison.OrdinalIgnoreCase));
-            bool tegenstanderIsEigenClub = !tegenstander.Contains(' ')
-                || (!string.IsNullOrWhiteSpace(cc) && tegenstander.StartsWith(cc, StringComparison.OrdinalIgnoreCase));
-
-            if (!teamIsEigenClub && tegenstanderIsEigenClub)
-            {
-                classificatie.TeamNaam = tegenstander;
-                classificatie.Tegenstander = team;
-                ruweTeamTekst = tegenstander;
-            }
-        }
-
-        classificatie.TeamNaam = NormaliseerTeamNaam(classificatie.TeamNaam, clubCode);
-        classificatie.TeamNaam = await PasTeamResolutieToeAsync(
-            teamResolutie, ruweTeamTekst, classificatie.TeamNaam, clubCode, log);
+        var cc = ResolveHeuristicClubCode(clubCode);
+        var eigenTeamHerkend = await BepaalEigenTeamEnTegenstanderAsync(classificatie, teamResolver, cc, log);
 
         switch (classificatie.Type)
         {
@@ -126,15 +106,11 @@ public static class BerichtPipeline
                 var alleDatums = ExpandDoordeweeksDatums(
                     classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body);
 
-                var cc2 = ResolveHeuristicClubCode(clubCode);
-                bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander)
-                    && (string.IsNullOrWhiteSpace(cc2)
-                        || !classificatie.Tegenstander.StartsWith(cc2, StringComparison.OrdinalIgnoreCase));
-                bool heeftOnbekendVrcTeam = string.IsNullOrWhiteSpace(classificatie.TeamNaam)
-                    || string.IsNullOrWhiteSpace(cc2)
-                    || !classificatie.TeamNaam.StartsWith(cc2, StringComparison.OrdinalIgnoreCase);
+                // Is ons eigen team niet herkend maar wel een tegenstander genoemd, dan kan de
+                // wedstrijd nog via die tegenstander gevonden worden — daar staat ons team in.
+                bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander);
 
-                if (heeftExterneTegenstander && heeftOnbekendVrcTeam && alleDatums.Count == 1
+                if (heeftExterneTegenstander && !eigenTeamHerkend && alleDatums.Count == 1
                     && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
                 {
                     var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
@@ -147,9 +123,13 @@ public static class BerichtPipeline
                     if (wedstrijdAndereDatum == null)
                         return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
 
-                    var vrcTeam = ExtractEigenTeamUitWedstrijd(wedstrijdAndereDatum.Wedstrijd, classificatie.Tegenstander!, clubCode);
-                    if (vrcTeam != null)
-                        classificatie.TeamNaam = NormaliseerTeamNaam(vrcTeam, clubCode);
+                    var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
+                        wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log);
+                    if (eigenTeam != null)
+                    {
+                        classificatie.TeamNaam = eigenTeam;
+                        eigenTeamHerkend = true;
+                    }
                 }
 
                 if (alleDatums.Count > 1)
@@ -280,12 +260,19 @@ public static class BerichtPipeline
     /// club komt in plaats van de proces-globale cache. <c>null</c> voor de echte e-mailpipeline:
     /// die blijft de globale cache gebruiken, exact als voorheen.
     /// </param>
+    /// <param name="clubCode">
+    /// Expliciete club-override (#706) voor het ophalen van de DB-templates. Zonder deze waarde
+    /// leest <see cref="Email.EmailTemplateService"/> de primaire club van de deployment, waardoor
+    /// een dry-run met de democlub geselecteerd de templates van de productieclub gebruikt.
+    /// Blijft <c>null</c> voor de echte e-mailpipeline (geen club-switcher).
+    /// </param>
     public static async Task<(string onderwerp, string body)> BouwTemplateAntwoord(
         BerichtClassificatie classificatie,
         string plannerResponseJson,
         InkomendBericht bericht,
         ILogger? log = null,
-        ClubAppSettingsSnapshot? clubSettings = null)
+        ClubAppSettingsSnapshot? clubSettings = null,
+        string? clubCode = null)
     {
         switch (classificatie.Type)
         {
@@ -336,7 +323,7 @@ public static class BerichtPipeline
                         resultaten, classificatie, bericht, clubSettings);
                 }
 
-                var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", log);
+                var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", clubCode, log);
                 if (beschikbaarheidTemplate != null)
                     return BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht, clubSettings);
 
@@ -364,7 +351,7 @@ public static class BerichtPipeline
                         wedstrijd, gewensteDatum, beschikbaarheid, classificatie, bericht, clubSettings);
                 }
 
-                var herplanTemplate = await Email.EmailTemplateService.GetTemplateAsync("herplan_verzoek", log);
+                var herplanTemplate = await Email.EmailTemplateService.GetTemplateAsync("herplan_verzoek", clubCode, log);
                 if (herplanTemplate != null)
                     return BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht, clubSettings);
 
@@ -373,19 +360,19 @@ public static class BerichtPipeline
                     wedstrijd, herplanOpties, classificatie, bericht, clubSettings);
 
             case VerzoekType.TeamContactOpvragen:
-                var teamContactTemplate = await Email.EmailTemplateService.GetTemplateAsync("team_contact_opvragen", log);
+                var teamContactTemplate = await Email.EmailTemplateService.GetTemplateAsync("team_contact_opvragen", clubCode, log);
                 if (teamContactTemplate != null)
                     return BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht, clubSettings);
                 return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht, clubSettings);
 
             case VerzoekType.Bevestiging:
-                var bevestigingTemplate = await Email.EmailTemplateService.GetTemplateAsync("bevestiging", log);
+                var bevestigingTemplate = await Email.EmailTemplateService.GetTemplateAsync("bevestiging", clubCode, log);
                 if (bevestigingTemplate != null)
                     return BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht, clubSettings);
                 return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie, clubSettings);
 
             default:
-                var buitenScopeTemplate = await Email.EmailTemplateService.GetTemplateAsync("buiten_scope", log);
+                var buitenScopeTemplate = await Email.EmailTemplateService.GetTemplateAsync("buiten_scope", clubCode, log);
                 if (buitenScopeTemplate != null)
                     return BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht, clubSettings);
                 return BerichtResponseGenerator.BouwBuitenScopeAntwoord(bericht, clubSettings);
@@ -552,18 +539,22 @@ public static class BerichtPipeline
         return null;
     }
 
-    private static string? ExtractEigenTeamUitWedstrijd(string wedstrijd, string tegenstander, string? clubCodeOverride = null)
+    /// <summary>
+    /// Haalt uit een wedstrijdstring ("Thuisteam - Uitteam") de kant die ons team is, door beide kanten
+    /// tegen de teamlijst te resolven (#700). Voorheen werd dit geraden op de clubprefix, waardoor een
+    /// afwijkende notatie in de brondata de verkeerde kant opleverde.
+    /// </summary>
+    private static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
+        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log)
     {
-        var clubPrefix = ResolveHeuristicClubCode(clubCodeOverride) + " ";
-        var parts = wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries);
-        foreach (var part in parts)
-            if (!string.IsNullOrWhiteSpace(clubPrefix.Trim())
-                && part.StartsWith(clubPrefix, StringComparison.OrdinalIgnoreCase)
-                && !part.Contains(tegenstander, StringComparison.OrdinalIgnoreCase))
-                return part;
-        foreach (var part in parts)
-            if (!part.Contains(tegenstander, StringComparison.OrdinalIgnoreCase))
-                return part;
+        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
+
+        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
+        {
+            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log);
+            if (uitkomst is not null && uitkomst.IsOpgelost)
+                return uitkomst.CanoniekeTeamnaam;
+        }
         return null;
     }
 
@@ -577,104 +568,86 @@ public static class BerichtPipeline
         => !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : SystemUtilities.AppSettings.GetOptionalClubCode();
 
     /// <summary>
-    /// Past de teamnaam→TeamId-vertaallaag toe volgens <c>TeamResolverMode</c> (#698/#699).
+    /// Bepaalt welke van de twee genoemde teams het eigen team is, en zet <c>TeamNaam</c> op de
+    /// canonieke naam uit de teamlijst (#700).
     ///
-    /// <list type="bullet">
-    ///   <item><description><c>off</c> of geen context → <paramref name="huidigeTeamNaam"/> onveranderd terug.</description></item>
-    ///   <item><description><c>shadow</c> → alleen vergelijken en loggen, uitkomst onveranderd.</description></item>
-    ///   <item><description><c>on</c> → de canonieke teamnaam wordt leidend, mits eenduidig opgelost.</description></item>
-    /// </list>
-    ///
-    /// Faalt nooit naar buiten: kan de vertaallaag niets zinnigs opleveren, dan blijft de bestaande
-    /// uitkomst staan. Dat maakt de uitrol omkeerbaar zonder codewijziging.
+    /// <para>
+    /// <b>Waarom dit geen stringheuristiek meer is.</b> Voorheen werd "eigen team" geraden uit de vorm
+    /// van de tekst: geen spatie, of beginnend met de clubcode. Een tegenstander die zijn team zonder
+    /// spatie schreef ("AjaxJO13-2") werd daardoor als eigen team gezien, met thuis en uit omgedraaid —
+    /// zonder foutmelding. Nu is de vraag simpelweg: wélke van de twee staat in onze teamlijst?
+    /// </para>
+    /// <para>
+    /// Lost geen van beide op, dan blijft de classificatie ongewijzigd en handelt de aanroepende tak dat
+    /// af als "team onbekend". Er wordt nooit een naam gegokt.
+    /// </para>
     /// </summary>
-    private static async Task<string?> PasTeamResolutieToeAsync(
-        TeamResolutieContext? context, string ruweTeamTekst, string? huidigeTeamNaam,
-        string? clubCode, ILogger log)
+    /// <returns>True als het eigen team herkend is; dan staat de canonieke naam in <c>TeamNaam</c>.</returns>
+    private static async Task<bool> BepaalEigenTeamEnTegenstanderAsync(
+        BerichtClassificatie classificatie, ITeamResolver resolver, string clubCode, ILogger log)
     {
-        if (context is null) return huidigeTeamNaam;
-
-        var modus = context.Modus;
-        if (modus == TeamResolverMode.Off || string.IsNullOrWhiteSpace(ruweTeamTekst))
-            return huidigeTeamNaam;
-
-        var cc = ResolveHeuristicClubCode(clubCode);
-        if (string.IsNullOrWhiteSpace(cc)) return huidigeTeamNaam;
-
-        if (modus == TeamResolverMode.Shadow)
+        if (string.IsNullOrWhiteSpace(clubCode))
         {
-            await context.ShadowLogger.VergelijkAsync(ruweTeamTekst, huidigeTeamNaam, cc);
-            return huidigeTeamNaam;
+            log.LogWarning("TEAMRESOLUTIE - geen clubCode beschikbaar; teamherkenning overgeslagen");
+            return false;
         }
 
-        try
-        {
-            var resultaat = await context.Resolver.ResolveAsync(
-                new TeamResolutionRequest(ruweTeamTekst, null, null, cc));
+        var team = (classificatie.TeamNaam ?? "").Trim();
+        var tegenstander = (classificatie.Tegenstander ?? "").Trim();
 
-            if (resultaat.TeamId is null || string.IsNullOrWhiteSpace(resultaat.CanoniekeTeamnaam))
-            {
-                log.LogInformation(
-                    "TEAMRESOLUTIE - niet eenduidig opgelost (bron={Bron}, kandidaten={Kandidaten}) — bestaande matching blijft leidend",
-                    resultaat.Bron, resultaat.Kandidaten.Count);
-                return huidigeTeamNaam;
-            }
+        var teamUitkomst = await ProbeerResolveAsync(resolver, team, clubCode, log);
 
-            log.LogInformation(
-                "TEAMRESOLUTIE - teamId={TeamId} bron={Bron} confidence={Confidence}",
-                resultaat.TeamId, resultaat.Bron, resultaat.Confidence);
-            return resultaat.CanoniekeTeamnaam;
-        }
-        catch (Exception ex)
+        if (teamUitkomst is not null && teamUitkomst.IsOpgelost)
         {
-            log.LogError(ex, "TEAMRESOLUTIE - mislukt, bestaande matching blijft leidend");
-            return huidigeTeamNaam;
+            classificatie.TeamNaam = teamUitkomst.CanoniekeTeamnaam;
+            LogUitkomst(log, teamUitkomst);
+            return true;
         }
+
+        // Het genoemde "team" is niet van ons. Misschien staat ons team in het tegenstander-veld —
+        // dat gebeurt zodra een tegenstander namens zichzelf schrijft.
+        var tegenstanderUitkomst = await ProbeerResolveAsync(resolver, tegenstander, clubCode, log);
+        if (tegenstanderUitkomst is not null && tegenstanderUitkomst.IsOpgelost)
+        {
+            classificatie.TeamNaam = tegenstanderUitkomst.CanoniekeTeamnaam;
+            classificatie.Tegenstander = team;
+            log.LogInformation("TEAMRESOLUTIE - team en tegenstander verwisseld op basis van de teamlijst");
+            LogUitkomst(log, tegenstanderUitkomst);
+            return true;
+        }
+
+        var kandidaten = teamUitkomst?.Kandidaten.Count ?? 0;
+        log.LogInformation(
+            "TEAMRESOLUTIE - geen eigen team herkend (bron={Bron}, kandidaten={Kandidaten})",
+            teamUitkomst?.Bron ?? ResolutionBron.Onopgelost, kandidaten);
+        return false;
     }
 
     /// <summary>
-    /// Normaliseert en prefixt een teamnaam met de club-code. <paramref name="clubCodeOverride"/>
-    /// (#677) laat het dry-run pad de in de GUI geselecteerde club (bijv. AllStars FC) gebruiken
-    /// in plaats van de proces-globale cache, die altijd de primaire club van deze deployment bevat.
+    /// Resolveert één teamaanduiding. Retourneert <c>null</c> bij lege invoer of een storing: de
+    /// aanroeper behandelt dat als "niet herkend", zodat een fout in de vertaallaag nooit tot een
+    /// verkeerd gekoppeld team leidt.
     /// </summary>
-    internal static string? NormaliseerTeamNaam(string? teamNaam, string? clubCodeOverride = null)
+    private static async Task<TeamResolutionResult?> ProbeerResolveAsync(
+        ITeamResolver resolver, string ruweTekst, string clubCode, ILogger log)
     {
-        if (string.IsNullOrWhiteSpace(teamNaam)) return teamNaam;
-        var t = teamNaam.Trim();
+        if (string.IsNullOrWhiteSpace(ruweTekst)) return null;
 
-        t = System.Text.RegularExpressions.Regex.Replace(t, @"(\d)\s*/\s*(\d)", "$1-$2");
-
-        if (t.StartsWith("Onder ", StringComparison.OrdinalIgnoreCase))
-            t = "JO" + t[6..].Trim();
-
-        if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^O\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-            && !t.StartsWith("MO", StringComparison.OrdinalIgnoreCase))
-            t = "J" + t.ToUpper();
-
-        bool looksLikeEigenTeam = System.Text.RegularExpressions.Regex.IsMatch(t, @"^(JO|MO|VR|JM|ZO)\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                              || !t.Contains(' ');
-        var clubCode = !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : SystemUtilities.AppSettings.GetSetting("clubCode");
-        if (!string.IsNullOrWhiteSpace(clubCode))
+        try
         {
-            var clubPrefix = clubCode + " ";
-            if (looksLikeEigenTeam && !t.StartsWith(clubPrefix, StringComparison.OrdinalIgnoreCase))
-                t = clubPrefix + t;
+            return await resolver.ResolveAsync(new TeamResolutionRequest(ruweTekst, null, null, clubCode));
         }
-
-        return t;
+        catch (Exception ex)
+        {
+            log.LogError(ex, "TEAMRESOLUTIE - resolutie mislukt");
+            return null;
+        }
     }
 
-    private static string? NormaliseerLeeftijdsCategorie(string? categorie)
-    {
-        if (string.IsNullOrWhiteSpace(categorie)) return categorie;
-        var c = categorie.Trim();
-        if (c.StartsWith("Onder ", StringComparison.OrdinalIgnoreCase))
-            c = "JO" + c[6..].Trim();
-        if (System.Text.RegularExpressions.Regex.IsMatch(c, @"^O\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-            && !c.StartsWith("MO", StringComparison.OrdinalIgnoreCase))
-            c = "J" + c.ToUpper();
-        return c;
-    }
+    private static void LogUitkomst(ILogger log, TeamResolutionResult uitkomst)
+        => log.LogInformation(
+            "TEAMRESOLUTIE - teamId={TeamId} bron={Bron} confidence={Confidence}",
+            uitkomst.TeamId, uitkomst.Bron, uitkomst.Confidence);
 
     private static string? DetecteerRichting(string onderwerp, string body)
     {

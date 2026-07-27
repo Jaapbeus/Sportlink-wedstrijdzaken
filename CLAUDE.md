@@ -297,7 +297,7 @@ bewust worden bekeken.
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
-| `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of `TeamResolverMode` gewijzigd |
+| `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |

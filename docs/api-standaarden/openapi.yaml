@@ -147,6 +147,15 @@ components:
         veldNaam:
           type: string
           example: "veld 3"
+        veldType:
+          type: string
+          nullable: true
+          description: >-
+            Veldtype zoals vastgelegd in dbo.Velden (vrije tekst, bijv. "kunstgras" of "natuurgras").
+            Reist mee met het slot zodat consumers het niet uit het veldnummer hoeven te raden: die
+            nummering geldt maar voor één accommodatie. null betekent onbekend — een consumer mag een
+            slot met onbekend veldtype nooit wegfilteren, want het slot is aantoonbaar beschikbaar.
+          example: "kunstgras"
         veldDeelGebruik:
           type: number
           format: float
@@ -183,6 +192,13 @@ components:
         veldNaam:
           type: string
           example: "veld 5"
+        veldType:
+          type: string
+          nullable: true
+          description: >-
+            Veldtype zoals vastgelegd in dbo.Velden (vrije tekst, bijv. "kunstgras" of "natuurgras").
+            null betekent onbekend; zie de toelichting bij SlotToewijzing.veldType.
+          example: "natuurgras"
         van:
           type: string
           example: "17:00"

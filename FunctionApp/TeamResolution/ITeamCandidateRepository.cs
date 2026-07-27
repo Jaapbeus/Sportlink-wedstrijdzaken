@@ -7,8 +7,12 @@ namespace SportlinkFunction.TeamResolution;
 /// </summary>
 public interface ITeamCandidateRepository
 {
-    /// <summary>Exacte hit op een gevalideerde alias (status = 'validated'), hoogste betrouwbaarheid.</summary>
-    Task<TeamCandidate?> FindValidatedAliasAsync(string clubCode, string genormaliseerdeSleutel);
+    /// <summary>
+    /// Exacte hit op een gevalideerde alias (status = 'validated'), hoogste betrouwbaarheid.
+    /// Zoekt op de ruwe tekst én op de genormaliseerde sleutel: de sync registreert de exacte
+    /// bronschrijfwijze, terwijl een geleerde alias juist op de genormaliseerde vorm is vastgelegd.
+    /// </summary>
+    Task<TeamCandidate?> FindValidatedAliasAsync(string clubCode, string ruweTekst, string genormaliseerdeSleutel);
 
     /// <summary>Exacte hit op de canonieke teamnaam in <c>dbo.Teams</c>.</summary>
     Task<TeamCandidate?> FindExactTeamAsync(string clubCode, string genormaliseerdeSleutel);
@@ -18,4 +22,10 @@ public interface ITeamCandidateRepository
     /// kan 0, 1 of meerdere rijen opleveren. Bij precies 1 is de ambiguïteit vanzelf opgelost.
     /// </summary>
     Task<IReadOnlyList<TeamCandidate>> FindKandidatenAsync(string clubCode, TeamNaamComponenten componenten);
+
+    /// <summary>
+    /// Is er minstens één actief team bekend voor deze club? Zonder teams kan teamherkenning niet
+    /// werken; zie <see cref="TeamlijstGereedheid"/>.
+    /// </summary>
+    Task<bool> HeeftActieveTeamsAsync(string clubCode);
 }

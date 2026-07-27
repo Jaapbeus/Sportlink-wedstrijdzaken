@@ -133,6 +133,7 @@ Als `leeftijdsCategorie` is opgegeven en een slot beschikbaar is:
     "eindTijd": "13:15",
     "veldNummer": 3,
     "veldNaam": "veld 3",
+    "veldType": "kunstgras",
     "veldDeelGebruik": 1.0,
     "wedstrijdDuurMinuten": 75
   },
@@ -161,6 +162,7 @@ Als de gevraagde tijd niet beschikbaar is:
       "eindTijd": "17:15",
       "veldNummer": 2,
       "veldNaam": "veld 2",
+      "veldType": "kunstgras",
       "veldDeelGebruik": 1.0,
       "wedstrijdDuurMinuten": 75
     },
@@ -170,6 +172,7 @@ Als de gevraagde tijd niet beschikbaar is:
       "eindTijd": "19:15",
       "veldNummer": 1,
       "veldNaam": "veld 1",
+      "veldType": "kunstgras",
       "veldDeelGebruik": 1.0,
       "wedstrijdDuurMinuten": 75
     }
@@ -194,6 +197,7 @@ Als `leeftijdsCategorie` niet is opgegeven — geeft open tijdvensters per veld:
     {
       "veldNummer": 5,
       "veldNaam": "veld 5",
+      "veldType": "natuurgras",
       "van": "17:00",
       "tot": "19:20",
       "maxDuurMinuten": 140,

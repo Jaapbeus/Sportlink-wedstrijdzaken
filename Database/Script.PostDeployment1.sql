@@ -751,54 +751,12 @@ BEGIN
 END
 GO
 
--- ============================================================
--- #424: planner.sp_CleanupClassificatieCorrectie (AVG-retentie)
--- Moet VOOR sp_CleanupEmailVerwerking worden aangeroepen (FK-afhankelijkheid)
--- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('planner.sp_CleanupClassificatieCorrectie') AND type = 'P')
-BEGIN
-    EXEC(N'
-CREATE PROCEDURE [planner].[sp_CleanupClassificatieCorrectie]
-AS
-BEGIN
-    SET NOCOUNT ON;
-    UPDATE [planner].[ClassificatieCorrectie]
-    SET [OrigineleSamenvatting] = NULL,
-        [CorrectieSamenvatting] = NULL,
-        [mta_modified]          = GETUTCDATE()
-    WHERE [mta_inserted] < DATEADD(DAY, -30, GETUTCDATE())
-      AND [mta_inserted] >= DATEADD(DAY, -90, GETUTCDATE())
-      AND ([OrigineleSamenvatting] IS NOT NULL
-           OR [CorrectieSamenvatting] IS NOT NULL);
-    DELETE FROM [planner].[ClassificatieCorrectie]
-    WHERE [mta_inserted] < DATEADD(DAY, -90, GETUTCDATE());
-END;
-    ');
-END
-GO
-
--- ============================================================
--- #426: avg.sp_CleanupImportLog (AVG-retentie)
--- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('avg.sp_CleanupImportLog') AND type = 'P')
-BEGIN
-    EXEC(N'
-CREATE PROCEDURE [avg].[sp_CleanupImportLog]
-AS
-BEGIN
-    SET NOCOUNT ON;
-    UPDATE [avg].[ImportLog]
-    SET [ImporterendeDoor] = NULL,
-        [CsvBestand]       = NULL
-    WHERE [ImportDatum] < DATEADD(DAY, -90, GETUTCDATE())
-      AND ([ImporterendeDoor] IS NOT NULL
-           OR [CsvBestand] IS NOT NULL);
-    DELETE FROM [avg].[ImportLog]
-    WHERE [ImportDatum] < DATEADD(YEAR, -1, GETUTCDATE());
-END;
-    ');
-END
-GO
+-- De vier AVG-retentieprocedures (planner.sp_CleanupClassificatieCorrectie, avg.sp_CleanupImportLog,
+-- planner.sp_CleanupEmailVerwerking, avg.sp_CleanupTeambegeleiding) stonden hier als
+-- 'IF NOT EXISTS ... EXEC(N''CREATE PROCEDURE ...'')'. Daardoor kon hun definitie na de eerste
+-- release nooit meer wijzigen (#707) en werden ze bovendien aangemaakt vóórdat de schema's
+-- planner/avg bestaan. Ze staan nu als CREATE OR ALTER onderaan dit script — zie de sectie
+-- "#707: AVG-retentieprocedures".
 
 -- ============================================================
 -- #631: duplicaten in dbo.Season opruimen en een unique constraint aanbrengen.
@@ -1057,39 +1015,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.Em
     ALTER TABLE [planner].[EmailVerwerking] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_EmailVerwerking_ClubCode] DEFAULT 'CLUB'; -- neutrale placeholder, constraint wordt bij #242 gedropt
 GO
 
--- ============================================================
--- #208: AVG-retentie — planner.sp_CleanupEmailVerwerking aanmaken
--- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('planner.sp_CleanupEmailVerwerking') AND type = 'P')
-BEGIN
-    EXEC(N'
-CREATE PROCEDURE [planner].[sp_CleanupEmailVerwerking]
-AS
-BEGIN
-    SET NOCOUNT ON;
-    UPDATE [planner].[EmailVerwerking]
-    SET [Afzender]          = ''[geanonimiseerd]'',
-        [Onderwerp]         = ''[geanonimiseerd]'',
-        [VerstuurdNaar]     = NULL,
-        [EmailBody]         = NULL,
-        [AntwoordEmail]     = NULL,
-        [PlannerResponse]   = NULL,
-        [GeextraheerdeData] = NULL,
-        [mta_modified]      = GETUTCDATE()
-    WHERE [mta_inserted] < DATEADD(DAY, -30, GETUTCDATE())
-      AND [mta_inserted] >= DATEADD(DAY, -90, GETUTCDATE())
-      AND ([Afzender] <> ''[geanonimiseerd]''
-           OR [EmailBody] IS NOT NULL
-           OR [AntwoordEmail] IS NOT NULL
-           OR [PlannerResponse] IS NOT NULL
-           OR [GeextraheerdeData] IS NOT NULL);
-    DELETE FROM [planner].[EmailVerwerking]
-    WHERE [mta_inserted] < DATEADD(DAY, -90, GETUTCDATE());
-END;
-    ');
-END
-GO
-
 -- #242: Verwijder de placeholder-DEFAULT uit EmailVerwerking.ClubCode
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_EmailVerwerking_ClubCode')
     ALTER TABLE [planner].[EmailVerwerking] DROP CONSTRAINT [DF_EmailVerwerking_ClubCode];
@@ -1121,20 +1046,6 @@ GO
 -- ClubCode toevoegen aan bestaande avg.Teambegeleiding installaties (idempotent)
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambegeleiding') AND name = 'ClubCode')
     ALTER TABLE [avg].[Teambegeleiding] ADD [ClubCode] NVARCHAR(20) NOT NULL CONSTRAINT [DF_avg_Teambegeleiding_ClubCode] DEFAULT '';
-GO
-
--- #238: avg.sp_CleanupTeambegeleiding — AVG-vangnet: verwijder rijen ouder dan 1 jaar
-IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('avg.sp_CleanupTeambegeleiding') AND type = 'P')
-BEGIN
-    EXEC('
-CREATE PROCEDURE [avg].[sp_CleanupTeambegeleiding]
-AS
-BEGIN
-    SET NOCOUNT ON;
-    DELETE FROM [avg].[Teambegeleiding]
-    WHERE [mta_imported] < DATEADD(YEAR, -1, GETUTCDATE());
-END');
-END
 GO
 
 -- ============================================================
@@ -2271,6 +2182,175 @@ SELECT m.[wedstrijdcode]					AS WedstrijdCode
 GO
 
 -- ============================================================
+-- #707: AVG-retentieprocedures — CREATE OR ALTER, niet IF NOT EXISTS
+--
+-- Deze vier procedures stonden eerder verderop in dit script als
+-- 'IF NOT EXISTS (... type = ''P'') BEGIN EXEC(N''CREATE PROCEDURE ...'') END'. De deploy-pipeline
+-- publiceert geen dacpac — db-migrate runt uitsluitend dit script — en de procedures bestaan al
+-- sinds een eerdere release. De guard was dus permanent onwaar en ELKE wijziging aan een van deze
+-- vier procedures verdween geruisloos bij de deploy.
+--
+-- Dat was al ingetreden: de anonimisering van planner.EmailVerwerking.FoutMelding (#420) stond wel
+-- in Database/planner/System Stored Procedures/sp_CleanupEmailVerwerking.sql en in de CHANGELOG,
+-- maar niet in de gedeployde procedure. Een foutmelding kan een e-mailadres of berichtfragment
+-- bevatten, dus productie anonimiseerde een persoonsgegeven niet.
+--
+-- CREATE OR ALTER mag niet binnen IF/BEGIN staan (moet het eerste statement van de batch zijn),
+-- vandaar één eigen batch per procedure — hetzelfde patroon als de #595-sectie hierboven.
+--
+-- Deze sectie staat bewust NA het aanmaken van de schema's avg en planner: CREATE OR ALTER draait
+-- onvoorwaardelijk en faalt op een verse database als het schema nog niet bestaat. De tabellen
+-- hoeven nog niet te bestaan (deferred name resolution), maar het schema wel.
+--
+-- Definities één-op-één gelijk aan de bronbestanden onder
+-- Database/{planner,avg}/System Stored Procedures/ — wijzig een procedure dus altijd op BEIDE
+-- plekken.
+-- ============================================================
+
+-- Bron: Database/planner/System Stored Procedures/sp_CleanupClassificatieCorrectie.sql  (#424)
+CREATE OR ALTER PROCEDURE [planner].[sp_CleanupClassificatieCorrectie]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- AANROEPVOLGORDE: deze procedure loopt vóór sp_CleanupEmailVerwerking, maar de correctheid
+    -- hangt daar niet van af. Eerder stond hier dat de volgorde de FK-afhankelijkheid met
+    -- planner.EmailVerwerking afdekte — dat was onjuist en misleidend. Deze procedure verwijdert
+    -- correctierijen alleen op hun EIGEN leeftijd, en een correctierij kan jonger zijn dan de rij
+    -- waarnaar hij verwijst. Een 91 dagen oude e-mailrij met een 51 dagen oude correctie bleef zo
+    -- achter en liet de DELETE in sp_CleanupEmailVerwerking structureel op een FK-schending
+    -- vastlopen. Het opruimen van die verwijzingen gebeurt daarom in sp_CleanupEmailVerwerking
+    -- zelf, met exact dezelfde grens die bepaalt welke ouderrijen verdwijnen.
+
+    -- Beide grenzen eenmalig uit GETUTCDATE(): anders kan een rij tussen de UPDATE en de DELETE
+    -- door van venster wisselen.
+    DECLARE @AnonimiseerVanaf DATETIME = DATEADD(DAY, -30, GETUTCDATE());
+    DECLARE @VerwijderVoor    DATETIME = DATEADD(DAY, -90, GETUTCDATE());
+
+    -- Fase 1: anonimiseer samenvattingen in records 30-90 dagen oud
+    UPDATE [planner].[ClassificatieCorrectie]
+    SET [OrigineleSamenvatting] = NULL,
+        [CorrectieSamenvatting] = NULL,
+        [mta_modified]          = GETUTCDATE()
+    WHERE [mta_inserted] < @AnonimiseerVanaf
+      AND [mta_inserted] >= @VerwijderVoor
+      AND ([OrigineleSamenvatting] IS NOT NULL
+           OR [CorrectieSamenvatting] IS NOT NULL);
+
+    -- Fase 2: verwijder records ouder dan 90 dagen — de eigen bewaartermijn van deze tabel.
+    -- Correctierijen die jonger zijn maar naar een te verwijderen e-mailrij verwijzen, worden
+    -- opgeruimd door sp_CleanupEmailVerwerking (fase 2a).
+    DELETE FROM [planner].[ClassificatieCorrectie]
+    WHERE [mta_inserted] < @VerwijderVoor;
+END;
+GO
+
+-- Bron: Database/planner/System Stored Procedures/sp_CleanupEmailVerwerking.sql  (#208 / #420)
+CREATE OR ALTER PROCEDURE [planner].[sp_CleanupEmailVerwerking]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- De bewaartermijn van planner.EmailVerwerking staat hier op ÉÉN plek. Beide grenzen worden
+    -- eenmalig uit GETUTCDATE() berekend: anders kan een rij tussen twee statements door van
+    -- venster wisselen (geanonimiseerd maar niet verwijderd, of omgekeerd).
+    DECLARE @AnonimiseerVanaf DATETIME = DATEADD(DAY, -30, GETUTCDATE());
+    DECLARE @VerwijderVoor    DATETIME = DATEADD(DAY, -90, GETUTCDATE());
+
+    -- Fase 1: anonimiseer PII in rijen van 30-90 dagen oud
+    -- Afzender en Onderwerp zijn NOT NULL → vervangen door placeholder.
+    -- Nullbare velden worden op NULL gezet, inclusief FoutMelding (#420): een foutmelding bevat
+    -- vaak het e-mailadres of een fragment van het bericht en is dus zelf een persoonsgegeven.
+    UPDATE [planner].[EmailVerwerking]
+    SET [Afzender]          = '[geanonimiseerd]',
+        [Onderwerp]         = '[geanonimiseerd]',
+        [VerstuurdNaar]     = NULL,
+        [EmailBody]         = NULL,
+        [AntwoordEmail]     = NULL,
+        [PlannerResponse]   = NULL,
+        [GeextraheerdeData] = NULL,
+        [FoutMelding]       = NULL,
+        [mta_modified]      = GETUTCDATE()
+    WHERE [mta_inserted] < @AnonimiseerVanaf
+      AND [mta_inserted] >= @VerwijderVoor
+      AND ([Afzender] <> '[geanonimiseerd]'
+           OR [EmailBody] IS NOT NULL
+           OR [AntwoordEmail] IS NOT NULL
+           OR [PlannerResponse] IS NOT NULL
+           OR [GeextraheerdeData] IS NOT NULL
+           OR [FoutMelding] IS NOT NULL);
+
+    -- Fase 2a: verwijder correctierijen die verwijzen naar een rij die hieronder verdwijnt.
+    --
+    -- planner.ClassificatieCorrectie heeft twee foreign keys naar deze tabel
+    -- (FK_..._Origineel en FK_..._Correctie) zonder ON DELETE CASCADE. Cascade is hier ook geen
+    -- optie: twee cascadepaden vanuit dezelfde tabel naar dezelfde ouder weigert SQL Server met
+    -- Msg 1785 ("may cause cycles or multiple cascade paths").
+    --
+    -- Een correctierij kan JONGER zijn dan de rij waarnaar hij verwijst — replydetectie kent geen
+    -- tijdgrens, dus een reply op dag 40 hoort bij een bericht van dag 0. De eigen 90-dagenregel in
+    -- sp_CleanupClassificatieCorrectie ruimt die correctierij dan niet op. Zonder deze DELETE
+    -- faalt fase 2b op een FK-schending, gooit de aanroepende Function de fout door en wordt er
+    -- vanaf dat moment nooit meer iets verwijderd: elke wekelijkse run klapt op dezelfde rij en de
+    -- bewaartermijn van 90 dagen wordt structureel niet gehaald.
+    --
+    -- Deze opruiming staat bewust in DEZE procedure: dezelfde @VerwijderVoor bepaalt welke
+    -- ouderrijen verdwijnen en welke verwijzingen dus mee moeten. De twee kunnen daardoor niet uit
+    -- elkaar lopen, en de aanroepvolgorde van de twee cleanup-procedures is niet langer bepalend
+    -- voor de correctheid.
+    DELETE cc
+    FROM [planner].[ClassificatieCorrectie] cc
+    WHERE EXISTS (
+        SELECT 1
+        FROM [planner].[EmailVerwerking] ev
+        WHERE ev.[Id] IN (cc.[OrigineleVerwerkingId], cc.[CorrectionVerwerkingId])
+          AND ev.[mta_inserted] < @VerwijderVoor
+    );
+
+    -- Fase 2b: verwijder rijen ouder dan 90 dagen
+    DELETE FROM [planner].[EmailVerwerking]
+    WHERE [mta_inserted] < @VerwijderVoor;
+END;
+GO
+
+-- Bron: Database/avg/System Stored Procedures/sp_CleanupImportLog.sql  (#426)
+CREATE OR ALTER PROCEDURE [avg].[sp_CleanupImportLog]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Fase 1: anonimiseer PII in records ouder dan 90 dagen
+    -- ImporterendeDoor is een persoonsgegeven (Entra display name).
+    -- CsvBestand kan herleidbare info bevatten.
+    UPDATE [avg].[ImportLog]
+    SET [ImporterendeDoor] = NULL,
+        [CsvBestand]       = NULL
+    WHERE [ImportDatum] < DATEADD(DAY, -90, GETUTCDATE())
+      AND ([ImporterendeDoor] IS NOT NULL
+           OR [CsvBestand] IS NOT NULL);
+
+    -- Fase 2: verwijder records ouder dan 1 jaar (gelijk aan avg.Teambegeleiding-retentie)
+    DELETE FROM [avg].[ImportLog]
+    WHERE [ImportDatum] < DATEADD(YEAR, -1, GETUTCDATE());
+END;
+GO
+
+-- Bron: Database/avg/System Stored Procedures/sp_CleanupTeambegeleiding.sql  (#238)
+CREATE OR ALTER PROCEDURE [avg].[sp_CleanupTeambegeleiding]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Verwijder rijen ouder dan 1 jaar.
+    -- Vangnet voor het geval het importscript (TRUNCATE + herinsert) langere tijd
+    -- niet gedraaid heeft. Actieve begeleiders worden bij elke import ververst
+    -- en hebben altijd een recente mta_imported.
+    DELETE FROM [avg].[Teambegeleiding]
+    WHERE [mta_imported] < DATEADD(YEAR, -1, GETUTCDATE());
+END;
+GO
+
+-- ============================================================
 -- #635: AllStars FC demodata (idempotent)
 --
 -- De AppSettings-rij voor ALLSTARS werd hierboven al aangemaakt, maar de bijbehorende demodata
@@ -2510,7 +2590,7 @@ BEGIN
         [mta_modified]            DATETIME NOT NULL CONSTRAINT [DF_TeamAliassen_Modified] DEFAULT GETUTCDATE(),
         CONSTRAINT [PK_TeamAliassen] PRIMARY KEY CLUSTERED ([Id] ASC),
         CONSTRAINT [FK_TeamAliassen_Teams] FOREIGN KEY ([TeamId]) REFERENCES [dbo].[Teams]([TeamId]),
-        CONSTRAINT [UQ_TeamAliassen_Club_Genormaliseerd] UNIQUE ([ClubCode], [RuweTekstGenormaliseerd])
+        CONSTRAINT [UQ_TeamAliassen_Club_RuweTekst] UNIQUE ([ClubCode], [RuweTekst])
     );
 END
 GO
@@ -2529,4 +2609,71 @@ GO
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'Pogingen')
     ALTER TABLE [planner].[EmailVerwerking] ADD [Pogingen] INT NOT NULL CONSTRAINT [DF_EmailVerwerking_Pogingen] DEFAULT 0;
+GO
+
+-- ============================================================
+-- #707: dbo.AppSettings.ClubCode mag niet leeg zijn.
+--
+-- Waarom: LoadSettingsAsync zet een lege kolomwaarde als "" in de settings-cache. Code die alleen op
+-- NULL controleerde (?? throw) liet die waarde door, waarna elke query met [ClubCode] = '' een lege
+-- set opleverde. Voor de uitsluitingslijst van de e-mailverwerking betekende dat: uitgesloten
+-- adressen werden alsnog verwerkt en beantwoord — fail-open op een AVG-maatregel. De C#-kant weigert
+-- nu elke lege waarde (RequireClubCode); deze constraint is de tweede laag, ook voor handmatige
+-- UPDATE's rechtstreeks op de database.
+--
+-- De ALTER mag de deploy niet laten falen: een bestaande rij met een lege ClubCode zou een
+-- constraint-fout geven en daarmee de hele PostDeployment afbreken. Daarom eerst controleren —
+-- schendende rij aanwezig, dan alleen waarschuwen (severity 10 = informatief, geen fout) en de
+-- constraint overslaan. Zodra de beheerder de rij heeft gevuld legt de volgende deploy hem alsnog
+-- aan. Idempotent: bestaat de constraint al (via het #598-blok hierboven, of via de dacpac uit
+-- Database/dbo/Tables/AppSettings.sql), dan doet dit blok niets.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_AppSettings_ClubCode')
+BEGIN
+    IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE LEN(LTRIM(RTRIM([ClubCode]))) = 0)
+        RAISERROR('#707 WAARSCHUWING: dbo.AppSettings bevat een rij met een lege ClubCode. CK_AppSettings_ClubCode is NIET aangemaakt. Vul de ClubCode en voer de deploy opnieuw uit.', 10, 1) WITH NOWAIT;
+    ELSE
+        ALTER TABLE [dbo].[AppSettings] ADD CONSTRAINT [CK_AppSettings_ClubCode] CHECK (LEN(LTRIM(RTRIM([ClubCode]))) > 0);
+END
+GO
+-- ============================================================
+-- #700: dbo.TeamAliassen — uniciteit van de genormaliseerde sleutel naar de RUWE tekst.
+--
+-- Waarom: de sync koppelt nu elke schrijfwijze die in his.matches/his.teams voorkomt aan zijn
+-- canonieke team, zodat het zoeken van een wedstrijd een exacte join op de ruwe naam wordt in plaats
+-- van een LIKE-patroon. Meerdere ruwe schrijfwijzen horen dan juist naar dezelfde genormaliseerde
+-- sleutel te wijzen ("[club] JO10-1" en "[club] O10-1" zijn hetzelfde team) — uniciteit op die
+-- sleutel zou de tweede schrijfwijze weigeren.
+--
+-- Veilig voor bestaande installaties: de tabel is in de vorige release aangemaakt en wordt pas door
+-- deze release gevuld, dus er kan geen bestaande rij zijn die de nieuwe constraint schendt. Mocht er
+-- toch data staan met dubbele (ClubCode, RuweTekst), dan slaagt de ALTER niet en blijft de oude
+-- constraint staan; dat wordt hieronder expliciet gemeld in plaats van de deploy te laten klappen.
+-- ============================================================
+IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamAliassen'))
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.key_constraints
+               WHERE name = 'UQ_TeamAliassen_Club_Genormaliseerd'
+                 AND parent_object_id = OBJECT_ID('dbo.TeamAliassen'))
+        ALTER TABLE [dbo].[TeamAliassen] DROP CONSTRAINT [UQ_TeamAliassen_Club_Genormaliseerd];
+
+    IF NOT EXISTS (SELECT 1 FROM sys.key_constraints
+                   WHERE name = 'UQ_TeamAliassen_Club_RuweTekst'
+                     AND parent_object_id = OBJECT_ID('dbo.TeamAliassen'))
+    BEGIN
+        IF EXISTS (SELECT 1 FROM [dbo].[TeamAliassen]
+                   GROUP BY [ClubCode], [RuweTekst] HAVING COUNT(*) > 1)
+            PRINT 'WAARSCHUWING: dbo.TeamAliassen bevat dubbele (ClubCode, RuweTekst) — UQ_TeamAliassen_Club_RuweTekst NIET aangemaakt. Ruim de duplicaten op en draai dit script opnieuw.';
+        ELSE
+            ALTER TABLE [dbo].[TeamAliassen]
+                ADD CONSTRAINT [UQ_TeamAliassen_Club_RuweTekst] UNIQUE ([ClubCode], [RuweTekst]);
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'IX_TeamAliassen_Club_Genormaliseerd'
+                     AND object_id = OBJECT_ID('dbo.TeamAliassen'))
+        CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_Genormaliseerd]
+            ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstGenormaliseerd])
+            INCLUDE ([TeamId], [Status]);
+END
 GO

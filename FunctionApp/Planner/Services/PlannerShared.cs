@@ -20,6 +20,69 @@ internal static class PlannerShared
         return new TimeOnly(minuten / 60, minuten % 60);
     }
 
+    // ── Sportlink-veldstring → veldnummer: één plek, gebruikt door élke consumer (#707) ──
+    //
+    // Sportlink levert het veld als "<veldnaam>[ <subpositie>]" ("veld 1 A"); dbo.Velden bevat
+    // alleen de veldnaam zelf. Die vertaling gebeurde op meerdere plekken op verschillende
+    // manieren: StartsWith zonder woordgrens in het herplanpad en een harde afkap op zes tekens
+    // (LEFT(veld, 6) / veld[..6]) in het bezettingspad. Bij tien of meer velden liepen die uiteen:
+    //
+    //   • de matcher zag "veld 10" correct als veld 10;
+    //   • de bezetting kapte "veld 10" af op "veld 1" en boekte de wedstrijd op veld 1.
+    //
+    // Gevolg: de eigen wedstrijd bleef als spookbezetting op veld 1 staan (die dag viel daar dicht)
+    // én veld 10 kwam in de bezetting niet voor, dus veld 10 leek de hele dag vrij. Er kon dan een
+    // tweede wedstrijd naast de bestaande op hetzelfde veld worden aangeboden — een dubbele boeking.
+    //
+    // Daarom loopt de vertaling nu voor alle consumenten via deze functie. De normalisatie zelf is
+    // hergebruikt uit <see cref="AutoPlanService.NormaliseerVeld"/>; er is bewust geen tweede
+    // variant naast bijgezet.
+
+    /// <summary>
+    /// Splitst een Sportlink-veldstring in het veldnummer uit <c>dbo.Velden</c> en de subpositie
+    /// die Sportlink erachter zet. Een treffer is een exact gelijke veldnaam óf een veldnaam
+    /// gevolgd door een spatie en de subpositie — nooit een langer veldnummer, zodat "veld 10"
+    /// niet op "veld 1" valt.
+    /// </summary>
+    /// <returns>
+    /// Veldnummer, of <c>0</c> als geen enkel veld matcht (dezelfde sentinel als de oude
+    /// lookup-miss), plus de subpositie in hoofdletters of <c>null</c> als die ontbreekt.
+    /// </returns>
+    internal static (int VeldNummer, string? Subpositie) ResolveVeld(
+        string? sportlinkVeld, IEnumerable<(string? VeldNaam, int VeldNummer)> velden)
+    {
+        var gezocht = AutoPlanService.NormaliseerVeld(sportlinkVeld);
+        if (gezocht.Length == 0) return (0, null);
+
+        // Langste veldnaam eerst: bestaat naast "veld 1" ook "veld 1 achter", dan hoort
+        // "veld 1 achter B" bij dat tweede veld en is "achter" geen subpositie van veld 1.
+        foreach (var veld in velden
+                     .Select(v => (Naam: AutoPlanService.NormaliseerVeld(v.VeldNaam), v.VeldNummer))
+                     .Where(v => v.Naam.Length > 0)
+                     .OrderByDescending(v => v.Naam.Length))
+        {
+            if (gezocht == veld.Naam) return (veld.VeldNummer, null);
+            if (!gezocht.StartsWith(veld.Naam + " ", StringComparison.Ordinal)) continue;
+
+            var subpositie = gezocht[(veld.Naam.Length + 1)..].Trim();
+            return (veld.VeldNummer, subpositie.Length == 0 ? null : subpositie.ToUpperInvariant());
+        }
+        return (0, null);
+    }
+
+    /// <inheritdoc cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
+    internal static (int VeldNummer, string? Subpositie) ResolveVeld(
+        string? sportlinkVeld, IReadOnlyDictionary<string, int> veldenPerNaam)
+        => ResolveVeld(sportlinkVeld, veldenPerNaam.Select(kv => ((string?)kv.Key, kv.Value)));
+
+    /// <summary>
+    /// Veldnummer bij de veldnaam zoals Sportlink die levert, of <c>0</c> als geen veld matcht.
+    /// Zelfde matching als <see cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
+    /// — de bezetting en het herplanpad mogen nooit een eigen variant gebruiken.
+    /// </summary>
+    internal static int VindVeldNummer(string? sportlinkVeld, IEnumerable<VeldInfo> velden)
+        => ResolveVeld(sportlinkVeld, velden.Select(v => ((string?)v.VeldNaam, v.VeldNummer))).VeldNummer;
+
     internal static bool CanFitMatch(
         TimeOnly start, TimeOnly end, decimal veldFractie, int veldNummer,
         List<BestaandeWedstrijd> fieldOccupations,
@@ -88,8 +151,11 @@ internal static class PlannerShared
         decimal veldFractie, int duurMinuten, TimeOnly? sunset)
     {
         var endTime = preferredTime.AddMinutes(duurMinuten);
-        var grasveldNrs = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
-        foreach (var field in availableFields.OrderBy(f => grasveldNrs.Contains(f.VeldNummer) ? 1 : 0))
+        // Kunstgras eerst om grasvelden te ontlasten. Classificatie via VeldInfo.IsKunstgras — één
+        // definitie van "kunstgras" voor de hele codebase (#707); een eigen stringvergelijking hier
+        // noemde "Kunstgras 2" géén kunstgras en zette dat veld dus achteraan.
+        var nietKunstgrasNrs = velden.Where(v => !v.IsKunstgras).Select(v => v.VeldNummer).ToHashSet();
+        foreach (var field in availableFields.OrderBy(f => nietKunstgrasNrs.Contains(f.VeldNummer) ? 1 : 0))
         {
             if (preferredTime < field.BeschikbaarVanaf || endTime > field.BeschikbaarTot) continue;
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
@@ -132,13 +198,28 @@ internal static class PlannerShared
                 }
             }
         }
-        var grasveldNrs = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+        // Zelfde voorkeursordening als TryExactTime, via dezelfde kunstgras-definitie (#707).
+        var nietKunstgrasNrs = velden.Where(v => !v.IsKunstgras).Select(v => v.VeldNummer).ToHashSet();
         return candidates
-            .OrderBy(c => grasveldNrs.Contains(c.VeldNummer) ? 1 : 0)
+            .OrderBy(c => nietKunstgrasNrs.Contains(c.VeldNummer) ? 1 : 0)
             .ThenBy(c => c.AanvangsTijd.ToTimeSpan().TotalMinutes)
             .ToList();
     }
 
+    /// <summary>
+    /// Zet een kandidaat-slot om naar de publieke <see cref="SlotToewijzing"/>-DTO.
+    ///
+    /// <para><b>Veldtype reist altijd mee (#705/#707).</b> Elke aanroeper geeft de veldenlijst al mee
+    /// voor de veldnaam, dus het veldtype hoort hier gevuld te worden — niet per aanroeper. Dat was
+    /// het gat: het beschikbaarheidspad vulde <c>VeldType</c> zelf ná deze conversie, maar het
+    /// herplan-pad (de enige producent van <c>HerplanCheckResponse</c>) niet. Daar was
+    /// <c>VeldType</c> dus altijd <c>null</c>, terwijl het e-mailantwoord er wél op filtert: stil
+    /// kapot gedrag dat geen test en geen logregel zichtbaar maakte.</para>
+    ///
+    /// <para>Staat het veld niet in <paramref name="velden"/> (bijv. een inactief veld dat nog in een
+    /// bezetting voorkomt), dan blijft <c>VeldType</c> <c>null</c> = onbekend. Filters mogen zo'n
+    /// slot nooit wegfilteren — zie <see cref="VeldSoort.Onbekend"/>.</para>
+    /// </summary>
     internal static SlotToewijzing ToSlotToewijzing(DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
     {
         var veld = velden.FirstOrDefault(v => v.VeldNummer == slot.VeldNummer);
@@ -149,6 +230,7 @@ internal static class PlannerShared
             EindTijd = slot.EindTijd.ToString("HH:mm"),
             VeldNummer = slot.VeldNummer,
             VeldNaam = veld?.VeldNaam ?? $"veld {slot.VeldNummer}",
+            VeldType = veld?.VeldType,
             VeldDeelGebruik = slot.VeldFractie > 0 ? slot.VeldFractie : 1.00m,
             WedstrijdDuurMinuten = duurMinuten
         };

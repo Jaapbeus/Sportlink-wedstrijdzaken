@@ -94,15 +94,16 @@ public static class EmailTestFunction
 
             BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
 
-            // Teamresolutie ook in de dry-run, zodat de tester hetzelfde gedrag laat zien als de
-            // echte verwerking. Blijft null zolang TeamResolverMode op 'off' staat (#698/#699).
-            var teamResolutie = TeamResolutieContext.Maak(
-                context.InstanceServices.GetService<ITeamResolver>(),
-                context.InstanceServices.GetService<TeamResolutionShadowLogger>());
+            // Teamresolutie ook in de dry-run, zodat de tester exact hetzelfde gedrag laat zien als de
+            // echte verwerking (#700). Verplicht: zonder resolver wordt er geen team meer herkend.
+            var teamResolver = context.InstanceServices.GetRequiredService<ITeamResolver>();
 
             var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-                classificatie, fakeEmail, log, clubCode, clubSettings, teamResolutie);
-            var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail, log, clubSettings);
+                classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings);
+            // clubCode expliciet meegeven: zonder dat leest EmailTemplateService de templates van de
+            // primaire club, terwijl de tester de club uit de GUI-clubswitcher toont (#677/#706).
+            var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
+                classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode);
 
             return new OkObjectResult(new
             {

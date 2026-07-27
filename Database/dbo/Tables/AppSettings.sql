@@ -1,6 +1,8 @@
 ﻿CREATE TABLE [dbo].[AppSettings](
 	[ClubName]				NVARCHAR(100)	NOT NULL,
-	[ClubCode]				NVARCHAR(20)	NOT NULL,
+	-- NOT NULL alleen is niet genoeg: een lege ClubCode komt als "" in de settings-cache terecht en
+	-- maakt elke ClubCode-filter leeg (o.a. de uitsluitingslijst van de e-mailverwerking). (#707)
+	[ClubCode]				NVARCHAR(20)	NOT NULL CONSTRAINT [CK_AppSettings_ClubCode] CHECK (LEN(LTRIM(RTRIM([ClubCode]))) > 0),
 	[SportlinkApiUrl]		NVARCHAR(100)	NOT NULL,
 	[SportlinkClientId]		NVARCHAR(50)	NOT NULL,
 	[SeasonStartMonth]		[int]			NOT NULL,

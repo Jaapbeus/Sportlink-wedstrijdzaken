@@ -81,16 +81,107 @@ internal static class EmailIdempotentie
     }
 }
 
+/// <summary>Uitkomst van een poging om de uitsluitingslijst te verversen (#709).</summary>
+internal enum UitsluitingslijstStand
+{
+    /// <summary>Binnen de geldigheidsduur — er is niets uit de database gelezen.</summary>
+    Actueel,
+
+    /// <summary>Opnieuw uit de database gelezen; de lijst kan gewijzigd zijn.</summary>
+    Ververst,
+
+    /// <summary>Herladen mislukt, maar er is een eerdere lijst — die blijft gelden.</summary>
+    VerouderdBehouden,
+
+    /// <summary>Nooit geladen én nu niet te laden — er mag niet geclassificeerd worden.</summary>
+    Ontbreekt
+}
+
+/// <summary>
+/// In-memory kopie van de uitsluitingslijst met een geldigheidsduur (#709).
+///
+/// <para>
+/// De lijst werd alleen bij een cold start en in fase 2 geladen. Fase 2 wordt niet bereikt zolang
+/// elk bericht in de batch buiten scope valt, dus bleef de kopie in fase 1 verouderd: een adres dat
+/// de beheerder net had uitgesloten kreeg terecht géén antwoord (de hercheck vóór de INSERT werkt
+/// wel), maar de inhoud van het bericht was dan al naar de externe AI-provider gestuurd. Met een
+/// geldigheidsduur wordt de lijst vóór de AI-stap vernieuwd, zonder bij elke poll de database te
+/// wekken.
+/// </para>
+/// </summary>
+internal sealed class UitsluitingslijstCache
+{
+    /// <summary>
+    /// Geldigheidsduur van de kopie. Bewust ruimer dan het poll-interval van 5 minuten: bij élke poll
+    /// herladen zou de Azure SQL Serverless-database wakker houden voor batches die anders helemaal
+    /// niet in de database terechtkomen. Vijftien minuten begrenst hoe lang een net uitgesloten adres
+    /// nog een AI-call kan kosten, zonder die database-kosten.
+    /// </summary>
+    internal static readonly TimeSpan Ttl = TimeSpan.FromMinutes(15);
+
+    // volatile / Volatile.Read: meerdere invocaties lezen dezelfde statische instantie (#382).
+    private volatile HashSet<string> _adressen = new(StringComparer.OrdinalIgnoreCase);
+    private long _geladenOpTicksUtc;
+
+    internal IReadOnlySet<string> Adressen => _adressen;
+
+    /// <summary>Is de lijst ooit met succes geladen? Zo niet, dan geldt fail-closed. (#423)</summary>
+    internal bool IsGeladen => Volatile.Read(ref _geladenOpTicksUtc) != 0;
+
+    internal bool IsVerouderd(DateTime nuUtc)
+    {
+        var ticks = Volatile.Read(ref _geladenOpTicksUtc);
+        return ticks == 0 || nuUtc - new DateTime(ticks, DateTimeKind.Utc) >= Ttl;
+    }
+
+    internal async Task<UitsluitingslijstStand> VerversIndienVerouderdAsync(
+        Func<Task<HashSet<string>>> laadAsync, DateTime nuUtc, ILogger log)
+    {
+        if (!IsVerouderd(nuUtc))
+            return UitsluitingslijstStand.Actueel;
+
+        try
+        {
+            await HerlaadAsync(laadAsync, nuUtc);
+            return UitsluitingslijstStand.Ververst;
+        }
+        catch (Exception ex)
+        {
+            if (!IsGeladen)
+            {
+                log.LogError(ex, "Uitsluitingslijst niet beschikbaar — AI-verwerking uitgesteld (fail-closed)");
+                return UitsluitingslijstStand.Ontbreekt;
+            }
+
+            // Wél een eerdere lijst: doorgaan met die lijst is veiliger dan de verwerking stilzetten,
+            // en het is precies het gedrag van vóór deze TTL.
+            log.LogWarning(ex,
+                "Uitsluitingslijst kon niet worden ververst — eerdere lijst met {Aantal} adressen blijft gelden",
+                _adressen.Count);
+            return UitsluitingslijstStand.VerouderdBehouden;
+        }
+    }
+
+    /// <summary>
+    /// Laadt de lijst onvoorwaardelijk opnieuw. Gebruikt door fase 2, waar de hercheck vóór de INSERT
+    /// op een lijst uit déze invocatie moet gebeuren en niet op een kopie die tot de TTL oud kan zijn.
+    /// </summary>
+    internal async Task HerlaadAsync(Func<Task<HashSet<string>>> laadAsync, DateTime nuUtc)
+    {
+        _adressen = await laadAsync();
+        Volatile.Write(ref _geladenOpTicksUtc, nuUtc.Ticks);
+    }
+}
+
 public class EmailProcessorFunction
 {
     private const string GeenAiAntwoordLabel = "Geen AI antwoord";
 
     // volatile voor thread-safe reads vanuit meerdere invocaties (#382)
     private static volatile bool _databaseNoodmailVerstuurd;
-    private static volatile bool _uitgeslotenCacheGeladen;
     private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
-    // Uitsluitingslijst-cache: geladen vóór eerste AI-classificatie (fail-closed bij cold start). (#423)
-    private static HashSet<string> _uitgeslotenCache = new(StringComparer.OrdinalIgnoreCase);
+    // Uitsluitingslijst: geladen vóór elke AI-classificatie (fail-closed bij cold start). (#423, #709)
+    private static readonly UitsluitingslijstCache _uitsluitingslijst = new();
 
     [Function("ProcessIncomingEmails")]
     public async Task Run(
@@ -115,13 +206,15 @@ public class EmailProcessorFunction
 
         var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
 
-        // Teamnaam→TeamId-vertaallaag (#698/#699). Blijft null zolang TeamResolverMode op 'off'
-        // staat (de standaard), en dan gedraagt de verwerking zich exact als voorheen.
-        var teamResolutie = TeamResolutieContext.Maak(
-            context.InstanceServices.GetService<ITeamResolver>(),
-            context.InstanceServices.GetService<TeamResolutionShadowLogger>());
-        if (teamResolutie is not null)
-            log.LogInformation("Teamresolutie actief in stand {Modus}", teamResolutie.Modus);
+        // Teamnaam→TeamId-vertaallaag (#692). Sinds #700 is dit het ENIGE pad waarlangs een team wordt
+        // herkend — de oude regex-normalisatie bestaat niet meer. Ontbreekt de resolver, dan zou elke
+        // mail zonder teamherkenning verwerkt worden; dat is erger dan niet verwerken, dus we stoppen.
+        var teamResolver = context.InstanceServices.GetService<ITeamResolver>();
+        if (teamResolver is null)
+        {
+            log.LogError("Teamresolutie niet beschikbaar (ITeamResolver niet geregistreerd) — verwerking overgeslagen");
+            return;
+        }
 
         IEmailGraphService graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
         IEmailPersistenceService persistenceService = new EmailPersistenceService();
@@ -144,7 +237,7 @@ public class EmailProcessorFunction
         var teClassificeren = await batchFilterService.PreFilterVoorClassificatieAsync(
             emails,
             eigenMailbox,
-            _uitgeslotenCache,
+            _uitsluitingslijst.Adressen,
             graphService,
             log);
 
@@ -154,27 +247,25 @@ public class EmailProcessorFunction
             return;
         }
 
-        // Fail-closed: uitsluitingslijst moet geladen zijn vóór AI-classificatie. (#423)
-        // Op cold start: probeer DB te wekken en lijst te laden. Lukt dat niet → return.
-        if (!_uitgeslotenCacheGeladen)
-        {
-            log.LogInformation("Uitsluitingslijst nog niet geladen (cold start) — laden vóór AI-classificatie");
-            try
+        // Uitsluitingslijst verversen vóór de AI-stap: een adres dat de beheerder net heeft
+        // uitgesloten mag niet alsnog naar de externe AI-provider gaan. (#423, #709)
+        var verseBatch = await FilterMetVerseUitsluitingslijstAsync(
+            teClassificeren,
+            _uitsluitingslijst,
+            async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
                 await SystemUtilities.AppSettings.LoadSettingsAsync(log);
-                _uitgeslotenCache = await persistenceService.LaadUitgeslotenAdressenAsync(log);
-                _uitgeslotenCacheGeladen = true;
-                // Re-filter met de nu geladen lijst — verwijder eerder doorgelaten uitgesloten adressen
-                teClassificeren = batchFilterService.FilterUitgeslotenAdressen(teClassificeren, _uitgeslotenCache);
-                log.LogInformation("Uitsluitingslijst geladen op cold start: {Aantal} adressen", _uitgeslotenCache.Count);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Uitsluitingslijst niet beschikbaar — AI-verwerking uitgesteld (fail-closed)");
-                return;
-            }
-        }
+                return await persistenceService.LaadUitgeslotenAdressenAsync(log);
+            },
+            batchFilterService,
+            DateTime.UtcNow,
+            log);
+
+        if (verseBatch is null)
+            return;
+
+        teClassificeren = verseBatch;
 
         if (teClassificeren.Count == 0)
         {
@@ -231,10 +322,10 @@ public class EmailProcessorFunction
         {
             var aantalBuitenScope = classificaties.Count(c => c.Classificatie.Type == VerzoekType.BuitenScope);
             log.LogInformation(
-                "Alle {Aantal} emails buiten scope{Afgebroken} — database blijft slapen",
+                "Alle {Aantal} emails buiten scope{Afgebroken} — geen verwerking in de database nodig",
                 aantalBuitenScope,
                 classificationResult.AiAborted ? " (AI batch vroegtijdig gestopt)" : "");
-            return; // Database slaapt
+            return; // Fase 2 overslaan
         }
 
         // ── FASE 2: zwaar — alleen als er non-BuitenScope emails of classificatiefouten zijn ─────
@@ -264,9 +355,29 @@ public class EmailProcessorFunction
             return;
         }
 
-        // Refresh uitsluitingslijst nu DB wakker is — cache bijwerken voor volgende polls
-        _uitgeslotenCache = await persistenceService.LaadUitgeslotenAdressenAsync(log);
-        _uitgeslotenCacheGeladen = true;
+        // Onvoorwaardelijk herladen nu de DB wakker is: de hercheck vóór de INSERT hoort op een lijst
+        // uit déze invocatie te gebeuren, niet op een kopie die tot de TTL oud kan zijn. (#709)
+        await _uitsluitingslijst.HerlaadAsync(
+            () => persistenceService.LaadUitgeslotenAdressenAsync(log), DateTime.UtcNow);
+
+        // Teamlijst-gereedheid hoort HIER, niet in fase 1 (#700). Twee redenen, beide gevonden bij de
+        // adversariële review:
+        //  1. De check heeft de clubCode uit dbo.AppSettings nodig. In fase 1 is die cache op een verse
+        //     worker nog leeg — de check zou dan altijd falen en terugkeren vóór de regel die de settings
+        //     laadt. Dat zette de verwerking permanent stil, met een logregel die naar de verkeerde
+        //     oorzaak wees.
+        //  2. In fase 1 zou hij bij élke poll de database openen, ook bij een lege inbox. Azure SQL
+        //     Serverless pauzeert pas na 60 minuten inactiviteit, dus dat houdt de database 24/7 wakker
+        //     en verbruikt het gratis vCore-budget. Hier is de database toch al wakker.
+        var gereedheid = context.InstanceServices.GetService<TeamlijstGereedheid>();
+        if (gereedheid is not null
+            && !await gereedheid.ZorgVoorTeamlijstAsync(SystemUtilities.AppSettings.GetOptionalClubCode()))
+        {
+            log.LogError(
+                "Teamherkenning niet mogelijk (geen actieve teams voor deze club) — verwerking overgeslagen "
+                + "om verkeerde koppelingen te voorkomen. Controleer of de Sportlink-sync heeft gedraaid.");
+            return;
+        }
 
         // Classificatiefouten vastleggen nu de database wakker is — anders bestaat er geen teller en
         // blijven deze berichten oneindig terugkomen (zie de toelichting bij mislukteClassificaties).
@@ -283,12 +394,12 @@ public class EmailProcessorFunction
                     email,
                     classificatie,
                     graphService,
-                    _uitgeslotenCache,
+                    _uitsluitingslijst.Adressen,
                     aiService,
                     persistenceService,
                     replyPolicyService,
                     log,
-                    teamResolutie);
+                    teamResolver);
                 verwerkt++;
             }
             catch (Exception ex)
@@ -306,16 +417,41 @@ public class EmailProcessorFunction
             verwerkt, fouten, mislukteClassificaties.Count);
     }
 
+    /// <summary>
+    /// Zorgt dat de uitsluitingslijst niet verouderd is en filtert de batch ermee — vóór er één
+    /// bericht naar de AI-provider gaat (#709). Retourneert <c>null</c> als er niet geclassificeerd
+    /// mag worden omdat de lijst nooit geladen is en ook nu niet te laden is (fail-closed, #423).
+    /// </summary>
+    internal static async Task<List<InkomendBericht>?> FilterMetVerseUitsluitingslijstAsync(
+        List<InkomendBericht> teClassificeren,
+        UitsluitingslijstCache uitsluitingslijst,
+        Func<Task<HashSet<string>>> laadLijstAsync,
+        EmailBatchFilterService batchFilterService,
+        DateTime nuUtc,
+        ILogger log)
+    {
+        var stand = await uitsluitingslijst.VerversIndienVerouderdAsync(laadLijstAsync, nuUtc, log);
+
+        return stand switch
+        {
+            UitsluitingslijstStand.Ontbreekt => null,
+            // Alleen na een verse lijst kan de uitkomst van het voorfilter achterhaald zijn.
+            UitsluitingslijstStand.Ververst =>
+                batchFilterService.FilterUitgeslotenAdressen(teClassificeren, uitsluitingslijst.Adressen),
+            _ => teClassificeren
+        };
+    }
+
     private static async Task VerwerkEmailAsync(
         InkomendBericht email,
         BerichtClassificatie classificatie,
         IEmailGraphService graphService,
-        HashSet<string> uitgeslotenAdressen,
+        IReadOnlySet<string> uitgeslotenAdressen,
         BerichtAiService aiService,
         IEmailPersistenceService persistenceService,
         EmailReplyPolicyService replyPolicyService,
         ILogger log,
-        TeamResolutieContext? teamResolutie)
+        ITeamResolver teamResolver)
     {
         // Hercheck met verse DB-geladen uitsluitingslijst (kan afwijken van cache)
         if (uitgeslotenAdressen.Contains(email.Afzender))
@@ -325,37 +461,8 @@ public class EmailProcessorFunction
             return;
         }
 
-        // Idempotentie-guard op de EINDSTATUS, niet op het bestaan van de rij (#712). Een rij met een
-        // niet-definitieve status betekent: eerdere poging afgebroken → opnieuw verwerken, dezelfde
-        // rij hergebruiken.
-        var stand = await persistenceService.HaalVerwerkingStandOpAsync(email.MessageId);
-        int verwerkingId;
-
-        switch (EmailIdempotentie.Bepaal(stand))
-        {
-            case VerwerkingsBesluit.OverslaanAlAfgerond:
-                log.LogInformation("Email {MessageId} is al definitief afgehandeld (status {Status}), overslaan",
-                    email.MessageId, stand!.Status);
-                await graphService.MarkAsReadAsync(email.MessageId);
-                return;
-
-            case VerwerkingsBesluit.OpgevenNaMaxPogingen:
-                await GeefVerwerkingOpAsync(email, stand!.Pogingen, "verwerking", graphService, persistenceService, log);
-                return;
-
-            case VerwerkingsBesluit.HerhaalVerwerking:
-                verwerkingId = stand!.VerwerkingId;
-                await persistenceService.VerhoogPogingenAsync(verwerkingId);
-                log.LogWarning(
-                    "Email {MessageId} was niet afgerond (status {Status}) — verwerking {Id} wordt hervat, poging {Poging} van {Max}",
-                    email.MessageId, stand.Status, verwerkingId, stand.Pogingen + 1, EmailIdempotentie.MaxPogingen);
-                break;
-
-            default:
-                // DB INSERT — classificatie is al gedaan in fase 1, resultaat wordt evt. verfijnd in fase 2
-                verwerkingId = await persistenceService.InsertEmailVerwerkingAsync(email);
-                break;
-        }
+        if (await BepaalVerwerkingIdAsync(email, graphService, persistenceService, log) is not int verwerkingId)
+            return;
 
         // #323: reply-detectie — is dit een reply op een eerder door ons beantwoord bericht?
         if (!string.IsNullOrWhiteSpace(email.ConversationId))
@@ -420,7 +527,7 @@ public class EmailProcessorFunction
             verwerkingId, classificatie.Type, classificatie.Datum);
 
         var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-            classificatie, email, log, teamResolutie: teamResolutie);
+            classificatie, email, log, teamResolver);
         await persistenceService.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
         await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
 
@@ -456,6 +563,64 @@ public class EmailProcessorFunction
         {
             await StuurTeamContactBerichtDoorAsync(
                 graphService, classificatie.TeamNaam, email, log);
+        }
+    }
+
+    /// <summary>
+    /// Bepaalt onder welk verwerkingId dit bericht verder verwerkt wordt: hergebruik van een
+    /// niet-afgeronde rij, of een nieuwe rij. Retourneert <c>null</c> als de verwerking hier moet
+    /// stoppen.
+    /// <para>
+    /// De guard kijkt naar de EINDSTATUS en niet naar het bestaan van de rij (#712): een rij met een
+    /// niet-definitieve status betekent dat een eerdere poging is afgebroken, en die rij wordt dan
+    /// hergebruikt.
+    /// </para>
+    /// </summary>
+    internal static async Task<int?> BepaalVerwerkingIdAsync(
+        InkomendBericht email,
+        IEmailGraphService graphService,
+        IEmailPersistenceService persistenceService,
+        ILogger log)
+    {
+        var stand = await persistenceService.HaalVerwerkingStandOpAsync(email.MessageId);
+
+        switch (EmailIdempotentie.Bepaal(stand))
+        {
+            case VerwerkingsBesluit.OverslaanAlAfgerond:
+                log.LogInformation("Email {MessageId} is al definitief afgehandeld (status {Status}), overslaan",
+                    email.MessageId, stand!.Status);
+                await graphService.MarkAsReadAsync(email.MessageId);
+                return null;
+
+            case VerwerkingsBesluit.OpgevenNaMaxPogingen:
+                await GeefVerwerkingOpAsync(email, stand!.Pogingen, "verwerking", graphService, persistenceService, log);
+                return null;
+
+            case VerwerkingsBesluit.HerhaalVerwerking:
+                await persistenceService.VerhoogPogingenAsync(stand!.VerwerkingId);
+                log.LogWarning(
+                    "Email {MessageId} was niet afgerond (status {Status}) — verwerking {Id} wordt hervat, poging {Poging} van {Max}",
+                    email.MessageId, stand.Status, stand.VerwerkingId, stand.Pogingen + 1, EmailIdempotentie.MaxPogingen);
+                return stand.VerwerkingId;
+
+            default:
+                try
+                {
+                    // DB INSERT — classificatie is al gedaan in fase 1, resultaat wordt evt. verfijnd in fase 2
+                    return await persistenceService.InsertEmailVerwerkingAsync(email);
+                }
+                catch (DubbeleMessageIdException)
+                {
+                    // Check-then-act: tussen het lezen van de stand en deze INSERT heeft een andere
+                    // invocatie hetzelfde bericht geregistreerd. Dit mag géén fout worden: UpdateFoutAsync
+                    // zoekt op MessageId en zou de rij van die andere verwerking op 'Fout' zetten, terwijl
+                    // die het antwoord juist wél kan versturen. Bericht ongelezen laten — de andere
+                    // verwerking handelt het af. (#707)
+                    log.LogWarning(
+                        "Email {MessageId} is gelijktijdig door een andere verwerking geregistreerd — deze poging stopt zonder foutstatus",
+                        email.MessageId);
+                    return null;
+                }
         }
     }
 
@@ -586,6 +751,14 @@ public class EmailProcessorFunction
             log.LogWarning(
                 "Email {MessageId}: AI-classificatie mislukt — poging {Poging} van {Max} vastgelegd, bericht blijft ongelezen voor de volgende poll",
                 email.MessageId, (stand?.Pogingen ?? 0) + 1, EmailIdempotentie.MaxPogingen);
+        }
+        catch (DubbeleMessageIdException)
+        {
+            // Een andere invocatie registreerde het bericht tussen de stand-lezing en deze INSERT.
+            // Geen fout: die verwerking is leidend en heeft een eigen pogingenteller. (#707)
+            log.LogInformation(
+                "Email {MessageId}: al door een andere verwerking geregistreerd — classificatiefout niet vastgelegd",
+                email.MessageId);
         }
         catch (Exception ex)
         {
