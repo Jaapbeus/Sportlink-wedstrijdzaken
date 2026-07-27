@@ -314,10 +314,23 @@ public class BerichtPipelineTests
     // "24 mrt.") buiten de citaat-/ondertekeningstekst, terwijl ExtractExpliciteDatum vóór deze fix
     // uitsluitend volledige maandnamen herkende.
 
+    /// <summary>
+    /// Eerstvolgende toekomstige datum wiens afgekorte maandnaam AFWIJKT van de volledige vorm
+    /// ("mei" is in het Nederlands identiek in beide vormen en zou de nieuwe afkortings-regex dus
+    /// niet daadwerkelijk testen — zonder deze guard slaagt de test in mei-achtige periodes om de
+    /// verkeerde reden).
+    /// </summary>
+    private static DateOnly EerstvolgendeDatumMetAfwijkendeAfkorting(int dagenVooruit)
+    {
+        var doel = DateOnly.FromDateTime(DateTime.Today).AddDays(dagenVooruit);
+        while (AfgekorteMaandNaam(doel) == MaandNaam(doel)) doel = doel.AddDays(30);
+        return doel;
+    }
+
     [Fact]
     public void ValideerDagDatum_OnderwerpBevat_AfgekorteMaandZonderPunt_WordtGeparsed()
     {
-        var doel = DateOnly.FromDateTime(DateTime.Today).AddDays(30);
+        var doel = EerstvolgendeDatumMetAfwijkendeAfkorting(30);
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
 
         BerichtPipeline.ValideerDagDatum(classificatie, "tekst", $"Wij spelen graag op {doel.Day} {AfgekorteMaandNaam(doel)}");
@@ -328,7 +341,7 @@ public class BerichtPipelineTests
     [Fact]
     public void ValideerDagDatum_OnderwerpBevat_AfgekorteMaandMetPunt_WordtGeparsed()
     {
-        var doel = DateOnly.FromDateTime(DateTime.Today).AddDays(30);
+        var doel = EerstvolgendeDatumMetAfwijkendeAfkorting(30);
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
 
         BerichtPipeline.ValideerDagDatum(classificatie, "tekst", $"Op {doel.Day} {AfgekorteMaandNaam(doel)}. om 20:36");
@@ -367,7 +380,7 @@ public class BerichtPipelineTests
     {
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
 
-        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Re: VRC jo14 - FZO jo14 14/02/2026");
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Re: Thuisteam jo14 - Uitteam jo14 14/02/2026");
 
         classificatie.Datum.Should().Be("2026-02-14");
     }
@@ -378,7 +391,7 @@ public class BerichtPipelineTests
         // Bewuste keuze: '13/1' zonder jaartal is niet te onderscheiden van een teamaanduiding.
         var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
 
-        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Groet, Ted -19/1");
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Groet, -19/1");
 
         classificatie.Datum.Should().BeNull();
     }
