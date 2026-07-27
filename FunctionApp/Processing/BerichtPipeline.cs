@@ -511,17 +511,36 @@ public static class BerichtPipeline
             }
         }
 
+        // Slash-notatie ("14/02/2026", "-19/1"): net zo vaak waargenomen als de streepjesvorm
+        // (#722-analyse), maar dd-mm zónder jaar via '/' wordt bewust NIET los ondersteund omdat
+        // die vorm ambigu is met teamnotatie ("13/1"); mét expliciet jaartal is dat onderscheid er wel.
+        var slashMatchMetJaar = System.Text.RegularExpressions.Regex.Match(tekst, @"(?<![\d/])(\d{1,2})/(\d{1,2})/(\d{4})(?!\d)");
+        if (slashMatchMetJaar.Success)
+        {
+            if (int.TryParse(slashMatchMetJaar.Groups[1].Value, out var dag) &&
+                int.TryParse(slashMatchMetJaar.Groups[2].Value, out var maand) &&
+                int.TryParse(slashMatchMetJaar.Groups[3].Value, out var jaar))
+            {
+                try { return new DateOnly(jaar, maand, dag); } catch { }
+            }
+        }
+
         var maandNamen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["januari"] = 1, ["februari"] = 2, ["maart"] = 3, ["april"] = 4,
             ["mei"] = 5, ["juni"] = 6, ["juli"] = 7, ["augustus"] = 8,
-            ["september"] = 9, ["oktober"] = 10, ["november"] = 11, ["december"] = 12
+            ["september"] = 9, ["oktober"] = 10, ["november"] = 11, ["december"] = 12,
+            // Afgekorte vormen (#722-analyse: 117 waargenomen buiten citaat-/ondertekeningstekst,
+            // bijv. "22 aug", "24 mrt.") — "mei" is al gelijk aan de volledige vorm.
+            ["jan"] = 1, ["feb"] = 2, ["mrt"] = 3, ["apr"] = 4,
+            ["jun"] = 6, ["jul"] = 7, ["aug"] = 8,
+            ["sep"] = 9, ["sept"] = 9, ["okt"] = 10, ["nov"] = 11, ["dec"] = 12
         };
 
         var tekstLower = tekst.ToLowerInvariant();
         foreach (var (naam, maandNr) in maandNamen)
         {
-            var maandMatch = System.Text.RegularExpressions.Regex.Match(tekstLower, $@"(\d{{1,2}})\s+{naam}(?:\s+(\d{{4}}))?");
+            var maandMatch = System.Text.RegularExpressions.Regex.Match(tekstLower, $@"(\d{{1,2}})\s+{naam}\b\.?(?:\s+(\d{{4}}))?");
             if (maandMatch.Success && int.TryParse(maandMatch.Groups[1].Value, out var d))
             {
                 if (maandMatch.Groups[2].Success && int.TryParse(maandMatch.Groups[2].Value, out var expliciteJaar))
