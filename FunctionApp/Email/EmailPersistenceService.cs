@@ -2,14 +2,53 @@ using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Email;
 
+/// <summary>
+/// Stand van een bestaande verwerkingsrij, zoals de idempotentie-guard die nodig heeft (#712).
+/// <para>
+/// <c>AntwoordVerstuurd</c> is afgeleid van <c>VerstuurdNaar IS NOT NULL</c> en is de harde grens
+/// tegen een dubbel antwoord: die kolom wordt uitsluitend gevuld nádat een antwoord daadwerkelijk
+/// de deur uit is. De status alleen is onvoldoende — een verzendfout ná de insert laat de rij achter
+/// met een niet-definitieve status.
+/// </para>
+/// <para>
+/// Let op: de AVG-retentie (<c>planner.sp_CleanupEmailVerwerking</c>) zet <c>VerstuurdNaar</c> na 30
+/// dagen op NULL. Daarom blijft de statuslijst een tweede, onafhankelijke grens — die wordt door de
+/// anonimisering niet gewist.
+/// </para>
+/// </summary>
+internal sealed record EmailVerwerkingStand(
+    int VerwerkingId,
+    string Status,
+    int Pogingen,
+    bool AntwoordVerstuurd);
+
 internal interface IEmailPersistenceService
 {
     Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log);
-    Task<bool> BestaatMessageIdAsync(string messageId);
+
+    /// <summary>
+    /// Haalt de stand van een eerdere verwerking op, of <c>null</c> als het bericht nog niet
+    /// geregistreerd is. Vervangt de oude bestaat-of-niet-check: het bestaan van een rij zegt niets
+    /// over de vraag of het bericht ook daadwerkelijk is afgehandeld.
+    /// </summary>
+    Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId);
+
     Task<int> InsertEmailVerwerkingAsync(InkomendBericht email);
+
+    /// <summary>Verhoogt de pogingenteller van een bestaande verwerking met één.</summary>
+    Task VerhoogPogingenAsync(int verwerkingId);
+
     Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData);
     Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson);
     Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail);
+
+    /// <summary>
+    /// Slaat een voorgesteld antwoord op zonder het te versturen (review mode) en zet de status op
+    /// <see cref="EmailStatus.Review"/>. Vult bewust géén <c>VerstuurdNaar</c> — er is niets
+    /// verstuurd, en die kolom is de duplicaatgrens van de idempotentie-guard.
+    /// </summary>
+    Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail);
+
     Task UpdateFoutAsync(string messageId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log);
@@ -49,11 +88,17 @@ internal sealed class EmailPersistenceService : IEmailPersistenceService
         return adressen;
     }
 
-    public Task<bool> BestaatMessageIdAsync(string messageId)
-        => _repository.BestaatMessageIdAsync(messageId);
+    public Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId)
+        => _repository.HaalVerwerkingStandOpAsync(messageId);
 
     public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
         => _repository.InsertEmailVerwerkingAsync(email);
+
+    public Task VerhoogPogingenAsync(int verwerkingId)
+        => _repository.VerhoogPogingenAsync(verwerkingId);
+
+    public Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail)
+        => _repository.UpdateVoorgesteldAntwoordAsync(verwerkingId, antwoordEmail);
 
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
         => _repository.UpdateStatusAsync(verwerkingId, status, geextraheerdeData);

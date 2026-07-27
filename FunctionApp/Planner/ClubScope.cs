@@ -30,6 +30,18 @@ internal static class ClubScope
     internal static string HisFilter(string alias)
         => $"ISNULL({alias}.[ClubCode], {PrimaryClubCodeParam}) = {ClubCodeParam}";
 
+    /// <summary>
+    /// SQL-predicaat voor een tabel met <c>ClubCode NOT NULL</c> waarin nog rijen zónder
+    /// clubstempel kunnen staan — een lege string, achtergelaten door een import van vóór de
+    /// ClubCode-kolom. Die rijen horen bij de primaire club, net zoals migratie 001 dat voor
+    /// <c>his.*</c> aanneemt. Strikt filteren zou ze onzichtbaar maken; bij
+    /// <c>avg.Teambegeleiding</c> betekent dat: geen begeleider gevonden waar er wél één is.
+    /// Demodata is altijd expliciet gestempeld en lekt dus nooit mee.
+    /// Vereist beide parameters — zet ze via <see cref="AddHisParams"/>.
+    /// </summary>
+    internal static string LegacyFilter(string alias)
+        => $"COALESCE(NULLIF(LTRIM(RTRIM({alias}.[ClubCode])), ''), {PrimaryClubCodeParam}) = {ClubCodeParam}";
+
     /// <summary>De primaire (SyncEnabled) club van deze deployment.</summary>
     internal static string Primary
     {

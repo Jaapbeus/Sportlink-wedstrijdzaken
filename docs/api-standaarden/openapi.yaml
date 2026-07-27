@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 2.17.5
+  version: 2.17.8
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1583,6 +1583,82 @@ components:
           type: string
           enum: [valideer, afwijzen]
           description: "'valideer' = leermoment accepteren; 'afwijzen' = leermoment verwerpen"
+
+    # ── Beheer — Teamaliassen ─────────────────────────────────────────────────
+
+    TeamAliasItem:
+      type: object
+      description: |
+        Afwijkende schrijfwijze van een teamnaam uit dbo.TeamAliassen, met de canonieke
+        teamnaam uit dbo.Teams. Alleen status `validated` geldt als vertrouwde exacte match
+        bij teamnaam-resolutie.
+      properties:
+        id:
+          type: integer
+        ruweTekst:
+          type: string
+          description: Exact zoals aangetroffen
+          example: "13-1"
+        ruweTekstGenormaliseerd:
+          type: string
+          description: Na normalisatie, gebruikt voor lookup
+        teamId:
+          type: integer
+        teamnaam:
+          type: string
+          nullable: true
+          description: Canonieke teamnaam uit dbo.Teams; null als het team niet meer bestaat
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+        bron:
+          type: string
+          enum: [Sync, AiDisambiguatie, CoordinatorCorrectie]
+        status:
+          type: string
+          enum: [pending, validated, rejected]
+        aantalKeerGebruikt:
+          type: integer
+        mtaInserted:
+          type: string
+          format: date-time
+          nullable: true
+        mtaModified:
+          type: string
+          format: date-time
+          nullable: true
+
+    TeamAliasListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Aantal teruggegeven rijen
+        limit:
+          type: integer
+        pending:
+          type: integer
+          description: Totaal aantal onbeoordeelde aliassen van de club (ongefilterd)
+        validated:
+          type: integer
+          description: Totaal aantal goedgekeurde aliassen van de club
+        rejected:
+          type: integer
+          description: Totaal aantal afgewezen aliassen van de club
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamAliasItem'
+
+    TeamAliasValideerRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [validated, rejected]
+          description: "'validated' = alias vertrouwen; 'rejected' = alias negeren"
 
     # ── Beheer — Teambegeleiding ──────────────────────────────────────────────
 
@@ -4045,6 +4121,147 @@ paths:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Beheer — Teamaliassen ─────────────────────────────────────────────────────
+
+  /beheer/teamaliassen:
+    get:
+      tags: [beheer]
+      operationId: getTeamAliassen
+      summary: Teamnaam-aliassen ophalen
+      description: |
+        Geeft de aliassen uit `dbo.TeamAliassen` van de club (`X-Club-Code`), samen met de
+        canonieke teamnaam uit `dbo.Teams`. Optioneel gefilterd op status. Onbeoordeelde
+        aliassen (`pending`) staan altijd bovenaan, daarna op aanmaakdatum aflopend.
+        Bestaat de tabel nog niet, dan volgt een lege lijst in plaats van een fout.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, validated, rejected]
+          description: "pending = onbeoordeeld, validated = goedgekeurd, rejected = afgewezen. Leeg = alles."
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+          description: Maximum aantal terug te geven rijen
+      responses:
+        '200':
+          description: Teamaliassen
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamAliasListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teamaliassen/{id}/valideer:
+    put:
+      tags: [beheer]
+      operationId: valideerTeamAlias
+      summary: Teamalias goedkeuren of afwijzen
+      description: |
+        Zet `Status` op de alias. `validated` → de alias geldt vanaf dat moment als vertrouwde
+        exacte match bij teamnaam-resolutie. `rejected` → de alias wordt genegeerd.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Alias-ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamAliasValideerRequest'
+      responses:
+        '200':
+          description: Status bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teamaliassen/{id}:
+    delete:
+      tags: [beheer]
+      operationId: deleteTeamAlias
+      summary: Teamalias verwijderen
+      description: |
+        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`).
+        De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
+        aangetroffen.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Alias-ID
+      responses:
+        '200':
+          description: Verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: integer
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

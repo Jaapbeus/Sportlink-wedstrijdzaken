@@ -108,28 +108,42 @@ internal static class AllstarsTestDataRepository
         return await cmd.ExecuteNonQueryAsync();
     }
 
-    // AVG: bevat persoonsgegevens — gebruik alleen voor interne notificaties
-    internal static async Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam)
+    /// <summary>
+    /// AVG: levert persoonsgegevens — uitsluitend voor interne notificaties.
+    ///
+    /// <para>
+    /// Matcht op een genormaliseerde teamsleutel (spaties en streepjes verwijderd) met
+    /// <b>gelijkheid</b>, niet met <c>LIKE</c>. Een substring-match liet "JO13-1" ook "JO13-10"
+    /// raken, waardoor de e-mail van een externe afzender bij de begeleider van een ander team
+    /// belandde. Bovendien staat de teamnaam in <c>avg.Teambegeleiding</c> zónder clubprefix,
+    /// terwijl de pipeline een geprefixte naam aanlevert — daarom wordt de prefix hier gestript.
+    /// </para>
+    /// </summary>
+    internal static async Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam, string? clubCode = null)
     {
-        var parts = teamNaam.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        var teamZonderPrefix = parts.Length > 1 ? parts[1] : teamNaam;
+        var (sleutel, knvbSleutel) = TeamSleutels(teamNaam);
+        if (sleutel.Length == 0) return null;
+
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
-            SELECT TOP 1 Naam, Emailadres
-            FROM [avg].[Teambegeleiding]
-            WHERE (Team = @exactTeam OR Team LIKE @partialPattern)
-              AND Emailadres IS NOT NULL AND Emailadres <> ''
-              AND (Teamrol LIKE '%Trainer%' OR Teamrol LIKE '%Coach%'
-                   OR Teamrol LIKE '%Teamleider%' OR Teamrol LIKE '%leider%')
+        using var cmd = new SqlCommand($@"
+            SELECT TOP 1 tb.[Naam], tb.[Emailadres]
+            FROM [avg].[Teambegeleiding] tb
+            WHERE REPLACE(REPLACE(tb.[Team], ' ', ''), '-', '') IN (@sleutel, @knvbSleutel)
+              AND tb.[Emailadres] IS NOT NULL AND tb.[Emailadres] <> ''
+              AND tb.[Teamrol] NOT LIKE '%Medische%'
+              AND {ClubScope.LegacyFilter("tb")}
             ORDER BY
-                CASE WHEN Team = @exactTeam THEN 0 ELSE 1 END,
-                CASE WHEN Teamrol LIKE '%Trainer%' THEN 1
-                     WHEN Teamrol LIKE '%Coach%' THEN 2
-                     ELSE 3 END
+                CASE WHEN tb.[Teamrol] LIKE '%Trainer%'     THEN 1
+                     WHEN tb.[Teamrol] LIKE '%Coach%'       THEN 2
+                     WHEN tb.[Teamrol] LIKE '%leider%'      THEN 3
+                     WHEN tb.[Teamrol] LIKE '%Technische%'  THEN 4
+                     ELSE 5 END,
+                tb.[Naam]
         ", conn);
-        cmd.Parameters.AddWithValue("@exactTeam", teamNaam);
-        cmd.Parameters.AddWithValue("@partialPattern", $"%{teamZonderPrefix}%");
+        cmd.Parameters.AddWithValue("@sleutel", sleutel);
+        cmd.Parameters.AddWithValue("@knvbSleutel", knvbSleutel);
+        ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
             return new TeamleiderContact
@@ -138,5 +152,37 @@ internal static class AllstarsTestDataRepository
                 Emailadres = reader.IsDBNull(1) ? "" : reader.GetString(1)
             };
         return null;
+    }
+
+    /// <summary>
+    /// Vergelijkingssleutels voor een teamnaam uit <c>avg.Teambegeleiding</c>: clubprefix eraf,
+    /// spaties en streepjes weg, uppercase. Dezelfde bewerking staat in de SQL op de kolom, zodat
+    /// "JO13 1", "JO13-1" en "G-1"/"G1" op elkaar matchen.
+    ///
+    /// <para>
+    /// Er worden twee sleutels teruggegeven omdat de Sportlink-export dezelfde teams in twee
+    /// notaties bevat: de lokale vorm mét J ("JO13-1") en de KNVB-vorm zonder J ("O13-1").
+    /// Zie docs/ARCHITECTUUR-TEAMRESOLUTIE.md.
+    /// </para>
+    /// </summary>
+    private static (string Sleutel, string KnvbSleutel) TeamSleutels(string? teamNaam)
+    {
+        if (string.IsNullOrWhiteSpace(teamNaam)) return ("", "");
+
+        var t = teamNaam.Trim();
+        var prefix = SystemUtilities.AppSettings.GetOptionalClubCode();
+        if (!string.IsNullOrWhiteSpace(prefix) && t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var rest = t[prefix.Length..].TrimStart(' ', '-', '_');
+            if (rest.Length > 0) t = rest;
+        }
+
+        var sleutel = t.Replace(" ", "").Replace("-", "").ToUpperInvariant();
+
+        // "JO13-1" → ook zoeken op "O131" (KNVB-notatie). Andersom hoeft niet: de lokale vorm
+        // krijgt de J er in de normalisatie juist bij.
+        var knvbSleutel = sleutel.StartsWith("JO", StringComparison.Ordinal) ? sleutel[1..] : sleutel;
+
+        return (sleutel, knvbSleutel);
     }
 }

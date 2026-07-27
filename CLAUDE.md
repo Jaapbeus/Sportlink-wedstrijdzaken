@@ -297,6 +297,7 @@ bewust worden bekeken.
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
+| `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of `TeamResolverMode` gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
@@ -581,6 +582,30 @@ Bij elke PR controleer:
 ---
 
 ## Architectuurregels — altijd van toepassing
+
+### Teamnaam → TeamId: één vertaalpunt, nooit een nieuwe regex elders
+
+> Volledige onderbouwing: **[docs/ARCHITECTUUR-TEAMRESOLUTIE.md](docs/ARCHITECTUUR-TEAMRESOLUTIE.md)**
+
+Sportlink levert élk team in twee schrijfwijzen aan die geen gedeelde sleutel hebben: de lokale
+notatie (`JO10-1`, mét J) en de KNVB-notatie (`[club] O10-1`, zonder J, mét clubprefix). Daarbovenop
+komen e-mailvarianten (`JO 13-2`, `jo13/2`, `13-1`). Dat is de reden dat teamherkenning niet met
+"nog een regex" oplosbaar is.
+
+Harde regels:
+
+1. **Normalisatieregels horen uitsluitend in `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs`.**
+   Een nieuwe teamnaam-regex elders is een architectuurschending — dat is exact het probleem dat
+   deze laag oplost (#692).
+2. **Raad nooit een ontbrekend geslacht-prefix.** `13-1` kan JO13-1 of MO13-1 zijn; bij één club zijn
+   er tien zulke paren. Ambiguïteit hoort in de kandidaten-/disambiguatiestap, niet in een
+   string-functie.
+3. **De disambiguator kiest alleen uit aangeboden kandidaten**, en die keuze wordt daarna in C#
+   gevalideerd tegen die lijst. Nooit vrije generatie van een teamnaam door een taalmodel.
+4. **Een geleerde alias is pas waarheid na goedkeuring** door een coördinator (status `validated`).
+   Zo kan een foutieve gok zich niet zelfversterken.
+5. **Verifieer nieuwe naamvormen tegen echte data** (`stg.teams` / `his.teams`) vóór je de
+   normalisatie aanpast — de ondersteunde vormen zijn zo gevonden, niet bedacht.
 
 ### AI-services — provider-agnostisch, datum altijd dynamisch
 
@@ -1039,6 +1064,7 @@ Browser (beheerder)
 | `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden`, `/teamregels` | `AdminVoorkeurTijdenFunction.cs` |
 | `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
 | `GET /api/beheer/leermomenten`, `/stats`, `PUT /{id}/valideer` | `AdminLeermomentenFunction.cs` |
+| `GET /api/beheer/teamaliassen`, `PUT /{id}/valideer`, `DELETE /{id}` | `AdminTeamAliassenFunction.cs` |
 | `GET/POST /api/beheer/teambegeleiding`, `/{team}`, `/doorsturen` | `AdminTeambegeleidingFunction.cs` |
 | `GET/PUT /api/beheer/theme`, `POST /theme/extract` | `AdminThemeFunction.cs` |
 | `GET /api/beheer/clubs` | `AdminClubsFunction.cs` |

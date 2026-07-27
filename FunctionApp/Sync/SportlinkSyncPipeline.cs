@@ -95,6 +95,17 @@ internal static class SportlinkSyncPipeline
         await new MergeStgToHis("stg", "matches",      "his", "matches").ExecuteAsync(log);
         await new MergeStgToHis("stg", "matchdetails", "his", "matchdetails").ExecuteAsync(log);
 
+        try
+        {
+            await TeamResolution.TeamCanonicalisatieService.RefreshAsync(clubCode, log);
+        }
+        catch (Exception ex)
+        {
+            // Nooit de hele sync laten falen op de teamcanonicalisatie (#696) — his.teams/matches
+            // zijn al gemerged; de bestaande regex/LIKE-matching blijft intussen het vangnet.
+            log.LogError(ex, "TEAMS CANONICALISATIE - mislukt voor club {ClubCode}", clubCode);
+        }
+
         await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
 
         if (!partialFailure)

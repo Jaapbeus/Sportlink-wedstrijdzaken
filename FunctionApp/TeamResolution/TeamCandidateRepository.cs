@@ -49,7 +49,8 @@ public sealed class TeamCandidateRepository : ITeamCandidateRepository
 
     public async Task<IReadOnlyList<TeamCandidate>> FindKandidatenAsync(string clubCode, TeamNaamComponenten componenten)
     {
-        if (componenten.LeeftijdNummer is null && componenten.TeamNummer is null)
+        // Zonder leeftijd EN teamnummer zou dit elk team van de club teruggeven.
+        if (componenten.LeeftijdNummer is null || componenten.TeamNummer is null)
             return [];
 
         using var conn = new SqlConnection(Cs);
@@ -59,12 +60,12 @@ public sealed class TeamCandidateRepository : ITeamCandidateRepository
             FROM [dbo].[Teams]
             WHERE [ClubCode] = @clubCode
               AND [IsActief] = 1
-              AND (@leeftijd IS NULL OR [LeeftijdNummer] = @leeftijd)
-              AND (@teamNummer IS NULL OR [TeamNummer] = @teamNummer)
+              AND [LeeftijdNummer] = @leeftijd
+              AND [TeamNummer] = @teamNummer
         ", conn);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);
-        cmd.Parameters.AddWithValue("@leeftijd", (object?)componenten.LeeftijdNummer ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@teamNummer", (object?)componenten.TeamNummer ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@leeftijd", componenten.LeeftijdNummer.Value);
+        cmd.Parameters.AddWithValue("@teamNummer", componenten.TeamNummer.Value);
 
         var resultaten = new List<TeamCandidate>();
         using var reader = await cmd.ExecuteReaderAsync();

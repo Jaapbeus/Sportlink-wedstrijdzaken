@@ -175,6 +175,22 @@ public class AdminApiClient
     public async Task<ApiResult<object>> ValideerLeermomentAsync(int id, string actie)
         => await PutAsync<object>($"api/beheer/leermomenten/{id}/valideer", new { actie });
 
+    // ── Teamaliassen (#701) ──
+
+    public async Task<ApiResult<TeamAliassenResponse>> GetTeamAliassenAsync(string? status = null, int limit = 100)
+    {
+        var path = $"api/beheer/teamaliassen?limit={limit}";
+        if (!string.IsNullOrWhiteSpace(status)) path += $"&status={Uri.EscapeDataString(status)}";
+        return await GetAsync<TeamAliassenResponse>(path);
+    }
+
+    /// <summary>status: "validated" (goedkeuren) of "rejected" (afwijzen).</summary>
+    public async Task<ApiResult<object>> ValideerTeamAliasAsync(int id, string status)
+        => await PutAsync<object>($"api/beheer/teamaliassen/{id}/valideer", new { status });
+
+    public async Task<ApiResult<object>> DeleteTeamAliasAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/teamaliassen/{id}");
+
     // ── Clubs (#324) ──
 
     public async Task<ApiResult<List<ClubDto>>> GetClubsAsync()

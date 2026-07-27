@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -62,8 +61,10 @@ public partial class EmailGraphService : IEmailGraphService
                         Afzender = message.From?.EmailAddress?.Address ?? "",
                         AfzenderNaam = message.From?.EmailAddress?.Name ?? "",
                         Onderwerp = message.Subject ?? "",
-                        OntvangstDatum = message.ReceivedDateTime?.DateTime ?? DateTime.MinValue,
-                        Body = StripHtml(message.Body?.Content ?? "")
+                        // .UtcDateTime (niet .DateTime): dat laatste geeft Kind=Unspecified en bij een
+                        // niet-nul offset de lokale tijd van die offset. Projectregel: UTC in de DB.
+                        OntvangstDatum = message.ReceivedDateTime?.UtcDateTime ?? DateTime.MinValue,
+                        Body = EmailSanitizer.StripHtml(message.Body?.Content ?? "")
                     };
 
                     resultaat.Add(email);
@@ -229,6 +230,11 @@ public partial class EmailGraphService : IEmailGraphService
     /// - To: coach e-mailadres (server-side lookup)
     /// - Reply-To: e-mailadres van aanvrager (Entra)
     /// - BCC: coördinator (uit AppSettings)
+    ///
+    /// De body gaat altijd door <see cref="EmailSanitizer.BouwVeiligeHtmlBody"/>: één van de twee
+    /// aanroepers levert platte tekst met de ruwe vraag van een externe afzender erin. Ongefilterd
+    /// als HTML versturen maakte van markup in die vraag een klikbare link in een mail die van de
+    /// club lijkt te komen.
     /// </summary>
     public async Task StuurTeamContactDoorAsync(
         string coachEmail, string subject, string body,
@@ -239,7 +245,11 @@ public partial class EmailGraphService : IEmailGraphService
             var message = new Message
             {
                 Subject = subject,
-                Body = new ItemBody { ContentType = BodyType.Html, Content = body },
+                Body = new ItemBody
+                {
+                    ContentType = BodyType.Html,
+                    Content = EmailSanitizer.BouwVeiligeHtmlBody(body)
+                },
                 ToRecipients = [new Recipient { EmailAddress = new EmailAddress { Address = coachEmail } }]
             };
 
@@ -266,35 +276,6 @@ public partial class EmailGraphService : IEmailGraphService
         }
     }
 
-    /// <summary>
-    /// Verwijdert HTML-tags uit tekst en normaliseert whitespace.
-    /// </summary>
-    private static string StripHtml(string html)
-    {
-        if (string.IsNullOrWhiteSpace(html))
-            return "";
-
-        // Verwijder HTML-tags
-        var tekst = HtmlTagRegex().Replace(html, " ");
-
-        // Decodeer veelvoorkomende HTML-entiteiten
-        tekst = tekst
-            .Replace("&nbsp;", " ")
-            .Replace("&amp;", "&")
-            .Replace("&lt;", "<")
-            .Replace("&gt;", ">")
-            .Replace("&quot;", "\"")
-            .Replace("&#39;", "'");
-
-        // Normaliseer whitespace
-        tekst = WhitespaceRegex().Replace(tekst, " ");
-
-        return tekst.Trim();
-    }
-
-    [GeneratedRegex("<[^>]+>")]
-    private static partial Regex HtmlTagRegex();
-
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex WhitespaceRegex();
+    // HTML-sanitisatie (strippen bij inkomend, escapen bij uitgaand) staat in EmailSanitizer,
+    // zodat beide richtingen één implementatie en één testsuite delen.
 }
