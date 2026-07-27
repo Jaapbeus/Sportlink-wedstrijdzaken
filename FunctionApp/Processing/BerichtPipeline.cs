@@ -63,8 +63,15 @@ public static class BerichtPipeline
     /// <summary>
     /// Vertaalt de AI-classificatie naar de juiste PlannerService-aanroep.
     /// </summary>
+    /// <param name="clubCode">
+    /// Expliciete club-override (#677) — gebruikt door het dry-run pad (EmailTestFunction) om de
+    /// GUI-clubswitcher (bijv. AllStars FC) te respecteren. Blijft <c>null</c> voor de echte
+    /// e-mailpipeline (EmailProcessorFunction, geen clubswitcher), die daardoor exact als voorheen
+    /// op de primaire club van deze deployment blijft resolven.
+    /// </param>
     public static async Task<string> VerwerkMetPlannerAsync(
-        BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log)
+        BerichtClassificatie classificatie, InkomendBericht bericht, ILogger log,
+        string? clubCode = null, ClubAppSettingsSnapshot? clubSettings = null)
     {
         classificatie.LeeftijdsCategorie = NormaliseerLeeftijdsCategorie(classificatie.LeeftijdsCategorie);
 
@@ -73,7 +80,7 @@ public static class BerichtPipeline
 
         if (!string.IsNullOrWhiteSpace(team) && !string.IsNullOrWhiteSpace(tegenstander))
         {
-            var cc = SystemUtilities.AppSettings.GetOptionalClubCode();
+            var cc = ResolveHeuristicClubCode(clubCode);
             bool teamIsEigenClub = !team.Contains(' ')
                 || (!string.IsNullOrWhiteSpace(cc) && team.StartsWith(cc, StringComparison.OrdinalIgnoreCase));
             bool tegenstanderIsEigenClub = !tegenstander.Contains(' ')
@@ -86,7 +93,7 @@ public static class BerichtPipeline
             }
         }
 
-        classificatie.TeamNaam = NormaliseerTeamNaam(classificatie.TeamNaam);
+        classificatie.TeamNaam = NormaliseerTeamNaam(classificatie.TeamNaam, clubCode);
 
         switch (classificatie.Type)
         {
@@ -94,7 +101,7 @@ public static class BerichtPipeline
                 var alleDatums = ExpandDoordeweeksDatums(
                     classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body);
 
-                var cc2 = SystemUtilities.AppSettings.GetOptionalClubCode();
+                var cc2 = ResolveHeuristicClubCode(clubCode);
                 bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander)
                     && (string.IsNullOrWhiteSpace(cc2)
                         || !classificatie.Tegenstander.StartsWith(cc2, StringComparison.OrdinalIgnoreCase));
@@ -106,18 +113,18 @@ public static class BerichtPipeline
                     && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
                 {
                     var wedstrijdOpDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
-                        classificatie.Tegenstander!, opponentCheckDatum);
+                        classificatie.Tegenstander!, opponentCheckDatum, clubCode);
                     if (wedstrijdOpDatum != null)
                         return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
 
                     var wedstrijdAndereDatum = await PlannerDataAccess.FindMatchByOpponentAsync(
-                        classificatie.Tegenstander!, null);
+                        classificatie.Tegenstander!, null, clubCode);
                     if (wedstrijdAndereDatum == null)
                         return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
 
-                    var vrcTeam = ExtractEigenTeamUitWedstrijd(wedstrijdAndereDatum.Wedstrijd, classificatie.Tegenstander!);
+                    var vrcTeam = ExtractEigenTeamUitWedstrijd(wedstrijdAndereDatum.Wedstrijd, classificatie.Tegenstander!, clubCode);
                     if (vrcTeam != null)
-                        classificatie.TeamNaam = NormaliseerTeamNaam(vrcTeam);
+                        classificatie.TeamNaam = NormaliseerTeamNaam(vrcTeam, clubCode);
                 }
 
                 if (alleDatums.Count > 1)
@@ -134,7 +141,7 @@ public static class BerichtPipeline
                             Tegenstander = classificatie.Tegenstander,
                             HeelVeld = classificatie.HeelVeld
                         };
-                        var resp = await PlannerService.CheckAvailabilityAsync(req, log);
+                        var resp = await PlannerService.CheckAvailabilityAsync(req, log, clubCode);
                         multiResults.Add(new { datum, response = resp });
                     }
                     return JsonConvert.SerializeObject(new { multiDatum = true, resultaten = multiResults });
@@ -148,7 +155,7 @@ public static class BerichtPipeline
                     Tegenstander = classificatie.Tegenstander,
                     HeelVeld = classificatie.HeelVeld
                 };
-                var checkResponse = await PlannerService.CheckAvailabilityAsync(checkRequest, log);
+                var checkResponse = await PlannerService.CheckAvailabilityAsync(checkRequest, log, clubCode);
                 return JsonConvert.SerializeObject(checkResponse);
 
             case VerzoekType.HerplanVerzoek:
@@ -156,10 +163,11 @@ public static class BerichtPipeline
                 {
                     if (DateOnly.TryParse(classificatie.Datum, out var datum))
                     {
-                        var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum);
+                        var wedstrijd = await PlannerDataAccess.FindMatchAsync(classificatie.TeamNaam, datum, clubCode);
                         if (wedstrijd != null)
                         {
-                            var deadlineDagen = int.TryParse(SystemUtilities.AppSettings.GetSetting("herplanDeadlineDagen"), out var dd) ? dd : 8;
+                            var deadlineDagen = clubSettings?.HerplanDeadlineDagen
+                                ?? (int.TryParse(SystemUtilities.AppSettings.GetSetting("herplanDeadlineDagen"), out var dd) ? dd : 8);
                             if (DateOnly.TryParse(wedstrijd.Datum, out var wedstrijdDatum))
                             {
                                 var dagenTotWedstrijd = (wedstrijdDatum.ToDateTime(TimeOnly.MinValue) - DateTime.Today).TotalDays;
@@ -183,7 +191,7 @@ public static class BerichtPipeline
                                     LeeftijdsCategorie = classificatie.LeeftijdsCategorie,
                                     TeamNaam = classificatie.TeamNaam
                                 };
-                                var beschikbaarheid = await PlannerService.CheckAvailabilityAsync(gewenstRequest, log);
+                                var beschikbaarheid = await PlannerService.CheckAvailabilityAsync(gewenstRequest, log, clubCode);
                                 return JsonConvert.SerializeObject(new { wedstrijd, gewensteDatum = classificatie.GewensteDatum, beschikbaarheid });
                             }
 
@@ -193,7 +201,7 @@ public static class BerichtPipeline
                                 VoorkeurTijd = classificatie.AanvangsTijd,
                                 Richting = DetecteerRichting(bericht.Onderwerp, bericht.Body)
                             };
-                            var herplanResponse = await PlannerService.CheckRescheduleAvailabilityAsync(herplanRequest, log);
+                            var herplanResponse = await PlannerService.CheckRescheduleAvailabilityAsync(herplanRequest, log, clubCode);
                             return JsonConvert.SerializeObject(new { wedstrijd, herplanOpties = herplanResponse });
                         }
                         return JsonConvert.SerializeObject(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {classificatie.TeamNaam} op {classificatie.Datum}" });
@@ -227,11 +235,18 @@ public static class BerichtPipeline
     /// Probeert eerst een DB-override op te halen via EmailTemplateService (#287).
     /// Valt terug op hardcoded defaults als er geen override is.
     /// </summary>
+    /// <param name="clubSettings">
+    /// Club-specifieke AppSettings-snapshot (#677) — gebruikt door het dry-run pad zodat de
+    /// auto-reply handtekening (afzendernaam, coördinator, voetnoot) van de in de GUI geselecteerde
+    /// club komt in plaats van de proces-globale cache. <c>null</c> voor de echte e-mailpipeline:
+    /// die blijft de globale cache gebruiken, exact als voorheen.
+    /// </param>
     public static async Task<(string onderwerp, string body)> BouwTemplateAntwoord(
         BerichtClassificatie classificatie,
         string plannerResponseJson,
         InkomendBericht bericht,
-        ILogger? log = null)
+        ILogger? log = null,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         switch (classificatie.Type)
         {
@@ -242,7 +257,7 @@ public static class BerichtPipeline
                 {
                     var ingeplandWedstrijd = jobj["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
                     return BerichtResponseGenerator.BouwWedstrijdAlIngeplandAntwoord(
-                        ingeplandWedstrijd, classificatie, bericht);
+                        ingeplandWedstrijd, classificatie, bericht, clubSettings);
                 }
 
                 if (jobj["teamOnbekend"]?.ToObject<bool>() == true)
@@ -250,7 +265,7 @@ public static class BerichtPipeline
                     var onbekendeTegenstander = jobj["tegenstander"]?.ToString()
                         ?? classificatie.Tegenstander ?? "";
                     return BerichtResponseGenerator.BouwTeamOnbekendAntwoord(
-                        onbekendeTegenstander, classificatie, bericht);
+                        onbekendeTegenstander, classificatie, bericht, clubSettings);
                 }
 
                 if (jobj["multiDatum"]?.ToObject<bool>() == true)
@@ -263,16 +278,16 @@ public static class BerichtPipeline
                         resultaten.Add((datum, resp));
                     }
                     return BerichtResponseGenerator.BouwMultiDatumBeschikbaarheidAntwoord(
-                        resultaten, classificatie, bericht);
+                        resultaten, classificatie, bericht, clubSettings);
                 }
 
                 var beschikbaarheidTemplate = await Email.EmailTemplateService.GetTemplateAsync("beschikbaarheid_check", log);
                 if (beschikbaarheidTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht);
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(beschikbaarheidTemplate, classificatie, bericht, clubSettings);
 
                 var checkResponse = JsonConvert.DeserializeObject<CheckAvailabilityResponse>(plannerResponseJson);
                 return BerichtResponseGenerator.BouwBeschikbaarheidAntwoord(
-                    checkResponse ?? new CheckAvailabilityResponse(), classificatie, bericht);
+                    checkResponse ?? new CheckAvailabilityResponse(), classificatie, bericht, clubSettings);
 
             case VerzoekType.HerplanVerzoek:
                 var herplanData = Newtonsoft.Json.Linq.JObject.Parse(plannerResponseJson);
@@ -283,7 +298,7 @@ public static class BerichtPipeline
                     var teLaatWedstrijd = herplanData["wedstrijd"]?.ToObject<ZoekWedstrijdResponse>();
                     var deadlineDagen = herplanData["deadlineDagen"]?.ToObject<int>() ?? 8;
                     var dagenTot = herplanData["dagenTotWedstrijd"]?.ToObject<int>() ?? 0;
-                    return BerichtResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, bericht);
+                    return BerichtResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, bericht, clubSettings);
                 }
 
                 if (herplanData["gewensteDatum"] != null && herplanData["beschikbaarheid"] != null)
@@ -291,34 +306,34 @@ public static class BerichtPipeline
                     var gewensteDatum = herplanData["gewensteDatum"]?.ToString();
                     var beschikbaarheid = herplanData["beschikbaarheid"]?.ToObject<CheckAvailabilityResponse>();
                     return BerichtResponseGenerator.BouwHerplanGewensteDatumAntwoord(
-                        wedstrijd, gewensteDatum, beschikbaarheid, classificatie, bericht);
+                        wedstrijd, gewensteDatum, beschikbaarheid, classificatie, bericht, clubSettings);
                 }
 
                 var herplanTemplate = await Email.EmailTemplateService.GetTemplateAsync("herplan_verzoek", log);
                 if (herplanTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht);
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(herplanTemplate, classificatie, bericht, clubSettings);
 
                 var herplanOpties = herplanData["herplanOpties"]?.ToObject<HerplanCheckResponse>();
                 return BerichtResponseGenerator.BouwHerplanAntwoord(
-                    wedstrijd, herplanOpties, classificatie, bericht);
+                    wedstrijd, herplanOpties, classificatie, bericht, clubSettings);
 
             case VerzoekType.TeamContactOpvragen:
                 var teamContactTemplate = await Email.EmailTemplateService.GetTemplateAsync("team_contact_opvragen", log);
                 if (teamContactTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht);
-                return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht);
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(teamContactTemplate, classificatie, bericht, clubSettings);
+                return BerichtResponseGenerator.BouwTeamContactAutoReply(classificatie, bericht, clubSettings);
 
             case VerzoekType.Bevestiging:
                 var bevestigingTemplate = await Email.EmailTemplateService.GetTemplateAsync("bevestiging", log);
                 if (bevestigingTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht);
-                return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie);
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(bevestigingTemplate, classificatie, bericht, clubSettings);
+                return BerichtResponseGenerator.BouwBevestigingAntwoord(bericht, classificatie, clubSettings);
 
             default:
                 var buitenScopeTemplate = await Email.EmailTemplateService.GetTemplateAsync("buiten_scope", log);
                 if (buitenScopeTemplate != null)
-                    return BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht);
-                return BerichtResponseGenerator.BouwBuitenScopeAntwoord(bericht);
+                    return BerichtResponseGenerator.BouwAangepasteAntwoord(buitenScopeTemplate, classificatie, bericht, clubSettings);
+                return BerichtResponseGenerator.BouwBuitenScopeAntwoord(bericht, clubSettings);
         }
     }
 
@@ -395,9 +410,9 @@ public static class BerichtPipeline
         return null;
     }
 
-    private static string? ExtractEigenTeamUitWedstrijd(string wedstrijd, string tegenstander)
+    private static string? ExtractEigenTeamUitWedstrijd(string wedstrijd, string tegenstander, string? clubCodeOverride = null)
     {
-        var clubPrefix = (SystemUtilities.AppSettings.GetOptionalClubCode()) + " ";
+        var clubPrefix = ResolveHeuristicClubCode(clubCodeOverride) + " ";
         var parts = wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries);
         foreach (var part in parts)
             if (!string.IsNullOrWhiteSpace(clubPrefix.Trim())
@@ -410,7 +425,21 @@ public static class BerichtPipeline
         return null;
     }
 
-    private static string? NormaliseerTeamNaam(string? teamNaam)
+    /// <summary>
+    /// Club-heuristiek-resolver voor niet-SQL "eigen team"-herkenning (#677). Een expliciet
+    /// meegegeven clubCode-override (dry-run vanuit de GUI-clubswitcher, bijv. AllStars FC) heeft
+    /// voorrang boven de proces-globale AppSettings-cache. Gebruik dit NOOIT voor SQL-filters —
+    /// daarvoor gaat de clubCode al rechtstreeks als parameter naar PlannerDataAccess/PlannerService.
+    /// </summary>
+    private static string ResolveHeuristicClubCode(string? clubCodeOverride)
+        => !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : SystemUtilities.AppSettings.GetOptionalClubCode();
+
+    /// <summary>
+    /// Normaliseert en prefixt een teamnaam met de club-code. <paramref name="clubCodeOverride"/>
+    /// (#677) laat het dry-run pad de in de GUI geselecteerde club (bijv. AllStars FC) gebruiken
+    /// in plaats van de proces-globale cache, die altijd de primaire club van deze deployment bevat.
+    /// </summary>
+    internal static string? NormaliseerTeamNaam(string? teamNaam, string? clubCodeOverride = null)
     {
         if (string.IsNullOrWhiteSpace(teamNaam)) return teamNaam;
         var t = teamNaam.Trim();
@@ -426,7 +455,7 @@ public static class BerichtPipeline
 
         bool looksLikeEigenTeam = System.Text.RegularExpressions.Regex.IsMatch(t, @"^(JO|MO|VR|JM|ZO)\d", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
                               || !t.Contains(' ');
-        var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode");
+        var clubCode = !string.IsNullOrWhiteSpace(clubCodeOverride) ? clubCodeOverride : SystemUtilities.AppSettings.GetSetting("clubCode");
         if (!string.IsNullOrWhiteSpace(clubCode))
         {
             var clubPrefix = clubCode + " ";

@@ -25,7 +25,7 @@ In normale modus haalt de planner zijn data uit de Sportlink Club API (live) of 
 | Instellingen | ❌ | Geen `AppSettings`-rij voor ALLSTARS — pagina toont testmodus-melding |
 | Synchronisatie | ❌ | Niet van toepassing — testdata wordt handmatig beheerd |
 | E-mailverwerking | ❌ | Niet van toepassing — testdata genereert geen echte e-mails |
-| E-mailtester | ⚠️ | Werkt technisch, maar stuurt e-mails via de echte club-account |
+| E-mailtester | ✅ | Dry-run (verstuurt en bewaart niets). Respecteert sinds #677 de geselecteerde club: de teamnaam-prefix en de voorbeeld-handtekening (afzender, coördinator) komen uit de instellingen van de gekozen club, niet meer altijd uit die van de echte club |
 | Teambegeleiding | ✅ | Leest `avg.Teambegeleiding WHERE ClubCode='ALLSTARS'` |
 
 ---
