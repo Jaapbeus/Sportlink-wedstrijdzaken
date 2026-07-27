@@ -17,6 +17,14 @@ public class BerichtPipelineTests
 
     private static string MaandNaam(DateOnly datum) => MaandNamen[datum.Month - 1];
 
+    private static readonly string[] AfgekorteMaandNamen =
+    {
+        "jan", "feb", "mrt", "apr", "mei", "jun",
+        "jul", "aug", "sep", "okt", "nov", "dec"
+    };
+
+    private static string AfgekorteMaandNaam(DateOnly datum) => AfgekorteMaandNamen[datum.Month - 1];
+
     // ── ValideerDagDatum — datum in onderwerp ──
 
     [Fact]
@@ -298,6 +306,94 @@ public class BerichtPipelineTests
         resultaat.Day.Should().Be(ruimVerleden.Day);
         (resultaat > vandaag).Should()
             .BeTrue($"een maandnaam zonder jaartal mag geen datum in het verleden opleveren (was {resultaat})");
+    }
+
+    // ── ExtractExpliciteDatum — afgekorte maandnamen (#722-analyse) ──
+    //
+    // De e-mailvariatie-analyse (#722) telde 117 waargenomen afgekorte maandnamen ("22 aug",
+    // "24 mrt.") buiten de citaat-/ondertekeningstekst, terwijl ExtractExpliciteDatum vóór deze fix
+    // uitsluitend volledige maandnamen herkende.
+
+    /// <summary>
+    /// Eerstvolgende toekomstige datum wiens afgekorte maandnaam AFWIJKT van de volledige vorm
+    /// ("mei" is in het Nederlands identiek in beide vormen en zou de nieuwe afkortings-regex dus
+    /// niet daadwerkelijk testen — zonder deze guard slaagt de test in mei-achtige periodes om de
+    /// verkeerde reden).
+    /// </summary>
+    private static DateOnly EerstvolgendeDatumMetAfwijkendeAfkorting(int dagenVooruit)
+    {
+        var doel = DateOnly.FromDateTime(DateTime.Today).AddDays(dagenVooruit);
+        while (AfgekorteMaandNaam(doel) == MaandNaam(doel)) doel = doel.AddDays(30);
+        return doel;
+    }
+
+    [Fact]
+    public void ValideerDagDatum_OnderwerpBevat_AfgekorteMaandZonderPunt_WordtGeparsed()
+    {
+        var doel = EerstvolgendeDatumMetAfwijkendeAfkorting(30);
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", $"Wij spelen graag op {doel.Day} {AfgekorteMaandNaam(doel)}");
+
+        classificatie.Datum.Should().Be(doel.ToString("yyyy-MM-dd"));
+    }
+
+    [Fact]
+    public void ValideerDagDatum_OnderwerpBevat_AfgekorteMaandMetPunt_WordtGeparsed()
+    {
+        var doel = EerstvolgendeDatumMetAfwijkendeAfkorting(30);
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", $"Op {doel.Day} {AfgekorteMaandNaam(doel)}. om 20:36");
+
+        classificatie.Datum.Should().Be(doel.ToString("yyyy-MM-dd"));
+    }
+
+    [Fact]
+    public void ValideerDagDatum_AfgekorteMaandMetJaartal_GebruiktExpliciteJaar()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Aanduiding 24 mrt 2026");
+
+        classificatie.Datum.Should().Be("2026-03-24");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_AfgekorteMaandSept_WordtAlsSeptemberGeparsed()
+    {
+        // "sept" is een tweede veelgebruikte afkorting naast "sep".
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Wedstrijd 14 sept 2026");
+
+        classificatie.Datum.Should().Be("2026-09-14");
+    }
+
+    // ── ExtractExpliciteDatum — slash-notatie met jaartal (#722-analyse) ──
+    //
+    // De analyse telde 103 slash-datums; dd-mm zónder jaar via '/' blijft bewust ongesteund omdat
+    // die vorm ambigu is met teamnotatie ("13/1") — zie "Genomen besluiten" in de PR-body.
+
+    [Fact]
+    public void ValideerDagDatum_SlashDatumMetJaartal_WordtGeparsed()
+    {
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Re: Thuisteam jo14 - Uitteam jo14 14/02/2026");
+
+        classificatie.Datum.Should().Be("2026-02-14");
+    }
+
+    [Fact]
+    public void ValideerDagDatum_SlashDatumZonderJaartal_LevertGeenDatumOp()
+    {
+        // Bewuste keuze: '13/1' zonder jaartal is niet te onderscheiden van een teamaanduiding.
+        var classificatie = new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck };
+
+        BerichtPipeline.ValideerDagDatum(classificatie, "tekst", "Groet, -19/1");
+
+        classificatie.Datum.Should().BeNull();
     }
 
     // ── ExpandDoordeweeksDatums (M2) ──

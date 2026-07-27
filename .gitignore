@@ -84,6 +84,10 @@ sp_merge_current.txt
 # settings.json is gecommit (gedeeld) en bevat project-brede permissies voor alle developers.
 .claude/settings.local.json
 .claude/memory/
+# Sessie-overdrachtsnotities (top-level .md direct in .claude/, bijv. OVERDRACHT-SESSIE.md) zijn
+# werkaantekeningen tussen sessies, geen projectdocumentatie — nooit committen. Skills/commands
+# blijven wél gedeeld (die staan in submappen, buiten bereik van dit patroon).
+.claude/*.md
 
 # ── Build artifacts ───────────────────────────────────────────────────────────
 *.lscache
