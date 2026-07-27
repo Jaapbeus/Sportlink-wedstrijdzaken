@@ -2471,3 +2471,46 @@ BEGIN
     WHERE s.[StandaardVoorkeurTijd] IS NULL;
 END
 GO
+
+-- #692/#696: canonieke teamidentiteit + aliassen voor de teamnaam-naar-ID vertaallaag.
+-- Nog leeg op een verse deploy — vulling vanuit de nachtelijke Sportlink-sync volgt in #696.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Teams'))
+BEGIN
+    CREATE TABLE [dbo].[Teams] (
+        [TeamId]                 INT IDENTITY(1,1) NOT NULL,
+        [ClubCode]               NVARCHAR(20)  NOT NULL,
+        [Teamnaam]               NVARCHAR(100) NOT NULL,
+        [TeamnaamGenormaliseerd] NVARCHAR(100) NOT NULL,
+        [LeeftijdsCategorie]     NVARCHAR(50)  NULL,
+        [LeeftijdNummer]         INT NULL,
+        [TeamNummer]             INT NULL,
+        [BkTeams]                NVARCHAR(100) NULL,
+        [IsActief]               BIT NOT NULL CONSTRAINT [DF_Teams_IsActief] DEFAULT 1,
+        [mta_inserted]           DATETIME NOT NULL CONSTRAINT [DF_Teams_Inserted] DEFAULT GETUTCDATE(),
+        [mta_modified]           DATETIME NOT NULL CONSTRAINT [DF_Teams_Modified] DEFAULT GETUTCDATE(),
+        CONSTRAINT [PK_Teams] PRIMARY KEY CLUSTERED ([TeamId] ASC),
+        CONSTRAINT [UQ_Teams_Club_Teamnaam] UNIQUE ([ClubCode], [Teamnaam]),
+        CONSTRAINT [UQ_Teams_Club_Genormaliseerd] UNIQUE ([ClubCode], [TeamnaamGenormaliseerd])
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamAliassen'))
+BEGIN
+    CREATE TABLE [dbo].[TeamAliassen] (
+        [Id]                      INT IDENTITY(1,1) NOT NULL,
+        [ClubCode]                NVARCHAR(20)  NOT NULL,
+        [RuweTekst]               NVARCHAR(200) NOT NULL,
+        [RuweTekstGenormaliseerd] NVARCHAR(200) NOT NULL,
+        [TeamId]                  INT NOT NULL,
+        [Bron]                    NVARCHAR(20)  NOT NULL,
+        [Status]                  NVARCHAR(20)  NOT NULL CONSTRAINT [DF_TeamAliassen_Status] DEFAULT 'pending',
+        [AantalKeerGebruikt]      INT NOT NULL CONSTRAINT [DF_TeamAliassen_AantalKeerGebruikt] DEFAULT 0,
+        [mta_inserted]            DATETIME NOT NULL CONSTRAINT [DF_TeamAliassen_Inserted] DEFAULT GETUTCDATE(),
+        [mta_modified]            DATETIME NOT NULL CONSTRAINT [DF_TeamAliassen_Modified] DEFAULT GETUTCDATE(),
+        CONSTRAINT [PK_TeamAliassen] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [FK_TeamAliassen_Teams] FOREIGN KEY ([TeamId]) REFERENCES [dbo].[Teams]([TeamId]),
+        CONSTRAINT [UQ_TeamAliassen_Club_Genormaliseerd] UNIQUE ([ClubCode], [RuweTekstGenormaliseerd])
+    );
+END
+GO
