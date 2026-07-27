@@ -12,9 +12,9 @@ Inkomend email (ongelezen in Graph-mailbox)
         ▼
 ┌─ Voorfilters ─────────────────────────────────────────────────────────────────┐
 │  1. Van eigen mailbox?            → overslaan (mark as read)                  │
-│  2. Van intern domein?            → overslaan (mark as read)                  │
-│  3. Afzender uitgesloten?         → overslaan (mark as read)                  │
-│  4. MessageId al verwerkt?        → overslaan (mark as read, idempotent)      │
+│  2. Afzender uitgesloten?         → overslaan (mark as read)                  │
+│  3. Verwerking al definitief af?  → overslaan (mark as read, idempotent)      │
+│     Niet-definitieve status?      → rij hergebruiken, opnieuw proberen (§1d)  │
 └───────────────────────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -71,6 +71,19 @@ Wanneer een afzender repliet op een AI-antwoord en het verzoek was verkeerd gecl
 
 **Beheer via Admin GUI:** `/leermomenten` — toont pending/validated/rejected correcties met valideer/afwijzen knoppen.
 
+### Teamherkenning (#692)
+
+Welk team een bericht betreft, wordt niet meer per plek met eigen tekstregels bepaald. Er is één
+vertaallaag die een schrijfwijze uit een e-mail herleidt tot een team uit `dbo.Teams`. Die laag
+staat standaard uit en is per deployment aan te zetten met de app setting `TeamResolverMode`
+(`off` | `shadow` | `on`).
+
+Bij een aanduiding die écht dubbelzinnig is — "13-1" kan JO13-1 of MO13-1 zijn — wordt niet gegokt:
+er volgt óf een keuze uit een korte kandidatenlijst, óf de vraag wordt teruggelegd.
+
+Volledige onderbouwing, uitrolstappen en de logregels om op te zoeken:
+[ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md).
+
 ---
 
 ## 1. Wanneer wordt er GEEN AI-antwoord verstuurd?
@@ -103,6 +116,16 @@ Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 **Review-mode blijft leidend:** staat `EmailReviewMode=true`, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
 
+In review-mode wordt het voorgestelde antwoord wél opgebouwd en opgeslagen (#712). De rij in
+`planner.EmailVerwerking` krijgt status `Review`, met het voorstel in `AntwoordEmail` en
+`VerstuurdNaar` leeg. Voorheen werd het antwoord in deze modus helemaal niet gebouwd en bleef de
+status op `Verwerkt` staan — dezelfde waarde als een mislukte verzending — waardoor er niets te
+reviewen viel.
+
+> **Let op:** het voorstel is nog niet in de Admin GUI zichtbaar. `AdminEmailLogRepository` geeft
+> `AntwoordEmail` bewust nooit terug (AVG: de body kan persoonsgegevens bevatten), dus het voorstel
+> is nu alleen in de database te bekijken. Een admin-only endpoint hiervoor is een aparte afweging.
+
 ### 1b. Label "Geen AI antwoord" in Outlook
 
 Dit label wordt geplaatst wanneer de AI de email classificeert als **BuitenScope**. Er wordt dan geen reply verstuurd. De coördinator handelt de email zelf af.
@@ -125,9 +148,30 @@ Deze emails worden stil overgeslagen (mark as read, verder niets):
 | Reden | Conditie |
 |---|---|
 | Eigen mailbox | Afzender = de mailbox zelf (voorkomt loops) |
-| Intern domein | Afzender eindigt op het ingestelde interne domein (`AppSettings.InternDomein`) |
 | Uitgesloten adres | Afzender staat in `dbo.UitgeslotenEmailAdressen` |
-| Al verwerkt | MessageId staat al in `dbo.EmailVerwerking` (idempotent) |
+| Al afgerond | Het MessageId staat in `planner.EmailVerwerking` **met een definitieve eindstatus** (idempotent) |
+
+> Twee correcties op een eerdere versie van deze tabel:
+> - Een filter "van intern domein → overslaan" bestaat niet in de code. `EmailBatchFilterService`
+>   kent alleen de eigen mailbox en de uitsluitingslijst (#708).
+> - "Al verwerkt" was te ruim: het bestaan van een rij is niet genoeg meer. Zie §1d — een rij met
+>   een niet-definitieve status wordt juist opnieuw verwerkt (#712).
+
+### 1d. Opnieuw proberen en opgeven (#712)
+
+Een bericht wordt niet meer als afgehandeld beschouwd zodra er een rij bestaat, maar pas als de
+verwerking een **definitieve** eindstatus heeft (`AntwoordVerstuurd`, `GeenAntwoordNodig`,
+`BuitenScope`) of `VerstuurdNaar` gevuld is. Staat er een niet-definitieve status, dan wordt de
+bestaande rij hergebruikt en de verwerking opnieuw uitgevoerd.
+
+`planner.EmailVerwerking.Pogingen` houdt bij hoe vaak dat is gebeurd. Na drie pogingen geeft de
+verwerking op: status `Fout` met de melding dat er is opgegeven, bericht als gelezen gemarkeerd, en
+een foutregel in de log. Dat is nodig omdat de poll de tien **oudste** ongelezen berichten pakt —
+zonder die grens zouden tien blijvend falende berichten alle nieuwe post tegenhouden en bij elke
+poll opnieuw AI-kosten maken.
+
+Bij een afgebroken AI-classificatie door een quotalimiet wordt géén poging geteld: er is dan niets
+geprobeerd wat aan het bericht zelf ligt.
 
 ---
 

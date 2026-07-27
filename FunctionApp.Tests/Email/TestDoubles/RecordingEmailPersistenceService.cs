@@ -11,14 +11,41 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
 
     public List<(string MessageId, string FoutMelding)> FoutUpdates { get; } = new();
 
+    public List<(int VerwerkingId, string AntwoordEmail)> VoorgesteldeAntwoorden { get; } = new();
+
+    public List<int> PogingVerhogingen { get; } = new();
+
+    public List<InkomendBericht> Inserts { get; } = new();
+
+    /// <summary>Stand die de guard te zien krijgt; null = bericht nog niet geregistreerd.</summary>
+    public EmailVerwerkingStand? StandToReturn { get; set; }
+
+    /// <summary>Simuleert een database die het verzonden antwoord niet kan vastleggen.</summary>
+    public bool ThrowOnUpdateAntwoordVerstuurd { get; set; }
+
     public Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
         => Task.FromResult(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
-    public Task<bool> BestaatMessageIdAsync(string messageId)
-        => Task.FromResult(false);
+    public Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId)
+        => Task.FromResult(StandToReturn);
 
     public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
-        => Task.FromResult(1);
+    {
+        Inserts.Add(email);
+        return Task.FromResult(1);
+    }
+
+    public Task VerhoogPogingenAsync(int verwerkingId)
+    {
+        PogingVerhogingen.Add(verwerkingId);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail)
+    {
+        VoorgesteldeAntwoorden.Add((verwerkingId, antwoordEmail));
+        return Task.CompletedTask;
+    }
 
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
     {
@@ -31,6 +58,9 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
 
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
     {
+        if (ThrowOnUpdateAntwoordVerstuurd)
+            throw new InvalidOperationException("Vastleggen van het antwoord mislukt (gesimuleerd)");
+
         AntwoordUpdates.Add((verwerkingId, verstuurdNaar, antwoordEmail));
         return Task.CompletedTask;
     }
@@ -60,5 +90,6 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(ILogger log)
         => Task.FromResult(new List<ClassificatieCorrectieVoorbeeld>());
 
-    public string ResolveClubCode() => "VRC";
+    // ALLSTARS is de vaste democlubcode van het project — nooit een echte clubnaam in tests.
+    public string ResolveClubCode() => "ALLSTARS";
 }

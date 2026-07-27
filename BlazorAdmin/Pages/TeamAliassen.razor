@@ -1,0 +1,285 @@
+@page "/teamaliassen"
+@inject AdminApiClient Api
+@inject ClubSelectorService ClubSelector
+@using BlazorAdmin.Services
+@implements IDisposable
+
+<PageTitle>Teamaliassen — Admin</PageTitle>
+
+<h1>Teamaliassen</h1>
+
+<p class="text-muted">
+    Komt een teamnaam in een e-mail of in de Sportlink-data anders geschreven voor dan de officiële
+    teamnaam (bijvoorbeeld <code>13-1</code> in plaats van <code>JO13-1</code>), dan legt het systeem
+    die schrijfwijze vast als alias. Een alias wordt pas vertrouwd nadat u hem hier heeft goedgekeurd —
+    zo kan een verkeerde gok van de AI zich niet vastzetten.
+</p>
+
+@if (_stats != null)
+{
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center @(_stats.Pending > 0 ? "border-warning" : "")">
+                <div class="card-body">
+                    <h3 class="card-title @(_stats.Pending > 0 ? "text-warning" : "text-muted")">@_stats.Pending</h3>
+                    <p class="card-text">Te beoordelen</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="card-title text-success">@_stats.Validated</h3>
+                    <p class="card-text">Goedgekeurd (actief bij teamherkenning)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="card-title text-secondary">@_stats.Rejected</h3>
+                    <p class="card-text">Afgewezen</p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="mb-3 d-flex gap-2 flex-wrap">
+    <button class="btn btn-outline-primary @(_filterStatus == "pending" ? "active" : "")"
+            @onclick='() => LaadAsync("pending")'>Alleen te beoordelen</button>
+    <button class="btn btn-outline-success @(_filterStatus == "validated" ? "active" : "")"
+            @onclick='() => LaadAsync("validated")'>Goedgekeurd</button>
+    <button class="btn btn-outline-secondary @(_filterStatus == "rejected" ? "active" : "")"
+            @onclick='() => LaadAsync("rejected")'>Afgewezen</button>
+    <button class="btn btn-outline-dark @(_filterStatus == "" ? "active" : "")"
+            @onclick='() => LaadAsync("")'>Alles</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_melding))
+{
+    <div class="alert alert-success">@_melding</div>
+}
+
+@if (_bezig)
+{
+    <div class="text-muted">Laden...</div>
+}
+else if (!string.IsNullOrEmpty(_fout))
+{
+    <div class="alert alert-danger">@_fout</div>
+}
+else if (_items.Count == 0)
+{
+    <div class="alert alert-info">Geen teamaliassen gevonden.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Aangetroffen schrijfwijze</th>
+                    <th>Hoort bij team</th>
+                    <th>Bron</th>
+                    <th>Status</th>
+                    <th class="text-end">Keer gebruikt</th>
+                    <th>Aangemaakt</th>
+                    <th>Actie</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _items)
+                {
+                    var id = item.Id;
+                    <tr>
+                        <td><code>@item.RuweTekst</code></td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(item.Teamnaam))
+                            {
+                                <span>@item.Teamnaam</span>
+                                @if (!string.IsNullOrEmpty(item.LeeftijdsCategorie))
+                                {
+                                    <span class="badge bg-light text-dark ms-1">@item.LeeftijdsCategorie</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">team @item.TeamId (onbekend)</span>
+                            }
+                        </td>
+                        <td><span class="badge bg-secondary">@BronLabel(item.Bron)</span></td>
+                        <td>
+                            @switch (item.Status)
+                            {
+                                case "validated":
+                                    <span class="badge bg-success">Goedgekeurd</span>
+                                    break;
+                                case "rejected":
+                                    <span class="badge bg-secondary">Afgewezen</span>
+                                    break;
+                                default:
+                                    <span class="badge bg-warning text-dark">Te beoordelen</span>
+                                    break;
+                            }
+                        </td>
+                        <td class="text-end">@item.AantalKeerGebruikt</td>
+                        <td>
+                            <small>
+                                @(item.MtaInserted.HasValue
+                                    ? item.MtaInserted.Value.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
+                                    : "—")
+                            </small>
+                        </td>
+                        <td>
+                            @if (_verwijderConfirmId == id)
+                            {
+                                <span class="me-2">Definitief verwijderen?</span>
+                                <button class="btn btn-sm btn-danger me-1"
+                                        disabled="@_actieBezigId.Contains(id)"
+                                        @onclick="() => VerwijderAsync(id)">Ja, verwijder</button>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => _verwijderConfirmId = null">Annuleren</button>
+                            }
+                            else
+                            {
+                                @if (item.Status != "validated")
+                                {
+                                    <button class="btn btn-sm btn-success me-1"
+                                            disabled="@_actieBezigId.Contains(id)"
+                                            @onclick='() => ValideerAsync(id, "validated")'>Goedkeuren</button>
+                                }
+                                @if (item.Status != "rejected")
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary me-1"
+                                            disabled="@_actieBezigId.Contains(id)"
+                                            @onclick='() => ValideerAsync(id, "rejected")'>Afwijzen</button>
+                                }
+                                <button class="btn btn-sm btn-outline-danger"
+                                        disabled="@_actieBezigId.Contains(id)"
+                                        @onclick="() => _verwijderConfirmId = id">Verwijderen</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted"><small>Toont @_items.Count resultaten</small></p>
+}
+
+@code {
+    private List<TeamAliasDto> _items = new();
+    private TeamAliassenResponse? _stats;
+    private string _filterStatus = "pending";
+    private bool _bezig;
+    private string? _fout;
+    private string? _melding;
+    private int? _verwijderConfirmId;
+    private readonly HashSet<int> _actieBezigId = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        ClubSelector.OnChange += OnClubChanged;
+        await LaadAsync("pending");
+    }
+
+    private void OnClubChanged() =>
+        _ = InvokeAsync(async () => { await LaadAsync(_filterStatus); StateHasChanged(); });
+
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    private async Task LaadAsync(string status)
+    {
+        _filterStatus = status;
+        _bezig = true;
+        _fout = null;
+        _verwijderConfirmId = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.GetTeamAliassenAsync(string.IsNullOrEmpty(status) ? null : status);
+            if (result.Success && result.Data != null)
+            {
+                _stats = result.Data;
+                _items = result.Data.Items;
+            }
+            else
+            {
+                _fout = result.ErrorMessage ?? "Ophalen mislukt";
+            }
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _bezig = false;
+        }
+    }
+
+    private async Task ValideerAsync(int id, string status)
+    {
+        _actieBezigId.Add(id);
+        _melding = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.ValideerTeamAliasAsync(id, status);
+            if (!result.Success)
+                _fout = result.ErrorMessage ?? "Actie mislukt";
+            else
+            {
+                _melding = status == "validated" ? "Alias goedgekeurd." : "Alias afgewezen.";
+                await LaadAsync(_filterStatus);
+            }
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _actieBezigId.Remove(id);
+        }
+    }
+
+    private async Task VerwijderAsync(int id)
+    {
+        _actieBezigId.Add(id);
+        _melding = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.DeleteTeamAliasAsync(id);
+            if (!result.Success)
+                _fout = result.ErrorMessage ?? "Verwijderen mislukt";
+            else
+            {
+                _melding = "Alias verwijderd.";
+                await LaadAsync(_filterStatus);
+            }
+        }
+        catch (Exception ex)
+        {
+            _fout = ex.Message;
+        }
+        finally
+        {
+            _actieBezigId.Remove(id);
+            _verwijderConfirmId = null;
+        }
+    }
+
+    private static string BronLabel(string bron) => bron switch
+    {
+        "Sync"                 => "Sportlink-sync",
+        "AiDisambiguatie"      => "AI-keuze",
+        "CoordinatorCorrectie" => "Correctie coördinator",
+        _                      => bron
+    };
+}

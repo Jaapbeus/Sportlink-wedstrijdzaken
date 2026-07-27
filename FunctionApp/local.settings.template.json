@@ -18,6 +18,7 @@
     "EmailProcessorEnabled": "false",
     "EmailReviewMode": "true",
     "EmailReviewRecipient": "",
+    "TeamResolverMode": "off",
     "EMAIL_POLL_SCHEDULE": "0 0 * * * *",
     "AzureSubscriptionId": "",
     "AzureResourceGroupName": "",

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
+using SportlinkFunction.TeamResolution;
 
 namespace SportlinkFunction.Admin;
 
@@ -92,7 +93,15 @@ public static class EmailTestFunction
             };
 
             BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
-            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, fakeEmail, log, clubCode, clubSettings);
+
+            // Teamresolutie ook in de dry-run, zodat de tester hetzelfde gedrag laat zien als de
+            // echte verwerking. Blijft null zolang TeamResolverMode op 'off' staat (#698/#699).
+            var teamResolutie = TeamResolutieContext.Maak(
+                context.InstanceServices.GetService<ITeamResolver>(),
+                context.InstanceServices.GetService<TeamResolutionShadowLogger>());
+
+            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
+                classificatie, fakeEmail, log, clubCode, clubSettings, teamResolutie);
             var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail, log, clubSettings);
 
             return new OkObjectResult(new

@@ -56,9 +56,21 @@ internal sealed class FakeEmailPersistenceRepository : IEmailPersistenceReposito
         return Task.CompletedTask;
     }
 
-    public Task<bool> BestaatMessageIdAsync(string messageId) => throw new NotImplementedException();
+    public string? LastStandMessageId { get; private set; }
+
+    public EmailVerwerkingStand? StandToReturn { get; set; }
+
+    public Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId)
+    {
+        LastStandMessageId = messageId;
+        return Task.FromResult(StandToReturn);
+    }
 
     public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email) => throw new NotImplementedException();
+
+    public Task VerhoogPogingenAsync(int verwerkingId) => throw new NotImplementedException();
+
+    public Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail) => throw new NotImplementedException();
 
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData) => throw new NotImplementedException();
 

@@ -5,103 +5,142 @@ namespace SportlinkFunction.TeamResolution;
 /// <summary>
 /// Onderdeel van de teamnaam→ID-vertaallaag (#692, #697). Deze klasse is de ENIGE plek waar
 /// teamnaam-strings deterministisch (geen AI) genormaliseerd worden voor vergelijking/matching.
-/// Vervangt op termijn de losse regex in <c>BerichtPipeline.NormaliseerTeamNaam</c>/
-/// <c>NormaliseerLeeftijdsCategorie</c> (nog niet verwijderd — zie #700, pas na shadow-mode-validatie
-/// in #698).
 ///
-/// Bewust NIET verantwoordelijk voor:
-/// - het raden van een ontbrekend geslacht-prefix (bijv. "13-1" zonder JO/MO) — dat is een
-///   ambiguïteit die alleen met extra context (kandidatenlijst, evt. AI-disambiguatie) opgelost
-///   kan worden, niet met een pure string-functie. Zie <see cref="ITeamResolver"/>.
-/// - het toevoegen van een club-prefix (dat deed <c>NormaliseerTeamNaam</c> wel) — canonieke
-///   identiteit hoort in <c>dbo.Teams</c>/<c>dbo.TeamAliassen</c> te leven, niet in de string zelf.
+/// <para>
+/// <b>Waarom dit nodig is.</b> Sportlink levert per team twee schrijfwijzen aan, die naar
+/// hetzelfde fysieke team verwijzen maar geen gedeelde sleutel hebben (<c>teamcode</c> is -1 bij
+/// lokale teams, <c>lokaleteamcode</c> is -1 bij bondsteams). Geverifieerd tegen echte
+/// <c>stg.teams</c>-data (#696):
+/// </para>
+/// <list type="table">
+///   <item><description><c>teamsoort=lokaal</c> — clubeigen notatie: <c>JO10-1</c>, <c>MO13-1</c>, <c>G-1</c>, <c>1</c></description></item>
+///   <item><description><c>teamsoort=bond</c> — KNVB-notatie mét clubprefix en ZONDER J: <c>[club] O10-1</c>, <c>[club] MO13-1</c>, <c>[club] G1</c>, <c>[club] 1</c></description></item>
+/// </list>
+/// <para>
+/// De normalisatie brengt beide naar dezelfde sleutel, zodat één canoniek team overblijft.
+/// Dit is ook precies waarom de oude <c>O13 → JO13</c>-regel bestond: geen e-mailtypfout, maar
+/// het verschil tussen bonds- en lokale notatie.
+/// </para>
+///
+/// <para>
+/// Bewust NIET verantwoordelijk voor het raden van een ontbrekend geslacht-prefix (bijv. "13-1"
+/// zonder JO/MO) — dat is een ambiguïteit die alleen met kandidaat-context oplosbaar is.
+/// Zie <see cref="ITeamResolver"/> en <see cref="ITeamDisambiguator"/>.
+/// </para>
 /// </summary>
 public static class TeamNaamNormalisatie
 {
-    // Woordelijke prefixen die typisch met een spatie voor het nummer staan, bijv. "Onder 13".
-    private static readonly Dictionary<string, string> PrefixAliassen = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["ONDER"] = "JO",
-        ["MEISJES"] = "MO",
-        ["VROUWEN"] = "VR",
-        ["DAMES"] = "VR",
-        ["ZAAL"] = "ZO",
-    };
+    // Woordelijke prefixen die met een spatie voor het nummer staan, bijv. "Onder 13".
+    private static readonly (string Woord, string Vervanging)[] PrefixAliassen =
+    [
+        ("ONDER", "JO"),
+        ("MEISJES", "MO"),
+        ("VROUWEN", "VR"),
+        ("DAMES", "VR"),
+    ];
 
     /// <summary>
     /// Genormaliseerde sleutel voor exacte vergelijking/lookup: uppercase, geen spaties,
-    /// consistente scheidingstekens. Twee teksten die hetzelfde team bedoelen (ook met
-    /// afwijkende spatiëring/streepjes/hoofdletters) leveren dezelfde sleutel op.
+    /// consistente scheidingstekens, zonder clubprefix. Twee teksten die hetzelfde team bedoelen
+    /// leveren dezelfde sleutel op.
     /// </summary>
-    public static string NormaliseerVoorVergelijking(string? ruweTekst)
+    /// <param name="clubPrefix">
+    /// De ClubCode van de eigen club (uit <c>dbo.AppSettings</c>, nooit hardcoded). Wanneer
+    /// opgegeven wordt een leidend clubprefix verwijderd, zodat de KNVB-notatie
+    /// ("[club] O10-1") samenvalt met de lokale notatie ("JO10-1"). Laat <c>null</c> voor een
+    /// tegenstander-teamnaam: daar is het clubdeel juist onderscheidend.
+    /// </param>
+    public static string NormaliseerVoorVergelijking(string? ruweTekst, string? clubPrefix = null)
     {
         if (string.IsNullOrWhiteSpace(ruweTekst)) return "";
 
         var t = ruweTekst.Trim();
 
-        // Strip seizoensaanduidingen/haakjes-toevoegingen, bijv. "JO13-2 (2025-2026)" (#692 scenario 21)
+        // Seizoensaanduidingen/toevoegingen tussen haakjes strippen, bijv. "JO13-2 (2025-2026)".
         t = Regex.Replace(t, @"\s*\(.*?\)\s*", " ").Trim();
 
-        // Cijfer-0/letter-O typefout in prefix, bijv. "J013-2" → "JO13-2" (#692 scenario 10)
-        t = Regex.Replace(t, @"\bJ0(\d)", "JO$1", RegexOptions.IgnoreCase);
+        t = StripClubPrefix(t, clubPrefix);
 
-        // Regionale volgorde-variant, direct tegen het nummer geplakt: "MJ13-1" → "JM13-1"
-        // (#692 scenario 14). Geen \b na de prefix: die staat hier nooit los van het nummer.
+        // Cijfer-0 i.p.v. letter-O in het prefix, bijv. "J013-2" → "JO13-2".
+        t = Regex.Replace(t, @"\bJ0(?=\d)", "JO", RegexOptions.IgnoreCase);
+
+        // Regionale volgorde-variant, direct tegen het nummer geplakt: "MJ13-1" → "JM13-1".
         t = Regex.Replace(t, @"\bMJ(?=\d)", "JM", RegexOptions.IgnoreCase);
 
-        // Woordelijke prefixen naar korte vorm, bijv. "Onder 13" → "JO13"
         foreach (var (woord, vervanging) in PrefixAliassen)
-        {
             t = Regex.Replace(t, $@"\b{woord}\b\.?\s*", vervanging, RegexOptions.IgnoreCase);
-        }
 
-        // "O13"/"o13" → "JO13". De negative lookbehind voorkomt dat dit ook "MO13"/"JO13"
-        // raakt: daar wordt de O al voorafgegaan door een letter (#692 scenario 2).
-        t = Regex.Replace(t, @"(?<![A-Za-z])O(\d)", "JO$1", RegexOptions.IgnoreCase);
+        // KNVB-notatie naar lokale notatie: "O10-1" → "JO10-1". De lookbehind voorkomt dat dit
+        // ook "MO10-1" of een al genormaliseerd "JO10-1" raakt (daar staat een letter vóór de O).
+        t = Regex.Replace(t, @"(?<![A-Za-z])O(?=\d)", "JO", RegexOptions.IgnoreCase);
 
-        // Scheidingstekens tussen twee cijferreeksen normaliseren naar één streepje,
-        // ongeacht spatie/slash/punt/komma (#692 scenario's 1, 3, 11, 19)
+        // Scheidingstekens tussen twee cijferreeksen naar één streepje, ongeacht
+        // spatie/slash/punt/komma: "JO13 / 2", "JO13.2", "JO13 - 2" → "JO13-2".
+        // '+' blijft bewust ongemoeid: dat hoort bij veteranenteams ("35+1", "VR30+1").
         t = Regex.Replace(t, @"(\d)\s*[/,.\-]\s*(\d)", "$1-$2");
 
-        // Alle overige spaties verwijderen (na scheidingsteken-normalisatie, dus "JO 13 - 2" → "JO13-2")
+        // Streepje tussen een letter-only categorie en een teamnummer collapsen: "G-1" → "G1"
+        // (lokale notatie) zodat het samenvalt met de bondsnotatie "G1". Een categorie MET cijfers
+        // ("JO13-1") houdt zijn streepje — daar scheidt het de leeftijd van het teamnummer.
+        t = Regex.Replace(t, @"(?<![A-Za-z0-9])([A-Za-z]+)-(?=\d)", "$1", RegexOptions.IgnoreCase);
+
         t = Regex.Replace(t, @"\s+", "");
 
         return t.ToUpperInvariant();
     }
 
-    /// <summary>
-    /// True als de (genormaliseerde) tekst qua vorm op een teamnaam lijkt — een bekend
-    /// prefix gevolgd door een leeftijds-/teamnummer, of een kale nummer-reeks zoals "13-1".
-    /// Gebruikt om te onderscheiden van evident niet-team-gerelateerde tekst (#692 scenario 24).
-    /// </summary>
-    public static bool LijktOpTeamPatroon(string? ruweTekst)
+    private static string StripClubPrefix(string tekst, string? clubPrefix)
     {
-        var key = NormaliseerVoorVergelijking(ruweTekst);
-        if (key.Length == 0) return false;
-        return Regex.IsMatch(key, @"^(JO|MO|VR|JM|ZO|G)?\d+(-\d+)?$", RegexOptions.IgnoreCase);
+        if (string.IsNullOrWhiteSpace(clubPrefix)) return tekst;
+
+        var prefix = clubPrefix.Trim();
+        if (!tekst.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return tekst;
+
+        var rest = tekst[prefix.Length..].TrimStart(' ', '-', '_');
+
+        // Alleen strippen als er daadwerkelijk een teamaanduiding overblijft. "VRC" alleen mag
+        // nooit tot een lege sleutel leiden.
+        return rest.Length == 0 ? tekst : rest;
     }
 
     /// <summary>
-    /// Ontleedt een genormaliseerde teamnaam in prefix/leeftijdnummer/teamnummer, voor zover
-    /// aanwezig. Geeft <c>null</c> voor componenten die niet uit de tekst zijn af te leiden —
-    /// met name <see cref="TeamNaamComponenten.Prefix"/> ontbreekt bewust bij kale nummers
-    /// zoals "13-1" (#692 scenario 4): dat is een ambiguïteit, geen normalisatiefout.
+    /// True als de tekst qua vorm op een teamaanduiding lijkt. Gebruikt om vrije tekst
+    /// ("Kan de wedstrijd verplaatst worden?") te onderscheiden van een teamverwijzing.
     /// </summary>
-    public static TeamNaamComponenten? Parse(string? ruweTekst)
+    public static bool LijktOpTeamPatroon(string? ruweTekst, string? clubPrefix = null)
     {
-        var key = NormaliseerVoorVergelijking(ruweTekst);
+        var key = NormaliseerVoorVergelijking(ruweTekst, clubPrefix);
+        if (key.Length == 0) return false;
+
+        // Dekt: JO13-2, MO13-1, 13-1, G1, VR1, 1, 35+1, VR30+1, JO14-1JM
+        return Regex.IsMatch(key, @"^(JO|MO|VR|JM|ZO|G)?\d+(\+\d+)?(-\d+)?(JM)?$", RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>
+    /// Ontleedt een leeftijdscategorie-teamnummer-combinatie ("JO13-2", "13-1") in componenten,
+    /// voor de kandidatenzoektocht bij een ontbrekend geslacht-prefix.
+    /// </summary>
+    /// <remarks>
+    /// Geeft bewust <c>null</c> voor teamvormen waar "leeftijd + teamnummer" niet bestaat:
+    /// senioren ("1"), veteranen ("35+1"), vrouwen ("VR1"), G-teams ("G1") en teams met een
+    /// eigen naam ("Spitsies"). Voor die vormen is alleen een exacte match of een gevalideerde
+    /// alias correct — kandidaten zoeken op nummer zou daar juist verkeerde treffers geven.
+    /// </remarks>
+    public static TeamNaamComponenten? Parse(string? ruweTekst, string? clubPrefix = null)
+    {
+        var key = NormaliseerVoorVergelijking(ruweTekst, clubPrefix);
         if (key.Length == 0) return null;
 
-        var match = Regex.Match(key, @"^(?<prefix>JO|MO|VR|JM|ZO|G)?(?<leeftijd>\d+)?(?:-(?<team>\d+))?$", RegexOptions.IgnoreCase);
+        var match = Regex.Match(key, @"^(?<prefix>JO|MO)?(?<leeftijd>\d{1,2})-(?<team>\d{1,2})$", RegexOptions.IgnoreCase);
         if (!match.Success) return null;
 
         string? prefix = match.Groups["prefix"].Success ? match.Groups["prefix"].Value.ToUpperInvariant() : null;
-        int? leeftijd = match.Groups["leeftijd"].Success && int.TryParse(match.Groups["leeftijd"].Value, out var l) ? l : null;
-        int? teamNummer = match.Groups["team"].Success && int.TryParse(match.Groups["team"].Value, out var tn) ? tn : null;
 
-        if (prefix == null && leeftijd == null && teamNummer == null) return null;
-
-        return new TeamNaamComponenten(prefix, leeftijd, teamNummer, key);
+        return new TeamNaamComponenten(
+            prefix,
+            int.Parse(match.Groups["leeftijd"].Value),
+            int.Parse(match.Groups["team"].Value),
+            key);
     }
 }
 

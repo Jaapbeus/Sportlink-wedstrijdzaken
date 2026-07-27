@@ -725,3 +725,50 @@ telt nergens in mee.
 | `POST /api/beheer/veldtraining` | Nieuw trainingsblok aanmaken |
 | `PUT /api/beheer/veldtraining/{id}` | Trainingsblok bijwerken |
 | `DELETE /api/beheer/veldtraining/{id}` | Trainingsblok verwijderen |
+
+---
+
+## 16. Teamaliassen (`/teamaliassen`)
+
+Teamnamen komen niet altijd exact zo binnen als ze in Sportlink staan. Een e-mail van een
+tegenstander noemt bijvoorbeeld `13-1` of `J013 1`, terwijl het team officieel `JO13-1` heet.
+Zulke afwijkende schrijfwijzen worden automatisch vastgelegd als **alias** bij het team waar het
+systeem denkt dat ze bij horen — met status **te beoordelen**.
+
+Een alias wordt **nooit automatisch vertrouwd**. Pas nadat u hem op deze pagina goedkeurt, geldt
+de schrijfwijze bij teamherkenning als volwaardige match. Zo kan een verkeerde gok van de AI zich
+niet vastzetten en steeds opnieuw naar hetzelfde verkeerde team wijzen.
+
+### Wat u op de pagina ziet
+
+| Kolom | Uitleg |
+|---|---|
+| **Aangetroffen schrijfwijze** | De tekst exact zoals die in de e-mail of de Sportlink-data stond |
+| **Hoort bij team** | De officiële teamnaam waaraan de alias is gekoppeld, met leeftijdscategorie |
+| **Bron** | *Sportlink-sync* (uit de data), *AI-keuze* (door de AI toegewezen) of *Correctie coördinator* |
+| **Status** | Te beoordelen, Goedgekeurd of Afgewezen |
+| **Keer gebruikt** | Hoe vaak deze schrijfwijze al is aangetroffen — een hoog getal betekent dat goedkeuren of afwijzen echt effect heeft |
+| **Aangemaakt** | Moment waarop de alias voor het eerst werd gezien (in uw eigen tijdzone) |
+
+Bovenaan staan drie tellers (te beoordelen / goedgekeurd / afgewezen) en filterknoppen. De pagina
+opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoordeelde aliassen.
+
+### Wat u kunt doen
+
+| Actie | Effect |
+|---|---|
+| **Goedkeuren** | De schrijfwijze wordt vanaf nu vertrouwd en wijst voortaan direct naar dit team |
+| **Afwijzen** | De schrijfwijze wordt genegeerd; het systeem blijft per geval bepalen bij welk team hij hoort |
+| **Verwijderen** | Verwijdert de alias volledig (met bevestigingsvraag). Duikt de schrijfwijze later weer op, dan verschijnt hij opnieuw als *te beoordelen* |
+
+**Twijfelt u?** Wijs de alias af of laat hem staan. Alleen goedkeuren wat u zeker weet is
+veiliger dan een fout vastleggen — een goedgekeurde alias stuurt namelijk toekomstige
+e-mailverwerking naar dat team.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
+| `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
+| `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |

@@ -15,6 +15,9 @@ CREATE TABLE [planner].[EmailVerwerking] (
     [FoutMelding]           NVARCHAR(1000)  NULL,
     [IsReplyOpOnsAntwoord]  BIT             NULL,
     [ReplyOpVerwerkingId]   INT             NULL,
+    -- Aantal verwerkingspogingen. Voorkomt dat een structureel falend bericht elke poll opnieuw
+    -- wordt geprobeerd en zo de wachtrij van 10 oudste ongelezen berichten blokkeert (#712).
+    [Pogingen]              INT             NOT NULL CONSTRAINT [DF_EmailVerwerking_Pogingen] DEFAULT 0,
     [ClubCode]              NVARCHAR(20)    NOT NULL CONSTRAINT [CK_EmailVerwerking_ClubCode] CHECK (LEN([ClubCode]) > 0),
     [mta_inserted]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Ins] DEFAULT GETUTCDATE(),
     [mta_modified]          DATETIME        NOT NULL CONSTRAINT [DF_EmailVerwerking_Mod] DEFAULT GETUTCDATE(),

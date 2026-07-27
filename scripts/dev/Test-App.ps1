@@ -321,6 +321,7 @@ $endpoints = @(
     @{ Method="GET";  Path="api/beheer/veldbeschikbaarheid"; Desc="Veldbeschikbaarheid" }
     @{ Method="GET";  Path="api/beheer/email-log";           Desc="E-maillog" }
     @{ Method="GET";  Path="api/beheer/teams";               Desc="Teams" }
+    @{ Method="GET";  Path="api/beheer/teamaliassen";        Desc="Teamaliassen" }
 )
 
 if (-not $funcRunning) {
@@ -398,6 +399,7 @@ $pages = @(
     @{ Path="/veldbeschikbaarheid"; Desc="Veldbeschikbaarheid" }
     @{ Path="/uitgesloten-emails";  Desc="Uitgesloten e-mails" }
     @{ Path="/email-tester";        Desc="E-mail tester" }
+    @{ Path="/teamaliassen";        Desc="Teamaliassen" }
 )
 
 if (-not $blazorRunning) {
