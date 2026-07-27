@@ -323,6 +323,46 @@ gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
 
+### Issue-lifecycle — elk open issue heeft precies één `status:`-label
+
+> **Vastgelegd na #690:** de automatisering dekte alleen de achterkant van de keten
+> (develop-merge en release). Daardoor had **7 van de 18** open issues geen enkel
+> status-label — inclusief issues waar op dat moment een open PR bij hoorde. Zonder status
+> is niet te zien of er iets loopt, of iets wacht, of niemand ernaar kijkt.
+
+De volledige keten, volledig geautomatiseerd:
+
+| Overgang | Status wordt | Workflow |
+|---|---|---|
+| Issue aangemaakt of heropend | `status: triage` (alleen als er nog géén status staat) | `label-issue-status.yml` |
+| PR geopend als draft | `status: in-progress` | `label-issue-status.yml` |
+| PR ready for review | `status: review-needed` | `label-issue-status.yml` |
+| PR terug naar draft | `status: in-progress` | `label-issue-status.yml` |
+| PR gesloten zonder merge | `status: triage` | `label-issue-status.yml` |
+| PR gemerged naar `develop` | `status: awaiting-release` | `label-awaiting-release.yml` |
+| Release-tag naar `main` | alle status-labels weg + issue gesloten | `close-released-issues.yml` |
+
+**Invarianten:**
+
+1. **Hoogstens één `status:`-label per issue.** Alle drie de workflows zetten de status via
+   `setIssueStatus()` in [.github/scripts/issue-status.js](.github/scripts/issue-status.js),
+   die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
+   `gh issue edit --add-label` zonder de bestaande te verwijderen.
+2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`
+   en `status: waiting-owner` staan in `PROTECTED`: automatisering laat ze staan. Enige
+   uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat is een feit.
+3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
+   PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
+   Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
+   wijzigen of het heropenen — zie #630.
+4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
+   de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
+   trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
+
+**Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
+`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
+`priority:`-label mee.
+
 ### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
 
 > **Harde regel, vastgelegd na incident 2026-07-26:** issues werden gesloten zodra hun fix-PR

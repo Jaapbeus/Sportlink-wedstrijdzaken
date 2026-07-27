@@ -117,10 +117,9 @@ internal static class PlannerMatchRepository
     internal static async Task<ZoekWedstrijdResponse?> FindMatchAsync(
         string teamNaam, DateOnly date, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
-            ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
         using var cmd = new SqlCommand($@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
@@ -135,12 +134,19 @@ internal static class PlannerMatchRepository
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
-              AND (m.[teamnaam] LIKE @teamPattern OR m.[wedstrijd] LIKE @teamPattern)
+              AND (
+                    REPLACE(REPLACE(m.[teamnaam], ' ', ''), '-', '') LIKE @teamPatternGenormaliseerd
+                 OR REPLACE(REPLACE(m.[wedstrijd],  ' ', ''), '-', '') LIKE @teamPatternGenormaliseerd
+                  )
               AND {ClubScope.HisFilter("m")}
             ORDER BY m.[aanvangstijd]
         ", conn);
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
-        cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
+        // Classificatie door de AI gebruikt soms een ander scheidingsteken dan de brondata
+        // (bijv. "MO13-1" vs. "MO13 1" in his.matches.teamnaam) — spaties en streepjes worden
+        // aan beide kanten verwijderd zodat deze varianten alsnog matchen (#694).
+        var teamNaamGenormaliseerd = teamNaam.Replace(" ", "").Replace("-", "");
+        cmd.Parameters.AddWithValue("@teamPatternGenormaliseerd", $"%{teamNaamGenormaliseerd}%");
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
@@ -170,10 +176,9 @@ internal static class PlannerMatchRepository
     internal static async Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(
         string tegenstander, DateOnly? datum, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
-            ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
 
         // Zoek in his.matches
         using (var cmd = new SqlCommand($@"
@@ -270,10 +275,9 @@ internal static class PlannerMatchRepository
     internal static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(
         long wedstrijdcode, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
-            ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
         using var cmd = new SqlCommand($@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
@@ -375,14 +379,18 @@ internal static class PlannerMatchRepository
 
     internal static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
-        if (string.IsNullOrWhiteSpace(accommodatie))
-        {
-            log.LogWarning("Instelling 'accommodatie' niet geconfigureerd — MarkeerVervallenGeplandeWedstrijden overgeslagen. Stel de accommodatienaam in via Admin GUI → Instellingen.");
-            return;
-        }
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        string accommodatie;
+        try
+        {
+            accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
+        }
+        catch (InvalidOperationException)
+        {
+            log.LogWarning("Instelling 'Accommodatie' niet geconfigureerd — MarkeerVervallenGeplandeWedstrijden overgeslagen. Stel de accommodatienaam in via Admin GUI → Instellingen.");
+            return;
+        }
         using var cmd = new SqlCommand($@"
             UPDATE gw
             SET gw.[IsVervallen] = 1,

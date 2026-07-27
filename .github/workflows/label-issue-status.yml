@@ -1,0 +1,121 @@
+name: Issue-status bijhouden
+
+# Dicht de voorkant van de issue-lifecycle (#690).
+#
+# label-awaiting-release.yml en close-released-issues.yml dekten alleen de achterkant:
+# develop-merge → 'awaiting-release', release-tag → sluiten. Alles daarvóór had geen
+# automatisering, waardoor een issue vanaf het aanmaken tot de develop-merge zonder
+# status-label bleef staan. Bij de meting op 2026-07-27 gold dat voor 7 van de 18 open
+# issues (39%) — inclusief issues waar op dat moment een open PR bij hoorde.
+#
+# Overgangen die deze workflow verzorgt:
+#   issue geopend/heropend             → status: triage        (alleen als er nog geen status staat)
+#   PR (draft) geopend voor het issue  → status: in-progress
+#   PR ready for review                → status: review-needed
+#   PR terug naar draft                → status: in-progress
+#   PR gesloten zonder merge           → status: triage
+#
+# De merge naar develop is NIET van deze workflow: die zet 'awaiting-release' via
+# label-awaiting-release.yml. Zie CLAUDE.md, sectie "Issue-lifecycle".
+#
+# Handmatig gezette statussen (blocked, wont-fix, waiting-owner) worden nooit
+# overschreven — zie PROTECTED in .github/scripts/issue-status.js.
+
+on:
+  issues:
+    types: [opened, reopened]
+  # pull_request_target zodat PR's uit forks óók gelabeld worden: bij 'pull_request'
+  # krijgt een fork-PR een read-only token en zou het labelen stil falen.
+  #
+  # Veiligheid: deze workflow checkt uitsluitend de BASE-repo uit (het standaardgedrag
+  # van pull_request_target) en voert nooit code of scripts uit de PR uit. Er wordt
+  # alleen gelezen uit de PR-titel en -body, als tekst.
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  status-bij-nieuw-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@v7
+
+      - name: Triage-status zetten als er nog geen status staat
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { setIssueStatus } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
+            await setIssueStatus({
+              github,
+              context,
+              core,
+              issueNumber: context.payload.issue.number,
+              status: 'status: triage',
+              // Nooit een bestaande status overschrijven: een heropend issue dat op
+              // 'awaiting-release' stond hoort dat te blijven.
+              onlyIfNone: true,
+            });
+
+  status-bij-pull-request:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (base-repo, voor .github/scripts)
+        uses: actions/checkout@v7
+
+      - name: Status van de gekoppelde issues bijwerken
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { extractIssueRefs, setIssueStatus } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
+
+            const pr = context.payload.pull_request;
+            const action = context.payload.action;
+
+            // Een merge naar develop is niet van deze workflow: label-awaiting-release.yml
+            // zet daar 'awaiting-release'. Zou deze workflow ook iets zetten, dan racen de
+            // twee workflows om hetzelfde label.
+            if (action === 'closed' && pr.merged) {
+              core.notice('PR is gemerged — status komt van label-awaiting-release.yml.');
+              return;
+            }
+
+            let status;
+            switch (action) {
+              case 'ready_for_review':
+                status = 'status: review-needed';
+                break;
+              case 'converted_to_draft':
+                status = 'status: in-progress';
+                break;
+              case 'closed':
+                // Gesloten zonder merge: het werk is niet geland, terug naar de wachtrij.
+                status = 'status: triage';
+                break;
+              default: // opened, reopened
+                status = pr.draft ? 'status: in-progress' : 'status: review-needed';
+            }
+
+            // Alleen 'strong' referenties: het nummer in de PR-titel of achter een
+            // sluitend keyword. Een kale kruisverwijzing in proza ("zie #123") mag de
+            // status van dat andere issue niet veranderen — zelfde reden als #630.
+            const { strong } = extractIssueRefs(pr.title, pr.body);
+
+            if (strong.size === 0) {
+              core.notice(
+                'Geen issue in de PR-titel of achter een sluitend keyword in de body — ' +
+                'niets bij te werken. Gebruik de conventie: fix(#NNN): ...'
+              );
+              return;
+            }
+
+            for (const issueNumber of strong) {
+              await setIssueStatus({ github, context, core, issueNumber, status });
+            }
