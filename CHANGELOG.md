@@ -18,12 +18,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.19.0.0] — 2026-07-28
+
+### Changed
+- **De Dagplanning vergelijkt nu met twee tabs: Optimaal en Huidig.** Elke tab toont dezelfde opbouw — eerst de tijdlijn per veld, daaronder de wedstrijdenlijst van diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het vergelijken van twee foto's: het oog springt niet en je ziet direct wat er in de veldbezetting verandert. Eerder stonden er twee verschillende vergelijkingen door elkaar op één pagina — een tabel met "huidig" en "optimaal" in kolommen naast elkaar, én tabs die alléén de tijdlijn wisselden terwijl de tabel bleef staan. De filterknoppen gelden nu voor beide tabs, en de kolom Wijziging staat in beide: in de tab Huidig zie je daarmee welke wedstrijd gaat verschuiven, en met één klik waarheen. (#689)
+- **De verdwaalde horizontale schuifbalk onder de tijdlijn is weg.** Op een breed scherm verscheen die terwijl de inhoud ruim paste. Oorzaak: het eerste en laatste tijdlabel stonden gecentreerd op hun uurlijn en vielen daardoor half buiten de tijdlijn — precies genoeg om de browser een schuifbalk te laten reserveren. Die twee labels lijnen nu links en rechts uit; geen label wordt afgekapt en op een smal scherm past de tijdlijn nu binnen het scherm in plaats van een vaste minimumbreedte te forceren. (#689)
+
+### Added
+- **Bij een vraag over meerdere datums noemt het antwoord nu de coördinator bij naam:** "Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met [naam] plannen en definitief opnemen in de planning." Staat er geen coördinatornaam in de instellingen, dan blijft de zin gewoon compleet zonder naam. De naam komt uit de instellingen van de club waarvoor het antwoord wordt opgebouwd, dus in een test met de demoklub verschijnt de demo-coördinator. (#670)
+
 ### Fixed
 - **Een mislukte databasemigratie laat de uitrol nu falen in plaats van "geslaagd" te melden.** Bij het uitrollen van een nieuwe versie draait een migratiescript tegen de database. Dat script meldde succes zolang het tot het einde kwam, ook als er onderweg fouten optraden — precies wat er twee releases achter elkaar gebeurde. De uitrol stopt nu bij de eerste echte fout. Zie issue #739.
 - **Een club die de software voor het eerst in gebruik neemt, krijgt nu een compleet werkende database.** Zeven tabellen — waaronder de tabel met alle instellingen — werden door het migratiescript wel gevuld en aangepast, maar nooit aangemaakt. Op de bestaande omgeving valt dat niet op, omdat die tabellen er al jaren staan; bij een nieuwe installatie ontbraken ze. Datzelfde gold voor een aantal schema's en voor vier overzichten die op de Sportlink-gegevens leunen. Het script controleert nu overal eerst of iets bestaat, en slaat wat nog niet kan netjes over tot de eerste synchronisatie is gelopen. Zie issue #734.
 - **De standaard speeltijden worden nu aan de juiste club toegekend.** De vulling koos de alfabetisch eerste clubcode, en dat is bij een nieuwe installatie de democlub — waardoor de echte club zonder speeltijden achterbleef en dat bij een volgende poging niet werd hersteld. De democlub wordt nu overgeslagen en er wordt per club gekeken of er al speeltijden zijn. Zie issue #740.
 
-### Changed
+### Changed (ontwikkeling en documentatie)
+- **De handleidingen noemden een synchronisatie-adres dat niet bestaat.** Op vier plekken stond `/api/sync` met parameters die de code niet kent; het werkelijke adres is `/api/sync-matches` en een volledige seizoensvernieuwing gaat met `?reset=true&season=JJJJ`. Wie de handleiding volgde kreeg een foutmelding. Ook twee verouderde beweringen gecorrigeerd: de synchronisatie haalt niet "de laatste vijf weken" op maar vorige week tot en met het einde van het seizoen, en de opmerking dat er geen tests zijn klopt al lang niet meer. Raakt alleen ontwikkelaars. (#662)
 - **De bouwstraat voert de databasemigratie nu bij elke wijziging uit tegen een lege database**, twee keer achter elkaar, en controleert daarna of alle 22 kerntabellen bestaan en gevuld zijn. Tot nu toe werd alleen de tekst van het script vergeleken met de schemadefinities; dat kan een ontbrekende tabel op een nieuwe installatie niet zien. Kost niets: dit draait in een wegwerpomgeving op de bouwserver, zonder Azure-resource.
 - **De schemacontrole kijkt nu ook naar kolommen en eist een echte aanmaakopdracht.** Eerder gold elke vermelding van een tabelnaam als voldoende — ook een vulopdracht — en werden nieuwe kolommen helemaal niet gecontroleerd. Dat is precies hoe de twee gemiste instellingen van de vorige release door de controle glipten.
 

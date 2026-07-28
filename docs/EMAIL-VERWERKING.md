@@ -423,8 +423,14 @@ Per datum wordt dezelfde logica als Template A–F toegepast, in een eigen secti
 **{datum 2}:** Om {tijd} is helaas geen ruimte. Beschikbare mogelijkheden:
 - {veld}: beschikbaar van {van} tot {tot}
 
-Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.
+Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met {coordinatorNaam} plannen en definitief opnemen in de planning.
 ```
+
+De afsluitzin noemt de coördinator bij naam (#670). Ontbreekt `coordinatorNaam` in `dbo.AppSettings`,
+dan valt de zin terug op *"…dan gaan we samen plannen en definitief opnemen in de planning."* — een
+volledige, clubneutrale zin, zonder fallbacknaam in de code. De naam komt uit de instellingen van de
+club waarvoor het antwoord wordt opgebouwd, niet uit de globale cache; in een dry-run voor de
+democlub staat er dus de democoördinator (#677).
 
 #### Template H — Wedstrijd al ingepland
 
