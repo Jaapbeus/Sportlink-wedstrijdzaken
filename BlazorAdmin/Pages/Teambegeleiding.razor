@@ -256,7 +256,18 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
 
     private string OutlookRegel => string.Join("; ", _begeleiders
         .Where(b => !string.IsNullOrWhiteSpace(b.Emailadres))
-        .Select(b => $"\"{b.Naam}\" <{b.Emailadres}>"));
+        .GroupBy(b => (Naam: b.Naam.Trim(), Email: b.Emailadres!.Trim()), StringTupleComparer.OrdinalIgnoreCase)
+        .Select(g => $"\"{g.Key.Naam}\" <{g.Key.Email}>"));
+
+    private sealed class StringTupleComparer : IEqualityComparer<(string Naam, string Email)>
+    {
+        public static readonly StringTupleComparer OrdinalIgnoreCase = new();
+        public bool Equals((string Naam, string Email) x, (string Naam, string Email) y) =>
+            string.Equals(x.Naam, y.Naam, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(x.Email, y.Email, StringComparison.OrdinalIgnoreCase);
+        public int GetHashCode((string Naam, string Email) obj) =>
+            HashCode.Combine(obj.Naam.ToUpperInvariant(), obj.Email.ToUpperInvariant());
+    }
 
     protected override async Task OnInitializedAsync()
     {

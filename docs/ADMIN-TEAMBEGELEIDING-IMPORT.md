@@ -137,3 +137,4 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 | Geen exportknop zichtbaar | Onvoldoende rechten | Vraag een beheerder om de export uit te voeren |
 | Script geeft een fout | Geen bestand gevonden | Controleer of de download in stap 3 geslaagd is en het bestand in de Downloadmap staat |
 | Verificatiecode werkt niet | Code verlopen | Wacht tot de authenticator-app een nieuwe code toont en probeer opnieuw |
+| Waarschuwing "exacte duplicaat-rij(en) overgeslagen" | Sportlink-export bevat dezelfde persoon met exact dezelfde rol twee keer | Geen actie nodig — de import slaat deze duplicaten automatisch over, de rest van de lijst is correct geïmporteerd |

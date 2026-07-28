@@ -327,11 +327,11 @@ public static class AdminTeambegeleidingFunction
 
     private static readonly string[] _vereistKolommen = ["Team", "Teamrol", "Roepnaam", "Achternaam", "Emailadres"];
 
-    private record ImportRij(
+    internal record ImportRij(
         string? Team, string? LeeftijdscategorieTeam, string? Teamrol,
         string? Naam, string? Emailadres, string? Telefoonnummer);
 
-    private class CsvParseResult
+    internal class CsvParseResult
     {
         public bool IsValid { get; set; }
         public string? Error { get; set; }
@@ -341,7 +341,7 @@ public static class AdminTeambegeleidingFunction
         public List<ImportRij> Rows { get; set; } = [];
     }
 
-    private static CsvParseResult ParseCsv(string csvContent)
+    internal static CsvParseResult ParseCsv(string csvContent)
     {
         var result = new CsvParseResult();
         var lines = csvContent
@@ -412,6 +412,20 @@ public static class AdminTeambegeleidingFunction
                 GetVeld("Emailadres"),
                 telefoon));
         }
+
+        var voorDedup = result.Rows.Count;
+        result.Rows = [.. result.Rows
+            .GroupBy(r => (
+                Team: r.Team?.Trim().ToUpperInvariant(),
+                Teamrol: r.Teamrol?.Trim().ToUpperInvariant(),
+                Naam: r.Naam?.Trim().ToUpperInvariant(),
+                Email: r.Emailadres?.Trim().ToUpperInvariant(),
+                Telefoon: r.Telefoonnummer?.Trim().ToUpperInvariant()))
+            .Select(g => g.First())];
+        var duplicaten = voorDedup - result.Rows.Count;
+        if (duplicaten > 0)
+            result.Waarschuwingen.Add(
+                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
 
         result.IsValid = true;
         return result;
