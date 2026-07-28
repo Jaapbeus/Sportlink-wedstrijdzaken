@@ -232,10 +232,12 @@
                             @onclick='() => _visTab = "huidig"'>Huidig</button>
                 </li>
             </ul>
-            @if (_visTab == "optimaal" && !string.IsNullOrEmpty(_plan.GeschatteEindTijd))
-            {
-                <span class="small text-muted">Eindtijd: <strong>@_plan.GeschatteEindTijd</strong></span>
-            }
+            @* #689: hier stond "Eindtijd: hh:mm", alleen in de Optimaal-tab. Dat gaf twee problemen:
+               het dupliceerde de tegel "Optimale eindtijd" uit de samenvattingsbalk hierboven, en
+               omdat het element in de Huidig-tab wegviel werd de kaartkop daar smaller. Op een
+               1440px-scherm wrapte de kop daardoor anders en schoof de tijdlijn 21 pixels — precies
+               het springen dat deze herstructurering moet wegnemen. De eindtijd staat al in de
+               samenvattingsbalk, dus hier weggelaten. *@
             @if (IsAllstars && _plan.TeWijzigen > 0 && _visTab == "optimaal")
             {
                 <button class="btn btn-sm btn-warning ms-auto" @onclick="ToepassenAsync" disabled="@_bezig">
@@ -279,31 +281,13 @@
                     <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
                 </div>
 
-                @* #689: beide tabs krijgen hier één regel toelichting met dezelfde opmaak, zodat de
-                   visual eronder in beide tabs op exact dezelfde hoogte begint. Stond deze regel
-                   alleen in de Optimaal-tab, dan schoof de tijdlijn 50 pixels bij het wisselen — en
-                   juist dat springen is wat het vergelijken onbruikbaar maakt. De Huidig-tab krijgt
-                   geen opvultekst maar echte informatie: dat die stand uit Sportlink komt. *@
-                <p class="text-muted small mb-2">
-                    @if (_isOptimaal)
-                    {
-                        <i class="bi bi-arrows-move me-1" aria-hidden="true"></i>
-                        <text>
-                            Sleep een wedstrijd naar een andere tijd of een ander veld. De tijd springt op stappen
-                            van 5 minuten; de tabel en de eindtijd lopen mee. Handmatig verplaatste wedstrijden
-                            krijgen een stippellijn.
-                        </text>
-                    }
-                    else
-                    {
-                        <i class="bi bi-lock me-1" aria-hidden="true"></i>
-                        <text>
-                            Dit is de stand zoals die nu in Sportlink staat. Niet te verslepen — wissel naar
-                            Optimaal om te schuiven. De statuskolom laat zien wat de planner zou wijzigen.
-                        </text>
-                    }
-                </p>
-
+                @* #689: boven de tijdlijn staat alléén de legenda, die in beide tabs identiek is.
+                   Elk element daarboven dat per tab van hoogte verschilt, verschuift de tijdlijn bij
+                   het wisselen — en juist dat springen maakt het vergelijken onbruikbaar. Dat is hier
+                   twee keer misgegaan: eerst met een sleep-hint die alleen in de Optimaal-tab stond
+                   (50px), daarna met dezelfde hint in beide tabs maar met verschillende tekstlengte,
+                   die op een 1440px-scherm in een verschillend aantal regels wrapte (21px). De
+                   toelichting staat daarom nu ónder de tijdlijn, waar haar hoogte niets verschuift. *@
                 <div style="overflow-x:auto; min-width:0;">
                     @* Tijdas-header *@
                     <div style="display:flex; margin-bottom:4px;">
@@ -388,10 +372,28 @@
                 </div>
             }
 
-            @* #689: conflicten staan onder de tijdlijn, niet erboven. Boven de visual zou een
-               waarschuwing van wisselende hoogte de tijdlijn verschuiven zodra je van tab wisselt,
-               precies wat deze herstructurering wil voorkomen. Hier blijft hij even zichtbaar en
-               staat hij pal onder de planning waar hij over gaat. *@
+            @* Toelichting per tab — onder de tijdlijn, zie de uitleg hierboven. *@
+            <p class="text-muted small mb-0 mt-2">
+                @if (_isOptimaal)
+                {
+                    <i class="bi bi-arrows-move me-1" aria-hidden="true"></i>
+                    <text>
+                        Sleep een wedstrijd naar een andere tijd of een ander veld. De tijd springt op stappen
+                        van 5 minuten; de tabel en de eindtijd lopen mee. Handmatig verplaatste wedstrijden
+                        krijgen een stippellijn.
+                    </text>
+                }
+                else
+                {
+                    <i class="bi bi-lock me-1" aria-hidden="true"></i>
+                    <text>
+                        Dit is de stand zoals die nu in Sportlink staat. Niet te verslepen — wissel naar
+                        Optimaal om te schuiven. De kolom Wijziging laat zien wat de planner zou aanpassen.
+                    </text>
+                }
+            </p>
+
+            @* Conflicten staan onder de tijdlijn, om dezelfde reden als de toelichting. *@
             @if (_isOptimaal && _conflicten.Count > 0)
             {
                 <div class="alert alert-warning py-2 small mt-2 mb-0">
