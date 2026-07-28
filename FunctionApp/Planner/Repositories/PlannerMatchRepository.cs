@@ -117,8 +117,7 @@ internal static class PlannerMatchRepository
                  AND {ClubScope.HisFilter("t")}
             LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
-            LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
+            {VeldResolutie.SqlOuterApply("m.[veld]", ClubScope.ClubCodeParam)}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[status] <> 'Afgelast'
               AND {matchFilter}

@@ -99,6 +99,21 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 Een veld bestaat uit **vier kwartbanen**: `A1`, `A2`, `B1`, `B2`. Die labels zijn de `VeldSubpositie` en
 komen terug in de Sportlink-veldstring ("Kunstgras 1 A2").
 
+> **Veldstring → veldnummer: één matching, op drie plekken identiek (#707, #719).** Sportlink levert het
+> veld als `<veldnaam>[ <subpositie>]`; `dbo.Velden` bevat alleen de veldnaam. Een treffer is een exact
+> gelijke veldnaam, óf een veldnaam gevolgd door een spatie en de subpositie — **langste veldnaam eerst**,
+> zodat `veld 1 achter B` bij "veld 1 achter" hoort en niet bij "veld 1".
+>
+> Dit stond ooit als `LEFT(veld, 6)` in de SQL-paden. Die afkap vereist dat élke veldnaam maximaal zes
+> tekens is én in de eerste zes uniek, en dat is twee keer niet waar: `veld 10` werd `veld 1` (bezetting
+> op het verkeerde veld, waarna veld 10 vrij leek → **dubbele boeking**) en `hoofdveld` matchte niets en
+> viel volledig uit de bezetting. De matching zit nu in `PlannerShared.ResolveVeld` (C#),
+> `VeldResolutie.SqlOuterApply` (SQL vanuit C#) en de view `planner.AlleWedstrijdenOpVeld`.
+>
+> De view staat op **twee** plekken — het DB-project én `Script.PostDeployment1.sql` — en CI rolt alleen
+> dat laatste uit. `VeldResolutieDriftTests` faalt als ze uiteenlopen of als de zes-tekens-afkap
+> terugkomt.
+
 | Veldafmeting | Banen | Toegestane plekken |
 |---|---|---|
 | 0.25 | 1 | `A1`, `A2`, `B1` of `B2` |

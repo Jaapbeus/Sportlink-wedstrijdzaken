@@ -1275,6 +1275,13 @@ GO
 --
 -- ORDER BY [ClubCode] i.p.v. ORDER BY [Id]: dbo.AppSettings heeft geen Id-kolom, dus de
 -- definitie in het DB-project compileerde niet (Msg 207) — zelfde valkuil als #564.
+--
+-- #719: veldkoppeling via OUTER APPLY i.p.v. RTRIM(LEFT(m.[veld], 6)). Die afkap registreerde een
+-- wedstrijd op "veld 10" als bezetting op "veld 1" — veld 10 leek daardoor vrij, waarop er een tweede
+-- wedstrijd op hetzelfde veld en tijdstip bij kon: een dubbele boeking. Een veldnaam langer dan zes
+-- tekens ("hoofdveld") viel volledig uit de bezetting weg. De matching is nu gelijk aan
+-- FunctionApp/Planner/VeldResolutie.cs en PlannerShared.ResolveVeld. VeldResolutieDriftTests bewaakt
+-- dat deze kopie en die in het DB-project niet uit elkaar lopen — CI rolt alléén dit script uit.
 -- ============================================================
 CREATE OR ALTER VIEW [planner].[AlleWedstrijdenOpVeld]
 AS
@@ -1290,7 +1297,7 @@ SELECT
     t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
     m.[teamnaam]                                                                    AS TeamNaam,
     m.[wedstrijd]                                                                   AS Wedstrijd,
-    RTRIM(SUBSTRING(m.[veld], 7, 10))                                               AS VeldSubpositie,
+    v.[Subpositie]                                                                  AS VeldSubpositie,
     'Competitie'                                                                    AS Bron,
     ISNULL(m.[ClubCode], a.[ClubCode])                                              AS ClubCode,
     CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
@@ -1305,9 +1312,24 @@ LEFT JOIN [dbo].[Speeltijden] s
         ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
     END
    AND s.[ClubCode] = a.[ClubCode]
-LEFT JOIN [dbo].[Velden] v
-    ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-   AND v.[ClubCode] = a.[ClubCode]
+OUTER APPLY (
+    SELECT TOP 1
+        vv.[VeldNummer],
+        NULLIF(LTRIM(SUBSTRING(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))), LEN(vn.[Naam]) + 1, 100)), '') AS [Subpositie]
+    FROM [dbo].[Velden] vv
+    CROSS APPLY (SELECT LTRIM(RTRIM(REPLACE(ISNULL(vv.[VeldNaam], ''), '  ', ' '))) AS [Naam]) vn
+    WHERE vv.[ClubCode] = a.[ClubCode]
+      AND LEN(vn.[Naam]) > 0
+      AND (
+            LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))) = vn.[Naam]
+            OR (
+                 LEN(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' ')))) > LEN(vn.[Naam])
+                 AND LEFT(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))), LEN(vn.[Naam])) = vn.[Naam]
+                 AND SUBSTRING(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))), LEN(vn.[Naam]) + 1, 1) = ' '
+               )
+          )
+    ORDER BY LEN(vn.[Naam]) DESC
+) v
 WHERE m.[accommodatie] LIKE '%' + a.[Accommodatie] + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
