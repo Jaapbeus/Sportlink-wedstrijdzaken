@@ -230,6 +230,43 @@ else
             </div>
         </div>
 
+        <hr />
+        <h5>KNVB-verzetten zonder datum</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="knvbPdfBijlageIngeschakeld"
+                           @bind="settings.KnvbPdfBijlageIngeschakeld" />
+                    <label class="form-check-label" for="knvbPdfBijlageIngeschakeld">
+                        KNVB-kalender bij verzet-verzoek van tegenstander
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    Aan: als een tegenstander om een herplanning vraagt zonder concrete nieuwe datum te noemen,
+                    stuurt de pipeline automatisch een antwoord met een paar vrije zaterdagen en de
+                    KNVB-speeldagenkalender als PDF-bijlage (met de begeleiding van het eigen team in BCC).
+                    Staat standaard AAN.
+                </small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">KNVB-regio</label>
+                <select class="form-select" @bind="settings.KnvbStandaardRegio">
+                    <option value="">(niet ingesteld)</option>
+                    <option value="West">West</option>
+                    <option value="Noord">Noord</option>
+                    <option value="Oost">Oost</option>
+                    <option value="Zuid">Zuid</option>
+                    <option value="Landelijk">Landelijk</option>
+                    <option value="LandelijkJeugd">LandelijkJeugd</option>
+                </select>
+                <small class="form-text text-muted">
+                    Bepaalt welke KNVB-speeldagenkalender wordt gebruikt bij bovenstaande bijlage.
+                    Ontbreekt deze instelling, dan wordt de bijlage/nieuwe flow overgeslagen — er is
+                    bewust geen standaardregio in code (elke club stelt de eigen regio hier in).
+                </small>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" disabled="@saving">
             @(saving ? "Opslaan..." : "Opslaan")
         </button>
@@ -533,6 +570,8 @@ else
                 ["CoordinatorFunctie"] = settings.CoordinatorFunctie,
                 ["FetchSchedule"] = settings.FetchSchedule,
                 ["UseRealtimeApi"] = settings.UseRealtimeApi ? "1" : "0",
+                ["KnvbPdfBijlageIngeschakeld"] = settings.KnvbPdfBijlageIngeschakeld ? "1" : "0",
+                ["KnvbStandaardRegio"] = settings.KnvbStandaardRegio,
             }
         };
 

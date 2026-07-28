@@ -43,7 +43,13 @@ public static class AdminSettingsFunction
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
-        "UseRealtimeApi"
+        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio"
+    };
+
+    // Geldige waarden voor KnvbStandaardRegio — komt overeen met de PK-waarden in dbo.KnvbKalenderDag.
+    private static readonly string[] GeldigeKnvbRegios =
+    {
+        "West", "Noord", "Oost", "Zuid", "Landelijk", "LandelijkJeugd"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -80,7 +86,8 @@ public static class AdminSettingsFunction
                     [LastSyncTimestamp], [FetchSchedule], [PlannerAfzenderNaam], [CoordinatorNaam],
                     [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                     [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
-                    [AccommodatieLatitude], [AccommodatieLongitude]
+                    [AccommodatieLatitude], [AccommodatieLongitude],
+                    [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio]
                 FROM [dbo].[AppSettings]
                 WHERE [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -181,6 +188,14 @@ public static class AdminSettingsFunction
             {
                 if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
                     return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
+            }
+
+            // Valideer KnvbStandaardRegio vóór opslaan — moet, indien aanwezig en niet leeg, een geldige regio zijn
+            if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
+                !string.IsNullOrWhiteSpace(nieuweRegio) &&
+                !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
+            {
+                return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
             }
 
             await SystemUtilities.WaitForDatabaseAsync(log);

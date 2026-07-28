@@ -35,6 +35,12 @@ public class BerichtClassificatie
     // Heel veld gevraagd — overschrijft de standaard veldafmeting uit Speeltijden
     public bool? HeelVeld { get; set; }
 
+    // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561).
+    // Houd dit klein (strings, geen bytes): classificatie wordt via JsonConvert.SerializeObject naar
+    // planner.EmailVerwerking gelogd — grote binaire payloads horen daar niet in.
+    public bool VoegKnvbPdfBijlageToe { get; set; }
+    public string? KnvbBijlageRegio { get; set; }
+
     /// <summary>
     /// Retourneert alle unieke datums: Datums als die er zijn, anders alleen Datum.
     /// </summary>

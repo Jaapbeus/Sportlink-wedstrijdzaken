@@ -200,6 +200,19 @@ public static class BerichtPipeline
                                 }
                             }
 
+                            // #561: een tegenstander die om herplannen vraagt zonder concrete
+                            // nieuwe datum krijgt géén toegezegde datum van de AI — dat moet eerst
+                            // met de begeleiding van ons eigen team worden afgestemd. Val terug op
+                            // het bestaande gedrag als deze flow niet (volledig) geconfigureerd is.
+                            if (classificatie.NamensWie == NamensWie.Tegenstander
+                                && string.IsNullOrWhiteSpace(classificatie.GewensteDatum))
+                            {
+                                var verzetZonderDatumJson = await BouwVerzetZonderDatumResponseAsync(
+                                    classificatie, wedstrijd, deadlineDagen, clubSettings, clubCode, log);
+                                if (verzetZonderDatumJson != null)
+                                    return verzetZonderDatumJson;
+                            }
+
                             if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
                             {
                                 var gewenstRequest = new CheckAvailabilityRequest
@@ -343,6 +356,13 @@ public static class BerichtPipeline
                     return BerichtResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, bericht, clubSettings);
                 }
 
+                if (herplanData["verzetZonderDatum"]?.ToObject<bool>() == true)
+                {
+                    var vrijeZaterdagen = herplanData["vrijeZaterdagen"]?.ToObject<List<string>>() ?? new List<string>();
+                    return BerichtResponseGenerator.BouwVerzetZonderDatumAntwoord(
+                        wedstrijd, vrijeZaterdagen, classificatie, bericht, clubSettings);
+                }
+
                 if (herplanData["gewensteDatum"] != null && herplanData["beschikbaarheid"] != null)
                 {
                     var gewensteDatum = herplanData["gewensteDatum"]?.ToString();
@@ -424,6 +444,91 @@ public static class BerichtPipeline
             .Where(d => d > vandaag)
             .Select(d => d.ToString("yyyy-MM-dd"))
             .ToList();
+    }
+
+    /// <summary>
+    /// Bouwt het "verzet zonder datum"-pad voor een <see cref="VerzoekType.HerplanVerzoek"/> van de
+    /// tegenstander zonder concrete <c>GewensteDatum</c> (#561). Een tegenstander mag geen nieuwe
+    /// datum toegezegd krijgen — die afstemming hoort bij de begeleiding van ons eigen team. In
+    /// plaats daarvan geeft het antwoord een paar concrete "vrije zaterdagen" als voorzet, en de
+    /// pipeline markeert de classificatie zodat de KNVB-kalender-PDF als bijlage meegaat en de
+    /// begeleiding van ons team in BCC komt (zie <see cref="Email.EmailReplyPolicyService"/>).
+    ///
+    /// Retourneert <c>null</c> als <c>knvbStandaardRegio</c> ontbreekt, de PDF-bijlage-instelling uit
+    /// staat, of er geen (toekomstig) seizoen in <c>dbo.Season</c> staat — de aanroepende tak valt dan
+    /// terug op het bestaande gedrag (<see cref="PlannerService.CheckRescheduleAvailabilityAsync"/>).
+    /// Nooit een regio gokken of hardcoden: ontbreekt de instelling, dan is er geen bijlage/flow.
+    /// </summary>
+    private static async Task<string?> BouwVerzetZonderDatumResponseAsync(
+        BerichtClassificatie classificatie, ZoekWedstrijdResponse wedstrijd, int deadlineDagen,
+        ClubAppSettingsSnapshot? clubSettings, string? clubCode, ILogger log)
+    {
+        var regio = clubSettings != null
+            ? clubSettings.KnvbStandaardRegio
+            : SystemUtilities.AppSettings.GetSetting("knvbStandaardRegio");
+        if (string.IsNullOrWhiteSpace(regio))
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - geen knvbStandaardRegio ingesteld; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        bool bijlageAan;
+        if (clubSettings != null)
+        {
+            bijlageAan = clubSettings.KnvbPdfBijlageIngeschakeld ?? false;
+        }
+        else
+        {
+            var raw = SystemUtilities.AppSettings.GetSetting("knvbPdfBijlageIngeschakeld");
+            bijlageAan = !(string.IsNullOrWhiteSpace(raw)
+                || raw == "0"
+                || string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase));
+        }
+        if (!bijlageAan)
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - KNVB-PDF-bijlage staat uit; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        if (string.IsNullOrWhiteSpace(seizoen))
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in dbo.Season; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var van = vandaag.AddDays(deadlineDagen);
+        // 8 weken venster — een algoritmische constante (geen club-specifieke waarde), geeft
+        // voldoende keuze zonder een half seizoen aan zaterdagen op te sommen.
+        var tot = van.AddDays(56);
+
+        var reedsBezetteData = new HashSet<DateOnly>();
+        if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
+        {
+            var toekomstigeWedstrijden = await PlannerDataAccess.GetFutureMatchesForTeamAsync(
+                classificatie.TeamNaam, van, tot, clubCode);
+            foreach (var m in toekomstigeWedstrijden)
+            {
+                if (DateOnly.TryParse(m.Datum, out var bezetteDatum))
+                    reedsBezetteData.Add(bezetteDatum);
+            }
+        }
+
+        var vrijeZaterdagen = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
+            regio, seizoen, van, tot, reedsBezetteData, maxAantal: 5, clubCode);
+
+        classificatie.VoegKnvbPdfBijlageToe = true;
+        classificatie.KnvbBijlageRegio = regio;
+
+        return JsonConvert.SerializeObject(new
+        {
+            verzetZonderDatum = true,
+            wedstrijd,
+            vrijeZaterdagen = vrijeZaterdagen.Select(d => d.ToString("yyyy-MM-dd")).ToList(),
+            regio,
+            seizoen
+        });
     }
 
     /// <summary>

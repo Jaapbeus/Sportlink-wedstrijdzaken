@@ -772,3 +772,40 @@ e-mailverwerking naar dat team.
 | `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
 | `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
 | `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+
+---
+
+## 17. KNVB-verzetten zonder datum (`/instellingen`)
+
+### Wat doet deze instelling?
+
+Op de `/instellingen`-pagina staat de sectie **"KNVB-verzetten zonder datum"** met een schakelaar
+en een regio-dropdown (#561).
+
+Vraagt een tegenstander per e-mail om de wedstrijd te verzetten zonder zelf een concrete nieuwe
+datum voor te stellen, dan zegt het systeem **geen nieuwe datum toe** — dat hoort eerst met de
+begeleiding van het eigen team afgestemd te worden. In plaats daarvan verstuurt de pipeline
+automatisch een antwoord naar de tegenstander met:
+
+- de begeleiding van het eigen team in **BCC**, zodat beide teams het onderling kunnen afstemmen;
+- de KNVB-speeldagenkalender-PDF van het huidige seizoen als **bijlage**;
+- een paar concrete zaterdagen in de tekst waarop het eigen team volgens het huidige programma nog
+  geen wedstrijd heeft, als voorzet voor het overleg.
+
+| Instelling | Gedrag |
+|---|---|
+| **KNVB-kalender bij verzet-verzoek van tegenstander** (schakelaar, standaard **aan**) | Uit: geen bijlage/BCC/datumvoorstel — de bestaande herplan-afhandeling (alternatieve speeltijden op basis van veldbeschikbaarheid) blijft ongewijzigd van kracht. |
+| **KNVB-regio** (dropdown, standaard **niet ingesteld**) | Bepaalt welke van de zes KNVB-speeldagenkalenders wordt meegestuurd. **Staat deze op "niet ingesteld", dan wordt de hele nieuwe flow overgeslagen** — er is bewust geen standaardregio in code, elke club vult de eigen regio hier zelf in. |
+
+### Wanneer instellen?
+
+Vul de KNVB-regio in zodra bekend is in welk KNVB-district de club uitkomt (West, Noord, Oost,
+Zuid, Landelijk of LandelijkJeugd voor landelijke jeugdteams). Zonder deze instelling verandert er
+niets aan het bestaande gedrag bij herplanverzoeken.
+
+### Beperking huidige versie
+
+De regio geldt voor de hele club (één instelling, geen per-team-regio). Clubs met teams in
+meerdere districten (bijv. een landelijk seniorenteam naast jeugd in een regionaal district)
+krijgen dus voor alle teams dezelfde kalender mee. Per-team-regio is een toekomstige uitbreiding
+zodra teamregio automatisch uit Sportlink-data kan worden afgeleid.

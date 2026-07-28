@@ -521,6 +521,53 @@ Je herplanverzoek is helaas te laat ingediend. Volgens onze richtlijn moet een h
 minimaal {deadlineDagen} dagen voor de wedstrijd worden ingediend.
 ```
 
+#### Verzet-zonder-datum — tegenstander vraagt om herplannen zonder concrete datum (#561)
+
+**Wanneer:** Het verzoek komt namens de tegenstander (`NamensWie = Tegenstander`) en er is geen
+`GewensteDatum` opgegeven. Deze check loopt direct na de deadline-check en vóór Template K — een
+tegenstander die wél een concrete datum noemt, doorloopt gewoon Template K.
+
+De AI mag hier **geen nieuwe datum toezeggen**: een nieuwe speeldatum moet eerst afgestemd worden
+met de begeleiding van ons eigen team. In plaats daarvan:
+
+1. Het antwoord gaat naar de tegenstander, met de begeleiding van ons eigen team in **BCC**
+   (`avg.Teambegeleiding`, zelfde opzoeklogica als de bestaande teamleider-notificatie hieronder).
+2. De KNVB-speeldagenkalender-PDF van het huidige seizoen en de regio van deze club gaat als
+   **bijlage** mee (`FunctionApp/Content/KnvbKalenders/`).
+3. De tekst noemt als voorzet een paar concrete zaterdagen waarop ons team volgens het huidige
+   programma nog geen wedstrijd heeft ("vrije zaterdagen"), afgeleid uit
+   `dbo.KnvbKalenderDag` (DagType Competitie/Beker/Inhaal) minus de datums uit
+   `GetFutureMatchesForTeamAsync`.
+
+```
+{aanhef} {voornaam},
+
+Bedankt voor je verzoek om de wedstrijd {wedstrijd} op {datum} om {tijd} te verzetten.
+
+We kunnen op dit moment nog geen nieuwe datum toezeggen: dat stemmen we eerst af met de begeleiding
+van ons eigen team. Zij zijn in de kopie (BCC) van dit bericht meegenomen, zodat jullie dit
+onderling verder kunnen afstemmen.
+
+Als voorzet: volgens ons huidige programma hebben we op de volgende zaterdagen nog geen wedstrijd:
+- {datum}
+- ...
+
+De KNVB-speeldagenkalender is als bijlage toegevoegd.
+```
+
+Zijn er geen vrije zaterdagen gevonden binnen het venster (vandaag + `herplanDeadlineDagen` tot
+8 weken verder), dan meldt het antwoord dat en verwijst het naar de bijgevoegde kalender.
+
+**Configuratie (`dbo.AppSettings`):**
+
+| Instelling | Betekenis | Gedrag als leeg/uit |
+|---|---|---|
+| `KnvbStandaardRegio` | KNVB-regio van deze club (West/Noord/Oost/Zuid/Landelijk/LandelijkJeugd) | Geen waarde ingesteld → val terug op het bestaande herplan-pad (Template L) |
+| `KnvbPdfBijlageIngeschakeld` | Bijlage + vrije-zaterdagen-voorzet aan/uit (standaard aan) | Uit → val terug op het bestaande herplan-pad (Template L) |
+
+Ontbreekt ook het huidige seizoen in `dbo.Season`, dan valt de flow eveneens terug op het
+bestaande herplan-pad. Er wordt nooit een regio of seizoen gegokt.
+
 #### Template K — Gewenste datum opgegeven
 
 **Wanneer:** De afzender vraagt expliciet om een specifieke nieuwe datum (bijv. "kan het op 25 mei?")
@@ -729,6 +776,7 @@ Beide noodmails bevatten een gecategoriseerde foutomschrijving, nooit de ruwe ex
 | I | BeschikbaarheidCheck | Tegenstander niet in het programma te vinden | `BouwTeamOnbekendAntwoord` |
 | P | BeschikbaarheidCheck | Geen bruikbare datum in het bericht | interne template `datum_onbekend` |
 | J | HerplanVerzoek | Verzoek te laat ingediend | `BouwHerplanTeLaatAntwoord` |
+| Q | HerplanVerzoek | Tegenstander vraagt herplannen zonder concrete datum (#561) | `BouwVerzetZonderDatumAntwoord` |
 | K | HerplanVerzoek | Gewenste herplandatum opgegeven | `BouwHerplanGewensteDatumAntwoord` |
 | L | HerplanVerzoek | Geen gewenste datum, alternatieven gezocht | `BouwHerplanAntwoord` |
 | M | TeamContactOpvragen | "Wie is de trainer/coach van [team]?" | `BouwTeamContactAutoReply` |

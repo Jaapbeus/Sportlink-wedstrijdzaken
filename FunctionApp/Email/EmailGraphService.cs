@@ -182,7 +182,16 @@ public partial class EmailGraphService : IEmailGraphService
     /// <summary>
     /// Verstuurt een antwoord-email via de coordinator-mailbox.
     /// </summary>
-    public async Task SendReplyAsync(string to, string subject, string body, string? conversationId)
+    /// <param name="bcc">
+    /// Optionele BCC-adressen (#561) — bijv. de begeleiding van ons eigen team bij een
+    /// verzet-zonder-datum-antwoord aan een tegenstander. Bestaande aanroepen zonder dit argument
+    /// blijven ongewijzigd werken.
+    /// </param>
+    /// <param name="bijlage">
+    /// Optionele bijlage (#561) — bijv. de KNVB-speeldagenkalender-PDF.
+    /// </param>
+    public async Task SendReplyAsync(string to, string subject, string body, string? conversationId,
+        IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null)
     {
         try
         {
@@ -206,6 +215,28 @@ public partial class EmailGraphService : IEmailGraphService
             if (!string.IsNullOrEmpty(conversationId))
             {
                 message.ConversationId = conversationId;
+            }
+
+            if (bcc is { Count: > 0 })
+            {
+                message.BccRecipients = bcc
+                    .Where(a => !string.IsNullOrWhiteSpace(a))
+                    .Select(a => new Recipient { EmailAddress = new EmailAddress { Address = a } })
+                    .ToList();
+            }
+
+            if (bijlage != null)
+            {
+                message.Attachments =
+                [
+                    new FileAttachment
+                    {
+                        OdataType = "#microsoft.graph.fileAttachment",
+                        Name = bijlage.Bestandsnaam,
+                        ContentType = bijlage.ContentType,
+                        ContentBytes = bijlage.Inhoud
+                    }
+                ];
             }
 
             await _graphClient.Users[_mailbox]

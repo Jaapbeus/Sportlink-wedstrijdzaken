@@ -82,6 +82,28 @@ namespace SportlinkFunction
                             SELECT @v;", connection);
                         var rtaResult = await rtaCmd.ExecuteScalarAsync();
                         settings["useRealtimeApi"] = (rtaResult is bool b && !b) ? "0" : "1";
+
+                        // #561: KnvbPdfBijlageIngeschakeld/KnvbStandaardRegio bestaan pas na migratie —
+                        // dynamisch laden zodat de Function App ook opstart tegen een database die nog
+                        // niet gemigreerd is (zelfde patroon als UseRealtimeApi/SyncEnabled hierboven).
+                        using var knvbCmd = new SqlCommand(@"
+                            DECLARE @regio NVARCHAR(20) = NULL;
+                            DECLARE @bijlage BIT = 1;
+                            DECLARE @sql NVARCHAR(400) = CASE
+                                WHEN COL_LENGTH('[dbo].[AppSettings]', 'KnvbStandaardRegio') IS NOT NULL
+                                     AND COL_LENGTH('[dbo].[AppSettings]', 'KnvbPdfBijlageIngeschakeld') IS NOT NULL
+                                THEN N'SELECT TOP 1 @r = [KnvbStandaardRegio], @b = [KnvbPdfBijlageIngeschakeld] FROM [dbo].[AppSettings]'
+                                ELSE N'SELECT @r = CAST(NULL AS NVARCHAR(20)), @b = CAST(1 AS BIT)'
+                            END;
+                            EXEC sp_executesql @sql, N'@r NVARCHAR(20) OUTPUT, @b BIT OUTPUT', @r = @regio OUTPUT, @b = @bijlage OUTPUT;
+                            SELECT @r, @bijlage;", connection);
+                        using var knvbReader = await knvbCmd.ExecuteReaderAsync();
+                        if (await knvbReader.ReadAsync())
+                        {
+                            if (!knvbReader.IsDBNull(0))
+                                settings["knvbStandaardRegio"] = knvbReader.GetString(0);
+                            settings["knvbPdfBijlageIngeschakeld"] = (!knvbReader.IsDBNull(1) && !knvbReader.GetBoolean(1)) ? "0" : "1";
+                        }
                     }
                     log.LogInformation("App settings loaded successfully.");
                 }
@@ -277,6 +299,38 @@ namespace SportlinkFunction
                     log.LogError(ex, "Error fetching season start for year {StartYear}", startYear);
                 }
                 return -40; // Fallback: ~40 weeks back
+            }
+
+            /// <summary>
+            /// Bepaalt het huidige KNVB-seizoen ("{startjaar}/{eindjaar}", bijv. "2026/2027") uit
+            /// dbo.Season — nooit hardcoded, want een hardcoded jaartal in de KNVB-kalenderlogica
+            /// (#561) zou na elk seizoen stilzwijgend verkeerde data opleveren.
+            /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in dbo.Season staat — de
+            /// aanroeper valt dan terug op het bestaande gedrag zonder KNVB-bijlage.
+            /// </summary>
+            public static async Task<string?> GetCurrentKnvbSeizoenAsync(ILogger log)
+            {
+                try
+                {
+                    using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
+                    await connection.OpenAsync();
+                    using var command = new SqlCommand(
+                        "SELECT TOP 1 [DateFrom], [DateUntil] FROM [dbo].[Season] WHERE [DateUntil] >= @today ORDER BY [DateFrom] ASC",
+                        connection);
+                    command.Parameters.AddWithValue("@today", DateTime.Today);
+                    using var reader = await command.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                    {
+                        var dateFrom = reader.GetDateTime(0);
+                        var dateUntil = reader.GetDateTime(1);
+                        return $"{dateFrom.Year}/{dateUntil.Year}";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Error fetching current KNVB seizoen");
+                }
+                return null;
             }
         }
     }
