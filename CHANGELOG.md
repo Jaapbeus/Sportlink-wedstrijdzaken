@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **De teamdropdown bij Voorkeurstijden en Teamregels toont niet meer dezelfde teams dubbel of in rauwe schrijfwijze.** De lijst kwam rechtstreeks uit de ongenormaliseerde brondata, waarin elk team meerdere keren voorkomt — per poule en in twee schrijfwijzen ("O13" naast "JO13"). De dropdown gebruikt nu de al bestaande, ontdubbelde teamlijst die na elke synchronisatie wordt bijgewerkt: één rij per fysiek team. Als onderdeel van dezelfde fix krijgt de democlub AllStars FC nu ook een gevulde, ontdubbelde teamlijst — die liep eerder nooit mee in de ontdubbelingsstap omdat die alleen voor de echte club draaide. (#756)
+
 ## [2.19.0.0] — 2026-07-28
 
 ### Changed

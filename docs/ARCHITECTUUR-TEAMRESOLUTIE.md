@@ -109,6 +109,13 @@ verbruikt.
 Logregels om op te zoeken: `TEAMRESOLUTIE` (per bericht: teamId, bron, confidence) en
 `TEAMS CANONICALISATIE` (per sync: aantal teams, gekoppelde schrijfwijzen, niet-herleidbare namen).
 
+**AllStars FC-uitzondering (#756):** de democlub heeft geen eigen Sportlink-sync — zijn
+`his.teams`/`his.matches`-rijen komen uit de PostDeployment-demodata-seed. `SportlinkSyncPipeline`
+roept `TeamCanonicalisatieService.RefreshAsync` daarom na elke echte sync **twee keer** aan: één keer
+voor de geconfigureerde `clubCode`, één keer expliciet voor `"ALLSTARS"`. Zonder die tweede aanroep
+blijft `dbo.Teams` voor de democlub permanent leeg en toont elke UI die daaruit leest (bijv. de
+teamdropdown bij Voorkeurstijden) nul teams voor AllStars FC.
+
 ## Waarom exacte matching in plaats van LIKE
 
 De schrijfwijze verschilt per bron: `his.matches` gebruikt "[club] JO10-1" (mét J), de bondsrijen in
