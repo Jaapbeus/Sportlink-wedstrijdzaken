@@ -77,6 +77,30 @@ mis met `DEFAULT GETDATE()` waar het schema `GETUTCDATE()` voorschrijft.
 `DEFAULT`: dat kan niet veilig via `ALTER TABLE ADD` op een tabel met bestaande rijen.
 Publiceer in dat geval het DB-project.
 
+### CI-guards op het PostDeployment-script (#595, #734, #739)
+
+De deploy publiceert **geen dacpac**: alleen `Database/Script.PostDeployment1.sql` draait tegen de
+database. Alles wat het DB-project definieert maar niet in dat script staat, ontbreekt dus op een
+verse clubinstallatie. Drie guards in [.github/workflows/build.yml](../.github/workflows/build.yml)
+houden dat tegen, en één in [.github/workflows/deploy.yml](../.github/workflows/deploy.yml):
+
+| Guard | Wat het controleert | Waarom |
+|---|---|---|
+| **Schema-drift check** — tabellen | Elke tabel uit het DB-project heeft een echte `CREATE TABLE` in het PostDeployment-script | De check accepteerde eerder élke vermelding, ook een `INSERT`. Daardoor passeerde `dbo.KnvbKalenderDag` met acht INSERT-blokken en nul CREATE's (#738); zeven andere tabellen zaten in hetzelfde geval, waaronder `dbo.AppSettings` |
+| **Schema-drift check** — kolommen | Elke kolom uit het DB-project komt voor in het PostDeployment-script | Een kolom die alleen aan het DB-project wordt toegevoegd, kwam nooit in productie. Zo ontbraken `KnvbPdfBijlageIngeschakeld` en `KnvbStandaardRegio` terwijl de Instellingen-pagina ze onvoorwaardelijk uitleest |
+| **`PostDeployment op verse database`** | Voert het script twee keer uit tegen een lege SQL Server in een wegwerpcontainer, met `-b -V 11`, en controleert daarna dat 22 kernobjecten bestaan en gevuld zijn | Het enige wat een verse clubinstallatie écht bewijst. Tekstchecks vergelijken tekens; deze job voert de migratie uit. Kost niets: runner-container, geen Azure-resource, geen secret |
+| **`db-migrate` in deploy.yml** | `arguments: '-b -V 11'` op `azure/sql-action` | Zonder die vlaggen geeft sqlcmd exitcode 0 bij fouten van severity 16 en meldt de action "Successfully executed". Bij twee releases stonden er zo tien echte fouten in het log terwijl de job groen was (#739) |
+
+**Uitzonderingen in de allowlist**, met reden: `stg.*` (dynamisch aangemaakt door
+`FunctionApp/CreateTable.cs` uit het actuele Sportlink API-schema), `his.*` (dynamisch door
+`sp_CreateTargetTableFromSource` uit `stg.*`) en `dbo.DateTable` (DROP + CREATE door
+`sp_CreateDateTable`). Voor deze tabellen zou een statische DDL juist gaan driften.
+
+**Gevolg voor het script:** alles wat `his.*` aanraakt staat achter een
+`IF OBJECT_ID('his.…') IS NOT NULL`-guard, en de vier views die op `his.*` of `dbo.DateTable`
+leunen worden via dynamische SQL aangemaakt. Op een database waar de eerste sync nog niet gelopen
+heeft, worden die blokken netjes overgeslagen; de volgende deploy maakt ze aan.
+
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 
 Draait er iets op poort 5242, dan slaat sectie 3 de BlazorAdmin-build over. Een tweede

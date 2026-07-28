@@ -86,6 +86,16 @@ public class VeldResolutieDriftTests
     /// <summary>
     /// Haalt het <c>CREATE OR ALTER VIEW [planner].[AlleWedstrijdenOpVeld]</c>-blok uit het
     /// PostDeployment-script, tot de afsluitende batch-scheiding.
+    ///
+    /// <para>
+    /// De view staat daar sinds #734 binnen een <c>EXEC(N'…')</c>: op een verse clubinstallatie
+    /// bestaat <c>his.matches</c> nog niet, en een <c>CREATE VIEW</c> faalt dan op naam-resolutie.
+    /// Dynamische SQL stelt die resolutie uit tot uitvoering, zodat de view wordt overgeslagen tot
+    /// de eerste sync gelopen is. Gevolg voor deze vergelijking: enkele quotes staan in het script
+    /// verdubbeld en de afsluitende <c>');</c> hoort niet bij de view-body. Beide worden hier
+    /// teruggedraaid, zodat de test de wérkelijke view-definitie vergelijkt en niet de codering
+    /// ervan.
+    /// </para>
     /// </summary>
     private static string SnijViewUitPostDeployment(string script)
     {
@@ -93,8 +103,12 @@ public class VeldResolutieDriftTests
         start.Should().BeGreaterThan(-1, "het CREATE OR ALTER VIEW-blok moet in het PostDeployment-script staan");
 
         var regels = script[start..].Split('\n');
-        var body = regels.TakeWhile(r => r.Trim() != "GO");
-        return string.Join('\n', body);
+        var body = regels
+            .TakeWhile(r => r.Trim() != "GO")
+            // Sluitregel van de EXEC-wrapper — geen onderdeel van de view.
+            .Where(r => r.Trim() != "');");
+
+        return string.Join('\n', body).Replace("''", "'");
     }
 
     /// <summary>
