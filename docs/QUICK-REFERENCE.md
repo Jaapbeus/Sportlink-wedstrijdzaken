@@ -52,11 +52,11 @@ Invoke-RestMethod http://localhost:7094/api/health
 ## Handmatige Sportlink-sync
 
 ```powershell
-# Incrementeel (vorige week t/m seizoenseinde)
-Invoke-RestMethod http://localhost:7094/api/sync
+# Incrementeel (vorige week t/m seizoenseinde — zelfde bereik als de timer)
+Invoke-RestMethod http://localhost:7094/api/sync-matches
 
-# Met weekoffset
-Invoke-RestMethod "http://localhost:7094/api/sync?weekOffsetFrom=-2&weekOffsetTo=4"
+# Volledig seizoen opnieuw ophalen
+Invoke-RestMethod "http://localhost:7094/api/sync-matches?reset=true&season=2026"
 ```
 
 ---
@@ -105,7 +105,7 @@ dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
 | Methode | URL | Beschrijving |
 |---------|-----|-------------|
 | GET | `http://localhost:7094/api/health` | Status en versie |
-| GET | `http://localhost:7094/api/sync` | Handmatige sync |
+| GET | `http://localhost:7094/api/sync-matches` | Handmatige sync |
 | GET | `http://localhost:7094/api/beheer/settings` | Club-instellingen |
 | GET | `http://localhost:7094/api/beheer/teams` | Teamlijst |
 | GET | `http://localhost:7094/api/beheer/sync/status` | Sync-status |

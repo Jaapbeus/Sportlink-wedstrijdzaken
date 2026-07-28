@@ -41,8 +41,8 @@ History Tables (his.teams, his.matches, his.matchdetails)
 
 **[Function1.cs](Function1.cs)**
 - `FetchAndStoreApiData`: Timer trigger (schedule via `%FETCH_SCHEDULE%` app setting, default `0 0 4 * * *`) that orchestrates the sync
-- `SyncAndStoreViaHttpTrigger`: HTTP endpoint for manual sync (GET `/api/sync`)
-- Handles: Teams fetch, matches fetch (last 5 weeks), match details fetch
+- `SyncMatchesHttp`: HTTP endpoint for manual sync (GET `/api/sync-matches`). Default range: previous week through end of season, the same range as the timer. `?reset=true&season=YYYY` re-fetches a full season.
+- Handles: Teams fetch, matches fetch (previous week through end of season, from `dbo.Season`), match details fetch
 - Uses retry logic via `SystemUtilities.WaitForDatabaseAsync()`
 
 **[Utilities.cs](Utilities.cs)**
@@ -79,8 +79,8 @@ History Tables (his.teams, his.matches, his.matchdetails)
    - Runs on `http://localhost:7094`
 
 3. **Manual Sync (while running):**
-   - HTTP GET: `http://localhost:7094/api/sync`
-   - Query params: `weekOffsetFrom=X&weekOffsetTo=Y` (optional)
+   - HTTP GET: `http://localhost:7094/api/sync-matches`
+   - Query params: `reset=true&season=YYYY` (optional, re-fetches a full season)
 
 ### Command Line
 
@@ -180,7 +180,7 @@ Monitor function logs in Azure portal or locally in console output. Schedule is 
 
 Manual execution via HTTP:
 ```
-GET http://localhost:7094/api/sync
+GET http://localhost:7094/api/sync-matches
 ```
 
 ## Sportlink API Reference
@@ -284,9 +284,9 @@ Database connection includes 5 retries with 5-second delays. If still failing:
 
 ## Testing Notes
 
-- No unit tests currently in the project
+- `FunctionApp.Tests/` contains the unit tests (409 at the time of writing); run with `dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj`. They run on every PR in the `Build FunctionApp + BlazorAdmin` job
 - Recommend testing with local SQL Server instance (YOUR_SERVER)
-- Manual testing: Use HTTP trigger at `/api/sync` with optional week offset parameters
+- Manual testing: Use HTTP trigger at `/api/sync-matches`, optionally with `reset=true&season=YYYY`
 - Integration testing: Query history tables to verify data insertion
 
 ## Code Conventions
