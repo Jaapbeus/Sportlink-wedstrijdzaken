@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.18.0.1] — 2026-07-28
+
+### Fixed
+- **Drie stille fouten in de databasemigratie naar productie zijn opgelost.** Bij het uitrollen van een nieuwe versie draait een migratiescript tegen de productiedatabase. Dat script meldde "geslaagd", terwijl er in werkelijkheid tien fouten in het uitvoerlog stonden — bij twee opeenvolgende releases, zonder dat iemand het kon zien. (#738)
+  - De tabel met de KNVB-speeldagenkalender bestond helemaal niet in productie: hij stond alleen in de schemadefinitie, en die wordt bij een uitrol niet meegenomen. Alle acht vullingen van die tabel faalden dus. Daardoor kon de KNVB-kalenderbijlage bij een verzet-verzoek zonder datum in productie niet werken. De tabel wordt nu aangemaakt vóór hij gevuld wordt; het gaat om 423 speeldagen over zes regio's en twee seizoenen.
+  - De aanvulling van ontbrekende leeftijdscategorieën (`JO6` en alle `MO`-categorieën) faalde omdat de clubcode niet werd meegegeven. Die categorieën ontbraken daardoor in productie, en elke opzoeking van wedstrijdduur of standaard voorkeurstijd voor zo'n categorie vond niets.
+  - De primaire sleutel op de speeltijden bestond in productie nog uit één kolom in plaats van twee. Daardoor kon de democlub geen eigen speeltijden krijgen — het kopiëren botste op de gegevens van de echte club — en konden twee clubs niet dezelfde leeftijdscategorie hebben. Dat laatste is een schending van de multi-club-opzet.
+
+  Alle drie zijn geverifieerd door de productiesituatie lokaal na te bootsen (tabel verwijderd, categorieën verwijderd, sleutel teruggezet) en het script daarna twee keer te draaien: geen enkele fout, en herhalen is veilig.
+
+  De onderliggende oorzaak dat zulke fouten onzichtbaar bleven, is apart vastgelegd (#739), net als een vierde bevinding die alleen een nieuwe clubinstallatie raakt (#740).
+
 ## [2.18.0.0] — 2026-07-28
 
 ### Added
