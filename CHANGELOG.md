@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.18.0.1] — 2026-07-28
+
+### Fixed
+- **Drie stille fouten in de databasemigratie naar productie zijn opgelost.** Bij het uitrollen van een nieuwe versie draait een migratiescript tegen de productiedatabase. Dat script meldde "geslaagd", terwijl er in werkelijkheid tien fouten in het uitvoerlog stonden — bij twee opeenvolgende releases, zonder dat iemand het kon zien. (#738)
+  - De tabel met de KNVB-speeldagenkalender bestond helemaal niet in productie: hij stond alleen in de schemadefinitie, en die wordt bij een uitrol niet meegenomen. Alle acht vullingen van die tabel faalden dus. Daardoor kon de KNVB-kalenderbijlage bij een verzet-verzoek zonder datum in productie niet werken. De tabel wordt nu aangemaakt vóór hij gevuld wordt; het gaat om 423 speeldagen over zes regio's en twee seizoenen.
+  - De aanvulling van ontbrekende leeftijdscategorieën (`JO6` en alle `MO`-categorieën) faalde omdat de clubcode niet werd meegegeven. Die categorieën ontbraken daardoor in productie, en elke opzoeking van wedstrijdduur of standaard voorkeurstijd voor zo'n categorie vond niets.
+  - De primaire sleutel op de speeltijden bestond in productie nog uit één kolom in plaats van twee. Daardoor kon de democlub geen eigen speeltijden krijgen — het kopiëren botste op de gegevens van de echte club — en konden twee clubs niet dezelfde leeftijdscategorie hebben. Dat laatste is een schending van de multi-club-opzet.
+
+  Alle drie zijn geverifieerd door de productiesituatie lokaal na te bootsen (tabel verwijderd, categorieën verwijderd, sleutel teruggezet) en het script daarna twee keer te draaien: geen enkele fout, en herhalen is veilig.
+
+  De onderliggende oorzaak dat zulke fouten onzichtbaar bleven, is apart vastgelegd in issue #739, net als een vierde bevinding die alleen een nieuwe clubinstallatie raakt: zie issue #740.
+
 ## [2.18.0.0] — 2026-07-28
 
 ### Added
@@ -49,7 +61,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Teambegeleiding staat nu bovenaan** in het menu en als eerste tegel op het dashboard, direct onder Dashboard. Het is het meest gebruikte scherm: contactgegevens van begeleiders zijn hier sneller te vinden dan in Sportlink zelf. De overige schermen behouden hun onderlinge volgorde. (#669)
 
 ### Fixed
-- **De twee nieuwe instellingen voor de KNVB-kalenderbijlage zouden bij het live zetten ontbreken in de database** (#561). Ze waren alleen aan de schemadefinitie toegevoegd, en die definitie wordt bij een deploy niet uitgerold — alleen het migratiescript draait. Zonder deze correctie zou de Instellingen-pagina na deze release een foutmelding geven in plaats van te laden, terwijl er lokaal niets aan de hand leek. De bestaande controle hierop kijkt alleen naar nieuwe tabellen, niet naar nieuwe kolommen; dat gat is apart vastgelegd (#734). Het migratiescript is tegen een database met twee clubs uitgevoerd en twee keer achter elkaar gedraaid om te bevestigen dat herhalen veilig is.
+- **De twee nieuwe instellingen voor de KNVB-kalenderbijlage zouden bij het live zetten ontbreken in de database** (#561). Ze waren alleen aan de schemadefinitie toegevoegd, en die definitie wordt bij een deploy niet uitgerold — alleen het migratiescript draait. Zonder deze correctie zou de Instellingen-pagina na deze release een foutmelding geven in plaats van te laden, terwijl er lokaal niets aan de hand leek. De bestaande controle hierop kijkt alleen naar nieuwe tabellen, niet naar nieuwe kolommen; dat gat is apart vastgelegd in issue #734. Het migratiescript is tegen een database met twee clubs uitgevoerd en twee keer achter elkaar gedraaid om te bevestigen dat herhalen veilig is.
 - **De teamherkenning werkt nu uitsluitend via de nieuwe teamlijst** (#700). De oude tekstregels die een teamnaam probeerden te repareren, en de aanname dat een team "van ons" is zodra er geen spatie in de naam staat, zijn verwijderd. Die aanname kon een tegenstander als eigen team aanmerken, met thuis en uit omgedraaid. Welk van de twee genoemde teams het eigen team is, wordt nu bepaald door te kijken wélke in de teamlijst staat.
 
   Er is ook geen schakelaar meer om de herkenning uit te zetten: als dat het enige pad is, is zo'n schakelaar geen veiligheidsventiel maar een valkuil. In plaats daarvan geldt: is de teamlijst leeg — bijvoorbeeld direct na een update, vóór de eerste nachtelijke synchronisatie — dan wordt hij eenmalig alsnog opgebouwd, en lukt dat niet, dan wordt er niet verwerkt in plaats van berichten koppelen zonder herkenning.

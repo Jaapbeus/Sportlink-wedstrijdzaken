@@ -919,6 +919,16 @@ Zet alle drie velden synchroon in **beide** csproj's:
 2. Gebruik de secties `### Added`, `### Changed`, `### Fixed`, `### Security`, `### Removed`
 3. Schrijf voor de gebruiker, niet voor de developer: "Beheerders kunnen nu X" i.p.v. "Methode Y refactored"
 
+> **Let op de notatie van issuenummers — `(#N)` sluit het issue bij de volgende release.**
+> `close-released-issues.yml` leest de CHANGELOG-sectie van de getagde versie en behandelt elke
+> haakjesgroep die **uitsluitend** issuenummers bevat — `(#574)` of `(#599, #595)` — als attributie
+> van opgeleverd werk. Die issues worden gesloten.
+>
+> Gebruik `(#N)` dus alleen voor werk dat in díe versie zit. Voor een **kruisverwijzing** naar een
+> vervolgpunt schrijf je het nummer in proza: `zie issue #739` — nooit `(#739)`. Dit ging mis bij
+> v2.18.0.1: drie vervolgissues die juist bij die release waren aangemaakt (#734, #739, #740)
+> werden er door gesloten en moesten met de hand worden heropend.
+
 **Verplicht vóór een release:**
 1. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
 2. Voeg een lege `## [Unreleased]` terug bovenaan

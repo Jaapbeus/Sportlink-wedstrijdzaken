@@ -178,6 +178,38 @@ BEGIN
 END
 GO
 
+-- #738: dbo.KnvbKalenderDag AANMAKEN vóór de seeds.
+-- De tabel stond alleen in het DB-project, en de deploy publiceert geen dacpac — alleen dit
+-- script draait tegen de productiedatabase. Alle acht seed-blokken hieronder faalden daardoor
+-- met "Invalid object name 'dbo.KnvbKalenderDag'", bij twee opeenvolgende releases, zonder dat
+-- de deploy rood werd (zie #739 voor die maskering). De schema-drift check uit #595 zag het niet:
+-- die accepteert elke vermelding van de tabelnaam als dekking, ook een INSERT (zie #734).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.KnvbKalenderDag'))
+BEGIN
+    CREATE TABLE [dbo].[KnvbKalenderDag] (
+        [Seizoen]          VARCHAR(9)    NOT NULL,
+        [Regio]            VARCHAR(20)   NOT NULL,
+        [Datum]            DATE          NOT NULL,
+        [DagType]          VARCHAR(20)   NOT NULL,
+        [HeeftSenioren]    BIT           NOT NULL,
+        [HeeftJeugd]       BIT           NOT NULL,
+        [HeeftMeiden]      BIT           NOT NULL,
+        [PupillenToernooi] BIT           NOT NULL CONSTRAINT [DF_KnvbKalenderDag_Pup] DEFAULT 0,
+        [Schoolvakantie]   VARCHAR(10)   NULL,
+        [Feestdag]         NVARCHAR(50)  NULL,
+        [Opmerking]        NVARCHAR(200) NULL,
+        [Bron]             NVARCHAR(200) NULL,
+        CONSTRAINT [PK_KnvbKalenderDag] PRIMARY KEY CLUSTERED ([Seizoen] ASC, [Regio] ASC, [Datum] ASC),
+        CONSTRAINT [CK_KnvbKalenderDag_DagType] CHECK ([DagType] IN ('Competitie','Beker','Inhaal','Vrij','NC','Toernooi','Feestdag'))
+    );
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.KnvbKalenderDag') AND name = 'IX_KnvbKalenderDag_Datum')
+    CREATE NONCLUSTERED INDEX [IX_KnvbKalenderDag_Datum]
+        ON [dbo].[KnvbKalenderDag] ([Datum] ASC)
+        INCLUDE ([Regio], [DagType]);
+GO
+
 -- KnvbKalenderDag: KNVB speeldagenkalender seizoen 2025/2026 (West + Landelijk)
 -- Bron: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/seizoensplanning/speeldagenkalenders
 -- Geseed per regio+seizoen; her-runs zijn idempotent dankzij IF NOT EXISTS.
@@ -850,6 +882,36 @@ GO
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_Speeltijden_ClubCode')
     ALTER TABLE [dbo].[Speeltijden] DROP CONSTRAINT [DF_Speeltijden_ClubCode];
 GO
+
+-- #738: PK_Speeltijden moet ([Leeftijd], [ClubCode]) zijn, niet ([Leeftijd]) alleen.
+-- Het toevoegen van de ClubCode-kolom hierboven verandert een bestaande primaire sleutel niet, dus
+-- op gemigreerde databases staat de PK nog op één kolom. Gevolg: twee clubs kunnen niet dezelfde
+-- leeftijdscategorie hebben, en het kopiëren van de speeltijden naar de democlub botst op
+-- "Violation of PRIMARY KEY ... duplicate key (1-99)". Dat is een schending van de
+-- multi-club-invariant, geen cosmetisch verschil.
+--
+-- Idempotent: alleen herbouwen als de sleutel nu uit precies één kolom bestaat. Draait ná de
+-- ClubCode-toevoeging, want anders bestaat de kolom nog niet om in de sleutel op te nemen.
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'ClubCode')
+   AND EXISTS (
+        SELECT 1
+        FROM sys.key_constraints kc
+        WHERE kc.parent_object_id = OBJECT_ID('dbo.Speeltijden')
+          AND kc.type = 'PK'
+          AND (SELECT COUNT(*) FROM sys.index_columns ic
+               WHERE ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id) = 1)
+BEGIN
+    DECLARE @pkNaam SYSNAME = (
+        SELECT kc.name FROM sys.key_constraints kc
+        WHERE kc.parent_object_id = OBJECT_ID('dbo.Speeltijden') AND kc.type = 'PK');
+
+    -- Ontdubbelen kan hier niet nodig zijn: met een PK op alleen [Leeftijd] is elke leeftijd
+    -- per definitie al uniek, dus de nieuwe sleutel kan niet botsen.
+    EXEC('ALTER TABLE [dbo].[Speeltijden] DROP CONSTRAINT [' + @pkNaam + ']');
+    ALTER TABLE [dbo].[Speeltijden]
+        ADD CONSTRAINT [PK_Speeltijden] PRIMARY KEY CLUSTERED ([Leeftijd] ASC, [ClubCode] ASC);
+END
+GO
 IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TeamRegels_ClubCode')
     ALTER TABLE [dbo].[TeamRegels] DROP CONSTRAINT [DF_TeamRegels_ClubCode];
 GO
@@ -1061,25 +1123,42 @@ SET [WedstrijdTotaal] = 115, [WedstrijdHelft] = 45, [WedstrijdRust] = 15
 WHERE [Leeftijd] IN ('1-99', 'VR') AND [WedstrijdTotaal] < 115;
 GO
 
--- Ontbrekende categorieën aanvullen
+-- Ontbrekende categorieën aanvullen.
+--
+-- #738: geeft nu [ClubCode] expliciet mee. De kolom is NOT NULL en de default-constraint wordt
+-- eerder in dit script bewust gedropt (#435/#598), dus zonder ClubCode faalde deze MERGE in
+-- productie met "Cannot insert the value NULL into column 'ClubCode'". Gevolg: JO6 en alle
+-- MO-categorieën ontbraken daar, waardoor elke opzoeking van wedstrijdduur of standaard
+-- voorkeurstijd voor die categorieën niets vond.
+--
+-- Gescoped op de clubs die al speeltijden hebben, niet op alle clubs in dbo.AppSettings: de
+-- democlub krijgt zijn volledige set verderop in dit script als kopie van de primaire club, en
+-- die kopie wordt overgeslagen zodra er al één rij voor die club bestaat. Zou deze MERGE de
+-- democlub alvast een paar categorieën geven, dan bleef de rest van die set daar ontbreken.
 MERGE [dbo].[Speeltijden] AS target
-USING (VALUES
-    ('JO6',  0.25, 40,  15, 10),
-    ('MO7',  0.25, 50,  20, 10),
-    ('MO8',  0.25, 50,  20, 10),
-    ('MO9',  0.25, 50,  20, 10),
-    ('MO10', 0.25, 65,  25, 15),
-    ('MO11', 0.50, 75,  30, 15),
-    ('MO12', 0.50, 75,  30, 15),
-    ('MO14', 1.00, 85,  35, 15),
-    ('MO16', 1.00, 95,  40, 15),
-    ('MO18', 1.00, 105, 45, 15),
-    ('MO23', 1.00, 105, 45, 15)
-) AS src ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
-ON target.[Leeftijd] = src.[Leeftijd]
+USING (
+    SELECT v.[Leeftijd], v.[Veldafmeting], v.[WedstrijdTotaal], v.[WedstrijdHelft], v.[WedstrijdRust],
+           c.[ClubCode]
+    FROM (VALUES
+        ('JO6',  0.25, 40,  15, 10),
+        ('MO7',  0.25, 50,  20, 10),
+        ('MO8',  0.25, 50,  20, 10),
+        ('MO9',  0.25, 50,  20, 10),
+        ('MO10', 0.25, 65,  25, 15),
+        ('MO11', 0.50, 75,  30, 15),
+        ('MO12', 0.50, 75,  30, 15),
+        ('MO14', 1.00, 85,  35, 15),
+        ('MO16', 1.00, 95,  40, 15),
+        ('MO18', 1.00, 105, 45, 15),
+        ('MO23', 1.00, 105, 45, 15)
+    ) AS v([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
+    CROSS JOIN (SELECT DISTINCT [ClubCode] FROM [dbo].[Speeltijden]) AS c
+) AS src ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [ClubCode])
+ON  target.[Leeftijd] = src.[Leeftijd]
+AND target.[ClubCode] = src.[ClubCode]
 WHEN NOT MATCHED THEN
-    INSERT ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
-    VALUES (src.[Leeftijd], src.[Veldafmeting], src.[WedstrijdTotaal], src.[WedstrijdHelft], src.[WedstrijdRust]);
+    INSERT ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [ClubCode])
+    VALUES (src.[Leeftijd], src.[Veldafmeting], src.[WedstrijdTotaal], src.[WedstrijdHelft], src.[WedstrijdRust], src.[ClubCode]);
 GO
 
 -- ============================================================
