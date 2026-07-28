@@ -981,8 +981,10 @@ dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 .\scripts\dev\Test-App.ps1            # controleert schema, build, endpoints, Blazor-pagina's
 .\scripts\dev\Test-App.ps1 -Fix       # herstelt schema-drift automatisch
 
-# Handmatige sync
-# GET http://localhost:7094/api/sync?weekOffsetFrom=X&weekOffsetTo=Y
+# Handmatige sync — standaard: vorige week t/m einde seizoen (zelfde bereik als de timer)
+# GET http://localhost:7094/api/sync-matches
+# Volledig seizoen opnieuw ophalen:
+# GET http://localhost:7094/api/sync-matches?reset=true&season=2026
 ```
 
 **Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server met `SportlinkSqlDb` database.
@@ -1012,7 +1014,7 @@ Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 
 **Two trigger functions** in `FunctionApp/Function1.cs`:
 - `FetchAndStoreApiData` — Timer trigger (schedule via `%FETCH_SCHEDULE%` app setting, default `0 0 4 * * *`), fetches teams, matches, and match details
-- `SyncMatchesHttp` — HTTP GET `/api/sync`, manual trigger with optional weekoffset params
+- `SyncMatchesHttp` — HTTP GET `/api/sync-matches`, manual trigger. Standaard vorige week t/m einde seizoen; met `?reset=true&season=YYYY` het volledige seizoen. **Let op:** de route is `sync-matches`, niet `sync` — dat laatste geeft 404 (gecorrigeerd bij #662)
 
 **Data flow:** Sportlink JSON -> C# entity models -> staging tables (`stg.*`) -> stored procedure MERGE -> history tables (`his.*`) -> public views (`pub.*`)
 
