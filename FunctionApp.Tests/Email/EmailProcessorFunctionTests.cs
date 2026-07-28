@@ -93,7 +93,8 @@ public class EmailProcessorFunctionTests
             Bericht(), graph, persistence, NullLogger.Instance);
 
         persistence.Inserts.Should().ContainSingle(e => e.MessageId == "m1");
-        persistence.FoutUpdates.Should().ContainSingle(u => u.MessageId == "m1");
+        // Sinds #717 muteert de foutafhandeling op verwerkingId; de fake geeft 1 terug bij de insert.
+        persistence.FoutUpdates.Should().ContainSingle(u => u.VerwerkingId == 1);
 
         // Ongelezen laten is bewust: de volgende poll probeert het opnieuw, binnen de pogingenlimiet.
         graph.MarkedAsReadIds.Should().BeEmpty();
@@ -142,7 +143,7 @@ public class EmailProcessorFunctionTests
 
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m-blokkeerder");
         persistence.FoutUpdates.Should().ContainSingle(u =>
-            u.MessageId == "m-blokkeerder" && u.FoutMelding.Contains("Opgegeven"));
+            u.VerwerkingId == 6 && u.FoutMelding.Contains("Opgegeven"));
         persistence.PogingVerhogingen.Should().BeEmpty();
         persistence.Inserts.Should().BeEmpty();
         graph.SentReplies.Should().BeEmpty();

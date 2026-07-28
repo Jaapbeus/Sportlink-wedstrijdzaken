@@ -250,8 +250,16 @@ adres dat juist uitgesloten was.
 
 Een bericht wordt niet meer als afgehandeld beschouwd zodra er een rij bestaat, maar pas als de
 verwerking een **definitieve** eindstatus heeft (`AntwoordVerstuurd`, `GeenAntwoordNodig`,
-`BuitenScope`) of `VerstuurdNaar` gevuld is. Staat er een niet-definitieve status, dan wordt de
+`BuitenScope`) of `IsBeantwoord` gezet is. Staat er een niet-definitieve status, dan wordt de
 bestaande rij hergebruikt en de verwerking opnieuw uitgevoerd.
+
+> **`IsBeantwoord` en niet `VerstuurdNaar` (#718).** Tot deze wijziging was `VerstuurdNaar` de grens.
+> Die kolom bevat een e-mailadres en wordt door de AVG-retentie na 30 dagen op `NULL` gezet, terwijl
+> dezelfde kolom óók de replydetectie aanstuurde. Een reply op dag 31 — normaal bij een verzoek dat
+> weken vooruit ligt — werd daardoor niet meer als reply herkend, dus werd er ook geen leermoment
+> meer vastgelegd: het zelflerende deel werkte alleen binnen 30 dagen. `IsBeantwoord` is een boolean
+> zonder persoonsgegeven en overleeft de anonimisering bewust; `VerstuurdNaar` blijft alleen als
+> terugvalpad meedoen voor rijen van vóór de migratie.
 
 `planner.EmailVerwerking.Pogingen` houdt bij hoe vaak dat is gebeurd. Na drie pogingen geeft de
 verwerking op: status `Fout` met de melding dat er is opgegeven, bericht als gelezen gemarkeerd, en
@@ -265,6 +273,36 @@ er geen teller en kwam zo'n bericht eeuwig terug, elke keer met een nieuwe AI-ca
 
 Bij een afgebroken AI-classificatie door een quotalimiet wordt géén poging geteld: er is dan niets
 geprobeerd wat aan het bericht zelf ligt.
+
+#### Afgebroken tussen versturen en vastleggen (#716)
+
+De volgorde was versturen → vastleggen → als gelezen markeren, dus de grens tegen een dubbel antwoord
+werd geschreven nádat de mail al weg was. Bij een harde afbreking precies daartussen (functie-time-out
+van tien minuten, host-recycle, scale-in) was het antwoord verstuurd terwijl er in de database niets
+van te zien was — en stuurde de volgende poll een tweede antwoord.
+
+Daarom wordt vlak vóór de verzendpoging `VerzendPogingOpUtc` gezet, en meteen weer gewist zodra het
+versturen aantoonbaar mislukt. Wat overblijft is een ondubbelzinnig signaal:
+
+| `VerzendPogingOpUtc` | `IsBeantwoord` | Betekenis | Volgende poll |
+|---|---|---|---|
+| leeg | 0 | nog niet aan versturen toe | verwerkt opnieuw |
+| leeg | 0, na verzendfout | versturen is aantoonbaar mislukt | probeert opnieuw (#712) |
+| **gevuld** | **0** | **verstuurd of misschien verstuurd, uitkomst onbekend** | **verstuurt niet; status `Review`** |
+| gevuld of leeg | 1 | antwoord is vastgelegd | slaat over |
+
+De onbekende uitkomst weegt zwaarder dan de pogingenteller: het is geen mislukte poging die je nog
+eens mag proberen. Het bericht wordt als gelezen gemarkeerd zodat het de wachtrij niet bezet houdt, en
+de coördinator ziet het met status `Review` terug in het email-log. Kan de intentie zelf niet worden
+vastgelegd, dan wordt er niet verstuurd — een poging uitstellen is lichter dan een dubbel antwoord.
+
+#### Eén leermoment per correctie (#715)
+
+Omdat een hervatte verwerking dezelfde rij hergebruikt, draaide de correctiedetectie bij elke poging
+opnieuw en leverde hetzelfde (origineel, correctie)-paar tot drie identieke leermomenten op. Die moest
+de beheerder allemaal apart valideren, en meervoudig goedgekeurd woog hetzelfde voorbeeld zwaarder in
+de AI-prompt dan bedoeld. `UQ_ClassificatieCorrectie_Paar` is nu de harde grens; de repository doet er
+een `IF NOT EXISTS` voor zodat de normale herhaling geen fout oplevert.
 
 ---
 
@@ -757,15 +795,15 @@ Dit zijn ze alle acht:
 | `Ontvangen` | Rij aangemaakt, verwerking nog niet begonnen | Nee |
 | `Geclassificeerd` | AI-classificatie vastgelegd | Nee |
 | `Verwerkt` | Plannerlogica gedraaid, nog geen antwoordbesluit | Nee |
-| `AntwoordVerstuurd` | Antwoord de deur uit; `VerstuurdNaar` gevuld | **Ja** |
-| `Review` | Review-mode: voorstel opgeslagen in `AntwoordEmail`, niets verstuurd | Nee |
+| `AntwoordVerstuurd` | Antwoord de deur uit; `IsBeantwoord` = 1 | **Ja** |
+| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode of onbekende verzenduitkomst (#716) | Nee |
 | `Fout` | Verwerking mislukt of opgegeven na 3 pogingen | Nee |
 | `BuitenScope` | Buiten scope bevonden ná herclassificatie | **Ja** |
 | `GeenAntwoordNodig` | Bewust geen antwoord: planning is mogelijk (#572) | **Ja** |
 
-"Definitief" bepaalt of een volgende poll het bericht overslaat (§1d). `VerstuurdNaar` is daarbij
-óók leidend: is die kolom gevuld, dan wordt er nooit een tweede antwoord gestuurd, ongeacht de
-status.
+"Definitief" bepaalt of een volgende poll het bericht overslaat (§1d). `IsBeantwoord` is daarbij óók
+leidend: staat die op 1, dan wordt er nooit een tweede antwoord gestuurd, ongeacht de status. Die
+kolom overleeft de AVG-anonimisering, `VerstuurdNaar` niet (#718).
 
 ---
 

@@ -21,7 +21,13 @@ internal enum VerwerkingsBesluit
     OverslaanAlAfgerond,
 
     /// <summary>Te vaak mislukt — opgeven zodat het bericht de wachtrij niet blijft blokkeren.</summary>
-    OpgevenNaMaxPogingen
+    OpgevenNaMaxPogingen,
+
+    /// <summary>
+    /// Er is een verzendpoging vastgelegd waarvan de uitkomst onbekend is (#716). Niet opnieuw
+    /// versturen — het eerste antwoord kan de deur al uit zijn — maar ter beoordeling neerleggen.
+    /// </summary>
+    OnbeslistNaVerzendPoging
 }
 
 /// <summary>
@@ -58,8 +64,8 @@ internal static class EmailIdempotentie
     ];
 
     /// <summary>
-    /// Is deze verwerking definitief afgerond? <c>VerstuurdNaar</c> is hier leidend: die kolom wordt
-    /// uitsluitend gevuld nádat een antwoord echt verstuurd is, dus een gevulde waarde sluit een
+    /// Is deze verwerking definitief afgerond? <c>AntwoordVerstuurd</c> is hier leidend: dat wordt
+    /// uitsluitend vastgelegd nádat een antwoord echt verstuurd is, dus een gezette waarde sluit een
     /// tweede antwoord uit — ook als de status daarna nog op 'Fout' is gezet of onbekend is.
     /// </summary>
     internal static bool IsDefinitief(EmailVerwerkingStand stand)
@@ -74,6 +80,12 @@ internal static class EmailIdempotentie
 
         if (IsDefinitief(stand))
             return VerwerkingsBesluit.OverslaanAlAfgerond;
+
+        // Vóór de pogingengrens: een onbekende verzenduitkomst is geen "mislukte poging" die je nog een
+        // keer mag proberen. Zou dit ná de grens staan, dan zou een bericht met twee eerdere pogingen
+        // alsnog opnieuw verstuurd worden — precies wat #716 moet voorkomen.
+        if (stand.VerzendPogingOnbeslist)
+            return VerwerkingsBesluit.OnbeslistNaVerzendPoging;
 
         return stand.Pogingen >= MaxPogingen
             ? VerwerkingsBesluit.OpgevenNaMaxPogingen
@@ -407,8 +419,8 @@ public class EmailProcessorFunction
                 fouten++;
                 log.LogError(ex, "Fout bij verwerken van email {MessageId} (onderwerp niet gelogd — AVG #210)",
                     email.MessageId);
-                try { await persistenceService.UpdateFoutAsync(email.MessageId, SanitizeFoutMelding(ex.Message)); }
-                catch { /* fout bij fout-logging mag niet cascaderen */ }
+                await LegVerwerkingsFoutVastAsync(
+                    email, SanitizeFoutMelding(ex.Message), persistenceService, log);
             }
         }
 
@@ -593,7 +605,13 @@ public class EmailProcessorFunction
                 return null;
 
             case VerwerkingsBesluit.OpgevenNaMaxPogingen:
-                await GeefVerwerkingOpAsync(email, stand!.Pogingen, "verwerking", graphService, persistenceService, log);
+                await GeefVerwerkingOpAsync(
+                    email, stand!.VerwerkingId, stand.Pogingen, "verwerking", graphService, persistenceService, log);
+                return null;
+
+            case VerwerkingsBesluit.OnbeslistNaVerzendPoging:
+                await LegVoorBeoordelingNaVerzendPogingAsync(
+                    email, stand!.VerwerkingId, graphService, persistenceService, log);
                 return null;
 
             case VerwerkingsBesluit.HerhaalVerwerking:
@@ -681,6 +699,7 @@ public class EmailProcessorFunction
     /// </summary>
     private static async Task GeefVerwerkingOpAsync(
         InkomendBericht email,
+        int verwerkingId,
         int pogingen,
         string fase,
         IEmailGraphService graphService,
@@ -694,12 +713,93 @@ public class EmailProcessorFunction
 
         try
         {
-            await persistenceService.UpdateFoutAsync(email.MessageId,
+            await persistenceService.UpdateFoutAsync(verwerkingId,
                 $"Opgegeven na {pogingen} mislukte pogingen ({fase}) — handmatige opvolging nodig");
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Kon opgeven-status niet vastleggen voor {MessageId}", email.MessageId);
+            log.LogWarning(ex, "Kon opgeven-status niet vastleggen voor verwerking {Id}", verwerkingId);
+        }
+
+        await graphService.MarkAsReadAsync(email.MessageId);
+    }
+
+    /// <summary>
+    /// Legt een verwerkingsfout vast voor een bericht waarvan het verwerkingId op deze plek niet bekend
+    /// is: de fout kan overal in de verwerking zijn opgetreden, ook vóór de rij bestond.
+    /// <para>
+    /// Sinds #717 muteert de foutafhandeling op <c>Id</c> en niet meer op MessageId, dus wordt het Id
+    /// hier eerst opgezocht. Bestaat er geen rij, dan is er ook niets vast te leggen — de fout is dan al
+    /// gelogd en het bericht blijft ongelezen voor de volgende poll.
+    /// </para>
+    /// </summary>
+    private static async Task LegVerwerkingsFoutVastAsync(
+        InkomendBericht email,
+        string foutMelding,
+        IEmailPersistenceService persistenceService,
+        ILogger log)
+    {
+        try
+        {
+            var stand = await persistenceService.HaalVerwerkingStandOpAsync(email.MessageId);
+            if (stand is null)
+            {
+                log.LogWarning(
+                    "Email {MessageId}: verwerking mislukt vóórdat er een rij bestond — geen foutstatus vastgelegd",
+                    email.MessageId);
+                return;
+            }
+
+            await persistenceService.UpdateFoutAsync(stand.VerwerkingId, foutMelding);
+        }
+        catch (Exception ex)
+        {
+            // Een fout bij het vastleggen van een fout mag nooit cascaderen: de oorspronkelijke fout is
+            // al gelogd en het bericht blijft ongelezen voor de volgende poll.
+            log.LogWarning(ex, "Kon foutstatus niet vastleggen voor {MessageId}", email.MessageId);
+        }
+    }
+
+    /// <summary>
+    /// Handelt een verwerking af waarvan de verzenduitkomst onbekend is (#716): niet opnieuw versturen,
+    /// maar op <see cref="EmailStatus.Review"/> zetten en als gelezen markeren.
+    /// <para>
+    /// Opnieuw versturen zou de afzender een tweede antwoord kunnen geven; niets doen zou het bericht
+    /// elke poll laten terugkomen en de wachtrij van tien oudste ongelezen berichten bezetten. De
+    /// coördinator ziet het bericht terug in het email-log met status Review en kan zelf vaststellen of
+    /// er al een antwoord is aangekomen.
+    /// </para>
+    /// </summary>
+    private static async Task LegVoorBeoordelingNaVerzendPogingAsync(
+        InkomendBericht email,
+        int verwerkingId,
+        IEmailGraphService graphService,
+        IEmailPersistenceService persistenceService,
+        ILogger log)
+    {
+        log.LogWarning(
+            "Email {MessageId}: er staat een verzendpoging vastgelegd zonder bekende uitkomst voor verwerking "
+            + "{Id} — waarschijnlijk is een eerdere invocatie afgebroken tussen versturen en vastleggen. "
+            + "Er wordt NIET opnieuw verstuurd; status op Review voor beoordeling via het email-log.",
+            email.MessageId, verwerkingId);
+
+        try
+        {
+            await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Kon Review-status niet vastleggen voor verwerking {Id}", verwerkingId);
+        }
+
+        try
+        {
+            await graphService.EnsureMasterCategoryAsync(GeenAiAntwoordLabel, "preset0");
+            await graphService.SetCategoriesAsync(email.MessageId, GeenAiAntwoordLabel);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Outlook-labeling mislukt voor verwerking {Id}", verwerkingId);
         }
 
         await graphService.MarkAsReadAsync(email.MessageId);
@@ -723,6 +823,7 @@ public class EmailProcessorFunction
         try
         {
             var stand = await persistenceService.HaalVerwerkingStandOpAsync(email.MessageId);
+            int verwerkingId;
 
             switch (EmailIdempotentie.Bepaal(stand))
             {
@@ -735,19 +836,28 @@ public class EmailProcessorFunction
 
                 case VerwerkingsBesluit.OpgevenNaMaxPogingen:
                     await GeefVerwerkingOpAsync(
-                        email, stand!.Pogingen, "AI-classificatie", graphService, persistenceService, log);
+                        email, stand!.VerwerkingId, stand.Pogingen, "AI-classificatie",
+                        graphService, persistenceService, log);
+                    return;
+
+                case VerwerkingsBesluit.OnbeslistNaVerzendPoging:
+                    // Kan alleen als een eerdere poging al aan het versturen toe was. Dan is opnieuw
+                    // classificeren zinloos en opnieuw versturen onveilig. (#716)
+                    await LegVoorBeoordelingNaVerzendPogingAsync(
+                        email, stand!.VerwerkingId, graphService, persistenceService, log);
                     return;
 
                 case VerwerkingsBesluit.HerhaalVerwerking:
                     await persistenceService.VerhoogPogingenAsync(stand!.VerwerkingId);
+                    verwerkingId = stand.VerwerkingId;
                     break;
 
                 default:
-                    await persistenceService.InsertEmailVerwerkingAsync(email);
+                    verwerkingId = await persistenceService.InsertEmailVerwerkingAsync(email);
                     break;
             }
 
-            await persistenceService.UpdateFoutAsync(email.MessageId, "AI-classificatie mislukt");
+            await persistenceService.UpdateFoutAsync(verwerkingId, "AI-classificatie mislukt");
             log.LogWarning(
                 "Email {MessageId}: AI-classificatie mislukt — poging {Poging} van {Max} vastgelegd, bericht blijft ongelezen voor de volgende poll",
                 email.MessageId, (stand?.Pogingen ?? 0) + 1, EmailIdempotentie.MaxPogingen);

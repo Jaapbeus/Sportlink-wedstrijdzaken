@@ -5,22 +5,29 @@ namespace SportlinkFunction.Email;
 /// <summary>
 /// Stand van een bestaande verwerkingsrij, zoals de idempotentie-guard die nodig heeft (#712).
 /// <para>
-/// <c>AntwoordVerstuurd</c> is afgeleid van <c>VerstuurdNaar IS NOT NULL</c> en is de harde grens
-/// tegen een dubbel antwoord: die kolom wordt uitsluitend gevuld nádat een antwoord daadwerkelijk
-/// de deur uit is. De status alleen is onvoldoende — een verzendfout ná de insert laat de rij achter
-/// met een niet-definitieve status.
+/// <c>AntwoordVerstuurd</c> is de harde grens tegen een dubbel antwoord. Sinds #718 komt die uit
+/// <c>IsBeantwoord</c> — een boolean die de AVG-anonimisering overleeft — met <c>VerstuurdNaar
+/// IS NOT NULL</c> als terugvalpad voor rijen van vóór die kolom. Voorheen was <c>VerstuurdNaar</c>
+/// de enige bron, en die wordt na 30 dagen leeggemaakt.
 /// </para>
 /// <para>
-/// Let op: de AVG-retentie (<c>planner.sp_CleanupEmailVerwerking</c>) zet <c>VerstuurdNaar</c> na 30
-/// dagen op NULL. Daarom blijft de statuslijst een tweede, onafhankelijke grens — die wordt door de
-/// anonimisering niet gewist.
+/// De statuslijst blijft daarnaast een tweede, onafhankelijke grens: bij een rij die al geanonimiseerd
+/// was vóór de introductie van <c>IsBeantwoord</c> is het feit "er is geantwoord" niet meer uit de
+/// data te herleiden.
 /// </para>
 /// </summary>
+/// <param name="VerzendPogingOnbeslist">
+/// Er is een verzendpoging vastgelegd waarvan de uitkomst onbekend is (#716): de intentie werd gezet
+/// vlak vóór het versturen en is niet gewist, terwijl er ook geen antwoord is vastgelegd. Dat wijst op
+/// een harde afbreking tussen versturen en vastleggen. Opnieuw versturen is dan niet veilig, want het
+/// eerste antwoord kan de deur al uit zijn.
+/// </param>
 internal sealed record EmailVerwerkingStand(
     int VerwerkingId,
     string Status,
     int Pogingen,
-    bool AntwoordVerstuurd);
+    bool AntwoordVerstuurd,
+    bool VerzendPogingOnbeslist = false);
 
 internal interface IEmailPersistenceService
 {
@@ -54,7 +61,23 @@ internal interface IEmailPersistenceService
     /// </summary>
     Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail);
 
-    Task UpdateFoutAsync(string messageId, string foutMelding);
+    /// <summary>
+    /// Legt de intentie vast om te gaan versturen, vóór de verzendpoging (#716). Zie
+    /// <see cref="WisVerzendPogingAsync"/> voor het wissen bij een aantoonbaar mislukte poging.
+    /// </summary>
+    Task MarkeerVerzendPogingAsync(int verwerkingId);
+
+    /// <summary>
+    /// Wist de verzendintentie omdat het versturen aantoonbaar is mislukt (#716). Alleen dán mag een
+    /// volgende poging opnieuw versturen; blijft de intentie staan, dan is de uitkomst onbekend.
+    /// </summary>
+    Task WisVerzendPogingAsync(int verwerkingId);
+
+    /// <summary>
+    /// Legt een verwerkingsfout vast op <b>verwerkingId</b> (#717), consistent met alle andere
+    /// mutaties. Overschrijft nooit een rij waarvan al vaststaat dat er een antwoord op is verstuurd.
+    /// </summary>
+    Task UpdateFoutAsync(int verwerkingId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log);
     Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId);
@@ -125,8 +148,14 @@ internal sealed class EmailPersistenceService : IEmailPersistenceService
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
         => _repository.UpdateAntwoordVerstuurdAsync(verwerkingId, verstuurdNaar, antwoordEmail);
 
-    public Task UpdateFoutAsync(string messageId, string foutMelding)
-        => _repository.UpdateFoutAsync(messageId, foutMelding);
+    public Task MarkeerVerzendPogingAsync(int verwerkingId)
+        => _repository.MarkeerVerzendPogingAsync(verwerkingId);
+
+    public Task WisVerzendPogingAsync(int verwerkingId)
+        => _repository.WisVerzendPogingAsync(verwerkingId);
+
+    public Task UpdateFoutAsync(int verwerkingId, string foutMelding)
+        => _repository.UpdateFoutAsync(verwerkingId, foutMelding);
 
     public Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, ILogger log)

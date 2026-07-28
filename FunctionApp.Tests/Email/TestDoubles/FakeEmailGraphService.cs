@@ -34,8 +34,17 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Hook die precies op het moment van versturen wordt aangeroepen. Nodig om vast te leggen dát de
+    /// verzendintentie al in de database staat vóórdat de mail de deur uit gaat (#716) — de volgorde is
+    /// daar het hele punt, en die is niet te zien aan de eindtoestand.
+    /// </summary>
+    public Action? OnSendReply { get; set; }
+
     public Task SendReplyAsync(string to, string subject, string body, string? conversationId)
     {
+        OnSendReply?.Invoke();
+
         if (ThrowOnSendReply)
             throw new InvalidOperationException("SendReply simulated failure");
 

@@ -13,6 +13,13 @@ BEGIN
     -- Afzender en Onderwerp zijn NOT NULL → vervangen door placeholder.
     -- Nullbare velden worden op NULL gezet, inclusief FoutMelding (#420): een foutmelding bevat
     -- vaak het e-mailadres of een fragment van het bericht en is dus zelf een persoonsgegeven.
+    --
+    -- NIET aanraken: [IsBeantwoord] en [VerzendPogingOpUtc] (#718, #716). Dat zijn geen
+    -- persoonsgegevens — een boolean en een tijdstip zeggen niets over een persoon — en ze dragen
+    -- twee harde grenzen: "wij hebben hierop geantwoord" (replydetectie én duplicaatbescherming) en
+    -- "er is een verzendpoging met onbekende uitkomst". Werden die mee geanonimiseerd, dan zou een
+    -- reply na 31 dagen niet meer als reply worden herkend en zou een oud bericht een tweede
+    -- antwoord kunnen krijgen. Voeg ze dus nooit toe aan de SET-lijst hieronder.
     UPDATE [planner].[EmailVerwerking]
     SET [Afzender]          = '[geanonimiseerd]',
         [Onderwerp]         = '[geanonimiseerd]',

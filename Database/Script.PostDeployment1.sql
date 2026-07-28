@@ -2261,6 +2261,13 @@ BEGIN
     -- Afzender en Onderwerp zijn NOT NULL → vervangen door placeholder.
     -- Nullbare velden worden op NULL gezet, inclusief FoutMelding (#420): een foutmelding bevat
     -- vaak het e-mailadres of een fragment van het bericht en is dus zelf een persoonsgegeven.
+    --
+    -- NIET aanraken: [IsBeantwoord] en [VerzendPogingOpUtc] (#718, #716). Dat zijn geen
+    -- persoonsgegevens — een boolean en een tijdstip zeggen niets over een persoon — en ze dragen
+    -- twee harde grenzen: "wij hebben hierop geantwoord" (replydetectie én duplicaatbescherming) en
+    -- "er is een verzendpoging met onbekende uitkomst". Werden die mee geanonimiseerd, dan zou een
+    -- reply na 31 dagen niet meer als reply worden herkend en zou een oud bericht een tweede
+    -- antwoord kunnen krijgen. Voeg ze dus nooit toe aan de SET-lijst hieronder.
     UPDATE [planner].[EmailVerwerking]
     SET [Afzender]          = '[geanonimiseerd]',
         [Onderwerp]         = '[geanonimiseerd]',
@@ -2675,5 +2682,98 @@ BEGIN
         CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_Genormaliseerd]
             ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstGenormaliseerd])
             INCLUDE ([TeamId], [Status]);
+END
+GO
+
+-- ============================================================
+-- #718: planner.EmailVerwerking.IsBeantwoord — "wij hebben geantwoord" los van het adres.
+--
+-- Waarom: de AVG-retentie zet VerstuurdNaar na 30 dagen op NULL. Diezelfde kolom was óók het
+-- criterium voor de replydetectie ("hoort deze inkomende mail bij een bericht dat wij beantwoord
+-- hebben?") en sinds #712 de harde grens tegen een tweede antwoord. Eén kolom met twee betekenissen,
+-- waarvan er één per definitie na 30 dagen verdwijnt: een reply op dag 31 — normaal bij een verzoek
+-- dat weken vooruit ligt — werd niet meer als reply herkend, dus werd er ook geen leermoment meer
+-- vastgelegd. Het zelflerende deel werkte daarmee alleen binnen 30 dagen, en dat stond nergens.
+--
+-- Backfill: elke rij waarvan we nog kunnen zien dat er geantwoord is, krijgt de vlag. Voor rijen die
+-- al geanonimiseerd zijn én geen status 'AntwoordVerstuurd' hebben is dat niet meer te achterhalen;
+-- die blijven 0. Dat is de veilige kant op: de statuslijst in EmailIdempotentie blijft een tweede,
+-- onafhankelijke grens tegen een dubbel antwoord.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'IsBeantwoord')
+BEGIN
+    ALTER TABLE [planner].[EmailVerwerking]
+        ADD [IsBeantwoord] BIT NOT NULL CONSTRAINT [DF_EmailVerwerking_IsBeantwoord] DEFAULT 0;
+END
+GO
+
+-- Aparte batch: de kolom moet bestaan vóór de UPDATE gecompileerd wordt.
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'IsBeantwoord')
+BEGIN
+    UPDATE [planner].[EmailVerwerking]
+    SET [IsBeantwoord] = 1
+    WHERE [IsBeantwoord] = 0
+      AND ([VerstuurdNaar] IS NOT NULL OR [Status] = 'AntwoordVerstuurd');
+END
+GO
+
+-- ============================================================
+-- #716: planner.EmailVerwerking.VerzendPogingOpUtc — verzendintentie vóór het versturen.
+--
+-- Waarom: de volgorde was versturen → vastleggen → als gelezen markeren. De grens die een tweede
+-- antwoord moet voorkomen werd dus geschreven NÁDAT de mail al de deur uit was. Wordt de invocatie
+-- precies daartussen hard afgebroken (functie-time-out van tien minuten, host-recycle, scale-in),
+-- dan is het antwoord verstuurd, is VerstuurdNaar leeg, staat de status niet op definitief en is het
+-- bericht nog ongelezen — en stuurt de volgende poll een tweede antwoord.
+--
+-- Deze kolom wordt gezet vlak vóór de verzendpoging en gewist zodra die aantoonbaar mislukt. Een
+-- gevulde waarde bij IsBeantwoord = 0 betekent daarom precies: "verstuurd of misschien verstuurd,
+-- uitkomst onbekend". De verwerking gaat dan naar Review in plaats van opnieuw te versturen, zodat
+-- de coördinator beslist. De twee bekende varianten (databasefout bij het vastleggen, fout bij het
+-- als-gelezen-markeren) waren al gedekt; dit dicht specifiek de harde afbreking.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('planner.EmailVerwerking') AND name = 'VerzendPogingOpUtc')
+BEGIN
+    ALTER TABLE [planner].[EmailVerwerking] ADD [VerzendPogingOpUtc] DATETIME2 NULL;
+END
+GO
+
+-- ============================================================
+-- #715: één leermoment per (origineel, correctie)-paar.
+--
+-- Waarom: InsertClassificatieCorrectieAsync was een kale INSERT en de tabel had geen uniciteit op
+-- het paar. Sinds de idempotentiefix van #712 wordt een niet-afgeronde verwerking op dezelfde rij
+-- hervat, dus draait de correctiedetectie opnieuw en levert hetzelfde paar een tweede rij op — bij
+-- drie toegestane pogingen tot drie identieke leermomenten. De beheerder moet die allemaal apart
+-- valideren, en meervoudig goedgekeurd weegt hetzelfde voorbeeld onbedoeld zwaarder in de AI-prompt.
+--
+-- Bestaande duplicaten worden eerst opgeruimd: de oudste rij van elk paar blijft staan (laagste Id),
+-- inclusief een eventueel al gezette validatiebeslissing. Zijn er duplicaten waarvan er één is
+-- goedgekeurd en een andere niet, dan is "de oudste houden" een keuze — daarom wordt het aantal
+-- opgeruimde rijen expliciet gemeld in de deploy-output in plaats van stil te verdwijnen.
+-- ============================================================
+IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+   AND NOT EXISTS (SELECT 1 FROM sys.key_constraints
+                   WHERE name = 'UQ_ClassificatieCorrectie_Paar'
+                     AND parent_object_id = OBJECT_ID('planner.ClassificatieCorrectie'))
+BEGIN
+    DECLARE @DubbeleLeermomenten INT = 0;
+
+    ;WITH Gerangschikt AS (
+        SELECT [Id],
+               ROW_NUMBER() OVER (
+                   PARTITION BY [OrigineleVerwerkingId], [CorrectionVerwerkingId]
+                   ORDER BY [Id]) AS Rang
+        FROM [planner].[ClassificatieCorrectie]
+    )
+    DELETE FROM Gerangschikt WHERE Rang > 1;
+
+    SET @DubbeleLeermomenten = @@ROWCOUNT;
+
+    IF @DubbeleLeermomenten > 0
+        RAISERROR('#715: %d dubbele leermomenten opgeruimd vóór het aanleggen van UQ_ClassificatieCorrectie_Paar (oudste rij per paar behouden).', 10, 1, @DubbeleLeermomenten) WITH NOWAIT;
+
+    ALTER TABLE [planner].[ClassificatieCorrectie]
+        ADD CONSTRAINT [UQ_ClassificatieCorrectie_Paar] UNIQUE ([OrigineleVerwerkingId], [CorrectionVerwerkingId]);
 END
 GO
