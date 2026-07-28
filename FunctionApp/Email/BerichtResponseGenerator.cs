@@ -126,9 +126,34 @@ public static class BerichtResponseGenerator
             inhoud += BouwDatumSectie(datum, response, classificatie) + "\n";
         }
 
-        inhoud += "Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.";
+        inhoud += BouwMultiDatumAfsluitzin(clubSettings);
 
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
+    }
+
+    /// <summary>
+    /// Afsluitzin van een multi-datum beschikbaarheidsantwoord, met de coördinator bij naam (#670).
+    ///
+    /// <para>
+    /// Leest de instelling via dezelfde weg als <see cref="GetHandtekening"/>: uit de meegegeven
+    /// club-snapshot wanneer die er is, en anders uit de globale cache. Dat is de regel uit #677 —
+    /// een dry-run voor de democlub mag niet terugvallen op de gegevens van de productieclub.
+    /// </para>
+    ///
+    /// <para>
+    /// Ontbreekt de naam, dan blijft de zin clubneutraal en compleet: geen halve zin, en bewust geen
+    /// fallbacknaam in de code (architectuurregel "geen club-specifieke strings").
+    /// </para>
+    /// </summary>
+    private static string BouwMultiDatumAfsluitzin(ClubAppSettingsSnapshot? clubSettings)
+    {
+        var coordinatorNaam = clubSettings != null
+            ? clubSettings.CoordinatorNaam
+            : SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
+
+        return string.IsNullOrWhiteSpace(coordinatorNaam)
+            ? "Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen plannen en definitief opnemen in de planning."
+            : $"Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met {coordinatorNaam} plannen en definitief opnemen in de planning.";
     }
 
     /// <summary>
