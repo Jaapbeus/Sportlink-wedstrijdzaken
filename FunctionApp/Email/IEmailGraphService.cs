@@ -9,7 +9,8 @@ public interface IEmailGraphService
     Task SetCategoriesAsync(string messageId, params string[] categories);
     Task EnsureMasterCategoryAsync(string name, string colorPreset);
     Task MarkAsReadAsync(string messageId);
-    Task SendReplyAsync(string to, string subject, string body, string? conversationId);
+    Task SendReplyAsync(string to, string subject, string body, string? conversationId,
+        IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null);
     Task StuurTeamContactDoorAsync(
         string coachEmail,
         string subject,

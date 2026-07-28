@@ -119,25 +119,7 @@ public class AdminApiClient
     public async Task<ApiResult<TestEmailResponse>> TestEmailAsync(TestEmailRequest dto)
         => await PostAsync<TestEmailResponse>("api/test/email", dto);
 
-    // ── Dagplanning / Optimaliseer ──
-
-    public async Task<ApiResult<OptimaliseerResponseDto>> OptimaliseerAsync(OptimaliseerRequestDto req)
-        => await PostAsync<OptimaliseerResponseDto>("api/planner/optimaliseer", req);
-
-    public async Task<ApiResult<string>> OptimaliseerHtmlAsync(OptimaliseerRequestDto req, string format)
-    {
-        try
-        {
-            var resp = await _http.PostAsJsonAsync($"api/planner/optimaliseer?format={format}", req);
-            var text = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode)
-                return ApiResult<string>.Fail($"HTTP {(int)resp.StatusCode}: {text}", (int)resp.StatusCode);
-            return ApiResult<string>.Ok(text, (int)resp.StatusCode);
-        }
-        catch (Exception ex) { return ApiResult<string>.Fail(ex.Message); }
-    }
-
-    // ── Auto-plan (#380) ──
+    // ── Auto-plan (#380) — de enige dagplanning-optimalisatie sinds #666 ──
 
     public async Task<ApiResult<AutoPlanResponseDto>> AutoPlanAsync(AutoPlanRequestDto req)
         => await PostAsync<AutoPlanResponseDto>("api/planner/auto-plan", req);
@@ -192,6 +174,22 @@ public class AdminApiClient
 
     public async Task<ApiResult<object>> ValideerLeermomentAsync(int id, string actie)
         => await PutAsync<object>($"api/beheer/leermomenten/{id}/valideer", new { actie });
+
+    // ── Teamaliassen (#701) ──
+
+    public async Task<ApiResult<TeamAliassenResponse>> GetTeamAliassenAsync(string? status = null, int limit = 100)
+    {
+        var path = $"api/beheer/teamaliassen?limit={limit}";
+        if (!string.IsNullOrWhiteSpace(status)) path += $"&status={Uri.EscapeDataString(status)}";
+        return await GetAsync<TeamAliassenResponse>(path);
+    }
+
+    /// <summary>status: "validated" (goedkeuren) of "rejected" (afwijzen).</summary>
+    public async Task<ApiResult<object>> ValideerTeamAliasAsync(int id, string status)
+        => await PutAsync<object>($"api/beheer/teamaliassen/{id}/valideer", new { status });
+
+    public async Task<ApiResult<object>> DeleteTeamAliasAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/teamaliassen/{id}");
 
     // ── Clubs (#324) ──
 
@@ -259,9 +257,41 @@ public class AdminApiClient
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
     }
 
-    // ── Velden ──
+    // ── Velden (#679) ──
     public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()
         => await GetAsync<List<VeldDto>>("api/beheer/velden");
+
+    public async Task<ApiResult<object>> CreateVeldAsync(VeldDto dto)
+        => await PostAsync<object>("api/beheer/velden", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldAsync(int veldNummer, VeldDto dto)
+        => await PutAsync<object>($"api/beheer/velden/{veldNummer}", dto);
+
+    // ── VeldBeschikbaarheid (#679: eerste GUI voor deze al bestaande API) ──
+    public async Task<ApiResult<List<VeldBeschikbaarheidDto>>> GetVeldBeschikbaarheidAsync()
+        => await GetAsync<List<VeldBeschikbaarheidDto>>("api/beheer/veldbeschikbaarheid");
+
+    public async Task<ApiResult<object>> CreateVeldBeschikbaarheidAsync(VeldBeschikbaarheidDto dto)
+        => await PostAsync<object>("api/beheer/veldbeschikbaarheid", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldBeschikbaarheidAsync(int id, VeldBeschikbaarheidDto dto)
+        => await PutAsync<object>($"api/beheer/veldbeschikbaarheid/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteVeldBeschikbaarheidAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/veldbeschikbaarheid/{id}");
+
+    // ── VeldTraining (#679: trainingsschema per veld per weekdag) ──
+    public async Task<ApiResult<List<VeldTrainingDto>>> GetVeldTrainingAsync()
+        => await GetAsync<List<VeldTrainingDto>>("api/beheer/veldtraining");
+
+    public async Task<ApiResult<object>> CreateVeldTrainingAsync(VeldTrainingDto dto)
+        => await PostAsync<object>("api/beheer/veldtraining", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldTrainingAsync(int id, VeldTrainingDto dto)
+        => await PutAsync<object>($"api/beheer/veldtraining/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteVeldTrainingAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/veldtraining/{id}");
 
     // ── Test data / ALLSTARS (#365) ──
     public async Task<ApiResult<List<AllstarsWedstrijdDto>>> GetAllstarsWedstrijdenAsync()

@@ -150,7 +150,7 @@ internal static class AvailabilityService
             if (exactMatch != null)
             {
                 response.Beschikbaar = true;
-                response.Toewijzing = PlannerShared.ToSlotToewijzing(date, exactMatch, duurMinuten, velden);
+                response.Toewijzing = ToSlotMetVeldType(date, exactMatch, duurMinuten, velden);
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 AddSunsetWarning(response, exactMatch, sunset, velden);
                 AddNabijeWedstrijdWaarschuwing(response, exactMatch, duurMinuten, occupations, velden);
@@ -172,16 +172,16 @@ internal static class AvailabilityService
             if (preferredTime.HasValue)
             {
                 response.Reden = $"Gewenste tijd {preferredTime.Value:HH:mm} is niet beschikbaar.";
-                response.Alternatieven = alternatives.Prepend(best).Select(c => PlannerShared.ToSlotToewijzing(date, c, duurMinuten, velden)).Take(3).ToList();
+                response.Alternatieven = alternatives.Prepend(best).Select(c => ToSlotMetVeldType(date, c, duurMinuten, velden)).Take(3).ToList();
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 PlannerShared.AddWeekdayWarning(response, date);
             }
             else
             {
                 response.Beschikbaar = true;
-                response.Toewijzing = PlannerShared.ToSlotToewijzing(date, best, duurMinuten, velden);
+                response.Toewijzing = ToSlotMetVeldType(date, best, duurMinuten, velden);
                 AddNabijeWedstrijdWaarschuwing(response, best, duurMinuten, occupations, velden);
-                response.Alternatieven = alternatives.Select(c => PlannerShared.ToSlotToewijzing(date, c, duurMinuten, velden)).ToList();
+                response.Alternatieven = alternatives.Select(c => ToSlotMetVeldType(date, c, duurMinuten, velden)).ToList();
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 AddSunsetWarning(response, best, sunset, velden);
                 PlannerShared.AddWeekdayWarning(response, date);
@@ -278,6 +278,19 @@ internal static class AvailabilityService
 
     // ── Privé helpers ──
 
+    /// <summary>
+    /// Slot-DTO inclusief het werkelijke veldtype uit <c>dbo.Velden</c> (#705). Het automatische
+    /// e-mailantwoord kiest hierop welke alternatieven het aanbiedt; leidde het dat zelf af uit het
+    /// veldnummer, dan gold die aanname alleen voor één accommodatie. Onbekend veld = <c>null</c>.
+    /// </summary>
+    private static SlotToewijzing ToSlotMetVeldType(
+        DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
+    {
+        var toewijzing = PlannerShared.ToSlotToewijzing(date, slot, duurMinuten, velden);
+        toewijzing.VeldType = velden.FirstOrDefault(v => v.VeldNummer == slot.VeldNummer)?.VeldType;
+        return toewijzing;
+    }
+
     private static CheckAvailabilityResponse BuildWindowsResponse(
         DateOnly date, List<VeldBeschikbaarheidInfo> fields,
         List<BestaandeWedstrijd> occupations, List<VeldInfo> velden,
@@ -312,6 +325,7 @@ internal static class AvailabilityService
                         {
                             VeldNummer = field.VeldNummer,
                             VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
+                            VeldType = veldInfo?.VeldType,
                             Van = gapStart.ToString("HH:mm"),
                             Tot = occStart.ToString("HH:mm"),
                             MaxDuurMinuten = gapMin,
@@ -328,6 +342,7 @@ internal static class AvailabilityService
                     {
                         VeldNummer = field.VeldNummer,
                         VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
+                        VeldType = veldInfo?.VeldType,
                         Van = gapStart.ToString("HH:mm"),
                         Tot = effectiveEnd.ToString("HH:mm"),
                         MaxDuurMinuten = gapMin,

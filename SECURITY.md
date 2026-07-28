@@ -255,9 +255,101 @@ Om te garanderen dat de Security Gate altijd actief is en niet omzeild kan worde
    - ✅ Zoek op en voeg toe: **`Security Gate — blokkeert merge bij fout`**
    - ✅ **Require branches to be up to date before merging**
    - ✅ **Do not allow bypassing the above settings**
-5. Sla op
+5. Laat onder *"Rules applied to everyone including administrators"* **"Allow force pushes" UIT** —
+   ook de variant *"Specify who can force push"* met één persoon erin. Zie hieronder waarom dat
+   laatste juist de gevaarlijke stand is.
+6. Sla op
 
-Hierna is directe push naar `main` (of `develop`) en merge met een rode Security Gate technisch onmogelijk — ook voor repo-eigenaren.
+Hierna kan een merge met een rode Security Gate niet doorgaan, en is een directe push naar `main`
+of `develop` geblokkeerd door de verplichte status check — ook voor repo-eigenaren, mits
+`enforce_admins` aan staat **en** force pushes uit staan.
+
+### Force pushes verifiëren — niet met één API (#654)
+
+> **Waarom dit een eigen kopje heeft.** Bij #654 leken twee GitHub-API's elkaar tegen te spreken over
+> deze instelling op `main`. Er is meer dan een dag aan uitgezocht wélke API loog. Geen van beide:
+> ze beantwoorden een verschillende vraag, en niemand had het derde veld opgevraagd. Ondertussen kon
+> één account de productiegeschiedenis herschrijven zonder dat een controle dat zichtbaar maakte.
+
+De UI kent drie standen, en twee API-velden dekken die samen pas volledig:
+
+| UI-stand | REST `allow_force_pushes.enabled` | GraphQL `allowsForcePushes` | GraphQL `bypassForcePushAllowances` |
+|---|---|---|---|
+| Uit (gewenst) | `false` | `false` | `0` |
+| Aan → *Everyone* | `true` | `true` | `0` |
+| Aan → *Specify who can force push* | `true` | **`false`** ⚠️ | **> 0** |
+
+De onderste rij is de valkuil: **GraphQL `allowsForcePushes` meldt daar `false`** terwijl force
+pushen wél kan. Wie alleen dat veld leest, concludeert onterecht "geblokkeerd" — een fout-negatief,
+precies de gevaarlijke kant op. De allowlist is **niet** via de REST-API op te vragen; er is geen
+veld en geen sub-endpoint voor. (`/protection/restrictions` lijkt het, maar is de gewone
+push-restrictie — een andere instelling.)
+
+Controleer daarom altijd **beide** GraphQL-velden:
+
+```bash
+gh api graphql -f query='
+{ repository(owner: "OWNER", name: "REPO") {
+    branchProtectionRules(first: 50) { nodes {
+      pattern
+      allowsForcePushes
+      bypassForcePushAllowances(first: 100) {
+        totalCount
+        nodes { actor { __typename ... on User { login } ... on Team { slug } ... on App { slug } } }
+      }
+    } } } }'
+```
+
+**Interpretatie:** force pushen is mogelijk als `allowsForcePushes == true` (iedereen met
+push-rechten) **óf** `totalCount > 0` (de genoemde actors). Alleen als beide leeg/false zijn kan
+niemand het. Let op `pattern`: meerdere regels kunnen dezelfde branch raken, en een verweesde regel
+(0 matching refs) telt niet mee — `matchingRefs { totalCount }` verraadt die.
+
+Rulesets zijn een **onafhankelijke tweede bron** en vervangen deze check niet:
+
+```bash
+gh api /repos/OWNER/REPO/rules/branches/main   # zoek naar de rule 'non_fast_forward'
+```
+
+Dit endpoint dekt géén klassieke branch protection — het geeft een lege lijst terug op een branch die
+wél beschermd is. Beide checks zijn dus nodig.
+
+**Uitzetten doe je via GraphQL, niet via de REST-PUT:**
+
+```bash
+# 1. regel-id ophalen
+gh api graphql -f query='{ repository(owner:"OWNER",name:"REPO"){ branchProtectionRules(first:50){ nodes{ id pattern } } } }'
+
+# 2. uitzetten EN de allowlist expliciet legen
+gh api graphql -f query='
+mutation($id: ID!) {
+  updateBranchProtectionRule(input: {
+    branchProtectionRuleId: $id, allowsForcePushes: false, bypassForcePushActorIds: []
+  }) { branchProtectionRule { allowsForcePushes bypassForcePushAllowances(first:10){ totalCount } } }
+}' -F id=BPR_xxxxx
+```
+
+Leeg de allowlist **expliciet**: of `allowsForcePushes: false` hem zelf opruimt is nergens
+gedocumenteerd. De GraphQL-mutatie is een *gedeeltelijke* update — weggelaten velden blijven staan.
+
+> ⚠️ **Gebruik `PUT /repos/{o}/{r}/branches/{b}/protection` hier niet.** Dat endpoint is een
+> **volledige vervanging** met vier verplichte, nullable velden. Een PUT met alleen
+> `allow_force_pushes: false` faalt (422); zet je de rest op `null` om hem geldig te maken, dan wis je
+> `required_status_checks`, `enforce_admins`, `required_pull_request_reviews` en `restrictions` — de
+> Security Gate-verplichting op `main` verdwijnt dan zonder waarschuwing en zonder dat de
+> responsestatus daar iets over zegt.
+
+### Uitzondering: history-rewrite na een leak
+
+`scripts/security/Clean-GitHistory.ps1` (git-history scrubben na een gepusht secret of PII) eindigt
+met `git push --force-with-lease --all`, en daar zit `main` bij. Met force pushes uit is die stap
+geblokkeerd — dat is de bedoeling.
+
+Doet dat scenario zich voor, dan zet een beheerder force pushes op `main` **tijdelijk** aan, voert de
+scrub uit, en zet ze **direct daarna weer uit** met de mutatie hierboven. Dat is geen omweg maar het
+punt van deze instelling: een history-rewrite op productie moet een bewuste, zichtbare handeling zijn
+en nooit iets wat per ongeluk kan gebeuren. Een repo-beheerder wordt hierdoor dus nergens
+buitengesloten.
 
 ---
 

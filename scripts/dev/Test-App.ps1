@@ -84,7 +84,10 @@ $expectedColumns = @{
         "CoordinatorNaam","CoordinatorFunctie","PlannerEmailAdres",
         "HerplanDeadlineDagen","BufferMinuten",
         "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude",
-        "EmailVoetnoot"
+        "EmailVoetnoot","UseRealtimeApi","SyncEnabled",
+        "ThemeColorPrimary","ThemeColorSecondary","ThemeColorAccent",
+        "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl",
+        "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio"
     )
     "dbo.TeamVoorkeurTijden" = @(
         "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",
@@ -109,21 +112,68 @@ $expectedColumns = @{
         "Prioriteit","Actief","ClubCode","Opmerking"
     )
     "dbo.Velden" = @(
-        "VeldNummer","VeldNaam","VeldType","HeeftKunstlicht","Actief"
+        "VeldNummer","VeldNaam","VeldType","HeeftKunstlicht","Actief","ClubCode"
+    )
+    "dbo.VeldTraining" = @(
+        "Id","VeldNummer","DagVanWeek","VanTijd","TotTijd","Omschrijving","Actief","ClubCode"
     )
 }
 
-# SQL schema-bestanden (voor ontbrekende tabellen opnieuw aanmaken)
-$schemaSqlMap = @{
-    "dbo.UitgeslotenEmailAdressen" = Join-Path $root "Database\dbo\Tables\UitgeslotenEmailAdressen.sql"
-    "dbo.AppSettingsAudit"         = Join-Path $root "Database\dbo\Tables\AppSettingsAudit.sql"
-    "dbo.TeamRegels"               = Join-Path $root "Database\dbo\Tables\TeamRegels.sql"
-    "dbo.Velden"                   = Join-Path $root "Database\dbo\Tables\Velden.sql"
-    "dbo.VeldBeschikbaarheid"      = Join-Path $root "Database\dbo\Tables\VeldBeschikbaarheid.sql"
-    "dbo.TeamVoorkeurTijden"       = Join-Path $root "Database\dbo\Tables\TeamVoorkeurTijden.sql"
-    "dbo.EmailTemplateInstellingen"= Join-Path $root "Database\dbo\Tables\EmailTemplateInstellingen.sql"
+# SQL schema-bestand per tabel — afgeleid uit de tabelnaam (#684).
+# Elke tabel in Database\dbo\Tables\<Tabel>.sql is de bron van waarheid voor kolomdefinities.
+function Get-SchemaSqlPath($tableKey) {
+    $parts = $tableKey -split '\.'
+    Join-Path $root "Database\$($parts[0])\Tables\$($parts[1]).sql"
 }
 
+function Get-SchemaColumns($sqlPath) {
+    <#
+        Parseert een CREATE TABLE-bestand naar een ordered dict kolomnaam → definitie
+        (type + NULL/NOT NULL + eventuele inline CONSTRAINT ... DEFAULT).
+
+        Hiermee is het schema-bestand de enige bron van waarheid voor kolomtypen: de
+        -Fix-paden hoeven ze niet meer te dupliceren. Dat is precies de drift die ervoor
+        zorgde dat -Fix DEFAULT GETDATE() gebruikte terwijl het schema GETUTCDATE() zegt.
+    #>
+    $result = [ordered]@{}
+    if (-not (Test-Path $sqlPath)) { return $result }
+
+    foreach ($rawLine in (Get-Content $sqlPath)) {
+        # Verwijder regelcommentaar; dat bevat vaak komma's en haakjes.
+        $line = ($rawLine -replace '--.*$', '').Trim()
+        if (-not $line) { continue }
+        if ($line -match '^(CREATE|GO|\)|\();?$') { continue }
+        # Tabel-level constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE) zijn geen kolommen.
+        if ($line -match '^CONSTRAINT\b') { continue }
+
+        if ($line -match '^\[(?<name>[^\]]+)\]\s+(?<def>.+?),?\s*$') {
+            $result[$Matches['name']] = $Matches['def'].TrimEnd(',').Trim()
+        }
+    }
+    return $result
+}
+
+# --- Drift-detectie: schema-bestand vs. de $expectedColumns hierboven ---
+# Zonder deze check meldt Test-App.ps1 groen wanneer een nieuwe kolom in het .sql-bestand
+# staat maar niet in $expectedColumns is bijgewerkt — stille drift.
+foreach ($tableKey in @($expectedColumns.Keys)) {
+    $sqlPath = Get-SchemaSqlPath $tableKey
+    if (-not (Test-Path $sqlPath)) { continue }
+
+    $sqlCols  = (Get-SchemaColumns $sqlPath).Keys
+    if (-not $sqlCols) {
+        Write-Issue "Schema-bestand $([System.IO.Path]::GetFileName($sqlPath)) leverde geen kolommen op — parser controleren"
+        continue
+    }
+
+    $missingInScript = @($sqlCols | Where-Object { $_ -notin $expectedColumns[$tableKey] })
+    if ($missingInScript.Count -gt 0) {
+        Write-Issue ("DRIFT in Test-App.ps1: {0} declareert kolom(men) {1} die niet in `$expectedColumns staan — vul de lijst aan" -f `
+            [System.IO.Path]::GetFileName($sqlPath), ($missingInScript -join ', '))
+    } else {
+        Write-Ok "Drift-check $tableKey OK ($($sqlCols.Count) kolommen in schema-bestand)"
+    }
+}
 
 foreach ($tableKey in $expectedColumns.Keys) {
     $parts  = $tableKey -split '\.'
@@ -135,8 +185,8 @@ foreach ($tableKey in $expectedColumns.Keys) {
     $exists  = (Invoke-Sql $existsQ | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1).Trim()
 
     if ($exists -ne "1") {
-        if ($Fix -and $schemaSqlMap.ContainsKey($tableKey)) {
-            $sqlFile = $schemaSqlMap[$tableKey]
+        $sqlFile = Get-SchemaSqlPath $tableKey
+        if ($Fix) {
             if (Test-Path $sqlFile) {
                 $createSql = Get-Content $sqlFile -Raw
                 $result = sqlcmd -S $server -d $db -E -Q $createSql 2>&1
@@ -158,19 +208,40 @@ foreach ($tableKey in $expectedColumns.Keys) {
     $colQ   = "SELECT c.name FROM sys.columns c JOIN sys.tables t ON t.object_id=c.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.name='$table' AND s.name='$schema'"
     $dbCols = (Invoke-Sql $colQ | Where-Object { $_ -match '\S' } | ForEach-Object { $_.Trim() })
 
+    # Kolomdefinities uit het schema-bestand — dit is de bron van waarheid (#684).
+    $schemaCols = Get-SchemaColumns (Get-SchemaSqlPath $tableKey)
+
     foreach ($col in $expectedColumns[$tableKey]) {
         if ($col -notin $dbCols) {
-            # Bepaal ALTER TABLE statement op basis van bekende typen
-            $colDef = switch ($col) {
-                "AccommodatiePlaats"   { "NVARCHAR(100) NULL" }
-                "AccommodatieLatitude" { "FLOAT NULL" }
-                "AccommodatieLongitude"{ "FLOAT NULL" }
-                "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
-                "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT ''" }
-                "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETDATE()" }
-                "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETDATE()" }
-                "Actief"               { "BIT NOT NULL CONSTRAINT [DF_${table}_Actief] DEFAULT 1" }
-                default                { $null }
+            # Definitie bij voorkeur uit het .sql-bestand; alleen tabellen zonder
+            # schema-bestand vallen terug op de lijst hieronder.
+            $colDef = $null
+            if ($schemaCols.Contains($col)) {
+                $fromSchema = $schemaCols[$col]
+                # IDENTITY en PRIMARY KEY kunnen niet via ALTER TABLE ADD worden toegevoegd.
+                if ($fromSchema -match 'IDENTITY|PRIMARY\s+KEY') {
+                    Write-Issue "$tableKey.$col ONTBREEKT en is niet via ALTER toe te voegen ($fromSchema) — publiceer het DB-project"
+                    continue
+                }
+                # NOT NULL zonder DEFAULT faalt op een tabel met bestaande rijen.
+                if ($fromSchema -match 'NOT\s+NULL' -and $fromSchema -notmatch 'DEFAULT') {
+                    Write-Issue "$tableKey.$col ONTBREEKT: NOT NULL zonder DEFAULT, kan niet veilig worden toegevoegd — publiceer het DB-project"
+                    continue
+                }
+                $colDef = $fromSchema
+            } else {
+                $colDef = switch ($col) {
+                    "AccommodatiePlaats"   { "NVARCHAR(100) NULL" }
+                    "AccommodatieLatitude" { "FLOAT NULL" }
+                    "AccommodatieLongitude"{ "FLOAT NULL" }
+                    "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
+                    "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT ''" }
+                    # UTC, nooit GETDATE() — zie de UTC-regel in CLAUDE.md en PR #246.
+                    "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETUTCDATE()" }
+                    "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETUTCDATE()" }
+                    "Actief"               { "BIT NOT NULL CONSTRAINT [DF_${table}_Actief] DEFAULT 1" }
+                    default                { $null }
+                }
             }
 
             if ($Fix -and $colDef) {
@@ -198,8 +269,24 @@ Write-Section "Build verificatie"
 $funcProj   = Join-Path $root "FunctionApp\fa-dev-sportlink-01.csproj"
 $blazorProj = Join-Path $root "BlazorAdmin\BlazorAdmin.csproj"
 
+# BlazorAdmin NIET bouwen terwijl de dev server draait (#684).
+# BlazorAdmin genereert content-hash fingerprints per compilatie. Een tweede compilatiepas
+# naast de draaiende 'dotnet watch' levert een tweede set fingerprints op → 404 op
+# framework-JS → "An unhandled error has occurred. Reload" in de browser. Dit is dezelfde
+# KRITIEKE REGEL als in CLAUDE.md; het script hield zich er zelf niet aan.
+$blazorLive = [bool](Get-NetTCPConnection -LocalPort 5242 -State Listen -ErrorAction SilentlyContinue)
+
 foreach ($proj in @($funcProj, $blazorProj)) {
     $name   = Split-Path $proj -Parent | Split-Path -Leaf
+
+    if ($proj -eq $blazorProj -and $blazorLive) {
+        Write-Host "  Build BlazorAdmin OVERGESLAGEN: dev server draait op :5242." -ForegroundColor DarkYellow
+        Write-Host "    Bouwen zou een tweede set fingerprints maken (404 op framework-JS)." -ForegroundColor DarkGray
+        Write-Host "    Build-fouten detecteren: .\scripts\dev\Stop-Debug.ps1 en daarna dit script opnieuw." -ForegroundColor DarkGray
+        Write-Ok "Build BlazorAdmin overgeslagen (dev server actief — fingerprint-veiligheid)"
+        continue
+    }
+
     $output = dotnet build $proj -c Debug 2>&1
     $errors = $output | Where-Object { $_ -match "\serror\s" }
     if ($errors) {
@@ -235,6 +322,7 @@ $endpoints = @(
     @{ Method="GET";  Path="api/beheer/veldbeschikbaarheid"; Desc="Veldbeschikbaarheid" }
     @{ Method="GET";  Path="api/beheer/email-log";           Desc="E-maillog" }
     @{ Method="GET";  Path="api/beheer/teams";               Desc="Teams" }
+    @{ Method="GET";  Path="api/beheer/teamaliassen";        Desc="Teamaliassen" }
 )
 
 if (-not $funcRunning) {
@@ -312,6 +400,7 @@ $pages = @(
     @{ Path="/veldbeschikbaarheid"; Desc="Veldbeschikbaarheid" }
     @{ Path="/uitgesloten-emails";  Desc="Uitgesloten e-mails" }
     @{ Path="/email-tester";        Desc="E-mail tester" }
+    @{ Path="/teamaliassen";        Desc="Teamaliassen" }
 )
 
 if (-not $blazorRunning) {

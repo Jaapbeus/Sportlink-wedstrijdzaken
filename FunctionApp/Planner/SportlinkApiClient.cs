@@ -46,16 +46,24 @@ namespace SportlinkFunction.Planner
                 // DB-lookups parallel laden met de API-call
                 var lookupTask     = LoadLookupsAsync(clubCode);
                 var plannerTask    = PlannerDataAccess.GetGeplandeWedstrijdenOnlyAsync(date, clubCode);
+                // Trainingsblokken (#679) — ontbreken in de live Sportlink-respons, dus altijd
+                // apart uit de DB erbij halen, ook als het real-time API-pad actief is.
+                var trainingTask   = PlannerAvailabilityRepository.GetTrainingOccupationsAsync(date, clubCode);
                 var apiResponseTask = _http.GetStringAsync(url);
 
-                await Task.WhenAll(lookupTask, plannerTask, apiResponseTask);
+                await Task.WhenAll(lookupTask, plannerTask, trainingTask, apiResponseTask);
 
                 var (veldenLookup, speeltijdenLookup, teamLeeftijdLookup) = await lookupTask;
                 var plannerEntries = await plannerTask;
+                var trainingEntries = await trainingTask;
                 var json = await apiResponseTask;
 
                 var matches = JsonConvert.DeserializeObject<List<SportlinkProgrammaMatch>>(json)
                               ?? new List<SportlinkProgrammaMatch>();
+
+                // Eén projectie voor alle wedstrijden; de matching zelf zit in PlannerShared,
+                // zodat de bezetting exact hetzelfde veld kiest als het herplanpad (#707).
+                var veldenPerNaam = veldenLookup.Select(kv => ((string?)kv.Key, kv.Value)).ToList();
 
                 var apiEntries = new List<BestaandeWedstrijd>();
                 foreach (var m in matches)
@@ -68,9 +76,14 @@ namespace SportlinkFunction.Planner
                     if (string.Equals(m.Status, "Afgelast", StringComparison.OrdinalIgnoreCase)) continue;
                     if (string.IsNullOrEmpty(m.Aanvangstijd) || string.IsNullOrEmpty(m.Veld)) continue;
 
-                    // veld → VeldNummer via lookup (RTRIM(LEFT(veld, 6)) = VeldNaam)
-                    var veldKey = m.Veld.Length >= 6 ? m.Veld[..6].TrimEnd() : m.Veld.TrimEnd();
-                    if (!veldenLookup.TryGetValue(veldKey, out var veldNummer)) continue;
+                    // veld → VeldNummer + subpositie via de gedeelde matcher. Hier stond een harde
+                    // afkap op zes tekens (m.Veld[..6]), gespiegeld op RTRIM(LEFT(veld, 6)) in SQL.
+                    // Die maakte van "veld 10" veld 1: de bezetting van veld 10 landde op veld 1 en
+                    // veld 10 leek de hele dag vrij — een tweede wedstrijd kon er bovenop worden
+                    // aangeboden. Veldnamen langer dan zes tekens vielen zelfs volledig uit de
+                    // bezetting weg, met hetzelfde effect. (#707)
+                    var (veldNummer, subpositie) = PlannerShared.ResolveVeld(m.Veld, veldenPerNaam);
+                    if (veldNummer == 0) continue;
 
                     // teamnaam → Speeltijden-sleutel
                     var speeltijdKey = MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup);
@@ -80,7 +93,6 @@ namespace SportlinkFunction.Planner
                     if (!TimeOnly.TryParse(m.Aanvangstijd, out var aanvang)) continue;
 
                     var eindTijd     = aanvang.AddMinutes(speeltijd.WedstrijdTotaal);
-                    var subpositie   = m.Veld.Length > 6 ? m.Veld[6..].Trim() : null;
 
                     apiEntries.Add(new BestaandeWedstrijd
                     {
@@ -92,21 +104,26 @@ namespace SportlinkFunction.Planner
                         LeeftijdsCategorie = speeltijdKey,
                         TeamNaam         = m.Teamnaam,
                         Wedstrijd        = m.Wedstrijd,
-                        VeldSubpositie   = string.IsNullOrEmpty(subpositie) ? null : subpositie,
+                        VeldSubpositie   = subpositie,
+                        // Zonder deze sleutel kan de herplan-exclusie de eigen wedstrijd niet
+                        // vinden en valt ze terug op (veld, tijd, naam) — precies wat #707 brak.
+                        Wedstrijdcode    = m.Wedstrijdcode,
                         Bron             = "API"
                     });
                 }
 
-                // Samenvoegen: API-entries + planner-entries, dedupliceren op (VeldNummer, AanvangsTijd, Wedstrijd)
+                // Samenvoegen: API-entries + planner-entries + trainingsblokken, dedupliceren op
+                // (VeldNummer, AanvangsTijd, Wedstrijd)
                 var combined = apiEntries
                     .Concat(plannerEntries)
+                    .Concat(trainingEntries)
                     .GroupBy(w => (w.VeldNummer, w.AanvangsTijd, (w.Wedstrijd ?? "").ToLowerInvariant()))
                     .Select(g => g.OrderBy(w => w.Bron == "API" ? 0 : 1).First())
                     .ToList();
 
                 log.LogInformation(
-                    "SportlinkApiClient: {ApiCount} API + {PlannerCount} planner → {Total} bezettingen voor {Date}",
-                    apiEntries.Count, plannerEntries.Count, combined.Count, date);
+                    "SportlinkApiClient: {ApiCount} API + {PlannerCount} planner + {TrainingCount} training → {Total} bezettingen voor {Date}",
+                    apiEntries.Count, plannerEntries.Count, trainingEntries.Count, combined.Count, date);
 
                 return combined;
             }
@@ -117,18 +134,33 @@ namespace SportlinkFunction.Planner
             }
         }
 
-        // Identiek aan GetFieldOccupationsWithApiAsync maar filtert één wedstrijd eruit (voor herplan).
-        public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingMatchWithApiAsync(
-            DateOnly date, string wedstrijdNaam, TimeOnly aanvangsTijd, int veldNummer, ILogger log,
-            string? clubCodeScope = null)
+        /// <summary>
+        /// Identiek aan <see cref="GetFieldOccupationsWithApiAsync"/>, maar zonder de wedstrijd die
+        /// herpland wordt. Uitsluiten gebeurt op <c>wedstrijdcode</c> — de enige sleutel die niet
+        /// afhangt van hoe een veldnaam gespeld of afgekapt wordt (#574, #707).
+        ///
+        /// <para>De vorige versie matchte op (veldnummer, aanvangstijd, wedstrijdnaam). Zodra de
+        /// veldnaam aan de matcher-kant anders werd opgelost dan aan de bezettingskant — "veld 10"
+        /// tegenover "veld 1" — vond dat filter niets meer. De eigen wedstrijd bleef dan als
+        /// bezetting staan op een veld waar ze niet speelde, terwijl haar échte veld leeg leek en
+        /// dubbel geboekt kon worden.</para>
+        /// </summary>
+        public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsExcludingWedstrijdcodeWithApiAsync(
+            DateOnly date, long excludeWedstrijdcode, ILogger log, string? clubCodeScope = null)
         {
             var all = await GetFieldOccupationsWithApiAsync(date, log, clubCodeScope);
-            return all.Where(o =>
-                !(o.VeldNummer == veldNummer &&
-                  o.AanvangsTijd == aanvangsTijd &&
-                  o.Wedstrijd != null &&
-                  o.Wedstrijd.Trim() == wedstrijdNaam.Trim())
-            ).ToList();
+            var resultaat = PlannerAvailabilityRepository.FilterExcludingWedstrijdcode(all, excludeWedstrijdcode);
+
+            // Niets uitgesloten betekent dat de eigen wedstrijd niet in de bezetting zat. Dat kan
+            // legitiem zijn (geen speeltijd geconfigureerd, andere accommodatie), maar het is ook
+            // het signaal dat de wedstrijdcode ontbreekt in de bron — dan blijft de eigen wedstrijd
+            // als bezetting staan en mist het antwoord alternatieven. Zichtbaar maken, niet slikken.
+            if (resultaat.Count == all.Count)
+                log.LogWarning(
+                    "SportlinkApiClient: geen bezetting uitgesloten voor wedstrijdcode {Code} op {Date} — " +
+                    "controleer of de bron een wedstrijdcode meelevert.", excludeWedstrijdcode, date);
+
+            return resultaat;
         }
 
         private static string? MapTeamNaamToSpeeltijdKey(
@@ -153,9 +185,12 @@ namespace SportlinkFunction.Planner
             Dictionary<string, Speeltijd> speeltijdenLookup,
             Dictionary<string, string> teamLeeftijdLookup)> LoadLookupsAsync(string clubCode)
         {
-            var veldenTask       = PlannerDataAccess.GetVeldenLookupAsync();
-            var speeltijdenTask  = PlannerDataAccess.GetSpeeltijdenLookupAsync();
-            var teamTask         = PlannerDataAccess.GetTeamLeeftijdLookupAsync(clubCode);
+            // Alle drie de lookups op dezelfde club scopen: zonder expliciete clubCode vallen ze
+            // terug op de primaire club, waardoor een ALLSTARS-run met productievelden en
+            // -speeltijden rekende (#707).
+            var veldenTask       = PlannerSettingsRepository.GetVeldenLookupAsync(clubCode);
+            var speeltijdenTask  = PlannerSettingsRepository.GetSpeeltijdenLookupAsync(clubCode);
+            var teamTask         = PlannerSettingsRepository.GetTeamLeeftijdLookupAsync(clubCode);
 
             await Task.WhenAll(veldenTask, speeltijdenTask, teamTask);
 
@@ -168,6 +203,8 @@ namespace SportlinkFunction.Planner
     {
         [JsonProperty("teamnaam")]     public string? Teamnaam      { get; set; }
         [JsonProperty("wedstrijd")]    public string? Wedstrijd     { get; set; }
+        // Exacte sleutel voor de herplan-exclusie; null als /programma de code niet meelevert.
+        [JsonProperty("wedstrijdcode")] public long?  Wedstrijdcode { get; set; }
         [JsonProperty("aanvangstijd")] public string? Aanvangstijd  { get; set; }
         [JsonProperty("veld")]         public string? Veld          { get; set; }
         [JsonProperty("accommodatie")] public string? Accommodatie  { get; set; }

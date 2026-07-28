@@ -12,7 +12,8 @@ public static class BerichtResponseGenerator
     public static (string onderwerp, string body) BouwBeschikbaarheidAntwoord(
         CheckAvailabilityResponse response,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -104,7 +105,7 @@ public static class BerichtResponseGenerator
                 inhoud += $" {response.Reden}";
         }
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Beschikbaarheid (meerdere datums) ──
@@ -112,7 +113,8 @@ public static class BerichtResponseGenerator
     public static (string onderwerp, string body) BouwMultiDatumBeschikbaarheidAntwoord(
         List<(string datum, CheckAvailabilityResponse response)> resultaten,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -126,7 +128,7 @@ public static class BerichtResponseGenerator
 
         inhoud += "Laat weten welke optie(s) de voorkeur hebben, dan plannen we het in.";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     /// <summary>
@@ -202,7 +204,8 @@ public static class BerichtResponseGenerator
         ZoekWedstrijdResponse? wedstrijd,
         HerplanCheckResponse? herplanOpties,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -274,7 +277,7 @@ public static class BerichtResponseGenerator
         if (!string.IsNullOrWhiteSpace(classificatie.KnvbNotitie))
             inhoud += $"\n\nLet op: {classificatie.KnvbNotitie} Zie ook: https://www.knvb.nl/assist-wedstrijdsecretarissen/veldvoetbal/regelen-dagelijkse-praktijk/verplaatsen-van-wedstrijden";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Herplannen — te laat (verzoek binnen deadline) ──
@@ -284,7 +287,8 @@ public static class BerichtResponseGenerator
         int deadlineDagen,
         int dagenTotWedstrijd,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -308,7 +312,63 @@ public static class BerichtResponseGenerator
                    + $"Neem voor uitzonderingen rechtstreeks contact op met de coördinator.";
         }
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
+    }
+
+    // ── Herplannen — verzoek van tegenstander zonder concrete datum (#561) ──
+
+    /// <summary>
+    /// Bouwt het antwoord op een herplanverzoek van de tegenstander zonder concrete nieuwe datum.
+    /// Zegt bewust geen nieuwe datum toe — dat wordt afgestemd met de begeleiding van ons eigen
+    /// team (die in BCC staat, zie <see cref="Email.EmailReplyPolicyService"/>) — maar geeft als
+    /// voorzet een paar zaterdagen waarop ons team volgens het huidige programma nog vrij is.
+    /// </summary>
+    public static (string onderwerp, string body) BouwVerzetZonderDatumAntwoord(
+        ZoekWedstrijdResponse? wedstrijd,
+        List<string> vrijeZaterdagen,
+        BerichtClassificatie classificatie,
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        string inhoud;
+
+        if (wedstrijd == null)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Er is geen wedstrijd gevonden voor {classificatie.TeamNaam ?? "het opgegeven team"} "
+                   + $"op {FormatDatum(classificatie.Datum)}.";
+        }
+        else
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Bedankt voor je verzoek om de wedstrijd {wedstrijd.Wedstrijd} op {FormatDatum(wedstrijd.Datum)} "
+                   + $"om {wedstrijd.AanvangsTijd} te verzetten.\n\n"
+                   + "We kunnen op dit moment nog geen nieuwe datum toezeggen: dat stemmen we eerst af met de "
+                   + "begeleiding van ons eigen team. Zij zijn in de kopie (BCC) van dit bericht meegenomen, zodat "
+                   + "jullie dit onderling verder kunnen afstemmen.";
+
+            if (vrijeZaterdagen.Count > 0)
+            {
+                inhoud += "\n\nAls voorzet: volgens ons huidige programma hebben we op de volgende zaterdagen nog "
+                        + "geen wedstrijd:\n";
+                foreach (var datum in vrijeZaterdagen)
+                    inhoud += $"- {FormatDatum(datum)}\n";
+            }
+            else
+            {
+                inhoud += "\n\nOp korte termijn hebben we geen speelvrije zaterdagen kunnen vinden binnen de "
+                        + "gebruikelijke termijn. Bekijk de bijgevoegde speeldagenkalender voor het volledige overzicht.";
+            }
+        }
+
+        if (classificatie.VoegKnvbPdfBijlageToe)
+        {
+            inhoud += "\n\nDe KNVB-speeldagenkalender is als bijlage toegevoegd.";
+        }
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Herplannen naar gewenste datum ──
@@ -318,7 +378,8 @@ public static class BerichtResponseGenerator
         string? gewensteDatum,
         CheckAvailabilityResponse? beschikbaarheid,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -365,13 +426,13 @@ public static class BerichtResponseGenerator
                    + $"Op {gewenstDatumTekst} is er ruimte beschikbaar.";
         }
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Teambegeleiding doorsturen ──
 
     public static (string onderwerp, string body) BouwTeamContactAutoReply(
-        BerichtClassificatie classificatie, InkomendBericht email)
+        BerichtClassificatie classificatie, InkomendBericht email, ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -384,13 +445,13 @@ public static class BerichtResponseGenerator
                    + "De begeleider neemt rechtstreeks contact met u op. "
                    + "Contactgegevens worden niet gedeeld conform AVG.";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Bevestiging ──
 
     public static (string onderwerp, string body) BouwBevestigingAntwoord(
-        InkomendBericht email, BerichtClassificatie classificatie)
+        InkomendBericht email, BerichtClassificatie classificatie, ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -399,12 +460,12 @@ public static class BerichtResponseGenerator
                    + "Bedankt voor je bevestiging. Het verzoek is geregistreerd "
                    + "en wordt door de coördinator verwerkt.";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Buiten scope ──
 
-    public static (string onderwerp, string body) BouwBuitenScopeAntwoord(InkomendBericht email)
+    public static (string onderwerp, string body) BouwBuitenScopeAntwoord(InkomendBericht email, ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -414,7 +475,7 @@ public static class BerichtResponseGenerator
                    + "Bedankt voor je bericht. Dit verzoek vereist handmatige afhandeling "
                    + "en is ter beoordeling bij de coördinator neergelegd.";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Wedstrijd al ingepland ──
@@ -422,7 +483,8 @@ public static class BerichtResponseGenerator
     public static (string onderwerp, string body) BouwWedstrijdAlIngeplandAntwoord(
         ZoekWedstrijdResponse? wedstrijd,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -445,7 +507,7 @@ public static class BerichtResponseGenerator
                    + $"om {wedstrijd.AanvangsTijd}{veldTekst}.";
         }
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Team onbekend — vraag welk eigen team ──
@@ -453,7 +515,8 @@ public static class BerichtResponseGenerator
     public static (string onderwerp, string body) BouwTeamOnbekendAntwoord(
         string tegenstander,
         BerichtClassificatie classificatie,
-        InkomendBericht email)
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -463,13 +526,13 @@ public static class BerichtResponseGenerator
                    + "Tegen welk van onze teams zou deze wedstrijd zijn? "
                    + "Dan kunnen we de beschikbaarheid voor je controleren.";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Fout ──
 
     public static (string onderwerp, string body) BouwFoutAntwoord(
-        InkomendBericht email, BerichtClassificatie classificatie)
+        InkomendBericht email, BerichtClassificatie classificatie, ClubAppSettingsSnapshot? clubSettings = null)
     {
         var aanhef = GetTijdsgebondenAanhef();
         var voornaam = ExtractVoornaam(email.AfzenderNaam);
@@ -478,7 +541,7 @@ public static class BerichtResponseGenerator
                    + "Er is een fout opgetreden bij het verwerken van je verzoek. "
                    + "De coördinator is op de hoogte gesteld en neemt zo snel mogelijk contact op.";
 
-        return WrapMetReviewEnHandtekening(inhoud, classificatie, email);
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
     // ── Template-driven antwoord (v2 — EmailTemplateService overload) ──
@@ -493,6 +556,7 @@ public static class BerichtResponseGenerator
         EmailTemplate template,
         BerichtClassificatie classificatie,
         InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null,
         IDictionary<string, string>? extraPlaceholders = null)
     {
         var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -532,7 +596,7 @@ public static class BerichtResponseGenerator
         }
 
         body += bodyInvulling;
-        body += "\n\n" + GetHandtekening();
+        body += "\n\n" + GetHandtekening(clubSettings);
         return (onderwerp, body);
     }
 
@@ -548,47 +612,65 @@ public static class BerichtResponseGenerator
     }
 
     /// <summary>
-    /// Filter veld 5 (grasveld) uit alternatieven als er 3+ kunstgrasvelden beschikbaar zijn.
+    /// Beperkt de alternatieven tot kunstgras zodra er drie of meer kunstgrasvelden beschikbaar zijn:
+    /// op zo'n ruime dag hoeft het antwoord geen natuurgras aan te bieden.
+    ///
+    /// <para>Het veldtype komt uit <c>dbo.Velden</c> (#705). Eerder werd het uit het veldnummer geraden
+    /// (1-4 = kunstgras, 5 = gras); bij een club met natuurgras op de lage nummers gooide dat juist
+    /// de échte kunstgrasvelden weg en verzweeg het antwoord beschikbare velden.</para>
+    ///
+    /// <para><b>Alleen aantoonbaar natuurgras verdwijnt (#707).</b> De classificatie loopt via
+    /// <see cref="VeldTypeClassificatie"/> — de enige kunstgras-definitie in de codebase. Een veldtype
+    /// dat noch als kunstgras noch als natuurgras herkenbaar is (leeg, of bijv. "hybride") geldt als
+    /// onbekend: het telt niet mee voor de drempel én wordt nooit weggefilterd. Zo'n slot is
+    /// aantoonbaar beschikbaar, en dat weglaten is schadelijker dan een optie te veel aanbieden.</para>
     /// </summary>
     private static List<SlotToewijzing> FilterAlternatieven(List<SlotToewijzing> alternatieven)
     {
-        var kunstgrasSlots = alternatieven.Where(a => a.VeldNummer >= 1 && a.VeldNummer <= 4).ToList();
-        var kunstgrasVelden = kunstgrasSlots.Select(a => a.VeldNummer).Distinct().Count();
+        var kunstgrasVelden = alternatieven
+            .Where(a => VeldTypeClassificatie.IsKunstgras(a.VeldType))
+            .Select(a => a.VeldNummer).Distinct().Count();
+        if (kunstgrasVelden < 3)
+            return alternatieven;
 
-        // Als 3+ kunstgrasvelden beschikbaar zijn, laat grasvelden weg
-        if (kunstgrasVelden >= 3)
-            return kunstgrasSlots;
-
-        return alternatieven;
+        // Bewust IsNatuurgras en niet !IsKunstgras: onbekend is geen natuurgras en blijft staan.
+        return alternatieven
+            .Where(a => !VeldTypeClassificatie.IsNatuurgras(a.VeldType))
+            .ToList();
     }
 
     /// <summary>
-    /// Filter veld 5 (grasveld) uit beschikbare vensters als er kunstgrasalternatieven
-    /// in dezelfde tijdperiode zijn. Houdt veld 5 vensters die uniek zijn qua tijdsblok.
+    /// Laat natuurgrasvensters weg zodra er drie of meer kunstgrasvensters zijn, behalve als een
+    /// natuurgrasvenster het enige aanbod in zijn tijdsblok is — dan is het juist de toegevoegde
+    /// waarde. Veldtype uit <c>dbo.Velden</c>, niet uit het veldnummer (#705), geclassificeerd via
+    /// <see cref="VeldTypeClassificatie"/> (#707); vensters met een onbekend veldtype blijven altijd staan.
     /// </summary>
     private static List<BeschikbaarVenster> FilterKunstgrasVensters(List<BeschikbaarVenster> vensters)
     {
-        var kunstgrasVensters = vensters.Where(v => v.VeldNummer >= 1 && v.VeldNummer <= 4).ToList();
+        var kunstgrasVensters = vensters.Where(v => VeldTypeClassificatie.IsKunstgras(v.VeldType)).ToList();
         if (kunstgrasVensters.Count < 3)
             return vensters;
 
-        // Houd veld 5 vensters die GEEN overlappend kunstgras-alternatief hebben
-        var veld5Uniek = vensters.Where(v => v.VeldNummer == 5).Where(v5 =>
-        {
-            var v5Van = TimeOnly.TryParse(v5.Van, out var van) ? van : TimeOnly.MinValue;
-            var v5Tot = TimeOnly.TryParse(v5.Tot, out var tot) ? tot : TimeOnly.MaxValue;
-            // Geen enkel kunstgrasvenster overlapt met dit veld 5 venster?
-            return !kunstgrasVensters.Any(kg =>
-            {
-                var kgVan = TimeOnly.TryParse(kg.Van, out var kv) ? kv : TimeOnly.MinValue;
-                var kgTot = TimeOnly.TryParse(kg.Tot, out var kt) ? kt : TimeOnly.MaxValue;
-                return kgVan < v5Tot && kgTot > v5Van;
-            });
-        }).ToList();
+        var overigeVensters = vensters
+            .Where(v => !VeldTypeClassificatie.IsKunstgras(v.VeldType))
+            .Where(v => !VeldTypeClassificatie.IsNatuurgras(v.VeldType) || !OverlaptMetVenster(v, kunstgrasVensters))
+            .ToList();
 
-        return kunstgrasVensters.Concat(veld5Uniek)
+        return kunstgrasVensters.Concat(overigeVensters)
             .OrderBy(v => TimeOnly.TryParse(v.Van, out var t) ? t : TimeOnly.MinValue)
             .ToList();
+    }
+
+    private static bool OverlaptMetVenster(BeschikbaarVenster venster, List<BeschikbaarVenster> andere)
+    {
+        var van = TimeOnly.TryParse(venster.Van, out var v) ? v : TimeOnly.MinValue;
+        var tot = TimeOnly.TryParse(venster.Tot, out var t) ? t : TimeOnly.MaxValue;
+        return andere.Any(a =>
+        {
+            var aVan = TimeOnly.TryParse(a.Van, out var av) ? av : TimeOnly.MinValue;
+            var aTot = TimeOnly.TryParse(a.Tot, out var at) ? at : TimeOnly.MaxValue;
+            return aVan < tot && aTot > van;
+        });
     }
 
     /// <summary>
@@ -607,7 +689,8 @@ public static class BerichtResponseGenerator
     }
 
     private static (string onderwerp, string body) WrapMetReviewEnHandtekening(
-        string inhoud, BerichtClassificatie classificatie, InkomendBericht email)
+        string inhoud, BerichtClassificatie classificatie, InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
     {
         var onderwerp = $"Re: {email.Onderwerp}";
         var body = "";
@@ -623,22 +706,42 @@ public static class BerichtResponseGenerator
         }
 
         body += inhoud;
-        body += "\n\n" + GetHandtekening();
+        body += "\n\n" + GetHandtekening(clubSettings);
 
         return (onderwerp, body);
     }
 
-    private static string GetHandtekening()
+    /// <summary>
+    /// Bouwt de auto-reply handtekening. <paramref name="clubSettings"/> (#677) laat het dry-run
+    /// pad (EmailTestFunction) de instellingen van de in de GUI geselecteerde club gebruiken —
+    /// bijv. AllStars FC — in plaats van de proces-globale AppSettings-cache, die altijd de
+    /// primaire (echte) club van deze deployment bevat. Is <paramref name="clubSettings"/>
+    /// <c>null</c> (de echte e-mailpipeline, zonder clubswitcher), dan is het gedrag exact
+    /// hetzelfde als vóór #677: lezen uit de globale cache.
+    ///
+    /// Belangrijk: als een override actief is, valt een ontbrekend veld NIET terug op de globale
+    /// cache — dat zou immers de echte productieclub weer laten lekken in een AllStars-dry-run.
+    /// </summary>
+    private static string GetHandtekening(ClubAppSettingsSnapshot? clubSettings = null)
     {
-        var voetnoot = SystemUtilities.AppSettings.GetSetting("emailVoetnoot");
+        var voetnoot = clubSettings != null
+            ? clubSettings.EmailVoetnoot
+            : SystemUtilities.AppSettings.GetSetting("emailVoetnoot");
         if (!string.IsNullOrWhiteSpace(voetnoot))
             return voetnoot;
 
         // Fallback: auto-opgebouwde handtekening uit losse instellingen
-        var afzenderNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
-            ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
-        var coordinatorNaam = SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
-        var coordinatorFunctie = SystemUtilities.AppSettings.GetSetting("coordinatorFunctie");
+        var afzenderNaam = clubSettings != null
+            ? clubSettings.PlannerAfzenderNaam
+                ?? throw new InvalidOperationException("Vereiste instelling 'PlannerAfzenderNaam' ontbreekt in dbo.AppSettings voor de opgegeven club")
+            : SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
+                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
+        var coordinatorNaam = clubSettings != null
+            ? clubSettings.CoordinatorNaam
+            : SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
+        var coordinatorFunctie = clubSettings != null
+            ? clubSettings.CoordinatorFunctie
+            : SystemUtilities.AppSettings.GetSetting("coordinatorFunctie");
 
         var handtekening = $"Met vriendelijke groet,\n\n{afzenderNaam}";
         if (!string.IsNullOrEmpty(coordinatorNaam))

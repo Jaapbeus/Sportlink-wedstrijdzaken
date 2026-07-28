@@ -6,12 +6,16 @@ namespace SportlinkFunction.Email;
 internal interface IEmailPersistenceRepository
 {
     Task<HashSet<string>> GetExcludedEmailAddressesAsync(string clubCode);
-    Task<bool> BestaatMessageIdAsync(string messageId);
+    Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId);
     Task<int> InsertEmailVerwerkingAsync(InkomendBericht email);
+    Task VerhoogPogingenAsync(int verwerkingId);
     Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData);
     Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson);
     Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail);
-    Task UpdateFoutAsync(string messageId, string foutMelding);
+    Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail);
+    Task MarkeerVerzendPogingAsync(int verwerkingId);
+    Task WisVerzendPogingAsync(int verwerkingId);
+    Task UpdateFoutAsync(int verwerkingId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log);
     Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId);
@@ -43,11 +47,17 @@ internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepositor
         return adressen;
     }
 
-    public Task<bool> BestaatMessageIdAsync(string messageId)
-        => EmailProcessingRepository.BestaatMessageIdAsync(messageId);
+    public Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId)
+        => EmailProcessingRepository.HaalVerwerkingStandOpAsync(messageId);
 
     public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
         => EmailProcessingRepository.InsertEmailVerwerkingAsync(email);
+
+    public Task VerhoogPogingenAsync(int verwerkingId)
+        => EmailProcessingRepository.VerhoogPogingenAsync(verwerkingId);
+
+    public Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail)
+        => EmailProcessingRepository.UpdateVoorgesteldAntwoordAsync(verwerkingId, antwoordEmail);
 
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
         => EmailProcessingRepository.UpdateStatusAsync(verwerkingId, status, geextraheerdeData);
@@ -58,8 +68,14 @@ internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepositor
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
         => EmailProcessingRepository.UpdateAntwoordVerstuurdAsync(verwerkingId, verstuurdNaar, antwoordEmail);
 
-    public Task UpdateFoutAsync(string messageId, string foutMelding)
-        => EmailProcessingRepository.UpdateFoutAsync(messageId, foutMelding);
+    public Task MarkeerVerzendPogingAsync(int verwerkingId)
+        => EmailProcessingRepository.MarkeerVerzendPogingAsync(verwerkingId);
+
+    public Task WisVerzendPogingAsync(int verwerkingId)
+        => EmailProcessingRepository.WisVerzendPogingAsync(verwerkingId);
+
+    public Task UpdateFoutAsync(int verwerkingId, string foutMelding)
+        => EmailProcessingRepository.UpdateFoutAsync(verwerkingId, foutMelding);
 
     public Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log)

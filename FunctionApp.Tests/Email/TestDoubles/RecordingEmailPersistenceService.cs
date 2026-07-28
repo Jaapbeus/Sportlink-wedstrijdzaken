@@ -9,16 +9,61 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
 
     public List<(int VerwerkingId, string VerstuurdNaar, string AntwoordEmail)> AntwoordUpdates { get; } = new();
 
-    public List<(string MessageId, string FoutMelding)> FoutUpdates { get; } = new();
+    public List<(int VerwerkingId, string FoutMelding)> FoutUpdates { get; } = new();
+
+    /// <summary>Verzendintenties die vóór een verzendpoging zijn vastgelegd (#716).</summary>
+    public List<int> VerzendPogingMarkeringen { get; } = new();
+
+    /// <summary>Verzendintenties die zijn gewist na een aantoonbaar mislukte verzending (#716).</summary>
+    public List<int> VerzendPogingWissingen { get; } = new();
+
+    /// <summary>Simuleert dat de verzendintentie niet vastgelegd kan worden (#716).</summary>
+    public bool ThrowOnMarkeerVerzendPoging { get; set; }
+
+    public List<(int VerwerkingId, string AntwoordEmail)> VoorgesteldeAntwoorden { get; } = new();
+
+    public List<int> PogingVerhogingen { get; } = new();
+
+    public List<InkomendBericht> Inserts { get; } = new();
+
+    /// <summary>Stand die de guard te zien krijgt; null = bericht nog niet geregistreerd.</summary>
+    public EmailVerwerkingStand? StandToReturn { get; set; }
+
+    /// <summary>Simuleert een database die het verzonden antwoord niet kan vastleggen.</summary>
+    public bool ThrowOnUpdateAntwoordVerstuurd { get; set; }
+
+    /// <summary>
+    /// Simuleert dat een gelijktijdige invocatie dezelfde MessageId al heeft geregistreerd: de INSERT
+    /// botst op UQ_EmailVerwerking_MessageId. (#707)
+    /// </summary>
+    public bool ThrowDubbeleMessageIdOnInsert { get; set; }
 
     public Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log)
         => Task.FromResult(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
-    public Task<bool> BestaatMessageIdAsync(string messageId)
-        => Task.FromResult(false);
+    public Task<EmailVerwerkingStand?> HaalVerwerkingStandOpAsync(string messageId)
+        => Task.FromResult(StandToReturn);
 
     public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
-        => Task.FromResult(1);
+    {
+        if (ThrowDubbeleMessageIdOnInsert)
+            throw new DubbeleMessageIdException(email.MessageId, new InvalidOperationException("UQ-schending (gesimuleerd)"));
+
+        Inserts.Add(email);
+        return Task.FromResult(1);
+    }
+
+    public Task VerhoogPogingenAsync(int verwerkingId)
+    {
+        PogingVerhogingen.Add(verwerkingId);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail)
+    {
+        VoorgesteldeAntwoorden.Add((verwerkingId, antwoordEmail));
+        return Task.CompletedTask;
+    }
 
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? geextraheerdeData)
     {
@@ -31,13 +76,31 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
 
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
     {
+        if (ThrowOnUpdateAntwoordVerstuurd)
+            throw new InvalidOperationException("Vastleggen van het antwoord mislukt (gesimuleerd)");
+
         AntwoordUpdates.Add((verwerkingId, verstuurdNaar, antwoordEmail));
         return Task.CompletedTask;
     }
 
-    public Task UpdateFoutAsync(string messageId, string foutMelding)
+    public Task MarkeerVerzendPogingAsync(int verwerkingId)
     {
-        FoutUpdates.Add((messageId, foutMelding));
+        if (ThrowOnMarkeerVerzendPoging)
+            throw new InvalidOperationException("Vastleggen van de verzendintentie mislukt (gesimuleerd)");
+
+        VerzendPogingMarkeringen.Add(verwerkingId);
+        return Task.CompletedTask;
+    }
+
+    public Task WisVerzendPogingAsync(int verwerkingId)
+    {
+        VerzendPogingWissingen.Add(verwerkingId);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateFoutAsync(int verwerkingId, string foutMelding)
+    {
+        FoutUpdates.Add((verwerkingId, foutMelding));
         return Task.CompletedTask;
     }
 
@@ -60,5 +123,6 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(ILogger log)
         => Task.FromResult(new List<ClassificatieCorrectieVoorbeeld>());
 
-    public string ResolveClubCode() => "VRC";
+    // ALLSTARS is de vaste democlubcode van het project — nooit een echte clubnaam in tests.
+    public string ResolveClubCode() => "ALLSTARS";
 }

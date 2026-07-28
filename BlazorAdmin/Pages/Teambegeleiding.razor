@@ -134,14 +134,34 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
 @* ── Teambegeleiding importeren ─────────────────────────────────────────────── *@
 <hr class="mt-4" />
 <h4>Teambegeleiding importeren</h4>
-<p class="text-muted small">
-    Download de CSV via club.sportlink.com → Leden → Exporteer tabel.<br />
+<p class="text-muted small mb-2">
     De CSV wordt in de browser ingelezen en verwerkt — er worden geen bestanden opgeslagen op de server.
 </p>
+
+<div class="card bg-light border-0 mb-3" style="max-width: 640px;">
+    <div class="card-body py-2 px-3">
+        <div class="small fw-semibold mb-1">De juiste CSV exporteren uit Sportlink</div>
+        <ol class="small text-muted mb-0 ps-3">
+            <li>Log in op <a href="https://club.sportlink.com" target="_blank" rel="noopener">club.sportlink.com</a></li>
+            <li>Ga naar <strong>Personen</strong></li>
+            <li>Kies <strong>Teams</strong></li>
+            <li>Klik bij <strong>Bondsteam</strong> op <em>alles selecteren</em></li>
+            <li>Klik bij <strong>Rol binnen het team</strong> op <em>alles selecteren</em></li>
+            <li>Verwijder de <strong>Teamspeler</strong>-opties (aanvaller, keeper, middenvelder, verdediger)</li>
+            <li>Klik op <strong>Zoeken</strong></li>
+            <li>Kies <strong>Exporteren</strong> en sla het document op</li>
+            <li>Kies het opgeslagen bestand hieronder</li>
+        </ol>
+    </div>
+</div>
 
 <div class="mb-3" style="max-width: 480px;">
     <InputFile OnChange="BestandGeselecteerdAsync" accept=".csv" class="form-control"
                disabled="@_importBezig" />
+    <div class="alert alert-warning small mt-2 mb-0" role="alert">
+        <strong>Let op:</strong> alle gegevens worden opnieuw ingelezen en vervangen de oude gegevens
+        van deze club volledig.
+    </div>
 </div>
 
 @if (_importLeesError != null)

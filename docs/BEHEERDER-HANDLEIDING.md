@@ -68,13 +68,50 @@ Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
 De dagplanning toont per wedstrijd een badge in de Status-kolom:
 
+De dagplanning heeft **twee losse kolommen** die makkelijk verward worden (#666):
+
+**Kolom "Wijziging"** — verplaatst de planner deze wedstrijd t.o.v. wat er nu in Sportlink staat?
+
 | Badge | Betekenis |
 |---|---|
-| ✓ OK (groen) | Huidige slot is al optimaal |
-| Nieuw (geel) | Nieuw timeslot toegewezen |
-| Wijzig (blauw) | Bestaand slot kan eerder/anders |
+| Ongewijzigd (grijs) | De planner laat deze wedstrijd staan |
+| Nieuw (geel) | Nieuw timeslot toegewezen (had nog geen veld of tijd) |
+| Wijzig (blauw) | Bestaand slot wordt verplaatst |
 | Probleem (rood) | Geen slot mogelijk (velden vol) |
 | Onbekend (grijs) | Team heeft geen speeltijdsconfiguratie (bijv. veldboeking door 'Toernooi commissie') — wordt ongewijzigd getoond, optimizer slaat het over |
+
+**Kolom "Voorkeurstijd"** — staat de wedstrijd op de gewenste tijd?
+
+| Badge | Betekenis |
+|---|---|
+| Tijd, groen | Exact op de voorkeurstijd |
+| Tijd + afwijking, geel | Tot en met 15 minuten ernaast |
+| Tijd + afwijking, rood | Meer dan 15 minuten ernaast |
+| — | Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie |
+
+Achter de tijd staat de herkomst: **regel** (teamregel voorkeursveld met tijd), **team** (eigen
+voorkeurstijd) of **standaard** (standaardtijd van de leeftijdscategorie).
+
+> **Waarom twee kolommen?** Tot #666 was er één groene "OK"-badge die alleen keek of de planner iets
+> verplaatste. Een wedstrijd die bleef staan toonde dus "OK", ook als die 60 minuten van de gewenste
+> tijd af lag. Die twee vragen zijn nu gescheiden.
+
+### Zelf schuiven in de tijdlijn
+
+De berekende planning is met de muis aan te passen (#666). Sleep een wedstrijdblok in de tijdlijn:
+
+- **naar links of rechts** voor een andere tijd — de tijd springt op stappen van 5 minuten;
+- **naar een andere rij** voor een ander veld.
+
+De tabel, de eindtijd en het aantal te wijzigen wedstrijden lopen direct mee. Wedstrijden die je zelf
+hebt verplaatst krijgen een stippellijn, zodat je onderscheid ziet met wat de planner koos.
+
+Ontstaat er een onmogelijke planning — twee wedstrijden die niet samen op één veld passen, of te weinig
+ruimte ertussen — dan verschijnt boven de tijdlijn een waarschuwing die benoemt welke twee wedstrijden
+het betreft. De wijziging wordt niet geblokkeerd; je ziet alleen dat het zo niet kan.
+
+Alleen de tab **Optimale planning** is te bewerken. **Huidige situatie** toont de stand uit Sportlink en
+blijft ongewijzigd.
 
 Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere teams; ze worden niet als fout beschouwd.
 
@@ -448,6 +485,18 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
    - Reply-To: e-mailadres van de aanvrager (automatisch uit Entra ID)
    - BCC: coördinator (uit `dbo.AppSettings.plannerEmailAdres`)
    - Coach antwoordt rechtstreeks naar aanvrager — aanvrager ziet nooit het coach-adres
+4. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
+   en een voorbeeldweergave vóór bevestiging. De CSV wordt in de browser verwerkt en nooit op de server
+   opgeslagen.
+   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — alle bestaande rijen
+     van de club worden eerst verwijderd (`DELETE WHERE ClubCode`), daarna volgt de nieuwe lijst. Er
+     wordt niets samengevoegd, dus een onvolledige export herstel je door een complete export opnieuw
+     te importeren.
+   - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
+
+> **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel
+> op het dashboard — het is het meest gebruikte scherm, omdat contactgegevens hier sneller te vinden
+> zijn dan in Sportlink Club zelf (#669).
 
 ### API-endpoints
 
@@ -456,6 +505,7 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
 | `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam + rol, nooit contactgegevens) |
 | `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag naar coach |
+| `POST /api/beheer/teambegeleiding/import` | CSV-import; vervangt alle rijen van de club |
 
 Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.
 
@@ -612,3 +662,150 @@ Fijnere regels per team: buffers vóór/na wedstrijden en een vaste veldvoorkeur
 | `POST /api/beheer/teamregels` | Nieuwe teamregel aanmaken |
 | `PUT /api/beheer/teamregels/{id}` | Teamregel bijwerken |
 | `DELETE /api/beheer/teamregels/{id}` | Teamregel verwijderen (soft-delete) |
+
+---
+
+## 15. Velden, veldbeschikbaarheid en trainingsschema (`/instellingen/velden`)
+
+De pagina `/instellingen/velden` beheert alles rond de velden van de club: hoeveel er zijn, welk
+type, wanneer het sportpark open is en wanneer een veld door training bezet is. Er is bewust geen
+vaste aanname over aantal velden of kunstgras-versus-gras — elke club richt dit naar eigen situatie
+in (#679).
+
+### Velden
+
+| Veld | Uitleg |
+|---|---|
+| **Veldnummer** | Uniek nummer, deployment-breed (niet alleen binnen de club) — eenmaal gekozen bij aanmaken, niet meer wijzigbaar |
+| **Naam** | Weergavenaam, bijv. "veld 1" |
+| **Type** | Vrije tekst, bijv. `kunstgras` of `natuurgras` — geen vaste lijst. Bepaalt welke velden de planner ontlast bij de grasveld-ontlasten optimalisatie |
+| **Kunstlicht** | Bepaalt of de zonsondergang-beperking geldt voor dit veld |
+| **Actief** | Uitvinken deactiveert het veld zonder het te verwijderen (geen harde delete — andere tabellen verwijzen ernaar) |
+
+### Veldbeschikbaarheid
+
+Het wekelijkse openingsvenster van het sportpark per veld per dag. Een combinatie veld + dag komt
+één keer voor; pas een bestaand venster aan in plaats van een tweede toe te voegen.
+
+| Veld | Uitleg |
+|---|---|
+| **Veld / Dag** | Alleen instelbaar bij aanmaken — verwijder en maak opnieuw aan om veld of dag te wijzigen |
+| **Van / Tot** | Openingsvenster, bijv. 18:00–22:00 |
+| **Beperkt tot zonsondergang** | Venster sluit eerder als de zon eerder ondergaat dan de ingestelde eindtijd (alleen relevant zonder kunstlicht) |
+
+### Trainingsschema
+
+Terugkerende trainingsbezetting per veld per weekdag — telt automatisch mee als bezetting bij het
+plannen van wedstrijden en in e-mailreacties, zonder aparte instelling elders. Dit is expliciet
+**per dag** vrij in te richten: een club met weinig training op maandag en een volle donderdagavond
+zet dat gewoon zo neer, in plaats van één vast wekelijks patroon te moeten forceren.
+
+| Veld | Uitleg |
+|---|---|
+| **Veld / Dag** | Welk veld en welke weekdag het trainingsblok bezet |
+| **Van / Tot** | Tijdvenster dat door training bezet is — mag korter zijn dan het hele openingsvenster |
+| **Omschrijving** | Optioneel, bijv. "JO15-2 training" — zichtbaar in het overzicht, niet in e-mailreacties |
+| **Actief** | Uitvinken schakelt het blok tijdelijk uit zonder het te verwijderen (bijv. tijdens een schoolvakantie) |
+
+Een club die geen trainingsblokken toevoegt, merkt geen enkel verschil — de tabel is dan leeg en
+telt nergens in mee.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/velden` | Alle velden voor de club |
+| `POST /api/beheer/velden` | Nieuw veld aanmaken |
+| `PUT /api/beheer/velden/{veldNummer}` | Veld bijwerken |
+| `GET /api/beheer/veldbeschikbaarheid` | Alle beschikbaarheidsvensters voor de club |
+| `POST /api/beheer/veldbeschikbaarheid` | Nieuw venster aanmaken |
+| `PUT /api/beheer/veldbeschikbaarheid/{id}` | Venster bijwerken |
+| `DELETE /api/beheer/veldbeschikbaarheid/{id}` | Venster verwijderen |
+| `GET /api/beheer/veldtraining` | Alle trainingsblokken voor de club |
+| `POST /api/beheer/veldtraining` | Nieuw trainingsblok aanmaken |
+| `PUT /api/beheer/veldtraining/{id}` | Trainingsblok bijwerken |
+| `DELETE /api/beheer/veldtraining/{id}` | Trainingsblok verwijderen |
+
+---
+
+## 16. Teamaliassen (`/teamaliassen`)
+
+Teamnamen komen niet altijd exact zo binnen als ze in Sportlink staan. Een e-mail van een
+tegenstander noemt bijvoorbeeld `13-1` of `J013 1`, terwijl het team officieel `JO13-1` heet.
+Zulke afwijkende schrijfwijzen worden automatisch vastgelegd als **alias** bij het team waar het
+systeem denkt dat ze bij horen — met status **te beoordelen**.
+
+Een alias wordt **nooit automatisch vertrouwd**. Pas nadat u hem op deze pagina goedkeurt, geldt
+de schrijfwijze bij teamherkenning als volwaardige match. Zo kan een verkeerde gok van de AI zich
+niet vastzetten en steeds opnieuw naar hetzelfde verkeerde team wijzen.
+
+### Wat u op de pagina ziet
+
+| Kolom | Uitleg |
+|---|---|
+| **Aangetroffen schrijfwijze** | De tekst exact zoals die in de e-mail of de Sportlink-data stond |
+| **Hoort bij team** | De officiële teamnaam waaraan de alias is gekoppeld, met leeftijdscategorie |
+| **Bron** | *Sportlink-sync* (uit de data), *AI-keuze* (door de AI toegewezen) of *Correctie coördinator* |
+| **Status** | Te beoordelen, Goedgekeurd of Afgewezen |
+| **Keer gebruikt** | Hoe vaak deze schrijfwijze al is aangetroffen — een hoog getal betekent dat goedkeuren of afwijzen echt effect heeft |
+| **Aangemaakt** | Moment waarop de alias voor het eerst werd gezien (in uw eigen tijdzone) |
+
+Bovenaan staan drie tellers (te beoordelen / goedgekeurd / afgewezen) en filterknoppen. De pagina
+opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoordeelde aliassen.
+
+### Wat u kunt doen
+
+| Actie | Effect |
+|---|---|
+| **Goedkeuren** | De schrijfwijze wordt vanaf nu vertrouwd en wijst voortaan direct naar dit team |
+| **Afwijzen** | De schrijfwijze wordt genegeerd; het systeem blijft per geval bepalen bij welk team hij hoort |
+| **Verwijderen** | Verwijdert de alias volledig (met bevestigingsvraag). Duikt de schrijfwijze later weer op, dan verschijnt hij opnieuw als *te beoordelen* |
+
+**Twijfelt u?** Wijs de alias af of laat hem staan. Alleen goedkeuren wat u zeker weet is
+veiliger dan een fout vastleggen — een goedgekeurde alias stuurt namelijk toekomstige
+e-mailverwerking naar dat team.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
+| `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
+| `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+
+---
+
+## 17. KNVB-verzetten zonder datum (`/instellingen`)
+
+### Wat doet deze instelling?
+
+Op de `/instellingen`-pagina staat de sectie **"KNVB-verzetten zonder datum"** met een schakelaar
+en een regio-dropdown (#561).
+
+Vraagt een tegenstander per e-mail om de wedstrijd te verzetten zonder zelf een concrete nieuwe
+datum voor te stellen, dan zegt het systeem **geen nieuwe datum toe** — dat hoort eerst met de
+begeleiding van het eigen team afgestemd te worden. In plaats daarvan verstuurt de pipeline
+automatisch een antwoord naar de tegenstander met:
+
+- de begeleiding van het eigen team in **BCC**, zodat beide teams het onderling kunnen afstemmen;
+- de KNVB-speeldagenkalender-PDF van het huidige seizoen als **bijlage**;
+- een paar concrete zaterdagen in de tekst waarop het eigen team volgens het huidige programma nog
+  geen wedstrijd heeft, als voorzet voor het overleg.
+
+| Instelling | Gedrag |
+|---|---|
+| **KNVB-kalender bij verzet-verzoek van tegenstander** (schakelaar, standaard **aan**) | Uit: geen bijlage/BCC/datumvoorstel — de bestaande herplan-afhandeling (alternatieve speeltijden op basis van veldbeschikbaarheid) blijft ongewijzigd van kracht. |
+| **KNVB-regio** (dropdown, standaard **niet ingesteld**) | Bepaalt welke van de zes KNVB-speeldagenkalenders wordt meegestuurd. **Staat deze op "niet ingesteld", dan wordt de hele nieuwe flow overgeslagen** — er is bewust geen standaardregio in code, elke club vult de eigen regio hier zelf in. |
+
+### Wanneer instellen?
+
+Vul de KNVB-regio in zodra bekend is in welk KNVB-district de club uitkomt (West, Noord, Oost,
+Zuid, Landelijk of LandelijkJeugd voor landelijke jeugdteams). Zonder deze instelling verandert er
+niets aan het bestaande gedrag bij herplanverzoeken.
+
+### Beperking huidige versie
+
+De regio geldt voor de hele club (één instelling, geen per-team-regio). Clubs met teams in
+meerdere districten (bijv. een landelijk seniorenteam naast jeugd in een regionaal district)
+krijgen dus voor alle teams dezelfde kalender mee. Per-team-regio is een toekomstige uitbreiding
+zodra teamregio automatisch uit Sportlink-data kan worden afgeleid.

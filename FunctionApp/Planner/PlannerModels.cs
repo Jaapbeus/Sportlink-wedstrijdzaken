@@ -54,6 +54,14 @@ namespace SportlinkFunction.Planner
         public string VeldNaam { get; set; } = string.Empty;
         public decimal VeldDeelGebruik { get; set; }
         public int WedstrijdDuurMinuten { get; set; }
+
+        /// <summary>
+        /// Veldtype uit <c>dbo.Velden</c> ("kunstgras", "natuurgras", …) — reist mee met het slot zodat
+        /// consumers het niet uit het veldnummer hoeven te raden (#705): die nummering geldt maar voor
+        /// één accommodatie. <c>null</c> betekent onbekend; een filter op veldtype mag zo'n slot dan
+        /// nooit wegfilteren, want het slot is aantoonbaar beschikbaar.
+        /// </summary>
+        public string? VeldType { get; set; }
     }
 
     public class TeamConflictInfo
@@ -72,6 +80,9 @@ namespace SportlinkFunction.Planner
         public string Tot { get; set; } = string.Empty;
         public int MaxDuurMinuten { get; set; }
         public string? Opmerking { get; set; }
+
+        /// <summary>Veldtype uit <c>dbo.Velden</c>; <c>null</c> = onbekend. Zie <see cref="SlotToewijzing.VeldType"/> (#705).</summary>
+        public string? VeldType { get; set; }
     }
 
     // ── Interne modellen ──
@@ -81,15 +92,119 @@ namespace SportlinkFunction.Planner
         public string Leeftijd { get; set; } = string.Empty;
         public decimal Veldafmeting { get; set; }
         public int WedstrijdTotaal { get; set; }
+
+        /// <summary>
+        /// Standaard voorkeurstijd voor deze leeftijdscategorie (#666). Wordt door de planner gebruikt
+        /// als een team géén eigen rij in dbo.TeamVoorkeurTijden heeft voor de speeldag.
+        /// null = geen streeftijd; de planner valt dan terug op het eerst beschikbare slot.
+        /// </summary>
+        public TimeOnly? StandaardVoorkeurTijd { get; set; }
     }
 
     public class VeldInfo
     {
         public int VeldNummer { get; set; }
         public string VeldNaam { get; set; } = string.Empty;
-        public string VeldType { get; set; } = "kunstgras"; // kunstgras, natuurgras
+        public string VeldType { get; set; } = "kunstgras"; // vrije tekst uit dbo.Velden; zie VeldTypeClassificatie
         public bool HeeftKunstlicht { get; set; }
-        public bool IsKunstgras => VeldType == "kunstgras";
+
+        /// <summary>
+        /// Kunstgras volgens de enige classificatie in deze codebase — zie
+        /// <see cref="VeldTypeClassificatie"/>. Tot #705/#707 stond hier een eigen, case-sensitieve
+        /// vergelijking (<c>VeldType == "kunstgras"</c>) terwijl het e-mailantwoord een tweede,
+        /// case-insensitieve regel gebruikte. Twee definities van hetzelfde begrip is precies de
+        /// fout die dit project uitbant: gebruik altijd deze property of
+        /// <see cref="VeldTypeClassificatie"/>, nooit een nieuwe stringvergelijking.
+        /// </summary>
+        public bool IsKunstgras => VeldTypeClassificatie.IsKunstgras(VeldType);
+    }
+
+    /// <summary>
+    /// Grondsoort van een veld. Drie waarden, want "niet als kunstgras te herkennen" is niet
+    /// hetzelfde als "dus natuurgras": <c>dbo.Velden.VeldType</c> is vrije tekst (zie de
+    /// Admin-validatie in <c>AdminVeldBeschikbaarheidFunction</c>) en elke club typt het anders.
+    /// </summary>
+    public enum VeldSoort
+    {
+        /// <summary>
+        /// Leeg, ontbrekend of een aanduiding die we niet met zekerheid kunnen plaatsen
+        /// (bijv. "hybride"). Filters mogen een onbekend veld <b>nooit</b> wegfilteren: het slot is
+        /// aantoonbaar beschikbaar, en het verzwijgen daarvan is schadelijker dan één optie te veel.
+        /// </summary>
+        Onbekend = 0,
+        Kunstgras = 1,
+        Natuurgras = 2
+    }
+
+    /// <summary>
+    /// De enige plek waar deze codebase bepaalt wat "kunstgras" of "natuurgras" betekent (#705, #707).
+    ///
+    /// <para><b>Waarom niet gewoon <c>== "kunstgras"</c>:</b> het veldtype komt als vrije tekst uit
+    /// <c>dbo.Velden</c>. Een club typt "Kunstgras", "kunstgras 2" of "KG"; een exacte,
+    /// case-sensitieve vergelijking noemt die allemaal géén kunstgras. Op het e-mailpad bepaalt
+    /// dat welke velden een aanvrager te zien krijgt.</para>
+    ///
+    /// <para><b>Fail-safe:</b> alles wat noch als kunstgras noch als natuurgras herkenbaar is, geldt
+    /// als <see cref="VeldSoort.Onbekend"/> — nooit als natuurgras. Een filter dat natuurgras
+    /// weglaat gooit zo nooit een veld weg op basis van een gok over een aanduiding die we niet
+    /// kennen. Nieuwe schrijfwijzen horen hieronder toegevoegd te worden, niet elders herkend.</para>
+    /// </summary>
+    public static class VeldTypeClassificatie
+    {
+        private static readonly char[] Scheidingstekens = [' ', '-', '_', '.', ',', '/', '(', ')', '+'];
+
+        // Fragmenten mogen ergens in de tekst staan — veilig voor varianten als "kunstgrasveld 2".
+        private static readonly string[] KunstgrasFragmenten =
+            ["kunstgras", "kunst gras", "kunst-gras", "kunstveld", "artificial", "artificieel", "artgras"];
+
+        // Losse codes: alleen als heel woord. Als substring geven ze te veel valse treffers
+        // ("kg" zit ook in willekeurige woorden).
+        private static readonly string[] KunstgrasWoorden = ["kunst", "kg", "art", "3g", "4g", "5g"];
+
+        private static readonly string[] NatuurgrasFragmenten =
+            ["natuurgras", "natuur gras", "natuur-gras", "natuurveld", "natural"];
+
+        private static readonly string[] NatuurgrasWoorden = ["natuur", "ng"];
+
+        // Hybride/versterkt gras is géén van beide. Bewust Onbekend: zulke velden mogen niet
+        // wegvallen omdat we ze niet kunnen plaatsen.
+        private static readonly string[] OnbekendFragmenten = ["hybride", "hybrid", "semi"];
+
+        /// <summary>Classificeert een vrije-tekst veldtype uit <c>dbo.Velden</c>.</summary>
+        public static VeldSoort Bepaal(string? veldType)
+        {
+            if (string.IsNullOrWhiteSpace(veldType)) return VeldSoort.Onbekend;
+
+            var tekst = veldType.Trim().ToLowerInvariant();
+            if (OnbekendFragmenten.Any(f => tekst.Contains(f, StringComparison.Ordinal)))
+                return VeldSoort.Onbekend;
+
+            var woorden = tekst.Split(Scheidingstekens, StringSplitOptions.RemoveEmptyEntries);
+
+            // Kunstgras eerst: "kunstgras" bevat ook "gras", dus de natuurgras-check mag er niet vóór.
+            if (KunstgrasFragmenten.Any(f => tekst.Contains(f, StringComparison.Ordinal))
+                || woorden.Any(w => KunstgrasWoorden.Contains(w)))
+                return VeldSoort.Kunstgras;
+
+            if (NatuurgrasFragmenten.Any(f => tekst.Contains(f, StringComparison.Ordinal))
+                || woorden.Any(w => NatuurgrasWoorden.Contains(w))
+                || tekst.Contains("gras", StringComparison.Ordinal))
+                return VeldSoort.Natuurgras;
+
+            return VeldSoort.Onbekend;
+        }
+
+        /// <summary>Aantoonbaar kunstgras.</summary>
+        public static bool IsKunstgras(string? veldType) => Bepaal(veldType) == VeldSoort.Kunstgras;
+
+        /// <summary>
+        /// Aantoonbaar natuurgras. Gebruik dit — niet <c>!IsKunstgras(...)</c> — als je iets
+        /// wegfiltert: een onbekend veldtype is geen natuurgras.
+        /// </summary>
+        public static bool IsNatuurgras(string? veldType) => Bepaal(veldType) == VeldSoort.Natuurgras;
+
+        /// <summary>Niet te plaatsen veldtype (leeg, ontbrekend of onbekende aanduiding).</summary>
+        public static bool IsOnbekend(string? veldType) => Bepaal(veldType) == VeldSoort.Onbekend;
     }
 
     public class VeldBeschikbaarheidInfo
@@ -127,38 +242,22 @@ namespace SportlinkFunction.Planner
         public int Prioriteit { get; set; }
     }
 
+    /// <summary>
+    /// Uitgelezen 'VoorkeurVeld'-regel van één team (#666) — het veld waarop dit team bij voorkeur
+    /// speelt, optioneel met een tijdstip. Prioriteit: laag getal = belangrijker.
+    /// </summary>
+    public class TeamVoorkeurVeld
+    {
+        public string TeamNaam { get; set; } = string.Empty;
+        public int VeldNummer { get; set; }
+        public TimeOnly? Tijd { get; set; }
+        public int Prioriteit { get; set; }
+    }
+
     // ── Optimalisatie modellen ──
-
-    public class OptimaliseerRequest
-    {
-        public string Datum { get; set; } = string.Empty;
-        public string? Doel { get; set; } // optioneel: grasveld-ontlasten, strakker-plannen. Leeg = beide combineren
-        public string? GewensteEindtijd { get; set; } // optioneel, standaard "16:15". Alles voor dit tijdstip = extra buffer
-        public int? BufferMinuten { get; set; } // optioneel, standaard 15 min. Overschrijft de standaard buffer tussen wedstrijden
-    }
-
-    public class OptimaliseerResponse
-    {
-        public string Datum { get; set; } = string.Empty;
-        public string HuidigeEindtijd { get; set; } = string.Empty;
-        public string? GeschatteNieuweEindtijd { get; set; }
-        public int AantalVerplaatsingen { get; set; }
-        public int AantalVanGrasveldVerplaatst { get; set; }
-        public List<OptimalisatieSuggestie> Suggesties { get; set; } = new();
-        public string HtmlPlanner { get; set; } = string.Empty;
-        public bool VoldoendeRuimte { get; set; }
-        public string? VoldoendeRuimteMelding { get; set; }
-        public VeldCapaciteitInfo? CapaciteitOverzicht { get; set; }
-    }
-
-    public class VeldCapaciteitInfo
-    {
-        public int TotaalBeschikbareMinuten { get; set; }
-        public int TotaalBezettMinuten { get; set; }
-        public double BezettingsPercentage { get; set; }
-        public int AantalWedstrijdenOpGrasveld { get; set; }
-        public int AantalLegeVelden { get; set; }
-    }
+    // OptimaliseerRequest/Response en VeldCapaciteitInfo zijn vervallen bij #666, samen met het
+    // endpoint /planner/optimaliseer. OptimalisatieSuggestie blijft: PlannerHtmlGenerator gebruikt
+    // het type om verplaatsingen in de HTML-weergave te markeren.
 
     public class OptimalisatieSuggestie
     {
@@ -361,12 +460,35 @@ namespace SportlinkFunction.Planner
         public string? OptimaalTijd { get; set; }  // "09:00"
 
         // Status: "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
+        // Let op: dit zegt alleen of de planner de wedstrijd verplaatst t.o.v. de HUIDIGE stand.
+        // Of de wedstrijd op de gewenste voorkeurstijd staat, staat in VoorkeurStatus (#666) — die twee
+        // werden eerder door elkaar gehaald, waardoor een wedstrijd met 60 min afwijking "OK" toonde.
         public string Status { get; set; } = "ongewijzigd";
         public string? NietInplanbaaarReden { get; set; }
 
-        // Voorkeurstijd-informatie (null = geen voorkeur geconfigureerd)
+        // Voorkeurstijd-informatie (null = geen voorkeur en geen default geconfigureerd)
         public string? VoorkeurTijd { get; set; }
         public int? VoorkeurAfwijkingMinuten { get; set; }  // 0 = exact, positief = later, negatief = eerder
+
+        /// <summary>
+        /// Waar de voorkeurstijd uit komt (#666): "regel" (dbo.TeamRegels VoorkeurVeld met tijd),
+        /// "team" (dbo.TeamVoorkeurTijden) of "leeftijd" (dbo.Speeltijden.StandaardVoorkeurTijd).
+        /// null = geen voorkeurstijd bekend.
+        /// </summary>
+        public string? VoorkeurBron { get; set; }
+
+        /// <summary>
+        /// Beoordeling van de afwijking t.o.v. de voorkeurstijd (#666), met dezelfde drempels als de
+        /// Gantt-legenda: "op-tijd" (exact), "kleine-afwijking" (t/m 15 min), "grote-afwijking"
+        /// (meer dan 15 min), "geen-voorkeur".
+        /// </summary>
+        public string VoorkeurStatus { get; set; } = "geen-voorkeur";
+
+        /// <summary>Voorkeursveld uit een 'VoorkeurVeld'-teamregel; null als die regel er niet is.</summary>
+        public int? VoorkeurVeldNummer { get; set; }
+
+        /// <summary>False als er een voorkeursveld was maar de planner een ander veld moest kiezen.</summary>
+        public bool? VoorkeurVeldToegepast { get; set; }
     }
 
     public class AutoPlanResponse

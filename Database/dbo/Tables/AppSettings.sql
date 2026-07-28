@@ -1,6 +1,8 @@
 ﻿CREATE TABLE [dbo].[AppSettings](
 	[ClubName]				NVARCHAR(100)	NOT NULL,
-	[ClubCode]				NVARCHAR(20)	NOT NULL,
+	-- NOT NULL alleen is niet genoeg: een lege ClubCode komt als "" in de settings-cache terecht en
+	-- maakt elke ClubCode-filter leeg (o.a. de uitsluitingslijst van de e-mailverwerking). (#707)
+	[ClubCode]				NVARCHAR(20)	NOT NULL CONSTRAINT [CK_AppSettings_ClubCode] CHECK (LEN(LTRIM(RTRIM([ClubCode]))) > 0),
 	[SportlinkApiUrl]		NVARCHAR(100)	NOT NULL,
 	[SportlinkClientId]		NVARCHAR(50)	NOT NULL,
 	[SeasonStartMonth]		[int]			NOT NULL,
@@ -23,5 +25,8 @@
 	[ThemeColorAccent]		NVARCHAR(7)		NULL,
 	[ThemeColorTextOnPrimary] NVARCHAR(7)	NULL,
 	[ThemeClubWebsiteUrl]	NVARCHAR(300)	NULL,		-- URL van club-website voor kleurextractie
-	[SyncEnabled]			BIT				NOT NULL DEFAULT 1	-- 0 = geen Sportlink API-sync voor deze club
+	[SyncEnabled]			BIT				NOT NULL DEFAULT 1,	-- 0 = geen Sportlink API-sync voor deze club
+	-- #561: verzet-zonder-datum flow — KNVB-speeldagenkalender als bijlage + BCC eigen team
+	[KnvbPdfBijlageIngeschakeld] BIT			NOT NULL DEFAULT 1,	-- 1 = KNVB-kalender-PDF bijvoegen bij verzet-zonder-datum-antwoord
+	[KnvbStandaardRegio]	NVARCHAR(20)	NULL	-- KNVB-regio van deze club: West/Noord/Oost/Zuid/Landelijk/LandelijkJeugd. Geen default — ontbrekend = geen bijlage/vrije-zaterdagen-tekst
 	)

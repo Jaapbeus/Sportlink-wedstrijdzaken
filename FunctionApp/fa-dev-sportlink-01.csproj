@@ -11,9 +11,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>2.17.2.1</Version>
-    <AssemblyVersion>2.17.2.1</AssemblyVersion>
-    <FileVersion>2.17.2.1</FileVersion>
+    <Version>2.18.0.0</Version>
+    <AssemblyVersion>2.18.0.0</AssemblyVersion>
+    <FileVersion>2.18.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members via InternalsVisibleTo (#476) -->
@@ -44,6 +44,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- #561: KNVB-speeldagenkalender-PDF's — reizen mee in het deploymentpakket, geen nieuwe Azure-resource -->
+    <Content Include="Content/KnvbKalenders/2026-2027/*.pdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />

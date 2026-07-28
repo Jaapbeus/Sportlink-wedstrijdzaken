@@ -30,6 +30,18 @@ internal static class ClubScope
     internal static string HisFilter(string alias)
         => $"ISNULL({alias}.[ClubCode], {PrimaryClubCodeParam}) = {ClubCodeParam}";
 
+    /// <summary>
+    /// SQL-predicaat voor een tabel met <c>ClubCode NOT NULL</c> waarin nog rijen zónder
+    /// clubstempel kunnen staan — een lege string, achtergelaten door een import van vóór de
+    /// ClubCode-kolom. Die rijen horen bij de primaire club, net zoals migratie 001 dat voor
+    /// <c>his.*</c> aanneemt. Strikt filteren zou ze onzichtbaar maken; bij
+    /// <c>avg.Teambegeleiding</c> betekent dat: geen begeleider gevonden waar er wél één is.
+    /// Demodata is altijd expliciet gestempeld en lekt dus nooit mee.
+    /// Vereist beide parameters — zet ze via <see cref="AddHisParams"/>.
+    /// </summary>
+    internal static string LegacyFilter(string alias)
+        => $"COALESCE(NULLIF(LTRIM(RTRIM({alias}.[ClubCode])), ''), {PrimaryClubCodeParam}) = {ClubCodeParam}";
+
     /// <summary>De primaire (SyncEnabled) club van deze deployment.</summary>
     internal static string Primary
     {
@@ -65,5 +77,25 @@ internal static class ClubScope
         var cc = AddClubParam(cmd, clubCode);
         cmd.Parameters.AddWithValue(PrimaryClubCodeParam, Primary);
         return cc;
+    }
+
+    /// <summary>
+    /// Leest de Accommodatie-instelling van de opgegeven club rechtstreeks uit dbo.AppSettings.
+    /// <see cref="SystemUtilities.AppSettings"/>.GetSetting("accommodatie") is een globale cache
+    /// van precies één (de primaire, SyncEnabled) club en negeert daarmee elke andere ClubCode —
+    /// een lookup voor ALLSTARS-demodata kreeg zo altijd de accommodatienaam van de primaire club
+    /// terug, waardoor de m.[accommodatie] LIKE-filter nooit matchte op ALLSTARS-wedstrijden (#694).
+    /// </summary>
+    internal static async Task<string> RequireAccommodatieAsync(SqlConnection conn, string clubCode)
+    {
+        using var cmd = new SqlCommand(
+            "SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = @clubCode", conn);
+        cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        var result = await cmd.ExecuteScalarAsync();
+        var waarde = result as string;
+        if (string.IsNullOrWhiteSpace(waarde))
+            throw new InvalidOperationException(
+                $"Vereiste instelling 'Accommodatie' ontbreekt in dbo.AppSettings voor ClubCode '{clubCode}'");
+        return waarde;
     }
 }

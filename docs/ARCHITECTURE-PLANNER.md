@@ -52,9 +52,12 @@ Veld 5 wordt alleen toegewezen als veld 1–4 volledig bezet zijn in het gevraag
 | [Heren 1] | BufferVoor | 60 min | 1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld |
 | [Heren 1] | BufferNa | 30 min | 30 min na de wedstrijd geen andere wedstrijden op hetzelfde veld |
 
-Toekomstige regels (voorbeelden):
-- `VoorkeurVeld`: team speelt altijd op een bepaald veld
-- `VoorkeurTijd`: team speelt altijd rond een bepaalde tijd
+Ook ondersteund:
+- `VoorkeurVeld`: team speelt bij voorkeur op een bepaald veld, optioneel met een tijd. Sinds #666 wordt
+  deze regel daadwerkelijk toegepast door de auto-planner (als eerste laag in de rangorde); daarvoor werd
+  hij opgeslagen en in de GUI getoond zonder enig effect op de planning.
+
+Voorkeurstijden per team staan niet in `dbo.TeamRegels` maar in `dbo.TeamVoorkeurTijden` (per `DagVanWeek`).
 
 ### Zonsondergang-beperking (velden zonder kunstlicht)
 - Wedstrijd moet eindigen **voor zonsondergang**
@@ -62,10 +65,15 @@ Toekomstige regels (voorbeelden):
 - Opgeslagen in `dbo.Zonsondergang` tabel (handmatige overrides mogelijk)
 - **Geen harde buffer**, wel een waarschuwing als marge < 20 minuten
 
-### Ochtend-eerst voorkeur voor jeugd (zaterdag, zachte regel)
-- JO7–JO10: voorkeur ochtend (08:30–11:00)
-- JO11–JO12: voorkeur mid-ochtend (10:00–13:00)
-- JO13+/Senioren: voorkeur middag (13:00+)
+### Standaard voorkeurstijd per leeftijdscategorie (zachte regel)
+
+Per leeftijdscategorie staat een standaard voorkeurstijd in `dbo.Speeltijden.StandaardVoorkeurTijd`,
+instelbaar per club via **Beheer → Instellingen → Speeltijden** (#666). De auto-planner gebruikt die tijd
+voor teams die géén eigen rij in `dbo.TeamVoorkeurTijden` hebben.
+
+Leeg laten betekent: geen streeftijd — de planner kiest dan het eerst beschikbare slot. De waarden zijn
+clubbeleid en staan bewust **niet** hardcoded in C#; vóór #666 stond er wel een vaste staffel in code,
+die alleen als sorteersleutel werd gebruikt en nooit als streeftijd.
 
 Dit zijn voorkeuren, geen harde beperkingen.
 
@@ -85,6 +93,44 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 
 **Voorbeeld efficiënt plannen:**
 - 2× JO9 (0.25) op één helft + 1× JO11 (0.50) op de andere helft = 1.00 → veld vol
+
+### Kwartbanen: hoe een veld verdeeld wordt (#666)
+
+Een veld bestaat uit **vier kwartbanen**: `A1`, `A2`, `B1`, `B2`. Die labels zijn de `VeldSubpositie` en
+komen terug in de Sportlink-veldstring ("Kunstgras 1 A2").
+
+> **Veldstring → veldnummer: één matching, op drie plekken identiek (#707, #719).** Sportlink levert het
+> veld als `<veldnaam>[ <subpositie>]`; `dbo.Velden` bevat alleen de veldnaam. Een treffer is een exact
+> gelijke veldnaam, óf een veldnaam gevolgd door een spatie en de subpositie — **langste veldnaam eerst**,
+> zodat `veld 1 achter B` bij "veld 1 achter" hoort en niet bij "veld 1".
+>
+> Dit stond ooit als `LEFT(veld, 6)` in de SQL-paden. Die afkap vereist dat élke veldnaam maximaal zes
+> tekens is én in de eerste zes uniek, en dat is twee keer niet waar: `veld 10` werd `veld 1` (bezetting
+> op het verkeerde veld, waarna veld 10 vrij leek → **dubbele boeking**) en `hoofdveld` matchte niets en
+> viel volledig uit de bezetting. De matching zit nu in `PlannerShared.ResolveVeld` (C#),
+> `VeldResolutie.SqlOuterApply` (SQL vanuit C#) en de view `planner.AlleWedstrijdenOpVeld`.
+>
+> De view staat op **twee** plekken — het DB-project én `Script.PostDeployment1.sql` — en CI rolt alleen
+> dat laatste uit. `VeldResolutieDriftTests` faalt als ze uiteenlopen of als de zes-tekens-afkap
+> terugkomt.
+
+| Veldafmeting | Banen | Toegestane plekken |
+|---|---|---|
+| 0.25 | 1 | `A1`, `A2`, `B1` of `B2` |
+| 0.50 | 2 aangrenzend | `A` (banen 1+2) of `B` (banen 3+4) — niet dwars door het midden |
+| 1.00 | 4 | geen subpositie |
+
+`FieldScheduler.PastOpVeld` houdt per kandidaattijd bij welke banen al bezet zijn door wedstrijden die op
+dat moment overlappen, en kiest daaruit de eerste vrije plek (`EersteVrijeSubpositie`).
+
+**Waarom dit zo moest:** de oude toewijzing keek alleen naar het *aantal* gelijktijdige wedstrijden — de
+eerste kreeg `A1`, de tweede `A2`, de derde `B1`. Twee fouten volgden daaruit. Een halfveldwedstrijd op
+`A` (banen 1+2) plus een kwartveldwedstrijd leverde `A2` op, precies bovenop de eerste. En met `A1` en `B1`
+bezet en `A2` vrij koos hij alsnog `B1`. De capaciteitscheck telde uitsluitend de fracties op, dus
+numeriek leek dat te passen (0,5 + 0,25 = 0,75 ≤ 1,00) terwijl de banen botsten.
+
+Bij handmatig verslepen bepaalt de verticale droppositie in de rij welke baan het wordt, zodat een
+kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vrije plek.
 
 ### Speeltijden per leeftijdscategorie
 
@@ -144,8 +190,7 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 |---|---|---|
 | `PlannerService` | `Planner/PlannerService.cs` | Facade — delegeert naar services |
 | `AvailabilityService` | `Planner/Services/` | CheckAvailabilityAsync, Doordeweeks |
-| `AutoPlanService` | `Planner/Services/` | AutoPlanAsync, Toepassen |
-| `OptimizationService` | `Planner/Services/` | OptimaliseerAsync |
+| `AutoPlanService` | `Planner/Services/` | AutoPlanAsync, Toepassen, Veldbezetting — de enige dagplanning-optimalisatie |
 | `RescheduleService` | `Planner/Services/` | CheckRescheduleAvailabilityAsync |
 | `TeamScheduleService` | `Planner/Services/` | GetTeamScheduleAsync |
 | `PlannerShared` | `Planner/Services/` | CanFitMatch, FieldScheduler, constanten |
@@ -342,20 +387,44 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
 ## Database schema (nieuwe tabellen)
 
 ### dbo.Velden
-Velddefinities met type (kunstgras/natuurgras) en verlichting. Elke vereniging configureert dit naar eigen situatie.
+Velddefinities met type (vrije tekst, bijv. kunstgras/natuurgras) en verlichting. Elke vereniging
+configureert dit naar eigen situatie — inclusief clubs met een ander aantal velden of uitsluitend
+natuurgras. Volledig beheerbaar via Instellingen → Velden in de Admin GUI (#679); daarvoor kon een
+veld alleen via een directe database-wijziging worden toegevoegd.
 
 | Kolom | Beschrijving |
 |-------|-------------|
-| VeldNummer | Uniek nummer (PK) |
+| VeldNummer | Uniek nummer (PK — deployment-breed, niet per club, zie "Deployment-model" in CLAUDE.md) |
 | VeldNaam | Weergavenaam (bijv. "veld 1") |
-| VeldType | `kunstgras` of `gras` — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie |
+| VeldType | Vrije tekst (bijv. `kunstgras` of `natuurgras`) — bepaalt welke velden ontlast worden bij de grasveld-ontlasten optimalisatie. Puur beschrijvend, geen vaste enum. |
 | HeeftKunstlicht | Verlichting beschikbaar — bepaalt zonsondergang-beperking |
 | Actief | Of het veld in gebruik is |
 
 Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder kunstlicht, veld 6 inactief — elke club configureert dit naar eigen situatie.
 
 ### dbo.VeldBeschikbaarheid
-Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen beschikbaar zijn.
+Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen
+beschikbaar zijn. Beheerbaar via Instellingen → Velden (#679).
+
+### dbo.VeldTraining
+Terugkerende trainingsbezetting per veld per weekdag — een tweede, club-vrij-instelbare
+bezettingsbron naast wedstrijden (#679, uitwerking van #581). Elke club legt zelf vast welke velden
+op welke dag door training bezet zijn, en dat mag per dag verschillen (bijv. maandag ruim,
+donderdag vol). Geen periode-begrip (zomerstop vs. competitie) — dat blijft toekomstig werk, zie
+#581.
+
+| Kolom | Beschrijving |
+|-------|-------------|
+| VeldNummer | FK naar dbo.Velden |
+| DagVanWeek | ISO-dag 1–7 |
+| VanTijd / TotTijd | Tijdvenster dat door training bezet is |
+| Omschrijving | Vrije tekst (bijv. "JO15-2 training"), optioneel |
+| Actief | Blok tijdelijk uitschakelen zonder te verwijderen |
+
+`PlannerAvailabilityRepository.GetFieldOccupationsAsync` voegt actieve trainingsblokken toe als
+derde bezettingsbron naast `his.matches` en `planner.GeplandeWedstrijden` — zowel de planner als de
+e-mailpijplijn zien hierdoor automatisch een kleiner beschikbaar venster, zonder aparte integratie.
+Een club zonder rijen in deze tabel houdt exact het gedrag van vóór deze feature.
 
 ### dbo.TeamRegels
 Configureerbare teamspecifieke uitzonderingen (buffers, veld-/tijdvoorkeuren). Geen codewijzigingen nodig om regels toe te voegen.
@@ -374,31 +443,99 @@ Reschedule requests with status tracking (Aangevraagd/InOverleg/Bevestigd/Afgewe
 
 ---
 
-## Auto-planner (`POST /api/planner/auto-plan`)
+## Auto-planner (`POST /api/planner/auto-plan`) — de enige dagplanning-optimalisatie
 
-De auto-planner verdeelt alle wedstrijden van een dag optimaal over beschikbare velden.
+De auto-planner verdeelt alle wedstrijden van een dag over de beschikbare velden. **Sinds #666 is dit
+de enige optimalisatie**: het losse endpoint `POST /api/planner/optimaliseer` en de bijbehorende
+`OptimizationService` zijn vervallen. Dat tweede pad negeerde voorkeurstijden en prioriteiten volledig,
+waardoor de twee knoppen in de GUI verschillende — en onderling tegenstrijdige — planningen opleverden.
+
+### Definitie van "optimaal"
+
+> Een planning is optimaal als elk team op zijn voorkeurstijd staat, en anders zo dicht mogelijk daarbij.
+
+Compact plannen is expliciet **geen** doel. Tot #666 was het omgekeerde geïmplementeerd: lag het vroegste
+vrije slot meer dan één buffer vóór de voorkeurstijd, dan pakte de planner dát slot. Een team met
+voorkeur 14:30 belandde zo op 09:00 — vijf en een half uur ernaast — terwijl de tabel "OK" meldde.
+
+### Rangorde: regels → voorkeuren → defaults
+
+Per wedstrijd bepaalt `AutoPlanService.BepaalPlanDoel` het planningsdoel in deze vaste rangorde:
+
+| Laag | Bron | Wat het oplevert |
+|---|---|---|
+| **0 — regels** | `dbo.TeamRegels`, `RegelType = 'VoorkeurVeld'` | Voorkeursveld + optioneel een tijd op die regel |
+| **1 — voorkeuren** | `dbo.TeamVoorkeurTijden` voor de betreffende `DagVanWeek` | Voorkeurstijd van het team zelf |
+| **2 — defaults** | `dbo.Speeltijden.StandaardVoorkeurTijd` | Standaardtijd van de leeftijdscategorie |
+| **3 — niets** | — | Geen streeftijd: eerst beschikbare slot |
+
+`BufferVoor`/`BufferNa` uit `dbo.TeamRegels` zijn geen laag maar een **randvoorwaarde**: die gelden altijd.
+
+**Prioriteit beslist conflicten tussen teams.** Binnen elke laag worden wedstrijden verwerkt op
+`Prioriteit` oplopend — **laag getal = belangrijker**, dezelfde conventie in `TeamVoorkeurTijden` én
+`TeamRegels`. Wie eerder verwerkt wordt, claimt zijn plek eerst. Vóór #666 werd `Prioriteit` alleen
+gebruikt om binnen één team de primaire voorkeursrij te kiezen, en dus nooit om te bepalen welk team
+voorrang krijgt: een team met prioriteit 1 kon zijn voorkeurstijd verliezen aan een team met
+prioriteit 10.
 
 ### Algoritme (FieldScheduler)
 
-1. **Sorteervolgorde** — teams worden gesorteerd op hun *werkelijke voorkeurstijd* (minuten na middernacht). Teams zonder voorkeurstijd krijgen een standaard-tijd op basis van leeftijdscategorie (JO7–JO11 → 09:00, JO12–JO15 → 10:00, Senioren → 13:00). Vroeger-inplanbare teams krijgen daarmee eerder een slot dan laat-ingeplande seniors.
+1. **Sorteervolgorde** — `(laag, prioriteit, streeftijd, leeftijdscategorie, teamnaam)`.
+2. **Plaatsing** — met streeftijd loopt `FindAndOccupyNearTime` de kandidaattijden van de streeftijd naar
+   buiten af (voorkeur, ±5, ±10, … tot ±90 min) en pakt het eerste haalbare slot; eerder gaat vóór later
+   bij gelijke afstand. Is er een voorkeursveld, dan wordt dat veld bij élke kandidaattijd als eerste
+   geprobeerd — een **zachte** voorkeur, zodat een team niet onplanbaar wordt als het veld vol zit.
+   Zonder streeftijd valt de planner terug op het eerst beschikbare slot (`FindAndOccupyNextSlot`),
+   met 09:00 als ondergrens.
+3. **Ondergrens** — met een streeftijd is de ondergrens de veldbeschikbaarheid zelf, niet de vaste
+   09:00-dagstart. Een team dat 08:30 wil en een veld dat om 08:00 opengaat, krijgt 08:30.
+4. **Buffers** — `PastOpVeld` is de enige plek die bepaalt of een wedstrijd op een veld past, en bewaakt
+   twee dingen tegelijk:
+   - **Capaciteit** — wedstrijden die elkaar in tijd overlappen delen het veld; toegestaan zolang de som
+     van de veldfracties binnen 1.00 blijft. Tussen zulke gelijktijdige wedstrijden hoort géén buffer:
+     die staan naast elkaar, niet achter elkaar.
+   - **Buffer** — wedstrijden die elkaar niet overlappen gebruiken het veld ná elkaar; daartussen geldt
+     de grootste van de standaardbuffer en de teamspecifieke `BufferNa`/`BufferVoor` uit `dbo.TeamRegels`.
 
-2. **Compactheid boven voorkeurstijd** — voorkeurstijden zijn zachte richtlijnen:
-   - De planner berekent de vroegst mogelijke start (rekening houdend met bezetting + buffers).
-   - Als de gap tussen vroegste start en voorkeurstijd groter is dan de teamspecifieke `BufferVoor`, wordt compact ingepland.
-   - Is de gap ≤ `BufferVoor`, dan is de voorkeurstijd gerechtvaardigd (bijv. Heren 1 heeft 60 min voor — als Heren 2 eindigt om 13:30 kan Heren 1 pas om 14:30 starten, gap = 0 → voorkeurstijd gerespecteerd).
+   Deze controle zat vóór #666 alleen in `FindEarliestSlot`. Het pad dat op een voorkeurstijd plant keek
+   uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul minuten ertussen
+   en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
+   door de precedence-wijziging de normale route werd.
 
-3. **Teamspecifieke buffers in auto-plan** — `BufferVoor`/`BufferNa` uit `dbo.TeamRegels` worden meegenomen in de `FieldScheduler` (via `GetAllTeamBuffersAsync`). Dit was eerder alleen het geval bij handmatig inplannen.
+### Handmatig verslepen in de tijdlijn
 
-### Voorkeurstijden vs. compactheid — beslisboom
+De berekende planning is met de muis aan te passen: een wedstrijdblok kan naar een andere tijd (stappen
+van 5 minuten, zelfde afronding als de planner) of naar een ander veld gesleept worden. Dat gebeurt
+volledig client-side in `Dagplanning.razor`; er is geen extra endpoint.
 
-```
-voorkeurstijd aanwezig?
-  ├── Ja → bereken vroegste slot (buffer-aware)
-  │         gap = voorkeurstijd - vroegste slot
-  │         gap > BufferVoor? → compact inplannen
-  │         gap ≤ BufferVoor? → zoek nabij voorkeurstijd
-  └── Nee → compact inplannen (vroegst beschikbaar)
-```
+- Alleen de **optimale planning** is sleepbaar. De tab "Huidige situatie" is de stand uit Sportlink en
+  blijft read-only.
+- Na een zet worden `Status`, `VoorkeurAfwijkingMinuten`, `VoorkeurStatus`, het aantal te wijzigen
+  wedstrijden en de geschatte eindtijd opnieuw bepaald met dezelfde regels als de server, zodat een
+  handmatige zet net zo eerlijk beoordeeld wordt als een berekende.
+- `ControleerConflicten` bewaakt dezelfde twee regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
+  opeenvolging) en toont per overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus
+  wel een onmogelijke planning opleveren, maar niet stilzwijgend.
+- Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
+
+### Twee losse statussen — bewust gescheiden
+
+| Veld | Betekenis |
+|---|---|
+| `Status` | Verplaatst de planner deze wedstrijd t.o.v. de huidige stand? (`ongewijzigd` / `wijziging` / `nieuw-slot` / `niet-inplanbaar` / `onbekend-team`) |
+| `VoorkeurStatus` | Staat de wedstrijd op de gewenste tijd? (`op-tijd` / `kleine-afwijking` ≤15 min / `grote-afwijking` >15 min / `geen-voorkeur`) |
+
+Deze twee werden vóór #666 door elkaar gehaald: de groene "OK"-badge kwam uit `Status == "ongewijzigd"`,
+dus een wedstrijd die de planner niet verplaatste toonde "OK" ongeacht een afwijking van 60 minuten.
+`VoorkeurBron` (`regel` / `team` / `leeftijd`) laat zien uit welke laag de streeftijd komt.
+
+### Club-scoping
+
+`TeamRegels` wordt opgehaald **voor de opgevraagde club** (`X-Club-Code`). Dat stond eerder op de
+primaire club onder de aanname "er zijn geen ALLSTARS-rijen" (#573); die aanname klopt niet meer, waardoor
+buffers en voorkeursveld in de testmodus stilzwijgend werden genegeerd — precies de modus waarin je het
+test. `Speeltijden` gebruikt de eigen club met terugval op de primaire club, omdat zonder speeltijden
+geen enkele wedstrijd een duur heeft.
 
 ---
 

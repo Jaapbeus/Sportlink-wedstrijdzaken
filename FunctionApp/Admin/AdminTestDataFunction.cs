@@ -115,6 +115,11 @@ public static class AdminTestDataFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
+            // [accommodatie] moet gevuld zijn met de eigen-club-accommodatie: elke rij op de
+            // Testdata-pagina is een thuiswedstrijd (ThuisTeam komt uit de eigen teamlijst).
+            // PlannerMatchRepository.FindMatchAsync filtert HerplanVerzoek-lookups op
+            // m.[accommodatie] LIKE <AppSettings.Accommodatie> — zonder deze kolom vindt de
+            // planner nooit een via Testdata aangemaakte wedstrijd terug (#694).
             using var command = new SqlCommand(@"
                 MERGE [his].[matches] AS target
                 USING (SELECT @BkMatches AS bk) AS source ON target.bk_matches = source.bk
@@ -129,14 +134,16 @@ public static class AdminTestDataFunction
                     [veld]             = @VeldNaam,
                     [veld_subpositie]  = @VeldSubpositie,
                     [competitiesoort]  = @Soort,
+                    [accommodatie]     = (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS'),
                     [mta_modified]     = GETUTCDATE()
                 WHEN NOT MATCHED THEN INSERT
                     ([bk_matches], [datum], [wedstrijddatum], [kaledatum], [aanvangstijd],
                      [thuisteam], [teamnaam], [uitteam], [veld], [veld_subpositie], [competitiesoort],
-                     [ClubCode], [mta_inserted], [mta_modified])
+                     [accommodatie], [ClubCode], [mta_inserted], [mta_modified])
                 VALUES
                     (@BkMatches, @Datum, @Wedstrijddatum, @Kaledatum, @Aanvangstijd,
                      @ThuisTeam, @ThuisTeam, @UitTeam, @VeldNaam, @VeldSubpositie, @Soort,
+                     (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS'),
                      'ALLSTARS', GETUTCDATE(), GETUTCDATE());",
                 connection);
 

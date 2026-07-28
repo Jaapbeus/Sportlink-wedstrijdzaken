@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Planner;
 using SportlinkFunction.Processing;
 
 namespace SportlinkFunction.Email;
@@ -13,6 +14,7 @@ internal enum ReplyVerwerkingUitkomst
 internal sealed class EmailReplyPolicyService
 {
     private const string HandmatigePlanningLabel = "Handmatige planning";
+    private const string GeenAiAntwoordLabel = "Geen AI antwoord";
 
     internal async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         int verwerkingId,
@@ -26,19 +28,37 @@ internal sealed class EmailReplyPolicyService
         Func<string, string> sanitizeFoutMelding,
         ILogger log)
     {
+        // Review mode blijft de eerste check: hier gaat geen enkel bericht de deur uit. Nieuw is dat
+        // het voorgestelde antwoord wél wordt opgebouwd en opgeslagen — anders valt er niets te
+        // reviewen. Voorheen bleef AntwoordEmail leeg en kreeg de rij status 'Verwerkt', dezelfde
+        // waarde als een mislukte verzending, waardoor EmailStatus.Review dode code was. (#712)
         if (reviewMode)
         {
+            var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
+            if (reviewBesluit.MoetVersturen)
+            {
+                var (_, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
+                await persistenceService.UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
+                log.LogInformation(
+                    "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling, niets verstuurd", verwerkingId);
+            }
+            else
+            {
+                await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
+                log.LogInformation(
+                    "Email {Id} review mode — geen antwoord voorgesteld: {Reden}", verwerkingId, reviewBesluit.Reden);
+            }
+
             try
             {
-                await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
-                await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
+                await graphService.EnsureMasterCategoryAsync(GeenAiAntwoordLabel, "preset0");
+                await graphService.SetCategoriesAsync(email.MessageId, GeenAiAntwoordLabel);
                 await graphService.MarkAsReadAsync(email.MessageId);
-                log.LogInformation("Email {Id} review mode — Geen AI antwoord label gezet, geen reply verstuurd", verwerkingId);
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
-                try { await persistenceService.UpdateFoutAsync(email.MessageId, sanitizeFoutMelding(ex.Message)); } catch { }
+                try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); } catch { }
             }
 
             return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
@@ -66,18 +86,81 @@ internal sealed class EmailReplyPolicyService
 
         var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
 
+        // Verzendintentie vóór het versturen (#716). Wordt de invocatie hierna hard afgebroken
+        // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al
+        // een antwoord de deur uit is — de volgende poll stuurt dan geen tweede antwoord meer maar legt
+        // het bericht ter beoordeling neer. Mislukt het vastleggen van de intentie zelf, dan wordt er
+        // niet verstuurd: zonder die grens is een dubbel antwoord mogelijk, en dat weegt zwaarder dan
+        // een poging uitstellen naar de volgende poll.
+        await persistenceService.MarkeerVerzendPogingAsync(verwerkingId);
+
+        IReadOnlyList<string>? bcc = null;
+        EmailBijlage? bijlage = null;
+        if (classificatie.VoegKnvbPdfBijlageToe)
+        {
+            // #561: verzet-zonder-datum — begeleiding van ons eigen team in BCC, KNVB-kalender als
+            // bijlage. Beide zijn fail-safe: ontbreekt het contact of het bestand, dan verstuurt de
+            // mail gewoon zonder (nooit een crash op deze verrijking).
+            try
+            {
+                var contact = await PlannerDataAccess.GetTeamleiderContactAsync(classificatie.TeamNaam ?? "");
+                if (contact != null && !string.IsNullOrWhiteSpace(contact.Emailadres))
+                {
+                    bcc = new[] { contact.Emailadres };
+                }
+                else
+                {
+                    log.LogInformation("VERZET-ZONDER-DATUM - geen begeleidingscontact gevonden voor BCC, verzonden zonder BCC");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "VERZET-ZONDER-DATUM - ophalen begeleidingscontact mislukt, verzonden zonder BCC");
+            }
+
+            if (!string.IsNullOrWhiteSpace(classificatie.KnvbBijlageRegio))
+            {
+                var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+                if (!string.IsNullOrWhiteSpace(seizoen))
+                    bijlage = await KnvbPdfService.GetKalenderPdfAsync(classificatie.KnvbBijlageRegio, seizoen, log);
+            }
+        }
+
         try
         {
-            await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId);
+            await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId, bcc, bijlage);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Graph-send mislukt voor verwerking {Id} — VerzendFout, mail blijft ongelezen", verwerkingId);
-            try { await persistenceService.UpdateFoutAsync(email.MessageId, sanitizeFoutMelding(ex.Message)); } catch { }
+            // Het versturen is aantoonbaar mislukt, dus de intentie moet weg: anders is dit scenario —
+            // waarin juist wél opnieuw geprobeerd moet worden (#712) — niet te onderscheiden van een
+            // onbekende uitkomst en belandt het bericht onnodig op Review.
+            try { await persistenceService.WisVerzendPogingAsync(verwerkingId); }
+            catch (Exception wisEx)
+            {
+                log.LogWarning(wisEx,
+                    "Verzendintentie kon niet gewist worden voor verwerking {Id} — een volgende poll legt dit "
+                    + "bericht ter beoordeling neer in plaats van opnieuw te versturen", verwerkingId);
+            }
+            try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); } catch { }
             return ReplyVerwerkingUitkomst.VerzendFout;
         }
 
-        await persistenceService.UpdateAntwoordVerstuurdAsync(verwerkingId, email.Afzender, antwoordBody);
+        // Vanaf hier is het antwoord de deur uit. Faalt het vastleggen, dan mag het bericht NIET
+        // ongelezen blijven: de volgende poll zou de afzender een tweede antwoord sturen. Daarom
+        // wordt de fout alleen gelogd en gaat het als-gelezen-markeren altijd door. (#712)
+        try
+        {
+            await persistenceService.UpdateAntwoordVerstuurdAsync(verwerkingId, email.Afzender, antwoordBody);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex,
+                "Antwoord verstuurd voor verwerking {Id} maar niet vastgelegd in de database — "
+                + "bericht wordt alsnog als gelezen gemarkeerd om een tweede antwoord te voorkomen", verwerkingId);
+        }
+
         await graphService.MarkAsReadAsync(email.MessageId);
 
         log.LogInformation("Email {Id} volledig verwerkt, antwoord verstuurd (ontvanger niet gelogd — AVG #210)",

@@ -42,6 +42,14 @@ jobs:
       - name: BlazorAdmin bouwen (net10.0)
         run: dotnet build BlazorAdmin/BlazorAdmin.csproj --configuration Release
 
+      # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
+      # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
+      # worden — ontdekt tijdens de adversariële verificatie van #705-#712. De testsuite dekt onder
+      # meer de datumlogica, idempotentie en teamherkenning van de e-mailverwerking; die mag niet
+      # meer stilzwijgend kunnen breken.
+      - name: Unittests draaien (FunctionApp.Tests)
+        run: dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity minimal
+
       # ──────────────────────────────────────────────────────────────────────
       # #659: CSP-regressiewacht op de gepubliceerde index.html.
       #
@@ -101,6 +109,18 @@ jobs:
             exit 1
           fi
           echo "✅ Geen inline scripts, geen import-map, framework-scripts ongefingerprint aanwezig."
+
+      # ──────────────────────────────────────────────────────────────────────
+      # #690: unit-tests voor de issue-lifecycle helper.
+      #
+      # .github/scripts/issue-status.js is load-bearing voor drie workflows
+      # (label-issue-status, label-awaiting-release, close-released-issues). Die workflows
+      # draaien alleen op hun eigen trigger — een fout in de helper zou dus pas blijken bij
+      # een echte merge of release, precies wanneer je er niet achter wilt komen.
+      # De tests gebruiken een fake octokit-client; geen netwerk, geen token nodig.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Issue-lifecycle helper testen
+        run: node .github/scripts/issue-status.test.js
 
       # ──────────────────────────────────────────────────────────────────────
       # #595: schema-drift guard.

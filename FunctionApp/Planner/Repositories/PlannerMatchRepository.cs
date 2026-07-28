@@ -13,13 +13,100 @@ internal static class PlannerMatchRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
+    /// <summary>
+    /// Alle schrijfwijzen waarmee een team in de brondata voorkomt (#700).
+    ///
+    /// <para>
+    /// De teamnaam wordt eerst genormaliseerd (zie <see cref="TeamResolution.TeamNaamNormalisatie"/>) en
+    /// via <c>dbo.Teams</c>/<c>dbo.TeamAliassen</c> herleid tot één team; daarna worden álle bekende
+    /// schrijfwijzen van dat team teruggegeven. Vergelijken in de query gebeurt vervolgens met
+    /// <b>gelijkheid</b> in plaats van met een <c>LIKE</c>-patroon.
+    /// </para>
+    /// <para>
+    /// Dit is nodig omdat de schrijfwijze per bron verschilt: <c>his.matches</c> gebruikt
+    /// "[club] JO10-1" (mét J), de bondsrijen in <c>his.teams</c> "[club] O10-1" (zonder), en de
+    /// e-mailclassificatie levert weer een derde vorm. Het herleiden gebeurt hier in de repository, zodat
+    /// elke aanroeper met elke schrijfwijze terechtkomt bij hetzelfde team.
+    /// </para>
+    /// <para>
+    /// Een lege uitkomst betekent: dit is geen bekend team van deze club. De aanroepende query moet dan
+    /// niets matchen — nooit alles.
+    /// </para>
+    /// </summary>
+    private static async Task<List<string>> TeamSchrijfwijzenAsync(
+        SqlConnection conn, string clubCode, string? teamNaam)
+    {
+        var resultaten = new List<string>();
+        var sleutel = TeamResolution.TeamNaamNormalisatie.NormaliseerVoorVergelijking(teamNaam, clubCode);
+        if (sleutel.Length == 0) return resultaten;
+
+        using var cmd = new SqlCommand(@"
+            DECLARE @teamId INT = COALESCE(
+                (SELECT TOP 1 [TeamId] FROM [dbo].[Teams]
+                 WHERE [ClubCode] = @clubCode AND [TeamnaamGenormaliseerd] = @sleutel AND [IsActief] = 1),
+                (SELECT TOP 1 a.[TeamId] FROM [dbo].[TeamAliassen] a
+                 INNER JOIN [dbo].[Teams] t ON t.[TeamId] = a.[TeamId] AND t.[IsActief] = 1
+                 WHERE a.[ClubCode] = @clubCode AND a.[Status] = 'validated'
+                   AND (a.[RuweTekst] = @ruweTekst OR a.[RuweTekstGenormaliseerd] = @sleutel)));
+
+            IF @teamId IS NULL RETURN;
+
+            SELECT [Teamnaam] FROM [dbo].[Teams] WHERE [TeamId] = @teamId
+            UNION
+            SELECT [RuweTekst] FROM [dbo].[TeamAliassen]
+            WHERE [ClubCode] = @clubCode AND [TeamId] = @teamId AND [Status] = 'validated';
+        ", conn);
+        cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        cmd.Parameters.AddWithValue("@sleutel", sleutel);
+        cmd.Parameters.AddWithValue("@ruweTekst", (teamNaam ?? "").Trim());
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0)) resultaten.Add(reader.GetString(0));
+        }
+        return resultaten;
+    }
+
+    /// <summary>
+    /// Geparameteriseerde <c>IN (...)</c>-lijst. Bij een lege lijst <c>1 = 0</c>, zodat de query niets
+    /// matcht in plaats van alles.
+    /// </summary>
+    private static string BouwSchrijfwijzenFilter(
+        SqlCommand cmd, string kolom, IReadOnlyList<string> schrijfwijzen, string parameterPrefix)
+    {
+        if (schrijfwijzen.Count == 0) return "1 = 0";
+
+        var namen = new List<string>(schrijfwijzen.Count);
+        for (int i = 0; i < schrijfwijzen.Count; i++)
+        {
+            var naam = $"@{parameterPrefix}{i}";
+            cmd.Parameters.AddWithValue(naam, schrijfwijzen[i]);
+            namen.Add(naam);
+        }
+        return $"{kolom} IN ({string.Join(", ", namen)})";
+    }
+
+    /// <remarks>
+    /// Detecteert of hetzelfde team die dag al speelt. Sinds #700 wordt daarvoor exact vergeleken met
+    /// alle bekende schrijfwijzen van het team: een gemiste vergelijking hier zou stilzwijgend een
+    /// dubbele boeking van hetzelfde team toelaten.
+    /// </remarks>
     internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(
         string teamNaam, DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand($@"
+        var cc = ClubScope.Resolve(clubCode);
+        var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
+        if (schrijfwijzen.Count == 0) return results;
+
+        using var cmd = new SqlCommand();
+        var matchFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
+        var plannerFilter = BouwSchrijfwijzenFilter(cmd, "gw.[TeamNaam]", schrijfwijzen, "gwteam");
+        cmd.Connection = conn;
+        cmd.CommandText = $@"
             SELECT
                 CAST(m.[kaledatum] AS DATE) AS Datum,
                 CAST(m.[aanvangstijd] AS TIME) AS AanvangsTijd,
@@ -30,11 +117,10 @@ internal static class PlannerMatchRepository
                  AND {ClubScope.HisFilter("t")}
             LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
-            LEFT JOIN [dbo].[Velden] v ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-                 AND v.[ClubCode] = {ClubScope.ClubCodeParam}
+            {VeldResolutie.SqlOuterApply("m.[veld]", ClubScope.ClubCodeParam)}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[status] <> 'Afgelast'
-              AND m.[teamnaam] = @exactTeamNaam
+              AND {matchFilter}
               AND {ClubScope.HisFilter("m")}
             UNION ALL
             SELECT gw.[Datum], gw.[AanvangsTijd], gw.[WedstrijdDuurMinuten],
@@ -45,11 +131,10 @@ internal static class PlannerMatchRepository
                  AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Datum] = @date
               AND gw.[Status] <> 'Geannuleerd'
-              AND gw.[TeamNaam] = @exactTeamNaam
+              AND {plannerFilter}
               AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
-        ", conn);
+        ";
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
-        cmd.Parameters.AddWithValue("@exactTeamNaam", teamNaam);
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -114,14 +199,27 @@ internal static class PlannerMatchRepository
         return results;
     }
 
+    /// <remarks>
+    /// Sinds #700 wordt <paramref name="teamNaam"/> eerst herleid tot een bekend team en daarna exact
+    /// vergeleken met alle schrijfwijzen van dat team. Er is geen terugval op een <c>LIKE</c>-patroon:
+    /// een onbekende teamnaam levert géén wedstrijd op, in plaats van mogelijk de verkeerde.
+    /// </remarks>
     internal static async Task<ZoekWedstrijdResponse?> FindMatchAsync(
         string teamNaam, DateOnly date, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
-            ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand($@"
+        var cc = ClubScope.Resolve(clubCode);
+        var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, cc);
+
+        var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
+        if (schrijfwijzen.Count == 0) return null;
+
+        using var cmd = new SqlCommand();
+        var teamFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
+
+        cmd.Connection = conn;
+        cmd.CommandText = $@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
                 CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
@@ -135,12 +233,11 @@ internal static class PlannerMatchRepository
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
-              AND (m.[teamnaam] LIKE @teamPattern OR m.[wedstrijd] LIKE @teamPattern)
+              AND {teamFilter}
               AND {ClubScope.HisFilter("m")}
             ORDER BY m.[aanvangstijd]
-        ", conn);
+        ";
         cmd.Parameters.AddWithValue("@date", date.ToDateTime(TimeOnly.MinValue));
-        cmd.Parameters.AddWithValue("@teamPattern", $"%{teamNaam}%");
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
@@ -170,10 +267,9 @@ internal static class PlannerMatchRepository
     internal static async Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(
         string tegenstander, DateOnly? datum, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
-            ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
 
         // Zoek in his.matches
         using (var cmd = new SqlCommand($@"
@@ -270,10 +366,9 @@ internal static class PlannerMatchRepository
     internal static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(
         long wedstrijdcode, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie")
-            ?? throw new InvalidOperationException("Vereiste instelling 'accommodatie' ontbreekt in dbo.AppSettings");
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
         using var cmd = new SqlCommand($@"
             SELECT TOP 1
                 CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
@@ -375,14 +470,23 @@ internal static class PlannerMatchRepository
 
     internal static async Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log, string? clubCode = null)
     {
-        var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
-        if (string.IsNullOrWhiteSpace(accommodatie))
-        {
-            log.LogWarning("Instelling 'accommodatie' niet geconfigureerd — MarkeerVervallenGeplandeWedstrijden overgeslagen. Stel de accommodatienaam in via Admin GUI → Instellingen.");
-            return;
-        }
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        string accommodatie;
+        try
+        {
+            accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
+        }
+        catch (InvalidOperationException)
+        {
+            log.LogWarning("Instelling 'Accommodatie' niet geconfigureerd — MarkeerVervallenGeplandeWedstrijden overgeslagen. Stel de accommodatienaam in via Admin GUI → Instellingen.");
+            return;
+        }
+        // De teamnaam die wij in planner.GeplandeWedstrijden schrijven en die in his.matches komen uit
+        // verschillende naamconventies ("[club] O13-1" versus "[club] JO13-1"). Een directe
+        // stringvergelijking tussen die twee kolommen matcht daarom nooit, waardoor een handmatig
+        // ingeplande wedstrijd niet als vervallen werd gemarkeerd zodra de KNVB hem publiceerde.
+        // Beide kanten worden nu via de aliassen naar hetzelfde team herleid (#700).
         using var cmd = new SqlCommand($@"
             UPDATE gw
             SET gw.[IsVervallen] = 1,
@@ -391,8 +495,18 @@ internal static class PlannerMatchRepository
             FROM [planner].[GeplandeWedstrijden] gw
             INNER JOIN [his].[matches] m
                 ON CAST(m.[kaledatum] AS DATE) = gw.[Datum]
-                AND m.[teamnaam] = gw.[TeamNaam]
                 AND {ClubScope.HisFilter("m")}
+                AND EXISTS (
+                    SELECT 1
+                    FROM [dbo].[TeamAliassen] aMatch
+                    INNER JOIN [dbo].[TeamAliassen] aPlanner
+                        ON aPlanner.[TeamId] = aMatch.[TeamId]
+                       AND aPlanner.[ClubCode] = aMatch.[ClubCode]
+                       AND aPlanner.[Status] = 'validated'
+                       AND aPlanner.[RuweTekst] = gw.[TeamNaam]
+                    WHERE aMatch.[ClubCode] = {ClubScope.ClubCodeParam}
+                      AND aMatch.[Status] = 'validated'
+                      AND aMatch.[RuweTekst] = m.[teamnaam])
             WHERE gw.[IsVervallen] = 0
               AND gw.[Status] <> 'Geannuleerd'
               AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
@@ -405,17 +519,17 @@ internal static class PlannerMatchRepository
             log.LogInformation("Post-sync: {Count} geplande wedstrijd(en) als vervallen gemarkeerd", rows);
     }
 
+    /// <remarks>
+    /// Vraagt de canonieke teamlijst, niet <c>his.teams</c> rechtstreeks: die laatste bevat elk team in
+    /// meerdere schrijfwijzen, waardoor een vergelijking op de ruwe naam afhankelijk werd van welke
+    /// notatie de aanroeper toevallig gebruikte (#700).
+    /// </remarks>
     internal static async Task<bool> TeamExistsAsync(string team, string? clubCode = null)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(
-            $@"SELECT COUNT(1) FROM [his].[teams] t
-               WHERE UPPER(t.[teamnaam]) = UPPER(@team)
-                 AND {ClubScope.HisFilter("t")}", conn);
-        cmd.Parameters.AddWithValue("@team", team);
-        ClubScope.AddHisParams(cmd, clubCode);
-        return (int)(await cmd.ExecuteScalarAsync())! > 0;
+        var cc = ClubScope.Resolve(clubCode);
+        return (await TeamSchrijfwijzenAsync(conn, cc, team)).Count > 0;
     }
 
     internal static async Task<List<TeamScheduleWedstrijd>> GetFutureMatchesForTeamAsync(
@@ -424,22 +538,27 @@ internal static class PlannerMatchRepository
         var results = new List<TeamScheduleWedstrijd>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var cc = ClubScope.Resolve(clubCode);
+        var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, team);
+        if (schrijfwijzen.Count == 0) return results;
 
-        using (var cmd = new SqlCommand($@"
+        using (var cmd = new SqlCommand())
+        {
+            var matchFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
+            cmd.Connection = conn;
+            cmd.CommandText = $@"
             SELECT CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
                    m.[thuisteam], m.[uitteam], m.[competitiesoort], m.[veld],
                    CAST(m.[wedstrijdcode] AS BIGINT)
             FROM [his].[matches] m
             WHERE CAST(m.[kaledatum] AS DATE) BETWEEN @van AND @tot
               AND m.[status] <> 'Afgelast'
-              AND (UPPER(m.[teamnaam]) = UPPER(@team))
+              AND {matchFilter}
               AND {ClubScope.HisFilter("m")}
             ORDER BY m.[kaledatum], m.[aanvangstijd]
-        ", conn))
-        {
+        ";
             cmd.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
             cmd.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
-            cmd.Parameters.AddWithValue("@team", team);
             ClubScope.AddHisParams(cmd, clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -448,7 +567,7 @@ internal static class PlannerMatchRepository
                 var aanvang = reader.GetString(1).Trim();
                 var thuisTeam = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
                 var uitTeam = reader.IsDBNull(3) ? "" : reader.GetString(3).Trim();
-                bool isThuis = thuisTeam.Equals(team, StringComparison.OrdinalIgnoreCase);
+                bool isThuis = schrijfwijzen.Any(w => thuisTeam.Equals(w, StringComparison.OrdinalIgnoreCase));
                 results.Add(new TeamScheduleWedstrijd
                 {
                     Datum = datum.ToString("yyyy-MM-dd"), AanvangsTijd = aanvang,
@@ -461,7 +580,11 @@ internal static class PlannerMatchRepository
             }
         }
 
-        using (var cmd2 = new SqlCommand($@"
+        using (var cmd2 = new SqlCommand())
+        {
+            var plannerFilter = BouwSchrijfwijzenFilter(cmd2, "gw.[TeamNaam]", schrijfwijzen, "gwteam");
+            cmd2.Connection = conn;
+            cmd2.CommandText = $@"
             SELECT gw.[Datum], CONVERT(VARCHAR(8), gw.[AanvangsTijd], 108),
                    gw.[Tegenstander], v.[VeldNaam]
             FROM [planner].[GeplandeWedstrijden] gw
@@ -469,14 +592,12 @@ internal static class PlannerMatchRepository
                  AND v.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE gw.[Datum] BETWEEN @van AND @tot
               AND gw.[Status] <> 'Geannuleerd'
-              AND UPPER(gw.[TeamNaam]) = UPPER(@team)
+              AND {plannerFilter}
               AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
             ORDER BY gw.[Datum], gw.[AanvangsTijd]
-        ", conn))
-        {
+        ";
             cmd2.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
             cmd2.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
-            cmd2.Parameters.AddWithValue("@team", team);
             ClubScope.AddClubParam(cmd2, clubCode);
             using var reader2 = await cmd2.ExecuteReaderAsync();
             while (await reader2.ReadAsync())

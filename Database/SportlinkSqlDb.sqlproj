@@ -104,9 +104,12 @@
     <Build Include="Schemas\planner.sql" />
     <Build Include="dbo\Tables\Velden.sql" />
     <Build Include="dbo\Tables\VeldBeschikbaarheid.sql" />
+    <Build Include="dbo\Tables\VeldTraining.sql" />
     <Build Include="dbo\Tables\TeamRegels.sql" />
     <Build Include="dbo\Tables\Zonsondergang.sql" />
     <Build Include="dbo\Tables\KnvbKalenderDag.sql" />
+    <Build Include="dbo\Tables\Teams.sql" />
+    <Build Include="dbo\Tables\TeamAliassen.sql" />
     <Build Include="planner\Tables\GeplandeWedstrijden.sql" />
     <Build Include="planner\Views\AlleWedstrijdenOpVeld.sql" />
     <Build Include="planner\Tables\HerplanVerzoeken.sql" />

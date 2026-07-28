@@ -20,6 +20,69 @@ internal static class PlannerShared
         return new TimeOnly(minuten / 60, minuten % 60);
     }
 
+    // ── Sportlink-veldstring → veldnummer: één plek, gebruikt door élke consumer (#707) ──
+    //
+    // Sportlink levert het veld als "<veldnaam>[ <subpositie>]" ("veld 1 A"); dbo.Velden bevat
+    // alleen de veldnaam zelf. Die vertaling gebeurde op meerdere plekken op verschillende
+    // manieren: StartsWith zonder woordgrens in het herplanpad en een harde afkap op zes tekens
+    // (LEFT(veld, 6) / veld[..6]) in het bezettingspad. Bij tien of meer velden liepen die uiteen:
+    //
+    //   • de matcher zag "veld 10" correct als veld 10;
+    //   • de bezetting kapte "veld 10" af op "veld 1" en boekte de wedstrijd op veld 1.
+    //
+    // Gevolg: de eigen wedstrijd bleef als spookbezetting op veld 1 staan (die dag viel daar dicht)
+    // én veld 10 kwam in de bezetting niet voor, dus veld 10 leek de hele dag vrij. Er kon dan een
+    // tweede wedstrijd naast de bestaande op hetzelfde veld worden aangeboden — een dubbele boeking.
+    //
+    // Daarom loopt de vertaling nu voor alle consumenten via deze functie. De normalisatie zelf is
+    // hergebruikt uit <see cref="AutoPlanService.NormaliseerVeld"/>; er is bewust geen tweede
+    // variant naast bijgezet.
+
+    /// <summary>
+    /// Splitst een Sportlink-veldstring in het veldnummer uit <c>dbo.Velden</c> en de subpositie
+    /// die Sportlink erachter zet. Een treffer is een exact gelijke veldnaam óf een veldnaam
+    /// gevolgd door een spatie en de subpositie — nooit een langer veldnummer, zodat "veld 10"
+    /// niet op "veld 1" valt.
+    /// </summary>
+    /// <returns>
+    /// Veldnummer, of <c>0</c> als geen enkel veld matcht (dezelfde sentinel als de oude
+    /// lookup-miss), plus de subpositie in hoofdletters of <c>null</c> als die ontbreekt.
+    /// </returns>
+    internal static (int VeldNummer, string? Subpositie) ResolveVeld(
+        string? sportlinkVeld, IEnumerable<(string? VeldNaam, int VeldNummer)> velden)
+    {
+        var gezocht = AutoPlanService.NormaliseerVeld(sportlinkVeld);
+        if (gezocht.Length == 0) return (0, null);
+
+        // Langste veldnaam eerst: bestaat naast "veld 1" ook "veld 1 achter", dan hoort
+        // "veld 1 achter B" bij dat tweede veld en is "achter" geen subpositie van veld 1.
+        foreach (var veld in velden
+                     .Select(v => (Naam: AutoPlanService.NormaliseerVeld(v.VeldNaam), v.VeldNummer))
+                     .Where(v => v.Naam.Length > 0)
+                     .OrderByDescending(v => v.Naam.Length))
+        {
+            if (gezocht == veld.Naam) return (veld.VeldNummer, null);
+            if (!gezocht.StartsWith(veld.Naam + " ", StringComparison.Ordinal)) continue;
+
+            var subpositie = gezocht[(veld.Naam.Length + 1)..].Trim();
+            return (veld.VeldNummer, subpositie.Length == 0 ? null : subpositie.ToUpperInvariant());
+        }
+        return (0, null);
+    }
+
+    /// <inheritdoc cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
+    internal static (int VeldNummer, string? Subpositie) ResolveVeld(
+        string? sportlinkVeld, IReadOnlyDictionary<string, int> veldenPerNaam)
+        => ResolveVeld(sportlinkVeld, veldenPerNaam.Select(kv => ((string?)kv.Key, kv.Value)));
+
+    /// <summary>
+    /// Veldnummer bij de veldnaam zoals Sportlink die levert, of <c>0</c> als geen veld matcht.
+    /// Zelfde matching als <see cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
+    /// — de bezetting en het herplanpad mogen nooit een eigen variant gebruiken.
+    /// </summary>
+    internal static int VindVeldNummer(string? sportlinkVeld, IEnumerable<VeldInfo> velden)
+        => ResolveVeld(sportlinkVeld, velden.Select(v => ((string?)v.VeldNaam, v.VeldNummer))).VeldNummer;
+
     internal static bool CanFitMatch(
         TimeOnly start, TimeOnly end, decimal veldFractie, int veldNummer,
         List<BestaandeWedstrijd> fieldOccupations,
@@ -88,8 +151,11 @@ internal static class PlannerShared
         decimal veldFractie, int duurMinuten, TimeOnly? sunset)
     {
         var endTime = preferredTime.AddMinutes(duurMinuten);
-        var grasveldNrs = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
-        foreach (var field in availableFields.OrderBy(f => grasveldNrs.Contains(f.VeldNummer) ? 1 : 0))
+        // Kunstgras eerst om grasvelden te ontlasten. Classificatie via VeldInfo.IsKunstgras — één
+        // definitie van "kunstgras" voor de hele codebase (#707); een eigen stringvergelijking hier
+        // noemde "Kunstgras 2" géén kunstgras en zette dat veld dus achteraan.
+        var nietKunstgrasNrs = velden.Where(v => !v.IsKunstgras).Select(v => v.VeldNummer).ToHashSet();
+        foreach (var field in availableFields.OrderBy(f => nietKunstgrasNrs.Contains(f.VeldNummer) ? 1 : 0))
         {
             if (preferredTime < field.BeschikbaarVanaf || endTime > field.BeschikbaarTot) continue;
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).ToList();
@@ -132,13 +198,28 @@ internal static class PlannerShared
                 }
             }
         }
-        var grasveldNrs = velden.Where(v => v.VeldType != "kunstgras").Select(v => v.VeldNummer).ToHashSet();
+        // Zelfde voorkeursordening als TryExactTime, via dezelfde kunstgras-definitie (#707).
+        var nietKunstgrasNrs = velden.Where(v => !v.IsKunstgras).Select(v => v.VeldNummer).ToHashSet();
         return candidates
-            .OrderBy(c => grasveldNrs.Contains(c.VeldNummer) ? 1 : 0)
+            .OrderBy(c => nietKunstgrasNrs.Contains(c.VeldNummer) ? 1 : 0)
             .ThenBy(c => c.AanvangsTijd.ToTimeSpan().TotalMinutes)
             .ToList();
     }
 
+    /// <summary>
+    /// Zet een kandidaat-slot om naar de publieke <see cref="SlotToewijzing"/>-DTO.
+    ///
+    /// <para><b>Veldtype reist altijd mee (#705/#707).</b> Elke aanroeper geeft de veldenlijst al mee
+    /// voor de veldnaam, dus het veldtype hoort hier gevuld te worden — niet per aanroeper. Dat was
+    /// het gat: het beschikbaarheidspad vulde <c>VeldType</c> zelf ná deze conversie, maar het
+    /// herplan-pad (de enige producent van <c>HerplanCheckResponse</c>) niet. Daar was
+    /// <c>VeldType</c> dus altijd <c>null</c>, terwijl het e-mailantwoord er wél op filtert: stil
+    /// kapot gedrag dat geen test en geen logregel zichtbaar maakte.</para>
+    ///
+    /// <para>Staat het veld niet in <paramref name="velden"/> (bijv. een inactief veld dat nog in een
+    /// bezetting voorkomt), dan blijft <c>VeldType</c> <c>null</c> = onbekend. Filters mogen zo'n
+    /// slot nooit wegfilteren — zie <see cref="VeldSoort.Onbekend"/>.</para>
+    /// </summary>
     internal static SlotToewijzing ToSlotToewijzing(DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
     {
         var veld = velden.FirstOrDefault(v => v.VeldNummer == slot.VeldNummer);
@@ -149,6 +230,7 @@ internal static class PlannerShared
             EindTijd = slot.EindTijd.ToString("HH:mm"),
             VeldNummer = slot.VeldNummer,
             VeldNaam = veld?.VeldNaam ?? $"veld {slot.VeldNummer}",
+            VeldType = veld?.VeldType,
             VeldDeelGebruik = slot.VeldFractie > 0 ? slot.VeldFractie : 1.00m,
             WedstrijdDuurMinuten = duurMinuten
         };
@@ -210,6 +292,10 @@ internal class FieldScheduler
     private readonly Dictionary<int, List<IngeplandSlot>> _occupations = new();
     private static readonly TimeOnly StartTijd = new(9, 0);
 
+    /// <summary>Vroegste tijd waarop de planner inplant — als streeftijd te gebruiken wanneer er
+    /// geen voorkeurstijd is maar wel een voorkeursveld (#666).</summary>
+    internal static TimeOnly DagStart => StartTijd;
+
     public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer,
         Dictionary<string, (int bufferVoor, int bufferNa)>? teamBuffers = null)
     {
@@ -232,7 +318,63 @@ internal class FieldScheduler
     private int EffectieveBuffer(string? occTeamNaam, int nieuwBufVoor) =>
         Math.Max(TeamBufferNa(occTeamNaam), nieuwBufVoor);
 
-    private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor)
+    /// <summary>
+    /// Past een wedstrijd van <paramref name="fractie"/> veld tussen <paramref name="start"/> en
+    /// <paramref name="end"/> op dit veld? Bewaakt twee dingen tegelijk (#666):
+    ///
+    /// <para><b>Capaciteit</b> — wedstrijden die elkaar in tijd overlappen delen het veld. Dat mag
+    /// zolang de som van de veldfracties binnen 1.00 blijft (twee halve velden naast elkaar). Tussen
+    /// zulke gelijktijdige wedstrijden hoort géén buffer: ze staan naast elkaar, niet achter elkaar.</para>
+    ///
+    /// <para><b>Buffer</b> — wedstrijden die elkaar niet overlappen gebruiken het veld ná elkaar. Daar
+    /// moet de buffer tussen zitten: de grootste van de standaardbuffer en de teamspecifieke
+    /// <c>BufferNa</c>/<c>BufferVoor</c> uit dbo.TeamRegels.</para>
+    ///
+    /// Deze check zat eerder alleen in <see cref="FindEarliestSlot"/>. Het pad dat op een voorkeurstijd
+    /// plant keek uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul
+    /// minuten ertussen — en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen.
+    /// </summary>
+    private bool PastOpVeld(int veldNummer, TimeOnly start, TimeOnly end, decimal fractie,
+        int nieuwBufVoor, string? teamNaam, out string subpositie)
+    {
+        subpositie = string.Empty;
+        var occs = _occupations.TryGetValue(veldNummer, out var list) ? list : new List<IngeplandSlot>();
+        int nieuwBufNa = TeamBufferNa(teamNaam);
+        var bezet = new bool[4];
+
+        foreach (var occ in occs)
+        {
+            bool overlapt = occ.AanvangsTijd < end && occ.EindTijd > start;
+            if (overlapt)
+            {
+                // Gelijktijdig op hetzelfde veld: welke kwartbanen liggen al vol? Géén buffer hiertussen —
+                // deze wedstrijden staan naast elkaar op het veld, niet achter elkaar.
+                var occBanen = BanenVanSubpositie(occ.VeldSubpositie);
+                for (int i = 0; i < 4; i++) bezet[i] |= occBanen[i];
+                continue;
+            }
+
+            if (occ.EindTijd <= start)
+            {
+                // Bestaande wedstrijd gaat vooraf: gat = grootste van haar BufferNa en onze BufferVoor.
+                int buf = Math.Max(TeamBufferNa(occ.TeamNaam), nieuwBufVoor);
+                if (start < occ.EindTijd.AddMinutes(buf)) return false;
+            }
+            else
+            {
+                // Bestaande wedstrijd volgt: gat = grootste van onze BufferNa en haar BufferVoor.
+                int buf = Math.Max(nieuwBufNa, TeamBufferVoor(occ.TeamNaam));
+                if (occ.AanvangsTijd < end.AddMinutes(buf)) return false;
+            }
+        }
+
+        var vrij = EersteVrijeSubpositie(bezet, fractie);
+        if (vrij == null) return false;
+        subpositie = vrij;
+        return true;
+    }
+
+    private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor, string? teamNaam = null)
     {
         var sorted = _velden.OrderByDescending(v => v.IsKunstgras).ThenBy(v => v.VeldNummer).ToList();
         IngeplandSlot? best = null;
@@ -241,7 +383,7 @@ internal class FieldScheduler
             var besch = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
             if (besch == null) continue;
             var van = besch.BeschikbaarVanaf < StartTijd ? StartTijd : besch.BeschikbaarVanaf;
-            var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, besch.BeschikbaarTot, nieuwBufVoor);
+            var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, besch.BeschikbaarTot, nieuwBufVoor, teamNaam);
             if (slot != null && (best == null || slot.AanvangsTijd < best.AanvangsTijd))
             {
                 best = slot;
@@ -254,21 +396,31 @@ internal class FieldScheduler
     public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten, int nieuwBufVoor = -1, string? teamNaam = null)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
-        var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
+        var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
         if (best != null) { best.TeamNaam = teamNaam; _occupations[best.VeldNummer].Add(best); }
         return best;
     }
 
+    /// <summary>
+    /// Zoekt een slot zo dicht mogelijk bij <paramref name="voorkeurTijd"/> en bezet het.
+    ///
+    /// <para><paramref name="voorkeurVeldNummer"/> (#666): het veld uit een 'VoorkeurVeld'-teamregel.
+    /// Dat veld wordt bij elke kandidaat-tijd als eerste geprobeerd. Het is een zachte voorkeur — is
+    /// het veld bezet of te klein, dan valt de planner terug op de normale veldsortering, zodat een
+    /// team nooit onplanbaar wordt door alleen een veldvoorkeur.</para>
+    ///
+    /// <para>De voorkeurstijd is hier het doel — er wordt niet naar het vroegste gat van de dag
+    /// gezocht. Tot #666 stond hier het omgekeerde: lag het vroegste vrije slot meer dan één buffer
+    /// vóór de voorkeurstijd, dan pakte de planner dát slot en verdween de voorkeur volledig. Een team
+    /// met voorkeur 14:30 werd zo op 09:00 gezet — vijf en een half uur ernaast, terwijl de tabel
+    /// "OK" meldde. De kandidaatlijst hieronder loopt van de voorkeurstijd naar buiten (±5, ±10, …),
+    /// dus het dichtstbijzijnde haalbare tijdslot wint, met eerder vóór later bij gelijke afstand.</para>
+    /// </summary>
     public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
-        int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90)
+        int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90,
+        int? voorkeurVeldNummer = null)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
-        var vroegste = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor);
-        if (vroegste != null)
-        {
-            int gap = (int)(voorkeurTijd - vroegste.AanvangsTijd).TotalMinutes;
-            if (gap > nieuwBufVoor) { vroegste.TeamNaam = teamNaam; _occupations[vroegste.VeldNummer].Add(vroegste); return vroegste; }
-        }
         var candidates = new List<TimeOnly> { voorkeurTijd };
         for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
         {
@@ -277,22 +429,31 @@ internal class FieldScheduler
             if (vroeger >= StartTijd) candidates.Add(vroeger);
             candidates.Add(later);
         }
-        var sorted = _velden.OrderByDescending(v => v.IsKunstgras).ThenBy(v => v.VeldNummer).ToList();
+        // Voorkeursveld vooraan in de veldsortering — de rest van de volgorde blijft ongewijzigd
+        // (kunstgras vóór gras, daarna veldnummer), zodat het gedrag zonder voorkeursveld identiek is.
+        var sorted = _velden
+            .OrderByDescending(v => voorkeurVeldNummer.HasValue && v.VeldNummer == voorkeurVeldNummer.Value)
+            .ThenByDescending(v => v.IsKunstgras)
+            .ThenBy(v => v.VeldNummer)
+            .ToList();
         foreach (var kandidaatTijd in candidates)
         {
             foreach (var veld in sorted)
             {
                 var besch = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
                 if (besch == null) continue;
-                var van   = besch.BeschikbaarVanaf < StartTijd ? StartTijd : besch.BeschikbaarVanaf;
+                // Ondergrens is hier de veldbeschikbaarheid zelf, NIET de standaard dagstart van 09:00
+                // (#666). Een team dat 08:30 als voorkeurstijd heeft opgegeven werd anders stilzwijgend
+                // naar 09:00 geschoven terwijl het veld al om 08:00 open was — een afwijking van 30
+                // minuten die niemand had gevraagd. Waar de dag begint hoort uit dbo.VeldBeschikbaarheid
+                // te komen, niet uit een vaste waarde in code. De 09:00-ondergrens blijft wél gelden
+                // voor wedstrijden zónder voorkeurstijd: die lopen via FindAndOccupyNextSlot.
+                var van   = besch.BeschikbaarVanaf;
                 var start = PlannerShared.RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
                 var end   = start.AddMinutes(duurMinuten);
                 if (end > besch.BeschikbaarTot || end <= start) continue;
-                var occs = _occupations.TryGetValue(veld.VeldNummer, out var list) ? list : new List<IngeplandSlot>();
-                var fractiesInUse = occs.Where(o => o.AanvangsTijd < end && o.EindTijd > start).Sum(o => o.Fractie);
-                if (fractiesInUse + fractie > 1.0m + 0.001m) continue;
-                int concurrent = occs.Count(o => o.AanvangsTijd < end && o.EindTijd > start);
-                var slot = new IngeplandSlot { VeldNummer = veld.VeldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = GetSubpositie(fractie, concurrent), TeamNaam = teamNaam };
+                if (!PastOpVeld(veld.VeldNummer, start, end, fractie, nieuwBufVoor, teamNaam, out var subpos)) continue;
+                var slot = new IngeplandSlot { VeldNummer = veld.VeldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = subpos, TeamNaam = teamNaam };
                 _occupations[veld.VeldNummer].Add(slot);
                 return slot;
             }
@@ -300,7 +461,7 @@ internal class FieldScheduler
         return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
     }
 
-    private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot, int nieuwBufVoor = -1)
+    private IngeplandSlot? FindEarliestSlot(int veldNummer, decimal fractie, int duurMinuten, TimeOnly van, TimeOnly tot, int nieuwBufVoor = -1, string? teamNaam = null)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
         var occs = _occupations.TryGetValue(veldNummer, out var list) ? list.OrderBy(o => o.AanvangsTijd).ToList() : new List<IngeplandSlot>();
@@ -318,18 +479,71 @@ internal class FieldScheduler
             if (start < van) start = van;
             var end = start.AddMinutes(duurMinuten);
             if (end > tot || end <= start) continue;
-            var fractiesInUse = occs.Where(o => o.AanvangsTijd < end && o.EindTijd > start).Sum(o => o.Fractie);
-            if (fractiesInUse + fractie > 1.0m + 0.001m) continue;
-            int concurrent = occs.Count(o => o.AanvangsTijd < end && o.EindTijd > start);
-            return new IngeplandSlot { VeldNummer = veldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = GetSubpositie(fractie, concurrent) };
+            // Zelfde bufferbewuste check als het voorkeurstijd-pad — de kandidaattijden hierboven zijn
+            // buffer-aware, maar de eindcontrole moet dat ook zijn (bijv. bij een wedstrijd die volgt).
+            if (!PastOpVeld(veldNummer, start, end, fractie, nieuwBufVoor, teamNaam, out var subpos)) continue;
+            return new IngeplandSlot { VeldNummer = veldNummer, AanvangsTijd = start, EindTijd = end, Fractie = fractie, VeldSubpositie = subpos };
         }
         return null;
     }
 
-    private static string GetSubpositie(decimal fractie, int concurrent) => fractie switch
+    // ── Veldindeling in banen (#666) ──
+    //
+    // Een veld bestaat uit vier kwartbanen: 0=A1, 1=A2, 2=B1, 3=B2. Een kwartveldwedstrijd bezet één
+    // baan, een halfveldwedstrijd twee aangrenzende banen (A = 0+1, B = 2+3) en een heel veld alle vier.
+    //
+    // Dit vervangt de oude toewijzing die simpelweg télde hoeveel wedstrijden er al gelijktijdig op het
+    // veld stonden ("de eerste krijgt A1, de tweede A2, ..."). Dat gaf twee soorten fouten:
+    // een halfveldwedstrijd op A (banen 0+1) plus een kwartveldwedstrijd leverde "A2" op — precies bovenop
+    // de eerste — en met A1 en B1 bezet en A2 vrij koos hij alsnog B1. De capaciteitscheck telde alleen
+    // de fracties op, dus numeriek leek dat te passen terwijl de banen botsten.
+    internal static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
+
+    /// <summary>Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg = heel veld.</summary>
+    internal static bool[] BanenVanSubpositie(string? subpositie)
     {
-        <= 0.25m => concurrent switch { 0 => "A1", 1 => "A2", 2 => "B1", _ => "B2" },
-        <= 0.50m => concurrent == 0 ? "A" : "B",
-        _ => string.Empty
+        var banen = new bool[4];
+        switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
+        {
+            case "A1": banen[0] = true; break;
+            case "A2": banen[1] = true; break;
+            case "B1": banen[2] = true; break;
+            case "B2": banen[3] = true; break;
+            case "A":  banen[0] = banen[1] = true; break;
+            case "B":  banen[2] = banen[3] = true; break;
+            default:   banen[0] = banen[1] = banen[2] = banen[3] = true; break;
+        }
+        return banen;
+    }
+
+    /// <summary>Hoeveel kwartbanen heeft een wedstrijd van deze veldafmeting nodig?</summary>
+    internal static int BanenNodig(decimal fractie) => fractie switch
+    {
+        <= 0.26m => 1,
+        <= 0.51m => 2,
+        _ => 4
     };
+
+    /// <summary>
+    /// Eerste vrije plek voor een wedstrijd van <paramref name="fractie"/> veld, gegeven de al bezette
+    /// banen. Geeft het subpositie-label terug ("A1", "B", "" voor een heel veld), of null als er geen
+    /// plek is. Halfveldwedstrijden mogen alleen op A of B — niet op de banen 1+2 dwars door het midden.
+    /// </summary>
+    internal static string? EersteVrijeSubpositie(bool[] bezet, decimal fractie)
+    {
+        int nodig = BanenNodig(fractie);
+        if (nodig == 4)
+            return bezet.Any(b => b) ? null : string.Empty;
+
+        if (nodig == 2)
+        {
+            if (!bezet[0] && !bezet[1]) return "A";
+            if (!bezet[2] && !bezet[3]) return "B";
+            return null;
+        }
+
+        for (int i = 0; i < 4; i++)
+            if (!bezet[i]) return BaanLabels[i];
+        return null;
+    }
 }

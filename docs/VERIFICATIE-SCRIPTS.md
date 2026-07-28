@@ -26,8 +26,8 @@ Het controleert schema, build en runtime in één doorloop.
 | 1. DB-verbinding | `local.settings.json` aanwezig en geldig | nee |
 | 2. Schema | Alle 8 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
 | 3. Build | `dotnet build` FunctionApp + BlazorAdmin | nee |
-| 4. API smoke | 10 endpoints op `:7094` | nee (2xx verwacht) |
-| 5. Blazor pagina's | 7 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+| 4. API smoke | 11 endpoints op `:7094` | nee (2xx verwacht) |
+| 5. Blazor pagina's | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
 
 Secties 4 en 5 worden automatisch overgeslagen als de services niet draaien.
 
@@ -51,24 +51,87 @@ dbo.Velden                   — VeldNummer, VeldNaam, VeldType, ...
 2. Alle checks groen (exit 0)?  
    → Pas dan committen
 3. Voor volledige coverage (inclusief API + Blazor smoke tests):  
-   → Eerst `.\scripts\dev\Start-Debug.ps1`, wacht ~15s, daarna `.\scripts\dev\Test-App.ps1`
+   → Eerst `.\scripts\dev\Start-Debug.ps1` (dit wacht zelf tot de services klaar zijn),
+   daarna `.\scripts\dev\Test-App.ps1`
 
 ### Exit codes
 
 - `0` — alles in orde
 - `1` — fouten gevonden (of niet automatisch te herstellen)
 
+### Schema-drift detectie (#684)
+
+De verwachte kolommen per tabel staan in `$expectedColumns` in `Test-App.ps1`, maar de **bron
+van waarheid** is `Database/dbo/Tables/<Tabel>.sql`. Het script parseert die bestanden en
+faalt wanneer een schema-bestand een kolom declareert die niet in `$expectedColumns` staat.
+
+Waarom dit nodig was: zonder deze check meldde `Test-App.ps1` groen terwijl acht kolommen
+(`ClubCode` op `Velden`, plus `UseRealtimeApi`, `SyncEnabled` en de vijf `Theme*`-kolommen op
+`AppSettings`) al lang in het schema stonden maar nooit werden gecontroleerd.
+
+De `-Fix`-paden lezen de kolomdefinitie nu óók uit het schema-bestand in plaats van uit een
+eigen lijst met typen. Daardoor kan `-Fix` niet meer afwijken van het schema — dat ging eerder
+mis met `DEFAULT GETDATE()` waar het schema `GETUTCDATE()` voorschrijft.
+
+`-Fix` weigert een kolom toe te voegen die `IDENTITY`/`PRIMARY KEY` is, of `NOT NULL` zonder
+`DEFAULT`: dat kan niet veilig via `ALTER TABLE ADD` op een tabel met bestaande rijen.
+Publiceer in dat geval het DB-project.
+
+### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
+
+Draait er iets op poort 5242, dan slaat sectie 3 de BlazorAdmin-build over. Een tweede
+compilatiepas naast `dotnet watch` levert een tweede set content-hash fingerprints op, wat
+een 404 geeft op framework-JS ("An unhandled error has occurred. Reload"). Voor
+build-foutdetectie: eerst `Stop-Debug.ps1`, dan `Test-App.ps1`.
+
 ---
 
 ## Start-Debug.ps1
 
-Start Azurite, FunctionApp en BlazorAdmin tegelijk in aparte vensters.
+Start Azurite, FunctionApp en BlazorAdmin, en **wacht tot ze daadwerkelijk reageren** —
+geen vaste `Start-Sleep` meer (#684).
 
 ```powershell
-.\scripts\dev\Start-Debug.ps1
+.\scripts\dev\Start-Debug.ps1            # losse vensters per service
+.\scripts\dev\Start-Debug.ps1 -Tail      # één samengevoegde logstroom
+.\scripts\dev\Start-Debug.ps1 -Swa       # inclusief SWA emulator op :4280
+.\scripts\dev\Start-Debug.ps1 -NoWatch   # BlazorAdmin zonder hot reload
+.\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
 ```
 
-Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242.
+Readiness-detectie:
+
+| Service | Signaal | Timeout |
+|---|---|---|
+| Azurite | poort 10000 luistert | 30s |
+| FunctionApp | `GET /api/health` → 200 | 120s (koude start ~20s, #175) |
+| BlazorAdmin | `GET /` → status < 500 | 180s |
+| SWA emulator | `GET /` → status < 500 | 90s |
+
+Het script rapporteert de gemeten opstarttijd en het versienummer uit `/api/health`, en geeft
+**exit 1** wanneer een service niet opkomt. Poorten: Azurite :10000, FunctionApp :7094,
+BlazorAdmin :5242, SWA :4280.
+
+> HTTP 200 op een Blazor-route bewijst **niet** dat de app rendert — elke route levert
+> dezelfde `index.html`. De browsercheck blijft verplicht.
+
+---
+
+## Stop-Debug.ps1
+
+```powershell
+.\scripts\dev\Stop-Debug.ps1           # FunctionApp + BlazorAdmin + SWA (Azurite blijft draaien)
+.\scripts\dev\Stop-Debug.ps1 -All      # inclusief Azurite
+.\scripts\dev\Stop-Debug.ps1 -Clean    # stop + dotnet clean BlazorAdmin (ruimt fingerprints op)
+```
+
+Stopt hele process-trees, niet losse processen. Dat is nodig omdat `dotnet watch` zijn
+kindproces herstart zodra dat wegvalt: alleen de poort-eigenaar killen liet de watcher leven,
+die poort 5242 daarna opnieuw bond. Het script wacht tot de poorten echt vrij zijn en geeft
+exit 1 als dat niet lukt. Idempotent: draaien zonder actieve services doet niets.
+
+Gedeelde logica staat in `scripts/dev/DevServices.psm1` (`Wait-ForPort`, `Wait-ForHealth`,
+`Wait-ForHttp`, `Stop-DebugServices`).
 
 ---
 

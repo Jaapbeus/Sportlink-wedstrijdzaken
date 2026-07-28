@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 2.17.2
+  version: 2.18.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -147,6 +147,15 @@ components:
         veldNaam:
           type: string
           example: "veld 3"
+        veldType:
+          type: string
+          nullable: true
+          description: >-
+            Veldtype zoals vastgelegd in dbo.Velden (vrije tekst, bijv. "kunstgras" of "natuurgras").
+            Reist mee met het slot zodat consumers het niet uit het veldnummer hoeven te raden: die
+            nummering geldt maar voor één accommodatie. null betekent onbekend — een consumer mag een
+            slot met onbekend veldtype nooit wegfilteren, want het slot is aantoonbaar beschikbaar.
+          example: "kunstgras"
         veldDeelGebruik:
           type: number
           format: float
@@ -183,6 +192,13 @@ components:
         veldNaam:
           type: string
           example: "veld 5"
+        veldType:
+          type: string
+          nullable: true
+          description: >-
+            Veldtype zoals vastgelegd in dbo.Velden (vrije tekst, bijv. "kunstgras" of "natuurgras").
+            null betekent onbekend; zie de toelichting bij SlotToewijzing.veldType.
+          example: "natuurgras"
         van:
           type: string
           example: "17:00"
@@ -691,6 +707,21 @@ components:
           type: boolean
           description: "true = live Sportlink API raadplegen bij plannercheck; false = alleen DB"
           default: true
+        KnvbPdfBijlageIngeschakeld:
+          type: boolean
+          description: |
+            Bij een herplanverzoek van een tegenstander zonder concrete nieuwe datum: stuurt de
+            KNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de
+            begeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.
+          default: true
+        KnvbStandaardRegio:
+          type: string
+          nullable: true
+          description: |
+            KNVB-regio van deze club, bepaalt welke speeldagenkalender wordt gebruikt (#561).
+            Ontbreekt deze waarde, dan wordt de hele KnvbPdfBijlageIngeschakeld-flow overgeslagen —
+            er is bewust geen standaardregio in code.
+          enum: [West, Noord, Oost, Zuid, Landelijk, LandelijkJeugd]
         fetchScheduleLeesbaar:
           type: string
           nullable: true
@@ -710,7 +741,8 @@ components:
         Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
-        AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi.
+        AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio.
       properties:
         gewijzigdDoor:
           type: string
@@ -1016,6 +1048,116 @@ components:
           type: integer
         VeldNaam:
           type: string
+        VeldType:
+          type: string
+          description: Vrije tekst (bijv. "kunstgras", "natuurgras") — geen vaste enum, elke club configureert dit naar eigen situatie.
+          example: "kunstgras"
+        HeeftKunstlicht:
+          type: boolean
+        Actief:
+          type: boolean
+
+    VeldCreateRequest:
+      type: object
+      required:
+        - veldNummer
+        - veldNaam
+        - veldType
+      properties:
+        veldNummer:
+          type: integer
+          description: Uniek binnen deze deployment (PK van dbo.Velden, geen ClubCode-scope).
+        veldNaam:
+          type: string
+          example: "veld 1"
+        veldType:
+          type: string
+          example: "kunstgras"
+        heeftKunstlicht:
+          type: boolean
+          default: false
+        actief:
+          type: boolean
+          default: true
+
+    VeldUpdateRequest:
+      type: object
+      required:
+        - veldNaam
+        - veldType
+      properties:
+        veldNaam:
+          type: string
+        veldType:
+          type: string
+        heeftKunstlicht:
+          type: boolean
+        actief:
+          type: boolean
+
+    # ── Beheer — Veldtraining ──────────────────────────────────────────────────
+
+    VeldTrainingItem:
+      type: object
+      properties:
+        Id:
+          type: integer
+        VeldNummer:
+          type: integer
+        VeldNaam:
+          type: string
+        DagVanWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: "ISO dag: 1=maandag … 7=zondag"
+        VanTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "19:00"
+        TotTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "20:30"
+        Omschrijving:
+          type: string
+          nullable: true
+          example: "JO15-2 training"
+        Actief:
+          type: boolean
+
+    VeldTrainingCreateRequest:
+      type: object
+      required:
+        - veldNummer
+        - dagVanWeek
+        - vanTijd
+        - totTijd
+      properties:
+        veldNummer:
+          type: integer
+        dagVanWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        vanTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "19:00"
+        totTijd:
+          type: string
+          pattern: '^[0-2]\d:[0-5]\d$'
+          example: "20:30"
+        omschrijving:
+          type: string
+          nullable: true
+        actief:
+          type: boolean
+          default: true
+
+    VeldTrainingUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/VeldTrainingCreateRequest'
 
     # ── Beheer — Voorkeurstijden ───────────────────────────────────────────────
 
@@ -1318,6 +1460,14 @@ components:
         wedstrijdRust:
           type: integer
           example: 5
+        standaardVoorkeurTijd:
+          type: string
+          nullable: true
+          description: |
+            Standaard voorkeurstijd "HH:mm" voor deze leeftijdscategorie (#666). Wordt door de
+            auto-planner gebruikt voor teams zonder eigen rij in dbo.TeamVoorkeurTijden.
+            null of leeg = geen streeftijd; de planner kiest dan het eerst beschikbare slot.
+          example: "10:00"
 
     # ── Beheer — Theme ────────────────────────────────────────────────────────
 
@@ -1465,6 +1615,82 @@ components:
           type: string
           enum: [valideer, afwijzen]
           description: "'valideer' = leermoment accepteren; 'afwijzen' = leermoment verwerpen"
+
+    # ── Beheer — Teamaliassen ─────────────────────────────────────────────────
+
+    TeamAliasItem:
+      type: object
+      description: |
+        Afwijkende schrijfwijze van een teamnaam uit dbo.TeamAliassen, met de canonieke
+        teamnaam uit dbo.Teams. Alleen status `validated` geldt als vertrouwde exacte match
+        bij teamnaam-resolutie.
+      properties:
+        id:
+          type: integer
+        ruweTekst:
+          type: string
+          description: Exact zoals aangetroffen
+          example: "13-1"
+        ruweTekstGenormaliseerd:
+          type: string
+          description: Na normalisatie, gebruikt voor lookup
+        teamId:
+          type: integer
+        teamnaam:
+          type: string
+          nullable: true
+          description: Canonieke teamnaam uit dbo.Teams; null als het team niet meer bestaat
+        leeftijdsCategorie:
+          type: string
+          nullable: true
+        bron:
+          type: string
+          enum: [Sync, AiDisambiguatie, CoordinatorCorrectie]
+        status:
+          type: string
+          enum: [pending, validated, rejected]
+        aantalKeerGebruikt:
+          type: integer
+        mtaInserted:
+          type: string
+          format: date-time
+          nullable: true
+        mtaModified:
+          type: string
+          format: date-time
+          nullable: true
+
+    TeamAliasListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Aantal teruggegeven rijen
+        limit:
+          type: integer
+        pending:
+          type: integer
+          description: Totaal aantal onbeoordeelde aliassen van de club (ongefilterd)
+        validated:
+          type: integer
+          description: Totaal aantal goedgekeurde aliassen van de club
+        rejected:
+          type: integer
+          description: Totaal aantal afgewezen aliassen van de club
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamAliasItem'
+
+    TeamAliasValideerRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [validated, rejected]
+          description: "'validated' = alias vertrouwen; 'rejected' = alias negeren"
 
     # ── Beheer — Teambegeleiding ──────────────────────────────────────────────
 
@@ -1642,34 +1868,89 @@ components:
     AutoPlanWedstrijd:
       type: object
       properties:
-        wedstrijdcode:
+        wedstrijdCode:
           type: integer
           format: int64
           nullable: true
-        team:
+        wedstrijd:
           type: string
-        tegenstander:
+          description: Volledige wedstrijdomschrijving zoals in Sportlink
+        teamNaam:
           type: string
-          nullable: true
         leeftijdsCategorie:
           type: string
           nullable: true
-        huidigVeld:
+        competitiesoort:
+          type: string
+          nullable: true
+        duurMinuten:
+          type: integer
+        veldafmeting:
+          type: number
+          format: decimal
+        huidigeVeld:
           type: string
           nullable: true
         huidigeTijd:
           type: string
           nullable: true
-        nieuwVeld:
+        heeftVeld:
+          type: boolean
+        heeftTijd:
+          type: boolean
+        optimaalVeldNummer:
+          type: integer
+          nullable: true
+        optimaalVeldNaam:
           type: string
           nullable: true
-        nieuweTijd:
+        optimaalVeld:
           type: string
           nullable: true
-        actie:
+          description: Veld in Sportlink-formaat, eventueel met subpositie ("veld 3 A")
+          example: "veld 3 A"
+        optimaalTijd:
           type: string
-          description: Wat het auto-plan doet met deze wedstrijd
           nullable: true
+          example: "11:15"
+        status:
+          type: string
+          description: |
+            Verplaatst de planner deze wedstrijd t.o.v. de huidige stand? Zegt niets over de
+            voorkeurstijd — daarvoor is `voorkeurStatus` (#666).
+          enum: [ongewijzigd, wijziging, nieuw-slot, niet-inplanbaar, onbekend-team]
+        nietInplanbaaarReden:
+          type: string
+          nullable: true
+        voorkeurTijd:
+          type: string
+          nullable: true
+          description: Streeftijd waarop is ingepland; null als er geen voorkeur en geen leeftijdsdefault is
+          example: "11:00"
+        voorkeurAfwijkingMinuten:
+          type: integer
+          nullable: true
+          description: 0 = exact op de voorkeurstijd, positief = later, negatief = eerder
+        voorkeurBron:
+          type: string
+          nullable: true
+          description: |
+            Uit welke laag van de rangorde de streeftijd komt (#666):
+            `regel` = teamregel VoorkeurVeld met tijd, `team` = dbo.TeamVoorkeurTijden,
+            `leeftijd` = dbo.Speeltijden.StandaardVoorkeurTijd.
+          enum: [regel, team, leeftijd]
+        voorkeurStatus:
+          type: string
+          description: Beoordeling van de afwijking, met dezelfde drempels als de Gantt-legenda
+          enum: [op-tijd, kleine-afwijking, grote-afwijking, geen-voorkeur]
+        voorkeurVeldNummer:
+          type: integer
+          nullable: true
+          description: Voorkeursveld uit een teamregel; null als die regel er niet is
+        voorkeurVeldToegepast:
+          type: boolean
+          nullable: true
+          description: false als er een voorkeursveld was maar de planner een ander veld moest kiezen
 
     VeldbezettingItem:
       type: object
@@ -2027,55 +2308,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HerplanBevestigResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /planner/optimaliseer:
-    post:
-      tags: [planner]
-      operationId: optimaliseer
-      summary: Planningsoptimalisatie berekenen
-      description: |
-        Analyseert de planning voor een datum en genereert optimalisatiesuggesties.
-        **Voert niets door** — alleen advies.
-
-        **Output-formaten** (via `?format=`):
-        - *(geen)* — JSON met suggesties
-        - `html` — interactieve browser-HTML met plannervisualisatie
-        - `email` — email-compatibele HTML met link naar browser-versie
-
-        Beveiliging: `AuthorizationLevel.Anonymous` + `EasyAuthHelper.RequireAdmin()` — Bearer token vereist.
-      security:
-        - easyAuth: []
-      parameters:
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [html, email]
-          description: Outputformaat. Leeg = JSON.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OptimaliseerRequest'
-      responses:
-        '200':
-          description: Optimalisatieresultaat
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OptimaliseerResponse'
-            text/html:
-              schema:
-                type: string
-                description: HTML plannerweergave (bij ?format=html of ?format=email)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2835,6 +3067,248 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: createVeld
+      summary: Veld aanmaken
+      description: |
+        Maakt een nieuw veld aan in `dbo.Velden`. VeldNummer moet deployment-breed uniek zijn
+        (409 Conflict bij duplicaat) — de tabel heeft geen ClubCode in de primary key.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeldCreateRequest'
+      responses:
+        '200':
+          description: Veld aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  veldNummer:
+                    type: integer
+                  status:
+                    type: string
+                    example: "aangemaakt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: VeldNummer bestaat al
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/velden/{veldNummer}:
+    put:
+      tags: [beheer]
+      operationId: updateVeld
+      summary: Veld bijwerken
+      description: Wijzigt naam, type, kunstlicht of activeert/deactiveert een veld.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: veldNummer
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeldUpdateRequest'
+      responses:
+        '200':
+          description: Veld bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  veldNummer:
+                    type: integer
+                  status:
+                    type: string
+                    example: "bijgewerkt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/veldtraining:
+    get:
+      tags: [beheer]
+      operationId: getVeldTraining
+      summary: Trainingsschema ophalen
+      description: |
+        Geeft alle terugkerende trainingsblokken per veld per weekdag. De planner en de
+        e-mailpijplijn behandelen een actief trainingsblok als bezetting, naast wedstrijden.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Trainingsblokken
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VeldTrainingItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [beheer]
+      operationId: createVeldTraining
+      summary: Trainingsblok aanmaken
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeldTrainingCreateRequest'
+      responses:
+        '200':
+          description: Trainingsblok aangemaakt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "aangemaakt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/veldtraining/{id}:
+    put:
+      tags: [beheer]
+      operationId: updateVeldTraining
+      summary: Trainingsblok bijwerken
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeldTrainingUpdateRequest'
+      responses:
+        '200':
+          description: Trainingsblok bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "bijgewerkt"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags: [beheer]
+      operationId: deleteVeldTraining
+      summary: Trainingsblok verwijderen
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Trainingsblok verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    example: "verwijderd"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3688,6 +4162,147 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  # ── Beheer — Teamaliassen ─────────────────────────────────────────────────────
+
+  /beheer/teamaliassen:
+    get:
+      tags: [beheer]
+      operationId: getTeamAliassen
+      summary: Teamnaam-aliassen ophalen
+      description: |
+        Geeft de aliassen uit `dbo.TeamAliassen` van de club (`X-Club-Code`), samen met de
+        canonieke teamnaam uit `dbo.Teams`. Optioneel gefilterd op status. Onbeoordeelde
+        aliassen (`pending`) staan altijd bovenaan, daarna op aanmaakdatum aflopend.
+        Bestaat de tabel nog niet, dan volgt een lege lijst in plaats van een fout.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, validated, rejected]
+          description: "pending = onbeoordeeld, validated = goedgekeurd, rejected = afgewezen. Leeg = alles."
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+          description: Maximum aantal terug te geven rijen
+      responses:
+        '200':
+          description: Teamaliassen
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamAliasListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teamaliassen/{id}/valideer:
+    put:
+      tags: [beheer]
+      operationId: valideerTeamAlias
+      summary: Teamalias goedkeuren of afwijzen
+      description: |
+        Zet `Status` op de alias. `validated` → de alias geldt vanaf dat moment als vertrouwde
+        exacte match bij teamnaam-resolutie. `rejected` → de alias wordt genegeerd.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Alias-ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamAliasValideerRequest'
+      responses:
+        '200':
+          description: Status bijgewerkt
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teamaliassen/{id}:
+    delete:
+      tags: [beheer]
+      operationId: deleteTeamAlias
+      summary: Teamalias verwijderen
+      description: |
+        Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`).
+        De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
+        aangetroffen.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Alias-ID
+      responses:
+        '200':
+          description: Verwijderd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  id:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   # ── Beheer — Teambegeleiding ──────────────────────────────────────────────────
 
   /beheer/teambegeleiding:
@@ -4086,7 +4701,7 @@ paths:
       description: |
         Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de
         laatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die
-        `/planner/auto-plan` en `/planner/optimaliseer` uitvoeren. Bedoeld als snelle,
+        `/planner/auto-plan` uitvoert. Bedoeld als snelle,
         goedkope "wat staat er nu al gepland"-weergave.
       security:
         - easyAuth: []

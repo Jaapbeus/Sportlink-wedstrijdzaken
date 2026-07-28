@@ -2,11 +2,13 @@ using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
+using SportlinkFunction.TeamResolution;
 
 namespace SportlinkFunction.Admin;
 
@@ -40,6 +42,10 @@ public static class EmailTestFunction
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
+        // #677: respecteer de GUI-clubswitcher (X-Club-Code header) — zonder dit gebruikte de
+        // Email-tester altijd de primaire (echte) club, ook als AllStars FC was geselecteerd.
+        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+
         if (!TryAcquireSlot())
         {
             return new ObjectResult(new { error = $"Rate limit overschreden: max {MaxCallsPerMinute}/min" })
@@ -58,6 +64,11 @@ public static class EmailTestFunction
 
             await SystemUtilities.WaitForDatabaseAsync(log);
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+
+            // #677: club-specifieke settings-snapshot i.p.v. de proces-globale cache, zodat een
+            // AllStars-dry-run nooit de instellingen (afzendernaam/coördinator) van de echte
+            // productieclub gebruikt.
+            var clubSettings = await LoadClubSettingsSnapshotAsync(clubCode);
 
             var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
             var chatClient = context.InstanceServices.GetService<Microsoft.Extensions.AI.IChatClient>()
@@ -82,8 +93,17 @@ public static class EmailTestFunction
             };
 
             BerichtPipeline.ValideerDagDatum(classificatie, body, onderwerp);
-            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(classificatie, fakeEmail, log);
-            var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, fakeEmail, log);
+
+            // Teamresolutie ook in de dry-run, zodat de tester exact hetzelfde gedrag laat zien als de
+            // echte verwerking (#700). Verplicht: zonder resolver wordt er geen team meer herkend.
+            var teamResolver = context.InstanceServices.GetRequiredService<ITeamResolver>();
+
+            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
+                classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings);
+            // clubCode expliciet meegeven: zonder dat leest EmailTemplateService de templates van de
+            // primaire club, terwijl de tester de club uit de GUI-clubswitcher toont (#677/#706).
+            var (voorbeeldOnderwerp, voorbeeldBody) = await BerichtPipeline.BouwTemplateAntwoord(
+                classificatie, plannerResponseJson, fakeEmail, log, clubSettings, clubCode);
 
             return new OkObjectResult(new
             {
@@ -105,6 +125,55 @@ public static class EmailTestFunction
             var errorMsg = isLocal ? $"Dry-run mislukt: {ex.GetType().Name}: {ex.Message}" : "Dry-run mislukt";
             return new ObjectResult(new { error = errorMsg }) { StatusCode = 500 };
         }
+    }
+
+    /// <summary>
+    /// Haalt de dbo.AppSettings-rij op van de opgegeven club (#677). Zelfde queryvorm als
+    /// AdminSettingsFunction.Get, maar beperkt tot de velden die de auto-reply handtekening en de
+    /// herplan-deadline bepalen. Gebruikt om de Email-tester club-bewust te maken: de proces-globale
+    /// SystemUtilities.AppSettings cache bevat altijd de primaire (echte) club, nooit AllStars FC.
+    /// </summary>
+    private static async Task<ClubAppSettingsSnapshot> LoadClubSettingsSnapshotAsync(string clubCode)
+    {
+        using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+
+        // #561: KnvbPdfBijlageIngeschakeld/KnvbStandaardRegio bestaan pas na migratie — dynamisch
+        // detecteren zodat de Email-tester ook werkt tegen een database die nog niet gemigreerd is
+        // (zelfde patroon als UseRealtimeApi/SyncEnabled in SystemUtilities.AppSettings).
+        using var colCheckCommand = new SqlCommand(@"
+            SELECT
+                COL_LENGTH('[dbo].[AppSettings]', 'KnvbPdfBijlageIngeschakeld'),
+                COL_LENGTH('[dbo].[AppSettings]', 'KnvbStandaardRegio')", connection);
+        using var colCheckReader = await colCheckCommand.ExecuteReaderAsync();
+        var heeftKnvbKolommen = false;
+        if (await colCheckReader.ReadAsync())
+            heeftKnvbKolommen = !colCheckReader.IsDBNull(0) && !colCheckReader.IsDBNull(1);
+        await colCheckReader.DisposeAsync();
+
+        var knvbSelect = heeftKnvbKolommen
+            ? ", [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio]"
+            : "";
+
+        using var command = new SqlCommand($@"
+            SELECT TOP 1 [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
+                   [EmailVoetnoot], [HerplanDeadlineDagen]{knvbSelect}
+            FROM [dbo].[AppSettings]
+            WHERE [ClubCode] = @ClubCode", connection);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException("Geen dbo.AppSettings rij gevonden voor de opgegeven club-code");
+
+        return new ClubAppSettingsSnapshot(
+            PlannerAfzenderNaam: reader.IsDBNull(0) ? null : reader.GetString(0),
+            CoordinatorNaam: reader.IsDBNull(1) ? null : reader.GetString(1),
+            CoordinatorFunctie: reader.IsDBNull(2) ? null : reader.GetString(2),
+            EmailVoetnoot: reader.IsDBNull(3) ? null : reader.GetString(3),
+            HerplanDeadlineDagen: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            KnvbPdfBijlageIngeschakeld: heeftKnvbKolommen && !reader.IsDBNull(5) ? reader.GetBoolean(5) : null,
+            KnvbStandaardRegio: heeftKnvbKolommen && !reader.IsDBNull(6) ? reader.GetString(6) : null);
     }
 
     private static bool TryAcquireSlot()

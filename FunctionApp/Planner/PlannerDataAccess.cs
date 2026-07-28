@@ -113,6 +113,9 @@ namespace SportlinkFunction.Planner
         public static Task<Dictionary<string, (int bufferVoor, int bufferNa)>> GetAllTeamBuffersAsync(string? clubCode = null)
             => TeamRulesRepository.GetAllTeamBuffersAsync(clubCode);
 
+        public static Task<Dictionary<string, TeamVoorkeurVeld>> GetAllTeamVoorkeurVeldenAsync(string? clubCode = null)
+            => TeamRulesRepository.GetAllTeamVoorkeurVeldenAsync(clubCode);
+
         // ── ALLSTARS testdata ──
         public static Task<List<VeldInfo>> GetAllstarsVeldenAsync()
             => AllstarsTestDataRepository.GetAllstarsVeldenAsync();
@@ -123,7 +126,7 @@ namespace SportlinkFunction.Planner
         public static Task<int> UpdateAllstarsMatchAsync(long wedstrijdCode, string nieuweVeld, string nieuweTijd)
             => AllstarsTestDataRepository.UpdateAllstarsMatchAsync(wedstrijdCode, nieuweVeld, nieuweTijd);
 
-        public static Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam)
-            => AllstarsTestDataRepository.GetTeamleiderContactAsync(teamNaam);
+        public static Task<TeamleiderContact?> GetTeamleiderContactAsync(string teamNaam, string? clubCode = null)
+            => AllstarsTestDataRepository.GetTeamleiderContactAsync(teamNaam, clubCode);
     }
 }

@@ -36,6 +36,12 @@
                 <i class="bi bi-speedometer2 me-1" aria-hidden="true"></i> Dashboard
             </NavLink>
         </div>
+        @* Teambegeleiding staat bewust vooraan: meest gebruikte scherm (#669) *@
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="teambegeleiding">
+                <i class="bi bi-people me-1" aria-hidden="true"></i> Teambegeleiding
+            </NavLink>
+        </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="dagplanning">
                 <i class="bi bi-calendar-week me-1" aria-hidden="true"></i> Dagplanning
@@ -47,13 +53,13 @@
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="email-tester">
-                <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> Email-tester
+            <NavLink class="nav-link" href="teamaliassen">
+                <i class="bi bi-tags me-1" aria-hidden="true"></i> Teamaliassen
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="teambegeleiding">
-                <i class="bi bi-people me-1" aria-hidden="true"></i> Teambegeleiding
+            <NavLink class="nav-link" href="email-tester">
+                <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> Email-tester
             </NavLink>
         </div>
 
@@ -75,6 +81,11 @@
                     <div class="nav-item">
                         <NavLink class="nav-link py-1" href="instellingen/speeltijden">
                             <i class="bi bi-clock me-1" aria-hidden="true"></i> Speeltijden
+                        </NavLink>
+                    </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="instellingen/velden">
+                            <i class="bi bi-grid-3x3 me-1" aria-hidden="true"></i> Velden
                         </NavLink>
                     </div>
                     <div class="nav-item">
@@ -129,6 +140,7 @@
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
     private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates"];
+    // "/instellingen/velden" matcht al via de "/instellingen"-prefix hierboven.
 
     protected override void OnInitialized()
     {

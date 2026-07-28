@@ -241,7 +241,8 @@
                             <th>Wedstrijd</th>
                             <th>Huidige situatie</th>
                             <th>Optimale situatie</th>
-                            <th>Status</th>
+                            <th title="Gewenste tijd en de afwijking daarvan">Voorkeurstijd</th>
+                            <th title="Verplaatst de planner deze wedstrijd t.o.v. de huidige stand?">Wijziging</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -297,11 +298,34 @@
                                         <span class="ms-2 @(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalTijd</span>
                                     }
                                 </td>
+                                @* Voorkeurstijd los van de wijzig-status (#666): een wedstrijd kan
+                                   ongewijzigd blijven én tóch ver van de voorkeurstijd liggen. *@
+                                <td style="font-size:0.85rem;">
+                                    @if (string.IsNullOrWhiteSpace(item.VoorkeurTijd))
+                                    {
+                                        <span class="text-muted" title="Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie">—</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge @VoorkeurBadgeClass(item.VoorkeurStatus)"
+                                              title="@VoorkeurTitel(item)">
+                                            @item.VoorkeurTijd@VoorkeurAfwijkingTekst(item.VoorkeurAfwijkingMinuten)
+                                        </span>
+                                        <span class="text-muted ms-1" style="font-size:0.75rem;">@VoorkeurBronLabel(item.VoorkeurBron)</span>
+                                        @if (item.VoorkeurVeldToegepast == false)
+                                        {
+                                            <span class="badge bg-secondary ms-1"
+                                                  title="Voorkeursveld was niet beschikbaar; de planner koos een ander veld">
+                                                ander veld
+                                            </span>
+                                        }
+                                    }
+                                </td>
                                 <td>
                                     @switch (item.Status)
                                     {
                                         case "ongewijzigd":
-                                            <span class="badge bg-success">&#10003; OK</span>
+                                            <span class="badge bg-light text-dark border" title="De planner laat deze wedstrijd staan">Ongewijzigd</span>
                                             break;
                                         case "nieuw-slot":
                                             <span class="badge bg-warning text-dark">Nieuw</span>
@@ -391,6 +415,29 @@
                     <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
                 </div>
 
+                @if (_isOptimaal)
+                {
+                    <p class="text-muted small mb-2">
+                        <i class="bi bi-arrows-move me-1" aria-hidden="true"></i>
+                        Sleep een wedstrijd naar een andere tijd of een ander veld. De tijd springt op stappen
+                        van 5 minuten; de tabel en de eindtijd lopen mee. Handmatig verplaatste wedstrijden
+                        krijgen een stippellijn.
+                    </p>
+
+                    @if (_conflicten.Count > 0)
+                    {
+                        <div class="alert alert-warning py-2 small">
+                            <strong>Let op — deze planning kan zo niet:</strong>
+                            <ul class="mb-0 ps-3">
+                                @foreach (var c in _conflicten)
+                                {
+                                    <li>@c</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                }
+
                 <div style="overflow-x:auto; min-width:0;">
                     @* Tijdas-header *@
                     <div style="display:flex; margin-bottom:4px;">
@@ -407,16 +454,22 @@
                         </div>
                     </div>
 
-                    @* Veld-rijen *@
+                    @* Veld-rijen — sleepbaar bij de optimale planning (#666) *@
+                    @{ int _rijIdx = 0; }
                     @foreach (var _veld in _velden)
                     {
+                        int _rij = _rijIdx++;
+                        string _veldNaam = _veld;
                         <div style="display:flex; border-top:1px solid #dee2e6;">
                             <div style="width:120px; flex-shrink:0; padding:6px 8px; font-size:0.8rem;
                                         font-weight:600; color:#495057; background:#f8f9fa;
                                         border-right:1px solid #dee2e6; display:flex; align-items:center;">
                                 @_veld
                             </div>
-                            <div style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;">
+                            <div id="gantt-rij-@_rij"
+                                 style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;"
+                                 ondragover="event.preventDefault();"
+                                 @ondrop="@(e => SleepDrop(_veldNaam, _rij, _sMin, _totMin, e))">
                                 @* Uurlijnen *@
                                 @for (int _h = _sMin + 60; _h < _eMin; _h += 60)
                                 {
@@ -432,7 +485,11 @@
                                     string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
                                     string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd);
                                     string _tooltip = GanttTooltip(gi);
+                                    bool _sleepbaar = gi.Bron != null;
+                                    bool _handmatig = gi.Bron != null && _handmatigAangepast.Contains(gi.Bron);
                                     <div title="@_tooltip"
+                                         draggable="@(_sleepbaar ? "true" : "false")"
+                                         @ondragstart="@(e => SleepStart(gi, e))"
                                          style="position:absolute;
                                                 left:calc(@(_lft)% + 2px); width:calc(@(_wdt)% - 4px);
                                                 top:calc(@(_top)% + 2px); height:calc(@(_hgt)% - 4px);
@@ -440,7 +497,8 @@
                                                 border-radius:5px; overflow:hidden;
                                                 padding:2px 5px; color:#fff;
                                                 font-size:0.68rem; line-height:1.25;
-                                                z-index:1; cursor:default;
+                                                z-index:1; cursor:@(_sleepbaar ? "grab" : "default");
+                                                outline:@(_handmatig ? "2px dashed #fff" : "none"); outline-offset:-3px;
                                                 box-shadow:0 1px 3px rgba(0,0,0,0.2);">
                                         @* Voorkeurstijd-indicator: gekleurde balk bovenaan het blok *@
                                         @if (!string.IsNullOrEmpty(_voorkeurBalk))
@@ -466,58 +524,38 @@
         </div>
     </div>
 
-    @* ── Klassieke optimalisatie (verborgen sub-feature) ── *@
-    <details class="mb-3">
-        <summary class="text-muted" style="cursor:pointer;">Geavanceerde optimalisatie (klassiek)</summary>
-        <div class="card mt-2">
-            <div class="card-body">
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label">Optimalisatiedoel</label>
-                        <select class="form-select" @bind="_doel">
-                            <option value="">(geen voorkeur)</option>
-                            <option value="veld5-ontlasten">Grasveld(en) ontlasten</option>
-                            <option value="strakker-plannen">Strakker plannen</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Gewenste eindtijd</label>
-                        <TimeInput Value="@_gewensteEindtijdStr"
-                                   ValueChanged="@(v => _gewensteEindtijdStr = v ?? "16:15")"
-                                   Placeholder="16:15" />
-                    </div>
-                    <div class="col-md-2">
-                        <button class="btn btn-outline-primary w-100" @onclick="GenereerKlassiekAsync" disabled="@_bezig">
-                            Genereer
-                        </button>
-                    </div>
-                </div>
-                @if (_klassiekResultaat != null)
-                {
-                    <div class="mt-3">
+    @* ── Deelbare weergave van de berekende planning ── *@
+    @if (!string.IsNullOrEmpty(HuidigeExportHtml))
+    {
+        <details class="mb-3">
+            <summary class="text-muted" style="cursor:pointer;">Planning delen (HTML voor e-mail of download)</summary>
+            <div class="card mt-2">
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Weergave van de @(_visTab == "optimaal" ? "optimale" : "huidige") planning zoals hierboven
+                        gekozen. Handig om als e-mail te versturen of als bestand te bewaren.
+                    </p>
+                    <div class="mb-2">
                         <button class="btn btn-sm btn-outline-secondary me-2" @onclick="KopieerEmailHtmlAsync">
-                            @(_kopieerStatus ?? "Kopieer e-mail HTML")
+                            @(_kopieerStatus ?? "Kopieer HTML")
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadHtmlAsync">
                             Download HTML
                         </button>
                     </div>
-                    @if (!string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner))
-                    {
-                        <div class="border rounded mt-2" style="overflow:hidden;">
-                            @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
-                               Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
-                               onafhankelijk van server-side encoding. (#603) *@
-                            <iframe srcdoc="@_klassiekResultaat.HtmlPlanner"
-                                    sandbox="allow-same-origin"
-                                    style="width:100%; min-height:700px; border:none; display:block;"
-                                    title="Klassieke dagplanning"></iframe>
-                        </div>
-                    }
-                }
+                    <div class="border rounded" style="overflow:hidden;">
+                        @* sandbox zonder allow-scripts: de HTML wordt server-side gegenereerd uit
+                           Sportlink-data (team-/tegenstandernamen). Defense in depth tegen XSS,
+                           onafhankelijk van server-side encoding. (#603) *@
+                        <iframe srcdoc="@ExportHtmlZonderScript"
+                                sandbox="allow-same-origin"
+                                style="width:100%; min-height:700px; border:none; display:block;"
+                                title="Dagplanning"></iframe>
+                    </div>
+                </div>
             </div>
-        </div>
-    </details>
+        </details>
+    }
 }
 
 @code {
@@ -534,11 +572,32 @@
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
 
-    // Klassiek optimaliseer-flow
-    private string _doel = "";
-    private string _gewensteEindtijdStr = "16:15";
+    // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
     private string? _kopieerStatus;
-    private OptimaliseerResponseDto? _klassiekResultaat;
+
+    // Volgt de gekozen tab: de export toont dezelfde planning als de tijdlijn erboven.
+    private string? HuidigeExportHtml =>
+        _plan == null ? null : (_visTab == "optimaal" ? _plan.OptimaleHtml : _plan.HuidigeHtml);
+
+    // De gegenereerde HTML bevat een klik-interactie-script. In het iframe hieronder staat bewust
+    // geen 'allow-scripts' (XSS-verdediging, #603), en e-mailclients strippen scripts toch — het
+    // script wordt daar dus altijd geblokkeerd en levert alleen een console-fout op. Voor de
+    // voorbeeldweergave en de e-mailversie halen we het eruit; de download houdt het wél, want in
+    // een los geopend HTML-bestand werkt de interactie normaal.
+    private string? ExportHtmlZonderScript
+    {
+        get
+        {
+            var html = HuidigeExportHtml;
+            if (string.IsNullOrEmpty(html)) return html;
+            // Geen static Regex-veld en geen RegexOptions.Compiled: dat faalt in Blazor WebAssembly
+            // (NullReferenceException bij het renderen, geen buildfout — alleen zichtbaar in de browser).
+            return System.Text.RegularExpressions.Regex.Replace(
+                html, @"<script\b[^>]*>.*?</script>", string.Empty,
+                System.Text.RegularExpressions.RegexOptions.Singleline |
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+    }
 
     // Toepassen feedback
     private string? _toepassenMelding;
@@ -561,7 +620,6 @@
     private async Task OnDatumChanged()
     {
         _plan = null;
-        _klassiekResultaat = null;
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
@@ -588,7 +646,6 @@
     private void OnClubChanged() => InvokeAsync(async () =>
     {
         _plan = null;
-        _klassiekResultaat = null;
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
@@ -663,6 +720,55 @@
         };
     }
 
+    // ── Voorkeurstijd-weergave (#666) ──
+
+    private static string VoorkeurBadgeClass(string voorkeurStatus) => voorkeurStatus switch
+    {
+        "op-tijd"          => "bg-success",
+        "kleine-afwijking" => "bg-warning text-dark",
+        "grote-afwijking"  => "bg-danger",
+        _                  => "bg-light text-dark border"
+    };
+
+    private static string VoorkeurAfwijkingTekst(int? afwijking)
+    {
+        if (!afwijking.HasValue || afwijking.Value == 0) return "";
+        var teken = afwijking.Value > 0 ? "+" : "−";
+        return $" ({teken}{Math.Abs(afwijking.Value)} min)";
+    }
+
+    private static string VoorkeurBronLabel(string? bron) => bron switch
+    {
+        "regel"    => "regel",
+        "team"     => "team",
+        "leeftijd" => "standaard",
+        _          => ""
+    };
+
+    private static string VoorkeurTitel(AutoPlanWedstrijdItemDto item)
+    {
+        var bron = item.VoorkeurBron switch
+        {
+            "regel"    => "uit een teamregel (voorkeursveld met tijd)",
+            "team"     => "eigen voorkeurstijd van het team",
+            "leeftijd" => "standaardtijd van de leeftijdscategorie",
+            _          => "onbekende bron"
+        };
+        string afwijking;
+        if (!item.VoorkeurAfwijkingMinuten.HasValue)
+        {
+            afwijking = "afwijking onbekend";
+        }
+        else
+        {
+            int m = item.VoorkeurAfwijkingMinuten.Value;
+            afwijking = m == 0 ? "exact op de voorkeurstijd"
+                      : m > 0  ? $"{m} minuten later dan gewenst"
+                               : $"{Math.Abs(m)} minuten eerder dan gewenst";
+        }
+        return $"Voorkeurstijd {item.VoorkeurTijd} — {bron}. Ingepland: {afwijking}.";
+    }
+
     private static string RowClass(string status) => status switch
     {
         "ongewijzigd"     => "",
@@ -673,66 +779,34 @@
         _                 => ""
     };
 
-    // ── Klassiek optimaliseer ──
-
-    private async Task GenereerKlassiekAsync()
-    {
-        _errorMessage = null;
-        _klassiekResultaat = null;
-        _kopieerStatus = null;
-        _bezig = true;
-        try
-        {
-            var req = new OptimaliseerRequestDto
-            {
-                Datum = DatumStr,
-                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
-                GewensteEindtijd = _gewensteEindtijdStr,
-                BufferMinuten = _bufferMinuten
-            };
-            var result = await Api.OptimaliseerAsync(req);
-            if (result.Success) _klassiekResultaat = result.Data;
-            else _errorMessage = result.ErrorMessage ?? "Onbekende fout.";
-        }
-        finally { _bezig = false; }
-    }
+    // ── HTML-export van de berekende planning ──
+    // Sinds #666 komt de HTML uit de auto-plan-response zelf (HuidigeHtml / OptimaleHtml). Er is dus
+    // geen extra API-call meer nodig; het losse optimaliseer-endpoint is vervallen.
 
     private async Task KopieerEmailHtmlAsync()
     {
-        if (_klassiekResultaat == null) return;
-        _bezig = true;
-        try
-        {
-            var req = new OptimaliseerRequestDto
-            {
-                Datum = DatumStr,
-                Doel = string.IsNullOrWhiteSpace(_doel) ? null : _doel,
-                GewensteEindtijd = _gewensteEindtijdStr,
-                BufferMinuten = _bufferMinuten
-            };
-            var result = await Api.OptimaliseerHtmlAsync(req, "email");
-            if (result.Success && result.Data != null)
-            {
-                await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", result.Data);
-                _kopieerStatus = "Gekopieerd!";
-                _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
-            }
-            else _errorMessage = result.ErrorMessage ?? "Kopiëren mislukt.";
-        }
-        finally { _bezig = false; }
+        var html = ExportHtmlZonderScript;
+        if (string.IsNullOrEmpty(html)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.copyToClipboard", html);
+        _kopieerStatus = "Gekopieerd!";
+        _ = Task.Delay(2500).ContinueWith(_ => { _kopieerStatus = null; InvokeAsync(StateHasChanged); });
     }
 
     private async Task DownloadHtmlAsync()
     {
-        if (_klassiekResultaat == null || string.IsNullOrEmpty(_klassiekResultaat.HtmlPlanner)) return;
-        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", _klassiekResultaat.HtmlPlanner);
+        var html = HuidigeExportHtml;
+        if (string.IsNullOrEmpty(html)) return;
+        await JS.InvokeVoidAsync("blazorHelpers.downloadHtml", $"dagplanning-{DatumStr}.html", html);
     }
 
     // ── Gantt helpers ──
 
+    // Wedstrijd meegegeven zodat een sleepactie in de tijdlijn de onderliggende regel kan bijwerken
+    // (#666). Null op de "Huidige situatie"-tab: die weergave is de stand uit Sportlink en niet te
+    // bewerken — alleen de berekende planning mag met de hand worden aangepast.
     private record GanttItem(string VeldNaam, string? SubPos, TimeOnly Aanvang, TimeOnly Einde,
         decimal Fractie, string Label, string Status, int DuurMinuten,
-        string? VoorkeurTijd, int? VoorkeurAfwijking);
+        string? VoorkeurTijd, int? VoorkeurAfwijking, AutoPlanWedstrijdItemDto? Bron = null);
 
     private List<GanttItem> BouwGanttItems(bool isOptimaal)
     {
@@ -747,7 +821,7 @@
                 var sub = GanttExtractSubPos(w.OptimaalVeld);
                 items.Add(new GanttItem(w.OptimaalVeldNaam, sub, t, t.AddMinutes(w.DuurMinuten),
                     w.Veldafmeting, GanttMatchLabel(w.Wedstrijd, w.TeamNaam), w.Status, w.DuurMinuten,
-                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten));
+                    w.VoorkeurTijd, w.VoorkeurAfwijkingMinuten, w));
             }
             else
             {
@@ -760,6 +834,189 @@
             }
         }
         return items;
+    }
+
+    // ── Handmatig verslepen in de tijdlijn (#666) ──
+    // De wedstrijdsecretaris kan een blok naar een andere tijd of een ander veld slepen. De tijd snapt
+    // op 5 minuten (voetbalconventie, gelijk aan de planner zelf). De tabel en de samenvatting hieronder
+    // lezen dezelfde objecten, dus die lopen automatisch mee.
+
+    private AutoPlanWedstrijdItemDto? _sleepItem;
+    private double _sleepGrijpOffsetPx;
+    private readonly HashSet<AutoPlanWedstrijdItemDto> _handmatigAangepast = new();
+    private List<string> _conflicten = new();
+
+    private void SleepStart(GanttItem gi, DragEventArgs e)
+    {
+        if (gi.Bron == null) return;
+        _sleepItem = gi.Bron;
+        // Waar in het blok is gepakt — anders verspringt het blok naar de cursor bij het neerzetten.
+        _sleepGrijpOffsetPx = e.OffsetX;
+    }
+
+    private async Task SleepDrop(string veldNaam, int rijIndex, int startMinuut, int totaalMinuten, DragEventArgs e)
+    {
+        var item = _sleepItem;
+        _sleepItem = null;
+        if (item == null || _plan == null) return;
+
+        var rect = await JS.InvokeAsync<ElementRect?>("blazorHelpers.getElementRect", $"gantt-rij-{rijIndex}");
+        if (rect == null || rect.Width <= 0) return;
+
+        double blokLinksPx = e.ClientX - rect.Left - _sleepGrijpOffsetPx;
+        double minutenVanaf = blokLinksPx / rect.Width * totaalMinuten;
+        int nieuweMinuut = startMinuut + (int)Math.Round(minutenVanaf / 5.0) * 5;
+        nieuweMinuut = Math.Clamp(nieuweMinuut, 0, 24 * 60 - item.DuurMinuten);
+
+        var nieuweTijd = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(nieuweMinuut));
+        item.OptimaalTijd = nieuweTijd.ToString("HH:mm");
+
+        // Veld overnemen van de rij waarop is neergezet.
+        var doelVeld = _plan.Wedstrijden
+            .Where(w => w.OptimaalVeldNaam == veldNaam && w.OptimaalVeldNummer.HasValue)
+            .Select(w => w.OptimaalVeldNummer)
+            .FirstOrDefault();
+        item.OptimaalVeldNaam = veldNaam;
+        if (doelVeld.HasValue) item.OptimaalVeldNummer = doelVeld;
+
+        // Verticale droppositie bepaalt de kwartbaan van het veld. Een rij is vier banen hoog:
+        // A1, A2, B1, B2. Zo kan een kwartveldwedstrijd bewust op A2 gezet worden in plaats van
+        // altijd op de eerste vrije plek te belanden.
+        int baan = 0;
+        if (rect.Height > 0)
+        {
+            double relY = (e.ClientY - rect.Top) / rect.Height;
+            baan = Math.Clamp((int)(relY * 4), 0, 3);
+        }
+        item.OptimaalVeld = BouwVeldString(veldNaam, item.Veldafmeting, baan);
+
+        HerberekenNaSleep(item);
+        _handmatigAangepast.Add(item);
+    }
+
+    // Veldnaam + subpositie op basis van de veldafmeting en de aangewezen baan.
+    // Een heel veld krijgt geen subpositie; een half veld hoort op A (banen 0-1) of B (banen 2-3);
+    // een kwart veld gaat naar de aangewezen baan zelf.
+    private static string BouwVeldString(string veldNaam, decimal veldafmeting, int baan) =>
+        veldafmeting switch
+        {
+            <= 0.26m => $"{veldNaam} {BaanLabels[baan]}",
+            <= 0.51m => $"{veldNaam} {(baan <= 1 ? "A" : "B")}",
+            _        => veldNaam
+        };
+
+    private static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
+
+    // Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg/onbekend = heel veld.
+    // Dezelfde indeling als de planner server-side gebruikt.
+    private static bool[] BanenVanSubpositie(string? subpositie)
+    {
+        var b = new bool[4];
+        switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
+        {
+            case "A1": b[0] = true; break;
+            case "A2": b[1] = true; break;
+            case "B1": b[2] = true; break;
+            case "B2": b[3] = true; break;
+            case "A":  b[0] = b[1] = true; break;
+            case "B":  b[2] = b[3] = true; break;
+            default:   b[0] = b[1] = b[2] = b[3] = true; break;
+        }
+        return b;
+    }
+
+    // Status, voorkeursafwijking en de samenvatting opnieuw bepalen — dezelfde regels als de server,
+    // zodat een handmatige zet net zo eerlijk wordt beoordeeld als een berekende.
+    private void HerberekenNaSleep(AutoPlanWedstrijdItemDto item)
+    {
+        if (_plan == null) return;
+
+        bool tijdWijzigt = item.HuidigeTijd?.Trim() != item.OptimaalTijd;
+        bool veldWijzigt = NormaliseerVeld(item.HuidigeVeld) != NormaliseerVeld(item.OptimaalVeld);
+        item.Status = (!item.HeeftVeld || !item.HeeftTijd) ? "nieuw-slot"
+                    : (tijdWijzigt || veldWijzigt) ? "wijziging" : "ongewijzigd";
+
+        if (!string.IsNullOrWhiteSpace(item.VoorkeurTijd)
+            && TimeOnly.TryParse(item.VoorkeurTijd, out var vt)
+            && TimeOnly.TryParse(item.OptimaalTijd, out var nt))
+        {
+            item.VoorkeurAfwijkingMinuten = (int)(nt.ToTimeSpan() - vt.ToTimeSpan()).TotalMinutes;
+            int abs = Math.Abs(item.VoorkeurAfwijkingMinuten.Value);
+            item.VoorkeurStatus = abs == 0 ? "op-tijd" : abs <= 15 ? "kleine-afwijking" : "grote-afwijking";
+        }
+
+        if (item.VoorkeurVeldNummer.HasValue)
+            item.VoorkeurVeldToegepast = item.OptimaalVeldNummer == item.VoorkeurVeldNummer.Value;
+
+        _plan.TeWijzigen = _plan.Wedstrijden.Count(i => i.Status is "nieuw-slot" or "wijziging");
+        var eindes = _plan.Wedstrijden
+            .Where(i => i.OptimaalTijd != null && i.DuurMinuten > 0 && TimeOnly.TryParse(i.OptimaalTijd, out _))
+            .Select(i => TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten)).ToList();
+        _plan.GeschatteEindTijd = eindes.Count > 0 ? eindes.Max().ToString("HH:mm") : null;
+
+        ControleerConflicten();
+    }
+
+    // Overlap- en buffercontrole per veld, zodat een handmatige zet niet stil een onmogelijke
+    // planning oplevert. Zelfde regel als de server: gelijktijdig mag als de veldfracties samen
+    // binnen één veld blijven; achter elkaar vraagt de ingestelde buffer.
+    private void ControleerConflicten()
+    {
+        _conflicten = new List<string>();
+        if (_plan == null) return;
+
+        var perVeld = _plan.Wedstrijden
+            .Where(w => w.OptimaalTijd != null && w.OptimaalVeldNaam != null && w.DuurMinuten > 0
+                        && TimeOnly.TryParse(w.OptimaalTijd, out _))
+            .GroupBy(w => w.OptimaalVeldNaam!);
+
+        foreach (var veld in perVeld)
+        {
+            var lijst = veld.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
+            for (int i = 0; i < lijst.Count; i++)
+            {
+                var a = lijst[i];
+                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
+                var aEind = aStart.AddMinutes(a.DuurMinuten);
+                for (int j = i + 1; j < lijst.Count; j++)
+                {
+                    var b = lijst[j];
+                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
+                    var bEind = bStart.AddMinutes(b.DuurMinuten);
+
+                    bool overlapt = aStart < bEind && aEind > bStart;
+                    if (overlapt)
+                    {
+                        // Op banen vergelijken, niet op de som van de fracties: een half veld op A plus
+                        // een kwart veld telt op tot 0,75 — numeriek prima — maar botst wél als dat kwart
+                        // op A1 of A2 staat. De veldhelften zijn wat er fysiek bezet is.
+                        var baanA = BanenVanSubpositie(GanttExtractSubPos(a.OptimaalVeld));
+                        var baanB = BanenVanSubpositie(GanttExtractSubPos(b.OptimaalVeld));
+                        bool botst = false;
+                        for (int k = 0; k < 4; k++) if (baanA[k] && baanB[k]) botst = true;
+                        if (botst)
+                            _conflicten.Add($"{veld.Key}: {a.TeamNaam} en {b.TeamNaam} staan op hetzelfde veldgedeelte op dezelfde tijd.");
+                    }
+                    else
+                    {
+                        int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
+                        if (gat >= 0 && gat < _bufferMinuten)
+                            _conflicten.Add($"{veld.Key}: tussen {a.TeamNaam} en {b.TeamNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
+                    }
+                }
+            }
+        }
+    }
+
+    private static string NormaliseerVeld(string? veld) =>
+        string.IsNullOrWhiteSpace(veld) ? "" : veld.Trim().ToLowerInvariant().Replace("  ", " ");
+
+    private sealed class ElementRect
+    {
+        public double Left { get; set; }
+        public double Width { get; set; }
+        public double Top { get; set; }
+        public double Height { get; set; }
     }
 
     // Gantt-blokken voor de directe veldbezetting-weergave (#566) — geen optimalisatie,
@@ -783,13 +1040,22 @@
     private static string GanttMatchLabel(string? wedstrijd, string teamNaam)
         => !string.IsNullOrWhiteSpace(wedstrijd) ? wedstrijd : teamNaam;
 
+    // Alleen échte subposities van een gedeeld veld ("Kunstgras 1 A2") worden afgesplitst — precies de
+    // waarden die de planner uitdeelt en die GanttTop kan positioneren.
+    //
+    // De oude check ("laatste deel is maximaal 2 tekens en alfanumeriek") herkende óók een gewoon
+    // veldnummer als subpositie: "Kunstgras 1" werd ("Kunstgras", "1"). Gevolg was tweeledig — alle
+    // velden kregen dezelfde basisnaam en vielen samen op één tijdlijnrij (#665), en bij het verslepen
+    // naar een ander veld werd dat nummer als subpositie aan de nieuwe veldnaam geplakt ("Gras 1").
+    private static readonly string[] SubPosLabels = ["A", "A1", "A2", "B", "B1", "B2"];
+
     private static string? GanttExtractSubPos(string? veld)
     {
         if (string.IsNullOrWhiteSpace(veld)) return null;
-        var parts = veld.Trim().Split(' ');
+        var parts = veld.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2) return null;
         var last = parts[^1];
-        return last.Length <= 2 && last.All(char.IsLetterOrDigit) ? last : null;
+        return SubPosLabels.Contains(last, StringComparer.OrdinalIgnoreCase) ? last.ToUpperInvariant() : null;
     }
 
     private static (string Base, string? SubPos) GanttSplitVeld(string veld)

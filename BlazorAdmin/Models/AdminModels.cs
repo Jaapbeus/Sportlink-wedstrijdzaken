@@ -24,6 +24,8 @@ public class AppSettingsDto
     public string? FetchScheduleLeesbaar { get; set; }
     public List<string>? VolgendeMomenten { get; set; }
     public bool UseRealtimeApi { get; set; } = true;
+    public bool KnvbPdfBijlageIngeschakeld { get; set; } = true;
+    public string? KnvbStandaardRegio { get; set; }
 }
 
 public class GeocodeResultDto
@@ -183,52 +185,18 @@ public class SpeeltijdDto
     public int WedstrijdTotaal { get; set; }
     public int WedstrijdHelft { get; set; }
     public int WedstrijdRust { get; set; }
+
+    /// <summary>
+    /// Standaard voorkeurstijd "HH:mm" voor deze leeftijdscategorie (#666). Leeg = geen streeftijd;
+    /// de planner gebruikt deze tijd voor teams zonder eigen rij in de voorkeurstijden.
+    /// </summary>
+    public string? StandaardVoorkeurTijd { get; set; }
 }
 
-// ── Dagplanning / Optimaliseer ──
-
-public class OptimaliseerRequestDto
-{
-    public string Datum { get; set; } = "";
-    public string? Doel { get; set; }
-    public string? GewensteEindtijd { get; set; }
-    public int? BufferMinuten { get; set; }
-}
-
-public class OptimaliseerResponseDto
-{
-    public string Datum { get; set; } = "";
-    public string HuidigeEindtijd { get; set; } = "";
-    public string? GeschatteNieuweEindtijd { get; set; }
-    public int AantalVerplaatsingen { get; set; }
-    public int AantalVanGrasveldVerplaatst { get; set; }
-    public List<OptimalisatieSuggestieDto> Suggesties { get; set; } = new();
-    public string HtmlPlanner { get; set; } = "";
-    public bool VoldoendeRuimte { get; set; }
-    public string? VoldoendeRuimteMelding { get; set; }
-    public VeldCapaciteitDto? CapaciteitOverzicht { get; set; }
-}
-
-public class OptimalisatieSuggestieDto
-{
-    public string Wedstrijd { get; set; } = "";
-    public int HuidigVeldNummer { get; set; }
-    public string HuidigVeld { get; set; } = "";
-    public string HuidigeTijd { get; set; } = "";
-    public int NieuwVeldNummer { get; set; }
-    public string NieuwVeld { get; set; } = "";
-    public string NieuweTijd { get; set; } = "";
-    public string Reden { get; set; } = "";
-}
-
-public class VeldCapaciteitDto
-{
-    public int TotaalBeschikbareMinuten { get; set; }
-    public int TotaalBezettMinuten { get; set; }
-    public double BezettingsPercentage { get; set; }
-    public int AantalWedstrijdenOpGrasveld { get; set; }
-    public int AantalLegeVelden { get; set; }
-}
+// ── Dagplanning ──
+// De DTO's voor het losse "klassiek optimaliseren"-pad (OptimaliseerRequestDto/ResponseDto,
+// OptimalisatieSuggestieDto, VeldCapaciteitDto) zijn vervallen bij #666, samen met dat endpoint.
+// Er is nu één optimalisatie: auto-plan.
 
 // ── Auto-plan (#380) ──
 
@@ -256,11 +224,19 @@ public class AutoPlanWedstrijdItemDto
     public string? OptimaalVeld { get; set; }
     public string? OptimaalTijd { get; set; }
     // "nieuw-slot" | "wijziging" | "ongewijzigd" | "niet-inplanbaar"
+    // Zegt alleen of de planner verplaatst t.o.v. de huidige stand — NIET of de voorkeurstijd
+    // gehaald is. Dat staat in VoorkeurStatus (#666).
     public string Status { get; set; } = "ongewijzigd";
     public string? NietInplanbaaarReden { get; set; }
-    // Voorkeurstijd (null = geen voorkeur geconfigureerd voor dit team)
+    // Voorkeurstijd (null = geen voorkeur én geen leeftijdsdefault geconfigureerd)
     public string? VoorkeurTijd { get; set; }
     public int? VoorkeurAfwijkingMinuten { get; set; }
+    // "regel" | "team" | "leeftijd" | null — waar de voorkeurstijd uit komt (#666)
+    public string? VoorkeurBron { get; set; }
+    // "op-tijd" | "kleine-afwijking" | "grote-afwijking" | "geen-voorkeur"
+    public string VoorkeurStatus { get; set; } = "geen-voorkeur";
+    public int? VoorkeurVeldNummer { get; set; }
+    public bool? VoorkeurVeldToegepast { get; set; }
 }
 
 public class AutoPlanResponseDto
@@ -335,6 +311,35 @@ public class LeermomentenStatsDto
     public int Rejected { get; set; }
 }
 
+// ── Teamaliassen (#701) ──
+
+public class TeamAliasDto
+{
+    public int Id { get; set; }
+    public string RuweTekst { get; set; } = "";
+    public string RuweTekstGenormaliseerd { get; set; } = "";
+    public int TeamId { get; set; }
+    /// <summary>Canonieke teamnaam uit dbo.Teams; null als het team inmiddels is verwijderd.</summary>
+    public string? Teamnaam { get; set; }
+    public string? LeeftijdsCategorie { get; set; }
+    public string Bron { get; set; } = "";
+    public string Status { get; set; } = "";
+    public int AantalKeerGebruikt { get; set; }
+    /// <summary>UTC uit de database — altijd .ToLocalTime() vóór weergave.</summary>
+    public DateTime? MtaInserted { get; set; }
+    public DateTime? MtaModified { get; set; }
+}
+
+public class TeamAliassenResponse
+{
+    public int Count { get; set; }
+    public int Limit { get; set; }
+    public int Pending { get; set; }
+    public int Validated { get; set; }
+    public int Rejected { get; set; }
+    public List<TeamAliasDto> Items { get; set; } = new();
+}
+
 // Thema (#325, #339)
 public class ThemeDto
 {
@@ -362,11 +367,39 @@ public class ClubDto
     public bool SyncEnabled { get; set; }
 }
 
-// Velden
+// Velden (#679: aanvulling met VeldType/HeeftKunstlicht/Actief voor Admin-CRUD)
 public class VeldDto
 {
-    public int    VeldNummer { get; set; }
-    public string VeldNaam   { get; set; } = "";
+    public int    VeldNummer      { get; set; }
+    public string VeldNaam        { get; set; } = "";
+    public string VeldType        { get; set; } = "kunstgras";
+    public bool   HeeftKunstlicht { get; set; }
+    public bool   Actief          { get; set; } = true;
+}
+
+// VeldBeschikbaarheid (#679: eerste GUI voor de al langer bestaande API)
+public class VeldBeschikbaarheidDto
+{
+    public int    Id                   { get; set; }
+    public int    VeldNummer           { get; set; }
+    public string VeldNaam             { get; set; } = "";
+    public int    DagVanWeek           { get; set; }
+    public string BeschikbaarVanaf     { get; set; } = "";
+    public string BeschikbaarTot       { get; set; } = "";
+    public bool   GebruikZonsondergang { get; set; }
+}
+
+// VeldTraining (#679: trainingsschema per veld per weekdag)
+public class VeldTrainingDto
+{
+    public int     Id            { get; set; }
+    public int     VeldNummer    { get; set; }
+    public string  VeldNaam      { get; set; } = "";
+    public int     DagVanWeek    { get; set; }
+    public string  VanTijd       { get; set; } = "";
+    public string  TotTijd       { get; set; } = "";
+    public string? Omschrijving  { get; set; }
+    public bool    Actief        { get; set; } = true;
 }
 
 // Test data / ALLSTARS (#365)

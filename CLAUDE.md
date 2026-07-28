@@ -190,11 +190,12 @@ ITERATIE:
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
   d. Stop services + clean BlazorAdmin + herstart:
-       Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-       Start-Sleep -Seconds 2
-       dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null   # verwijdert stale fingerprints
-       .\scripts\dev\Start-Debug.ps1
-       Start-Sleep -Seconds 20
+       .\scripts\dev\Stop-Debug.ps1 -Clean    # stopt process-trees + verwijdert stale fingerprints
+       .\scripts\dev\Start-Debug.ps1          # wacht zelf op readiness; exit 1 als een service niet opkomt
+
+       # Geen Start-Sleep meer nodig: Start-Debug.ps1 pollt /api/health (FunctionApp) en
+       # GET / (BlazorAdmin), en meldt de gemeten opstarttijd + versienummer. Gebruik
+       # -Tail voor één samengevoegde logstroom in plaats van losse vensters.
 
        # Hot reload gedrag (vastgelegd in Start-Debug.ps1):
        # - BlazorAdmin :5242 → HOT RELOAD via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
@@ -220,9 +221,11 @@ ITERATIE:
        Start-Sleep -Seconds 20
 
   e. Controleer FunctionApp health + versienummer:
+       # Start-Debug.ps1 doet dit al en faalt met exit 1 als health niet 200 geeft.
+       # Handmatig herhalen kan met:
        $health = Invoke-RestMethod http://localhost:7094/api/health
        Write-Host "Versie: $($health.version)"
-       → niet 200? Fix, kill services, ga terug naar a.
+       → niet 200? Fix, .\scripts\dev\Stop-Debug.ps1, ga terug naar a.
 
   f. CSP-compatibiliteit van de gepubliceerde index.html (VERPLICHT — zie #659):
        # Er MOET géén import-map en géén inline <script> in de publish-output staan: de
@@ -258,9 +261,12 @@ ITERATIE:
      → fout? F12 → Console → foutmelding rapporteren
 
   i. Kill services:
-       Stop-Process -Name "func" -ErrorAction SilentlyContinue
-       Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
-       Stop-Process -Name "node" -ErrorAction SilentlyContinue  # SWA CLI
+       .\scripts\dev\Stop-Debug.ps1        # stopt process-trees; Azurite blijft draaien
+       # .\scripts\dev\Stop-Debug.ps1 -All  → inclusief Azurite
+
+       # Gebruik NIET Stop-Process -Name "dotnet": dat sloopt élk dotnet-proces op de
+       # machine, en het laat 'dotnet watch' zijn kindproces opnieuw starten (poort 5242
+       # raakt dan meteen weer bezet).
 
 GESLAAGD als: alle stappen exit 0 of 2xx, fingerprint consistent ✅, browser toont geen foutbanner
 ```
@@ -285,11 +291,13 @@ bewust worden bekeken.
 | `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
 | `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
+| `docs/CUSTOM-DOMAIN.md` | Eigen domein, SWA-hostnames, CORS-origins of redirect-URI's gewijzigd |
 | `docs/BEHEERDER-HANDLEIDING.md` | Admin GUI: scherm, instelling, knop of workflow gewijzigd |
 | `docs/VERSIONING.md` | Release-proces of semver-afspraken gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
+| `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
@@ -315,6 +323,46 @@ gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
 # Release: develop → main (pas als alle features lokaal getest zijn):
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
+
+### Issue-lifecycle — elk open issue heeft precies één `status:`-label
+
+> **Vastgelegd na #690:** de automatisering dekte alleen de achterkant van de keten
+> (develop-merge en release). Daardoor had **7 van de 18** open issues geen enkel
+> status-label — inclusief issues waar op dat moment een open PR bij hoorde. Zonder status
+> is niet te zien of er iets loopt, of iets wacht, of niemand ernaar kijkt.
+
+De volledige keten, volledig geautomatiseerd:
+
+| Overgang | Status wordt | Workflow |
+|---|---|---|
+| Issue aangemaakt of heropend | `status: triage` (alleen als er nog géén status staat) | `label-issue-status.yml` |
+| PR geopend als draft | `status: in-progress` | `label-issue-status.yml` |
+| PR ready for review | `status: review-needed` | `label-issue-status.yml` |
+| PR terug naar draft | `status: in-progress` | `label-issue-status.yml` |
+| PR gesloten zonder merge | `status: triage` | `label-issue-status.yml` |
+| PR gemerged naar `develop` | `status: awaiting-release` | `label-awaiting-release.yml` |
+| Release-tag naar `main` | alle status-labels weg + issue gesloten | `close-released-issues.yml` |
+
+**Invarianten:**
+
+1. **Hoogstens één `status:`-label per issue.** Alle drie de workflows zetten de status via
+   `setIssueStatus()` in [.github/scripts/issue-status.js](.github/scripts/issue-status.js),
+   die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
+   `gh issue edit --add-label` zonder de bestaande te verwijderen.
+2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`
+   en `status: waiting-owner` staan in `PROTECTED`: automatisering laat ze staan. Enige
+   uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat is een feit.
+3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
+   PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
+   Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
+   wijzigen of het heropenen — zie #630.
+4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
+   de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
+   trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
+
+**Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
+`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
+`priority:`-label mee.
 
 ### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
 
@@ -534,6 +582,30 @@ Bij elke PR controleer:
 ---
 
 ## Architectuurregels — altijd van toepassing
+
+### Teamnaam → TeamId: één vertaalpunt, nooit een nieuwe regex elders
+
+> Volledige onderbouwing: **[docs/ARCHITECTUUR-TEAMRESOLUTIE.md](docs/ARCHITECTUUR-TEAMRESOLUTIE.md)**
+
+Sportlink levert élk team in twee schrijfwijzen aan die geen gedeelde sleutel hebben: de lokale
+notatie (`JO10-1`, mét J) en de KNVB-notatie (`[club] O10-1`, zonder J, mét clubprefix). Daarbovenop
+komen e-mailvarianten (`JO 13-2`, `jo13/2`, `13-1`). Dat is de reden dat teamherkenning niet met
+"nog een regex" oplosbaar is.
+
+Harde regels:
+
+1. **Normalisatieregels horen uitsluitend in `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs`.**
+   Een nieuwe teamnaam-regex elders is een architectuurschending — dat is exact het probleem dat
+   deze laag oplost (#692).
+2. **Raad nooit een ontbrekend geslacht-prefix.** `13-1` kan JO13-1 of MO13-1 zijn; bij één club zijn
+   er tien zulke paren. Ambiguïteit hoort in de kandidaten-/disambiguatiestap, niet in een
+   string-functie.
+3. **De disambiguator kiest alleen uit aangeboden kandidaten**, en die keuze wordt daarna in C#
+   gevalideerd tegen die lijst. Nooit vrije generatie van een teamnaam door een taalmodel.
+4. **Een geleerde alias is pas waarheid na goedkeuring** door een coördinator (status `validated`).
+   Zo kan een foutieve gok zich niet zelfversterken.
+5. **Verifieer nieuwe naamvormen tegen echte data** (`stg.teams` / `his.teams`) vóór je de
+   normalisatie aanpast — de ondersteunde vormen zijn zo gevonden, niet bedacht.
 
 ### AI-services — provider-agnostisch, datum altijd dynamisch
 
@@ -992,6 +1064,7 @@ Browser (beheerder)
 | `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden`, `/teamregels` | `AdminVoorkeurTijdenFunction.cs` |
 | `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
 | `GET /api/beheer/leermomenten`, `/stats`, `PUT /{id}/valideer` | `AdminLeermomentenFunction.cs` |
+| `GET /api/beheer/teamaliassen`, `PUT /{id}/valideer`, `DELETE /{id}` | `AdminTeamAliassenFunction.cs` |
 | `GET/POST /api/beheer/teambegeleiding`, `/{team}`, `/doorsturen` | `AdminTeambegeleidingFunction.cs` |
 | `GET/PUT /api/beheer/theme`, `POST /theme/extract` | `AdminThemeFunction.cs` |
 | `GET /api/beheer/clubs` | `AdminClubsFunction.cs` |
@@ -1052,12 +1125,12 @@ De `exports/` map bevat **scripts** voor data-exports. De databestanden zelf (CS
 - `exports/*.csv` en `exports/*.xlsx` bevatten persoonsgegevens (namen, e-mails, telefoonnummers, geboortedatums van clubleden)
 - **NOOIT een CSV of Excel-bestand committen of pushen** — `.gitignore` blokkeert dit, maar controleer altijd
 - De databestanden staan alleen lokaal en zijn alleen beschikbaar voor de applicatie zelf
-- Alleen `.ps1` scripts, `README.md` en `HANDLEIDING-teambegeleiding-export.md` mogen in git
+- Alleen `.ps1` scripts en `README.md` mogen in git
 
 **Scripts in exports/:**
-- `import-teambegeleiding-to-sql.ps1` — importeert CSV naar `avg.Teambegeleiding` in SQL Server (TRUNCATE + bulk insert)
+- `import-teambegeleiding-to-sql.ps1` — importeert CSV naar `avg.Teambegeleiding` in SQL Server (rijen van de club verwijderen + bulk insert; géén TRUNCATE, dat zou andere clubs wissen)
 
 **Workflow:**
-1. Download CSV via club.sportlink.com (zie `exports/HANDLEIDING-teambegeleiding-export.md` voor exacte stappen)
-2. Sla op in de lokale `exports/` map — nooit committen
-3. Voer `.\exports\import-teambegeleiding-to-sql.ps1` uit om de data in SQL te laden
+1. Download CSV via club.sportlink.com (zie [docs/ADMIN-TEAMBEGELEIDING-IMPORT.md](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) voor exacte stappen)
+2. Importeer via de Admin GUI (**Teambegeleiding → Teambegeleiding importeren**) — CSV wordt in de browser verwerkt, niets op de server opgeslagen
+3. Alternatief vanaf de commandline: sla de CSV op in de lokale `exports/` map (nooit committen) en voer `.\exports\import-teambegeleiding-to-sql.ps1` uit

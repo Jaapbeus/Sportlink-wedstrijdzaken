@@ -11,7 +11,7 @@ namespace SportlinkFunction.Email;
 /// </summary>
 public static class EmailTemplateService
 {
-    private static readonly ConcurrentDictionary<string, (EmailTemplate template, DateTime expiresAt)> _cache = new();
+    private static readonly ConcurrentDictionary<(string clubCode, string key), (EmailTemplate template, DateTime expiresAt)> _cache = new();
     private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(5);
     private static readonly object _lock = new();
 
@@ -19,18 +19,23 @@ public static class EmailTemplateService
     /// Probeert een template op te halen uit de database. Retourneert null als de template
     /// niet bestaat of niet actief is — in dat geval valt de caller terug op hardcoded defaults.
     /// </summary>
-    public static async Task<EmailTemplate?> GetTemplateAsync(string key, ILogger? log = null)
+    /// <param name="clubCode">
+    /// Expliciete club-override (#677/#706): het dry-run pad van de Email-tester geeft hier de in
+    /// de GUI geselecteerde club mee. <c>null</c> betekent de primaire club van deze deployment —
+    /// het bestaande gedrag van de echte e-mailpipeline, die geen club-switcher heeft.
+    /// </param>
+    public static async Task<EmailTemplate?> GetTemplateAsync(string key, string? clubCode = null, ILogger? log = null)
     {
         if (string.IsNullOrWhiteSpace(key)) return null;
 
-        // Cache lookup (TTL-gecontroleerd)
-        if (_cache.TryGetValue(key, out var cached) && cached.expiresAt > DateTime.UtcNow)
-            return cached.template;
-
         try
         {
-            var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings");
+            // Eerst de club resolven, dan pas de cache raadplegen: de club hoort in de
+            // cachesleutel (zie TryGetCached).
+            var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
+
+            if (TryGetCached(key, cc, out var cached)) return cached;
+
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 
@@ -39,7 +44,7 @@ public static class EmailTemplateService
                 FROM [dbo].[EmailTemplateInstellingen]
                 WHERE [TemplateKey] = @Key AND [ClubCode] = @ClubCode AND [Actief] = 1", connection);
             command.Parameters.AddWithValue("@Key", key);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
+            command.Parameters.AddWithValue("@ClubCode", cc);
 
             using var reader = await command.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -49,7 +54,7 @@ public static class EmailTemplateService
                     reader["Onderwerp"].ToString() ?? "",
                     reader["BodyTemplate"].ToString() ?? ""
                 );
-                _cache[key] = (template, DateTime.UtcNow.Add(_cacheTtl));
+                StoreInCache(key, cc, template);
                 return template;
             }
         }
@@ -62,7 +67,26 @@ public static class EmailTemplateService
     }
 
     /// <summary>
-    /// Invalideert de hele template-cache. Aanroepen na admin-update via PUT /api/admin/templates.
+    /// Cache-lookup met TTL-controle. De sleutel is (club, key) en niet alleen key: een deployment
+    /// bevat naast de productieclub ook de democlub, dus met alleen de key krijgt de tweede club de
+    /// template van de eerste die hem ophaalde — data van een andere club in haar eigen antwoord (#706).
+    /// </summary>
+    internal static bool TryGetCached(string key, string clubCode, out EmailTemplate? template)
+    {
+        template = null;
+        if (!_cache.TryGetValue((clubCode, key), out var cached) || cached.expiresAt <= DateTime.UtcNow)
+            return false;
+
+        template = cached.template;
+        return true;
+    }
+
+    internal static void StoreInCache(string key, string clubCode, EmailTemplate template)
+        => _cache[(clubCode, key)] = (template, DateTime.UtcNow.Add(_cacheTtl));
+
+    /// <summary>
+    /// Invalideert de hele template-cache — alle clubs. Aanroepen na admin-update via
+    /// PUT /api/beheer/templates.
     /// </summary>
     public static void InvalidateCache()
     {
