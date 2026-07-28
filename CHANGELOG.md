@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **De Dagplanning vergelijkt nu met twee tabs: Optimaal en Huidig.** Elke tab toont dezelfde opbouw — eerst de tijdlijn per veld, daaronder de wedstrijdenlijst van diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het vergelijken van twee foto's: het oog springt niet en je ziet direct wat er in de veldbezetting verandert. Eerder stonden er twee verschillende vergelijkingen door elkaar op één pagina — een tabel met "huidig" en "optimaal" in kolommen naast elkaar, én tabs die alléén de tijdlijn wisselden terwijl de tabel bleef staan. De filterknoppen gelden nu voor beide tabs, en de kolom Wijziging staat in beide: in de tab Huidig zie je daarmee welke wedstrijd gaat verschuiven, en met één klik waarheen. (#689)
+- **De verdwaalde horizontale schuifbalk onder de tijdlijn is weg.** Op een breed scherm verscheen die terwijl de inhoud ruim paste. Oorzaak: het eerste en laatste tijdlabel stonden gecentreerd op hun uurlijn en vielen daardoor half buiten de tijdlijn — precies genoeg om de browser een schuifbalk te laten reserveren. Die twee labels lijnen nu links en rechts uit; geen label wordt afgekapt en op een smal scherm past de tijdlijn nu binnen het scherm in plaats van een vaste minimumbreedte te forceren. (#689)
+
 ### Added
 - **Bij een vraag over meerdere datums noemt het antwoord nu de coördinator bij naam:** "Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met [naam] plannen en definitief opnemen in de planning." Staat er geen coördinatornaam in de instellingen, dan blijft de zin gewoon compleet zonder naam. De naam komt uit de instellingen van de club waarvoor het antwoord wordt opgebouwd, dus in een test met de demoklub verschijnt de demo-coördinator. (#670)
 
