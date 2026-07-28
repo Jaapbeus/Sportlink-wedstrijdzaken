@@ -9,10 +9,10 @@ internal static class AdminTeamsRepository
         using var conn = new SqlConnection(cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
-            SELECT DISTINCT [teamnaam]
-            FROM [his].[teams]
-            WHERE [ClubCode] = @Cc
-            ORDER BY [teamnaam]", conn);
+            SELECT [Teamnaam]
+            FROM [dbo].[Teams]
+            WHERE [ClubCode] = @Cc AND [IsActief] = 1
+            ORDER BY [Teamnaam]", conn);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<string>();

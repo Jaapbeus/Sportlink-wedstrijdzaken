@@ -5,8 +5,9 @@ using Microsoft.Azure.Functions.Worker;
 namespace SportlinkFunction.Admin;
 
 /// <summary>
-/// Levert de lijst van teams uit his.teams (gesynchroniseerd via Sportlink API), gefilterd op ClubCode.
-/// Gebruikt door de Blazor Admin UI voor dropdowns in voorkeurstijden en teamregels.
+/// Levert de lijst van canonieke teamnamen uit dbo.Teams (#756) — één rij per fysiek team,
+/// ontdubbeld en genormaliseerd door TeamCanonicalisatieService. Gebruikt door de Blazor Admin UI
+/// voor dropdowns in voorkeurstijden en teamregels.
 /// </summary>
 public static class AdminTeamsFunction
 {

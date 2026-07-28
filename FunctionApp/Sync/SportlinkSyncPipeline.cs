@@ -106,6 +106,23 @@ internal static class SportlinkSyncPipeline
             log.LogError(ex, "TEAMS CANONICALISATIE - mislukt voor club {ClubCode}", clubCode);
         }
 
+        // AllStars FC (#756) heeft geen eigen Sportlink-sync — zijn his.teams-rijen komen uit de
+        // PostDeployment-demodata-seed, niet uit deze pipeline. Zonder deze aanroep blijft dbo.Teams
+        // voor de democlub voor altijd leeg, terwijl her/matches wel gevuld zijn: de teamdropdown in de
+        // Admin UI zou dan voor de democlub 0 teams tonen in plaats van de rauwe (niet-ontdubbelde) lijst
+        // van vóór #756. Meelopen op elke echte sync houdt de demodata dus canoniek zonder een aparte job.
+        if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await TeamResolution.TeamCanonicalisatieService.RefreshAsync("ALLSTARS", log);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "TEAMS CANONICALISATIE - mislukt voor democlub ALLSTARS");
+            }
+        }
+
         await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
 
         if (!partialFailure)

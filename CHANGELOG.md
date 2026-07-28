@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **De teamdropdown bij Voorkeurstijden en Teamregels toont niet meer dezelfde teams dubbel of in rauwe schrijfwijze.** De lijst kwam rechtstreeks uit de ongenormaliseerde brondata, waarin elk team meerdere keren voorkomt — per poule en in twee schrijfwijzen ("O13" naast "JO13"). De dropdown gebruikt nu de al bestaande, ontdubbelde teamlijst die na elke synchronisatie wordt bijgewerkt: één rij per fysiek team. Als onderdeel van dezelfde fix krijgt de democlub AllStars FC nu ook een gevulde, ontdubbelde teamlijst — die liep eerder nooit mee in de ontdubbelingsstap omdat die alleen voor de echte club draaide. (#756)
 - **Teambegeleiding: iemand met twee functies in hetzelfde team wordt in de Outlook-kopieerregel nu maar één keer opgenomen.** De kaartenweergave toont nog steeds elke functie apart, maar de "Kopieer naar Outlook"-regel mailt niet langer dezelfde persoon twee keer. Daarnaast worden exacte duplicaat-rijen uit de Sportlink-export (dezelfde persoon met dezelfde rol twee keer) voortaan bij import overgeslagen, met een waarschuwing in het importresultaat. (#761)
 
 ## [2.19.0.0] — 2026-07-28
