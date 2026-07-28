@@ -1133,6 +1133,19 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [SyncEnabled] BIT NOT NULL DEFAULT 1;
 GO
 
+-- #561: KnvbPdfBijlageIngeschakeld / KnvbStandaardRegio in dbo.AppSettings.
+-- Deze twee kolommen stonden alleen in het DB-project. De deploy publiceert geen dacpac
+-- (zie de schema-drift check in build.yml), dus zonder deze guard ontbreken ze in productie
+-- en faalt GET /api/beheer/settings met "Invalid column name" — dat is de hele
+-- Instellingen-pagina. De guard in build.yml controleert alleen tabellen, geen kolommen.
+-- KnvbStandaardRegio blijft bewust NULL: zonder regio verandert het herplan-gedrag niet.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'KnvbPdfBijlageIngeschakeld')
+    ALTER TABLE [dbo].[AppSettings] ADD [KnvbPdfBijlageIngeschakeld] BIT NOT NULL DEFAULT 1;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'KnvbStandaardRegio')
+    ALTER TABLE [dbo].[AppSettings] ADD [KnvbStandaardRegio] NVARCHAR(20) NULL;
+GO
+
 -- UNIQUE constraint op ClubCode in dbo.AppSettings (slechts één rij per club)
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'UQ_AppSettings_ClubCode')
     ALTER TABLE [dbo].[AppSettings] ADD CONSTRAINT [UQ_AppSettings_ClubCode] UNIQUE ([ClubCode]);
