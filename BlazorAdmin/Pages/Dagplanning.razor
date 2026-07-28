@@ -68,11 +68,11 @@
                     @* Tijdas-header *@
                     <div style="display:flex; margin-bottom:4px;">
                         <div style="width:120px; flex-shrink:0;"></div>
-                        <div style="flex:1; position:relative; height:22px; min-width:500px;">
+                        <div style="flex:1; position:relative; height:22px; min-width:200px;">
                             @for (int _h = _vsMin; _h <= _veMin; _h += 60)
                             {
                                 string _lftH = GanttPct(_h - _vsMin, _vTotMin);
-                                <div style="position:absolute; left:@(_lftH)%; transform:translateX(-50%);
+                                <div style="position:absolute; left:@(_lftH)%; transform:@GanttLabelTransform(_h, _vsMin, _veMin);
                                             font-size:0.7rem; color:#6c757d; white-space:nowrap; user-select:none;">
                                     @TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(_h)).ToString("HH:mm")
                                 </div>
@@ -89,7 +89,7 @@
                                         border-right:1px solid #dee2e6; display:flex; align-items:center;">
                                 @_veld
                             </div>
-                            <div style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;">
+                            <div style="flex:1; position:relative; height:72px; min-width:200px; background:#fff;">
                                 @* Uurlijnen *@
                                 @for (int _h = _vsMin + 60; _h < _veMin; _h += 60)
                                 {
@@ -211,172 +211,38 @@
         </div>
     </div>
 
-    @* ── Per-wedstrijd vergelijking ── *@
+    @* ── Vergelijking: twee tabs met identieke opbouw (#689) ──
+       Eén kaart met de tabs op het hoogste niveau. Elke tab bevat op dezelfde plek eerst de
+       veldvisual en daaronder de wedstrijdenlijst van diezelfde stand. Wisselen werkt daardoor als
+       een flip book: de visuals staan op gelijke hoogte, dus het oog springt niet en het verschil in
+       veldbezetting valt direct op.
+
+       Dit verving twee tegenstrijdige vergelijkingspatronen op één pagina: een diff-tabel met
+       "huidig" en "optimaal" in kolommen naast elkaar, plus een aparte kaart waar tabs alléén de
+       visual wisselden en de tabel niet meeliep. *@
     <div class="card mb-3">
-        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-            <span class="fw-semibold me-2">Per wedstrijd: huidig vs. optimaal</span>
-            <div class="btn-group btn-group-sm">
-                <button class="btn @(_filter == "alles" ? "btn-primary" : "btn-outline-secondary")"
-                        @onclick='() => _filter = "alles"'>Alles (@_plan.TotaalWedstrijden)</button>
-                <button class="btn @(_filter == "wijzigingen" ? "btn-primary" : "btn-outline-secondary")"
-                        @onclick='() => _filter = "wijzigingen"'>Wijzigingen (@_plan.TeWijzigen)</button>
-                @if (_plan.NietInplanbaar > 0)
-                {
-                    <button class="btn @(_filter == "probleem" ? "btn-danger" : "btn-outline-danger")"
-                            @onclick='() => _filter = "probleem"'>Probleem (@_plan.NietInplanbaar)</button>
-                }
-            </div>
-            @if (IsAllstars && _plan.TeWijzigen > 0)
+        <div class="card-header d-flex align-items-center gap-3 flex-wrap">
+            <ul class="nav nav-tabs card-header-tabs mb-0">
+                <li class="nav-item">
+                    <button class="nav-link @(_visTab == "optimaal" ? "active" : "")"
+                            @onclick='() => _visTab = "optimaal"'>&#128197; Optimaal</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(_visTab == "huidig" ? "active" : "")"
+                            @onclick='() => _visTab = "huidig"'>Huidig</button>
+                </li>
+            </ul>
+            @* #689: hier stond "Eindtijd: hh:mm", alleen in de Optimaal-tab. Dat gaf twee problemen:
+               het dupliceerde de tegel "Optimale eindtijd" uit de samenvattingsbalk hierboven, en
+               omdat het element in de Huidig-tab wegviel werd de kaartkop daar smaller. Op een
+               1440px-scherm wrapte de kop daardoor anders en schoof de tijdlijn 21 pixels — precies
+               het springen dat deze herstructurering moet wegnemen. De eindtijd staat al in de
+               samenvattingsbalk, dus hier weggelaten. *@
+            @if (IsAllstars && _plan.TeWijzigen > 0 && _visTab == "optimaal")
             {
                 <button class="btn btn-sm btn-warning ms-auto" @onclick="ToepassenAsync" disabled="@_bezig">
                     @(_bezig ? "Toepassen..." : $"Toepassen in testmodus ({_plan.TeWijzigen})")
                 </button>
-            }
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Wedstrijd</th>
-                            <th>Huidige situatie</th>
-                            <th>Optimale situatie</th>
-                            <th title="Gewenste tijd en de afwijking daarvan">Voorkeurstijd</th>
-                            <th title="Verplaatst de planner deze wedstrijd t.o.v. de huidige stand?">Wijziging</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in GefilterdeLijst())
-                        {
-                            <tr class="@RowClass(item.Status)">
-                                <td style="font-size:0.85rem;">
-                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
-                                </td>
-                                <td style="font-size:0.85rem;">
-                                    @if (!item.HeeftVeld && !item.HeeftTijd)
-                                    {
-                                        <span class="text-warning">&#10007; Geen veld &amp; tijd</span>
-                                    }
-                                    else if (!item.HeeftVeld)
-                                    {
-                                        <span class="text-warning">&#10007; Geen veld</span>
-                                        @if (!string.IsNullOrWhiteSpace(item.HuidigeTijd))
-                                        {<span class="text-muted ms-1">@item.HuidigeTijd</span>}
-                                    }
-                                    else if (!item.HeeftTijd)
-                                    {
-                                        <span class="text-warning">&#10007; Geen tijd</span>
-                                        @if (!string.IsNullOrWhiteSpace(item.HuidigeVeld))
-                                        {<span class="text-muted ms-1">@item.HuidigeVeld</span>}
-                                    }
-                                    else
-                                    {
-                                        <span>@item.HuidigeVeld</span>
-                                        <span class="ms-2 fw-bold">@item.HuidigeTijd</span>
-                                    }
-                                </td>
-                                <td style="font-size:0.85rem;">
-                                    @if (item.Status == "niet-inplanbaar")
-                                    {
-                                        <span class="text-danger" title="@item.NietInplanbaaarReden">
-                                            &#10007; @(item.NietInplanbaaarReden ?? "Niet inplanbaar")
-                                        </span>
-                                    }
-                                    else if (item.Status == "onbekend-team")
-                                    {
-                                        @* Onbekend team: toon huidige situatie ongewijzigd — geen foutmelding (#487) *@
-                                        @if (!string.IsNullOrWhiteSpace(item.OptimaalVeld))
-                                        {
-                                            <span class="text-muted">@item.OptimaalVeld</span>
-                                            @if (!string.IsNullOrWhiteSpace(item.OptimaalTijd))
-                                            {<span class="text-muted ms-2">@item.OptimaalTijd</span>}
-                                        }
-                                    }
-                                    else if (item.OptimaalVeld != null)
-                                    {
-                                        <span class="@(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalVeld</span>
-                                        <span class="ms-2 @(item.Status == "ongewijzigd" ? "" : "fw-bold")">@item.OptimaalTijd</span>
-                                    }
-                                </td>
-                                @* Voorkeurstijd los van de wijzig-status (#666): een wedstrijd kan
-                                   ongewijzigd blijven én tóch ver van de voorkeurstijd liggen. *@
-                                <td style="font-size:0.85rem;">
-                                    @if (string.IsNullOrWhiteSpace(item.VoorkeurTijd))
-                                    {
-                                        <span class="text-muted" title="Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie">—</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge @VoorkeurBadgeClass(item.VoorkeurStatus)"
-                                              title="@VoorkeurTitel(item)">
-                                            @item.VoorkeurTijd@VoorkeurAfwijkingTekst(item.VoorkeurAfwijkingMinuten)
-                                        </span>
-                                        <span class="text-muted ms-1" style="font-size:0.75rem;">@VoorkeurBronLabel(item.VoorkeurBron)</span>
-                                        @if (item.VoorkeurVeldToegepast == false)
-                                        {
-                                            <span class="badge bg-secondary ms-1"
-                                                  title="Voorkeursveld was niet beschikbaar; de planner koos een ander veld">
-                                                ander veld
-                                            </span>
-                                        }
-                                    }
-                                </td>
-                                <td>
-                                    @switch (item.Status)
-                                    {
-                                        case "ongewijzigd":
-                                            <span class="badge bg-light text-dark border" title="De planner laat deze wedstrijd staan">Ongewijzigd</span>
-                                            break;
-                                        case "nieuw-slot":
-                                            <span class="badge bg-warning text-dark">Nieuw</span>
-                                            break;
-                                        case "wijziging":
-                                            <span class="badge bg-primary">Wijzig</span>
-                                            break;
-                                        case "niet-inplanbaar":
-                                            <span class="badge bg-danger">Probleem</span>
-                                            break;
-                                        case "onbekend-team":
-                                            <span class="badge bg-secondary">Onbekend</span>
-                                            break;
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        @if (!string.IsNullOrEmpty(_toepassenMelding))
-        {
-            <div class="card-footer">
-                <div class="alert @(_toepassenFout ? "alert-danger" : "alert-success") mb-0 py-2">
-                    @_toepassenMelding
-                    @if (!_toepassenFout)
-                    {
-                        <button class="btn btn-sm btn-outline-success ms-3" @onclick="AutoPlanAsync">Herlaad plan</button>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-
-    @* ── Visuele Gantt-planning ── *@
-    <div class="card mb-3">
-        <div class="card-header d-flex align-items-center gap-3">
-            <ul class="nav nav-tabs card-header-tabs mb-0">
-                <li class="nav-item">
-                    <button class="nav-link @(_visTab == "optimaal" ? "active" : "")"
-                            @onclick='() => _visTab = "optimaal"'>&#128197; Optimale planning</button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(_visTab == "huidig" ? "active" : "")"
-                            @onclick='() => _visTab = "huidig"'>Huidige situatie</button>
-                </li>
-            </ul>
-            @if (_visTab == "optimaal" && !string.IsNullOrEmpty(_plan.GeschatteEindTijd))
-            {
-                <span class="small text-muted ms-auto">Eindtijd: <strong>@_plan.GeschatteEindTijd</strong></span>
             }
         </div>
         <div class="card-body p-3">
@@ -415,38 +281,22 @@
                     <span><span class="gantt-legenda-balk" style="background:#ef4444;"></span> &gt;15 min afwijking</span>
                 </div>
 
-                @if (_isOptimaal)
-                {
-                    <p class="text-muted small mb-2">
-                        <i class="bi bi-arrows-move me-1" aria-hidden="true"></i>
-                        Sleep een wedstrijd naar een andere tijd of een ander veld. De tijd springt op stappen
-                        van 5 minuten; de tabel en de eindtijd lopen mee. Handmatig verplaatste wedstrijden
-                        krijgen een stippellijn.
-                    </p>
-
-                    @if (_conflicten.Count > 0)
-                    {
-                        <div class="alert alert-warning py-2 small">
-                            <strong>Let op — deze planning kan zo niet:</strong>
-                            <ul class="mb-0 ps-3">
-                                @foreach (var c in _conflicten)
-                                {
-                                    <li>@c</li>
-                                }
-                            </ul>
-                        </div>
-                    }
-                }
-
+                @* #689: boven de tijdlijn staat alléén de legenda, die in beide tabs identiek is.
+                   Elk element daarboven dat per tab van hoogte verschilt, verschuift de tijdlijn bij
+                   het wisselen — en juist dat springen maakt het vergelijken onbruikbaar. Dat is hier
+                   twee keer misgegaan: eerst met een sleep-hint die alleen in de Optimaal-tab stond
+                   (50px), daarna met dezelfde hint in beide tabs maar met verschillende tekstlengte,
+                   die op een 1440px-scherm in een verschillend aantal regels wrapte (21px). De
+                   toelichting staat daarom nu ónder de tijdlijn, waar haar hoogte niets verschuift. *@
                 <div style="overflow-x:auto; min-width:0;">
                     @* Tijdas-header *@
                     <div style="display:flex; margin-bottom:4px;">
                         <div style="width:120px; flex-shrink:0;"></div>
-                        <div style="flex:1; position:relative; height:22px; min-width:500px;">
+                        <div style="flex:1; position:relative; height:22px; min-width:200px;">
                             @for (int _h = _sMin; _h <= _eMin; _h += 60)
                             {
                                 string _lftH = GanttPct(_h - _sMin, _totMin);
-                                <div style="position:absolute; left:@(_lftH)%; transform:translateX(-50%);
+                                <div style="position:absolute; left:@(_lftH)%; transform:@GanttLabelTransform(_h, _sMin, _eMin);
                                             font-size:0.7rem; color:#6c757d; white-space:nowrap; user-select:none;">
                                     @TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(_h)).ToString("HH:mm")
                                 </div>
@@ -467,7 +317,7 @@
                                 @_veld
                             </div>
                             <div id="gantt-rij-@_rij"
-                                 style="flex:1; position:relative; height:72px; min-width:500px; background:#fff;"
+                                 style="flex:1; position:relative; height:72px; min-width:200px; background:#fff;"
                                  ondragover="event.preventDefault();"
                                  @ondrop="@(e => SleepDrop(_veldNaam, _rij, _sMin, _totMin, e))">
                                 @* Uurlijnen *@
@@ -521,7 +371,214 @@
                     <div style="height:1px; background:#dee2e6; margin-left:120px;"></div>
                 </div>
             }
+
+            @* Toelichting per tab — onder de tijdlijn, zie de uitleg hierboven. *@
+            <p class="text-muted small mb-0 mt-2">
+                @if (_isOptimaal)
+                {
+                    <i class="bi bi-arrows-move me-1" aria-hidden="true"></i>
+                    <text>
+                        Sleep een wedstrijd naar een andere tijd of een ander veld. De tijd springt op stappen
+                        van 5 minuten; de tabel en de eindtijd lopen mee. Handmatig verplaatste wedstrijden
+                        krijgen een stippellijn.
+                    </text>
+                }
+                else
+                {
+                    <i class="bi bi-lock me-1" aria-hidden="true"></i>
+                    <text>
+                        Dit is de stand zoals die nu in Sportlink staat. Niet te verslepen — wissel naar
+                        Optimaal om te schuiven. De kolom Wijziging laat zien wat de planner zou aanpassen.
+                    </text>
+                }
+            </p>
+
+            @* Conflicten staan onder de tijdlijn, om dezelfde reden als de toelichting. *@
+            @if (_isOptimaal && _conflicten.Count > 0)
+            {
+                <div class="alert alert-warning py-2 small mt-2 mb-0">
+                    <strong>Let op — deze planning kan zo niet:</strong>
+                    <ul class="mb-0 ps-3">
+                        @foreach (var c in _conflicten)
+                        {
+                            <li>@c</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @* ── Wedstrijdenlijst van dézelfde stand (#689) ──
+               Bewust dezelfde kolommen in beide tabs, zodat de rijen tussen "Optimaal" en "Huidig"
+               op precies dezelfde regel staan. Alleen Veld en Tijd komen uit een andere bron.
+
+               De statusbadge staat in béide tabs. Het issue vroeg alleen om de badge in de
+               Optimaal-tab, om de diff-informatie niet te verliezen nu de kolommen-naast-elkaar-tabel
+               verdwijnt. In de Huidig-tab is dezelfde badge juist het nuttigst: je ziet dáár welke
+               wedstrijd gaat verschuiven, en flipt dan naar Optimaal om te zien waarheen. *@
+            <hr class="my-3" />
+
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                <span class="fw-semibold me-1">
+                    @(_isOptimaal ? "Wedstrijden in de optimale planning" : "Wedstrijden in de huidige situatie")
+                </span>
+                @* Het filter geldt voor beide tabs: filter je op "Wijzigingen", dan vergelijk je in
+                   beide standen dezelfde deelverzameling. *@
+                <div class="btn-group btn-group-sm">
+                    <button class="btn @(_filter == "alles" ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick='() => _filter = "alles"'>Alles (@_plan.TotaalWedstrijden)</button>
+                    <button class="btn @(_filter == "wijzigingen" ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick='() => _filter = "wijzigingen"'>Wijzigingen (@_plan.TeWijzigen)</button>
+                    @if (_plan.NietInplanbaar > 0)
+                    {
+                        <button class="btn @(_filter == "probleem" ? "btn-danger" : "btn-outline-danger")"
+                                @onclick='() => _filter = "probleem"'>Probleem (@_plan.NietInplanbaar)</button>
+                    }
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Wedstrijd</th>
+                            <th>Veld</th>
+                            <th>Tijd</th>
+                            <th>Competitie</th>
+                            <th title="Gewenste tijd en de afwijking daarvan in de optimale planning">Voorkeurstijd</th>
+                            <th title="Verplaatst de planner deze wedstrijd t.o.v. de huidige stand?">Wijziging</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in GefilterdeLijst())
+                        {
+                            <tr class="@RowClass(item.Status)">
+                                <td style="font-size:0.85rem;">
+                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
+                                </td>
+
+                                @if (_isOptimaal)
+                                {
+                                    @* Veld en tijd zoals de planner ze voorstelt *@
+                                    @if (item.Status == "niet-inplanbaar")
+                                    {
+                                        <td colspan="2" style="font-size:0.85rem;">
+                                            <span class="text-danger" title="@item.NietInplanbaaarReden">
+                                                &#10007; @(item.NietInplanbaaarReden ?? "Niet inplanbaar")
+                                            </span>
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        @* Onbekend team: huidige situatie blijft staan, gedempt en zonder
+                                           foutmelding (#487) *@
+                                        var _gedempt = item.Status is "ongewijzigd" or "onbekend-team";
+                                        <td style="font-size:0.85rem;">
+                                            <span class="@(_gedempt ? "" : "fw-bold")">@(item.OptimaalVeld ?? "—")</span>
+                                        </td>
+                                        <td style="font-size:0.85rem;">
+                                            <span class="@(_gedempt ? "" : "fw-bold")">@(item.OptimaalTijd ?? "—")</span>
+                                        </td>
+                                    }
+                                }
+                                else
+                                {
+                                    @* Veld en tijd zoals ze nu in Sportlink staan *@
+                                    <td style="font-size:0.85rem;">
+                                        @if (!item.HeeftVeld)
+                                        {
+                                            <span class="text-warning">&#10007; Geen veld</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@item.HuidigeVeld</span>
+                                        }
+                                    </td>
+                                    <td style="font-size:0.85rem;">
+                                        @if (!item.HeeftTijd)
+                                        {
+                                            <span class="text-warning">&#10007; Geen tijd</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@item.HuidigeTijd</span>
+                                        }
+                                    </td>
+                                }
+
+                                <td style="font-size:0.85rem;">@(item.Competitiesoort ?? "—")</td>
+
+                                @* Voorkeurstijd los van de wijzig-status (#666): een wedstrijd kan
+                                   ongewijzigd blijven én tóch ver van de voorkeurstijd liggen.
+                                   De afwijking is berekend t.o.v. de optimale planning, dus die wordt
+                                   alleen in die tab getoond — anders zou hij bij "Huidig" iets beweren
+                                   over een stand waarop hij niet is berekend. *@
+                                <td style="font-size:0.85rem;">
+                                    @if (string.IsNullOrWhiteSpace(item.VoorkeurTijd))
+                                    {
+                                        <span class="text-muted" title="Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie">—</span>
+                                    }
+                                    else if (_isOptimaal)
+                                    {
+                                        <span class="badge @VoorkeurBadgeClass(item.VoorkeurStatus)"
+                                              title="@VoorkeurTitel(item)">
+                                            @item.VoorkeurTijd@VoorkeurAfwijkingTekst(item.VoorkeurAfwijkingMinuten)
+                                        </span>
+                                        <span class="text-muted ms-1" style="font-size:0.75rem;">@VoorkeurBronLabel(item.VoorkeurBron)</span>
+                                        @if (item.VoorkeurVeldToegepast == false)
+                                        {
+                                            <span class="badge bg-secondary ms-1"
+                                                  title="Voorkeursveld was niet beschikbaar; de planner koos een ander veld">
+                                                ander veld
+                                            </span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-dark border"
+                                              title="Gewenste tijd volgens @VoorkeurBronLabel(item.VoorkeurBron). De afwijking staat in de tab Optimaal.">
+                                            @item.VoorkeurTijd
+                                        </span>
+                                    }
+                                </td>
+
+                                <td>
+                                    @switch (item.Status)
+                                    {
+                                        case "ongewijzigd":
+                                            <span class="badge bg-light text-dark border" title="De planner laat deze wedstrijd staan">Ongewijzigd</span>
+                                            break;
+                                        case "nieuw-slot":
+                                            <span class="badge bg-warning text-dark">Nieuw</span>
+                                            break;
+                                        case "wijziging":
+                                            <span class="badge bg-primary">Wijzig</span>
+                                            break;
+                                        case "niet-inplanbaar":
+                                            <span class="badge bg-danger">Probleem</span>
+                                            break;
+                                        case "onbekend-team":
+                                            <span class="badge bg-secondary">Onbekend</span>
+                                            break;
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </div>
+        @if (!string.IsNullOrEmpty(_toepassenMelding))
+        {
+            <div class="card-footer">
+                <div class="alert @(_toepassenFout ? "alert-danger" : "alert-success") mb-0 py-2">
+                    @_toepassenMelding
+                    @if (!_toepassenFout)
+                    {
+                        <button class="btn btn-sm btn-outline-success ms-3" @onclick="AutoPlanAsync">Herlaad plan</button>
+                    }
+                </div>
+            </div>
+        }
     </div>
 
     @* ── Deelbare weergave van de berekende planning ── *@
@@ -1071,6 +1128,27 @@
         => totaal > 0
             ? ((double)deel / totaal * 100).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
             : "0.00";
+
+    /// <summary>
+    /// Horizontale uitlijning van een tijdlabel op de tijdas (#689).
+    ///
+    /// <para>
+    /// Alle labels stonden op <c>translateX(-50%)</c>, dus gecentreerd op hun uurlijn. Voor het
+    /// eerste en het laatste label valt daarmee de helft buiten de container: links vóór 0% en rechts
+    /// ná 100%. Die paar pixels overschrijding zijn precies waarom er op een breed scherm nog een
+    /// horizontale scrollbalk verscheen — de container was 14 pixels breder dan hij hoefde te zijn,
+    /// terwijl de inhoud ruim paste.
+    /// </para>
+    ///
+    /// <para>
+    /// Het eerste label lijnt daarom links uit, het laatste rechts, en alles ertussen blijft
+    /// gecentreerd. Geen enkel label wordt afgekapt en de scrollbalk is weg.
+    /// </para>
+    /// </summary>
+    private static string GanttLabelTransform(int uur, int startMinuut, int eindMinuut)
+        => uur <= startMinuut ? "translateX(0)"
+         : uur >= eindMinuut  ? "translateX(-100%)"
+         : "translateX(-50%)";
 
     private static double GanttTop(string? sub) => sub switch
     {

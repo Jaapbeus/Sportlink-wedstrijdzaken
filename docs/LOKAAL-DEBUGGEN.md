@@ -153,14 +153,65 @@ if ($importmapMatch.Success) {
 ## Handmatige synchronisatie
 
 ```powershell
-# Incrementele sync (standaard: vorige week t/m seizoenseinde)
-Invoke-RestMethod "http://localhost:7094/api/sync"
+# Incrementele sync (standaard: vorige week t/m seizoenseinde — zelfde bereik als de timer)
+Invoke-RestMethod "http://localhost:7094/api/sync-matches"
 
-# Met weekoffset (bijv. week -2 t/m +4)
-Invoke-RestMethod "http://localhost:7094/api/sync?weekOffsetFrom=-2&weekOffsetTo=4"
+# Volledig seizoen opnieuw ophalen
+Invoke-RestMethod "http://localhost:7094/api/sync-matches?reset=true&season=2026"
 ```
 
+> De route is `sync-matches`. Dit stond hier eerder als `/api/sync` met parameters
+> `weekOffsetFrom`/`weekOffsetTo`; beide bestaan niet — dat geeft 404 respectievelijk stille negatie
+> van de parameters. Gevonden bij #662, waar deze sync juist werd gebruikt om de lokale omgeving
+> gelijk te trekken met productie.
+
 ---
+
+## Lokale omgeving gelijktrekken met productie (#662)
+
+Gedrag dat live wordt gezien is alleen betrouwbaar na te bouwen als schema **én** data gelijk zijn.
+Deze vier stappen doen dat; de laatste is de belangrijkste.
+
+```powershell
+# 1. Schemadrift herstellen
+.\scripts\dev\Test-App.ps1 -Fix          # moet exit 0 geven
+
+# 2. Services starten
+.\scripts\dev\Start-Debug.ps1
+
+# 3. Sync in default mode — hetzelfde bereik als de productie-timer
+Invoke-RestMethod "http://localhost:7094/api/sync-matches" -TimeoutSec 1200
+# Antwoord: "Sync completed. WeekOffset range: -1 to <einde seizoen>."  (duurt circa 1,5 minuut)
+```
+
+**4. Datapariteit verifiëren.** Draait de sync een tweede keer zonder dat de aantallen veranderen,
+dan loopt lokaal gelijk met Sportlink:
+
+```sql
+SELECT 'teams'   AS Tabel, COUNT(*) AS Aantal FROM his.teams
+UNION ALL SELECT 'matches',      COUNT(*) FROM his.matches
+UNION ALL SELECT 'matchdetails', COUNT(*) FROM his.matchdetails;
+
+-- Moet 0 zijn: een rij zonder ClubCode valt buiten elke clubfilter
+SELECT COUNT(*) AS ZonderClubCode FROM his.matches WHERE ClubCode IS NULL;
+
+-- Datumbereik en laatste sync
+SELECT MIN(CAST(kaledatum AS DATE)) AS Van, MAX(CAST(kaledatum AS DATE)) AS Tot FROM his.matches;
+SELECT MAX(LastSyncTimestamp) AS LaatsteSync FROM dbo.AppSettings;
+```
+
+> **`kaledatum` is een tekstkolom, geen datum.** De waarde is `2026-08-22 00:00:00.00`, dus
+> `WHERE kaledatum = '2026-08-22'` levert nul rijen op. Gebruik altijd `CAST(kaledatum AS DATE)` —
+> dat doet de planner-view ook.
+
+**5. Functioneel controleren, niet alleen HTTP 200.** Een Blazor WASM-route geeft altijd 200; dat
+zegt niets. Open de Dagplanning op een datum waarvan je uit de database weet dat er wedstrijden zijn
+en controleer of ze in de tijdlijn én de tabel staan. Dit is de les uit #635: alle SQL-checks stonden
+groen terwijl de planner nul wedstrijden vond.
+
+Let op bij het vergelijken van aantallen: de Dagplanning toont alleen wedstrijden **op de eigen
+accommodatie**. Staan er vijf wedstrijden in de database en drie op het scherm, dan zijn de andere
+twee uitwedstrijden — dat is correct gedrag, geen ontbrekende data.
 
 ## Admin API-endpoints overzicht
 
@@ -169,7 +220,7 @@ Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSIT
 | Endpoint | Bestand | Beschrijving |
 |----------|---------|-------------|
 | `GET /api/health` | `Function1.cs` | Versie en status |
-| `GET /api/sync` | `Function1.cs` | Handmatige Sportlink-sync |
+| `GET /api/sync-matches` | `Function1.cs` | Handmatige Sportlink-sync |
 | `GET/PUT /api/beheer/settings` | `AdminSettingsFunction.cs` | Club-instellingen |
 | `GET /api/beheer/geocode` | `AdminSettingsFunction.cs` | GPS-coördinaten opzoeken |
 | `GET /api/beheer/sync/status` | `AdminSyncFunction.cs` | Sync-status |
