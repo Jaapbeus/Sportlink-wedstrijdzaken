@@ -86,7 +86,8 @@ $expectedColumns = @{
         "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude",
         "EmailVoetnoot","UseRealtimeApi","SyncEnabled",
         "ThemeColorPrimary","ThemeColorSecondary","ThemeColorAccent",
-        "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl"
+        "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl",
+        "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio"
     )
     "dbo.TeamVoorkeurTijden" = @(
         "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",

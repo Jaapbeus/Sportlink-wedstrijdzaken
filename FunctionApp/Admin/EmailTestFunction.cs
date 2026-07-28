@@ -138,9 +138,26 @@ public static class EmailTestFunction
         using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await connection.OpenAsync();
 
-        using var command = new SqlCommand(@"
+        // #561: KnvbPdfBijlageIngeschakeld/KnvbStandaardRegio bestaan pas na migratie — dynamisch
+        // detecteren zodat de Email-tester ook werkt tegen een database die nog niet gemigreerd is
+        // (zelfde patroon als UseRealtimeApi/SyncEnabled in SystemUtilities.AppSettings).
+        using var colCheckCommand = new SqlCommand(@"
+            SELECT
+                COL_LENGTH('[dbo].[AppSettings]', 'KnvbPdfBijlageIngeschakeld'),
+                COL_LENGTH('[dbo].[AppSettings]', 'KnvbStandaardRegio')", connection);
+        using var colCheckReader = await colCheckCommand.ExecuteReaderAsync();
+        var heeftKnvbKolommen = false;
+        if (await colCheckReader.ReadAsync())
+            heeftKnvbKolommen = !colCheckReader.IsDBNull(0) && !colCheckReader.IsDBNull(1);
+        await colCheckReader.DisposeAsync();
+
+        var knvbSelect = heeftKnvbKolommen
+            ? ", [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio]"
+            : "";
+
+        using var command = new SqlCommand($@"
             SELECT TOP 1 [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
-                   [EmailVoetnoot], [HerplanDeadlineDagen]
+                   [EmailVoetnoot], [HerplanDeadlineDagen]{knvbSelect}
             FROM [dbo].[AppSettings]
             WHERE [ClubCode] = @ClubCode", connection);
         command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -154,7 +171,9 @@ public static class EmailTestFunction
             CoordinatorNaam: reader.IsDBNull(1) ? null : reader.GetString(1),
             CoordinatorFunctie: reader.IsDBNull(2) ? null : reader.GetString(2),
             EmailVoetnoot: reader.IsDBNull(3) ? null : reader.GetString(3),
-            HerplanDeadlineDagen: reader.IsDBNull(4) ? null : reader.GetInt32(4));
+            HerplanDeadlineDagen: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            KnvbPdfBijlageIngeschakeld: heeftKnvbKolommen && !reader.IsDBNull(5) ? reader.GetBoolean(5) : null,
+            KnvbStandaardRegio: heeftKnvbKolommen && !reader.IsDBNull(6) ? reader.GetString(6) : null);
     }
 
     private static bool TryAcquireSlot()

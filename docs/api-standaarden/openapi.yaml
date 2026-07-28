@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 2.17.8
+  version: 2.17.9
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -707,6 +707,21 @@ components:
           type: boolean
           description: "true = live Sportlink API raadplegen bij plannercheck; false = alleen DB"
           default: true
+        KnvbPdfBijlageIngeschakeld:
+          type: boolean
+          description: |
+            Bij een herplanverzoek van een tegenstander zonder concrete nieuwe datum: stuurt de
+            KNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de
+            begeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.
+          default: true
+        KnvbStandaardRegio:
+          type: string
+          nullable: true
+          description: |
+            KNVB-regio van deze club, bepaalt welke speeldagenkalender wordt gebruikt (#561).
+            Ontbreekt deze waarde, dan wordt de hele KnvbPdfBijlageIngeschakeld-flow overgeslagen —
+            er is bewust geen standaardregio in code.
+          enum: [West, Noord, Oost, Zuid, Landelijk, LandelijkJeugd]
         fetchScheduleLeesbaar:
           type: string
           nullable: true
@@ -726,7 +741,8 @@ components:
         Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
-        AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi.
+        AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio.
       properties:
         gewijzigdDoor:
           type: string

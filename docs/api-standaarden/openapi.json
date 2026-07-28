@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.17.8",
+    "version": "2.17.9",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -915,6 +915,24 @@
             "description": "true = live Sportlink API raadplegen bij plannercheck; false = alleen DB",
             "default": true
           },
+          "KnvbPdfBijlageIngeschakeld": {
+            "type": "boolean",
+            "description": "Bij een herplanverzoek van een tegenstander zonder concrete nieuwe datum: stuurt de\nKNVB-speeldagenkalender als PDF-bijlage + een paar vrije zaterdagen mee, met de\nbegeleiding van het eigen team in BCC (#561). Uit = bestaand herplan-gedrag ongewijzigd.\n",
+            "default": true
+          },
+          "KnvbStandaardRegio": {
+            "type": "string",
+            "nullable": true,
+            "description": "KNVB-regio van deze club, bepaalt welke speeldagenkalender wordt gebruikt (#561).\nOntbreekt deze waarde, dan wordt de hele KnvbPdfBijlageIngeschakeld-flow overgeslagen —\ner is bewust geen standaardregio in code.\n",
+            "enum": [
+              "West",
+              "Noord",
+              "Oost",
+              "Zuid",
+              "Landelijk",
+              "LandelijkJeugd"
+            ]
+          },
           "fetchScheduleLeesbaar": {
             "type": "string",
             "nullable": true,
@@ -934,7 +952,7 @@
       },
       "UpdateSettingsRequest": {
         "type": "object",
-        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi.\n",
+        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio.\n",
         "properties": {
           "gewijzigdDoor": {
             "type": "string",

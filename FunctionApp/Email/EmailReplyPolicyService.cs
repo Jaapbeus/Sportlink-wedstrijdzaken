@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Planner;
 using SportlinkFunction.Processing;
 
 namespace SportlinkFunction.Email;
@@ -93,9 +94,41 @@ internal sealed class EmailReplyPolicyService
         // een poging uitstellen naar de volgende poll.
         await persistenceService.MarkeerVerzendPogingAsync(verwerkingId);
 
+        IReadOnlyList<string>? bcc = null;
+        EmailBijlage? bijlage = null;
+        if (classificatie.VoegKnvbPdfBijlageToe)
+        {
+            // #561: verzet-zonder-datum — begeleiding van ons eigen team in BCC, KNVB-kalender als
+            // bijlage. Beide zijn fail-safe: ontbreekt het contact of het bestand, dan verstuurt de
+            // mail gewoon zonder (nooit een crash op deze verrijking).
+            try
+            {
+                var contact = await PlannerDataAccess.GetTeamleiderContactAsync(classificatie.TeamNaam ?? "");
+                if (contact != null && !string.IsNullOrWhiteSpace(contact.Emailadres))
+                {
+                    bcc = new[] { contact.Emailadres };
+                }
+                else
+                {
+                    log.LogInformation("VERZET-ZONDER-DATUM - geen begeleidingscontact gevonden voor BCC, verzonden zonder BCC");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "VERZET-ZONDER-DATUM - ophalen begeleidingscontact mislukt, verzonden zonder BCC");
+            }
+
+            if (!string.IsNullOrWhiteSpace(classificatie.KnvbBijlageRegio))
+            {
+                var seizoen = await SystemUtilities.SeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+                if (!string.IsNullOrWhiteSpace(seizoen))
+                    bijlage = await KnvbPdfService.GetKalenderPdfAsync(classificatie.KnvbBijlageRegio, seizoen, log);
+            }
+        }
+
         try
         {
-            await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId);
+            await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId, bcc, bijlage);
         }
         catch (Exception ex)
         {

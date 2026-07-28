@@ -25,5 +25,8 @@
 	[ThemeColorAccent]		NVARCHAR(7)		NULL,
 	[ThemeColorTextOnPrimary] NVARCHAR(7)	NULL,
 	[ThemeClubWebsiteUrl]	NVARCHAR(300)	NULL,		-- URL van club-website voor kleurextractie
-	[SyncEnabled]			BIT				NOT NULL DEFAULT 1	-- 0 = geen Sportlink API-sync voor deze club
+	[SyncEnabled]			BIT				NOT NULL DEFAULT 1,	-- 0 = geen Sportlink API-sync voor deze club
+	-- #561: verzet-zonder-datum flow — KNVB-speeldagenkalender als bijlage + BCC eigen team
+	[KnvbPdfBijlageIngeschakeld] BIT			NOT NULL DEFAULT 1,	-- 1 = KNVB-kalender-PDF bijvoegen bij verzet-zonder-datum-antwoord
+	[KnvbStandaardRegio]	NVARCHAR(20)	NULL	-- KNVB-regio van deze club: West/Noord/Oost/Zuid/Landelijk/LandelijkJeugd. Geen default — ontbrekend = geen bijlage/vrije-zaterdagen-tekst
 	)

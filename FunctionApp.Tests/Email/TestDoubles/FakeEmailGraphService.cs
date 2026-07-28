@@ -8,7 +8,7 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     public List<string> MarkedAsReadIds { get; } = new();
     public List<(string MessageId, string[] Categories)> CategoryUpdates { get; } = new();
     public List<(string Name, string ColorPreset)> EnsuredCategories { get; } = new();
-    public List<(string To, string Subject, string Body, string? ConversationId)> SentReplies { get; } = new();
+    public List<(string To, string Subject, string Body, string? ConversationId, IReadOnlyList<string>? Bcc, EmailBijlage? Bijlage)> SentReplies { get; } = new();
     public List<(string CoachEmail, string Subject, string Body, string? AanvragerEmail, string? CoordinatorEmail)> TeamForwardings { get; } = new();
 
     public bool ThrowOnSendReply { get; set; }
@@ -41,14 +41,15 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     /// </summary>
     public Action? OnSendReply { get; set; }
 
-    public Task SendReplyAsync(string to, string subject, string body, string? conversationId)
+    public Task SendReplyAsync(string to, string subject, string body, string? conversationId,
+        IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null)
     {
         OnSendReply?.Invoke();
 
         if (ThrowOnSendReply)
             throw new InvalidOperationException("SendReply simulated failure");
 
-        SentReplies.Add((to, subject, body, conversationId));
+        SentReplies.Add((to, subject, body, conversationId, bcc, bijlage));
         return Task.CompletedTask;
     }
 

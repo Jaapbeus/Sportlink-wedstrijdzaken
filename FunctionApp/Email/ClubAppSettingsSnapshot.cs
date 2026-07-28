@@ -23,4 +23,7 @@ public sealed record ClubAppSettingsSnapshot(
     string? CoordinatorNaam,
     string? CoordinatorFunctie,
     string? EmailVoetnoot,
-    int? HerplanDeadlineDagen);
+    int? HerplanDeadlineDagen,
+    // #561: verzet-zonder-datum flow (KNVB-bijlage + vrije-zaterdagen-voorzet)
+    bool? KnvbPdfBijlageIngeschakeld = null,
+    string? KnvbStandaardRegio = null);

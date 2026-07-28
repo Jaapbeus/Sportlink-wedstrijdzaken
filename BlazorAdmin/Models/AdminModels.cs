@@ -24,6 +24,8 @@ public class AppSettingsDto
     public string? FetchScheduleLeesbaar { get; set; }
     public List<string>? VolgendeMomenten { get; set; }
     public bool UseRealtimeApi { get; set; } = true;
+    public bool KnvbPdfBijlageIngeschakeld { get; set; } = true;
+    public string? KnvbStandaardRegio { get; set; }
 }
 
 public class GeocodeResultDto

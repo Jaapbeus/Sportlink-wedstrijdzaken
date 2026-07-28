@@ -315,6 +315,62 @@ public static class BerichtResponseGenerator
         return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
     }
 
+    // ── Herplannen — verzoek van tegenstander zonder concrete datum (#561) ──
+
+    /// <summary>
+    /// Bouwt het antwoord op een herplanverzoek van de tegenstander zonder concrete nieuwe datum.
+    /// Zegt bewust geen nieuwe datum toe — dat wordt afgestemd met de begeleiding van ons eigen
+    /// team (die in BCC staat, zie <see cref="Email.EmailReplyPolicyService"/>) — maar geeft als
+    /// voorzet een paar zaterdagen waarop ons team volgens het huidige programma nog vrij is.
+    /// </summary>
+    public static (string onderwerp, string body) BouwVerzetZonderDatumAntwoord(
+        ZoekWedstrijdResponse? wedstrijd,
+        List<string> vrijeZaterdagen,
+        BerichtClassificatie classificatie,
+        InkomendBericht email,
+        ClubAppSettingsSnapshot? clubSettings = null)
+    {
+        var aanhef = GetTijdsgebondenAanhef();
+        var voornaam = ExtractVoornaam(email.AfzenderNaam);
+        string inhoud;
+
+        if (wedstrijd == null)
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Er is geen wedstrijd gevonden voor {classificatie.TeamNaam ?? "het opgegeven team"} "
+                   + $"op {FormatDatum(classificatie.Datum)}.";
+        }
+        else
+        {
+            inhoud = $"{aanhef} {voornaam},\n\n"
+                   + $"Bedankt voor je verzoek om de wedstrijd {wedstrijd.Wedstrijd} op {FormatDatum(wedstrijd.Datum)} "
+                   + $"om {wedstrijd.AanvangsTijd} te verzetten.\n\n"
+                   + "We kunnen op dit moment nog geen nieuwe datum toezeggen: dat stemmen we eerst af met de "
+                   + "begeleiding van ons eigen team. Zij zijn in de kopie (BCC) van dit bericht meegenomen, zodat "
+                   + "jullie dit onderling verder kunnen afstemmen.";
+
+            if (vrijeZaterdagen.Count > 0)
+            {
+                inhoud += "\n\nAls voorzet: volgens ons huidige programma hebben we op de volgende zaterdagen nog "
+                        + "geen wedstrijd:\n";
+                foreach (var datum in vrijeZaterdagen)
+                    inhoud += $"- {FormatDatum(datum)}\n";
+            }
+            else
+            {
+                inhoud += "\n\nOp korte termijn hebben we geen speelvrije zaterdagen kunnen vinden binnen de "
+                        + "gebruikelijke termijn. Bekijk de bijgevoegde speeldagenkalender voor het volledige overzicht.";
+            }
+        }
+
+        if (classificatie.VoegKnvbPdfBijlageToe)
+        {
+            inhoud += "\n\nDe KNVB-speeldagenkalender is als bijlage toegevoegd.";
+        }
+
+        return WrapMetReviewEnHandtekening(inhoud, classificatie, email, clubSettings);
+    }
+
     // ── Herplannen naar gewenste datum ──
 
     public static (string onderwerp, string body) BouwHerplanGewensteDatumAntwoord(
