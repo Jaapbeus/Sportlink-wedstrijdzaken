@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Teambegeleiding: iemand met twee functies in hetzelfde team wordt in de Outlook-kopieerregel nu maar één keer opgenomen.** De kaartenweergave toont nog steeds elke functie apart, maar de "Kopieer naar Outlook"-regel mailt niet langer dezelfde persoon twee keer. Daarnaast worden exacte duplicaat-rijen uit de Sportlink-export (dezelfde persoon met dezelfde rol twee keer) voortaan bij import overgeslagen, met een waarschuwing in het importresultaat. (#761)
+
 ## [2.19.0.0] — 2026-07-28
 
 ### Changed
