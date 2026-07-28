@@ -212,11 +212,30 @@ jobs:
             --end-ip-address "$RUNNER_IP"
           echo "rule_name=$RULE_NAME" >> $GITHUB_OUTPUT
 
+      # ──────────────────────────────────────────────────────────────────────
+      # #739: -b -V 11 is hier het verschil tussen "de migratie is gelukt" en "we hopen het".
+      #
+      # Zonder deze argumenten meldt sqlcmd exitcode 0, óók bij fouten van severity 16, en meldt
+      # azure/sql-action daarna "Successfully executed SQL file on target database". Bij twee
+      # opeenvolgende releases stonden er zo tien echte fouten in het log terwijl deze job groen was:
+      # een tabel die niet bestond en twee mislukte seeds (#738). Elke per-job controle uit CLAUDE.md
+      # leunt op de conclusie van deze job, dus een groene job zonder deze vlaggen bewees niets.
+      #
+      #   -b      → sqlcmd stopt en geeft een exitcode terug bij een fout
+      #   -V 11   → drempel: severity 11 en hoger telt als fout (10 en lager zijn informatief)
+      #
+      # Lokaal geverifieerd: hetzelfde script met een bewuste fout geeft exit 16 mét deze vlaggen en
+      # exit 0 zonder. Het script is nu schoon op beide paden — een bestaande database én een lege
+      # (dat laatste wordt bij elke PR bewezen door de job 'PostDeployment op verse database').
+      # Breekt een deploy hier alsnog af, dan is de migratie half uitgevoerd; het script is
+      # idempotent, dus opnieuw draaien is veilig zodra de oorzaak is verholpen.
+      # ──────────────────────────────────────────────────────────────────────
       - name: Database-migratie uitvoeren (PostDeployment script — idempotent)
         uses: azure/sql-action@v2.4
         with:
           connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: Database/Script.PostDeployment1.sql
+          arguments: '-b -V 11'
 
       # GEEN --yes — zie #632: het argument bestaat niet en liet de delete stil falen.
       - name: Runner-IP verwijderen uit SQL-firewall (altijd, ook bij fout)

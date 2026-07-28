@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Een mislukte databasemigratie laat de uitrol nu falen in plaats van "geslaagd" te melden.** Bij het uitrollen van een nieuwe versie draait een migratiescript tegen de database. Dat script meldde succes zolang het tot het einde kwam, ook als er onderweg fouten optraden — precies wat er twee releases achter elkaar gebeurde. De uitrol stopt nu bij de eerste echte fout. Zie issue #739.
+- **Een club die de software voor het eerst in gebruik neemt, krijgt nu een compleet werkende database.** Zeven tabellen — waaronder de tabel met alle instellingen — werden door het migratiescript wel gevuld en aangepast, maar nooit aangemaakt. Op de bestaande omgeving valt dat niet op, omdat die tabellen er al jaren staan; bij een nieuwe installatie ontbraken ze. Datzelfde gold voor een aantal schema's en voor vier overzichten die op de Sportlink-gegevens leunen. Het script controleert nu overal eerst of iets bestaat, en slaat wat nog niet kan netjes over tot de eerste synchronisatie is gelopen. Zie issue #734.
+- **De standaard speeltijden worden nu aan de juiste club toegekend.** De vulling koos de alfabetisch eerste clubcode, en dat is bij een nieuwe installatie de democlub — waardoor de echte club zonder speeltijden achterbleef en dat bij een volgende poging niet werd hersteld. De democlub wordt nu overgeslagen en er wordt per club gekeken of er al speeltijden zijn. Zie issue #740.
+
+### Changed
+- **De bouwstraat voert de databasemigratie nu bij elke wijziging uit tegen een lege database**, twee keer achter elkaar, en controleert daarna of alle 22 kerntabellen bestaan en gevuld zijn. Tot nu toe werd alleen de tekst van het script vergeleken met de schemadefinities; dat kan een ontbrekende tabel op een nieuwe installatie niet zien. Kost niets: dit draait in een wegwerpomgeving op de bouwserver, zonder Azure-resource.
+- **De schemacontrole kijkt nu ook naar kolommen en eist een echte aanmaakopdracht.** Eerder gold elke vermelding van een tabelnaam als voldoende — ook een vulopdracht — en werden nieuwe kolommen helemaal niet gecontroleerd. Dat is precies hoe de twee gemiste instellingen van de vorige release door de controle glipten.
+
 ## [2.18.0.1] — 2026-07-28
 
 ### Fixed

@@ -143,9 +143,13 @@ jobs:
           # Elke andere tabel moet er staan — zie de toelichting hierboven.
           #   stg.*         — dynamisch aangemaakt door FunctionApp/CreateTable.cs op basis van het
           #                   actuele Sportlink API-schema; een statische DDL zou juist gaan driften
+          #   his.*         — dynamisch aangemaakt door dbo.sp_CreateTargetTableFromSource op basis
+          #                   van stg.*, om dezelfde reden. PostDeployment raakt ze alleen áchter een
+          #                   `OBJECT_ID(...) IS NOT NULL`-guard aan, zodat een verse database
+          #                   (waar de eerste sync nog niet gelopen heeft) geen fouten geeft (#734)
           #   dbo.DateTable — aangemaakt (DROP + CREATE) door dbo.sp_CreateDateTable, die in
           #                   PostDeployment wordt gecreëerd én aangeroepen
-          ALLOWLIST="stg.teams stg.matches stg.matchdetails dbo.DateTable"
+          ALLOWLIST="stg.teams stg.matches stg.matchdetails his.teams his.matches his.matchdetails dbo.DateTable"
 
           while IFS= read -r f; do
             # Haal de schema- en tabelnaam uit 'CREATE TABLE [schema].[naam]'
@@ -156,17 +160,48 @@ jobs:
             # Bewuste uitzondering? Dan overslaan.
             case " $ALLOWLIST " in *" $OBJ "*) continue ;; esac
 
-            # Zoek een referentie naar het object in het PostDeployment-script. Zowel
-            # OBJECT_ID('schema.tabel') als [schema].[tabel] tellen als dekking.
             SCHEMA_NAME="${OBJ%%.*}"
             TABLE_NAME="${OBJ##*.}"
 
-            if grep -qiE "(OBJECT_ID\('${SCHEMA_NAME}\.${TABLE_NAME}'\)|\[${SCHEMA_NAME}\]\.\[${TABLE_NAME}\])" "$POST_DEPLOY"; then
+            # #734: eis een echte CREATE TABLE, geen willekeurige vermelding.
+            #
+            # Deze check accepteerde eerder élke verwijzing naar `[schema].[tabel]` als dekking —
+            # ook een INSERT. Daardoor passeerde dbo.KnvbKalenderDag de check terwijl er acht
+            # INSERT-blokken stonden en nergens een CREATE: op een verse database faalde juist die
+            # eerste INSERT (#738). Zeven andere tabellen zaten in hetzelfde geval, waaronder
+            # dbo.AppSettings. De afsluitende `(` voorkomt dat 'AppSettings' matcht op
+            # 'CREATE TABLE [dbo].[AppSettingsAudit]'.
+            if grep -qiE "CREATE\s+TABLE\s+\[?${SCHEMA_NAME}\]?\.\[?${TABLE_NAME}\]?[[:space:]]*\(" "$POST_DEPLOY"; then
               continue
             fi
 
-            echo "::error file=$f::Tabel ${OBJ} staat in het DB-project maar wordt niet genoemd in ${POST_DEPLOY} — op een verse deploy ontbreekt deze tabel (#595)."
+            echo "::error file=$f::Tabel ${OBJ} staat in het DB-project maar wordt niet aangemaakt in ${POST_DEPLOY} — op een verse deploy ontbreekt deze tabel (#595, #734)."
             MISSING=1
+          done < <(find Database -path '*/Tables/*.sql' -type f | sort)
+
+          # ────────────────────────────────────────────────────────────────
+          # #734: kolomniveau. De check hierboven kijkt alleen of de tábel bestaat. Een kolom die
+          # aan een bestaand tabelbestand in het DB-project wordt toegevoegd, kwam daardoor nooit in
+          # productie terecht zonder dat de CI iets meldde. Zo ontbraken KnvbPdfBijlageIngeschakeld
+          # en KnvbStandaardRegio in productie terwijl AdminSettingsFunction ze onvoorwaardelijk
+          # selecteert — dat is de hele Instellingen-pagina, en lokaal is er niets van te zien.
+          #
+          # Dekking = de kolomnaam komt ergens in het PostDeployment-script voor: in de CREATE TABLE
+          # van diezelfde tabel, of in een `sys.columns ... name = '<kolom>'`-guard met ALTER.
+          # Woordgrenzen zijn nodig omdat een substring-match ('Id' in 'Identity') alles zou dekken.
+          # ────────────────────────────────────────────────────────────────
+          while IFS= read -r f; do
+            OBJ=$(grep -ioP 'CREATE\s+TABLE\s+\[?\K\w+\]?\.\[?\w+' "$f" | head -1 | tr -d '[]')
+            [ -z "$OBJ" ] && continue
+            case " $ALLOWLIST " in *" $OBJ "*) continue ;; esac
+
+            COLS=$(grep -ioP '^\s*\[?\K\w+(?=\]?\s+(BIGINT|BIT|CHAR|DATETIME2|DATETIME|DATE|DECIMAL|FLOAT|IMAGE|INT|MONEY|NCHAR|NTEXT|NUMERIC|NVARCHAR|REAL|SMALLINT|TIME|TINYINT|UNIQUEIDENTIFIER|VARBINARY|VARCHAR|TEXT)\b)' "$f" | sort -u)
+            for c in $COLS; do
+              if ! grep -qiE "\b${c}\b" "$POST_DEPLOY"; then
+                echo "::error file=$f::Kolom ${OBJ}.${c} staat in het DB-project maar komt niet voor in ${POST_DEPLOY} — op een gemigreerde database ontbreekt deze kolom (#734)."
+                MISSING=1
+              fi
+            done
           done < <(find Database -path '*/Tables/*.sql' -type f | sort)
 
           # Zelfde controle voor stored procedures en views. Deze ontbraken óók volledig — inclusief
@@ -192,3 +227,112 @@ jobs:
             exit 1
           fi
           echo "✅ Alle tabellen, procedures en views uit het DB-project komen voor in het PostDeployment-script."
+
+  # ════════════════════════════════════════════════════════════════════════
+  # #739/#734: het PostDeployment-script tegen een VERSE, LEGE database uitvoeren.
+  #
+  # Dit is het enige wat een clubinstallatie echt bewijst. De statische checks hierboven vergelijken
+  # tekst; deze job voert de migratie werkelijk uit — twee keer, want idempotentie is de belangrijkste
+  # eigenschap van dit script. Zonder deze job bleven fouten onzichtbaar tot een echte deploy:
+  #   - #738: dbo.KnvbKalenderDag werd acht keer gevuld en nooit aangemaakt
+  #   - #734: zeven tabellen (waaronder dbo.AppSettings) hadden geen aanmaak-guard, en vier views
+  #           plus een reeks his.*-mutaties faalden op een database waar de eerste sync nog niet liep
+  #
+  # Kosten: nul. Draait volledig op de GitHub-runner in een wegwerpcontainer — geen Azure-resource,
+  # geen secret. Het SA-wachtwoord wordt per run gegenereerd en verlaat de runner niet.
+  # ════════════════════════════════════════════════════════════════════════
+  fresh-db:
+    name: PostDeployment op verse database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Wegwerpwachtwoord genereren
+        run: |
+          # Alleen geldig binnen deze run; komt niet in git en niet in de logs. `add-mask` zorgt dat
+          # een eventuele echo in een foutmelding gemaskeerd wordt.
+          PW="$(openssl rand -hex 16)Aa1!"
+          echo "::add-mask::${PW}"
+          echo "SA_PW=${PW}" >> "$GITHUB_ENV"
+
+      - name: SQL Server starten en wachten tot hij bereikbaar is
+        run: |
+          docker run -d --name sqlfresh \
+            -e ACCEPT_EULA=Y \
+            -e "MSSQL_SA_PASSWORD=${SA_PW}" \
+            -e MSSQL_PID=Developer \
+            -p 1433:1433 \
+            mcr.microsoft.com/mssql/server:2022-latest
+
+          echo "Wachten tot SQL Server verbindingen accepteert..."
+          for i in $(seq 1 60); do
+            if docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                 -S localhost -U sa -P "${SA_PW}" -C -Q "SELECT 1" >/dev/null 2>&1; then
+              echo "SQL Server is bereikbaar na ${i} pogingen."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::SQL Server kwam niet op binnen 120 seconden."
+          docker logs sqlfresh | tail -40
+          exit 1
+
+      - name: Verse database aanmaken en PostDeployment 2x uitvoeren
+        run: |
+          # Functie i.p.v. een string-variabele: zo blijft het wachtwoord gequoteerd en breekt een
+          # speciaal teken erin niets.
+          sql() { docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                    -S localhost -U sa -P "$SA_PW" -C "$@"; }
+
+          sql -Q "CREATE DATABASE SportlinkFresh"
+          docker cp Database/Script.PostDeployment1.sql sqlfresh:/tmp/postdeployment.sql
+
+          # -b -V 11: exitcode ≠ 0 zodra er een fout van severity 11 of hoger optreedt. Precies de
+          # vlaggen die de productie-deploy nu ook gebruikt (#739).
+          echo "───── Run 1 (verse database) ─────"
+          sql -d SportlinkFresh -b -V 11 -i /tmp/postdeployment.sql
+
+          echo "───── Run 2 (idempotentie) ─────"
+          sql -d SportlinkFresh -b -V 11 -i /tmp/postdeployment.sql
+
+      - name: Controleren dat de kernobjecten er staan
+        run: |
+          sql() { docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                    -S localhost -U sa -P "$SA_PW" -C -d SportlinkFresh -b -V 11 -h -1 -W "$@"; }
+
+          # Positieve assertie bovenop de afwezigheid van fouten: ontbreekt er een kernobject, dan
+          # faalt deze stap met severity 16 in plaats van stil door te gaan.
+          sql -Q "
+          SET NOCOUNT ON;
+          DECLARE @ontbreekt NVARCHAR(MAX) = '';
+          DECLARE @verwacht TABLE (naam SYSNAME);
+          INSERT INTO @verwacht (naam) VALUES
+              ('dbo.AppSettings'), ('dbo.Velden'), ('dbo.Speeltijden'), ('dbo.TeamRegels'),
+              ('dbo.VeldBeschikbaarheid'), ('dbo.VeldTraining'), ('dbo.Teams'), ('dbo.TeamAliassen'),
+              ('dbo.KnvbKalenderDag'), ('dbo.Season'), ('dbo.Zonsondergang'),
+              ('dbo.EmailTemplateInstellingen'), ('dbo.UitgeslotenEmailAdressen'),
+              ('dbo.TeamVoorkeurTijden'), ('dbo.AppSettingsAudit'),
+              ('planner.EmailVerwerking'), ('planner.GeplandeWedstrijden'),
+              ('planner.HerplanVerzoeken'), ('planner.ClassificatieCorrectie'),
+              ('avg.Teambegeleiding'), ('avg.ImportLog'), ('mta.source_target_mapping');
+          SELECT @ontbreekt = @ontbreekt + naam + ' '
+          FROM @verwacht WHERE OBJECT_ID(naam) IS NULL;
+          IF LEN(@ontbreekt) > 0
+              RAISERROR('Ontbrekende objecten na PostDeployment op een verse database: %s', 16, 1, @ontbreekt);
+          SELECT 'Alle verwachte objecten aanwezig.' AS Resultaat;
+
+          -- De KNVB-kalender moet gevuld zijn: de seeds faalden eerder omdat de tabel niet bestond.
+          IF NOT EXISTS (SELECT 1 FROM [dbo].[KnvbKalenderDag])
+              RAISERROR('dbo.KnvbKalenderDag is leeg — de seeds zijn niet gelopen.', 16, 1);
+          SELECT 'KnvbKalenderDag: ' + CAST(COUNT(*) AS VARCHAR) + ' speeldagen.' FROM [dbo].[KnvbKalenderDag];
+
+          -- Speeltijden moeten voor de primaire club bestaan, niet alleen voor de democlub (#740).
+          IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden] WHERE [ClubCode] <> 'ALLSTARS')
+              RAISERROR('dbo.Speeltijden heeft geen rijen voor een niet-democlub — seed koos de verkeerde club.', 16, 1);
+          SELECT 'Speeltijden: ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR) FROM [dbo].[Speeltijden] GROUP BY [ClubCode];
+          "
+
+      - name: Container opruimen
+        if: always()
+        run: docker rm -f sqlfresh || true
