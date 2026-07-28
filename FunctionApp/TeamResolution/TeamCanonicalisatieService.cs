@@ -48,6 +48,10 @@ public static class TeamCanonicalisatieService
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
 
+        // Eerst de opgeslagen sleutels in lijn brengen met de huidige normalisatieregels — zie
+        // MigreerSleuteldriftAsync voor waarom dit vóór de upserts moet.
+        var (sleutelsBijgewerkt, dubbelenOpgeruimd) = await MigreerSleuteldriftAsync(conn, clubCode, log);
+
         int teams = 0, fouten = 0;
 
         foreach (var (sleutel, groep) in groepen)
@@ -71,8 +75,207 @@ public static class TeamCanonicalisatieService
         log.LogInformation(
             "TEAMS CANONICALISATIE - {Teams} canonieke teams uit {Rijen} his.teams-rijen, "
             + "{Aliassen} bronschrijfwijzen gekoppeld, {Onbekend} niet herleidbaar "
-            + "({Gedeactiveerd} gedeactiveerd, {Fouten} overgeslagen) voor club {ClubCode}",
-            teams, rijen.Count, aliassen, onbekend, gedeactiveerd, fouten, clubCode);
+            + "({Gedeactiveerd} gedeactiveerd, {Fouten} overgeslagen, {SleutelsBijgewerkt} sleutels "
+            + "gemigreerd, {DubbelenOpgeruimd} dubbele schrijfwijzen samengevoegd) voor club {ClubCode}",
+            teams, rijen.Count, aliassen, onbekend, gedeactiveerd, fouten,
+            sleutelsBijgewerkt, dubbelenOpgeruimd, clubCode);
+    }
+
+    /// <summary>
+    /// Losse ingang voor de sleutelmigratie, voor paden die geen volledige canonicalisatie nodig
+    /// hebben (zie <see cref="TeamlijstGereedheid"/>). Idempotent en goedkoop: zonder drift twee
+    /// SELECTs en geen enkele wijziging.
+    /// </summary>
+    public static async Task<(int SleutelsBijgewerkt, int DubbelenOpgeruimd)> MigreerSleuteldriftAsync(
+        string clubCode, ILogger log)
+    {
+        if (string.IsNullOrWhiteSpace(clubCode))
+            throw new ArgumentException("ClubCode is verplicht voor de sleutelmigratie.", nameof(clubCode));
+
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        return await MigreerSleuteldriftAsync(conn, clubCode, log);
+    }
+
+    /// <summary>
+    /// Brengt de opgeslagen genormaliseerde sleutels in lijn met de huidige regels van
+    /// <see cref="TeamNaamNormalisatie"/> (#766). Idempotent: zonder drift doet deze stap niets.
+    ///
+    /// <para>
+    /// <b>Waarom dit moet bestaan.</b> <c>TeamnaamGenormaliseerd</c> is persistent, maar wordt door
+    /// C#-code berekend. Verandert een normalisatieregel, dan wijst de MERGE in
+    /// <see cref="UpsertTeamAsync"/> (die op ClubCode + sleutel matcht) de bestaande rij niet meer
+    /// aan en valt hij in de INSERT-tak — waar hij botst op <c>UQ_Teams_Club_Teamnaam</c>, want de
+    /// teamnaam bestaat al. Die fout wordt per team gevangen en gelogd, terwijl
+    /// <see cref="DeactiveerOntbrekendeTeamsAsync"/> de oude rij op <c>IsActief = 0</c> zet. Netto
+    /// resultaat zonder deze migratiestap: de teams verdwijnen uit <c>dbo.Teams</c> en komen ook bij
+    /// een volgende sync nooit terug, omdat de unique constraint blijft falen.
+    /// </para>
+    /// <para>
+    /// Door de sleutel te herberekenen uit de al opgeslagen <c>Teamnaam</c> herstelt elke club zich
+    /// bij de eerstvolgende sync automatisch, zonder handmatig migratiescript en zonder de
+    /// normalisatieregels in T-SQL na te bouwen (wat de architectuurregel "één vertaalpunt" zou
+    /// breken).
+    /// </para>
+    /// <para>
+    /// Vallen twee bestaande rijen na herberekening op dezelfde sleutel, dan waren het twee
+    /// schrijfwijzen van hetzelfde fysieke team. De rij die de sleutel al had (of anders de oudste)
+    /// blijft bestaan; de aliassen van de ander worden naar die winnaar omgehangen en de dubbele rij
+    /// wordt verwijderd. Verwijderen mag hier — de reden om normaal te deactiveren is dat
+    /// <c>dbo.TeamAliassen</c> ernaar verwijst, en die verwijzingen zijn dan net omgehangen. Laten
+    /// staan zou juist schadelijk zijn: de rij houdt de teamnaam bezet en blokkeert daarmee de
+    /// upsert van de winnaar.
+    /// </para>
+    /// </summary>
+    private static async Task<(int SleutelsBijgewerkt, int DubbelenOpgeruimd)> MigreerSleuteldriftAsync(
+        SqlConnection conn, string clubCode, ILogger log)
+    {
+        var rijen = new List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)>();
+        using (var cmd = new SqlCommand(@"
+            SELECT [TeamId], [Teamnaam], [TeamnaamGenormaliseerd], [LeeftijdNummer], [TeamNummer]
+              FROM [dbo].[Teams] WHERE [ClubCode] = @clubCode", conn))
+        {
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                rijen.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2),
+                           reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                           reader.IsDBNull(4) ? null : reader.GetInt32(4)));
+        }
+
+        // LeeftijdNummer/TeamNummer worden hier meegenomen omdat ze uit dezelfde normalisatie komen:
+        // een sleutel zonder streepje leverde geen ontleding op, dus stonden ze op NULL — en dan geeft
+        // FindKandidatenAsync nul kandidaten en valt het hele kandidaten-/disambiguatiepad stil. Alleen
+        // de sleutel repareren zou de exacte match herstellen en die ambiguïteitsafhandeling stil laten
+        // liggen tot de volgende volledige canonicalisatie.
+        var doelen = rijen
+            .Select(r =>
+            {
+                var componenten = TeamNaamNormalisatie.Parse(r.Teamnaam, clubCode);
+                return (r.TeamId, r.Teamnaam, r.OudeSleutel, r.OudeLeeftijd, r.OudTeamNummer,
+                        NieuweSleutel: TeamNaamNormalisatie.NormaliseerVoorVergelijking(r.Teamnaam, clubCode),
+                        NieuweLeeftijd: componenten?.LeeftijdNummer,
+                        NieuwTeamNummer: componenten?.TeamNummer);
+            })
+            .Where(r => r.NieuweSleutel.Length > 0)
+            .ToList();
+
+        static bool IsOngewijzigd((int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd,
+            int? OudTeamNummer, string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer) r)
+            => r.OudeSleutel == r.NieuweSleutel
+               && r.OudeLeeftijd == r.NieuweLeeftijd
+               && r.OudTeamNummer == r.NieuwTeamNummer;
+
+        if (doelen.All(IsOngewijzigd))
+            return (0, 0);
+
+        int bijgewerkt = 0, opgeruimd = 0;
+
+        foreach (var groep in doelen.GroupBy(r => r.NieuweSleutel, StringComparer.Ordinal))
+        {
+            // De rij die deze sleutel al heeft is de winnaar: dan hoeft er niets te verschuiven.
+            // Anders de oudste rij, zodat de uitkomst deterministisch is.
+            var kandidaten = groep.ToList();
+            var winnaar = kandidaten.FirstOrDefault(
+                r => r.OudeSleutel == r.NieuweSleutel,
+                kandidaten.OrderBy(r => r.TeamId).First());
+
+            foreach (var verliezer in kandidaten.Where(r => r.TeamId != winnaar.TeamId))
+            {
+                await HangAliassenOmAsync(conn, clubCode, verliezer.TeamId, winnaar.TeamId);
+                using var deleteCmd = new SqlCommand(
+                    "DELETE FROM [dbo].[Teams] WHERE [TeamId] = @teamId", conn);
+                deleteCmd.Parameters.AddWithValue("@teamId", verliezer.TeamId);
+                await deleteCmd.ExecuteNonQueryAsync();
+                opgeruimd++;
+
+                log.LogInformation(
+                    "TEAMS CANONICALISATIE - dubbele schrijfwijze '{Dubbel}' samengevoegd met '{Winnaar}' "
+                    + "(sleutel {Sleutel})", verliezer.Teamnaam, winnaar.Teamnaam, winnaar.NieuweSleutel);
+            }
+
+            if (IsOngewijzigd(winnaar)) continue;
+
+            using var updateCmd = new SqlCommand(@"
+                UPDATE [dbo].[Teams]
+                   SET [TeamnaamGenormaliseerd] = @nieuweSleutel,
+                       [LeeftijdNummer]         = @leeftijdNummer,
+                       [TeamNummer]             = @teamNummer,
+                       [mta_modified]           = GETUTCDATE()
+                 WHERE [TeamId] = @teamId", conn);
+            updateCmd.Parameters.AddWithValue("@nieuweSleutel", winnaar.NieuweSleutel);
+            updateCmd.Parameters.AddWithValue("@leeftijdNummer", (object?)winnaar.NieuweLeeftijd ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("@teamNummer", (object?)winnaar.NieuwTeamNummer ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("@teamId", winnaar.TeamId);
+            await updateCmd.ExecuteNonQueryAsync();
+            bijgewerkt++;
+
+            log.LogInformation(
+                "TEAMS CANONICALISATIE - sleutel gemigreerd voor '{Teamnaam}': {Oud} → {Nieuw} "
+                + "(leeftijd={Leeftijd}, teamnummer={TeamNummer})",
+                winnaar.Teamnaam, winnaar.OudeSleutel, winnaar.NieuweSleutel,
+                winnaar.NieuweLeeftijd, winnaar.NieuwTeamNummer);
+        }
+
+        // Aliassen met Bron='Sync' worden verderop toch bijgewerkt, maar geleerde en handmatig
+        // toegevoegde aliassen niet. Zonder deze stap blijft hun genormaliseerde kolom naar de oude
+        // regels verwijzen en vindt de resolver ze alleen nog op de exacte ruwe tekst.
+        var aliasBijgewerkt = await MigreerAliasSleutelsAsync(conn, clubCode);
+        if (aliasBijgewerkt > 0)
+            log.LogInformation("TEAMS CANONICALISATIE - {Aantal} aliassleutels gemigreerd", aliasBijgewerkt);
+
+        return (bijgewerkt, opgeruimd);
+    }
+
+    private static async Task HangAliassenOmAsync(
+        SqlConnection conn, string clubCode, int vanTeamId, int naarTeamId)
+    {
+        // Een alias die al naar de winnaar wijst zou de unieke (ClubCode, RuweTekst) schenden; die
+        // kan weg, want hij is dan letterlijk dubbel.
+        using var cmd = new SqlCommand(@"
+            DELETE FROM [dbo].[TeamAliassen]
+             WHERE [ClubCode] = @clubCode AND [TeamId] = @vanTeamId
+               AND EXISTS (SELECT 1 FROM [dbo].[TeamAliassen] b
+                            WHERE b.[ClubCode] = @clubCode AND b.[TeamId] = @naarTeamId
+                              AND b.[RuweTekst] = [dbo].[TeamAliassen].[RuweTekst]);
+
+            UPDATE [dbo].[TeamAliassen]
+               SET [TeamId] = @naarTeamId, [mta_modified] = GETUTCDATE()
+             WHERE [ClubCode] = @clubCode AND [TeamId] = @vanTeamId;", conn);
+        cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        cmd.Parameters.AddWithValue("@vanTeamId", vanTeamId);
+        cmd.Parameters.AddWithValue("@naarTeamId", naarTeamId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<int> MigreerAliasSleutelsAsync(SqlConnection conn, string clubCode)
+    {
+        var aliassen = new List<(int Id, string RuweTekst, string OudeSleutel)>();
+        using (var cmd = new SqlCommand(
+            "SELECT [Id], [RuweTekst], [RuweTekstGenormaliseerd] FROM [dbo].[TeamAliassen] WHERE [ClubCode] = @clubCode", conn))
+        {
+            cmd.Parameters.AddWithValue("@clubCode", clubCode);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                aliassen.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2)));
+        }
+
+        int bijgewerkt = 0;
+        foreach (var (id, ruweTekst, oudeSleutel) in aliassen)
+        {
+            var nieuweSleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(ruweTekst, clubCode);
+            if (nieuweSleutel.Length == 0 || nieuweSleutel == oudeSleutel) continue;
+
+            using var cmd = new SqlCommand(@"
+                UPDATE [dbo].[TeamAliassen]
+                   SET [RuweTekstGenormaliseerd] = @nieuweSleutel, [mta_modified] = GETUTCDATE()
+                 WHERE [Id] = @id", conn);
+            cmd.Parameters.AddWithValue("@nieuweSleutel", nieuweSleutel);
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+            bijgewerkt++;
+        }
+        return bijgewerkt;
     }
 
     /// <summary>

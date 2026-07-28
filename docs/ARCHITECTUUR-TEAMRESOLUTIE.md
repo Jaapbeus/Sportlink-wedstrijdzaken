@@ -36,6 +36,14 @@ Verder komen in echte data voor: veteranen (`[club] 35+1`), vrouwen (`[club] VR1
 `[club] VR30+1`), gemengde teams met een `JM`-suffix (`[club] O14-1JM`), G-teams, en teams met een
 eigen naam zonder patroon. Een normalisatie die dat niet aankan, mangelt bestaande teams.
 
+Het scheidingsteken tussen leeftijd en teamnummer varieert óók: streepje (`MO13-1`), schuine streep
+(`jo13/2`), punt of komma, én een **kale spatie** (`MO13 1`). Die laatste vorm ontbrak aanvankelijk in
+de regels, waardoor `MO13 1` de sleutel `MO131` kreeg en `MO13-1` de sleutel `MO13-1` — twee sleutels
+voor hetzelfde team. Gevolg: geen alias- en geen exacte match, én `Parse` gaf `null` zodat
+`LeeftijdNummer`/`TeamNummer` in `dbo.Teams` leeg bleven en ook het kandidatenpad (stap 3 hieronder)
+stilviel. Voor de democlub AllStars FC, waarvan élk team deze notatie gebruikt, was daarmee geen enkel
+team meer herkenbaar (#766).
+
 ## De oplossing: één vertaalpunt, deterministisch
 
 ```
@@ -116,6 +124,44 @@ voor de geconfigureerde `clubCode`, één keer expliciet voor `"ALLSTARS"`. Zond
 blijft `dbo.Teams` voor de democlub permanent leeg en toont elke UI die daaruit leest (bijv. de
 teamdropdown bij Voorkeurstijden) nul teams voor AllStars FC.
 
+## De genormaliseerde sleutel is opgeslagen data — wijzigen vraagt een migratie (#766)
+
+`dbo.Teams.TeamnaamGenormaliseerd` en `dbo.TeamAliassen.RuweTekstGenormaliseerd` zijn **persistente**
+kolommen met een waarde die door C#-code berekend is. Elke wijziging in `TeamNaamNormalisatie` is
+daarmee ook een datamigratie.
+
+Zonder migratiestap gaat het als volgt mis: de MERGE in `UpsertTeamAsync` matcht op
+`(ClubCode, TeamnaamGenormaliseerd)`. Met een nieuwe sleutel vindt hij de bestaande rij niet meer, valt
+in de INSERT-tak en botst op `UQ_Teams_Club_Teamnaam` — de teamnaam bestaat immers al. Die fout wordt
+per team gevangen en gelogd, terwijl `DeactiveerOntbrekendeTeamsAsync` de oude rij op `IsActief = 0`
+zet. Netto: **de teams verdwijnen uit `dbo.Teams` en komen ook bij volgende syncs nooit terug**, want de
+unique constraint blijft falen.
+
+`TeamCanonicalisatieService.MigreerSleuteldriftAsync` lost dit generiek op, vóór de upserts:
+
+1. Herbereken per bestaande rij de sleutel uit de al opgeslagen `Teamnaam` — in C#, dus zonder de
+   normalisatieregels in T-SQL na te bouwen.
+2. Wijkt die af, dan worden sleutel **én** `LeeftijdNummer`/`TeamNummer` in-place bijgewerkt. Die twee
+   komen uit dezelfde ontleding: een sleutel zonder streepje leverde geen componenten op, en dan geeft
+   `FindKandidatenAsync` nul kandidaten. Alleen de sleutel repareren herstelt de exacte match maar laat
+   de ambiguïteitsafhandeling ("13-1") stilliggen tot de volgende volledige canonicalisatie.
+3. Vallen twee bestaande rijen op dezelfde nieuwe sleutel, dan waren het twee schrijfwijzen van
+   hetzelfde fysieke team. De rij die de sleutel al had (of anders de oudste) blijft; de aliassen van de
+   ander — inclusief geleerde en handmatig toegevoegde — worden omgehangen en de dubbele rij wordt
+   verwijderd. Verwijderen mag hier omdat de verwijzingen net omgehangen zijn; laten staan zou juist
+   schadelijk zijn, want de rij houdt de teamnaam bezet en blokkeert daarmee de upsert van de winnaar.
+4. Aliassleutels worden eveneens herberekend. Voor `Bron = 'Sync'` doet de canonicalisatie dat verderop
+   toch al; geleerde en handmatig toegevoegde aliassen zouden anders alleen nog op de exacte ruwe tekst
+   vindbaar zijn.
+
+De stap is idempotent: zonder drift kost hij twee SELECTs en verandert niets. Hij loopt mee in elke
+sync (voor de eigen club én voor AllStars FC), en daarnaast in `TeamlijstGereedheid` — dus ook vóór
+e-mailverwerking en vóór een dry-run in de e-mailtester. Daardoor herstelt een productiedatabase zich
+ook wanneer de nachtelijke sync uit staat (`syncEnabled = 0`) of nog niet gelopen heeft sinds de deploy,
+zonder handmatig migratiescript.
+
+Logregels om op te zoeken: `sleutel gemigreerd voor` en `dubbele schrijfwijze ... samengevoegd met`.
+
 ## Waarom exacte matching in plaats van LIKE
 
 De schrijfwijze verschilt per bron: `his.matches` gebruikt "[club] JO10-1" (mét J), de bondsrijen in
@@ -140,8 +186,8 @@ alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de re
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen`, altijd op ClubCode. |
 | `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
-| `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties. |
-| `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is; faalt hard en zichtbaar als dat niet lukt. |
+| `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
+| `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. |
 
 ## Regels bij wijzigingen
 

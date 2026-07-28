@@ -98,6 +98,13 @@ public static class EmailTestFunction
             // echte verwerking (#700). Verplicht: zonder resolver wordt er geen team meer herkend.
             var teamResolver = context.InstanceServices.GetRequiredService<ITeamResolver>();
 
+            // De teamlijst van de geselecteerde club moet bruikbaar zijn vóór de resolutie (#766).
+            // De echte pipeline doet dit al voor de primaire club; de tester werkt óók met de
+            // democlub, en juist die lijst wordt door geen enkel ander pad gecontroleerd.
+            var gereedheid = context.InstanceServices.GetService<TeamlijstGereedheid>();
+            if (gereedheid != null)
+                await gereedheid.ZorgVoorTeamlijstAsync(clubCode);
+
             var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
                 classificatie, fakeEmail, log, teamResolver, clubCode, clubSettings);
             // clubCode expliciet meegeven: zonder dat leest EmailTemplateService de templates van de
