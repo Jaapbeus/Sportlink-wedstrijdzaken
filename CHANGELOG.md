@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.18.0.0] — 2026-07-28
+
 ### Added
 - **Als een tegenstander per e-mail vraagt om een wedstrijd te verzetten zonder een nieuwe datum te noemen, stemt het systeem geen nieuwe datum meer zelf af.** In plaats daarvan gaat het antwoord naar de tegenstander met de begeleiding van ons eigen team in BCC (zodat beide teams het onderling kunnen afstemmen), inclusief de KNVB-speeldagenkalender als bijlage en een voorzet van een paar zaterdagen waarop ons team volgens het huidige programma nog vrij is. Aangestuurd via twee nieuwe kolommen in `dbo.AppSettings` (`KnvbStandaardRegio`, `KnvbPdfBijlageIngeschakeld` — nog geen GUI-scherm, rechtstreeks in de database in te stellen) — ontbreekt de regio, dan verandert er niets aan het bestaande herplan-gedrag. (#561)
 - **Teamherkenning in inkomende e-mail werkt nu vanuit één teamlijst in plaats van losse tekstregels** (#692, #696, #697, #698, #699). Teamnamen komen in allerlei schrijfwijzen binnen — "JO13-2", "JO 13-2", "jo13/2", of alleen "13-1" — en werden op meerdere plekken los van elkaar geïnterpreteerd. Daardoor kon een tegenstander per ongeluk als eigen team worden gezien, met thuis en uit omgedraaid. Er is nu één teamlijst die na elke nachtelijke synchronisatie wordt opgebouwd, en één plek die een schrijfwijze naar het juiste team herleidt.
@@ -47,6 +49,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Teambegeleiding staat nu bovenaan** in het menu en als eerste tegel op het dashboard, direct onder Dashboard. Het is het meest gebruikte scherm: contactgegevens van begeleiders zijn hier sneller te vinden dan in Sportlink zelf. De overige schermen behouden hun onderlinge volgorde. (#669)
 
 ### Fixed
+- **De twee nieuwe instellingen voor de KNVB-kalenderbijlage zouden bij het live zetten ontbreken in de database** (#561). Ze waren alleen aan de schemadefinitie toegevoegd, en die definitie wordt bij een deploy niet uitgerold — alleen het migratiescript draait. Zonder deze correctie zou de Instellingen-pagina na deze release een foutmelding geven in plaats van te laden, terwijl er lokaal niets aan de hand leek. De bestaande controle hierop kijkt alleen naar nieuwe tabellen, niet naar nieuwe kolommen; dat gat is apart vastgelegd (#734). Het migratiescript is tegen een database met twee clubs uitgevoerd en twee keer achter elkaar gedraaid om te bevestigen dat herhalen veilig is.
 - **De teamherkenning werkt nu uitsluitend via de nieuwe teamlijst** (#700). De oude tekstregels die een teamnaam probeerden te repareren, en de aanname dat een team "van ons" is zodra er geen spatie in de naam staat, zijn verwijderd. Die aanname kon een tegenstander als eigen team aanmerken, met thuis en uit omgedraaid. Welk van de twee genoemde teams het eigen team is, wordt nu bepaald door te kijken wélke in de teamlijst staat.
 
   Er is ook geen schakelaar meer om de herkenning uit te zetten: als dat het enige pad is, is zo'n schakelaar geen veiligheidsventiel maar een valkuil. In plaats daarvan geldt: is de teamlijst leeg — bijvoorbeeld direct na een update, vóór de eerste nachtelijke synchronisatie — dan wordt hij eenmalig alsnog opgebouwd, en lukt dat niet, dan wordt er niet verwerkt in plaats van berichten koppelen zonder herkenning.
