@@ -13,7 +13,9 @@ internal interface IEmailPersistenceRepository
     Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson);
     Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail);
     Task UpdateVoorgesteldAntwoordAsync(int verwerkingId, string antwoordEmail);
-    Task UpdateFoutAsync(string messageId, string foutMelding);
+    Task MarkeerVerzendPogingAsync(int verwerkingId);
+    Task WisVerzendPogingAsync(int verwerkingId);
+    Task UpdateFoutAsync(int verwerkingId, string foutMelding);
     Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log);
     Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId);
@@ -66,8 +68,14 @@ internal sealed class SqlEmailPersistenceRepository : IEmailPersistenceRepositor
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
         => EmailProcessingRepository.UpdateAntwoordVerstuurdAsync(verwerkingId, verstuurdNaar, antwoordEmail);
 
-    public Task UpdateFoutAsync(string messageId, string foutMelding)
-        => EmailProcessingRepository.UpdateFoutAsync(messageId, foutMelding);
+    public Task MarkeerVerzendPogingAsync(int verwerkingId)
+        => EmailProcessingRepository.MarkeerVerzendPogingAsync(verwerkingId);
+
+    public Task WisVerzendPogingAsync(int verwerkingId)
+        => EmailProcessingRepository.WisVerzendPogingAsync(verwerkingId);
+
+    public Task UpdateFoutAsync(int verwerkingId, string foutMelding)
+        => EmailProcessingRepository.UpdateFoutAsync(verwerkingId, foutMelding);
 
     public Task<(bool IsReply, int? OrigineleVerwerkingId, string? OrigineelType, string? OriginaleSamenvatting)>
         DetecteerReplyOpOnsAntwoordAsync(string conversationId, string clubCode, ILogger log)

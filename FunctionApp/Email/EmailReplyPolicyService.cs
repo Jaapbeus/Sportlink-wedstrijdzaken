@@ -57,7 +57,7 @@ internal sealed class EmailReplyPolicyService
             catch (Exception ex)
             {
                 log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
-                try { await persistenceService.UpdateFoutAsync(email.MessageId, sanitizeFoutMelding(ex.Message)); } catch { }
+                try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); } catch { }
             }
 
             return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
@@ -85,6 +85,14 @@ internal sealed class EmailReplyPolicyService
 
         var (onderwerp, antwoordBody) = await bouwTemplateAntwoordAsync();
 
+        // Verzendintentie vóór het versturen (#716). Wordt de invocatie hierna hard afgebroken
+        // (functie-time-out, host-recycle, scale-in), dan is dit het enige spoor dat er misschien al
+        // een antwoord de deur uit is — de volgende poll stuurt dan geen tweede antwoord meer maar legt
+        // het bericht ter beoordeling neer. Mislukt het vastleggen van de intentie zelf, dan wordt er
+        // niet verstuurd: zonder die grens is een dubbel antwoord mogelijk, en dat weegt zwaarder dan
+        // een poging uitstellen naar de volgende poll.
+        await persistenceService.MarkeerVerzendPogingAsync(verwerkingId);
+
         try
         {
             await graphService.SendReplyAsync(email.Afzender, onderwerp, antwoordBody, email.ConversationId);
@@ -92,7 +100,17 @@ internal sealed class EmailReplyPolicyService
         catch (Exception ex)
         {
             log.LogError(ex, "Graph-send mislukt voor verwerking {Id} — VerzendFout, mail blijft ongelezen", verwerkingId);
-            try { await persistenceService.UpdateFoutAsync(email.MessageId, sanitizeFoutMelding(ex.Message)); } catch { }
+            // Het versturen is aantoonbaar mislukt, dus de intentie moet weg: anders is dit scenario —
+            // waarin juist wél opnieuw geprobeerd moet worden (#712) — niet te onderscheiden van een
+            // onbekende uitkomst en belandt het bericht onnodig op Review.
+            try { await persistenceService.WisVerzendPogingAsync(verwerkingId); }
+            catch (Exception wisEx)
+            {
+                log.LogWarning(wisEx,
+                    "Verzendintentie kon niet gewist worden voor verwerking {Id} — een volgende poll legt dit "
+                    + "bericht ter beoordeling neer in plaats van opnieuw te versturen", verwerkingId);
+            }
+            try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); } catch { }
             return ReplyVerwerkingUitkomst.VerzendFout;
         }
 

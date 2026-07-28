@@ -54,9 +54,18 @@ internal static class EmailProcessingRepository
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        // AntwoordVerstuurd komt primair uit IsBeantwoord: die kolom overleeft de AVG-anonimisering,
+        // VerstuurdNaar niet (#718). VerstuurdNaar blijft als terugvalpad staan voor rijen die vóór de
+        // migratie zijn beantwoord en toen niet meer te backfillen waren.
+        //
+        // VerzendPogingOnbeslist: er is een verzendintentie vastgelegd die niet is gewist én er is geen
+        // antwoord vastgelegd — dus verstuurd of misschien verstuurd, uitkomst onbekend (#716).
         using var cmd = new SqlCommand(@"
             SELECT [Id], [Status], [Pogingen],
-                   CASE WHEN [VerstuurdNaar] IS NULL THEN 0 ELSE 1 END AS AntwoordVerstuurd
+                   CASE WHEN [IsBeantwoord] = 1 OR [VerstuurdNaar] IS NOT NULL THEN 1 ELSE 0 END AS AntwoordVerstuurd,
+                   CASE WHEN [VerzendPogingOpUtc] IS NOT NULL
+                             AND [IsBeantwoord] = 0
+                             AND [VerstuurdNaar] IS NULL THEN 1 ELSE 0 END AS VerzendPogingOnbeslist
             FROM [planner].[EmailVerwerking]
             WHERE [MessageId] = @MessageId", conn);
         cmd.Parameters.AddWithValue("@MessageId", messageId);
@@ -68,7 +77,8 @@ internal static class EmailProcessingRepository
             VerwerkingId: r.GetInt32(0),
             Status: r.IsDBNull(1) ? "" : r.GetString(1),
             Pogingen: r.IsDBNull(2) ? 0 : r.GetInt32(2),
-            AntwoordVerstuurd: r.GetInt32(3) == 1);
+            AntwoordVerstuurd: r.GetInt32(3) == 1,
+            VerzendPogingOnbeslist: r.GetInt32(4) == 1);
     }
 
     internal static async Task VerhoogPogingenAsync(int verwerkingId)
@@ -160,17 +170,56 @@ internal static class EmailProcessingRepository
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// Legt vast dat het antwoord verstuurd is. <c>IsBeantwoord</c> wordt hier gezet en niet afgeleid
+    /// van <c>VerstuurdNaar</c>: dat adres is een persoonsgegeven en verdwijnt na 30 dagen, het feit
+    /// dat er geantwoord is moet blijven staan (#718).
+    /// </summary>
     internal static async Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
             UPDATE [planner].[EmailVerwerking]
-            SET [Status] = 'AntwoordVerstuurd', [VerstuurdNaar] = @Naar, [AntwoordEmail] = @Antwoord, [mta_modified] = GETUTCDATE()
+            SET [Status] = 'AntwoordVerstuurd', [IsBeantwoord] = 1, [VerstuurdNaar] = @Naar,
+                [AntwoordEmail] = @Antwoord, [mta_modified] = GETUTCDATE()
             WHERE [Id] = @Id", conn);
         cmd.Parameters.AddWithValue("@Id",      verwerkingId);
         cmd.Parameters.AddWithValue("@Naar",    verstuurdNaar);
         cmd.Parameters.AddWithValue("@Antwoord",antwoordEmail);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Zet de verzendintentie vlak vóór de verzendpoging (#716). Overschrijft een bestaande waarde
+    /// bewust: bij een hervatte verwerking hoort het tijdstip van de huidige poging.
+    /// </summary>
+    internal static async Task MarkeerVerzendPogingAsync(int verwerkingId)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            UPDATE [planner].[EmailVerwerking]
+            SET [VerzendPogingOpUtc] = GETUTCDATE(), [mta_modified] = GETUTCDATE()
+            WHERE [Id] = @Id", conn);
+        cmd.Parameters.AddWithValue("@Id", verwerkingId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Wist de verzendintentie omdat het versturen aantoonbaar is mislukt (#716). Zonder dit wissen zou
+    /// een échte verzendfout — het scenario van #712, waar juist wél opnieuw geprobeerd moet worden —
+    /// niet meer van een onbekende uitkomst te onderscheiden zijn en op Review belanden.
+    /// </summary>
+    internal static async Task WisVerzendPogingAsync(int verwerkingId)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            UPDATE [planner].[EmailVerwerking]
+            SET [VerzendPogingOpUtc] = NULL, [mta_modified] = GETUTCDATE()
+            WHERE [Id] = @Id", conn);
+        cmd.Parameters.AddWithValue("@Id", verwerkingId);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -192,15 +241,28 @@ internal static class EmailProcessingRepository
         await cmd.ExecuteNonQueryAsync();
     }
 
-    internal static async Task UpdateFoutAsync(string messageId, string foutMelding)
+    /// <summary>
+    /// Legt een verwerkingsfout vast op <b>Id</b> in plaats van op MessageId (#717), consistent met
+    /// elke andere mutatie op deze tabel.
+    /// <para>
+    /// De <c>IsBeantwoord = 0</c>-guard is het inhoudelijke deel: overlappen twee invocaties op
+    /// hetzelfde bericht — de singleton-lease van een timer-trigger kan verlopen — dan mag de
+    /// foutafhandeling van de ene niet de rij van de andere op 'Fout' zetten terwijl die het antwoord
+    /// juist wél heeft verstuurd. Dat maakt van een verstuurd antwoord een 'Fout'-regel in het
+    /// email-log, en de status is voor de coördinator het enige spoor.
+    /// </para>
+    /// </summary>
+    internal static async Task UpdateFoutAsync(int verwerkingId, string foutMelding)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
             UPDATE [planner].[EmailVerwerking]
             SET [Status] = 'Fout', [FoutMelding] = @Fout, [mta_modified] = GETUTCDATE()
-            WHERE [MessageId] = @MessageId", conn);
-        cmd.Parameters.AddWithValue("@MessageId", messageId);
+            WHERE [Id] = @Id
+              AND [IsBeantwoord] = 0
+              AND [VerstuurdNaar] IS NULL", conn);
+        cmd.Parameters.AddWithValue("@Id", verwerkingId);
         cmd.Parameters.AddWithValue("@Fout", foutMelding.Length > 1000 ? foutMelding[..1000] : foutMelding);
         await cmd.ExecuteNonQueryAsync();
     }
@@ -212,11 +274,14 @@ internal static class EmailProcessingRepository
         {
             using var conn = new SqlConnection(Cs);
             await conn.OpenAsync();
+            // IsBeantwoord i.p.v. alleen VerstuurdNaar (#718): dat adres wordt na 30 dagen
+            // geanonimiseerd, waardoor een reply op dag 31 — normaal bij een verzoek dat weken vooruit
+            // ligt — niet meer als reply werd herkend en er dus ook geen leermoment meer uit kwam.
             using var cmd = new SqlCommand(@"
                 SELECT TOP 1 [Id], [VerzoekType], [GeextraheerdeData]
                 FROM [planner].[EmailVerwerking]
                 WHERE [ConversationId] = @ConversationId
-                  AND [VerstuurdNaar] IS NOT NULL
+                  AND ([IsBeantwoord] = 1 OR [VerstuurdNaar] IS NOT NULL)
                   AND [ClubCode] = @ClubCode
                 ORDER BY [mta_inserted] DESC", conn);
             cmd.Parameters.AddWithValue("@ConversationId", conversationId);

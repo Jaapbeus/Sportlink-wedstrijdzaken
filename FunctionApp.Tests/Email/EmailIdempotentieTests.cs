@@ -18,8 +18,9 @@ namespace FunctionApp.Tests.Email;
 public class EmailIdempotentieTests
 {
     private static EmailVerwerkingStand Stand(
-        string status, int pogingen = 1, bool antwoordVerstuurd = false)
-        => new(VerwerkingId: 42, Status: status, Pogingen: pogingen, AntwoordVerstuurd: antwoordVerstuurd);
+        string status, int pogingen = 1, bool antwoordVerstuurd = false, bool verzendPogingOnbeslist = false)
+        => new(VerwerkingId: 42, Status: status, Pogingen: pogingen, AntwoordVerstuurd: antwoordVerstuurd,
+               VerzendPogingOnbeslist: verzendPogingOnbeslist);
 
     [Fact]
     public void GeenRij_LeidtTotNieuweVerwerking()
@@ -118,5 +119,52 @@ public class EmailIdempotentieTests
     {
         // Bewuste keuze: genoeg voor tijdelijke fouten, laag genoeg om de wachtrij vrij te houden.
         EmailIdempotentie.MaxPogingen.Should().Be(3);
+    }
+
+    // ── Verzendpoging met onbekende uitkomst (#716) ──
+
+    [Theory]
+    [InlineData(nameof(EmailStatus.Verwerkt))]
+    [InlineData(nameof(EmailStatus.Fout))]
+    [InlineData(nameof(EmailStatus.Geclassificeerd))]
+    public void OnbeslisteVerzendPoging_WordtNietOpnieuwVerstuurd(string status)
+    {
+        // Het faalscenario: de invocatie is hard afgebroken tussen het versturen en het vastleggen
+        // (functie-time-out, host-recycle, scale-in). Het antwoord kán de deur uit zijn, maar
+        // VerstuurdNaar is leeg en de status is niet definitief. Voorheen leidde dat tot herhalen —
+        // en dus tot een tweede antwoord voor de afzender.
+        EmailIdempotentie.Bepaal(Stand(status, verzendPogingOnbeslist: true))
+            .Should().Be(VerwerkingsBesluit.OnbeslistNaVerzendPoging);
+    }
+
+    [Fact]
+    public void OnbeslisteVerzendPoging_WeegtZwaarderDanDePogingenlimiet()
+    {
+        // De volgorde in Bepaal is bepalend: stond de pogingencheck eerst, dan zou een bericht met
+        // twee eerdere pogingen alsnog "opgeven" krijgen — dat is niet erg — maar een bericht mét
+        // ruimte voor een poging zou opnieuw verstuurd worden. Een onbekende verzenduitkomst is geen
+        // mislukte poging die je nog eens mag proberen.
+        EmailIdempotentie.Bepaal(
+                Stand(nameof(EmailStatus.Fout), pogingen: EmailIdempotentie.MaxPogingen, verzendPogingOnbeslist: true))
+            .Should().Be(VerwerkingsBesluit.OnbeslistNaVerzendPoging);
+    }
+
+    [Fact]
+    public void OnbeslisteVerzendPoging_OpEenAlAfgerondeRij_BlijftGewoonOverslaan()
+    {
+        // Is het antwoord wél vastgelegd, dan is er niets onbeslist meer: overslaan is dan de juiste
+        // en goedkoopste uitkomst, en de rij hoeft niet op Review te belanden.
+        EmailIdempotentie.Bepaal(
+                Stand(nameof(EmailStatus.AntwoordVerstuurd), antwoordVerstuurd: true, verzendPogingOnbeslist: true))
+            .Should().Be(VerwerkingsBesluit.OverslaanAlAfgerond);
+    }
+
+    [Fact]
+    public void ZonderVerzendPoging_BlijftHetGedragOngewijzigd()
+    {
+        // Regressiegrens: de nieuwe tak mag het pad van #712 (verzendfout → opnieuw proberen) niet
+        // raken. Daar wordt de intentie juist gewist omdat de mislukking vaststaat.
+        EmailIdempotentie.Bepaal(Stand(nameof(EmailStatus.Fout), verzendPogingOnbeslist: false))
+            .Should().Be(VerwerkingsBesluit.HerhaalVerwerking);
     }
 }

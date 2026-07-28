@@ -160,7 +160,13 @@ public class EmailReplyPolicyServiceTests
 
         result.Should().Be(ReplyVerwerkingUitkomst.VerzendFout);
         persistence.FoutUpdates.Should().ContainSingle(u =>
-            u.MessageId == "m4" && u.FoutMelding == "sanitized");
+            u.VerwerkingId == 300 && u.FoutMelding == "sanitized");
+
+        // De verzendintentie is gezet vóór de poging en weer gewist omdat het versturen aantoonbaar
+        // mislukte — anders zou de volgende poll dit als "uitkomst onbekend" zien en niet opnieuw
+        // proberen, terwijl dat hier juist de bedoeling is. (#716)
+        persistence.VerzendPogingMarkeringen.Should().ContainSingle(id => id == 300);
+        persistence.VerzendPogingWissingen.Should().ContainSingle(id => id == 300);
 
         // Het bericht blijft ongelezen zodat de volgende poll het opnieuw probeert. Dat werkt alleen
         // omdat de idempotentie-guard naar de eindstatus kijkt — zie EmailIdempotentieTests.
@@ -195,5 +201,101 @@ public class EmailReplyPolicyServiceTests
         result.Should().Be(ReplyVerwerkingUitkomst.AntwoordVerstuurd);
         graph.SentReplies.Should().ContainSingle();
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m5");
+    }
+
+    // ── Verzendintentie vóór het versturen (#716) ──
+
+    /// <summary>
+    /// De kern van #716: de grens die een tweede antwoord moet voorkomen werd pas geschreven nádat de
+    /// mail de deur uit was. Wordt de invocatie daartussen hard afgebroken, dan is er geen enkel spoor
+    /// en stuurt de volgende poll een tweede antwoord. De intentie moet dus vóór het versturen staan.
+    /// </summary>
+    [Fact]
+    public async Task VerzendIntentie_WordtVastgelegdVoordatErVerstuurdWordt()
+    {
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService();
+        var persistence = new RecordingEmailPersistenceService();
+        var intentieBijVersturen = -1;
+
+        // De fake legt vast hoeveel intenties er stonden op het moment van versturen. Nul zou betekenen
+        // dat de intentie ná het versturen wordt geschreven — precies de bug.
+        graph.OnSendReply = () => intentieBijVersturen = persistence.VerzendPogingMarkeringen.Count;
+
+        var result = await service.HandelReplyFlowAfAsync(
+            verwerkingId: 500,
+            email: new InkomendBericht { MessageId = "m6", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: false,
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
+            sanitizeFoutMelding: s => s,
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.AntwoordVerstuurd);
+        intentieBijVersturen.Should().Be(1, "de verzendintentie moet vastliggen vóórdat de mail de deur uit gaat");
+
+        // Bij een geslaagde verzending wordt de intentie niet gewist: het antwoord is vastgelegd, dus
+        // IsBeantwoord is de grens en er is niets onbeslist meer.
+        persistence.VerzendPogingWissingen.Should().BeEmpty();
+        persistence.AntwoordUpdates.Should().ContainSingle(u => u.VerwerkingId == 500);
+    }
+
+    /// <summary>
+    /// Kan de intentie niet worden vastgelegd, dan mag er niet verstuurd worden: zonder die grens is
+    /// een dubbel antwoord mogelijk. Een poging uitstellen naar de volgende poll is het lichtere kwaad.
+    /// </summary>
+    [Fact]
+    public async Task VerzendIntentieMislukt_ErWordtNietVerstuurd()
+    {
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService();
+        var persistence = new RecordingEmailPersistenceService { ThrowOnMarkeerVerzendPoging = true };
+
+        var actie = () => service.HandelReplyFlowAfAsync(
+            verwerkingId: 600,
+            email: new InkomendBericht { MessageId = "m7", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: false,
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
+            sanitizeFoutMelding: s => s,
+            log: NullLogger.Instance);
+
+        await actie.Should().ThrowAsync<InvalidOperationException>();
+        graph.SentReplies.Should().BeEmpty();
+        graph.MarkedAsReadIds.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// In review mode gaat er niets de deur uit, dus hoort er ook geen verzendintentie te staan —
+    /// anders zou een volgende poll dat als "uitkomst onbekend" lezen en het bericht onnodig blijven
+    /// markeren als iets waar de coördinator naar moet kijken.
+    /// </summary>
+    [Fact]
+    public async Task ReviewMode_LegtGeenVerzendIntentieVast()
+    {
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService();
+        var persistence = new RecordingEmailPersistenceService();
+
+        await service.HandelReplyFlowAfAsync(
+            verwerkingId: 700,
+            email: new InkomendBericht { MessageId = "m8", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: true,
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "body")),
+            sanitizeFoutMelding: s => s,
+            log: NullLogger.Instance);
+
+        persistence.VerzendPogingMarkeringen.Should().BeEmpty();
+        graph.SentReplies.Should().BeEmpty();
     }
 }

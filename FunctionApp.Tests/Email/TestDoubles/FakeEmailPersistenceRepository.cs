@@ -78,7 +78,11 @@ internal sealed class FakeEmailPersistenceRepository : IEmailPersistenceReposito
 
     public Task UpdateAntwoordVerstuurdAsync(int verwerkingId, string verstuurdNaar, string antwoordEmail) => throw new NotImplementedException();
 
-    public Task UpdateFoutAsync(string messageId, string foutMelding) => throw new NotImplementedException();
+    public Task MarkeerVerzendPogingAsync(int verwerkingId) => throw new NotImplementedException();
+
+    public Task WisVerzendPogingAsync(int verwerkingId) => throw new NotImplementedException();
+
+    public Task UpdateFoutAsync(int verwerkingId, string foutMelding) => throw new NotImplementedException();
 
     public Task UpdateReplyStatusAsync(int verwerkingId, bool isReply, int replyOpVerwerkingId) => throw new NotImplementedException();
 

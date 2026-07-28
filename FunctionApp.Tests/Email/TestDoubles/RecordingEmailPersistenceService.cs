@@ -9,7 +9,16 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
 
     public List<(int VerwerkingId, string VerstuurdNaar, string AntwoordEmail)> AntwoordUpdates { get; } = new();
 
-    public List<(string MessageId, string FoutMelding)> FoutUpdates { get; } = new();
+    public List<(int VerwerkingId, string FoutMelding)> FoutUpdates { get; } = new();
+
+    /// <summary>Verzendintenties die vóór een verzendpoging zijn vastgelegd (#716).</summary>
+    public List<int> VerzendPogingMarkeringen { get; } = new();
+
+    /// <summary>Verzendintenties die zijn gewist na een aantoonbaar mislukte verzending (#716).</summary>
+    public List<int> VerzendPogingWissingen { get; } = new();
+
+    /// <summary>Simuleert dat de verzendintentie niet vastgelegd kan worden (#716).</summary>
+    public bool ThrowOnMarkeerVerzendPoging { get; set; }
 
     public List<(int VerwerkingId, string AntwoordEmail)> VoorgesteldeAntwoorden { get; } = new();
 
@@ -74,9 +83,24 @@ internal sealed class RecordingEmailPersistenceService : IEmailPersistenceServic
         return Task.CompletedTask;
     }
 
-    public Task UpdateFoutAsync(string messageId, string foutMelding)
+    public Task MarkeerVerzendPogingAsync(int verwerkingId)
     {
-        FoutUpdates.Add((messageId, foutMelding));
+        if (ThrowOnMarkeerVerzendPoging)
+            throw new InvalidOperationException("Vastleggen van de verzendintentie mislukt (gesimuleerd)");
+
+        VerzendPogingMarkeringen.Add(verwerkingId);
+        return Task.CompletedTask;
+    }
+
+    public Task WisVerzendPogingAsync(int verwerkingId)
+    {
+        VerzendPogingWissingen.Add(verwerkingId);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateFoutAsync(int verwerkingId, string foutMelding)
+    {
+        FoutUpdates.Add((verwerkingId, foutMelding));
         return Task.CompletedTask;
     }
 
