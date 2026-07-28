@@ -9,6 +9,16 @@ AS
 -- his.matches.ClubCode is nullable (migratie 001): niet-gestempelde rijen horen bij de
 -- primaire club — daarom ISNULL(m.ClubCode, a.ClubCode). Zonder die tolerantie vallen
 -- legacy-wedstrijden uit de bezetting → onderschatte bezetting → dubbele boekingen.
+--
+-- Veldkoppeling via OUTER APPLY i.p.v. RTRIM(LEFT(m.[veld], 6)) (#719): die afkap op zes tekens
+-- registreerde een wedstrijd op "veld 10" als bezetting op "veld 1", waardoor veld 10 vrij leek en
+-- er een tweede wedstrijd op hetzelfde veld en tijdstip bij kon — een dubbele boeking. Een veldnaam
+-- langer dan zes tekens ("hoofdveld") viel volledig uit de bezetting weg. De matching is nu gelijk
+-- aan FunctionApp/Planner/VeldResolutie.cs en PlannerShared.ResolveVeld: exacte veldnaam, of veldnaam
+-- plus een spatie en de subpositie, langste veldnaam eerst.
+--
+-- LET OP: deze view staat óók als CREATE OR ALTER in Database/Script.PostDeployment1.sql, en CI rolt
+-- alléén dat script uit. Wijzig altijd beide — VeldResolutieDriftTests bewaakt dat.
 SELECT
     CAST(m.[kaledatum] AS DATE)                                                     AS Datum,
     CAST(m.[aanvangstijd] AS TIME)                                                  AS AanvangsTijd,
@@ -21,7 +31,7 @@ SELECT
     t.[leeftijdscategorie]                                                          AS LeeftijdsCategorie,
     m.[teamnaam]                                                                    AS TeamNaam,
     m.[wedstrijd]                                                                   AS Wedstrijd,
-    RTRIM(SUBSTRING(m.[veld], 7, 10))                                               AS VeldSubpositie,
+    v.[Subpositie]                                                                  AS VeldSubpositie,
     'Competitie'                                                                    AS Bron,
     ISNULL(m.[ClubCode], a.[ClubCode])                                              AS ClubCode,
     CAST(m.[wedstrijdcode] AS BIGINT)                                               AS Wedstrijdcode
@@ -36,9 +46,24 @@ LEFT JOIN [dbo].[Speeltijden] s
         ELSE REPLACE(REPLACE(REPLACE(t.[leeftijdscategorie], 'Onder ', 'JO'), 'Meisjes ', 'MO'), 'Vrouwen', 'VR')
     END
    AND s.[ClubCode] = a.[ClubCode]
-LEFT JOIN [dbo].[Velden] v
-    ON RTRIM(LEFT(m.[veld], 6)) = v.[VeldNaam]
-   AND v.[ClubCode] = a.[ClubCode]
+OUTER APPLY (
+    SELECT TOP 1
+        vv.[VeldNummer],
+        NULLIF(LTRIM(SUBSTRING(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))), LEN(vn.[Naam]) + 1, 100)), '') AS [Subpositie]
+    FROM [dbo].[Velden] vv
+    CROSS APPLY (SELECT LTRIM(RTRIM(REPLACE(ISNULL(vv.[VeldNaam], ''), '  ', ' '))) AS [Naam]) vn
+    WHERE vv.[ClubCode] = a.[ClubCode]
+      AND LEN(vn.[Naam]) > 0
+      AND (
+            LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))) = vn.[Naam]
+            OR (
+                 LEN(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' ')))) > LEN(vn.[Naam])
+                 AND LEFT(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))), LEN(vn.[Naam])) = vn.[Naam]
+                 AND SUBSTRING(LTRIM(RTRIM(REPLACE(ISNULL(m.[veld], ''), '  ', ' '))), LEN(vn.[Naam]) + 1, 1) = ' '
+               )
+          )
+    ORDER BY LEN(vn.[Naam]) DESC
+) v
 WHERE m.[accommodatie] LIKE '%' + a.[Accommodatie] + '%'
   AND m.[status] <> 'Afgelast'
   AND m.[aanvangstijd] IS NOT NULL
