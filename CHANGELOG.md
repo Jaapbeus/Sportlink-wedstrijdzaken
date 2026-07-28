@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Bij een vraag over meerdere datums noemt het antwoord nu de coördinator bij naam:** "Laat weten welke optie(s) de voorkeur hebben, dan gaan we samen met [naam] plannen en definitief opnemen in de planning." Staat er geen coördinatornaam in de instellingen, dan blijft de zin gewoon compleet zonder naam. De naam komt uit de instellingen van de club waarvoor het antwoord wordt opgebouwd, dus in een test met de demoklub verschijnt de demo-coördinator. (#670)
+
 ### Fixed
 - **Een mislukte databasemigratie laat de uitrol nu falen in plaats van "geslaagd" te melden.** Bij het uitrollen van een nieuwe versie draait een migratiescript tegen de database. Dat script meldde succes zolang het tot het einde kwam, ook als er onderweg fouten optraden — precies wat er twee releases achter elkaar gebeurde. De uitrol stopt nu bij de eerste echte fout. Zie issue #739.
 - **Een club die de software voor het eerst in gebruik neemt, krijgt nu een compleet werkende database.** Zeven tabellen — waaronder de tabel met alle instellingen — werden door het migratiescript wel gevuld en aangepast, maar nooit aangemaakt. Op de bestaande omgeving valt dat niet op, omdat die tabellen er al jaren staan; bij een nieuwe installatie ontbraken ze. Datzelfde gold voor een aantal schema's en voor vier overzichten die op de Sportlink-gegevens leunen. Het script controleert nu overal eerst of iets bestaat, en slaat wat nog niet kan netjes over tot de eerste synchronisatie is gelopen. Zie issue #734.
