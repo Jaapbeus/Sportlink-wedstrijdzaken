@@ -64,9 +64,35 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
-### Dagplanning — status-badges
+### Dagplanning — twee tabs: Optimaal en Huidig
 
-De dagplanning toont per wedstrijd een badge in de Status-kolom:
+Na een klik op **Optimaliseer** staat bovenaan de samenvattingsbalk (wedstrijden, zonder veld,
+zonder tijd, te wijzigen, optimale eindtijd). Daaronder staan twee tabs (#689):
+
+| Tab | Wat je ziet |
+|---|---|
+| **Optimaal** | De planning zoals de planner die voorstelt. Wedstrijden zijn hier te **verslepen** naar een andere tijd of een ander veld. |
+| **Huidig** | De stand zoals die nu in Sportlink staat. Niet te verslepen. |
+
+Elke tab heeft dezelfde opbouw: eerst de **tijdlijn per veld**, daaronder de **wedstrijdenlijst** van
+diezelfde stand. Omdat beide tabs op exact dezelfde hoogte beginnen, werkt wisselen als het
+vergelijken van twee foto's: je oog springt niet en je ziet direct wat er in de veldbezetting
+verandert. Eerder stonden hier twee verschillende vergelijkingen door elkaar — een tabel met
+"huidig" en "optimaal" in kolommen naast elkaar, én tabs die alléén de tijdlijn wisselden terwijl de
+tabel bleef staan.
+
+De **filterknoppen** (Alles / Wijzigingen / Probleem) gelden voor beide tabs. Filter je op
+"Wijzigingen", dan zie je in beide standen dezelfde selectie — dat maakt de vergelijking pas echt
+bruikbaar.
+
+De kolom **Wijziging** staat in beide tabs. In de tab Huidig is die juist het nuttigst: daar zie je
+welke wedstrijd gaat verschuiven, en met één klik op Optimaal zie je waarheen.
+
+De kolom **Voorkeurstijd** toont in de tab Optimaal de gewenste tijd mét de afwijking; in de tab
+Huidig alleen de gewenste tijd. Die afwijking is namelijk berekend op de optimale planning — hem bij
+de huidige stand tonen zou een getal beweren dat daar niet op is berekend.
+
+### Dagplanning — status-badges
 
 De dagplanning heeft **twee losse kolommen** die makkelijk verward worden (#666):
 
