@@ -298,6 +298,7 @@ bewust worden bekeken.
 | `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
 | `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
+| `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
@@ -634,6 +635,25 @@ Samenvatting van de drie harde regels:
 □ Modelnaam uit configuratie — niet hardcoded?
 □ KNVB-regels nog geldig voor het huidige seizoen?
 ```
+
+---
+
+### E-mail — analyse + doelarchitectuur vastgelegd, migratie nog niet gestart
+
+> Volledig ontwerp en gefaseerd migratieplan: **[docs/ARCHITECTUUR-EMAIL-MODULE.md](docs/ARCHITECTUUR-EMAIL-MODULE.md)**
+> (epic #777). Dit document beschrijft het **toekomstige** ontwerp — er is nog geen code gemigreerd.
+> Tot Fase 1 daarvan is uitgevoerd, is de huidige, verspreide structuur (§1 van dat document) nog
+> steeds de werkelijkheid: `EmailGraphService` blijft de enige Graph-adapter, `planner.EmailVerwerking`
+> blijft de AI-verwerkingsstatusmachine, en er bestaat nog geen generiek verzend-contract of
+> `<EmailComposer>`-component.
+
+Harde regel zodra de migratie start: **een nieuw Blazor-scherm dat e-mail moet versturen, of een
+nieuwe wijziging aan een bestaand verzendpad, raadpleegt eerst
+`docs/ARCHITECTUUR-EMAIL-MODULE.md`** — met name de vraag of het nieuwe/gewijzigde pad via het
+generieke `IEmailVerzendService`-contract kan lopen in plaats van opnieuw een eigen Graph-aanroep,
+sanitizing, ontvangerparsing of logging-tabel te bouwen. Een nieuwe, losstaande "vierde
+verzendmanier" naast de bestaande is een architectuurschending — dat is exact het probleem dat dit
+document oplost.
 
 ---
 
