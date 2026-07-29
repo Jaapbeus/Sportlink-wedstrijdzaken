@@ -96,7 +96,10 @@ namespace SportlinkFunction
                                 ELSE N'SELECT @r = CAST(NULL AS NVARCHAR(20)), @b = CAST(1 AS BIT)'
                             END;
                             EXEC sp_executesql @sql, N'@r NVARCHAR(20) OUTPUT, @b BIT OUTPUT', @r = @regio OUTPUT, @b = @bijlage OUTPUT;
-                            SELECT @r, @bijlage;", connection);
+                            -- @r/@b zijn de parameternamen BINNEN sp_executesql; in deze batch heten ze
+                            -- @regio/@bijlage. 'SELECT @r' gaf Msg 137 (compile-time), dus deze hele
+                            -- settings-load faalde altijd en beide KNVB-instellingen bleven leeg (#767).
+                            SELECT @regio, @bijlage;", connection);
                         using var knvbReader = await knvbCmd.ExecuteReaderAsync();
                         if (await knvbReader.ReadAsync())
                         {

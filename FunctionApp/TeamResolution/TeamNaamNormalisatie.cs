@@ -79,6 +79,13 @@ public static class TeamNaamNormalisatie
         // '+' blijft bewust ongemoeid: dat hoort bij veteranenteams ("35+1", "VR30+1").
         t = Regex.Replace(t, @"(\d)\s*[/,.\-]\s*(\d)", "$1-$2");
 
+        // Een kále spatie tussen leeftijd en teamnummer is óók een scheidingsteken:
+        // "MO13 1" → "MO13-1". Zonder deze regel viel die vorm in de generieke
+        // whitespace-strip hieronder en werd de sleutel "MO131" — een andere sleutel dan
+        // "MO13-1", terwijl het hetzelfde team is. Dat brak de teamherkenning volledig voor
+        // elke bron die deze notatie gebruikt (#766).
+        t = Regex.Replace(t, @"(\d)\s+(\d)", "$1-$2");
+
         // Streepje tussen een letter-only categorie en een teamnummer collapsen: "G-1" → "G1"
         // (lokale notatie) zodat het samenvalt met de bondsnotatie "G1". Een categorie MET cijfers
         // ("JO13-1") houdt zijn streepje — daar scheidt het de leeftijd van het teamnummer.
