@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.19.0",
+    "version": "2.19.1",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -2241,6 +2241,11 @@
           "bericht": {
             "type": "string",
             "description": "Berichttekst (max 2000 tekens)"
+          },
+          "ontvangers": {
+            "type": "string",
+            "nullable": true,
+            "description": "#765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk\nfragment mag `\"Naam\" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd\n(geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst\n(`dbo.UitgeslotenEmailAdressen`) vóór verzending.\n\nLeeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de\nhoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als\nfallback wanneer niemand gevonden wordt.\n"
           }
         }
       },
@@ -6223,7 +6228,7 @@
         ],
         "operationId": "teambegeleiding doorsturen",
         "summary": "Bericht doorsturen naar teambegeleiding",
-        "description": "Stuurt een bericht door naar de begeleidingsleden van een team via e-mail.\nDe e-mailadressen worden server-side opgezocht — ze staan nooit in de request body.\n",
+        "description": "Stuurt een bericht door naar de begeleidingsleden van een team via e-mail.\n\nStandaard (`ontvangers` leeg) worden de e-mailadressen server-side opgezocht en staan ze\nnooit in de request body. Sinds #765 kan de aanroeper zelf de ontvangers opgeven via\n`ontvangers` — die worden dan server-side geparsed en gevalideerd (zie\n`TeambegeleidingDoorsturenRequest.ontvangers`). Elke verzending — automatisch opgezocht of\nzelf opgegeven — wordt weggeschreven als audit-rij in `planner.EmailVerwerking`\n(`VerzoekType='TeambegeleidingDoorsturen'`), zichtbaar via `GET /beheer/email-log` en na\n30 dagen geanonimiseerd door dezelfde cleanup als de reguliere e-mailpipeline.\n",
         "security": [
           {
             "easyAuth": []
@@ -6262,7 +6267,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "description": "Ongeldige aanvraag. Naast de generieke validatie (team/bericht verplicht) geeft dit\nendpoint een 400 bij een ongeldig e-mailadres in `ontvangers` (met het foutieve fragment\nbenoemd), meer dan 15 ontvangers, of een ontvanger die voorkomt op de uitsluitingslijst\n(`dbo.UitgeslotenEmailAdressen`).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

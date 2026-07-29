@@ -32,7 +32,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/planner/veldbezetting?datum=` | Easy Auth (admin) | Wedstrijden op een datum, zonder optimalisatie-berekening |
 | `GET` | `/beheer/teambegeleiding` | **Admin+User** | Alle teams met begeleiding in database |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
-| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen naar coach (BCC coördinator) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders (vervangt de rijen van de club). CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST/PUT/DELETE` | `/beheer/speeltijden` en `/{leeftijd}` | **Admin** | Speeltijden per leeftijdscategorie beheren |
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
