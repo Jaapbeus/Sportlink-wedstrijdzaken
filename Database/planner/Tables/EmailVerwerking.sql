@@ -10,7 +10,9 @@ CREATE TABLE [planner].[EmailVerwerking] (
     [GeextraheerdeData]     NVARCHAR(MAX)   NULL,
     [PlannerResponse]       NVARCHAR(MAX)   NULL,
     [AntwoordEmail]         NVARCHAR(MAX)   NULL,
-    [VerstuurdNaar]         NVARCHAR(200)   NULL,
+    -- #765: kan een door de beheerder ingetypte lijst van tot 15 ontvangers bevatten
+    -- ("naam" <adres>; ...), niet langer alleen het ene server-side opgezochte coach-adres.
+    [VerstuurdNaar]         NVARCHAR(1000)  NULL,
     -- "Wij hebben op dit bericht geantwoord", losgekoppeld van het adres in VerstuurdNaar (#718).
     -- Die kolom is een persoonsgegeven en wordt na 30 dagen geanonimiseerd; het FEIT dat er
     -- geantwoord is, is dat niet. Beide betekenissen zaten op één kolom, waardoor de anonimisering

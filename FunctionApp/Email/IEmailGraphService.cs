@@ -12,7 +12,7 @@ public interface IEmailGraphService
     Task SendReplyAsync(string to, string subject, string body, string? conversationId,
         IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null);
     Task StuurTeamContactDoorAsync(
-        string coachEmail,
+        IReadOnlyList<string> ontvangers,
         string subject,
         string body,
         string? aanvragerEmail,

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
+using SportlinkFunction.Utilities;
 
 namespace SportlinkFunction.Admin;
 
@@ -139,41 +140,66 @@ public static class AdminTeambegeleidingFunction
             // Naam + email aanvrager uit Entra claims (server-side — nooit in response)
             var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
             var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
-            // Coach-email server-side ophalen (NOOIT in response)
-            string? coachEmail = null;
-            using (var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
+            // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
+            // houdt het oude gedrag (server-side TOP 1-lookup + coördinator-fallback) intact —
+            // bestaande API-consumers blijven werken zonder het nieuwe veld mee te sturen.
+            List<string>? ontvangers = null;
+            if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
             {
-                await connection.OpenAsync();
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-                using var cmd = new SqlCommand(@"
-                    SELECT TOP 1 [Emailadres]
-                    FROM [avg].[Teambegeleiding]
-                    WHERE [Team] = @team
-                      AND [Emailadres] IS NOT NULL
-                      AND [ClubCode] = @ClubCode
-                    ORDER BY
-                        CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
-                             WHEN [Teamrol] LIKE '%Coach%' THEN 2
-                             WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
-                             ELSE 4 END
-                ", connection);
-                cmd.Parameters.AddWithValue("@team", dto.TeamNaam);
-                cmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                var result = await cmd.ExecuteScalarAsync();
-                coachEmail = result as string;
+                var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
+                if (!parseResultaat.IsValid)
+                    return new BadRequestObjectResult(new { error = parseResultaat.FoutMelding });
+
+                var uitgesloten = await new SqlEmailPersistenceRepository().GetExcludedEmailAddressesAsync(clubCode);
+                var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
+                if (geweigerdAdres != null)
+                    return new BadRequestObjectResult(new
+                    {
+                        error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
+                    });
+
+                ontvangers = [.. parseResultaat.Emailadressen];
             }
 
-            // Coördinator-email ophalen uit AppSettings
+            // Coördinator-email ophalen uit AppSettings (BCC — ongewijzigd)
             var coordinatorEmail = SystemUtilities.AppSettings.GetSetting("plannerEmailAdres");
 
-            if (string.IsNullOrEmpty(coachEmail))
+            if (ontvangers == null)
             {
-                // Geen coach gevonden: stuur naar coördinator als fallback
-                if (string.IsNullOrEmpty(coordinatorEmail))
-                    return new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 };
-                coachEmail = coordinatorEmail;
-                log.LogWarning("Geen coach-email gevonden voor team — doorgestuurd naar coordinator");
+                // Coach-email server-side ophalen (NOOIT in response)
+                string? coachEmail = null;
+                using (var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
+                {
+                    await connection.OpenAsync();
+                    using var cmd = new SqlCommand(@"
+                        SELECT TOP 1 [Emailadres]
+                        FROM [avg].[Teambegeleiding]
+                        WHERE [Team] = @team
+                          AND [Emailadres] IS NOT NULL
+                          AND [ClubCode] = @ClubCode
+                        ORDER BY
+                            CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
+                                 WHEN [Teamrol] LIKE '%Coach%' THEN 2
+                                 WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
+                                 ELSE 4 END
+                    ", connection);
+                    cmd.Parameters.AddWithValue("@team", dto.TeamNaam);
+                    cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                    var result = await cmd.ExecuteScalarAsync();
+                    coachEmail = result as string;
+                }
+
+                if (string.IsNullOrEmpty(coachEmail))
+                {
+                    // Geen coach gevonden: stuur naar coördinator als fallback
+                    if (string.IsNullOrEmpty(coordinatorEmail))
+                        return new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 };
+                    coachEmail = coordinatorEmail;
+                    log.LogWarning("Geen coach-email gevonden voor team — doorgestuurd naar coordinator");
+                }
+                ontvangers = [coachEmail];
             }
 
             var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
@@ -195,7 +221,21 @@ public static class AdminTeambegeleidingFunction
 <hr />
 <p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
 
-            await emailService.StuurTeamContactDoorAsync(coachEmail, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+            await emailService.StuurTeamContactDoorAsync(ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+
+            // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
+            // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
+            // geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
+            // verzendpoging kunnen leiden).
+            try
+            {
+                await EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync(
+                    dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
+            }
+            catch (Exception auditEx)
+            {
+                log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
+            }
 
             return new OkObjectResult(new
             {
@@ -455,6 +495,6 @@ public static class AdminTeambegeleidingFunction
         return [.. fields];
     }
 
-    private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht);
+    private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht, string? Ontvangers);
     private record TeambegeleidingImportRequest(string CsvContent, string? Bestandsnaam);
 }

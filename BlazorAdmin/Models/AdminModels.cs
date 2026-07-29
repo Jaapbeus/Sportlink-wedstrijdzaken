@@ -174,6 +174,7 @@ public class DoorsturenRequest
     public string TeamNaam { get; set; } = "";
     public string? Onderwerp { get; set; }
     public string Bericht { get; set; } = "";
+    public string? Ontvangers { get; set; }
 }
 
 // ── Speeltijden ──
