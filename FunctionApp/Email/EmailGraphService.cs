@@ -256,9 +256,10 @@ public partial class EmailGraphService : IEmailGraphService
     }
 
     /// <summary>
-    /// Stuurt een teambegeleiding-vraag door naar de coach.
-    /// Coach e-mailadres blijft server-side; aanvrager ziet het nooit (AVG art. 6.1.f).
-    /// - To: coach e-mailadres (server-side lookup)
+    /// Stuurt een teambegeleiding-vraag door naar één of meer ontvangers.
+    /// Ontvanger-adressen blijven server-side; aanvrager ziet ze nooit (AVG art. 6.1.f).
+    /// - To: ontvangers — ofwel server-side opgezocht (automatische pipeline), ofwel door een
+    ///   beheerder opgegeven en gevalideerd via <see cref="SportlinkFunction.Utilities.OntvangerParser"/> (#765)
     /// - Reply-To: e-mailadres van aanvrager (Entra)
     /// - BCC: coördinator (uit AppSettings)
     ///
@@ -268,7 +269,7 @@ public partial class EmailGraphService : IEmailGraphService
     /// club lijkt te komen.
     /// </summary>
     public async Task StuurTeamContactDoorAsync(
-        string coachEmail, string subject, string body,
+        IReadOnlyList<string> ontvangers, string subject, string body,
         string? aanvragerEmail, string? coordinatorEmail)
     {
         try
@@ -281,7 +282,7 @@ public partial class EmailGraphService : IEmailGraphService
                     ContentType = BodyType.Html,
                     Content = EmailSanitizer.BouwVeiligeHtmlBody(body)
                 },
-                ToRecipients = [new Recipient { EmailAddress = new EmailAddress { Address = coachEmail } }]
+                ToRecipients = [.. ontvangers.Select(o => new Recipient { EmailAddress = new EmailAddress { Address = o } })]
             };
 
             if (!string.IsNullOrEmpty(aanvragerEmail))
@@ -298,7 +299,9 @@ public partial class EmailGraphService : IEmailGraphService
                 .SendMail
                 .PostAsync(new SendMailPostRequestBody { Message = message });
 
-            _logger.LogInformation("Teambegeleiding-vraag doorgestuurd (AVG: geen namen/emailadressen gelogd)");
+            _logger.LogInformation(
+                "Teambegeleiding-vraag doorgestuurd naar {Aantal} ontvanger(s) (AVG: geen namen/emailadressen gelogd)",
+                ontvangers.Count);
         }
         catch (Exception ex)
         {

@@ -505,13 +505,38 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 ### Functionaliteit
 
 1. **Team selecteren** — dropdown met alle teams waarvoor begeleiding beschikbaar is (uit `avg.Teambegeleiding`)
-2. **Begeleiders inzien** — kaarten per begeleider met naam en teamrol. E-mailadressen en telefoonnummers worden **nooit getoond** (AVG art. 6.1.f)
-3. **Vraag doorsturen** — klik "Stel een vraag" → vul Onderwerp (optioneel) en Bericht in → "Versturen"
-   - To: coach (opgezoekt server-side uit `avg.Teambegeleiding`)
+2. **Begeleiders inzien** — kaarten per begeleider met naam, teamrol, e-mailadres en telefoonnummer.
+   Deze pagina is zelf al afgeschermd achter Easy Auth (admin- of user-rol) — zichtbaarheid van
+   contactgegevens is dus geen aparte AVG-afweging per veld, maar een gevolg van wie er mag inloggen.
+3. **"Email Aan"-veld** — bewerkbaar tekstveld, standaard gevuld met alle begeleiders van het team in
+   `"Naam" <adres>; ...`-notatie. Dit veld bepaalt **daadwerkelijk** wie de mail bij "Vraag doorsturen"
+   ontvangt (#765) — er is dus geen verschil meer tussen wat u ziet en wat er verstuurd wordt.
+   - **Herstel** — zet het veld terug naar de volledige begeleiderslijst
+   - **Kopieer** — kopieert de huidige (eventueel bewerkte) inhoud naar het klembord, voor gebruik in
+     een los Outlook-bericht
+   - Verwijder een begeleider uit het veld om diegene over te slaan, of voeg een eigen adres toe
+   - Format per ontvanger: `"Naam" <trainer@voorbeeld.nl>` of een kaal adres, gescheiden door `;` of `,`
+   - Maximaal 15 ontvangers per verzending; een ongeldig adres wordt geweigerd met een melding die
+     precies aangeeft welk adres niet klopt
+   - Een geel waarschuwingsbalkje verschijnt (niet-blokkerend) bij een adres dat niet in de
+     begeleiderslijst van dit team voorkomt — controleer dit voordat u verstuurt
+4. **Vraag doorsturen** — klik "Stel een vraag" → de kaart toont "Wordt verstuurd naar: …" met exact de
+   inhoud van het "Email Aan"-veld → vul Onderwerp (optioneel) en Bericht in → "Versturen"
+   - To: de ontvangers uit het "Email Aan"-veld (leeg → server-side fallback: hoogst-geprioriteerde
+     begeleider, Trainer > Coach > Teamleider, met de coördinator als laatste terugval)
    - Reply-To: e-mailadres van de aanvrager (automatisch uit Entra ID)
    - BCC: coördinator (uit `dbo.AppSettings.plannerEmailAdres`)
-   - Coach antwoordt rechtstreeks naar aanvrager — aanvrager ziet nooit het coach-adres
-4. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
+   - Ontvangers antwoorden rechtstreeks naar de aanvrager
+   - **Zelf testen**: vul uw eigen e-mailadres in bij "Email Aan" (in plaats van of naast de
+     begeleiders) en verstuur een testvraag — u ontvangt de mail dan zelf en kunt controleren of
+     "Beantwoorden" in Outlook naar u terugkomt. Klik daarna "Herstel" om het veld weer op de echte
+     begeleiders te zetten
+   - Elke verzending — automatisch opgezocht of zelf opgegeven — wordt weggeschreven als rij in
+     `planner.EmailVerwerking` (`VerzoekType = TeambegeleidingDoorsturen`), dezelfde tabel als de
+     automatische e-mailpipeline, en wordt na 30 dagen automatisch geanonimiseerd. De teller
+     "e-mailverwerking" op de Instellingen-pagina telt deze rijen op dit moment gewoon mee — er is
+     (nog) geen aparte detailweergave per rij
+5. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
    en een voorbeeldweergave vóór bevestiging. De CSV wordt in de browser verwerkt en nooit op de server
    opgeslagen.
    - **Een import vervangt de bestaande teambegeleiding van de club volledig** — alle bestaande rijen
@@ -529,8 +554,8 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | Endpoint | Beschrijving |
 |---|---|
 | `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
-| `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam + rol, nooit contactgegevens) |
-| `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag naar coach |
+| `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam, rol, e-mailadres, telefoonnummer) |
+| `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag; `ontvangers` bepaalt de ontvangers (leeg → server-side coach-lookup) |
 | `POST /api/beheer/teambegeleiding/import` | CSV-import; vervangt alle rijen van de club |
 
 Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.

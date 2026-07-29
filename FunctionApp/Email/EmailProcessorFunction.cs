@@ -953,7 +953,7 @@ public class EmailProcessorFunction
             // AVG: Reply-To = email.Afzender zodat coach rechtstreeks kan antwoorden
             // BCC veldplanner voor audit; coach-email nooit in logs
             await graphService.StuurTeamContactDoorAsync(
-                coach.Emailadres, subject, body, email.Afzender, auditKopieAdres);
+                [coach.Emailadres], subject, body, email.Afzender, auditKopieAdres);
 
             log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", teamNaam);
         }

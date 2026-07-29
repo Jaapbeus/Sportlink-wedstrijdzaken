@@ -94,6 +94,33 @@ internal static class EmailProcessingRepository
     }
 
     /// <summary>
+    /// Audit-trail voor een handmatige teambegeleiding-doorstuur (#765). Een door de beheerder
+    /// ingetypt ontvangersadres is een nieuw persoonsgegeven; door deze rij in dezelfde tabel als
+    /// de e-mailpipeline te zetten (synthetische <c>MessageId</c>, kolom is <c>NOT NULL UNIQUE</c>)
+    /// verschijnt de verzending in de bestaande Email-log-pagina én erft ze automatisch de
+    /// 30-dagen-anonimisering van <c>sp_CleanupEmailVerwerking</c> — geen aparte bewaartermijn nodig.
+    /// </summary>
+    internal static async Task InsertTeambegeleidingDoorsturenAuditAsync(
+        string teamNaam, string aanvragerEmail, string ontvangersRegel, string clubCode)
+    {
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(@"
+            INSERT INTO [planner].[EmailVerwerking]
+                ([MessageId], [Afzender], [Onderwerp], [OntvangstDatum], [VerzoekType], [Status],
+                 [IsBeantwoord], [VerstuurdNaar], [ClubCode], [Pogingen])
+            VALUES
+                (@MessageId, @Afzender, @Onderwerp, SYSUTCDATETIME(), 'TeambegeleidingDoorsturen',
+                 'AntwoordVerstuurd', 1, @VerstuurdNaar, @ClubCode, 1)", conn);
+        cmd.Parameters.AddWithValue("@MessageId",    $"teambegeleiding-doorsturen-{Guid.NewGuid()}");
+        cmd.Parameters.AddWithValue("@Afzender",     aanvragerEmail);
+        cmd.Parameters.AddWithValue("@Onderwerp",    $"[{teamNaam}] Vraag doorgestuurd");
+        cmd.Parameters.AddWithValue("@VerstuurdNaar",ontvangersRegel);
+        cmd.Parameters.AddWithValue("@ClubCode",     clubCode);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
     /// Registreert een nieuw bericht. Gooit <see cref="DubbeleMessageIdException"/> als een
     /// gelijktijdige invocatie deze MessageId al heeft vastgelegd.
     /// </summary>

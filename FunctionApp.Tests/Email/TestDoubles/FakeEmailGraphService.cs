@@ -9,7 +9,7 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     public List<(string MessageId, string[] Categories)> CategoryUpdates { get; } = new();
     public List<(string Name, string ColorPreset)> EnsuredCategories { get; } = new();
     public List<(string To, string Subject, string Body, string? ConversationId, IReadOnlyList<string>? Bcc, EmailBijlage? Bijlage)> SentReplies { get; } = new();
-    public List<(string CoachEmail, string Subject, string Body, string? AanvragerEmail, string? CoordinatorEmail)> TeamForwardings { get; } = new();
+    public List<(IReadOnlyList<string> Ontvangers, string Subject, string Body, string? AanvragerEmail, string? CoordinatorEmail)> TeamForwardings { get; } = new();
 
     public bool ThrowOnSendReply { get; set; }
 
@@ -54,13 +54,13 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     }
 
     public Task StuurTeamContactDoorAsync(
-        string coachEmail,
+        IReadOnlyList<string> ontvangers,
         string subject,
         string body,
         string? aanvragerEmail,
         string? coordinatorEmail)
     {
-        TeamForwardings.Add((coachEmail, subject, body, aanvragerEmail, coordinatorEmail));
+        TeamForwardings.Add((ontvangers, subject, body, aanvragerEmail, coordinatorEmail));
         return Task.CompletedTask;
     }
 }
