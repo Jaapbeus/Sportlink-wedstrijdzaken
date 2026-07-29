@@ -707,6 +707,15 @@ naar de coach. Is er geen coach gevonden in `avg.Teambegeleiding`, dan gebeurt d
 > — die bestaat niet in `dbo.AppSettings`, waardoor de kopie nooit uitging terwijl code én
 > documentatie dat wel beloofden (#712).
 
+> **Te onderscheiden van de handmatige doorstuur-actie op `/teambegeleiding` (#765).** Een beheerder
+> kan via het bewerkbare "Email Aan"-veld zelf de ontvangers van een doorstuur-mail opgeven — dat is
+> een losse, door de gebruiker geïnitieerde actie (`AdminTeambegeleidingFunction.Doorsturen`), niet
+> deze AI-classificatiestap. Beide schrijven wel naar dezelfde tabel `planner.EmailVerwerking`: de
+> automatische pipeline met `VerzoekType = TeamContactOpvragen`, de handmatige actie met
+> `VerzoekType = TeambegeleidingDoorsturen` (een synthetische audit-rij, geen echt inkomend bericht —
+> `MessageId` is gegenereerd, niet afkomstig van Graph). Filter op `VerzoekType` om de twee in de
+> Email-log uit elkaar te houden.
+
 ---
 
 ### Classificatie: Bevestiging

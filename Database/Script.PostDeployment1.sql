@@ -176,7 +176,7 @@ BEGIN
         [GeextraheerdeData]    NVARCHAR(MAX)   NULL,
         [PlannerResponse]      NVARCHAR(MAX)   NULL,
         [AntwoordEmail]        NVARCHAR(MAX)   NULL,
-        [VerstuurdNaar]        NVARCHAR(200)   NULL,
+        [VerstuurdNaar]        NVARCHAR(1000)  NULL,
         [IsBeantwoord]         BIT             NOT NULL CONSTRAINT [DF_EmailVerwerking_IsBeantwoord] DEFAULT 0,
         [VerzendPogingOpUtc]   DATETIME2       NULL,
         [Status]               NVARCHAR(30)    NOT NULL CONSTRAINT [DF_EmailVerwerking_Status] DEFAULT 'Ontvangen',
@@ -3169,4 +3169,20 @@ BEGIN
     ALTER TABLE [planner].[ClassificatieCorrectie]
         ADD CONSTRAINT [UQ_ClassificatieCorrectie_Paar] UNIQUE ([OrigineleVerwerkingId], [CorrectionVerwerkingId]);
 END
+GO
+
+-- ============================================================
+-- #765: "Email Aan" op /teambegeleiding is nu bewerkbaar en bepaalt zelf de ontvangers van de
+-- doorstuur-mail (tot 15, "naam" <adres>; ... ), in plaats van het ene server-side opgezochte
+-- coach-adres. planner.EmailVerwerking.VerstuurdNaar (NVARCHAR(200)) was daar te krap voor —
+-- 15 adressen van gemiddelde lengte passen daar niet in, en een stille kortwiek zou de audit-trail
+-- corrumperen (INSERT/UPDATE zou falen op stringafkap of de waarde onopgemerkt afkappen).
+-- ============================================================
+IF EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('planner.EmailVerwerking')
+      AND name = 'VerstuurdNaar'
+      AND max_length < 2000 -- NVARCHAR: 2 bytes per teken, dus 2000 = 1000 tekens
+)
+    ALTER TABLE [planner].[EmailVerwerking] ALTER COLUMN [VerstuurdNaar] NVARCHAR(1000) NULL;
 GO
