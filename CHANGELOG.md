@@ -36,8 +36,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   volledige inventarisatie van alle bestaande verzendpaden (automatische AI-reply, handmatig
   doorsturen), een doelarchitectuur met één stabiel verzend-contract, generieke ontvangerresolutie
   en logging, en een gefaseerd migratieplan inclusief de afzenderstrategie voor "verzenden als
-  ingelogde gebruiker". Analyse en ontwerp; geen functionele wijziging in deze wijziging zelf.
-  Vervolgwerk loopt via losse issues onder epic zie issue #777.
+  ingelogde gebruiker" en, als uitbreiding daarop, "verzenden namens een gedeeld postvak" (Send
+  As/Send on Behalf via Exchange-mailboxrechten). Analyse en ontwerp; geen functionele wijziging
+  in deze wijziging zelf. Vervolgwerk loopt via losse issues onder epic zie issue #777.
 
 ## [2.19.0.0] — 2026-07-28
 

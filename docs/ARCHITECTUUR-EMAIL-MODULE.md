@@ -339,7 +339,7 @@ FunctionApp/Email/
 │   ├── IEmailVerzendService.cs        — het stabiele verzend-contract
 │   ├── EmailVerzendService.cs         — implementatie; wrapt IEmailGraphService
 │   ├── EmailVerzendOpdracht.cs        — record: ontvangers, onderwerp, body, afzender, bcc, bijlage
-│   ├── AfzenderStrategie.cs           — Systeem | IngelogdeGebruiker(...)
+│   ├── AfzenderStrategie.cs           — Systeem | IngelogdeGebruiker(...) | GedeeldPostvak(...)
 │   └── EmailOorsprong.cs              — enum: AutomatischeAiReply, TeambegeleidingDoorsturen, GenericComposer, ...
 ├── Ontvangers/                        (NIEUW, bouwt voort op de bestaande OntvangerParser)
 │   ├── OntvangerResolutieService.cs   — parse + opt-out-check in één aanroep
@@ -391,6 +391,7 @@ public abstract record AfzenderStrategie
     private AfzenderStrategie() { }
     public sealed record Systeem : AfzenderStrategie;
     public sealed record IngelogdeGebruiker(string GebruikerEmail) : AfzenderStrategie;
+    public sealed record GedeeldPostvak(string GebruikerEmail, string PostvakAdres) : AfzenderStrategie;
 }
 
 public enum EmailOorsprong
@@ -413,7 +414,8 @@ nieuwe, dunnere adapter ernaast voor **alle nieuwe call-sites**, en:
 1. roept `OntvangerResolutieService` aan (parse + opt-out, §3.3);
 2. roept `EmailSanitizer.BouwVeiligeHtmlBody` aan op de body;
 3. kiest op basis van `AfzenderStrategie` tussen de bestaande app-only `GraphServiceClient`
-   (`Systeem`) en — ná §3.5 — een per-gebruiker Graph-aanroep (`IngelogdeGebruiker`);
+   (`Systeem`) en — ná §3.6 — een per-gebruiker Graph-aanroep (`IngelogdeGebruiker` of
+   `GedeeldPostvak`, zie §3.6 "Optie A2");
 4. roept `IEmailLogService` aan, vóór én na de verzending (zelfde vroeg-vastleggen-patroon als
    `MarkeerVerzendPogingAsync`/`WisVerzendPogingAsync` in de AI-pipeline, maar generiek).
 
@@ -460,8 +462,14 @@ CREATE TABLE [dbo].[EmailLog] (
     [Richting]        NVARCHAR(20)   NOT NULL,   -- 'Uitgaand' (inkomend blijft planner.EmailVerwerking)
     [Oorsprong]       NVARCHAR(50)   NOT NULL,   -- EmailOorsprong-enum als string
     [BronScherm]      NVARCHAR(100)  NULL,       -- 'Teambegeleiding', 'EmailComposer', ...
-    [AfzenderType]    NVARCHAR(20)   NOT NULL,   -- 'Systeem' | 'IngelogdeGebruiker'
-    [AfzenderAdres]   NVARCHAR(200)  NULL,       -- alleen gevuld bij IngelogdeGebruiker; persoonsgegeven
+    [AfzenderType]    NVARCHAR(20)   NOT NULL,   -- 'Systeem' | 'IngelogdeGebruiker' | 'GedeeldPostvak'
+    [AfzenderAdres]   NVARCHAR(200)  NULL,       -- IngelogdeGebruiker: diens eigen adres. GedeeldPostvak:
+                                                  -- het postvak-adres waar de mail als/namens is verstuurd.
+                                                  -- persoonsgegeven
+    [UitvoerendeGebruiker] NVARCHAR(200) NULL,   -- ALTIJD gevuld bij GedeeldPostvak, ook bij Send As waar
+                                                  -- Graph zelf sender/from niet uit elkaar houdt (§3.6
+                                                  -- Optie A2) — dit veld is dan de enige plek waar de
+                                                  -- werkelijke afzender nog vastligt; persoonsgegeven
     [Onderwerp]       NVARCHAR(500)  NOT NULL,
     [Ontvangers]      NVARCHAR(1000) NULL,       -- persoonsgegeven, zelfde 30-dagenregel als VerstuurdNaar
     [Status]          NVARCHAR(20)   NOT NULL,   -- 'Verstuurd' | 'Mislukt'
@@ -474,8 +482,8 @@ CREATE TABLE [dbo].[EmailLog] (
 
 Plus een nieuwe `sp_CleanupEmailLog` die exact hetzelfde 30-dagen-anonimiseren/90-dagen-verwijderen-
 patroon toepast als `sp_CleanupEmailVerwerking` (`Database/planner/System Stored
-Procedures/sp_CleanupEmailVerwerking.sql:1-72`): geanonimiseerd worden `AfzenderAdres` en
-`Ontvangers`; **nooit aangeraakt**: `Status` en `Oorsprong` (geen persoonsgegevens, wel nodig om te
+Procedures/sp_CleanupEmailVerwerking.sql:1-72`): geanonimiseerd worden `AfzenderAdres`,
+`UitvoerendeGebruiker` en `Ontvangers`; **nooit aangeraakt**: `Status` en `Oorsprong` (geen persoonsgegevens, wel nodig om te
 blijven rapporteren "hoeveel e-mails zijn er verstuurd"). Aanroepen vanuit dezelfde wekelijkse timer
 als `CleanupEmailVerwerkingFunction` (of een eigen timer met identiek schema).
 
@@ -555,6 +563,51 @@ Portal-clicks. Een nieuwe delegated Graph-permission + een OBO-token-exchange is
 aanvalsoppervlakte (tokenlekken, scope-creep) en vereist een expliciete CISO security-review vóór
 productie, conform de Security Gate.
 
+#### Optie A2 — OBO namens een gedeeld postvak (Send As / Send on Behalf)
+
+Variant op Optie A, geen alternatief ervoor: dezelfde OBO-tokenwissel (§3.6 Optie A, stap 2-3) blijft
+nodig, maar het Graph-token wordt gebruikt om te versturen **namens een gedeeld postvak** waar de
+ingelogde gebruiker rechten op heeft, in plaats van namens zichzelf. Relevant als meerdere
+beheerders willen mailen vanuit één herkenbaar clubadres (bijv. `wedstrijdzaken@[club-domein]`) zonder
+terug te vallen op de vaste systeem-mailbox (die geen persoonlijke identiteit van de afzender kent).
+
+Gegrond via Microsoft Learn (Graph permissions reference + *"Send Outlook messages from another
+user"*, `learn.microsoft.com/graph/outlook-send-mail-from-other-user`):
+
+1. **Aparte Graph-permissie:** niet `Mail.Send` maar delegated **`Mail.Send.Shared`**
+   (`AdminConsentRequired: No` volgens de referentie; ook hier in de praktijk behandelen als
+   consent-plichtig). Moet, net als `Mail.Send` bij Optie A, via `scripts/azure/Configure-EntraApp.ps1`
+   worden toegevoegd — nooit handmatig in de Portal.
+2. **Exchange-rechten zijn een harde voorwaarde die deze applicatie niet kan afdwingen of verlenen.**
+   De ingelogde gebruiker moet in Exchange Online zelf **Send As** of **Send on Behalf** hebben op dat
+   specifieke gedeelde postvak — gezet door de tenant-/M365-beheerder (EAC-mailboxdelegatie of
+   `Set-Mailbox -GrantSendOnBehalfTo`), volledig buiten onze Entra-configuratiescripts om. Ontbreekt
+   dat recht, dan geeft Graph `ErrorSendAsDenied` terug — de backend moet dit vertalen naar een nette
+   foutmelding, geen crash (uitbreiding van open vraag §5.4).
+3. **Send As vs. Send on Behalf — verschil met echte AVG/audit-impact, niet alleen cosmetisch:**
+   - *Send As*: de ontvanger ziet geen enkele aanwijzing wie er werkelijk verstuurde — Microsoft Graph
+     zelf houdt `sender` en `from` niet uit elkaar (ze zijn identiek). De werkelijke afzender bestaat
+     dan **uitsluitend** nog in onze eigen `dbo.EmailLog.UitvoerendeGebruiker` (§3.4) — geen enkel
+     Microsoft-systeem bewaart die koppeling nog.
+   - *Send on Behalf*: de ontvanger ziet expliciet "Gebruiker namens Gedeeld Postvak", en Graph
+     bewaart `sender` (werkelijke afzender) en `from` (postvak) als aparte properties op het bericht
+     zelf — de accountability bestaat dan ook buiten onze eigen database.
+   - **Advies:** Send on Behalf als default, tenzij de club bewust kiest voor "mail die er puur als de
+     club uitziet" — en zelfs dan blijft `UitvoerendeGebruiker` server-side altijd verplicht loggen,
+     nooit optioneel, want dat is bij Send As de enige plek waar de koppeling nog bestaat.
+4. **Sent Items-gedrag is niet eenduidig gedocumenteerd — niet aannemen, spiken.** Microsoft-bronnen
+   spreken elkaar tegen: sommige docs stellen dat de mail bij Full Access + Send As/Send on Behalf
+   automatisch in de Sent Items van het gedeelde postvak zelf terechtkomt (waarmee het hele team
+   overzicht behoudt, zónder de BCC-workaround uit open vraag §5.5); andere bronnen (o.a. concrete
+   meldingen op Microsoft Q&A) laten zien dat dit in de praktijk soms alsnog naar de persoonlijke Sent
+   Items van de afzender gaat tenzij de tenant-beheerder expliciet "Copy items sent as this mailbox"
+   heeft aangezet in Exchange. Vereiste spike vóór Fase 3 (samen met de OBO-tokenforwarding-spike uit
+   Optie A): daadwerkelijk een testmail versturen namens een gedeeld postvak en verifiëren waar hij
+   terechtkomt, vóórdat hierop geleund wordt om §5.5's overzicht-zorg op te lossen.
+
+**Kostenimplicatie:** geen — `Mail.Send.Shared` valt binnen dezelfde M365-licentie, geen nieuwe
+Azure-resource. Zelfde Security Gate-review als Optie A vóór productie.
+
 #### Optie B — Client-side Graph-scope
 
 Blazor MSAL vraagt een extra scope aan (`https://graph.microsoft.com/Mail.Send`) naast de bestaande
@@ -573,7 +626,9 @@ heeft uitgevoerd — de admin-rolcheck beschermt vandaag `/api/beheer/*`, maar n
 Blazor→Graph-aanroep. Zelfs "token doorgeven aan de Function App" verandert dit niet wezenlijk: het
 token is al buiten de controle van de server verkregen op basis van een client-side scope-aanvraag.
 
-**Advies:** Optie A (server-side OBO) past bij de bestaande architectuur en wordt aanbevolen. Optie B
+**Advies:** Optie A (server-side OBO) past bij de bestaande architectuur en wordt aanbevolen, met Optie
+A2 als rechtstreekse uitbreiding daarvan zodra "verzenden namens een gedeeld postvak" nodig blijkt —
+geen apart traject, dezelfde tokenwissel-infrastructuur. Optie B
 wordt afgeraden tenzij een toekomstige sessie een concrete, technische reden vindt waarom OBO niet
 haalbaar is (bijvoorbeeld als de spike hierboven uitwijst dat het ruwe token niet doorkomt). Mocht dat
 gebeuren, is het tussenalternatief niet Optie B maar een hybride: Blazor vraagt het Graph-scope aan
@@ -676,17 +731,30 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
    gedeeld/functioneel account zonder eigen postvak)? Het deployment-model van dit project
    (root-`CLAUDE.md`, "Deployment-model") gaat uit van een klein aantal individuele Entra-gebruikers
    per club, dus dit scenario is waarschijnlijk zeldzaam — maar de UI moet een duidelijke
-   foutmelding geven in plaats van een crash of stille mislukking.
-5. **Sent Items-gedrag verandert.** Bij Mail.Send (delegated) staat de verstuurde mail in de Sent
-   Items van de gebruiker zelf, niet meer (alleen) in de gedeelde systeem-mailbox. De veldplanner/
-   coördinator ziet de mail dus niet meer automatisch terug tenzij een BCC daar expliciet naartoe
-   blijft gaan — het bestaande `plannerEmailAdres`-BCC-patroon (zie `docs/EMAIL-VERWERKING.md`,
-   sectie "Doorsturen naar de coach") moet voor de `IngelogdeGebruiker`-afzenderstrategie behouden
-   blijven, anders verliest de club overzicht over uitgaande communicatie.
-6. **`dbo.EmailLog` is nieuw** en moet, net als elke andere tabel, bij codereview op de
+   foutmelding geven in plaats van een crash of stille mislukking. **Zelfde eis geldt voor Optie A2
+   (§3.6):** kiest een gebruiker een gedeeld postvak waar hij geen Send As/Send on Behalf-recht op
+   heeft, dan geeft Graph `ErrorSendAsDenied` terug — ook dat moet een nette foutmelding worden, niet
+   een crash of stille mislukking.
+5. **Sent Items-gedrag verandert.** Bij Mail.Send (delegated, Optie A) staat de verstuurde mail in de
+   Sent Items van de gebruiker zelf, niet meer (alleen) in de gedeelde systeem-mailbox. De
+   veldplanner/coördinator ziet de mail dus niet meer automatisch terug tenzij een BCC daar expliciet
+   naartoe blijft gaan — het bestaande `plannerEmailAdres`-BCC-patroon (zie
+   `docs/EMAIL-VERWERKING.md`, sectie "Doorsturen naar de coach") moet voor de
+   `IngelogdeGebruiker`-afzenderstrategie behouden blijven, anders verliest de club overzicht over
+   uitgaande communicatie. **Voor Optie A2 (gedeeld postvak) is dit gedrag niet eenduidig
+   gedocumenteerd** — Microsoft-bronnen spreken elkaar tegen over of de mail automatisch in de Sent
+   Items van het gedeelde postvak zelf belandt. Niet aannemen dat dit het BCC-probleem vanzelf
+   oplost: eerst spiken (zie §3.6 Optie A2, punt 4), pas daarna het BCC-patroon eventueel laten
+   vervallen voor deze afzenderstrategie.
+6. **Bij Send As (Optie A2) bewaart Microsoft Graph zelf geen koppeling meer tussen het gedeelde
+   postvak en de werkelijke afzender** (`sender`/`from` zijn identiek — zie §3.6 Optie A2, punt 3).
+   `dbo.EmailLog.UitvoerendeGebruiker` wordt in die modus de **enige** plek waar die koppeling nog
+   bestaat, dus dit veld mag bij Send As nooit `NULL` zijn — een ontbrekende waarde hier is een
+   onherstelbaar audit-gat, niet later te reconstrueren uit Microsoft-zijde.
+7. **`dbo.EmailLog` is nieuw** en moet, net als elke andere tabel, bij codereview op de
    multi-club-invarianten uit root-`CLAUDE.md` gecontroleerd worden (ClubCode-discriminator, geen
    club-specifieke fallback-strings).
-7. **De bestaande documentatiegap in `docs/API.md`/openapi (§1.10)** moet worden meegenomen zodra
+8. **De bestaande documentatiegap in `docs/API.md`/openapi (§1.10)** moet worden meegenomen zodra
    Fase 2 het nieuwe `email/send`-endpoint toevoegt — anders groeit de gap in plaats van dat hij
    wordt gedicht.
 
