@@ -1,0 +1,33 @@
+info:
+  name: Teamvoorkeurstijd deactiveren
+  type: http
+  seq: 7
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/voorkeurstijden/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/voorkeurstijden/{id}
+
+  Teamvoorkeurstijd deactiveren
+
+  Soft-delete — zet `Actief = 0`, verwijdert de rij niet.
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

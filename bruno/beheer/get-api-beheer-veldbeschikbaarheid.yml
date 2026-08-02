@@ -1,0 +1,32 @@
+info:
+  name: Veldbeschikbaarheid ophalen
+  type: http
+  seq: 24
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/veldbeschikbaarheid"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/veldbeschikbaarheid
+
+  Veldbeschikbaarheid ophalen
+
+  Geeft alle beschikbaarheidsregels per veld per dag van de week.
+
+  Spec declares security scheme "functionKey" (apiKey).

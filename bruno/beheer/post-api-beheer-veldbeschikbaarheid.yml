@@ -1,0 +1,44 @@
+info:
+  name: Veldbeschikbaarheid aanmaken
+  type: http
+  seq: 36
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/veldbeschikbaarheid"
+  body:
+    type: json
+    data: |-
+      {
+        "veldNummer": 1,
+        "dagVanWeek": 1,
+        "beschikbaarVanaf": "08:30",
+        "beschikbaarTot": "22:00",
+        "gebruikZonsondergang": false
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/veldbeschikbaarheid
+
+  Veldbeschikbaarheid aanmaken
+
+  Maakt een nieuwe beschikbaarheidsregel aan voor een veld op een dag van de week.
+  Combinatie veld + dag per club moet uniek zijn (409 Conflict bij duplicaat).
+
+
+  Spec declares security scheme "functionKey" (apiKey).

@@ -1,0 +1,31 @@
+info:
+  name: Uitgesloten e-mailadres verwijderen
+  type: http
+  seq: 4
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/uitgesloten-emails/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/uitgesloten-emails/{id}
+
+  Uitgesloten e-mailadres verwijderen
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

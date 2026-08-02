@@ -1,0 +1,49 @@
+info:
+  name: Classificatie-leermomenten ophalen
+  type: http
+  seq: 11
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/leermomenten"
+  params:
+    - name: status
+      value: pending
+      type: query
+      description: pending = onbeoordeeld, validated = gevalideerd, rejected = afgewezen. Leeg = alles.
+      disabled: true
+    - name: limit
+      value: "50"
+      type: query
+      description: Maximum aantal terug te geven rijen
+      disabled: true
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/leermomenten
+
+  Classificatie-leermomenten ophalen
+
+  Geeft classificatie-correcties uit `planner.ClassificatieCorrectie`.
+  Optioneel gefilterd op status.
+
+
+  Parameters:
+    status (query) - pending = onbeoordeeld, validated = gevalideerd, rejected = afgewezen. Leeg = alles. [pending | validated | rejected]
+    limit (query) - Maximum aantal terug te geven rijen
+
+  Spec declares security scheme "functionKey" (apiKey).

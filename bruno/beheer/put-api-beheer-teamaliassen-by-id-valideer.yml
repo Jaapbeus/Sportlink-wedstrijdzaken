@@ -1,0 +1,50 @@
+info:
+  name: Teamalias goedkeuren of afwijzen
+  type: http
+  seq: 44
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/teamaliassen/:id/valideer"
+  params:
+    - name: id
+      value: "1"
+      type: path
+      description: Alias-ID
+  body:
+    type: json
+    data: |-
+      {
+        "status": "validated"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/teamaliassen/{id}/valideer
+
+  Teamalias goedkeuren of afwijzen
+
+  Zet `Status` op de alias. `validated` → de alias geldt vanaf dat moment als vertrouwde
+  exacte match bij teamnaam-resolutie. `rejected` → de alias wordt genegeerd.
+
+
+  Parameters:
+    id (path, required) - Alias-ID
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

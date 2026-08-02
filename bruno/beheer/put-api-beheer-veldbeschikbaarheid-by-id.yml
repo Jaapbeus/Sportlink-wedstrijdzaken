@@ -1,0 +1,44 @@
+info:
+  name: Veldbeschikbaarheid bijwerken
+  type: http
+  seq: 48
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/veldbeschikbaarheid/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "beschikbaarVanaf": "08:30",
+        "beschikbaarTot": "22:00",
+        "gebruikZonsondergang": false
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/veldbeschikbaarheid/{id}
+
+  Veldbeschikbaarheid bijwerken
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

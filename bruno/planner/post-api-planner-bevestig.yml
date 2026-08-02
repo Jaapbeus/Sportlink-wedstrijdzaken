@@ -1,0 +1,47 @@
+info:
+  name: Wedstrijdslot boeken
+  type: http
+  seq: 5
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/bevestig"
+  body:
+    type: json
+    data: |-
+      {
+        "datum": "2026-04-25",
+        "aanvangsTijd": "12:00",
+        "veldNummer": 3,
+        "leeftijdsCategorie": "JO13",
+        "teamNaam": "[ClubCode] JO13-1",
+        "tegenstander": "[Tegenstander] JO13-2",
+        "aangevraagdDoor": "trainer@voorbeeld.nl",
+        "wedstrijdDuurMinuten": 1
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/bevestig
+
+  Wedstrijdslot boeken
+
+  Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.
+  Status wordt altijd als `"Te bevestigen"` aangemaakt.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

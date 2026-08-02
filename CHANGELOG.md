@@ -39,6 +39,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   ingelogde gebruiker" en, als uitbreiding daarop, "verzenden namens een gedeeld postvak" (Send
   As/Send on Behalf via Exchange-mailboxrechten). Analyse en ontwerp; geen functionele wijziging
   in deze wijziging zelf. Vervolgwerk loopt via losse issues onder epic zie issue #777.
+- **Bruno API-collectie voor handmatig testen van alle 72 endpoints** (`bruno/`), gegenereerd uit
+  `docs/api-standaarden/openapi.yaml` en gecommit zodat hij reviewbaar blijft en in sync loopt met
+  de spec. `bruno-gen.json` legt het project en de `local`-omgeving (`http://localhost:7094`) vast.
+  Twee beveiligingsschema's uit de spec (functionKey, Easy Auth Bearer) worden nog niet automatisch
+  per endpoint gewisseld — zie `docs/DEVELOPER-SETUP.md`, sectie "Bruno API-collectie". (#782)
 
 ## [2.19.0.0] — 2026-07-28
 

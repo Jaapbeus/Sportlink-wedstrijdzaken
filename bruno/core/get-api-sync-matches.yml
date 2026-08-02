@@ -1,0 +1,52 @@
+info:
+  name: Handmatige Sportlink synchronisatie starten
+  type: http
+  seq: 2
+  tags:
+    - core
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/sync-matches"
+  params:
+    - name: reset
+      value: "false"
+      type: query
+      description: true = volledig seizoen synchroniseren i.p.v. incrementeel
+      disabled: true
+    - name: season
+      value: "2025"
+      type: query
+      description: Startjaar seizoen (bijv. 2025 = seizoen 2025/2026). Gebruik samen met reset=true.
+      disabled: true
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/sync-matches
+
+  Handmatige Sportlink synchronisatie starten
+
+  Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+  Vereist de Azure Master key via `?code=`.
+
+  - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
+  - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
+
+
+  Parameters:
+    reset (query) - true = volledig seizoen synchroniseren i.p.v. incrementeel
+    season (query) - Startjaar seizoen (bijv. 2025 = seizoen 2025/2026). Gebruik samen met reset=true.
+
+  Spec declares security scheme "functionKey" (apiKey).

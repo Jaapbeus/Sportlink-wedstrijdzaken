@@ -1,0 +1,44 @@
+info:
+  name: Begeleiding voor een specifiek team ophalen
+  type: http
+  seq: 18
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/teambegeleiding/:team"
+  params:
+    - name: team
+      value: "[ClubCode] JO13-1"
+      type: path
+      description: Teamnaam (exacte match)
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/teambegeleiding/{team}
+
+  Begeleiding voor een specifiek team ophalen
+
+  Geeft Naam, Teamrol, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
+
+  **AVG:** persoonsgegevens worden uitsluitend aan admin/user-rol getoond achter Entra ID auth.
+  E-mailadressen worden server-side gebruikt voor doorsturen — nooit opgenomen in auto-reply body.
+
+
+  Parameters:
+    team (path, required) - Teamnaam (exacte match)
+
+  Spec declares security scheme "functionKey" (apiKey).

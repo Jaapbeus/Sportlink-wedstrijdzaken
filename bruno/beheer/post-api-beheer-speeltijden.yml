@@ -1,0 +1,45 @@
+info:
+  name: Speeltijd aanmaken
+  type: http
+  seq: 28
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/speeltijden"
+  body:
+    type: json
+    data: |-
+      {
+        "leeftijd": "JO13",
+        "veldafmeting": 1,
+        "wedstrijdTotaal": 75,
+        "wedstrijdHelft": 35,
+        "wedstrijdRust": 5,
+        "standaardVoorkeurTijd": "10:00"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/speeltijden
+
+  Speeltijd aanmaken
+
+  Voegt een nieuwe leeftijdscategorie toe aan `dbo.Speeltijden`.
+  Geeft 409 Conflict terug als de leeftijdscategorie al bestaat voor de club.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

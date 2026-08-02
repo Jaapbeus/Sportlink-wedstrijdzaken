@@ -1,0 +1,33 @@
+info:
+  name: Teamregel deactiveren
+  type: http
+  seq: 3
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/teamregels/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/teamregels/{id}
+
+  Teamregel deactiveren
+
+  Soft-delete — zet `Actief = 0`, verwijdert de rij niet.
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

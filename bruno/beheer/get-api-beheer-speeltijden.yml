@@ -1,0 +1,34 @@
+info:
+  name: Speeltijden ophalen
+  type: http
+  seq: 14
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/speeltijden"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/speeltijden
+
+  Speeltijden ophalen
+
+  Geeft speeltijdconfiguratie per leeftijdscategorie uit `dbo.Speeltijden`,
+  gesorteerd op leeftijdscategorie (JO → MO → Gemengd → VR → Senioren).
+
+
+  Spec declares security scheme "functionKey" (apiKey).

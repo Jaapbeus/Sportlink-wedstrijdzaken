@@ -1,0 +1,43 @@
+info:
+  name: Herplan-alternatieven simuleren
+  type: http
+  seq: 9
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/herplan-check"
+  body:
+    type: json
+    data: |-
+      {
+        "wedstrijdcode": 12345678,
+        "voorkeurTijd": "10:00",
+        "dagdeel": "ochtend",
+        "richting": "vervroegen"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/herplan-check
+
+  Herplan-alternatieven simuleren
+
+  Berekent alternatieve tijdsloten voor een bestaande wedstrijd.
+  **Voert niets door** — puur simulatie waarbij het huidige slot als vrij wordt beschouwd.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

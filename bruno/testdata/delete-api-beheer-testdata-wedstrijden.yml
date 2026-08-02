@@ -1,0 +1,27 @@
+info:
+  name: Alle test-wedstrijden verwijderen (ALLSTARS)
+  type: http
+  seq: 1
+  tags:
+    - testdata
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/testdata/wedstrijden"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/testdata/wedstrijden
+
+  Alle test-wedstrijden verwijderen (ALLSTARS)
+
+  Verwijdert alle wedstrijden van de ALLSTARS demo-club uit `his.matches`.
+
+  Spec declares security scheme "functionKey" (apiKey).

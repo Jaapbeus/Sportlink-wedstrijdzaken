@@ -1,0 +1,557 @@
+{
+  "lockfileVersion": 1,
+  "generator": "bruno-gen-collection",
+  "generatorVersion": "2.0.0-alpha.7",
+  "format": "yml",
+  "outputDir": "bruno",
+  "emittedWith": {
+    "ajv": "8.20.0",
+    "converters": "0.21.0",
+    "filestore": "0.10.0",
+    "lang": "0.37.0",
+    "node": "24.18.0",
+    "schema": "0.27.0",
+    "yaml": "2.9.0"
+  },
+  "config": {
+    "opencollection.yml": {
+      "hash": "2d04277364518f64cd6ddcee6333cd53463c8e099667a3d119329aadf247bdf2",
+      "kind": "root"
+    }
+  },
+  "folders": {
+    "beheer/folder.yml": {
+      "hash": "1a141cf9a3e455b49cc317a57cca6123f7eefbbc19dcc2a89844f7d044485c60",
+      "kind": "folder"
+    },
+    "core/folder.yml": {
+      "hash": "80b932f48b9ef1a351ebd6054231eb353cc7be932537c935c23bb05703fb41a6",
+      "kind": "folder"
+    },
+    "feedback/folder.yml": {
+      "hash": "dc27871381d62752b5adabbab466ef3a44eb704c1428b29410ea3e31077baf7e",
+      "kind": "folder"
+    },
+    "planner/folder.yml": {
+      "hash": "de06305127cdab7e25d395605ae42bd97e53fc0c8614c8ee312eb4a70c79530b",
+      "kind": "folder"
+    },
+    "testdata/folder.yml": {
+      "hash": "1391007c0e050d0adc6abdfcee98b0e15c9df9bd6a4aeed5143f2d5511c2659f",
+      "kind": "folder"
+    }
+  },
+  "requests": {
+    "beheer/delete-api-beheer-speeltijden-by-leeftijd.yml": {
+      "endpointKey": "DELETE /api/beheer/speeltijden/{1}",
+      "fileName": "delete-api-beheer-speeltijden-by-leeftijd",
+      "hash": "c7fbf9acf4e0f21aec73948a126c9ddb07c254e7cbab19660c6dcf17282c5056",
+      "kind": "request",
+      "seq": 1
+    },
+    "beheer/delete-api-beheer-teamaliassen-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/teamaliassen/{1}",
+      "fileName": "delete-api-beheer-teamaliassen-by-id",
+      "hash": "d109e098993f4bd1d1da0adae213834244a1dc022917c5618179f67c45472c1a",
+      "kind": "request",
+      "seq": 2
+    },
+    "beheer/delete-api-beheer-teamregels-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/teamregels/{1}",
+      "fileName": "delete-api-beheer-teamregels-by-id",
+      "hash": "018b50d5f059d2c63ef29202a009e1745dac6c50edec9d8e9d40ca564d546285",
+      "kind": "request",
+      "seq": 3
+    },
+    "beheer/delete-api-beheer-uitgesloten-emails-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/uitgesloten-emails/{1}",
+      "fileName": "delete-api-beheer-uitgesloten-emails-by-id",
+      "hash": "cb96d9983f1f9a3319a643d4fe3a87afe1f641f5c55d549d07c4cd64879daab8",
+      "kind": "request",
+      "seq": 4
+    },
+    "beheer/delete-api-beheer-veldbeschikbaarheid-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/veldbeschikbaarheid/{1}",
+      "fileName": "delete-api-beheer-veldbeschikbaarheid-by-id",
+      "hash": "629bc2cecde6e881c08039b31a984953e1b53a783a6023a7bca0c28dc3009cc8",
+      "kind": "request",
+      "seq": 5
+    },
+    "beheer/delete-api-beheer-veldtraining-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/veldtraining/{1}",
+      "fileName": "delete-api-beheer-veldtraining-by-id",
+      "hash": "96e1e2ef27517f0c974dcdbea1384878e35cdc34d640977f24d111aff7a41267",
+      "kind": "request",
+      "seq": 6
+    },
+    "beheer/delete-api-beheer-voorkeurstijden-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/voorkeurstijden/{1}",
+      "fileName": "delete-api-beheer-voorkeurstijden-by-id",
+      "hash": "3966e2568cce95ebd4c8136a9d46ffa3cbebbc6d12c213675a676d16672e342e",
+      "kind": "request",
+      "seq": 7
+    },
+    "beheer/get-api-beheer-clubs.yml": {
+      "endpointKey": "GET /api/beheer/clubs",
+      "fileName": "get-api-beheer-clubs",
+      "hash": "e5289ff7921634f7771c047421559b0f19e0a6b289e5cdcb152dfd9c4eb4c8b6",
+      "kind": "request",
+      "seq": 8
+    },
+    "beheer/get-api-beheer-email-log.yml": {
+      "endpointKey": "GET /api/beheer/email-log",
+      "fileName": "get-api-beheer-email-log",
+      "hash": "3b906cad43e8e152709f9005d91f2c550060be410f26689f2241739fa6f6dbd4",
+      "kind": "request",
+      "seq": 9
+    },
+    "beheer/get-api-beheer-geocode.yml": {
+      "endpointKey": "GET /api/beheer/geocode",
+      "fileName": "get-api-beheer-geocode",
+      "hash": "beb84438552eba0411694340bd68f55e315ecca689d5c596bd5987da24b0403b",
+      "kind": "request",
+      "seq": 10
+    },
+    "beheer/get-api-beheer-leermomenten-stats.yml": {
+      "endpointKey": "GET /api/beheer/leermomenten/stats",
+      "fileName": "get-api-beheer-leermomenten-stats",
+      "hash": "d77a9456330b36190f8abc91f37e46e1d629dadb0d60f40413aa7f022092b111",
+      "kind": "request",
+      "seq": 12
+    },
+    "beheer/get-api-beheer-leermomenten.yml": {
+      "endpointKey": "GET /api/beheer/leermomenten",
+      "fileName": "get-api-beheer-leermomenten",
+      "hash": "f8afb2940fb0deea7942f13c3cbb94eb21ba0450fcfb9b31a0532293314e8db7",
+      "kind": "request",
+      "seq": 11
+    },
+    "beheer/get-api-beheer-settings.yml": {
+      "endpointKey": "GET /api/beheer/settings",
+      "fileName": "get-api-beheer-settings",
+      "hash": "2b57925db0f9f29068ffd55046feb22ed2e41aa35c5c9609e7147263c10901b2",
+      "kind": "request",
+      "seq": 13
+    },
+    "beheer/get-api-beheer-speeltijden.yml": {
+      "endpointKey": "GET /api/beheer/speeltijden",
+      "fileName": "get-api-beheer-speeltijden",
+      "hash": "d1c508f7963f6f0e48da8bc27884b8e394de4b2edff0b617820b1a95d26cfeb0",
+      "kind": "request",
+      "seq": 14
+    },
+    "beheer/get-api-beheer-sync-status.yml": {
+      "endpointKey": "GET /api/beheer/sync/status",
+      "fileName": "get-api-beheer-sync-status",
+      "hash": "f5738c7ab5727aa4de5ab22f4987feb326ba0b2a3c0dca3a9037e8dc60981610",
+      "kind": "request",
+      "seq": 15
+    },
+    "beheer/get-api-beheer-teamaliassen.yml": {
+      "endpointKey": "GET /api/beheer/teamaliassen",
+      "fileName": "get-api-beheer-teamaliassen",
+      "hash": "35e7e111a87dc34e04ec54ba2ecb56692bbb26084db22bacfbf433f2c9216729",
+      "kind": "request",
+      "seq": 16
+    },
+    "beheer/get-api-beheer-teambegeleiding-by-team.yml": {
+      "endpointKey": "GET /api/beheer/teambegeleiding/{1}",
+      "fileName": "get-api-beheer-teambegeleiding-by-team",
+      "hash": "729ec79707c39075adb050e05b88db5ff3f1501bfc848b97ad63874261a444c7",
+      "kind": "request",
+      "seq": 18
+    },
+    "beheer/get-api-beheer-teambegeleiding.yml": {
+      "endpointKey": "GET /api/beheer/teambegeleiding",
+      "fileName": "get-api-beheer-teambegeleiding",
+      "hash": "d826772a0a8d4db206f864a159d7ea3815725e9e7fcee23e4ab8217f518752e6",
+      "kind": "request",
+      "seq": 17
+    },
+    "beheer/get-api-beheer-teamregels.yml": {
+      "endpointKey": "GET /api/beheer/teamregels",
+      "fileName": "get-api-beheer-teamregels",
+      "hash": "adc40caf7c5195662e882c797fe135359940535d66de9b405e269e717f267afa",
+      "kind": "request",
+      "seq": 19
+    },
+    "beheer/get-api-beheer-teams.yml": {
+      "endpointKey": "GET /api/beheer/teams",
+      "fileName": "get-api-beheer-teams",
+      "hash": "8e6924580fdc416d3515f16a68b7cee40fda48a47451c29639001572d4701b39",
+      "kind": "request",
+      "seq": 20
+    },
+    "beheer/get-api-beheer-templates.yml": {
+      "endpointKey": "GET /api/beheer/templates",
+      "fileName": "get-api-beheer-templates",
+      "hash": "3008be5dbf1fa44bc0a1c974cb85e63ba0cbd67d27d76c0fc723f54c33d9e929",
+      "kind": "request",
+      "seq": 21
+    },
+    "beheer/get-api-beheer-theme.yml": {
+      "endpointKey": "GET /api/beheer/theme",
+      "fileName": "get-api-beheer-theme",
+      "hash": "8fcfeba872abda4dec9b88b589f401d4465e0d30595a657cbbbae13963f17c2a",
+      "kind": "request",
+      "seq": 22
+    },
+    "beheer/get-api-beheer-uitgesloten-emails.yml": {
+      "endpointKey": "GET /api/beheer/uitgesloten-emails",
+      "fileName": "get-api-beheer-uitgesloten-emails",
+      "hash": "5a9bc5908ec13cd91ec3c8445ade196dd90680944ee9cb7d70f28343d7af6c98",
+      "kind": "request",
+      "seq": 23
+    },
+    "beheer/get-api-beheer-veldbeschikbaarheid.yml": {
+      "endpointKey": "GET /api/beheer/veldbeschikbaarheid",
+      "fileName": "get-api-beheer-veldbeschikbaarheid",
+      "hash": "5754fe1ea6ac49ff61d67ecfec18fa6fffed1c49080e922f970df2666270c6dd",
+      "kind": "request",
+      "seq": 24
+    },
+    "beheer/get-api-beheer-velden.yml": {
+      "endpointKey": "GET /api/beheer/velden",
+      "fileName": "get-api-beheer-velden",
+      "hash": "b761389c531c2ba1addf888b1e2a850873cf6f6ee236bbcd0737edcceed69d37",
+      "kind": "request",
+      "seq": 25
+    },
+    "beheer/get-api-beheer-veldtraining.yml": {
+      "endpointKey": "GET /api/beheer/veldtraining",
+      "fileName": "get-api-beheer-veldtraining",
+      "hash": "09d832c157d636b03b0639a82d96ce165c685d56721981201c9c0bb074a8b05b",
+      "kind": "request",
+      "seq": 26
+    },
+    "beheer/get-api-beheer-voorkeurstijden.yml": {
+      "endpointKey": "GET /api/beheer/voorkeurstijden",
+      "fileName": "get-api-beheer-voorkeurstijden",
+      "hash": "9c6e00c3ab4a161d6a774ff88f80b3633e7fc2ed3b469f7961757c507eee302a",
+      "kind": "request",
+      "seq": 27
+    },
+    "beheer/post-api-beheer-speeltijden.yml": {
+      "endpointKey": "POST /api/beheer/speeltijden",
+      "fileName": "post-api-beheer-speeltijden",
+      "hash": "e90127b49674f1a5b345dd5c1829c78629295281e75876ecbaf212504bcb55df",
+      "kind": "request",
+      "seq": 28
+    },
+    "beheer/post-api-beheer-sync-trigger.yml": {
+      "endpointKey": "POST /api/beheer/sync/trigger",
+      "fileName": "post-api-beheer-sync-trigger",
+      "hash": "b2ad4f12e388c10be6e7c80ab4c2bc2791fa05357d55623b99ae16335b9609e5",
+      "kind": "request",
+      "seq": 29
+    },
+    "beheer/post-api-beheer-teambegeleiding-doorsturen.yml": {
+      "endpointKey": "POST /api/beheer/teambegeleiding/doorsturen",
+      "fileName": "post-api-beheer-teambegeleiding-doorsturen",
+      "hash": "4eff9d79911697561a1ffe599edb548208c16877b6a53c3b6dfd387158c526d1",
+      "kind": "request",
+      "seq": 30
+    },
+    "beheer/post-api-beheer-teambegeleiding-import.yml": {
+      "endpointKey": "POST /api/beheer/teambegeleiding/import",
+      "fileName": "post-api-beheer-teambegeleiding-import",
+      "hash": "9562cf9d28efe341bb53b9f5c35dd2966bb25c85f13eca035fbce0a419e9b4ef",
+      "kind": "request",
+      "seq": 31
+    },
+    "beheer/post-api-beheer-teamregels.yml": {
+      "endpointKey": "POST /api/beheer/teamregels",
+      "fileName": "post-api-beheer-teamregels",
+      "hash": "ff6dd02f04ff55614efdf280bb164a4c21676ad17b2a5a92fa60023ec0e26990",
+      "kind": "request",
+      "seq": 32
+    },
+    "beheer/post-api-beheer-templates-by-key-reset.yml": {
+      "endpointKey": "POST /api/beheer/templates/{1}/reset",
+      "fileName": "post-api-beheer-templates-by-key-reset",
+      "hash": "e8f3338f6cef3856ea3e333ef730c9a3772d3d6637c2ada13668c2acb00c3dec",
+      "kind": "request",
+      "seq": 33
+    },
+    "beheer/post-api-beheer-theme-extract.yml": {
+      "endpointKey": "POST /api/beheer/theme/extract",
+      "fileName": "post-api-beheer-theme-extract",
+      "hash": "71bae867a39a2a009d2d3e78a64fa69bd59869f82c7c17f12d1454efc0f96da0",
+      "kind": "request",
+      "seq": 34
+    },
+    "beheer/post-api-beheer-uitgesloten-emails.yml": {
+      "endpointKey": "POST /api/beheer/uitgesloten-emails",
+      "fileName": "post-api-beheer-uitgesloten-emails",
+      "hash": "5f3868ebdf48aff9aee458c6c149eb390e6b35b1c6f89b42a5c7d9d7ca7a695e",
+      "kind": "request",
+      "seq": 35
+    },
+    "beheer/post-api-beheer-veldbeschikbaarheid.yml": {
+      "endpointKey": "POST /api/beheer/veldbeschikbaarheid",
+      "fileName": "post-api-beheer-veldbeschikbaarheid",
+      "hash": "4a0e9e0a6a304a337adfbeea4d52d90928999cbe89412955bb08c5d965035a51",
+      "kind": "request",
+      "seq": 36
+    },
+    "beheer/post-api-beheer-velden.yml": {
+      "endpointKey": "POST /api/beheer/velden",
+      "fileName": "post-api-beheer-velden",
+      "hash": "2bc4740c20ed9c4495ebdcba3fd97289683bed3b04412bf94225b4533c3be14d",
+      "kind": "request",
+      "seq": 37
+    },
+    "beheer/post-api-beheer-veldtraining.yml": {
+      "endpointKey": "POST /api/beheer/veldtraining",
+      "fileName": "post-api-beheer-veldtraining",
+      "hash": "c86384d42527235512bdc0e8047f7ee896be6ace946519cf1ab745ac30090d95",
+      "kind": "request",
+      "seq": 38
+    },
+    "beheer/post-api-beheer-voorkeurstijden.yml": {
+      "endpointKey": "POST /api/beheer/voorkeurstijden",
+      "fileName": "post-api-beheer-voorkeurstijden",
+      "hash": "12e73eeccbd7fd5d0926f30964a8d8845d4ff11e017009b2dae0d83db37f04b1",
+      "kind": "request",
+      "seq": 39
+    },
+    "beheer/post-api-test-email.yml": {
+      "endpointKey": "POST /api/test/email",
+      "fileName": "post-api-test-email",
+      "hash": "fa40ff7a4f8bab40938bc9ce09d8cba544e1c7665c2a9111404ef3438f3e682f",
+      "kind": "request",
+      "seq": 40
+    },
+    "beheer/put-api-beheer-leermomenten-by-id-valideer.yml": {
+      "endpointKey": "PUT /api/beheer/leermomenten/{1}/valideer",
+      "fileName": "put-api-beheer-leermomenten-by-id-valideer",
+      "hash": "8492e0656f8092f428bc84997b45e9e293fbf4b6b475606d9df339327af2472a",
+      "kind": "request",
+      "seq": 41
+    },
+    "beheer/put-api-beheer-settings.yml": {
+      "endpointKey": "PUT /api/beheer/settings",
+      "fileName": "put-api-beheer-settings",
+      "hash": "7082c2276ac1c093366187652f91078070a712acb442077ed55800e058ad9a55",
+      "kind": "request",
+      "seq": 42
+    },
+    "beheer/put-api-beheer-speeltijden-by-leeftijd.yml": {
+      "endpointKey": "PUT /api/beheer/speeltijden/{1}",
+      "fileName": "put-api-beheer-speeltijden-by-leeftijd",
+      "hash": "b370e0bab1b20295014a07cac2a842238403a47b8f6f791626ebdaef44f3ad3a",
+      "kind": "request",
+      "seq": 43
+    },
+    "beheer/put-api-beheer-teamaliassen-by-id-valideer.yml": {
+      "endpointKey": "PUT /api/beheer/teamaliassen/{1}/valideer",
+      "fileName": "put-api-beheer-teamaliassen-by-id-valideer",
+      "hash": "6e051a7026cecf87b000a295bdd7b4a5fec82fda38d936ed0f4a1ff4032c40a4",
+      "kind": "request",
+      "seq": 44
+    },
+    "beheer/put-api-beheer-teamregels-by-id.yml": {
+      "endpointKey": "PUT /api/beheer/teamregels/{1}",
+      "fileName": "put-api-beheer-teamregels-by-id",
+      "hash": "52e961f7f306bcbae9d24fed5836431aef510db6b7a4a2f5d19f932f5de2f4ce",
+      "kind": "request",
+      "seq": 45
+    },
+    "beheer/put-api-beheer-templates-by-key.yml": {
+      "endpointKey": "PUT /api/beheer/templates/{1}",
+      "fileName": "put-api-beheer-templates-by-key",
+      "hash": "03a3b7cdda6c28c2f9f3f6d3e1959450b4926ec77c36981b3982825b4d254f94",
+      "kind": "request",
+      "seq": 46
+    },
+    "beheer/put-api-beheer-theme.yml": {
+      "endpointKey": "PUT /api/beheer/theme",
+      "fileName": "put-api-beheer-theme",
+      "hash": "1f1f9bd07af5c015465368e8454847507c2d68989f402b961fc799383a1e06ae",
+      "kind": "request",
+      "seq": 47
+    },
+    "beheer/put-api-beheer-veldbeschikbaarheid-by-id.yml": {
+      "endpointKey": "PUT /api/beheer/veldbeschikbaarheid/{1}",
+      "fileName": "put-api-beheer-veldbeschikbaarheid-by-id",
+      "hash": "40510d81056b8c4c67f7337ddaf99172bef02ecc617f4b90edfb4aac68ed3d0f",
+      "kind": "request",
+      "seq": 48
+    },
+    "beheer/put-api-beheer-velden-by-veldnummer.yml": {
+      "endpointKey": "PUT /api/beheer/velden/{1}",
+      "fileName": "put-api-beheer-velden-by-veldnummer",
+      "hash": "d3ee2e75eb8d11e7ca06dbaeadd31331d933ab33a6ab0697a84380e1b61067db",
+      "kind": "request",
+      "seq": 49
+    },
+    "beheer/put-api-beheer-veldtraining-by-id.yml": {
+      "endpointKey": "PUT /api/beheer/veldtraining/{1}",
+      "fileName": "put-api-beheer-veldtraining-by-id",
+      "hash": "1405f83b5d581f528a94ac5f97ac84cee7a14a9092649062ef56fbfa07206aee",
+      "kind": "request",
+      "seq": 50
+    },
+    "beheer/put-api-beheer-voorkeurstijden-by-id.yml": {
+      "endpointKey": "PUT /api/beheer/voorkeurstijden/{1}",
+      "fileName": "put-api-beheer-voorkeurstijden-by-id",
+      "hash": "2ec61173cb496d04fd0e3cbe0aa7d418f79e718005d713a8f761a32d20acbb09",
+      "kind": "request",
+      "seq": 51
+    },
+    "core/get-api-health.yml": {
+      "endpointKey": "GET /api/health",
+      "fileName": "get-api-health",
+      "hash": "f4fcf77cc2d4ec78c856cd44e62649b30463e9946f58b1b6a338600d7c07a333",
+      "kind": "request",
+      "seq": 1
+    },
+    "core/get-api-sync-matches.yml": {
+      "endpointKey": "GET /api/sync-matches",
+      "fileName": "get-api-sync-matches",
+      "hash": "c8dcf460a83234503ab79ff6d9d3c095bb98c4513d5f7ea13773bf1c624c22fe",
+      "kind": "request",
+      "seq": 2
+    },
+    "feedback/post-api-feedback-submit.yml": {
+      "endpointKey": "POST /api/feedback/submit",
+      "fileName": "post-api-feedback-submit",
+      "hash": "92b7ba4e5136dd69000f749a39f0eb9c6dc35a805d5d2db9f6d2dd5a9d22e257",
+      "kind": "request",
+      "seq": 1
+    },
+    "feedback/post-api-feedback-validate.yml": {
+      "endpointKey": "POST /api/feedback/validate",
+      "fileName": "post-api-feedback-validate",
+      "hash": "8f48810d9690d67dc34d1add9506bf88db25c536e3448e4c4d5113707d43e689",
+      "kind": "request",
+      "seq": 2
+    },
+    "planner/get-api-planner-team-schedule.yml": {
+      "endpointKey": "GET /api/planner/team-schedule",
+      "fileName": "get-api-planner-team-schedule",
+      "hash": "1f7242d01c5fd01d5f1db80d653e247b4023755efddffdb11809e9b3a9ce080b",
+      "kind": "request",
+      "seq": 1
+    },
+    "planner/get-api-planner-veldbezetting.yml": {
+      "endpointKey": "GET /api/planner/veldbezetting",
+      "fileName": "get-api-planner-veldbezetting",
+      "hash": "f6d7bad17c666386c92d8a28daa11129ccdbea617b43523e16fd42078d40ebf9",
+      "kind": "request",
+      "seq": 2
+    },
+    "planner/post-api-planner-auto-plan-toepassen.yml": {
+      "endpointKey": "POST /api/planner/auto-plan/toepassen",
+      "fileName": "post-api-planner-auto-plan-toepassen",
+      "hash": "b4f9595eb891117472ae3d6e7d2023a8b59f35e54203bb081b9f514741464e70",
+      "kind": "request",
+      "seq": 4
+    },
+    "planner/post-api-planner-auto-plan.yml": {
+      "endpointKey": "POST /api/planner/auto-plan",
+      "fileName": "post-api-planner-auto-plan",
+      "hash": "5186e0f053ca9a9e0d51682ce11df583371644afb403c2e9226711585b23eb36",
+      "kind": "request",
+      "seq": 3
+    },
+    "planner/post-api-planner-bevestig.yml": {
+      "endpointKey": "POST /api/planner/bevestig",
+      "fileName": "post-api-planner-bevestig",
+      "hash": "1f1f48ca7285e89c42fba354efd4beddd498caf2ecb19bcb13a7505f51e9aa36",
+      "kind": "request",
+      "seq": 5
+    },
+    "planner/post-api-planner-check-availability.yml": {
+      "endpointKey": "POST /api/planner/check-availability",
+      "fileName": "post-api-planner-check-availability",
+      "hash": "06c2f357084c5949076ea2542e4e5d16d4986315300fa2170847620cfbed45e2",
+      "kind": "request",
+      "seq": 6
+    },
+    "planner/post-api-planner-doordeweeks-beschikbaar.yml": {
+      "endpointKey": "POST /api/planner/doordeweeks-beschikbaar",
+      "fileName": "post-api-planner-doordeweeks-beschikbaar",
+      "hash": "d05bfb257c0b7058699d784f23f9d95b6d0cc98b5b10a00ef2469abd464ec60d",
+      "kind": "request",
+      "seq": 7
+    },
+    "planner/post-api-planner-herplan-bevestig.yml": {
+      "endpointKey": "POST /api/planner/herplan-bevestig",
+      "fileName": "post-api-planner-herplan-bevestig",
+      "hash": "6a3ac1866350de0c65df9a7f5fdf5613f5b7d7cb31ade61fa2185a38609ee422",
+      "kind": "request",
+      "seq": 8
+    },
+    "planner/post-api-planner-herplan-check.yml": {
+      "endpointKey": "POST /api/planner/herplan-check",
+      "fileName": "post-api-planner-herplan-check",
+      "hash": "57fa8566462b132a3964a6b25859640a9d5788b6113d6d73bc66b2de10db87d5",
+      "kind": "request",
+      "seq": 9
+    },
+    "planner/post-api-planner-populate-sunset.yml": {
+      "endpointKey": "POST /api/planner/populate-sunset",
+      "fileName": "post-api-planner-populate-sunset",
+      "hash": "1b6369ee2fe01d5e5d9db878c568301b398181b29ec6dfd0757fe83b665c95e3",
+      "kind": "request",
+      "seq": 10
+    },
+    "planner/post-api-planner-zoek-wedstrijd.yml": {
+      "endpointKey": "POST /api/planner/zoek-wedstrijd",
+      "fileName": "post-api-planner-zoek-wedstrijd",
+      "hash": "bd098150e8ec18fc2f94095e919069420636889152a0e1b4913d6a02c9694564",
+      "kind": "request",
+      "seq": 11
+    },
+    "testdata/delete-api-beheer-testdata-wedstrijden-by-bk.yml": {
+      "endpointKey": "DELETE /api/beheer/testdata/wedstrijden/{1}",
+      "fileName": "delete-api-beheer-testdata-wedstrijden-by-bk",
+      "hash": "77c292a3651b28ff193128d080d509f55466730398414d62f2f857a675269452",
+      "kind": "request",
+      "seq": 2
+    },
+    "testdata/delete-api-beheer-testdata-wedstrijden.yml": {
+      "endpointKey": "DELETE /api/beheer/testdata/wedstrijden",
+      "fileName": "delete-api-beheer-testdata-wedstrijden",
+      "hash": "863288144b0cf78b59cbe60c1847c72bd558826c21689883fe654d9b4ab50276",
+      "kind": "request",
+      "seq": 1
+    },
+    "testdata/get-api-beheer-testdata-teams.yml": {
+      "endpointKey": "GET /api/beheer/testdata/teams",
+      "fileName": "get-api-beheer-testdata-teams",
+      "hash": "790acb7784c4cf30233bee542a6e0a81d6c894bf627ca771c05d88ee410dc6c0",
+      "kind": "request",
+      "seq": 3
+    },
+    "testdata/get-api-beheer-testdata-wedstrijden.yml": {
+      "endpointKey": "GET /api/beheer/testdata/wedstrijden",
+      "fileName": "get-api-beheer-testdata-wedstrijden",
+      "hash": "70caacb30d83a7a98a2cc6eb99df45093fcf4b1747159322117369fde02bdac5",
+      "kind": "request",
+      "seq": 4
+    },
+    "testdata/post-api-beheer-testdata-wedstrijden-verplaats-datum.yml": {
+      "endpointKey": "POST /api/beheer/testdata/wedstrijden/verplaats-datum",
+      "fileName": "post-api-beheer-testdata-wedstrijden-verplaats-datum",
+      "hash": "57858acf126344b56ae19e2d4d4b73f90aa0ea361d1c2ab92f1b538c1237db1d",
+      "kind": "request",
+      "seq": 6
+    },
+    "testdata/post-api-beheer-testdata-wedstrijden.yml": {
+      "endpointKey": "POST /api/beheer/testdata/wedstrijden",
+      "fileName": "post-api-beheer-testdata-wedstrijden",
+      "hash": "09117226e84c7d99e7f5816d91250f3a8349c5b741f22208d0f80144a9a90bc1",
+      "kind": "request",
+      "seq": 5
+    }
+  },
+  "environments": {
+    "environments/local.yml": {
+      "hash": "05a97bf2b75e68c7b660d06a5d4c135f8115e7943d629ccc1fe895abe41b9a44",
+      "kind": "environment"
+    }
+  },
+  "adopted": []
+}

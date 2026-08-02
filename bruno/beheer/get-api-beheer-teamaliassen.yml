@@ -1,0 +1,51 @@
+info:
+  name: Teamnaam-aliassen ophalen
+  type: http
+  seq: 16
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/teamaliassen"
+  params:
+    - name: status
+      value: pending
+      type: query
+      description: pending = onbeoordeeld, validated = goedgekeurd, rejected = afgewezen. Leeg = alles.
+      disabled: true
+    - name: limit
+      value: "100"
+      type: query
+      description: Maximum aantal terug te geven rijen
+      disabled: true
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/teamaliassen
+
+  Teamnaam-aliassen ophalen
+
+  Geeft de aliassen uit `dbo.TeamAliassen` van de club (`X-Club-Code`), samen met de
+  canonieke teamnaam uit `dbo.Teams`. Optioneel gefilterd op status. Onbeoordeelde
+  aliassen (`pending`) staan altijd bovenaan, daarna op aanmaakdatum aflopend.
+  Bestaat de tabel nog niet, dan volgt een lege lijst in plaats van een fout.
+
+
+  Parameters:
+    status (query) - pending = onbeoordeeld, validated = goedgekeurd, rejected = afgewezen. Leeg = alles. [pending | validated | rejected]
+    limit (query) - Maximum aantal terug te geven rijen
+
+  Spec declares security scheme "functionKey" (apiKey).

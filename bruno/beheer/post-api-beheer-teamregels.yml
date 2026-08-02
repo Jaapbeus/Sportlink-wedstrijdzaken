@@ -1,0 +1,48 @@
+info:
+  name: Teamregel aanmaken
+  type: http
+  seq: 32
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/teamregels"
+  body:
+    type: json
+    data: |-
+      {
+        "teamNaam": "string",
+        "regelType": "BufferVoor",
+        "waardeMinuten": 1,
+        "waardeVeldNummer": 1,
+        "waardeTijd": "string",
+        "prioriteit": 0,
+        "actief": true,
+        "opmerking": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/teamregels
+
+  Teamregel aanmaken
+
+  Maakt een nieuwe teamregel aan. Validatie:
+  - `BufferVoor`/`BufferNa` vereisen `waardeMinuten`
+  - `VoorkeurVeld` vereist `waardeVeldNummer`
+
+
+  Spec declares security scheme "functionKey" (apiKey).

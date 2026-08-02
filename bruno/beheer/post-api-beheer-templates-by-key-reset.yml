@@ -1,0 +1,36 @@
+info:
+  name: E-mailtemplate terugzetten naar standaard
+  type: http
+  seq: 33
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/templates/:key/reset"
+  params:
+    - name: key
+      value: check-availability
+      type: path
+  body:
+    type: json
+    data: "{}"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/templates/{key}/reset
+
+  E-mailtemplate terugzetten naar standaard
+
+  Verwijdert de aangepaste template-rij uit `dbo.EmailTemplateInstellingen`.
+  De hardcoded standaard in de applicatiecode treedt daarna weer in werking.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

@@ -1,0 +1,52 @@
+info:
+  name: Veldbeschikbaarheid controleren
+  type: http
+  seq: 6
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/check-availability"
+  body:
+    type: json
+    data: |-
+      {
+        "datum": "2026-04-18",
+        "aanvangsTijd": "12:00",
+        "dagdeel": "ochtend",
+        "leeftijdsCategorie": "JO13",
+        "teamNaam": "[ClubCode] JO13-1",
+        "tegenstander": "[Tegenstander] JO13-2",
+        "wedstrijdDuurMinuten": 1
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/check-availability
+
+  Veldbeschikbaarheid controleren
+
+  Controleer of een veld beschikbaar is voor een (oefen)wedstrijd.
+
+  Drie modi:
+  1. **Slot toewijzen** — `leeftijdsCategorie` opgegeven: zoekt beste beschikbare slot
+  2. **Alternatieven** — gevraagd tijdstip bezet: geeft tot 3 alternatieven terug
+  3. **Vrije vensters** — geen `leeftijdsCategorie`: geeft alle open tijdvensters per veld
+
+  Controleert ook teamconflicten als `teamNaam` opgegeven is.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

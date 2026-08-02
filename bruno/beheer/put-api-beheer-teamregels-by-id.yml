@@ -1,0 +1,49 @@
+info:
+  name: Teamregel bijwerken
+  type: http
+  seq: 45
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/teamregels/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "teamNaam": "string",
+        "regelType": "BufferVoor",
+        "waardeMinuten": 1,
+        "waardeVeldNummer": 1,
+        "waardeTijd": "string",
+        "prioriteit": 0,
+        "actief": true,
+        "opmerking": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/teamregels/{id}
+
+  Teamregel bijwerken
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

@@ -1,0 +1,42 @@
+info:
+  name: E-mailadres uitsluiten
+  type: http
+  seq: 35
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/uitgesloten-emails"
+  body:
+    type: json
+    data: |-
+      {
+        "emailAdres": "user@example.com",
+        "omschrijving": "string",
+        "actief": true
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/uitgesloten-emails
+
+  E-mailadres uitsluiten
+
+  Voegt een e-mailadres toe aan de uitsluitingslijst. Het adres wordt genormaliseerd naar
+  lowercase. Geeft 409 Conflict terug als het adres al in de lijst staat.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

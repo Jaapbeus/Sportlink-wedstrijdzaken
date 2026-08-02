@@ -1,0 +1,45 @@
+info:
+  name: Automatisch plan toepassen
+  type: http
+  seq: 4
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/auto-plan/toepassen"
+  body:
+    type: json
+    data: |-
+      {
+        "datum": "2026-06-07",
+        "bevestigingsToken": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/auto-plan/toepassen
+
+  Automatisch plan toepassen
+
+  Past het gegenereerde auto-plan toe door wedstrijdsloten te boeken in
+  `planner.GeplandeWedstrijden`. Schrijft alleen voor wedstrijden die nog
+  geen slot hebben.
+
+  **Let op:** alleen beschikbaar als de club-code `ALLSTARS` is (testmodus).
+  Productie-clubs ontvangen HTTP 403.
+
+
+  Spec declares security scheme "functionKey" (apiKey).
