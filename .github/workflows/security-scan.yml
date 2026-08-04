@@ -94,7 +94,7 @@ jobs:
             fi
           }
 
-          check_pattern "Nederlandse mobiele nummers"  "06[-\s]?[0-9]{8}"
+          check_pattern "Nederlandse mobiele nummers"  "\b06[-\s]?[0-9]{8}\b"
           check_pattern "Nederlandse mobiele nummers (+31)" "\+316[0-9]{8}"
           check_pattern "Hotmail-adressen"             "[a-z0-9._%+\-]+@hotmail\.(com|nl)"
           check_pattern "Persoonlijke e-mailadressen"  "[a-z0-9._%+\-]+@(gmail\.com|outlook\.(com|nl)|ziggo\.nl|kpnmail\.nl|casema\.nl|home\.nl)"
@@ -165,7 +165,7 @@ jobs:
 
           EMAIL_HITS=$(echo "$MESSAGES" | grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' \
             | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
-          PHONE_HITS=$(echo "$MESSAGES" | grep -oP '06[-\s]?[0-9]{8}|\+316[0-9]{8}' || true)
+          PHONE_HITS=$(echo "$MESSAGES" | grep -oP '\b06[-\s]?[0-9]{8}\b|\+316[0-9]{8}' || true)
 
           if [ -n "$EMAIL_HITS" ]; then
             # Waarschuwing: emailadres in commit-message (bijv. als beschrijving van een fix).
