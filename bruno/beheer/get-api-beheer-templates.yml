@@ -1,0 +1,32 @@
+info:
+  name: E-mailtemplates ophalen
+  type: http
+  seq: 21
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/templates"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/templates
+
+  E-mailtemplates ophalen
+
+  Geeft alle actieve e-mailtemplates uit `dbo.EmailTemplateInstellingen` voor de club.
+
+  Spec declares security scheme "functionKey" (apiKey).

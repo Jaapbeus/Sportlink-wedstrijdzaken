@@ -1,0 +1,46 @@
+info:
+  name: Teambegeleiding importeren uit CSV
+  type: http
+  seq: 31
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/teambegeleiding/import"
+  body:
+    type: json
+    data: |-
+      {
+        "csvContent": "string",
+        "bestandsnaam": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/teambegeleiding/import
+
+  Teambegeleiding importeren uit CSV
+
+  Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar
+  `avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden eerst verwijderd
+  (TRUNCATE-en-vervang per `ClubCode`).
+
+  **AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel
+  in `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen
+  persoonsgegevens.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

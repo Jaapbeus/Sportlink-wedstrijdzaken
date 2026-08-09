@@ -305,6 +305,24 @@ Invoke-WebRequest http://localhost:5242/ -UseBasicParsing
 # Verwacht: HTTP 200 + Blazor WASM HTML (index.html)
 ```
 
+### Bruno API-collectie (handmatig testen)
+
+De map `bruno/` bevat een [Bruno](https://usebruno.com)-collectie met alle 72 endpoints uit
+`docs/api-standaarden/openapi.yaml`, gegenereerd en gecommit zodat hij in git reviewbaar blijft en
+in sync loopt met de spec. Open de map in de Bruno-app en kies de omgeving `local`
+(`http://localhost:7094`).
+
+**Twee beveiligingsschema's, niet automatisch per request gewisseld:**
+- `core`/`planner`/`testdata`-endpoints (functionKey): de collectie is standaard op dit schema
+  ingesteld (`?code={{apiKey}}`). Lokaal (`func start`) is dit niet verplicht.
+- `beheer`/`feedback`-endpoints (Easy Auth Bearer/Entra ID): zet in Bruno de auth van dat specifieke
+  request handmatig op "Bearer Token" met een geldig token, of laat leeg — lokaal wordt de
+  admin-rolcheck overgeslagen wanneer `WEBSITE_SITE_NAME` afwezig is (zie `EasyAuthHelper.cs`).
+
+Regenereren na een spec-wijziging: de `bruno-gen-collection`-skill (`ingest` → `plan` → `apply`),
+uitgevoerd tegen `docs/api-standaarden/openapi.yaml`. `bruno-gen.json` legt het project en de
+`local`-omgeving vast zodat dit zonder handmatige keuzes herhaalbaar is.
+
 ---
 
 ## 8. Projectstructuur

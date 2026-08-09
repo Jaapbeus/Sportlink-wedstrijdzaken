@@ -1,0 +1,43 @@
+opencollection: 1.0.0
+
+info:
+  name: Sportlink Wedstrijdzaken API
+
+request:
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    type: apikey
+    key: code
+    value: "{{apiKey}}"
+    placement: query
+
+docs:
+  content: |
+    Sportlink Wedstrijdzaken API
+
+    Version 2.19.1
+
+    API voor het beheer van wedstrijden, veldplanning en club-instellingen.
+
+    ## Beveiliging
+
+    Twee beveiligingsschema's:
+
+    - **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.
+      Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en
+      populate-sunset).
+    - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor
+      alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele
+      `WEBSITE_SITE_NAME` afwezig is.
+
+    Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+      - .bruno-gen

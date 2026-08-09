@@ -1,0 +1,31 @@
+info:
+  name: Trainingsblok verwijderen
+  type: http
+  seq: 6
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/veldtraining/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/veldtraining/{id}
+
+  Trainingsblok verwijderen
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

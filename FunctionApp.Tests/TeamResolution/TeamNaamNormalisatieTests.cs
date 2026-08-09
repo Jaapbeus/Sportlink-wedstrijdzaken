@@ -82,6 +82,57 @@ public class TeamNaamNormalisatieTests
         TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be(verwacht);
     }
 
+    // ── Spatie als scheidingsteken tussen leeftijd en teamnummer (#766) ──
+
+    [Theory]
+    [InlineData("MO13 1", "MO13-1")]
+    [InlineData("JO13 2", "JO13-2")]
+    [InlineData("TESTCLUB MO13 1", "MO13-1")]
+    [InlineData("TESTCLUB O13 2", "JO13-2")]
+    [InlineData("Onder 13 1", "JO13-1")]
+    [InlineData("13 1", "13-1")]        // prefixloos: blijft prefixloos, wél met streepje
+    [InlineData("MO 13 1", "MO13-1")]
+    public void SpatieTussenLeeftijdEnTeamnummer_IsOokEenScheidingsteken(string input, string verwacht)
+    {
+        // Deze vorm komt in brondata én in e-mail voor. Zonder deze regel werd "MO13 1" de sleutel
+        // "MO131" en "MO13-1" de sleutel "MO13-1" — twee sleutels voor hetzelfde team, waardoor de
+        // teamherkenning en daarmee de hele wedstrijdlookup omvielen (#766).
+        TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void SpatieNotatie_LeverdDezelfdeSleutelAlsStreepjeNotatie()
+    {
+        var metSpatie = TeamNaamNormalisatie.NormaliseerVoorVergelijking("TESTCLUB MO13 1", Club);
+        var metStreepje = TeamNaamNormalisatie.NormaliseerVoorVergelijking("MO13-1", Club);
+
+        metSpatie.Should().Be(metStreepje);
+    }
+
+    [Fact]
+    public void SpatieNotatie_WordtVolledigOntleed()
+    {
+        // Het gevolg van de gemiste sleutel was dat Parse() null gaf, waardoor LeeftijdNummer en
+        // TeamNummer in dbo.Teams NULL bleven — en dáármee viel het kandidaten- en
+        // disambiguatiepad stil voor elk team met deze notatie.
+        var componenten = TeamNaamNormalisatie.Parse("TESTCLUB MO13 1", Club);
+
+        componenten.Should().NotBeNull();
+        componenten!.Prefix.Should().Be("MO");
+        componenten.LeeftijdNummer.Should().Be(13);
+        componenten.TeamNummer.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("TESTCLUB 35+ 1", "35+1")]   // veteranen: '+' is geen leeftijd/teamnummer-scheiding
+    [InlineData("TESTCLUB VR 1", "VR1")]     // letter-categorie + nummer: geen streepje
+    [InlineData("TESTCLUB 1", "1")]          // senioren: één nummer, niets te scheiden
+    [InlineData("Heren 1", "HEREN1")]
+    public void SpatieRegel_RaaktGeenVormenZonderTweeCijferreeksen(string input, string verwacht)
+    {
+        TeamNaamNormalisatie.NormaliseerVoorVergelijking(input, Club).Should().Be(verwacht);
+    }
+
     [Theory]
     [InlineData("Onder 13", "JO13")]
     [InlineData("O13", "JO13")]

@@ -1,0 +1,42 @@
+info:
+  name: ALLSTARS-testwedstrijden naar een andere datum verplaatsen
+  type: http
+  seq: 6
+  tags:
+    - testdata
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/testdata/wedstrijden/verplaats-datum"
+  body:
+    type: json
+    data: |-
+      {
+        "oudeDatum": "2026-05-30",
+        "nieuweDatum": "2026-06-06"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/testdata/wedstrijden/verplaats-datum
+
+  ALLSTARS-testwedstrijden naar een andere datum verplaatsen
+
+  Verplaatst alle wedstrijden van de ALLSTARS demo-club van `oudeDatum` naar `nieuweDatum`.
+  Raakt uitsluitend rijen met `ClubCode = 'ALLSTARS'` — productiedata blijft ongemoeid.
+  Bedoeld om demodata mee te laten schuiven met het actuele seizoen.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

@@ -1,0 +1,49 @@
+info:
+  name: Speeltijd bijwerken
+  type: http
+  seq: 43
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/speeltijden/:leeftijd"
+  params:
+    - name: leeftijd
+      value: JO13
+      type: path
+      description: Leeftijdscategorie (bijv. JO13, MO17, VR)
+  body:
+    type: json
+    data: |-
+      {
+        "leeftijd": "JO13",
+        "veldafmeting": 1,
+        "wedstrijdTotaal": 75,
+        "wedstrijdHelft": 35,
+        "wedstrijdRust": 5,
+        "standaardVoorkeurTijd": "10:00"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/speeltijden/{leeftijd}
+
+  Speeltijd bijwerken
+
+  Parameters:
+    leeftijd (path, required) - Leeftijdscategorie (bijv. JO13, MO17, VR)
+
+  Spec declares security scheme "functionKey" (apiKey).

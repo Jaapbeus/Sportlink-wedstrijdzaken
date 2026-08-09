@@ -1,0 +1,48 @@
+info:
+  name: Feedback indienen als GitHub issue
+  type: http
+  seq: 1
+  tags:
+    - feedback
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/feedback/submit"
+  body:
+    type: json
+    data: |-
+      {
+        "type": "Fout",
+        "beschrijving": "string",
+        "vragenAntwoorden": [
+          {
+            "vraag": "string",
+            "antwoord": "string"
+          }
+        ],
+        "context": {}
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/feedback/submit
+
+  Feedback indienen als GitHub issue
+
+  Structureert de feedback met GPT-4o-mini en maakt een GitHub Issue aan in de repository.
+  Rate limiting: max 5 indieningenen per 10 minuten (globaal).
+
+
+  Spec declares security scheme "functionKey" (apiKey).

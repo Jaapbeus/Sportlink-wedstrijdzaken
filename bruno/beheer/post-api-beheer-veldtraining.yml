@@ -1,0 +1,41 @@
+info:
+  name: Trainingsblok aanmaken
+  type: http
+  seq: 38
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/veldtraining"
+  body:
+    type: json
+    data: |-
+      {
+        "veldNummer": 1,
+        "dagVanWeek": 1,
+        "vanTijd": "19:00",
+        "totTijd": "20:30",
+        "omschrijving": "string",
+        "actief": true
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/veldtraining
+
+  Trainingsblok aanmaken
+
+  Spec declares security scheme "functionKey" (apiKey).

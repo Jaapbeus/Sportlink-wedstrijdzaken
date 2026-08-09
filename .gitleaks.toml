@@ -59,7 +59,12 @@ tags = ["infrastructure", "club-data"]
 [[rules]]
 id = "dutch-mobile-number"
 description = "Dutch mobile phone number (AVG/GDPR personal data)"
-regex = '''06[-\s]?[0-9]{8}'''
+# Woordgrens verplicht: zonder \b matcht dit patroon toevallig binnen elke hex-hash
+# (SHA256 digest e.d.) die 8+ cijfers na een "06"-substring bevat. Hex-tekens zijn
+# allemaal word characters, dus \b kan niet matchen binnen een aaneengesloten hex-string
+# — de regel blijft een echt telefoonnummer detecteren. Zie #784 (false positive op
+# bruno/.bruno-gen/lock.json in PR #783).
+regex = '''\b06[-\s]?[0-9]{8}\b'''
 tags = ["pii", "avg", "gdpr"]
 
 [[rules]]

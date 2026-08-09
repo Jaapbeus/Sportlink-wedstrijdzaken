@@ -1,0 +1,51 @@
+info:
+  name: E-mailtemplate aanmaken of bijwerken
+  type: http
+  seq: 46
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/templates/:key"
+  params:
+    - name: key
+      value: check-availability
+      type: path
+      description: Template-sleutel (bijv. check-availability, herplan-bevestig)
+  body:
+    type: json
+    data: |-
+      {
+        "onderwerp": "string",
+        "bodyTemplate": "string",
+        "actief": true,
+        "gewijzigdDoor": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/templates/{key}
+
+  E-mailtemplate aanmaken of bijwerken
+
+  Maakt een template aan of werkt deze bij (UPSERT op TemplateKey + ClubCode).
+  Schrijft een audit-regel en invalideert de template-cache.
+
+
+  Parameters:
+    key (path, required) - Template-sleutel (bijv. check-availability, herplan-bevestig)
+
+  Spec declares security scheme "functionKey" (apiKey).

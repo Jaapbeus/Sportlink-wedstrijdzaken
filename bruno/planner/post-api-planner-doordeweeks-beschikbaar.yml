@@ -1,0 +1,42 @@
+info:
+  name: Doordeweekse beschikbaarheid opvragen
+  type: http
+  seq: 7
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/doordeweeks-beschikbaar"
+  body:
+    type: json
+    data: |-
+      {
+        "dagFilter": "maandag",
+        "duurMinuten": 1,
+        "leeftijdsCategorie": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/doordeweeks-beschikbaar
+
+  Doordeweekse beschikbaarheid opvragen
+
+  Geeft beschikbare doordeweekse avondsloten (ma–do) t/m het einde van het seizoen.
+  Optioneel gefilterd op dag en duur/leeftijdscategorie.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

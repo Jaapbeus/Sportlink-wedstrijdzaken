@@ -72,18 +72,45 @@ else if (_selectedTeam != null && _begeleiders.Count > 0)
         }
     </div>
 
-    @* Outlook-kopieerregel (#299) *@
-    @if (!string.IsNullOrEmpty(OutlookRegel))
+    @* Bewerkbaar ontvangersveld (#765): bepaalt zowel de kopieerregel als de daadwerkelijke
+       ontvangers van de doorstuur-mail hieronder — er kan geen verschil meer bestaan tussen wat
+       je ziet en wat er verstuurd wordt. *@
+    @if (_begeleiders.Any(b => !string.IsNullOrWhiteSpace(b.Emailadres)))
     {
         <div class="mb-4">
-            <label class="form-label text-muted small">Kopieer naar Outlook (Aan-veld)</label>
-            <div class="input-group">
-                <input class="form-control form-control-sm font-monospace" value="@OutlookRegel" readonly />
-                <button class="btn btn-outline-secondary btn-sm" @onclick="() => KopieerNaarKlembordAsync(OutlookRegel)"
-                        title="Kopieer naar klembord">
-                    @(_gekopieerd ? "✓ Gekopieerd" : "Kopieer")
-                </button>
+            <label class="form-label">Email Aan</label>
+            <textarea class="form-control font-monospace" rows="2" @bind="_ontvangers" @bind:event="oninput"
+                      placeholder="&quot;Naam&quot; &lt;trainer@voorbeeld.nl&gt;; ..."></textarea>
+            <div class="d-flex justify-content-between align-items-start mt-1">
+                <div class="form-text">
+                    @if (string.IsNullOrWhiteSpace(_ontvangers))
+                    {
+                        <span class="text-danger">Vul minimaal één ontvanger in.</span>
+                    }
+                    else
+                    {
+                        <span>Dit zijn ook de ontvangers van "Vraag doorsturen" hieronder. Verwijder wie niet hoeft mee te lezen, of stuur naar uzelf om te testen.</span>
+                    }
+                </div>
+                <div class="d-flex gap-2 flex-shrink-0 ms-2">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="HerstelOntvangers"
+                            title="Zet terug naar alle begeleiders van dit team">
+                        Herstel
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => KopieerNaarKlembordAsync(_ontvangers)"
+                            title="Kopieer naar klembord" disabled="@(string.IsNullOrWhiteSpace(_ontvangers))">
+                        @(_gekopieerd ? "✓ Gekopieerd" : "Kopieer")
+                    </button>
+                </div>
             </div>
+            @{ var onbekend = OnbekendeAdressen(); }
+            @if (onbekend.Count > 0)
+            {
+                <div class="alert alert-warning small py-2 px-3 mt-2 mb-0">
+                    Niet in de begeleiderslijst van dit team: <strong>@string.Join(", ", onbekend)</strong>.
+                    Controleer of dit klopt voordat u verstuurt.
+                </div>
+            }
         </div>
     }
 
@@ -97,7 +124,8 @@ else if (_selectedTeam != null && _begeleiders.Count > 0)
             <div class="card-header bg-primary text-white">Vraag doorsturen naar begeleiding van @_selectedTeam</div>
             <div class="card-body">
                 <p class="text-muted small">
-                    Uw vraag wordt doorgestuurd naar de begeleiding. De begeleider antwoordt rechtstreeks op uw e-mailadres.
+                    Wordt verstuurd naar: <strong>@(string.IsNullOrWhiteSpace(_ontvangers) ? "(geen ontvangers)" : _ontvangers)</strong><br />
+                    De ontvanger(s) kunnen direct antwoorden op dit bericht — dat antwoord gaat naar uw e-mailadres.
                 </p>
                 <div class="mb-3">
                     <label class="form-label">Onderwerp</label>
@@ -116,7 +144,8 @@ else if (_selectedTeam != null && _begeleiders.Count > 0)
                     <div class="alert alert-success">@_doorsturenSuccess</div>
                 }
                 <div class="d-flex gap-2">
-                    <button class="btn btn-primary" @onclick="VerstuurVraagAsync" disabled="@_doorsturenBezig">
+                    <button class="btn btn-primary" @onclick="VerstuurVraagAsync"
+                            disabled="@(_doorsturenBezig || string.IsNullOrWhiteSpace(_ontvangers))">
                         @if (_doorsturenBezig) { <span class="spinner-border spinner-border-sm me-1"></span> }
                         Versturen
                     </button>
@@ -244,6 +273,7 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     private string? _doorsturenError;
     private string? _doorsturenSuccess;
     private bool _gekopieerd;
+    private string _ontvangers = "";
 
     // Import
     private CsvPreviewModel? _csvPreview;
@@ -256,7 +286,18 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
 
     private string OutlookRegel => string.Join("; ", _begeleiders
         .Where(b => !string.IsNullOrWhiteSpace(b.Emailadres))
-        .Select(b => $"\"{b.Naam}\" <{b.Emailadres}>"));
+        .GroupBy(b => (Naam: b.Naam.Trim(), Email: b.Emailadres!.Trim()), StringTupleComparer.OrdinalIgnoreCase)
+        .Select(g => $"\"{g.Key.Naam}\" <{g.Key.Email}>"));
+
+    private sealed class StringTupleComparer : IEqualityComparer<(string Naam, string Email)>
+    {
+        public static readonly StringTupleComparer OrdinalIgnoreCase = new();
+        public bool Equals((string Naam, string Email) x, (string Naam, string Email) y) =>
+            string.Equals(x.Naam, y.Naam, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(x.Email, y.Email, StringComparison.OrdinalIgnoreCase);
+        public int GetHashCode((string Naam, string Email) obj) =>
+            HashCode.Combine(obj.Naam.ToUpperInvariant(), obj.Email.ToUpperInvariant());
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -297,6 +338,28 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
         if (result.Success)
             _begeleiders = result.Data ?? new();
         _loadingBegeleiders = false;
+        HerstelOntvangers();
+    }
+
+    private void HerstelOntvangers() => _ontvangers = OutlookRegel;
+
+    /// <summary>
+    /// Niet-blokkerende waarschuwing (#765-review): een bewust ontbrekende allowlist mag een tikfout
+    /// naar een verkeerd extern adres niet onopgemerkt laten. Grove substring-check op bekende
+    /// begeleider-adressen — geen volledige e-mailparsing nodig voor een hint-only signaal.
+    /// </summary>
+    private List<string> OnbekendeAdressen()
+    {
+        var bekend = _begeleiders
+            .Where(b => !string.IsNullOrWhiteSpace(b.Emailadres))
+            .Select(b => b.Emailadres!.Trim())
+            .ToList();
+
+        return _ontvangers
+            .Split([';', ','], StringSplitOptions.RemoveEmptyEntries)
+            .Select(f => f.Trim())
+            .Where(f => f.Contains('@') && !bekend.Any(e => f.Contains(e, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
     }
 
     private async Task KopieerNaarKlembordAsync(string tekst)
@@ -331,10 +394,16 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
             _doorsturenError = "Vul een bericht in.";
             return;
         }
+        if (string.IsNullOrWhiteSpace(_ontvangers))
+        {
+            _doorsturenError = "Vul minimaal één ontvanger in bij \"Email Aan\".";
+            return;
+        }
 
         _doorsturenBezig = true;
         _doorsturenError = null;
         _doorsturen.TeamNaam = _selectedTeam ?? "";
+        _doorsturen.Ontvangers = _ontvangers;
 
         var result = await Api.StuurTeambegeleidingBerichtAsync(_doorsturen);
         _doorsturenBezig = false;

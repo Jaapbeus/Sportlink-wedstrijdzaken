@@ -16,6 +16,12 @@ namespace SportlinkFunction.TeamResolution;
 /// de al aanwezige <c>his.teams</c>-data. Lukt dat niet, dan volgt een expliciete foutmelding in
 /// plaats van stille mismatches.
 /// </para>
+/// <para>
+/// Een gevulde teamlijst is niet automatisch een bruikbare teamlijst: staan de opgeslagen sleutels nog
+/// volgens oudere normalisatieregels in de database, dan herkent de resolver alsnog geen enkel team
+/// (#766). Daarom wordt bij een gevulde lijst de sleutelmigratie uitgevoerd — idempotent, en zonder
+/// drift kost het twee SELECTs.
+/// </para>
 /// </summary>
 public sealed class TeamlijstGereedheid(ITeamCandidateRepository repository, ILogger<TeamlijstGereedheid> logger)
 {
@@ -38,7 +44,19 @@ public sealed class TeamlijstGereedheid(ITeamCandidateRepository repository, ILo
 
         try
         {
-            if (await repository.HeeftActieveTeamsAsync(clubCode)) return true;
+            if (await repository.HeeftActieveTeamsAsync(clubCode))
+            {
+                // Teams aanwezig, maar hun opgeslagen sleutel kan nog volgens oudere
+                // normalisatieregels berekend zijn (#766). Dan staat de lijst er wel, en herkent de
+                // resolver alsnog niets. Normaal ruimt de sync dit op, maar die kan uit staan
+                // (syncEnabled = 0) of nog niet gelopen hebben sinds de deploy — daarom hier ook.
+                var (sleutels, dubbelen) = await TeamCanonicalisatieService.MigreerSleuteldriftAsync(clubCode, logger);
+                if (sleutels > 0 || dubbelen > 0)
+                    logger.LogWarning(
+                        "TEAMLIJST - {Sleutels} teamsleutels gemigreerd en {Dubbelen} dubbele schrijfwijzen "
+                        + "samengevoegd voor club {ClubCode} na een normalisatiewijziging", sleutels, dubbelen, clubCode);
+                return true;
+            }
 
             logger.LogWarning(
                 "TEAMLIJST - geen actieve teams voor club {ClubCode}; canonicalisatie wordt nu uitgevoerd "

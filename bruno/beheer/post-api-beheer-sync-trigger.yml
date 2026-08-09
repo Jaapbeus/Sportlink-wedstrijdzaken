@@ -1,0 +1,37 @@
+info:
+  name: Synchronisatie starten (fire-and-forget)
+  type: http
+  seq: 29
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/sync/trigger"
+  body:
+    type: json
+    data: "{}"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/sync/trigger
+
+  Synchronisatie starten (fire-and-forget)
+
+  Start een Sportlink-synchronisatie op de achtergrond (~5 minuten). Retourneert direct 202.
+  Prik op `GET /beheer/sync/status` om de voortgang te bewaken via `lastSyncTimestamp`.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

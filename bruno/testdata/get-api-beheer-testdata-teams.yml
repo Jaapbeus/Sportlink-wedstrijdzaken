@@ -1,0 +1,32 @@
+info:
+  name: Test-teams ophalen (ALLSTARS)
+  type: http
+  seq: 3
+  tags:
+    - testdata
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/testdata/teams"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/testdata/teams
+
+  Test-teams ophalen (ALLSTARS)
+
+  Geeft teams uit `avg.Teambegeleiding` voor de ALLSTARS demo-club.
+
+  Spec declares security scheme "functionKey" (apiKey).

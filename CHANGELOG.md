@@ -18,6 +18,33 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [2.20.0.0] — 2026-08-09
+
+### Added
+- **Teambegeleiding: het "Email Aan"-veld bepaalt nu zelf wie de doorstuur-mail ontvangt.** Voorheen was dit een read-only regeltje om naar Outlook te kopiëren, terwijl de "Vraag doorsturen"-knop altijd naar precies één, server-side bepaalde begeleider mailde — dat verschil was in het scherm niet te zien. Het veld is nu bewerkbaar (standaard gevuld met alle begeleiders van het team), een "Herstel"-knop zet het terug, en de doorstuurkaart toont exact naar wie verstuurd wordt. Verwijder wie niet mee hoeft te lezen, voeg gerust uw eigen adres toe om de flow zelf te testen — dat kon eerder niet, omdat een beheerder meestal zelf geen trainer of teamleider is. Maximaal 15 ontvangers per verzending; een ongeldig adres of een adres op de uitsluitingslijst wordt geweigerd met een duidelijke melding. Elke verzending — automatisch of handmatig opgegeven — wordt vastgelegd voor de bestaande 30-dagen-anonimisering. (#765)
+- `docs/ARCHITECTUUR-EMAIL-MODULE.md`: architectuurdocument voor de e-mailfunctionaliteit —
+  volledige inventarisatie van alle bestaande verzendpaden (automatische AI-reply, handmatig
+  doorsturen), een doelarchitectuur met één stabiel verzend-contract, generieke ontvangerresolutie
+  en logging, en een gefaseerd migratieplan inclusief de afzenderstrategie voor "verzenden als
+  ingelogde gebruiker" en, als uitbreiding daarop, "verzenden namens een gedeeld postvak" (Send
+  As/Send on Behalf via Exchange-mailboxrechten). Analyse en ontwerp; geen functionele wijziging
+  in deze wijziging zelf. Vervolgwerk loopt via losse issues onder epic zie issue #777.
+- **Bruno API-collectie voor handmatig testen van alle 72 endpoints** (`bruno/`), gegenereerd uit
+  `docs/api-standaarden/openapi.yaml` en gecommit zodat hij reviewbaar blijft en in sync loopt met
+  de spec. `bruno-gen.json` legt het project en de `local`-omgeving (`http://localhost:7094`) vast.
+  Twee beveiligingsschema's uit de spec (functionKey, Easy Auth Bearer) worden nog niet automatisch
+  per endpoint gewisseld — zie `docs/DEVELOPER-SETUP.md`, sectie "Bruno API-collectie". (#782)
+
+### Fixed
+- **De PII-scan (gitleaks + de eigen patroonscan) blokkeert niet meer op een toevallige treffer binnen een hex-hash.** Het patroon voor Nederlandse mobiele nummers had geen woordgrens, waardoor het regelmatig binnen een SHA256-hash (bijv. in een gegenereerd lockfile) matchte en de Security Gate onterecht rood liet zien. De regex is nu verankerd met `\b`, waardoor hij binnen een aaneengesloten hex-string niet meer kan matchen maar een echt telefoonnummer nog steeds herkent. Dezelfde aanscherping is ook doorgevoerd in de lokale pre-commit/pre-push hook-template, die apart van de CI-config hetzelfde patroon gebruikte. (#784)
+- **Een team dat in de gegevens met een spatie geschreven staat ("MO13 1") wordt weer herkend als hetzelfde team als "MO13-1".** Een verzoek om een wedstrijd te verplaatsen kreeg het antwoord "Geen wedstrijd gevonden", terwijl die wedstrijd wél in het programma stond. Oorzaak: bij het vergelijken van teamnamen gold een schuine streep, punt of komma tussen leeftijd en teamnummer als scheidingsteken, maar een gewone spatie niet. Daardoor kreeg hetzelfde team twee verschillende interne sleutels en vond het systeem er niets bij. Dit trof **alle** teams van de democlub AllStars FC — de testset waarmee elke club de e-mailverwerking uitprobeert — en ook een e-mail van een echte club waarin het team met een spatie geschreven werd. Tegelijk werkt het herkennen van een team zonder jongens/meiden-aanduiding ("13-1") voor de democlub weer, want ook dat viel hierdoor stil. (#766)
+- **Instellingen voor de KNVB-flow (standaardregio en het meesturen van de KNVB-kalender als PDF) worden weer ingelezen.** Door een fout in de databasequery mislukte het laden van de instellingen elke keer volledig; in de logs stond alleen een foutregel die geen gevolgen leek te hebben. Gevolg: bij een verzetverzoek zonder nieuwe datum viel het systeem in productie altijd terug op het oude antwoord, zonder BCC naar de eigen begeleiding, zonder PDF-bijlage en zonder voorstel met vrije zaterdagen — ook al stonden die instellingen correct ingevuld. In de e-mailtester werkte de flow wél, omdat die de instellingen langs een ander pad ophaalt; daardoor bleef dit onopgemerkt. (#767)
+
+### Changed
+- **De ontdubbelde teamlijst herstelt zichzelf als de regels voor teamnaam-vergelijking wijzigen.** De interne sleutel per team staat opgeslagen in de database maar wordt door de applicatie berekend. Wijzigt die berekening, dan sloten de opgeslagen sleutels niet meer aan en verdwenen teams uit de lijst zonder terug te komen. De synchronisatie berekent nu bij elke run de sleutels opnieuw uit de opgeslagen teamnaam en werkt ze bij; blijken twee rijen daarna hetzelfde team te zijn, dan worden ze samengevoegd met behoud van alle geleerde schrijfwijzen. Ook de e-mailverwerking en de e-mailtester controleren dit vooraf, zodat een deployment zonder nachtelijke synchronisatie niet met een onbruikbare teamlijst achterblijft. (#766)
+- **De teamdropdown bij Voorkeurstijden en Teamregels toont niet meer dezelfde teams dubbel of in rauwe schrijfwijze.** De lijst kwam rechtstreeks uit de ongenormaliseerde brondata, waarin elk team meerdere keren voorkomt — per poule en in twee schrijfwijzen ("O13" naast "JO13"). De dropdown gebruikt nu de al bestaande, ontdubbelde teamlijst die na elke synchronisatie wordt bijgewerkt: één rij per fysiek team. Als onderdeel van dezelfde fix krijgt de democlub AllStars FC nu ook een gevulde, ontdubbelde teamlijst — die liep eerder nooit mee in de ontdubbelingsstap omdat die alleen voor de echte club draaide. (#756)
+- **Teambegeleiding: iemand met twee functies in hetzelfde team wordt in de Outlook-kopieerregel nu maar één keer opgenomen.** De kaartenweergave toont nog steeds elke functie apart, maar de "Kopieer naar Outlook"-regel mailt niet langer dezelfde persoon twee keer. Daarnaast worden exacte duplicaat-rijen uit de Sportlink-export (dezelfde persoon met dezelfde rol twee keer) voortaan bij import overgeslagen, met een waarschuwing in het importresultaat. (#761)
+
 ## [2.19.0.0] — 2026-07-28
 
 ### Changed

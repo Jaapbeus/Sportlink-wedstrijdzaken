@@ -1,0 +1,40 @@
+info:
+  name: Teamalias verwijderen
+  type: http
+  seq: 2
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/teamaliassen/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+      description: Alias-ID
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/teamaliassen/{id}
+
+  Teamalias verwijderen
+
+  Verwijdert de alias definitief. Uitsluitend binnen de eigen club (`X-Club-Code`).
+  De alias kan opnieuw als `pending` verschijnen wanneer de schrijfwijze weer wordt
+  aangetroffen.
+
+
+  Parameters:
+    id (path, required) - Alias-ID
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

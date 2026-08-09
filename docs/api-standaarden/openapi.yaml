@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 2.19.0
+  version: 2.20.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1734,6 +1734,18 @@ components:
         bericht:
           type: string
           description: Berichttekst (max 2000 tekens)
+        ontvangers:
+          type: string
+          nullable: true
+          description: |
+            #765: vrije-tekst-regel met de gewenste ontvangers, gescheiden door `;` of `,`. Elk
+            fragment mag `"Naam" <adres>` of een kaal adres zijn. Server-side geparsed, gevalideerd
+            (geldige syntax, max 15, gededupliceerd) en gecontroleerd tegen de uitsluitingslijst
+            (`dbo.UitgeslotenEmailAdressen`) vóór verzending.
+
+            Leeg of afwezig → ongewijzigd fallback-gedrag: server-side opzoeken van de
+            hoogst-geprioriteerde begeleider (Trainer > Coach > Teamleider), met de coördinator als
+            fallback wanneer niemand gevonden wordt.
 
     TeambegeleidingImportRequest:
       type: object
@@ -4383,7 +4395,14 @@ paths:
       summary: Bericht doorsturen naar teambegeleiding
       description: |
         Stuurt een bericht door naar de begeleidingsleden van een team via e-mail.
-        De e-mailadressen worden server-side opgezocht — ze staan nooit in de request body.
+
+        Standaard (`ontvangers` leeg) worden de e-mailadressen server-side opgezocht en staan ze
+        nooit in de request body. Sinds #765 kan de aanroeper zelf de ontvangers opgeven via
+        `ontvangers` — die worden dan server-side geparsed en gevalideerd (zie
+        `TeambegeleidingDoorsturenRequest.ontvangers`). Elke verzending — automatisch opgezocht of
+        zelf opgegeven — wordt weggeschreven als audit-rij in `planner.EmailVerwerking`
+        (`VerzoekType='TeambegeleidingDoorsturen'`), zichtbaar via `GET /beheer/email-log` en na
+        30 dagen geanonimiseerd door dezelfde cleanup als de reguliere e-mailpipeline.
       security:
         - easyAuth: []
       requestBody:
@@ -4407,7 +4426,15 @@ paths:
                     type: integer
                     description: Aantal ontvangers
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Ongeldige aanvraag. Naast de generieke validatie (team/bericht verplicht) geeft dit
+            endpoint een 400 bij een ongeldig e-mailadres in `ontvangers` (met het foutieve fragment
+            benoemd), meer dan 15 ontvangers, of een ontvanger die voorkomt op de uitsluitingslijst
+            (`dbo.UitgeslotenEmailAdressen`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

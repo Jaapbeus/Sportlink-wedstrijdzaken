@@ -1,0 +1,38 @@
+info:
+  name: Zonsondergangtabel vullen
+  type: http
+  seq: 10
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/populate-sunset"
+  body:
+    type: json
+    data: "{}"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/populate-sunset
+
+  Zonsondergangtabel vullen
+
+  Vult de `DateTable` met NOAA-berekende zonsondergangtijden voor het accommodatiecoördinaat.
+  Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
+  Vereist de Azure Master key.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

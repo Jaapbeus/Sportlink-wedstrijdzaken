@@ -1,0 +1,35 @@
+info:
+  name: Specifieke test-wedstrijd verwijderen (ALLSTARS)
+  type: http
+  seq: 2
+  tags:
+    - testdata
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/testdata/wedstrijden/:bk"
+  params:
+    - name: bk
+      value: string
+      type: path
+      description: Business key van de wedstrijd
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/testdata/wedstrijden/{bk}
+
+  Specifieke test-wedstrijd verwijderen (ALLSTARS)
+
+  Parameters:
+    bk (path, required) - Business key van de wedstrijd
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

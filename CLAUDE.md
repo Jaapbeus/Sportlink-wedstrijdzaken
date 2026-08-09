@@ -298,6 +298,7 @@ bewust worden bekeken.
 | `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
 | `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
+| `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
@@ -315,10 +316,12 @@ git commit -m "feat(#<nr>): ..."
 git push -u origin <huidige-branch>
 
 # Feature branches gaan via PR naar develop (NIET naar main):
-gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
+# --draft is verplicht: zonder --draft zet de automatisering meteen 'status: review-needed',
+# terwijl Stap 4 nog moet bevestigen dat alles groen is. Zie Stap 5 voor het uit-draft-halen.
+gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 
-# Hotfix branches gaan direct naar main:
-# gh pr create --base main --title "fix(#<nr>): ..." --body "..."
+# Hotfix branches gaan direct naar main (ook --draft, zelfde reden):
+# gh pr create --draft --base main --title "fix(#<nr>): ..." --body "..."
 
 # Release: develop → main (pas als alle features lokaal getest zijn):
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
@@ -340,8 +343,16 @@ De volledige keten, volledig geautomatiseerd:
 | PR ready for review | `status: review-needed` | `label-issue-status.yml` |
 | PR terug naar draft | `status: in-progress` | `label-issue-status.yml` |
 | PR gesloten zonder merge | `status: triage` | `label-issue-status.yml` |
+| Groene verificatielus, geen escalatie (Stap 5) | `status: pr-aangemaakt` (handmatig, overschrijft `review-needed`) | Claude |
 | PR gemerged naar `develop` | `status: awaiting-release` | `label-awaiting-release.yml` |
 | Release-tag naar `main` | alle status-labels weg + issue gesloten | `close-released-issues.yml` |
+
+> **`status: review-needed` betekent altijd "de eigenaar moet hiernaar kijken."** Dat label
+> is dus **niet** de juiste eindstatus voor een routinematige, groene PR-afronding — zie
+> Stap 5 en "Escaleer naar gebruiker bij" in de autonome ontwikkelcyclus hieronder.
+> Vastgelegd na feedback 2026-07-29: de eigenaar opende `review-needed`-issues (bijv. #767)
+> waar niets te reviewen viel, omdat het label puur op PR-draft-status wordt gezet — niet op
+> of er daadwerkelijk een beslissing nodig is.
 
 **Invarianten:**
 
@@ -359,6 +370,11 @@ De volledige keten, volledig geautomatiseerd:
 4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
    de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
    trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
+5. **Eén gedocumenteerde handmatige uitzondering: Stap 5.** Na een groene verificatielus
+   zonder escalatie overschrijft Claude `status: review-needed` bewust met
+   `status: pr-aangemaakt` (zie Stap 5 hieronder). Dit is de enige plek waar Claude zelf een
+   status-label zet — en altijd via `--remove-label` + `--add-label` in dezelfde aanroep,
+   conform invariant 1.
 
 **Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
 `label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
@@ -390,10 +406,28 @@ gh pr checks <pr-nr> --watch           # wacht op groen
 - CI rood door build/code-fout? Fix → push → herhaal stap 4.
 - **Security Gate rood? → STOP. Meld aan gebruiker. Nooit mergen.**
 
-### Stap 5 — Rapporteer aan gebruiker
-Alleen als alles groen: PR-URL, issue-nr, samenvatting van wijzigingen.
+### Stap 5 — PR klaarzetten, label bijwerken en rapporteren aan gebruiker
 
-### Escaleer naar gebruiker bij (en alleen bij):
+Alleen als Stap 4 volledig groen is:
+
+1. Haal de PR uit draft: `gh pr ready <pr-nr>` (automatisering zet hierdoor
+   `status: review-needed` — dat is op dit punt nog een tussenstap, geen eindoordeel).
+2. Toets tegen "Escaleer naar gebruiker bij" hieronder — dat zijn de ENIGE gevallen waarin
+   `status: review-needed` mag blijven staan:
+   - **Escalatie van toepassing** → laat `status: review-needed` staan en leg in het
+     rapport aan de gebruiker expliciet uit welke beslissing nodig is.
+   - **Geen escalatie (het normale, autonome pad — de meeste PRs)** → overschrijf het
+     label meteen:
+     ```powershell
+     gh issue edit <issue-nr> --remove-label "status: review-needed" --add-label "status: pr-aangemaakt"
+     ```
+     `status: pr-aangemaakt` betekent: de PR staat klaar, CI is groen, er is niets van de
+     gebruiker nodig — de PR wacht alleen nog op een merge-moment naar keuze.
+3. Rapporteer aan de gebruiker: PR-URL, issue-nr, samenvatting van wijzigingen, en welk
+   label uiteindelijk is gezet (`review-needed` = actie nodig, `pr-aangemaakt` = geen actie
+   nodig).
+
+### Escaleer naar gebruiker bij (en alleen bij) — dit zijn de enige gevallen voor `status: review-needed`:
 - Security Gate blijft rood na fixpoging
 - > 3 iteraties in verificatielus zonder voortgang
 - Architectuurkeuze met meerdere gelijkwaardige paden
@@ -634,6 +668,25 @@ Samenvatting van de drie harde regels:
 □ Modelnaam uit configuratie — niet hardcoded?
 □ KNVB-regels nog geldig voor het huidige seizoen?
 ```
+
+---
+
+### E-mail — analyse + doelarchitectuur vastgelegd, migratie nog niet gestart
+
+> Volledig ontwerp en gefaseerd migratieplan: **[docs/ARCHITECTUUR-EMAIL-MODULE.md](docs/ARCHITECTUUR-EMAIL-MODULE.md)**
+> (epic #777). Dit document beschrijft het **toekomstige** ontwerp — er is nog geen code gemigreerd.
+> Tot Fase 1 daarvan is uitgevoerd, is de huidige, verspreide structuur (§1 van dat document) nog
+> steeds de werkelijkheid: `EmailGraphService` blijft de enige Graph-adapter, `planner.EmailVerwerking`
+> blijft de AI-verwerkingsstatusmachine, en er bestaat nog geen generiek verzend-contract of
+> `<EmailComposer>`-component.
+
+Harde regel zodra de migratie start: **een nieuw Blazor-scherm dat e-mail moet versturen, of een
+nieuwe wijziging aan een bestaand verzendpad, raadpleegt eerst
+`docs/ARCHITECTUUR-EMAIL-MODULE.md`** — met name de vraag of het nieuwe/gewijzigde pad via het
+generieke `IEmailVerzendService`-contract kan lopen in plaats van opnieuw een eigen Graph-aanroep,
+sanitizing, ontvangerparsing of logging-tabel te bouwen. Een nieuwe, losstaande "vierde
+verzendmanier" naast de bestaande is een architectuurschending — dat is exact het probleem dat dit
+document oplost.
 
 ---
 

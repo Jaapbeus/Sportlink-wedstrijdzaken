@@ -1,0 +1,46 @@
+info:
+  name: Club-thema opslaan
+  type: http
+  seq: 47
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/theme"
+  body:
+    type: json
+    data: |-
+      {
+        "primary": "#1b6ec2",
+        "secondary": "#6c757d",
+        "accent": "#0071c1",
+        "textOnPrimary": "#ffffff",
+        "clubWebsiteUrl": "string",
+        "faviconUrl": "string",
+        "logoUrl": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/theme
+
+  Club-thema opslaan
+
+  Slaat themakleuren, favicon-URL en logo-URL op in `dbo.AppSettings`.
+  Alle kleurwaarden worden gevalideerd op hex-formaat (#rrggbb).
+
+
+  Spec declares security scheme "functionKey" (apiKey).

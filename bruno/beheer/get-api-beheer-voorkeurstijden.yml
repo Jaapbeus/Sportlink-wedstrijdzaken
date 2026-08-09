@@ -1,0 +1,42 @@
+info:
+  name: Teamvoorkeurstijden ophalen
+  type: http
+  seq: 27
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/voorkeurstijden"
+  params:
+    - name: team
+      value: string
+      type: query
+      description: Filter op exacte teamnaam
+      disabled: true
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/voorkeurstijden
+
+  Teamvoorkeurstijden ophalen
+
+  Geeft voorkeurstijden per team en dag van de week. Optioneel gefilterd op teamnaam.
+
+
+  Parameters:
+    team (query) - Filter op exacte teamnaam
+
+  Spec declares security scheme "functionKey" (apiKey).

@@ -1,0 +1,45 @@
+info:
+  name: Club-instellingen bijwerken
+  type: http
+  seq: 42
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/settings"
+  body:
+    type: json
+    data: |-
+      {
+        "gewijzigdDoor": "beheerder@voorbeeld.nl",
+        "velden": {
+          "BufferMinuten": "15",
+          "FetchSchedule": "0 0 4 * * *"
+        }
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/settings
+
+  Club-instellingen bijwerken
+
+  Werkt toegestane AppSettings-velden bij en schrijft een audit-regel naar `dbo.AppSettingsAudit`.
+  Bij wijziging van `FetchSchedule` herstart de Function App automatisch (als Azure Management API
+  geconfigureerd is). Velden buiten de witte lijst worden genegeerd.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

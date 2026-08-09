@@ -1,0 +1,50 @@
+info:
+  name: Teamschema ophalen
+  type: http
+  seq: 1
+  tags:
+    - planner
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/planner/team-schedule?team=[ClubCode] JO13-1"
+  params:
+    - name: team
+      value: "[ClubCode] JO13-1"
+      type: query
+      description: Exacte teamnaam
+    - name: format
+      value: html
+      type: query
+      description: html = HTML-weergave teruggeven i.p.v. JSON
+      disabled: true
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/planner/team-schedule
+
+  Teamschema ophalen
+
+  Geeft alle wedstrijden voor een team t/m het seizoenseinde, inclusief een overzicht per
+  zaterdag (vrij / oefenwedstrijd / bezet).
+
+  Optioneel `?format=html` voor een HTML-weergave.
+
+
+  Parameters:
+    team (query, required) - Exacte teamnaam
+    format (query) - html = HTML-weergave teruggeven i.p.v. JSON [html]
+
+  Spec declares security scheme "functionKey" (apiKey).

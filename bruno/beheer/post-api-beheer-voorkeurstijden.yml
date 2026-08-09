@@ -1,0 +1,40 @@
+info:
+  name: Teamvoorkeurstijd aanmaken
+  type: http
+  seq: 39
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/voorkeurstijden"
+  body:
+    type: json
+    data: |-
+      {
+        "teamNaam": "string",
+        "dagVanWeek": 1,
+        "voorkeurTijd": "10:00",
+        "prioriteit": 5,
+        "actief": true
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/voorkeurstijden
+
+  Teamvoorkeurstijd aanmaken
+
+  Spec declares security scheme "functionKey" (apiKey).
