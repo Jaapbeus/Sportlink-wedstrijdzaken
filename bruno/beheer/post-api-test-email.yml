@@ -1,0 +1,45 @@
+info:
+  name: E-mailclassificatie dry-run
+  type: http
+  seq: 40
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/test/email"
+  body:
+    type: json
+    data: |-
+      {
+        "onderwerp": "string",
+        "afzender": "trainer@voorbeeld.nl",
+        "afzenderNaam": "Jan de Vries",
+        "body": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/test/email
+
+  E-mailclassificatie dry-run
+
+  Simuleert de volledige e-mailverwerkingspipeline zonder iets te versturen of op te slaan.
+  Geeft classificatie (AI), mogelijke planneractie en een voorbeeldantwoord terug.
+
+  Rate limiting: max 10 aanroepen per minuut.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

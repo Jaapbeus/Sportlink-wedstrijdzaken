@@ -1,0 +1,43 @@
+info:
+  name: GPS-coördinaten opzoeken
+  type: http
+  seq: 10
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/geocode?plaatsnaam=[Stad]"
+  params:
+    - name: plaatsnaam
+      value: "[Stad]"
+      type: query
+      description: Nederlandse plaatsnaam of adres om op te zoeken
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/geocode
+
+  GPS-coördinaten opzoeken
+
+  Zoekt GPS-coördinaten op voor een plaatsnaam via Nominatim (OpenStreetMap).
+  Gebruik om `AccommodatieLatitude` en `AccommodatieLongitude` in AppSettings te vullen.
+  Rate-limit: 1 req/sec per Nominatim ToS.
+
+
+  Parameters:
+    plaatsnaam (query, required) - Nederlandse plaatsnaam of adres om op te zoeken
+
+  Spec declares security scheme "functionKey" (apiKey).

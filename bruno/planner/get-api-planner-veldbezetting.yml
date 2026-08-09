@@ -1,0 +1,44 @@
+info:
+  name: Wedstrijden op een datum ophalen, zonder optimalisatie
+  type: http
+  seq: 2
+  tags:
+    - planner
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/planner/veldbezetting?datum=2026-08-22"
+  params:
+    - name: datum
+      value: 2026-08-22
+      type: query
+      description: Datum in yyyy-MM-dd formaat
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/planner/veldbezetting
+
+  Wedstrijden op een datum ophalen, zonder optimalisatie
+
+  Geeft de wedstrijden terug die op een datum al gepland staan, rechtstreeks uit de
+  laatst gesynchroniseerde Sportlink-data — zonder de scheduling-optimalisatie die
+  `/planner/auto-plan` uitvoert. Bedoeld als snelle,
+  goedkope "wat staat er nu al gepland"-weergave.
+
+
+  Parameters:
+    datum (query, required) - Datum in yyyy-MM-dd formaat
+
+  Spec declares security scheme "functionKey" (apiKey).

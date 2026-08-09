@@ -1,0 +1,46 @@
+info:
+  name: Teamvoorkeurstijd bijwerken
+  type: http
+  seq: 51
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/voorkeurstijden/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "teamNaam": "string",
+        "dagVanWeek": 1,
+        "voorkeurTijd": "10:00",
+        "prioriteit": 5,
+        "actief": true
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/voorkeurstijden/{id}
+
+  Teamvoorkeurstijd bijwerken
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

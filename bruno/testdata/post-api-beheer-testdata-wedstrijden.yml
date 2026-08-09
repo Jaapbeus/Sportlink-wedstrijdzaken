@@ -1,0 +1,42 @@
+info:
+  name: Test-wedstrijd aanmaken (ALLSTARS)
+  type: http
+  seq: 5
+  tags:
+    - testdata
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/testdata/wedstrijden"
+  body:
+    type: json
+    data: |-
+      {
+        "datum": "2026-06-07",
+        "aanvangstijd": "10:00",
+        "thuisteam": "AllStars FC JO11-1",
+        "uitteam": "Tegenstander JO11-2",
+        "veld": "veld 3",
+        "competitiesoort": "Oefenwedstrijd",
+        "veld_subpositie": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/testdata/wedstrijden
+
+  Test-wedstrijd aanmaken (ALLSTARS)
+
+  Spec declares security scheme "functionKey" (apiKey).

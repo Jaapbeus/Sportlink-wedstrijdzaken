@@ -1,0 +1,32 @@
+info:
+  name: Status en versie van de API
+  type: http
+  seq: 1
+  tags:
+    - core
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/health"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/health
+
+  Status en versie van de API
+
+  Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
+
+  Spec declares security scheme "functionKey" (apiKey).

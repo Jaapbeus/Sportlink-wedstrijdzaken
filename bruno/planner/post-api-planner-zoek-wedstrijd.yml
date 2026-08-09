@@ -1,0 +1,41 @@
+info:
+  name: Bestaande wedstrijd opzoeken
+  type: http
+  seq: 11
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/zoek-wedstrijd"
+  body:
+    type: json
+    data: |-
+      {
+        "teamNaam": "[ClubCode] JO8-2",
+        "datum": "2026-05-09"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/zoek-wedstrijd
+
+  Bestaande wedstrijd opzoeken
+
+  Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
+  Gedeeltelijke teamnaam-match is ondersteund.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

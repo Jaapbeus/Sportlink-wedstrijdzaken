@@ -1,0 +1,47 @@
+info:
+  name: Kleuren extraheren uit club-website
+  type: http
+  seq: 34
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/theme/extract?url=https://www.[clubdomein].nl"
+  params:
+    - name: url
+      value: https://www.[clubdomein].nl
+      type: query
+      description: URL van de club-website (http of https)
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/theme/extract
+
+  Kleuren extraheren uit club-website
+
+  Haalt de HTML van een club-website op en extraheert de meest voorkomende kleuren,
+  de favicon-URL en de logo-URL (via og:image).
+
+  **SSRF-bescherming:** privé-IP's (RFC1918, loopback, link-local) en DNS-fouten
+  worden geblokkeerd.
+
+  Rate-limit: afhankelijk van de beschikbaarheid van de externe website.
+
+
+  Parameters:
+    url (query, required) - URL van de club-website (http of https)
+
+  Spec declares security scheme "functionKey" (apiKey).

@@ -1,0 +1,50 @@
+info:
+  name: Bericht doorsturen naar teambegeleiding
+  type: http
+  seq: 30
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/teambegeleiding/doorsturen"
+  body:
+    type: json
+    data: |-
+      {
+        "team": "string",
+        "onderwerp": "string",
+        "bericht": "string",
+        "ontvangers": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/teambegeleiding/doorsturen
+
+  Bericht doorsturen naar teambegeleiding
+
+  Stuurt een bericht door naar de begeleidingsleden van een team via e-mail.
+
+  Standaard (`ontvangers` leeg) worden de e-mailadressen server-side opgezocht en staan ze
+  nooit in de request body. Sinds #765 kan de aanroeper zelf de ontvangers opgeven via
+  `ontvangers` — die worden dan server-side geparsed en gevalideerd (zie
+  `TeambegeleidingDoorsturenRequest.ontvangers`). Elke verzending — automatisch opgezocht of
+  zelf opgegeven — wordt weggeschreven als audit-rij in `planner.EmailVerwerking`
+  (`VerzoekType='TeambegeleidingDoorsturen'`), zichtbaar via `GET /beheer/email-log` en na
+  30 dagen geanonimiseerd door dezelfde cleanup als de reguliere e-mailpipeline.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

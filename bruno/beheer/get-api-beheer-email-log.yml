@@ -1,0 +1,63 @@
+info:
+  name: E-mailverwerkingslog ophalen
+  type: http
+  seq: 9
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/email-log"
+  params:
+    - name: vanaf
+      value: 1970-01-01
+      type: query
+      description: Begindatum filter (inclusief) in yyyy-MM-dd
+      disabled: true
+    - name: tot
+      value: 1970-01-01
+      type: query
+      description: Einddatum filter (exclusief) in yyyy-MM-dd
+      disabled: true
+    - name: status
+      value: string
+      type: query
+      description: Filter op statuswaarde
+      disabled: true
+    - name: limit
+      value: "50"
+      type: query
+      description: Maximum aantal terug te geven rijen (standaard 50, max 200)
+      disabled: true
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/email-log
+
+  E-mailverwerkingslog ophalen
+
+  Geeft metadata van verwerkte emails uit `planner.EmailVerwerking`.
+
+  AVG: `EmailBody` en `AntwoordEmail` worden nooit teruggegeven.
+  `Afzender` wordt gemaskeerd tot alleen het domein (bijv. `***@voorbeeld.nl`).
+
+
+  Parameters:
+    vanaf (query) - Begindatum filter (inclusief) in yyyy-MM-dd
+    tot (query) - Einddatum filter (exclusief) in yyyy-MM-dd
+    status (query) - Filter op statuswaarde
+    limit (query) - Maximum aantal terug te geven rijen (standaard 50, max 200)
+
+  Spec declares security scheme "functionKey" (apiKey).

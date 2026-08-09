@@ -1,0 +1,49 @@
+info:
+  name: Feedback valideren op volledigheid
+  type: http
+  seq: 2
+  tags:
+    - feedback
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/feedback/validate"
+  body:
+    type: json
+    data: |-
+      {
+        "type": "Fout",
+        "beschrijving": "string",
+        "vragenAntwoorden": [
+          {
+            "vraag": "string",
+            "antwoord": "string"
+          }
+        ],
+        "context": {}
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/feedback/validate
+
+  Feedback valideren op volledigheid
+
+  Controleert via GPT-4o-mini of de beschrijving voldoende informatie bevat.
+  Geeft gerichte aanvulvragen terug als er gaten zijn.
+  Geen rate limiting — validatie is goedkoop.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

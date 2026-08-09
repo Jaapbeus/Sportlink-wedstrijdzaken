@@ -1,0 +1,32 @@
+info:
+  name: Veldenoverzicht ophalen
+  type: http
+  seq: 25
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/velden"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/velden
+
+  Veldenoverzicht ophalen
+
+  Geeft de nummers en namen van alle velden uit `dbo.Velden` voor de club.
+
+  Spec declares security scheme "functionKey" (apiKey).

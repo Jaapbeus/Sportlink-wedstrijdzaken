@@ -1,0 +1,32 @@
+info:
+  name: Uitsluitingslijst e-mailadressen ophalen
+  type: http
+  seq: 23
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/uitgesloten-emails"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/uitgesloten-emails
+
+  Uitsluitingslijst e-mailadressen ophalen
+
+  Geeft alle expliciet uitgesloten afzenders uit `dbo.UitgeslotenEmailAdressen`.
+
+  Spec declares security scheme "functionKey" (apiKey).

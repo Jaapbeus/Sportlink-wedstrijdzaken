@@ -1,0 +1,32 @@
+info:
+  name: Synchronisatiestatus ophalen
+  type: http
+  seq: 15
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/sync/status"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/sync/status
+
+  Synchronisatiestatus ophalen
+
+  Geeft het tijdstip van de laatste Sportlink-synchronisatie en het huidige FetchSchedule.
+
+  Spec declares security scheme "functionKey" (apiKey).

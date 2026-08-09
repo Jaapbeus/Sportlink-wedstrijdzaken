@@ -1,0 +1,15 @@
+{
+  "environments": {
+    "local": {
+      "vars": { "baseUrl": "http://localhost:7094" },
+      "secrets": ["apiKey"]
+    }
+  },
+  "projects": [
+    {
+      "name": "Sportlink Wedstrijdzaken API",
+      "path": ".",
+      "spec": "docs/api-standaarden/openapi.yaml"
+    }
+  ]
+}

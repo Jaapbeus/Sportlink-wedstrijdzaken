@@ -1,0 +1,51 @@
+info:
+  name: Leermoment valideren of afwijzen
+  type: http
+  seq: 41
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/leermomenten/:id/valideer"
+  params:
+    - name: id
+      value: "1"
+      type: path
+      description: Leermoment ID
+  body:
+    type: json
+    data: |-
+      {
+        "actie": "valideer"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/leermomenten/{id}/valideer
+
+  Leermoment valideren of afwijzen
+
+  Zet `IsGevalideerd` of `IsAfgewezen` op het leermoment.
+  Actie `valideer` → leermoment wordt gebruikt voor AI-training.
+  Actie `afwijzen` → leermoment wordt genegeerd.
+
+
+  Parameters:
+    id (path, required) - Leermoment ID
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

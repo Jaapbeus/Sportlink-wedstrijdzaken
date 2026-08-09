@@ -1,0 +1,34 @@
+info:
+  name: Test-wedstrijden ophalen (ALLSTARS)
+  type: http
+  seq: 4
+  tags:
+    - testdata
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/testdata/wedstrijden"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/testdata/wedstrijden
+
+  Test-wedstrijden ophalen (ALLSTARS)
+
+  Geeft wedstrijden uit `his.matches` voor de ALLSTARS demo-club.
+  Alleen beschikbaar in lokale/staging-omgevingen.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

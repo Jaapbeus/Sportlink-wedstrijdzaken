@@ -1,0 +1,44 @@
+info:
+  name: Automatisch weekplan genereren
+  type: http
+  seq: 3
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/auto-plan"
+  body:
+    type: json
+    data: |-
+      {
+        "datum": "2026-06-07",
+        "doel": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/auto-plan
+
+  Automatisch weekplan genereren
+
+  Genereert voor een opgegeven datum een automatisch veldrooster op basis van de geplande
+  wedstrijden, veldbeschikbaarheid, speeltijden en teamregels.
+
+  **Voert niets door** — puur simulatie/voorstel.
+  Gebruik `/planner/auto-plan/toepassen` om het plan daadwerkelijk te boeken.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

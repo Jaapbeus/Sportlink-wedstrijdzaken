@@ -1,0 +1,44 @@
+info:
+  name: Veld aanmaken
+  type: http
+  seq: 37
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/velden"
+  body:
+    type: json
+    data: |-
+      {
+        "veldNummer": 1,
+        "veldNaam": "veld 1",
+        "veldType": "kunstgras",
+        "heeftKunstlicht": false,
+        "actief": true
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/velden
+
+  Veld aanmaken
+
+  Maakt een nieuw veld aan in `dbo.Velden`. VeldNummer moet deployment-breed uniek zijn
+  (409 Conflict bij duplicaat) — de tabel heeft geen ClubCode in de primary key.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

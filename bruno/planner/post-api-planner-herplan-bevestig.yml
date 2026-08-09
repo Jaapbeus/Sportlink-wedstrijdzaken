@@ -1,0 +1,44 @@
+info:
+  name: Herplanverzoek registreren
+  type: http
+  seq: 8
+  tags:
+    - planner
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/planner/herplan-bevestig"
+  body:
+    type: json
+    data: |-
+      {
+        "wedstrijdcode": 12345678,
+        "gewensteAanvangsTijd": "10:00",
+        "gewenstVeldNummer": 1,
+        "aangevraagdDoor": "tegenstander via email",
+        "opmerking": "08:30 is niet haalbaar"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/planner/herplan-bevestig
+
+  Herplanverzoek registreren
+
+  Registreert een herplanverzoek met status `"Aangevraagd"`.
+  **Wijzigt de wedstrijd niet** — de feitelijke aanpassing in Sportlink is een handmatig proces.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

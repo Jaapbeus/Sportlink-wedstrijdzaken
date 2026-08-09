@@ -1,0 +1,32 @@
+info:
+  name: Leermoment-statistieken ophalen
+  type: http
+  seq: 12
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/leermomenten/stats"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/leermomenten/stats
+
+  Leermoment-statistieken ophalen
+
+  Geeft tellingen per status (pending, validated, rejected) voor de club.
+
+  Spec declares security scheme "functionKey" (apiKey).
