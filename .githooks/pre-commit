@@ -73,9 +73,13 @@ for doc in "${DOC_PATTERNS[@]}"; do
   while IFS= read -r file; do
     [ -z "$file" ] && continue
     if echo "$file" | grep -qE "^${doc}"; then
+      # POSIX ERE (-E), niet PCRE (-P): de BSD-grep van macOS kent geen -P en zou hier
+      # met 'invalid option' falen. Dankzij de '|| true' zou dat stilzwijgend gebeuren en
+      # rapporteerde de hook schoon zonder iets te controleren (#800). Het patroon gebruikt
+      # geen PCRE-specifieke constructies, dus -E geeft exact hetzelfde resultaat.
       email_hits=$(git show ":$file" 2>/dev/null \
-        | grep -oiP '[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}' \
-        | grep -viP '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
+        | grep -oiE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
+        | grep -viE '@(github\.com|anthropic\.com|example\.(com|nl|org)|voorbeeld\.nl)$' || true)
       if [ -n "$email_hits" ]; then
         echo ""
         echo "BLOCKED: Emailadres in documentatiebestand (AVG)"

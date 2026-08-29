@@ -12,11 +12,11 @@
 #>
 param([switch]$NewPatch)
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 
 $projects = @(
-    (Join-Path $root "FunctionApp\fa-dev-sportlink-01.csproj"),
-    (Join-Path $root "BlazorAdmin\BlazorAdmin.csproj")
+    (Join-Path $root "FunctionApp/fa-dev-sportlink-01.csproj"),
+    (Join-Path $root "BlazorAdmin/BlazorAdmin.csproj")
 )
 
 $newVersionLabel = $null

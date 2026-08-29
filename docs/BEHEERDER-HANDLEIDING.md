@@ -16,12 +16,18 @@ valideert het token server-side.
 
 ### Voorbereiding (eenmalig)
 
-1. Stel `FunctionApp/local.settings.json` correct in (zie `local.settings.template.json`)
-2. Voer alle migraties uit op de lokale SQL Server:
+1. Start de lokale database (SQL Server 2022 in Docker — identiek op Windows en macOS):
    ```powershell
-   sqlcmd -S YOUR_SQL_SERVER -d SportlinkSqlDb -E -i .\Database\Script.PostDeployment1.sql
+   docker compose up -d
    ```
-3. Installeer Azurite (voor storage emulator): `npm install -g azurite`
+2. Stel `FunctionApp/local.settings.json` correct in (zie `local.settings.template.json`)
+3. Voer alle migraties uit op die database:
+   ```powershell
+   sqlcmd -S localhost,1433 -d SportlinkSqlDb -U sa -C -i Database/Script.PostDeployment1.sql
+   ```
+   Het wachtwoord geeft u mee via de omgevingsvariabele `SQLCMDPASSWORD`, zodat het niet in de
+   opdrachtregel en dus niet in de processenlijst terechtkomt.
+4. Installeer Azurite (voor storage emulator): `npm install -g azurite`
 
 ### Services starten
 

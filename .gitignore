@@ -117,3 +117,16 @@ exports/teambegeleiding*.csv
 # ── Playwright MCP — lokale browser-testoutput ────────────────────────────────
 # Console-logs en page-snapshots van MCP-browsersessies; puur lokaal debugmateriaal.
 .playwright-mcp/
+
+# macOS (#800) — Finder/Spotlight-rommel die anders in elke gebladerde map belandt
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+__MACOSX/
+
+# Database-dumps (#800) — een .bacpac van de ontwikkeldatabase bevat persoonsgegevens
+# (o.a. avg.Teambegeleiding). Nooit in git, ook niet tijdelijk. *.bak stond al hierboven.
+*.bacpac

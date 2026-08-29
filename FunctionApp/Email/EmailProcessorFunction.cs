@@ -545,12 +545,14 @@ public class EmailProcessorFunction
 
         var reviewMode = string.Equals(
             Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+        var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
         var replyUitkomst = await replyPolicyService.HandelReplyFlowAfAsync(
             verwerkingId,
             email,
             classificatie,
             plannerResponseJson,
             reviewMode,
+            reviewRecipient,
             graphService,
             persistenceService,
             () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log),
