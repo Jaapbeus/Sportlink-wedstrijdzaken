@@ -207,7 +207,7 @@ Vóór de eerste run MOET de volledige omgeving geverifieerd worden.
 ### Scenario: Geautomatiseerde verificatie
 
 - **GIVEN** een volledig geconfigureerde omgeving
-- **WHEN** `setup-local-debug.ps1` wordt uitgevoerd
+- **WHEN** `scripts/dev/Test-App.ps1` wordt uitgevoerd
 - **THEN** MOETEN de volgende controles slagen:
   - SQL Server connectiviteit: ✓
   - Database bestaan: ✓

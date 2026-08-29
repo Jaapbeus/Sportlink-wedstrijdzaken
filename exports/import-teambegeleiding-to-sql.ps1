@@ -55,8 +55,8 @@ Write-Host "`n[1/5] CSV-bestand zoeken..." -ForegroundColor Yellow
 
 if (-not $CsvPath) {
     $candidates = @(
-        "$repoRoot\exports\BegeleidingTeams.csv",
-        "$repoRoot\exports\teambegeleiding.csv"
+        "$repoRoot/exports/BegeleidingTeams.csv",
+        "$repoRoot/exports/teambegeleiding.csv"
     )
     foreach ($c in $candidates) {
         if (Test-Path $c) { $CsvPath = $c; break }
@@ -74,7 +74,7 @@ Write-Host "  Bestand: $CsvPath" -ForegroundColor Green
 # ── Stap 2: Verbindingsstring ophalen uit local.settings.json ─────────────────
 Write-Host "`n[2/5] SQL-verbindingsstring ophalen..." -ForegroundColor Yellow
 
-$settingsPath = "$repoRoot\FunctionApp\local.settings.json"
+$settingsPath = "$repoRoot/FunctionApp/local.settings.json"
 if (-not (Test-Path $settingsPath)) {
     Write-Host "  FOUT: $settingsPath niet gevonden." -ForegroundColor Red
     Write-Host "  Kopieer local.settings.template.json naar local.settings.json en vul SqlConnectionString in." -ForegroundColor Yellow

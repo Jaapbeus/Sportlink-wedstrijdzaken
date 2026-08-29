@@ -18,8 +18,66 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **De lokale ontwikkelomgeving draait nu ook op macOS (Apple Silicon), naast Windows.** Alle
+  dev-scripts (`Start-Debug.ps1`, `Stop-Debug.ps1`, `Test-App.ps1`, `Bump-Build.ps1`,
+  `smoke-test.ps1`) werken op beide platforms. Concreet: poortdetectie loopt via een
+  cross-platform .NET-API in plaats van `Get-NetTCPConnection`, de procesboom-teardown gebruikt
+  op macOS `ps` in plaats van WMI, de tijdelijke map wordt platform-onafhankelijk bepaald
+  (`$env:TEMP` bestaat niet op macOS), en alle padverwijzingen gebruiken forward slashes — een
+  backslash is op macOS namelijk een geldig teken ín een bestandsnaam en geen scheidingsteken.
+  Op macOS schrijft `Start-Debug.ps1` de output van elke service naar een logbestand, omdat
+  daar geen apart consolevenster geopend kan worden. Windows-gedrag is ongewijzigd. (#800)
+- `sportlink-wedstrijdzaken.slnf` — een solution filter met de drie .NET-projecten. Nodig omdat
+  het databaseproject een verouderd Visual Studio-formaat heeft dat buiten Windows niet te
+  bouwen is; `dotnet build sportlink-wedstrijdzaken.slnf` werkt wél op beide platforms. (#800)
+- `.gitattributes` — legt vast dat shell-scripts en git-hooks LF-regeleindes houden, zodat een
+  commit vanaf Windows de hooks op macOS niet onbruikbaar kan maken. (#800)
+- `docker-compose.yml` — de lokale ontwikkeldatabase draait nu op **beide** platforms als
+  SQL Server 2022 in een container (`docker compose up -d`). Eén image, één poort, één
+  verbindingsreeks, dezelfde stappen op Windows en macOS. Het SA-wachtwoord komt uit een
+  lokaal `.env`-bestand en staat niet in de repository. (#800)
+
+### Changed
+- **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
+  rechtstreeks op Windows geïnstalleerde SQL Server-service wordt niet meer ondersteund: dat
+  pad werkte alleen op Windows en dwong overal een tweede variant af in scripts én handleiding.
+  Gevolg voor bestaande Windows-werkplekken: `Integrated Security=True` in
+  `FunctionApp/local.settings.json` vervangen door de SQL-login uit `docs/DEVELOPER-SETUP.md`.
+  `Test-App.ps1` meldt dit expliciet met de benodigde stappen als de oude instelling nog
+  gebruikt wordt. (#800)
+
+### Removed
+- `FunctionApp/setup/pre-debug-check.ps1` en `FunctionApp/setup/setup-local-debug.ps1`. Beide
+  gingen uit van een lokaal geïnstalleerde SQL Server op Windows met Windows-authenticatie, en
+  waren daarnaast achterhaald (ze verwezen naar poort 7071 en naar F5 in Visual Studio).
+  `Start-Debug.ps1` en `Test-App.ps1` dekken deze controles volledig en werken op beide
+  platforms. De SQL-scripts in dezelfde map blijven bestaan — die vullen juist een verse
+  database. (#800)
+
 ### Fixed
+- **`Verify-AzureAuthSetup.ps1` rapporteerde de auth-lagen 4 en 5 altijd als FAIL**, ook als ze
+  correct waren. Het script zocht `App.razor` en de admin-endpoints één directoryniveau te hoog,
+  vond niets, en concludeerde daaruit dat de controles ontbraken. Dit was ook op Windows fout. (#800)
+- `scripts/dev/smoke-test.ps1` bepaalde de repository-hoofdmap één niveau te hoog en verwees
+  daardoor naar niet-bestaande projectpaden; het script was hierdoor onbruikbaar. (#800)
+- `Test-App.ps1` accepteert nu zowel `Server=`/`Database=` als `Data Source=`/`Initial Catalog=`
+  in de verbindingsreeks. De eerste schrijfwijze staat in het meegeleverde configuratiesjabloon,
+  maar werd niet herkend. (#800)
+
 - **Testmodus stuurt weer een testantwoord naar de reviewer.** In testmodus (`EmailReviewMode=true`) bouwt de AI al sinds een eerdere wijziging een voorgesteld antwoord op, maar dat werd alleen in de database bewaard — nergens te lezen zonder rechtstreekse databasetoegang. Dat testantwoord gaat nu ook naar het ingestelde reviewadres, zoals eerder ook het geval was voordat dit bewust werd uitgeschakeld. Mislukt die verzending, dan blijft het voorstel gewoon in de database staan. (#801)
+
+### Security
+- **De git-hooks werden op macOS stilzwijgend overgeslagen.** Geen enkel bestand in de repository
+  had de executable-vlag, en git negeert een hook zonder die vlag zonder foutmelding — de
+  secrets- en AVG-scan zou op een Mac dus helemaal niet draaien terwijl alles groen oogde.
+  Beide hooks staan nu als uitvoerbaar geregistreerd. (#800)
+- **De AVG-controle op e-mailadressen in documentatie werkte niet op macOS.** De controle
+  gebruikte `grep -P`, dat de meegeleverde grep van macOS niet kent; door de foutonderdrukking
+  meldde de hook vervolgens "geen persoonsgegevens gevonden" zonder iets te hebben gecontroleerd.
+  Omgezet naar een uitdrukking die op beide platforms werkt, met identiek resultaat. (#800)
+- `Test-App.ps1` geeft het databasewachtwoord niet langer mee als commandoregel-argument maar via
+  een omgevingsvariabele; argumenten zijn op beide platforms zichtbaar in de processenlijst. (#800)
 
 ## [2.20.0.0] — 2026-08-09
 

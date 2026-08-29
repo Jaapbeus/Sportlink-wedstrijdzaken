@@ -202,20 +202,26 @@ ITERATIE:
        # - FunctionApp :7094 → GEEN hot reload. Azure Functions isolated worker ondersteunt
        #   dit niet. Na elke C#-wijziging in FunctionApp: services stoppen en herstart uitvoeren.
 
-       # Alternatief (handmatig, als Start-Debug.ps1 niet beschikbaar):
+       # Alternatief (handmatig, als Start-Debug.ps1 niet beschikbaar) — Windows én macOS (#800):
+       #   - 'powershell' bestaat niet op macOS; daar heet de executable 'pwsh'.
+       #   - Get-NetTCPConnection zit in de Windows-only module NetTCPIP; gebruik de .NET BCL.
+       #   - $env:TEMP bestaat niet op macOS; gebruik [System.IO.Path]::GetTempPath().
+       #   - Start-Process opent op macOS nooit een venster, dus daar is een logbestand nodig.
+       $shell   = if ($IsWindows) { 'powershell' } else { 'pwsh' }
+       $tempDir = [System.IO.Path]::GetTempPath()
        # 1. Azurite
-       $azuriteRunning = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
-       if (-not $azuriteRunning) {
-           $azuriteDir = Join-Path $env:TEMP 'azurite'
+       $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+       if (-not ($listeners | Where-Object { $_.Port -eq 10000 })) {
+           $azuriteDir = Join-Path $tempDir 'azurite'
            if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
-           Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
+           Start-Process $shell -ArgumentList '-NoProfile','-Command',"azurite --location '$azuriteDir'"
            Start-Sleep -Seconds 3
        }
        # 2. FunctionApp (geen hot reload — herstart na codewijziging)
-       Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
+       Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location FunctionApp; func start --port 7094'
        # 3. BlazorAdmin met hot reload
        if (Test-Path "BlazorAdmin/BlazorAdmin.csproj") {
-           Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
+           Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location BlazorAdmin; dotnet watch run --launch-profile http'
        }
        Start-Sleep -Seconds 20
 
@@ -523,13 +529,52 @@ Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9*
 | `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
 | Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
 
-**Lokale ontwikkeling:** zorg dat .NET 9 runtime geïnstalleerd is (`winget install Microsoft.DotNet.Runtime.9`).
+**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — Windows: `winget install Microsoft.DotNet.Runtime.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
 Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
 
 **Upgradepad naar .NET 10 is alleen mogelijk als:**
 1. Azure Function App plan wordt omgezet naar Flex Consumption (`az functionapp update --plan <flex-plan>`)
 2. Azure Portal runtime wordt bijgewerkt naar `DOTNET-ISOLATED|10.0`
 3. Beide stappen tegelijk — anders 503 bij eerste deploy
+
+### Cross-platform scripts — Windows én macOS, geen uitzonderingen (#800)
+
+De ontwikkelomgeving draait op Windows **en** op macOS (Apple Silicon). Elk PowerShell-script in
+dit repo moet op beide werken. Vier regels, alle vier hard:
+
+| Nooit | Altijd | Waarom |
+|---|---|---|
+| `$env:TEMP` | `[System.IO.Path]::GetTempPath()` | `TEMP` bestaat niet op macOS; daar heet het `TMPDIR` |
+| `Get-NetTCPConnection` | `Test-PortListening` uit `DevServices.psm1` | Zit in de module `NetTCPIP` — alleen Windows |
+| `Get-CimInstance Win32_Process` | `Get-ChildProcessId` / `Get-ParentProcessId` uit `DevServices.psm1` | CIM/WMI is Windows-only |
+| Een `\` in een padliteral | Forward slash, of `Join-Path a b c` | Op Unix is `\` een geldig teken ín een bestandsnaam, geen scheidingsteken. `Join-Path $root 'a\b'` levert daar één bestand `a\b` op. Windows accepteert `/` overal |
+
+Aanvullend:
+
+- **`powershell` bestaat niet op macOS** — de executable heet daar `pwsh`. Bepaal de shell via
+  `$IsWindows`, nooit hardcoded.
+- **`Start-Process` opent op macOS nooit een venster** en `-WindowStyle` is er een no-op
+  (gedocumenteerd gedrag). Output moet daar naar een logbestand, anders is hij weg.
+- **De lokale database is altijd SQL Server 2022 in Docker** — op Windows én macOS, via
+  `docker-compose.yml` in de repo-root (`docker compose up -d`). Een rechtstreeks
+  geïnstalleerde SQL Server-service op Windows wordt **niet** ondersteund: dat werkt alleen
+  daar en dwingt overal een tweede code- en documentatievariant af. Gevolg: altijd een
+  SQL-login, nooit `Integrated Security` / `sqlcmd -E`, en altijd `TrustServerCertificate=True`
+  (de container heeft een self-signed certificaat). Geef een wachtwoord aan `sqlcmd` mee via
+  de omgevingsvariabele `SQLCMDPASSWORD`, nooit via `-P` — argumenten zijn op beide platforms
+  zichtbaar in de processenlijst. Het SA-wachtwoord staat in een lokale `.env` (gitignored),
+  nooit in de repository.
+- **In shell-scripts en git-hooks: geen `grep -P`.** De BSD-grep van macOS kent geen PCRE.
+  Gebruik `grep -E`. Dit is extra riskant in de hooks, waar een `|| true` de fout stil maakt.
+- **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`). Git slaat een
+  niet-executable hook op macOS stilzwijgend over — de secrets- en AVG-scan draait dan niet.
+- **Bouw nooit `sportlink-wedstrijdzaken.sln` op macOS.** Die bevat het legacy SSDT-project
+  `Database/SportlinkSqlDb.sqlproj`, dat Visual Studio-targets vereist die alleen op Windows
+  bestaan. Gebruik `sportlink-wedstrijdzaken.slnf` (de drie .csproj's) of bouw per project —
+  dat is ook wat de CI doet.
+
+**Nieuw platformspecifiek gedrag hoort in `scripts/dev/DevServices.psm1`, achter een functie —
+nooit inline in een script.** Zo blijft er één plek waar de OS-verschillen staan.
 
 ### Azure Entra setup — verify/configure via scripts, nooit handmatig
 

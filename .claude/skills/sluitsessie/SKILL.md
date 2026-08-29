@@ -153,3 +153,17 @@ Update ook de `session_latest`-regel in MEMORY.md.
 - ❌ aanwezig → `❌ NIET afgesloten — los blocker op en voer /sluitsessie opnieuw uit`
 
 Sluit af met één aanbevolen volgende actie.
+
+**Alleen als alle checks ✅ zijn** (volledig groen, geen enkele ⚠️ of ❌): plaats na de
+aanbevolen volgende actie, als allerlaatste in de response, dit banner in een code block:
+
+```
+  ██████╗ ██╗  ██╗ █████╗ ██╗   ██╗
+ ██╔═══██╗██║ ██╔╝██╔══██╗╚██╗ ██╔╝
+ ██║   ██║█████╔╝ ███████║ ╚████╔╝
+ ██║   ██║██╔═██╗ ██╔══██║  ╚██╔╝
+ ╚██████╔╝██║  ██╗██║  ██║   ██║
+  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+```
+
+Bij ⚠️ of ❌ dit banner NIET tonen — dat zou een onafgeronde sessie als voltooid voorspiegelen.

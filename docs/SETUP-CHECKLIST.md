@@ -1,19 +1,41 @@
 # Sportlink Wedstrijdzaken — Setup Checklist (v2.7)
 
 Gebruik deze checklist om je setup-voortgang bij te houden. Vink elk item af zodra het klaar is.
+Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
+[DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) voor de volledige uitleg per platform.
+
+> **Pad-notatie:** `.\scripts\dev\...`-commando's staan in Windows-stijl. Op macOS: forward
+> slashes, bijvoorbeeld `./scripts/dev/Start-Debug.ps1` in plaats van `.\scripts\dev\Start-Debug.ps1`.
 
 ---
 
 ## Software vereisten
 
+- [ ] PowerShell 7 geïnstalleerd (`pwsh --version` toont `7.x`) — vereist op beide platforms
+  ```powershell
+  # Windows
+  winget install Microsoft.PowerShell
+  ```
+  ```bash
+  # macOS
+  brew install powershell
+  ```
 - [ ] .NET 9 Runtime geïnstalleerd (`dotnet --list-runtimes` toont `Microsoft.NETCore.App 9.x.x`)
   ```powershell
+  # Windows
   winget install Microsoft.DotNet.Runtime.9
   ```
-- [ ] .NET 10 SDK geïnstalleerd (`dotnet --version` toont `10.x.x`)
-- [ ] Azure Functions Core Tools v4 geïnstalleerd (`func --version` toont `4.x.x`)
-- [ ] Node.js geïnstalleerd (`node --version`)
-- [ ] Azurite geïnstalleerd (`azurite --version`)
+  ```bash
+  # macOS
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+  ```
+- [ ] .NET 10 SDK geïnstalleerd (`dotnet --version` toont `10.x.x`) — macOS: `/tmp/dotnet-install.sh --channel 10.0`
+- [ ] Azure Functions Core Tools v4 geïnstalleerd (`func --version` toont `4.x.x`) — macOS: `brew tap azure/functions && brew install azure-functions-core-tools@4`
+- [ ] Node.js geïnstalleerd (`node --version`) — macOS: `brew install node`
+- [ ] Azurite geïnstalleerd (`azurite --version`) — cross-platform via npm, ongewijzigd
+- [ ] Lokale database gestart via `docker compose up -d` (identiek op Windows en macOS — de enige
+  ondersteunde manier sinds #800), of verbonden met een bestaande bereikbare SQL Server — zie
+  DEVELOPER-SETUP.md sectie 4.1
 
 ---
 
@@ -53,10 +75,10 @@ SportlinkClientId:  _________________________________
 - [ ] `AzureWebJobsStorage` staat op `UseDevelopmentStorage=true`
 - [ ] `FUNCTIONS_WORKER_RUNTIME` staat op `dotnet-isolated`
 
-**Connection string gebruikt:**
+**Connection string gebruikt (identiek op Windows en macOS — SQL-login tegen de Docker-container):**
 
 ```
-Server=____________;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;
+Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=____________;TrustServerCertificate=True;
 ```
 
 ---
@@ -116,9 +138,9 @@ Alleen nodig als je naar Azure wilt deployen.
 | Probleem | Eerste stap |
 |---------|-------------|
 | FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? |
-| "Cannot connect to database" | `SqlConnectionString` in `local.settings.json` controleren |
+| "Cannot connect to database" | `SqlConnectionString` in `local.settings.json` controleren; draait de container? `docker compose ps` |
 | "401 Unauthorized" Sportlink API | `SELECT * FROM [dbo].[AppSettings]` — credentials correct? |
-| "Azurite connection failed" | `Get-NetTCPConnection -LocalPort 10000` — poort actief? |
+| "Azurite connection failed" | Windows: `Get-NetTCPConnection -LocalPort 10000` · macOS: `lsof -nP -iTCP:10000 -sTCP:LISTEN` — poort actief? |
 | Blazor "An unhandled error" | Services stoppen + `dotnet clean BlazorAdmin` + herstart |
 
 Zie [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) voor gedetailleerde instructies.

@@ -1,9 +1,32 @@
 # Verificatie & zelfherstellende tests
 
+Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — beide scripts en `DevServices.psm1`
+zijn cross-platform; waar een commando toch platform-specifiek is staat de macOS-variant
+ernaast.
+
 ## Test-App.ps1
 
 `scripts/dev/scripts/dev/Test-App.ps1` is het centrale verificatie- en herstelscript.
 Het controleert schema, build en runtime in één doorloop.
+
+**sqlcmd-authenticatie, cross-platform afgeleid (#800):** het script hardcodeerde vroeger `-E`
+(Windows Integrated Authentication) — dat werkte toevallig omdat de lokale database vroeger een
+Windows SQL Server-service was. Sinds de lokale database uitsluitend nog de Docker-container uit
+`docker-compose.yml` is (identiek op Windows en macOS, zie DEVELOPER-SETUP.md sectie 4.1), gebruikt
+iedereen een SQL-login, en leidt het script de authenticatie af uit `SqlConnectionString` in
+`local.settings.json` in plaats van `-E` te hardcoden:
+- Staat er `User Id=`/`Password=` in (de standaardsituatie)? → `-U <user>` plus het wachtwoord via
+  de omgevingsvariabele `SQLCMDPASSWORD` (nooit via `-P`: argumenten zijn op beide platforms
+  zichtbaar in de procesenlijst, een omgevingsvariabele van het kindproces niet).
+- Staat er `TrustServerCertificate=True` in (zoals tegen de lokale container altijd het geval is)?
+  → `-C` wordt toegevoegd (nodig vanwege het self-signed certificaat van de container).
+- Staat er toch nog `Integrated Security=True`/`Trusted_Connection=True` in — een restant van een
+  oude, niet meer ondersteunde lokale SQL Server-installatie? Dan werkt dat alléén nog op Windows
+  (`-E`); op macOS/Linux **stopt het script direct** met een duidelijke foutmelding. Dit is geen
+  aanbevolen configuratie, alleen defensief afgevangen.
+
+Ook de server/database-parsing accepteert nu zowel `Data Source=`/`Initial Catalog=` als
+`Server=`/`Database=` (dat laatste gebruikt `local.settings.template.json`).
 
 ### Gebruik
 
@@ -154,8 +177,18 @@ kindproces herstart zodra dat wegvalt: alleen de poort-eigenaar killen liet de w
 die poort 5242 daarna opnieuw bond. Het script wacht tot de poorten echt vrij zijn en geeft
 exit 1 als dat niet lukt. Idempotent: draaien zonder actieve services doet niets.
 
-Gedeelde logica staat in `scripts/dev/DevServices.psm1` (`Wait-ForPort`, `Wait-ForHealth`,
-`Wait-ForHttp`, `Stop-DebugServices`).
+Gedeelde logica staat in `scripts/dev/DevServices.psm1`, cross-platform sinds #800:
+
+| Functie | Doel |
+|---|---|
+| `Get-DebugTempDir` | Tijdelijke map via `[System.IO.Path]::GetTempPath()` — nooit `$env:TEMP`, dat bestaat niet op macOS |
+| `Get-DebugPidFile`, `Get-DebugPorts` | Pad naar het PID-bestand resp. de vaste poorttoewijzing (Azurite/FunctionApp/BlazorAdmin/SWA) |
+| `Test-PortListening` | Luistert er iets op een poort — via de .NET BCL (`IPGlobalProperties`), niet via `Get-NetTCPConnection` (alleen Windows) |
+| `Get-PortOwner`, `Get-PortOwnerId` | PID/proces dat op een poort luistert — Windows via `Get-NetTCPConnection`, macOS via `lsof` |
+| `Get-ParentProcessId`, `Get-ChildProcessId` | Proceshiërarchie opvragen — Windows via CIM (`Win32_Process`), macOS via `ps` |
+| `Get-ProcessTree`, `Stop-ProcessTree` | Een proces plus al zijn nakomelingen opsommen resp. stoppen (leaf-first, nodig omdat `dotnet watch` zijn kind herstart) |
+| `Wait-ForPort`, `Wait-ForHealth`, `Wait-ForHttp` | Readiness-polling (poort/health-endpoint/HTTP-status) |
+| `Stop-DebugServices` | Volledige teardown — combineert het PID-bestand met een fallback op poort-eigenaren |
 
 ---
 
@@ -210,11 +243,14 @@ of `CREATE OR ALTER` voor procedures en views. Houd de definitie gelijk aan het 
 
 ### Lokaal narekenen
 
+Tegen de lokale Docker-container (identiek op Windows en macOS, zie DEVELOPER-SETUP.md sectie
+4.1) met een database die al meerdere clubs bevat. Voer het PostDeployment-script twee keer uit —
+idempotentie-fouten worden pas bij de tweede run zichtbaar (#564):
+
 ```powershell
-# Voer het PostDeployment-script twee keer uit tegen een database met >1 club.
-# Twee keer, omdat idempotentie-fouten pas bij de tweede run zichtbaar worden (#564).
-sqlcmd -S <server> -d SportlinkSqlDb -E -C -i Database\Script.PostDeployment1.sql -b
-sqlcmd -S <server> -d SportlinkSqlDb -E -C -i Database\Script.PostDeployment1.sql -b
+$env:SQLCMDPASSWORD = '<zelfde-wachtwoord-als-MSSQL_SA_PASSWORD>'
+sqlcmd -S localhost,1433 -U sa -d SportlinkSqlDb -C -i Database/Script.PostDeployment1.sql -b
+sqlcmd -S localhost,1433 -U sa -d SportlinkSqlDb -C -i Database/Script.PostDeployment1.sql -b
 ```
 
 Alleen parsen is niet genoeg: batch-binding-fouten (Msg 207/1911) en `Msg 512` verschijnen pas bij

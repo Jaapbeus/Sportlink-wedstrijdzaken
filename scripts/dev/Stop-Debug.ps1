@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$root = Resolve-Path (Join-Path $PSScriptRoot '../..')
 
 Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
 
@@ -37,14 +37,18 @@ if ($result.StoppedCount -eq 0) {
 if (-not $result.AllPortsFree) {
     Write-Host ''
     Write-Host 'Niet alle poorten zijn vrijgegeven. Controleer handmatig met:' -ForegroundColor Red
-    Write-Host '  Get-NetTCPConnection -LocalPort 7094,5242,4280 -State Listen' -ForegroundColor Yellow
+    if ($IsWindows) {
+        Write-Host '  Get-NetTCPConnection -LocalPort 7094,5242,4280 -State Listen' -ForegroundColor Yellow
+    } else {
+        Write-Host '  lsof -nP -iTCP:7094 -iTCP:5242 -iTCP:4280 -sTCP:LISTEN' -ForegroundColor Yellow
+    }
     exit 1
 }
 
 if ($Clean) {
     Write-Host ''
     Write-Host '  BlazorAdmin cleanen (verwijdert stale fingerprints)...' -ForegroundColor Cyan
-    $blazorProj = Join-Path $root 'BlazorAdmin\BlazorAdmin.csproj'
+    $blazorProj = Join-Path $root 'BlazorAdmin/BlazorAdmin.csproj'
     $cleanOutput = dotnet clean $blazorProj 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host '  dotnet clean mislukt:' -ForegroundColor Red

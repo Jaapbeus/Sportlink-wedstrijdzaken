@@ -1,6 +1,11 @@
 # Quick Reference — Sportlink Wedstrijdzaken (v2.7)
 
 Categorie: **Developers** — snel overzicht van commando's, poorten en veelgebruikte queries.
+Geldt voor **Windows** en **macOS (Apple Silicon)** (#800); zie
+[DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) voor de volledige uitleg per platform.
+
+> **Pad-notatie:** `.\scripts\dev\...`-commando's staan in Windows-stijl. Op macOS: forward
+> slashes, bijvoorbeeld `./scripts/dev/Start-Debug.ps1` in plaats van `.\scripts\dev\Start-Debug.ps1`.
 
 ---
 
@@ -70,6 +75,14 @@ cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 
 ---
 
+## Lokale database (Docker — identiek op Windows en macOS)
+
+```bash
+docker compose up -d      # starten (vereist MSSQL_SA_PASSWORD, zie DEVELOPER-SETUP.md §4.1)
+docker compose ps         # status/gezondheid
+docker compose down       # stoppen, data blijft staan
+```
+
 ## Database-verificatie
 
 ```sql
@@ -117,12 +130,12 @@ dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
 
 | Probleem | Oplossing |
 |---------|-----------|
-| FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? `winget install Microsoft.DotNet.Runtime.9` |
-| Database verbinding mislukt | `SqlConnectionString` in `local.settings.json` controleren |
+| FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? Windows: `winget install Microsoft.DotNet.Runtime.9` · macOS: `/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet` (zie DEVELOPER-SETUP.md §1) |
+| Database verbinding mislukt | Draait de container? `docker compose ps` — anders `SqlConnectionString` in `local.settings.json` controleren (zie §4.1) |
 | Sportlink API 401 | `UPDATE [dbo].[AppSettings] SET SportlinkClientId = '...'` |
-| Azurite niet actief | `Get-NetTCPConnection -LocalPort 10000` — start via `Start-Debug.ps1` |
+| Azurite niet actief | Windows: `Get-NetTCPConnection -LocalPort 10000` · macOS: `lsof -nP -iTCP:10000 -sTCP:LISTEN` — start via `Start-Debug.ps1` |
 | Blazor "An unhandled error" | Stop services → `dotnet clean BlazorAdmin` → `Start-Debug.ps1` |
-| Schema-drift (Test-App.ps1 faalt) | `.\scripts\dev\Test-App.ps1 -Fix` |
+| Schema-drift (Test-App.ps1 faalt) | `.\scripts\dev\Test-App.ps1 -Fix` (macOS: `./scripts/dev/Test-App.ps1 -Fix`) |
 
 ---
 
@@ -152,4 +165,4 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 
 ---
 
-**Versie:** 2.7 — bijgewerkt 2026-05-31
+**Versie:** 2.7 — bijgewerkt 2026-08-29 (macOS/Apple Silicon-ondersteuning + Docker als enige lokale-database-optie, #800)
