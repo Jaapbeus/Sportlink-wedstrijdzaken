@@ -1,0 +1,62 @@
+# Lokale SQL Server voor ontwikkeling — identiek op Windows en macOS (#800).
+#
+# Dit is de ENIGE ondersteunde manier om lokaal een database te draaien. Een rechtstreeks
+# op Windows geïnstalleerde SQL Server-service wordt niet meer ondersteund: dat pad werkt
+# alleen op Windows en dwong overal een tweede code- en documentatievariant af.
+#
+# Op Apple Silicon draait dit image onder Rosetta-emulatie (Microsoft levert geen native
+# ARM64-image van SQL Server); op Windows draait het native. Verder is alles gelijk:
+# dezelfde image, dezelfde poort, dezelfde verbindingsreeks.
+#
+# LET OP — bewust geaccepteerd risico op Apple Silicon. Microsoft schrijft in de release notes
+# van SQL Server 2022 letterlijk: "SQL Server container images are supported only on Linux hosts
+# running on Intel and AMD x86-64 CPUs. Emulation or translation environments (for example,
+# Rosetta 2, Prism, or QEMU) aren't tested or supported."
+# https://learn.microsoft.com/sql/linux/sql-server-linux-release-notes#supported-platforms
+#
+# Dat is geaccepteerd omdat: (a) er geen native ARM64-image bestaat, (b) Azure SQL Edge — de
+# vroegere ARM64-optie — per 30 september 2025 is uitgefaseerd, en (c) dit uitsluitend een
+# LOKALE ONTWIKKELdatabase is. Productie draait op Azure SQL en raakt dit niet. Op Windows
+# x86-64 draait dezelfde container wél volledig ondersteund.
+# Gedraagt de database zich op een Mac vreemd, sluit emulatie dan eerst uit door dezelfde
+# migratie tegen Azure SQL of tegen een Windows-machine te draaien.
+#
+# Starten : docker compose up -d
+# Stoppen : docker compose down          (data blijft in het volume staan)
+# Wissen  : docker compose down -v       (LET OP: verwijdert de database definitief)
+#
+# Het SA-wachtwoord komt uit de omgevingsvariabele MSSQL_SA_PASSWORD en staat bewust NIET
+# in dit bestand — deze repository is openbaar. Zet het lokaal in een .env-bestand naast
+# deze compose-file (staat in .gitignore) of in je shell-profiel. Zonder die variabele
+# weigert docker compose te starten, met een expliciete melding.
+#
+# Eisen aan het wachtwoord (SQL Server weigert de container anders stilletjes): minimaal
+# 8 tekens, met hoofdletters, kleine letters en cijfers of leestekens.
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sportlink-sqlserver
+    # Op Apple Silicon dwingt dit Docker om het x86-64-image via Rosetta te draaien.
+    # Op Windows/Linux x86-64 is het de native architectuur en heeft het geen effect.
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Zet MSSQL_SA_PASSWORD in een .env-bestand of je shell-profiel voordat je docker compose start}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sportlink-sqldata:/var/opt/mssql
+    restart: unless-stopped
+    healthcheck:
+      # /opt/mssql-tools18/ is het pad in het 2022-image; -C accepteert het self-signed
+      # certificaat van de container.
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  sportlink-sqldata:

@@ -157,7 +157,10 @@ if ($idClaims) {
 # ── Layer 4 — Frontend role-gate (App.razor) ──────────────────────────────────
 Write-Section 'Layer 4 — Frontend role-gate (App.razor) — code-side'
 
-$appRazor = Join-Path $PSScriptRoot '..\BlazorAdmin\App.razor' -Resolve -ErrorAction SilentlyContinue
+# Dit script staat in scripts/azure/, dus de repo-root ligt twee niveaus hoger.
+# Stond hier '..', waardoor het pad scripts/BlazorAdmin/App.razor werd — dat bestaat niet,
+# -Resolve gaf $null en Layer 4 rapporteerde daardoor altijd FAIL (#800).
+$appRazor = Join-Path $PSScriptRoot '../../BlazorAdmin/App.razor' -Resolve -ErrorAction SilentlyContinue
 if ($appRazor -and (Get-Content $appRazor -Raw) -match 'IsInRole\("admin"\)') {
     Write-Pass "App.razor bevat IsInRole-check (Layer 4 actief in code)"
 } else {
@@ -167,7 +170,7 @@ if ($appRazor -and (Get-Content $appRazor -Raw) -match 'IsInRole\("admin"\)') {
 # ── Layer 5 — Backend RequireAdmin op alle protected endpoints ────────────────
 Write-Section 'Layer 5 — Backend RequireAdmin (EasyAuthHelper) — code-side'
 
-$adminFns = Join-Path $PSScriptRoot '..\FunctionApp\Admin' -Resolve -ErrorAction SilentlyContinue
+$adminFns = Join-Path $PSScriptRoot '../../FunctionApp/Admin' -Resolve -ErrorAction SilentlyContinue
 if ($adminFns) {
     $files = Get-ChildItem -Path $adminFns -Filter '*.cs' | Where-Object { $_.Name -ne 'EasyAuthHelper.cs' }
     $missing = @()

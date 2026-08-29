@@ -3,6 +3,19 @@
 #
 # Bevat readiness-detectie en teardown, zodat geen enkel script nog vertrouwt op een
 # vaste Start-Sleep. Zie #684 voor de aanleiding.
+#
+# CROSS-PLATFORM (#800): deze module draait op Windows én macOS onder PowerShell 7.
+# Regels bij het uitbreiden ervan:
+#   1. Poortdetectie loopt via de .NET BCL (IPGlobalProperties), niet via Get-NetTCPConnection:
+#      die zit in de module NetTCPIP en bestaat alleen op Windows.
+#   2. Alles wat een PID bij een poort of een procesboom nodig heeft is per definitie
+#      OS-specifiek — Windows via NetTCPIP/CIM, macOS via lsof/ps. Kapsel dat in achter
+#      een functie in deze module, nooit inline in een script.
+#   3. Gebruik nooit $env:TEMP: dat bestaat niet op macOS (daar heet het TMPDIR).
+#      Gebruik Get-DebugTempDir.
+#   4. Gebruik nooit een backslash in een padliteral. Op Unix is '\' een geldig teken in
+#      een bestandsnaam, dus Join-Path 'a' 'b\c' levert daar één bestand 'b\c' op in
+#      plaats van 'b/c'. Forward slashes werken op beide platforms.
 
 $script:DebugPorts = @{
     Azurite     = 10000
@@ -11,8 +24,33 @@ $script:DebugPorts = @{
     Swa         = 4280
 }
 
+# $IsWindows bestaat vanaf PowerShell 6 op alle platforms; deze module vereist PowerShell 7.
+$script:OnWindows = [bool]$IsWindows
+
+# Het pad naar de NATIVE ps, expliciet.
+#
+# 'ps' kaal aanroepen is riskant: op Windows is 'ps' een PowerShell-alias voor Get-Process.
+# PowerShell verwijdert die alias op Unix juist om de systeem-ps niet te overschaduwen, dus
+# in de praktijk zou het goed gaan — maar dan hangt correcte werking af van een alias die er
+# níet is. Expliciet het pad gebruiken haalt die aanname weg.
+$script:PsExe = if ($script:OnWindows) { $null }
+                elseif (Test-Path '/bin/ps') { '/bin/ps' }
+                else { '/usr/bin/ps' }
+
+function Get-DebugTempDir {
+    <#
+        De tijdelijke map van de huidige gebruiker, cross-platform.
+
+        $env:TEMP bestaat NIET op macOS/Linux. GetTempPath() honoreert daar TMPDIR
+        (macOS zet die per gebruiker bij inloggen) en valt anders terug op /tmp;
+        op Windows levert het dezelfde map als $env:TEMP. Het resultaat eindigt
+        altijd op een directory-separator.
+    #>
+    [System.IO.Path]::GetTempPath()
+}
+
 function Get-DebugPidFile {
-    Join-Path $env:TEMP 'sportlink-debug-pids.txt'
+    Join-Path (Get-DebugTempDir) 'sportlink-debug-pids.txt'
 }
 
 function Get-DebugPorts {
@@ -20,8 +58,55 @@ function Get-DebugPorts {
 }
 
 function Test-PortListening {
+    <#
+        Luistert er een proces op $Port?
+
+        Gebruikt de .NET BCL in plaats van Get-NetTCPConnection: dat laatste zit in de
+        module NetTCPIP, die alleen op Windows bestaat. GetActiveTcpListeners() somt de
+        daadwerkelijke listeners op (IPv4 én IPv6) en werkt op alle platforms.
+
+        Bewust géén TcpClient-connectiepoging: die maakt een echte verbinding (socket,
+        TIME_WAIT) en bewijst minder precies dát er een listener is.
+    #>
     param([Parameter(Mandatory)][int]$Port)
-    [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+
+    $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+    [bool]($listeners | Where-Object { $_.Port -eq $Port })
+}
+
+function Get-PortOwnerId {
+    <#
+        Het PID van het proces dat op $Port luistert, of $null.
+
+        Onvermijdelijk OS-specifiek: de .NET-API die de listeners oplevert geeft alleen
+        IPEndPoints terug, zonder proces-eigenaar.
+          Windows → Get-NetTCPConnection (OwningProcess)
+          macOS   → lsof -t (alleen PIDs)
+        lsof zit standaard in macOS. Ontbreekt het toch, dan levert deze functie $null
+        en valt de teardown terug op het PID-bestand.
+    #>
+    param([Parameter(Mandatory)][int]$Port)
+
+    if ($script:OnWindows) {
+        $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+        if (-not $conn) { return $null }
+        return [int]$conn.OwningProcess
+    }
+
+    if (-not (Get-Command lsof -ErrorAction SilentlyContinue)) { return $null }
+
+    # -n/-P: geen DNS- en servicenaam-lookups (sneller en voorspelbaarder).
+    # -sTCP:LISTEN: alleen echte listeners.  -t: alleen PIDs, één per regel.
+    #
+    # De argumenten worden eerst als losse strings opgebouwd. Een token als '-iTCP:$Port'
+    # direct in de aanroep zetten leest als PowerShell's parameter-dubbelepunt-syntax; bij
+    # een native commando gaat dat goed, maar expliciet is hier veiliger dan impliciet.
+    $iArg = '-iTCP:' + $Port
+    $found = & lsof '-nP' $iArg '-sTCP:LISTEN' '-t' 2>$null
+    $first = @($found | Where-Object { "$_".Trim() -match '^\d+$' }) | Select-Object -First 1
+    if (-not $first) { return $null }
+    return [int]("$first".Trim())
 }
 
 function Get-PortOwner {
@@ -30,10 +115,59 @@ function Get-PortOwner {
     #>
     param([Parameter(Mandatory)][int]$Port)
 
-    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-    if (-not $conn) { return $null }
-    Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+    $ownerPid = Get-PortOwnerId -Port $Port
+    if (-not $ownerPid) { return $null }
+    Get-Process -Id $ownerPid -ErrorAction SilentlyContinue
+}
+
+function Get-ParentProcessId {
+    <#
+        Het PID van de parent van $ProcessId, of $null.
+
+        System.Diagnostics.Process kent geen ParentProcessId, dus dit kan niet puur in .NET.
+          Windows → CIM (Win32_Process bestaat alleen daar)
+          macOS   → ps -o ppid=
+    #>
+    param([Parameter(Mandatory)][int]$ProcessId)
+
+    if ($script:OnWindows) {
+        $parentId = (Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue).ParentProcessId
+        if ($parentId) { return [int]$parentId }
+        return $null
+    }
+
+    $out = & $script:PsExe '-o' 'ppid=' '-p' $ProcessId 2>$null
+    if (-not $out) { return $null }
+    # ps vult de kolom op met spaties, dus altijd eerst trimmen.
+    $trimmed = "$(@($out)[0])".Trim()
+    if ($trimmed -match '^\d+$') { return [int]$trimmed }
+    return $null
+}
+
+function Get-ChildProcessId {
+    <#
+        De directe kindprocessen van $ProcessId.
+
+        Op Unix bewust één 'ps'-aanroep met de hele pid/ppid-tabel in plaats van pgrep:
+        dat scheelt een externe afhankelijkheid en levert alles in één keer.
+    #>
+    param([Parameter(Mandatory)][int]$ProcessId)
+
+    if ($script:OnWindows) {
+        $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue
+        return @($children | ForEach-Object { [int]$_.ProcessId })
+    }
+
+    $lines = & $script:PsExe '-Ao' 'pid=,ppid=' 2>$null
+    if (-not $lines) { return @() }
+
+    $result = foreach ($line in $lines) {
+        $parts = ("$line".Trim() -split '\s+')
+        if ($parts.Count -ge 2 -and $parts[1] -eq "$ProcessId" -and $parts[0] -match '^\d+$') {
+            [int]$parts[0]
+        }
+    }
+    return @($result)
 }
 
 function Wait-ForPort {
@@ -177,8 +311,7 @@ function Get-ProcessTree {
         if (-not $seen.Add($current)) { continue }
         $all += $current
 
-        $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $current" -ErrorAction SilentlyContinue
-        foreach ($child in $children) { $queue.Enqueue([int]$child.ProcessId) }
+        foreach ($child in (Get-ChildProcessId -ProcessId $current)) { $queue.Enqueue($child) }
     }
 
     # Omkeren: de laatst gevonden PIDs zitten het diepst in de boom.
@@ -286,7 +419,7 @@ function Stop-DebugServices {
             $stopped += Stop-ProcessTree -RootPid $proc.Id -Quiet:$Quiet
 
             # De parent (watcher) staat niet in de boom van het kind — stop die ook.
-            $parentId = (Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue).ParentProcessId
+            $parentId = Get-ParentProcessId -ProcessId $proc.Id
             if ($parentId) {
                 $parent = Get-Process -Id $parentId -ErrorAction SilentlyContinue
                 if ($parent -and $parent.ProcessName -in @('dotnet', 'func', 'node', 'powershell', 'pwsh')) {
@@ -317,6 +450,7 @@ function Stop-DebugServices {
     }
 }
 
-Export-ModuleMember -Function Get-DebugPidFile, Get-DebugPorts, Test-PortListening,
-    Get-PortOwner, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
+Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts,
+    Test-PortListening, Get-PortOwner, Get-PortOwnerId, Get-ParentProcessId,
+    Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
     Wait-ForHttp, Stop-DebugServices

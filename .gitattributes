@@ -1,0 +1,32 @@
+# .gitattributes — regeleindes vastleggen (#800)
+#
+# Aanleiding: de repo wordt op Windows én macOS ontwikkeld. Zonder deze file hangt het
+# volledig van de lokale `core.autocrlf` van elke developer af wat er in een blob belandt.
+# De blobs zijn vandaag allemaal LF; dit bestand legt dat vast zodat het zo blijft.
+#
+# Waarom dat ertoe doet: de git-hooks in .githooks/ beginnen met `#!/bin/bash`. Belandt er
+# ooit een CRLF-versie in de repo, dan leest de macOS-kernel de shebang als het pad
+# "/bin/bash\r", dat niet bestaat — de hook faalt dan met "bad interpreter". Op Windows
+# valt dat niet op, want Git Bash tolereert de extra CR.
+#
+# LET OP: .ps1/.psm1 blijven bewust onder `text=auto` (dus LF in de repo, CRLF in de
+# Windows-werkmap zolang core.autocrlf=true). PowerShell 7 leest beide varianten op beide
+# platforms; ze naar CRLF forceren zou alleen ruis in de blobs geven.
+
+# Standaard: git bepaalt zelf of iets tekst is en normaliseert naar LF in de repo.
+* text=auto
+
+# Shell-scripts en git-hooks MOETEN LF houden, ook in de werkmap. Zie de uitleg hierboven.
+*.sh          text eol=lf
+.githooks/*   text eol=lf
+
+# Bestanden die git niet als tekst mag behandelen.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.xlsx  binary
+*.dacpac binary
