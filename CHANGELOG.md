@@ -56,6 +56,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   database. (#800)
 
 ### Fixed
+- **AllStars FC-democlub had geen veldbeschikbaarheid voor maandag t/m donderdag en vrijdag, en de zondagrij werd nooit door de planner gevonden.** De demoseed gebruikte per abuis de .NET-native dagconventie (0=zondag) in plaats van de 1=maandag/7=zondag-conventie die de rest van de applicatie hanteert, en zaaide daardoor maar 2 van de 7 dagen. De UI toonde de foutieve rij als "Dag 0". Seedscript gecorrigeerd naar alle 7 dagen met de juiste conventie; al gezaaide omgevingen herstellen zichzelf bij de volgende deploy. (#812)
 - **Database-verbindingen laten de gratis vCore-secondenlimiet niet meer onnodig snel oplopen.** Alle SQL-verbindingen in de FunctionApp draaiden met standaard connection-pooling; een pooled verbinding blijft na afsluiten als actieve sessie op de server staan, wat de free-tier database verhindert automatisch te pauzeren. Pooling staat nu uit voor alle databaseverbindingen. (#808)
 - **`Verify-AzureAuthSetup.ps1` rapporteerde de auth-lagen 4 en 5 altijd als FAIL**, ook als ze
   correct waren. Het script zocht `App.razor` en de admin-endpoints één directoryniveau te hoog,
