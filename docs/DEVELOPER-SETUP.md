@@ -217,9 +217,15 @@ staat bewust **niet** in dat bestand — dit is een publieke repo — maar komt 
 omgevingsvariabele `MSSQL_SA_PASSWORD`. Zet die eenmalig, bijvoorbeeld in een `.env`-bestand naast
 `docker-compose.yml` (staat in `.gitignore`):
 
+```powershell
+Set-Content -Path .env -Value "MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>" -Encoding ascii
+```
 ```bash
 echo 'MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>' > .env
 ```
+
+Gebruik op Windows de PowerShell-variant en niet `echo ... > .env`: Windows PowerShell 5.1
+schrijft dan een UTF-16-bestand, en `docker compose` leest dat niet als een geldig `.env`.
 
 Wachtwoordeisen (SQL Server weigert de container anders stilletjes op te starten): minimaal 8
 tekens, met hoofdletters, kleine letters en cijfers of leestekens. Ontbreekt de variabele, dan
@@ -256,24 +262,48 @@ identiek op Windows en macOS, want het is altijd dezelfde TDS-verbindingsstring.
 
 ### 4.2 Schema aanmaken
 
-Verbind met de zojuist gestarte database via **`sqlcmd`** (hieronder), **SqlPackage**, of een GUI:
-**Azure Data Studio** of de **MSSQL-extensie voor VS Code** werken op Windows én macOS. SSMS bestaat
-alleen op Windows en is hier puur optioneel — handig om ín de container te kijken, geen
-installatiestap.
+Het volledige schema komt uit **één script**: `Database/Script.PostDeployment1.sql`. Dat is
+idempotent en bouwt een verse database in één keer compleet op — dezelfde weg die de
+productie-deploy gebruikt, en die bij elke PR wordt bewezen door de CI-job *"PostDeployment op
+verse database"*. De losse scripts in `FunctionApp/setup/` zijn ouder en hiervoor niet nodig.
 
-```sql
--- Stap 1: database, schemas, tabellen aanmaken
--- Voer uit: scripts/db/setup-local-database.sql
+De commando's hieronder draaien `sqlcmd` **binnen de container**. Dat scheelt een installatie van
+`mssql-tools18` op je eigen machine, en het wachtwoord blijft in de omgevingsvariabele van de
+container in plaats van in je opdrachtregelgeschiedenis.
 
--- Stap 2: metadata-tabellen aanmaken
--- Voer uit: Database/dbo/System Stored Procedures/ (sp_CreateTargetTableFromSource + sp_MergeStgToHis)
+```powershell
+docker exec sportlink-sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -b -Q "IF DB_ID(''SportlinkSqlDb'') IS NULL CREATE DATABASE SportlinkSqlDb;"'
+```
+```powershell
+docker cp Database/Script.PostDeployment1.sql sportlink-sqlserver:/tmp/postdeployment.sql
+```
+```powershell
+docker exec sportlink-sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -d SportlinkSqlDb -b -V 11 -i /tmp/postdeployment.sql'
 ```
 
-Via `sqlcmd` (mssql-tools18 — zie de macOS-installatie-instructies in sectie 1):
+`-b -V 11` zorgt dat `sqlcmd` een exitcode ≠ 0 teruggeeft zodra er een fout van severity 11 of
+hoger optreedt. Zonder die vlaggen meldt `sqlcmd` exitcode 0 terwijl er severity-16-fouten in het
+log staan — dat is eerder twee releases lang onopgemerkt gebleven. **Controleer het log dus ook
+zelf op regels die met `Msg <nummer>, Level` beginnen; een exitcode 0 alleen is geen bewijs.**
 
-```bash
-sqlcmd -S localhost,1433 -U sa -C -i scripts/db/setup-local-database.sql
+Draai het script gerust een tweede keer: het hoort dan exitcode 0 te geven zonder fouten. Dat is
+meteen de idempotentiecheck.
+
+Verbinden kan verder met elke client: **Azure Data Studio** of de **MSSQL-extensie voor VS Code**
+werken op Windows én macOS. SSMS bestaat alleen op Windows en is puur optioneel — handig om ín de
+container te kijken, geen installatiestap. Wil je `sqlcmd` liever vanaf de host gebruiken, zie dan
+de installatie-instructies in sectie 1; vergeet `-C` niet (self-signed certificaat).
+
+**Controleren of het gelukt is:**
+
+```powershell
+docker exec sportlink-sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -d SportlinkSqlDb -h -1 -W -Q "SELECT CONCAT((SELECT COUNT(*) FROM sys.tables), '' tabellen, '', (SELECT COUNT(*) FROM sys.procedures), '' procedures'');"'
 ```
+
+Op een verse database hoort daar ruwweg **23 tabellen en 8 procedures** uit te komen, met de
+schemas `dbo`, `stg`, `his`, `mta`, `pub`, `planner` en `avg`. `dbo.AppSettings` bevat dan twee
+rijen: een lege placeholder-club en de demoklub `ALLSTARS`. Vul je eigen clubgegevens in via
+sectie 4.3.
 
 Het Database-project (`.sqlproj`) bevat alle actuele schemadefinities, maar is een legacy
 SSDT-project dat **niet buiten Windows/Visual Studio gebouwd kan worden** — daarom staat het niet
