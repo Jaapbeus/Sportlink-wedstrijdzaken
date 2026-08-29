@@ -22,25 +22,50 @@ internal sealed class EmailReplyPolicyService
         BerichtClassificatie classificatie,
         string plannerResponseJson,
         bool reviewMode,
+        string? reviewRecipient,
         IEmailGraphService graphService,
         IEmailPersistenceService persistenceService,
         Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
         Func<string, string> sanitizeFoutMelding,
         ILogger log)
     {
-        // Review mode blijft de eerste check: hier gaat geen enkel bericht de deur uit. Nieuw is dat
-        // het voorgestelde antwoord wél wordt opgebouwd en opgeslagen — anders valt er niets te
-        // reviewen. Voorheen bleef AntwoordEmail leeg en kreeg de rij status 'Verwerkt', dezelfde
-        // waarde als een mislukte verzending, waardoor EmailStatus.Review dode code was. (#712)
+        // Review mode blijft de eerste check: er gaat nooit een antwoord naar de originele
+        // afzender. Het voorgestelde antwoord wordt opgebouwd en opgeslagen (#712) — zonder dat
+        // valt er niets te reviewen. Daarnaast wordt hetzelfde voorstel ook gemaild naar
+        // EmailReviewRecipient (#801, herstel van een regressie uit #543/2026-06-20): zonder deze
+        // mail is het voorstel alleen via directe databasetoegang te lezen, omdat de Admin GUI
+        // AntwoordEmail bewust nooit teruggeeft (AVG). Een mislukte reviewmail blokkeert de opslag
+        // en labeling niet — het voorstel blijft dan alsnog in de database te vinden.
         if (reviewMode)
         {
             var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
             if (reviewBesluit.MoetVersturen)
             {
-                var (_, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
+                var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
                 await persistenceService.UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
                 log.LogInformation(
-                    "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling, niets verstuurd", verwerkingId);
+                    "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
+
+                if (!string.IsNullOrWhiteSpace(reviewRecipient))
+                {
+                    try
+                    {
+                        await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp, voorgesteldeBody, email.ConversationId);
+                        log.LogInformation(
+                            "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogWarning(ex,
+                            "Email {Id} review mode — testmail naar EmailReviewRecipient mislukt, voorstel blijft wel opgeslagen in de database",
+                            verwerkingId);
+                    }
+                }
+                else
+                {
+                    log.LogInformation(
+                        "Email {Id} review mode — EmailReviewRecipient niet geconfigureerd, geen testmail verstuurd", verwerkingId);
+                }
             }
             else
             {
