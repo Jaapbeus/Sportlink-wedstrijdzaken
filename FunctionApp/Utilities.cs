@@ -178,7 +178,16 @@ namespace SportlinkFunction
         }
         public static class DatabaseConfig
         {
-            public static readonly string ConnectionString = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new InvalidOperationException("The connection string is not set in the environment variables.");
+            // Pooling=false: op de free-tier serverless database blijft een pooled connectie na Dispose()
+            // als actieve sessie op de server staan, wat auto-pause blokkeert (zie #808) en het gratis
+            // vCore-secondenbudget kan opmaken terwijl er verder niets gebeurt.
+            public static readonly string ConnectionString = BuildConnectionString();
+
+            private static string BuildConnectionString()
+            {
+                var raw = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new InvalidOperationException("The connection string is not set in the environment variables.");
+                return new SqlConnectionStringBuilder(raw) { Pooling = false }.ConnectionString;
+            }
         }
 
         public static async Task WaitForDatabaseAsync(ILogger log)
