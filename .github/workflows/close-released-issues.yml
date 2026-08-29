@@ -106,18 +106,17 @@ jobs:
               await clearIssueStatus({ github, context, core, issueNumber: number });
 
               if (issue.state === 'open') {
+                // Geen losse createComment hier (#789): dat verdubbelt de notificatie-e-mail per
+                // issue (close-event + comment-event). De releaseinfo staat al op de GitHub
+                // Release-pagina (gegenereerd door release.yml uit de CHANGELOG-sectie) en in de
+                // CHANGELOG zelf, dus de comment voegde geen traceerbaarheid toe die niet al
+                // ergens anders stond.
                 await github.rest.issues.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: number,
                   state: 'closed',
                   state_reason: 'completed',
-                });
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: number,
-                  body: `✅ Uitgerold naar productie in release \`${tag}\`.`,
                 });
                 core.notice(`#${number}: gesloten (${tag})`);
               }
