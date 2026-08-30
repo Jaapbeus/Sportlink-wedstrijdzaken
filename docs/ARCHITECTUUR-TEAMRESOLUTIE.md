@@ -200,3 +200,30 @@ alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de re
 4. **Nieuwe naamvormen eerst tegen echte data verifiëren** (`stg.teams` / `his.teams`) vóór je de
    normalisatie aanpast. De vormen in dit document zijn zo gevonden, niet bedacht.
 5. **Test met de clubprefix als parameter**, nooit hardcoded: de prefix komt uit `dbo.AppSettings`.
+
+## Postgres-collatie-kanttekening (#820)
+
+`Database/SportlinkSqlDb.sqlproj` zet het volledige SQL Server-schema op de case-insensitive
+default-collatie (`ModelCollation = 1033, CI`). `TeamCandidateRepository.cs` leunde daar
+stilzwijgend op: een kale `[TeamnaamGenormaliseerd] = @sleutel`-vergelijking "werkte" alleen omdat
+de kolom-collatie hoofdlettergevoeligheid al wegfiltert. Postgres' default-collatie is
+case-sensitief — diezelfde vergelijking matcht daar stilzwijgend nul rijen zodra de opgeslagen
+casing afwijkt van de vers berekende sleutel (geen foutmelding, gewoon "team niet gevonden").
+
+Alle drie de lookups in `TeamCandidateRepository.cs` (`TeamnaamGenormaliseerd`, `RuweTekst`,
+`RuweTekstGenormaliseerd`) vergelijken daarom expliciet via `UPPER(...)` op beide kanten — portable
+naar elke tier, geen afhankelijkheid van een onzichtbare schema-eigenschap.
+`TeamCandidateRepositoryCollationTests` bewaakt dit tekstueel, net als `VeldResolutieDriftTests`
+voor de veldresolutie.
+
+**`RuweTekst` is bewust ook ge-upper't.** De intentie van die tak is "exacte bronschrijfwijze",
+maar onder de huidige CI-collatie is die vergelijking vandaag al feitelijk hoofdletterongevoelig.
+`UPPER()` behoudt het waargenomen gedrag; een bewust hoofdlettergevoelige variant zou een
+gedragswijziging zijn (mogelijk minder validated-alias-treffers) en is niet gekozen.
+
+**Nog niet gedaan — vervolgwerk, geen scope van deze fix:** een Postgres-tegenhanger van
+`dbo.Teams`/`dbo.TeamAliassen` (met expression-based unique indexes i.p.v. de SQL Server
+`UQ_Teams_Club_*`-constraints) bestaat nog niet. `TeamCandidateRepository` zelf is nog uitsluitend
+een SQL Server-implementatie — de Postgres-tier heeft nog geen teamherkenning-datalaag. Dat volgt
+pas als de bredere applicatie-datalaag (buiten de ETL-sync en de planner-kernview) naar Postgres
+wordt geport.
