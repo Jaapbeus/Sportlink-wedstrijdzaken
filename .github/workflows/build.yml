@@ -27,6 +27,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # #825: bewaakt dat elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact
+      # (case-sensitief) overeenkomt met het daadwerkelijke getrackte bestand. Git's
+      # core.ignorecase=true (Windows/macOS-default) merkt een casing-mismatch lokaal niet op;
+      # deze Linux-CI-runner (core.ignorecase=false) wel — specifiek relevant voor de nieuwe
+      # Database.Postgres/-boom, waar nog geen gevestigde conventie/spiergeheugen bestaat.
+      - name: Bestandssysteem-casing-guard
+        run: bash scripts/ci/check-path-casing.sh
+
       # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
       # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
       - name: .NET SDK installeren

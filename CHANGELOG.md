@@ -148,6 +148,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   databasedeel op; zie issue #824 voor de resterende scope. Getest tegen een lokale
   Postgres-devcontainer, uitsluitend met fictieve testdata conform CLAUDE.md's goedgekeurde
   AVG-uitzonderingen.
+- **Nieuwe CI-stap `scripts/ci/check-path-casing.sh`** (#825, epic #815): bewaakt dat elke
+  padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact overeenkomt met het daadwerkelijke,
+  getrackte bestand. Git's `core.ignorecase=true` (Windows/macOS-default) merkt een
+  casing-mismatch lokaal niet op; de Linux-CI-runner (`core.ignorecase=false`) faalt daar hard op
+  — specifiek relevant voor de nieuwe `Database.Postgres/`-boom. Nulmeting tegen de huidige
+  repo-staat (165 bestanden) is groen; empirisch geverifieerd met geïsoleerde, tijdelijke fixtures
+  (niet in de echte repo-tree) dat de guard een bewuste casing-typo detecteert en genest-pad-,
+  dotfile- en spatie-bevattende referenties correct negeert.
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
