@@ -406,12 +406,27 @@ Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder 
 Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen
 beschikbaar zijn. Beheerbaar via Instellingen → Velden (#679).
 
+Optioneel gekoppeld aan een `dbo.VeldPeriode` via `PeriodeId` (#581): `NULL` is het
+standaardregime en geldt buiten elke actieve periode (exact het gedrag van vóór #581). Is er voor
+de club een actieve periode op de gevraagde datum, dan gelden uitsluitend de rijen met dat
+`PeriodeId` — nooit een samenvoeging met het standaardregime, want periodes zoals "Zomerstop" en
+"Competitie" zijn expliciet tegengestelde regimes. `PlannerAvailabilityRepository.GetAvailableFieldsAsync`
+bepaalt dit per aanroep opnieuw aan de hand van de opgevraagde datum.
+
+### dbo.VeldPeriode
+Herbruikbaar regime met een vaste geldigheidsrange (`DatumVan`/`DatumTot`), bijv. "Zomerstop" of
+"Competitie" (#581). Er mag nooit meer dan één actieve periode van dezelfde club tegelijk lopen —
+overlap wordt bij het opslaan geweigerd (`AdminVeldPeriodeRepository.OverlaptMetAndereAsync`). Een
+club zonder periodes heeft hier geen rijen; dat verandert niets aan het bestaande gedrag.
+
 ### dbo.VeldTraining
 Terugkerende trainingsbezetting per veld per weekdag — een tweede, club-vrij-instelbare
 bezettingsbron naast wedstrijden (#679, uitwerking van #581). Elke club legt zelf vast welke velden
 op welke dag door training bezet zijn, en dat mag per dag verschillen (bijv. maandag ruim,
-donderdag vol). Geen periode-begrip (zomerstop vs. competitie) — dat blijft toekomstig werk, zie
-#581.
+donderdag vol). Heeft (nog) geen periode-begrip: een trainingsblok geldt het hele jaar. Wil een
+club dat trainingen tijdens de zomerstop niet meetellen, dan is dat vandaag nog handwerk (het
+trainingsblok tijdelijk op `Actief = 0` zetten) — periode-scoping van trainingsblokken is bewust
+buiten de scope van #581 gehouden en zou een vervolgissue zijn.
 
 | Kolom | Beschrijving |
 |-------|-------------|

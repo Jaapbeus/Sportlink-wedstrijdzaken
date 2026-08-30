@@ -35,9 +35,13 @@ public static class AdminVeldBeschikbaarheidFunction
                 var validatie = Valideer(dto);
                 if (validatie != null) return validatie;
 
+                var cs = SystemUtilities.DatabaseConfig.ConnectionString;
+                var periodeValidatie = await ValideerPeriodeAsync(dto!.PeriodeId, clubCode, cs);
+                if (periodeValidatie != null) return periodeValidatie;
+
                 var rows = await AdminVeldBeschikbaarheidRepository.UpdateAsync(
-                    id, TimeSpan.Parse(dto!.BeschikbaarVanaf!), TimeSpan.Parse(dto.BeschikbaarTot!),
-                    dto.GebruikZonsondergang, clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
+                    id, TimeSpan.Parse(dto.BeschikbaarVanaf!), TimeSpan.Parse(dto.BeschikbaarTot!),
+                    dto.GebruikZonsondergang, dto.PeriodeId, clubCode, cs);
                 if (rows == 0) return new NotFoundObjectResult(new { error = $"Rij {id} bestaat niet" });
                 return new OkObjectResult(new { id, status = "bijgewerkt" });
             });
@@ -113,13 +117,15 @@ public static class AdminVeldBeschikbaarheidFunction
                 if (tijdenValidatie != null) return tijdenValidatie;
 
                 var cs = SystemUtilities.DatabaseConfig.ConnectionString;
-                if (await AdminVeldBeschikbaarheidRepository.BestaatAsync(dto.VeldNummer, dto.DagVanWeek, clubCode, cs))
-                    return new ConflictObjectResult(new { error = "Combinatie veld + dag bestaat al" });
+                var periodeValidatie = await ValideerPeriodeAsync(dto.PeriodeId, clubCode, cs);
+                if (periodeValidatie != null) return periodeValidatie;
+                if (await AdminVeldBeschikbaarheidRepository.BestaatAsync(dto.VeldNummer, dto.DagVanWeek, dto.PeriodeId, clubCode, cs))
+                    return new ConflictObjectResult(new { error = "Combinatie veld + dag + periode bestaat al" });
 
                 var newId = await AdminVeldBeschikbaarheidRepository.InsertAsync(
                     dto.VeldNummer, dto.DagVanWeek,
                     TimeSpan.Parse(dto.BeschikbaarVanaf!), TimeSpan.Parse(dto.BeschikbaarTot!),
-                    dto.GebruikZonsondergang, clubCode, cs);
+                    dto.GebruikZonsondergang, dto.PeriodeId, clubCode, cs);
                 return new OkObjectResult(new { id = newId, status = "aangemaakt" });
             });
 
@@ -149,6 +155,19 @@ public static class AdminVeldBeschikbaarheidFunction
             return new BadRequestObjectResult(new { error = "BeschikbaarVanaf vereist HH:mm formaat" });
         if (string.IsNullOrWhiteSpace(tot) || !TimeSpan.TryParse(tot, out _))
             return new BadRequestObjectResult(new { error = "BeschikbaarTot vereist HH:mm formaat" });
+        return null;
+    }
+
+    /// <summary>
+    /// NULL is altijd geldig (standaardregime, #581). Een waarde moet een bestaande periode van
+    /// déze club zijn — anders krijgt de beheerder een begrijpelijke foutmelding in plaats van een
+    /// kale FK-violation uit SQL Server.
+    /// </summary>
+    private static async Task<IActionResult?> ValideerPeriodeAsync(int? periodeId, string clubCode, string cs)
+    {
+        if (periodeId == null) return null;
+        if (!await AdminVeldPeriodeRepository.BestaatAsync(periodeId.Value, clubCode, cs))
+            return new BadRequestObjectResult(new { error = $"Periode {periodeId} bestaat niet voor deze club" });
         return null;
     }
 
@@ -195,6 +214,8 @@ public static class AdminVeldBeschikbaarheidFunction
         public string? BeschikbaarVanaf    { get; set; }
         public string? BeschikbaarTot      { get; set; }
         public bool    GebruikZonsondergang { get; set; }
+        // #581: NULL = standaardregime (geldt buiten elke actieve periode).
+        public int?    PeriodeId           { get; set; }
     }
 
     public class VeldBeschikbaarheidCreateRequest
@@ -204,5 +225,7 @@ public static class AdminVeldBeschikbaarheidFunction
         public string? BeschikbaarVanaf     { get; set; }
         public string? BeschikbaarTot       { get; set; }
         public bool    GebruikZonsondergang  { get; set; }
+        // #581: NULL = standaardregime (geldt buiten elke actieve periode).
+        public int?    PeriodeId            { get; set; }
     }
 }

@@ -3255,3 +3255,41 @@ IF EXISTS (
 )
     ALTER TABLE [planner].[EmailVerwerking] ALTER COLUMN [VerstuurdNaar] NVARCHAR(1000) NULL;
 GO
+
+-- ============================================================
+-- #581: VeldPeriode — veldbeschikbaarheid per periode (zomerstop vs. competitie).
+--
+-- Een periode is een herbruikbaar regime met een vaste geldigheidsrange (bijv. "Zomerstop"
+-- 2026-07-01 t/m 2026-08-16). VeldBeschikbaarheid.PeriodeId koppelt een venster aan zo'n periode;
+-- NULL blijft het standaardregime. Achterwaartse compatibiliteit is de harde eis uit #581: een
+-- club zonder periodes heeft alleen NULL-rijen en het gedrag is exact hetzelfde als vóór deze
+-- feature. FunctionApp\Planner\Repositories\PlannerAvailabilityRepository.GetAvailableFieldsAsync
+-- bepaalt per datum welke periode (indien aanwezig) actief is en gebruikt dán uitsluitend de
+-- rijen met dat PeriodeId, anders uitsluitend de NULL-rijen — nooit een samenvoeging van beide,
+-- want zomerstop en competitie zijn in dit issue expliciet tegengestelde regimes, geen aanvulling
+-- op elkaar. Overlappende periodes voor dezelfde club worden bij het aanmaken/bijwerken al op
+-- applicatieniveau geweigerd (AdminVeldPeriodeRepository) zodat er nooit meer dan één periode
+-- tegelijk actief kan zijn.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.VeldPeriode'))
+BEGIN
+    CREATE TABLE [dbo].[VeldPeriode] (
+        [Id]       INT          IDENTITY(1,1) NOT NULL,
+        [Naam]     NVARCHAR(50) NOT NULL,
+        [DatumVan] DATE         NOT NULL,
+        [DatumTot] DATE         NOT NULL,
+        [Actief]   BIT          NOT NULL CONSTRAINT [DF_VeldPeriode_Actief] DEFAULT 1,
+        [ClubCode] NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
+        CONSTRAINT [PK_VeldPeriode] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [CK_VeldPeriode_Datums] CHECK ([DatumTot] >= [DatumVan])
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'PeriodeId')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [PeriodeId] INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_VeldBeschikbaarheid_VeldPeriode')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid]
+        ADD CONSTRAINT [FK_VeldBeschikbaarheid_VeldPeriode] FOREIGN KEY ([PeriodeId]) REFERENCES [dbo].[VeldPeriode]([Id]);
+GO
