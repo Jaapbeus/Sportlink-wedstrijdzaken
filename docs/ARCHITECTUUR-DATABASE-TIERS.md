@@ -475,6 +475,53 @@ GeplandeWedstrijden, ClassificatieCorrectie, Zonsondergang, ImportLog, VeldTrain
 dekkingscontrole die per GUI-route moet bewijzen dat er een demorij bestaat. Dat blijft open scope
 op #862.
 
+## 15. Resterende stored procedures en views — de vier AVG-opschoonprocedures (#861)
+
+**Vier van de zes resterende procedures vertaald: de AVG-opschoonprocedures.** Zelfde
+architectuurbeslissing als #818's `PostgresMergeOrchestrator`: de procedurele logica leeft in C#
+(`Database.Postgres/PostgresCleanupProcedures.cs`), niet in een Postgres-functie/-procedure. Elke
+methode berekent zijn tijdgrenzen éénmalig in C# (`DateTime.UtcNow`, al `Kind=Utc`) en geeft ze als
+parameter mee aan zowel de UPDATE als de DELETE, zelfde reden als het origineel: een rij mag niet
+tussen de twee statements door van venster wisselen.
+
+Twee nieuwe timer-triggered functies in `FunctionApp.Postgres/Email/` (`CleanupEmailVerwerkingFunction`,
+`CleanupTeambegeleidingFunction`) roepen deze methoden aan, met exact dezelfde CRON-schema's als de
+SQL Server-tier (wekelijks zondag 03:00 UTC resp. maandelijks de 1e om 04:00 UTC) en dezelfde
+FK-opruimvolgorde (#424: ClassificatieCorrectie vóór EmailVerwerking).
+
+**Empirisch bevestigd** (wegwerp-Postgres-16-container, vijf voorbereide `EmailVerwerking`-rijen op
+5/45/100/120/10 dagen oud plus een correctierij die een jonge rij aan een oude rij koppelt): de
+correctierij werd verwijderd ondanks zijn eigen leeftijd van 10 dagen, omdat één van zijn twee
+FK's naar een 100 dagen oude ouderrij wijst — precies het scenario dat het SQL Server-commentaar
+beschrijft als reden voor de opruimvolgorde. Verder: 45-dagenrij geanonimiseerd maar niet
+verwijderd, 100- en 120-dagenrij's verwijderd, 5- en 10-dagenrij's ongewijzigd.
+`avg.teambegeleiding`/`avg.importlog` (3 resp. 1-jaars-/90-dagengrenzen) identiek bevestigd.
+
+**Bewust niet in deze ronde:**
+- `sp_CreateDateTable`/`sp_UpdateSeasonTable` — `dbo.Season`/`dbo.DateTable` hebben nog geen
+  Postgres-migratie, en de primaire consument (`SeasonHelper.GetSeasonEndWeekOffsetAsync`, het
+  weekbereik voor de synchronisatie) is #890's territory. Vertalen zou een nieuwe migratie plus een
+  eigen tabelontwerp vergen zonder een consument die het op de Postgres-tier al aanroept.
+- De drie `pub.*`-rapportageviews (`pub.Matches`, `pub.Teams`, `pub.DateTable`) — **expliciet en
+  gemotiveerd laten vervallen**, conform de optie die #861 zelf aanbiedt. Een zoekactie over de
+  volledige broncode levert nul consumenten op; ze bestaan uitsluitend voor externe rapportage
+  buiten de applicatie. Een toekomstige externe-rapportagebehoefte kan deze alsnog toevoegen als een
+  aparte, bewuste beslissing — geen omissie.
+
+**Losstaande bevinding tijdens dit werk, niet gefixt (buiten #861's scope):**
+`Database.Postgres/PostgresPlannerViewGenerator.CreateView` (#819) wordt vandaag **uitsluitend**
+door `Database.Postgres.Tests` uitgevoerd — geen migratie, geen applicatiecode roept het aan. Een
+verse Postgres-installatie mist de view `planner.alle_wedstrijden_op_veld_ruw` dus volledig, en
+`PostgresPlannerAvailabilityReader` (die er `SELECT`-vanuit doet) zou falen met "relation does not
+exist" zodra iets die klasse aanroept. Vandaag heeft niets in `FunctionApp.Postgres` die klasse als
+consument (#888, de planner, is nog niet gestart), dus dit heeft nu geen runtime-impact — maar
+#888 loopt hier tegenaan zodra de planner wordt aangesloten. De view kan niet vooraf via een gewone
+migratie aangemaakt worden (`CREATE VIEW` vereist dat `his.matches`/`his.teams` al bestaan, en die
+tabellen ontstaan pas bij de eerste sync — dezelfde #856-klasse beperking als bij demodata). Juiste
+fix vermoedelijk: `CreateView` idempotent (`CREATE OR REPLACE`) uitvoeren vanuit
+`PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync` zelf, vlak vóór de `SELECT`. Gemeld
+hier zodat #888 dit niet opnieuw hoeft te ontdekken.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

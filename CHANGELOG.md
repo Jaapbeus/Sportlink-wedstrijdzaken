@@ -54,6 +54,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Server-contract, idempotent, en beide faalpaden (democlub ontbreekt; sync nog niet gelopen) geven
   een duidelijke foutmelding. Deel 2 (circa elf tabellen zonder demodata op beide tiers, plus een
   dekkingscontrole per GUI-route) is bewust niet in deze ronde meegenomen — blijft open op issue 862.
+- **Vier AVG-opschoonprocedures vertaald naar de Postgres-tier (issue 861).**
+  `Database.Postgres/PostgresCleanupProcedures.cs` (C#-methoden, zelfde architectuurkeuze als #818's
+  `PostgresMergeOrchestrator`) plus twee nieuwe timer-triggered functies in
+  `FunctionApp.Postgres/Email/` (`CleanupEmailVerwerkingFunction`, `CleanupTeambegeleidingFunction`)
+  met dezelfde CRON-schema's als de SQL Server-tier. Dekt `planner.emailverwerking`,
+  `planner.classificatiecorrectie`, `avg.teambegeleiding` en `avg.importlog` — elk met de
+  twee-fase-anonimiseer-dan-verwijder-logica van het origineel, inclusief de FK-opruimvolgorde
+  (#424) die een jonge correctierij verwijdert zodra hij naar een oude, te verwijderen e-mailrij
+  verwijst. Empirisch geverifieerd tegen een wegwerp-Postgres-container met vijf voorbereide rijen
+  op uiteenlopende leeftijden (5/45/100/120/10 dagen): exact de verwachte anonimisering/verwijdering
+  per venster, inclusief het lastige FK-scenario (jonge correctierij, oude ouderrij). Bewust niet in
+  deze ronde: `sp_CreateDateTable`/`sp_UpdateSeasonTable` (wachten op issue 890, geen Postgres-
+  migratie voor `dbo.Season`/`dbo.DateTable` nog) en de drie `pub.*`-rapportageviews (expliciet
+  laten vervallen — nul consumenten in de broncode, conform de optie die het issue zelf aanbiedt).
+  Losstaande, ongefixte bevinding gemeld voor #888: `PostgresPlannerViewGenerator.CreateView` (#819)
+  wordt vandaag alleen door tests uitgevoerd, niet door een migratie of applicatiecode.
 - **`FunctionApp.Postgres` — de applicatie-datalaag voor de Postgres-tier bestaat nu daadwerkelijk**,
   na epic #815's grootste ontbrekende stuk (#860, uitgewerkt naar vijf sub-issues). Een minimaal,
   zelfstandig Azure Functions isolated-worker-project (net9.0) met een eigen configuratielaag
