@@ -40,7 +40,7 @@ public class PostgresAuditTimestampUtcIntegrationTests : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task MergeStgToHisAsync_SessieOpNietUtcTijdzone_AuditTijdstempelIsTochEchteUtcTijd()
     {
         var entity = TestEntities.SingleKeyNoClub;

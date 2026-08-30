@@ -126,7 +126,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
     /// De #719-regressie: "veld 10" mag niet als bezetting op "veld 1" belanden. Dit is de
     /// rechtstreekse Postgres-tier-tegenhanger van de reden waarom deze view/laag bestaat.
     /// </summary>
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task GetFieldOccupationsAsync_Veld10_ResolvedNaarVeld10NietVeld1()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -149,7 +149,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>Een veldstring die geen enkel veld matcht valt uit de bezetting — geen crash, geen valse rij.</summary>
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task GetFieldOccupationsAsync_OnbekendVeld_RijValtWeg()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -170,7 +170,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>G-team-detectie via de regex-operator ~ (vertaling van SQL Server's LIKE-bracket-patroon).</summary>
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task GetFieldOccupationsAsync_GTeam_GebruiktGSpeeltijdIStandaardLeeftijdscategorie()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -193,7 +193,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>De "Planner"-tak levert al een resolved veldnummer — geen matching, direct doorgezet.</summary>
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task GetFieldOccupationsAsync_PlannerRij_VeldnummerRechtstreeksDoorgezetZonderMatching()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
