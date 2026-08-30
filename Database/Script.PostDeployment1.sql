@@ -377,6 +377,20 @@ BEGIN
 END
 GO
 
+-- AppSettings: AppSettingsAuditBewaarDagen kolom toevoegen (idempotent) — #781 (AVG art. 5 lid 1
+-- sub e). Configureerbare bewaartermijn (dagen) voor dbo.AppSettingsAudit, gelezen door
+-- dbo.sp_CleanupAppSettingsAudit verderop in dit script. Default 730 dagen (24 maanden) is een
+-- gedocumenteerd uitgangspunt — zie Database/dbo/System Stored Procedures/sp_CleanupAppSettingsAudit.sql
+-- voor de volledige toelichting en de reden dat dit geen "club-specifieke string" is.
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'AppSettingsAuditBewaarDagen'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [AppSettingsAuditBewaarDagen] INT NOT NULL DEFAULT 730
+END
+GO
+
 -- AppSettings: email-integratie velden vullen
 IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
 BEGIN
@@ -2566,11 +2580,11 @@ GO
 -- ============================================================
 -- #707: AVG-retentieprocedures — CREATE OR ALTER, niet IF NOT EXISTS
 --
--- Deze vier procedures stonden eerder verderop in dit script als
+-- Deze procedures stonden eerder verderop in dit script als
 -- 'IF NOT EXISTS (... type = ''P'') BEGIN EXEC(N''CREATE PROCEDURE ...'') END'. De deploy-pipeline
 -- publiceert geen dacpac — db-migrate runt uitsluitend dit script — en de procedures bestaan al
 -- sinds een eerdere release. De guard was dus permanent onwaar en ELKE wijziging aan een van deze
--- vier procedures verdween geruisloos bij de deploy.
+-- procedures verdween geruisloos bij de deploy.
 --
 -- Dat was al ingetreden: de anonimisering van planner.EmailVerwerking.FoutMelding (#420) stond wel
 -- in Database/planner/System Stored Procedures/sp_CleanupEmailVerwerking.sql en in de CHANGELOG,
@@ -2585,8 +2599,9 @@ GO
 -- hoeven nog niet te bestaan (deferred name resolution), maar het schema wel.
 --
 -- Definities één-op-één gelijk aan de bronbestanden onder
--- Database/{planner,avg}/System Stored Procedures/ — wijzig een procedure dus altijd op BEIDE
--- plekken.
+-- Database/{planner,avg,dbo}/System Stored Procedures/ — wijzig een procedure dus altijd op BEIDE
+-- plekken. #781 voegde sp_CleanupAppSettingsAudit toe (dbo-schema, bestaat al bij CREATE TABLE
+-- hierboven, dus geen schema-afhankelijkheid zoals bij de andere vier).
 -- ============================================================
 
 -- Bron: Database/planner/System Stored Procedures/sp_CleanupClassificatieCorrectie.sql  (#424)
@@ -2736,6 +2751,45 @@ BEGIN
     -- en hebben altijd een recente mta_imported.
     DELETE FROM [avg].[Teambegeleiding]
     WHERE [mta_imported] < DATEADD(YEAR, -1, GETUTCDATE());
+END;
+GO
+
+-- Bron: Database/dbo/System Stored Procedures/sp_CleanupAppSettingsAudit.sql  (#781)
+--
+-- AVG art. 5 lid 1 sub e: dbo.AppSettingsAudit had geen bewaartermijn. [GewijzigdDoor] is een
+-- Entra-gebruikersnaam en [OudeWaarde]/[NieuweWaarde] kunnen e-mailadressen bevatten — beide
+-- persoonsgegevens. Bewaartermijn is UITGANGSPUNT (730 dagen), geen definitief beleid — zie de
+-- volledige toelichting in het bronbestand. Configureerbaar via
+-- dbo.AppSettings.AppSettingsAuditBewaarDagen. Bewust géén anonimiseer-fase zoals bij de vier
+-- procedures hierboven: het doel van dit log IS "wie heeft wat gewijzigd", dus een tussentijdse
+-- anonimisering zou de traceerbaarheid ondermijnen zonder het risico wezenlijk te verkleinen.
+CREATE OR ALTER PROCEDURE [dbo].[sp_CleanupAppSettingsAudit]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BewaarDagen INT;
+
+    -- Primaire club (niet de ALLSTARS-democlub) is leidend voor deployment-brede instellingen,
+    -- zelfde patroon als elders in dit script (#598/#740).
+    SELECT TOP 1 @BewaarDagen = [AppSettingsAuditBewaarDagen]
+    FROM [dbo].[AppSettings]
+    WHERE [ClubCode] <> 'ALLSTARS'
+    ORDER BY [ClubCode];
+
+    -- Vangnet: alleen de democlub aanwezig, of de kolom bevat NULL door een pre-migratie rij.
+    IF @BewaarDagen IS NULL
+        SELECT TOP 1 @BewaarDagen = [AppSettingsAuditBewaarDagen]
+        FROM [dbo].[AppSettings]
+        ORDER BY [ClubCode];
+
+    -- Kolom ontbreekt (nog niet gemigreerd) of bevat een onzinnige waarde: val terug op de
+    -- gedocumenteerde default in plaats van nooit op te ruimen.
+    IF @BewaarDagen IS NULL OR @BewaarDagen <= 0
+        SET @BewaarDagen = 730;
+
+    DELETE FROM [dbo].[AppSettingsAudit]
+    WHERE [Tijdstip] < DATEADD(DAY, -@BewaarDagen, GETUTCDATE());
 END;
 GO
 

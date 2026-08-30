@@ -165,6 +165,23 @@ De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEma
 
 `avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de tabel wordt bij elke import volledig vervangen (TRUNCATE + bulk insert). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
 
+`dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
+een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij
+`GraphMailbox` of `EmailReviewRecipient`).
+
+| Fase | Wanneer | Actie |
+|---|---|---|
+| Verwijderen | > bewaartermijn (default 730 dagen / 24 maanden) na de wijziging | Hele rij verwijderd |
+
+Bewust géén anonimiseer-fase: het doel van dit log ís "wie heeft wat gewijzigd", dus een
+tussentijdse anonimisering van `GewijzigdDoor` zou die traceerbaarheid ondermijnen zonder het
+AVG-risico wezenlijk te verkleinen — de tabel is toch al uitsluitend inzichtelijk voor beheerders
+via SQL. De bewaartermijn van 730 dagen is een **gedocumenteerd uitgangspunt, geen definitief
+beleid** — de repo-eigenaar kan dit aanpassen via `dbo.AppSettings.AppSettingsAuditBewaarDagen`
+zonder redeploy. De cleanup wordt maandelijks (1e van de maand, 04:30 UTC) uitgevoerd door
+`CleanupAppSettingsAuditFunction`. De stored procedure `dbo.sp_CleanupAppSettingsAudit` is
+idempotent.
+
 ---
 
 ## Wat te doen bij een gefaalde check

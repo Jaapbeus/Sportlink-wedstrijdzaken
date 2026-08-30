@@ -19,6 +19,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Audit-log entries in `dbo.AppSettingsAudit` ouder dan de bewaartermijn worden nu automatisch
+  opgeruimd (AVG-bewaartermijn).** Elke instellingenwijziging in Beheer → Instellingen werd tot nu
+  toe voor onbepaalde tijd bewaard, inclusief de naam van de beheerder en eventuele
+  e-mailadressen in de gewijzigde waarde. Een nieuwe maandelijkse achtergrondtaak verwijdert
+  rijen ouder dan de ingestelde bewaartermijn (standaard 730 dagen / 24 maanden — instelbaar via
+  `dbo.AppSettings.AppSettingsAuditBewaarDagen`, zonder dat een nieuwe versie nodig is). (#781)
 - **De lokale ontwikkelomgeving draait nu ook op macOS (Apple Silicon), naast Windows.** Alle
   dev-scripts (`Start-Debug.ps1`, `Stop-Debug.ps1`, `Test-App.ps1`, `Bump-Build.ps1`,
   `smoke-test.ps1`) werken op beide platforms. Concreet: poortdetectie loopt via een

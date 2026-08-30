@@ -28,5 +28,11 @@
 	[SyncEnabled]			BIT				NOT NULL DEFAULT 1,	-- 0 = geen Sportlink API-sync voor deze club
 	-- #561: verzet-zonder-datum flow — KNVB-speeldagenkalender als bijlage + BCC eigen team
 	[KnvbPdfBijlageIngeschakeld] BIT			NOT NULL DEFAULT 1,	-- 1 = KNVB-kalender-PDF bijvoegen bij verzet-zonder-datum-antwoord
-	[KnvbStandaardRegio]	NVARCHAR(20)	NULL	-- KNVB-regio van deze club: West/Noord/Oost/Zuid/Landelijk/LandelijkJeugd. Geen default — ontbrekend = geen bijlage/vrije-zaterdagen-tekst
+	[KnvbStandaardRegio]	NVARCHAR(20)	NULL,	-- KNVB-regio van deze club: West/Noord/Oost/Zuid/Landelijk/LandelijkJeugd. Geen default — ontbrekend = geen bijlage/vrije-zaterdagen-tekst
+	-- #781 (AVG art. 5 lid 1 sub e): bewaartermijn voor dbo.AppSettingsAudit in dagen. Een numerieke
+	-- default is geen club-specifieke string (die regel geldt voor namen/domeinen/URLs), dus 730
+	-- dagen (24 maanden) als default is toegestaan. Dit is een gedocumenteerd UITGANGSPUNT, geen
+	-- definitief beleid — zie de toelichting in sp_CleanupAppSettingsAudit.sql. Beheerder kan de
+	-- waarde aanpassen via een directe UPDATE op deze tabel (nog geen GUI-veld).
+	[AppSettingsAuditBewaarDagen] INT NOT NULL DEFAULT 730
 	)
