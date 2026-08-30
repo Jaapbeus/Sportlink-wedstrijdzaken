@@ -41,6 +41,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   geen gemiste scope, een expliciet gedocumenteerde afhankelijkheid op nog niet gestart werk.
   Tijdens de eerste vertaling ook ontdekt: `public.speeltijden` miste drie kolommen ten opzichte van
   de SQL Server-tier — apart getrackt en gefixt, zie issue 893.
+- **AllStars-demodata voor de Postgres-tier, deel 1 van issue 862: hetzelfde rijcontract als de
+  SQL Server-tier.** `Database.Postgres/migrations/006_allstars_demodata.sql` (velden=3,
+  veldbeschikbaarheid=21, speeltijden gekopieerd van de primaire club, teamregels=1 — automatisch
+  toegepast, deze tabellen bestaan altijd) en
+  `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql` (teams=28, teambegeleiding=28,
+  wedstrijden=224 — los, expliciet aan te roepen script, want `his.teams`/`his.matches` bestaan pas
+  na de eerste Postgres-Sportlink-sync, dezelfde les als issue 856). Een teamregels-demorij voor de
+  democlub bestond nog niet op geen van beide tiers — toegevoegd aan beide. Empirisch geverifieerd
+  tegen een wegwerp-Postgres-container (inclusief de his.teams/his.matches-simulatie via de
+  letterlijke PostgresSchemaGenerator-output): exact dezelfde zeven aantallen als het SQL
+  Server-contract, idempotent, en beide faalpaden (democlub ontbreekt; sync nog niet gelopen) geven
+  een duidelijke foutmelding. Deel 2 (circa elf tabellen zonder demodata op beide tiers, plus een
+  dekkingscontrole per GUI-route) is bewust niet in deze ronde meegenomen — blijft open op issue 862.
 - **`FunctionApp.Postgres` — de applicatie-datalaag voor de Postgres-tier bestaat nu daadwerkelijk**,
   na epic #815's grootste ontbrekende stuk (#860, uitgewerkt naar vijf sub-issues). Een minimaal,
   zelfstandig Azure Functions isolated-worker-project (net9.0) met een eigen configuratielaag

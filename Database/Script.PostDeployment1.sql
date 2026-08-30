@@ -2862,6 +2862,16 @@ BEGIN
         FROM [dbo].[Speeltijden]
         WHERE [ClubCode] = (SELECT MIN([ClubCode]) FROM [dbo].[AppSettings] WHERE [ClubCode] <> @DemoClub);
 
+    -- TeamRegels (#862): één voorbeeldrij voor de democlub, zelfde vorm als de primaire-club-rij
+    -- hierboven maar dan voor "AllStars Heren 1" — de teamnaam die de his.teams-seed
+    -- (scripts/migrations/003-seed-allstars-demo-matches.sql) voor categorie "Heren" nummer 1
+    -- aanmaakt. Geen FK op TeamNaam, dus deze rij kan onafhankelijk van die (mogelijk nog niet
+    -- gelopen) seed bestaan.
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[TeamRegels] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [dbo].[TeamRegels] ([TeamNaam], [RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking], [ClubCode])
+        VALUES ('AllStars Heren 1', 'BufferVoor', 60, 10, 1,
+                '1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld', @DemoClub);
+
     -- #856 (architectuurbesluit "Optie B", 2026-08-30): his.teams/his.matches worden niet door dit
     -- script aangemaakt maar door de ETL bij de eerste Sportlink-sync. Op een verse clubinstallatie
     -- bestaan ze dus nog niet op het moment dat dit script draait. De team-/teambegeleiding-/
