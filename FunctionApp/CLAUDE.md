@@ -48,7 +48,7 @@ History Tables (his.teams, his.matches, his.matchdetails)
 **[Utilities.cs](Utilities.cs)**
 - `SystemUtilities.AppSettings`: Loads settings from `dbo.AppSettings` table
   - Fields: `SportlinkApiUrl`, `SportlinkClientId`, `FetchSchedule`
-- `SystemUtilities.DatabaseConfig`: Manages connection string from environment variables — forces `Pooling=false` (#808): a pooled connection stays open as an active session on the server after `Dispose()`, which blocks the free-tier database's auto-pause and can burn the monthly vCore-second allowance while the app is otherwise idle
+- `SystemUtilities.DatabaseConfig`: Manages connection string from environment variables — forces `Pooling=false` (#808): a pooled connection stays open as an active session on the server after `Dispose()`, which blocks the free-tier database's auto-pause and can burn the monthly vCore-second allowance while the app is otherwise idle. This class and its Azure SQL-serverless-specific retry logic (`WaitForDatabaseAsync`) are SQL Server-tier-specific — a future non-SQL-Server tier gets its own equivalent in its own project tree, not a shared abstraction here. See [docs/ARCHITECTUUR-DATABASE-TIERS.md](../docs/ARCHITECTUUR-DATABASE-TIERS.md).
 - `SystemUtilities.SeasonHelper`: Calculates season end week offsets from `dbo.Season` table
 - Database retry logic with 5 retries, 5-second delays between attempts
 
