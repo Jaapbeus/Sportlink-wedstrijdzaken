@@ -50,11 +50,8 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
             "CREATE SCHEMA IF NOT EXISTS stg; CREATE SCHEMA IF NOT EXISTS his;", connection);
         await schemas.ExecuteNonQueryAsync();
 
-        foreach (var ddl in PostgresPlannerSupportSchema.AllInOrder)
-        {
-            await using var cmd = new NpgsqlCommand(ddl, connection);
+        await using (var cmd = new NpgsqlCommand(PostgresPlannerSupportSchema.BaselineSql, connection))
             await cmd.ExecuteNonQueryAsync();
-        }
 
         await Orchestrator.RecreateStgTableAsync(KnownEntities.Matches);
         await Orchestrator.EnsureHisTableAsync(KnownEntities.Matches);

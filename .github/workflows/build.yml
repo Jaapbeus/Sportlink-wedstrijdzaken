@@ -60,6 +60,11 @@ jobs:
       - name: Planner.Shared bouwen en testen (net9.0)
         run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
 
+      # #821: migratie-runner-CLI voor de Postgres-tier. Build-only hier (geen live database) —
+      # MigrationRunnerIntegrationTests hierboven dekt het gedrag [Fact(Skip=...)], zie #822/#823.
+      - name: Database.Postgres.Cli bouwen (net9.0)
+        run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
+
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
       # worden — ontdekt tijdens de adversariële verificatie van #705-#712. De testsuite dekt onder
