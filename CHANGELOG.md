@@ -37,6 +37,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   SQL Server 2022 in een container (`docker compose up -d`). Eén image, één poort, één
   verbindingsreeks, dezelfde stappen op Windows en macOS. Het SA-wachtwoord komt uit een
   lokaal `.env`-bestand en staat niet in de repository. (#800)
+- **Beheerders kunnen nu een periode instellen op Instellingen → Velden, zoals "Zomerstop" of
+  "Competitie", en een veldbeschikbaarheid-venster daaraan koppelen.** Een venster zonder periode
+  blijft het hele jaar gelden zoals voorheen; een venster gekoppeld aan een periode geldt
+  uitsluitend terwijl die periode loopt. Zo hoeft een club niet langer twee keer per jaar
+  handmatig vensters toe te voegen en weer te verwijderen om de zomerstop te overbruggen — de
+  velden die doordeweeks alleen tijdens de zomerstop bespeelbaar zijn, krijgen nu hun eigen
+  periode-gebonden venster naast het reguliere competitieschema. Bestaande vensters blijven
+  ongewijzigd werken (geen periode = standaardregime, exact zoals vóór deze wijziging). (#581)
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een

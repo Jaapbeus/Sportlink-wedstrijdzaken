@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.20.0",
+    "version": "3.0.1",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1280,6 +1280,16 @@
           },
           "GebruikZonsondergang": {
             "type": "boolean"
+          },
+          "PeriodeId": {
+            "type": "integer",
+            "nullable": true,
+            "description": "NULL = standaardregime, geldt buiten elke actieve periode (#581). Een waarde koppelt dit venster aan een VeldPeriode — geldt dan uitsluitend terwijl die periode actief is."
+          },
+          "PeriodeNaam": {
+            "type": "string",
+            "nullable": true,
+            "description": "Naam van de gekoppelde periode, of null bij het standaardregime."
           }
         }
       },
@@ -1303,6 +1313,11 @@
           "gebruikZonsondergang": {
             "type": "boolean",
             "default": false
+          },
+          "periodeId": {
+            "type": "integer",
+            "nullable": true,
+            "description": "NULL = standaardregime (#581)."
           }
         }
       },
@@ -1336,8 +1351,69 @@
           "gebruikZonsondergang": {
             "type": "boolean",
             "default": false
+          },
+          "periodeId": {
+            "type": "integer",
+            "nullable": true,
+            "description": "NULL = standaardregime (#581)."
           }
         }
+      },
+      "VeldPeriodeItem": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "integer"
+          },
+          "Naam": {
+            "type": "string",
+            "example": "Zomerstop"
+          },
+          "DatumVan": {
+            "type": "string",
+            "format": "date"
+          },
+          "DatumTot": {
+            "type": "string",
+            "format": "date"
+          },
+          "Actief": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VeldPeriodeCreateRequest": {
+        "type": "object",
+        "required": [
+          "naam",
+          "datumVan",
+          "datumTot"
+        ],
+        "properties": {
+          "naam": {
+            "type": "string",
+            "example": "Zomerstop"
+          },
+          "datumVan": {
+            "type": "string",
+            "format": "date"
+          },
+          "datumTot": {
+            "type": "string",
+            "format": "date"
+          },
+          "actief": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VeldPeriodeUpdateRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/VeldPeriodeCreateRequest"
+          }
+        ]
       },
       "VeldItem": {
         "type": "object",
@@ -4595,6 +4671,256 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/veldperiodes": {
+      "get": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "getVeldPeriodes",
+        "summary": "Periodes ophalen",
+        "description": "Geeft alle periodes (herbruikbare regimes zoals \"Zomerstop\" of \"Competitie\") van de club.\nEen veldbeschikbaarheid-venster kan naar een periode verwijzen via PeriodeId — geldt dan\nuitsluitend terwijl die periode actief is (#581).\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Periodes",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VeldPeriodeItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "createVeldPeriode",
+        "summary": "Periode aanmaken",
+        "description": "Overlapt de opgegeven range met een bestaande actieve periode van deze club, dan wordt de\naanvraag met 409 geweigerd — er mag nooit meer dan één periode tegelijk actief zijn.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldPeriodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Periode aangemaakt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "aangemaakt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Periode overlapt met een bestaande actieve periode van deze club"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/veldperiodes/{id}": {
+      "put": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "updateVeldPeriode",
+        "summary": "Periode bijwerken",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldPeriodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Periode bijgewerkt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "bijgewerkt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Periode overlapt met een bestaande actieve periode van deze club"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "deleteVeldPeriode",
+        "summary": "Periode verwijderen",
+        "description": "Weigert de verwijdering met 409 als er nog VeldBeschikbaarheid-vensters naar deze periode\nverwijzen — koppel die eerst los of verwijder ze.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Periode verwijderd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "verwijderd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Periode is nog gekoppeld aan één of meer veldbeschikbaarheid-vensters"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

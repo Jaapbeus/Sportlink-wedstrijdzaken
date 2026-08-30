@@ -739,16 +739,41 @@ in (#679).
 | **Kunstlicht** | Bepaalt of de zonsondergang-beperking geldt voor dit veld |
 | **Actief** | Uitvinken deactiveert het veld zonder het te verwijderen (geen harde delete — andere tabellen verwijzen ernaar) |
 
+### Periodes
+
+Een periode is een herbruikbaar regime met een vaste geldigheidsrange, bijvoorbeeld "Zomerstop"
+(bijv. 1 juli t/m 15 augustus) of "Competitie". Een veldbeschikbaarheid-venster kan aan een periode
+gekoppeld worden — het geldt dan uitsluitend terwijl die periode loopt, in plaats van het hele jaar.
+Zo hoeft u niet langer twee keer per jaar handmatig vensters toe te voegen en weer te verwijderen
+om de zomerstop te overbruggen (#581).
+
+| Veld | Uitleg |
+|---|---|
+| **Naam** | Vrije tekst, bijv. "Zomerstop" |
+| **Van / Tot** | Geldigheidsrange (kalenderdatums, beide inclusief) |
+| **Actief** | Uitvinken schakelt de periode tijdelijk uit zonder hem te verwijderen |
+
+Er mag nooit meer dan één actieve periode van dezelfde club tegelijk lopen — een overlappende
+periode wordt bij het opslaan geweigerd. Verwijder eerst de gekoppelde veldbeschikbaarheid-vensters
+(of koppel ze los) voordat u een periode verwijdert.
+
 ### Veldbeschikbaarheid
 
-Het wekelijkse openingsvenster van het sportpark per veld per dag. Een combinatie veld + dag komt
-één keer voor; pas een bestaand venster aan in plaats van een tweede toe te voegen.
+Het wekelijkse openingsvenster van het sportpark per veld per dag, optioneel gekoppeld aan een
+periode. Een combinatie veld + dag + periode komt één keer voor; pas een bestaand venster aan in
+plaats van een tweede toe te voegen.
 
 | Veld | Uitleg |
 |---|---|
 | **Veld / Dag** | Alleen instelbaar bij aanmaken — verwijder en maak opnieuw aan om veld of dag te wijzigen |
 | **Van / Tot** | Openingsvenster, bijv. 18:00–22:00 |
 | **Beperkt tot zonsondergang** | Venster sluit eerder als de zon eerder ondergaat dan de ingestelde eindtijd (alleen relevant zonder kunstlicht) |
+| **Periode** | "Standaard" (leeg) laat het venster het hele jaar gelden, behalve wanneer een andere periode actief is. Een gekozen periode laat het venster uitsluitend tijdens die periode gelden |
+
+**Voorbeeld:** een kunstgrasveld is doordeweeks normaal gesproken gesloten (geen venster), maar is
+tijdens de zomerstop juist wel beschikbaar omdat er geen trainingen zijn. Maak een periode
+"Zomerstop" aan en voeg voor dat veld een venster toe dat aan die periode gekoppeld is — buiten de
+zomerstop verandert er niets aan het reguliere schema.
 
 ### Trainingsschema
 
@@ -782,6 +807,10 @@ telt nergens in mee.
 | `POST /api/beheer/veldtraining` | Nieuw trainingsblok aanmaken |
 | `PUT /api/beheer/veldtraining/{id}` | Trainingsblok bijwerken |
 | `DELETE /api/beheer/veldtraining/{id}` | Trainingsblok verwijderen |
+| `GET /api/beheer/veldperiodes` | Alle periodes voor de club |
+| `POST /api/beheer/veldperiodes` | Nieuwe periode aanmaken |
+| `PUT /api/beheer/veldperiodes/{id}` | Periode bijwerken |
+| `DELETE /api/beheer/veldperiodes/{id}` | Periode verwijderen |
 
 ---
 
