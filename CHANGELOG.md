@@ -178,6 +178,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **De AllStars FC-demodataseed vulde de business-key-bronkolommen (`teamcode`, `lokaleteamcode`,
+  `poulecode`) van `his.teams` nooit, alleen de afgeleide sleutelweergave `bk_teams` rechtstreeks.**
+  Op SQL Server bleef dat onopgemerkt (`bk_teams` is daar een gewone kolom); op de Postgres-tier
+  (#818) is `bk_`  een `GENERATED ALWAYS`-kolom afgeleid uit exact die drie bronkolommen — met
+  alle drie `NULL` kregen alle 28 demoteams dezelfde afgeleide sleutel en liet de unieke index er
+  nog maar één over. Seed vult nu unieke, herkenbaar-fictieve waarden (`9000000+`, dezelfde
+  gereserveerde demo-range als `wedstrijdcode`) in alle drie de kolommen. Design-afweging
+  (waarom de bronkolommen vullen i.p.v. de gegenereerde kolom terugzetten naar een gewone kolom)
+  vastgelegd in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §7. Empirisch geverifieerd tegen een
+  wegwerp-SQL-Server-container: exact 28 rijen, 28 unieke teamcodes, geen enkele NULL meer in de
+  drie kolommen. **Geautomatiseerde CI-telling blijft nog open** — de bestaande `fresh-db`-job
+  draait de seed tegen een database zonder `his.teams`/`his.matches`, waardoor het hele
+  AllStars-blok zich stil overslaat (zie #856, aparte architectuurvraag die aan de eigenaar is
+  voorgelegd).
 - **`close-released-issues.yml` kon een issue ten onrechte sluiten bij de volgende release als een
   ander, nog niet afgerond issue-nummer toevallig in dezelfde commit-subjectregel voorkwam** (bijv.
   `fix: ... (#820) (#869)` — het PR-referentienummer ná een bewuste, losse kruisverwijzing naar een

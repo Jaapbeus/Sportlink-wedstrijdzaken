@@ -188,6 +188,33 @@ De afhankelijkheden lopen niet gelijk aan de nummering:
 #857 en #867 horen samen te landen: de eerste beschrijft waarom een lokale run nu naar buiten
 praat, de tweede levert de schakelaar die dat blokkeert.
 
+## 7. Business-key-bronkolommen altijd vullen, ook in demodata (#853)
+
+**Besluit: Optie A** — de demodata-seed vult de daadwerkelijke business-key-bronkolommen
+(`teamcode`, `lokaleteamcode`, `poulecode` voor `his.teams`), in plaats van de afgeleide
+sleutelkolom een uitzonderingspositie te geven.
+
+**Aanleiding:** `Database.Postgres/PostgresSchemaGenerator.cs` (#818) maakt de synthetische
+`bk_`-kolom een `GENERATED ALWAYS AS (...) STORED`-kolom, afgeleid uit de business-key-kolommen die
+`KnownEntities.cs` voor die entiteit aanwijst. De bestaande AllStars-demodataseed in
+`Script.PostDeployment1.sql` vulde die drie bronkolommen nooit — alleen de (op SQL Server een
+gewone kolom zijnde) `bk_teams` rechtstreeks. Op Postgres faalt dat: een gegenereerde kolom
+accepteert geen directe waarde, en zonder de kolom leeg laten geeft elk team dezelfde afgeleide
+sleutel (drie keer `NULL` → `COALESCE` naar dezelfde lege string), waarna de unieke index alle op
+één na weigert.
+
+**Afweging tegen optie B** (de gegenereerde kolom terugzetten naar een gewone, door de ETL gevulde
+kolom, zoals de bestaande SQL Server-boom): dat zou de garantie opgeven die de `GENERATED
+ALWAYS`-kolom juist biedt — dat de sleutel per definitie overeenkomt met de brondata, nooit los kan
+raken door een vergeten bijwerking elders. Optie A kost alleen een kleine, additieve wijziging aan
+één seed-blok; optie B zou al het empirisch geverifieerde werk uit #818/#819/#821/#824 rond de
+gegenereerde kolom ongedaan maken. **Optie A gekozen.**
+
+**Consequentie voor toekomstige demodata en voor #862** (de nog te bouwen Postgres-variant van deze
+seed): vul altijd de echte business-key-bronkolommen van een entiteit, met unieke, herkenbaar-fictieve
+waarden — nooit alleen de afgeleide/opgeslagen sleutelweergave. Dit geldt voor elke toekomstige
+entiteit die op dezelfde manier gemodelleerd wordt.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
