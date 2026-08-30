@@ -21,6 +21,7 @@ public sealed class PostgresMergeOrchestrator
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
+        await EnsureSchemaAsync(connection, "stg", ct);
         await using var command = new NpgsqlCommand(PostgresSchemaGenerator.GenerateStgTable(entity), connection);
         await command.ExecuteNonQueryAsync(ct);
     }
@@ -32,7 +33,21 @@ public sealed class PostgresMergeOrchestrator
     {
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
+        await EnsureSchemaAsync(connection, "his", ct);
         await using var command = new NpgsqlCommand(PostgresSchemaGenerator.GenerateHisTable(entity), connection);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>
+    /// Schept het <c>stg</c>/<c>his</c>-schema zelf als het nog niet bestaat. Vóór deze aanvulling
+    /// bestond er geen enkele plek — productiecode of test — die deze schema's daadwerkelijk
+    /// aanmaakte; elke test moest dat zelf via een losse <c>CREATE SCHEMA</c>-aanroep doen vóórdat
+    /// de orchestrator iets kon uitvoeren. Idempotent, dus geen effect op een reeds bestaand schema.
+    /// </summary>
+    private static async Task EnsureSchemaAsync(NpgsqlConnection connection, string schema, CancellationToken ct)
+    {
+        await using var command = new NpgsqlCommand(
+            $"CREATE SCHEMA IF NOT EXISTS {PostgresIdentifier.Quote(schema)};", connection);
         await command.ExecuteNonQueryAsync(ct);
     }
 

@@ -48,8 +48,21 @@ public static class PostgresSchemaGenerator
     /// his-tabellen (<c>Database/his/Tables/Teams.sql</c> e.a.) en <c>sp_CreateTargetTableFromSource</c>
     /// dat de synthetische bk_-kolom (via een unieke index, geen PK-constraint) vandaag al de
     /// enige sleutel is — geen los surrogate-Id-kolom. <c>mta_deleted</c> is een nullable
-    /// TIMESTAMP (deletie-tijdstip), geen boolean-vlag — idem geverifieerd tegen de bestaande
+    /// TIMESTAMPTZ (deletie-tijdstip), geen boolean-vlag — idem geverifieerd tegen de bestaande
     /// his-tabellen, niet aangenomen.
+    /// </para>
+    /// <para>
+    /// <b>#854: audit-tijdstempels zijn <c>TIMESTAMPTZ</c>, niet naïeve <c>TIMESTAMP</c>.</b> Een
+    /// eerdere versie gebruikte naïeve <c>TIMESTAMP</c>-kolommen gevuld met <c>NOW()</c> — <c>NOW()</c>
+    /// levert in Postgres een waarde mét tijdzone, en de impliciete cast naar <c>TIMESTAMP</c>
+    /// gebruikt de sessietijdzone. Draait de server niet op UTC, dan staat er lokale tijd in een
+    /// kolom die de rest van de applicatie als UTC behandelt — exact de regressie die eerder is
+    /// opgelost in PR #246 (<c>GETDATE()</c> i.p.v. <c>GETUTCDATE()</c>), nu voor Postgres.
+    /// <c>TIMESTAMPTZ</c> lost dit op zonder een expliciete <c>timezone('utc', ...)</c>-wrap per
+    /// schrijfactie nodig te hebben: Postgres slaat de waarde altijd UTC-genormaliseerd op en
+    /// Npgsql leest hem terug als <c>DateTime</c> met <c>Kind=Utc</c> — geen los na te lopen
+    /// <c>SpecifyKind</c>-aanroep nodig zoals bij de SQL Server-tier, want er bestaat vandaag geen
+    /// C#-consument van deze specifieke Postgres-kolommen die dat al zou doen.
     /// </para>
     /// </summary>
     public static string GenerateHisTable(EntityDefinition entity)
@@ -60,9 +73,9 @@ public static class PostgresSchemaGenerator
 
         sb.AppendLine($"CREATE TABLE IF NOT EXISTS his.{table} (");
         AppendColumnLines(sb, entity.Columns, forceTrailingComma: true);
-        sb.AppendLine($"    {PostgresIdentifier.Quote("mta_inserted")} TIMESTAMP NOT NULL,");
-        sb.AppendLine($"    {PostgresIdentifier.Quote("mta_modified")} TIMESTAMP NOT NULL,");
-        sb.AppendLine($"    {PostgresIdentifier.Quote("mta_deleted")} TIMESTAMP NULL,");
+        sb.AppendLine($"    {PostgresIdentifier.Quote("mta_inserted")} TIMESTAMPTZ NOT NULL,");
+        sb.AppendLine($"    {PostgresIdentifier.Quote("mta_modified")} TIMESTAMPTZ NOT NULL,");
+        sb.AppendLine($"    {PostgresIdentifier.Quote("mta_deleted")} TIMESTAMPTZ NULL,");
         sb.AppendLine($"    {bkColumn} TEXT GENERATED ALWAYS AS ({BuildBusinessKeyExpression(entity)}) STORED");
         sb.AppendLine(");");
         sb.AppendLine(

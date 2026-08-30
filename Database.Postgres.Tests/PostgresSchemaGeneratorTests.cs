@@ -33,9 +33,9 @@ public class PostgresSchemaGeneratorTests
         sql.Should().NotContain("IDENTITY");
         sql.Should().NotContain("PRIMARY KEY");
         sql.Should().Contain("\"matchcode\" VARCHAR(50) NOT NULL,");
-        sql.Should().Contain("\"mta_inserted\" TIMESTAMP NOT NULL,");
-        sql.Should().Contain("\"mta_modified\" TIMESTAMP NOT NULL,");
-        sql.Should().Contain("\"mta_deleted\" TIMESTAMP NULL,");
+        sql.Should().Contain("\"mta_inserted\" TIMESTAMPTZ NOT NULL,");
+        sql.Should().Contain("\"mta_modified\" TIMESTAMPTZ NOT NULL,");
+        sql.Should().Contain("\"mta_deleted\" TIMESTAMPTZ NULL,");
         sql.Should().Contain("\"bk_matches\" TEXT GENERATED ALWAYS AS (COALESCE(\"matchcode\"::text, '')) STORED");
         sql.Should().Contain("CREATE UNIQUE INDEX IF NOT EXISTS \"UQ_matches_bk\" ON his.\"matches\" (\"bk_matches\");");
         sql.Should().NotContain("ClubCode");

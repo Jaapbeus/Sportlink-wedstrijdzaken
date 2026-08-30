@@ -215,6 +215,30 @@ seed): vul altijd de echte business-key-bronkolommen van een entiteit, met uniek
 waarden — nooit alleen de afgeleide/opgeslagen sleutelweergave. Dit geldt voor elke toekomstige
 entiteit die op dezelfde manier gemodelleerd wordt.
 
+## 8. Audit-tijdstempels: TIMESTAMPTZ, niet naïeve TIMESTAMP + timezone-wrap (#854)
+
+**Besluit:** de audit-kolommen (`mta_inserted`/`mta_modified`/`mta_deleted`) van elke his-tabel zijn
+`TIMESTAMPTZ`, niet een naïeve `TIMESTAMP` met een expliciete `timezone('utc', ...)`-wrap per
+schrijfactie.
+
+**Aanleiding:** `NOW()` in een naïeve `TIMESTAMP`-kolom gebruikt de sessietijdzone bij de impliciete
+cast — draait de databaseserver niet op UTC, dan staat er lokale tijd in een kolom die de rest van
+de applicatie als UTC behandelt. Exact de regressie die PR #246 al oploste voor SQL Server
+(`GETDATE()` → `GETUTCDATE()`), nu empirisch bevestigd voor Postgres (wegwerpcontainer op
+`Europe/Amsterdam`-sessietijdzone: een naïeve kolom + `NOW()` weekt 2 uur af van de werkelijke UTC-tijd).
+
+**Waarom `TIMESTAMPTZ` boven de `timezone('utc', ...)`-wrap:** Postgres normaliseert een
+`TIMESTAMPTZ`-waarde intern altijd naar UTC, ongeacht de sessietijdzone waarin hij geschreven is —
+`NOW()` hoeft dus niet aangepast te worden. Npgsql leest de kolom terug als `DateTime` met
+`Kind=Utc`. Er bestaat vandaag geen C#-consument van deze specifieke Postgres-kolommen die al een
+eigen `SpecifyKind`-aanroep doet (in tegenstelling tot de SQL Server-tier, waar dat wel nodig is) —
+dus geen dubbele-conversie-risico om na te lopen.
+
+Empirisch bevestigd met een integratietest die de databasesessie expliciet op `Europe/Amsterdam`
+zet (`Options=-c timezone=...` in de connectiestring, zodat ook de intern door de orchestrator
+geopende connectie de tijdzone erft) en aantoont dat de geschreven waarde binnen een seconde van de
+werkelijke UTC-tijd ligt, met `Kind=Utc`.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
