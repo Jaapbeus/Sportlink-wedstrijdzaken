@@ -41,11 +41,43 @@ public class KnownEntitiesTests
     [Fact]
     public void MatchDetails_BusinessKeyIsIntegerKolom_WerktOokAlsHetGeenStringIs()
     {
-        // WedstrijdCode is INT, niet VARCHAR — de synthetische bk_-kolom cast expliciet naar
+        // wedstrijdcode is INT, niet VARCHAR — de synthetische bk_-kolom cast expliciet naar
         // ::text, dus dit mag geen probleem zijn. Zie ook de empirische integratietest.
         var sql = PostgresSchemaGenerator.GenerateHisTable(KnownEntities.MatchDetails);
 
-        sql.Should().Contain("COALESCE(\"WedstrijdCode\"::text, '')");
+        sql.Should().Contain("COALESCE(\"wedstrijdcode\"::text, '')");
+    }
+
+    /// <summary>
+    /// #855: bewaakt de lowercase-snake_case-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md §3)
+    /// tegen elke kolomnaam die <see cref="KnownEntities"/> daadwerkelijk oplevert — niet alleen
+    /// tegen de synthetische <see cref="TestEntities"/>-fixtures. Bewust beperkt tot kolomnamen
+    /// (het "informatie_schema.columns"-equivalent van de acceptatiecriteria), niet tot de door
+    /// <see cref="PostgresSchemaGenerator"/> zelf toegevoegde <c>UQ_</c>/<c>IX_</c>-indexnamen — die
+    /// dragen bewust de bestaande, SQL-Server-gespiegelde prefix-conventie (zie het issue zelf,
+    /// dat "UQ_teams_bk" ongewijzigd als voorbeeld citeert) en worden nergens elders via een
+    /// handgeschreven, ongequote query aangesproken — anders dan kolomnamen. Een eerdere versie van
+    /// <c>KnownEntities</c> week af voor <c>ClubCode</c> en de volledige <c>matchdetails</c>-
+    /// entiteit; <see cref="EntityDefinition.Create"/> voorkomt dat nu al bij constructie, maar deze
+    /// test bewaakt tegen regressie op de daadwerkelijk gegenereerde DDL, niet alleen de C#-invoer.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllKnownEntities))]
+    public void GenerateHisTable_VoorElkeBekendeEntiteit_GeenEnkeleKolomnaamWijktAfVanLowercase(
+        EntityDefinition entity)
+    {
+        var sql = PostgresSchemaGenerator.GenerateHisTable(entity);
+        var kolomIdentifiers = System.Text.RegularExpressions.Regex.Matches(sql,
+                "\"([^\"]+)\"\\s+(?:VARCHAR|INTEGER|BIGINT|TEXT|TIMESTAMPTZ|DATE|TIME|DECIMAL|BOOLEAN)")
+            .Select(m => m.Groups[1].Value)
+            .Distinct();
+
+        kolomIdentifiers.Should().NotBeEmpty("de regex moet daadwerkelijk kolomdefinities matchen");
+        foreach (var identifier in kolomIdentifiers)
+            identifier.Should().Be(identifier.ToLowerInvariant(),
+                $"kolomnaam '{identifier}' in de gegenereerde his-DDL voor '{entity.EntityName}' " +
+                "moet lowercase zijn (ARCHITECTUUR-DATABASE-TIERS.md §3) — anders landt de afwijkende " +
+                "casing letterlijk in de database en breekt elke latere, ongequote verwijzing.");
     }
 
     public static TheoryData<EntityDefinition> AllKnownEntities() =>

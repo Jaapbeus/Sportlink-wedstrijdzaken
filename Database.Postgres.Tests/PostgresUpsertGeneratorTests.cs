@@ -38,8 +38,8 @@ public class PostgresUpsertGeneratorTests
     {
         var sql = PostgresUpsertGenerator.GenerateUpsertFromStgToHis(TestEntities.SingleKeyWithClub);
 
-        sql.Should().Contain("\"ClubCode\"");
-        sql.Should().Contain("\"ClubCode\" = EXCLUDED.\"ClubCode\"");
+        sql.Should().Contain("\"clubcode\"");
+        sql.Should().Contain("\"clubcode\" = EXCLUDED.\"clubcode\"");
     }
 
     [Fact]

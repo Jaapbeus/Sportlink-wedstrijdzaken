@@ -193,14 +193,14 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var insertMatchDetails = new NpgsqlCommand(
-            "INSERT INTO stg.\"matchdetails\" (\"WedstrijdCode\", \"MatchDate\", \"Aanvangstijd\") " +
+            "INSERT INTO stg.\"matchdetails\" (\"wedstrijdcode\", \"matchdate\", \"aanvangstijd\") " +
             "VALUES (12345, '2026-09-01', '14:30:00')", connection);
         await insertMatchDetails.ExecuteNonQueryAsync();
 
         await Orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
 
         await using var countCmd = new NpgsqlCommand(
-            "SELECT COUNT(*) FROM his.\"matchdetails\" WHERE \"WedstrijdCode\" = 12345", connection);
+            "SELECT COUNT(*) FROM his.\"matchdetails\" WHERE \"wedstrijdcode\" = 12345", connection);
         var rowCount = (long)(await countCmd.ExecuteScalarAsync())!;
         rowCount.Should().Be(1);
     }

@@ -239,6 +239,35 @@ zet (`Options=-c timezone=...` in de connectiestring, zodat ook de intern door d
 geopende connectie de tijdzone erft) en aantoont dat de geschreven waarde binnen een seconde van de
 werkelijke UTC-tijd ligt, met `Kind=Utc`.
 
+## 9. KnownEntities-kolomcasing consistent met §3 (#855)
+
+**Bevinding:** `Database.Postgres/KnownEntities.cs` week op twee plekken af van de in §3 vastgelegde
+lowercase-snake_case-conventie: de `ClubCode`-kolom (alle drie entiteiten) en vrijwel de volledige
+`matchdetails`-entiteit (~60 kolommen) waren PascalCase, letterlijk overgenomen uit de SQL
+Server-brontabellen. Omdat `PostgresIdentifier.Quote` onvoorwaardelijk quote't, landde die casing
+letterlijk in de database — elke latere, ongequote verwijzing (`WHERE clubcode = @club`) zou daarop
+stukgelopen zijn.
+
+**Fix:** alle kolommen en de business-key-lijst in `KnownEntities.cs` zijn lowercase gemaakt.
+
+**Twee guards toegevoegd tegen regressie:**
+1. `EntityDefinition.Create` valideert nu dat de entiteitsnaam, elke kolomnaam en elke
+   business-key-verwijzing exact gelijk is aan zijn eigen lowercase-vorm — faalt hard bij
+   constructie, dus al bij het schrijven van een nieuwe entiteit, niet pas bij het genereren van
+   DDL of het draaien tegen een live database.
+2. `KnownEntitiesTests.GenerateHisTable_VoorElkeBekendeEntiteit_GeenEnkeleKolomnaamWijktAfVanLowercase`
+   genereert de his-DDL voor alle drie de daadwerkelijke `KnownEntities`-entiteiten en controleert
+   dat geen enkele gequote kolomidentifier afwijkt van zijn lowercase-vorm — dekt zo ook wat
+   `EntityDefinition.Create` niet ziet (de tabel- en indexnamen die de generator zelf toevoegt).
+   Bewust beperkt tot kolomnamen, niet de `UQ_`/`IX_`-indexnaamprefixes — die dragen de bestaande,
+   SQL-Server-gespiegelde prefix-conventie (zie het issue zelf, dat `UQ_teams_bk` ongewijzigd als
+   voorbeeld citeert) en worden nergens via een handgeschreven, ongequote query aangesproken.
+
+De reeds bestaande `fresh-db-postgres`-CI-job bewaakt dezelfde conventie al voor de
+migratie-gebaseerde configuratietabellen (`appsettings`, `velden`, `speeltijden`,
+`geplandewedstrijden`) via een live `information_schema.columns`-query — die twee guards dekken nu
+samen zowel de migratiegebaseerde als de entiteitsgebaseerde (ETL-)boom.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
