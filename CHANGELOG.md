@@ -19,6 +19,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **`/api/health` toont nu aantoonbaar met welke databasetier en -driver het draait, en het
+  daadwerkelijke versienummer van de databaseserver.** Drie nieuwe, puur additieve velden: `tier`
+  en `provider` komen uit build-time assembly-metadata (nooit een runtime-gok), dus ook gevuld
+  wanneer de database onbereikbaar is; `serverVersion` (`SERVERPROPERTY('ProductVersion')`) komt
+  aantoonbaar uit de database zelf en is alleen gevuld als die online is. Verbindingen van de
+  applicatie zijn voortaan ook herkenbaar aan een `ApplicationName` op de connection string — een
+  onafhankelijke bevestiging naast wat de applicatie over zichzelf zegt. Bestaand gedrag van de
+  statusbewaking in de Admin GUI is ongewijzigd (leest alleen `status`/`database`, negeert onbekende
+  velden). `docs/API.md` en `docs/api-standaarden/openapi.yaml`/`.json` bijgewerkt. (#863)
 - **De Postgres-tier-integratietests draaien voortaan automatisch in CI in plaats van
   onvoorwaardelijk uitgeschakeld te staan.** `PostgresFactAttribute`/`PostgresTheoryAttribute`
   (`Database.Postgres.Tests/PostgresIntegrationTestAttributes.cs`) vervangen de losse

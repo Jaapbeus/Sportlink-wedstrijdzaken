@@ -11,14 +11,25 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.0.8.0</Version>
-    <AssemblyVersion>3.0.8.0</AssemblyVersion>
-    <FileVersion>3.0.8.0</FileVersion>
+    <Version>3.0.9.0</Version>
+    <AssemblyVersion>3.0.9.0</AssemblyVersion>
+    <FileVersion>3.0.9.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members via InternalsVisibleTo (#476) -->
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>FunctionApp.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <!-- #863: tier-herkomst voor /api/health — build-time metadata, nooit een runtime-gok, dus
+         ook gevuld wanneer de database onbereikbaar is. "SqlServer" is de canonieke tier-naam uit
+         scripts/ci/database-tiers.json (#816/#865) — nooit een los, eigen naamschema hier. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseTier</_Parameter1>
+      <_Parameter2>SqlServer</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseProvider</_Parameter1>
+      <_Parameter2>Microsoft.Data.SqlClient</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>

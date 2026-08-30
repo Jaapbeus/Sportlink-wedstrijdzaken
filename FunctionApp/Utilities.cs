@@ -199,7 +199,10 @@ namespace SportlinkFunction
             private static string BuildConnectionString()
             {
                 var raw = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new InvalidOperationException("The connection string is not set in the environment variables.");
-                return new SqlConnectionStringBuilder(raw) { Pooling = false }.ConnectionString;
+                // #863: herkenbare toepassingsnaam op elke verbinding — een onafhankelijke
+                // bevestiging (vanuit de database zelf op te vragen, bijv. sys.dm_exec_sessions)
+                // naast wat de applicatie in /api/health over zichzelf zegt.
+                return new SqlConnectionStringBuilder(raw) { Pooling = false, ApplicationName = "SportlinkFunctionApp" }.ConnectionString;
             }
         }
 

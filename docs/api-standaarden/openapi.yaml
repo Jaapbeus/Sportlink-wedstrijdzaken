@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.0.1
+  version: 3.0.9
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2122,7 +2122,13 @@ paths:
       tags: [core]
       operationId: getHealth
       summary: Status en versie van de API
-      description: Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
+      description: |
+        Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
+
+        `tier` en `provider` komen uit build-time metadata van het artefact (niet uit een
+        runtime-gok) en zijn daarom altijd gevuld, ook als `database` niet "online" is.
+        `serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer
+        `database` "online" is (#863).
       security: []
       responses:
         '200':
@@ -2141,6 +2147,24 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+                  database:
+                    type: string
+                    description: Databaseverbindingsstatus.
+                    enum: [online, paused, timeout, unavailable, unconfigured]
+                    example: "online"
+                  tier:
+                    type: string
+                    description: De databasetier waarmee dit artefact gebouwd is (build-time metadata).
+                    example: "SqlServer"
+                  provider:
+                    type: string
+                    description: De gebruikte databasedriver (build-time metadata).
+                    example: "Microsoft.Data.SqlClient"
+                  serverVersion:
+                    type: string
+                    nullable: true
+                    description: Het versienummer dat de databaseserver zelf teruggeeft; null als de database niet bereikbaar is.
+                    example: "16.0.4265.3"
 
   /sync-matches:
     get:
