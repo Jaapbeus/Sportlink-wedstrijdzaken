@@ -70,12 +70,7 @@ Doe **eerst** een dry-run:
 ```powershell
 az login   # eenmalig, op het juiste account
 
-.\scripts\azure\Add-CustomDomain.ps1 `
-    -Domain 'wz.[club-domein]' `
-    -StaticWebAppName '<swa-naam>' -StaticWebAppResourceGroup '<swa-rg>' `
-    -FunctionAppName '<func-naam>' -FunctionAppResourceGroup '<func-rg>' `
-    -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' `
-    -WhatIf
+.\scripts\azure\Add-CustomDomain.ps1 -Domain 'wz.[club-domein]' -StaticWebAppName '<swa-naam>' -StaticWebAppResourceGroup '<swa-rg>' -FunctionAppName '<func-naam>' -FunctionAppResourceGroup '<func-rg>' -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>' -WhatIf
 ```
 
 Ziet het resultaat goed uit? Draai dan dezelfde regel **zonder** `-WhatIf`.

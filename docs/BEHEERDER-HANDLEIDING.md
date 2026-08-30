@@ -181,20 +181,13 @@ De resources zijn aangemaakt en actief. Deze sectie is documentatie voor toekoms
 ### Static Web App aanmaken
 
 ```bash
-az staticwebapp create \
-  --name swa-<clubcode>-sportlink \
-  --resource-group rg-<clubcode>-sportlink \
-  --location westeurope \
-  --sku Free
+az staticwebapp create --name swa-<clubcode>-sportlink --resource-group rg-<clubcode>-sportlink --location westeurope --sku Free
 ```
 
 ### Deployment token ophalen en opslaan als GitHub Secret
 
 ```bash
-az staticwebapp secrets list \
-  --name swa-<clubcode>-sportlink \
-  --resource-group rg-<clubcode>-sportlink \
-  --query "properties.apiKey" -o tsv
+az staticwebapp secrets list --name swa-<clubcode>-sportlink --resource-group rg-<clubcode>-sportlink --query "properties.apiKey" -o tsv
 ```
 
 Sla de waarde op als GitHub Secret `AZURE_STATIC_WEB_APPS_API_TOKEN`. De `blazor-deploy` job

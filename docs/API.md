@@ -695,9 +695,7 @@ met nullen in plaats van een fout.
 ### PUT /api/beheer/teamaliassen/{id}/valideer
 
 ```bash
-curl -X PUT http://localhost:7094/api/beheer/teamaliassen/12/valideer \
-  -H "Content-Type: application/json" \
-  -d '{"status":"validated"}'
+curl -X PUT http://localhost:7094/api/beheer/teamaliassen/12/valideer -H "Content-Type: application/json" -d '{"status":"validated"}'
 ```
 
 ```json
@@ -762,33 +760,25 @@ Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (laatste keuze)
 ### Beschikbaarheid controleren voor JO13 op zaterdag
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/check-availability \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","leeftijdsCategorie":"JO13"}'
+curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","leeftijdsCategorie":"JO13"}'
 ```
 
 ### Maandagavond beschikbaarheid controleren (zonder categorie)
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/check-availability \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-05-18","dagdeel":"avond"}'
+curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Type: application/json" -d '{"datum":"2026-05-18","dagdeel":"avond"}'
 ```
 
 ### Controleren met teamconflictdetectie
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/check-availability \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"[ClubCode] JO11-9"}'
+curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Type: application/json" -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"[ClubCode] JO11-9"}'
 ```
 
 ### Wedstrijd boeken
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/bevestig \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
+curl -X POST http://localhost:7094/api/planner/bevestig -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
 ```
 
 ### Zonsondergangtabel vullen
@@ -800,33 +790,25 @@ curl -X POST http://localhost:7094/api/planner/populate-sunset
 ### Bestaande wedstrijd zoeken
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd \
-  -H "Content-Type: application/json" \
-  -d '{"teamNaam":"[ClubCode] JO8-2","datum":"2026-05-09"}'
+curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd -H "Content-Type: application/json" -d '{"teamNaam":"[ClubCode] JO8-2","datum":"2026-05-09"}'
 ```
 
 ### Herplan-alternatieven controleren (simulatie)
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/herplan-check \
-  -H "Content-Type: application/json" \
-  -d '{"wedstrijdcode":12345678,"voorkeurTijd":"10:00","dagdeel":"ochtend"}'
+curl -X POST http://localhost:7094/api/planner/herplan-check -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"voorkeurTijd":"10:00","dagdeel":"ochtend"}'
 ```
 
 ### Herplanverzoek registreren
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/herplan-bevestig \
-  -H "Content-Type: application/json" \
-  -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
+curl -X POST http://localhost:7094/api/planner/herplan-bevestig -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
 ### Dagplanning optimaliseren
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/auto-plan \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-18","bufferMinuten":15}'
+curl -X POST http://localhost:7094/api/planner/auto-plan -H "Content-Type: application/json" -d '{"datum":"2026-04-18","bufferMinuten":15}'
 ```
 
 De response bevat per wedstrijd het optimale veld en tijdslot, plus `voorkeurTijd`,
