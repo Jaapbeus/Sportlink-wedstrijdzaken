@@ -69,6 +69,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `Test-App.ps1` accepteert nu zowel `Server=`/`Database=` als `Data Source=`/`Initial Catalog=`
   in de verbindingsreeks. De eerste schrijfwijze staat in het meegeleverde configuratiesjabloon,
   maar werd niet herkend. (#800)
+- **`scripts/dev/Bump-Build.ps1` liet `<Version>` achterlopen op `<AssemblyVersion>`/`<FileVersion>`.**
+  De regex voor `<Version>` verwachtte een 3-componenten-waarde, terwijl beide `.csproj`-bestanden
+  daar al 4 componenten gebruikten — een gewone build-bump raakte `<Version>` daardoor helemaal
+  niet, en zelfs `-NewPatch` faalde stil omdat de waarde nooit matchte. Alle drie de velden
+  synchroniseren nu bij elke bump, conform de projectafspraak dat ze altijd gelijk lopen. (#806)
 
 - **Testmodus stuurt weer een testantwoord naar de reviewer.** In testmodus (`EmailReviewMode=true`) bouwt de AI al sinds een eerdere wijziging een voorgesteld antwoord op, maar dat werd alleen in de database bewaard — nergens te lezen zonder rechtstreekse databasetoegang. Dat testantwoord gaat nu ook naar het ingestelde reviewadres, zoals eerder ook het geval was voordat dit bewust werd uitgeschakeld. Mislukt die verzending, dan blijft het voorstel gewoon in de database staan. (#801)
 - **De automatische e-mailverwerking en het handmatig doorsturen van teambegeleiding-vragen gebruiken nu overal dezelfde, centraal geregistreerde opslaglaag voor `planner.EmailVerwerking`.** Beide paden bouwden voorheen op sommige plekken hun eigen kopie van deze laag op in plaats van de gedeelde registratie te gebruiken — onzichtbaar voor de gebruiker, maar daardoor moeilijker betrouwbaar te testen en een risico dat een toekomstige wijziging per ongeluk maar één van de twee paden raakt. Gedrag is ongewijzigd; geverifieerd via de volledige verificatielus inclusief een live doorstuur-test. (#827)
