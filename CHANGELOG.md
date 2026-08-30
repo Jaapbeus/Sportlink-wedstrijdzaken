@@ -170,6 +170,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **`close-released-issues.yml` kon een issue ten onrechte sluiten bij de volgende release als een
+  ander, nog niet afgerond issue-nummer toevallig in dezelfde commit-subjectregel voorkwam** (bijv.
+  `fix: ... (#820) (#869)` — het PR-referentienummer ná een bewuste, losse kruisverwijzing naar een
+  opzettelijk nog open issue). De oude, losse `#[0-9]+`-scan pakte élk nummer in de hele regel; de
+  scan matcht nu uitsluitend de titel-conventie `type(#NNN): ...` aan het bégin van de subjectregel
+  — hetzelfde onderscheid dat #838 al voor `label-awaiting-release.yml` vastlegde, nu voor de
+  workflow die daadwerkelijk sluit in plaats van labelt. Empirisch geverifieerd tegen de laatste 60
+  commits van deze repository: de nieuwe scan laat #820/#821 (bewust nog open) en alle
+  merge-commit-ruis terecht buiten beeld, en blijft #818/#819/#822/#823/#827/#838 (echt afgerond)
+  correct herkennen. (#838)
 - **Teamherkenning (`TeamCandidateRepository.cs`) leunde stilzwijgend op SQL Server's case-insensitive
   default-collatie in plaats van expliciet te normaliseren.** Onder de huidige collatie "werkte" een
   kale sleutelvergelijking toevallig; een toekomstige tier met een case-sensitive default (Postgres)

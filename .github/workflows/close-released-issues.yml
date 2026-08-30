@@ -39,8 +39,21 @@ jobs:
             RANGE="${CURRENT_TAG}"
           fi
 
-          # Bron 1 — commit-subjects in de range. Dekt de conventie 'fix(#NNN): ...'.
-          COMMIT_NUMBERS=$(git log $RANGE --oneline | grep -oE '#[0-9]+' | tr -d '#' | sort -un)
+          # Bron 1 — commit-subjects in de range. Dekt UITSLUITEND de conventie 'type(#NNN): ...'
+          # aan het begin van het subject — niet elke #NNN die toevallig ergens in de regel staat.
+          #
+          # #838-vervolg: de oude, losse 'grep -oE #[0-9]+' pakte ELK nummer in de hele subject-
+          # regel, inclusief een losse '(#NNN)'-kruisverwijzing die een sessie bewust MIDDEN in een
+          # anders niet-geattribueerde commit-subject zet om een partiele oplevering (#820/#821)
+          # opzettelijk open te laten. Zo'n subject ('fix: ... SQL Server-collatie (#820) (#869)')
+          # werd hierdoor toch als "#820 is gereleased" gelezen, en #820 zou bij de eerstvolgende
+          # release-tag ten onrechte gesloten zijn — exact dezelfde klasse loose-reference-bug als
+          # #838 al voor label-awaiting-release.yml vaststelde, nu in een workflow die niet labelt
+          # maar daadwerkelijk sluit. De titel-conventie 'type(#NNN): ...' (het issue dat déze commit
+          # aantoonbaar afrondt) staat altijd vooraan; alles daarna is kruisverwijzing.
+          COMMIT_NUMBERS=$(git log $RANGE --oneline \
+            | grep -oE '^[0-9a-f]+ [a-z]+\(#[0-9]+\):' \
+            | grep -oE '#[0-9]+' | tr -d '#' | sort -un)
           echo "Uit commit-subjects: $(echo $COMMIT_NUMBERS | tr '\n' ' ')"
 
           # Bron 2 — de CHANGELOG-sectie van deze versie (#630).
