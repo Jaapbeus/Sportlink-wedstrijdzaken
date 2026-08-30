@@ -202,6 +202,13 @@ git commit --allow-empty -m "test hooks"
 > het waarom. Zodra een andere tier daadwerkelijk gebouwd is, komt de bijbehorende lokale
 > setupinstructie in een eigen sectie hieronder — tot die tijd is de SQL Server-instructie in dit
 > hoofdstuk voor élke fork van toepassing.
+>
+> **Welke tier een fork daadwerkelijk deployt, is een CI/deploy-tijd-keuze, geen lokale keuze**
+> (#816): de GitHub repository-variabele `DatabaseTier` (Settings → Secrets and variables →
+> Actions → Variables) bepaalt welk `.csproj` `deploy.yml` bouwt en publiceert naar de Function
+> App — vandaag altijd `SqlServer`, de enige geïmplementeerde waarde. Ontbreekt de variabele of
+> staat hij op een onbekende waarde, dan faalt de deploy-workflow hard (zie
+> `scripts/ci/resolve-database-tier.sh`) — er is bewust geen stille default.
 
 ### 4.1 Lokale database starten (Docker — identiek op Windows en macOS)
 
