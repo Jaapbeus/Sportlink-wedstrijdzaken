@@ -124,6 +124,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   native, zonder Rosetta-emulatie. macOS-uitvoeringsverificatie kon in deze sessie niet
   plaatsvinden (geen Apple Silicon-hardware beschikbaar) — de configuratie volgt wel consequent de
   bestaande cross-platform-regels. Zie `docs/DEVELOPER-SETUP.md` §4.3.
+- **Nieuwe CI-job `PostDeployment op verse Postgres-database`** (#823, epic #815) — de
+  Postgres-tegenhanger van de bestaande SQL Server-`fresh-db`-job. Past `Database.Postgres/migrations/`
+  twee keer toe via `Database.Postgres.Cli` (#821) tegen een verse Postgres 16-container en bewijst
+  daarmee idempotentie. Gebruikt het native GitHub Actions `services:`-blok (aanbevolen boven een
+  rauwe `docker run`) met een vast, niet-geheim wegwerpwachtwoord — geen GitHub Secret, want
+  `services:`-containers provisioneren vóór elke step (te vroeg voor een in-step gegenereerd
+  wachtwoord) en secrets falen sowieso op fork-PR's; de container is volledig geïsoleerd en wordt
+  aan het eind van de job vernietigd. Controleert kernobjecten, ClubCode-dekking, exact één
+  ledger-rij na de tweede run, en lowercase-identifier-casing. Empirisch gedraaid tegen een
+  wegwerpcontainer met dezelfde credentials/queries als de workflow gebruikt.
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
