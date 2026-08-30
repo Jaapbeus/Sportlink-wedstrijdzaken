@@ -80,7 +80,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         await cmd.ExecuteNonQueryAsync();
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task ImportAsync_MeerdereClubs_DeleteScopeRaaktAndereClubsNiet()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -101,7 +101,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         aantalVrc.Should().Be(2);
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task ImportAsync_TweedeImportZelfdeClub_VervangtOudeRijenVolledig()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -117,7 +117,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         aantal.Should().Be(1, "de tweede import (delete-vóór-insert) moet de eerste volledig vervangen, niet aanvullen");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task ImportAsync_SchrijftAuditrijNaarImportLog()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -138,7 +138,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         reader.GetString(2).Should().Be("test-runner");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task ResolveClubCodeAsync_SelecteertAlleenSyncEnabledClub()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -153,7 +153,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         resolved.Should().Be("testclub", "de democlub (syncenabled=false) mag nooit impliciet als doelclub voor échte persoonsgegevens gekozen worden");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task ResolveClubCodeAsync_GeenActieveClub_GooitExceptie()
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
@@ -164,7 +164,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
-    [Theory(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresTheory]
     [InlineData(89, false)]
     [InlineData(91, true)]
     public async Task GetOudsteImportLeeftijdInDagenAsync_StalenessGrensOp90Dagen(int dagenOud, bool verwachtStale)

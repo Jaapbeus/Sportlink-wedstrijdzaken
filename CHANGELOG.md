@@ -19,6 +19,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De Postgres-tier-integratietests draaien voortaan automatisch in CI in plaats van
+  onvoorwaardelijk uitgeschakeld te staan.** `PostgresFactAttribute`/`PostgresTheoryAttribute`
+  (`Database.Postgres.Tests/PostgresIntegrationTestAttributes.cs`) vervangen de losse
+  `[Fact(Skip="...")]`/`[Theory(Skip="...")]` op alle 22 integratietests: zichtbaar overgeslagen
+  (met reden in de testuitvoer) zonder `POSTGRES_TEST_CONNECTION_STRING`, onveranderd draaiend
+  zodra die gezet is — zonder enige codewijziging. De CI-job "PostDeployment op verse
+  Postgres-database" zet die variabele nu en draait de volledige testsuite na de migratiestap,
+  tegen de instantie die de job zelf al opzet. `docs/VERIFICATIE-SCRIPTS.md` beschrijft hoe je
+  dezelfde tests lokaal tegen een eigen wegwerpcontainer draait. (#866)
 - **Eén centrale schakelaar (`EgressGuard`) die alle uitgaande integraties blokkeert buiten
   productie** — de Sportlink-synchronisatie (timer-trigger), GitHub-issue-rapportage, e-mail via
   Microsoft Graph en de AI-diensten. Herkent productie aan `WEBSITE_SITE_NAME` (dezelfde signaal

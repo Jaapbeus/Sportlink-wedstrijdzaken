@@ -52,7 +52,7 @@ public class MigrationRunnerIntegrationTests : IAsyncLifetime
         return (int)(long)(await cmd.ExecuteScalarAsync())!;
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task RunAsync_TweedeAanroep_IsIdempotentGeenDubbeleToepassing()
     {
         await ResetDatabaseAsync();
@@ -65,7 +65,7 @@ public class MigrationRunnerIntegrationTests : IAsyncLifetime
         (await TelToegepasteMigratiesAsync()).Should().Be(1, "een tweede run mag geen dubbele ledger-rij toevoegen");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task RunAsync_MeerdereMigraties_WordenInVolgordeToegepast()
     {
         await ResetDatabaseAsync();
@@ -83,7 +83,7 @@ public class MigrationRunnerIntegrationTests : IAsyncLifetime
         result.Should().Be("naam", "002 moet ná 001 zijn uitgevoerd, dus de kolom moet bestaan");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task RunAsync_GewijzigdReedsToegepastBestand_FaaltHardOpChecksumMismatch()
     {
         await ResetDatabaseAsync();
@@ -98,7 +98,7 @@ public class MigrationRunnerIntegrationTests : IAsyncLifetime
             .WithMessage("*checksum*");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task RunAsync_MislukteMigratie_WordtNietInLedgerGeregistreerd()
     {
         await ResetDatabaseAsync();
@@ -116,7 +116,7 @@ public class MigrationRunnerIntegrationTests : IAsyncLifetime
     /// eerste klaar is, zodat er nooit twee transacties tegelijk dezelfde migratie proberen toe te
     /// passen.
     /// </summary>
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [PostgresFact]
     public async Task RunAsync_TweeGelijktijdigeRunners_GeenDubbeleToepassingDoorAdvisoryLock()
     {
         await ResetDatabaseAsync();

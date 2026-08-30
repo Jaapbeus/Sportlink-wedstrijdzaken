@@ -484,3 +484,15 @@ jobs:
       # dus geen aparte drift-klasse om tegen te bewaken. Deze dubbele-run-idempotentieproef is voor
       # het huidige, kleine migratiebestand voldoende. Herzie deze beslissing zodra
       # Database.Postgres/migrations/ meerdere bestanden bevat of een generator-stap krijgt.
+
+      # #866: Database.Postgres.Tests' integratietests (PostgresMergeOrchestrator, MigrationRunner,
+      # de plannerview, TeambegeleidingImporter, de #854-UTC-audittest) draaien env-gestuurd via
+      # PostgresFactAttribute/PostgresTheoryAttribute — zichtbaar overgeslagen zonder
+      # POSTGRES_TEST_CONNECTION_STRING, en onveranderd draaiend zodra die gezet is. Deze instantie
+      # (al gemigreerd hierboven) is precies zo'n wegwerpcontainer, dus geen aparte opzet nodig.
+      # Draait het hele project i.p.v. een --filter: de ~46 unit tests erin zijn toch al groen in de
+      # 'build'-job hierboven en kosten hier verwaarloosbaar veel extra tijd (<1s).
+      - name: Database.Postgres.Tests draaien (inclusief integratietests, tegen deze instantie)
+        env:
+          POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
+        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity normal

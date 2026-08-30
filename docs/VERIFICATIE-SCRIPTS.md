@@ -258,6 +258,38 @@ Bewijsmateriaal komt in `artifacts/selftest/<tijdstempel>/` en staat in `.gitign
 
 ---
 
+## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
+
+De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,
+`MigrationRunnerIntegrationTests`, `PostgresPlannerViewIntegrationTests`,
+`TeambegeleidingImporterIntegrationTests`, `PostgresAuditTimestampUtcIntegrationTests`) gebruiken
+`[PostgresFact]`/`[PostgresTheory]` (`PostgresIntegrationTestAttributes.cs`) in plaats van een
+onvoorwaardelijke `[Fact(Skip=...)]`. Die twee attributen zetten `Skip` alleen als
+`POSTGRES_TEST_CONNECTION_STRING` ontbreekt — zonder die variabele slaan de tests zichzelf
+**zichtbaar** over (de reden staat in de testuitvoer), met de variabele draaien ze onveranderd,
+zonder enige codewijziging.
+
+**Lokaal, tegen een eigen wegwerpcontainer:**
+
+```powershell
+docker run -d --name pg866 -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink_test -p 5432:5432 postgres:16
+$env:POSTGRES_TEST_CONNECTION_STRING = "Host=localhost;Port=5432;Username=postgres;Password=devonly;Database=sportlink_test"
+dotnet test Database.Postgres.Tests --filter FullyQualifiedName~IntegrationTests
+docker rm -f pg866
+```
+
+**In CI:** de job "PostDeployment op verse Postgres-database" (`fresh-db-postgres` in
+`.github/workflows/build.yml`) zet dezelfde variabele en draait het volledige
+`Database.Postgres.Tests`-project na de migratiestap, tegen de Postgres-instantie die de job zelf al
+opzet — geen aparte container nodig. Elke integratietestklasse dropt en hermaakt zijn eigen
+afhankelijkheden onvoorwaardelijk in `InitializeAsync`, dus de reeds door de migratie aangemaakte
+tabellen (`public.appsettings` e.a.) vormen daarbij geen belemmering.
+
+Testparallellisme staat projectbreed uit (`Database.Postgres.Tests/AssemblyInfo.cs`, #854) — de
+tests delen een live databaseverbinding en racen anders op `CREATE SCHEMA IF NOT EXISTS`.
+
+---
+
 ## Achtergrond: schema-drift
 
 Het project gebruikt **SSDT** (SQL Server Database Project) voor declaratief schemabeheer.
