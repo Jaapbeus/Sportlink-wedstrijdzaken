@@ -69,6 +69,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `Test-App.ps1` accepteert nu zowel `Server=`/`Database=` als `Data Source=`/`Initial Catalog=`
   in de verbindingsreeks. De eerste schrijfwijze staat in het meegeleverde configuratiesjabloon,
   maar werd niet herkend. (#800)
+- **Een herhaalde storing opende steeds opnieuw een nieuw GitHub-issue in plaats van een reactie
+  op het bestaande.** De zelfherstellende foutmelding controleert bij elke storing of dezelfde
+  fout al eerder gemeld is, maar die controle gebruikte de GitHub Search API — die bleek
+  onbetrouwbaar met het gebruikte toegangstoken en faalde stil, waarna altijd een nieuw issue
+  werd aangemaakt. Twee keer leidde dit tot vijf losse issues voor exact dezelfde storing. De
+  controle gebruikt nu de gewone issue-lijst van GitHub in plaats van de zoekfunctie. Een
+  herhaalde storing krijgt voortaan een reactie op het bestaande issue (en heropent het als het
+  ondertussen gesloten was) in plaats van een duplicaat. (#830)
 
 - **Testmodus stuurt weer een testantwoord naar de reviewer.** In testmodus (`EmailReviewMode=true`) bouwt de AI al sinds een eerdere wijziging een voorgesteld antwoord op, maar dat werd alleen in de database bewaard — nergens te lezen zonder rechtstreekse databasetoegang. Dat testantwoord gaat nu ook naar het ingestelde reviewadres, zoals eerder ook het geval was voordat dit bewust werd uitgeschakeld. Mislukt die verzending, dan blijft het voorstel gewoon in de database staan. (#801)
 - **De automatische e-mailverwerking en het handmatig doorsturen van teambegeleiding-vragen gebruiken nu overal dezelfde, centraal geregistreerde opslaglaag voor `planner.EmailVerwerking`.** Beide paden bouwden voorheen op sommige plekken hun eigen kopie van deze laag op in plaats van de gedeelde registratie te gebruiken — onzichtbaar voor de gebruiker, maar daardoor moeilijker betrouwbaar te testen en een risico dat een toekomstige wijziging per ongeluk maar één van de twee paden raakt. Gedrag is ongewijzigd; geverifieerd via de volledige verificatielus inclusief een live doorstuur-test. (#827)
