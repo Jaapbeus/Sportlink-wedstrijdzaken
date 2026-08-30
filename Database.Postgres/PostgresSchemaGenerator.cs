@@ -42,7 +42,7 @@ public static class PostgresSchemaGenerator
     /// data-kolommen, de vaste audit-kolommen (mta_inserted/mta_modified/mta_deleted) en de
     /// synthetische, nooit-NULL business-key-kolom met de bijbehorende unieke index. Voegt
     /// daarnaast, indien <see cref="EntityDefinition.HasClubCode"/>, een secundaire index op
-    /// ClubCode toe.
+    /// clubcode toe.
     /// <para>
     /// Geen aparte IDENTITY-surrogate-sleutel: geverifieerd tegen de daadwerkelijke SQL-Server-
     /// his-tabellen (<c>Database/his/Tables/Teams.sql</c> e.a.) en <c>sp_CreateTargetTableFromSource</c>
@@ -85,8 +85,8 @@ public static class PostgresSchemaGenerator
         if (entity.HasClubCode)
         {
             sb.AppendLine(
-                $"CREATE INDEX IF NOT EXISTS {PostgresIdentifier.Quote($"IX_{entity.EntityName}_ClubCode")} " +
-                $"ON his.{table} ({PostgresIdentifier.Quote("ClubCode")});");
+                $"CREATE INDEX IF NOT EXISTS {PostgresIdentifier.Quote($"IX_{entity.EntityName}_clubcode")} " +
+                $"ON his.{table} ({PostgresIdentifier.Quote("clubcode")});");
         }
 
         return sb.ToString();

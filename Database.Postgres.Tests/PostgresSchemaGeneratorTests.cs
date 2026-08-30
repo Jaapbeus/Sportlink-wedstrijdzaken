@@ -46,8 +46,8 @@ public class PostgresSchemaGeneratorTests
     {
         var sql = PostgresSchemaGenerator.GenerateHisTable(TestEntities.SingleKeyWithClub);
 
-        sql.Should().Contain("\"ClubCode\" VARCHAR(20) NOT NULL,");
-        sql.Should().Contain("CREATE INDEX IF NOT EXISTS \"IX_matches_ClubCode\" ON his.\"matches\" (\"ClubCode\");");
+        sql.Should().Contain("\"clubcode\" VARCHAR(20) NOT NULL,");
+        sql.Should().Contain("CREATE INDEX IF NOT EXISTS \"IX_matches_clubcode\" ON his.\"matches\" (\"clubcode\");");
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class PostgresSchemaGeneratorTests
         var sql = PostgresSchemaGenerator.GenerateHisTable(TestEntities.MultiKeyWithClub);
 
         sql.Should().Contain("\"bk_teams\" TEXT GENERATED ALWAYS AS (");
-        sql.Should().Contain("CREATE INDEX IF NOT EXISTS \"IX_teams_ClubCode\" ON his.\"teams\" (\"ClubCode\");");
+        sql.Should().Contain("CREATE INDEX IF NOT EXISTS \"IX_teams_clubcode\" ON his.\"teams\" (\"clubcode\");");
     }
 
     [Fact]

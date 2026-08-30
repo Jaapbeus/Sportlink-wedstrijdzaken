@@ -98,7 +98,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         string kaledatum = "2026-09-05", string aanvangstijd = "10:00", string accommodatie = "Sportpark Oost")
         => await ExecAsync(connection, """
             INSERT INTO stg."matches"
-                ("wedstrijdcode", "teamnaam", "veld", "kaledatum", "aanvangstijd", "accommodatie", "status", "wedstrijd", "ClubCode")
+                ("wedstrijdcode", "teamnaam", "veld", "kaledatum", "aanvangstijd", "accommodatie", "status", "wedstrijd", "clubcode")
             VALUES (@code, @team, @veld, @datum, @tijd, @acc, 'Bevestigd', @team || ' - Uit', @club)
             """, p =>
         {
@@ -113,7 +113,7 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
 
     private async Task SeedTeamAsync(NpgsqlConnection connection, string teamnaam, string leeftijdscategorie)
         => await ExecAsync(connection, """
-            INSERT INTO stg."teams" ("teamcode", "lokaleteamcode", "poulecode", "teamnaam", "leeftijdscategorie", "ClubCode")
+            INSERT INTO stg."teams" ("teamcode", "lokaleteamcode", "poulecode", "teamnaam", "leeftijdscategorie", "clubcode")
             VALUES (1, 1, 1, @team, @leeftijd, @club)
             """, p =>
         {

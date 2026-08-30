@@ -37,7 +37,7 @@ namespace Database.Postgres;
 /// <para>
 /// <b>Empirisch gevonden bug: hoofdlettergevoeligheid.</b> Een eerste versie gebruikte de
 /// hoofdlettergevoelige operator <c>~</c> — de un-skipped integratietest met teamnaam
-/// <c>"VRC G7-1"</c> tegen clubcode <c>"vrc"</c> (representatief: <c>ClubCode</c> en
+/// <c>"VRC G7-1"</c> tegen clubcode <c>"vrc"</c> (representatief: de clubcode-kolom en
 /// Sportlink-teamnamen komen uit verschillende bronnen en hun casing-conventies zijn niet
 /// gegarandeerd gelijk) faalde stil — geen crash, gewoon nul rijen, want de G-tak matchte nooit en
 /// de daaropvolgende <c>Speeltijden</c>-join op de generieke leeftijdscategorie vond ook niets.
@@ -46,7 +46,7 @@ namespace Database.Postgres;
 /// (hoofdletterongevoelige regex-match) — spiegelt de SQL Server-collatie voor déze ene
 /// vergelijking. Dezelfde onderliggende aanname (SQL Server-collatie is overal case-insensitive,
 /// Postgres' <c>=</c>/<c>~</c> standaard niet) geldt ook voor de overige gelijkheidsvergelijkingen
-/// in deze view (<c>t.teamnaam = m.teamnaam</c>, de <c>ClubCode</c>-joins, <c>s.clubcode = a.clubcode</c>)
+/// in deze view (<c>t.teamnaam = m.teamnaam</c>, de clubcode-joins, <c>s.clubcode = a.clubcode</c>)
 /// — dat is het systemische probleem dat #820 aanpakt (collatie-/hoofdlettergevoeligheidsfix voor
 /// de Postgres-tier als geheel). Deze view draagt dus hetzelfde restrisico op die overige
 /// vergelijkingen totdat #820 een tier-brede oplossing levert (bijv. een case-insensitive collatie
@@ -56,10 +56,17 @@ namespace Database.Postgres;
 /// <para>
 /// <b>G-team-regex-parity, bewuste overeenkomst met het origineel.</b> Zowel het origineel
 /// (<c>LIKE a.ClubCode + ' G[0-9]%'</c>) als deze vertaling (<c>~* ('^' || a.clubcode || ' G[0-9]')</c>)
-/// interpoleren de <c>ClubCode</c>-kolomwaarde ongefilterd in het patroon. Bevat een ClubCode ooit
+/// interpoleren de clubcode-kolomwaarde ongefilterd in het patroon. Bevat een clubcode ooit
 /// een regex-metakarakter, dan wijkt het gedrag af van een letterlijke tekstmatch — dat is een
 /// bestaand risico in de SQL Server-versie (daar met LIKE-wildcards) dat deze vertaling bewust
 /// ongewijzigd overneemt, niet een nieuw geïntroduceerd risico.
+/// </para>
+/// <para>
+/// <b>#855:</b> <c>his.matches</c>/<c>his.teams</c> leverden voorheen een PascalCase
+/// <c>"ClubCode"</c>-kolom (gequote, dus letterlijk zo in de database) — deze view moest die kolom
+/// daarom zelf ook gequote aanspreken (<c>m."ClubCode"</c>), inconsistent met de verder overal
+/// lowercase/ongequote stijl in deze view. Nu <see cref="KnownEntities"/> lowercase <c>clubcode</c>
+/// gebruikt, is dat niet meer nodig.
 /// </para>
 /// <para>
 /// <b>Schema-scope:</b> steunt op <c>his.matches</c>/<c>his.teams</c> (#818,
@@ -85,7 +92,7 @@ public static class PostgresPlannerViewGenerator
             m.teamnaam                                                              AS teamnaam,
             m.wedstrijd                                                             AS wedstrijd,
             'Competitie'                                                            AS bron,
-            COALESCE(m."ClubCode", a.clubcode)                                      AS clubcode,
+            COALESCE(m.clubcode, a.clubcode)                                        AS clubcode,
             (m.wedstrijdcode)::bigint                                               AS wedstrijdcode
         FROM his.matches m
         CROSS JOIN LATERAL (
@@ -97,7 +104,7 @@ public static class PostgresPlannerViewGenerator
         ) a
         LEFT JOIN his.teams t
             ON t.teamnaam = m.teamnaam AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
-           AND COALESCE(t."ClubCode", a.clubcode) = COALESCE(m."ClubCode", a.clubcode)
+           AND COALESCE(t.clubcode, a.clubcode) = COALESCE(m.clubcode, a.clubcode)
         LEFT JOIN public.speeltijden s
             ON s.leeftijd = CASE
                 WHEN m.teamnaam ~* ('^' || a.clubcode || ' G[0-9]') THEN 'G'

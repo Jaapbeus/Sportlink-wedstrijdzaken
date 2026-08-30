@@ -178,6 +178,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **De Postgres-ETL-boom (`KnownEntities.cs`) week op twee plekken af van de vastgelegde
+  lowercase-snake_case-identifier-conventie** (`docs/ARCHITECTUUR-DATABASE-TIERS.md` §3): de
+  `ClubCode`-kolom (alle drie entiteiten) en vrijwel de volledige `matchdetails`-entiteit
+  (~60 kolommen) waren PascalCase, letterlijk overgenomen uit de SQL Server-brontabellen. Omdat
+  elke identifier onvoorwaardelijk gequote wordt, landde die casing letterlijk in de database —
+  elke latere, ongequote verwijzing (`WHERE clubcode = @club`) zou daarop stukgelopen zijn. Alle
+  kolommen zijn nu lowercase; `EntityDefinition.Create` valideert dit voortaan af bij constructie
+  en een nieuwe test bewaakt de daadwerkelijk gegenereerde DDL van alle drie entiteiten tegen
+  regressie. Design-afweging vastgelegd in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §9. (#855)
 - **Audit-tijdstempels (`mta_inserted`/`mta_modified`/`mta_deleted`) van de Postgres-ETL-his-tabellen
   kregen lokale tijd in plaats van UTC** — `NOW()` in een naïeve `TIMESTAMP`-kolom gebruikt de
   sessietijdzone bij de impliciete cast; draaide de databaseserver niet op UTC, dan stond er lokale

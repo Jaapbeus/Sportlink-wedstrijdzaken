@@ -24,7 +24,7 @@ internal static class TestEntities
         [
             new ColumnDefinition("matchcode", ProviderAgnosticType.VarChar, IsNullable: false, Length: 50),
             new ColumnDefinition("datum", ProviderAgnosticType.Timestamp, IsNullable: true),
-            new ColumnDefinition("ClubCode", ProviderAgnosticType.VarChar, IsNullable: false, Length: 20),
+            new ColumnDefinition("clubcode", ProviderAgnosticType.VarChar, IsNullable: false, Length: 20),
         ],
         businessKey: ["matchcode"],
         hasClubCode: true);
@@ -51,7 +51,7 @@ internal static class TestEntities
             new ColumnDefinition("lokaleteamcode", ProviderAgnosticType.VarChar, IsNullable: true, Length: 50),
             new ColumnDefinition("poulecode", ProviderAgnosticType.VarChar, IsNullable: true, Length: 50),
             new ColumnDefinition("teamnaam", ProviderAgnosticType.Text, IsNullable: true),
-            new ColumnDefinition("ClubCode", ProviderAgnosticType.VarChar, IsNullable: false, Length: 20),
+            new ColumnDefinition("clubcode", ProviderAgnosticType.VarChar, IsNullable: false, Length: 20),
         ],
         businessKey: ["teamcode", "lokaleteamcode", "poulecode"],
         hasClubCode: true);
