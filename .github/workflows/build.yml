@@ -359,3 +359,117 @@ jobs:
       - name: Container opruimen
         if: always()
         run: docker rm -f sqlfresh || true
+
+  # #823: Postgres-tegenhanger van fresh-db hierboven — bewijst dat het migratiepad uit #821
+  # (Database.Postgres/migrations/ + MigrationRunner) daadwerkelijk idempotent is tegen een verse
+  # Postgres-instantie. Gebruikt het native services:-blok i.p.v. een rauwe 'docker run' (aanbevolen
+  # in het issue): declaratief, GitHub Actions regelt zelf container-lifecycle/poort-mapping, en
+  # health-cmd/health-interval dekt de wait-loop die fresh-db hierboven met de hand implementeert.
+  # Migreren van fresh-db naar hetzelfde patroon is expliciet buiten scope van dit issue.
+  #
+  # Geen GitHub Secrets voor de credentials: services:-containers worden geprovisioneerd VOORDAT
+  # enige step draait, dus een in een step gegenereerd wegwerpwachtwoord (zoals fresh-db hierboven
+  # doet) kan hier niet — dat zou pas bekend zijn ná het moment waarop de container al gestart is.
+  # Secrets.* zou bovendien op elke fork-PR falen (forks hebben geen toegang tot repository-secrets).
+  # In plaats daarvan: een vast, niet-geheim wegwerpwachtwoord. Dit is geen echt secret-risico — de
+  # container is volledig geïsoleerd (GitHub-hosted runner, eigen ephemere VM), bevat nooit
+  # productiedata, en wordt aan het eind van de job onherroepelijk vernietigd.
+  fresh-db-postgres:
+    name: PostDeployment op verse Postgres-database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci_postgres
+          POSTGRES_PASSWORD: ci-wegwerpwachtwoord-niet-geheim
+          POSTGRES_DB: sportlink_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_postgres -d sportlink_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Migratiepad toepassen (1e keer — verse database)
+        run: dotnet run --project Database.Postgres.Cli --configuration Release -- Database.Postgres/migrations
+
+      - name: Migratiepad opnieuw toepassen (2e keer — bewijs idempotentie)
+        run: dotnet run --project Database.Postgres.Cli --configuration Release -- Database.Postgres/migrations
+
+      - name: Controleren dat de kernobjecten er staan
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+
+          # Positieve assertie bovenop de afwezigheid van fouten: ontbreekt er een kernobject, dan
+          # faalt deze stap expliciet in plaats van stil door te gaan — zelfde discipline als de
+          # SQL Server-fresh-db-job hierboven.
+          missing=$(psql_ci -c "
+            SELECT string_agg(verwacht, ' ') FROM (VALUES
+              ('public.appsettings'), ('public.velden'), ('public.speeltijden'),
+              ('planner.geplandewedstrijden'), ('public.schema_migrations')
+            ) AS v(verwacht)
+            WHERE to_regclass(v.verwacht) IS NULL;
+          ")
+          if [ -n "$missing" ]; then
+            echo "::error::Ontbrekende objecten na migratie op een verse Postgres-database: $missing"
+            exit 1
+          fi
+          echo "Alle verwachte objecten aanwezig."
+
+          # ClubCode-dekking: elke configuratietabel die in de SQL Server-tier een ClubCode-kolom
+          # heeft, moet die ook hier hebben (lowercase, conform de identifier-casing-conventie).
+          missing_clubcode=$(psql_ci -c "
+            SELECT string_agg(verwacht, ' ') FROM (VALUES
+              ('appsettings'), ('velden'), ('speeltijden'), ('geplandewedstrijden')
+            ) AS v(verwacht)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = v.verwacht AND column_name = 'clubcode'
+            );
+          ")
+          if [ -n "$missing_clubcode" ]; then
+            echo "::error::Tabellen zonder clubcode-kolom: $missing_clubcode"
+            exit 1
+          fi
+          echo "ClubCode-dekking bevestigd voor alle vier tabellen."
+
+          # schema_migrations moet precies één toegepaste migratie tonen (001_baseline.sql) — geen
+          # dubbele rij door de tweede run hierboven.
+          count=$(psql_ci -c "SELECT COUNT(*) FROM public.schema_migrations;")
+          if [ "$count" != "1" ]; then
+            echo "::error::Verwacht 1 toegepaste migratie in schema_migrations, gevonden: $count"
+            exit 1
+          fi
+          echo "schema_migrations: exact 1 toegepaste migratie, geen duplicaat door de idempotentie-run."
+
+          # Identifier-casing-conventie (ARCHITECTUUR-DATABASE-TIERS.md §3): geen enkele kolomnaam
+          # in de vier tabellen mag afwijken van zijn eigen lowercase-vorm.
+          bad_casing=$(psql_ci -c "
+            SELECT string_agg(table_name || '.' || column_name, ', ')
+            FROM information_schema.columns
+            WHERE table_name IN ('appsettings','velden','speeltijden','geplandewedstrijden')
+              AND column_name <> lower(column_name);
+          ")
+          if [ -n "$bad_casing" ]; then
+            echo "::error::Kolomnamen wijken af van lowercase (ARCHITECTUUR-DATABASE-TIERS.md §3): $bad_casing"
+            exit 1
+          fi
+          echo "Identifier-casing bevestigd: alle kolomnamen zijn lowercase."
+
+      # Open beslispunt uit het issue, bewust niet stilzwijgend overgeslagen: een aparte
+      # drift-diff-stap (SSDT-projectstructuur vs. uitgerold script, zoals de SQL Server-tier heeft)
+      # is voor de Postgres-tier nog niet aan de orde. Database.Postgres/migrations/ gebruikt losse,
+      # doorlopend genummerde bestanden zonder een "bron vs. gegenereerd script"-onderscheid — er is
+      # dus geen aparte drift-klasse om tegen te bewaken. Deze dubbele-run-idempotentieproef is voor
+      # het huidige, kleine migratiebestand voldoende. Herzie deze beslissing zodra
+      # Database.Postgres/migrations/ meerdere bestanden bevat of een generator-stap krijgt.
