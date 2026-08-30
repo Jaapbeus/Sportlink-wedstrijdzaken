@@ -67,8 +67,8 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
 
     private static readonly IReadOnlyList<TeambegeleidingRow> Fixture =
     [
-        new TeambegeleidingRow("VRC JO13-1", "Onder 13", "Trainer", "Jan de Vries", "trainer@voorbeeld.nl", "0600000001"),
-        new TeambegeleidingRow("VRC JO13-1", "Onder 13", "Leider", "Piet de Jong", "leider@voorbeeld.nl", null),
+        new TeambegeleidingRow("Testclub JO13-1", "Onder 13", "Trainer", "Jan de Vries", "trainer@voorbeeld.nl", "onbekend"),
+        new TeambegeleidingRow("Testclub JO13-1", "Onder 13", "Leider", "Piet de Jong", "leider@voorbeeld.nl", null),
     ];
 
     private async Task SeedAppSettingsAsync(NpgsqlConnection connection, string clubCode, bool syncEnabled)
@@ -86,17 +86,17 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
 
-        // Bestaande rij van een ANDERE club moet intact blijven na een import voor "vrc".
+        // Bestaande rij van een ANDERE club moet intact blijven na een import voor "testclub".
         await TeambegeleidingImporter.ImportAsync(connection, "andereclub", Fixture, null, "test", CancellationToken.None);
-        await TeambegeleidingImporter.ImportAsync(connection, "vrc", Fixture, "fixture.csv", "test", CancellationToken.None);
+        await TeambegeleidingImporter.ImportAsync(connection, "testclub", Fixture, "fixture.csv", "test", CancellationToken.None);
 
         await using var countAndere = new NpgsqlCommand(
             "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'andereclub'", connection);
         var aantalAndere = (long)(await countAndere.ExecuteScalarAsync())!;
-        aantalAndere.Should().Be(2, "de import voor 'vrc' mag rijen van 'andereclub' niet raken");
+        aantalAndere.Should().Be(2, "de import voor 'testclub' mag rijen van 'andereclub' niet raken");
 
         await using var countVrc = new NpgsqlCommand(
-            "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'vrc'", connection);
+            "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'testclub'", connection);
         var aantalVrc = (long)(await countVrc.ExecuteScalarAsync())!;
         aantalVrc.Should().Be(2);
     }
@@ -107,12 +107,12 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
 
-        await TeambegeleidingImporter.ImportAsync(connection, "vrc", Fixture, null, "test", CancellationToken.None);
+        await TeambegeleidingImporter.ImportAsync(connection, "testclub", Fixture, null, "test", CancellationToken.None);
         var enkeleRij = new[] { Fixture[0] };
-        await TeambegeleidingImporter.ImportAsync(connection, "vrc", enkeleRij, null, "test", CancellationToken.None);
+        await TeambegeleidingImporter.ImportAsync(connection, "testclub", enkeleRij, null, "test", CancellationToken.None);
 
         await using var count = new NpgsqlCommand(
-            "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'vrc'", connection);
+            "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode = 'testclub'", connection);
         var aantal = (long)(await count.ExecuteScalarAsync())!;
         aantal.Should().Be(1, "de tweede import (delete-vóór-insert) moet de eerste volledig vervangen, niet aanvullen");
     }
@@ -124,12 +124,12 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         await connection.OpenAsync();
 
         var result = await TeambegeleidingImporter.ImportAsync(
-            connection, "vrc", Fixture, "fixture.csv", "test-runner", CancellationToken.None);
+            connection, "testclub", Fixture, "fixture.csv", "test-runner", CancellationToken.None);
 
         result.AantalRijen.Should().Be(2);
 
         await using var cmd = new NpgsqlCommand(
-            "SELECT aantalrijen, csvbestand, importerendedoor, clubcode FROM avg.importlog WHERE clubcode = 'vrc'",
+            "SELECT aantalrijen, csvbestand, importerendedoor, clubcode FROM avg.importlog WHERE clubcode = 'testclub'",
             connection);
         await using var reader = await cmd.ExecuteReaderAsync();
         (await reader.ReadAsync()).Should().BeTrue("er moet precies één auditrij zijn geschreven");
@@ -146,11 +146,11 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
 
         // AllStars (demo) staat expliciet UIT voor sync — de echte club staat AAN.
         await SeedAppSettingsAsync(connection, "allstars", syncEnabled: false);
-        await SeedAppSettingsAsync(connection, "vrc", syncEnabled: true);
+        await SeedAppSettingsAsync(connection, "testclub", syncEnabled: true);
 
         var resolved = await TeambegeleidingImporter.ResolveClubCodeAsync(connection, null, CancellationToken.None);
 
-        resolved.Should().Be("vrc", "de democlub (syncenabled=false) mag nooit impliciet als doelclub voor échte persoonsgegevens gekozen worden");
+        resolved.Should().Be("testclub", "de democlub (syncenabled=false) mag nooit impliciet als doelclub voor échte persoonsgegevens gekozen worden");
     }
 
     [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
@@ -174,14 +174,14 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
 
         await using (var insertVrc = new NpgsqlCommand("""
             INSERT INTO avg.teambegeleiding (naam, clubcode, mta_imported)
-            VALUES ('Jan de Vries', 'vrc', NOW() - (@dagen || ' days')::interval)
+            VALUES ('Jan de Vries', 'testclub', NOW() - (@dagen || ' days')::interval)
             """, connection))
         {
             insertVrc.Parameters.AddWithValue("dagen", dagenOud);
             await insertVrc.ExecuteNonQueryAsync();
         }
 
-        // Andere club heeft een veel oudere rij — mag de scoping voor 'vrc' niet beïnvloeden.
+        // Andere club heeft een veel oudere rij — mag de scoping voor 'testclub' niet beïnvloeden.
         await using (var insertAndere = new NpgsqlCommand("""
             INSERT INTO avg.teambegeleiding (naam, clubcode, mta_imported)
             VALUES ('Piet de Jong', 'andereclub', NOW() - INTERVAL '365 days')
@@ -190,7 +190,7 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
             await insertAndere.ExecuteNonQueryAsync();
         }
 
-        var leeftijd = await TeambegeleidingImporter.GetOudsteImportLeeftijdInDagenAsync(connection, "vrc", CancellationToken.None);
+        var leeftijd = await TeambegeleidingImporter.GetOudsteImportLeeftijdInDagenAsync(connection, "testclub", CancellationToken.None);
 
         leeftijd.Should().NotBeNull();
         (leeftijd!.Value > 90).Should().Be(verwachtStale);
