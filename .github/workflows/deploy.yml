@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: FunctionApp
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Repository-variabelen — geconfigureerd in GitHub repo Settings → Variables.
@@ -134,6 +133,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # #816: canonieke tier-resolver — bepaalt welk .csproj hieronder gebouwd/gedeployed wordt.
+      # Ontbrekende of onbekende DatabaseTier-waarde faalt hard, nooit een stille default.
+      - name: Database-tier resolven
+        id: tier
+        env:
+          DatabaseTier: ${{ vars.DatabaseTier }}
+        run: bash scripts/ci/resolve-database-tier.sh
+
       - name: .NET SDK installeren
         uses: actions/setup-dotnet@v6
         with:
@@ -141,7 +148,7 @@ jobs:
 
       - name: Function App bouwen
         run: |
-          dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/fa-dev-sportlink-01.csproj \
+          dotnet publish ${{ steps.tier.outputs.csproj_path }} \
             --configuration Release \
             --output ./output
 

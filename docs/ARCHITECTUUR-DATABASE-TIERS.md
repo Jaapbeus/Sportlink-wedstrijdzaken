@@ -43,6 +43,17 @@ functioneel voordeel dat het risico zou rechtvaardigen.
 (`Database.Postgres/`, `Database.Sqlite/`), gekozen via het tier-keuzemechanisme (#816) op
 build/deploytijd — niet via een runtime-switch in gedeelde code.
 
+**Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging nog niet gebouwd.** #816
+legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
+ontbrekende/onbekende waarde), maar een *wijziging* van een reeds actieve, geldige waarde naar
+een andere tier zou vandaag stilzwijgend bij de eerstvolgende reguliere deploy worden toegepast —
+dat mag niet zonder expliciete migratiebevestiging. Zolang er maar één tier (`SqlServer`)
+daadwerkelijk bestaat, is een echte switch fysiek niet mogelijk (de resolver weigert
+`Postgres`/`Sqlite` al hard omdat die bomen nog niet bestaan) — het handhavingsmechanisme zelf
+(bijv. een vergelijking met de vorige gedeployde tier + een handmatige approval-gate) is daarom
+een open ontwerppunt, te bouwen zodra een tweede tier daadwerkelijk gebouwd wordt en een switch
+voor het eerst fysiek mogelijk is.
+
 ## 3. Identifier-casing-conventie
 
 *(Woordelijk overgenomen uit #814 §6 — afgeronde beslissing, geen onderwerp van herontwerp.)*
