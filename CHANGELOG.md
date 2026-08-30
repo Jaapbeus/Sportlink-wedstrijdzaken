@@ -243,6 +243,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **`public.speeltijden` (Postgres-tier) miste drie kolommen ten opzichte van `dbo.Speeltijden`**
+  (`WedstrijdHelft`, `WedstrijdRust`, `StandaardVoorkeurTijd`, #666) — ontdekt tijdens #887's
+  vertaling van `AdminSpeeltijdenRepository`, die alle drie gebruikt. Nieuwe migratie
+  (`003_speeltijden_kolommen.sql`) voegt ze toe; de `fresh-db-postgres`-CI-job bewaakt voortaan ook
+  deze kolomdekking. Empirisch geverifieerd: migratiepad tweemaal toegepast tegen een
+  wegwerp-Postgres-container, idempotent, eindschema komt overeen met de SQL Server-tier. (#893)
 - **De Postgres-ETL-boom (`KnownEntities.cs`) week op twee plekken af van de vastgelegde
   lowercase-snake_case-identifier-conventie** (`docs/ARCHITECTUUR-DATABASE-TIERS.md` §3): de
   `ClubCode`-kolom (alle drie entiteiten) en vrijwel de volledige `matchdetails`-entiteit

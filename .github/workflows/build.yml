@@ -484,6 +484,23 @@ jobs:
           fi
           echo "Identifier-casing bevestigd: alle kolomnamen zijn lowercase."
 
+          # #893: public.speeltijden mistte drie kolommen t.o.v. dbo.Speeltijden — bewaakt zodat
+          # een toekomstige wijziging deze niet stilzwijgend opnieuw laat verdwijnen.
+          missing_speeltijden_kolommen=$(psql_ci -c "
+            SELECT string_agg(verwacht, ' ') FROM (VALUES
+              ('wedstrijdhelft'), ('wedstrijdrust'), ('standaardvoorkeurtijd')
+            ) AS v(verwacht)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'speeltijden' AND column_name = v.verwacht
+            );
+          ")
+          if [ -n "$missing_speeltijden_kolommen" ]; then
+            echo "::error::public.speeltijden mist kolommen (#893): $missing_speeltijden_kolommen"
+            exit 1
+          fi
+          echo "public.speeltijden-kolomdekking bevestigd (#893)."
+
       # Open beslispunt uit het issue, bewust niet stilzwijgend overgeslagen: een aparte
       # drift-diff-stap (SSDT-projectstructuur vs. uitgerold script, zoals de SQL Server-tier heeft)
       # is voor de Postgres-tier nog niet aan de orde. Database.Postgres/migrations/ gebruikt losse,

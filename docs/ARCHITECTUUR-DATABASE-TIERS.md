@@ -329,13 +329,38 @@ clubs, gesorteerd op `syncenabled DESC, clubcode` — functioneel gelijk aan de 
 gebruikt `clubcode` ook als weergavenaam totdat een toekomstige migratie dat verschil dicht.
 
 **Tijdens deze vertaling ontdekt: `public.speeltijden` mist drie kolommen** (`WedstrijdHelft`,
-`WedstrijdRust`, `StandaardVoorkeurTijd`) ten opzichte van `dbo.Speeltijden` — zie #893. Dit
-blokkeert de CRUD-vertaling van `AdminSpeeltijdenFunction`/`Repository`, die daarom nog niet in
-deze ronde is meegenomen.
+`WedstrijdRust`, `StandaardVoorkeurTijd`) ten opzichte van `dbo.Speeltijden` — zie #893 (opgelost,
+zie §12). Blokkeerde de CRUD-vertaling van `AdminSpeeltijdenFunction`/`Repository`, die daarom nog
+niet in deze ronde is meegenomen.
 
 **Resterende negen admin-endpointparen** (zie #887) volgen dezelfde, nu gevestigde structuur:
 repository in `FunctionApp.Postgres/Admin/Repositories/`, endpoint in `FunctionApp.Postgres/Admin/`,
-zelfde route als de SQL Server-tier.
+zelfde route als de SQL Server-tier. **Van die negen mappen er acht op een SQL Server-tabel die nog
+geen Postgres-migratie heeft** (`VeldBeschikbaarheid`, `VeldTraining`, `VeldPeriode`,
+`TeamVoorkeurTijden`, `TeamRegels`, `UitgeslotenEmailAdressen`, `TeamAliassen`,
+`EmailTemplateInstellingen`, `avg.Teambegeleiding`, plus leermomenten-/thema-instellingen) — dat is
+dezelfde soort migratiewerk als §12 hieronder, acht keer. Zie de comment op #887 voor de volledige
+toelichting.
+
+## 12. public.speeltijden — drie ontbrekende kolommen bijgewerkt (#893)
+
+**Bevinding:** `Database.Postgres/migrations/001_baseline.sql`'s `public.speeltijden` dekte alleen
+`leeftijd`, `veldafmeting`, `wedstrijdtotaal`, `clubcode` — `dbo.Speeltijden`
+(`Database/dbo/Tables/Speeltijden.sql`) heeft daarnaast `WedstrijdHelft`/`WedstrijdRust` (beide
+`INT NOT NULL`) en `StandaardVoorkeurTijd` (`TIME NULL`, #666 — standaard voorkeurstijd per
+leeftijdscategorie).
+
+**Fix:** `003_speeltijden_kolommen.sql` voegt de drie kolommen toe via `ALTER TABLE ... ADD COLUMN
+IF NOT EXISTS`. `wedstrijdhelft`/`wedstrijdrust` krijgen `DEFAULT 0` — uitsluitend om `ADD COLUMN
+... NOT NULL` toe te staan op een tabel met eventueel al bestaande rijen, geen bewuste
+business-default; elke rij die de applicatie zelf schrijft vult beide altijd expliciet.
+
+**Bewaakt in CI:** de `fresh-db-postgres`-job controleert nu ook dat deze drie kolommen bestaan,
+naast de bestaande kernobjecten- en identifier-casing-controles.
+
+**Empirisch geverifieerd:** migratiepad tweemaal toegepast tegen een wegwerp-Postgres-16-container
+— idempotent (`schema_migrations` blijft op 3 rijen), eindschema komt exact overeen met
+`dbo.Speeltijden` (op naamconventie/lowercase na, §3).
 
 ## Gerelateerd
 
