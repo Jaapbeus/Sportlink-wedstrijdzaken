@@ -281,7 +281,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `PRINT`) of die tabellen al bestaan. Empirisch geverifieerd: het nieuwe script zaait exact 28
   teams, 28 begeleiders en 224 wedstrijden en is idempotent; de `fresh-db`-CI-job bootst dit
   scenario nu ook zelf na en bewaakt deze aantallen. **Nog niet gedekt:** de Postgres-tier heeft
-  nog geen eigen demodata-seed (#862) om ditzelfde probleem in te hebben.
+  nog geen eigen demodata-seed (zie issue 862) om ditzelfde probleem in te hebben.
 - **`public.speeltijden` (Postgres-tier) miste drie kolommen ten opzichte van `dbo.Speeltijden`**
   (`WedstrijdHelft`, `WedstrijdRust`, `StandaardVoorkeurTijd`, #666) — ontdekt tijdens #887's
   vertaling van `AdminSpeeltijdenRepository`, die alle drie gebruikt. Nieuwe migratie
