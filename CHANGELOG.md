@@ -76,6 +76,31 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   velden die doordeweeks alleen tijdens de zomerstop bespeelbaar zijn, krijgen nu hun eigen
   periode-gebonden venster naast het reguliere competitieschema. Bestaande vensters blijven
   ongewijzigd werken (geen periode = standaardregime, exact zoals vóór deze wijziging). (#581)
+- **`Database.Postgres/`: de eerste bouwsteen van de Postgres-tier (epic #815) — een C#-schemadefinitie
+  die zowel de stg- als de his-tabel-DDL, de unieke-sleutelindex en het upsert-/change-detection-statement
+  genereert voor de drie bestaande ETL-entiteiten (teams, matches, matchdetails).** Bewust géén
+  gedeelde abstractie met de bestaande SQL Server-laag (die blijft functioneel ongewijzigd), en géén
+  afhankelijkheid van Postgres' eigen systeemcatalogus tijdens runtime. Business-key-kolommen die
+  NULL-baar zijn (zoals `poulecode`) krijgen een gegenereerde, nooit-NULL synthetische sleutelkolom
+  — anders zou Postgres' `ON CONFLICT` een NULL-waarde als "nieuwe rij" behandelen in plaats van de
+  bestaande bij te werken. Nog geen live databaseverbinding vanuit de FunctionApp zelf: dat is de
+  scope van latere sub-issues (#821 e.v.). Empirisch geverifieerd tegen een lokale wegwerp-Postgres
+  16-container, inclusief het NULL-in-compositesleutel-scenario. (#818)
+- **Postgres-vertaling van de planner-kernview `planner.AlleWedstrijdenOpVeld`** (epic #815):
+  `Database.Postgres/PostgresPlannerViewGenerator.cs` + `PostgresPlannerAvailabilityReader.cs`.
+  De veldresolutie (Sportlink-veldstring "veld 1 A" → veldnummer + subpositie) is bewust
+  **niet** opnieuw in SQL herbouwd — dat zou een derde, onafhankelijke kopie zijn naast de
+  bestaande T-SQL-`OUTER APPLY` en de C#-implementatie (bewaakt door `VeldResolutieDriftTests`).
+  In plaats daarvan is die matching-logica geëxtraheerd naar het nieuwe, tier-agnostische
+  project `Planner.Shared/` (`VeldResolver`/`VeldNormalisatie`, pure tekstlogica zonder
+  databaseafhankelijkheid) en door zowel `FunctionApp` als `Database.Postgres` hergebruikt —
+  `PlannerShared.ResolveVeld`/`AutoPlanService.NormaliseerVeld` zijn nu dunne delegaties,
+  gedrag ongewijzigd (115 bestaande planner-tests blijven groen). Empirisch gevonden tijdens de
+  integratietests: SQL Server's G-team-detectie werkt ongemerkt door de case-insensitive
+  standaardcollatie; Postgres' regex-operator `~` is dat niet en liet G-teams stil uit de
+  bezetting vallen bij afwijkende hoofdlettering tussen ClubCode en teamnaam — opgelost met de
+  hoofdletterongevoelige variant `~*`. Overige gelijkheidsvergelijkingen in deze view dragen
+  hetzelfde class-of-bug totdat #820 een tier-brede collatiefix levert. (#819)
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
@@ -98,6 +123,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **Teamherkenning (`TeamCandidateRepository.cs`) leunde stilzwijgend op SQL Server's case-insensitive
+  default-collatie in plaats van expliciet te normaliseren.** Onder de huidige collatie "werkte" een
+  kale sleutelvergelijking toevallig; een toekomstige tier met een case-sensitive default (Postgres)
+  zou stilzwijgend nul rijen matchen zodra de opgeslagen casing afwijkt van de vers berekende sleutel
+  — geen foutmelding, gewoon "team niet gevonden". Alle drie de lookups vergelijken nu expliciet via
+  `UPPER(...)`, portable naar elke tier. Zie issue #820 voor het vervolg (Postgres-schema met
+  expression-based unique indexes) — dat vereist een nog niet bestaande teamherkenning-datalaag voor
+  de Postgres-tier en is bewust niet in deze wijziging meegenomen.
+- **`label-awaiting-release.yml` zette 'status: awaiting-release' op issues waar nog niets aan gebouwd was**, zodra een andere PR-body ze ook maar in proza noemde (bijv. een cross-referentietabel of "zie #NNN e.v.") — de #838-fix loste dit eerder alleen voor epics op; #820/#821/#822/#823 liepen dezelfde mislabeling op via gewone sub-issues. De labelloop selecteert nu uitsluitend "sterke" referenties (PR-titel of een sluitend keyword als `Closes #NNN`), dezelfde maatstaf die #630 al voor heropenen gebruikte. (#838)
 - **AllStars FC-democlub had geen veldbeschikbaarheid voor maandag t/m donderdag en vrijdag, en de zondagrij werd nooit door de planner gevonden.** De demoseed gebruikte per abuis de .NET-native dagconventie (0=zondag) in plaats van de 1=maandag/7=zondag-conventie die de rest van de applicatie hanteert, en zaaide daardoor maar 2 van de 7 dagen. De UI toonde de foutieve rij als "Dag 0". Seedscript gecorrigeerd naar alle 7 dagen met de juiste conventie; al gezaaide omgevingen herstellen zichzelf bij de volgende deploy. (#812)
 - **Database-verbindingen laten de gratis vCore-secondenlimiet niet meer onnodig snel oplopen.** Alle SQL-verbindingen in de FunctionApp draaiden met standaard connection-pooling; een pooled verbinding blijft na afsluiten als actieve sessie op de server staan, wat de free-tier database verhindert automatisch te pauzeren. Pooling staat nu uit voor alle databaseverbindingen. (#808)
 - **`Verify-AzureAuthSetup.ps1` rapporteerde de auth-lagen 4 en 5 altijd als FAIL**, ook als ze

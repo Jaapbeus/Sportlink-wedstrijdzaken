@@ -7,6 +7,24 @@ namespace SportlinkFunction.TeamResolution;
 /// <c>dbo.TeamAliassen</c>. Alle query's zijn hard gescoped op ClubCode, zelfde patroon als
 /// <c>PlannerMatchRepository</c> (#573).
 /// </summary>
+/// <remarks>
+/// #820: alle sleutelvergelijkingen wrappen expliciet in <c>UPPER(...)</c> in plaats van te
+/// leunen op de kolom-collatie. <c>Database/SportlinkSqlDb.sqlproj</c> zet het hele SQL Server-
+/// schema op de case-insensitive default-collatie (<c>1033, CI</c>), dus vandaag "werkt" een kale
+/// <c>=</c>-vergelijking toevallig — maar dat maakt hoofdlettergevoeligheid een onzichtbare
+/// schema-eigenschap in plaats van een in codereview zichtbare query-eigenschap, en een
+/// toekomstige tier met een case-sensitive default (Postgres) breekt stilzwijgend. De expliciete
+/// <c>UPPER()</c>-vorm gedraagt zich op beide identiek en is portable.
+/// <para>
+/// <b><c>RuweTekst</c> bewust óók ge-upper't, ondanks de intentie "exacte bronschrijfwijze".</b>
+/// Onder de huidige CI-collatie is <c>a.[RuweTekst] = @ruweTekst</c> vandaag al feitelijk
+/// hoofdletterongevoelig — dat is precies het "onzichtbare schema-eigenschap"-risico dat dit issue
+/// beschrijft. <c>UPPER()</c> op deze tak behoudt het waargenomen gedrag van vandaag; een bewust
+/// hoofdlettergevoelige exacte match zou een gedragswijziging zijn (mogelijk minder validated-
+/// alias-treffers dan vandaag) en is hier niet gekozen omdat #820 expliciet als acceptatiecriterium
+/// stelt dat het teamresolutiepercentage niet mag dalen.
+/// </para>
+/// </remarks>
 public sealed class TeamCandidateRepository : ITeamCandidateRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
@@ -25,8 +43,8 @@ public sealed class TeamCandidateRepository : ITeamCandidateRepository
             WHERE a.[ClubCode] = @clubCode
               AND a.[Status] = 'validated'
               AND t.[IsActief] = 1
-              AND (a.[RuweTekst] = @ruweTekst OR a.[RuweTekstGenormaliseerd] = @sleutel)
-            ORDER BY CASE WHEN a.[RuweTekst] = @ruweTekst THEN 0 ELSE 1 END
+              AND (UPPER(a.[RuweTekst]) = UPPER(@ruweTekst) OR UPPER(a.[RuweTekstGenormaliseerd]) = UPPER(@sleutel))
+            ORDER BY CASE WHEN UPPER(a.[RuweTekst]) = UPPER(@ruweTekst) THEN 0 ELSE 1 END
         ", conn);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);
         cmd.Parameters.AddWithValue("@ruweTekst", ruweTekst);
@@ -43,7 +61,7 @@ public sealed class TeamCandidateRepository : ITeamCandidateRepository
             SELECT TOP 1 [TeamId], [Teamnaam], [LeeftijdsCategorie]
             FROM [dbo].[Teams]
             WHERE [ClubCode] = @clubCode
-              AND [TeamnaamGenormaliseerd] = @sleutel
+              AND UPPER([TeamnaamGenormaliseerd]) = UPPER(@sleutel)
               AND [IsActief] = 1
         ", conn);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);

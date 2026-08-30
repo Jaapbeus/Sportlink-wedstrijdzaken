@@ -11,9 +11,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.0.2.0</Version>
-    <AssemblyVersion>3.0.2.0</AssemblyVersion>
-    <FileVersion>3.0.2.0</FileVersion>
+    <Version>3.0.3.0</Version>
+    <AssemblyVersion>3.0.3.0</AssemblyVersion>
+    <FileVersion>3.0.3.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members via InternalsVisibleTo (#476) -->
@@ -54,5 +54,10 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tier-agnostische veldresolutie-logica (#819) — gedeeld met Database.Postgres, geen
+         gedeelde DB-provider-abstractie (zie Planner.Shared/VeldResolver.cs). -->
+    <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
   </ItemGroup>
 </Project>
