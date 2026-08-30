@@ -19,6 +19,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Eén centrale schakelaar (`EgressGuard`) die alle uitgaande integraties blokkeert buiten
+  productie** — de Sportlink-synchronisatie (timer-trigger), GitHub-issue-rapportage, e-mail via
+  Microsoft Graph en de AI-diensten. Herkent productie aan `WEBSITE_SITE_NAME` (dezelfde signaal
+  die `EasyAuthHelper` al gebruikt); lokaal en in CI blijven deze integraties altijd geblokkeerd,
+  ook als een secret (`OpenAiApiKey`, `GitHubPat`, Graph-credentials) toevallig wél geconfigureerd
+  is. Vervangt vier losse, impliciete "is dit geconfigureerd?"-controles door één expliciete poort.
+  Tegelijk gefixt: de bedoelde per-club synchronisatie-rem (`SyncEnabled`-instelling) bleek dode
+  code — `syncEnabled` werd nooit in de instellingencache gezet, dus de vergelijking met `"0"` in
+  `Function1.cs` kon nooit waar zijn. `docs/DEVELOPER-SETUP.md` §5.1 beschrijft hoe je lokaal werkt
+  zonder externe diensten te raken, inclusief de expliciete opt-in voor een bewuste, eenmalige
+  handmatige test. (#857)
 - **Een zelftest die bewijst dat een databasetier daadwerkelijk werkt, in plaats van dat de
   onderdelen compileren.** `scripts/dev/Test-PostgresTier.ps1` zet een wegwerpdatabase op, rolt het
   schema uit, laadt de demodata, en controleert per stap of het resultaat klopt — met exacte

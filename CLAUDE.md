@@ -714,6 +714,23 @@ document oplost.
 
 ---
 
+### Uitgaande integraties — altijd via EgressGuard (#857)
+
+**Elke nieuwe uitgaande integratie (een externe HTTP-aanroep, een nieuwe AI-provider, een nieuw
+e-mail-/berichtenkanaal, een nieuwe issue-/ticketrapportage) controleert eerst
+`SportlinkFunction.Infrastructure.EgressGuard.ExternalIntegrationsAllowed()`, of wordt — zoals
+`IEmailGraphService`/`IChatClient` in `FunctionApp/Program.cs` — alleen geregistreerd als die true
+is.** Dit is de ene centrale poort die lokale ontwikkeling, CI en elke geautomatiseerde testrun
+beschermt tegen onbedoeld extern verkeer (de Sportlink-databron, GitHub-issue-rapportage, e-mail,
+AI-diensten), ook als het bijbehorende secret toevallig lokaal geconfigureerd staat. Zie
+`FunctionApp/Infrastructure/EgressGuard.cs` en `docs/DEVELOPER-SETUP.md` §5.1.
+
+Een nieuwe, losstaande "eigen is-dit-geconfigureerd-check" naast deze poort is een
+architectuurschending — dat is exact het probleem dat #857 oploste (vier losse, impliciete
+controles in plaats van één expliciete).
+
+---
+
 ### .NET versie — net9.0 verplicht voor FunctionApp (NOOIT upgraden zonder infrastructuurwijziging)
 
 **KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**

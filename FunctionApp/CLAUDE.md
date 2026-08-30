@@ -129,6 +129,11 @@ Stored in `local.settings.json` (development) and Azure Key Vault (production):
 - `FUNCTIONS_WORKER_RUNTIME`: Always `"dotnet-isolated"`
 - `AzureWebJobsStorage`: Storage for function state (dev uses `UseDevelopmentStorage=true`)
 - `FETCH_SCHEDULE`: CRON-expressie voor de timer trigger (default `0 0 4 * * *` = dagelijks om 04:00)
+- `AllowExternalIntegrations`: expliciete opt-in (`"true"`) om `EgressGuard` (`FunctionApp/Infrastructure/EgressGuard.cs`,
+  #857) buiten Azure-hosting toch uitgaande integraties te laten toestaan (Sportlink-sync, GitHub-issue-
+  rapportage, e-mail, AI-diensten). Standaard afwezig/`"false"` — lokaal en in CI blijven deze integraties
+  altijd geblokkeerd, ook als een secret als `OpenAiApiKey`/`GitHubPat` toevallig wél geconfigureerd is.
+  Zie `docs/DEVELOPER-SETUP.md` §5.1.
 
 ### Database Settings
 
