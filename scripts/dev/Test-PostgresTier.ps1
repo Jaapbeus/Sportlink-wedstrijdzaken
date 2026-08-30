@@ -441,8 +441,19 @@ try {
         if ($sqlState -and $sqlState.Running) {
             & docker stop $SqlContainer 2>&1 | Out-Null
         }
+
+        # 'docker stop' wacht op het stoppen van het containerproces, maar de host-poortmapping
+        # (op Windows/Docker Desktop via een los proxyproces) kan een fractie later loslaten.
+        # Empirisch aangetroffen: een directe check hier meldde de poort nog open ondanks een
+        # geslaagde 'docker stop'. Kort pollen in plaats van een enkele meting, zelfde soort fix
+        # als Wait-ForPostgres hierboven.
+        $poortDeadline = (Get-Date).AddSeconds(10)
+        do {
+            $poortDicht = -not (Test-PortListening -Port $Ports.SqlServer)
+            if (-not $poortDicht) { Start-Sleep -Milliseconds 500 }
+        } while (-not $poortDicht -and (Get-Date) -lt $poortDeadline)
+
         $naStop = Get-ContainerState -Name $SqlContainer
-        $poortDicht = -not (Test-PortListening -Port $Ports.SqlServer)
 
         if (($naStop -and $naStop.Running) -or -not $poortDicht) {
             # Negatieve controle. Slaagt deze niet, dan kan alles daarna een stille terugval zijn
@@ -458,7 +469,7 @@ try {
         $env:SELFTEST_PG_TZ       = $Expect.containerTimeZone
         & docker compose -p $ComposeProject -f $ComposeFile up -d 2>&1 | Out-Null
 
-        $gereed = Wait-ForPostgres -ContainerName $PgContainer
+        $gereed = Wait-ForPostgres -ContainerName $PgContainer -Database 'sportlink_selftest'
         if ($gereed.Ready) {
             Add-Check -Gate 'G1' -Id 'G1.postgres.gereed' -Status 'pass' -Actual "na $($gereed.Attempts) pogingen"
             $tz = Invoke-Psql -ContainerName $PgContainer -Password $env:SELFTEST_PG_PASSWORD `
