@@ -127,6 +127,30 @@ async function run() {
   check('regressie: gewoon issue krijgt awaiting-release nog gewoon wel', { res, added: gh.calls.added },
         { res: 'set', added: ['status: awaiting-release'] });
 
+  // ---------- label-awaiting-release.yml: strong-only selectie (#838-vervolg) ----------
+  // De oorspronkelijke #838-fix loste alleen de epic-variant op. #820/#821/#822/#823
+  // werden nadien alsnog ten onrechte op 'awaiting-release' gezet doordat een latere
+  // PR-body ze in proza noemde (bijv. een cross-referentietabel of "zie #821 e.v.") —
+  // niet-epic-issues waar helemaal nog niets aan gebouwd was. De workflow selecteert nu
+  // `strong` in plaats van `all` vóór de labelloop; dit simuleert precies dat selectiegedrag.
+  console.log('\nlabel-awaiting-release.yml strong-only selectie:');
+
+  function simulateSelection(title, body) {
+    const { strong } = extractIssueRefs(title, body);
+    return [...strong].sort((a, b) => a - b);
+  }
+
+  check(
+    'PR-body noemt #821 alleen in proza — niet geselecteerd voor labelen',
+    simulateSelection('refactor(#819): iets', 'Gerelateerd aan #820 en #821 e.v.'),
+    [819],
+  );
+  check(
+    'PR met meerdere sluitende issues — allemaal geselecteerd',
+    simulateSelection('chore: opruiming', 'Closes #820\nFixes #821'),
+    [820, 821],
+  );
+
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);
   process.exit(failures === 0 ? 0 : 1);
 }
