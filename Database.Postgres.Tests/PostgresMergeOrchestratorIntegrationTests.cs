@@ -6,17 +6,19 @@ using Xunit;
 namespace Database.Postgres.Tests;
 
 /// <summary>
-/// Integratietests tegen een échte Postgres-instantie (#818's testplan). Draaien NIET in CI —
-/// er bestaat op dit moment geen Postgres-service in de gedeelde CI-pipeline (dat is de scope
-/// van #822/#823, nog niet gebouwd). Lokaal uitvoeren tegen een wegwerpcontainer:
+/// Integratietests tegen een échte Postgres-instantie (#818's testplan). Draaien NIET onvoorwaardelijk
+/// in CI — #822 (docker-compose Postgres-service) en #823 (CI fresh-db-equivalent voor het
+/// migratiepad) zijn inmiddels gemerged, maar dekken de migratieroute, niet deze specifieke
+/// xunit-suite. Lokaal uitvoeren tegen een wegwerpcontainer:
 ///
 ///   docker run -d --name pg818 -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink_test -p 5432:5432 postgres:16
 ///   $env:POSTGRES_TEST_CONNECTION_STRING = "Host=localhost;Port=5432;Username=postgres;Password=devonly;Database=sportlink_test"
 ///   dotnet test Database.Postgres.Tests --filter FullyQualifiedName~IntegrationTests
 ///   docker rm -f pg818
 ///
-/// Zodra #823 een Postgres-CI-job levert, kan de [Fact(Skip=...)] hieronder vervangen worden door
-/// een omgevingsvariabele-gestuurde skip-conditie — geen wijziging aan de testlogica zelf nodig.
+/// #866 draagt op deze [Fact(Skip=...)]-conventie te vervangen door een omgevingsvariabele-gestuurde
+/// skip-conditie zodat deze suite wél onvoorwaardelijk in CI kan draaien — geen wijziging aan de
+/// testlogica zelf nodig.
 /// </summary>
 public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
 {
@@ -31,15 +33,15 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
         await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var drop = new NpgsqlCommand(
-            "DROP TABLE IF EXISTS his.\"matches\"; DROP TABLE IF EXISTS stg.\"matches\"; " +
-            "DROP TABLE IF EXISTS his.\"teams\"; DROP TABLE IF EXISTS stg.\"teams\"; " +
-            "DROP TABLE IF EXISTS his.\"matchdetails\"; DROP TABLE IF EXISTS stg.\"matchdetails\";", connection);
+            "DROP TABLE IF EXISTS his.\"matches\" CASCADE; DROP TABLE IF EXISTS stg.\"matches\" CASCADE; " +
+            "DROP TABLE IF EXISTS his.\"teams\" CASCADE; DROP TABLE IF EXISTS stg.\"teams\" CASCADE; " +
+            "DROP TABLE IF EXISTS his.\"matchdetails\" CASCADE; DROP TABLE IF EXISTS stg.\"matchdetails\" CASCADE;", connection);
         await drop.ExecuteNonQueryAsync();
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
     public async Task EnsureHisTableAsync_TweedeAanroep_IsIdempotent()
     {
         var entity = TestEntities.SingleKeyNoClub;
@@ -50,7 +52,7 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
         await act.Should().NotThrowAsync();
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
     public async Task MergeStgToHisAsync_IdentiekeDataOpnieuwGemerged_LaatMtaModifiedOngewijzigd()
     {
         var entity = TestEntities.SingleKeyNoClub;
@@ -75,7 +77,7 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
         secondModified.Should().Be(firstModified);
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
     public async Task MergeStgToHisAsync_GewijzigdeData_WerktMtaModifiedBij()
     {
         var entity = TestEntities.SingleKeyNoClub;
@@ -105,7 +107,7 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
         secondModified.Should().BeAfter(firstModified);
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
     public async Task EnsureHisTableAsync_DubbeleBusinessKeyDirectInHis_WordtGeweigerdDoorUniqueIndex()
     {
         var entity = TestEntities.SingleKeyNoClub;
@@ -132,7 +134,7 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
             .Where(e => e.SqlState == PostgresErrorCodes.UniqueViolation);
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
     public async Task MergeStgToHisAsync_NullInEenDeelVanDeCompositeBusinessKey_WerktBestaandeRijBijInPlaatsVanDuplicaat()
     {
         // Dit is de directe empirische proef van het #818-addendum: teams.poulecode is NULL-baar
@@ -174,7 +176,7 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
         naam.Should().Be("Tweede naam — bijgewerkt", "de bestaande rij moet zijn bijgewerkt, niet gedupliceerd");
     }
 
-    [Fact(Skip = "Vereist lokale Postgres-instantie (zie klasse-doc-comment) — lokaal uitvoeren tegen een wegwerpcontainer")]
+    [Fact(Skip = "Vereist lokale Postgres-instantie (zie PostgresMergeOrchestratorIntegrationTests) — lokaal uitvoeren tegen een wegwerpcontainer")]
     public async Task EnsureHisTableAsync_AlleDrieBekendeEntiteiten_CreërenDaadwerkelijkTegenEchtePostgres()
     {
         // Het #818-acceptatiecriterium eist "werkende CREATE TABLE-statements voor alle

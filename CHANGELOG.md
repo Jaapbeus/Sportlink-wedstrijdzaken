@@ -178,6 +178,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **Audit-tijdstempels (`mta_inserted`/`mta_modified`/`mta_deleted`) van de Postgres-ETL-his-tabellen
+  kregen lokale tijd in plaats van UTC** — `NOW()` in een naïeve `TIMESTAMP`-kolom gebruikt de
+  sessietijdzone bij de impliciete cast; draaide de databaseserver niet op UTC, dan stond er lokale
+  tijd in een kolom die de rest van de applicatie als UTC behandelt. Exact de regressie die PR #246
+  al oploste voor SQL Server, nu voor Postgres. Kolommen zijn nu `TIMESTAMPTZ` (Postgres normaliseert
+  die intern altijd naar UTC, ongeacht sessietijdzone — `NOW()` hoefde daardoor niet aangepast te
+  worden). Design-afweging vastgelegd in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §8. Empirisch
+  bevestigd met een integratietest die de databasesessie expliciet op Europe/Amsterdam zet en
+  aantoont dat de geschreven waarde binnen een seconde van de werkelijke UTC-tijd ligt.
+  Bijkomend gevonden en gefixt tijdens deze verificatie: `PostgresMergeOrchestrator` maakte het
+  `stg`/`his`-schema zelf nooit aan (moest tot nu toe handmatig per test gebeuren); en xUnit's
+  standaard testparallellisatie liet meerdere testklassen races op elkaar lopen tegen de gedeelde
+  Postgres-testinstantie — testparallellisatie nu uitgeschakeld voor `Database.Postgres.Tests`.
 - **De AllStars FC-demodataseed vulde de business-key-bronkolommen (`teamcode`, `lokaleteamcode`,
   `poulecode`) van `his.teams` nooit, alleen de afgeleide sleutelweergave `bk_teams` rechtstreeks.**
   Op SQL Server bleef dat onopgemerkt (`bk_teams` is daar een gewone kolom); op de Postgres-tier

@@ -32,23 +32,17 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await connection.OpenAsync();
         await using var drop = new NpgsqlCommand($"""
             DROP VIEW IF EXISTS {PostgresPlannerViewGenerator.ViewName};
-            DROP TABLE IF EXISTS his."matches";
-            DROP TABLE IF EXISTS stg."matches";
-            DROP TABLE IF EXISTS his."teams";
-            DROP TABLE IF EXISTS stg."teams";
-            DROP TABLE IF EXISTS planner.geplandewedstrijden;
-            DROP TABLE IF EXISTS public.speeltijden;
-            DROP TABLE IF EXISTS public.velden;
-            DROP TABLE IF EXISTS public.appsettings;
+            DROP TABLE IF EXISTS his."matches" CASCADE;
+            DROP TABLE IF EXISTS stg."matches" CASCADE;
+            DROP TABLE IF EXISTS his."teams" CASCADE;
+            DROP TABLE IF EXISTS stg."teams" CASCADE;
+            DROP TABLE IF EXISTS planner.geplandewedstrijden CASCADE;
+            DROP TABLE IF EXISTS public.speeltijden CASCADE;
+            DROP TABLE IF EXISTS public.velden CASCADE;
+            DROP TABLE IF EXISTS public.appsettings CASCADE;
             """, connection);
         await drop.ExecuteNonQueryAsync();
-
-        // stg/his bestaan hier niet automatisch (#818's tests veronderstellen ze al aanwezig via
-        // een niet-geautomatiseerde stap — geen scope van #819 om dat te verhelpen); voor deze
-        // zelfstandige test scheppen we ze hier expliciet.
-        await using var schemas = new NpgsqlCommand(
-            "CREATE SCHEMA IF NOT EXISTS stg; CREATE SCHEMA IF NOT EXISTS his;", connection);
-        await schemas.ExecuteNonQueryAsync();
+        // stg/his-schema's worden nu door PostgresMergeOrchestrator zelf aangemaakt (idempotent).
 
         await using (var cmd = new NpgsqlCommand(PostgresPlannerSupportSchema.BaselineSql, connection))
             await cmd.ExecuteNonQueryAsync();
@@ -62,7 +56,20 @@ public class PostgresPlannerViewIntegrationTests : IAsyncLifetime
         await createView.ExecuteNonQueryAsync();
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    /// <summary>
+    /// Ruimt de view zelf op. Zonder dit bleef <c>{ViewName}</c> na de laatste test van deze klasse
+    /// staan met een afhankelijkheid op <c>his.matches</c> — sinds tests sequentieel draaien
+    /// (Database.Postgres.Tests/AssemblyInfo.cs, #854-verificatie) trof een later draaiende,
+    /// andere testklasse dan een 'cannot drop table his.matches because other objects depend on
+    /// it'-fout aan die niets met die klasse zelf te maken had.
+    /// </summary>
+    public async Task DisposeAsync()
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var drop = new NpgsqlCommand($"DROP VIEW IF EXISTS {PostgresPlannerViewGenerator.ViewName};", connection);
+        await drop.ExecuteNonQueryAsync();
+    }
 
     private static async Task ExecAsync(NpgsqlConnection connection, string sql, Action<NpgsqlParameterCollection>? bind = null)
     {
