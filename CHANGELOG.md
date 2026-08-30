@@ -37,6 +37,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   SQL Server 2022 in een container (`docker compose up -d`). Eén image, één poort, één
   verbindingsreeks, dezelfde stappen op Windows en macOS. Het SA-wachtwoord komt uit een
   lokaal `.env`-bestand en staat niet in de repository. (#800)
+- **`Database.Postgres/`: de eerste bouwsteen van de Postgres-tier (epic #815) — een C#-schemadefinitie
+  die zowel de stg- als de his-tabel-DDL, de unieke-sleutelindex en het upsert-/change-detection-statement
+  genereert voor de drie bestaande ETL-entiteiten (teams, matches, matchdetails).** Bewust géén
+  gedeelde abstractie met de bestaande SQL Server-laag (die blijft functioneel ongewijzigd), en géén
+  afhankelijkheid van Postgres' eigen systeemcatalogus tijdens runtime. Business-key-kolommen die
+  NULL-baar zijn (zoals `poulecode`) krijgen een gegenereerde, nooit-NULL synthetische sleutelkolom
+  — anders zou Postgres' `ON CONFLICT` een NULL-waarde als "nieuwe rij" behandelen in plaats van de
+  bestaande bij te werken. Nog geen live databaseverbinding vanuit de FunctionApp zelf: dat is de
+  scope van latere sub-issues (#821 e.v.). Empirisch geverifieerd tegen een lokale wegwerp-Postgres
+  16-container, inclusief het NULL-in-compositesleutel-scenario. (#818)
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een

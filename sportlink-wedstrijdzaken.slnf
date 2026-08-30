@@ -4,7 +4,9 @@
     "projects": [
       "BlazorAdmin\\BlazorAdmin.csproj",
       "FunctionApp\\fa-dev-sportlink-01.csproj",
-      "FunctionApp.Tests\\FunctionApp.Tests.csproj"
+      "FunctionApp.Tests\\FunctionApp.Tests.csproj",
+      "Database.Postgres\\Database.Postgres.csproj",
+      "Database.Postgres.Tests\\Database.Postgres.Tests.csproj"
     ]
   }
 }
