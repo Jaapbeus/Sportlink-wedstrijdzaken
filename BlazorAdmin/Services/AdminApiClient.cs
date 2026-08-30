@@ -280,6 +280,19 @@ public class AdminApiClient
     public async Task<ApiResult<object>> DeleteVeldBeschikbaarheidAsync(int id)
         => await DeleteAsync<object>($"api/beheer/veldbeschikbaarheid/{id}");
 
+    // ── VeldPeriode (#581: herbruikbare regimes zoals "Zomerstop" en "Competitie") ──
+    public async Task<ApiResult<List<VeldPeriodeDto>>> GetVeldPeriodesAsync()
+        => await GetAsync<List<VeldPeriodeDto>>("api/beheer/veldperiodes");
+
+    public async Task<ApiResult<object>> CreateVeldPeriodeAsync(VeldPeriodeDto dto)
+        => await PostAsync<object>("api/beheer/veldperiodes", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldPeriodeAsync(int id, VeldPeriodeDto dto)
+        => await PutAsync<object>($"api/beheer/veldperiodes/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteVeldPeriodeAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/veldperiodes/{id}");
+
     // ── VeldTraining (#679: trainingsschema per veld per weekdag) ──
     public async Task<ApiResult<List<VeldTrainingDto>>> GetVeldTrainingAsync()
         => await GetAsync<List<VeldTrainingDto>>("api/beheer/veldtraining");

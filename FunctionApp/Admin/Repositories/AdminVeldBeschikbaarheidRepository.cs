@@ -12,9 +12,10 @@ internal static class AdminVeldBeschikbaarheidRepository
             SELECT vb.[Id], vb.[VeldNummer], v.[VeldNaam], vb.[DagVanWeek],
                    CONVERT(VARCHAR(5), vb.[BeschikbaarVanaf]) AS [BeschikbaarVanaf],
                    CONVERT(VARCHAR(5), vb.[BeschikbaarTot])   AS [BeschikbaarTot],
-                   vb.[GebruikZonsondergang]
+                   vb.[GebruikZonsondergang], vb.[PeriodeId], p.[Naam] AS [PeriodeNaam]
             FROM [dbo].[VeldBeschikbaarheid] vb
             JOIN [dbo].[Velden] v ON v.[VeldNummer] = vb.[VeldNummer]
+            LEFT JOIN [dbo].[VeldPeriode] p ON p.[Id] = vb.[PeriodeId]
             WHERE vb.[ClubCode] = @Cc
             ORDER BY vb.[DagVanWeek], vb.[VeldNummer]", conn);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
@@ -105,49 +106,61 @@ internal static class AdminVeldBeschikbaarheidRepository
         return await cmd.ExecuteNonQueryAsync();
     }
 
-    internal static async Task<int> UpdateAsync(int id, TimeSpan vanf, TimeSpan tot, bool zon, string clubCode, string cs)
+    internal static async Task<int> UpdateAsync(
+        int id, TimeSpan vanf, TimeSpan tot, bool zon, int? periodeId, string clubCode, string cs)
     {
         using var conn = new SqlConnection(cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[VeldBeschikbaarheid]
-            SET [BeschikbaarVanaf] = @Vanf, [BeschikbaarTot] = @Tot, [GebruikZonsondergang] = @Zon
+            SET [BeschikbaarVanaf] = @Vanf, [BeschikbaarTot] = @Tot, [GebruikZonsondergang] = @Zon,
+                [PeriodeId] = @PeriodeId
             WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id",   id);
         cmd.Parameters.AddWithValue("@Cc",   clubCode);
         cmd.Parameters.AddWithValue("@Vanf", vanf);
         cmd.Parameters.AddWithValue("@Tot",  tot);
         cmd.Parameters.AddWithValue("@Zon",  zon);
+        cmd.Parameters.AddWithValue("@PeriodeId", (object?)periodeId ?? DBNull.Value);
         return await cmd.ExecuteNonQueryAsync();
     }
 
-    internal static async Task<bool> BestaatAsync(int veldNummer, int dagVanWeek, string clubCode, string cs)
+    /// <summary>
+    /// Uniciteit is veld + dag + periode (#581): dezelfde veld/dag-combinatie mag één rij hebben
+    /// voor het standaardregime (PeriodeId NULL) én daarnaast één rij per periode — dat zijn
+    /// verschillende regimes die nooit tegelijk actief zijn.
+    /// </summary>
+    internal static async Task<bool> BestaatAsync(int veldNummer, int dagVanWeek, int? periodeId, string clubCode, string cs)
     {
         using var conn = new SqlConnection(cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
             SELECT COUNT(1) FROM [dbo].[VeldBeschikbaarheid]
-            WHERE [VeldNummer] = @Vn AND [DagVanWeek] = @Dag AND [ClubCode] = @Cc", conn);
+            WHERE [VeldNummer] = @Vn AND [DagVanWeek] = @Dag AND [ClubCode] = @Cc
+              AND (([PeriodeId] IS NULL AND @PeriodeId IS NULL) OR [PeriodeId] = @PeriodeId)", conn);
         cmd.Parameters.AddWithValue("@Vn",  veldNummer);
         cmd.Parameters.AddWithValue("@Dag", dagVanWeek);
         cmd.Parameters.AddWithValue("@Cc",  clubCode);
+        cmd.Parameters.AddWithValue("@PeriodeId", (object?)periodeId ?? DBNull.Value);
         return (int)(await cmd.ExecuteScalarAsync())! > 0;
     }
 
-    internal static async Task<int> InsertAsync(int veldNummer, int dagVanWeek, TimeSpan vanf, TimeSpan tot, bool zon, string clubCode, string cs)
+    internal static async Task<int> InsertAsync(
+        int veldNummer, int dagVanWeek, TimeSpan vanf, TimeSpan tot, bool zon, int? periodeId, string clubCode, string cs)
     {
         using var conn = new SqlConnection(cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[VeldBeschikbaarheid]
-                ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
+                ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [PeriodeId], [ClubCode])
             OUTPUT INSERTED.[Id]
-            VALUES (@Vn, @Dag, @Vanf, @Tot, @Zon, @Cc)", conn);
+            VALUES (@Vn, @Dag, @Vanf, @Tot, @Zon, @PeriodeId, @Cc)", conn);
         cmd.Parameters.AddWithValue("@Vn",  veldNummer);
         cmd.Parameters.AddWithValue("@Dag", dagVanWeek);
         cmd.Parameters.AddWithValue("@Vanf", vanf);
         cmd.Parameters.AddWithValue("@Tot",  tot);
         cmd.Parameters.AddWithValue("@Zon",  zon);
+        cmd.Parameters.AddWithValue("@PeriodeId", (object?)periodeId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@Cc",   clubCode);
         return (int)(await cmd.ExecuteScalarAsync())!;
     }

@@ -106,8 +106,93 @@ else
     <hr class="mt-4" />
     <div class="row mb-3">
         <div class="col">
+            <h2 class="mb-0">Periodes</h2>
+            <p class="text-muted mb-0">
+                Een periode is een herbruikbaar regime met een vaste geldigheidsrange, bijv.
+                "Zomerstop" of "Competitie". Koppel een veldbeschikbaarheid-venster hieronder aan
+                een periode om er alléén tijdens die periode van te laten gelden — een venster
+                zonder periode ("Standaard") geldt zoals voorheen het hele jaar, behalve wanneer een
+                andere periode actief is.
+            </p>
+        </div>
+        <div class="col-auto align-self-center">
+            <button class="btn btn-success" @onclick="StartNewPeriode">Nieuwe periode</button>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Naam</th>
+                <th>Van</th>
+                <th>Tot</th>
+                <th>Actief</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in periodes.OrderBy(p => p.DatumVan))
+            {
+                <tr class="@(!p.Actief ? "text-muted" : "")">
+                    <td>@p.Naam</td>
+                    <td>@p.DatumVan</td>
+                    <td>@p.DatumTot</td>
+                    <td>@(p.Actief ? "ja" : "nee")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => EditPeriode(p)">Bewerken</button>
+                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeletePeriodeAsync(p.Id)">
+                            Verwijderen
+                        </button>
+                    </td>
+                </tr>
+            }
+            @if (periodes.Count == 0)
+            {
+                <tr><td colspan="5" class="text-muted">Geen periodes gedefinieerd — alle vensters gelden het hele jaar (standaardregime).</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (editingPeriode != null)
+    {
+        <hr />
+        <h3>@(isNewPeriode ? "Nieuwe periode" : $"Bewerken: {editingPeriode.Naam}")</h3>
+        <EditForm Model="editingPeriode" OnValidSubmit="OpslaanPeriodeAsync">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Naam</label>
+                    <input class="form-control" @bind="editingPeriode.Naam" placeholder="bijv. Zomerstop" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Van</label>
+                    <input class="form-control" type="date" value="@editingPeriode.DatumVan"
+                           @onchange="e => editingPeriode.DatumVan = e.Value?.ToString() ?? editingPeriode.DatumVan" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Tot</label>
+                    <input class="form-control" type="date" value="@editingPeriode.DatumTot"
+                           @onchange="e => editingPeriode.DatumTot = e.Value?.ToString() ?? editingPeriode.DatumTot" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label d-block">Actief</label>
+                    <input type="checkbox" class="form-check-input mt-2" @bind="editingPeriode.Actief" />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Opslaan</button>
+            <button type="button" class="btn btn-secondary ms-2" @onclick="() => editingPeriode = null">Annuleren</button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(periodeMessage))
+        {
+            <div class="alert alert-info mt-3">@periodeMessage</div>
+        }
+    }
+
+    <hr class="mt-4" />
+    <div class="row mb-3">
+        <div class="col">
             <h2 class="mb-0">Veldbeschikbaarheid</h2>
-            <p class="text-muted mb-0">Openingsvenster van het sportpark per veld per weekdag.</p>
+            <p class="text-muted mb-0">Openingsvenster van het sportpark per veld per weekdag, optioneel per periode.</p>
         </div>
         <div class="col-auto align-self-center">
             <button class="btn btn-success" @onclick="StartNewBeschikbaarheid">Nieuw venster</button>
@@ -122,6 +207,7 @@ else
                 <th>Van</th>
                 <th>Tot</th>
                 <th>Zonsondergang</th>
+                <th>Periode</th>
                 <th></th>
             </tr>
         </thead>
@@ -134,6 +220,7 @@ else
                     <td>@b.BeschikbaarVanaf</td>
                     <td>@b.BeschikbaarTot</td>
                     <td>@(b.GebruikZonsondergang ? "ja" : "nee")</td>
+                    <td>@(b.PeriodeNaam ?? "Standaard")</td>
                     <td>
                         <button class="btn btn-sm btn-primary" @onclick="() => EditBeschikbaarheid(b)">Bewerken</button>
                         <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteBeschikbaarheidAsync(b.Id)">
@@ -144,7 +231,7 @@ else
             }
             @if (beschikbaarheid.Count == 0)
             {
-                <tr><td colspan="6" class="text-muted">Geen beschikbaarheidsvensters gevonden.</td></tr>
+                <tr><td colspan="7" class="text-muted">Geen beschikbaarheidsvensters gevonden.</td></tr>
             }
         </tbody>
     </table>
@@ -185,6 +272,19 @@ else
                 <div class="col-md-3 mb-3">
                     <label class="form-label d-block">Beperkt tot zonsondergang</label>
                     <input type="checkbox" class="form-check-input mt-2" @bind="editingBeschikbaarheid.GebruikZonsondergang" />
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Periode</label>
+                    <select class="form-select" value="@(editingBeschikbaarheid.PeriodeId?.ToString() ?? "")"
+                            @onchange="OnPeriodeGekozen">
+                        <option value="">Standaard (hele jaar, buiten elke actieve periode)</option>
+                        @foreach (var p in periodes)
+                        {
+                            <option value="@p.Id">@p.Naam (@p.DatumVan – @p.DatumTot)</option>
+                        }
+                    </select>
                 </div>
             </div>
             <button type="submit" class="btn btn-primary">Opslaan</button>
@@ -306,19 +406,23 @@ else
     private List<VeldDto> velden = new();
     private List<VeldBeschikbaarheidDto> beschikbaarheid = new();
     private List<VeldTrainingDto> training = new();
+    private List<VeldPeriodeDto> periodes = new();
 
     private VeldDto? editingVeld;
     private VeldBeschikbaarheidDto? editingBeschikbaarheid;
     private VeldTrainingDto? editingTraining;
+    private VeldPeriodeDto? editingPeriode;
 
     private bool isNewVeld;
     private bool isNewBeschikbaarheid;
     private bool isNewTraining;
+    private bool isNewPeriode;
 
     private bool loading = true;
     private string? veldMessage;
     private string? beschikbaarheidMessage;
     private string? trainingMessage;
+    private string? periodeMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -334,6 +438,8 @@ else
         loading = true;
         var veldenResult = await Api.GetVeldenAsync();
         velden = veldenResult.Success ? veldenResult.Data ?? new() : new();
+        var periodesResult = await Api.GetVeldPeriodesAsync();
+        periodes = periodesResult.Success ? periodesResult.Data ?? new() : new();
         var beschikbaarheidResult = await Api.GetVeldBeschikbaarheidAsync();
         beschikbaarheid = beschikbaarheidResult.Success ? beschikbaarheidResult.Data ?? new() : new();
         var trainingResult = await Api.GetVeldTrainingAsync();
@@ -386,10 +492,17 @@ else
         {
             Id = b.Id, VeldNummer = b.VeldNummer, VeldNaam = b.VeldNaam, DagVanWeek = b.DagVanWeek,
             BeschikbaarVanaf = b.BeschikbaarVanaf, BeschikbaarTot = b.BeschikbaarTot,
-            GebruikZonsondergang = b.GebruikZonsondergang
+            GebruikZonsondergang = b.GebruikZonsondergang, PeriodeId = b.PeriodeId, PeriodeNaam = b.PeriodeNaam
         };
         isNewBeschikbaarheid = false;
         beschikbaarheidMessage = null;
+    }
+
+    private void OnPeriodeGekozen(ChangeEventArgs e)
+    {
+        if (editingBeschikbaarheid == null) return;
+        var waarde = e.Value?.ToString();
+        editingBeschikbaarheid.PeriodeId = string.IsNullOrEmpty(waarde) ? null : int.Parse(waarde);
     }
 
     private async Task OpslaanBeschikbaarheidAsync()
@@ -406,6 +519,43 @@ else
     {
         var r = await Api.DeleteVeldBeschikbaarheidAsync(id);
         beschikbaarheidMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
+        await LoadAsync();
+    }
+
+    // ── Periodes ──
+
+    private void StartNewPeriode()
+    {
+        var vandaag = DateTime.Today;
+        editingPeriode = new VeldPeriodeDto
+        {
+            Naam = "", DatumVan = vandaag.ToString("yyyy-MM-dd"), DatumTot = vandaag.ToString("yyyy-MM-dd"), Actief = true
+        };
+        isNewPeriode = true;
+        periodeMessage = null;
+    }
+
+    private void EditPeriode(VeldPeriodeDto p)
+    {
+        editingPeriode = new VeldPeriodeDto { Id = p.Id, Naam = p.Naam, DatumVan = p.DatumVan, DatumTot = p.DatumTot, Actief = p.Actief };
+        isNewPeriode = false;
+        periodeMessage = null;
+    }
+
+    private async Task OpslaanPeriodeAsync()
+    {
+        if (editingPeriode == null) return;
+        var r = isNewPeriode
+            ? await Api.CreateVeldPeriodeAsync(editingPeriode)
+            : await Api.UpdateVeldPeriodeAsync(editingPeriode.Id, editingPeriode);
+        periodeMessage = r.Success ? "Opgeslagen." : "Fout: " + r.ErrorMessage;
+        if (r.Success) { editingPeriode = null; await LoadAsync(); }
+    }
+
+    private async Task DeletePeriodeAsync(int id)
+    {
+        var r = await Api.DeleteVeldPeriodeAsync(id);
+        periodeMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
         await LoadAsync();
     }
 
