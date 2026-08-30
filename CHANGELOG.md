@@ -19,6 +19,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **`FunctionApp.Postgres` — de applicatie-datalaag voor de Postgres-tier bestaat nu daadwerkelijk**,
+  na epic #815's grootste ontbrekende stuk (#860, uitgewerkt naar vijf sub-issues). Een minimaal,
+  zelfstandig Azure Functions isolated-worker-project (net9.0) met een eigen configuratielaag
+  (`PostgresDatabaseConfig`, connectiestring via `POSTGRES_CONNECTION_STRING` — dezelfde naam als
+  het bestaande migratiepad) en een `/api/health` in hetzelfde format als de SQL Server-tier
+  (`tier="Postgres"`, `provider="Npgsql"`, `serverVersion` via `SHOW server_version`).
+  `scripts/ci/database-tiers.json`'s Postgres-rij staat nu op `"built": true` — de tier-resolver
+  levert voortaan een geldig projectpad op. Empirisch bevestigd: `func start` tegen een
+  wegwerp-Postgres-container levert een werkende `/api/health` op met de echte, live opgehaalde
+  serverversie. De feitelijke functionaliteit (beheer-, planner-, e-mail- en synchronisatiepaden)
+  volgt in vier vervolgissues (#887-#890) — dit levert uitsluitend de projectopzet zelf. (#891)
 - **`/api/health` toont nu aantoonbaar met welke databasetier en -driver het draait, en het
   daadwerkelijke versienummer van de databaseserver.** Drie nieuwe, puur additieve velden: `tier`
   en `provider` komen uit build-time assembly-metadata (nooit een runtime-gok), dus ook gevuld

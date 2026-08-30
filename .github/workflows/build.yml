@@ -53,13 +53,20 @@ jobs:
       # #818: Database.Postgres bouwt de C#-schemadefinitie/DDL-generator voor de Postgres-tier.
       # Deze build/test is onafhankelijk van welke DatabaseTier déze fork daadwerkelijk deployt
       # (#816) — PR-build verifieert dat elke gecommitte boom compileert, niet alleen de
-      # geselecteerde. De integratietests (tegen een échte Postgres-instantie) zijn hier bewust
-      # [Fact(Skip=...)] en draaien dus niet mee; zie #822/#823 voor de toekomstige CI-Postgres-job.
+      # geselecteerde. De integratietests (tegen een échte Postgres-instantie) zijn hier env-gestuurd
+      # zichtbaar overgeslagen ([PostgresFact]/[PostgresTheory], #866) — de fresh-db-postgres-job
+      # verderop in dit bestand draait ze wél, tegen de instantie die die job zelf opzet.
       - name: Database.Postgres bouwen (net9.0)
         run: dotnet build Database.Postgres/Database.Postgres.csproj --configuration Release
 
       - name: Database.Postgres.Tests draaien (unit tests, geen Postgres nodig)
         run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity minimal
+
+      # #891: FunctionApp.Postgres — de applicatie-datalaag voor de Postgres-tier (#860). Vandaag
+      # nog een minimaal project (alleen /api/health); #887-#890 breiden dit verder uit. Build-only
+      # hier, zelfde reden als Database.Postgres.Cli hieronder — geen live database in deze job.
+      - name: FunctionApp.Postgres bouwen (net9.0)
+        run: dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj --configuration Release
 
       # #819: Planner.Shared bevat de tier-agnostische veldresolutielogica (VeldResolver/
       # VeldNormalisatie) — gedeeld tussen FunctionApp (SQL Server-tier) en Database.Postgres,

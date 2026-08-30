@@ -21,7 +21,7 @@
     {
       "name": "Postgres",
       "csproj": "FunctionApp.Postgres/FunctionApp.Postgres.csproj",
-      "built": false,
+      "built": true,
       "epicIssue": 860
     },
     {
