@@ -148,7 +148,7 @@ gesloten zijn.
 
 | Sub-issue | Levert op |
 |---|---|
-| [#856](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/856) — Seed slaat zichzelf over op een verse database | Zonder dit zijn er op elke nieuwe installatie nul demoteams en -wedstrijden |
+| [#856](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/856) — Seed slaat zichzelf over op een verse database ✅ opgelost (Optie B, zie §13) | Zonder dit zijn er op elke nieuwe installatie nul demoteams en -wedstrijden |
 | [#857](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/857) — Synchronisatie-rem is dode code | Een lokale run praat nu met de externe bron en kan issues aanmaken |
 | [#858](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/858) — AVG-maskering hangt aan kolomcasing | Onder lowercase-identifiers lekken volledige e-mailadressen naar de browser |
 | [#859](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/859) — Stille faalpaden rond databaseconfiguratie | Gezondheidscheck geeft 200 zonder database; wachtlus duurt vijf minuten |
@@ -361,6 +361,39 @@ naast de bestaande kernobjecten- en identifier-casing-controles.
 **Empirisch geverifieerd:** migratiepad tweemaal toegepast tegen een wegwerp-Postgres-16-container
 — idempotent (`schema_migrations` blijft op 3 rijen), eindschema komt exact overeen met
 `dbo.Speeltijden` (op naamconventie/lowercase na, §3).
+
+## 13. Demodata-seed verhuisd naar een expliciete post-sync stap (#856, architectuurbesluit "Optie B")
+
+**Probleem:** `Database/Script.PostDeployment1.sql` zaaide de AllStars-teams/-wedstrijden direct na
+het velden-/speeltijden-blok, maar `his.teams`/`his.matches` bestaan op een verse database nog niet
+— die worden pas dynamisch aangemaakt door de ETL bij de eerste Sportlink-sync
+(`FunctionApp/CreateTable.cs` + `sp_CreateTargetTableFromSource`). De oude code ving dit op met een
+stille `PRINT` + `RETURN`: geen foutmelding, geen afwijkende exitcode, HTTP 200 op elke route terwijl
+de dagplanning, teambegeleidingspagina en testdatapagina leeg bleven.
+
+**Besluit (eigenaar, 2026-08-30): Optie B.** De democonfiguratie (velden, veldbeschikbaarheid,
+speeltijden) blijft in `Script.PostDeployment1.sql` — die tabellen bestaan altijd al. De
+team-/teambegeleiding-/wedstrijddemo (die wél van `his.teams`/`his.matches` afhangt) verhuist naar
+een los, expliciet aan te roepen script: `scripts/migrations/003-seed-allstars-demo-matches.sql`,
+uit te voeren ná de eerste sync. `Script.PostDeployment1.sql` meldt voortaan met een `RAISERROR`
+(zichtbaar in elke sqlcmd-uitvoer) of `his.teams`/`his.matches` al bestaan, in plaats van de vorige
+stille `PRINT`.
+
+**Bewust géén severity ≥ 11 op die RAISERROR:** dat zou de bestaande `-V 11`-vlag in zowel de
+`fresh-db`-CI-job als de productie-deploy laten falen — en "de eerste sync is nog niet gelopen" is
+op een gloednieuwe installatie een normale, verwachte toestand, geen fout. Severity 10 blijft
+zichtbaar (de boodschap verschijnt altijd in de log, met een uniek `(#856)`-voorvoegsel) zonder de
+deploy zelf te breken.
+
+**Empirisch bevestigd** (wegwerp-SQL-Server-2022-container, `his.teams`/`his.matches` met de hand
+aangemaakt om de na-de-eerste-sync-situatie na te bootsen): het nieuwe script zaait exact 28 teams,
+28 begeleiders en 224 wedstrijden — precies de aantallen die #856's eigen acceptatiecriterium
+noemt — en is idempotent (een tweede run voegt niets toe). De `fresh-db`-CI-job bootst dit scenario
+nu ook zelf na en bewaakt deze drie aantallen.
+
+**Nog niet gedekt:** de Postgres-tier heeft nog geen eigen demodata-seed om ditzelfde probleem in
+te hebben (dat is #862's scope) — "identiek gedrag in beide tiers" (#856's acceptatiecriterium) is
+dus pas volledig te beoordelen zodra #862 die seed levert.
 
 ## Gerelateerd
 

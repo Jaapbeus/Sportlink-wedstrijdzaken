@@ -371,6 +371,74 @@ jobs:
           SELECT 'Speeltijden: ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR) FROM [dbo].[Speeltijden] GROUP BY [ClubCode];
           "
 
+      # #856: bewijst dat scripts/migrations/003-seed-allstars-demo-matches.sql daadwerkelijk werkt
+      # zodra his.teams/his.matches bestaan (i.e. na de eerste Sportlink-sync) — een scenario dat
+      # PostDeployment zelf niet meer test (die stopt bewust met een RAISERROR zolang de sync nog
+      # niet gelopen heeft, zie hierboven). his.teams/his.matches worden hier met de hand aangemaakt
+      # (kolommen 1-op-1 overgenomen uit Database/his/Tables/Teams.sql en Matches.sql) omdat een
+      # echte sync in deze job niet beschikbaar is — #867's fixtureserver dekt dat traject apart.
+      - name: 003-seed-allstars-demo-matches.sql draaien tegen simulatie van na-de-eerste-sync
+        run: |
+          sql() { docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                    -S localhost -U sa -P "$SA_PW" -C -d SportlinkFresh -b -V 11 -h -1 -W "$@"; }
+
+          cat > /tmp/his-tables-voor-856.sql << 'SQLEOF'
+          CREATE TABLE [his].[teams](
+              [bk_teams] [nvarchar](100) NOT NULL, [teamcode] [bigint] NULL, [lokaleteamcode] [bigint] NULL,
+              [poulecode] [bigint] NULL, [teamnaam] [nvarchar](100) NULL, [competitienaam] [nvarchar](200) NULL,
+              [klasse] [nvarchar](200) NULL, [poule] [nvarchar](50) NULL, [klassepoule] [nvarchar](200) NULL,
+              [spelsoort] [nvarchar](50) NULL, [competitiesoort] [nvarchar](50) NULL, [geslacht] [nvarchar](50) NULL,
+              [teamsoort] [nvarchar](50) NULL, [leeftijdscategorie] [nvarchar](50) NULL, [kalespelsoort] [nvarchar](50) NULL,
+              [speeldag] [nvarchar](50) NULL, [speeldagteam] [nvarchar](100) NULL, [more] [nvarchar](200) NULL,
+              [mta_inserted] [datetime] NULL, [mta_modified] [datetime] NULL, [mta_deleted] [datetime] NULL,
+              [ClubCode] [nvarchar](20) NULL
+          );
+          GO
+          CREATE TABLE [his].[matches](
+              [bk_matches] NVARCHAR(100) NOT NULL, [wedstrijddatum] NVARCHAR(50) NULL, [wedstrijdcode] BIGINT NULL,
+              [wedstrijdnummer] BIGINT NULL, [datum] NVARCHAR(50) NULL, [wedstrijd] NVARCHAR(200) NULL,
+              [accommodatie] NVARCHAR(200) NULL, [aanvangstijd] NVARCHAR(50) NULL, [thuisteam] NVARCHAR(100) NULL,
+              [thuisteamid] NVARCHAR(50) NULL, [thuisteamlogo] NVARCHAR(1000) NULL,
+              [thuisteamclubrelatiecode] NVARCHAR(50) NULL, [uitteamclubrelatiecode] NVARCHAR(50) NULL,
+              [uitteam] NVARCHAR(100) NULL, [uitteamid] NVARCHAR(50) NULL, [uitteamlogo] NVARCHAR(1000) NULL,
+              [competitiesoort] NVARCHAR(200) NULL, [status] NVARCHAR(50) NULL, [meer] NVARCHAR(1000) NULL,
+              [teamnaam] NVARCHAR(100) NULL, [teamvolgorde] INT NULL, [competitie] NVARCHAR(200) NULL,
+              [klasse] NVARCHAR(100) NULL, [poule] NVARCHAR(100) NULL, [klassepoule] NVARCHAR(200) NULL,
+              [kaledatum] NVARCHAR(50) NULL, [vertrektijd] NVARCHAR(50) NULL, [verzameltijd] NVARCHAR(50) NULL,
+              [scheidsrechters] NVARCHAR(500) NULL, [scheidsrechter] NVARCHAR(200) NULL, [veld] NVARCHAR(100) NULL,
+              [veld_subpositie] NVARCHAR(5) NULL, [locatie] NVARCHAR(100) NULL, [plaats] NVARCHAR(100) NULL,
+              [rijders] NVARCHAR(200) NULL, [kleedkamerthuisteam] NVARCHAR(50) NULL, [kleedkameruitteam] NVARCHAR(50) NULL,
+              [kleedkamerscheidsrechter] NVARCHAR(50) NULL, [datumopgemaakt] NVARCHAR(50) NULL, [uitslag] NVARCHAR(50) NULL,
+              [uitslag-regulier] NVARCHAR(50) NULL, [uitslag-nv] NVARCHAR(50) NULL, [uitslag-s] NVARCHAR(50) NULL,
+              [competitienaam] NVARCHAR(200) NULL, [eigenteam] NVARCHAR(50) NULL, [sportomschrijving] NVARCHAR(100) NULL,
+              [verenigingswedstrijd] NVARCHAR(50) NULL, [mta_inserted] DATETIME NULL, [mta_modified] DATETIME NULL,
+              [mta_deleted] DATETIME NULL, [ClubCode] NVARCHAR(20) NULL
+          );
+          GO
+          SQLEOF
+          docker cp /tmp/his-tables-voor-856.sql sqlfresh:/tmp/his-tables-voor-856.sql
+          sql -i /tmp/his-tables-voor-856.sql
+
+          docker cp scripts/migrations/003-seed-allstars-demo-matches.sql sqlfresh:/tmp/003-seed.sql
+          echo "───── Run 1 ─────"
+          sql -i /tmp/003-seed.sql
+          echo "───── Run 2 (idempotentie) ─────"
+          sql -i /tmp/003-seed.sql
+
+          aantallen=$(sql -Q "
+            SET NOCOUNT ON;
+            SELECT CAST((SELECT COUNT(*) FROM his.teams WHERE ClubCode = 'ALLSTARS') AS VARCHAR)
+                 + ' ' + CAST((SELECT COUNT(*) FROM avg.Teambegeleiding WHERE ClubCode = 'ALLSTARS') AS VARCHAR)
+                 + ' ' + CAST((SELECT COUNT(*) FROM his.matches WHERE ClubCode = 'ALLSTARS') AS VARCHAR);
+          ")
+          read -r teams begeleiding matches <<< "$aantallen"
+          echo "teams=$teams begeleiding=$begeleiding matches=$matches"
+          if [ "$teams" != "28" ] || [ "$begeleiding" != "28" ] || [ "$matches" != "224" ]; then
+            echo "::error::Verwacht 28 teams/28 begeleiders/224 wedstrijden (#856), gevonden: teams=$teams begeleiding=$begeleiding matches=$matches"
+            exit 1
+          fi
+          echo "AllStars-demodata (#856): 28 teams, 28 begeleiders, 224 wedstrijden — bevestigd, ook na een herhaalde run (idempotent)."
+
       - name: Container opruimen
         if: always()
         run: docker rm -f sqlfresh || true
