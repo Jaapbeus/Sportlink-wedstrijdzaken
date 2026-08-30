@@ -376,6 +376,53 @@ SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTarg
 SELECT [SportlinkApiUrl], [SportlinkClientId] FROM [dbo].[AppSettings];
 ```
 
+### 4.3 Postgres-tier — lokale ontwikkelinfrastructuur (in aanbouw, epic #815)
+
+> **Dit is nog niet de tier die de applicatie in productie gebruikt** — vandaag is `SqlServer` de
+> enige geïmplementeerde `DatabaseTier`-waarde (zie boven). Deze sectie beschrijft alleen de lokale
+> Postgres-ontwikkelcontainer + verificatietooling voor de Postgres-sub-issues onder epic #815
+> (#822). Voor het migratiemechanisme zelf (genummerde `.sql`-bestanden,
+> `Database.Postgres/migrations/`), zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
+
+De Postgres-service in `docker-compose.yml` staat bewust achter een **profile**: een gewone
+`docker compose up -d` start alléén `sqlserver`, niet ongevraagd ook Postgres.
+
+```bash
+docker compose --profile postgres up -d postgres
+```
+
+Credentials komen uit `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`, zelfde `.env`-patroon als
+`MSSQL_SA_PASSWORD` hierboven — zet ze in hetzelfde lokale `.env`-bestand:
+
+```bash
+echo 'POSTGRES_USER=devuser' >> .env
+echo 'POSTGRES_PASSWORD=<jouw-lokale-wachtwoord>' >> .env
+echo 'POSTGRES_DB=sportlink' >> .env
+```
+
+In tegenstelling tot het SQL Server-image is Postgres' officiële image echt multi-arch (linux/amd64
+én linux/arm64) — empirisch bevestigd via `docker manifest inspect postgres:16`. Op Apple Silicon
+draait de container dus **native**, zonder Rosetta-emulatie.
+
+Verificatie via `psql` (Postgres' tegenhanger van `sqlcmd`):
+
+```powershell
+$env:PGPASSWORD = "<jouw-lokale-wachtwoord>"
+.\scripts\dev\Test-PostgresConnection.ps1
+```
+
+Vereist `psql` op je eigen machine (`winget install PostgreSQL.PostgreSQL.16` op Windows,
+`brew install libpq && brew link --force libpq` op macOS) — het script geeft die installatie-hint
+zelf ook als `psql` ontbreekt.
+
+`docker compose --profile postgres down -v` verwijdert de Postgres-container en het volume
+definitief; zonder `-v` blijft de data staan tussen restarts.
+
+**Bekend, nog niet gedaan:** macOS-uitvoeringsverificatie van deze container/scripts is in deze
+sessie niet mogelijk gebleken (geen Apple Silicon-hardware beschikbaar) — de configuratie volgt wel
+consequent de bestaande cross-platform-regels uit dit document (geen `platform: linux/amd64`, geen
+Windows-only cmdlets in de scripts).
+
 ---
 
 ## 5. local.settings.json configureren
