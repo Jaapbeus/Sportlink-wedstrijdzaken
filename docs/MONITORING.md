@@ -169,6 +169,57 @@ Azure Portal → SQL Database → Monitoring → Metrics → Metric: `Free amoun
 → New alert rule → Threshold: `10.000` (= 10% van maandlimiet).
 Controleer actuele kosten via het kostenbeleid in `CLAUDE.md` vóór aanmaken.
 
+### Onafhankelijke database-uitvalmonitor (#831)
+
+**Waarom naast Laag 3:** Laag 1-3 hierboven detecteren een uitval óf vóór een deploy (`db-check`),
+óf terwijl een gebruiker de Admin GUI open heeft (`DatabaseStatusService`), óf via Resource Health
+(dat een normale, korte serverless auto-pause niet als "Unavailable" hoeft te melden — dit is niet
+hetzelfde als een uitputting van het gratis maandbudget). De bestaande e-mail-noodmail in
+`EmailProcessorFunction` (zie [docs/EMAIL-VERWERKING.md](EMAIL-VERWERKING.md)) wordt bovendien alleen
+gecontroleerd als er toevallig inkomende e-mail is die de databaseverbinding opent. Tijdens de 5+
+dagen durende uitval van 25-30 augustus 2026 (#799/#808) bleek dát de reden dat er geen enkele
+melding is aangekomen: geen relevante e-mail → databaseverbinding nooit geprobeerd → uitval nooit
+gedetecteerd.
+
+`DatabaseUitvalMonitorFunction` (`FunctionApp/Monitoring/`) lost dit op met een losstaande,
+dagelijkse timer die de management-plane status van de database opvraagt via de Azure SQL Database
+REST API (`GET .../providers/Microsoft.Sql/servers/{server}/databases/{database}`) — een
+ARM-leesoperatie, geen databaseverbinding, dus deze check kan niet zelf slachtoffer worden van
+dezelfde storing. Staat de database langer dan ~6 uur gepauzeerd (`properties.status == "Paused"`,
+duur via `properties.pausedDate`), dan gaat er een melding uit naar `GraphMailbox`; bij een
+langdurige uitval herhaalt dit maximaal 1x per dag (de throttle-registratie is dezelfde
+`INoodmailThrottleStore` als de e-mail-noodmail, dus welke van de twee het eerst meldt onderdrukt de
+ander voor diezelfde uitval).
+
+**Kosten: €0.** Eén Function-executie per dag valt ruim binnen de Consumption-plan-limiet
+(1M executies/maand), en een ARM-managementaanroep wordt niet gefactureerd als database-compute.
+
+**Configuratie (optioneel — zonder deze stap blijft alleen de bestaande, e-mail-afhankelijke
+noodmail actief):**
+
+1. App settings op de Function App (naast de al bestaande `AzureSubscriptionId` en
+   `AzureResourceGroupName`, die #27 al introduceerde voor de FETCH_SCHEDULE-herstartfunctie):
+   ```
+   AzureSqlServerName      = [sql-servernaam]     (zonder .database.windows.net)
+   AzureSqlDatabaseName    = [database-naam]
+   DATABASE_STATUS_MONITOR_SCHEDULE = 0 0 8 * * *   (optioneel, standaard 1x per dag om 08:00 UTC)
+   ```
+2. **Eenmalige, gratis roltoewijzing:** de Function App heeft in productie al een Managed Identity
+   met een rol op zijn eigen resource (Website Contributor, voor de bestaande herstartfunctie — zie
+   `AdminSettingsFunction.TriggerFunctionAppRestartAsync`). Voor déze controle is alleen leestoegang
+   nodig:
+   ```
+   Azure Portal → SQL-server → Access control (IAM) → Add role assignment
+     Role:    Reader
+     Member:  Managed identity → System-assigned → func-[clubcode]-sportlink
+   ```
+   Dit voegt geen nieuwe Azure-resource toe en kost niets — het is een leesrol op een bestaande
+   resource voor een identity die al bestaat.
+
+Zonder stap 1 (env vars leeg) logt de functie dit als informatiebericht en doet verder niets — een
+club kan dus zonder deze configuratie blijven draaien, met alleen de bestaande, e-mail-pipeline-
+afhankelijke noodmail als vangnet.
+
 ### Activity Log Alert aanmaken (gratis)
 
 Alert bij deploy-fout (Function App restart mislukt):
