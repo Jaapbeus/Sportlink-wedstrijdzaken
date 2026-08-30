@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace SportlinkFunction.Infrastructure;
 
@@ -9,8 +10,14 @@ namespace SportlinkFunction.Infrastructure;
 /// Rapporteert onverwachte exceptions als GitHub Issues.
 /// Deduplicatie op fingerprint (zie SystemUtilities.ComputeFingerprint):
 ///   - Bestaand open issue → voeg comment toe
-///   - Geen open issue → maak nieuw issue aan
+///   - Bestaand gesloten issue → heropen + voeg comment toe (de fout is opnieuw opgetreden)
+///   - Geen bestaand issue → maak nieuw issue aan
 ///   - Al gerapporteerd binnen 24u → overslaan (rate-limiting, issue #106)
+///
+/// De dedup-lookup (<see cref="SearchIssueAsync"/>) gebruikt de gewone Issues List API
+/// (<c>GET /repos/{owner}/{repo}/issues</c>), niet de GitHub Search API. De Search API bleek
+/// bij een fine-grained PAT met alleen <c>issues:write</c>-scope onbetrouwbaar (403/404), wat
+/// de dedup stilzwijgend liet terugvallen op "altijd een nieuw issue aanmaken" — zie #830.
 ///
 /// Vereiste environment variables:
 ///   GitHubPat   — fine-grained PAT met issues:write scope (zie #103)
@@ -92,31 +99,74 @@ public static class GitHubIssueReporter
         return http;
     }
 
-    private static async Task<(int number, bool isClosed)?> SearchIssueAsync(
+    // Bovengrens aan het aantal pagina's dat doorzocht wordt — voorkomt onbegrensd doorbladeren
+    // bij een repo met veel 'bug'-gelabelde issues. 5 pagina's × 100 = 500 issues.
+    private const int SearchMaxPages = 5;
+    private const int SearchPerPage = 100;
+
+    /// <summary>
+    /// Zoekt een bestaand issue (open of gesloten) met de fingerprint-tag <c>[fp:{fp}]</c> in de
+    /// titel. Gebruikt bewust de Issues List API in plaats van de GitHub Search API — zie #830
+    /// voor de reden (Search API onbetrouwbaar met een fine-grained PAT die alleen
+    /// <c>issues:write</c>-scope heeft).
+    /// <c>internal</c> zodat FunctionApp.Tests deze dedup-lookup rechtstreeks kan afdekken
+    /// (InternalsVisibleTo, zie #476) zonder de publieke <see cref="ReportAsync"/>-signatuur
+    /// te hoeven verbouwen.
+    /// </summary>
+    internal static async Task<(int number, bool isClosed)?> SearchIssueAsync(
         HttpClient http, string owner, string repo, string fp, ILogger log)
     {
-        // Zoek in open én gesloten issues — zo wordt nooit een duplicaat aangemaakt
-        // ook niet na een cold start of nadat een issue eerder gesloten werd.
-        var query = Uri.EscapeDataString($"[fp:{fp}] in:title repo:{owner}/{repo}");
-        var url = $"https://api.github.com/search/issues?q={query}&per_page=1&sort=created&order=desc";
-        var resp = await http.GetAsync(url);
-        if (!resp.IsSuccessStatusCode)
+        var marker = $"[fp:{fp}]";
+
+        for (var page = 1; page <= SearchMaxPages; page++)
         {
-            log.LogWarning("GitHub search API: HTTP {Status}", (int)resp.StatusCode);
-            return null;
+            // state=all → doorzoekt open én gesloten issues, zodat een eerder gesloten issue
+            // (de fout is opnieuw opgetreden) ook gevonden wordt in plaats van een duplicaat aan
+            // te maken. labels=bug beperkt de resultaten tot issues die deze reporter zelf
+            // aanmaakt (zie CreateIssueAsync).
+            var url = "https://api.github.com/repos/" + owner + "/" + repo + "/issues"
+                    + $"?state=all&labels=bug&per_page={SearchPerPage}&page={page}&sort=created&direction=desc";
+
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await http.GetAsync(url);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "GitHub issues-lijst API: netwerkfout bij opzoeken fp:{Fp}", fp);
+                return null;
+            }
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                log.LogWarning("GitHub issues-lijst API: HTTP {Status} bij opzoeken fp:{Fp}", (int)resp.StatusCode, fp);
+                return null;
+            }
+
+            var json = await resp.Content.ReadAsStringAsync();
+            var items = JArray.Parse(json);
+            if (items.Count == 0) break; // geen resultaten meer
+
+            foreach (var token in items)
+            {
+                if (token is not JObject item) continue;
+                // De issues-lijst bevat ook pull requests; die hebben een 'pull_request'-veld.
+                if (item["pull_request"] != null) continue;
+
+                var title = item["title"]?.Value<string>();
+                if (title == null || !title.Contains(marker, StringComparison.Ordinal)) continue;
+
+                var number = item["number"]!.Value<int>();
+                var state = item["state"]!.Value<string>();
+                var isClosed = state == "closed";
+                log.LogInformation("Bestaand GitHub issue #{Nr} ({State}) gevonden voor fp:{Fp}", number, state, fp);
+                return (number, isClosed);
+            }
+
+            if (items.Count < SearchPerPage) break; // laatste pagina bereikt
         }
 
-        var json = await resp.Content.ReadAsStringAsync();
-        dynamic result = JsonConvert.DeserializeObject<dynamic>(json)!;
-        int count = (int)result.total_count;
-        if (count > 0)
-        {
-            int number = (int)result.items[0].number;
-            string state = (string)result.items[0].state;
-            bool isClosed = state == "closed";
-            log.LogInformation("Bestaand GitHub issue #{Nr} ({State}) gevonden voor fp:{Fp}", number, state, fp);
-            return (number, isClosed);
-        }
         return null;
     }
 
