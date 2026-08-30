@@ -336,6 +336,14 @@ sqlpackage /Action:Publish /SourceFile:SportlinkSqlDb.dacpac /TargetServerName:l
 `SqlPackage` zelf is cross-platform (`dotnet tool install -g microsoft.sqlpackage`), maar heeft
 zonder een `.dacpac` niets te publiceren.
 
+> **Bewuste keuze, vastgelegd bij #806: het `.sqlproj` blijft legacy SSDT.** Migreren naar
+> `Microsoft.Build.Sql` (het SDK-style formaat) is overwogen en afgewezen: de CI bouwt dit project
+> toch niet en de productie-deploy loopt via `Database/Script.PostDeployment1.sql`, niet via een
+> dacpac — de winst van een migratie is dus klein. Bovendien ondersteunt Visual Studio 2026 het
+> SDK-style SQL-projectformaat niet, wat een migratie op dit moment extra kosten geeft in plaats
+> van oplevert. De bestaande workaround (`sportlink-wedstrijdzaken.slnf` zonder het `.sqlproj`,
+> hierboven en in sectie 8) blijft dus de standaard voor cross-platform builds.
+
 ### 4.3 Sportlink API-credentials instellen
 
 ```sql
@@ -613,11 +621,7 @@ Klik op **New repository secret** voor elk van de volgende:
 **`AZURE_CREDENTIALS` aanmaken via Azure CLI:**
 
 ```bash
-az ad sp create-for-rbac \
-  --name "sp-[clubcode]-sportlink-deploy" \
-  --role contributor \
-  --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group> \
-  --sdk-auth
+az ad sp create-for-rbac --name "sp-[clubcode]-sportlink-deploy" --role contributor --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group> --sdk-auth
 ```
 
 Kopieer de volledige JSON-output (inclusief accolades) als waarde voor het secret.

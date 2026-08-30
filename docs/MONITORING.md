@@ -43,10 +43,7 @@ De Function App leest `APPLICATIONINSIGHTS_CONNECTION_STRING` automatisch als Ap
 Stel in via:
 
 ```bash
-az functionapp config appsettings set \
-  --name func-[clubcode]-sportlink \
-  --resource-group [sql-resource-group] \
-  --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=<connection-string>"
+az functionapp config appsettings set --name func-[clubcode]-sportlink --resource-group [sql-resource-group] --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=<connection-string>"
 ```
 
 Of via Azure Portal → Function App → Settings → Environment variables.
@@ -153,11 +150,7 @@ Het `/api/health` endpoint probeert een `SELECT 1` met 5 seconden timeout en ret
 Voer eenmalig het script uit om een gratis Resource Health Alert te maken:
 
 ```powershell
-.\scripts\azure\Setup-SqlAlerts.ps1 `
-    -ResourceGroup "[sql-resource-group]" `
-    -SqlServerName "[sql-servernaam]" `
-    -DatabaseName "[database-naam]" `
-    -NotificationEmail "beheerder@[club-domein]"
+.\scripts\azure\Setup-SqlAlerts.ps1 -ResourceGroup "[sql-resource-group]" -SqlServerName "[sql-servernaam]" -DatabaseName "[database-naam]" -NotificationEmail "beheerder@[club-domein]"
 ```
 
 Dit maakt aan:
@@ -225,23 +218,13 @@ afhankelijke noodmail als vangnet.
 Alert bij deploy-fout (Function App restart mislukt):
 
 ```bash
-az monitor activity-log alert create \
-  --name "FunctionApp-deploy-fout" \
-  --resource-group [sql-resource-group] \
-  --scopes "/subscriptions/<id>/resourceGroups/[sql-resource-group]/providers/Microsoft.Web/sites/func-[clubcode]-sportlink" \
-  --condition category=Administrative and operationName=Microsoft.Web/sites/write and status=Failed \
-  --action-group /subscriptions/<id>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/<naam>
+az monitor activity-log alert create --name "FunctionApp-deploy-fout" --resource-group [sql-resource-group] --scopes "/subscriptions/<id>/resourceGroups/[sql-resource-group]/providers/Microsoft.Web/sites/func-[clubcode]-sportlink" --condition category=Administrative and operationName=Microsoft.Web/sites/write and status=Failed --action-group /subscriptions/<id>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/<naam>
 ```
 
 ### Resource Health Alert aanmaken (gratis)
 
 ```bash
-az monitor activity-log alert create \
-  --name "FunctionApp-resource-health" \
-  --resource-group [sql-resource-group] \
-  --scopes "/subscriptions/<id>/resourceGroups/[sql-resource-group]" \
-  --condition category=ResourceHealth and resourceType=Microsoft.Web/sites \
-  --action-group /subscriptions/<id>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/<naam>
+az monitor activity-log alert create --name "FunctionApp-resource-health" --resource-group [sql-resource-group] --scopes "/subscriptions/<id>/resourceGroups/[sql-resource-group]" --condition category=ResourceHealth and resourceType=Microsoft.Web/sites --action-group /subscriptions/<id>/resourceGroups/<rg>/providers/microsoft.insights/actionGroups/<naam>
 ```
 
 ---
