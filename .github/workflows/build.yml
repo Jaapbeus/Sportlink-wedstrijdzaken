@@ -443,14 +443,17 @@ jobs:
           fi
           echo "ClubCode-dekking bevestigd voor alle vier tabellen."
 
-          # schema_migrations moet precies één toegepaste migratie tonen (001_baseline.sql) — geen
-          # dubbele rij door de tweede run hierboven.
+          # schema_migrations moet precies evenveel rijen tonen als er .sql-bestanden in de
+          # migratiemap staan — geen dubbele rij door de tweede run hierboven. Geteld vanaf schijf
+          # i.p.v. hardcoded, zodat een volgend migratiebestand (#824 voegde het tweede toe) deze
+          # assertie niet stil laat verouderen.
+          verwacht_aantal=$(ls Database.Postgres/migrations/*.sql | wc -l)
           count=$(psql_ci -c "SELECT COUNT(*) FROM public.schema_migrations;")
-          if [ "$count" != "1" ]; then
-            echo "::error::Verwacht 1 toegepaste migratie in schema_migrations, gevonden: $count"
+          if [ "$count" != "$verwacht_aantal" ]; then
+            echo "::error::Verwacht $verwacht_aantal toegepaste migratie(s) in schema_migrations, gevonden: $count"
             exit 1
           fi
-          echo "schema_migrations: exact 1 toegepaste migratie, geen duplicaat door de idempotentie-run."
+          echo "schema_migrations: exact $verwacht_aantal toegepaste migratie(s), geen duplicaat door de idempotentie-run."
 
           # Identifier-casing-conventie (ARCHITECTUUR-DATABASE-TIERS.md §3): geen enkele kolomnaam
           # in de vier tabellen mag afwijken van zijn eigen lowercase-vorm.
