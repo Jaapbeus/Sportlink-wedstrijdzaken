@@ -142,6 +142,10 @@ public static class AdminTeambegeleidingFunction
             var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
+            // #827: één keer geresolved, gebruikt voor zowel de opt-out-check als de audit-insert
+            // hieronder — geen directe `new SqlEmailPersistenceRepository()` meer.
+            var persistenceRepository = context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>();
+
             // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
             // houdt het oude gedrag (server-side TOP 1-lookup + coördinator-fallback) intact —
             // bestaande API-consumers blijven werken zonder het nieuwe veld mee te sturen.
@@ -152,7 +156,7 @@ public static class AdminTeambegeleidingFunction
                 if (!parseResultaat.IsValid)
                     return new BadRequestObjectResult(new { error = parseResultaat.FoutMelding });
 
-                var uitgesloten = await new SqlEmailPersistenceRepository().GetExcludedEmailAddressesAsync(clubCode);
+                var uitgesloten = await persistenceRepository.GetExcludedEmailAddressesAsync(clubCode);
                 var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
                 if (geweigerdAdres != null)
                     return new BadRequestObjectResult(new
@@ -229,7 +233,7 @@ public static class AdminTeambegeleidingFunction
             // verzendpoging kunnen leiden).
             try
             {
-                await EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync(
+                await persistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
                     dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
             }
             catch (Exception auditEx)

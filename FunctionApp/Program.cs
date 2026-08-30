@@ -3,8 +3,10 @@ using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using OpenAI.Chat;
+using SportlinkFunction.Email;
 using SportlinkFunction.TeamResolution;
 
 var builder = FunctionsApplication.CreateBuilder(args);
@@ -19,6 +21,13 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
 {
     var credential = new ClientSecretCredential(tenantId, clientId, graphAppCredential);
     builder.Services.AddSingleton(new GraphServiceClient(credential));
+
+    // IEmailGraphService alleen registreren als Graph zelf geconfigureerd is (#827) — anders zou een
+    // resolutiepoging een GraphServiceClient-afhankelijkheid missen die er per ontwerp niet is.
+    builder.Services.AddSingleton<IEmailGraphService>(sp =>
+        new EmailGraphService(
+            sp.GetRequiredService<GraphServiceClient>(),
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<EmailGraphService>()));
 }
 
 // IChatClient: provider-agnostische AI-abstractie (CLAUDE.md architectuurregel).
@@ -48,6 +57,17 @@ builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>
 builder.Services.AddSingleton<ITeamResolver, TeamResolver>();
 builder.Services.AddSingleton<TeamAliasLearningService>();
 builder.Services.AddSingleton<TeamlijstGereedheid>();
+
+// Repository-boundary voor de e-mailverwerking (#827): vóór deze registratie omzeilden
+// EmailProcessorFunction, EmailPersistenceService en AdminTeambegeleidingFunction de DI-container
+// met eigen `new`-instantiaties. SqlEmailPersistenceRepository is stateless (elke methode
+// opent/sluit een eigen SqlConnection) — Singleton is concurrency-veilig.
+// Factory-registraties (i.p.v. AddSingleton<TService, TImplementation>()): beide implementatietypen
+// zijn bewust `internal` — de generieke registratievorm vereist een publieke constructor, wat hier
+// de encapsulatie van dit interne subsysteem zou doorbreken.
+builder.Services.AddSingleton<IEmailPersistenceRepository>(_ => new SqlEmailPersistenceRepository());
+builder.Services.AddSingleton<IEmailPersistenceService>(sp =>
+    new EmailPersistenceService(sp.GetRequiredService<IEmailPersistenceRepository>()));
 
 // CORS voor lokale dev: geconfigureerd via Host.CORS in local.settings.json (Functions host-level).
 // In productie (Azure SWA) is CORS niet nodig: SWA proxying houdt alles op dezelfde origin.

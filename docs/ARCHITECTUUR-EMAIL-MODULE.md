@@ -1,9 +1,12 @@
 # Architectuur — E-mail module
 
-> **Dit document is analyse + ontwerp, geen implementatie.** Er is in deze sessie geen code
-> gewijzigd. Raadpleeg dit document vóórdat je: (a) een nieuw Blazor-scherm bouwt dat e-mail moet
-> kunnen versturen, (b) `EmailGraphService`, `EmailProcessingRepository` of `EmailTemplateService`
-> aanraakt, of (c) de "verzenden als mezelf"-eis (afzenderstrategie, §4.6) oppakt.
+> **Dit document is analyse + ontwerp voor de grotere migratie (§2+), nog niet geïmplementeerd.**
+> Raadpleeg dit document vóórdat je: (a) een nieuw Blazor-scherm bouwt dat e-mail moet kunnen
+> versturen, (b) `EmailGraphService`, `SqlEmailPersistenceRepository` of `EmailTemplateService`
+> aanraakt, of (c) de "verzenden als mezelf"-eis (afzenderstrategie, §4.6) oppakt. **Update #827
+> (2026-08-30):** de in §1.5 beschreven DI-bypasses en de derde indirectielaag
+> (`EmailProcessingRepository`) zijn inmiddels opgelost — zie §1.5 voor de huidige stand. De rest van
+> dit document (§2+) blijft ongewijzigd toekomstig ontwerp.
 
 > **De code is leidend.** Staat er iets in dit document dat je niet terugvindt op de genoemde
 > bestand:regel-verwijzing, dan is dit document fout — meld het als issue onder het epic (§7).
@@ -34,10 +37,9 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Email/EmailGraphService.cs` | Enige plek die Microsoft Graph `SendMail` aanroept. Wrapt Graph SDK: ongelezen mail ophalen, categoriseren, `SendReplyAsync` (automatische AI-reply), `StuurTeamContactDoorAsync` (doorsturen naar begeleiding). Leest de vaste mailbox uit de env var `GraphMailbox` (regel 17, 23-24) |
 | `FunctionApp/Email/IEmailGraphService.cs` | Het huidige contract — 6 methoden, waarvan 2 daadwerkelijk versturen |
 | `FunctionApp/Email/EmailBijlage.cs` | Immutable `record` voor één bijlage (bestandsnaam, bytes, content-type) |
-| `FunctionApp/Email/EmailProcessorFunction.cs` | Timer-getriggerde orchestrator van de volledige AI-pipeline (fase 1: Graph+AI zonder DB, fase 2: DB-state-machine), 1063 regels |
-| `FunctionApp/Email/EmailProcessingRepository.cs` | `internal static` ADO.NET-repository voor `planner.EmailVerwerking` — inclusief de synthetische audit-insert (regel 96-121, zie §1.6) |
+| `FunctionApp/Email/EmailProcessorFunction.cs` | Timer-getriggerde orchestrator van de volledige AI-pipeline (fase 1: Graph+AI zonder DB, fase 2: DB-state-machine); haalt `IEmailGraphService`/`IEmailPersistenceService` sinds #827 via DI op (`context.InstanceServices`), niet meer met `new` |
 | `FunctionApp/Email/EmailPersistenceService.cs` | Dunne, DI-testbare wrapper rond `IEmailPersistenceRepository` (zie §1.5 voor de laagstructuur) |
-| `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository`, die op zijn beurt alles doorzet naar de `static` klassen `EmailProcessingRepository`/`LearningMomentRepository` |
+| `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository` — bevat sinds #827 rechtstreeks de ADO.NET-toegang tot `planner.EmailVerwerking` (voorheen een aparte `EmailProcessingRepository`, nu geabsorbeerd); forwardt alleen classificatiecorrectie/leermomenten nog naar `LearningMomentRepository` |
 | `FunctionApp/Email/EmailBatchFilterService.cs` | Fase-1-voorfilter: eigen mailbox, gecachede uitsluitingslijst |
 | `FunctionApp/Email/EmailClassificationService.cs` | Batch-wrapper rond de AI-classificatie, vangt quota-fouten |
 | `FunctionApp/Email/EmailReplyPolicyService.cs` | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan |
@@ -76,11 +78,11 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 |---|---|---|
 | Trigger | Timer (`EMAIL_POLL_SCHEDULE`), `EmailProcessorFunction.Run` | HTTP POST, `AdminTeambegeleidingFunction.Doorsturen` |
 | Graph-aanroep | `EmailGraphService.SendReplyAsync` (regel 193-256) of `.StuurTeamContactDoorAsync` (regel 271-311) voor `TeamContactOpvragen` | `EmailGraphService.StuurTeamContactDoorAsync` (regel 271-311) |
-| `EmailGraphService`-constructie | `new EmailGraphService(graphClient, loggerFactory.CreateLogger<...>())` — `EmailProcessorFunction.cs:231` | `new EmailGraphService(graphClient, loggerFactory.CreateLogger<...>())` — `AdminTeambegeleidingFunction.cs:213` (los, tweede keer dezelfde constructie-boilerplate) |
+| `EmailGraphService`-constructie | Sinds #827 via DI: `context.InstanceServices.GetService<IEmailGraphService>()` (Program.cs registreert de factory zodra Graph geconfigureerd is) | Nog steeds `new EmailGraphService(graphClient, loggerFactory.CreateLogger<...>())` — `AdminTeambegeleidingFunction.cs:213` (bewust buiten de #827-scope gelaten; geen enkele review vlagde dit specifieke call-site) |
 | Afzender-mailbox | Vaste `GraphMailbox` (systeem, app-only) | Zelfde vaste `GraphMailbox` |
 | Sjabloon | `EmailTemplateService` + `BerichtResponseGenerator`, incl. gedeelde `EmailVoetnoot` | Handgebouwde HTML-string met losse `WebUtility.HtmlEncode(...)`-aanroepen per veld (`AdminTeambegeleidingFunction.cs:216-222`) — **geen** `EmailTemplateService`, **geen** gedeelde voetnoot |
 | Ontvangerresolutie | Server-side lookup via `PlannerDataAccess.GetTeamleiderContactAsync` (automatische classificatie) | `OntvangerParser.Parse` op het vrije "Email Aan"-veld, met server-side TOP-1-fallback als het veld leeg is (regel 145-203) |
-| Opt-out-check | `IEmailPersistenceService.LaadUitgeslotenAdressenAsync` (via DI-testbare laag) | `new SqlEmailPersistenceRepository().GetExcludedEmailAddressesAsync(clubCode)` — **rechtstreeks geïnstantieerd**, buiten de DI-testbare laag om (`AdminTeambegeleidingFunction.cs:155`) |
+| Opt-out-check | `IEmailPersistenceService.LaadUitgeslotenAdressenAsync` (via DI-testbare laag) | Sinds #827: `context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>().GetExcludedEmailAddressesAsync(clubCode)` — geïnjecteerd, geen `new` meer |
 | Logging | `planner.EmailVerwerking`, rijke statusmachine (`Pogingen`, `VerzendPogingOpUtc`, `IsBeantwoord`, idempotentie) | `planner.EmailVerwerking`, **synthetische** rij met gegenereerd `MessageId` (§1.6) |
 | Auth-boilerplate | N.v.t. (timer-trigger, geen `HttpRequest`) | Inline `RequireAdmin` + correlation-scope, **niet** via `AdminEndpoint.ExecuteAsync` |
 
@@ -108,10 +110,12 @@ Beide zijn Function App **application settings** (niet `dbo.AppSettings`) — zi
 `GraphClientSecret`, `GraphMailbox`). Dit is de "systeem-afzender" uit de kernvraag: één vaste
 mailbox, één app-only credential, gebruikt door **beide** bestaande verzendpaden.
 
-`IEmailGraphService` is **niet** in DI geregistreerd — beide call-sites doen zelf
-`new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>())` nadat ze de
-`GraphServiceClient` uit `context.InstanceServices` hebben opgehaald. Dat is losse, kopieerbare
-boilerplate, geen gedeelde registratie.
+**Sinds #827 (2026-08-30)** is `IEmailGraphService` wél in DI geregistreerd (`Program.cs`, alleen
+als Graph geconfigureerd is) en gebruikt `EmailProcessorFunction.Run` de geïnjecteerde instantie.
+`AdminTeambegeleidingFunction.Doorsturen` doet nog steeds zelf
+`new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>())` — dat
+call-site viel buiten de scope van #827 (geen enkele review vlagde het) en blijft losse,
+kopieerbare boilerplate.
 
 ### 1.4 Wat de server al weet over de ingelogde gebruiker
 
@@ -145,30 +149,35 @@ Er wordt **uitsluitend** de eigen API-scope aangevraagd — geen Microsoft Graph
 dat "verzenden als mezelf" vandaag geen enkele bouwsteen heeft, noch client-side (geen Graph-scope
 in MSAL) noch server-side (geen OBO-code, geen tweede Graph-credential).
 
-### 1.5 Layering-eigenaardigheid: drie lagen boven één static repository
+### 1.5 Layering — opgelost sinds #827 (2026-08-30)
 
-`EmailProcessorFunction` gebruikt `IEmailPersistenceService` (interface, voor testbaarheid), waarvan
-de enige implementatie `EmailPersistenceService` (`FunctionApp/Email/EmailPersistenceService.cs:95-185`)
-zelf weer een `IEmailPersistenceRepository` injecteert. De enige productie-implementatie daarvan,
-`SqlEmailPersistenceRepository` (`FunctionApp/Email/IEmailPersistenceRepository.cs:33-106`), doet op
-zijn beurt niets anders dan elke methode doorzetten naar de `internal static class
-EmailProcessingRepository` (het echte ADO.NET) of `LearningMomentRepository`. Bijvoorbeeld:
+**Vóór #827** gebruikte `EmailProcessorFunction` `IEmailPersistenceService` (interface, voor
+testbaarheid), waarvan de enige implementatie `EmailPersistenceService` zelf weer een
+`IEmailPersistenceRepository` injecteerde. De enige productie-implementatie daarvan,
+`SqlEmailPersistenceRepository`, deed niets anders dan elke methode doorzetten naar een aparte
+`internal static class EmailProcessingRepository` (het echte ADO.NET) — drie lagen indirectie
+voor testbaarheid van precies één call-site, waarvan de binnenste twee laagjes puur pass-through
+waren. Belangrijker: `AdminTeambegeleidingFunction` omzeilde deze hele laag — rechtstreeks
+`new SqlEmailPersistenceRepository()` voor de opt-out-check, rechtstreeks de `static`
+`EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync` voor de audit-insert — buiten
+elke DI-registratie om.
 
-```csharp
-// SqlEmailPersistenceRepository (IEmailPersistenceRepository.cs:53-54)
-public Task<int> InsertEmailVerwerkingAsync(InkomendBericht email)
-    => EmailProcessingRepository.InsertEmailVerwerkingAsync(email);
-```
+**Na #827:**
+- `EmailProcessingRepository` bestaat niet meer als apart bestand — de ADO.NET-toegang zit nu
+  rechtstreeks in `SqlEmailPersistenceRepository`
+  (`FunctionApp/Email/IEmailPersistenceRepository.cs:68-430`; interface + exception op regels 1-59).
+  Twee lagen (Service → Repository) is normale, niet-anomale layering, geen aparte sectie meer waard.
+- `IEmailPersistenceRepository` en `IEmailPersistenceService` zijn beide geregistreerd in
+  `Program.cs` (Singleton, via factory-registratie omdat beide implementatietypen bewust `internal`
+  blijven — zie de code-comment daar voor de reden).
+- `EmailProcessorFunction.Run` en `AdminTeambegeleidingFunction.Doorsturen` gebruiken beide dezelfde
+  geïnjecteerde `IEmailPersistenceRepository`/`IEmailPersistenceService` — geen `new
+  SqlEmailPersistenceRepository()` meer in de codebase (geverifieerd: 0 treffers).
+- De audit-insert (`InsertTeambegeleidingDoorsturenAuditAsync`) is nu onderdeel van
+  `IEmailPersistenceRepository` zelf, niet meer van een losstaande static class.
 
-Dit is **geen gedupliceerde bedrijfslogica** — elke laag delegeert correct en voegt niets dubbel
-uit. Het is wel drie lagen indirectie voor testbaarheid van precies één call-site
-(`EmailProcessorFunction`), waarvan de binnenste twee laagjes puur pass-through zijn. Belangrijker:
-`AdminTeambegeleidingFunction` **omzeilt deze hele laag**. Voor de opt-out-check instantieert het
-rechtstreeks `new SqlEmailPersistenceRepository()` (`AdminTeambegeleidingFunction.cs:155`), en voor
-de audit-insert roept het rechtstreeks de `static EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync`
-aan (regel 232-233) — buiten `IEmailPersistenceService` om. Er zijn dus vandaag al **twee
-verschillende toegangspatronen** tot dezelfde onderliggende tabel vanuit twee verschillende
-call-sites, geen van beide consistent via de "officiële" testbare interface.
+Er is dus nu **één** toegangspatroon tot `planner.EmailVerwerking` vanuit beide call-sites, altijd
+via de geïnjecteerde interface.
 
 ### 1.6 De synthetische MessageId-smell (al gedocumenteerd, nu concreet aangetoond)
 
@@ -179,11 +188,12 @@ call-sites, geen van beide consistent via de "officiële" testbare interface.
 > TeambegeleidingDoorsturen` (een synthetische audit-rij, geen echt inkomend bericht — `MessageId`
 > is gegenereerd, niet afkomstig van Graph)."*
 
-De code erachter, `EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync`
-(`FunctionApp/Email/EmailProcessingRepository.cs:96-121`):
+De code erachter, `SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync`
+(`FunctionApp/Email/IEmailPersistenceRepository.cs:156-174`, sinds #827 onderdeel van
+`IEmailPersistenceRepository` i.p.v. een losstaande static class):
 
 ```csharp
-internal static async Task InsertTeambegeleidingDoorsturenAuditAsync(
+public async Task InsertTeambegeleidingDoorsturenAuditAsync(
     string teamNaam, string aanvragerEmail, string ontvangersRegel, string clubCode)
 {
     ...
@@ -270,9 +280,9 @@ moet een developer vandaag zelf:
 3. Zelf beslissen hoe de ontvangerslijst gevalideerd wordt: `OntvangerParser` hergebruiken (goed) of
    een eigen validatie schrijven (waarschijnlijk, want er is geen hogere-orde-service die parse +
    opt-out-check combineert).
-4. Zelf de opt-out-lijst raadplegen — en dan kiezen tussen de DI-testbare `IEmailPersistenceService`
-   (niet ontworpen voor hergebruik buiten de AI-pipeline) of, zoals `AdminTeambegeleidingFunction`
-   al deed, rechtstreeks `new SqlEmailPersistenceRepository()` (§1.5).
+4. Zelf de opt-out-lijst raadplegen via de geïnjecteerde `IEmailPersistenceRepository` (sinds #827
+   consistent, zie §1.5) — die is intern nog steeds gericht op de AI-pipeline-datamodel-vorm, niet
+   een vrij herbruikbare, generieke opt-out-service voor een willekeurig nieuw verzendpad.
 5. Zelf de HTML-body bouwen: `EmailTemplateService` (ontworpen rond de vaste classificatie-keys van
    de AI-pipeline, niet vrij herbruikbaar) of, zoals vandaag, handmatige string-interpolatie met
    losse `HtmlEncode`-aanroepen (§1.2) — zonder de gedeelde `EmailVoetnoot`.
@@ -320,8 +330,8 @@ vermeerderen.
 
 `EmailSanitizer`, `OntvangerParser` en `EmailTemplateService` zijn al puur, los en getest — die
 worden hergebruikt, niet herschreven. `planner.EmailVerwerking` en de volledige AI-statusmachine
-(`EmailProcessorFunction`, `EmailProcessingRepository`, `EmailPersistenceService`,
-`EmailReplyPolicyService`, `EmailIdempotentie`, `EmailBatchFilterService`,
+(`EmailProcessorFunction`, `IEmailPersistenceRepository`/`SqlEmailPersistenceRepository`,
+`EmailPersistenceService`, `EmailReplyPolicyService`, `EmailIdempotentie`, `EmailBatchFilterService`,
 `EmailClassificationService`) blijven **ongewijzigd** — ze zijn functioneel compleet voor hun eigen
 scope (inkomende post) en hebben geen enkele architecturale reden om te migreren. Alleen de
 synthetische-audit-insert (§1.6) verdwijnt eruit.
@@ -351,7 +361,7 @@ FunctionApp/Email/
 ├── EmailGraphService.cs / IEmailGraphService.cs   (ONGEWIJZIGD — interne Graph-adapter, niet meer
 │                                        rechtstreeks door nieuwe call-sites aangeroepen)
 ├── EmailBijlage.cs                    (ONGEWIJZIGD)
-└── ... (AI-pipeline-bestanden ONGEWIJZIGD: EmailProcessorFunction, EmailProcessingRepository,
+└── ... (AI-pipeline-bestanden ONGEWIJZIGD: EmailProcessorFunction, IEmailPersistenceRepository.cs,
         EmailPersistenceService, BerichtAiService, BerichtResponseGenerator,
         EmailReplyPolicyService, EmailBatchFilterService, EmailClassificationService,
         CleanupEmailVerwerkingFunction)
@@ -440,12 +450,13 @@ public sealed class OntvangerResolutieService(IUitsluitingslijstRepository uitsl
 ```
 
 `IUitsluitingslijstRepository` verplaatst de bestaande `GetExcludedEmailAddressesAsync(clubCode)`-query
-(vandaag in `SqlEmailPersistenceRepository`, `IEmailPersistenceRepository.cs:8` en `:35-48`) naar een
-eigen, kleine interface zodat zowel de AI-pipeline als elk nieuw scherm hem via DI krijgen — in
-plaats van dat een admin-functie zelf een `new SqlEmailPersistenceRepository()` opzoekt zoals nu
-(`AdminTeambegeleidingFunction.cs:155`). Dit is de bouwsteen die §2.2's "opt-out-check kan
-stilzwijgend ontbreken"-risico wegneemt: één plek die parse + uitsluiting combineert, niet twee losse
-stappen die een nieuwe call-site apart moet onthouden.
+(vandaag in `SqlEmailPersistenceRepository`, `IEmailPersistenceRepository.cs:28` en `:82-96`) naar een
+eigen, kleine interface zodat zowel de AI-pipeline als elk nieuw scherm hem via DI krijgen. Sinds
+#827 injecteert `AdminTeambegeleidingFunction` hiervoor al `IEmailPersistenceRepository` (niet meer
+`new SqlEmailPersistenceRepository()`) — deze toekomstige stap zou de opt-out-query verder
+loskoppelen van de rest van het (grotere, AI-pipeline-gerichte) repository-oppervlak. Dit is de
+bouwsteen die §2.2's "opt-out-check kan stilzwijgend ontbreken"-risico wegneemt: één plek die parse
++ uitsluiting combineert, niet twee losse stappen die een nieuwe call-site apart moet onthouden.
 
 ### 3.4 Eén generiek logging-schema — nieuwe tabel, niet `planner.EmailVerwerking`
 
@@ -665,7 +676,9 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
 ### Fase 1 — Migreer de handmatige doorstuur-actie (opvolger van #765)
 
 - `AdminTeambegeleidingFunction.Doorsturen` gebruikt `IEmailVerzendService` in plaats van
-  rechtstreeks `new EmailGraphService(...)` + `EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync`.
+  rechtstreeks `new EmailGraphService(...)` (sinds #827 al via DI voor de repository-kant, maar de
+  Graph-constructie op `AdminTeambegeleidingFunction.cs:213` staat nog steeds los) +
+  `IEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync`.
 - De `OntvangerParser`-aanroep verplaatst naar `OntvangerResolutieService`; het parse-gedrag zelf
   verandert niet, dus `FunctionApp.Tests/Utilities/OntvangerParserTests.cs` (13 tests, §1.9) blijft
   ongewijzigd groen.

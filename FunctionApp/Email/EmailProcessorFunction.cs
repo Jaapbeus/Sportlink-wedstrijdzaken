@@ -1,7 +1,6 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Graph;
 using Newtonsoft.Json;
 using SportlinkFunction.Processing;
 using SportlinkFunction.TeamResolution;
@@ -209,8 +208,10 @@ public class EmailProcessorFunction
             return;
         }
 
-        var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
-        if (graphClient == null)
+        // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is (Program.cs) — een
+        // ontbrekende registratie betekent hier hetzelfde als een eerder ontbrekende GraphServiceClient.
+        var graphService = context.InstanceServices.GetService<IEmailGraphService>();
+        if (graphService == null)
         {
             log.LogError("GraphServiceClient niet beschikbaar — controleer Graph settings");
             return;
@@ -228,8 +229,8 @@ public class EmailProcessorFunction
             return;
         }
 
-        IEmailGraphService graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
-        IEmailPersistenceService persistenceService = new EmailPersistenceService();
+        // IEmailPersistenceService is onvoorwaardelijk geregistreerd (#827) — geen eigen `new` meer.
+        var persistenceService = context.InstanceServices.GetRequiredService<IEmailPersistenceService>();
         var batchFilterService = new EmailBatchFilterService();
         var classificationService = new EmailClassificationService();
         var replyPolicyService = new EmailReplyPolicyService();

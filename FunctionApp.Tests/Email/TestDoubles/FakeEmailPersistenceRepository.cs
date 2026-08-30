@@ -88,4 +88,8 @@ internal sealed class FakeEmailPersistenceRepository : IEmailPersistenceReposito
 
     public Task<List<ClassificatieCorrectieVoorbeeld>> HaalLeermomentVoorbeeldenOpAsync(string clubCode, ILogger log)
         => throw new NotImplementedException();
+
+    public Task InsertTeambegeleidingDoorsturenAuditAsync(
+        string teamNaam, string aanvragerEmail, string ontvangersRegel, string clubCode)
+        => throw new NotImplementedException();
 }
