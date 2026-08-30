@@ -911,4 +911,7 @@ Template: {key}          ← alleen bij template-gebaseerde antwoorden
 ==================
 ```
 
-Dit blok wordt in review-mode opgeslagen in `AntwoordEmail`; er wordt niets doorgestuurd.
+Dit blok wordt in review-mode opgeslagen in `AntwoordEmail` én verstuurd naar de app setting
+`EmailReviewRecipient` (herstel van een regressie uit #543, zie #801) — de originele afzender
+krijgt nog steeds nooit iets te zien. Is `EmailReviewRecipient` niet geconfigureerd, dan wordt
+alleen opgeslagen en gelogd dat er geen testmail is verstuurd.

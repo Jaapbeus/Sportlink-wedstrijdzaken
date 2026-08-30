@@ -2771,17 +2771,32 @@ BEGIN
                (102, 'Kunstgras 2', 'kunstgras',  1, 1, @DemoClub),
                (103, 'Gras',        'natuurgras', 0, 1, @DemoClub);
 
-    -- VeldBeschikbaarheid: DagVanWeek volgt .NET DayOfWeek (0 = zondag, 6 = zaterdag), dezelfde
-    -- conventie als de bestaande rijen van de primaire club.
+    -- VeldBeschikbaarheid: DagVanWeek volgt dezelfde conventie als de rest van de applicatie —
+    -- 1=maandag ... 7=zondag (zie PlannerAvailabilityRepository, dat .NET DayOfWeek.Sunday (0)
+    -- expliciet omzet naar 7) — niet de .NET-native DayOfWeek-waarden. Een eerdere versie van deze
+    -- seed gebruikte per abuis .NET DayOfWeek en zaaide daardoor maar 2 van de 7 dagen, met de
+    -- "zondag"-rij als DagVanWeek=0 (geen match in DagNaam() en onvindbaar voor de planner, die
+    -- altijd op 7 zoekt) — zie #812.
     -- 08:30-22:00 sluit aan op wat een club in de praktijk aanhoudt en is ruim genoeg voor de
     -- 14 thuiswedstrijden per speeldag; met een krapper venster loopt de planner over zijn
     -- beschikbaarheid heen en eindigt de demo met een onrealistisch schema.
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid] WHERE [ClubCode] = @DemoClub)
-        INSERT INTO [dbo].[VeldBeschikbaarheid]
-            ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
-        SELECT v.[VeldNummer], d.[Dag], '08:30', '22:00', 0, @DemoClub
-        FROM (VALUES (101), (102), (103)) AS v([VeldNummer])
-        CROSS JOIN (VALUES (6), (0)) AS d([Dag]);
+    --
+    -- Idempotente correctie (i.p.v. IF NOT EXISTS ... INSERT): een omgeving die al met de foutieve
+    -- #812-seed is gevuld, herstelt zichzelf zo alsnog bij de volgende deploy, in plaats van dat de
+    -- oude IF NOT EXISTS-guard verdere seeding blokkeert omdat er al (foutieve) rijen bestaan.
+    UPDATE [dbo].[VeldBeschikbaarheid]
+    SET [DagVanWeek] = 7
+    WHERE [ClubCode] = @DemoClub AND [DagVanWeek] = 0;
+
+    INSERT INTO [dbo].[VeldBeschikbaarheid]
+        ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
+    SELECT v.[VeldNummer], d.[Dag], '08:30', '22:00', 0, @DemoClub
+    FROM (VALUES (101), (102), (103)) AS v([VeldNummer])
+    CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7)) AS d([Dag])
+    WHERE NOT EXISTS (
+        SELECT 1 FROM [dbo].[VeldBeschikbaarheid] vb
+        WHERE vb.[ClubCode] = @DemoClub AND vb.[VeldNummer] = v.[VeldNummer] AND vb.[DagVanWeek] = d.[Dag]
+    );
 
     -- Speeltijden: overgenomen van de primaire club in plaats van hardcoded. Dit zijn
     -- KNVB-standaarden, dus zo blijft de demo consistent met wat de club zelf heeft ingesteld

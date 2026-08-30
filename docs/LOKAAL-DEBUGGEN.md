@@ -1,6 +1,12 @@
 # Lokaal Debuggen — Sportlink Wedstrijdzaken (v2.7)
 
 Gids voor het lokaal draaien en debuggen van de v2.7-stack: FunctionApp (.NET 9) + BlazorAdmin (.NET 10 Blazor WASM).
+Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
+[DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) voor de volledige installatie-instructies per platform.
+
+> **Pad-notatie:** de `.\scripts\dev\...`-commando's hieronder staan in Windows-stijl. Op macOS
+> werkt hetzelfde commando met forward slashes, bijvoorbeeld `./scripts/dev/Start-Debug.ps1` in
+> plaats van `.\scripts\dev\Start-Debug.ps1` — een backslash is daar geen pad-scheidingsteken.
 
 ---
 
@@ -26,7 +32,7 @@ Gids voor het lokaal draaien en debuggen van de v2.7-stack: FunctionApp (.NET 9)
 http://localhost:5242          BlazorAdmin (Blazor WASM, dotnet watch, hot reload)
 http://localhost:7094          FunctionApp (Azure Functions isolated .NET 9, func start)
 localhost:10000–10002          Azurite (Azure Storage Emulator)
-YOUR_SERVER/SportlinkSqlDb     SQL Server
+localhost:1433/SportlinkSqlDb  SQL Server (Docker — `docker compose up -d`, zie DEVELOPER-SETUP.md sectie 4.1)
 ```
 
 ### Poorten en services
@@ -57,9 +63,11 @@ YOUR_SERVER/SportlinkSqlDb     SQL Server
 
 ### Handmatig (als Start-Debug.ps1 niet beschikbaar is)
 
+**Windows** — elke service in een eigen venster:
+
 ```powershell
 # 1. Azurite
-$azuriteDir = Join-Path $env:TEMP 'azurite'
+$azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
 if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
 Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
 Start-Sleep -Seconds 3
@@ -69,6 +77,22 @@ Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionAp
 
 # 3. BlazorAdmin met hot reload
 Start-Process powershell -ArgumentList "-NoExit -Command Set-Location BlazorAdmin; dotnet watch run --launch-profile http"
+```
+
+**macOS** — `Start-Process` kan hier geen apart venster openen (gedocumenteerde beperking); open
+drie Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
+
+```bash
+# Tab 1 — Azurite
+mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
+```
+```bash
+# Tab 2 — FunctionApp
+cd FunctionApp && func start --port 7094
+```
+```bash
+# Tab 3 — BlazorAdmin met hot reload
+cd BlazorAdmin && dotnet watch run --launch-profile http
 ```
 
 ### Services stoppen
@@ -270,8 +294,17 @@ Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSIT
 ```powershell
 dotnet --list-runtimes
 # Moet bevatten: Microsoft.NETCore.App 9.x.x
-# Ontbreekt .NET 9?
+```
+
+Ontbreekt .NET 9?
+
+```powershell
+# Windows
 winget install Microsoft.DotNet.Runtime.9
+```
+```bash
+# macOS
+curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
 ```
 
 ### Blazor "An unhandled error has occurred"
@@ -293,21 +326,31 @@ Mogelijk probleem: MSAL-initialisatie faalt → controleer `appsettings.json` in
 
 ### "Cannot connect to database"
 
-```powershell
-# SQL Server actief?
-Get-Service -Name 'MSSQLSERVER' | Select-Object Status
+Identiek op Windows en macOS — de lokale database draait in beide gevallen in de Docker-container
+uit `docker-compose.yml` (zie DEVELOPER-SETUP.md sectie 4.1; een rechtstreeks geïnstalleerde SQL
+Server-service wordt niet meer ondersteund):
 
-# Verbinding testen
-sqlcmd -S YOUR_SERVER -E -Q "SELECT @@VERSION"
+```bash
+docker compose ps
+docker compose logs sqlserver
+```
+```bash
+sqlcmd -S localhost,1433 -U sa -d SportlinkSqlDb -C -Q "SELECT @@VERSION"
 ```
 
 ### Azurite niet bereikbaar
 
 ```powershell
+# Windows
 Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue
-# Leeg = Azurite draait niet → Start-Debug.ps1 opnieuw uitvoeren
 ```
+```bash
+# macOS
+lsof -nP -iTCP:10000 -sTCP:LISTEN
+```
+
+Leeg/geen output = Azurite draait niet → `Start-Debug.ps1` opnieuw uitvoeren.
 
 ---
 
-**Versie:** 2.7 — bijgewerkt 2026-05-31
+**Versie:** 2.7 — bijgewerkt 2026-08-29 (macOS/Apple Silicon-ondersteuning + Docker als enige lokale-database-optie, #800)

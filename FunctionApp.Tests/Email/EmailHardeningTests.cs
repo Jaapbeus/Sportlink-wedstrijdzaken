@@ -69,7 +69,7 @@ public class EmailHardeningTests
     [InlineData(2627)] // unique constraint
     [InlineData(2601)] // unique index
     public void IsUniekeSleutelFout_HerkentBeideSqlFoutnummers(int foutnummer)
-        => EmailProcessingRepository.IsUniekeSleutelFout(foutnummer).Should().BeTrue();
+        => SqlEmailPersistenceRepository.IsUniekeSleutelFout(foutnummer).Should().BeTrue();
 
     [Theory]
     [InlineData(547)]   // foreign key / check constraint
@@ -77,7 +77,7 @@ public class EmailHardeningTests
     [InlineData(2)]     // netwerk/timeout
     [InlineData(0)]
     public void IsUniekeSleutelFout_AndereFoutenBlijvenGewoneFouten(int foutnummer)
-        => EmailProcessingRepository.IsUniekeSleutelFout(foutnummer).Should().BeFalse();
+        => SqlEmailPersistenceRepository.IsUniekeSleutelFout(foutnummer).Should().BeFalse();
 
     /// <summary>
     /// Faalscenario: twee overlappende invocaties zien beide "geen rij", waarna de tweede INSERT op

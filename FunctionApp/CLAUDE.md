@@ -48,7 +48,7 @@ History Tables (his.teams, his.matches, his.matchdetails)
 **[Utilities.cs](Utilities.cs)**
 - `SystemUtilities.AppSettings`: Loads settings from `dbo.AppSettings` table
   - Fields: `SportlinkApiUrl`, `SportlinkClientId`, `FetchSchedule`
-- `SystemUtilities.DatabaseConfig`: Manages connection string from environment variables
+- `SystemUtilities.DatabaseConfig`: Manages connection string from environment variables — forces `Pooling=false` (#808): a pooled connection stays open as an active session on the server after `Dispose()`, which blocks the free-tier database's auto-pause and can burn the monthly vCore-second allowance while the app is otherwise idle. This class and its Azure SQL-serverless-specific retry logic (`WaitForDatabaseAsync`) are SQL Server-tier-specific — a future non-SQL-Server tier gets its own equivalent in its own project tree, not a shared abstraction here. See [docs/ARCHITECTUUR-DATABASE-TIERS.md](../docs/ARCHITECTUUR-DATABASE-TIERS.md).
 - `SystemUtilities.SeasonHelper`: Calculates season end week offsets from `dbo.Season` table
 - Database retry logic with 5 retries, 5-second delays between attempts
 
@@ -109,9 +109,13 @@ docker run -p 8080:80 fa-dev-sportlink-01
 
 Stored in `local.settings.json` (development) and Azure Key Vault (production):
 
-- **SqlConnectionString**: Local dev SQL Server
+- **SqlConnectionString**: Local dev database — SQL Server 2022 in Docker, identical on Windows
+  and macOS (`docker compose up -d` from the repository root, see `docs/DEVELOPER-SETUP.md` §4.1).
+  Integrated Security is **not** supported: it only works against a locally installed SQL Server
+  service on Windows, which is exactly the platform-specific path removed in #800.
+  `TrustServerCertificate=True` is required because the container has a self-signed certificate.
   ```
-  Server=YOUR_SERVER;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;
+  Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=<from .env>;TrustServerCertificate=True;
   ```
 
 - **PRDSqlConnectionString**: Azure SQL (production)
@@ -278,14 +282,14 @@ The project has been configured to use Debug build by default. If you see Releas
 
 ### Database Connection Timeouts
 Database connection includes 5 retries with 5-second delays. If still failing:
-1. Verify SQL Server is running: `sqlcmd -S YOUR_SERVER -E -Q "SELECT @@VERSION"`
-2. Check connection string in `local.settings.json`
-3. Ensure Windows Authentication has access to the database
+1. Verify the container is up and healthy: `docker compose ps`
+2. Verify SQL Server answers: `docker exec sportlink-sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -Q "SELECT @@VERSION"'`
+3. Check connection string in `local.settings.json` — it must use a SQL login, not Integrated Security
 
 ## Testing Notes
 
 - `FunctionApp.Tests/` contains the unit tests (409 at the time of writing); run with `dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj`. They run on every PR in the `Build FunctionApp + BlazorAdmin` job
-- Recommend testing with local SQL Server instance (YOUR_SERVER)
+- Recommend testing against the local Docker database (`localhost,1433`, see `docs/DEVELOPER-SETUP.md` §4.1)
 - Manual testing: Use HTTP trigger at `/api/sync-matches`, optionally with `reset=true&season=YYYY`
 - Integration testing: Query history tables to verify data insertion
 

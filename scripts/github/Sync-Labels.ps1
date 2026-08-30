@@ -37,7 +37,7 @@ $ErrorActionPreference = 'Stop'
 $repo = (gh repo view --json nameWithOwner -q .nameWithOwner 2>$null)
 if (-not $repo) { throw "Niet ingelogd bij GitHub of repository niet gevonden. Voer 'gh auth login' uit." }
 
-$labelsFile = Join-Path $PSScriptRoot "..\..\\.github\labels.json"
+$labelsFile = Join-Path $PSScriptRoot "../../.github/labels.json"
 if (-not (Test-Path $labelsFile)) { throw "Definitiebestand niet gevonden: $labelsFile" }
 
 $desired = Get-Content $labelsFile -Raw | ConvertFrom-Json

@@ -20,8 +20,8 @@
     Poort voor de FunctionApp. Default: 7094.
 
 .EXAMPLE
-    .\scripts\smoke-test.ps1
-    .\scripts\smoke-test.ps1 -SkipBlazor
+    ./scripts/dev/smoke-test.ps1
+    ./scripts/dev/smoke-test.ps1 -SkipBlazor
 #>
 param(
     [switch]$SkipBlazor,
@@ -29,7 +29,10 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$Root = Split-Path $PSScriptRoot -Parent
+# Dit script staat in scripts/dev/, dus de repo-root ligt twee niveaus hoger. Stond hier
+# één niveau, waardoor elk pad naar scripts/FunctionApp/... wees en niets werkte (#800).
+$Root = Resolve-Path (Join-Path $PSScriptRoot '../..')
+$TempDir = [System.IO.Path]::GetTempPath()
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -59,14 +62,14 @@ function WaitForUrl($url, $timeoutSec = 30) {
 # ── 1. Build FunctionApp ─────────────────────────────────────────────────────
 
 Write-Host "`n── Stap 1: Build FunctionApp ──" -ForegroundColor Cyan
-$buildFunc = dotnet build "$Root\FunctionApp\fa-dev-sportlink-01.csproj" -c Debug --nologo 2>&1
+$buildFunc = dotnet build (Join-Path $Root 'FunctionApp/fa-dev-sportlink-01.csproj') -c Debug --nologo 2>&1
 $funcBuildOk = ($LASTEXITCODE -eq 0) -and ($buildFunc -notmatch " Error\(s\)")
 Check "dotnet build FunctionApp" $funcBuildOk ($buildFunc | Where-Object { $_ -match "error" } | Select-Object -First 3 | Out-String)
 
 # ── 2. Build BlazorAdmin ─────────────────────────────────────────────────────
 
 Write-Host "`n── Stap 2: Build BlazorAdmin ──" -ForegroundColor Cyan
-$buildBlazor = dotnet build "$Root\BlazorAdmin\BlazorAdmin.csproj" -c Debug --nologo 2>&1
+$buildBlazor = dotnet build (Join-Path $Root 'BlazorAdmin/BlazorAdmin.csproj') -c Debug --nologo 2>&1
 $blazorBuildOk = ($LASTEXITCODE -eq 0) -and ($buildBlazor -notmatch " Error\(s\)")
 Check "dotnet build BlazorAdmin" $blazorBuildOk ($buildBlazor | Where-Object { $_ -match "error" } | Select-Object -First 3 | Out-String)
 
@@ -85,13 +88,13 @@ Get-Process -Name "func","dotnet" -ErrorAction SilentlyContinue |
     ForEach-Object { $_.Kill() }
 Start-Sleep 1
 
-$funcLog = "$env:TEMP\smoke-func.log"
+$funcLog = Join-Path $TempDir 'smoke-func.log'
 # func is een .ps1 script (npm global) — Start-Process vereist pwsh als host
 $funcProc = Start-Process -FilePath "pwsh" `
     -ArgumentList "-NoProfile","-NonInteractive","-Command","func start --port $FuncPort" `
-    -WorkingDirectory "$Root\FunctionApp" `
+    -WorkingDirectory (Join-Path $Root 'FunctionApp') `
     -RedirectStandardOutput $funcLog `
-    -RedirectStandardError "$env:TEMP\smoke-func-err.log" `
+    -RedirectStandardError (Join-Path $TempDir 'smoke-func-err.log') `
     -PassThru -NoNewWindow
 
 # Wacht tot "Worker process started"
@@ -199,12 +202,12 @@ if (Test-Path $funcLog) {
 if (-not $SkipBlazor -and $blazorBuildOk) {
     Write-Host "`n── Stap 5: BlazorAdmin starten ──" -ForegroundColor Cyan
 
-    $blazorLog = "$env:TEMP\smoke-blazor.log"
+    $blazorLog = Join-Path $TempDir 'smoke-blazor.log'
     $blazorProc = Start-Process -FilePath "dotnet" `
         -ArgumentList "run","--no-build" `
-        -WorkingDirectory "$Root\BlazorAdmin" `
+        -WorkingDirectory (Join-Path $Root 'BlazorAdmin') `
         -RedirectStandardOutput $blazorLog `
-        -RedirectStandardError "$env:TEMP\smoke-blazor-err.log" `
+        -RedirectStandardError (Join-Path $TempDir 'smoke-blazor-err.log') `
         -PassThru -NoNewWindow
 
     # Bepaal de Blazor URL uit de log

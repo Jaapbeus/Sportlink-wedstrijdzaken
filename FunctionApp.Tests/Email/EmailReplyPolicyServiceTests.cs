@@ -14,10 +14,11 @@ public class EmailReplyPolicyServiceTests
     /// Review mode moet een te beoordelen antwoord opleveren (#712). De vorige versie van deze test
     /// zette het foutieve gedrag vast — <c>buildCalled == false</c> — waardoor er niets te reviewen
     /// was: geen antwoord opgebouwd, <c>AntwoordEmail</c> leeg, en status 'Verwerkt', dezelfde
-    /// waarde als een mislukte verzending.
+    /// waarde als een mislukte verzending. Zonder <c>reviewRecipient</c> gaat er nog steeds geen mail
+    /// de deur uit — dat pad wordt hieronder in een aparte test met een recipient afgedekt (#801).
     /// </summary>
     [Fact]
-    public async Task ReviewMode_SlaatVoorgesteldAntwoordOp_EnVerstuurtNiet()
+    public async Task ReviewMode_ZonderReviewRecipient_SlaatVoorgesteldAntwoordOp_EnVerstuurtNiet()
     {
         var service = new EmailReplyPolicyService();
         var graph = new FakeEmailGraphService();
@@ -30,6 +31,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: true,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () =>
@@ -45,11 +47,85 @@ public class EmailReplyPolicyServiceTests
         persistence.VoorgesteldeAntwoorden.Should().ContainSingle(v =>
             v.VerwerkingId == 42 && v.AntwoordEmail == "voorgestelde-body");
 
-        // Review mode blokkeert alle uitgaande post — dat blijft ongewijzigd.
+        // Review mode blokkeert post naar de originele afzender — dat blijft ongewijzigd. Zonder
+        // reviewRecipient wordt er dus helemaal niets verstuurd.
         graph.SentReplies.Should().BeEmpty();
         persistence.AntwoordUpdates.Should().BeEmpty();
         graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1");
+    }
+
+    /// <summary>
+    /// Herstel van de regressie uit #543 (2026-06-20): review mode stuurde ooit een testantwoord
+    /// naar een apart reviewadres, tot dat bewust werd verwijderd. #801 herstelt dit — met behoud
+    /// van de #712-opslag in <c>AntwoordEmail</c> — omdat het voorstel anders alleen via directe
+    /// databasetoegang te lezen is (de Admin GUI geeft AntwoordEmail nooit terug, AVG).
+    /// </summary>
+    [Fact]
+    public async Task ReviewMode_MetReviewRecipient_VerstuurtTestantwoordNaarRecipient()
+    {
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService();
+        var persistence = new RecordingEmailPersistenceService();
+
+        var result = await service.HandelReplyFlowAfAsync(
+            verwerkingId: 44,
+            email: new InkomendBericht
+            {
+                MessageId = "m1c", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test",
+                ConversationId = "conv-44",
+            },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: true,
+            reviewRecipient: "reviewer@voorbeeld.test",
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "voorgestelde-body")),
+            sanitizeFoutMelding: s => s,
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
+        persistence.VoorgesteldeAntwoorden.Should().ContainSingle(v =>
+            v.VerwerkingId == 44 && v.AntwoordEmail == "voorgestelde-body");
+
+        // De testmail gaat naar reviewRecipient, nooit naar de originele afzender.
+        graph.SentReplies.Should().ContainSingle(r =>
+            r.To == "reviewer@voorbeeld.test" && r.Subject == "subj" && r.ConversationId == "conv-44");
+        persistence.AntwoordUpdates.Should().BeEmpty();
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1c");
+    }
+
+    /// <summary>
+    /// Een mislukte reviewmail mag de opslag en labeling niet blokkeren — het voorstel blijft dan
+    /// alsnog in de database te vinden (#801).
+    /// </summary>
+    [Fact]
+    public async Task ReviewMode_ReviewmailMislukt_SlaatTochOpEnLabelt()
+    {
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService { ThrowOnSendReply = true };
+        var persistence = new RecordingEmailPersistenceService();
+
+        var result = await service.HandelReplyFlowAfAsync(
+            verwerkingId: 45,
+            email: new InkomendBericht { MessageId = "m1d", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: true,
+            reviewRecipient: "reviewer@voorbeeld.test",
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "voorgestelde-body")),
+            sanitizeFoutMelding: s => s,
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
+        persistence.VoorgesteldeAntwoorden.Should().ContainSingle(v =>
+            v.VerwerkingId == 45 && v.AntwoordEmail == "voorgestelde-body");
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1d");
     }
 
     [Fact]
@@ -68,6 +144,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck },
             plannerResponseJson: JsonConvert.SerializeObject(new CheckAvailabilityResponse { Beschikbaar = true }),
             reviewMode: true,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () =>
@@ -99,6 +176,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck },
             plannerResponseJson: JsonConvert.SerializeObject(new CheckAvailabilityResponse { Beschikbaar = true }),
             reviewMode: false,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "body")),
@@ -126,6 +204,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: false,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
@@ -152,6 +231,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: false,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
@@ -192,6 +272,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: false,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
@@ -228,6 +309,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: false,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
@@ -260,6 +342,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: false,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
@@ -289,6 +372,7 @@ public class EmailReplyPolicyServiceTests
             classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
             plannerResponseJson: "{}",
             reviewMode: true,
+            reviewRecipient: null,
             graphService: graph,
             persistenceService: persistence,
             bouwTemplateAntwoordAsync: () => Task.FromResult(("subj", "body")),

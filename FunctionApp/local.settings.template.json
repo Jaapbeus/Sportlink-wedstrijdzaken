@@ -7,7 +7,7 @@
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-    "SqlConnectionString": "Server=YOUR_SERVER;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;",
+    "SqlConnectionString": "Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=YOUR_SA_PASSWORD;TrustServerCertificate=True;",
     "FETCH_SCHEDULE": "0 0 4 * * *",
     "GraphTenantId": "",
     "GraphClientId": "",

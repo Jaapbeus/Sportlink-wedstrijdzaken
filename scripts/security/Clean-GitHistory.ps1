@@ -101,7 +101,7 @@ if ($SkipBackup) {
     Write-Warn "Backup overgeslagen (--SkipBackup opgegeven)"
 } else {
     $backupName = "sportlink-wedstrijdzaken-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss').bundle"
-    $backupPath = Join-Path $env:USERPROFILE $backupName
+    $backupPath = Join-Path $HOME $backupName
     Write-Info "Aanmaken: $backupPath"
     git bundle create $backupPath --all
     if ($LASTEXITCODE -ne 0) {
@@ -167,7 +167,7 @@ foreach ($key in $replacements.Keys) {
 # ── Stap 3: Tijdelijk replacements-bestand aanmaken ─────────────────────────
 Write-Step "3 — Replacements-bestand aanmaken (tijdelijk)"
 
-$tempDir   = Join-Path $env:TEMP "git-cleanup-$(Get-Random)"
+$tempDir   = Join-Path ([System.IO.Path]::GetTempPath()) "git-cleanup-$(Get-Random)"
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 $replFile  = Join-Path $tempDir "replacements.txt"
 
