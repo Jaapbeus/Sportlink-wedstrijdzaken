@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using OpenAI.Chat;
 using SportlinkFunction.Email;
+using SportlinkFunction.Infrastructure;
 using SportlinkFunction.Monitoring;
 using SportlinkFunction.TeamResolution;
 
@@ -18,7 +19,11 @@ var tenantId = Environment.GetEnvironmentVariable("GraphTenantId");
 var clientId = Environment.GetEnvironmentVariable("GraphClientId");
 var graphAppCredential = Environment.GetEnvironmentVariable("GraphClientSecret");
 
-if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(graphAppCredential))
+// EgressGuard (#857): buiten productie blijft IEmailGraphService onvoorwaardelijk ongeregistreerd,
+// ook als Graph-secrets toevallig wél lokaal geconfigureerd zijn — hetzelfde "niet geregistreerd →
+// resolutie faalt expliciet"-gedrag als de bestaande "niet geconfigureerd"-tak hieronder.
+if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(graphAppCredential)
+    && EgressGuard.ExternalIntegrationsAllowed())
 {
     var credential = new ClientSecretCredential(tenantId, clientId, graphAppCredential);
     builder.Services.AddSingleton(new GraphServiceClient(credential));
@@ -36,8 +41,10 @@ if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !strin
 // Modelnaam komt uit de app setting `AiModelName` zodat een model-upgrade geen code-wijziging
 // vereist (zie docs/ARCHITECTUUR-AI-SERVICES.md). Niet uit dbo.AppSettings: de DI-registratie
 // loopt bij host-start, vóór de eerste databaseverbinding. (#604)
+// EgressGuard (#857): buiten productie blijft IChatClient onvoorwaardelijk ongeregistreerd, ook als
+// OpenAiApiKey toevallig wél lokaal geconfigureerd is.
 var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
-if (!string.IsNullOrWhiteSpace(openAiApiKey))
+if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrationsAllowed())
 {
     // Fallback is puur een provider-model-identifier — geen club-specifieke waarde, dus toegestaan.
     const string defaultAiModelName = "gpt-4o-mini";

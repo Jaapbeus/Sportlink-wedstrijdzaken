@@ -36,6 +36,12 @@ public static class GitHubIssueReporter
 
     public static async Task ReportAsync(Exception ex, string functionName, ILogger log)
     {
+        if (!EgressGuard.ExternalIntegrationsAllowed())
+        {
+            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — issue-rapportage overgeslagen (#857).");
+            return;
+        }
+
         var pat = Environment.GetEnvironmentVariable("GitHubPat");
         if (string.IsNullOrWhiteSpace(pat))
         {

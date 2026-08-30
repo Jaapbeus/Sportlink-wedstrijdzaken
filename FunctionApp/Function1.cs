@@ -22,6 +22,12 @@ namespace SportlinkFunction
             var log = context.GetLogger("FetchAndStoreApiData");
             log.LogInformation("Azure Function executed at: {Now}", DateTime.UtcNow);
 
+            if (!EgressGuard.ExternalIntegrationsAllowed())
+            {
+                log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — sync overgeslagen (#857).");
+                return;
+            }
+
             try
             {
                 await WaitForDatabaseAsync(log);
@@ -31,13 +37,6 @@ namespace SportlinkFunction
                 if (string.IsNullOrEmpty(sportlinkApiUrl))
                 {
                     log.LogError("sportlinkApiUrl is not configured.");
-                    return;
-                }
-
-                var syncEnabledStr = AppSettings.GetSetting("syncEnabled");
-                if (syncEnabledStr == "0")
-                {
-                    log.LogInformation("SyncEnabled = 0 — sync overgeslagen voor deze club.");
                     return;
                 }
 

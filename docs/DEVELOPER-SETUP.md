@@ -453,6 +453,37 @@ gelijk. `Test-App.ps1` leidt de `sqlcmd`-authenticatie automatisch af uit deze c
 
 > `local.settings.json` staat in `.gitignore` en wordt nooit gecommit.
 
+### 5.1 Uitgaande integraties lokaal en in CI standaard geblokkeerd (#857)
+
+Lokaal draaien (én CI) raakt standaard **geen enkele externe dienst** — ook niet als je toevallig
+een secret hebt ingevuld:
+
+- de externe Sportlink-databron (de timer-trigger `FetchAndStoreApiData`),
+- GitHub-issue-rapportage bij een onafgevangen fout (`GitHubIssueReporter`),
+- e-mail via Microsoft Graph (`IEmailGraphService` wordt dan niet geregistreerd),
+- de AI-diensten (`IChatClient` wordt dan niet geregistreerd — teamdisambiguatie valt terug op
+  puur deterministisch gedrag).
+
+Dit is één centrale poort (`FunctionApp/Infrastructure/EgressGuard.cs`), niet vier losse
+controles. De poort herkent productie aan `WEBSITE_SITE_NAME` (Azure zet die altijd; lokaal en in
+CI is hij afwezig) — dus je hoeft hiervoor niets te configureren, en het blijft ook geblokkeerd als
+je bijvoorbeeld `OpenAiApiKey` of `GitHubPat` lokaal hebt staan voor een andere test.
+
+Wil je bewust, eenmalig, tóch een echte externe dienst vanaf je eigen machine aanroepen (bijv. de
+Sportlink-timer handmatig testen tegen de productie-API)? Zet dan in `local.settings.json`:
+
+```json
+"AllowExternalIntegrations": "true"
+```
+
+Zet dit nooit standaard aan — dat zou de bescherming voor de rest van je lokale werk tenietdoen.
+Zonder deze instelling blijft alles hierboven geblokkeerd. `SyncMatchesHttp` (de handmatige
+sync-trigger op `/api/sync-matches`, zie sectie 7) is bewust **niet** door deze poort geraakt: dat
+endpoint bestaat juist om desgewenst bewust tegen de echte Sportlink-API te testen.
+
+> `Test-App.ps1` en de CI-jobs draaien dus altijd met de blokkade aan, zonder dat daar iets voor
+> geconfigureerd hoeft te worden.
+
 ---
 
 ## 6. Services starten
