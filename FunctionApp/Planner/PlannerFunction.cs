@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -251,46 +253,64 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var version = typeof(PlannerFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
-            var dbStatus = await GetDatabaseStatusAsync();
+            var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
             return new OkObjectResult(new
             {
                 status = dbStatus == "online" ? "ok" : "degraded",
                 version,
                 timestamp = DateTime.UtcNow,
-                database = dbStatus
+                database = dbStatus,
+                // #863: tier/provider komen uit build-time assembly-metadata (nooit een runtime-gok),
+                // dus altijd gevuld — ook als de database onbereikbaar is. serverVersion komt
+                // aantoonbaar uit de database zelf en is daarom null zolang die niet bereikbaar is.
+                tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
+                provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
+                serverVersion
             });
         }
 
-        // Geeft "online", "paused", "timeout" of "unavailable" terug.
+        // internal zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476)
+        // zonder Health() zelf te hoeven aanroepen — dat vereist een HttpRequest/FunctionContext die
+        // deze codebase bewust niet namaakt (zie Function1.cs-tests: de logica wordt getest, niet de
+        // Azure Functions-trigger-wrapper).
+        internal static string? GetAssemblyMetadata(string key) =>
+            typeof(PlannerFunction).Assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == key)?.Value;
+
+        // Geeft ("online"|"paused"|"timeout"|"unavailable"|"unconfigured", serverVersion) terug.
+        // serverVersion is alleen gevuld bij "online" — #863 eist dat dit veld aantoonbaar uit de
+        // database komt, dus geen fallback-waarde als de verbinding niet lukt.
         // Error 40613 = Azure SQL serverless auto-paused; verbinding triggert automatisch resume.
-        private static async Task<string> GetDatabaseStatusAsync()
+        private static async Task<(string status, string? serverVersion)> GetDatabaseStatusAsync()
         {
             string connStr;
             try { connStr = SystemUtilities.DatabaseConfig.ConnectionString; }
-            catch { return "unconfigured"; }
+            catch { return ("unconfigured", null); }
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
             {
                 using var conn = new SqlConnection(connStr);
                 await conn.OpenAsync(cts.Token);
-                using var cmd = new SqlCommand("SELECT 1", conn) { CommandTimeout = 5 };
-                await cmd.ExecuteScalarAsync(cts.Token);
-                return "online";
+                using var cmd = new SqlCommand(
+                    "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128))", conn) { CommandTimeout = 5 };
+                var serverVersion = (string?)await cmd.ExecuteScalarAsync(cts.Token);
+                return ("online", serverVersion);
             }
             catch (SqlException ex) when (ex.Number == 40613)
             {
                 // Database is paused (free tier limiet of normale auto-pause).
                 // Azure begint automatisch te resumeren zodra we verbinding proberen.
-                return "paused";
+                return ("paused", null);
             }
             catch (OperationCanceledException)
             {
-                return "timeout";
+                return ("timeout", null);
             }
             catch
             {
-                return "unavailable";
+                return ("unavailable", null);
             }
         }
 

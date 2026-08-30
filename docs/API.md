@@ -20,6 +20,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
+| `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
 | `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
@@ -55,6 +56,38 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `DELETE` | `/beheer/testdata/wedstrijden/{bk}` | **Admin** | Één test-wedstrijd verwijderen op `bk_matches` |
 | `DELETE` | `/beheer/testdata/wedstrijden?van=YYYY-MM-DD&tot=YYYY-MM-DD` | **Admin** | Test-wedstrijden verwijderen voor datumbereik (beide params optioneel; zonder params: alles verwijderen) |
 | `POST` | `/beheer/testdata/wedstrijden/verplaats-datum` | **Admin** | Alle ALLSTARS-wedstrijden van `oudeDatum` naar `nieuweDatum` verplaatsen — raakt uitsluitend `ClubCode='ALLSTARS'` |
+
+---
+
+## GET /api/health
+
+Status, versie en databaseherkomst van de API. Geen authenticatie vereist.
+
+`tier` en `provider` komen uit build-time metadata van het gebouwde artefact — nooit een
+runtime-gok — en zijn daarom altijd gevuld, ook als `database` niet `"online"` is. `serverVersion`
+komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"online"` is (#863).
+
+### Antwoord
+
+```json
+{
+  "status": "ok",
+  "version": "3.0.9.0",
+  "timestamp": "2026-08-30T15:00:00Z",
+  "database": "online",
+  "tier": "SqlServer",
+  "provider": "Microsoft.Data.SqlClient",
+  "serverVersion": "16.0.4265.3"
+}
+```
+
+| Veld | Type | Beschrijving |
+|---|---|---|
+| `status` | `string` | `"ok"` als `database` `"online"` is, anders `"degraded"` |
+| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` |
+| `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
+| `provider` | `string` | De gebruikte databasedriver |
+| `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |
 
 ---
 

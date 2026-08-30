@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.0.1",
+    "version": "3.0.9",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -2729,7 +2729,7 @@
         ],
         "operationId": "getHealth",
         "summary": "Status en versie van de API",
-        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.",
+        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.\n\n`tier` en `provider` komen uit build-time metadata van het artefact (niet uit een\nruntime-gok) en zijn daarom altijd gevuld, ook als `database` niet \"online\" is.\n`serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer\n`database` \"online\" is (#863).\n",
         "security": [],
         "responses": {
           "200": {
@@ -2750,6 +2750,34 @@
                     "timestamp": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "database": {
+                      "type": "string",
+                      "description": "Databaseverbindingsstatus.",
+                      "enum": [
+                        "online",
+                        "paused",
+                        "timeout",
+                        "unavailable",
+                        "unconfigured"
+                      ],
+                      "example": "online"
+                    },
+                    "tier": {
+                      "type": "string",
+                      "description": "De databasetier waarmee dit artefact gebouwd is (build-time metadata).",
+                      "example": "SqlServer"
+                    },
+                    "provider": {
+                      "type": "string",
+                      "description": "De gebruikte databasedriver (build-time metadata).",
+                      "example": "Microsoft.Data.SqlClient"
+                    },
+                    "serverVersion": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Het versienummer dat de databaseserver zelf teruggeeft; null als de database niet bereikbaar is.",
+                      "example": "16.0.4265.3"
                     }
                   }
                 }
