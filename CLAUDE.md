@@ -1189,6 +1189,8 @@ Browser (beheerder)
 | `GET/PUT/POST/DELETE /api/beheer/templates` | `AdminTemplatesFunction.cs` |
 | `GET/POST/DELETE /api/beheer/uitgesloten-emails` | `AdminUitgeslotenEmailFunction.cs` |
 | `GET/PUT/POST/DELETE /api/beheer/velden`, `/veldbeschikbaarheid` | `AdminVeldBeschikbaarheidFunction.cs` |
+| `GET/POST/PUT/DELETE /api/beheer/veldtraining` | `AdminVeldTrainingFunction.cs` |
+| `GET/POST/PUT/DELETE /api/beheer/veldperiodes` | `AdminVeldPeriodeFunction.cs` |
 | `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden`, `/teamregels` | `AdminVoorkeurTijdenFunction.cs` |
 | `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
 | `GET /api/beheer/leermomenten`, `/stats`, `PUT /{id}/valideer` | `AdminLeermomentenFunction.cs` |

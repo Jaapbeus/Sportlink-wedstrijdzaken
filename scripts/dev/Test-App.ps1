@@ -136,7 +136,10 @@ $expectedColumns = @{
     )
     "dbo.VeldBeschikbaarheid" = @(
         "Id","VeldNummer","DagVanWeek","BeschikbaarVanaf","BeschikbaarTot",
-        "GebruikZonsondergang","ClubCode"
+        "GebruikZonsondergang","PeriodeId","ClubCode"
+    )
+    "dbo.VeldPeriode" = @(
+        "Id","Naam","DatumVan","DatumTot","Actief","ClubCode"
     )
     "dbo.UitgeslotenEmailAdressen" = @(
         "Id","EmailAdres","Omschrijving","Actief","ClubCode","mta_inserted"
@@ -229,8 +232,12 @@ foreach ($tableKey in $expectedColumns.Keys) {
         $sqlFile = Get-SchemaSqlPath $tableKey
         if ($Fix) {
             if (Test-Path $sqlFile) {
-                $createSql = Get-Content $sqlFile -Raw
-                $result = sqlcmd -S $server -d $db @sqlAuthArgs -Q $createSql 2>&1
+                # -i <bestand> in plaats van -Q <inhoud> (#581): de complete bestandsinhoud
+                # inline als -Q-argument doorgeven breekt sqlcmd's argumentparser zodra het
+                # bestand een letterlijk aanhalingsteken of niet-ASCII-teken in commentaar bevat
+                # ("- of / does not have an associated argument") — precies zoals de productie-
+                # deploy het al doet (azure/sql-action met een file-path, geen inline query).
+                $result = sqlcmd -S $server -d $db @sqlAuthArgs -i $sqlFile 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-Fixed "Tabel $tableKey aangemaakt"
                 } else {
@@ -361,6 +368,8 @@ $endpoints = @(
     @{ Method="GET";  Path="api/beheer/uitgesloten-emails";  Desc="Uitgesloten e-mails" }
     @{ Method="GET";  Path="api/beheer/velden";              Desc="Velden" }
     @{ Method="GET";  Path="api/beheer/veldbeschikbaarheid"; Desc="Veldbeschikbaarheid" }
+    @{ Method="GET";  Path="api/beheer/veldtraining";        Desc="Trainingsschema" }
+    @{ Method="GET";  Path="api/beheer/veldperiodes";        Desc="Veldperiodes" }
     @{ Method="GET";  Path="api/beheer/email-log";           Desc="E-maillog" }
     @{ Method="GET";  Path="api/beheer/teams";               Desc="Teams" }
     @{ Method="GET";  Path="api/beheer/teamaliassen";        Desc="Teamaliassen" }
