@@ -307,6 +307,36 @@ betekent een buildbaar, deploybaar project bestaat — niet dat #887-890's funct
 compleet is, exact zoals de SQL Server-tier ook incrementeel is opgebouwd met `"built": true`
 vanaf het begin.
 
+## 11. FunctionApp.Postgres/Admin — eerste vertaalde beheer-endpoint (#887)
+
+**Besluit:** `FunctionApp/Admin/EasyAuthHelper.cs` en `AdminEndpoint.cs` zijn woordelijk gekopieerd
+naar `FunctionApp.Postgres/Admin/` (geen gedeelde abstractie, §2) — beide waren al vrijwel volledig
+provider-agnostisch (pure claims-/header-parsing); de enige aanpassing is de doorverwijzing naar
+`PostgresAppSettings`/`PostgresSystemUtilities.WaitForDatabaseAsync` in plaats van hun SQL
+Server-tegenhangers.
+
+**`PostgresAppSettings` is bewust onvolledig ten opzichte van `SystemUtilities.AppSettings`:** de
+SQL Server-tier laadt ~18 kolommen uit `dbo.AppSettings`; `public.appsettings` heeft er vandaag
+drie (`clubcode`, `accommodatie`, `syncenabled`, zie `Database.Postgres/migrations/001_baseline.sql`).
+`PostgresAppSettings.LoadSettingsAsync` laadt uitsluitend wat daadwerkelijk bestaat — een
+fantoom-fallback voor niet-bestaande kolommen zou misconfiguratie maskeren. Sub-issues die nieuwe
+functionaliteit vertalen breiden dit uit zodra de bijbehorende migratie de kolom toevoegt.
+
+**Eerste vertaalde endpoint: `AdminClubsFunction`/`AdminClubsRepository`.** Empirisch geverifieerd
+(wegwerp-Postgres-16-container, twee geseede rijen): `GET /api/beheer/clubs` retourneert beide
+clubs, gesorteerd op `syncenabled DESC, clubcode` — functioneel gelijk aan de SQL Server-tier.
+**Bewust gedocumenteerd gat:** `public.appsettings` heeft geen `clubname`-kolom; deze vertaling
+gebruikt `clubcode` ook als weergavenaam totdat een toekomstige migratie dat verschil dicht.
+
+**Tijdens deze vertaling ontdekt: `public.speeltijden` mist drie kolommen** (`WedstrijdHelft`,
+`WedstrijdRust`, `StandaardVoorkeurTijd`) ten opzichte van `dbo.Speeltijden` — zie #893. Dit
+blokkeert de CRUD-vertaling van `AdminSpeeltijdenFunction`/`Repository`, die daarom nog niet in
+deze ronde is meegenomen.
+
+**Resterende negen admin-endpointparen** (zie #887) volgen dezelfde, nu gevestigde structuur:
+repository in `FunctionApp.Postgres/Admin/Repositories/`, endpoint in `FunctionApp.Postgres/Admin/`,
+zelfde route als de SQL Server-tier.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
