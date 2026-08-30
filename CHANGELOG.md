@@ -101,6 +101,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bezetting vallen bij afwijkende hoofdlettering tussen ClubCode en teamnaam — opgelost met de
   hoofdletterongevoelige variant `~*`. Overige gelijkheidsvergelijkingen in deze view dragen
   hetzelfde class-of-bug totdat #820 een tier-brede collatiefix levert. (#819)
+- **`Database.Postgres.Cli` + `MigrationRunner`: genummerde-migratiebestanden-mechanisme voor de
+  Postgres-tier.** Een verse club-installatie op Postgres krijgt het huidige schema in één keer via
+  genummerde `.sql`-bestanden in `Database.Postgres/migrations/`, bijgehouden in een
+  `schema_migrations`-ledger-tabel — geen catalogus-probing-ceremonie zoals het SQL Server
+  `PostDeployment`-script nodig heeft voor een jaren-oude, al-draaiende database. Elke toegepaste
+  migratie krijgt zijn SHA-256-checksum vastgelegd; een later gewijzigd, al toegepast bestand faalt
+  hard in plaats van stilzwijgend opnieuw uit te voeren. Een PostgreSQL advisory lock beschermt
+  tegen twee gelijktijdige runners — empirisch gevonden tijdens het testen: de lock moet vóór de
+  allereerste DDL-aanraking genomen worden, anders raceten twee runners al op het aanmaken van de
+  ledger-tabel zelf. Lokaal draaien via `scripts/dev/Invoke-PostgresMigrations.ps1`.
+  `001_baseline.sql` dekt vooralsnog alleen de vier configuratietabellen die de planner-kernview
+  (#819) nodig heeft — zie issue #821 voor de resterende, nog niet geporte tabellen.
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
