@@ -157,7 +157,7 @@ gesloten zijn.
 
 | Sub-issue | Levert op |
 |---|---|
-| [#860](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/860) — Applicatie-datalaag en projectopzet | **Het grootste gat**: 40 bestanden, ~212 SQL-statements, en het projectbestand waar de tier-resolver naar wijst |
+| [#860](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/860) — Applicatie-datalaag en projectopzet (kapstok) | **Het grootste gat**: 40 bestanden, ~212 SQL-statements. Uitgewerkt naar vijf sub-issues: [#891](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/891) (projectopzet, blokkerend, gemerged), [#887](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/887) (beheer), [#888](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/888) (planner), [#889](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/889) (e-mail/teamresolutie), [#890](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/890) (synchronisatie) |
 | [#861](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/861) — Resterende procedures en views | #818 dekt 2 van 8 procedures, #819 dekt 1 van 4 views |
 | [#862](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/862) — Demodata-seed + dekking | Postgres-variant van de seed, plus de circa 17 tabellen zonder demodata |
 
@@ -177,10 +177,12 @@ gesloten zijn.
 De afhankelijkheden lopen niet gelijk aan de nummering:
 
 1. **Deblokkeren**: #853, #854, #855 — dit zijn correcties op werk dat al gedaan is, en hoe later
-   ze landen hoe meer erop gebouwd is.
+   ze landen hoe meer erop gebouwd is. ✅ Alle drie gemerged.
 2. **Testbaar maken**: #867 (egress-blokkade — nodig vóórdat er geautomatiseerd gedraaid wordt),
-   #866, #863.
-3. **Bouwen**: #860 (het grootste stuk), daarna #861 en #862.
+   #866, #863. ✅ #866/#863 volledig gemerged; #867 gedeeltelijk (fixtureserver + SQL-Server-tier-
+   test gemerged, Postgres-tier-variant wacht op #890, CI-wiring op #866-patroon nu beschikbaar).
+3. **Bouwen**: #860 (het grootste stuk — uitgewerkt naar #891/#887/#888/#889/#890, zie §6c),
+   daarna #861 en #862. #891 (projectopzet) gemerged; #887/#888/#889/#890 nog open.
 4. **Bewaken**: #864, #865.
 5. **Afrekenen**: #851 groen krijgen.
 
@@ -267,6 +269,43 @@ De reeds bestaande `fresh-db-postgres`-CI-job bewaakt dezelfde conventie al voor
 migratie-gebaseerde configuratietabellen (`appsettings`, `velden`, `speeltijden`,
 `geplandewedstrijden`) via een live `information_schema.columns`-query — die twee guards dekken nu
 samen zowel de migratiegebaseerde als de entiteitsgebaseerde (ETL-)boom.
+
+## 10. FunctionApp.Postgres — projectopzet (#891)
+
+**Besluit:** `FunctionApp.Postgres/` is een minimaal, zelfstandig Azure Functions
+isolated-worker-project (net9.0 — zelfde harde beperking als de bestaande `FunctionApp`, zie
+sectie ".NET versie" in CLAUDE.md), met een `ProjectReference` naar `Database.Postgres` (#818) en
+verder bewust **geen** kopie van `FunctionApp/Program.cs`'s Graph-/AI-/e-mail-/monitoring-DI. Die
+registraties horen bij de functionaliteit die #887 (beheer), #888 (planner), #889 (e-mail/
+teamresolutie) en #890 (synchronisatie) vertalen — niet bij de projectopzet zelf.
+
+**Configuratielaag:** `PostgresDatabaseConfig` leest `POSTGRES_CONNECTION_STRING` — dezelfde naam
+die `Database.Postgres.Cli` (#821) al gebruikt voor het migratiepad, bewust geen tweede
+naamschema. Zet `ApplicationName=SportlinkFunctionAppPostgres` op de connectiestring (#863-precedent
+toegepast op dag één, niet als latere toevoeging).
+
+**Bewust géén `Pooling=false`:** de SQL Server-tier zet dat specifiek om Azure SQL's serverless
+auto-pause niet te blokkeren (#808). Dat is een eigenschap van díe hostingkeuze, niet een
+algemene regel — zonder bevestiging dat de Postgres-tier op een vergelijkbare auto-pausende laag
+draait, is Npgsql's standaard pooling (efficiënter hergebruik van verbindingen) de juiste default.
+Herzie dit zodra de daadwerkelijke Postgres-hosting vaststaat.
+
+**`/api/health` heeft geen `"paused"`-status:** de SQL Server-tier herkent Azure SQL's auto-pause
+aan foutnummer 40613 — Azure-SQL-specifiek. Zonder een bevestigd, vergelijkbaar auto-pause-concept
+voor de gekozen Postgres-hosting zou `"paused"` hier verzonnen zijn; een onbereikbare database is
+hier altijd `"unavailable"` of `"timeout"`. `tier`/`provider`/`serverVersion` volgen verder exact
+het #863-patroon (build-time metadata resp. `SHOW server_version`).
+
+**Empirisch bevestigd:** `func start` tegen een wegwerp-Postgres-16-container levert een werkende
+`/api/health` op — `status="ok"`, `tier="Postgres"`, `provider="Npgsql"`,
+`serverVersion="16.15 (Debian 16.15-1.pgdg13+2)"` (echte, live opgehaalde serverversie).
+
+**Tier-resolver:** `scripts/ci/database-tiers.json`'s Postgres-rij staat nu op `"built": true` —
+dit is de PR die de implementatieboom toevoegt, conform de eigen regel van dat bestand
+("Zet 'built' op true in dezelfde PR die de implementatieboom toevoegt, nooit eerder"). Dit
+betekent een buildbaar, deploybaar project bestaat — niet dat #887-890's functionaliteit al
+compleet is, exact zoals de SQL Server-tier ook incrementeel is opgebouwd met `"built": true`
+vanaf het begin.
 
 ## Gerelateerd
 

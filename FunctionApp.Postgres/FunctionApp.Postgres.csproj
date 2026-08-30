@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- net9.0 is verplicht, niet een keuze: Azure Functions op een Linux Consumption Plan
+         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24). Nooit
+         verhogen zonder de infrastructuurwijziging (Flex Consumption Plan) die daarvoor nodig is. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FunctionApp.Postgres</RootNamespace>
+    <Platforms>AnyCPU;x86</Platforms>
+    <DockerFastModeProjectMountDirectory>/home/site/wwwroot</DockerFastModeProjectMountDirectory>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileContext>.</DockerfileContext>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Version>3.0.10.0</Version>
+    <AssemblyVersion>3.0.10.0</AssemblyVersion>
+    <FileVersion>3.0.10.0</FileVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- #863-precedent: tier-herkomst voor /api/health als build-time metadata, nooit een
+         runtime-gok. "Postgres" is de canonieke tier-naam uit scripts/ci/database-tiers.json
+         (#816/#865) — nooit een los, eigen naamschema hier. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseTier</_Parameter1>
+      <_Parameter2>Postgres</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseProvider</_Parameter1>
+      <_Parameter2>Npgsql</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- #818: PostgresIdentifier/schema-generatie-bouwstenen — dit project bouwt de applicatie-
+         datalaag (#860 t/m #887-890) bovenop wat #818 al levert, geen tweede implementatie ervan. -->
+    <ProjectReference Include="..\Database.Postgres\Database.Postgres.csproj" />
+  </ItemGroup>
+</Project>
