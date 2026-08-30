@@ -418,9 +418,62 @@ aangemaakt om de na-de-eerste-sync-situatie na te bootsen): het nieuwe script za
 noemt — en is idempotent (een tweede run voegt niets toe). De `fresh-db`-CI-job bootst dit scenario
 nu ook zelf na en bewaakt deze drie aantallen.
 
-**Nog niet gedekt:** de Postgres-tier heeft nog geen eigen demodata-seed om ditzelfde probleem in
-te hebben (dat is #862's scope) — "identiek gedrag in beide tiers" (#856's acceptatiecriterium) is
-dus pas volledig te beoordelen zodra #862 die seed levert.
+**Update (#862, zie §14 hieronder):** de Postgres-tier heeft nu dezelfde tweedeling — #856's
+"identiek gedrag in beide tiers"-acceptatiecriterium is voor deel 1 van #862 (het rijcontract)
+bevestigd.
+
+## 14. Postgres-tier demodata-seed, deel 1: het rijcontract (#862)
+
+**Zelfde tweedeling als #856, nu voor de Postgres-tier.** `public.velden`/`veldbeschikbaarheid`/
+`speeltijden`/`teamregels` bestaan altijd (aangemaakt door eerdere migraties), dus die demodata staat
+in een gewone, automatisch toegepaste migratie: `Database.Postgres/migrations/006_allstars_demodata.sql`.
+`his.teams`/`his.matches`/`avg.teambegeleiding` voor de democlub-teams/-wedstrijden hangen af van de
+eerste Postgres-Sportlink-sync (dezelfde #856-les geldt hier evengoed) en staan daarom in een los,
+expliciet aan te roepen script:
+`scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`.
+
+**Vertaalconstructies zonder directe Postgres-tegenhanger, zoals het issue voorspelde:**
+- `CHECKSUM()` → `hashtext()` (niet-cryptografische hash, zelfde soort determinisme).
+- `CROSS APPLY … OFFSET … FETCH NEXT 1 ROWS ONLY` → `CROSS JOIN LATERAL (… OFFSET … LIMIT 1)`.
+  `WITH ORDINALITY` op een kale `VALUES`-lijst bleek in Postgres een syntaxfout op te leveren —
+  weggelaten; een letterlijke `VALUES`-lijst behoudt in de praktijk zijn schrijfvolgorde zonder
+  `ORDER BY`, exact dezelfde (impliciete) aanname als de SQL Server-versie met
+  `ORDER BY (SELECT NULL)`.
+- De object-bestaanscontrole `OBJECT_ID(...) IS NULL` → `to_regclass(...) IS NULL`.
+- `RAISERROR(…, 16, 1)` → `RAISE EXCEPTION` binnen één groot `DO $$ … $$`-blok — met opzet alles in
+  één blok: `RAISE EXCEPTION` breekt het hele blok af vóórdat Postgres de latere INSERT-statements
+  (die anders op een niet-bestaande tabel zouden knallen) ooit probeert te plannen. Dat is
+  robuuster dan SQL Server's multi-batch-aanpak, waar een `RETURN` alleen de huidige batch afbreekt
+  en een volgende `GO`-batch alsnog op de ontbrekende tabel had kunnen struikelen.
+- `DATEDIFF(DAY, '19000101', @Vandaag) % 7` (DATEFIRST-onafhankelijke zaterdagberekening) →
+  `(vandaag - DATE '1900-01-01') % 7` (Postgres' date-min-date levert direct een geheel aantal
+  dagen op, geen `DATEDIFF`-aanroep nodig).
+- `bk_teams`/`bk_matches` zijn in Postgres `GENERATED ALWAYS`-kolommen (#818) — expliciet weggelaten
+  uit de INSERT-kolomlijst (in tegenstelling tot SQL Server, waar `bk_teams` een gewone, wél
+  in te vullen kolom is); `teamcode`/`lokaleteamcode`/`poulecode` blijven gevuld zodat de kolom zich
+  correct (en uniek per team) aflaadt — dezelfde #853-les.
+
+**TeamRegels (#862's contract noemt 1 rij) bestond nog niet voor de democlub, op geen van beide
+tiers** — toegevoegd aan zowel `Database/Script.PostDeployment1.sql` (SQL Server) als
+`006_allstars_demodata.sql` (Postgres), zelfde vorm (`BufferVoor`, 60 minuten, gekoppeld aan
+"AllStars Heren 1").
+
+**Empirisch bevestigd** (wegwerp-Postgres-16-container, `his.teams`/`his.matches` met de hand
+aangemaakt via de letterlijke `PostgresSchemaGenerator.GenerateHisTable`-output om de
+na-de-eerste-sync-situatie na te bootsen — geen aanname, opgevraagd bij de generator zelf): velden=3,
+veldbeschikbaarheid=21, speeltijden=1 (gekopieerd van een test-primaire-club), teamregels=1,
+teams=28, teambegeleiding=28, wedstrijden=224 — exact het contract uit #862. Beide scripts zijn
+idempotent bevestigd (tweede run voegt niets toe) en beide faalpaden (democlub ontbreekt;
+his.teams/his.matches bestaan nog niet) geven de verwachte, duidelijke foutmelding. De
+`PostDeployment op verse Postgres-database`-CI-job bootst dit scenario nu ook zelf na en bewaakt
+dezelfde zeven aantallen.
+
+**Nog niet gedekt (deel 2 van #862, bewust niet in deze ronde meegenomen):** de circa elf tabellen
+die vandaag op GEEN van beide tiers demodata hebben (Teams-beheertabel, TeamAliassen,
+TeamVoorkeurTijden, EmailTemplateInstellingen, UitgeslotenEmailAdressen, EmailVerwerking,
+GeplandeWedstrijden, ClassificatieCorrectie, Zonsondergang, ImportLog, VeldTraining) — en de
+dekkingscontrole die per GUI-route moet bewijzen dat er een demorij bestaat. Dat blijft open scope
+op #862.
 
 ## Gerelateerd
 

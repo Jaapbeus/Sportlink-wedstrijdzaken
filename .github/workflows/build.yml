@@ -577,6 +577,108 @@ jobs:
       # het huidige, kleine migratiebestand voldoende. Herzie deze beslissing zodra
       # Database.Postgres/migrations/ meerdere bestanden bevat of een generator-stap krijgt.
 
+      # #862 (deel 1): AllStars-demodata op de Postgres-tier — hetzelfde rijcontract als de
+      # SQL Server-tier (#851's fase 3). Twee stukken, net als op de SQL Server-tier (#856-les):
+      # 006_allstars_demodata.sql (velden/veldbeschikbaarheid/speeltijden/teamregels — bestaan al na
+      # de migraties hierboven) en scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+      # (teams/teambegeleiding/wedstrijden — vereist his.teams/his.matches, die pas na de eerste
+      # sync bestaan, dus hier gesimuleerd met de exacte PostgresSchemaGenerator-DDL).
+      - name: AllStars-demodata verifiëren (velden/veldbeschikbaarheid/speeltijden/teamregels, #862)
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+
+          # Primaire club + speeltijden-bronrij, zodat de Speeltijden-copy in 006 iets te kopiëren
+          # heeft — zonder dit zou de kopieerstap stil 0 rijen opleveren en niets bewijzen.
+          psql_ci -c "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('CIPRIMARY', 'CI Primary', true) ON CONFLICT DO NOTHING;"
+          psql_ci -c "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode) VALUES ('JO13', 1.0, 60, 30, 10, 'CIPRIMARY') ON CONFLICT DO NOTHING;"
+
+          # 006 is door de CLI hierboven al via de ledger toegepast (vóór CIPRIMARY bestond, dus
+          # zonder iets te kopiëren) — hier opnieuw uitgevoerd als los SQL-bestand (niet via de
+          # ledger, die 006 al als toegepast beschouwt) om de copy-logica alsnog te bewijzen. Het
+          # bestand is zelf idempotent (NOT EXISTS-gated), dus een tweede uitvoering is veilig.
+          psql_ci -v ON_ERROR_STOP=1 -f Database.Postgres/migrations/006_allstars_demodata.sql
+
+          aantallen=$(psql_ci -c "
+            SELECT (SELECT COUNT(*) FROM public.velden WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM public.veldbeschikbaarheid WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM public.teamregels WHERE clubcode='ALLSTARS');
+          ")
+          read -r velden vb speeltijden teamregels <<< "$aantallen"
+          echo "velden=$velden veldbeschikbaarheid=$vb speeltijden=$speeltijden teamregels=$teamregels"
+          if [ "$velden" != "3" ] || [ "$vb" != "21" ] || [ "$speeltijden" != "1" ] || [ "$teamregels" != "1" ]; then
+            echo "::error::AllStars-demodata (#862) rijtellingen komen niet overeen: verwacht velden=3 veldbeschikbaarheid=21 speeltijden=1 teamregels=1, gevonden velden=$velden veldbeschikbaarheid=$vb speeltijden=$speeltijden teamregels=$teamregels"
+            exit 1
+          fi
+          echo "AllStars-demodata (velden/veldbeschikbaarheid/speeltijden/teamregels): rijtellingen kloppen."
+
+      - name: AllStars-demodata verifiëren (teams/teambegeleiding/wedstrijden, na simulatie van na-de-eerste-sync, #862)
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+          psql_ci_f() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -v ON_ERROR_STOP=1 "$@"; }
+
+          # his.teams/his.matches bestaan pas na de eerste sync (#856-les, ook op de Postgres-tier).
+          # DDL hier is de letterlijke PostgresSchemaGenerator.GenerateHisTable-output voor
+          # KnownEntities.Teams/Matches (#818) — geen losstaande aanname, 1:1 overgenomen.
+          psql_ci -c "CREATE SCHEMA IF NOT EXISTS his;"
+          cat > /tmp/his-teams-matches.sql <<'SQLEOF'
+          CREATE TABLE IF NOT EXISTS his."teams" (
+              "teamcode" BIGINT, "lokaleteamcode" BIGINT, "poulecode" BIGINT,
+              "teamnaam" VARCHAR(100), "competitienaam" VARCHAR(200), "klasse" VARCHAR(200),
+              "poule" VARCHAR(50), "klassepoule" VARCHAR(200), "spelsoort" VARCHAR(50),
+              "competitiesoort" VARCHAR(50), "geslacht" VARCHAR(50), "teamsoort" VARCHAR(50),
+              "leeftijdscategorie" VARCHAR(50), "kalespelsoort" VARCHAR(50), "speeldag" VARCHAR(50),
+              "speeldagteam" VARCHAR(100), "more" VARCHAR(200), "clubcode" VARCHAR(20),
+              "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
+              "mta_deleted" TIMESTAMPTZ NULL,
+              "bk_teams" TEXT GENERATED ALWAYS AS (COALESCE("teamcode"::text, '') || '' || COALESCE("lokaleteamcode"::text, '') || '' || COALESCE("poulecode"::text, '')) STORED
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "UQ_teams_bk" ON his."teams" ("bk_teams");
+          CREATE INDEX IF NOT EXISTS "IX_teams_clubcode" ON his."teams" ("clubcode");
+          CREATE TABLE IF NOT EXISTS his."matches" (
+              "wedstrijddatum" VARCHAR(50), "wedstrijdcode" BIGINT, "wedstrijdnummer" BIGINT,
+              "datum" VARCHAR(50), "wedstrijd" VARCHAR(200), "accommodatie" VARCHAR(200),
+              "aanvangstijd" VARCHAR(50), "thuisteam" VARCHAR(100), "thuisteamid" VARCHAR(50),
+              "thuisteamlogo" VARCHAR(1000), "thuisteamclubrelatiecode" VARCHAR(50),
+              "uitteamclubrelatiecode" VARCHAR(50), "uitteam" VARCHAR(100), "uitteamid" VARCHAR(50),
+              "uitteamlogo" VARCHAR(1000), "competitiesoort" VARCHAR(200), "status" VARCHAR(50),
+              "meer" VARCHAR(1000), "teamnaam" VARCHAR(100), "teamvolgorde" INTEGER,
+              "competitie" VARCHAR(200), "klasse" VARCHAR(100), "poule" VARCHAR(100),
+              "klassepoule" VARCHAR(200), "kaledatum" VARCHAR(50), "vertrektijd" VARCHAR(50),
+              "verzameltijd" VARCHAR(50), "scheidsrechters" VARCHAR(500), "scheidsrechter" VARCHAR(200),
+              "veld" VARCHAR(100), "veld_subpositie" VARCHAR(5), "locatie" VARCHAR(100),
+              "plaats" VARCHAR(100), "rijders" VARCHAR(200), "kleedkamerthuisteam" VARCHAR(50),
+              "kleedkameruitteam" VARCHAR(50), "kleedkamerscheidsrechter" VARCHAR(50),
+              "datumopgemaakt" VARCHAR(50), "uitslag" VARCHAR(50), "uitslag-regulier" VARCHAR(50),
+              "uitslag-nv" VARCHAR(50), "uitslag-s" VARCHAR(50), "competitienaam" VARCHAR(200),
+              "eigenteam" VARCHAR(50), "sportomschrijving" VARCHAR(100),
+              "verenigingswedstrijd" VARCHAR(50), "clubcode" VARCHAR(20),
+              "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
+              "mta_deleted" TIMESTAMPTZ NULL,
+              "bk_matches" TEXT GENERATED ALWAYS AS (COALESCE("wedstrijdcode"::text, '')) STORED
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "UQ_matches_bk" ON his."matches" ("bk_matches");
+          CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
+          SQLEOF
+          psql_ci_f -f /tmp/his-teams-matches.sql
+
+          # Twee keer uitvoeren — bewijst idempotentie, zelfde discipline als de migraties hierboven.
+          psql_ci_f -f scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+          psql_ci_f -f scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+
+          aantallen=$(psql_ci -c "
+            SELECT (SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM his.matches WHERE clubcode='ALLSTARS');
+          ")
+          read -r teams begeleiding matches <<< "$aantallen"
+          echo "teams=$teams begeleiding=$begeleiding matches=$matches"
+          if [ "$teams" != "28" ] || [ "$begeleiding" != "28" ] || [ "$matches" != "224" ]; then
+            echo "::error::AllStars-demodata (#862) teams/teambegeleiding/wedstrijden komen niet overeen: verwacht 28/28/224, gevonden teams=$teams begeleiding=$begeleiding matches=$matches"
+            exit 1
+          fi
+          echo "AllStars-demodata (teams/teambegeleiding/wedstrijden): rijtellingen kloppen (28/28/224), idempotent bevestigd."
+
       # #866: Database.Postgres.Tests' integratietests (PostgresMergeOrchestrator, MigrationRunner,
       # de plannerview, TeambegeleidingImporter, de #854-UTC-audittest) draaien env-gestuurd via
       # PostgresFactAttribute/PostgresTheoryAttribute — zichtbaar overgeslagen zonder
