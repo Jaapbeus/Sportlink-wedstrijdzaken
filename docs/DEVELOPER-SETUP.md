@@ -344,6 +344,20 @@ zonder een `.dacpac` niets te publiceren.
 > van oplevert. De bestaande workaround (`sportlink-wedstrijdzaken.slnf` zonder het `.sqlproj`,
 > hierboven en in sectie 8) blijft dus de standaard voor cross-platform builds.
 
+**AllStars-demoteams en -wedstrijden — apart, ná de eerste sync (#856):** `Script.PostDeployment1.sql`
+zaait de demo-velden, -veldbeschikbaarheid en -speeltijden, maar niet de demo-teams/-wedstrijden —
+die hangen af van `his.teams`/`his.matches`, die pas ontstaan bij de eerste Sportlink-sync (sectie
+4.3, of handmatig via `GET /api/sync-matches`). Draai daarna:
+
+```powershell
+docker cp scripts/migrations/003-seed-allstars-demo-matches.sql sportlink-sqlserver:/tmp/003-seed.sql
+docker exec sportlink-sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -d SportlinkSqlDb -b -V 11 -i /tmp/003-seed.sql'
+```
+
+Idempotent — gerust herhalen. Levert 28 teams, 28 begeleiders en 224 wedstrijden voor de democlub
+`ALLSTARS`. Draai je dit vóór de eerste sync, dan meldt het script duidelijk (RAISERROR) dat
+`his.teams`/`his.matches` nog niet bestaan, in plaats van stil niets te doen.
+
 ### 4.3 Sportlink API-credentials instellen
 
 ```sql
