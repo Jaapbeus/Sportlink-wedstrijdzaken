@@ -182,7 +182,9 @@ De afhankelijkheden lopen niet gelijk aan de nummering:
    #866, #863. ✅ #866/#863 volledig gemerged; #867 gedeeltelijk (fixtureserver + SQL-Server-tier-
    test gemerged, Postgres-tier-variant wacht op #890, CI-wiring op #866-patroon nu beschikbaar).
 3. **Bouwen**: #860 (het grootste stuk — uitgewerkt naar #891/#887/#888/#889/#890, zie §6c),
-   daarna #861 en #862. #891 (projectopzet) gemerged; #887/#888/#889/#890 nog open.
+   daarna #861 en #862. #891 (projectopzet) en #887 (beheer, alle 16 endpointparen) gemerged;
+   #888/#889/#890 nog open — #887's `AdminSyncFunction.Trigger`/`AdminTeambegeleidingFunction.
+   Doorsturen` zijn bewuste 501-stubs die op #890 resp. #889 wachten.
 4. **Bewaken**: #864, #865.
 5. **Afrekenen**: #851 groen krijgen.
 
@@ -333,14 +335,39 @@ gebruikt `clubcode` ook als weergavenaam totdat een toekomstige migratie dat ver
 zie §12). Blokkeerde de CRUD-vertaling van `AdminSpeeltijdenFunction`/`Repository`, die daarom nog
 niet in deze ronde is meegenomen.
 
-**Resterende negen admin-endpointparen** (zie #887) volgen dezelfde, nu gevestigde structuur:
-repository in `FunctionApp.Postgres/Admin/Repositories/`, endpoint in `FunctionApp.Postgres/Admin/`,
-zelfde route als de SQL Server-tier. **Van die negen mappen er acht op een SQL Server-tabel die nog
-geen Postgres-migratie heeft** (`VeldBeschikbaarheid`, `VeldTraining`, `VeldPeriode`,
-`TeamVoorkeurTijden`, `TeamRegels`, `UitgeslotenEmailAdressen`, `TeamAliassen`,
-`EmailTemplateInstellingen`, `avg.Teambegeleiding`, plus leermomenten-/thema-instellingen) — dat is
-dezelfde soort migratiewerk als §12 hieronder, acht keer. Zie de comment op #887 voor de volledige
-toelichting.
+**#887 is inmiddels volledig afgerond: alle 16 admin-endpointbestanden hebben een
+Postgres-tegenhanger.** De resterende vijftien volgden dezelfde, nu gevestigde structuur: repository
+in `FunctionApp.Postgres/Admin/Repositories/`, endpoint in `FunctionApp.Postgres/Admin/`, zelfde
+route als de SQL Server-tier. Nieuwe migraties per tabelgroep: `003_admin_tables.sql` (Teams,
+TeamAliassen, TeamRegels, TeamVoorkeurTijden, UitgeslotenEmailAdressen, VeldPeriode,
+VeldBeschikbaarheid, VeldTraining, EmailTemplateInstellingen, `planner.EmailVerwerking`,
+`planner.ClassificatieCorrectie`, plus de ontbrekende kolommen op `appsettings`/`velden`/
+`speeltijden`), `004_appsettingsaudit.sql` (`AppSettingsAudit`), `005_appsettings_theme_assets.sql`
+(`faviconurl`/`logourl`).
+
+**Twee genuine Postgres-vs-SQL-Server-verschillen empirisch aangetroffen tijdens deze vertaling**
+(niet aangenomen, gevonden via een echte runtime-fout tegen een wegwerp-container):
+- **Impliciete tekst→numeriek-conversie bestaat niet in Postgres.** `AdminSettingsFunction`'s
+  dynamische `UPDATE … SET [veld] = @waarde` bindt elke gewijzigde waarde als string (de
+  JSON-request is `Dictionary<string,string?>`). SQL Server accepteert dat via impliciete conversie
+  in een `INT`/`BIT`/`FLOAT`-kolom; Postgres geeft `42804 column "bufferminuten" is of type integer
+  but expression is of type text`. Fix: een `FieldCasts`-tabel geeft de vier niet-tekstvelden een
+  expliciete `::type`-cast in de UPDATE-SQL. Zonder deze fix zou elke PUT op een numeriek/boolean
+  AppSettings-veld hard falen — `dotnet build` ziet dit niet, alleen een echte runtime-aanroep.
+- **Npgsql weigert een `DateTime` met `Kind=Unspecified` voor een `TIMESTAMPTZ`-parameter.**
+  `AdminEmailLogFunction`'s `vanaf`/`tot`-filters komen uit `DateTime.TryParse(...).Date` (Kind
+  onveranderd = Unspecified) — dat werkte op `DATETIME2` (kent geen Kind), niet op Npgsql's
+  `TIMESTAMPTZ`-binding. Fix: `DateTime.SpecifyKind(…, Utc)` vóór parameterbinding.
+
+**Drie sub-endpoints zijn bewuste 501-stubs, geen gemiste scope:** `AdminSyncFunction.Trigger` en
+`AdminTeambegeleidingFunction.Doorsturen` hangen af van respectievelijk de volledige
+Sportlink-ETL-pipeline (#890) en de e-mailverzend-/teamresolutielaag
+(`GraphServiceClient`/`EmailGraphService`/`IEmailPersistenceRepository`/`OntvangerParser`, #889) —
+geen van beide bestaat nog op de Postgres-tier. Elke stub retourneert een expliciete 501 met
+verwijzing naar het blokkerende issue in plaats van een no-op te faken die stil niets doet.
+`AdminSyncFunction.Status` en alle vier `AdminTeambegeleidingFunction`-endpoints op
+`avg.teambegeleiding`/`avg.importlog` (GetTeams, GetBegeleiders, Import) zijn wél volledig vertaald
+en werkend — alleen het Graph-afhankelijke pad is geblokkeerd.
 
 ## 12. public.speeltijden — drie ontbrekende kolommen bijgewerkt (#893)
 
