@@ -1,7 +1,7 @@
 // Unit-tests voor issue-status.js — draaien zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/issue-status.test.js   (exit 0 = alles groen)
 // Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
-const { extractIssueRefs, setIssueStatus, clearIssueStatus } = require('./issue-status.js');
+const { extractIssueRefs, setIssueStatus, clearIssueStatus, isEpic } = require('./issue-status.js');
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -25,6 +25,14 @@ check('leeg levert niets', { all: r.all, strong: [...r.strong] }, { all: [], str
 
 r = extractIssueRefs(null, null);
 check('null is veilig', { all: r.all, strong: [...r.strong] }, { all: [], strong: [] });
+
+// ---------- isEpic ----------
+console.log('\nisEpic:');
+check('object-labels: epic aanwezig', isEpic({ labels: [{ name: 'epic' }, { name: 'type: ci' }] }), true);
+check('string-labels: epic aanwezig', isEpic({ labels: ['epic', 'priority: low'] }), true);
+check('geen epic-label', isEpic({ labels: [{ name: 'type: ci' }] }), false);
+check('geen labels', isEpic({ labels: [] }), false);
+check('labels ontbreekt volledig', isEpic({}), false);
 
 // ---------- setIssueStatus ----------
 console.log('\nsetIssueStatus:');
@@ -93,6 +101,31 @@ async function run() {
   res = await clearIssueStatus({ github: gh, context: ctx, core, issueNumber: 1 });
   check('clear verwijdert alle statussen', { res, added: gh.calls.added, removed: gh.calls.removed.sort() },
         { res: 'set', added: [], removed: ['status: awaiting-release', 'status: in-progress'] });
+
+  // ---------- label-awaiting-release.yml: epic-guard (#838) ----------
+  // Simuleert de per-issue-beslissing uit de labelloop van label-awaiting-release.yml:
+  // een issue dat in de PR-body wordt genoemd, krijgt 'status: awaiting-release' —
+  // BEHALVE als het het label 'epic' draagt. Epics worden nooit via een
+  // 'fix(#NNN):'-commit-subject of CHANGELOG-'(#NNN)'-attributie afgehandeld, dus
+  // close-released-issues.yml verwijdert dat label bij een epic nooit meer.
+  console.log('\nlabel-awaiting-release.yml epic-guard:');
+
+  async function simulateAwaitingReleaseGuard(github) {
+    const issue = (await github.rest.issues.get({ owner: 'o', repo: 'r', issue_number: 1 })).data;
+    if (issue.pull_request) return 'skipped-pr';
+    if (isEpic(issue)) return 'skipped-epic';
+    return setIssueStatus({ github, context: ctx, core, issueNumber: 1, status: 'status: awaiting-release', respectProtected: false });
+  }
+
+  gh = fakeGithub(['epic', 'type: ci']);
+  res = await simulateAwaitingReleaseGuard(gh);
+  check('epic genoemd in PR-body krijgt GEEN awaiting-release', { res, added: gh.calls.added },
+        { res: 'skipped-epic', added: [] });
+
+  gh = fakeGithub(['type: ci']);
+  res = await simulateAwaitingReleaseGuard(gh);
+  check('regressie: gewoon issue krijgt awaiting-release nog gewoon wel', { res, added: gh.calls.added },
+        { res: 'set', added: ['status: awaiting-release'] });
 
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);
   process.exit(failures === 0 ? 0 : 1);
