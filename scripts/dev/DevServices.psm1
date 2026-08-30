@@ -515,9 +515,19 @@ function Wait-ForPostgres {
 
         pg_isready draait ín de container, dus dit werkt zonder een lokale psql-installatie —
         op Windows en macOS gelijk. Geen Start-Sleep vooraf: eerst proberen, dan pas wachten.
+
+        VERPLICHT -d <database> meegeven, niet alleen -U: de officiële Postgres-image draait
+        initdb.d (incl. het aanmaken van POSTGRES_DB) via een tijdelijke, alleen-lokale
+        server vóórdat de "echte" server extern gaat luisteren. pg_isready zonder -d verbindt
+        impliciet met een database die naar de OS-gebruiker is genoemd (hier: 'postgres',
+        altijd meteen aanwezig) en kan daardoor "ready" melden vóórdat de aangevraagde
+        POSTGRES_DB-database daadwerkelijk bestaat — empirisch aangetroffen bij de #851-zelftest:
+        "gereed na 4 pogingen" gevolgd door "database sportlink_selftest does not exist" op de
+        allereerstvolgende query. -d checkt dezelfde database die de aanroeper zo meteen gebruikt.
     #>
     param(
         [Parameter(Mandatory)][string]$ContainerName,
+        [Parameter(Mandatory)][string]$Database,
         [string]$User = 'postgres',
         [int]$TimeoutSeconds = 120
     )
@@ -526,7 +536,7 @@ function Wait-ForPostgres {
     $poging = 0
     while ((Get-Date) -lt $deadline) {
         $poging++
-        $null = & docker exec $ContainerName pg_isready -U $User 2>&1
+        $null = & docker exec $ContainerName pg_isready -U $User -d $Database 2>&1
         if ($LASTEXITCODE -eq 0) {
             return [pscustomobject]@{ Ready = $true; Attempts = $poging }
         }

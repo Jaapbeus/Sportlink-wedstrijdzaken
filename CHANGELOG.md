@@ -285,6 +285,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
 
 ### Fixed
+- **Twee race-conditions in de #851-zelftestharness (`scripts/dev/Test-PostgresTier.ps1`,
+  `DevServices.psm1`), gevonden bij de eerste echte end-to-end-run van G0/G1.**
+  `Wait-ForPostgres` riep `pg_isready` uitsluitend met `-U` aan, zonder `-d <database>` — de
+  officiële Postgres-image draait de aanmaak van `POSTGRES_DB` via een tijdelijke, alleen-lokale
+  server vóórdat de "echte" server extern gaat luisteren, en `pg_isready` zonder `-d` verbindt
+  impliciet met een database die naar de OS-gebruiker is genoemd (altijd meteen aanwezig). Gevolg:
+  het script meldde "gereed" terwijl de aangevraagde database `sportlink_selftest` een fractie
+  later pas bestond, en de eerstvolgende query crashte met "database … does not exist". Fix:
+  `-d $Database` toegevoegd, zelfde database die de aanroeper meteen daarna gebruikt. Daarnaast
+  controleerde G1 (`G1.andere-engine.uit`) de SQL Server-poort met één meting direct na `docker
+  stop` — op Windows/Docker Desktop kan de host-poortmapping een fractie later loslaten dan het
+  containerproces zelf stopt. Fix: een korte polling-lus (max 10s) in plaats van een enkele meting.
+  Beide empirisch bevestigd tegen een echte lokale run: G0 en G1 slagen nu reproduceerbaar
+  (twee opeenvolgende runs, beide 100% groen op de niet-geblokkeerde poorten).
 - **De AllStars-demodata sloeg zichzelf stil over op een verse database (#856).**
   `Script.PostDeployment1.sql` probeerde teams/wedstrijden te zaaien in `his.teams`/`his.matches` —
   tabellen die pas ontstaan bij de eerste Sportlink-sync en op een verse installatie dus nog niet
