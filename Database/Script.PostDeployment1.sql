@@ -2875,12 +2875,26 @@ BEGIN
 
     -- his.teams: twee teams per categorie. Set-based gegenereerd zodat de lijst compact blijft;
     -- de leeftijdscategorieen sluiten aan op de sleutels in dbo.Speeltijden.
+    --
+    -- #853: teamcode/lokaleteamcode/poulecode expliciet gevuld met unieke, herkenbaar-fictieve
+    -- waarden (9000000+, dezelfde gereserveerde-demo-range als wedstrijdcode verderop in dit
+    -- script). Deze drie kolommen vormden voorheen de business-key voor de Postgres-tier
+    -- (KnownEntities.Teams.businessKey), maar bleven hier ongevuld — Postgres' GENERATED ALWAYS
+    -- bk_-kolom leidt zich af uit deze drie kolommen, dus met drie keer NULL kreeg elk team
+    -- dezelfde afgeleide sleutel en overleefde de unieke index er maar één. SQL Server's eigen
+    -- bk_teams-kolom blijft ongewijzigd de leesbare CONCAT-vorm; deze drie kolommen zijn puur
+    -- additioneel en raken geen bestaande join of query (geverifieerd: alleen [teamnaam] wordt
+    -- verderop in dit script gebruikt om AllStars-wedstrijden aan teams te koppelen).
     IF NOT EXISTS (SELECT 1 FROM [his].[teams] WHERE [ClubCode] = @DemoClub)
         INSERT INTO [his].[teams]
-            ([bk_teams], [teamnaam], [teamsoort], [geslacht], [leeftijdscategorie],
-             [competitiesoort], [mta_inserted], [mta_modified], [ClubCode])
+            ([bk_teams], [teamcode], [lokaleteamcode], [poulecode], [teamnaam], [teamsoort],
+             [geslacht], [leeftijdscategorie], [competitiesoort], [mta_inserted], [mta_modified],
+             [ClubCode])
         SELECT
             CONCAT('ALLSTARS-', c.[Cat], '-', n.[Nr]),
+            9000000 + ROW_NUMBER() OVER (ORDER BY c.[Cat], n.[Nr]),
+            9000000 + ROW_NUMBER() OVER (ORDER BY c.[Cat], n.[Nr]),
+            9000000 + ROW_NUMBER() OVER (ORDER BY c.[Cat], n.[Nr]),
             CONCAT('AllStars ', c.[Cat], ' ', n.[Nr]),
             c.[Soort], c.[Geslacht], c.[Leeftijd], 'regulier',
             GETUTCDATE(), GETUTCDATE(), @DemoClub
