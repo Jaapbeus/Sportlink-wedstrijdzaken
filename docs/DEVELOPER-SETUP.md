@@ -630,6 +630,44 @@ Regenereren na een spec-wijziging: de `bruno-gen-collection`-skill (`ingest` →
 uitgevoerd tegen `docs/api-standaarden/openapi.yaml`. `bruno-gen.json` legt het project en de
 `local`-omgeving vast zodat dit zonder handmatige keuzes herhaalbaar is.
 
+### Synchronisatiepad testen zonder de echte Sportlink-API (#867)
+
+`FunctionApp.Tests/Sync/SportlinkFixtureSyncIntegrationTests.cs` draait de volledige
+Sportlink-synchronisatie (`SportlinkSyncPipeline.RunSyncAsync`) end-to-end tegen een lokale,
+wegwerpbare fixtureserver (`SportlinkFixtureServer` — opgenomen antwoorden in het echte
+gegevensformaat, geen demodata) in plaats van `https://data.sportlink.com`. Bewijst twee dingen
+tegelijk: (1) het volledige pad van binnenkomende gegevens tot de historische tabellen werkt, en
+(2) een tweede run met identieke brondata levert geen duplicaten op en verandert `mta_modified`
+niet voor ongewijzigde rijen.
+
+Vereist een lege SQL Server-database met het volledige schema (zelfde bron als de CI-job
+"PostDeployment op verse database"):
+
+```powershell
+docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Devonly123! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+# wacht tot de container klaar is, dan:
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -Q "CREATE DATABASE SportlinkFixture"
+docker cp Database/Script.PostDeployment1.sql sqlfixture:/tmp/postdeployment.sql
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
+
+$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Devonly123!;TrustServerCertificate=True;"
+dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIntegrationTests
+
+docker rm -f sqlfixture
+```
+
+Deze test staat net als de andere lokale-database-integratietests (`PartialFailureIntegrationTests`)
+op `[Fact(Skip=...)]` — hij draait dus niet automatisch mee in `dotnet test FunctionApp.Tests` en
+ook niet in CI. Dat is bewust: het env-gestuurde "draai automatisch zodra de verbindingsvariabele
+gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#866, tot nu toe alleen
+uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
+hem te draaien de bovenstaande handmatige stappen.
+
+**Bewust niet gedekt:** de Postgres-tier heeft nog geen eigen synchronisatiepad om tegen te testen
+(zie epic #815, #860) — deze fixtureserver en test zijn vandaag alleen bruikbaar voor de bestaande
+SQL Server-tier. `SportlinkFixtureServer` zelf is tier-onafhankelijk (een generieke HTTP-stub) en
+kan hergebruikt worden zodra de Postgres-tier een vergelijkbaar synchronisatiepad krijgt.
+
 ---
 
 ## 8. Projectstructuur

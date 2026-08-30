@@ -135,6 +135,19 @@ namespace SportlinkFunction
             }
 
             /// <summary>
+            /// Test-only: zet een instelling rechtstreeks in de procesbrede cache, zonder databaseoproep.
+            /// Alleen zichtbaar via InternalsVisibleTo (#476). Gebruikt door #867's fixture-sync-test, die
+            /// <see cref="SportlinkFunction.SportlinkSyncPipeline.RunSyncAsync"/> rechtstreeks aanroept
+            /// (buiten Function1.cs om) en dus zelf voor een geladen 'clubCode' moet zorgen. Roep na
+            /// gebruik altijd <see cref="ResetForTests"/> aan — deze cache is proces-globaal en gedeeld
+            /// met elke andere test die <see cref="GetSetting"/>/<see cref="RequireSetting"/> aanroept.
+            /// </summary>
+            internal static void SetForTests(string key, string value) => settings[key] = value;
+
+            /// <summary>Test-only: wist de procesbrede instellingencache volledig. Zie <see cref="SetForTests"/>.</summary>
+            internal static void ResetForTests() => settings.Clear();
+
+            /// <summary>
             /// Resolveert de ClubCode-discriminator: een expliciet meegegeven waarde heeft voorrang,
             /// anders de instelling uit <c>dbo.AppSettings</c>. Ontbreken beide → harde fout. (#600, #601)
             /// </summary>
