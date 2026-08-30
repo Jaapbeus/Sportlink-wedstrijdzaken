@@ -451,9 +451,11 @@ internal static class AutoPlanService
         return string.IsNullOrEmpty(subpositie) ? naam : $"{naam} {subpositie}";
     }
 
+    /// <remarks>
+    /// #819: dunne delegatie naar het tier-agnostische <c>Planner.Shared.VeldNormalisatie</c> —
+    /// zie de toelichting bij <see cref="PlannerShared.ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>.
+    /// Gedrag ongewijzigd.
+    /// </remarks>
     internal static string NormaliseerVeld(string? veld)
-    {
-        if (string.IsNullOrWhiteSpace(veld)) return string.Empty;
-        return veld.Trim().ToLowerInvariant().Replace("  ", " ");
-    }
+        => global::Planner.Shared.VeldNormalisatie.Normaliseer(veld);
 }

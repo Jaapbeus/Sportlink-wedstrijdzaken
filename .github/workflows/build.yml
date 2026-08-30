@@ -53,6 +53,13 @@ jobs:
       - name: Database.Postgres.Tests draaien (unit tests, geen Postgres nodig)
         run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity minimal
 
+      # #819: Planner.Shared bevat de tier-agnostische veldresolutielogica (VeldResolver/
+      # VeldNormalisatie) — gedeeld tussen FunctionApp (SQL Server-tier) en Database.Postgres,
+      # zodat er nooit een derde, onafhankelijke kopie van deze matching ontstaat naast de
+      # bestaande SQL Server-view en de C#-implementatie. Puur tekstlogica, geen databaseafhankelijkheid.
+      - name: Planner.Shared bouwen en testen (net9.0)
+        run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
+
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
       # worden — ontdekt tijdens de adversariële verificatie van #705-#712. De testsuite dekt onder
