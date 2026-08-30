@@ -196,6 +196,13 @@ git commit --allow-empty -m "test hooks"
 
 ## 4. Database opzetten
 
+> **Vandaag is SQL Server de enige bestaande tier.** Er is een vastgelegde multi-tier-strategie
+> (Postgres → SQLite → Cosmos DB voor het e-maillog) — zie
+> **[docs/ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md)** voor de bouwvolgorde en
+> het waarom. Zodra een andere tier daadwerkelijk gebouwd is, komt de bijbehorende lokale
+> setupinstructie in een eigen sectie hieronder — tot die tijd is de SQL Server-instructie in dit
+> hoofdstuk voor élke fork van toepassing.
+
 ### 4.1 Lokale database starten (Docker — identiek op Windows en macOS)
 
 Sinds #800 is Docker de **enige ondersteunde manier** om lokaal een database te draaien. Een

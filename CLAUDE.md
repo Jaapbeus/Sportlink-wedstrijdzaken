@@ -306,6 +306,7 @@ bewust worden bekeken.
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
 | `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
 | `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
+| `docs/ARCHITECTUUR-DATABASE-TIERS.md` | Tier-keuze, bouwvolgorde, casing-conventie of nieuwe tier-implementatie gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
@@ -675,6 +676,22 @@ Samenvatting van de drie harde regels:
 □ Modelnaam uit configuratie — niet hardcoded?
 □ KNVB-regels nog geldig voor het huidige seizoen?
 ```
+
+### Multi-tier databasestrategie — vaste bouwvolgorde, geen gedeelde abstractie
+
+> Volledig besluit + index van alle sub-issues: **[docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md)**
+
+Samenvatting van de twee harde regels (epic #815):
+
+1. **Vaste bouwvolgorde**: SQL Server (bestaand) → Postgres (eerste prioriteit) → SQLite → Cosmos DB
+   (uitsluitend het e-mailverwerkingslog). Niet gelijktijdig, niet in een andere volgorde.
+2. **Eén tier per club-deployment, nooit een gedeelde C#-providerabstractie.** Elke tier krijgt een
+   volledig gescheiden, parallelle implementatieboom (`Database.Postgres/`, `Database.Sqlite/`),
+   gekozen op build/deploytijd — nooit een runtime-switch in gedeelde code.
+
+Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
+`dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
+empirisch bevestigde Postgres-lowercase-folding-valkuil.
 
 ---
 
