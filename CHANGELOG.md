@@ -30,6 +30,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `Function1.cs` kon nooit waar zijn. `docs/DEVELOPER-SETUP.md` §5.1 beschrijft hoe je lokaal werkt
   zonder externe diensten te raken, inclusief de expliciete opt-in voor een bewuste, eenmalige
   handmatige test. (#857)
+- **Een lokale fixtureserver voor de Sportlink-synchronisatie, plus een end-to-end-test die het
+  volledige synchronisatiepad bewijst zonder de echte Sportlink-API te raken.**
+  `SportlinkFixtureServer` (`FunctionApp.Tests/Sync/`) is een minimale, wegwerpbare HTTP-server met
+  opgenomen antwoorden in het echte gegevensformaat (velden en datumnotaties uit
+  FunctionApp/CLAUDE.md's Sportlink-API-referentie, niet uit de demodata — die twee verschillen
+  net op het punt waar database-engines ook verschillen: datuminterpretatie). De nieuwe test
+  (`SportlinkFixtureSyncIntegrationTests`) draait `SportlinkSyncPipeline.RunSyncAsync` tweemaal
+  tegen die fixture en bewijst zo zowel dat het volledige pad werkt als dat een tweede run met
+  identieke brondata geen duplicaten oplevert en `mta_modified` niet bijwerkt op ongewijzigde rijen.
+  Bijkomend gefixt tijdens het bouwen hiervan: `SystemUtilities.AppSettings`' procesbrede statische
+  instellingencache had geen manier om in een test te vullen zonder een echte databaseoproep, en
+  geen manier om af te sluiten — nu via `SetForTests`/`ResetForTests` (test-only, internal).
+  Testparallellisme staat voortaan projectbreed uit voor `FunctionApp.Tests` (net als eerder al voor
+  `Database.Postgres.Tests`), want die cache is gedeeld met andere testklassen. `docs/DEVELOPER-SETUP.md`
+  beschrijft hoe je dit lokaal draait. **Bewust nog niet gedekt:** de Postgres-tier heeft nog geen
+  eigen synchronisatiepad om tegen te testen (#860); wiring in CI is de scope van #866. Zie issue 867.
 - **Een zelftest die bewijst dat een databasetier daadwerkelijk werkt, in plaats van dat de
   onderdelen compileren.** `scripts/dev/Test-PostgresTier.ps1` zet een wegwerpdatabase op, rolt het
   schema uit, laadt de demodata, en controleert per stap of het resultaat klopt — met exacte
