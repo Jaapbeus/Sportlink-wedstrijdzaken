@@ -69,6 +69,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - `Test-App.ps1` accepteert nu zowel `Server=`/`Database=` als `Data Source=`/`Initial Catalog=`
   in de verbindingsreeks. De eerste schrijfwijze staat in het meegeleverde configuratiesjabloon,
   maar werd niet herkend. (#800)
+- **`scripts/dev/Bump-Build.ps1` liet `<Version>` achterlopen op `<AssemblyVersion>`/`<FileVersion>`.**
+  De regex voor `<Version>` verwachtte een 3-componenten-waarde, terwijl beide `.csproj`-bestanden
+  daar al 4 componenten gebruikten — een gewone build-bump raakte `<Version>` daardoor helemaal
+  niet, en zelfs `-NewPatch` faalde stil omdat de waarde nooit matchte. Alle drie de velden
+  synchroniseren nu bij elke bump, conform de projectafspraak dat ze altijd gelijk lopen. (#806)
 - **Een herhaalde storing opende steeds opnieuw een nieuw GitHub-issue in plaats van een reactie
   op het bestaande.** De zelfherstellende foutmelding controleert bij elke storing of dezelfde
   fout al eerder gemeld is, maar die controle gebruikte de GitHub Search API — die bleek
