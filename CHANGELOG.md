@@ -19,15 +19,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
-- **Eerste beheer-endpoint vertaald naar de Postgres-tier, plus de gedeelde admin-infrastructuur
-  die alle volgende vertalingen nodig hebben.** `FunctionApp.Postgres/Admin/EasyAuthHelper.cs` en
-  `AdminEndpoint.cs` (bewuste kopieën van hun SQL Server-tegenhangers — geen gedeelde abstractie),
-  `PostgresAppSettings` (bewust beperkt tot de kolommen die `public.appsettings` vandaag heeft) en
-  `PostgresSystemUtilities.WaitForDatabaseAsync`. Eerste vertaald endpoint: `GET /api/beheer/clubs`
-  (`AdminClubsFunction`/`AdminClubsRepository`), empirisch geverifieerd tegen een
-  wegwerp-Postgres-container. Tijdens deze vertaling ontdekt: `public.speeltijden` mist drie
-  kolommen ten opzichte van de SQL Server-tier — apart getrackt, zie issue 893. De resterende negen
-  beheer-endpointparen volgen dezelfde, nu gevestigde structuur. Zie issue 887.
+- **Vijf van de zestien beheer-endpointparen vertaald naar de Postgres-tier, plus de gedeelde
+  admin-infrastructuur die alle volgende vertalingen nodig hebben.**
+  `FunctionApp.Postgres/Admin/EasyAuthHelper.cs` en `AdminEndpoint.cs` (bewuste kopieën van hun
+  SQL Server-tegenhangers — geen gedeelde abstractie), `PostgresAppSettings` en
+  `PostgresSystemUtilities.WaitForDatabaseAsync`. Vertaalde endpoints: `AdminClubsFunction`,
+  `AdminSpeeltijdenFunction`, `AdminVeldPeriodeFunction`, `AdminVeldBeschikbaarheidFunction`
+  (incl. de Velden-CRUD die daarin meelift), `AdminVeldTrainingFunction` — elk empirisch
+  geverifieerd met een volledige CRUD-cyclus (incl. de overlap-conflict- en
+  in-gebruik-guards) tegen een wegwerp-Postgres-container, niet alleen `dotnet build`.
+  `Database.Postgres/migrations/003_admin_tables.sql` vult `public.appsettings`/`velden`/
+  `speeltijden` aan en voegt de tabellen toe voor Teams/TeamAliassen/TeamRegels/
+  TeamVoorkeurTijden/UitgeslotenEmailAdressen/VeldPeriode/VeldBeschikbaarheid/VeldTraining/
+  EmailTemplateInstellingen/`planner.EmailVerwerking`/`planner.ClassificatieCorrectie` (nog niet
+  allemaal met een eigen endpoint erbovenop). Tijdens de eerste vertaling ontdekt: `public.speeltijden`
+  miste drie kolommen ten opzichte van de SQL Server-tier — apart getrackt en gefixt, zie issue 893.
+  Resterend voor #887: TeamVoorkeurTijden/TeamRegels, UitgeslotenEmailAdressen, TeamAliassen,
+  EmailTemplateInstellingen, Teams, AdminSettingsFunction, AdminThemeFunction, AdminSyncFunction,
+  AdminEmailLogFunction, AdminLeermomentenFunction, AdminTeambegeleidingFunction. Zie issue 887.
 - **`FunctionApp.Postgres` — de applicatie-datalaag voor de Postgres-tier bestaat nu daadwerkelijk**,
   na epic #815's grootste ontbrekende stuk (#860, uitgewerkt naar vijf sub-issues). Een minimaal,
   zelfstandig Azure Functions isolated-worker-project (net9.0) met een eigen configuratielaag
