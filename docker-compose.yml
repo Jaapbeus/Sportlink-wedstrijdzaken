@@ -1,8 +1,13 @@
-# Lokale SQL Server voor ontwikkeling — identiek op Windows en macOS (#800).
+# Lokale database(s) voor ontwikkeling — identiek op Windows en macOS (#800).
 #
-# Dit is de ENIGE ondersteunde manier om lokaal een database te draaien. Een rechtstreeks
-# op Windows geïnstalleerde SQL Server-service wordt niet meer ondersteund: dat pad werkt
-# alleen op Windows en dwong overal een tweede code- en documentatievariant af.
+# sqlserver is vandaag de enige tier die de applicatie daadwerkelijk gebruikt — dit is de ENIGE
+# ondersteunde manier om die lokaal te draaien. Een rechtstreeks op Windows geïnstalleerde
+# SQL Server-service wordt niet meer ondersteund: dat pad werkt alleen op Windows en dwong overal
+# een tweede code- en documentatievariant af.
+#
+# postgres (onderaan dit bestand, achter een profile) is de tier-2-in-aanbouw uit epic #815 —
+# nog niet de tier die de applicatie in productie gebruikt, alleen lokale ontwikkelinfrastructuur
+# voor de Postgres-sub-issues.
 #
 # Op Apple Silicon draait dit image onder Rosetta-emulatie (Microsoft levert geen native
 # ARM64-image van SQL Server); op Windows draait het native. Verder is alles gelijk:
@@ -58,5 +63,39 @@ services:
       retries: 10
       start_period: 30s
 
+  # Lokale Postgres-tier voor ontwikkeling (#822, epic #815) — naast sqlserver, niet ter vervanging.
+  #
+  # Bewust achter een profile: 'docker compose up -d' zonder argument start alléén de sqlserver-
+  # service (de tier die vandaag daadwerkelijk gebruikt wordt) — niet ongevraagd ook Postgres.
+  # Expliciet opstarten: docker compose --profile postgres up -d
+  #
+  # Postgres' officiële image is multi-arch (linux/amd64 én linux/arm64) — in tegenstelling tot
+  # het SQL Server-image hierboven is op Apple Silicon dus GEEN platform: linux/amd64 nodig en
+  # GEEN Rosetta-emulatie; de container draait daar native.
+  #
+  # Credentials komen uitsluitend uit POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB in een lokale
+  # .env-bestand (staat in .gitignore) — zelfde patroon als MSSQL_SA_PASSWORD hierboven. Zonder
+  # die variabelen weigert docker compose te starten, met een expliciete melding.
+  postgres:
+    image: postgres:16
+    container_name: sportlink-postgres
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Zet POSTGRES_USER in een .env-bestand of je shell-profiel voordat je de postgres-service start}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Zet POSTGRES_PASSWORD in een .env-bestand of je shell-profiel voordat je de postgres-service start}
+      POSTGRES_DB: ${POSTGRES_DB:-sportlink}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sportlink-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
   sportlink-sqldata:
+  sportlink-pgdata:

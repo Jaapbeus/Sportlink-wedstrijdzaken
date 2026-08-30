@@ -113,6 +113,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   ledger-tabel zelf. Lokaal draaien via `scripts/dev/Invoke-PostgresMigrations.ps1`.
   `001_baseline.sql` dekt vooralsnog alleen de vier configuratietabellen die de planner-kernview
   (#819) nodig heeft — zie issue #821 voor de resterende, nog niet geporte tabellen.
+- **Lokale Postgres-ontwikkelcontainer naast de bestaande SQL Server-container** (#822, epic #815).
+  `docker-compose.yml` krijgt een `postgres`-service (image `postgres:16`), bewust achter een
+  compose-profile — een gewone `docker compose up -d` start alléén `sqlserver`, niet ongevraagd ook
+  Postgres. Credentials via `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` uit hetzelfde lokale
+  `.env`-patroon als het bestaande SA-wachtwoord. Nieuw `scripts/dev/Test-PostgresConnection.ps1`
+  verifieert connectiviteit via `psql`, de Postgres-tegenhanger van het bestaande
+  `sqlcmd`-verificatiepad. Empirisch bevestigd: `postgres:16` is een echt multi-arch image
+  (linux/amd64 én linux/arm64) — in tegenstelling tot SQL Server draait dit op Apple Silicon dus
+  native, zonder Rosetta-emulatie. macOS-uitvoeringsverificatie kon in deze sessie niet
+  plaatsvinden (geen Apple Silicon-hardware beschikbaar) — de configuratie volgt wel consequent de
+  bestaande cross-platform-regels. Zie `docs/DEVELOPER-SETUP.md` §4.3.
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
