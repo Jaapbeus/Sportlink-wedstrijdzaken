@@ -774,6 +774,14 @@ Aanvullend:
 **Nieuw platformspecifiek gedrag hoort in `scripts/dev/DevServices.psm1`, achter een functie —
 nooit inline in een script.** Zo blijft er één plek waar de OS-verschillen staan.
 
+- **Bestandssysteem-casing-guard in CI** (`scripts/ci/check-path-casing.sh`, #825): git's
+  `core.ignorecase=true` (Windows/macOS-default) merkt een casing-mismatch in een padverwijzing
+  lokaal niet op; de Linux-CI-runner (`core.ignorecase=false`) faalt daar hard op. De guard
+  vergelijkt elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden tegen `git ls-files` en
+  faalt de build zichtbaar bij een case-insensitieve-maar-niet-exacte match — specifiek relevant
+  voor de nieuwe `Database.Postgres/`-boom, waar nog geen gevestigde conventie/spiergeheugen
+  bestaat.
+
 ### Azure Entra setup — verify/configure via scripts, nooit handmatig
 
 De Entra App Registration mag niet in productie via Portal-klikken worden aangepast — verschil tussen tenants, instellingen die wegvallen, of een verkeerd geklikte checkbox kan alle gebruikers buitensluiten. Gebruik altijd:
