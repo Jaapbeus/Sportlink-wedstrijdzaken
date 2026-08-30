@@ -118,6 +118,12 @@ exports/teambegeleiding*.csv
 # Console-logs en page-snapshots van MCP-browsersessies; puur lokaal debugmateriaal.
 .playwright-mcp/
 
+# ── Zelftest-bewijsmateriaal (#851) ───────────────────────────────────────────
+# Rapporten, schermafbeeldingen en logs per zelftestrun. Blijft lokaal: het gaat om
+# momentopnamen van een wegwerpdatabase, en schermafbeeldingen van een gevulde GUI horen
+# principieel niet in een publieke repository — ook niet als de demodata fictief is.
+artifacts/
+
 # macOS (#800) — Finder/Spotlight-rommel die anders in elke gebladerde map belandt
 .DS_Store
 .AppleDouble

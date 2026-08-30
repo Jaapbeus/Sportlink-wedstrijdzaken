@@ -192,6 +192,71 @@ Gedeelde logica staat in `scripts/dev/DevServices.psm1`, cross-platform sinds #8
 
 ---
 
+## Test-PostgresTier.ps1 — zelftest van een databasetier (#851)
+
+`scripts/dev/Test-PostgresTier.ps1` bewijst dat een **tier** werkt, niet dat de onderdelen
+compileren. Het zet een wegwerpdatabase op, rolt het schema uit, laadt de demodata, start de
+applicatie en controleert per stap of het resultaat klopt.
+
+```powershell
+./scripts/dev/Test-PostgresTier.ps1 -ListPhases                        # toont de poorten, raakt niets aan
+./scripts/dev/Test-PostgresTier.ps1 -Tier SqlServer -Mode Baseline     # basismeting van de bestaande tier
+./scripts/dev/Test-PostgresTier.ps1 -Tier Postgres  -Mode Verify       # meet de nieuwe tier
+./scripts/dev/Test-PostgresTier.ps1 -Teardown                          # alleen opruimen
+```
+
+### Waarin dit verschilt van Test-App.ps1
+
+`Test-App.ps1` controleert of de ontwikkelomgeving gezond is. Deze zelftest controleert of een
+*omzetting* geslaagd is, en hanteert daarom drie strengere regels:
+
+| Regel | Waarom |
+|---|---|
+| **Overslaan is falen** | `Test-App.ps1` slaat secties over als een poort niet luistert en meldt daarna "alles in orde". Een niet-uitgevoerde meting is hier rood |
+| **Nul asserties is falen** | Anders is "niets gemeten" niet te onderscheiden van "alles goed" |
+| **De routelijst wordt geverifieerd** | De verwachtingen worden bij elke run vergeleken met de `@page`-directives in de broncode. Een verschil in beide richtingen is een fout |
+
+Die laatste regel lost een bestaand probleem op: `Test-App.ps1` test vandaag `/veldbeschikbaarheid`
+en `/uitgesloten-emails`. Die routes bestaan niet meer, maar omdat Blazor WebAssembly op élke
+route dezelfde pagina met statuscode 200 teruggeeft, staan ze al maanden op groen.
+
+### Exitcodes
+
+| Code | Betekenis |
+|---|---|
+| 0 | Alle uitgevoerde poorten geslaagd |
+| 1 | Een poort gefaald |
+| 2 | De implementatieboom van deze tier bestaat nog niet — een geplande situatie, geen defect |
+
+Code 2 is er bewust: een verificatiescript moet "nog niet gebouwd" anders kunnen behandelen dan
+"kapot". `scripts/ci/resolve-database-tier.sh` gebruikt dezelfde codes en leest dezelfde
+tier-tabel (`scripts/ci/database-tiers.json`).
+
+### Wat het script niet doet
+
+De browsersweep over alle beheerpagina's en de schrijfpaden door de GUI zitten in de skill
+`.claude/skills/zelftest/SKILL.md`. Een client-side gerenderde pagina is niet met een HTTP-aanroep
+te beoordelen — daar is een echte browser voor nodig. Het script schrijft per run een opdracht weg
+(`artifacts/selftest/<run>/skill-opdracht.json`) zodat de skill niets zelf hoeft te verzinnen.
+
+Alle verwachtingen — routes, asserties, rijaantallen, schrijfrondes — staan in één bestand:
+`scripts/dev/selftest-expectations.psd1`. Voeg je een pagina toe, zet hem daar dan mét een
+inhoudelijke assertie in; "geen foutmelding" volstaat niet, want een lege pagina geeft die ook niet.
+
+### Isolatie
+
+De zelftest raakt de ontwikkelomgeving niet: eigen compose-projectnaam, eigen containernaam, eigen
+poort, geen opslagvolume. De ontwikkeldatabase wordt hooguit **gestopt** (nooit verwijderd) en aan
+het eind exact teruggezet in de staat van vóór de run — stond hij uit, dan blijft hij uit. Het
+opruimen gebeurt in een `finally`-blok en draait dus ook na een fout of onderbreking.
+
+De wegwerpdatabase draait bewust op Europese tijd en niet op UTC: een tijdzonefout in de
+tijdstempels valt op een UTC-server samen met correct gedrag en is dan onmeetbaar.
+
+Bewijsmateriaal komt in `artifacts/selftest/<tijdstempel>/` en staat in `.gitignore`.
+
+---
+
 ## Achtergrond: schema-drift
 
 Het project gebruikt **SSDT** (SQL Server Database Project) voor declaratief schemabeheer.

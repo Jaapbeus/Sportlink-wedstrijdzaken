@@ -1,0 +1,49 @@
+# Wegwerp-Postgres voor de zelftest (#851).
+#
+# BEWUST GESCHEIDEN van docker-compose.yml. Die bestandsnaam is de ontwikkelomgeving van de
+# gebruiker; deze is een testfixture die per run wordt weggegooid. Ze delen niets: andere
+# projectnaam (-p sportlink-selftest), andere containernaam, andere poort, geen volume.
+#
+# Starten doe je NIET met de hand — scripts/dev/Test-PostgresTier.ps1 beheert de levenscyclus,
+# inclusief het opruimen bij een fout of onderbreking. Handmatig:
+#   docker compose -p sportlink-selftest -f docker-compose.selftest.yml up -d
+#   docker compose -p sportlink-selftest -f docker-compose.selftest.yml down -v
+#
+# DRIE KEUZES DIE ER TOE DOEN
+#
+# 1. TZ=Europe/Amsterdam — bewust NIET UTC.
+#    De ETL vult de audit-tijdstempels met een tijdzone-afhankelijke uitdrukking op een kolom
+#    zonder tijdzone (#854). Op een UTC-server valt die fout samen met correct gedrag en meet de
+#    test niets. Op een niet-UTC server wijkt de waarde meetbaar af — empirisch precies 2 uur in
+#    de zomer. Zet dit dus nooit "voor de netheid" op UTC.
+#
+# 2. tmpfs in plaats van een volume — de database is per definitie vers.
+#    Een volume zou tussen runs blijven staan en daarmee de belangrijkste eigenschap van deze
+#    test ondermijnen: dat het migratiepad op een lege database werkt. Bijkomend voordeel: een
+#    'down -v' kan nooit per ongeluk het volume van de ontwikkelomgeving raken.
+#
+# 3. Poort 55432 — niet 5432.
+#    Een zelf geïnstalleerde of via een ander project draaiende Postgres blijft zo ongemoeid.
+#
+# Het wachtwoord komt per run uit de omgeving (New-SelftestPassword), staat nergens op schijf en
+# is buiten die ene run waardeloos. Zelfde patroon als de wegwerpwachtwoorden in de CI.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: sportlink-postgres-selftest
+    environment:
+      POSTGRES_PASSWORD: ${SELFTEST_PG_PASSWORD:?Test-PostgresTier.ps1 zet deze variabele; start deze compose-file niet los}
+      POSTGRES_DB: sportlink_selftest
+      TZ: ${SELFTEST_PG_TZ:-Europe/Amsterdam}
+      PGTZ: ${SELFTEST_PG_TZ:-Europe/Amsterdam}
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sportlink_selftest"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s

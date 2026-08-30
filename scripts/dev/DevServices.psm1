@@ -450,7 +450,199 @@ function Stop-DebugServices {
     }
 }
 
+# ══════════════════════════════════════════════════════════════════════════
+# Zelftest-helpers (#851)
+#
+# Alles wat de zelftest aan OS- of Docker-specifiek gedrag nodig heeft staat hier, niet inline
+# in Test-PostgresTier.ps1 — zelfde regel als hierboven: één plek voor platformverschillen.
+# ══════════════════════════════════════════════════════════════════════════
+
+function Get-SelftestPorts {
+    <#
+        Poorten van de zelftest. Bewust ANDERE poorten dan Get-DebugPorts waar dat kan, zodat een
+        draaiende dev-omgeving of een eigen Postgres niet in de weg zit.
+
+        Uitzondering: de FunctionApp-poort blijft 7094. BlazorAdmin/wwwroot/appsettings.json
+        hardcodeert die URL en dat bestand staat in git — een andere poort zou een getrackt
+        bestand moeten wijzigen. De zelftest neemt 7094 dus over in plaats van ernaast te gaan
+        zitten, en stopt daarom eerst de dev-omgeving (zie Stop-DebugServices).
+    #>
+    @{
+        Postgres    = 55432   # niet 5432: een zelf geïnstalleerde Postgres blijft ongemoeid
+        SqlServer   = 1433    # de bestaande dev-container; wordt gestopt, niet verplaatst
+        FunctionApp = 7094
+        BlazorAdmin = 5242
+        Fixture     = 7099    # lokale stub voor de externe databron (#867)
+    }
+}
+
+function Test-DockerAvailable {
+    <#
+        Draait de Docker-daemon? 'docker info' is de goedkoopste betrouwbare controle: 'docker
+        --version' slaagt ook als de daemon stilstaat, want dat leest alleen de client.
+    #>
+    try {
+        $null = & docker info 2>&1
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
+function Get-ContainerState {
+    <#
+        De staat van één container, of $null als hij niet bestaat.
+
+        Gebruikt door de zelftest om vóór de run vast te leggen of de SQL Server-container draaide,
+        zodat de teardown hem exact zo kan achterlaten. Zonder die vastlegging zou een zelftest
+        die op een gestopte container start, hem daarna 'behulpzaam' aanzetten.
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+
+    $out = & docker inspect --format '{{.State.Running}}' $Name 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    [pscustomobject]@{
+        Name    = $Name
+        Exists  = $true
+        Running = ($out.Trim() -eq 'true')
+    }
+}
+
+function Wait-ForPostgres {
+    <#
+        Pollt tot Postgres verbindingen accepteert, of tot de time-out verstrijkt.
+
+        pg_isready draait ín de container, dus dit werkt zonder een lokale psql-installatie —
+        op Windows en macOS gelijk. Geen Start-Sleep vooraf: eerst proberen, dan pas wachten.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ContainerName,
+        [string]$User = 'postgres',
+        [int]$TimeoutSeconds = 120
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $poging = 0
+    while ((Get-Date) -lt $deadline) {
+        $poging++
+        $null = & docker exec $ContainerName pg_isready -U $User 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            return [pscustomobject]@{ Ready = $true; Attempts = $poging }
+        }
+        Start-Sleep -Milliseconds 1000
+    }
+    return [pscustomobject]@{ Ready = $false; Attempts = $poging }
+}
+
+function Invoke-Psql {
+    <#
+        Voert SQL uit in de Postgres-container en geeft de ruwe uitvoer terug.
+
+        Het wachtwoord gaat via de omgevingsvariabele PGPASSWORD van het KINDproces (docker exec
+        -e), nooit als argument: argumenten zijn op beide platforms zichtbaar in de processenlijst.
+        Zelfde afweging als SQLCMDPASSWORD in Test-App.ps1 (#800).
+
+        -Tuples geeft alleen de waarden terug (psql -t -A), handig voor asserties op één getal.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ContainerName,
+        [Parameter(Mandatory)][string]$Sql,
+        [Parameter(Mandatory)][string]$Password,
+        [string]$User     = 'postgres',
+        [string]$Database = 'postgres',
+        [switch]$Tuples,
+        [switch]$StopOnError
+    )
+
+    $args = @('exec', '-e', "PGPASSWORD=$Password", $ContainerName,
+              'psql', '-U', $User, '-d', $Database)
+    if ($StopOnError) { $args += @('-v', 'ON_ERROR_STOP=1') }
+    if ($Tuples)      { $args += @('-t', '-A') }
+    $args += @('-c', $Sql)
+
+    $out = & docker @args 2>&1
+    [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output   = ($out -join "`n").Trim()
+    }
+}
+
+function New-SelftestPassword {
+    <#
+        Wegwerpwachtwoord per run. Cryptografisch willekeurig, blijft in het procesgeheugen en
+        wordt nergens weggeschreven — zelfde patroon als de CI-job 'fresh-db', die per run een
+        wachtwoord genereert en maskeert.
+    #>
+    $bytes = [byte[]]::new(16)
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    # Alfanumeriek houden: sommige tools struikelen over leestekens in een wachtwoord dat via een
+    # omgevingsvariabele door meerdere lagen heen gaat.
+    (( $bytes | ForEach-Object { $_.ToString('x2') } ) -join '') + 'Aa1'
+}
+
+function Get-DatabaseTierProject {
+    <#
+        Vertaalt een tier-naam naar zijn projectpad, door scripts/ci/database-tiers.json te lezen —
+        hetzelfde bestand dat resolve-database-tier.sh gebruikt (#865).
+
+        Dupliceer deze mapping nooit: #816 legt vast dat er precies één vertaalpunt is, en die
+        belofte sneuvelt zodra een tweede plek zijn eigen lijst bijhoudt.
+
+        Geeft een object terug in plaats van te gooien, zodat de aanroeper de drie gevallen kan
+        onderscheiden:
+          Found=$false              -> onbekende waarde (tikfout)
+          Found=$true, Built=$false -> geldige tier, boom bestaat nog niet
+          Found=$true, Built=$true  -> bruikbaar; Exists zegt of het bestand er ook echt staat
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Tier,
+        [Parameter(Mandatory)][string]$RepoRoot
+    )
+
+    $tabel = Join-Path $RepoRoot 'scripts' 'ci' 'database-tiers.json'
+    if (-not (Test-Path $tabel)) {
+        throw "Tier-tabel ontbreekt: $tabel"
+    }
+
+    $data = Get-Content $tabel -Raw | ConvertFrom-Json
+    $entry = $data.tiers | Where-Object { $_.name -eq $Tier } | Select-Object -First 1
+
+    if (-not $entry) {
+        return [pscustomobject]@{
+            Found = $false; Built = $false; Tier = $Tier
+            Csproj = $null; Exists = $false
+            Valid = ($data.tiers | ForEach-Object { $_.name })
+        }
+    }
+
+    $pad = Join-Path $RepoRoot $entry.csproj
+    [pscustomobject]@{
+        Found     = $true
+        Built     = [bool]$entry.built
+        Tier      = $entry.name
+        Csproj    = $entry.csproj
+        FullPath  = $pad
+        Exists    = (Test-Path $pad)
+        EpicIssue = $entry.epicIssue
+        Valid     = ($data.tiers | ForEach-Object { $_.name })
+    }
+}
+
+function Get-SelftestArtifactRoot {
+    <#
+        De map waar één zelftestrun zijn bewijsmateriaal neerzet. In de repo (niet in temp), zodat
+        het bij de code blijft die het beoordeelt; 'artifacts/' staat in .gitignore.
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot,
+          [string]$RunId = (Get-Date -Format 'yyyyMMdd-HHmmss'))
+
+    Join-Path $RepoRoot 'artifacts' 'selftest' $RunId
+}
+
 Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts,
     Test-PortListening, Get-PortOwner, Get-PortOwnerId, Get-ParentProcessId,
     Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
-    Wait-ForHttp, Stop-DebugServices
+    Wait-ForHttp, Stop-DebugServices,
+    Get-SelftestPorts, Test-DockerAvailable, Get-ContainerState, Wait-ForPostgres,
+    Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject
