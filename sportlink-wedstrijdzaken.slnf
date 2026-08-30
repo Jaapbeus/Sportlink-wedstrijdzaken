@@ -6,7 +6,9 @@
       "FunctionApp\\fa-dev-sportlink-01.csproj",
       "FunctionApp.Tests\\FunctionApp.Tests.csproj",
       "Database.Postgres\\Database.Postgres.csproj",
-      "Database.Postgres.Tests\\Database.Postgres.Tests.csproj"
+      "Database.Postgres.Tests\\Database.Postgres.Tests.csproj",
+      "Planner.Shared\\Planner.Shared.csproj",
+      "Planner.Shared.Tests\\Planner.Shared.Tests.csproj"
     ]
   }
 }

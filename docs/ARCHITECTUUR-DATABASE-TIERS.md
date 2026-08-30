@@ -43,6 +43,18 @@ functioneel voordeel dat het risico zou rechtvaardigen.
 (`Database.Postgres/`, `Database.Sqlite/`), gekozen via het tier-keuzemechanisme (#816) op
 build/deploytijd — niet via een runtime-switch in gedeelde code.
 
+**Uitzondering, expliciet afgebakend: pure, provider-agnostische business-logica mag wél gedeeld
+worden.** Deze regel gaat over een DB-*provider*-abstractie (dynamische DDL, upsert-/MERGE-
+semantiek) — niet over elke regel C# die toevallig door meer dan één tier gebruikt wordt. #819
+extraheerde de Sportlink-veldstring-matching (voorheen `PlannerShared.ResolveVeld` +
+`AutoPlanService.NormaliseerVeld`, uitsluitend tekstbewerking zonder SQL/ADO.NET-afhankelijkheid)
+naar het tier-agnostische `Planner.Shared/`, gebruikt door zowel `FunctionApp` (SQL Server-tier)
+als `Database.Postgres`. Zonder die extractie zou de Postgres-view de matching opnieuw in SQL
+moeten herbouwen — een derde, onafhankelijke kopie naast de bestaande T-SQL-versie en de
+C#-versie, precies het onderhoudsrisico dat #719 al blootlegde voor die twee. Vuistregel voor een
+volgende tier: bevat de te herbouwen logica geen SQL en geen providerspecifieke aanroep, verhuis
+haar naar een gedeeld project in plaats van haar te dupliceren.
+
 **Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging nog niet gebouwd.** #816
 legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
 ontbrekende/onbekende waarde), maar een *wijziging* van een reeds actieve, geldige waarde naar

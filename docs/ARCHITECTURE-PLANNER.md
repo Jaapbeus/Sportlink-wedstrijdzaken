@@ -107,12 +107,23 @@ komen terug in de Sportlink-veldstring ("Kunstgras 1 A2").
 > Dit stond ooit als `LEFT(veld, 6)` in de SQL-paden. Die afkap vereist dat élke veldnaam maximaal zes
 > tekens is én in de eerste zes uniek, en dat is twee keer niet waar: `veld 10` werd `veld 1` (bezetting
 > op het verkeerde veld, waarna veld 10 vrij leek → **dubbele boeking**) en `hoofdveld` matchte niets en
-> viel volledig uit de bezetting. De matching zit nu in `PlannerShared.ResolveVeld` (C#),
-> `VeldResolutie.SqlOuterApply` (SQL vanuit C#) en de view `planner.AlleWedstrijdenOpVeld`.
+> viel volledig uit de bezetting. De matching zit nu in `Planner.Shared.VeldResolver.Resolve` (C#,
+> tier-agnostisch — sinds #819 verplaatst uit `PlannerShared.ResolveVeld`; die methode en
+> `AutoPlanService.NormaliseerVeld` zijn nu dunne delegaties, gedrag ongewijzigd),
+> `VeldResolutie.SqlOuterApply` (SQL Server-specifieke SQL-generatie vanuit C#) en de view
+> `planner.AlleWedstrijdenOpVeld`.
 >
 > De view staat op **twee** plekken — het DB-project én `Script.PostDeployment1.sql` — en CI rolt alleen
 > dat laatste uit. `VeldResolutieDriftTests` faalt als ze uiteenlopen of als de zes-tekens-afkap
 > terugkomt.
+>
+> **Postgres-tier (#819):** de Postgres-vertaling van deze view (`Database.Postgres/PostgresPlannerViewGenerator.cs`)
+> bouwt de veldresolutie bewust **niet** opnieuw in SQL na — dat zou een derde, onafhankelijke kopie
+> van deze matching zijn. De view levert daar de ruwe, ongeresolveerde veldstring terug;
+> `PostgresPlannerAvailabilityReader` resolveert die met exact dezelfde `Planner.Shared.VeldResolver`
+> die ook de SQL Server-tier gebruikt. Zie de doc-comment op `PostgresPlannerViewGenerator` voor de
+> volledige motivatie en voor een empirisch gevonden hoofdlettergevoeligheidsverschil tussen SQL
+> Server's collatie en Postgres' regex-operator (opgelost met `~*`; gerelateerd aan #820).
 
 | Veldafmeting | Banen | Toegestane plekken |
 |---|---|---|

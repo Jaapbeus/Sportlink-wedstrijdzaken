@@ -37,6 +37,13 @@ internal static class PlannerShared
     // Daarom loopt de vertaling nu voor alle consumenten via deze functie. De normalisatie zelf is
     // hergebruikt uit <see cref="AutoPlanService.NormaliseerVeld"/>; er is bewust geen tweede
     // variant naast bijgezet.
+    //
+    // #819: de daadwerkelijke matching-implementatie is verhuisd naar het tier-agnostische
+    // Planner.Shared/VeldResolver.cs (puur tekstlogica, geen databaseafhankelijkheid) zodat de
+    // Postgres-tier's planner-view (die het veldresolutie-deel bewust niet in SQL herbouwt, zie
+    // Database.Postgres) dezelfde implementatie aanroept in plaats van een derde, onafhankelijke
+    // kopie te introduceren naast deze C#-versie en de SQL Server-view. Deze methode is nu een
+    // dunne delegatie — gedrag ongewijzigd.
 
     /// <summary>
     /// Splitst een Sportlink-veldstring in het veldnummer uit <c>dbo.Velden</c> en de subpositie
@@ -50,30 +57,12 @@ internal static class PlannerShared
     /// </returns>
     internal static (int VeldNummer, string? Subpositie) ResolveVeld(
         string? sportlinkVeld, IEnumerable<(string? VeldNaam, int VeldNummer)> velden)
-    {
-        var gezocht = AutoPlanService.NormaliseerVeld(sportlinkVeld);
-        if (gezocht.Length == 0) return (0, null);
-
-        // Langste veldnaam eerst: bestaat naast "veld 1" ook "veld 1 achter", dan hoort
-        // "veld 1 achter B" bij dat tweede veld en is "achter" geen subpositie van veld 1.
-        foreach (var veld in velden
-                     .Select(v => (Naam: AutoPlanService.NormaliseerVeld(v.VeldNaam), v.VeldNummer))
-                     .Where(v => v.Naam.Length > 0)
-                     .OrderByDescending(v => v.Naam.Length))
-        {
-            if (gezocht == veld.Naam) return (veld.VeldNummer, null);
-            if (!gezocht.StartsWith(veld.Naam + " ", StringComparison.Ordinal)) continue;
-
-            var subpositie = gezocht[(veld.Naam.Length + 1)..].Trim();
-            return (veld.VeldNummer, subpositie.Length == 0 ? null : subpositie.ToUpperInvariant());
-        }
-        return (0, null);
-    }
+        => global::Planner.Shared.VeldResolver.Resolve(sportlinkVeld, velden);
 
     /// <inheritdoc cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
     internal static (int VeldNummer, string? Subpositie) ResolveVeld(
         string? sportlinkVeld, IReadOnlyDictionary<string, int> veldenPerNaam)
-        => ResolveVeld(sportlinkVeld, veldenPerNaam.Select(kv => ((string?)kv.Key, kv.Value)));
+        => global::Planner.Shared.VeldResolver.Resolve(sportlinkVeld, veldenPerNaam);
 
     /// <summary>
     /// Veldnummer bij de veldnaam zoals Sportlink die levert, of <c>0</c> als geen veld matcht.

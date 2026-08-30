@@ -61,6 +61,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bestaande bij te werken. Nog geen live databaseverbinding vanuit de FunctionApp zelf: dat is de
   scope van latere sub-issues (#821 e.v.). Empirisch geverifieerd tegen een lokale wegwerp-Postgres
   16-container, inclusief het NULL-in-compositesleutel-scenario. (#818)
+- **Postgres-vertaling van de planner-kernview `planner.AlleWedstrijdenOpVeld`** (epic #815):
+  `Database.Postgres/PostgresPlannerViewGenerator.cs` + `PostgresPlannerAvailabilityReader.cs`.
+  De veldresolutie (Sportlink-veldstring "veld 1 A" → veldnummer + subpositie) is bewust
+  **niet** opnieuw in SQL herbouwd — dat zou een derde, onafhankelijke kopie zijn naast de
+  bestaande T-SQL-`OUTER APPLY` en de C#-implementatie (bewaakt door `VeldResolutieDriftTests`).
+  In plaats daarvan is die matching-logica geëxtraheerd naar het nieuwe, tier-agnostische
+  project `Planner.Shared/` (`VeldResolver`/`VeldNormalisatie`, pure tekstlogica zonder
+  databaseafhankelijkheid) en door zowel `FunctionApp` als `Database.Postgres` hergebruikt —
+  `PlannerShared.ResolveVeld`/`AutoPlanService.NormaliseerVeld` zijn nu dunne delegaties,
+  gedrag ongewijzigd (115 bestaande planner-tests blijven groen). Empirisch gevonden tijdens de
+  integratietests: SQL Server's G-team-detectie werkt ongemerkt door de case-insensitive
+  standaardcollatie; Postgres' regex-operator `~` is dat niet en liet G-teams stil uit de
+  bezetting vallen bij afwijkende hoofdlettering tussen ClubCode en teamnaam — opgelost met de
+  hoofdletterongevoelige variant `~*`. Overige gelijkheidsvergelijkingen in deze view dragen
+  hetzelfde class-of-bug totdat #820 een tier-brede collatiefix levert. (#819)
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
