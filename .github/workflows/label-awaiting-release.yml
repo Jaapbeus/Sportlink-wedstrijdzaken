@@ -32,7 +32,7 @@ jobs:
             // 'status: '-label op een issue staat. Voorheen werd 'awaiting-release'
             // alleen toegevoegd, waardoor een issue dat al op 'in-progress' of
             // 'review-needed' stond twee statussen tegelijk kreeg (#690).
-            const { extractIssueRefs, setIssueStatus } =
+            const { extractIssueRefs, setIssueStatus, isEpic } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const label = 'status: awaiting-release';
@@ -64,6 +64,16 @@ jobs:
 
               // issues.get retourneert ook PR's — die slaan we over.
               if (issue.pull_request) {
+                continue;
+              }
+
+              // Epics zijn geen losse release-eenheid — ze worden nooit via een
+              // commit-subject of CHANGELOG-attributie "gefixt", dus
+              // close-released-issues.yml verwijdert hun label nooit. Zonder deze guard
+              // blijft een epic permanent op awaiting-release staan zodra een
+              // sub-issue-PR er ook maar in proza naar verwijst (#838).
+              if (isEpic(issue)) {
+                core.notice(`#${number}: draagt het label 'epic' — overgeslagen (geen losse release-eenheid)`);
                 continue;
               }
 

@@ -18,12 +18,26 @@ const PROTECTED = [
   'status: waiting-owner',
 ];
 
+const EPIC_LABEL = 'epic';
+
 function labelNames(issue) {
   return (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name));
 }
 
 function currentStatuses(issue) {
   return labelNames(issue).filter(n => n.startsWith(STATUS_PREFIX));
+}
+
+/**
+ * Een epic is geen losse release-eenheid: hij wordt nooit via een 'fix(#NNN):'
+ * commit-subject of een CHANGELOG-attributie '(#NNN)' afgehandeld, dus
+ * close-released-issues.yml verwijdert het 'status: awaiting-release'-label bij
+ * een epic nooit vanzelf. label-awaiting-release.yml gebruikt dit om epics over
+ * te slaan bij het zetten van dat label — anders blijft het permanent (en
+ * onterecht) staan zodra een sub-issue-PR er ook maar in proza naar verwijst (#838).
+ */
+function isEpic(issue) {
+  return labelNames(issue).includes(EPIC_LABEL);
 }
 
 /**
@@ -158,8 +172,10 @@ async function clearIssueStatus({ github, context, core, issueNumber }) {
 module.exports = {
   STATUS_PREFIX,
   PROTECTED,
+  EPIC_LABEL,
   labelNames,
   currentStatuses,
+  isEpic,
   extractIssueRefs,
   setIssueStatus,
   clearIssueStatus,
