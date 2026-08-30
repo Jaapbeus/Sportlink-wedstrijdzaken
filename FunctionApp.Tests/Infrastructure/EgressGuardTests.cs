@@ -40,7 +40,7 @@ public class EgressGuardTests
     [Fact]
     public void ExternalIntegrationsAllowed_AzureHosting_IsAltijdToegestaanOngeachtOverride()
     {
-        WithEnv(azureHosting: "func-testclub-sportlink", allowOverride: null,
+        WithEnv(azureHosting: "aanwezig", allowOverride: null,
             () => EgressGuard.ExternalIntegrationsAllowed().Should().BeTrue(
                 "WEBSITE_SITE_NAME aanwezig betekent Azure-hosting — in dit project altijd productie"));
     }
