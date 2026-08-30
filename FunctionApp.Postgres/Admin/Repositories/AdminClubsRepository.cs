@@ -5,16 +5,9 @@ namespace FunctionApp.Postgres.Admin;
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/Repositories/AdminClubsRepository.cs</c>
 /// (#887). Vertaling: <c>[dbo].[AppSettings]</c> → <c>public.appsettings</c> (lowercase, ongequote
-/// — §3), <c>ClubCode</c>/<c>ClubName</c>/<c>SyncEnabled</c> → <c>clubcode</c>/<c>accommodatie</c>-
-/// achtige lowercase kolomnamen.
-/// <para>
-/// <b>Functioneel verschil met de SQL Server-tier, expliciet:</b> <c>public.appsettings</c> heeft
-/// vandaag geen <c>clubname</c>-kolom (zie <c>Database.Postgres/migrations/001_baseline.sql</c>) —
-/// alleen <c>clubcode</c>, <c>accommodatie</c>, <c>syncenabled</c>. Deze vertaling gebruikt
-/// <c>clubcode</c> ook als weergavenaam totdat een toekomstige migratie een echte
-/// <c>clubname</c>-kolom toevoegt; dat is geen aanname maar een bewust, hier gedocumenteerd gat
-/// (te herzien zodra #862 of een vervolgmigratie dat kolomverschil dicht).
-/// </para>
+/// — §3), <c>ClubCode</c>/<c>ClubName</c>/<c>SyncEnabled</c> → <c>clubcode</c>/<c>clubname</c>/
+/// <c>syncenabled</c>. <c>clubname</c> bestaat sinds <c>003_admin_tables.sql</c> — de eerdere,
+/// tijdelijke terugval op <c>clubcode</c> als weergavenaam is daarmee vervallen.
 /// </summary>
 internal static class AdminClubsRepository
 {
@@ -23,7 +16,7 @@ internal static class AdminClubsRepository
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var cmd = new NpgsqlCommand(
-            "SELECT clubcode, syncenabled FROM public.appsettings ORDER BY syncenabled DESC, clubcode",
+            "SELECT clubcode, clubname, syncenabled FROM public.appsettings ORDER BY syncenabled DESC, clubname",
             connection);
         await using var reader = await cmd.ExecuteReaderAsync();
         var list = new List<object>();
@@ -31,8 +24,8 @@ internal static class AdminClubsRepository
             list.Add(new
             {
                 clubCode = reader.GetString(0),
-                clubName = reader.GetString(0),
-                syncEnabled = reader.GetBoolean(1)
+                clubName = reader.GetString(1),
+                syncEnabled = !reader.IsDBNull(2) && reader.GetBoolean(2)
             });
         return list;
     }
