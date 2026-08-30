@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# resolve-database-tier.sh (#816)
+# resolve-database-tier.sh (#816, datagedreven sinds #865)
 #
 # Canonieke tier-resolver: bepaalt welk .csproj gebouwd/gedeployed wordt op basis van de
 # GitHub repository-variabele DatabaseTier (Settings -> Secrets and variables -> Actions ->
-# Variables). Dit is de ENIGE plek waar tier-naam -> projectpad wordt vertaald; .github/workflows
-# roept dit script aan in plaats van zelf een switch te herhalen.
+# Variables).
+#
+# De vertaling tier-naam -> projectpad staat NIET meer in dit script maar in
+# scripts/ci/database-tiers.json. Reden (#865): de lokale dev-scripts zijn PowerShell en hadden
+# de mapping anders moeten dupliceren, wat exact de belofte van #816 zou breken dat er één
+# vertaalpunt is. Get-DatabaseTierProject in scripts/dev/DevServices.psm1 leest hetzelfde bestand.
 #
 # Nooit een stille default: een ontbrekende, lege of onbekende waarde faalt hard (#816,
 # architectuurbesluit "geen gedeelde abstractie, geen runtime-engine-detectie", zie
@@ -20,6 +24,8 @@
 set -euo pipefail
 
 TIER="${DatabaseTier:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TIERS_JSON="${SCRIPT_DIR}/database-tiers.json"
 
 if [ -z "$TIER" ]; then
   echo "::error::Repository-variabele 'DatabaseTier' ontbreekt of is leeg."
@@ -28,18 +34,44 @@ if [ -z "$TIER" ]; then
   exit 1
 fi
 
-case "$TIER" in
-  SqlServer)
-    echo "Tier: SqlServer -> FunctionApp/fa-dev-sportlink-01.csproj"
-    echo "csproj_path=FunctionApp/fa-dev-sportlink-01.csproj" >> "$GITHUB_OUTPUT"
-    ;;
-  Postgres|Sqlite)
-    echo "::error::DatabaseTier='$TIER' is een geldige toekomstige waarde, maar de bijbehorende implementatieboom bestaat nog niet in deze repository (epic #815, zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 5 voor de bouwvolgorde)."
-    echo "::error::Zet DatabaseTier terug op 'SqlServer' totdat die tier daadwerkelijk gebouwd is."
-    exit 1
-    ;;
-  *)
-    echo "::error::Onbekende DatabaseTier-waarde: '$TIER'. Geldige waarden: SqlServer, Postgres, Sqlite."
-    exit 1
-    ;;
-esac
+if [ ! -f "$TIERS_JSON" ]; then
+  echo "::error::${TIERS_JSON} ontbreekt — de tier-tabel is de enige bron van de mapping."
+  exit 1
+fi
+
+# python3 staat op elke GitHub-runner en wordt in build.yml al gebruikt; zo hoeft jq geen
+# afhankelijkheid te worden. Uitvoer is één regel: "<gevonden> <built> <csproj> <issue>".
+read -r FOUND BUILT CSPROJ ISSUE <<EOF
+$(TIER="$TIER" python3 - "$TIERS_JSON" <<'PY'
+import json, os, sys
+tier = os.environ["TIER"]
+with open(sys.argv[1], encoding="utf-8") as fh:
+    data = json.load(fh)
+for entry in data["tiers"]:
+    if entry["name"] == tier:
+        print("yes", str(entry["built"]).lower(), entry["csproj"], entry.get("epicIssue") or "-")
+        break
+else:
+    names = ",".join(e["name"] for e in data["tiers"])
+    print("no", "-", "-", names)
+PY
+)
+EOF
+
+if [ "$FOUND" != "yes" ]; then
+  echo "::error::Onbekende DatabaseTier-waarde: '${TIER}'. Geldige waarden: ${ISSUE//,/, }."
+  exit 1
+fi
+
+if [ "$BUILT" != "true" ]; then
+  echo "::error::DatabaseTier='${TIER}' is een geldige toekomstige waarde, maar de bijbehorende implementatieboom bestaat nog niet in deze repository (epic #815, zie issue #${ISSUE} en docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 6 voor de bouwvolgorde)."
+  echo "::error::Zet DatabaseTier terug op 'SqlServer' totdat die tier daadwerkelijk gebouwd is."
+  # Exitcode 2 = "geldig, nog niet gebouwd" — te onderscheiden van 1 = "onbruikbare waarde".
+  # De zelftest (#851) gebruikt dat verschil om netjes af te breken in plaats van te falen.
+  exit 2
+fi
+
+echo "Tier: ${TIER} -> ${CSPROJ}"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "csproj_path=${CSPROJ}" >> "$GITHUB_OUTPUT"
+fi

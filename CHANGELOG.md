@@ -19,6 +19,31 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Een zelftest die bewijst dat een databasetier daadwerkelijk werkt, in plaats van dat de
+  onderdelen compileren.** `scripts/dev/Test-PostgresTier.ps1` zet een wegwerpdatabase op, rolt het
+  schema uit, laadt de demodata, en controleert per stap of het resultaat klopt — met exacte
+  rijaantallen, niet met "er ging niets mis". De bijbehorende skill opent daarna alle
+  beheerpagina's in een echte browser en controleert per pagina of de demogegevens ook echt
+  zichtbaar zijn. Drie ontwerpkeuzes maken het verschil met de bestaande controles: een stap die
+  niet uitgevoerd kon worden geldt als mislukt (niet als overgeslagen), een pagina zonder
+  demogegevens krijgt de status "niet getest" (niet "goed"), en de lijst met te controleren
+  pagina's wordt bij elke run vergeleken met de werkelijke pagina's in de broncode — zodat een
+  controle op een verdwenen pagina niet jarenlang groen kan blijven staan, wat nu wél gebeurt.
+  De zelftest is nog niet compleet: de stappen die een draaiende applicatie op de nieuwe tier
+  vereisen staan bewust op 'geblokkeerd' tot die er is. Zie issue #851.
+- `docker-compose.selftest.yml` — een aparte wegwerpdatabase voor die zelftest, met een eigen
+  poort en zonder opslagvolume, zodat de ontwikkeldatabase er niet door geraakt kan worden. Hij
+  draait bewust op Nederlandse tijd en niet op UTC: een tijdzonefout in de tijdstempels is op een
+  UTC-server namelijk onzichtbaar. Zie issue #851.
+
+### Changed
+- De vertaling van de gekozen databasetier naar het bijbehorende project staat nu in één
+  gegevensbestand (`scripts/ci/database-tiers.json`) in plaats van in het CI-script. De
+  deploy-pijplijn en de lokale scripts lezen daardoor dezelfde bron — anders zou de mapping op
+  twee plekken bijgehouden moeten worden, precies wat bij het opzetten van het tier-mechanisme
+  voorkomen moest worden. Gedrag is ongewijzigd: een ontbrekende of onbekende waarde faalt nog
+  steeds hard. Nieuw is dat een geldige tier waarvan het project nog niet bestaat een eigen
+  foutcode geeft, zodat een verificatiescript dat kan onderscheiden van een echte fout. (#865)
 - **Audit-log entries in `dbo.AppSettingsAudit` ouder dan de bewaartermijn worden nu automatisch
   opgeruimd (AVG-bewaartermijn).** Elke instellingenwijziging in Beheer → Instellingen werd tot nu
   toe voor onbepaalde tijd bewaard, inclusief de naam van de beheerder en eventuele
