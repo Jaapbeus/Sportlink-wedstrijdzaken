@@ -134,6 +134,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   aan het eind van de job vernietigd. Controleert kernobjecten, ClubCode-dekking, exact één
   ledger-rij na de tweede run, en lowercase-identifier-casing. Empirisch gedraaid tegen een
   wegwerpcontainer met dezelfde credentials/queries als de workflow gebruikt.
+- **Postgres-equivalent van het AVG-gevoelige database-interactiedeel van de teambegeleiding-import**
+  (#824, epic #815): `Database.Postgres/TeambegeleidingImporter.cs` + migratie
+  `002_avg_teambegeleiding.sql` (`avg.teambegeleiding`/`avg.importlog`). Native Postgres-COPY
+  (binaire import) i.p.v. `SqlBulkCopy`, delete-vóór-insert strikt op één ClubCode (nooit een
+  Postgres-equivalent van `TRUNCATE`). Drie bewuste verbeteringen t.o.v. het SQL Server-origineel:
+  delete+bulklaad+auditlog-insert lopen nu in één transactie (het origineel deed drie losse,
+  niet-getransactioneerde aanroepen), een impliciete clubselectie valideert expliciet
+  `syncenabled = true` zodat de AllStars FC-democlub nooit per ongeluk als doelclub voor échte
+  persoonsgegevens wordt gekozen, en de AVG #208-staleness-check is nu ClubCode-gescoped (het
+  origineel keek over alle clubs heen). De flexibele CSV-kolomherkenning van het originele
+  PowerShell-script is hier bewust niet herbouwd — dit levert alleen het geteste, AVG-kritieke
+  databasedeel op; zie issue #824 voor de resterende scope. Getest tegen een lokale
+  Postgres-devcontainer, uitsluitend met fictieve testdata conform CLAUDE.md's goedgekeurde
+  AVG-uitzonderingen.
 
 ### Changed
 - **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
