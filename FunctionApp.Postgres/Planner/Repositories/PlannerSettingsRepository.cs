@@ -67,6 +67,51 @@ internal static class PlannerSettingsRepository
     /// (<see cref="Planner.Shared.FieldScheduler"/>) nodig heeft voor de kunstgras-voorkeursvolgorde
     /// en waarop <see cref="Planner.Shared.VeldTypeClassificatie"/> werkt.
     /// </summary>
+    /// <summary>
+    /// Eén speeltijd-rij opzoeken — dunne wrapper om <see cref="GetSpeeltijdenLookupAsync"/> heen
+    /// i.p.v. een eigen query: zelfde resultaat, geen tweede SQL-implementatie van dezelfde lookup.
+    /// </summary>
+    internal static async Task<Speeltijd?> GetSpeeltijdAsync(
+        string connectionString, string leeftijdsCategorie, string clubCode)
+    {
+        var lookup = await GetSpeeltijdenLookupAsync(connectionString, clubCode);
+        return lookup.TryGetValue(leeftijdsCategorie, out var speeltijd) ? speeltijd : null;
+    }
+
+    /// <summary>
+    /// Postgres-vertaling van het SQL Server-origineel (issue 888 vervolg, §41) — leest
+    /// <c>public.zonsondergang</c>, de tegenhanger van <c>dbo.Zonsondergang</c> (migratie 011).
+    /// </summary>
+    internal static async Task<TimeOnly?> GetSunsetAsync(string connectionString, DateOnly date)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT zonsondergang FROM public.zonsondergang WHERE datum = @datum", conn);
+        cmd.Parameters.AddWithValue("datum", date.ToDateTime(TimeOnly.MinValue).Date);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is TimeSpan ts ? TimeOnly.FromTimeSpan(ts) : null;
+    }
+
+    /// <inheritdoc cref="GetSunsetAsync"/>
+    internal static async Task PopulateSunsetTableAsync(string connectionString, DateOnly from, DateOnly to)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        for (var date = from; date <= to; date = date.AddDays(1))
+        {
+            var sunset = PostgresSunsetCalculator.GetSunset(date);
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO public.zonsondergang (datum, zonsondergang)
+                VALUES (@datum, @sunset)
+                ON CONFLICT (datum) DO UPDATE SET zonsondergang = EXCLUDED.zonsondergang
+            ", conn);
+            cmd.Parameters.AddWithValue("datum", date.ToDateTime(TimeOnly.MinValue).Date);
+            cmd.Parameters.AddWithValue("sunset", sunset.ToTimeSpan());
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
     internal static async Task<List<VeldInfo>> GetVeldenAsync(string connectionString, string clubCode)
     {
         var result = new List<VeldInfo>();

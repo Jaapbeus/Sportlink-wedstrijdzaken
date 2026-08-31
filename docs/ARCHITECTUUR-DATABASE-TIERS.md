@@ -2102,6 +2102,54 @@ Onderscheidend vermogen bevestigd op de belangrijkste regressie: met `ClubCode` 
 `SaveHerplanVerzoekAsync`-INSERT gehaald faalt precies díe test — met een NOT NULL-violatie, niet
 met een stille lege waarde.
 
+## 41. Beschikbaarheid, herplannen en zonsondergang: van elf endpoints zijn er negen vertaald (#888)
+
+**Wat erbij kwam.** `AvailabilityService` (CheckAvailability + DoordeweeksBeschikbaar),
+`RescheduleService` (HerplanCheck), `PostgresSunsetCalculator`, plus de laatste ontbrekende
+repositorystukjes: `PlannerSettingsRepository.GetSpeeltijdAsync`/`GetSunsetAsync`/
+`PopulateSunsetTableAsync` en `PlannerMatchRepository.GetTeamMatchesOnDateAsync`. Met
+`PopulateSunset` erbij gewireerd blijven alleen `AutoPlan` en `AutoPlanToepassen` als 501-stub over
+— die wachten op een `AutoPlanService`/`PlannerHtmlGenerator`-poort (576 regels HTML-generator),
+niet meer op de planningsmotor: die woont sinds §38 in `Planner.Shared` en wordt hier voor het eerst
+op deze tier daadwerkelijk aangeroepen (`TryExactTime`, `FindAllSlots`, `CanFitMatch`,
+`ToSlotToewijzing`, `AddWeekdayWarning`) — het bewijs dat die verhuizing zijn doel haalde.
+
+**De ene bewuste beperking: geen real-time Sportlink-API-pad.** Het SQL Server-origineel haalt de
+bezetting op via `SportlinkApiClient.GetFieldOccupationsWithApiAsync` — een live API-aanroep met een
+DB-terugval zodra `useRealtimeApi = "0"`. De Postgres-tier gebruikt hier uitsluitend die DB-terugval
+(`PlannerAvailabilityRepository.GetFieldOccupationsAsync`, §39). Dat is géén nieuw of afwijkend
+gedrag: het is exact het bestaande, ondersteunde configuratiepad. De live-integratie zelf is een
+aparte eenheid werk — HTTP-client, `EgressGuard`-gate (de harde regel uit #857), parsing van de
+`/programma`-respons en een fixture-server om tegen te testen zoals `SportlinkFixtureServer` (#867)
+dat voor de sync doet. Expliciet benoemd in de klasse-doc-comments van beide services, zodat een
+lezer dit niet als een vergeten detail leest.
+
+**`SunsetCalculator` is bewust gedupliceerd, niet verhuisd.** Zelfde afweging als
+`PostgresLeeftijdNormalisatie` (§16): de NOAA-berekening zelf is puur, maar hij leest de
+clubcoördinaten uit een tier-eigen statische instellingencache (`PostgresAppSettings` hier,
+`SystemUtilities.AppSettings` daar). Die twee caches samenvoegen tot één gedeelde plek is een
+grotere refactor dan deze slice rechtvaardigt — de duplicatie is 90 regels pure wiskunde zonder
+tier-afhankelijkheid, en staat hier gedocumenteerd in plaats van stilzwijgend te ontstaan.
+`PostgresAppSettings` kreeg er wel twee kolommen bij (`accommodatielatitude`/`-longitude`, al
+aanwezig sinds migratie 003) — precies volgens de uitbreidingsfilosofie in zijn eigen doc-comment.
+
+**`FindLatestFitPerField` is óók gedupliceerd** (30 regels, private helper van `RescheduleService`):
+een lokaal detail van één use-case, geen gedeelde-locatie-eis. De scheduling-engine waarop hij leunt
+(`PlannerShared.CanFitMatch`) is wél gedeeld — dat is de grens.
+
+**Empirisch geverifieerd.** Zeven permanente integratietests tegen een echte Postgres-container:
+slot op voorkeurstijd, team-conflictdetectie, onbekende leeftijdscategorie, vensterberekening zonder
+voorkeurstijd, zonsondergang-roundtrip (berekenen → opslaan → uitlezen), herplanalternatieven
+exclusief de eigen wedstrijd, en een onbekende wedstrijdcode. Onderscheidend vermogen bevestigd: met
+de team-conflictcontrole tijdelijk uitgeschakeld wordt precies die ene test rood, de andere 48
+blijven groen.
+
+**Twee opstellingsvalkuilen die deze tests blootlegden** (en die elke volgende testklasse hier zal
+tegenkomen): (1) `TeamSchrijfwijzenAsync` resolveert via `public.teams`, niet `his.teams` — zonder
+een canonieke teamrij vindt de conflictcontrole stilzwijgend niets; (2) de plannerview
+(`planner.alle_wedstrijden_op_veld_ruw`) moet expliciet aangemaakt worden in de testopstelling, hij
+komt niet uit een migratie.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

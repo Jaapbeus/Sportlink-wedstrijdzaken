@@ -11,14 +11,15 @@ namespace FunctionApp.Postgres.Planner.Repositories;
 /// <see cref="GetFutureMatchesForTeamAsync"/>), en — sinds #888 vervolg — de drie kleinste van de
 /// vier resterende gaten die de klasse-doc-comment van <c>PlannerFunction.cs</c> ooit noemde:
 /// <see cref="FindMatchAsync"/>, <see cref="FindMatchByCodeAsync"/>,
-/// <see cref="SavePlannedMatchAsync"/> en <see cref="SaveHerplanVerzoekAsync"/> — genoeg om
-/// <c>ZoekWedstrijd</c>, <c>BevestigWedstrijd</c> en <c>HerplanBevestig</c> echt te wireren.
+/// <see cref="SavePlannedMatchAsync"/>, <see cref="SaveHerplanVerzoekAsync"/> — genoeg om
+/// <c>ZoekWedstrijd</c>, <c>BevestigWedstrijd</c> en <c>HerplanBevestig</c> echt te wireren — en,
+/// sinds #888 vervolg/§41, <see cref="GetTeamMatchesOnDateAsync"/> (nodig voor
+/// <c>AvailabilityService</c>'s team-conflictcontrole).
 /// <para>
-/// Nog niet vertaald: <c>GetTeamMatchesOnDateAsync</c>, <c>GetGeplandeWedstrijdenOnlyAsync</c> en
-/// <c>FindMatchByOpponentAsync</c> — die hebben geen consument op deze tier vóórdat
-/// <c>AvailabilityService</c>/<c>RescheduleService</c> bestaan (<c>CheckAvailability</c>,
-/// <c>HerplanCheck</c>), dus vertalen zou onverifieerbare dode code opleveren. Zie
-/// docs/ARCHITECTUUR-DATABASE-TIERS.md §16/§40.
+/// Nog niet vertaald: <c>GetGeplandeWedstrijdenOnlyAsync</c> en <c>FindMatchByOpponentAsync</c> —
+/// geen consument op deze tier (het eerste hoort bij een los "wat staat er gepland"-endpoint dat
+/// niet bestaat, het tweede bij de e-mail-AI-antwoordflow, buiten deze epic se scope). Zie
+/// docs/ARCHITECTUUR-DATABASE-TIERS.md §16/§40/§41.
 /// </para>
 /// </summary>
 internal static class PlannerMatchRepository
@@ -219,6 +220,108 @@ internal static class PlannerMatchRepository
         if (lower.Contains("oefen")) return "oefenwedstrijd";
         if (lower.Contains("beker")) return "beker";
         return "competitie";
+    }
+
+    /// <summary>
+    /// Alle wedstrijden van één team op één datum — gesynchroniseerde wedstrijden uit
+    /// <c>his.matches</c> plus zelf ingeplande wedstrijden uit <c>planner.geplandewedstrijden</c>.
+    /// Postgres-vertaling van het SQL Server-origineel (issue 888 vervolg, §41) — ontsluit
+    /// <c>AvailabilityService.CheckAvailabilityAsync</c>'s team-conflictcontrole (mag een team niet
+    /// twee wedstrijden op dezelfde dag krijgen).
+    /// <para>
+    /// <b>Veldresolutie in C#, net als <see cref="FindMatchAsync"/>'s buurman
+    /// <see cref="Repositories.PlannerAvailabilityRepository"/>.</b> Het SQL Server-origineel
+    /// gebruikt <c>VeldResolutie.SqlOuterApply</c> om <c>m.[veld]</c> naar een veldnummer op te
+    /// lossen; hier gebeurt dat met <see cref="PlannerShared.VindVeldNummer"/> ná het uitlezen — de
+    /// Postgres-tier heeft bewust geen vierde SQL-kopie van die matching (#819).
+    /// </para>
+    /// </summary>
+    internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(
+        string connectionString, string teamNaam, DateOnly date, string? clubCode)
+    {
+        var results = new List<BestaandeWedstrijd>();
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        var cc = PostgresClubScope.Resolve(clubCode);
+        var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
+        if (schrijfwijzen.Count == 0) return results;
+        var sleutels = Vergelijkingssleutels(schrijfwijzen);
+
+        var velden = await PlannerSettingsRepository.GetVeldenAsync(connectionString, cc);
+
+        await using (var cmd = new NpgsqlCommand($@"
+            SELECT m.kaledatum::date, m.aanvangstijd, COALESCE(s.wedstrijdtotaal, 0),
+                   m.veld, m.wedstrijd
+            FROM his.matches m
+            LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
+                 AND {PostgresClubScope.HisFilter("t")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+                 AND s.clubcode = {PostgresClubScope.ClubCodeParam}
+            WHERE m.kaledatum::date = @date
+              AND UPPER(m.status) <> 'AFGELAST'
+              AND UPPER(TRIM(m.teamnaam)) = ANY(@sleutels)
+              AND {PostgresClubScope.HisFilter("m")}
+        ", conn))
+        {
+            cmd.Parameters.AddWithValue("date", date.ToDateTime(TimeOnly.MinValue).Date);
+            cmd.Parameters.AddWithValue("sleutels", sleutels);
+            PostgresClubScope.AddHisParams(cmd, clubCode);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var aanvangstijd = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+                var duur = reader.GetInt32(2);
+                var naam = reader.IsDBNull(4) ? "onbekend" : reader.GetString(4);
+                if (duur <= 0)
+                    throw new InvalidOperationException(
+                        $"Speelduur niet geconfigureerd voor wedstrijd '{naam}'. Voeg de leeftijdscategorie toe aan public.speeltijden via /instellingen/speeltijden.");
+                if (!TimeOnly.TryParse(aanvangstijd, out var start)) continue;
+                var veldRuw = reader.IsDBNull(3) ? null : reader.GetString(3);
+                results.Add(new BestaandeWedstrijd
+                {
+                    Datum = DateOnly.FromDateTime(reader.GetDateTime(0)),
+                    AanvangsTijd = start,
+                    EindTijd = start.AddMinutes(duur),
+                    VeldNummer = PlannerShared.VindVeldNummer(veldRuw, velden),
+                    Wedstrijd = naam,
+                    Bron = "Competitie"
+                });
+            }
+        }
+
+        await using (var cmd2 = new NpgsqlCommand(@"
+            SELECT gw.datum, gw.aanvangstijd, gw.wedstrijdduurminuten, gw.veldnummer,
+                   COALESCE(gw.teamnaam, '') || ' - ' || COALESCE(gw.tegenstander, '')
+            FROM planner.geplandewedstrijden gw
+            WHERE gw.datum = @date
+              AND gw.status <> 'Geannuleerd'
+              AND UPPER(TRIM(gw.teamnaam)) = ANY(@sleutels)
+              AND gw.clubcode = @clubcode
+        ", conn))
+        {
+            cmd2.Parameters.AddWithValue("date", date.ToDateTime(TimeOnly.MinValue).Date);
+            cmd2.Parameters.AddWithValue("sleutels", sleutels);
+            cmd2.Parameters.AddWithValue("clubcode", cc);
+
+            await using var reader2 = await cmd2.ExecuteReaderAsync();
+            while (await reader2.ReadAsync())
+            {
+                var aanvang = TimeOnly.FromTimeSpan(reader2.GetTimeSpan(1));
+                var duur = reader2.GetInt32(2);
+                results.Add(new BestaandeWedstrijd
+                {
+                    Datum = DateOnly.FromDateTime(reader2.GetDateTime(0)),
+                    AanvangsTijd = aanvang,
+                    EindTijd = aanvang.AddMinutes(duur),
+                    VeldNummer = reader2.GetInt32(3),
+                    Wedstrijd = reader2.GetString(4),
+                    Bron = "Planner"
+                });
+            }
+        }
+
+        return results;
     }
 
     /// <summary>

@@ -9,7 +9,9 @@ namespace FunctionApp.Postgres;
 /// <para>
 /// <b>Bewust beperkt tot de kolommen die <c>public.appsettings</c> vandaag daadwerkelijk heeft</b>
 /// (<c>clubcode</c>, <c>accommodatie</c>, <c>syncenabled</c> — zie
-/// <c>Database.Postgres/migrations/001_baseline.sql</c>). De SQL Server-tier se
+/// <c>Database.Postgres/migrations/001_baseline.sql</c> — en sinds issue 888 vervolg/§41 ook
+/// <c>accommodatielatitude</c>/<c>accommodatielongitude</c>, nodig voor
+/// <c>PostgresSunsetCalculator</c>, uit <c>003_admin_tables.sql</c>). De SQL Server-tier se
 /// <c>dbo.AppSettings</c> heeft ~18 kolommen (sportlinkApiUrl, KNVB-instellingen, e-mailvoetnoot,
 /// ...) — die horen bij functionaliteit die nog niet is vertaald (#889/#890 e.a.). Een fantoom-
 /// fallback voor kolommen die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues breiden
@@ -30,8 +32,10 @@ public static class PostgresAppSettings
     {
         await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
         await connection.OpenAsync();
+        // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
+        // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
         await using var cmd = new NpgsqlCommand(
-            "SELECT clubcode, accommodatie, syncenabled FROM public.appsettings " +
+            "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude FROM public.appsettings " +
             "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
@@ -45,6 +49,10 @@ public static class PostgresAppSettings
             Settings["clubCode"] = reader.GetString(0);
             if (!reader.IsDBNull(1))
                 Settings["accommodatie"] = reader.GetString(1);
+            if (!reader.IsDBNull(3))
+                Settings["accommodatieLatitude"] = reader.GetDouble(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (!reader.IsDBNull(4))
+                Settings["accommodatieLongitude"] = reader.GetDouble(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 
