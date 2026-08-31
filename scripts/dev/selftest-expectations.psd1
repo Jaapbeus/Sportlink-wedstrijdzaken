@@ -97,7 +97,13 @@
         # is op de Postgres-tier nog niet vertaald (gedocumenteerd gat 2 van #890). Op een verse,
         # geseede database is het antwoord daarom leeg — op BEIDE tiers, want geen van beide seeds
         # vult deze tabel.
-        @{ Path = 'api/beheer/teams';                Assert = 'De teamnamen uit public.teams voor de democlub.'; Context = 'demo'; Blocked = @(890) }
+        # Blocked-verwijzing gecorrigeerd van #890 naar #931 (issue 888 vervolg, §43): #890 (het
+        # synchronisatie- en stagingpad) is inmiddels af, dus daarnaar verwijzen suggereerde ten
+        # onrechte dat hier nog een port openstond. De werkelijke oorzaak staat in de opmerking
+        # hierboven en is dezelfde als bij team-schedule: de demoseed vult public.teams niet, en
+        # canonicalisatie draait alleen als onderdeel van een echte sync. Een verkeerd toegewezen
+        # blokkade is precies zo misleidend als een overgeslagen assertie die groen meldt.
+        @{ Path = 'api/beheer/teams';                Assert = 'De teamnamen uit public.teams voor de democlub.'; Context = 'demo'; Blocked = @(931) }
         @{ Path = 'api/beheer/email-log';            Assert = 'ELK afzenderveld is gemaskeerd. Een onvermaskerd adres is een AVG-bevinding, geen cosmetisch defect.'; Blocked = @(858) }
         # #911: de demodata-seed levert nu twee sjablonen voor de democlub op BEIDE tiers, dus deze
         # assertie meet weer iets in plaats van een lege lijst die twee heel verschillende oorzaken
