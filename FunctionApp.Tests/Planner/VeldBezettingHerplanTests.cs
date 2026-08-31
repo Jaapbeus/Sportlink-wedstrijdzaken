@@ -1,3 +1,4 @@
+using Planner.Shared;
 using FluentAssertions;
 using SportlinkFunction.Planner;
 using Xunit;

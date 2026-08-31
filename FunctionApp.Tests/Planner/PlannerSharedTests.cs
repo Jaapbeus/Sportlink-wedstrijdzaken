@@ -1,3 +1,4 @@
+using Planner.Shared;
 using FluentAssertions;
 using SportlinkFunction.Planner;
 using Xunit;
@@ -248,7 +249,7 @@ public class PlannerSharedTests
         var date = DateOnly.Parse(datum);
 
         var response = new CheckAvailabilityResponse();
-        PlannerShared.AddWeekdayWarning(response, date);
+        PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
 
         var lijst = new List<string>();
         PlannerShared.AddWeekdayWarning(lijst, date);

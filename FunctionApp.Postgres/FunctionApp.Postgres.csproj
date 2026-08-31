@@ -14,9 +14,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.0.27.0</Version>
-    <AssemblyVersion>3.0.27.0</AssemblyVersion>
-    <FileVersion>3.0.27.0</FileVersion>
+    <Version>3.0.27.1</Version>
+    <AssemblyVersion>3.0.27.1</AssemblyVersion>
+    <FileVersion>3.0.27.1</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -63,5 +63,11 @@
     <!-- #818: PostgresIdentifier/schema-generatie-bouwstenen — dit project bouwt de applicatie-
          datalaag (#860 t/m #887-890) bovenop wat #818 al levert, geen tweede implementatie ervan. -->
     <ProjectReference Include="..\Database.Postgres\Database.Postgres.csproj" />
+    <!-- #888: directe referentie i.p.v. alleen transitief via Database.Postgres — nodig zodra
+         planner-code hier de gedeelde scheduling-engine (FieldScheduler) en de tier-agnostische
+         domeinmodellen uit Planner.Shared aanroept, niet alleen VeldResolver/VeldNormalisatie/
+         TeamNaamNormalisatie die al transitief binnenkwamen. Een impliciete afhankelijkheid keert
+         de bedoelde gelaagdheid om zodra er planner-logica in Planner.Shared bijkomt. -->
+    <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
   </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Planner;
@@ -154,7 +155,7 @@ internal static class AvailabilityService
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 AddSunsetWarning(response, exactMatch, sunset, velden);
                 AddNabijeWedstrijdWaarschuwing(response, exactMatch, duurMinuten, occupations, velden);
-                PlannerShared.AddWeekdayWarning(response, date);
+                PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
                 return response;
             }
         }
@@ -174,7 +175,7 @@ internal static class AvailabilityService
                 response.Reden = $"Gewenste tijd {preferredTime.Value:HH:mm} is niet beschikbaar.";
                 response.Alternatieven = alternatives.Prepend(best).Select(c => ToSlotMetVeldType(date, c, duurMinuten, velden)).Take(3).ToList();
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
-                PlannerShared.AddWeekdayWarning(response, date);
+                PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
             }
             else
             {
@@ -184,13 +185,13 @@ internal static class AvailabilityService
                 response.Alternatieven = alternatives.Select(c => ToSlotMetVeldType(date, c, duurMinuten, velden)).ToList();
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 AddSunsetWarning(response, best, sunset, velden);
-                PlannerShared.AddWeekdayWarning(response, date);
+                PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
             }
         }
         else
         {
             response.Reden = $"Geen beschikbaar veld gevonden op {date.ToString("dddd d MMMM", PlannerShared.NL)}.";
-            PlannerShared.AddWeekdayWarning(response, date);
+            PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
         }
         return response;
     }
@@ -354,7 +355,7 @@ internal static class AvailabilityService
         response.BeschikbareVensters = windows;
         if (!response.Beschikbaar)
             response.Reden = $"Geen beschikbare vensters op {date.ToString("dddd d MMMM", PlannerShared.NL)}.";
-        PlannerShared.AddWeekdayWarning(response, date);
+        PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
         return response;
     }
 

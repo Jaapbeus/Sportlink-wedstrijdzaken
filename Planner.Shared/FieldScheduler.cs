@@ -1,18 +1,27 @@
-namespace SportlinkFunction.Planner;
+namespace Planner.Shared;
 
 /// <summary>
-/// Gedeelde constanten, utilities en helper-methoden voor alle planner use-case services.
-/// Extracted uit PlannerService (#475).
+/// Gedeelde constanten, utilities en helper-methoden voor de planningsmotor (#888, verhuisd uit
+/// <c>FunctionApp/Planner/Services/PlannerShared.cs</c> — extracted uit PlannerService, #475).
+///
+/// <para>
+/// <b>Waarom deze klasse "PlannerShared" heet terwijl ze al in de namespace <c>Planner.Shared</c>
+/// zit:</b> bewuste keuze om alle circa zestig bestaande aanroepen (<c>PlannerShared.CanFitMatch</c>,
+/// <c>PlannerShared.ResolveVeld</c>, ...) in <c>AvailabilityService</c>, <c>RescheduleService</c>,
+/// <c>AutoPlanService</c>, <c>SportlinkApiClient</c> en de bijbehorende testbestanden ongewijzigd te
+/// laten werken — alleen een <c>using Planner.Shared;</c> is nodig, geen enkele aanroepnaam hoeft
+/// te veranderen. Een risicoarme verhuizing weegt hier zwaarder dan een cosmetisch andere naam.
+/// </para>
 /// </summary>
-internal static class PlannerShared
+public static class PlannerShared
 {
-    internal const int StandardBufferMinutes = 15;
-    internal const double MaxBezettingsPercentageVoorOverslaan = 50.0;
-    internal const int SunsetWarningMarginMinutes = 20;
-    internal static readonly System.Globalization.CultureInfo NL = new("nl-NL");
+    public const int StandardBufferMinutes = 15;
+    public const double MaxBezettingsPercentageVoorOverslaan = 50.0;
+    public const int SunsetWarningMarginMinutes = 20;
+    public static readonly System.Globalization.CultureInfo NL = new("nl-NL");
 
     /// <summary>Rond aanvangstijd naar boven af op 5 minuten.</summary>
-    internal static TimeOnly RondAfOp5Min(TimeOnly tijd)
+    public static TimeOnly RondAfOp5Min(TimeOnly tijd)
     {
         int minuten = tijd.Hour * 60 + tijd.Minute;
         int rest = minuten % 5;
@@ -22,57 +31,40 @@ internal static class PlannerShared
 
     // ── Sportlink-veldstring → veldnummer: één plek, gebruikt door élke consumer (#707) ──
     //
-    // Sportlink levert het veld als "<veldnaam>[ <subpositie>]" ("veld 1 A"); dbo.Velden bevat
-    // alleen de veldnaam zelf. Die vertaling gebeurde op meerdere plekken op verschillende
-    // manieren: StartsWith zonder woordgrens in het herplanpad en een harde afkap op zes tekens
-    // (LEFT(veld, 6) / veld[..6]) in het bezettingspad. Bij tien of meer velden liepen die uiteen:
-    //
-    //   • de matcher zag "veld 10" correct als veld 10;
-    //   • de bezetting kapte "veld 10" af op "veld 1" en boekte de wedstrijd op veld 1.
-    //
-    // Gevolg: de eigen wedstrijd bleef als spookbezetting op veld 1 staan (die dag viel daar dicht)
-    // én veld 10 kwam in de bezetting niet voor, dus veld 10 leek de hele dag vrij. Er kon dan een
-    // tweede wedstrijd naast de bestaande op hetzelfde veld worden aangeboden — een dubbele boeking.
-    //
-    // Daarom loopt de vertaling nu voor alle consumenten via deze functie. De normalisatie zelf is
-    // hergebruikt uit <see cref="AutoPlanService.NormaliseerVeld"/>; er is bewust geen tweede
-    // variant naast bijgezet.
-    //
-    // #819: de daadwerkelijke matching-implementatie is verhuisd naar het tier-agnostische
-    // Planner.Shared/VeldResolver.cs (puur tekstlogica, geen databaseafhankelijkheid) zodat de
-    // Postgres-tier's planner-view (die het veldresolutie-deel bewust niet in SQL herbouwt, zie
-    // Database.Postgres) dezelfde implementatie aanroept in plaats van een derde, onafhankelijke
-    // kopie te introduceren naast deze C#-versie en de SQL Server-view. Deze methode is nu een
-    // dunne delegatie — gedrag ongewijzigd.
+    // Sportlink levert het veld als "<veldnaam>[ <subpositie>]" ("veld 1 A"); de veldentabel bevat
+    // alleen de veldnaam zelf. #819 verhuisde de daadwerkelijke matching-implementatie al naar
+    // Planner.Shared/VeldResolver.cs (puur tekstlogica). Deze klasse zat er sindsdien alleen nog
+    // tussen als dunne delegatie vanuit de SQL Server-boom — met de verhuizing van deze klasse
+    // zélf naar Planner.Shared (#888) is die tussenlaag overbodig geworden; de methoden hieronder
+    // roepen VeldResolver nu rechtstreeks aan.
 
     /// <summary>
-    /// Splitst een Sportlink-veldstring in het veldnummer uit <c>dbo.Velden</c> en de subpositie
-    /// die Sportlink erachter zet. Een treffer is een exact gelijke veldnaam óf een veldnaam
-    /// gevolgd door een spatie en de subpositie — nooit een langer veldnummer, zodat "veld 10"
-    /// niet op "veld 1" valt.
+    /// Splitst een Sportlink-veldstring in het veldnummer en de subpositie die Sportlink erachter
+    /// zet. Een treffer is een exact gelijke veldnaam óf een veldnaam gevolgd door een spatie en de
+    /// subpositie — nooit een langer veldnummer, zodat "veld 10" niet op "veld 1" valt.
     /// </summary>
     /// <returns>
     /// Veldnummer, of <c>0</c> als geen enkel veld matcht (dezelfde sentinel als de oude
     /// lookup-miss), plus de subpositie in hoofdletters of <c>null</c> als die ontbreekt.
     /// </returns>
-    internal static (int VeldNummer, string? Subpositie) ResolveVeld(
+    public static (int VeldNummer, string? Subpositie) ResolveVeld(
         string? sportlinkVeld, IEnumerable<(string? VeldNaam, int VeldNummer)> velden)
-        => global::Planner.Shared.VeldResolver.Resolve(sportlinkVeld, velden);
+        => VeldResolver.Resolve(sportlinkVeld, velden);
 
     /// <inheritdoc cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
-    internal static (int VeldNummer, string? Subpositie) ResolveVeld(
+    public static (int VeldNummer, string? Subpositie) ResolveVeld(
         string? sportlinkVeld, IReadOnlyDictionary<string, int> veldenPerNaam)
-        => global::Planner.Shared.VeldResolver.Resolve(sportlinkVeld, veldenPerNaam);
+        => VeldResolver.Resolve(sportlinkVeld, veldenPerNaam);
 
     /// <summary>
     /// Veldnummer bij de veldnaam zoals Sportlink die levert, of <c>0</c> als geen veld matcht.
     /// Zelfde matching als <see cref="ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>
     /// — de bezetting en het herplanpad mogen nooit een eigen variant gebruiken.
     /// </summary>
-    internal static int VindVeldNummer(string? sportlinkVeld, IEnumerable<VeldInfo> velden)
+    public static int VindVeldNummer(string? sportlinkVeld, IEnumerable<VeldInfo> velden)
         => ResolveVeld(sportlinkVeld, velden.Select(v => ((string?)v.VeldNaam, v.VeldNummer))).VeldNummer;
 
-    internal static bool CanFitMatch(
+    public static bool CanFitMatch(
         TimeOnly start, TimeOnly end, decimal veldFractie, int veldNummer,
         List<BestaandeWedstrijd> fieldOccupations,
         Dictionary<string, List<TeamRegel>> allTeamRules,
@@ -130,7 +122,7 @@ internal static class PlannerShared
         return true;
     }
 
-    internal static CandidateSlot? TryExactTime(
+    public static CandidateSlot? TryExactTime(
         TimeOnly preferredTime,
         List<VeldBeschikbaarheidInfo> availableFields,
         List<BestaandeWedstrijd> occupations,
@@ -160,7 +152,7 @@ internal static class PlannerShared
         return null;
     }
 
-    internal static List<CandidateSlot> FindAllSlots(
+    public static List<CandidateSlot> FindAllSlots(
         List<VeldBeschikbaarheidInfo> availableFields,
         List<BestaandeWedstrijd> occupations,
         List<VeldInfo> velden,
@@ -199,17 +191,13 @@ internal static class PlannerShared
     /// Zet een kandidaat-slot om naar de publieke <see cref="SlotToewijzing"/>-DTO.
     ///
     /// <para><b>Veldtype reist altijd mee (#705/#707).</b> Elke aanroeper geeft de veldenlijst al mee
-    /// voor de veldnaam, dus het veldtype hoort hier gevuld te worden — niet per aanroeper. Dat was
-    /// het gat: het beschikbaarheidspad vulde <c>VeldType</c> zelf ná deze conversie, maar het
-    /// herplan-pad (de enige producent van <c>HerplanCheckResponse</c>) niet. Daar was
-    /// <c>VeldType</c> dus altijd <c>null</c>, terwijl het e-mailantwoord er wél op filtert: stil
-    /// kapot gedrag dat geen test en geen logregel zichtbaar maakte.</para>
+    /// voor de veldnaam, dus het veldtype hoort hier gevuld te worden — niet per aanroeper.</para>
     ///
     /// <para>Staat het veld niet in <paramref name="velden"/> (bijv. een inactief veld dat nog in een
     /// bezetting voorkomt), dan blijft <c>VeldType</c> <c>null</c> = onbekend. Filters mogen zo'n
     /// slot nooit wegfilteren — zie <see cref="VeldSoort.Onbekend"/>.</para>
     /// </summary>
-    internal static SlotToewijzing ToSlotToewijzing(DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
+    public static SlotToewijzing ToSlotToewijzing(DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
     {
         var veld = velden.FirstOrDefault(v => v.VeldNummer == slot.VeldNummer);
         return new SlotToewijzing
@@ -227,22 +215,23 @@ internal static class PlannerShared
 
     /// <summary>
     /// Doordeweekse waarschuwing — clubneutraal en configuratiegedreven (#576).
-    /// Nooit vaste veldnummers in de tekst: welke velden doordeweeks vrij zijn volgt uit
-    /// dbo.VeldBeschikbaarheid en verschilt per club en per seizoen. Een hardcoded aanname
+    /// Nooit vaste veldnummers in de tekst: welke velden doordeweeks vrij zijn volgt uit de
+    /// veldbeschikbaarheid en verschilt per club en per seizoen. Een hardcoded aanname
     /// ("alleen veld 5") is bij een andere clubconfiguratie feitelijk onjuist.
     /// </summary>
-    internal static string BouwWeekdayWarning(DateOnly date)
+    public static string BouwWeekdayWarning(DateOnly date)
         => $"{date.ToString("dddd", NL)}: doordeweeks — kunstgrasvelden mogelijk in gebruik voor training. Controleer veldbeschikbaarheid.";
 
-    internal static bool IsWeekday(DateOnly date)
+    public static bool IsWeekday(DateOnly date)
         => date.DayOfWeek >= DayOfWeek.Monday && date.DayOfWeek <= DayOfWeek.Thursday;
 
-    internal static void AddWeekdayWarning(CheckAvailabilityResponse response, DateOnly date)
-    {
-        if (IsWeekday(date)) response.Waarschuwingen.Add(BouwWeekdayWarning(date));
-    }
-
-    internal static void AddWeekdayWarning(List<string> waarschuwingen, DateOnly date)
+    /// <summary>
+    /// Voegt bij een doordeweekse datum een waarschuwing toe aan een losse lijst. Bewust de enige
+    /// overload hier: de andere (response-typed) overload van vóór #888 was per tier verschillend
+    /// getypeerd (<c>CheckAvailabilityResponse</c> bestaat alleen op de tier zelf) en hoort dus bij
+    /// elke tier se eigen <c>AvailabilityService</c>, niet in deze gedeelde klasse.
+    /// </summary>
+    public static void AddWeekdayWarning(List<string> waarschuwingen, DateOnly date)
     {
         if (IsWeekday(date)) waarschuwingen.Add(BouwWeekdayWarning(date));
     }
@@ -250,7 +239,7 @@ internal static class PlannerShared
 
 // ── Hulpklassen gedeeld tussen services ──
 
-internal class CandidateSlot
+public class CandidateSlot
 {
     public int VeldNummer { get; set; }
     public TimeOnly AanvangsTijd { get; set; }
@@ -258,7 +247,7 @@ internal class CandidateSlot
     public decimal VeldFractie { get; set; }
 }
 
-internal class IngeplandSlot
+public class IngeplandSlot
 {
     public int VeldNummer { get; set; }
     public TimeOnly AanvangsTijd { get; set; }
@@ -270,9 +259,11 @@ internal class IngeplandSlot
 
 /// <summary>
 /// Pure scheduling engine — geen DB-calls, alleen slot-berekening op basis van beschikbaarheid.
-/// Extracted uit PlannerService (#475).
+/// Extracted uit PlannerService (#475); verhuisd naar Planner.Shared zodat beide databasetiers
+/// dezelfde implementatie gebruiken (#888) in plaats van een tweede kopie te bouwen die tegen
+/// SQL-Server-specifieke modellen zou compileren.
 /// </summary>
-internal class FieldScheduler
+public class FieldScheduler
 {
     private readonly List<VeldBeschikbaarheidInfo> _beschikbaarheid;
     private readonly List<VeldInfo> _velden;
@@ -283,7 +274,7 @@ internal class FieldScheduler
 
     /// <summary>Vroegste tijd waarop de planner inplant — als streeftijd te gebruiken wanneer er
     /// geen voorkeurstijd is maar wel een voorkeursveld (#666).</summary>
-    internal static TimeOnly DagStart => StartTijd;
+    public static TimeOnly DagStart => StartTijd;
 
     public FieldScheduler(List<VeldBeschikbaarheidInfo> beschikbaarheid, List<VeldInfo> velden, int buffer,
         Dictionary<string, (int bufferVoor, int bufferNa)>? teamBuffers = null)
@@ -317,11 +308,7 @@ internal class FieldScheduler
     ///
     /// <para><b>Buffer</b> — wedstrijden die elkaar niet overlappen gebruiken het veld ná elkaar. Daar
     /// moet de buffer tussen zitten: de grootste van de standaardbuffer en de teamspecifieke
-    /// <c>BufferNa</c>/<c>BufferVoor</c> uit dbo.TeamRegels.</para>
-    ///
-    /// Deze check zat eerder alleen in <see cref="FindEarliestSlot"/>. Het pad dat op een voorkeurstijd
-    /// plant keek uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul
-    /// minuten ertussen — en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen.
+    /// buffer-voor/na-regel.</para>
     /// </summary>
     private bool PastOpVeld(int veldNummer, TimeOnly start, TimeOnly end, decimal fractie,
         int nieuwBufVoor, string? teamNaam, out string subpositie)
@@ -399,10 +386,7 @@ internal class FieldScheduler
     /// team nooit onplanbaar wordt door alleen een veldvoorkeur.</para>
     ///
     /// <para>De voorkeurstijd is hier het doel — er wordt niet naar het vroegste gat van de dag
-    /// gezocht. Tot #666 stond hier het omgekeerde: lag het vroegste vrije slot meer dan één buffer
-    /// vóór de voorkeurstijd, dan pakte de planner dát slot en verdween de voorkeur volledig. Een team
-    /// met voorkeur 14:30 werd zo op 09:00 gezet — vijf en een half uur ernaast, terwijl de tabel
-    /// "OK" meldde. De kandidaatlijst hieronder loopt van de voorkeurstijd naar buiten (±5, ±10, …),
+    /// gezocht. De kandidaatlijst hieronder loopt van de voorkeurstijd naar buiten (±5, ±10, …),
     /// dus het dichtstbijzijnde haalbare tijdslot wint, met eerder vóór later bij gelijke afstand.</para>
     /// </summary>
     public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
@@ -432,11 +416,9 @@ internal class FieldScheduler
                 var besch = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
                 if (besch == null) continue;
                 // Ondergrens is hier de veldbeschikbaarheid zelf, NIET de standaard dagstart van 09:00
-                // (#666). Een team dat 08:30 als voorkeurstijd heeft opgegeven werd anders stilzwijgend
-                // naar 09:00 geschoven terwijl het veld al om 08:00 open was — een afwijking van 30
-                // minuten die niemand had gevraagd. Waar de dag begint hoort uit dbo.VeldBeschikbaarheid
-                // te komen, niet uit een vaste waarde in code. De 09:00-ondergrens blijft wél gelden
-                // voor wedstrijden zónder voorkeurstijd: die lopen via FindAndOccupyNextSlot.
+                // (#666): een team met 08:30 als voorkeurstijd mag niet stilzwijgend naar 09:00
+                // geschoven worden terwijl het veld al om 08:00 open was. De 09:00-ondergrens blijft
+                // wél gelden voor wedstrijden zónder voorkeurstijd (FindAndOccupyNextSlot).
                 var van   = besch.BeschikbaarVanaf;
                 var start = PlannerShared.RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
                 var end   = start.AddMinutes(duurMinuten);
@@ -480,16 +462,10 @@ internal class FieldScheduler
     //
     // Een veld bestaat uit vier kwartbanen: 0=A1, 1=A2, 2=B1, 3=B2. Een kwartveldwedstrijd bezet één
     // baan, een halfveldwedstrijd twee aangrenzende banen (A = 0+1, B = 2+3) en een heel veld alle vier.
-    //
-    // Dit vervangt de oude toewijzing die simpelweg télde hoeveel wedstrijden er al gelijktijdig op het
-    // veld stonden ("de eerste krijgt A1, de tweede A2, ..."). Dat gaf twee soorten fouten:
-    // een halfveldwedstrijd op A (banen 0+1) plus een kwartveldwedstrijd leverde "A2" op — precies bovenop
-    // de eerste — en met A1 en B1 bezet en A2 vrij koos hij alsnog B1. De capaciteitscheck telde alleen
-    // de fracties op, dus numeriek leek dat te passen terwijl de banen botsten.
-    internal static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
+    public static readonly string[] BaanLabels = ["A1", "A2", "B1", "B2"];
 
     /// <summary>Welke kwartbanen bezet een wedstrijd met deze subpositie? Leeg = heel veld.</summary>
-    internal static bool[] BanenVanSubpositie(string? subpositie)
+    public static bool[] BanenVanSubpositie(string? subpositie)
     {
         var banen = new bool[4];
         switch ((subpositie ?? string.Empty).Trim().ToUpperInvariant())
@@ -506,7 +482,7 @@ internal class FieldScheduler
     }
 
     /// <summary>Hoeveel kwartbanen heeft een wedstrijd van deze veldafmeting nodig?</summary>
-    internal static int BanenNodig(decimal fractie) => fractie switch
+    public static int BanenNodig(decimal fractie) => fractie switch
     {
         <= 0.26m => 1,
         <= 0.51m => 2,
@@ -518,7 +494,7 @@ internal class FieldScheduler
     /// banen. Geeft het subpositie-label terug ("A1", "B", "" voor een heel veld), of null als er geen
     /// plek is. Halfveldwedstrijden mogen alleen op A of B — niet op de banen 1+2 dwars door het midden.
     /// </summary>
-    internal static string? EersteVrijeSubpositie(bool[] bezet, decimal fractie)
+    public static string? EersteVrijeSubpositie(bool[] bezet, decimal fractie)
     {
         int nodig = BanenNodig(fractie);
         if (nodig == 4)

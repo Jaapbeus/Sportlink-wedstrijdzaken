@@ -1946,6 +1946,50 @@ en route van elk `[Function(...)]`-attribuut tussen de twee `PlannerFunction.cs`
 planner-specifieke endpoints komen exact overeen. `Health` is het enige verschil — bewust, want die
 route loopt op de Postgres-tier via een apart bestand (`HealthFunction.cs`, #863).
 
+## 38. De twee openstaande architectuurbeslissingen uit §35/§37 zijn genomen (#888)
+
+**Waar woont de FieldScheduler-planningsmotor?** Naar `Planner.Shared` — verhuisd, niet
+gedupliceerd. De motor was al aantoonbaar SQL-vrij (zie §37) en delegeerde de veldnaam-matching al
+aan `Planner.Shared.VeldResolver` sinds #819; alleen de motor zelf en de constanten/helpers eromheen
+stonden nog op de SQL Server-tier. Zelfde precedent als `TeamNaamNormalisatie` (#889): logica zonder
+tier-afhankelijkheid hoort op precies één plek te staan, niet op twee plekken met een driftguard
+ertussen.
+
+**Waar wonen de planner-DTO's?** Gesplitst, niet alles naar één kant. De motor construeert
+`SlotToewijzing` rechtstreeks (via `ToSlotToewijzing`) en werkt op `VeldInfo`,
+`VeldBeschikbaarheidInfo`, `BestaandeWedstrijd`, `TeamRegel`, `TeamVoorkeurVeld` en `Speeltijd` —
+die zes modellen plus `VeldSoort`/`VeldTypeClassificatie` (dezelfde "één plek"-regel als de motor
+zelf, #705/#707) staan nu in `Planner.Shared/PlannerDomeinModellen.cs`. De HTTP-wire-contracten
+(`CheckAvailabilityRequest`, `AutoPlanResponse`, `HerplanCheckRequest`, ...) blijven bewust per tier
+eigen bestanden — die zijn JSON-vormgeving van één specifiek endpoint, geen gedeelde rekenlogica.
+Zelfde onderscheid als `TeamScheduleModels.cs` (gedupliceerd, §16) tegenover `TeamNaamNormalisatie`
+(verhuisd, §17).
+
+**Waarom de klasse "PlannerShared" heet terwijl ze al in de namespace `Planner.Shared` zit** — een
+bewuste, risicoarme keuze: alle circa zestig bestaande aanroepen in `AvailabilityService`,
+`RescheduleService`, `AutoPlanService`, `SportlinkApiClient` en vier testbestanden bleven zo
+ongewijzigd werken met alleen een `using Planner.Shared;`-toevoeging. Geen enkele aanroepnaam
+hoefde te veranderen — alleen twee call sites die de inmiddels-verwijderde,
+`CheckAvailabilityResponse`-getypeerde overload van `AddWeekdayWarning` gebruikten, moesten naar de
+al bestaande `List<string>`-overload (die overload was zelf al tier-neutraal).
+
+**`FunctionApp.Postgres` kreeg een directe `ProjectReference` naar `Planner.Shared`** — voorheen
+kwam die er alleen transitief binnen via `Database.Postgres` (voor `VeldResolver`/`VeldNormalisatie`/
+`TeamNaamNormalisatie`). Een impliciete afhankelijkheid zou de bedoelde gelaagdheid omkeren zodra
+planner-code op deze tier de motor daadwerkelijk aanroept.
+
+**Geverifieerd, niet aangenomen.** De volledige bestaande `FunctionApp.Tests`-suite draaide vóór en
+ná de verhuizing in twee losse git-worktrees (één op `origin/develop`, één op deze branch) om een
+exacte, onafhankelijke vergelijking te forceren: **429 geslaagd, 5 geskipt, 0 gefaald — in beide
+worktrees identiek.** `Planner.Shared.Tests` (83 tests, incl. `TeamNaamNormalisatieTests`) en
+`FunctionApp.Postgres.Tests` blijven eveneens groen; de volledige oplossing bouwt schoon.
+
+**Bewust niet in deze ronde:** de bestaande testbestanden die de motor rechtstreeks testen
+(`PlannerSharedTests.cs`, `VeldBezettingHerplanTests.cs`, `FieldOccupationFilterTests.cs` in
+`FunctionApp.Tests`) zijn niet meeverhuisd naar `Planner.Shared.Tests`. Ze testen nu weliswaar
+tier-agnostische code, maar staan nog op de oude plek — een cosmetische opruiming die de risicoarme
+scope van deze refactor niet hoefde te vergroten. Blijft open scope voor een latere, kleine slice.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -1,7 +1,7 @@
 namespace SportlinkFunction.Planner;
 
 /// <summary>
-/// SQL-tegenhanger van <see cref="Services.PlannerShared.ResolveVeld"/> — Sportlink-veldstring naar
+/// SQL-tegenhanger van <see cref="Planner.Shared.PlannerShared.ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/> — Sportlink-veldstring naar
 /// het veldnummer uit <c>dbo.Velden</c> (#719).
 ///
 /// <para>
@@ -63,7 +63,7 @@ internal static class VeldResolutie
     /// subpositie — nooit een langer veldnummer, zodat <c>"veld 10"</c> niet op <c>"veld 1"</c> valt.
     /// Langste veldnaam eerst: bestaat naast "veld 1" ook "veld 1 achter", dan hoort "veld 1 achter B"
     /// bij dat tweede veld en is "achter" geen subpositie van veld 1. Identiek aan
-    /// <see cref="Services.PlannerShared.ResolveVeld"/>.
+    /// <see cref="Planner.Shared.PlannerShared.ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>.
     /// </para>
     ///
     /// <para>
