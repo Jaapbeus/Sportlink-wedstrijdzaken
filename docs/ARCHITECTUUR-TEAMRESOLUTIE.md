@@ -221,9 +221,28 @@ maar onder de huidige CI-collatie is die vergelijking vandaag al feitelijk hoofd
 `UPPER()` behoudt het waargenomen gedrag; een bewust hoofdlettergevoelige variant zou een
 gedragswijziging zijn (mogelijk minder validated-alias-treffers) en is niet gekozen.
 
-**Nog niet gedaan — vervolgwerk, geen scope van deze fix:** een Postgres-tegenhanger van
-`dbo.Teams`/`dbo.TeamAliassen` (met expression-based unique indexes i.p.v. de SQL Server
-`UQ_Teams_Club_*`-constraints) bestaat nog niet. `TeamCandidateRepository` zelf is nog uitsluitend
-een SQL Server-implementatie — de Postgres-tier heeft nog geen teamherkenning-datalaag. Dat volgt
-pas als de bredere applicatie-datalaag (buiten de ETL-sync en de planner-kernview) naar Postgres
-wordt geport.
+**Bijgewerkt (#820, vervolgronde):** de Postgres-tier heeft inmiddels wél een teamherkenning-
+datalaag (`FunctionApp.Postgres/TeamResolution/TeamCandidateRepository.cs`/
+`TeamAliasLearningService.cs`, #889) tegen `public.teams`/`public.teamaliassen`. Daar was dit
+risico geen theoretisch vervolgpunt meer maar een levende bug: Postgres' default-collatie is
+case-sensitief, dus zonder de `UPPER()`-wrap gaf `FindExactTeamAsync`/`FindValidatedAliasAsync`
+stilzwijgend nul resultaten bij afwijkende opgeslagen casing — en de kale
+`UNIQUE(clubcode, teamnaam)`/`UNIQUE(clubcode, ruwetekst)`-constraints uit de eerste Postgres-
+migratie (#887) lieten een casing-only-duplicaat toe die SQL Server vandaag al zou weigeren.
+
+`Database.Postgres/migrations/007_teams_collation_fix.sql` vervangt die kale `UNIQUE`-constraints
+door expression-based unique indexes op `upper(...)` (`ux_teams_club_teamnaam_upper`,
+`ux_teams_club_teamnaamgenormaliseerd_upper`, `ux_teamaliassen_club_ruwetekst_upper`). De Postgres-
+tier's `TeamCandidateRepository`/`TeamAliasLearningService` wrappen dezelfde drie vergelijkingen nu
+ook expliciet in `UPPER(...)` — inclusief `TeamAliasLearningService`'s `ON CONFLICT (clubcode,
+upper(ruwetekst))`, dat moest meeveranderen omdat de conflict-doeltabel exact moet matchen met de
+onderliggende (nu expression-based) unique index. Empirisch geverifieerd tegen een wegwerp-
+Postgres-16-container (2026-08-31): een casing-only-duplicaat wordt geweigerd, `FindExactTeamAsync`/
+`FindValidatedAliasAsync` vinden het team ondanks afwijkende opgeslagen casing, en een herhaalde
+`LegVastAsync`-aanroep met andere casing verhoogt de teller op de bestaande rij in plaats van een
+duplicaat aan te maken.
+
+**Nog niet gedaan — vereist expliciete eigenaargoedkeuring, niet autonoom uit te voeren:** de
+audit/replay tegen échte, historische productiedata (`his.teams`/`stg.teams`/`dbo.Teams`) om te
+bepalen of er vandaag al casing-drift verborgen zit achter SQL Server's CI-collatie. Dat vereist
+toegang tot echte clubdata — zie issue #820 voor de openstaande status.

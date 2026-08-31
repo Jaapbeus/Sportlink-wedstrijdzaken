@@ -11,6 +11,17 @@ public sealed record TeamCandidate(int TeamId, string Teamnaam, string? Leeftijd
 /// <c>public.teams</c>/<c>public.teamaliassen</c> (#887). Alle query's blijven hard gescoped op
 /// clubcode, zelfde patroon als het origineel.
 /// </summary>
+/// <remarks>
+/// #820: sleutelvergelijkingen wrappen expliciet in <c>UPPER(...)</c> — hier is dit, anders dan op
+/// de SQL Server-tier, geen portabiliteitskeuze maar een echte correctness-fix: Postgres' default-
+/// collatie is case-sensitive, dus zonder deze wrap zou een historische rij met afwijkende casing
+/// stilzwijgend nul resultaten opleveren (zie docs/ARCHITECTUUR-DATABASE-TIERS.md/
+/// docs/ARCHITECTUUR-TEAMRESOLUTIE.md). <c>Database.Postgres/migrations/007_teams_collation_fix.sql</c>
+/// vervangt de kale <c>UNIQUE</c>-constraints door expression-based unique indexes op
+/// <c>upper(...)</c>, zodat de vergelijkingslaag hier en de constraint-laag in de database dezelfde
+/// hoofdletterongevoelige sleutel gebruiken. <c>RuweTekst</c> is bewust óók ge-upper't — zelfde
+/// intentie-kanttekening als de SQL Server-tier (#869).
+/// </remarks>
 internal sealed class TeamCandidateRepository(string connectionString)
 {
     internal async Task<TeamCandidate?> FindValidatedAliasAsync(
@@ -25,8 +36,8 @@ internal sealed class TeamCandidateRepository(string connectionString)
             WHERE a.clubcode = @clubcode
               AND a.status = 'validated'
               AND t.isactief = TRUE
-              AND (a.ruwetekst = @ruwetekst OR a.ruwetekstgenormaliseerd = @sleutel)
-            ORDER BY CASE WHEN a.ruwetekst = @ruwetekst THEN 0 ELSE 1 END
+              AND (UPPER(a.ruwetekst) = UPPER(@ruwetekst) OR UPPER(a.ruwetekstgenormaliseerd) = UPPER(@sleutel))
+            ORDER BY CASE WHEN UPPER(a.ruwetekst) = UPPER(@ruwetekst) THEN 0 ELSE 1 END
             LIMIT 1
         ", conn);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -44,7 +55,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
             SELECT teamid, teamnaam, leeftijdscategorie
             FROM public.teams
             WHERE clubcode = @clubcode
-              AND teamnaamgenormaliseerd = @sleutel
+              AND UPPER(teamnaamgenormaliseerd) = UPPER(@sleutel)
               AND isactief = TRUE
             LIMIT 1
         ", conn);
