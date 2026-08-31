@@ -924,6 +924,72 @@ gebouwde datalaag elders in de Postgres-boom heeft. Controleer bij het vertalen 
 beheer-endpoint altijd eerst of er al een specifiekere, geharde implementatie bestaat vóór je de
 databasebewerking zelf herbouwt.
 
+## 24. Cross-tree tabeldekking-guard — #864 deel 2, de grootste deelopgave uit sectie 19
+
+**#908 (deel 1, sectie 19) liet de grootste deelopgave van #864 expliciet open: "een controle die
+de bomen onderling vergelijkt: welke tabellen ... bestaan in de ene en niet in de andere."** Deze
+ronde levert het TABEL-niveau van die controle (kolommen, procedures en views blijven bewust
+buiten deze ronde, zie hieronder).
+
+**Nieuw script:** `scripts/ci/check-postgres-table-coverage.sh`, gewired als nieuwe stap in de
+bestaande `build`-job van `.github/workflows/build.yml`, direct na de identifier-casing-guard.
+
+**Vertaalregel bleek geen "robuuste fuzzy-matching" nodig te hebben, in tegenstelling tot wat #864
+zelf als de moeilijkheid noemde.** Elke migratie die tot nu toe geschreven is vertaalt een SQL
+Server-tabelnaam op precies één manier: schema `dbo` → `public` (elk ander schema ongewijzigd),
+tabelnaam PascalCase → lowercase, verder letterlijk gelijk (`TeamAliassen` → `teamaliassen`,
+`GeplandeWedstrijden` → `geplandewedstrijden`, ...). Een directe, deterministische naamvertaling
+volstaat dus — geen Levenshtein/fuzzy-matching, geen handmatige mapping-tabel.
+
+**Twee categorieën tabellen die bewust geen (nog geen) Postgres-tegenhanger hebben, beide
+hardcoded in het script met een reden erbij:**
+1. **`DYNAMISCH_AANGEMAAKT`** — de zes ETL-tabellen (`his.teams`/`matches`/`matchdetails`,
+   `stg.teams`/`matches`/`matchdetails`) die `PostgresMergeOrchestrator` dynamisch aanmaakt op
+   basis van `KnownEntities.cs` (#818) — geen migratie, dus geen `CREATE TABLE`-regel om te
+   vinden, maar wel degelijk een echte tabel. Zelfde soort allowlist-item als de SQL
+   Server-tier se eigen schema-drift-guard al had voor `stg.*`/`his.*`.
+2. **`EXCEPTIONS`** — vijf tabellen, elk met een concrete, geverifieerde reden: `dbo.DateTable`
+   (nul consumenten, zie sectie 21), `dbo.KnvbKalenderDag` (e-mail-AI-pijplijn, #889's
+   scope-afbakening), `dbo.Zonsondergang` en `planner.HerplanVerzoeken` (allebei #888's
+   FieldScheduler-/Herplan-resterende scope), en `mta.source_target_mapping` (architecturaal
+   vervangen door `KnownEntities.cs`, #818 — geen Postgres-stuurtabel nodig).
+
+**Bevinding tijdens het bouwen: geen van de drie "onverwachte" ontbrekende tabellen was
+daadwerkelijk onverwacht.** Voordat de EXCEPTIONS-lijst er stond, gaf het script drie treffers
+(`KnvbKalenderDag`, `Zonsondergang`, `HerplanVerzoeken`) naast de al bekende `DateTable`. Een
+consumenten-check (grep over `FunctionApp/**/*.cs`) bevestigde voor alle drie dat ze uitsluitend
+gebruikt worden door functionaliteit die #888/#889 zelf al als hun eigen, nog niet gestarte
+resterende scope documenteren — geen nieuwe gaten, alleen een automatische bevestiging van wat al
+bekend was. Dat is precies waarom dit script waarde toevoegt: de volgende keer dat zo'n tabel
+onopgemerkt ontbreekt, is het geen toeval meer dat iemand het ontdekt.
+
+**Empirisch geverifieerd** (geen database nodig, pure bestandsvergelijking):
+- Schone staat: script slaagt (alle 28 SQL Server-tabellen gedekt via migratie, dynamische
+  ETL-tegenhanger, of expliciete uitzondering).
+- Negatieve controle 1: een uitzonderingsregel (`dbo.DateTable`) tijdelijk verwijderd uit een
+  kopie van het script → faalt zichtbaar op precies die tabel.
+- Negatieve controle 2: een nieuwe, fictieve SQL Server-tabel (`dbo.NieuweTestTabel`) tijdelijk
+  toegevoegd, geen Postgres-tegenhanger en geen uitzondering → faalt zichtbaar, daarna
+  opgeruimd (nooit gecommit).
+
+**Bewust niet in deze ronde:**
+- **Kolomniveau-vergelijking** — de tabel-check hierboven bewijst alleen dat de tabel bestaat,
+  niet dat elke kolom aanwezig is. Precies het patroon dat al twee keer een echt gat opleverde
+  binnen deze epic (#893: `public.speeltijden` miste drie kolommen; sectie 21: `planner.
+  geplandewedstrijden` miste `mta_modified`) — beide pas ontdekt tijdens het daadwerkelijk
+  vertalen van functionaliteit die de kolom nodig had, niet door een geautomatiseerde controle.
+  Een aanzienlijk grotere stap dan tabelnamen: SQL Server-kolomtypen/-nullability vergelijken met
+  Postgres-equivalenten heeft geen even simpele 1-op-1-vertaalregel als tabelnamen bleken te
+  hebben.
+- **Stored procedures en views** — de Postgres-tier heeft geen procedure-/view-bestanden op
+  dezelfde manier als de SQL Server-tier (#818/#861: procedurele logica leeft in C#-klassen,
+  zoals `PostgresMergeOrchestrator`/`PostgresCleanupProcedures`), dus een bestandsgebaseerde
+  1-op-1-vergelijking zoals dit script voor tabellen doet, heeft daar een ander karakter en past
+  niet in dit tabellen-script.
+- **De omgekeerde richting** (een Postgres-tabel zonder SQL Server-tegenhanger) — geen bekend
+  scenario waarin dat een reëel risico is, aangezien de Postgres-boom uitsluitend een vertaling
+  ván de SQL Server-boom is, nooit andersom.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

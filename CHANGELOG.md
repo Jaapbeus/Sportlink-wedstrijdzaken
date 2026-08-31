@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Nieuwe CI-guard vergelijkt de SQL Server- en Postgres-databaseboom op tabelniveau (issue 864,
+  deel 2 — de grootste deelopgave die deel 1 openliet).** `scripts/ci/check-postgres-table-coverage.sh`
+  faalt zichtbaar zodra een tabel aan de SQL Server-boom wordt toegevoegd zonder Postgres-
+  tegenhanger (via migratie, de dynamische ETL-laag, of een expliciete, beredeneerde
+  uitzondering) — voorheen kon dat gat onopgemerkt blijven tot iemand de Postgres-tier
+  daadwerkelijk gebruikte. Geen database nodig, draait ook op een fork. Empirisch getest met twee
+  opzettelijke faalscenario's (een uitzondering verwijderd; een nieuwe, fictieve tabel
+  toegevoegd) — beide gaven de verwachte foutmelding.
 - **Zelftest-poorten G5 (juiste engine) en G6 (API-inhoudsasserties) draaien nu tegen een echte
   functiehost** in `scripts/dev/Test-PostgresTier.ps1` (issue 909). De zelftest start
   `FunctionApp.Postgres` zelf op, wacht op `/api/health`, en toetst daarna dertien
