@@ -15,8 +15,8 @@ namespace FunctionApp.Postgres.Admin;
 /// </para>
 /// <para>
 /// <b>Trigger</b> roept nu <see cref="PostgresSyncPipeline.RunSyncAsync"/> aan (#890) — dezelfde
-/// fire-and-forget-vorm als de SQL Server-tier. <c>toWeekOffset</c> gebruikt de gedocumenteerde
-/// vaste fallback (zie <see cref="SyncFunction"/>) omdat er geen Postgres-seizoenstabel bestaat.
+/// fire-and-forget-vorm als de SQL Server-tier. <c>toWeekOffset</c> komt sinds #890's
+/// seizoensvertaling uit <see cref="PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync"/>.
 /// </para>
 /// </summary>
 public static class AdminSyncFunction
@@ -77,7 +77,7 @@ public static class AdminSyncFunction
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
-        const int toWeekOffset = SyncFunction.DefaultToWeekOffset;
+        var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
         log.LogInformation("AdminSyncTrigger: range -1 .. {To} — fire-and-forget gestart", toWeekOffset);
 
         // Fire-and-forget: zelfde vorm als de SQL Server-tier — client pollt /status op wijziging lastsynctimestamp.
