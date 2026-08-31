@@ -56,9 +56,28 @@
     # ──────────────────────────────────────────────────────────────────────────
     routes = @(
         @{ Path = '/';                         Context = 'demo';    Assert = 'Versienummer zichtbaar in de header en de clubnaam bevat de democlubcode. Geen database-overlay.'; ReadsDatabase = $false }
-        @{ Path = '/dagplanning';              Context = 'demo';    Assert = 'Minstens een wedstrijdregel zichtbaar voor de eerstvolgende zaterdag, met een veldnaam uit de demovelden.'; Blocked = @(856) }
-        @{ Path = '/teambegeleiding';          Context = 'demo';    Assert = 'Exact 28 rijen; minstens een adres op het gereserveerde testdomein.'; Blocked = @(853, 856) }
-        @{ Path = '/testdata/wedstrijden';     Context = 'demo';    Assert = 'Exact 224 wedstrijden. Deze route is alleen zichtbaar in demomodus.'; Blocked = @(856) }
+        # De drie routes hieronder stonden geblokkeerd op #856 (en #853). Die blokkade gold voor de
+        # BESTAANDE variant, waar het deployscript de bronnentabellen niet aanmaakt en de demoseed
+        # zichzelf stil overslaat. Op de Postgres-tier maakt de zelftest die tabellen zelf aan
+        # vóór de seed, en G4 bevestigt met rijtellingen dat er 28 teams en 224 wedstrijden staan.
+        # De browsersweep heeft dat op 2026-09-01 ook echt gezien: /dagplanning toont de
+        # demowedstrijden en /teambegeleiding vult de teamkeuzelijst met alle 28 teams.
+        #
+        # Een blokkade die alleen op de andere variant klopt, laat hier dekking wegvallen die er
+        # wél is — even schadelijk als een overgeslagen assertie die groen meldt.
+        @{ Path = '/dagplanning';              Context = 'demo';    Assert = 'Minstens een wedstrijdregel zichtbaar voor de eerstvolgende zaterdag, met teamnaam en aanvangstijd. LET OP: de veldkolom is bij demodata leeg — de seed plant niets op een veld in, dus daar valt niets over te beweren (zelfde nuance als bij api/planner/veldbezetting hieronder).' }
+
+        # De eis "minstens een adres op het gereserveerde testdomein" is bewust geschrapt: het
+        # endpoint achter deze pagina geeft NOOIT e-mailadressen terug (naam en rol, meer niet).
+        # Dat is een AVG-ontwerpkeuze, geen tekortkoming — de assertie kon dus per definitie niet
+        # slagen. Wat de pagina wél bewijst is dat de canonieke teamlijst werkt: de keuzelijst
+        # bevat alle demoteams, en die lijst komt uit public.teams.
+        @{ Path = '/teambegeleiding';          Context = 'demo';    Assert = 'De teamkeuzelijst bevat alle 28 demoteams (bewijs dat de canonieke teamlijst gevuld is). Geen e-mailadressen: die geeft het endpoint bewust nooit terug.' }
+
+        # Geblokkeerd op #949: vijf endpoints achter deze pagina bestaan niet op de Postgres-tier
+        # (404, geen niet-geimplementeerd-antwoord — daarom viel het buiten de stub-telling). De
+        # pagina meldt zichtbaar "Teams ophalen mislukt: HTTP 404" en toont nul wedstrijden.
+        @{ Path = '/testdata/wedstrijden';     Context = 'demo';    Assert = 'Exact 224 wedstrijden. Deze route is alleen zichtbaar in demomodus.'; Blocked = @(949) }
         @{ Path = '/instellingen';             Context = 'demo';    Assert = 'De testmodus-melding is zichtbaar. Een gevulde instellingenpagina is hier FOUT — dat bewijst juist dat de clubscheiding werkt.' }
         @{ Path = '/instellingen/velden';      Context = 'demo';    Assert = 'Drie velden en 21 beschikbaarheidsrijen.' }
         @{ Path = '/instellingen/speeltijden'; Context = 'demo';    Assert = 'Minstens een speeltijdregel.' }

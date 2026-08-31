@@ -18,6 +18,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Drie controles in de zelftest konden nooit slagen of stonden onterecht uit (issue 949).** Twee
+  schermen — de dagplanning en de begeleidingspagina — werden overgeslagen wegens een probleem dat
+  alleen op de andere databasevariant speelt; op deze variant tonen ze de demogegevens gewoon. Een
+  derde controle eiste een e-mailadres op een pagina die er bewust nooit een teruggeeft, en kon dus
+  per definitie niet slagen. Een controle die niet kan slagen is even schadelijk als een die
+  ontbreekt: hij maakt de bewaking onbruikbaar in plaats van bewakend. Bij dezelfde ronde bleek de
+  testdatapagina op de nieuwe variant niet te werken; die staat nu zichtbaar als bekend openstaand
+  punt in plaats van stilzwijgend groen.
+
 ### Added
 - **Beheerders kunnen de teamlijst nu zelf opnieuw laten opbouwen (issue 946).** De teamlijst waar
   teamherkenning en alle teamkeuzelijsten op leunen wordt normaal bijgewerkt aan het eind van elke
