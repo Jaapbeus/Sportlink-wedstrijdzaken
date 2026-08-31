@@ -141,4 +141,70 @@ public static class PostgresCleanupProcedures
         delete.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
         await delete.ExecuteNonQueryAsync(ct);
     }
+
+    /// <summary>
+    /// Postgres-tegenhanger van <c>dbo.sp_CleanupAppSettingsAudit</c> (#781/#861).
+    /// <para>
+    /// <b>Waarom dit een AVG-gat dichtte en geen cosmetische aanvulling is:</b>
+    /// <c>public.appsettingsaudit</c> bestond al sinds migratie 004 en legt bij elke
+    /// instellingswijziging vast wié hem doorvoerde (<c>gewijzigddoor</c>) — een persoonsgegeven.
+    /// De bewaartermijn-instelling (<c>appsettingsauditbewaardagen</c>) bestond eveneens al, maar
+    /// er was op deze tier niets dat er ooit naar handelde: rijen bleven onbeperkt staan, in strijd
+    /// met AVG art. 5 lid 1 sub e (opslagbeperking). Migratie 004 benoemde dit gat zelf al expliciet
+    /// als "een van de resterende procedures uit #861".
+    /// </para>
+    /// <para>
+    /// <b>Drietraps-terugval, letterlijk overgenomen uit het origineel</b> — de volgorde is
+    /// betekenisdragend, niet toevallig:
+    /// </para>
+    /// <list type="number">
+    /// <item>De primaire club (niet de <c>ALLSTARS</c>-democlub) is leidend voor
+    /// deployment-brede instellingen, gesorteerd op <c>clubcode</c> — zelfde patroon als #598/#740.</item>
+    /// <item>Vangnet als alleen de democlub bestaat (verse fork vóór de eerste echte configuratie):
+    /// dan telt wél de democlubwaarde mee.</item>
+    /// <item>Ontbrekende of onzinnige waarde (<c>NULL</c> of <c>&lt;= 0</c>): terugvallen op de
+    /// gedocumenteerde default van 730 dagen. Bewust een default en géén "dan maar niets opruimen":
+    /// dat laatste zou een configuratiefout stilzwijgend in een AVG-overtreding laten ontaarden.</item>
+    /// </list>
+    /// <para>
+    /// <b>Tijdrekenen in C#, niet in SQL</b> (zelfde keuze als de vier procedures hierboven): de
+    /// grens wordt éénmalig berekend en als parameter meegegeven, zodat hij niet per rij opnieuw
+    /// geëvalueerd wordt. <c>tijdstip</c> is <c>TIMESTAMPTZ</c> en de grens is een UTC-
+    /// <see cref="DateTime"/>, dus de vergelijking is absoluut — een databaseserver in een andere
+    /// tijdzone (de zelftest draait bewust op Europe/Amsterdam, #854) verschuift het venster niet.
+    /// </para>
+    /// </summary>
+    public static async Task CleanupAppSettingsAuditAsync(NpgsqlConnection connection, CancellationToken ct = default)
+    {
+        const int standaardBewaarDagen = 730;
+
+        // COALESCE over twee geordende subselects zet de drietraps-terugval in één query, zonder
+        // round-trip per stap. NULLIF vangt stap 3 af: een waarde <= 0 wordt NULL en valt daarmee
+        // door naar de default, exact zoals het origineel se `IF @BewaarDagen IS NULL OR <= 0`.
+        int bewaarDagen;
+        await using (var lees = new NpgsqlCommand(@"
+            SELECT COALESCE(
+                (SELECT NULLIF(GREATEST(appsettingsauditbewaardagen, 0), 0)
+                 FROM public.appsettings
+                 WHERE clubcode <> 'ALLSTARS'
+                 ORDER BY clubcode
+                 LIMIT 1),
+                (SELECT NULLIF(GREATEST(appsettingsauditbewaardagen, 0), 0)
+                 FROM public.appsettings
+                 ORDER BY clubcode
+                 LIMIT 1),
+                @standaard)", connection))
+        {
+            lees.Parameters.AddWithValue("standaard", standaardBewaarDagen);
+            var waarde = await lees.ExecuteScalarAsync(ct);
+            bewaarDagen = waarde is null or DBNull ? standaardBewaarDagen : Convert.ToInt32(waarde);
+        }
+
+        var verwijderVoor = DateTime.UtcNow.AddDays(-bewaarDagen);
+
+        await using var delete = new NpgsqlCommand(
+            "DELETE FROM public.appsettingsaudit WHERE tijdstip < @verwijderVoor", connection);
+        delete.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
+        await delete.ExecuteNonQueryAsync(ct);
+    }
 }

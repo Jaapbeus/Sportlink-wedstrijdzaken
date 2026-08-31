@@ -311,6 +311,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **AVG-bewaartermijn: de instellingen-audittrail werd op de Postgres-tier nooit opgeschoond
+  (issue 861 vervolg).** `public.appsettingsaudit` legt bij elke instellingswijziging vast wie hem
+  doorvoerde, en oude/nieuwe waarden kunnen e-mailadressen bevatten — beide persoonsgegevens. De
+  tabel én de bewaartermijn-instelling bestonden al op deze tier, maar er was niets dat er ooit
+  naar handelde: rijen bleven onbeperkt staan, in strijd met AVG art. 5 lid 1 sub e
+  (opslagbeperking). De migratie die de tabel aanmaakte benoemde dit gat zelf al als openstaand
+  werk. Nu voorzien van dezelfde maandelijkse opschoontaak als de SQL Server-tier, inclusief de
+  drietraps-terugval voor de bewaartermijn (primaire club → willekeurige club → 730 dagen). Een
+  onzinnige instelling (0 of negatief) valt bewust terug op de default in plaats van alles te
+  verwijderen. Vastgelegd in zes blijvende integratietests; die zijn aantoonbaar
+  onderscheidend — met de terugvalbescherming er tijdelijk uit gesloopt worden er twee rood.
 - **De automatische controles voor de Postgres-tier deelden één database en zaten elkaar in de weg (#925).**
   Eén testverzameling breekt de database met opzet af om te controleren of ze correct opnieuw wordt
   opgebouwd; alles wat daarna draaide, kreeg een halve database te zien. Dat leverde deze week twee

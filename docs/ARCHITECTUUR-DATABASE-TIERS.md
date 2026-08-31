@@ -1778,6 +1778,57 @@ klassen zitten in hetzelfde project en dus achter dezelfde connectiestring.
 - **De SQL Server-tier.** Die kent hetzelfde patroon niet: `PartialFailureIntegrationTests` en
   `SportlinkFixtureSyncIntegrationTests` draaien nergens automatisch (§29's laatste punt).
 
+## 34. De laatste opschoonprocedure: `sp_CleanupAppSettingsAudit` (#781/#861)
+
+**Een AVG-gat, geen ontbrekend gemak.** `public.appsettingsaudit` bestond al sinds migratie 004 en
+groeide bij elke instellingswijziging. De tabel bevat op meerdere plekken persoonsgegevens:
+`gewijzigddoor` is een Entra-gebruikersnaam/UPN, en `oudewaarde`/`nieuwewaarde` kunnen
+e-mailadressen bevatten (bijvoorbeeld bij een wijziging van `GraphMailbox` of
+`EmailReviewRecipient`). De bewaartermijn-instelling `appsettingsauditbewaardagen` bestond eveneens
+al — maar op deze tier handelde niets er ooit naar. Rijen bleven dus onbeperkt staan, in strijd met
+AVG art. 5 lid 1 sub e (opslagbeperking).
+
+Dit was een **bekend, gedocumenteerd** gat en geen verrassing: migratie 004 benoemt het zelf
+expliciet als "een van de resterende procedures uit #861". Sectie 15 leverde vier van de vijf
+opschoonprocedures; dit is de vijfde en laatste.
+
+**Vertaling.** `PostgresCleanupProcedures.CleanupAppSettingsAuditAsync` + een maandelijkse
+timerfunctie (`0 30 4 1 * *`, een half uur ná de bestaande teambegeleiding-opschoning op 04:00,
+zodat de twee taken niet op dezelfde verbinding overlappen). De drietraps-terugval van het
+origineel is letterlijk overgenomen en in één query samengevat met `COALESCE` over twee geordende
+subselects:
+
+1. De primaire club (niet `ALLSTARS`) is leidend voor deployment-brede instellingen — zelfde
+   patroon als #598/#740.
+2. Vangnet als alleen de democlub bestaat (verse fork vóór de eerste echte configuratie).
+3. `NULL` of `<= 0` valt terug op de gedocumenteerde default van 730 dagen. Bewust een default en
+   géén "dan maar niets opruimen": dat laatste zou een configuratiefout stilzwijgend in een
+   AVG-overtreding laten ontaarden. `NULLIF(GREATEST(kolom, 0), 0)` implementeert stap 3 zonder een
+   extra round-trip.
+
+De tijdgrens wordt éénmalig in C# berekend en als parameter meegegeven — zelfde keuze als de vier
+procedures uit sectie 15. `tijdstip` is `TIMESTAMPTZ` en de grens een UTC-`DateTime`, dus de
+vergelijking is absoluut: een databaseserver in een andere tijdzone (de zelftest draait bewust op
+Europe/Amsterdam, #854) verschuift het venster niet.
+
+**Empirisch geverifieerd, met aantoonbaar onderscheidend vermogen.** Zes blijvende integratietests
+in `FunctionApp.Postgres.Tests` (niet langer een wegwerpharnas, zie sectie 30) dekken alle drie de
+terugvaltrappen, de lege-`appsettings`-rand, en idempotentie. Elke test controleert niet alleen wát
+verdwijnt maar ook wát blijft staan — een test die enkel "er is iets verwijderd" aantoont, zou een
+procedure die *alles* verwijdert groen laten.
+
+Dat die tests werkelijk iets bewaken is apart gemeten in plaats van aangenomen: met de
+`<= 0`-terugvalbescherming tijdelijk uit de code gesloopt worden er twee rood (de 400-dagenrij
+verdwijnt dan ten onrechte). Een bewaking die niet rood kán worden, bewijst niets.
+
+**Bewust niet in deze ronde:** de drie `pub.*`-views (`pub.Matches`, `pub.Teams`, `pub.DateTable`)
+hebben geen Postgres-tegenhanger. Dat is een beredeneerde uitzondering, geen gat: geen enkele
+regel applicatiecode consumeert ze (geverifieerd met een repo-brede grep over `FunctionApp/`,
+`FunctionApp.Postgres/` en `BlazorAdmin/`) — het zijn consumentgerichte views op de SQL
+Server-ETL-boom. `sp_CreateDateTable` deelt diezelfde status (zie sectie 32). Daarmee resteert voor
+de cross-tree-vergelijking van procedures en views (#864) alleen nog het *geautomatiseerd* bewaken
+van deze mapping; de inhoudelijke inventarisatie is met deze sectie compleet.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
