@@ -19,6 +19,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De negen niet-vertaalde planner-endpoints op de Postgres-tier geven nu een expliciete 501 in
+  plaats van een stille 404 (issue 888 vervolg).** `CheckAvailability`, `DoordeweeksBeschikbaar`,
+  `BevestigWedstrijd`, `ZoekWedstrijd`, `HerplanCheck`, `HerplanBevestig`, `PopulateSunset`,
+  `AutoPlan` en `AutoPlanToepassen` bestonden nog niet op deze tier — een aanroep verdween
+  onzichtbaar in een generieke 404 in plaats van te melden wát er precies ontbreekt. Elke melding
+  noemt de daadwerkelijke, geverifieerde afhankelijkheid: twee ontbrekende repositories
+  (`PlannerAvailabilityRepository`, `TeamRulesRepository`), twee ontbrekende schematabellen
+  (`dbo.Zonsondergang`, `planner.HerplanVerzoeken` — al bekende uitzonderingen in de
+  tabeldekking-guard), ontbrekende `PlannerMatchRepository`-methoden, of de nog niet vastgelegde
+  architectuurkeuze voor de FieldScheduler-planningsmotor. Twaalf blijvende tests (geen database
+  nodig) leggen zowel de statuscode als de exacte inhoud van elke melding vast; statisch
+  geverifieerd dat naam, HTTP-werkwoord en route van alle elf planner-endpoints (`Health` loopt
+  via een apart bestand) tussen de twee tiers exact overeenkomen.
 - **De demo-club AllStars FC heeft nu twee voorbeeld-e-mailsjablonen (#911).** Op een verse
   installatie was het scherm Beheer → Berichtsjablonen leeg, op beide databasevarianten: het scherm
   toont alleen wat in de database staat, en geen van beide installatiescripts vulde die tabel. Wie
