@@ -16,12 +16,10 @@ namespace FunctionApp.Postgres.Planner;
 /// <c>CheckAvailability</c>, <c>DoordeweeksBeschikbaar</c>, <c>HerplanCheck</c> en
 /// <c>PopulateSunset</c>.
 /// <para>
-/// <b>Alleen <c>AutoPlan</c> en <c>AutoPlanToepassen</c> geven nog een expliciete 501</b> in plaats
-/// van de stille 404 die de afwezigheid van een route anders zou opleveren — zelfde discipline als
-/// <c>AdminTeambegeleidingFunction.Doorsturen</c> en <c>AdminSyncFunction</c> vóór #890. Ze hangen
-/// af van <c>AutoPlanService</c>/<c>PlannerHtmlGenerator</c> (576 regels), die nog niet bestaan op
-/// deze tier — de FieldScheduler-engine zelf woont sinds §38 al in <c>Planner.Shared</c> en is dus
-/// géén gat meer, alleen de poort ontbreekt nog.
+/// <b>Alle elf plannerendpoints zijn vertaald</b> — <c>AutoPlan</c> en <c>AutoPlanToepassen</c>
+/// als laatste (§42), waarmee deze tier geen enkel niet-geïmplementeerd endpoint meer heeft.
+/// <c>AutoPlanRegels</c> en <c>PlannerHtmlGenerator</c> zijn daarbij naar <c>Planner.Shared</c>
+/// verhuisd in plaats van gekopieerd, net als de FieldScheduler-engine bij §38.
 /// </para>
 /// <para>
 /// <b><c>CheckAvailability</c>/<c>DoordeweeksBeschikbaar</c>/<c>HerplanCheck</c> gebruiken bewust
