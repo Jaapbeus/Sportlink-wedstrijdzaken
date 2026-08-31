@@ -7,8 +7,12 @@ using Xunit;
 namespace FunctionApp.Postgres.Tests;
 
 /// <summary>
-/// Legt vast dat de negen niet-vertaalde planner-endpoints een expliciete 501 geven — geen stille
-/// 404, en geen onjuiste 200 (#888).
+/// Legt vast dat de zes niet-vertaalde planner-endpoints een expliciete 501 geven — geen stille
+/// 404, en geen onjuiste 200 (#888). <c>BevestigWedstrijd</c>, <c>ZoekWedstrijd</c> en
+/// <c>HerplanBevestig</c> stonden hier eerder ook in; die zijn sinds #888 vervolg echte
+/// implementaties (zie <c>PlannerMatchRepositoryIntegrationTests</c> voor hun dekking tegen een
+/// echte Postgres-container — een <c>FunctionContext</c>-loze aanroep zoals hier zou daar
+/// meteen op een <c>NullReferenceException</c> uit <c>context.GetLogger(...)</c> stuklopen).
 ///
 /// <para>
 /// <b>Waarom geen echte functiehost of database nodig is.</b> Elke stub roept alleen
@@ -35,9 +39,6 @@ public class PlannerFunctionStubTests
         yield return new object[] { "CheckAvailability", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.CheckAvailability(r, null!)) };
         yield return new object[] { "DoordeweeksBeschikbaar", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.DoordeweeksBeschikbaar(r, null!)) };
         yield return new object[] { "HerplanCheck", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.HerplanCheck(r, null!)) };
-        yield return new object[] { "BevestigWedstrijd", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.BevestigWedstrijd(r, null!)) };
-        yield return new object[] { "ZoekWedstrijd", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.ZoekWedstrijd(r, null!)) };
-        yield return new object[] { "HerplanBevestig", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.HerplanBevestig(r, null!)) };
         yield return new object[] { "PopulateSunset", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.PopulateSunset(r, null!)) };
         yield return new object[] { "AutoPlan", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.AutoPlan(r, null!)) };
         yield return new object[] { "AutoPlanToepassen", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.AutoPlanToepassen(r, null!)) };
@@ -70,13 +71,12 @@ public class PlannerFunctionStubTests
     }
 
     [Fact]
-    public async Task DeTweeOntbrekendeTabellen_WordenBijNaamGenoemd()
+    public async Task DeOntbrekendeTabel_WordtBijNaamGenoemd()
     {
+        // planner.HerplanVerzoeken/herplanverzoeken kreeg zijn Postgres-tegenhanger in #888 vervolg
+        // (migratie 011) en staat dus niet meer hier — alleen Zonsondergang/zonsondergang mist nog.
         var sunset = (ObjectResult)await PlannerFunction.PopulateSunset(MaakRequest(), null!);
         sunset.Value!.ToString().Should().Contain("Zonsondergang");
-
-        var herplan = (ObjectResult)await PlannerFunction.HerplanBevestig(MaakRequest(), null!);
-        herplan.Value!.ToString().Should().Contain("HerplanVerzoeken");
     }
 
     [Fact]

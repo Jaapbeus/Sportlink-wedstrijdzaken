@@ -2029,6 +2029,79 @@ teams in één query). Onderscheidend vermogen apart bevestigd: met het resoluti
 gesloopt (`.Where(w => w.VeldNummer != 0)` → altijd waar) wordt precies de test rood die dat
 scenario dekt; hersteld weer groen.
 
+## 40. Drie planner-endpoints echt gewireerd: schema-inhaalslag plus de laatste `PlannerMatchRepository`-methoden (#888)
+
+**Sluit §39's eigen "op ... na"-lijst.** `FindMatchAsync`, `FindMatchByCodeAsync`,
+`SavePlannedMatchAsync` en `SaveHerplanVerzoekAsync` zijn nu vertaald — genoeg om
+`BevestigWedstrijd`, `ZoekWedstrijd` en `HerplanBevestig` van een 501-stub naar een echte
+implementatie te zetten. Van de zes resterende stubs (§37) blijven er nu nog drie over:
+`CheckAvailability`/`DoordeweeksBeschikbaar`/`HerplanCheck` (wachten op `AvailabilityService`/
+`RescheduleService`, niet op ontbrekende repositories — die bestaan sinds §39) en `AutoPlan`/
+`AutoPlanToepassen` (wachten op `AutoPlanService`/`PlannerHtmlGenerator`, niet op de
+FieldScheduler-engine zelf — die verhuisde al in §38).
+
+**Een schemagat dat migratie 009 al had aangekondigd, nu gedicht.** `planner.geplandewedstrijden`
+miste vier kolommen t.o.v. de SQL Server-tier: `wedstrijdduurminuten`, `aangevraagddoor`,
+`opmerking`, `mta_inserted` — 009's eigen doc-comment noemde dit al expliciet als bewust
+uitgesteld ("toevoegen zodra die functionaliteit daadwerkelijk vertaald wordt"). Erbij: de
+UNIQUE-slotconstraint (`clubcode, datum, aanvangstijd, veldnummer, velddeelgebruik`) en de FK naar
+`velden` — beide een echte dataintegriteitsgarantie, niet alleen SQL Server-parochialisme. Twee
+nieuwe tabellen: `public.zonsondergang` en `planner.herplanverzoeken`, beide tot nu toe een
+gemotiveerde uitzondering in de tabeldekking-guard (`scripts/ci/check-postgres-table-coverage.sh`).
+Die uitzondering is voor `herplanverzoeken` nu vervallen; `zonsondergang` blijft erin staan tot
+`PopulateSunset` ook vertaald is — de tabel bestaat, maar niets vult hem nog.
+
+**Postgres-valkuil: `ADD CONSTRAINT` kent geen `IF NOT EXISTS`.** Kolommen en indexen ondersteunen
+dat wel (`ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`), een FK-constraint niet — een
+kale `ALTER TABLE ... ADD CONSTRAINT` faalde bij de tweede toepassing (die CI van elk
+migratiebestand eist) op `42710: constraint already exists`. Opgelost met een
+`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = '...') THEN ... END IF; END $$;`
+-guard. Empirisch bevestigd: de volledige migratieset tegen een verse container, daarna migratie
+011 alleen nog een keer — exit 0, idempotent.
+
+**`FindMatchAsync` doet bewust GEEN veldresolutie — in tegenstelling tot §39.** Het antwoord van dit
+endpoint toont de rúwe Sportlink-veldstring (`m.veld`) als `VeldNaam`, precies zoals het SQL
+Server-origineel: dit pad is een zoekresultaat voor een beheerder, geen numeriek veldnummer voor de
+FieldScheduler-engine. Een lezer die na §39 verwacht dat élke veldstring-uitlezing via
+`PlannerShared.VindVeldNummer` moet — dat hoeft hier niet, en had hier ook geen zin gehad: er is
+geen kandidatenlijst om tegen te resolveren, alleen een tekst om te tonen.
+
+**Bijvangst: een echte productiebug op de SQL Server-tier, gevonden tijdens het vertalen.**
+`SaveHerplanVerzoekAsync` miste `ClubCode` volledig in de INSERT, terwijl
+`[planner].[HerplanVerzoeken].[ClubCode]` `NOT NULL` is zonder `DEFAULT` — elke aanroep van
+`HerplanBevestig` op de bestaande, live tier gooide een SQL-fout. Apart gefixt in dezelfde commit
+(zie CHANGELOG "Fixed"); de Postgres-versie is vanaf het begin met `ClubCode` geschreven.
+
+**Twee bestaande CI-guards bijgewerkt, niet omzeild.** `check-postgres-table-coverage.sh` verloor
+zijn `herplanverzoeken`-uitzondering; `check-postgres-column-coverage.sh`'s
+`KOLOM_UITZONDERINGEN`-lijst werd leeg (was vier regels voor exact de vier kolommen hierboven).
+Beide opnieuw groen na de wijziging — geen enkele guard is uitgeschakeld om dit te laten slagen.
+
+**Bijvangst 2: een CI-only regressie, niet in de applicatie zelf.** De eerste `gh pr checks`-run op
+deze PR faalde deterministisch op "PostDeployment op verse Postgres-database" — drie tests in
+`PlannerAvailabilityRepositoryIntegrationTests` (niet door deze PR aangeraakt) kregen een lege
+collectie terug voor iets dat wél in `his.matches` stond. Reproductie lokaal (verse container +
+exact dezelfde migratie-/seedstappen als de workflow) bevestigde: `planner.alle_wedstrijden_op_veld_ruw`
+kiest de "primaire club" via `CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY clubcode
+LIMIT 1` — identiek aan het SQL Server-origineel (`Database/planner/Views/AlleWedstrijdenOpVeld.sql`),
+correct zolang er precies één `syncenabled`-club is (§"Deployment-model" in CLAUDE.md). De
+CI-workflow zette echter een tweede, synthetische club (`CIPRIMARY`, alleen bedoeld als
+kopieerbron voor #862's speeltijden-seed) óók op `syncenabled = true`, zonder accommodatie —
+sorteert vóór elke `testclub-*`, dus werd DIE rij de "gekozen" primaire club, en filterde elke
+wedstrijd van élke andere club op een lege accommodatie. Gefixt in `.github/workflows/build.yml`
+(`syncenabled = false` voor `CIPRIMARY` — de kopieerquery in 006 filtert daar toch niet op), niet
+in de view: de view se aanname is een bewuste, correcte architectuurkeuze voor productie, alleen de
+testomgeving overtrad hem per ongeluk.
+
+**Empirisch geverifieerd.** Zeven permanente integratietests tegen een echte Postgres-container:
+teamresolutie via alias (niet de canonieke naam zelf), een onbekend team levert `null` op (geen
+LIKE-terugval), een ontbrekende speeltijd gooit dezelfde foutmelding als het origineel,
+`FindMatchByCodeAsync` vindt een wedstrijd ook met status 'Afgelast' (bewust géén statusfilter,
+in tegenstelling tot `FindMatchAsync`), en beide schrijfmethoden slaan alle kolommen correct op.
+Onderscheidend vermogen bevestigd op de belangrijkste regressie: met `ClubCode` tijdelijk uit de
+`SaveHerplanVerzoekAsync`-INSERT gehaald faalt precies díe test — met een NOT NULL-violatie, niet
+met een stille lege waarde.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -34,8 +34,6 @@ FOUT=0
 EXCEPTIONS=(
   "dbo.DateTable|zero consumenten binnen de applicatie (alleen de al vervallen pub.DateTable-view, issue 861); zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 21"
   "dbo.KnvbKalenderDag|hoort bij de KNVB-PDF-bijlage van de e-mail-AI-pijplijn, nog niet geport (issue 889's eigen scope-afbakening)"
-  "dbo.Zonsondergang|hoort bij AutoPlanService/AvailabilityService (de FieldScheduler-dagplanning-engine), issue 888's grootste resterende stuk"
-  "planner.HerplanVerzoeken|hoort bij HerplanCheck/HerplanBevestig, issue 888's resterende scope"
   "mta.source_target_mapping|architecturaal vervangen door Database.Postgres/KnownEntities.cs (#818) — geen stuurtabel nodig, de entiteitenlijst staat in C#"
 )
 

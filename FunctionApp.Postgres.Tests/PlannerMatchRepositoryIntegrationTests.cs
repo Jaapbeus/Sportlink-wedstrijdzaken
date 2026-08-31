@@ -169,6 +169,7 @@ public class PlannerMatchRepositoryIntegrationTests : IDisposable
         await ExecAsync(conn, $"DELETE FROM public.teamaliassen WHERE clubcode = '{Club}'");
         await ExecAsync(conn, $"DELETE FROM public.teams WHERE clubcode = '{Club}'");
         await ExecAsync(conn, $"DELETE FROM his.matches WHERE clubcode = '{Club}'");
+        await ExecAsync(conn, $"DELETE FROM public.velden WHERE clubcode = '{Club}'");
         await ExecAsync(conn, $"DELETE FROM public.appsettings WHERE clubcode = '{Club}'");
 
         await using (var club = new NpgsqlCommand(
@@ -178,6 +179,18 @@ public class PlannerMatchRepositoryIntegrationTests : IDisposable
             club.Parameters.AddWithValue("club", Club);
             club.Parameters.AddWithValue("acc", (object?)accommodatieInstelling ?? DBNull.Value);
             await club.ExecuteNonQueryAsync();
+        }
+
+        // Veldnummer 401 — public.velden.veldnummer is een kale PK zonder ClubCode-scope (migratie
+        // 001), dus niet de 1/2 die PlannerAvailabilityRepositoryIntegrationTests al gebruikt.
+        // Nodig sinds fk_geplandewedstrijden_velden (migratie 011, #888 vervolg) — de
+        // planner.geplandewedstrijden-rij hieronder verwijst naar veldnummer 401.
+        await using (var veld = new NpgsqlCommand(
+            @"INSERT INTO public.velden (veldnummer, veldnaam, actief, clubcode, veldtype, heeftkunstlicht)
+              VALUES (401, 'Veld 1', true, @club, 'kunstgras', true)", conn))
+        {
+            veld.Parameters.AddWithValue("club", Club);
+            await veld.ExecuteNonQueryAsync();
         }
 
         // Eén canoniek team waar beide aliaskanten naartoe wijzen.
@@ -207,7 +220,7 @@ public class PlannerMatchRepositoryIntegrationTests : IDisposable
         await using (var gepland = new NpgsqlCommand(
             @"INSERT INTO planner.geplandewedstrijden
                   (datum, aanvangstijd, eindtijd, veldnummer, teamnaam, status, isvervallen, clubcode)
-              VALUES (CURRENT_DATE, '09:00', '10:00', 1, @teamnaam, @status, FALSE, @club)", conn))
+              VALUES (CURRENT_DATE, '09:00', '10:00', 401, @teamnaam, @status, FALSE, @club)", conn))
         {
             gepland.Parameters.AddWithValue("teamnaam", TeamInPlanner);
             gepland.Parameters.AddWithValue("status", status);

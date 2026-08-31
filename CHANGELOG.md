@@ -19,6 +19,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **`BevestigWedstrijd`, `ZoekWedstrijd` en `HerplanBevestig` werken nu echt op de Postgres-tier
+  (issue 888 vervolg) — drie van de resterende zes 501-stubs zijn vervangen door de echte
+  implementatie.** `planner.geplandewedstrijden` miste vier kolommen t.o.v. de SQL Server-tier
+  (`wedstrijdduurminuten`, `aangevraagddoor`, `opmerking`, `mta_inserted` — al aangekondigd als
+  bewust uitgesteld door een eerdere migratie), plus een UNIQUE-slotconstraint en een FK naar
+  `velden`; alle drie zijn nu aanwezig. Twee nieuwe tabellen: `public.zonsondergang` en
+  `planner.herplanverzoeken` (beide stonden als gemotiveerde uitzondering in de tabeldekking-guard
+  — die uitzondering is nu vervallen voor `herplanverzoeken`, `zonsondergang` blijft er nog in
+  staan totdat `PopulateSunset` ook is vertaald). Een kale `ADD CONSTRAINT` bleek niet idempotent
+  (Postgres kent geen `IF NOT EXISTS` daarvoor, in tegenstelling tot kolommen/indexen) — opgelost
+  met een `DO $$ ... $$`-guard, empirisch bevestigd door de migratie twee keer achter elkaar tegen
+  een verse container te draaien. Zeven permanente integratietests tegen een echte
+  Postgres-container, inclusief een opzettelijk kapotgemaakte `ClubCode`-parameter die precies één
+  test rood laat gaan.
 - **Veldbeschikbaarheid en teamregels vertaald naar de Postgres-tier (issue 888 vervolg).**
   `PlannerAvailabilityRepository` (beschikbaarheid periode-aware, #581; wedstrijdbezetting +
   trainingsbezetting) en `TeamRulesRepository` (buffers, voorkeursvelden) — de twee repositories
@@ -361,6 +375,25 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **CI-job "PostDeployment op verse Postgres-database" faalde deterministisch op een verse database
+  (issue 888 vervolg, gevonden tijdens het verifiëren van deze PR's eigen CI-run).** De workflow
+  zette een synthetische `CIPRIMARY`-clubrij op `syncenabled = true` puur om #862's
+  speeltijden-kopieerstap iets te laten kopiëren — die kopieerquery filtert zelf niet op
+  `syncenabled` (`MIN(clubcode) WHERE clubcode <> demo_club`), dus dat was nooit nodig geweest.
+  Bijwerking: `planner.alle_wedstrijden_op_veld_ruw` (en zijn SQL Server-origineel) kiest de
+  "primaire club" via `CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY clubcode LIMIT 1`
+  en filtert daarna ELKE wedstrijd van ELKE club op DIE ene club se accommodatie — correct zodra er
+  precies één syncenabled-club is (de architectuurkeuze uit CLAUDE.md), maar `CIPRIMARY` (zonder
+  accommodatie, sorteert vóór elke `testclub-*`) werd zo de gekozen rij en liet elk
+  Competitie-wedstrijdonderzoek in `FunctionApp.Postgres.Tests` stilzwijgend leeg terugkomen — geen
+  foutmelding, gewoon een lege collectie. `CIPRIMARY` staat nu op `syncenabled = false`.
+- **Een herplanverzoek indienen sloeg altijd stuk op de SQL Server-tier (issue 888 vervolg,
+  gevonden tijdens de Postgres-vertaling).** `PlannerMatchRepository.SaveHerplanVerzoekAsync` miste
+  `ClubCode` volledig in de INSERT, terwijl `[planner].[HerplanVerzoeken].[ClubCode]` `NOT NULL` is
+  zonder `DEFAULT` — elke aanroep van `POST /api/planner/herplan-bevestig` gooide een SQL-fout in
+  plaats van een herplanverzoek op te slaan. Niet zichtbaar in de bestaande testsuite, die dit
+  pad niet dekte. `clubCode` is nu een optionele parameter door de hele aanroepketen, met dezelfde
+  `ClubScope.Resolve`-terugval naar de primaire club als de rest van deze repository.
 - **De zelftest stond stil op rood en de plannerlaag was volledig ongedekt (issue 888 vervolg).**
   Drie dingen. (1) Poort G6 van de zelftest was daadwerkelijk rood: het endpoint voor
   e-mailsjablonen was aan de verwachtingenlijst toegevoegd zonder bijbehorende controle, en het

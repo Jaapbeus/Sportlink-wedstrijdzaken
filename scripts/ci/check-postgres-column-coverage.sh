@@ -62,10 +62,6 @@ OVERGESLAGEN_TABELLEN=(
 # Formaat: "schema.tabel.kolom|reden". Elke rij is een bewuste beslissing met een issuenummer,
 # geen omissie. Een rij hier verdwijnt zodra de bijbehorende functionaliteit vertaald is.
 KOLOM_UITZONDERINGEN=(
-  "planner.GeplandeWedstrijden.WedstrijdDuurMinuten|hoort bij BevestigWedstrijd, nog niet vertaald (issue 888); zie docs/ARCHITECTUUR-DATABASE-TIERS.md §21"
-  "planner.GeplandeWedstrijden.AangevraagdDoor|idem (issue 888)"
-  "planner.GeplandeWedstrijden.Opmerking|idem (issue 888)"
-  "planner.GeplandeWedstrijden.mta_inserted|idem (issue 888) — alleen mta_modified was nodig voor MarkeerVervallenGeplandeWedstrijdenAsync, §21"
 )
 
 # Casing-ongevoelig: de SQL Server-bestanden zijn zelf niet consistent — Database/his/Tables/

@@ -645,8 +645,22 @@ jobs:
           psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
 
           # Primaire club + speeltijden-bronrij, zodat de Speeltijden-copy in 006 iets te kopiëren
-          # heeft — zonder dit zou de kopieerstap stil 0 rijen opleveren en niets bewijzen.
-          psql_ci -c "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('CIPRIMARY', 'CI Primary', true) ON CONFLICT DO NOTHING;"
+          # heeft — zonder dit zou de kopieerstap stil 0 rijen opleveren en niets bewijzen. 006's
+          # copyquery kiest de bron via "MIN(clubcode) WHERE clubcode <> demo_club" — géén
+          # syncenabled-filter — dus deze rij hoeft niet syncenabled=true te zijn.
+          #
+          # BEWUST false (issue 888 vervolg, empirisch gevonden): planner.alle_wedstrijden_op_veld_ruw
+          # (en zijn SQL Server-origineel, Database/planner/Views/AlleWedstrijdenOpVeld.sql) kiest
+          # de "primaire club" via één rij — CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY
+          # clubcode LIMIT 1 — en filtert DAARNA elke wedstrijd van ELKE club op DIE ene club se
+          # accommodatie. Dat klopt in productie (daar is precies één syncenabled-club, zie de
+          # "één fork, één primaire club"-architectuurkeuze in CLAUDE.md) maar niet hier: met
+          # syncenabled=true zou 'CIPRIMARY' (geen accommodatie, sorteert vóór elke 'testclub-*')
+          # de gekozen rij worden, waardoor ELK Competitie-wedstrijdonderzoek in
+          # FunctionApp.Postgres.Tests silently leeg terugkomt (geen foutmelding — gewoon een lege
+          # collectie). Reproduceerbaar zelfs zonder enige testklasse: één ruwe SQL-insert in
+          # his.matches voor een willekeurige club levert dan 0 rijen op uit de view.
+          psql_ci -c "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('CIPRIMARY', 'CI Primary', false) ON CONFLICT DO NOTHING;"
           psql_ci -c "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode) VALUES ('JO13', 1.0, 60, 30, 10, 'CIPRIMARY') ON CONFLICT DO NOTHING;"
 
           # 006 is door de CLI hierboven al via de ledger toegepast (vóór CIPRIMARY bestond, dus
