@@ -19,6 +19,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **CI-controle die bewijst dat de tier-tabel (`scripts/ci/database-tiers.json`) op de shell-kant
+  (`resolve-database-tier.sh`) en de PowerShell-kant (`Get-DatabaseTierProject`) exact dezelfde
+  uitkomst geeft (#865).** Laatste openstaande acceptatiecriterium van #816/#865: zonder deze test
+  konden de twee lezers van de tabel stilzwijgend uit elkaar drijven. Nieuw script
+  `scripts/ci/Test-TierMappingConsistency.ps1` toetst elke tier uit de tabel plus een bewust
+  onbekende naam; draait als stap in `Build FunctionApp + BlazorAdmin` (geen database, geen
+  secrets, ook bruikbaar op een fork). Detecteert en compenseert automatisch twee WSL-
+  eigenaardigheden die tijdens het bouwen aan het licht kwamen (relevant voor lokale Windows-
+  runs waar `bash` naar de WSL-launcher wijst i.p.v. Git Bash): WSL forwardt Windows-
+  omgevingsvariabelen alleen via `WSLENV`, en vertaalt een los Windows-pad niet automatisch naar
+  `/mnt/c/...`. Empirisch bewezen dat de test daadwerkelijk drift detecteert: een tijdelijk
+  geïnjecteerd verschil tussen beide kanten liet de test falen; na herstel weer groen.
 - **Synchronisatie- en stagingpad vertaald naar de Postgres-tier: `GET /api/postgres/sync-matches`,
   de timertrigger, en `AdminSyncFunction.Trigger` (issue 890).** `PostgresSyncPipeline` orkestreert
   fetch → `stg.*` → `his.*` met `PostgresMergeOrchestrator` (#818) voor het schema-/mergewerk; de
