@@ -35,6 +35,14 @@ jobs:
       - name: Bestandssysteem-casing-guard
         run: bash scripts/ci/check-path-casing.sh
 
+      # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
+      # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
+      # Zonder deze test kunnen de shell-kant (CI) en de PowerShell-kant (lokale dev-scripts) uit
+      # elkaar drijven zonder dat iets dat opmerkt — precies wat #816's belofte van "één
+      # vertaalpunt" zou breken. Geen database, geen secrets — draait ook op forks.
+      - name: Tier-mapping consistentie (shell vs. PowerShell)
+        run: pwsh scripts/ci/Test-TierMappingConsistency.ps1
+
       # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
       # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
       - name: .NET SDK installeren

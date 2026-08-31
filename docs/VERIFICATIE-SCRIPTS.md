@@ -233,6 +233,26 @@ Code 2 is er bewust: een verificatiescript moet "nog niet gebouwd" anders kunnen
 "kapot". `scripts/ci/resolve-database-tier.sh` gebruikt dezelfde codes en leest dezelfde
 tier-tabel (`scripts/ci/database-tiers.json`).
 
+### Tier-tabel: shell en PowerShell moeten hetzelfde antwoord geven
+
+`scripts/ci/database-tiers.json` heeft precies één lezer aan de CI-kant
+(`scripts/ci/resolve-database-tier.sh`, bash) en één lezer aan de lokale-devkant
+(`Get-DatabaseTierProject` in `scripts/dev/DevServices.psm1`, PowerShell) — nooit een derde,
+losse vertaling ergens anders (#816/#865).
+
+`scripts/ci/Test-TierMappingConsistency.ps1` bewijst dat die twee lezers voor elke tier in de
+tabel, plus een bewust onbekende naam, exact dezelfde uitkomst geven (gevonden/niet-gevonden,
+gebouwd/nog-niet-gebouwd, hetzelfde csproj-pad). Draait zonder database en zonder secrets, en zit
+als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin").
+
+**Lokaal op Windows, als `bash` naar WSL wijst:** het script detecteert dit automatisch (`bash`
+resolvend naar `System32\bash.exe` i.p.v. Git Bash) en compenseert twee WSL-eigenaardigheden die
+tijdens het bouwen van deze test zijn ontdekt — geen bug in de repo zelf, maar in hoe WSL vanuit
+PowerShell wordt aangeroepen:
+- WSL forwardt Windows-omgevingsvariabelen alleen als ze in `WSLENV` staan.
+- WSL's launcher vertaalt een los meegegeven Windows-pad (`C:\...` of `C:/...`) niet automatisch
+  naar `/mnt/c/...` — zonder vertaling faalt elke aanroep met exitcode 127.
+
 ### Wat het script niet doet
 
 De browsersweep over alle beheerpagina's en de schrijfpaden door de GUI zitten in de skill
