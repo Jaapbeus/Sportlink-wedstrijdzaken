@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De Postgres-tier bouwt na een synchronisatie zelf zijn canonieke teamlijst op (issue 889).** Tot nu
+  toe vulde een sync op die tier wel de ruwe Sportlink-historie, maar bleef de ontdubbelde
+  teamlijst leeg — waardoor de teamdropdown in de Admin GUI en alle teamherkenning per e-mail daar
+  niets te werken hadden. Sportlink levert elk team in twee schrijfwijzen (`JO10-1` lokaal en
+  `[club] O10-1` bondsnotatie); die worden nu tot één team samengevoegd, met beide schrijfwijzen
+  als goedgekeurde alias. Een door een coördinator goedgekeurde of handmatig toegevoegde alias
+  wordt daarbij nooit stilzwijgend door de sync overschreven. Empirisch geverifieerd tegen een
+  wegwerp-Postgres-container: 21 asserties, plus drie opzettelijke faalscenario's die aantonen dat
+  de vertaalkeuzes daadwerkelijk het verschil maken. Zie issue 889 — dat blijft open voor
+  `EmailTemplateService`, het laatste e-mailbestand met directe databasetoegang.
 - **De cross-tree CI-guard kijkt nu ook naar kolommen, niet alleen naar tabellen (issue 864, deel
   3).** Een tabel die op de Postgres-tier wél bestaat maar kolommen mist, bleef tot nu toe
   onopgemerkt tot iemand toevallig functionaliteit vertaalde die de kolom nodig had — dat gebeurde

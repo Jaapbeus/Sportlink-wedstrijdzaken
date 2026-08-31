@@ -636,9 +636,12 @@ komen e-mailvarianten (`JO 13-2`, `jo13/2`, `13-1`). Dat is de reden dat teamher
 
 Harde regels:
 
-1. **Normalisatieregels horen uitsluitend in `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs`.**
+1. **Normalisatieregels horen uitsluitend in `Planner.Shared/TeamNaamNormalisatie.cs`.**
    Een nieuwe teamnaam-regex elders is een architectuurschending — dat is exact het probleem dat
-   deze laag oplost (#692).
+   deze laag oplost (#692). *(Stond tot #889 in `FunctionApp/TeamResolution/`; verhuisd naar
+   `Planner.Shared/` toen de Postgres-tier dezelfde regels nodig had — een tweede kopie zou deze
+   regel letterlijk overtreden. Zelfde plek als `VeldResolver`/`VeldNormalisatie` en, sinds #889,
+   ook de pure `LeeftijdNormalisatie.Normaliseer`.)*
 2. **Raad nooit een ontbrekend geslacht-prefix.** `13-1` kan JO13-1 of MO13-1 zijn; bij één club zijn
    er tien zulke paren. Ambiguïteit hoort in de kandidaten-/disambiguatiestap, niet in een
    string-functie.

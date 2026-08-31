@@ -1214,6 +1214,127 @@ meerdere migraties daadwerkelijk meeweegt in de groene meting, en geen dode code
   `clubcode`-kolom die de SQL Server-tegenhanger niet heeft (daar komt de ClubCode pas bij de merge
   naar `his.*`). Dat is een bewust verschil, geen drift.
 
+## 28. `TeamCanonicalisatieService` vertaald — en daarmee is §18's tweede gedocumenteerde gat gedicht
+
+Sectie 17 (#889, deel 1) leverde de teamresolutie-repositories en schoof `TeamCanonicalisatieService`
+(506 regels) expliciet vooruit. Sectie 18 noemde datzelfde uitstel als **gedocumenteerd gat 2** van
+de sync-pijplijn: `his.teams`/`his.matches` werden wel gevuld, maar de afgeleide, ontdubbelde
+canonicalisatie ontbrak. Sectie 22 vond er vervolgens een derde spoor van — `api/beheer/teams` stond
+in de zelftest op `blocked` omdat `public.teams` (de canonicalisatietabel) op deze tier per definitie
+leeg bleef. Eén vertaling, drie eerder los vastgelegde gaten.
+
+De service is nu vertaald naar `FunctionApp.Postgres/TeamResolution/TeamCanonicalisatieService.cs`
+en aangeroepen vanuit `PostgresSyncPipeline` — tweemaal, primaire club én democlub, allebei
+best-effort (try/catch), exact zoals het origineel. Dat guard-onderscheid is opzettelijk en staat
+nu naast elkaar in dezelfde methode: de canonicalisatie is afgeleid werk dat de al geslaagde
+ETL-run niet mag laten falen, terwijl `MarkeerVervallenGeplandeWedstrijdenAsync` er direct onder
+juist ONgeguard blijft (§21).
+
+### Vier vertaalconstructies, elk met een concrete valkuil
+
+| Constructie | Vertaling | Wat er misgaat bij de naïeve variant |
+|---|---|---|
+| `MERGE ... ON (ClubCode, TeamnaamGenormaliseerd)` | `INSERT ... ON CONFLICT (clubcode, upper(teamnaamgenormaliseerd)) DO UPDATE` | Zie hieronder — de kale kolomvariant werkt niet eens |
+| `WHEN MATCHED AND target.[Bron] = 'Sync'` | `WHERE teamaliassen.bron = 'Sync'` op `DO UPDATE` | Een geleerde alias met status `pending` wordt door de sync op `validated` gezet — een directe schending van CLAUDE.md's regel "een geleerde alias is pas waarheid na goedkeuring" |
+| `DECLARE @teamId ... IF NULL ... RETURN` | CTE die nul rijen levert | Bestaat buiten een functie/DO-blok niet in Postgres; zelfde precedent als `TeamSchrijfwijzenAsync` (§25) |
+| `GETUTCDATE()`, `LTRIM(RTRIM(...))` | `NOW()` (kolommen zijn `TIMESTAMPTZ`, #854), `TRIM(...)` | — |
+
+**De `ON CONFLICT`-doelen moesten de expression-based indexes zijn, niet de kale kolomparen.**
+Migratie `007_teams_collation_fix.sql` (#820) heeft de kale `UNIQUE`-constraints juist vervángen
+door unique indexes op `(clubcode, upper(...))`. Een naïeve vertaling `ON CONFLICT (clubcode,
+teamnaamgenormaliseerd)` is daardoor geen subtiel afwijkend gedrag maar een harde fout — zie de
+negatieve controle hieronder.
+
+**Eén constructie zonder 1-op-1-tegenhanger: de teruggavewaarde van de aliasupsert.** Het origineel
+geeft na de MERGE onvoorwaardelijk `1` terug zodra er een team gevonden is. `RETURNING` vuurt
+daarentegen alléén bij een daadwerkelijk uitgevoerde INSERT of DO UPDATE — en de `WHERE` op
+`DO UPDATE` onderdrukt die update juist voor handmatige/geleerde aliassen. Zonder correctie zou zo'n
+alias als "niet herleidbaar" geteld worden, precies het getal dat volgens de klasse-documentatie
+bestaat zodat *"een onverwachte stijging opvalt"*. Vandaar een tweede `SELECT`-tak
+(`bestaand`-CTE) die dat geval opvangt.
+
+### Bijkomende refactor: `LeeftijdNormalisatie.Normaliseer` naar `Planner.Shared`
+
+§16 hield de pure C#-methode bewust in de SQL Server-tier en legde vast dat ze *"waar nodig,
+opnieuw geïmplementeerd in de Postgres-tier"* zou bestaan — bekende schuld. §25 herhaalde die
+afweging voor `TeamScheduleHtmlRenderer`. Deze ronde is het moment waarop die schuld daadwerkelijk
+zou moeten worden aangegaan: `TeamCanonicalisatieService` is de eerste Postgres-consument die niet
+de SQL-generatie maar de *pure* logica nodig heeft. Een tweede, onafhankelijke kopie van deze regels
+is exact de drift die `VeldResolutieDriftTests` voor de veldresolutie bewaakt, dus is de verhuizing
+alsnog uitgevoerd in plaats van de schuld op te bouwen.
+
+De splitsing is bewust langs de tier-grens gelegd, niet langs de klassegrens:
+
+| Onderdeel | Waar | Waarom |
+|---|---|---|
+| `Normaliseer` (pure C#) | `Planner.Shared/LeeftijdNormalisatie.cs` | Geen database-afhankelijkheid; beide tiers gebruiken exact deze code |
+| `SqlExpr` (SQL Server) | `FunctionApp/Planner/LeeftijdNormalisatieSql.cs` (hernoemd) | `+`, `LTRIM(RTRIM(...))`, `LIKE` |
+| `SqlExpr` (Postgres) | `Database.Postgres/PostgresLeeftijdNormalisatie.cs` (ongewijzigd) | `\|\|`, `TRIM(...)`, `ILIKE` (#888) |
+
+De hernoeming naar `LeeftijdNormalisatieSql` voorkomt twee gelijknamige klassen in dezelfde scope —
+dat zou elke `LeeftijdNormalisatie.Normaliseer`-aanroep in de SQL Server-boom stilzwijgend naar de
+verkeerde klasse laten resolven op basis van naamruimte-nabijheid. Zes call sites bijgewerkt, de
+drie `Normaliseer`-tests mee verhuisd naar `Planner.Shared.Tests`. **Geen regressie:**
+`FunctionApp.Tests` 429 geslaagd / 5 environment-gated geskipt, `Planner.Shared.Tests` 83 geslaagd.
+
+Het onderscheid met §17's `TeamNaamNormalisatie`-verhuizing blijft betekenisvol: daar dwong
+CLAUDE.md's harde "precies één plek"-regel de verhuizing af, hier is het een eigen afweging die de
+epic zelf al twee keer had opgeschreven als openstaand.
+
+### Empirische verificatie
+
+Tegen een wegwerp-`postgres:16`-container, met het volledige migratiepad toegepast via
+`Database.Postgres.Cli` (dus dezelfde weg als productie) en `his.teams`/`his.matches` aangemaakt
+door de échte `PostgresMergeOrchestrator`/`PostgresSchemaGenerator` — geen handgeschreven DDL.
+De service is rechtstreeks aangeroepen vanuit een wegwerp-consoleproject met een tijdelijke
+`InternalsVisibleTo`, die na afloop is verwijderd en met een schone rebuild is bevestigd.
+**21 asserties, 0 gefaald**, in negen scenario's:
+
+| Scenario | Wat het aantoont |
+|---|---|
+| A — ontdubbeling | Vier `his.teams`-rijen (twee schrijfwijzen × meerdere poules) → precies twee canonieke teams; bondsnotatie gekozen als weergavenaam; beide schrijfwijzen als `Sync`/`validated`-alias; een tegenstandersnaam uit `his.matches` krijgt bewust géén alias |
+| B — idempotentie | Tweede identieke run: geen extra team- of aliasrijen |
+| C — goedkeuringsregel | Een alias op `bron='Leren'`/`status='pending'` blijft ongemoeid én blijft aan het team gekoppeld |
+| D — #820-casing | Een opgeslagen sleutel handmatig naar lowercase gezet: de upsert matcht nog steeds, geen duplicaat, team blijft actief |
+| E — sleuteldrift (#766) | Verouderde sleutel + `NULL` leeftijd/teamnummer worden hersteld, rij wordt niet gedeactiveerd |
+| F — samenvoegen | Twee rijen die op dezelfde sleutel vallen: verliezer verwijderd, handmatige alias omgehangen naar de winnaar |
+| G — deactivering | Team dat uit `his.teams` verdwijnt gaat op `isactief=false`, wordt niet verwijderd |
+| H — clubisolatie | Een `his.teams`-rij van een andere club levert geen rij op |
+| I — lege bron | Club zonder `his.teams`-rijen: waarschuwing, geen crash, geen schrijfactie |
+
+**Drie negatieve controles** — elk een naïeve vertaling die er plausibel uitziet:
+
+| # | Naïeve variant | Gemeten gevolg |
+|---|---|---|
+| 1 | `ON CONFLICT (clubcode, teamnaamgenormaliseerd)` (kale kolommen) | `42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification`; élk team belandt in de per-team-catch en `public.teams` blijft leeg — A1 t/m A5 rood |
+| 2 | `WHERE teamaliassen.bron = 'Sync'` weggelaten | C1 rood: de geleerde alias springt van `pending` naar `validated` — de goedkeuringsregel uit CLAUDE.md sneuvelt stil |
+| 3 | `bestaand`-CTE weggelaten | Logregel gaat van `3 bronschrijfwijzen gekoppeld, 1 niet herleidbaar` naar `2 gekoppeld, 2 niet herleidbaar`: een correct gekoppelde alias wordt als onherleidbaar geteld |
+
+Controle 1 is de belangrijkste les van deze ronde: op de Postgres-tier is de collatie-keuze uit #820
+niet alleen een vergelijkingskwestie in `WHERE`-clausules, maar bepaalt hij ook welke
+`ON CONFLICT`-doelen überhaupt bestaan. Elke toekomstige upsert tegen `public.teams` of
+`public.teamaliassen` moet daarom op `upper(...)` infereren.
+
+### Bewust niet in deze ronde
+
+- **`EmailTemplateService`** (116 regels, `dbo.EmailTemplateInstellingen` + een statische cache) is
+  het laatste bestand uit #889's eigen scope-omschrijving met directe databasetoegang dat nog geen
+  Postgres-tegenhanger heeft. `AdminTemplatesFunction` op de Postgres-tier verwijst er al naar in
+  zijn documentatie. #889 blijft daarvoor open.
+- **`TeamResolver`, `TeamDisambiguationAiService`, `TeamlijstGereedheid`.** De resolutievolgorde en
+  de AI-disambiguatie bevatten geen directe SQL-toegang en vallen daarmee buiten #889's eigen
+  scope-omschrijving; `TeamlijstGereedheid` is de enige consument van de losse publieke
+  `MigreerSleuteldriftAsync(clubCode, log)`-ingang, die daarom op deze tier bewust niet is
+  meevertaald — dode code toevoegen zou hier niets bewijzen.
+- **Een gecommitteerde integratietest.** De verificatie liep via een wegwerpharnas, net als bij
+  §23/§26 — `Database.Postgres.Tests` referenceert `Database.Postgres`, niet `FunctionApp.Postgres`,
+  dus een blijvende test vergt een nieuw testproject (`FunctionApp.Postgres.Tests`) plus CI-bedrading.
+  Dat is een eigen opgave; #889's derde acceptatiecriterium ("met een test vastgelegd") is daarmee
+  nog niet voldaan.
+- **`api/beheer/teams` in de zelftest van `blocked` naar een echte assertie halen** (§22). Dat kan nu
+  in principe, maar vereist dat de zelftest een synchronisatie draait of `public.teams` anderszins
+  vult; dat hoort bij #909's vervolg, niet hier.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

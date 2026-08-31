@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared;
 
 namespace SportlinkFunction.Planner;
 
@@ -102,7 +103,7 @@ internal static class PlannerSettingsRepository
         await conn.OpenAsync();
         using var cmd = new SqlCommand($@"
             SELECT [teamnaam],
-                   {LeeftijdNormalisatie.SqlExpr("[leeftijdscategorie]")}
+                   {LeeftijdNormalisatieSql.SqlExpr("[leeftijdscategorie]")}
             FROM [his].[teams]
             WHERE [leeftijdscategorie] IS NOT NULL AND [leeftijdscategorie] <> ''
               AND [ClubCode] = @clubCode", conn);

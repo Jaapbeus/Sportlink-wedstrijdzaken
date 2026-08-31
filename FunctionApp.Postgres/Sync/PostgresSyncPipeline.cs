@@ -12,28 +12,21 @@ namespace FunctionApp.Postgres.Sync;
 /// (#818) voor het schema-/mergewerk in plaats van SQL Server's <c>CreateStagingTable</c> +
 /// <c>MergeStgToHis</c> + <c>sp_CreateTargetTableFromSource</c>/<c>sp_MergeStgToHis</c>.
 /// <para>
-/// <b>Bewust NIET meegenomen — twee gedocumenteerde afwijkingen van het origineel:</b>
+/// <b>Alle drie de nastappen van het origineel staan er inmiddels:</b>
 /// </para>
 /// <list type="bullet">
-/// <item><b>Teamcanonicalisatie</b> (<c>TeamResolution.TeamCanonicalisatieService.RefreshAsync</c>)
-/// is in het origineel al best-effort (try/catch, mag falen zonder de sync te breken) — op de
-/// Postgres-tier bestaat deze service nog niet, dus wordt de aanroep overgeslagen in plaats van
-/// een nooit-geslaagde try/catch te faken. <c>his.teams</c>/<c>his.matches</c> worden hierdoor wel
-/// gevuld; alleen de afgeleide, ontdubbelde <c>dbo.Teams</c>-achtige canonicalisatie ontbreekt nog.</item>
-/// </list>
-/// <para>
-/// <b><c>MarkeerVervallenGeplandeWedstrijdenAsync</c></b> is inmiddels wél vertaald (#890, zie
+/// <item><b>Teamcanonicalisatie</b> (<see cref="TeamResolution.TeamCanonicalisatieService"/>, #889)
+/// — twee aanroepen, primaire club en democlub, allebei <b>best-effort</b> (try/catch), exact zoals
+/// het origineel: <c>his.*</c> is op dat punt al gemerged en een fout in de afgeleide
+/// canonicalisatie mag die geslaagde ETL-run niet alsnog laten falen.</item>
+/// <item><b><c>MarkeerVervallenGeplandeWedstrijdenAsync</c></b> (#890, zie
 /// <see cref="Planner.Repositories.PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync"/>)
-/// en wordt hieronder — net als het origineel — ONGUARD aangeroepen (geen try/catch): een fout
-/// daar hoort de hele sync te laten falen, in tegenstelling tot de wél best-effort teamcanonicalisatie.
-/// </para>
-/// <para>
-/// <b>Seizoensgrenzen (<c>dbo.Season</c>) zijn hier evenmin geport</b> — <see cref="RunSyncAsync"/>
-/// zelf heeft daar geen afhankelijkheid van (het neemt <c>fromWeekOffset</c>/<c>toWeekOffset</c> als
-/// expliciete parameters, exact zoals het origineel), maar de buitenste triggers
-/// (<see cref="SyncFunction"/>) kunnen de seizoenseinde-datum nog niet opzoeken — zie de
-/// documentatie daar.
-/// </para>
+/// wordt — net als het origineel — <b>ONGEGUARD</b> aangeroepen: een fout daar hoort de hele sync
+/// te laten falen. Dat verschil met de best-effort canonicalisatie hierboven is opzettelijk.</item>
+/// <item><b>Seizoensgrenzen</b> (<c>public.season</c>, #890-vervolg) worden door de buitenste
+/// triggers opgezocht via <c>PostgresSeasonHelper</c>; <see cref="RunSyncAsync"/> zelf neemt
+/// <c>fromWeekOffset</c>/<c>toWeekOffset</c> als expliciete parameters, exact zoals het origineel.</item>
+/// </list>
 /// </summary>
 internal static class PostgresSyncPipeline
 {
@@ -124,7 +117,22 @@ internal static class PostgresSyncPipeline
         await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
         await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
 
-        // Teamcanonicalisatie: zie klasse-doc-comment hierboven — bewust (nog) niet geport.
+        // Teamcanonicalisatie (#889): vult public.teams/public.teamaliassen uit his.teams/his.matches.
+        //
+        // BEST-EFFORT, met opzet — exact zoals het SQL Server-origineel, dat beide aanroepen met
+        // try/catch omgeeft: his.* is op dit punt al gemerged, en een fout in de afgeleide
+        // canonicalisatie mag die geslaagde ETL-run niet alsnog laten falen. Dat is bewust een
+        // ander soort stap dan MarkeerVervallenGeplandeWedstrijdenAsync hieronder, die juist
+        // ONgeguard is.
+        await CanonicaliseerBestEffortAsync(connectionString, clubCode, clubCode, log);
+
+        // AllStars FC (#756) heeft geen eigen Sportlink-sync — zijn his.teams-rijen komen uit de
+        // demodata-seed, niet uit deze pipeline. Zonder deze aanroep blijft public.teams voor de
+        // democlub voor altijd leeg terwijl his.* wel gevuld is: de teamdropdown in de Admin UI zou
+        // dan voor de democlub 0 teams tonen. Meelopen op elke echte sync houdt de demodata canoniek
+        // zonder een aparte job.
+        if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+            await CanonicaliseerBestEffortAsync(connectionString, "ALLSTARS", "democlub ALLSTARS", log);
 
         // Ongeguard, met opzet — zie klasse-doc-comment hierboven.
         await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(connectionString, clubCode, log);
@@ -133,6 +141,27 @@ internal static class PostgresSyncPipeline
             await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
         else
             log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
+    }
+
+    /// <summary>
+    /// Roept de teamcanonicalisatie aan zonder dat een fout de rest van de sync raakt — zelfde
+    /// try/catch-vorm als het SQL Server-origineel. <paramref name="omschrijving"/> staat alleen in
+    /// de foutmelding, zodat de twee aanroepen (primaire club en democlub) in het log uit elkaar
+    /// te houden zijn.
+    /// </summary>
+    private static async Task CanonicaliseerBestEffortAsync(
+        string connectionString, string clubCode, string omschrijving, ILogger log)
+    {
+        try
+        {
+            await TeamResolution.TeamCanonicalisatieService.RefreshAsync(connectionString, clubCode, log);
+        }
+        catch (Exception ex)
+        {
+            // Nooit de hele sync laten falen op de teamcanonicalisatie (#696) — his.teams/matches
+            // zijn al gemerged; de volgende sync probeert het opnieuw.
+            log.LogError(ex, "TEAMS CANONICALISATIE - mislukt voor {Omschrijving}", omschrijving);
+        }
     }
 
     private static async Task SaveLastSyncTimestampAsync(string connectionString, string clubCode, ILogger log)

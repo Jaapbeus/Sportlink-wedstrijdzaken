@@ -1,9 +1,13 @@
 using FluentAssertions;
-using SportlinkFunction.Planner;
+using Planner.Shared;
 using Xunit;
 
-namespace FunctionApp.Tests.Planner;
+namespace Planner.Shared.Tests;
 
+/// <summary>
+/// Verhuisd uit <c>FunctionApp.Tests/Planner/LeeftijdNormalisatieTests.cs</c> (#889), samen met de
+/// methode zelf. De SQL-generatie per tier heeft een eigen test in de betreffende boom.
+/// </summary>
 public class LeeftijdNormalisatieTests
 {
     [Fact]
@@ -25,13 +29,12 @@ public class LeeftijdNormalisatieTests
         LeeftijdNormalisatie.Normaliseer("Onder 13").Should().Be("JO13");
     }
 
-    [Fact]
-    public void SqlExpr_BevatExplicieteSeniorenCases()
+    [Theory]
+    [InlineData(null, "")]
+    [InlineData("", "")]
+    [InlineData("   ", "")]
+    public void Normaliseer_LegeInvoer_LevertLegeSleutel(string? invoer, string verwacht)
     {
-        var expr = LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]");
-
-        expr.Should().Contain("SENIOREN");
-        expr.Should().Contain("'1-99'");
-        expr.Should().Contain("'VR'");
+        LeeftijdNormalisatie.Normaliseer(invoer).Should().Be(verwacht);
     }
 }
