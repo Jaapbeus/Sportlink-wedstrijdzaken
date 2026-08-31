@@ -2429,6 +2429,82 @@ De poort mocht niet voor het eerst écht draaien met de zwakste assertie die hij
 Geen enkele API-poort staat nog geblokkeerd. Wat nog openstaat zijn G7/G8 (browsersweep en
 schrijfpaden, uitgevoerd door de skill) en de tijdertaak `FetchAndStoreApiData`, die op #867 wacht.
 
+## 47. Wat de browsersweep vond dat de API-poorten niet konden vinden (#949)
+
+Na §46 stond de zelftest op 54 geslaagd, 0 gefaald, 0 geblokkeerd — alle API-poorten groen. De
+browsersweep (G7), die tot dan toe nooit tegen deze tier was uitgevoerd, vond daarna alsnog een
+kapotte pagina.
+
+### De vondst
+
+`/testdata/wedstrijden` rendert, geeft HTTP 200, en toont bovenaan `Teams ophalen mislukt: HTTP 404`
+met daaronder `0 van 0 wedstrijden`. In het netwerktabblad twee 404's:
+`beheer/testdata/teams` en `beheer/testdata/wedstrijden`. `AdminTestDataFunction` — zes routes — is
+nooit vertaald.
+
+**Drie controles keken hier alle drie langs:**
+
+| Controle | Waarom het niet aansloeg |
+|---|---|
+| "geen 501-stubs meer" | Deze endpoints bestaan niet; ze geven 404, geen 501. Ze tellen dus in geen enkele stub-telling mee. |
+| G6 (API-asserties) | Loopt een vaste lijst af; deze zes staan er niet in. |
+| G7 (browsersweep) | De route stond geblokkeerd op een bug van de *andere* tier en werd nooit uitgevoerd. |
+
+Dit is precies waar de browsersweep voor bedoeld is, en meteen ook het bewijs dat "nul 501-stubs"
+geen bruikbare definitie van compleet is: het meet de stubs die iemand heeft achtergelaten, niet de
+endpoints die niemand heeft aangemaakt.
+
+### Waarom de vertaling niet mechanisch is
+
+De bedrijfssleutel verschilt structureel tussen de tiers:
+
+| | Vorm |
+|---|---|
+| SQL Server (`Database/his/Tables/Matches.sql:3`) | `[bk_matches] NVARCHAR(100) NOT NULL` — gewone, beschrijfbare kolom |
+| Postgres (`PostgresSchemaGenerator.cs:79`) | `GENERATED ALWAYS AS (...) STORED`, afgeleid van de numerieke wedstrijdcode |
+
+De testdatapagina genereert zelf een sleutel in de vorm `ALLSTARS-<guid>`
+(`BlazorAdmin/Pages/TestData/Wedstrijden.razor:345`). Die is op deze tier niet schrijfbaar én kan
+nooit de vorm aannemen die de gegenereerde kolom oplevert.
+
+De uitweg vraagt een keuze over gegevens die op de bestaande tier al in productie staan — de
+sleutelvorm van bestaande demorijen. Dat is een bewuste beslissing, geen bijvangst van een
+vertaalslag, en staat daarom als open punt op #949 in plaats van hier doorgevoerd te zijn.
+
+### Drie verwachtingen die niet klopten
+
+Dezelfde sweep legde drie foute verwachtingen bloot, die wél zonder verdere keuze te corrigeren
+waren:
+
+1. **`/dagplanning` en `/teambegeleiding` stonden geblokkeerd op #856** — een bug van de bestaande
+   tier, waar het deployscript de bronnentabellen niet aanmaakt. Op deze tier maakt de zelftest die
+   tabellen zelf aan vóór de seed; G4 telt 28 teams en 224 wedstrijden, en de sweep zag beide
+   pagina's gewoon gevuld. Een blokkade die alleen elders klopt, laat hier bestaande dekking
+   wegvallen.
+2. **`/teambegeleiding` eiste "minstens één adres op het gereserveerde testdomein"** — onhaalbaar:
+   het endpoint geeft **bewust nooit** e-mailadressen terug. Dat is een AVG-ontwerpkeuze. De
+   assertie meet nu wat de pagina wél bewijst: dat de teamkeuzelijst alle 28 demoteams bevat, en
+   dus dat de canonieke teamlijst end-to-end werkt.
+3. **`/dagplanning` eiste een veldnaam uit de demovelden** — de demoseed vult bewust geen veld in.
+   Hetzelfde verwachtingenbestand documenteerde die nuance elders al wél, bij `veldbezetting`.
+
+Een verwachting die per definitie niet kan slagen is even schadelijk als een ontbrekende: hij maakt
+de poort onbruikbaar in plaats van bewakend.
+
+### Wat de sweep verder bevestigde
+
+Twaalf van de dertien routes renderen correct tegen deze tier, zonder foutbanner en zonder
+consolefouten. De negatieve controle (een niet-bestaande route) leverde een duidelijk afwijkende
+niet-gevonden-pagina op, dus de methode meet werkelijk iets. De herstelknop uit §46 werkt
+end-to-end door de GUI: `Teamlijst bijgewerkt: 28 team(s) actief (was 28), 28 goedgekeurde
+schrijfwijze(n)`.
+
+**Voetnoot over de opzet.** De browsersweep vereist dat de Blazor-GUI met de functiehost van *deze*
+tier praat, en die verbinding loopt via een vastgelegde URL in een getrackt configuratiebestand. Er
+is nog geen gedocumenteerde schakelaar die de ontwikkelomgeving op deze tier start; dat is nu
+handmatig gedaan. Wie dat herhaalt: de functiehost moet `local.settings.json` hebben (niet alleen
+omgevingsvariabelen), anders ontbreekt het CORS-blok en blokkeert de browser élke API-aanroep.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
