@@ -112,6 +112,45 @@ internal static class PlannerSettingsRepository
         }
     }
 
+    /// <summary>
+    /// Voorkeurstijden per team voor één speeldag (issue 888 vervolg, §42) — laag 1 van AutoPlan's
+    /// planningsrangorde (#666). Postgres-vertaling van het gelijknamige SQL Server-origineel.
+    /// <para>
+    /// De sleutelvergelijking is <see cref="StringComparer.OrdinalIgnoreCase"/>, net als het
+    /// origineel: de teamnaam komt uit een handmatig ingevulde beheertabel en hoeft qua kast niet
+    /// exact overeen te komen met de naam in de wedstrijdbron.
+    /// </para>
+    /// </summary>
+    internal static async Task<Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>>> GetVoorkeurTijdenLookupAsync(
+        string connectionString, int dagVanWeek, string clubCode)
+    {
+        var result = new Dictionary<string, List<(TimeOnly, int)>>(StringComparer.OrdinalIgnoreCase);
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("""
+            SELECT teamnaam, voorkeurtijd, prioriteit
+            FROM public.teamvoorkeurtijden
+            WHERE dagvanweek = @dag AND actief = true AND clubcode = @clubcode
+            ORDER BY teamnaam, prioriteit
+            """, conn);
+        cmd.Parameters.AddWithValue("dag", dagVanWeek);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var team = reader.GetString(0);
+            var tijd = TimeOnly.FromTimeSpan(reader.GetTimeSpan(1));
+            var prio = reader.GetInt32(2);
+            if (!result.TryGetValue(team, out var lijst))
+            {
+                lijst = new List<(TimeOnly, int)>();
+                result[team] = lijst;
+            }
+            lijst.Add((tijd, prio));
+        }
+        return result;
+    }
+
     internal static async Task<List<VeldInfo>> GetVeldenAsync(string connectionString, string clubCode)
     {
         var result = new List<VeldInfo>();

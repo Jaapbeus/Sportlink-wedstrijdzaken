@@ -129,8 +129,13 @@ public static class AdminTeambegeleidingFunction
 
         return Task.FromResult<IActionResult>(new ObjectResult(new
         {
-            error = "Doorsturen is nog niet beschikbaar op de Postgres-tier — hangt af van de " +
-                    "e-mailverzend-/teamresolutielaag uit issue 889 (nog niet gestart)."
+            // Bijgewerkt bij §42: de teamresolutielaag uit #889 bestaat inmiddels wél. Wat nu nog
+            // ontbreekt is uitsluitend de uitgaande e-mailverzendlaag — GraphServiceClient en
+            // EmailGraphService zijn op deze tier nergens geregistreerd (FunctionApp.Postgres/
+            // Program.cs heeft bewust nog geen DI-registraties), plus OntvangerParser.
+            error = "Doorsturen is nog niet beschikbaar op de Postgres-tier — de uitgaande " +
+                    "e-mailverzendlaag ontbreekt: GraphServiceClient/EmailGraphService zijn hier " +
+                    "niet geregistreerd, en OntvangerParser is niet vertaald (issue 888 vervolg, §42)."
         })
         { StatusCode = 501 });
     }

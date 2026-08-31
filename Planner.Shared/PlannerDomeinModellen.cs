@@ -197,3 +197,24 @@ public class SlotToewijzing
     /// </summary>
     public string? VeldType { get; set; }
 }
+
+/// <summary>
+/// Eén voorgestelde verplaatsing van een wedstrijd, zoals <see cref="PlannerHtmlGenerator"/> die in
+/// de HTML-weergave markeert.
+/// <para>
+/// Verhuisd van <c>FunctionApp/Planner/PlannerModels.cs</c> naar deze gedeelde plek bij issue 888
+/// vervolg (§42), samen met <see cref="PlannerHtmlGenerator"/> dat het als invoermodel gebruikt —
+/// zelfde precedent als <see cref="BestaandeWedstrijd"/> bij §38.
+/// </para>
+/// </summary>
+public class OptimalisatieSuggestie
+{
+    public string Wedstrijd { get; set; } = string.Empty;
+    public int HuidigVeldNummer { get; set; }
+    public string HuidigVeld { get; set; } = string.Empty;
+    public string HuidigeTijd { get; set; } = string.Empty;
+    public int NieuwVeldNummer { get; set; }
+    public string NieuwVeld { get; set; } = string.Empty;
+    public string NieuweTijd { get; set; } = string.Empty;
+    public string Reden { get; set; } = string.Empty;
+}
