@@ -1080,12 +1080,28 @@ toegepast op de overige Admin-endpoints.
 **Fix:** beide tiers wrappen dit nu in één transactie — hetzelfde patroon dat
 `AdminSettingsFunction.Put` (beide tiers) al correct toepaste, dus geen nieuw ontwerp nodig.
 
-**Empirisch geverifieerd op beide tiers** (wegwerp-Postgres-16- en wegwerp-SQL-Server-2022-
-container): een opzettelijk te lange waarde voor de audit-kolom `Veld`/`veld` (`VARCHAR(100)`/
-`NVARCHAR(100)`) forceert een fout ná de geslaagde upsert — vóór deze fix zou die upsert blijven
-staan, nu draait hij mee terug. Verificatie liep, net als sectie 23, via een losse harness die de
-exacte transactielogica uit de fix reproduceert (geen mock van `HttpRequest`/`FunctionContext`
-buiten een draaiende host — zelfde beperking als daar).
+**Empirisch geverifieerd op beide tiers** (wegwerp-`postgres:16`-container met alle migraties
+toegepast, en een wegwerpdatabase op de lokale SQL-Server-2022-container die na afloop is gedropt —
+de ontwikkeldatabase is niet aangeraakt): een `NULL` in de `NOT NULL`-kolom
+`gewijzigddoor`/`GewijzigdDoor` forceert een echte constraintfout ná de geslaagde upsert. Bewust
+een databasefout en géén kunstmatige C#-exception, zodat de meting het daadwerkelijke
+transactiegedrag van de engine aantoont en niet alleen de C#-controlestroom.
+
+Per tier zijn drie scenario's gemeten, zodat de fix niet alleen "groen" is maar de bug ook
+aantoonbaar reproduceerbaar was:
+
+| Scenario | Verwacht | Postgres 16 | SQL Server 2022 |
+|---|---|---|---|
+| A — zónder transactie (het gedrag van vóór deze fix) | template blijft gewijzigd, géén auditrij | bevestigd | bevestigd |
+| B — mét transactie (de fix) | template teruggedraaid, 0 auditrijen | bevestigd | bevestigd |
+| C — happy path | template + precies 1 auditrij | bevestigd | bevestigd |
+
+Scenario A is essentieel: zonder die meting bewijst B niets: dan is niet vast te stellen of de
+rollback het gedrag daadwerkelijk verandert of dat de upsert sowieso al niet bleef staan.
+
+Verificatie liep, net als sectie 23, via een losse harness die de exacte transactielogica uit de
+fix reproduceert (geen mock van `HttpRequest`/`FunctionContext` buiten een draaiende host —
+zelfde beperking als daar).
 
 **Bewust niet meegenomen:** een bredere audit van elke overige Admin-endpoint op beide tiers voor
 hetzelfde patroon — de gerichte audit die dit opleverde dekte alleen de Postgres-tier-bestanden;

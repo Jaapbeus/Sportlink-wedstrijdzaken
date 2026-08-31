@@ -277,10 +277,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   wél doorgevoerd zien terwijl er geen auditrij bijkwam. Geen dataverlies (in tegenstelling tot
   #913), wel een onvolledige audittrail voor een wijziging die wél had plaatsgevonden. Beide
   tiers wrappen dit nu in één transactie, hetzelfde patroon dat `AdminSettingsFunction.Put` al
-  correct toepaste. Empirisch geverifieerd op beide tiers (wegwerp-Postgres-16- en wegwerp-SQL-
-  Server-2022-container): een opzettelijk geforceerde fout in de audit-insert (een te lange
-  waarde voor de kolombreedte) laat de eerder geslaagde upsert nu volledig ongedaan maken in
-  plaats van achter te blijven.
+  correct toepaste. Empirisch geverifieerd op beide tiers (wegwerp-`postgres:16`-container en een
+  wegwerpdatabase op de lokale SQL-Server-2022-container): een opzettelijk geforceerde
+  constraintfout in de audit-insert laat de eerder geslaagde templatewijziging nu volledig
+  terugdraaien in plaats van achter te blijven — per tier bevestigd met drie scenario's (bug
+  reproduceerbaar zónder transactie, teruggedraaid mét transactie, happy path voert beide rijen door).
 - **De synchronisatietimer van de Postgres-tier startte nooit bij wie het configuratiesjabloon
   volgde.** `FunctionApp.Postgres/local.settings.template.json` miste `FETCH_SCHEDULE`, waardoor
   de functiehost wel opkwam maar `PostgresFetchAndStoreApiData` permanent in foutstatus stond —
