@@ -1610,6 +1610,95 @@ sjabloon met een **niet-leeg** onderwerp, precies wat het endpoint teruggeeft.
   zelftest-verwachting voor `/email-templates` is daarom naar de democlub-context verplaatst in
   plaats van de eis te laten staan voor een context waar hij niet hoort.
 
+## 32. Seizoensdoorrol — het gat uit §21 gedicht (#861)
+
+§21 legde vast dat migratie `008_season.sql` `public.season` **één keer** zaait, en dat de
+SQL Server-tier meer doet: `Script.PostDeployment1.sql` roept `sp_UpdateSeasonTable` bij élke deploy
+opnieuw aan en rolt het seizoen zo vanzelf door zodra de kalender twee maanden vóór de volgende start
+zit. Dat verschil is daar benoemd als *"een reëel, apart op te pakken vervolgpunt"*. Dit is dat punt.
+
+### De schade, gemeten in plaats van beschreven
+
+`PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync` rekent `ceil((MAX(dateuntil) − vandaag) / 7)`.
+Zonder doorrol wijst `MAX(dateuntil)` op enig moment naar het verleden, en dan is die offset
+**negatief** — een synchronisatievenster dat in het verleden eindigt, dus een sync die niets meer
+ophaalt. Met de stand die een in 2025 opgezette installatie na migratie 008 heeft (seizoenen
+2024-2025 en 2025-2026) en 31 augustus 2026 als datum: offset negatief vóór, positief na de doorrol.
+
+Zonder die "vóór"-meting zou de "na"-meting alleen aantonen dát de offset positief is, niet dat de
+doorrol daar iets aan verandert.
+
+### C#, niet PL/pgSQL — en waarom migratie 008 daarmee bevroren historie wordt
+
+`Database.Postgres/PostgresSeasonProcedures.cs` volgt het patroon van
+`PostgresCleanupProcedures` (#861) en `PostgresMergeOrchestrator` (#818): procedurele logica leeft op
+deze tier in C#. Dat betekent dat dezelfde berekening nu op twee plekken staat — hier én in het
+DO-blok van migratie 008.
+
+**Dat is geen drift-risico, en het is het uitleggen waard waarom niet.** Migratie 008 is per
+definitie bevroren: `MigrationRunner` verifieert de SHA-256 van elk toegepast bestand en faalt hard
+op een wijziging (#821, en §31 laat zien wat er gebeurt als je dat vergeet). Dat bestand is dus
+historie — de vastgelegde staat van één moment — en geen regel die nog onderhouden wordt. De levende
+regel staat vanaf nu uitsluitend in `PostgresSeasonProcedures`, en de klasse-documentatie zegt dat
+expliciet.
+
+De C#-implementatie dekt bovendien **beide** takken van het origineel (zaai-als-leeg én doorrol), zodat
+een database waarvan `public.season` om welke reden dan ook leeg is, zichzelf herstelt in plaats van
+de sync te laten terugvallen op de fallbackwaarde van 30 weken.
+
+### Drie afwijkingen van het origineel, alle drie bewust
+
+| Origineel | Hier | Reden |
+|---|---|---|
+| `IF NOT EXISTS (...) INSERT` | `INSERT ... ON CONFLICT (name) DO NOTHING` | Het origineel is een controleer-dan-schrijf met een venster ertussen. #631 laat zien wat een niet-sluitende guard oplevert: drie identieke rijen voor hetzelfde seizoen in productie. De unique index `ux_season_name` (migratie 008) maakt herhalen per definitie een no-op. |
+| `DATEFROMPARTS(jaar, @SeasonStartMonth-2, 1)` | intervalrekenkunde vanaf 1 januari | Bij startmaand januari/februari levert `startMaand − 2` een ongeldige maand op. Migratie 008 loste dat al zo op; deze implementatie houdt die correctie aan. Voor de gangbare startmaanden (juli/augustus) is het gedrag identiek. |
+| `EXEC dbo.sp_CreateDateTable` als slotstap | weggelaten | `dbo.DateTable` heeft binnen de applicatie precies één consument — de view `pub.DateTable` — en die drie `pub.*`-rapportageviews zijn voor deze tier al gemotiveerd laten vervallen (#861, nul consumenten). Ongewijzigd t.o.v. §21. |
+
+### Aanroeppunt: de sync, niet een timer of een migratie
+
+`EnsureSeasonsAsync` wordt aangeroepen op de drie plekken waar het seizoensvenster gelezen wordt —
+`SyncFunction`'s timer- en HTTP-pad en `AdminSyncFunction.Trigger` — direct ná
+`WaitForDatabaseAsync` en vóór `GetSeasonEndWeekOffsetAsync`. Een aparte timer-trigger zou een
+venster laten waarin een handmatig getriggerde sync nog met een verouderde tabel werkt; de sync is
+de enige consument, dus daar hoort de aanvulling.
+
+De aanroep is **best-effort** (try/catch): beide leesmethoden hebben een gedocumenteerde fallback,
+dus een niet-doorgerolde tabel geeft een suboptimaal maar werkend venster. Een harde stop zou de
+schade juist vergroten. Zelfde afweging als bij de teamcanonicalisatie (§28), en bewust anders dan
+bij `MarkeerVervallenGeplandeWedstrijdenAsync` (§21), dat ONgeguard blijft.
+
+### Empirische verificatie
+
+Zeven tests in `Database.Postgres.Tests/PostgresSeasonProceduresIntegrationTests.cs`, tegen een
+wegwerp-`postgres:16` met het volledige migratiepad: lege tabel → twee afgeronde seizoenen; één dag
+vóór de drempel → niets, op de drempel → precies het nieuwe seizoen met de juiste grenzen; viermaal
+herhalen → nul toevoegingen; een toekomstig seizoen in de tabel verstoort de doorrol niet (exact de
+#631-valkuil); startmaand januari/februari rekent zonder ongeldige maand; en de vóór/na-meting van
+het synchronisatievenster hierboven.
+
+**De datum is een parameter van de methode, geen `CURRENT_DATE`.** Zonder dat zou de doorrol-tak elf
+maanden per jaar onbewijsbaar zijn en één maand per jaar iets anders meten — dat is de enige reden
+dat die parameter bestaat.
+
+**Negatieve controle:** met de doorrol-tak uitgeschakeld (letterlijk de situatie van vóór dit issue)
+vallen 5 van de 7 tests om. De twee die groen blijven zijn die welke alleen de zaai-tak raken — ook
+dat is informatie: het laat zien welke asserties het nieuwe gedrag daadwerkelijk meten.
+
+**Bijvangst — dezelfde bevinding als #925:** deze testklasse moet `public.appsettings` eerst in de
+productievorm terugbrengen (`ADD COLUMN IF NOT EXISTS`, letterlijk de regels uit migratie 003),
+omdat twee andere klassen in hetzelfde project die tabel droppen en met drie kolommen terugbouwen.
+Zonder die stap slaagt deze klasse alleen wanneer ze toevallig als eerste draait — hetzelfde
+volgordeprobleem als §30 beschrijft, nu binnen één testproject in plaats van tussen twee.
+
+### Bewust niet in deze ronde
+
+- **De CI-objectvergelijking tussen beide tiers** (het derde acceptatiecriterium van #861). Voor
+  tabellen en kolommen bestaat die inmiddels (§24, §27); voor procedures en views is het een
+  wezenlijk andere vergelijking, omdat de Postgres-tier ze niet als bestanden heeft. Dat blijft
+  open op #861 én op #864, die er hetzelfde punt over openhoudt.
+- **`dbo.DateTable`/`sp_CreateDateTable`** — ongewijzigd gemotiveerd weggelaten, zie de tabel
+  hierboven en §21.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

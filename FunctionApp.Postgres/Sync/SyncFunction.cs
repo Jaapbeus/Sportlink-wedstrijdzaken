@@ -32,6 +32,8 @@ public static class SyncFunction
         try
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+            // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+            await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
             await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
         }
@@ -63,6 +65,8 @@ public static class SyncFunction
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
+            // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+            await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
             var fromWeekOffset = -1;
 

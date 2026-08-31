@@ -77,6 +77,8 @@ public static class AdminSyncFunction
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
+        // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+        await PostgresSeasonHelper.EnsureSeasonsAsync(log);
         var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
         log.LogInformation("AdminSyncTrigger: range -1 .. {To} — fire-and-forget gestart", toWeekOffset);
 

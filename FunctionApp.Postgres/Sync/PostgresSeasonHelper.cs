@@ -1,3 +1,4 @@
+using Database.Postgres;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -20,6 +21,40 @@ internal static class PostgresSeasonHelper
     // Server-tier gebruikt wanneer public.season niet bereikbaar is of leeg is.
     internal const int DefaultToWeekOffset = 30;
     internal const int DefaultFromWeekOffset = -40;
+
+    /// <summary>
+    /// Rolt <c>public.season</c> zo nodig door vóór de offsets hieronder gelezen worden (#861) —
+    /// de tegenhanger van de <c>sp_UpdateSeasonTable</c>-aanroep die
+    /// <c>Script.PostDeployment1.sql</c> op de SQL Server-tier bij élke deploy doet.
+    ///
+    /// <para>
+    /// <b>Waarom hier en niet in een migratie:</b> een migratiebestand draait precies één keer,
+    /// ooit. Zonder deze aanroep loopt een installatie na verloop van tijd uit de seizoenen en
+    /// levert <see cref="GetSeasonEndWeekOffsetAsync"/> een steeds korter synchronisatievenster —
+    /// uiteindelijk een negatieve offset, waarna de sync niets meer ophaalt.
+    /// </para>
+    /// <para>
+    /// <b>Best-effort met opzet:</b> een fout hier mag de sync niet tegenhouden. De leesmethoden
+    /// hieronder hebben allebei een gedocumenteerde fallback, dus een niet-doorgerolde tabel geeft
+    /// een suboptimaal maar werkend venster — een harde stop zou de schade juist vergroten.
+    /// </para>
+    /// </summary>
+    internal static async Task EnsureSeasonsAsync(ILogger log)
+    {
+        try
+        {
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            var toegevoegd = await PostgresSeasonProcedures.EnsureSeasonsAsync(
+                connection, DateOnly.FromDateTime(DateTime.Today));
+            if (toegevoegd > 0)
+                log.LogInformation("SEIZOENEN - {Aantal} seizoensrij(en) toegevoegd aan public.season", toegevoegd);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij het doorrollen van public.season — sync gaat door met de bestaande seizoenen");
+        }
+    }
 
     /// <summary>Aantal weken van vandaag tot het einde van het laatste seizoen in public.season.</summary>
     internal static async Task<int> GetSeasonEndWeekOffsetAsync(ILogger log)

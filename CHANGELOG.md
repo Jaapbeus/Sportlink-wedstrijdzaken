@@ -311,6 +311,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **Op de Postgres-tier zou de synchronisatie op termijn stilvallen.** Het seizoensoverzicht waaruit
+  de synchronisatie afleidt hoe ver vooruit ze wedstrijden ophaalt, werd daar alleen bij de
+  installatie gevuld en daarna nooit meer aangevuld — anders dan op de bestaande tier, waar dat bij
+  elke uitrol opnieuw gebeurt. Een installatie die lang genoeg meedraait raakte zo door haar
+  seizoenen heen, waarna het ophaalvenster in het verleden kwam te liggen en er niets meer werd
+  opgehaald. De synchronisatie vult het overzicht nu zelf aan, vanaf twee maanden vóór de start van
+  een nieuw seizoen — precies zoals de bestaande tier het doet. Zowel de situatie vóór als na de fix
+  is gemeten, en een opzettelijk faalscenario bevestigde dat de controle het verschil ziet. Zie
+  issue 861.
 - **Een testcontrole voor de Postgres-tier kon willekeurig omvallen.** Drie van de tests uit de
   nieuwe Postgres-testsuite slaagden alleen als ze in een bepaalde volgorde draaiden, en die
   volgorde ligt niet vast. Gemeten over vier verse databases: twee keer groen, twee keer rood met
