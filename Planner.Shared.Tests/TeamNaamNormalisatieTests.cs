@@ -1,8 +1,8 @@
 using FluentAssertions;
-using SportlinkFunction.TeamResolution;
+using Planner.Shared;
 using Xunit;
 
-namespace FunctionApp.Tests.TeamResolution;
+namespace Planner.Shared.Tests;
 
 /// <summary>
 /// Tests op basis van de faalscenario's uit de #692-analyse ÉN van de naamvormen die echt in

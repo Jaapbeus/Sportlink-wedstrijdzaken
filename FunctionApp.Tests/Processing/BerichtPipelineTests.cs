@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Planner.Shared;
 using SportlinkFunction.Email;
 using SportlinkFunction.Processing;
 using SportlinkFunction.TeamResolution;

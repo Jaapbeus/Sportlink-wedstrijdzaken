@@ -560,6 +560,54 @@ planner-endpoints (`CheckAvailability`, `DoordeweeksBeschikbaar`, `BevestigWedst
 vijf repositories die ze aanroepen. `GetTeamSchedule` hangt bovendien af van `dbo.Season`, dat nog
 geen Postgres-migratie heeft (zelfde gat als #861's `sp_UpdateSeasonTable`-uitstel).
 
+## 17. E-mailpersistentie en teamresolutie — data-accesslagen vertaald (#889)
+
+**Volledig vertaald:** `SqlEmailPersistenceRepository` (audit-trail/dedup tegen
+`planner.emailverwerking`, 15 methoden), `LearningMomentRepository`
+(`planner.classificatiecorrectie`-leermomenten) en de teamresolutie-repositories
+`TeamCandidateRepository`/`TeamAliasLearningService` (tegen `public.teams`/
+`public.teamaliassen`, #887).
+
+**Vertaalconstructies:**
+- `SCOPE_IDENTITY()` → `RETURNING id`.
+- `SqlException.Number == 2601/2627` (unique violation) →
+  `PostgresException.SqlState == PostgresErrorCodes.UniqueViolation`.
+- De alias-upsert (`IF NOT EXISTS … INSERT ELSE UPDATE`) → `INSERT … ON CONFLICT (clubcode,
+  ruwetekst) DO UPDATE SET` — `public.teamaliassen` heeft (#887) al een unique constraint op dat
+  paar. `LearningMomentRepository`'s guard (`planner.classificatiecorrectie` heeft géén unique
+  constraint op het paar, exact zoals de SQL Server-tier) blijft daarentegen een
+  `INSERT … WHERE NOT EXISTS (…)`, dezelfde vorm als het origineel.
+
+**Architectuurbeslissing — `TeamNaamNormalisatie` verhuisd naar `Planner.Shared`, in
+tegenstelling tot #888's `LeeftijdNormalisatie`-precedent.** CLAUDE.md legt hard vast:
+"Normalisatieregels horen uitsluitend in `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs` —
+een nieuwe teamnaam-regex elders is een architectuurschending." Een tweede, onafhankelijke kopie
+bouwen (zoals bij `LeeftijdNormalisatie` bewust wél gedaan, gedocumenteerd als tijdelijke schuld)
+zou die regel letterlijk overtreden. Daarom is deze keer de refactor wél uitgevoerd: `TeamNaamNormalisatie.cs`
+(en de bijbehorende `TeamNaamComponenten`-record) zijn verhuisd naar `Planner.Shared/`, zelfde
+precedent als `VeldResolver`/`VeldNormalisatie` (#819). Negen bestanden in de SQL Server-tier
+kregen een `using Planner.Shared;` (vijf productiebestanden, twee testbestanden, plus één
+volledig-gekwalificeerde verwijzing in `PlannerMatchRepository.cs` die simpelweg
+`TeamNaamNormalisatie` werd). **Geverifieerd zonder regressie:** de volledige
+`FunctionApp.Tests`-suite (431 geslaagd, 5 environment-gated geskipt) en de verhuisde
+`TeamNaamNormalisatieTests` (nu in `Planner.Shared.Tests`, 59 tests) slagen ongewijzigd.
+
+**Empirisch geverifieerd** tegen een wegwerp-Postgres-container (rechtstreekse aanroep van de
+repository-methoden, geen HTTP-laag nodig): insert + dedup-exceptie op een dubbele MessageId,
+status-/pogingen-tracking, `IsBeantwoord` losstaand van het te anonimiseren `VerstuurdNaar`-veld,
+reply-detectie via `ConversationId` met JSON-veldextractie, teambegeleiding-doorstuur-audit,
+classificatiecorrectie-insert + alleen-gevalideerde-voorbeelden-query, en — het expliciete
+acceptatiecriterium van dit issue — een geleerde teamalias die `FindValidatedAliasAsync` pas
+oplevert **na** handmatige validatie (`status = 'pending'` → `null`, na `UPDATE … SET status =
+'validated'` → gevonden). Een herhaalde `LegVastAsync`-aanroep verhoogde `aantalkeergebruikt` naar
+2 in plaats van een duplicaat aan te maken.
+
+**Bewust niet in deze ronde:** `TeamCanonicalisatieService` (506 regels, orkestreert AI-
+disambiguatie + de bovenstaande repositories — een aanzienlijk grotere stap) en de volledige
+e-mail-AI-pijplijn (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProcessorFunction`,
+`EmailGraphService` — samen >2700 regels, bevatten geen directe SQL-toegang en vallen dus al
+buiten #889's eigen scope-omschrijving).
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

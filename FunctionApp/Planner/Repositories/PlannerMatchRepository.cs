@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Shared;
 
 namespace SportlinkFunction.Planner;
 
@@ -37,7 +38,7 @@ internal static class PlannerMatchRepository
         SqlConnection conn, string clubCode, string? teamNaam)
     {
         var resultaten = new List<string>();
-        var sleutel = TeamResolution.TeamNaamNormalisatie.NormaliseerVoorVergelijking(teamNaam, clubCode);
+        var sleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(teamNaam, clubCode);
         if (sleutel.Length == 0) return resultaten;
 
         using var cmd = new SqlCommand(@"
