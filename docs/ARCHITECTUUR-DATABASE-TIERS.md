@@ -1913,6 +1913,39 @@ blijven doorgaan. Alle drie faalscenario's zijn nu apart bewezen: een nieuwe pro
 mapping/exceptie, een verweesde mapping (het symbool bestaat niet meer), en een mapping die naar
 een niet-bestaand bestand wijst.
 
+## 37. Negen planner-endpoints: van stille 404 naar eerlijke 501 (#888)
+
+**Geen porteringsslice, maar een eerlijkheidsslice.** Vóór deze sectie riep een aanroep naar
+bijvoorbeeld `POST /api/planner/auto-plan` op de Postgres-tier een generieke 404 op — de route
+bestond simpelweg niet. Dat leest als "deze functionaliteit bestaat niet" in plaats van "dit is een
+bewust nog niet vertaald stuk, en hier is precies waarom niet". Zelfde discipline als
+`AdminTeambegeleidingFunction.Doorsturen` en het vroege `AdminSyncFunction.Trigger` (vóór #890):
+een expliciete 501 met de daadwerkelijke reden, nooit een neppe 200 en nooit een stille 404.
+
+**Negen endpoints, drie soorten gaten** — elk geverifieerd tegen de daadwerkelijke broncode, niet
+aangenomen:
+
+| Gat | Endpoints | Wat precies ontbreekt |
+|---|---|---|
+| Twee ontbrekende repositories | `CheckAvailability`, `DoordeweeksBeschikbaar`, `HerplanCheck` | `PlannerAvailabilityRepository` en `TeamRulesRepository` hebben nog geen bestand op deze tier (bevestigd door `AvailabilityService`/`RescheduleService`'s eigen aanroepen na te lopen) |
+| Twee ontbrekende schematabellen | `PopulateSunset`, `HerplanBevestig` | `dbo.Zonsondergang` en `planner.HerplanVerzoeken` — dezelfde twee die al als gemotiveerde uitzondering in `scripts/ci/check-postgres-table-coverage.sh` staan, hier dus geen nieuwe aanname |
+| Ontbrekende `PlannerMatchRepository`-methoden | `BevestigWedstrijd`, `ZoekWedstrijd`, `HerplanBevestig` | `SavePlannedMatchAsync`/`FindMatchAsync`/`FindMatchByCodeAsync` — het kleinste gat van de drie: `planner.geplandewedstrijden` en `his.matches` bestaan al |
+| De FieldScheduler-engine | `AutoPlan`, `AutoPlanToepassen` | `PlannerShared.cs` (538 regels) — de architectuurbeslissing waar die woont staat nog open (zie §35's gedeelde randvoorwaarden) |
+
+**Empirisch, permanent en zonder database.** Elke stub roept alleen `EasyAuthHelper.RequireAdmin`
+aan (pure headerinspectie — geen `FunctionContext`-gebruik) en retourneert onvoorwaardelijk 501.
+Twaalf tests in `FunctionApp.Postgres.Tests/PlannerFunctionStubTests.cs` roepen de statische
+methoden daarom rechtstreeks aan met een `DefaultHttpContext`, zonder functiehost of container —
+en draaien dus in élke `dotnet test`-uitvoering, niet alleen de containergebonden CI-job. Beide
+negatieve controles apart bewezen: de statuscode naar 200 wijzigen laat precies de negen
+statuscode-asserties rood gaan; de tekst van één 501-reden inkorten laat precies de bijbehorende
+inhoudsassertie rood gaan.
+
+**Route-pariteit statisch bevestigd, niet aangenomen.** Een script vergelijkt naam, HTTP-werkwoord
+en route van elk `[Function(...)]`-attribuut tussen de twee `PlannerFunction.cs`-bestanden: alle elf
+planner-specifieke endpoints komen exact overeen. `Health` is het enige verschil — bewust, want die
+route loopt op de Postgres-tier via een apart bestand (`HealthFunction.cs`, #863).
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
