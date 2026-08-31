@@ -18,6 +18,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **De planningsmotor (FieldScheduler) en de domeinmodellen waarop hij werkt zijn verhuisd naar
+  `Planner.Shared` (issue 888 vervolg) — zuiver intern, geen enkel gedragsverschil.** De motor was
+  al aantoonbaar SQL-vrij en delegeerde de veldnaam-matching al aan `Planner.Shared.VeldResolver`
+  (#819); alleen de motor zelf stond nog op de SQL Server-tier, getypeerd tegen modellen die de
+  Postgres-tier dan had moeten dupliceren. Zelfde precedent als `TeamNaamNormalisatie` (#889):
+  logica zonder tier-afhankelijkheid hoort op precies één plek te staan. De HTTP-wire-contracten
+  (`CheckAvailabilityRequest`, `AutoPlanResponse`, ...) blijven bewust per tier eigen bestanden.
+  Zestig-plus aanroepen in `AvailabilityService`, `RescheduleService`, `AutoPlanService` en
+  `SportlinkApiClient` bleven ongewijzigd werken met alleen een `using`-toevoeging. Geverifieerd
+  door de volledige bestaande testsuite vóór en ná de verhuizing te draaien in twee losse
+  worktrees: exact 429 geslaagd / 5 geskipt / 0 gefaald, beide keren identiek.
+
 ### Added
 - **De negen niet-vertaalde planner-endpoints op de Postgres-tier geven nu een expliciete 501 in
   plaats van een stille 404 (issue 888 vervolg).** `CheckAvailability`, `DoordeweeksBeschikbaar`,

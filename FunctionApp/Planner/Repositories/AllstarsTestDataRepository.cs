@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Data.SqlClient;
 
 namespace SportlinkFunction.Planner;
