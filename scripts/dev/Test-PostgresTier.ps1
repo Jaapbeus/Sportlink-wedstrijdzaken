@@ -86,11 +86,12 @@ if (-not (Test-Path $ExpectationsPath)) {
 }
 $Expect = Import-PowerShellDataFile $ExpectationsPath
 
-$Ports          = Get-SelftestPorts
-$SqlContainer   = 'sportlink-sqlserver'
-$PgContainer    = 'sportlink-postgres-selftest'
-$ComposeProject = 'sportlink-selftest'
-$ComposeFile    = Join-Path $RepoRoot 'docker-compose.selftest.yml'
+$Ports            = Get-SelftestPorts
+$SqlContainer     = 'sportlink-sqlserver'
+$PgContainer      = 'sportlink-postgres-selftest'
+$AzuriteContainer = 'sportlink-azurite-selftest'
+$ComposeProject   = 'sportlink-selftest'
+$ComposeFile      = Join-Path $RepoRoot 'docker-compose.selftest.yml'
 
 $RunId       = Get-Date -Format 'yyyyMMdd-HHmmss'
 $ArtifactDir = Get-SelftestArtifactRoot -RepoRoot $RepoRoot -RunId $RunId
@@ -204,6 +205,76 @@ function Complete-Gate {
     return $uitkomst
 }
 
+function Assert-Rijtelling {
+    <#
+        Toetst het AANTAL elementen in een JSON-lijstantwoord (G6).
+
+        -Verwacht is een exact aantal (deterministisch af te leiden uit de seed); -Minimaal een
+        ondergrens voor waarden die legitiem kunnen variëren. Nooit allebei weglaten: dan zou dit
+        hulpje niets toetsen.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        $Json,
+        [Nullable[int]]$Verwacht,
+        [Nullable[int]]$Minimaal
+    )
+
+    # De null-filter is niet cosmetisch: ConvertFrom-Json maakt van een LEGE JSON-lijst geen lege
+    # array maar $null, en @($null) telt als één element. Zonder deze filter meldt een leeg
+    # antwoord dus "1 rij" — een lege lijst zou daarmee kunnen slagen op een verwachting van 1.
+    $aantal = @(@($Json) | Where-Object { $null -ne $_ }).Count
+    if ($null -ne $Verwacht) {
+        if ($aantal -eq $Verwacht) {
+            Add-Check -Gate 'G6' -Id $Id -Status 'pass' -Actual "$aantal rijen"
+        } else {
+            Add-Check -Gate 'G6' -Id $Id -Status 'fail' -Expected "$Verwacht rijen" -Actual "$aantal rijen"
+        }
+        return
+    }
+    if ($aantal -ge $Minimaal) {
+        Add-Check -Gate 'G6' -Id $Id -Status 'pass' -Actual "$aantal rijen"
+    } else {
+        Add-Check -Gate 'G6' -Id $Id -Status 'fail' -Expected ">= $Minimaal rijen" -Actual "$aantal rijen"
+    }
+}
+
+function Test-GeheelGetal {
+    <#
+        Is deze waarde een geheel getal?
+
+        Bewust niet '-is [int]': ConvertFrom-Json levert JSON-gehele getallen af als Int64, dus
+        die test faalt op elk getal dat wél correct uit de API komt. Empirisch vastgesteld bij
+        #909 — de eerste versie van G6 wees drie kloppende antwoorden af.
+    #>
+    param($Waarde)
+    if ($null -eq $Waarde) { return $false }
+    $uit = 0L
+    [long]::TryParse("$Waarde", [ref]$uit)
+}
+
+function Assert-Lijst {
+    <#
+        Toetst dat het antwoord een echte JSON-lijst is (G6).
+
+        Bewust een zwakkere eis dan een rijtelling, en alleen voor endpoints waarvan de
+        verwachtingenlijst zelf zegt dat de inhoud pas in fase 8 ontstaat. Het is nadrukkelijk
+        géén lege assertie: een kolomcasing- of vertaalfout in de query levert hier geen lege
+        lijst op maar een 500, en dat wordt hier dus wél gevangen.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        $Json,
+        [string]$Body
+    )
+
+    if ($Body.TrimStart().StartsWith('[')) {
+        Add-Check -Gate 'G6' -Id $Id -Status 'pass' -Actual "geldige lijst, $(@($Json).Count) rijen"
+    } else {
+        Add-Check -Gate 'G6' -Id $Id -Status 'fail' -Expected 'JSON-lijst' -Actual $Body
+    }
+}
+
 function Save-Artifact {
     param([Parameter(Mandatory)][string]$Naam, [Parameter(Mandatory)]$Inhoud)
     $pad = Join-Path $ArtifactDir $Naam
@@ -241,6 +312,33 @@ function Invoke-Teardown {
     param([switch]$Stil)
 
     if (-not $Stil) { Write-Kop 'G9 — Teardown' }
+
+    # 0. Functiehost eerst — vóór de database, want een host die nog draait zou tijdens het
+    #    afbreken van zijn database alsnog fouten gaan loggen. Op PID en niet op poort, zodat een
+    #    ontwikkelsessie die toevallig op een andere poort draait hier nooit sneuvelt (#909).
+    if ($script:State.Contains('funcHostPid') -and $script:State['funcHostPid']) {
+        $stopResultaat = Stop-FunctionHost -ProcessId $script:State['funcHostPid'] -Port $Ports.FunctionAppSelftest
+        $script:State['funcHostPid'] = $null
+        if (-not $Stil) {
+            if ($stopResultaat.PortFree) {
+                Add-Check -Gate 'G9' -Id 'G9.functiehost.gestopt' -Status 'pass' `
+                    -Message "$($stopResultaat.StoppedCount) proces(sen) gestopt; poort $($Ports.FunctionAppSelftest) vrij."
+            } else {
+                Add-Check -Gate 'G9' -Id 'G9.functiehost.gestopt' -Status 'fail' `
+                    -Message "Poort $($Ports.FunctionAppSelftest) is nog bezet na het stoppen van de functiehost."
+            }
+        }
+    }
+
+    # 0b. De opslagemulator alleen opruimen als deze run hem zelf heeft neergezet. Een Azurite
+    #     van de ontwikkelaar blijft staan — die was er al vóór de run.
+    if ($script:State.Contains('azuriteGestart') -and $script:State['azuriteGestart']) {
+        & docker rm -f $AzuriteContainer 2>&1 | Out-Null
+        if (-not $Stil) {
+            Add-Check -Gate 'G9' -Id 'G9.opslagemulator.verwijderd' -Status 'pass' `
+                -Message 'Wegwerp-opslagemulator opgeruimd.'
+        }
+    }
 
     # 1. Wegwerp-Postgres weg, tenzij expliciet bewaard voor onderzoek.
     if (-not $KeepContainer) {
@@ -283,6 +381,17 @@ function Invoke-Teardown {
 
 if ($Teardown) {
     Write-Host 'Alleen opruimen...' -ForegroundColor Cyan
+
+    # Zonder bewaarde staat kan alleen op poort worden opgeruimd. Dat is hier veilig: 7098 is
+    # uitsluitend van de zelftest, een dev-sessie draait op 7094.
+    if (Test-PortListening -Port $Ports.FunctionAppSelftest) {
+        $eigenaar = Get-PortOwner -Port $Ports.FunctionAppSelftest
+        if ($eigenaar) {
+            [void](Stop-FunctionHost -ProcessId $eigenaar.Id -Port $Ports.FunctionAppSelftest)
+            Write-Host "  Functiehost op poort $($Ports.FunctionAppSelftest) gestopt." -ForegroundColor Green
+        }
+    }
+    & docker rm -f $AzuriteContainer 2>&1 | Out-Null
     if (-not $KeepContainer) { & docker compose -p $ComposeProject -f $ComposeFile down -v 2>&1 | Out-Null }
     $sql = Get-ContainerState -Name $SqlContainer
     if ($sql -and -not $sql.Running) {
@@ -765,22 +874,278 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
     [void](Complete-Gate -Gate 'G4')
 
     # ──────────────────────────────────────────────────────────────────────
-    # G5/G6 — bewust nog niet geïmplementeerd in deze ronde.
+    # G5 — Applicatie praat aantoonbaar met de juiste engine
+    # G6 — API met inhoudsasserties
     #
-    # Beide vereisen een daadwerkelijk draaiende functiehost (func start), inclusief Azurite en
-    # de bijbehorende ~20s koude-startwachttijd (#175) en teardown-verantwoordelijkheid — een
-    # aanzienlijk grotere en risicovollere stap dan G2-G4 (die alleen tegen de database praten).
-    # Een halfbakken versie zou een vlakke, onbetrouwbare groene/rode uitslag opleveren — precies
-    # de "nep-groen"-fout die dit script overal elders vermijdt. Zie issue #909 voor de
-    # vervolgopgave.
+    # Beide draaien tegen een ECHTE functiehost (#909). Drie keuzes die dat betaalbaar maken:
+    #
+    #   1. Eigen poort (7098, Get-SelftestPorts). Een draaiende ontwikkelsessie op 7094 wordt
+    #      dus niet gestopt — en kan dus ook niet vergeten worden terug te zetten. De reden dat
+    #      7094 vastligt geldt alleen voor de browsersweep (G7/G8), die via BlazorAdmin loopt.
+    #   2. Configuratie puur via omgevingsvariabelen. De functiehost heeft geen
+    #      local.settings.json nodig; het bestand van de ontwikkelaar wordt niet aangeraakt en
+    #      er komt niets nieuws op schijf. Empirisch bevestigd, zie Start-FunctionHost.
+    #   3. Teardown in het finally-blok, op PID. Ook een halverwege afgebroken run laat geen
+    #      functiehost achter.
+    #
+    # Alleen voor de Postgres-tier. Zie de blocked-melding hieronder voor waarom de basismeting
+    # dit bewust NIET doet.
     # ──────────────────────────────────────────────────────────────────────
-    foreach ($gate in @('G5', 'G6')) {
-        $def = $Gates | Where-Object { $_.Id -eq $gate }
-        if ($def.Modes -notcontains $Mode) { continue }
-        Write-Kop "$gate — $($def.Naam)"
-        Add-Check -Gate $gate -Id "$gate.functiehost-niet-geautomatiseerd" -Status 'blocked' -Blocked @(909) `
-            -Message 'Vereist een draaiende functiehost (func start) — nog niet geautomatiseerd in dit script.'
-        [void](Complete-Gate -Gate $gate)
+    $g5Actief = ($Gates | Where-Object { $_.Id -eq 'G5' }).Modes -contains $Mode
+
+    if ($g5Actief -and $Tier -ne 'Postgres') {
+        foreach ($gate in @('G5', 'G6')) {
+            Write-Kop "$gate — $(($Gates | Where-Object { $_.Id -eq $gate }).Naam)"
+            Add-Check -Gate $gate -Id "$gate.basismeting-niet-geautomatiseerd" -Status 'blocked' -Blocked @(909) `
+                -Message ('Een functiehost tegen de LEVENDE ontwikkeldatabase kan die database wijzigen ' +
+                          '(achtergrondtaken lopen bij het opstarten alsnog als hun moment al verstreken is). ' +
+                          'G4 houdt de basismeting bewust alleen-lezen; dat mag deze poort niet ondermijnen.')
+            [void](Complete-Gate -Gate $gate)
+        }
+    } elseif ($g5Actief) {
+        Write-Kop 'G5 — Applicatie praat aantoonbaar met de juiste engine'
+
+        $pgPassword  = $env:SELFTEST_PG_PASSWORD
+        $hostPoort   = $Ports.FunctionAppSelftest
+        $hostBasis   = "http://localhost:$hostPoort"
+        $projectMap  = Join-Path $RepoRoot 'FunctionApp.Postgres'
+
+        # Azurite is niet optioneel: FunctionApp.Postgres heeft drie timer-triggers, en de
+        # functiehost weigert te starten zonder bruikbare AzureWebJobsStorage zodra er ook maar
+        # één niet-HTTP-trigger geïndexeerd wordt.
+        $azurite = Start-SelftestAzurite -ContainerName $AzuriteContainer -Port $Ports.Azurite
+        $script:State['azuriteGestart'] = $azurite.Started
+        if ($azurite.Ready) {
+            Add-Check -Gate 'G5' -Id 'G5.opslagemulator.beschikbaar' -Status 'pass' -Message $azurite.Reason
+        } else {
+            Add-Check -Gate 'G5' -Id 'G5.opslagemulator.beschikbaar' -Status 'fail' -Message $azurite.Reason
+        }
+
+        # Alle applicatieconfiguratie via de omgeving. FETCH_SCHEDULE hoort daar expliciet bij:
+        # zonder die waarde kan de synchronisatietimer niet geïndexeerd worden en start de host
+        # mét een functie in foutstatus — wat G5.geen-indexeringsfout hieronder ook aantoont.
+        $env:AzureWebJobsStorage      = 'UseDevelopmentStorage=true'
+        $env:FUNCTIONS_WORKER_RUNTIME = 'dotnet-isolated'
+        if ([string]::IsNullOrWhiteSpace($env:FETCH_SCHEDULE)) { $env:FETCH_SCHEDULE = '0 0 4 * * *' }
+
+        $hostLog  = Join-Path $ArtifactDir 'g5-functiehost.log'
+        $funcHost = Start-FunctionHost -ProjectDir $projectMap -Port $hostPoort -LogPath $hostLog
+        $script:State['funcHostPid'] = $funcHost.ProcessId
+
+        if (-not $funcHost.Ready) {
+            Add-Check -Gate 'G5' -Id 'G5.functiehost.opgestart' -Status 'fail' `
+                -Message "Geen antwoord van $hostBasis/api/health binnen de time-out — zie g5-functiehost.log."
+        } else {
+            Add-Check -Gate 'G5' -Id 'G5.functiehost.opgestart' -Status 'pass' `
+                -Actual "$($funcHost.ColdStartSeconds)s koude start"
+
+            # Indexeringsfouten maken de host NIET onbereikbaar: de HTTP-endpoints blijven werken
+            # terwijl een andere functie stilzwijgend in foutstatus staat. Zonder deze controle
+            # zou een groene health-check dat toedekken.
+            $logTekst = if (Test-Path $funcHost.LogPath) { Get-Content $funcHost.LogPath -Raw } else { '' }
+            # De @() eromheen is niet cosmetisch: zonder treffers geeft Select-Object -Unique $null
+            # terug, en onder Set-StrictMode is $null.Count een harde fout — die de poort zou laten
+            # afbreken juist in het geval dat er níets mis is.
+            $foutRegels = @(
+                ($logTekst -split "`n") |
+                    Where-Object { $_ -match 'Error indexing method|function is in error' } |
+                    Select-Object -Unique
+            )
+            if ($foutRegels.Count -gt 0) {
+                $eersteFout = ($foutRegels | Select-Object -First 1).Trim()
+                Add-Check -Gate 'G5' -Id 'G5.geen-indexeringsfout' -Status 'fail' `
+                    -Actual "$($foutRegels.Count) melding(en)" -Message $eersteFout
+            } else {
+                Add-Check -Gate 'G5' -Id 'G5.geen-indexeringsfout' -Status 'pass' `
+                    -Message 'Elke functie is geïndexeerd; geen enkele staat in foutstatus.'
+            }
+
+            $health = $funcHost.Health
+            Save-Artifact -Naam 'g5-health.json' -Inhoud $health | Out-Null
+
+            # Herkomst komt uit build-time assembly-metadata (#863) en is dus geen runtime-gok.
+            if ("$($health.tier)" -eq $Tier) {
+                Add-Check -Gate 'G5' -Id 'G5.health.tier' -Status 'pass' -Actual "$($health.tier)"
+            } else {
+                Add-Check -Gate 'G5' -Id 'G5.health.tier' -Status 'fail' -Expected $Tier -Actual "$($health.tier)"
+            }
+
+            if ("$($health.provider)" -eq 'Npgsql') {
+                Add-Check -Gate 'G5' -Id 'G5.health.provider' -Status 'pass' -Actual "$($health.provider)"
+            } else {
+                Add-Check -Gate 'G5' -Id 'G5.health.provider' -Status 'fail' -Expected 'Npgsql' -Actual "$($health.provider)"
+            }
+
+            # De applicatie zegt welke serverversie ze ziet; de container weet welke versie hij
+            # draait. Alleen als die twee gelijk zijn praat de applicatie met DEZE database.
+            $echteVersie = (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword `
+                            -Database 'sportlink_selftest' -Tuples -Sql 'SHOW server_version;').Output
+            if ("$($health.database)" -eq 'online' -and "$($health.serverVersion)" -eq "$echteVersie") {
+                Add-Check -Gate 'G5' -Id 'G5.health.serverversie' -Status 'pass' -Actual "$($health.serverVersion)" `
+                    -Message 'Serverversie uit de applicatie komt overeen met wat de container zelf meldt.'
+            } else {
+                Add-Check -Gate 'G5' -Id 'G5.health.serverversie' -Status 'fail' `
+                    -Expected "online / $echteVersie" -Actual "$($health.database) / $($health.serverVersion)"
+            }
+
+            # Het sterkste bewijs, en het enige dat NIET van de applicatie zelf komt: de database
+            # ziet een verbinding met de toepassingsnaam die alleen deze applicatie zet. Een
+            # stille terugval naar een andere database zou hier zichtbaar worden.
+            $verbindingen = (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword `
+                             -Database 'sportlink_selftest' -Tuples -Sql `
+                             "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name = '$($Expect.applicationName)';").Output
+            if ([int]$verbindingen -gt 0) {
+                Add-Check -Gate 'G5' -Id 'G5.engine.onafhankelijk-bevestigd' -Status 'pass' `
+                    -Actual "$verbindingen verbinding(en)" `
+                    -Message "De databaseserver ziet '$($Expect.applicationName)' — bewijs buiten de applicatie om."
+            } else {
+                Add-Check -Gate 'G5' -Id 'G5.engine.onafhankelijk-bevestigd' -Status 'fail' `
+                    -Expected '>= 1' -Actual "$verbindingen" `
+                    -Message 'De applicatie meldt zichzelf als online, maar deze database ziet haar niet.'
+            }
+        }
+        $g5 = Complete-Gate -Gate 'G5'
+
+        # ──────────────────────────────────────────────────────────────────
+        # G6 — API met inhoudsasserties
+        # ──────────────────────────────────────────────────────────────────
+        Write-Kop 'G6 — API met inhoudsasserties'
+
+        if ($g5 -eq 'fail') {
+            # Bewust géén meting proberen. De functiehost kan bereikbaar zijn terwijl G5 toch rood
+            # is (bijvoorbeeld een functie in foutstatus, of een herkomst die niet klopt). Dan is
+            # niet vast te stellen wat een groene inhoudsassertie hier nog zou bewijzen — en een
+            # deels betrouwbare meting die als groen leest is precies wat dit script vermijdt.
+            Add-Check -Gate 'G6' -Id 'G6.grondslag.ontbreekt' -Status 'fail' `
+                -Message 'G5 is rood: niet vastgesteld dat deze functiehost met de juiste engine praat, dus een inhoudsmeting bewijst hier niets.'
+            [void](Complete-Gate -Gate 'G6')
+        } else {
+            # Een bekend synchronisatiemoment wegschrijven vóór de meting. Zonder dit is
+            # lastSyncTimestamp leeg en zou de UTC-assertie NUL waarden beoordelen — dat is
+            # "niets gemeten", niet "goed" (regel 2 in de kop van dit script).
+            Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -Sql `
+                "UPDATE public.appsettings SET lastsynctimestamp = now() - interval '1 hour';" | Out-Null
+
+            function Invoke-ZelftestApi {
+                param([string]$Pad, [string]$Context)
+                $headers = @{}
+                if ($Context -eq 'demo') { $headers['X-Club-Code'] = $Expect.demoClub }
+                try {
+                    $resp = Invoke-WebRequest -Uri "$hostBasis/$Pad" -Headers $headers -TimeoutSec 30 -UseBasicParsing
+                    [pscustomobject]@{
+                        Ok   = $true
+                        Code = [int]$resp.StatusCode
+                        Body = "$($resp.Content)"
+                        Json = (ConvertFrom-Json "$($resp.Content)")
+                    }
+                } catch {
+                    [pscustomobject]@{ Ok = $false; Code = 0; Body = $_.Exception.Message; Json = $null }
+                }
+            }
+
+            $g6Bewijs = [ordered]@{}
+
+            foreach ($ep in $Expect.apiEndpoints) {
+                $id      = "G6.$($ep.Path -replace '[^a-zA-Z0-9]+', '-')"
+                $context = if ($ep.Contains('Context')) { $ep.Context } else { 'primair' }
+
+                if ($ep.Contains('Blocked') -and $ep.Blocked.Count -gt 0) {
+                    Add-Check -Gate 'G6' -Id $id -Status 'blocked' -Blocked $ep.Blocked -Message $ep.Assert
+                    continue
+                }
+
+                $r = Invoke-ZelftestApi -Pad $ep.Path -Context $context
+                $g6Bewijs[$ep.Path] = @{ code = $r.Code; body = $r.Body }
+
+                if (-not $r.Ok) {
+                    Add-Check -Gate 'G6' -Id $id -Status 'fail' -Expected '200' -Actual "$($r.Body)"
+                    continue
+                }
+
+                # Elke tak hieronder toetst INHOUD, nooit alleen de statuscode. Ontbreekt een tak
+                # voor een pad uit de verwachtingenlijst, dan is dat een fout: zo kan de lijst en
+                # wat er werkelijk gemeten wordt niet uit elkaar gaan lopen.
+                $j = $r.Json
+                switch ($ep.Path) {
+                    'api/health' {
+                        if ("$($j.tier)" -eq $Tier) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' -Actual "tier=$($j.tier)"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' -Expected "tier=$Tier" -Actual "tier=$($j.tier)"
+                        }
+                    }
+                    'api/beheer/settings' {
+                        # Deze twee afgeleide velden verdwijnen stil bij een kolomcasing-fout: ze
+                        # worden alleen berekend als FetchSchedule daadwerkelijk uit de rij komt.
+                        $leesbaar = "$($j.fetchScheduleLeesbaar)"
+                        $momenten = @($j.volgendeMomenten)
+                        if (-not [string]::IsNullOrWhiteSpace($leesbaar) -and $momenten.Count -gt 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                -Actual "$leesbaar / $($momenten.Count) momenten"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'fetchScheduleLeesbaar gevuld en minstens 1 volgend moment' `
+                                -Actual "'$leesbaar' / $($momenten.Count)"
+                        }
+                    }
+                    'api/beheer/velden'              { Assert-Rijtelling -Id $id -Json $j -Verwacht 3 }
+                    'api/beheer/veldbeschikbaarheid' { Assert-Rijtelling -Id $id -Json $j -Verwacht 21 }
+                    'api/beheer/teams'               { Assert-Rijtelling -Id $id -Json $j -Verwacht 28 }
+                    'api/beheer/teamregels'          { Assert-Rijtelling -Id $id -Json $j -Minimaal 1 }
+                    'api/beheer/voorkeurstijden'     { Assert-Lijst -Id $id -Json $j -Body $r.Body }
+                    'api/beheer/uitgesloten-emails'  { Assert-Lijst -Id $id -Json $j -Body $r.Body }
+                    'api/beheer/teamaliassen' {
+                        # Vorm: een omhulsel met tellers plus een items-lijst.
+                        if ($null -ne $j -and $j.PSObject.Properties.Name -contains 'items' -and (Test-GeheelGetal $j.count)) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' -Actual "count=$($j.count), items=$(@($j.items).Count)"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'object met numerieke count en een items-lijst' -Actual $r.Body
+                        }
+                    }
+                    'api/beheer/sync/status' {
+                        # De ruwe tekst beoordelen, niet het geparseerde object: ConvertFrom-Json
+                        # maakt er een DateTime van en dan is de Z-markering niet meer te zien —
+                        # precies het detail waar deze assertie over gaat.
+                        $stempels = @([regex]::Matches($r.Body, '"(\d{4}-\d{2}-\d{2}T[0-9:.]+)(Z?)"'))
+                        if ($stempels.Count -eq 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Message 'Geen enkele tijdstempel in het antwoord — er valt dan niets te toetsen.'
+                        } else {
+                            $zonderZ  = @($stempels | Where-Object { $_.Groups[2].Value -ne 'Z' })
+                            $toekomst = @($stempels | Where-Object { [datetime]::Parse($_.Groups[1].Value) -gt (Get-Date).ToUniversalTime().AddMinutes(1) })
+                            if ($zonderZ.Count -gt 0) {
+                                Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                    -Message "Tijdstempel zonder UTC-markering: $($zonderZ[0].Value)"
+                            } elseif ($toekomst.Count -gt 0) {
+                                Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                    -Message "Tijdstempel ligt in de toekomst: $($toekomst[0].Value)"
+                            } else {
+                                Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                    -Actual "$($stempels.Count) tijdstempel(s), alle UTC en niet in de toekomst"
+                            }
+                        }
+                    }
+                    'api/beheer/leermomenten/stats' {
+                        if ((Test-GeheelGetal $j.pending) -and (Test-GeheelGetal $j.validated) -and (Test-GeheelGetal $j.rejected)) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                -Actual "pending=$($j.pending) validated=$($j.validated) rejected=$($j.rejected)"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'numerieke pending/validated/rejected' -Actual $r.Body
+                        }
+                    }
+                    default {
+                        Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                            -Message ("Geen assertie geïmplementeerd voor dit pad. Een endpoint toevoegen aan " +
+                                      "selftest-expectations.psd1 zonder assertie hier is een fout, geen overslag.")
+                    }
+                }
+            }
+
+            Save-Artifact -Naam 'g6-api.json' -Inhoud $g6Bewijs | Out-Null
+            [void](Complete-Gate -Gate 'G6')
+        }
     }
 
     # G7/G8 horen bij de skill: een client-side gerenderde pagina is niet met een HTTP-aanroep te

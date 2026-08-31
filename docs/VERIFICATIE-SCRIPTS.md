@@ -221,6 +221,35 @@ Die laatste regel lost een bestaand probleem op: `Test-App.ps1` test vandaag `/v
 en `/uitgesloten-emails`. Die routes bestaan niet meer, maar omdat Blazor WebAssembly op élke
 route dezelfde pagina met statuscode 200 teruggeeft, staan ze al maanden op groen.
 
+### G5/G6 starten een echte functiehost (#909)
+
+Vanaf de Postgres-tier start de zelftest `FunctionApp.Postgres` zelf op en meet daar tegenaan:
+
+- **G5** — bewijst dat die host met de bedóelde databaseserver praat. Drie onafhankelijke
+  bewijzen: de tier-herkomst uit `/api/health` (build-time metadata, #863), de serverversie die de
+  applicatie meldt tegenover wat de container zelf op `SHOW server_version` antwoordt, en — het
+  enige bewijs dat niet uit de applicatie komt — een verbinding met
+  `application_name = 'SportlinkFunctionAppPostgres'` in `pg_stat_activity`. G5 controleert
+  bovendien dat **geen enkele functie in foutstatus staat**: een indexeringsfout maakt de host niet
+  onbereikbaar, dus zonder die controle blijft zo'n functie onzichtbaar kapot.
+- **G6** — roept de endpoints uit `selftest-expectations.psd1` aan en toetst **inhoud**, niet de
+  statuscode. Staat een endpoint in dat bestand zonder geïmplementeerde assertie in het script, dan
+  is dat een fout — geen stilzwijgende overslag.
+
+**Wat je nodig hebt:** Docker (wegwerp-Postgres én, als er nog geen draait, een wegwerp-Azurite) en
+Azure Functions Core Tools v4. Er is **geen** `local.settings.json` nodig: de host wordt volledig
+via omgevingsvariabelen geconfigureerd en het bestand van de ontwikkelaar wordt niet aangeraakt.
+
+**Je dev-omgeving mag blijven draaien.** De functiehost van de zelftest luistert op **7098**, niet
+op 7094. Alleen de browsersweep (G7/G8, de skill) heeft 7094 nodig, omdat BlazorAdmin die URL
+hardcodeert. De teardown stopt de functiehost op PID — nooit op poort — en ruimt een zelf gestarte
+Azurite op; een Azurite die er al stond blijft staan.
+
+**In Baseline-modus (SQL Server) melden G5/G6 zich als `blocked`, met opzet:** een volledige
+functiehost tegen de levende ontwikkeldatabase kan die database wijzigen (achtergrondtaken lopen bij
+het opstarten alsnog als hun moment al verstreken is), terwijl G4 de basismeting juist bewust
+alleen-lezen houdt.
+
 ### Exitcodes
 
 | Code | Betekenis |
