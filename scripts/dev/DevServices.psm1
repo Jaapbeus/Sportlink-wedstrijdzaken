@@ -538,7 +538,15 @@ function Wait-ForPostgres {
         $poging++
         $null = & docker exec $ContainerName pg_isready -U $User -d $Database 2>&1
         if ($LASTEXITCODE -eq 0) {
-            return [pscustomobject]@{ Ready = $true; Attempts = $poging }
+            # #851 (vervolg op de -d-fix hierboven): pg_isready kan "ready" melden vlak vóórdat de
+            # server daadwerkelijk queries accepteert — empirisch aangetroffen: "gereed na 3
+            # pogingen" gevolgd door "FATAL: the database system is starting up" op de eerstvolgende
+            # échte query. Als postgres OS-gebruiker via het Unix-socket (peer-auth, geen wachtwoord
+            # nodig) een verbinding proberen sluit dat gat, met dezelfde retry-discipline.
+            & docker exec -u postgres $ContainerName psql -U $User -d $Database -c 'SELECT 1;' 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return [pscustomobject]@{ Ready = $true; Attempts = $poging }
+            }
         }
         Start-Sleep -Milliseconds 1000
     }
@@ -554,10 +562,15 @@ function Invoke-Psql {
         Zelfde afweging als SQLCMDPASSWORD in Test-App.ps1 (#800).
 
         -Tuples geeft alleen de waarden terug (psql -t -A), handig voor asserties op één getal.
+
+        -SqlFile voert een lokaal .sql-bestand uit (bijv. een migratie- of seedbestand) in plaats
+        van -Sql: het bestand wordt eerst naar de container gekopieerd (#864/#851, nodig zodra een
+        meting een bestaand .sql-bestand moet hergebruiken in plaats van het inline te herhalen).
     #>
     param(
         [Parameter(Mandatory)][string]$ContainerName,
-        [Parameter(Mandatory)][string]$Sql,
+        [Parameter(ParameterSetName = 'Inline', Mandatory)][string]$Sql,
+        [Parameter(ParameterSetName = 'File', Mandatory)][string]$SqlFile,
         [Parameter(Mandatory)][string]$Password,
         [string]$User     = 'postgres',
         [string]$Database = 'postgres',
@@ -569,7 +582,14 @@ function Invoke-Psql {
               'psql', '-U', $User, '-d', $Database)
     if ($StopOnError) { $args += @('-v', 'ON_ERROR_STOP=1') }
     if ($Tuples)      { $args += @('-t', '-A') }
-    $args += @('-c', $Sql)
+
+    if ($PSCmdlet.ParameterSetName -eq 'File') {
+        $doelPad = "/tmp/$([Guid]::NewGuid().ToString('N')).sql"
+        & docker cp $SqlFile "${ContainerName}:${doelPad}" 2>&1 | Out-Null
+        $args += @('-f', $doelPad)
+    } else {
+        $args += @('-c', $Sql)
+    }
 
     $out = & docker @args 2>&1
     [pscustomobject]@{

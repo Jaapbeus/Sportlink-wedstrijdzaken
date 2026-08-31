@@ -703,6 +703,44 @@ wedstrijd (inclusief de door /uitslagen bijgewerkte score en status) en de match
   bestandsindelingen (los DB-projectbestand per tabel vs. cumulatieve migratiebestanden). Blijft
   open scope op #864.
 
+## 20. Zelftest-poorten G2-G4 zijn nu echte metingen (#860-acceptatiecriterium, vervolg op #851)
+
+**#860's kapstok-acceptatiecriterium "de zelftest (#851) haalt fase 4 tot en met 8" is deels
+voldaan.** `scripts/dev/Test-PostgresTier.ps1`'s G2 (schema, eerste run), G3 (idempotentie, tweede
+run) en G4 (demodata en rijtellingen) stonden allemaal op `blocked` in afwachting van de
+applicatie-datalaag — die datalaag bestaat inmiddels (deels, via #887-#890), dus zijn dit nu echte
+metingen in plaats van stubs.
+
+**G2/G3** herhalen lokaal precies wat de CI-job `fresh-db-postgres` al deed: `Database.Postgres.Cli`
+tweemaal draaien tegen de wegwerpcontainer, kernobjecten controleren, `public.schema_migrations`-
+telling vergelijken met het aantal `.sql`-bestanden.
+
+**G4** seedt de AllStars-demodata in dezelfde volgorde als die CI-job en toetst de rijtellingen
+**altijd tegen het contract in `selftest-expectations.psd1`**, nooit tegen een `-BaselinePath`-
+meting van de levende SQL Server-ontwikkeldatabase. Dat is een bewuste, empirisch onderbouwde
+keuze: een baseline-vergelijking gaf tijdens het bouwen valse mismatches op `speeltijden`
+(baseline 33, verse Postgres-seed 1) en `teamregels` (baseline 3, verse seed 1) — de
+ontwikkeldatabase had die rijen simpelweg opgehoopt door jarenlang handmatig testen, exact de reden
+waarom het contract die twee velden al als `Min` in plaats van `Exact` classificeert. Baseline-
+metingen (SQL Server) worden daarom altijd als geslaagd vastgelegd — deze poort meet en legt vast,
+oordeelt niet (zie het script se eigen `.PARAMETER Mode`-documentatie) — met een informatieve notitie
+als de levende data van het contract afwijkt.
+
+**Bijkomende bugfix, gevonden tijdens het empirisch testen van deze poorten:** `Wait-ForPostgres`
+(#901's `-d`-fix loste al één race conditie op) kon nog steeds "gereed" melden vlak vóórdat de
+server daadwerkelijk queries accepteerde — `pg_isready` slaagde, maar de eerstvolgende échte query
+gaf `FATAL: the database system is starting up`. Opgelost door ná een geslaagde `pg_isready` ook een
+`SELECT 1` te proberen als de `postgres`-OS-gebruiker (peer-auth via het Unix-socket in de
+container, geen wachtwoord nodig) en pas "gereed" te melden zodra die ook slaagt.
+
+**Bewust niet in deze ronde — een aparte, grotere opgave (issue #909):** G5 ("Applicatie praat
+aantoonbaar met de juiste engine") en G6 ("API met inhoudsasserties") vereisen een daadwerkelijk
+draaiende Azure Functions-host (`func start`) tegen `FunctionApp.Postgres` — inclusief een
+Azurite-afhankelijkheid, het ontbreken van een gecommit `local.settings.json`, een koude-
+startwachttijd (~20s, #175) en een eigen teardown-verantwoordelijkheid voor het functiehost-proces.
+Dat is een wezenlijk ander soort risico dan G2-G4 (die alleen tegen de database praten) — een
+halfbakken versie zou precies de "nep-groen"-fout opleveren die dit script elders bewust vermijdt.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

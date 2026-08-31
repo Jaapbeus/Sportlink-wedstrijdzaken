@@ -19,6 +19,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Zelftest-poorten G2 (schema), G3 (idempotentie) en G4 (demodata/rijtellingen) zijn nu echte
+  metingen in `scripts/dev/Test-PostgresTier.ps1` (#860-acceptatiecriterium, vervolg op #851).**
+  G2/G3 herhalen lokaal de CI-job `fresh-db-postgres` (migraties tweemaal draaien,
+  `schema_migrations`-telling toetsen). G4 seedt de AllStars-demodata en toetst de rijtellingen
+  altijd tegen het contract in `selftest-expectations.psd1` — nooit tegen een levende
+  SQL-Server-basismeting, sinds die tijdens het bouwen valse mismatches gaf op rijen die het
+  contract zelf al als `Min` (niet `Exact`) classificeert vanwege legitieme opeenhoping door
+  handmatig testen. Baseline-runs (SQL Server) leggen nu vast in plaats van te oordelen.
+  **Bijkomende bugfix:** `Wait-ForPostgres` kon "gereed" melden vlak vóórdat de server
+  daadwerkelijk queries accepteerde (`pg_isready` slaagde, de eerstvolgende échte query gaf
+  `FATAL: the database system is starting up`) — nu opgelost met een `SELECT 1`-naverificatie via
+  peer-auth. **Bewust niet in deze ronde:** G5/G6 vereisen een daadwerkelijk draaiende
+  functiehost (Azurite-afhankelijkheid, geen gecommit `local.settings.json`, eigen
+  teardown-verantwoordelijkheid) — een wezenlijk grotere stap, uitgewerkt in het nieuwe issue #909.
 - **Schema-drift-guard en veldresolutie-drifttest uitgebreid naar de Postgres-tier, deel 1 (issue
   864).** Drie concrete stukken geleverd: (1) `VeldResolutieDriftTests` bewaakt nu ook
   `Database.Postgres/PostgresPlannerViewGenerator.cs` als vierde plek — als tripwire, niet omdat

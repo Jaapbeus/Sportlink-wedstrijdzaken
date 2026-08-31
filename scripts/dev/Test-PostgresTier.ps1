@@ -363,6 +363,10 @@ try {
             $actief = $null
         }
 
+        # Bewaard voor G4 (Baseline): dezelfde, al-gevalideerde connectiereeks hergebruiken in
+        # plaats van hem daar opnieuw uit local.settings.json te lezen.
+        $script:State['sqlConnectionString'] = $actief
+
         if ([string]::IsNullOrWhiteSpace($actief)) {
             Add-Check -Gate 'G0' -Id 'G0.alleen-lokaal' -Status 'fail' `
                 -Message 'Values.SqlConnectionString ontbreekt of is leeg in local.settings.json.'
@@ -498,20 +502,284 @@ try {
     if ($g1 -eq 'fail') { throw 'G1 gefaald — zonder database is de rest betekenisloos.' }
 
     # ──────────────────────────────────────────────────────────────────────
-    # G2 t/m G8
+    # G2 — Schema (eerste run) / G3 — Idempotentie (tweede run)
     #
-    # Zodra de implementatieboom bestaat worden dit echte metingen. Tot die tijd komen we hier
-    # niet: G0 breekt af met exitcode 2. De poorten staan hier al wel, zodat de volgorde en de
-    # exitcriteria vastliggen vóór de implementatie begint — een assertie die je ná de code
-    # schrijft, beschrijft de code in plaats van hem te toetsen.
+    # Alleen zinvol tegen de nieuwe tier: de bestaande SQL Server-tier heeft zijn eigen,
+    # losstaande schema-drift-guard (CI) en hoeft hier niet nogmaals bewezen te worden.
     # ──────────────────────────────────────────────────────────────────────
+    if ($Tier -eq 'Postgres') {
+        $pgPassword    = $env:SELFTEST_PG_PASSWORD
+        $pgConnString  = "Host=localhost;Port=$($Ports.Postgres);Username=postgres;Password=$pgPassword;Database=sportlink_selftest"
+        $env:POSTGRES_CONNECTION_STRING = $pgConnString
+        $migratiesPad  = Join-Path $RepoRoot 'Database.Postgres' 'migrations'
+        $verwachtAantalMigraties = @(Get-ChildItem -Path $migratiesPad -Filter '*.sql').Count
 
-    foreach ($gate in @('G2','G3','G4','G5','G6')) {
+        function Invoke-PgTierMigratie {
+            $log = & dotnet run --project (Join-Path $RepoRoot 'Database.Postgres.Cli') --configuration Release -- $migratiesPad 2>&1
+            [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($log -join "`n") }
+        }
+
+        function Get-PgSchemaMigratiesTelling {
+            (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                -Sql 'SELECT COUNT(*) FROM public.schema_migrations;').Output
+        }
+
+        Write-Kop 'G2 — Schema (eerste run)'
+        $eersteRun = Invoke-PgTierMigratie
+        Save-Artifact -Naam 'g2-migratie-eerste-run.log' -Inhoud $eersteRun.Output | Out-Null
+
+        if ($eersteRun.ExitCode -ne 0) {
+            Add-Check -Gate 'G2' -Id 'G2.migratie.eerste-run' -Status 'fail' `
+                -Message 'dotnet run Database.Postgres.Cli faalde — zie g2-migratie-eerste-run.log.'
+        } else {
+            Add-Check -Gate 'G2' -Id 'G2.migratie.eerste-run' -Status 'pass'
+
+            $kernobjecten = @('public.appsettings', 'public.velden', 'public.speeltijden',
+                              'planner.geplandewedstrijden', 'public.schema_migrations')
+            $waardeLijst = ($kernobjecten | ForEach-Object { "('$_')" }) -join ','
+            $ontbrekend = Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples -Sql `
+                "SELECT string_agg(verwacht, ' ') FROM (VALUES $waardeLijst) AS v(verwacht) WHERE to_regclass(v.verwacht) IS NULL;"
+            if ([string]::IsNullOrWhiteSpace($ontbrekend.Output)) {
+                Add-Check -Gate 'G2' -Id 'G2.kernobjecten.aanwezig' -Status 'pass' -Actual "$($kernobjecten.Count) objecten"
+            } else {
+                Add-Check -Gate 'G2' -Id 'G2.kernobjecten.aanwezig' -Status 'fail' -Message "Ontbrekend: $($ontbrekend.Output)"
+            }
+
+            $tellingNa1e = Get-PgSchemaMigratiesTelling
+            if ($tellingNa1e -eq "$verwachtAantalMigraties") {
+                Add-Check -Gate 'G2' -Id 'G2.schema-migrations.telling' -Status 'pass' -Actual $tellingNa1e
+            } else {
+                Add-Check -Gate 'G2' -Id 'G2.schema-migrations.telling' -Status 'fail' `
+                    -Expected "$verwachtAantalMigraties" -Actual $tellingNa1e
+            }
+        }
+        [void](Complete-Gate -Gate 'G2')
+
+        Write-Kop 'G3 — Idempotentie (tweede run)'
+        $tweedeRun = Invoke-PgTierMigratie
+        Save-Artifact -Naam 'g3-migratie-tweede-run.log' -Inhoud $tweedeRun.Output | Out-Null
+
+        if ($tweedeRun.ExitCode -ne 0) {
+            Add-Check -Gate 'G3' -Id 'G3.migratie.tweede-run' -Status 'fail' `
+                -Message 'Tweede migratie-run faalde — zou idempotent moeten zijn. Zie g3-migratie-tweede-run.log.'
+        } else {
+            Add-Check -Gate 'G3' -Id 'G3.migratie.tweede-run' -Status 'pass'
+            $tellingNa2e = Get-PgSchemaMigratiesTelling
+            if ($tellingNa2e -eq "$verwachtAantalMigraties") {
+                Add-Check -Gate 'G3' -Id 'G3.geen-duplicaat' -Status 'pass' -Actual $tellingNa2e `
+                    -Message 'Geen extra rij door de tweede run.'
+            } else {
+                Add-Check -Gate 'G3' -Id 'G3.geen-duplicaat' -Status 'fail' `
+                    -Expected "$verwachtAantalMigraties" -Actual $tellingNa2e
+            }
+        }
+        [void](Complete-Gate -Gate 'G3')
+    }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # G4 — Demodata en rijtellingen
+    #
+    # Baseline (SqlServer): meet de bestaande, levende ontwikkeldatabase en legt de uitkomst vast
+    # als vergelijkingsbasis — géén oordeel tegen het contract in selftest-expectations.psd1, want
+    # een levende dev-database mag afwijken van een verse seed (handmatig getest, deels
+    # opgeruimd, ...). Dat is precies waarom -BaselinePath bestaat.
+    #
+    # Verify (Postgres): seedt de AllStars-demodata vers (zelfde volgorde als de CI-job,
+    # #862/#864) en vergelijkt met de meegegeven -BaselinePath als die er is; zonder baseline
+    # valt de vergelijking terug op het contract uit selftest-expectations.psd1.
+    # ──────────────────────────────────────────────────────────────────────
+    Write-Kop 'G4 — Demodata en rijtellingen'
+
+    $g4Actuals = [ordered]@{}
+
+    if ($Tier -eq 'Postgres') {
+        $pgPassword = $env:SELFTEST_PG_PASSWORD
+
+        # Bronrij voor de primaire club — zonder dit heeft de speeltijden-kopie in 006 niets om te
+        # kopiëren en bewijst de kopieerstap niets (zelfde noodzaak als de CI-job, #862).
+        Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -Sql `
+            "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('ZTPRIMARY', 'Zelftest Primary', true) ON CONFLICT DO NOTHING;" | Out-Null
+        Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -Sql `
+            "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode) VALUES ('JO13', 1.0, 60, 30, 10, 'ZTPRIMARY') ON CONFLICT DO NOTHING;" | Out-Null
+
+        $seed006 = Join-Path $RepoRoot 'Database.Postgres' 'migrations' '006_allstars_demodata.sql'
+        Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -SqlFile $seed006 | Out-Null
+
+        # his.teams/his.matches bestaan pas na de eerste sync — hier gesimuleerd met de letterlijke
+        # PostgresSchemaGenerator-DDL voor KnownEntities.Teams/Matches (#818), 1:1 overgenomen uit
+        # de CI-job (.github/workflows/build.yml, job fresh-db-postgres) in plaats van hier apart
+        # bedacht.
+        $hisDdlPath = Join-Path $ArtifactDir 'g4-his-teams-matches.sql'
+        Set-Content -Path $hisDdlPath -Encoding utf8NoBOM -Value @'
+CREATE SCHEMA IF NOT EXISTS his;
+CREATE TABLE IF NOT EXISTS his."teams" (
+    "teamcode" BIGINT, "lokaleteamcode" BIGINT, "poulecode" BIGINT,
+    "teamnaam" VARCHAR(100), "competitienaam" VARCHAR(200), "klasse" VARCHAR(200),
+    "poule" VARCHAR(50), "klassepoule" VARCHAR(200), "spelsoort" VARCHAR(50),
+    "competitiesoort" VARCHAR(50), "geslacht" VARCHAR(50), "teamsoort" VARCHAR(50),
+    "leeftijdscategorie" VARCHAR(50), "kalespelsoort" VARCHAR(50), "speeldag" VARCHAR(50),
+    "speeldagteam" VARCHAR(100), "more" VARCHAR(200), "clubcode" VARCHAR(20),
+    "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
+    "mta_deleted" TIMESTAMPTZ NULL,
+    "bk_teams" TEXT GENERATED ALWAYS AS (COALESCE("teamcode"::text, '') || '' || COALESCE("lokaleteamcode"::text, '') || '' || COALESCE("poulecode"::text, '')) STORED
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "UQ_teams_bk" ON his."teams" ("bk_teams");
+CREATE INDEX IF NOT EXISTS "IX_teams_clubcode" ON his."teams" ("clubcode");
+CREATE TABLE IF NOT EXISTS his."matches" (
+    "wedstrijddatum" VARCHAR(50), "wedstrijdcode" BIGINT, "wedstrijdnummer" BIGINT,
+    "datum" VARCHAR(50), "wedstrijd" VARCHAR(200), "accommodatie" VARCHAR(200),
+    "aanvangstijd" VARCHAR(50), "thuisteam" VARCHAR(100), "thuisteamid" VARCHAR(50),
+    "thuisteamlogo" VARCHAR(1000), "thuisteamclubrelatiecode" VARCHAR(50),
+    "uitteamclubrelatiecode" VARCHAR(50), "uitteam" VARCHAR(100), "uitteamid" VARCHAR(50),
+    "uitteamlogo" VARCHAR(1000), "competitiesoort" VARCHAR(200), "status" VARCHAR(50),
+    "meer" VARCHAR(1000), "teamnaam" VARCHAR(100), "teamvolgorde" INTEGER,
+    "competitie" VARCHAR(200), "klasse" VARCHAR(100), "poule" VARCHAR(100),
+    "klassepoule" VARCHAR(200), "kaledatum" VARCHAR(50), "vertrektijd" VARCHAR(50),
+    "verzameltijd" VARCHAR(50), "scheidsrechters" VARCHAR(500), "scheidsrechter" VARCHAR(200),
+    "veld" VARCHAR(100), "veld_subpositie" VARCHAR(5), "locatie" VARCHAR(100),
+    "plaats" VARCHAR(100), "rijders" VARCHAR(200), "kleedkamerthuisteam" VARCHAR(50),
+    "kleedkameruitteam" VARCHAR(50), "kleedkamerscheidsrechter" VARCHAR(50),
+    "datumopgemaakt" VARCHAR(50), "uitslag" VARCHAR(50), "uitslag-regulier" VARCHAR(50),
+    "uitslag-nv" VARCHAR(50), "uitslag-s" VARCHAR(50), "competitienaam" VARCHAR(200),
+    "eigenteam" VARCHAR(50), "sportomschrijving" VARCHAR(100),
+    "verenigingswedstrijd" VARCHAR(50), "clubcode" VARCHAR(20),
+    "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
+    "mta_deleted" TIMESTAMPTZ NULL,
+    "bk_matches" TEXT GENERATED ALWAYS AS (COALESCE("wedstrijdcode"::text, '')) STORED
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "UQ_matches_bk" ON his."matches" ("bk_matches");
+CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
+'@
+        Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -SqlFile $hisDdlPath | Out-Null
+
+        $seedMatches = Join-Path $RepoRoot 'scripts' 'migrations' '003-seed-allstars-demo-matches-postgres.sql'
+        Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -SqlFile $seedMatches | Out-Null
+        Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError -SqlFile $seedMatches | Out-Null
+
+        foreach ($rc in $Expect.rowCounts) {
+            $sql = switch ($rc.Key) {
+                'velden'              { "SELECT COUNT(*) FROM public.velden WHERE clubcode='ALLSTARS';" }
+                'veldbeschikbaarheid' { "SELECT COUNT(*) FROM public.veldbeschikbaarheid WHERE clubcode='ALLSTARS';" }
+                'speeltijden'         { "SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS';" }
+                'teamregels'          { "SELECT COUNT(*) FROM public.teamregels WHERE clubcode='ALLSTARS';" }
+                'teams'               { "SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS';" }
+                'teambegeleiding'     { "SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode='ALLSTARS';" }
+                'matches'             { "SELECT COUNT(*) FROM his.matches WHERE clubcode='ALLSTARS';" }
+                default               { $null }
+            }
+            if (-not $sql) { continue }
+            $res = Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples -Sql $sql
+            $g4Actuals[$rc.Key] = [int]$res.Output
+        }
+
+        # #864: niet-demoklub-assertie — dezelfde controle als de CI-stap (fresh-db-postgres).
+        $nietDemo = Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples -Sql `
+            "SELECT COUNT(*) FROM public.speeltijden WHERE clubcode <> 'ALLSTARS';"
+        if ([int]$nietDemo.Output -gt 0) {
+            Add-Check -Gate 'G4' -Id 'G4.niet-demoklub.speeltijden' -Status 'pass' -Actual $nietDemo.Output
+        } else {
+            Add-Check -Gate 'G4' -Id 'G4.niet-demoklub.speeltijden' -Status 'fail' `
+                -Message 'Geen speeltijden voor een niet-democlub — seed koos de verkeerde club (#740, #864).'
+        }
+    } else {
+        # Baseline: de bestaande SQL Server-ontwikkeldatabase. Alleen leesqueries — deze poort mag
+        # nooit iets in de levende dev-database wijzigen.
+        if (-not $script:State.Contains('sqlConnectionString')) {
+            Add-Check -Gate 'G4' -Id 'G4.connectiereeks.ontbreekt' -Status 'fail' `
+                -Message 'G0 heeft geen bruikbare SqlConnectionString vastgelegd — kan niet meten.'
+        } else {
+            $cs  = $script:State['sqlConnectionString']
+            $srv = if ($cs -match '(?:Data Source|Server|Address|Addr|Network Address)\s*=\s*([^;]+)') { $Matches[1].Trim() }
+            $db  = if ($cs -match '(?:Initial Catalog|Database)\s*=\s*([^;]+)') { $Matches[1].Trim() }
+            $usr = if ($cs -match '(?:User ID|User Id|UID)\s*=\s*([^;]+)') { $Matches[1].Trim() }
+            $pwd = if ($cs -match '(?:Password|PWD)\s*=\s*([^;]+)') { $Matches[1].Trim() }
+            $trustCert = $cs -match 'TrustServerCertificate\s*=\s*(?:True|Yes)'
+
+            $env:SQLCMDPASSWORD = $pwd
+            $sqlArgs = @('-U', $usr)
+            if ($trustCert) { $sqlArgs += '-C' }
+
+            function Invoke-SqlServerScalar($query) {
+                $regel = & sqlcmd -S $srv -d $db @sqlArgs -Q "SET NOCOUNT ON; $query" -h -1 -W 2>&1 |
+                    Where-Object { $_ -match '\S' } | Select-Object -Last 1
+                "$regel".Trim()
+            }
+
+            $sqlServerQueries = @{
+                'velden'              = "SELECT COUNT(*) FROM [dbo].[Velden] WHERE [ClubCode]='ALLSTARS';"
+                'veldbeschikbaarheid' = "SELECT COUNT(*) FROM [dbo].[VeldBeschikbaarheid] WHERE [ClubCode]='ALLSTARS';"
+                'speeltijden'         = "SELECT COUNT(*) FROM [dbo].[Speeltijden] WHERE [ClubCode]='ALLSTARS';"
+                'teamregels'          = "SELECT COUNT(*) FROM [dbo].[TeamRegels] WHERE [ClubCode]='ALLSTARS';"
+                'teams'               = "SELECT COUNT(*) FROM [his].[Teams] WHERE [ClubCode]='ALLSTARS';"
+                'teambegeleiding'     = "SELECT COUNT(*) FROM [avg].[Teambegeleiding] WHERE [ClubCode]='ALLSTARS';"
+                'matches'             = "SELECT COUNT(*) FROM [his].[Matches] WHERE [ClubCode]='ALLSTARS';"
+            }
+            foreach ($rc in $Expect.rowCounts) {
+                if (-not $sqlServerQueries.ContainsKey($rc.Key)) { continue }
+                $waarde = Invoke-SqlServerScalar $sqlServerQueries[$rc.Key]
+                $ok = $waarde -match '^\d+$'
+                if ($ok) {
+                    $g4Actuals[$rc.Key] = [int]$waarde
+                } else {
+                    Add-Check -Gate 'G4' -Id "G4.rijtelling.$($rc.Key)" -Status 'fail' `
+                        -Message "sqlcmd gaf geen getal terug: '$waarde'"
+                }
+            }
+        }
+    }
+
+    # Vergelijking: altijd tegen het contract in selftest-expectations.psd1 — dat bestand zegt
+    # zelf al "een CONTRACT, geen momentopname" en onderscheidt bewust Exact (deterministisch,
+    # rechtstreeks uit de seedscript-logica af te leiden) van Min (varieert legitiem, bijv.
+    # speeltijden/teamregels die door jarenlang handmatig testen kunnen zijn opgehoopt). -BaselinePath
+    # is hier bewust NIET voor gebruikt: een levende ontwikkeldatabase mag van het contract afwijken
+    # (dat IS precies waarom sommige rijen hier 'Min' zijn i.p.v. 'Exact') en zo'n afwijking zou de
+    # Postgres-Verify-run laten falen op een verschil dat niets met Postgres te maken heeft —
+    # empirisch aangetroffen tijdens het bouwen van deze poort (dev-database toonde speeltijden=33,
+    # teamregels=3 door eerder handmatig testen; een verse Postgres-seed gaf correct 1 en 1).
+    #
+    # Baseline (SqlServer): een afwijking van het contract is hier GEEN falen — deze poort meet en
+    # legt vast, oordeelt niet (zie .PARAMETER Mode). Wel zichtbaar gemaakt, want een baseline die
+    # zelf al van het contract afwijkt is nuttige informatie voor wie de uitkomst leest.
+    foreach ($rc in $Expect.rowCounts) {
+        if (-not $g4Actuals.Contains($rc.Key)) { continue }
+        $actual   = $g4Actuals[$rc.Key]
+        $voldoet  = if ($rc.Contains('Exact')) { $actual -eq $rc.Exact } else { $actual -ge $rc.Min }
+        $verwacht = if ($rc.Contains('Exact')) { "$($rc.Exact)" } else { ">= $($rc.Min)" }
+
+        if ($Tier -ne 'Postgres') {
+            $bericht = if ($voldoet) { 'Basismeting — vergelijkingsbasis voor een latere Verify-run.' }
+                       else { "Basismeting wijkt af van het contract ($verwacht) — een levende dev-database mag dat; alleen ter info." }
+            Add-Check -Gate 'G4' -Id "G4.rijtelling.$($rc.Key)" -Status 'pass' -Actual "$actual" -Message $bericht
+            continue
+        }
+
+        if ($voldoet) {
+            Add-Check -Gate 'G4' -Id "G4.rijtelling.$($rc.Key)" -Status 'pass' -Actual "$actual"
+        } else {
+            Add-Check -Gate 'G4' -Id "G4.rijtelling.$($rc.Key)" -Status 'fail' `
+                -Expected $verwacht -Actual "$actual" -Message $rc.Reden
+        }
+    }
+    Save-Artifact -Naam 'g4-rijtellingen.json' -Inhoud $g4Actuals | Out-Null
+    [void](Complete-Gate -Gate 'G4')
+
+    # ──────────────────────────────────────────────────────────────────────
+    # G5/G6 — bewust nog niet geïmplementeerd in deze ronde.
+    #
+    # Beide vereisen een daadwerkelijk draaiende functiehost (func start), inclusief Azurite en
+    # de bijbehorende ~20s koude-startwachttijd (#175) en teardown-verantwoordelijkheid — een
+    # aanzienlijk grotere en risicovollere stap dan G2-G4 (die alleen tegen de database praten).
+    # Een halfbakken versie zou een vlakke, onbetrouwbare groene/rode uitslag opleveren — precies
+    # de "nep-groen"-fout die dit script overal elders vermijdt. Zie issue #909 voor de
+    # vervolgopgave.
+    # ──────────────────────────────────────────────────────────────────────
+    foreach ($gate in @('G5', 'G6')) {
         $def = $Gates | Where-Object { $_.Id -eq $gate }
         if ($def.Modes -notcontains $Mode) { continue }
         Write-Kop "$gate — $($def.Naam)"
-        Add-Check -Gate $gate -Id "$gate.nog-niet-geimplementeerd" -Status 'blocked' -Blocked @(860) `
-            -Message 'Wordt ingevuld zodra de implementatieboom bestaat; de exitcriteria staan in issue #851.'
+        Add-Check -Gate $gate -Id "$gate.functiehost-niet-geautomatiseerd" -Status 'blocked' -Blocked @(909) `
+            -Message 'Vereist een draaiende functiehost (func start) — nog niet geautomatiseerd in dit script.'
         [void](Complete-Gate -Gate $gate)
     }
 
