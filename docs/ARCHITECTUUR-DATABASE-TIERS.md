@@ -608,6 +608,54 @@ e-mail-AI-pijplijn (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProces
 `EmailGraphService` — samen >2700 regels, bevatten geen directe SQL-toegang en vallen dus al
 buiten #889's eigen scope-omschrijving).
 
+## 18. Synchronisatie- en stagingpad vertaald (#890)
+
+**Volledig vertaald:** de kernorkestratie `PostgresSyncPipeline.RunSyncAsync` — API ophalen →
+`stg.teams`/`stg.matches`/`stg.matchdetails` → `his.*` — plus de bijbehorende staging-laag
+`PostgresStagingRepository` en de gedupliceerde JSON-modellen (`Team`/`Match`/`MatchDetails` + 7
+geneste typen) in `FunctionApp.Postgres/Sync/SportlinkModels.cs`. Twee buitenste triggers erbovenop:
+`SyncFunction` (timer + `GET /api/postgres/sync-matches`) en `AdminSyncFunction.Trigger`
+(fire-and-forget, zelfde vorm als de SQL Server-tier).
+
+**Vertaalconstructies:**
+- `CreateStagingTable.ExecuteAsync`/drie losse `MergeStgToHis(...).ExecuteAsync()`-aanroepen →
+  `PostgresMergeOrchestrator.RecreateStgTableAsync`/`EnsureHisTableAsync`/`MergeStgToHisAsync`
+  (#818) — geen nieuwe schema-/mergelaag nodig, alleen aanroepen wat er al stond.
+- De drie SQL-Server-specifieke staging-guards zijn *niet* 1-op-1 vertaalbaar naar Postgres-syntax
+  (`IF EXISTS ... ELSE IF ...` bestaat daar niet als top-level statement) en zijn daarom herschreven
+  als expliciete opeenvolgende C#-stappen: programma's dedup-guard (`SELECT`-existence-check vóór
+  `INSERT`) en uitslagen se "update-als-bestaat-anders-alleen-invoegen-als-niet-toekomstig"-guard
+  (`UPDATE` eerst; bij 0 geraakte rijen alleen `INSERT` als de wedstrijddatum niet in de toekomst
+  ligt). Die laatste datumvergelijking gebeurt als een ordinale C#-stringvergelijking tegen een
+  vooraf berekende UTC-ISO8601-tijdstip-string, functioneel identiek aan het origineel se
+  `CONVERT(NVARCHAR(50), GETUTCDATE(), 127)` maar zonder een Postgres-date-formatfunctie nodig te
+  hebben.
+- De hyphenated kolommen `uitslag-regulier`/`uitslag-nv`/`uitslag-s` (afkomstig uit de JSON-
+  velden, zie #855's kolomcasing-precedent) moeten in elke raw-SQL-referentie expliciet gequote
+  worden (`"uitslag-regulier"`) — `PostgresIdentifier.Quote` deed dat al bij het aanmaken van de
+  stg-tabel.
+
+**Empirisch geverifieerd** tegen een wegwerp-Postgres-container, met de bestaande, tier-
+onafhankelijke `SportlinkFixtureServer`/`SportlinkFixtures` (#867, beide `public`, rechtstreeks
+herbruikbaar zonder aanpassing): een volledige sync-run tegen de fixture levert het team, de
+wedstrijd (inclusief de door /uitslagen bijgewerkte score en status) en de matchdetails correct in
+`his.*` op, en `lastsynctimestamp` wordt bijgewerkt. Een tweede, identieke run bewijst idempotentie
+— geen dubbele rijen in `his.matches`/`his.matchdetails`.
+
+**Bewust niet in deze ronde — drie gedocumenteerde, tijdelijke gaten, geen equivalent gedrag:**
+- **Seizoensgrenzen (`dbo.Season`)** zijn niet naar Postgres gemigreerd — er bestaat geen
+  migratiebestand voor een seizoenstabel. De SQL Server-tier se eigen `SeasonHelper` valt bij elke
+  fout al terug op een hardcoded `30` (weken vooruit); `SyncFunction` gebruikt diezelfde
+  gedocumenteerde constante rechtstreeks voor de standaardsync. De reset-modus
+  (`?reset=true&season=`), die de seizoensstart nodig heeft, geeft een expliciete 501 in plaats van
+  een geraden startweek.
+- **Teamcanonicalisatie** (`TeamCanonicalisatieService.RefreshAsync`, twee best-effort-aanroepen in
+  het origineel) is overgeslagen — bestaat nog niet op deze tier. `his.teams`/`his.matches` worden
+  wel gevuld; alleen de afgeleide, ontdubbelde canonicalisatie ontbreekt.
+- **`MarkeerVervallenGeplandeWedstrijdenAsync`** is in het origineel juist ONGUARD (geen try/catch —
+  een fout daar hoort de hele sync te laten falen). Op de Postgres-tier ontbreekt deze logica nog
+  volledig; dit is dus een echt gat, geen best-effort-omissie zoals de teamcanonicalisatie hierboven.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
