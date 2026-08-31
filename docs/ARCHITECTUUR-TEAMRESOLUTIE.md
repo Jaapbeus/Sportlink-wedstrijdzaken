@@ -181,13 +181,21 @@ alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de re
 
 | Bestand | Verantwoordelijkheid |
 |---|---|
-| `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. |
+| `Planner.Shared/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. **Tier-onafhankelijk** — beide databasebomen gebruiken exact deze klasse (verhuisd hierheen bij #889; stond tot dan in `FunctionApp/TeamResolution/`). |
 | `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen`, altijd op ClubCode. |
 | `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
 | `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
 | `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. |
+
+**Postgres-tier (epic #815).** De datatoegangslaag bestaat als parallelle boom onder
+`FunctionApp.Postgres/TeamResolution/` — `TeamCandidateRepository`, `TeamAliasLearningService`
+(#889, deel 1) en `TeamCanonicalisatieService` (#889, deel 2), tegen `public.teams`/
+`public.teamaliassen`. De normalisatielogica zelf is **niet** gedupliceerd: beide bomen gebruiken
+`Planner.Shared.TeamNaamNormalisatie`. `TeamResolver`, `TeamDisambiguationAiService` en
+`TeamlijstGereedheid` zijn daar (nog) niet vertaald — zie
+`docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
 
 ## Regels bij wijzigingen
 

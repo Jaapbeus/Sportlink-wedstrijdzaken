@@ -59,7 +59,7 @@ internal static class AllstarsTestDataRepository
                 ORDER BY m.[teamnaam]"
             : $@"SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
-                       {LeeftijdNormalisatie.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
+                       {LeeftijdNormalisatieSql.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
                 FROM [his].[matches] m
                 OUTER APPLY (
                     SELECT TOP 1 [leeftijdscategorie]

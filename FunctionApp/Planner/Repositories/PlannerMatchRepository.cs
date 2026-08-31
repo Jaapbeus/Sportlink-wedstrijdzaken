@@ -116,7 +116,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             {VeldResolutie.SqlOuterApply("m.[veld]", ClubScope.ClubCodeParam)}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
@@ -229,7 +229,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[accommodatie] LIKE @accommodatiePattern
@@ -282,7 +282,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
@@ -379,7 +379,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
               AND m.[accommodatie] LIKE @accommodatiePattern
