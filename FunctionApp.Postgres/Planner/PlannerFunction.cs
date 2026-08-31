@@ -11,33 +11,25 @@ namespace FunctionApp.Postgres.Planner;
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/PlannerFunction.cs</c> (#888). Vertaald
 /// zijn <c>Veldbezetting</c> — de "lichtgewicht wat staat er nu gepland"-weergave (#566) zonder
-/// FieldScheduler-berekening —, <c>GetTeamSchedule</c> (het teamrooster), en — sinds #888 vervolg —
-/// <c>BevestigWedstrijd</c>, <c>ZoekWedstrijd</c> en <c>HerplanBevestig</c>.
+/// FieldScheduler-berekening —, <c>GetTeamSchedule</c> (het teamrooster), <c>BevestigWedstrijd</c>,
+/// <c>ZoekWedstrijd</c>, <c>HerplanBevestig</c> (#888 vervolg), en — sinds §41 — ook
+/// <c>CheckAvailability</c>, <c>DoordeweeksBeschikbaar</c>, <c>HerplanCheck</c> en
+/// <c>PopulateSunset</c>.
 /// <para>
-/// <b>De overige zes planner-endpoints zijn NIET vertaald en geven een expliciete 501</b> in
-/// plaats van de stille 404 die de afwezigheid van een route anders zou opleveren — zelfde
-/// discipline als <c>AdminTeambegeleidingFunction.Doorsturen</c> en <c>AdminSyncFunction</c>
-/// vóór #890. Elke 501-melding noemt de daadwerkelijke, geverifieerde ontbrekende afhankelijkheid
-/// (niet een generieke "nog niet gedaan"), verdeeld over drie verschillende soorten gaten:
+/// <b>Alleen <c>AutoPlan</c> en <c>AutoPlanToepassen</c> geven nog een expliciete 501</b> in plaats
+/// van de stille 404 die de afwezigheid van een route anders zou opleveren — zelfde discipline als
+/// <c>AdminTeambegeleidingFunction.Doorsturen</c> en <c>AdminSyncFunction</c> vóór #890. Ze hangen
+/// af van <c>AutoPlanService</c>/<c>PlannerHtmlGenerator</c> (576 regels), die nog niet bestaan op
+/// deze tier — de FieldScheduler-engine zelf woont sinds §38 al in <c>Planner.Shared</c> en is dus
+/// géén gat meer, alleen de poort ontbreekt nog.
 /// </para>
-/// <list type="bullet">
-/// <item><b>Twee ontbrekende repositories.</b> <c>CheckAvailability</c>, <c>DoordeweeksBeschikbaar</c>
-/// en <c>HerplanCheck</c> hangen (via <c>AvailabilityService</c>/<c>RescheduleService</c>) allemaal
-/// af van <c>PlannerAvailabilityRepository</c> en <c>TeamRulesRepository</c> — die bestaan inmiddels
-/// wél als bestand op deze tier (#888 vervolg), maar er is nog geen <c>AvailabilityService</c>/
-/// <c>RescheduleService</c> die ze aanroept — plus zonsondergangdata (zie volgende punt).</item>
-/// <item><b>Eén ontbrekende schematabel.</b> <c>PopulateSunset</c> schrijft naar
-/// <c>dbo.Zonsondergang</c> — <c>public.zonsondergang</c> bestaat inmiddels wél (#888 vervolg,
-/// migratie 011), maar er is nog geen <c>PostgresSunsetCalculator</c>/repository-methode die hem
-/// vult. <c>planner.HerplanVerzoeken</c>/<c>planner.herplanverzoeken</c> is met dezelfde migratie
-/// gedekt EN aangesloten (zie <c>HerplanBevestig</c> hieronder) — geen gat meer.</item>
-/// <item><b>De FieldScheduler-engine.</b> <c>AutoPlan</c> en <c>AutoPlanToepassen</c> hangen af van
-/// <c>PlannerShared</c>/<c>FieldScheduler</c>, die inmiddels wél in <c>Planner.Shared</c> woont
-/// (#888 vervolg, architectuurbeslissing genomen — precedent §25 gevolgd), maar er is nog geen
-/// <c>AutoPlanService</c>/<c>PlannerHtmlGenerator</c>-poort die hem aanroept.
-/// </item>
-/// </list>
-/// <para>Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16, §25, §35 en §40.</para>
+/// <para>
+/// <b><c>CheckAvailability</c>/<c>DoordeweeksBeschikbaar</c>/<c>HerplanCheck</c> gebruiken bewust
+/// géén real-time Sportlink-API-pad</b> — zie <c>AvailabilityService</c>'s klasse-doc-comment. Dat
+/// is een aparte, forse eenheid werk (HTTP-client, <c>EgressGuard</c>-gate, fixture-test), niet een
+/// stilzwijgend overgeslagen detail.
+/// </para>
+/// <para>Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16, §25, §35, §40 en §41.</para>
 /// </summary>
 public static class PlannerFunction
 {
@@ -122,27 +114,116 @@ public static class PlannerFunction
     // daadwerkelijke ontbrekende afhankelijkheid; geen enkele request-body wordt geparsed, want
     // een stub verwerkt hem toch nooit — zelfde patroon als AdminTeambegeleidingFunction.Doorsturen.
 
-    private const string GeenAvailabilityRepository =
-        "PlannerAvailabilityRepository en TeamRulesRepository bestaan nog niet op deze tier " +
-        "(issue 888).";
-
+    /// <summary>
+    /// Controleert veldbeschikbaarheid — Postgres-vertaling van het gelijknamige SQL Server-endpoint
+    /// (issue 888 vervolg, §41). Zie <c>AvailabilityService</c>'s klasse-doc-comment voor de bewuste
+    /// scope-beperking (geen real-time Sportlink-API-pad, uitsluitend de DB-bezetting).
+    /// </summary>
     [Function("CheckAvailability")]
-    public static Task<IActionResult> CheckAvailability(
+    public static async Task<IActionResult> CheckAvailability(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/check-availability")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req, GeenAvailabilityRepository);
+    {
+        var log = context.GetLogger("CheckAvailability");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<CheckAvailabilityRequest>(body);
+            if (request == null || string.IsNullOrEmpty(request.Datum))
+                return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            log.LogInformation("CheckAvailability: datum={Datum}, tijd={Tijd}, team={Team}, cat={Cat}, club={Club}",
+                request.Datum, request.AanvangsTijd, request.TeamNaam, request.LeeftijdsCategorie, clubCode);
+
+            var response = await AvailabilityService.CheckAvailabilityAsync(
+                PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
+
+            return new OkObjectResult(response);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "CheckAvailability failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// Doordeweekse beschikbaarheid door het seizoen heen — Postgres-vertaling van het gelijknamige
+    /// SQL Server-endpoint (issue 888 vervolg, §41).
+    /// </summary>
     [Function("DoordeweeksBeschikbaar")]
-    public static Task<IActionResult> DoordeweeksBeschikbaar(
+    public static async Task<IActionResult> DoordeweeksBeschikbaar(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/doordeweeks-beschikbaar")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req, GeenAvailabilityRepository);
+    {
+        var log = context.GetLogger("DoordeweeksBeschikbaar");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<DoordeweeksBeschikbaarRequest>(body)
+                ?? new DoordeweeksBeschikbaarRequest();
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            log.LogInformation("DoordeweeksBeschikbaar: dag={Dag}, duur={Duur}, cat={Cat}, club={Club}",
+                request.DagFilter, request.DuurMinuten, request.LeeftijdsCategorie, clubCode);
+
+            var response = await AvailabilityService.CheckDoordeweeksBeschikbaarAsync(
+                PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
+
+            return new OkObjectResult(response);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "DoordeweeksBeschikbaar failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// Controleert herplanmogelijkheden voor een bekende wedstrijd — Postgres-vertaling van het
+    /// gelijknamige SQL Server-endpoint (issue 888 vervolg, §41).
+    /// </summary>
     [Function("HerplanCheck")]
-    public static Task<IActionResult> HerplanCheck(
+    public static async Task<IActionResult> HerplanCheck(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-check")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req, GeenAvailabilityRepository);
+    {
+        var log = context.GetLogger("HerplanCheck");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<HerplanCheckRequest>(body);
+            if (request == null || request.Wedstrijdcode == 0)
+                return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' is verplicht." });
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            log.LogInformation("HerplanCheck: wedstrijdcode={Code}, voorkeur={Tijd}, club={Club}",
+                request.Wedstrijdcode, request.VoorkeurTijd, clubCode);
+
+            var response = await RescheduleService.CheckRescheduleAvailabilityAsync(
+                PostgresDatabaseConfig.ConnectionString, request, log, clubCode);
+
+            return new OkObjectResult(response);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "HerplanCheck failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
 
     /// <summary>
     /// Legt een handmatig ingeplande wedstrijd vast — Postgres-vertaling van het gelijknamige
@@ -328,13 +409,37 @@ public static class PlannerFunction
         }
     }
 
+    /// <summary>
+    /// Berekent en bewaart zonsondergangtijden voor het lopende en volgende jaar — Postgres-
+    /// vertaling van het gelijknamige SQL Server-endpoint (issue 888 vervolg, §41).
+    /// </summary>
     [Function("PopulateSunset")]
-    public static Task<IActionResult> PopulateSunset(
+    public static async Task<IActionResult> PopulateSunset(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/populate-sunset")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req,
-            "dbo.Zonsondergang heeft geen Postgres-tegenhanger (issue 888, zie ook " +
-            "scripts/ci/check-postgres-table-coverage.sh).");
+    {
+        var log = context.GetLogger("PopulateSunset");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var from = new DateOnly(today.Year, 1, 1);
+            var to = new DateOnly(today.Year + 1, 12, 31);
+
+            log.LogInformation("PopulateSunset: computing for {From} to {To}", from, to);
+            await PlannerSettingsRepository.PopulateSunsetTableAsync(PostgresDatabaseConfig.ConnectionString, from, to);
+
+            return new OkObjectResult(new { message = $"Sunset data populated from {from} to {to}." });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "PopulateSunset failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
 
     private const string GeenFieldScheduler =
         "De FieldScheduler-planningsmotor (PlannerShared, 538 regels) is nog niet vertaald — de " +

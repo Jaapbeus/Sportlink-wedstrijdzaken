@@ -19,6 +19,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Nog vier planner-endpoints werken echt op de Postgres-tier (issue 888 vervolg):
+  `CheckAvailability`, `DoordeweeksBeschikbaar`, `HerplanCheck` en `PopulateSunset`.** Daarmee zijn
+  van de elf planner-endpoints er negen vertaald; alleen `AutoPlan` en `AutoPlanToepassen` geven nog
+  een expliciete 501 (die wachten op een `AutoPlanService`/`PlannerHtmlGenerator`-poort, niet meer op
+  de planningsmotor zelf — die staat sinds een eerdere stap al in `Planner.Shared`). Nieuw op deze
+  tier: `AvailabilityService`, `RescheduleService`, `PostgresSunsetCalculator`, plus
+  zonsondergang-opslag/-uitlezing en een team-conflictcontrole ("dit team speelt die dag al").
+  **Bewuste beperking, expliciet genoemd:** deze vier endpoints gebruiken uitsluitend de
+  databasebezetting, niet het real-time Sportlink-API-pad van de SQL Server-tier — dat is precies
+  het bestaande, ondersteunde `useRealtimeApi = 0`-gedrag; de live-API-integratie zelf is een
+  aparte, forse eenheid werk. Zeven permanente integratietests tegen een echte Postgres-container;
+  onderscheidend vermogen bevestigd (met de team-conflictcontrole tijdelijk uitgeschakeld wordt
+  precies de bijbehorende test rood, de andere 48 blijven groen).
 - **`BevestigWedstrijd`, `ZoekWedstrijd` en `HerplanBevestig` werken nu echt op de Postgres-tier
   (issue 888 vervolg) — drie van de resterende zes 501-stubs zijn vervangen door de echte
   implementatie.** `planner.geplandewedstrijden` miste vier kolommen t.o.v. de SQL Server-tier

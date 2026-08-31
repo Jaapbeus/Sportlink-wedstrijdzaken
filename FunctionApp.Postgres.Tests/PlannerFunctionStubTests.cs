@@ -7,12 +7,14 @@ using Xunit;
 namespace FunctionApp.Postgres.Tests;
 
 /// <summary>
-/// Legt vast dat de zes niet-vertaalde planner-endpoints een expliciete 501 geven — geen stille
-/// 404, en geen onjuiste 200 (#888). <c>BevestigWedstrijd</c>, <c>ZoekWedstrijd</c> en
-/// <c>HerplanBevestig</c> stonden hier eerder ook in; die zijn sinds #888 vervolg echte
-/// implementaties (zie <c>PlannerMatchRepositoryIntegrationTests</c> voor hun dekking tegen een
-/// echte Postgres-container — een <c>FunctionContext</c>-loze aanroep zoals hier zou daar
-/// meteen op een <c>NullReferenceException</c> uit <c>context.GetLogger(...)</c> stuklopen).
+/// Legt vast dat de twee resterende niet-vertaalde planner-endpoints (<c>AutoPlan</c>,
+/// <c>AutoPlanToepassen</c>) een expliciete 501 geven — geen stille 404, en geen onjuiste 200
+/// (#888). <c>BevestigWedstrijd</c>, <c>ZoekWedstrijd</c>, <c>HerplanBevestig</c> (#888 vervolg) en
+/// sinds §41 ook <c>CheckAvailability</c>, <c>DoordeweeksBeschikbaar</c>, <c>HerplanCheck</c> en
+/// <c>PopulateSunset</c> stonden hier eerder ook in; die zijn nu echte implementaties (zie
+/// <c>PlannerMatchRepositoryIntegrationTests</c>/<c>AvailabilityServiceIntegrationTests</c> voor hun
+/// dekking tegen een echte Postgres-container — een <c>FunctionContext</c>-loze aanroep zoals hier
+/// zou daar meteen op een <c>NullReferenceException</c> uit <c>context.GetLogger(...)</c> stuklopen).
 ///
 /// <para>
 /// <b>Waarom geen echte functiehost of database nodig is.</b> Elke stub roept alleen
@@ -36,10 +38,6 @@ public class PlannerFunctionStubTests
 
     public static IEnumerable<object[]> Stubs()
     {
-        yield return new object[] { "CheckAvailability", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.CheckAvailability(r, null!)) };
-        yield return new object[] { "DoordeweeksBeschikbaar", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.DoordeweeksBeschikbaar(r, null!)) };
-        yield return new object[] { "HerplanCheck", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.HerplanCheck(r, null!)) };
-        yield return new object[] { "PopulateSunset", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.PopulateSunset(r, null!)) };
         yield return new object[] { "AutoPlan", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.AutoPlan(r, null!)) };
         yield return new object[] { "AutoPlanToepassen", (Func<HttpRequest, Task<IActionResult>>)(r => PlannerFunction.AutoPlanToepassen(r, null!)) };
     }
@@ -52,31 +50,6 @@ public class PlannerFunctionStubTests
 
         var obj = resultaat.Should().BeOfType<ObjectResult>($"{naam} moet een ObjectResult teruggeven, geen 404/200").Subject;
         obj.StatusCode.Should().Be(501, $"{naam} is niet vertaald en mag geen andere statuscode voorwenden");
-    }
-
-    [Fact]
-    public async Task DeDrieAvailabilityAfhankelijkeEndpoints_NoemenBeidePlannerAvailabilityRepositoryEnTeamRulesRepository()
-    {
-        // De inhoud van de 501-melding is net zo belangrijk als de statuscode — een lege of
-        // generieke reden zou een toekomstige lezer misleiden over wat er precies ontbreekt.
-        foreach (var naam in new[] { "CheckAvailability", "DoordeweeksBeschikbaar", "HerplanCheck" })
-        {
-            var aanroep = Stubs().First(s => (string)s[0] == naam)[1];
-            var resultaat = await ((Func<HttpRequest, Task<IActionResult>>)aanroep)(MaakRequest());
-            var tekst = ((ObjectResult)resultaat).Value!.ToString();
-
-            tekst.Should().Contain("PlannerAvailabilityRepository", naam);
-            tekst.Should().Contain("TeamRulesRepository", naam);
-        }
-    }
-
-    [Fact]
-    public async Task DeOntbrekendeTabel_WordtBijNaamGenoemd()
-    {
-        // planner.HerplanVerzoeken/herplanverzoeken kreeg zijn Postgres-tegenhanger in #888 vervolg
-        // (migratie 011) en staat dus niet meer hier — alleen Zonsondergang/zonsondergang mist nog.
-        var sunset = (ObjectResult)await PlannerFunction.PopulateSunset(MaakRequest(), null!);
-        sunset.Value!.ToString().Should().Contain("Zonsondergang");
     }
 
     [Fact]
