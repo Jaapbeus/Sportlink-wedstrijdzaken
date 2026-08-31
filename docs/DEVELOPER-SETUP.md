@@ -677,14 +677,45 @@ gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#86
 uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
 hem te draaien de bovenstaande handmatige stappen.
 
-**Bijgewerkt (#890):** de Postgres-tier heeft inmiddels een eigen synchronisatiepad
-(`FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs`). `SportlinkFixtureServer`/`SportlinkFixtures`
-zijn — zoals hierboven al vermeld, tier-onafhankelijk — rechtstreeks hergebruikt om dat pad te
-verifiëren (zie docs/ARCHITECTUUR-DATABASE-TIERS.md §18): een wegwerp-Postgres-container, de zes
-migraties, en een console-harnas dat `PostgresSyncPipeline.RunSyncAsync` aanroept tegen
-`SportlinkFixtures.BuildServer(...)`. Er bestaat nog geen permanente, geautomatiseerde
-`[Fact(Skip=...)]`-integratietest zoals `SportlinkFixtureSyncIntegrationTests` hierboven voor de
-Postgres-tier — dat is nog open scope voor een vervolgissue.
+### 7.2 Postgres-tier — `FunctionApp.Postgres.Tests` (issue 890)
+
+De Postgres-tier heeft sinds #905 een eigen synchronisatiepad
+(`FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs`), en sinds issue 890 ook een **blijvend**
+testproject ervoor: `FunctionApp.Postgres.Tests`. Daarvóór liep elke verificatie op deze tier via
+wegwerp-consoleharnassen — reproduceerbaar op het moment zelf, maar niets bewaakte daarna nog tegen
+regressie.
+
+Drie verschillen met de SQL Server-suite hierboven, alle drie in het voordeel van deze:
+
+| | SQL Server (§7.1) | Postgres (§7.2) |
+|---|---|---|
+| Aanzetten | `[Fact(Skip = "...")]` — alleen na het handmatig weghalen van de Skip | `[PostgresFact]` (#866) — slaat zichzelf **zichtbaar** over zonder `POSTGRES_TEST_CONNECTION_STRING`, en draait onveranderd zodra die gezet is |
+| In CI | draait niet mee | draait mee in de job `fresh-db-postgres`, tegen de instantie die die job zelf al opzet |
+| Fixtures | `SportlinkFixtureServer`/`SportlinkFixtures` | **exact dezelfde bestanden**, via `<Compile Link>` — niet gekopieerd, dus geen drift |
+
+> **Waarom `<Compile Link>` en geen `ProjectReference` naar `FunctionApp.Tests`:** dat zou
+> transitief `FunctionApp` (de SQL Server-tier) meeslepen — precies de cross-tree-koppeling die
+> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2 verbiedt — en beide testassemblies elkaars tests laten
+> ontdekken. Zie de toelichting in `FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj`.
+
+Lokaal draaien tegen een wegwerpcontainer — dezelfde opzet als de CI-job:
+
+```powershell
+docker run -d --name pgfixture -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=devonly"
+dotnet run --project Database.Postgres.Cli
+$env:POSTGRES_TEST_CONNECTION_STRING = $env:POSTGRES_CONNECTION_STRING
+dotnet test FunctionApp.Postgres.Tests
+docker rm -f pgfixture
+```
+
+Zonder `POSTGRES_TEST_CONNECTION_STRING` meldt dezelfde opdracht `Skipped: 8` met de reden erbij —
+geen stilzwijgend groen resultaat.
+
+**Wat de suite dekt:** het synchronisatiepad end-to-end tegen de fixtureserver inclusief
+idempotentie (`PostgresSyncFixtureIntegrationTests`, het acceptatiecriterium van issue 890),
+e-mailpersistentie en dedup (`PostgresEmailPersistenceIntegrationTests`, acceptatiecriterium 3 van
+issue 889) en de teamcanonicalisatie (`TeamCanonicalisatieIntegrationTests`, §28).
 
 ---
 

@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Database.Postgres.Cli", "Da
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionApp.Postgres", "FunctionApp.Postgres\FunctionApp.Postgres.csproj", "{9C06A470-EB2D-4F9E-BB87-B76BADBD59D1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionApp.Postgres.Tests", "FunctionApp.Postgres.Tests\FunctionApp.Postgres.Tests.csproj", "{AD50E98F-620D-434A-87E6-A4992001D120}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -157,6 +159,18 @@ Global
 		{9C06A470-EB2D-4F9E-BB87-B76BADBD59D1}.Release|x86.Build.0 = Release|x86
 		{9C06A470-EB2D-4F9E-BB87-B76BADBD59D1}.Release|x64.ActiveCfg = Release|Any CPU
 		{9C06A470-EB2D-4F9E-BB87-B76BADBD59D1}.Release|x64.Build.0 = Release|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Debug|x86.Build.0 = Debug|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Debug|x64.Build.0 = Debug|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x86.ActiveCfg = Release|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x86.Build.0 = Release|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x64.ActiveCfg = Release|Any CPU
+		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
