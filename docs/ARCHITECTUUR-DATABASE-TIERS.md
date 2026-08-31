@@ -1068,6 +1068,30 @@ rechtstreeks aanroept: **36 asserties, 0 gefaald.** Onder meer:
   — daarvoor geldt de "precies één plek"-regel uit CLAUDE.md, en die wordt hier gewoon uit
   `Planner.Shared` gebruikt (transitief via `Database.Postgres`).
 
+## 26. Kleinere zusterbevinding van sectie 23: onvolledig audit-spoor op beide tiers (#916)
+
+**Klein, bewust laag geprioriteerd, en dit keer op BEIDE tiers tegelijk** — in tegenstelling tot
+sectie 23 (#913, uitsluitend Postgres) is dit geen porteringsfout maar een vooraf bestaand gebrek
+dat 1-op-1 is overgenomen bij het porten (#887): `AdminTemplatesFunction.Put` deed de template-
+upsert en de auditlog-insert als twee losse, niet-getransactioneerde statements, op zowel de SQL
+Server- als de Postgres-tier. Gevonden door dezelfde audit-agent-aanpak die sectie 23 opleverde,
+toegepast op de overige Admin-endpoints.
+
+**Fix:** beide tiers wrappen dit nu in één transactie — hetzelfde patroon dat
+`AdminSettingsFunction.Put` (beide tiers) al correct toepaste, dus geen nieuw ontwerp nodig.
+
+**Empirisch geverifieerd op beide tiers** (wegwerp-Postgres-16- en wegwerp-SQL-Server-2022-
+container): een opzettelijk te lange waarde voor de audit-kolom `Veld`/`veld` (`VARCHAR(100)`/
+`NVARCHAR(100)`) forceert een fout ná de geslaagde upsert — vóór deze fix zou die upsert blijven
+staan, nu draait hij mee terug. Verificatie liep, net als sectie 23, via een losse harness die de
+exacte transactielogica uit de fix reproduceert (geen mock van `HttpRequest`/`FunctionContext`
+buiten een draaiende host — zelfde beperking als daar).
+
+**Bewust niet meegenomen:** een bredere audit van elke overige Admin-endpoint op beide tiers voor
+hetzelfde patroon — de gerichte audit die dit opleverde dekte alleen de Postgres-tier-bestanden;
+een systematische sweep van de SQL Server-tier op hetzelfde gebrek is geen onderdeel van epic #815
+en dus niet in deze ronde meegenomen.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

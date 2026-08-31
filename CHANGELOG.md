@@ -271,6 +271,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **E-mailtemplate opslaan kon een onvolledig audit-spoor achterlaten, op beide databasetiers
+  (#916).** `AdminTemplatesFunction.Put` deed de template-upsert en de auditlog-insert als twee
+  losse, niet-getransactioneerde statements — een fout tussen de twee liet de templatewijziging
+  wél doorgevoerd zien terwijl er geen auditrij bijkwam. Geen dataverlies (in tegenstelling tot
+  #913), wel een onvolledige audittrail voor een wijziging die wél had plaatsgevonden. Beide
+  tiers wrappen dit nu in één transactie, hetzelfde patroon dat `AdminSettingsFunction.Put` al
+  correct toepaste. Empirisch geverifieerd op beide tiers (wegwerp-Postgres-16- en wegwerp-SQL-
+  Server-2022-container): een opzettelijk geforceerde fout in de audit-insert (een te lange
+  waarde voor de kolombreedte) laat de eerder geslaagde upsert nu volledig ongedaan maken in
+  plaats van achter te blijven.
 - **De synchronisatietimer van de Postgres-tier startte nooit bij wie het configuratiesjabloon
   volgde.** `FunctionApp.Postgres/local.settings.template.json` miste `FETCH_SCHEDULE`, waardoor
   de functiehost wel opkwam maar `PostgresFetchAndStoreApiData` permanent in foutstatus stond —
