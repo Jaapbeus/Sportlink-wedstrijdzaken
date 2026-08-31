@@ -1,11 +1,36 @@
-using Planner.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace SportlinkFunction.Planner
+namespace Planner.Shared
 {
+    /// <summary>
+    /// De vier clubinstellingen die de HTML-generator nodig heeft. Bewust een expliciete parameter
+    /// in plaats van een greep in een statische instellingencache (issue 888 vervolg, §42).
+    ///
+    /// <para>
+    /// <b>Waarom dit type bestaat.</b> Dit bestand stond op de SQL Server-tier en las zijn
+    /// instellingen rechtstreeks uit <c>SystemUtilities.AppSettings</c> — de enige reden waarom 576
+    /// regels pure stringopbouw niet gedeeld kónden worden. Dat is precies het soort duplicatie dat
+    /// de architectuurregel in docs/ARCHITECTUUR-DATABASE-TIERS.md wil voorkomen. Door de vier
+    /// waarden binnen te geven werkt de generator op beide tiers, met elk zijn eigen cache als bron.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>EersteElftalNaam</c> en <c>ClubCode</c> mogen <c>null</c> zijn: dan vervalt de
+    /// eerste-elftal-markering en de senioren-sortering, precies zoals het origineel deed wanneer
+    /// die instellingen leeg waren. <c>PlannerAfzenderNaam</c> is verplicht — het origineel gooide
+    /// daar een <see cref="InvalidOperationException"/> op, en die controle hoort bij de aanroeper
+    /// die de instelling ophaalt, niet halverwege het renderen.
+    /// </para>
+    /// </summary>
+    public sealed record HtmlInstellingen(
+        string Accommodatie,
+        string PlannerAfzenderNaam,
+        string? EersteElftalNaam,
+        string? ClubCode);
+
     /// <summary>
     /// Genereert een visuele HTML veldplanner in Sportlink-stijl.
     /// Browser-versie: side-by-side oud/nieuw met klik-interactie.
@@ -38,7 +63,8 @@ namespace SportlinkFunction.Planner
             List<BestaandeWedstrijd> alleWedstrijden,
             List<OptimalisatieSuggestie> suggesties,
             List<VeldInfo> velden,
-            string doel)
+            string doel,
+            HtmlInstellingen instellingen)
         {
             var sb = new StringBuilder();
             var nl = new System.Globalization.CultureInfo("nl-NL");
@@ -94,7 +120,7 @@ namespace SportlinkFunction.Planner
 
             // Titel
             sb.AppendLine($"<h2 style='margin:0 0 3px 0;'>Veldplanner — Optimalisatieadvies</h2>");
-            var accommodatieNaam = SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "";
+            var accommodatieNaam = instellingen.Accommodatie ?? "";
             var locatieSuffix = string.IsNullOrWhiteSpace(accommodatieNaam) ? "" : $" — {accommodatieNaam}";
             sb.AppendLine($"<p style='margin:0 0 10px 0;color:{TXT_DIM};font-size:12px;'>{datum.ToString("dddd d MMMM yyyy", nl)}{locatieSuffix} — {suggesties.Count} suggestie(s)</p>");
 
@@ -113,13 +139,13 @@ namespace SportlinkFunction.Planner
             // === LINKER PANEEL: HUIDIGE SITUATIE ===
             sb.AppendLine("<div>");
             sb.AppendLine($"<div class='sectie-titel' style='background:{BG_TIJD};'>Huidige situatie</div>");
-            TekenGrid(sb, "oud", actieveVelden, wedstrijden, verplaatsVan, null, startMin, gridBreedte, totaalMin);
+            TekenGrid(sb, "oud", actieveVelden, wedstrijden, verplaatsVan, null, startMin, gridBreedte, totaalMin, instellingen);
             sb.AppendLine("</div>");
 
             // === RECHTER PANEEL: NIEUWE SITUATIE ===
             sb.AppendLine("<div>");
             sb.AppendLine($"<div class='sectie-titel' style='background:#1a2a1a;border:1px solid {BLK_NIEUW_RAND};'>Nieuwe situatie (suggestie)</div>");
-            TekenGrid(sb, "nieuw", actieveVelden, nieuweBezetting, null, verplaatsVan, startMin, gridBreedte, totaalMin);
+            TekenGrid(sb, "nieuw", actieveVelden, nieuweBezetting, null, verplaatsVan, startMin, gridBreedte, totaalMin, instellingen);
             sb.AppendLine("</div>");
 
             sb.AppendLine("</div>"); // einde side-by-side
@@ -129,19 +155,18 @@ namespace SportlinkFunction.Planner
 
             sb.AppendLine($"<div style='flex:1;max-width:{gridBreedte + VeldHeaderBreedte}px;'>");
             sb.AppendLine($"<h3 style='margin:20px 0 8px 0;'>Chronologisch overzicht</h3>");
-            TekenChronoTabel(sb, wedstrijden, suggesties, velden, verplaatsVan);
+            TekenChronoTabel(sb, wedstrijden, suggesties, velden, verplaatsVan, instellingen);
             sb.AppendLine("</div>");
 
             sb.AppendLine($"<div style='flex:1;max-width:{gridBreedte + VeldHeaderBreedte}px;'>");
             sb.AppendLine($"<h3 style='margin:20px 0 8px 0;'>Per leeftijdscategorie</h3>");
-            TekenCategorieTabel(sb, wedstrijden, nieuweBezetting, suggesties, velden, verplaatsVan);
+            TekenCategorieTabel(sb, wedstrijden, nieuweBezetting, suggesties, velden, verplaatsVan, instellingen);
             sb.AppendLine("</div>");
 
             sb.AppendLine("</div>");
 
             // Samenvatting
-            var plannerNaam = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
-                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
+            var plannerNaam = instellingen.PlannerAfzenderNaam;
             sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van grasveld verplaatst: {suggesties.Count(s => grasveldNummers.Contains(s.HuidigVeldNummer))} | Gegenereerd door {plannerNaam}</p>");
 
             // JavaScript: klik-interactie
@@ -199,7 +224,8 @@ document.addEventListener('click', () => {
             List<VeldInfo> velden, List<BestaandeWedstrijd> bezetting,
             Dictionary<string, OptimalisatieSuggestie>? verplaatsVan,
             Dictionary<string, OptimalisatieSuggestie>? isNieuwePlek,
-            int startMin, int gridBreedte, int totaalMin)
+            int startMin, int gridBreedte, int totaalMin,
+            HtmlInstellingen instellingen)
         {
             sb.AppendLine($"<div class='planner-grid' style='width:{gridBreedte + VeldHeaderBreedte}px;'>");
 
@@ -238,7 +264,7 @@ document.addEventListener('click', () => {
                     if (w.VeldDeelGebruik >= 1.0m)
                     {
                         verwerkt.Add(i);
-                        TekenBlok(sb, paneel, w, veld, 1, VeldRijHoogte - 2, startMin, verplaatsVan, isNieuwePlek);
+                        TekenBlok(sb, paneel, w, veld, 1, VeldRijHoogte - 2, startMin, verplaatsVan, isNieuwePlek, instellingen);
                     }
                     else
                     {
@@ -247,7 +273,7 @@ document.addEventListener('click', () => {
                         var sub = (w.VeldSubpositie ?? "").Trim();
                         int topPos; int hoogte;
                         BerekenSubpositie(sub, w.VeldDeelGebruik, out topPos, out hoogte);
-                        TekenBlok(sb, paneel, w, veld, topPos, hoogte, startMin, verplaatsVan, isNieuwePlek);
+                        TekenBlok(sb, paneel, w, veld, topPos, hoogte, startMin, verplaatsVan, isNieuwePlek, instellingen);
 
                         // Zoek overige deelveld-wedstrijden die overlappen
                         for (int j = i + 1; j < veldWedstrijden.Count; j++)
@@ -260,7 +286,7 @@ document.addEventListener('click', () => {
                                 verwerkt.Add(j);
                                 var subA = (a.VeldSubpositie ?? "").Trim();
                                 BerekenSubpositie(subA, a.VeldDeelGebruik, out int topA, out int hoogteA);
-                                TekenBlok(sb, paneel, a, veld, topA, hoogteA, startMin, verplaatsVan, isNieuwePlek);
+                                TekenBlok(sb, paneel, a, veld, topA, hoogteA, startMin, verplaatsVan, isNieuwePlek, instellingen);
                             }
                         }
                     }
@@ -322,7 +348,8 @@ document.addEventListener('click', () => {
         private static void TekenBlok(StringBuilder sb, string paneel,
             BestaandeWedstrijd w, VeldInfo veld, int top, int hoogte, int startMin,
             Dictionary<string, OptimalisatieSuggestie>? verplaatsVan,
-            Dictionary<string, OptimalisatieSuggestie>? isNieuwePlek)
+            Dictionary<string, OptimalisatieSuggestie>? isNieuwePlek,
+            HtmlInstellingen instellingen)
         {
             int wStartMin = w.AanvangsTijd.Hour * 60 + w.AanvangsTijd.Minute;
             int wEindMin = w.EindTijd.Hour * 60 + w.EindTijd.Minute;
@@ -336,7 +363,7 @@ document.addEventListener('click', () => {
             string extraAttr = "";
             string wedstrijdNaam = (w.Wedstrijd?.Trim() ?? "").Replace("'", "&#39;");
 
-            bool isVast = IsEersteElftalWedstrijd(w.Wedstrijd);
+            bool isVast = IsEersteElftalWedstrijd(w.Wedstrijd, instellingen);
             bool isVerplaatst = verplaatsVan != null && verplaatsVan.ContainsKey(lookupKey);
             bool isNieuw = isNieuwePlek != null && w.Bron == "Suggestie";
 
@@ -354,13 +381,13 @@ document.addEventListener('click', () => {
                 $"<b>{w.AanvangsTijd:HH:mm}</b> {naam}</div>");
         }
 
-        private static bool IsEersteElftalWedstrijd(string? wedstrijd)
+        private static bool IsEersteElftalWedstrijd(string? wedstrijd, HtmlInstellingen instellingen)
         {
             if (string.IsNullOrWhiteSpace(wedstrijd)) return false;
-            var naam = SystemUtilities.AppSettings.GetSetting("eersteElftalNaam");
+            var naam = instellingen.EersteElftalNaam;
             if (string.IsNullOrWhiteSpace(naam))
             {
-                var clubCode = SystemUtilities.AppSettings.GetSetting("clubCode");
+                var clubCode = instellingen.ClubCode;
                 naam = string.IsNullOrWhiteSpace(clubCode) ? null : $"{clubCode} 1";
             }
             return !string.IsNullOrWhiteSpace(naam) && wedstrijd.Contains(naam + " ");
@@ -406,7 +433,8 @@ document.addEventListener('click', () => {
             List<BestaandeWedstrijd> wedstrijden,
             List<OptimalisatieSuggestie> suggesties,
             List<VeldInfo> velden,
-            Dictionary<string, OptimalisatieSuggestie> verplaatsVan)
+            Dictionary<string, OptimalisatieSuggestie> verplaatsVan,
+            HtmlInstellingen instellingen)
         {
             sb.AppendLine($"<table style='border-collapse:collapse;width:100%;font-size:11px;'>");
             sb.AppendLine($"<tr style='background:{BG_TIJD};'><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Veld</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Aanvang</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Einde</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Status</th><th style='padding:5px 8px;text-align:left;color:{TXT_DIM};'>Wedstrijd</th></tr>");
@@ -423,7 +451,7 @@ document.addEventListener('click', () => {
 
                 if (verplaatsteKeys.Contains(key))
                 { var s = verplaatsVan[key]; items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
-                else if (IsEersteElftalWedstrijd(w.Wedstrijd))
+                else if (IsEersteElftalWedstrijd(w.Wedstrijd, instellingen))
                     items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", "🔒 Vast", BLK_VAST_RAND));
                 else
                     items.Add((w.AanvangsTijd, w.EindTijd, vn, w.Wedstrijd?.Trim() ?? "", "", TXT_DIM));
@@ -452,7 +480,8 @@ document.addEventListener('click', () => {
             List<BestaandeWedstrijd> nieuweBezetting,
             List<OptimalisatieSuggestie> suggesties,
             List<VeldInfo> velden,
-            Dictionary<string, OptimalisatieSuggestie> verplaatsVan)
+            Dictionary<string, OptimalisatieSuggestie> verplaatsVan,
+            HtmlInstellingen instellingen)
         {
             // Leeftijd uit wedstrijdnaam halen voor sortering
             int LeeftijdUitNaam(string naam)
@@ -470,7 +499,7 @@ document.addEventListener('click', () => {
                 if (naam.Contains("O23")) return 230;
                 if (naam.Contains("VR")) return 300;
                 // Senioren (eerste team en reserves): helemaal onderaan
-                var _cc = SystemUtilities.AppSettings.GetOptionalClubCode();
+                var _cc = instellingen.ClubCode;
                 if (!string.IsNullOrWhiteSpace(_cc)
                     && System.Text.RegularExpressions.Regex.IsMatch(naam,
                         $@"{System.Text.RegularExpressions.Regex.Escape(_cc)} \d"))
@@ -493,7 +522,7 @@ document.addEventListener('click', () => {
 
                 if (verplaatsteKeys.Contains(key))
                 { var s = verplaatsVan[key]; items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, $"⟶ {s.NieuwVeld} {s.NieuweTijd}", BLK_OUD_RAND)); }
-                else if (IsEersteElftalWedstrijd(naam))
+                else if (IsEersteElftalWedstrijd(naam, instellingen))
                     items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, "🔒 Vast", BLK_VAST_RAND));
                 else
                     items.Add((leeftijd, w.AanvangsTijd, w.EindTijd, vn, naam, "", TXT_DIM));
@@ -527,7 +556,8 @@ document.addEventListener('click', () => {
             List<OptimalisatieSuggestie> suggesties,
             List<VeldInfo> velden,
             string doel,
-            string browserUrl)
+            string browserUrl,
+            HtmlInstellingen instellingen)
         {
             var sb = new StringBuilder();
             var nl = new System.Globalization.CultureInfo("nl-NL");
@@ -556,7 +586,7 @@ document.addEventListener('click', () => {
                 var vn = velden.FirstOrDefault(v => v.VeldNummer == w.VeldNummer)?.VeldNaam ?? "";
                 if (verplaatsteKeys.TryGetValue(key, out var s))
                     rijen.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", $"⟶ {s.NieuwVeld} {s.NieuweTijd}", "#fef3c7", "#92400e"));
-                else if (IsEersteElftalWedstrijd(w.Wedstrijd))
+                else if (IsEersteElftalWedstrijd(w.Wedstrijd, instellingen))
                     rijen.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", "🔒 Vast", "#dbeafe", "#1e40af"));
                 else rijen.Add((w.AanvangsTijd, vn, w.Wedstrijd?.Trim() ?? "", "", "#fff", "#666"));
             }
@@ -566,8 +596,7 @@ document.addEventListener('click', () => {
                 sb.AppendLine($"<tr style='background:{r.Bg};border-bottom:1px solid #e5e7eb;'><td style='padding:5px 6px;'>{r.T:HH:mm}</td><td style='padding:5px 6px;'>{r.V}</td><td style='padding:5px 6px;'>{r.W}</td><td style='padding:5px 6px;color:{r.Fg};'>{r.S}</td></tr>");
 
             sb.AppendLine("</table>");
-            var plannerNaamFooter = SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
-                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
+            var plannerNaamFooter = instellingen.PlannerAfzenderNaam;
             sb.AppendLine($"<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>{plannerNaamFooter}</p>");
             sb.AppendLine("</body></html>");
             return sb.ToString();

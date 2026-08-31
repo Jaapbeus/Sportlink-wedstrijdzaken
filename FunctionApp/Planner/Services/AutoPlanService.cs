@@ -231,8 +231,18 @@ internal static class AutoPlanService
                 LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Optimaal"
             }).ToList();
 
-        string huidigeHtml  = PlannerHtmlGenerator.GenereerHtml(datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig");
-        string optimaleHtml = PlannerHtmlGenerator.GenereerHtml(datum, optimaleOccupations, new List<OptimalisatieSuggestie>(), velden, "optimaal");
+        // De vier clubinstellingen die de (nu gedeelde) HTML-generator nodig heeft — §42. De
+        // verplichte-instelling-controle staat hier, bij de aanroeper die de cache leest, in plaats
+        // van halverwege het renderen.
+        var htmlInstellingen = new HtmlInstellingen(
+            Accommodatie: SystemUtilities.AppSettings.GetSetting("accommodatie") ?? "",
+            PlannerAfzenderNaam: SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam")
+                ?? throw new InvalidOperationException("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings"),
+            EersteElftalNaam: SystemUtilities.AppSettings.GetSetting("eersteElftalNaam"),
+            ClubCode: SystemUtilities.AppSettings.GetOptionalClubCode());
+
+        string huidigeHtml  = PlannerHtmlGenerator.GenereerHtml(datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig", htmlInstellingen);
+        string optimaleHtml = PlannerHtmlGenerator.GenereerHtml(datum, optimaleOccupations, new List<OptimalisatieSuggestie>(), velden, "optimaal", htmlInstellingen);
 
         log.LogInformation("AutoPlan {Datum}: {Totaal} wedstrijden, {Wijzigen} te wijzigen, eindtijd {Eind}",
             datum, items.Count, teWijzigen, eindTijd ?? "?");
@@ -331,21 +341,13 @@ internal static class AutoPlanService
         return await PlannerDataAccess.GetSpeeltijdenLookupAsync();
     }
 
-    // ── Planningsdoel per wedstrijd (#666) ──
-
-    /// <summary>
-    /// Het doel waarop één wedstrijd ingepland moet worden, samengesteld uit de drie lagen in de
-    /// vastgelegde rangorde: regels → ingevoerde voorkeuren → defaults per leeftijdscategorie.
-    /// </summary>
-    /// <param name="Laag">0 = voorkeursveld-regel, 1 = eigen voorkeurstijd, 2 = leeftijdsdefault, 3 = niets.</param>
-    /// <param name="Prioriteit">Laag getal = belangrijker; beslist wie zijn doel als eerste claimt.</param>
-    internal record PlanDoel(
-        int Laag,
-        int Prioriteit,
-        TimeOnly? DoelTijd,
-        int? VoorkeurVeldNummer,
-        string? Bron,
-        string Leeftijd);
+    // ── Planningsdoel en pure helpers (#666) ──
+    //
+    // De regels zelf staan sinds issue 888 vervolg (§42) in Planner.Shared/AutoPlanRegels.cs: ze
+    // raken geen database, geen instellingencache en geen tier-specifiek type, en de Postgres-tier
+    // heeft ze net zo hard nodig. Wat hieronder staat zijn dunne delegaties — zelfde patroon als
+    // NormaliseerVeld (#819) en PlannerShared na §38: geen enkele aanroeper of test hoefde te
+    // wijzigen, alleen de plek waar de logica woont.
 
     internal static PlanDoel BepaalPlanDoel(
         WedstrijdRaw wedstrijd,
@@ -353,104 +355,29 @@ internal static class AutoPlanService
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
         Dictionary<string, Speeltijd> speeltijden)
-    {
-        var leeftijd = (!string.IsNullOrWhiteSpace(wedstrijd.LeeftijdsCategorie))
-            ? wedstrijd.LeeftijdsCategorie
-            : (isAllstars ? ExtractLeeftijdFromTeamNaam(wedstrijd.TeamNaam) ?? "" : "");
+        => AutoPlanRegels.BepaalPlanDoel(
+            wedstrijd.TeamNaam, wedstrijd.LeeftijdsCategorie, isAllstars,
+            voorkeurVelden, voorkeurLookup, speeltijden);
 
-        // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
-        TimeOnly? defaultTijd = null;
-        if (leeftijd.Length > 0 && speeltijden.TryGetValue(leeftijd, out var st))
-            defaultTijd = st.StandaardVoorkeurTijd;
-
-        // Laag 1 — eigen voorkeurstijd van het team voor deze speeldag
-        TimeOnly? teamTijd = null;
-        int teamPrioriteit = int.MaxValue;
-        if (voorkeurLookup.TryGetValue(wedstrijd.TeamNaam, out var voorkeuren) && voorkeuren.Count > 0)
-        {
-            var primair = voorkeuren.OrderBy(v => v.Prioriteit).First();
-            teamTijd = primair.Tijd;
-            teamPrioriteit = primair.Prioriteit;
-        }
-
-        // Laag 0 — voorkeursveld-regel. Een tijd óp die regel is het meest specifieke wat de
-        // wedstrijdsecretaris kan opgeven en gaat dus vóór de losse voorkeurstijd van het team.
-        if (voorkeurVelden.TryGetValue(wedstrijd.TeamNaam, out var vv))
-        {
-            return new PlanDoel(
-                Laag: 0,
-                Prioriteit: vv.Prioriteit,
-                DoelTijd: vv.Tijd ?? teamTijd ?? defaultTijd,
-                VoorkeurVeldNummer: vv.VeldNummer,
-                Bron: vv.Tijd.HasValue ? "regel" : (teamTijd.HasValue ? "team" : (defaultTijd.HasValue ? "leeftijd" : null)),
-                Leeftijd: leeftijd);
-        }
-
-        if (teamTijd.HasValue)
-            return new PlanDoel(1, teamPrioriteit, teamTijd, null, "team", leeftijd);
-
-        if (defaultTijd.HasValue)
-            return new PlanDoel(2, 0, defaultTijd, null, "leeftijd", leeftijd);
-
-        return new PlanDoel(3, 0, null, null, null, leeftijd);
-    }
-
-    /// <summary>
-    /// Beoordeelt de afwijking t.o.v. de voorkeurstijd (#666). Dezelfde drempels als de Gantt-legenda,
-    /// zodat tabel en tijdlijn hetzelfde verhaal vertellen. Bewust los van <c>Status</c>: die zegt
-    /// alleen of de planner iets verplaatst t.o.v. de huidige stand.
-    /// </summary>
+    /// <inheritdoc cref="AutoPlanRegels.BepaalVoorkeurStatus"/>
     internal static string BepaalVoorkeurStatus(string? voorkeurTijd, int? afwijkingMinuten)
-    {
-        if (voorkeurTijd == null || !afwijkingMinuten.HasValue) return "geen-voorkeur";
-        int abs = Math.Abs(afwijkingMinuten.Value);
-        if (abs == 0)  return "op-tijd";
-        if (abs <= 15) return "kleine-afwijking";
-        return "grote-afwijking";
-    }
+        => AutoPlanRegels.BepaalVoorkeurStatus(voorkeurTijd, afwijkingMinuten);
 
-    // ── Helpers ──
-    // Internal i.p.v. private zodat FunctionApp.Tests deze pure logica direct kan testen
-    // via InternalsVisibleTo (#476). Geen gedragswijziging — alleen de zichtbaarheid. (#578)
-
+    /// <inheritdoc cref="AutoPlanRegels.ExtractLeeftijdFromTeamNaam"/>
     internal static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
-    {
-        if (string.IsNullOrWhiteSpace(teamNaam)) return null;
-        var parts = teamNaam.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) return null;
-        var second = parts[1];
-        var hyphenIdx = second.IndexOf('-');
-        if (hyphenIdx > 0) second = second[..hyphenIdx];
-        return second.ToUpperInvariant() switch
-        {
-            "HEREN" => "1-99", "DAMES" => "VR", "VROUWEN" => "VR",
-            _ => string.IsNullOrWhiteSpace(second) ? null : second
-        };
-    }
+        => AutoPlanRegels.ExtractLeeftijdFromTeamNaam(teamNaam);
 
+    /// <inheritdoc cref="AutoPlanRegels.GetLeeftijdSortOrder"/>
     internal static int GetLeeftijdSortOrder(string? leeftijd)
-    {
-        if (string.IsNullOrWhiteSpace(leeftijd)) return 99;
-        var l = leeftijd.Trim().ToUpperInvariant();
-        if (l.StartsWith("JO") && int.TryParse(l[2..], out var jo)) return jo;
-        if (l.StartsWith("MO") && int.TryParse(l[2..], out var mo)) return 50 + mo;
-        if (l == "VR" || l.StartsWith("VROUWEN")) return 80;
-        if (l.StartsWith("G")) return 85;
-        return 90;
-    }
+        => AutoPlanRegels.GetLeeftijdSortOrder(leeftijd);
 
+    /// <inheritdoc cref="AutoPlanRegels.GetDefaultTimeSortKey"/>
     internal static int GetDefaultTimeSortKey(string? leeftijd)
-    {
-        var order = GetLeeftijdSortOrder(leeftijd);
-        return order <= 11 ? 540 : order <= 13 ? 600 : order <= 15 ? 630 : order <= 17 ? 660
-             : order <= 19 ? 690 : order <= 25 ? 720 : order <= 85 ? 750 : 780;
-    }
+        => AutoPlanRegels.GetDefaultTimeSortKey(leeftijd);
 
+    /// <inheritdoc cref="AutoPlanRegels.BuildSportlinkVeldString"/>
     internal static string BuildSportlinkVeldString(string veldNaam, string subpositie)
-    {
-        var naam = veldNaam.Trim();
-        return string.IsNullOrEmpty(subpositie) ? naam : $"{naam} {subpositie}";
-    }
+        => AutoPlanRegels.BuildSportlinkVeldString(veldNaam, subpositie);
 
     /// <remarks>
     /// #819: dunne delegatie naar het tier-agnostische <c>Planner.Shared.VeldNormalisatie</c> —

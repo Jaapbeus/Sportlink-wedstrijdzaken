@@ -441,28 +441,83 @@ public static class PlannerFunction
         }
     }
 
-    private const string GeenFieldScheduler =
-        "De FieldScheduler-planningsmotor (PlannerShared, 538 regels) is nog niet vertaald — de " +
-        "beslissing waar die op deze tier woont (Planner.Shared of een tweede tier-kopie) hoort " +
-        "buiten een implementatie-PR te vallen (issue 888, zie docs/ARCHITECTUUR-DATABASE-TIERS.md §25).";
-
+    /// <summary>
+    /// De dagplanning-optimalisatie (#666) — Postgres-vertaling van het gelijknamige SQL
+    /// Server-endpoint (issue 888 vervolg, §42).
+    /// </summary>
     [Function("AutoPlan")]
-    public static Task<IActionResult> AutoPlan(
+    public static async Task<IActionResult> AutoPlan(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req, GeenFieldScheduler);
+    {
+        var log = context.GetLogger("AutoPlan");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<AutoPlanRequest>(body);
+            if (request == null || string.IsNullOrEmpty(request.Datum))
+                return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+            var clubCode = PostgresClubScope.Resolve(EasyAuthHelper.GetClubCodeFromRequest(req));
+            log.LogInformation("AutoPlan: datum={Datum}, buffer={Buffer}, club={Club}",
+                request.Datum, request.BufferMinuten, clubCode);
+
+            var response = await AutoPlanService.AutoPlanAsync(
+                PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
+
+            return new OkObjectResult(response);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "AutoPlan failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// Past een AutoPlan-resultaat toe op de demowedstrijden — alleen in testmodus (ALLSTARS).
+    /// Postgres-vertaling van het gelijknamige SQL Server-endpoint (issue 888 vervolg, §42).
+    /// </summary>
     [Function("AutoPlanToepassen")]
-    public static Task<IActionResult> AutoPlanToepassen(
+    public static async Task<IActionResult> AutoPlanToepassen(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/auto-plan/toepassen")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req, GeenFieldScheduler);
-
-    private static Task<IActionResult> Stub501(HttpRequest req, string reden)
     {
+        var log = context.GetLogger("AutoPlanToepassen");
         var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return Task.FromResult(authResult);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
-        return Task.FromResult<IActionResult>(new ObjectResult(new { error = reden }) { StatusCode = 501 });
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<AutoPlanToepassenRequest>(body);
+            if (request == null || string.IsNullOrEmpty(request.Datum))
+                return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
+
+            var clubCode = PostgresClubScope.Resolve(EasyAuthHelper.GetClubCodeFromRequest(req));
+            log.LogInformation("AutoPlanToepassen: datum={Datum}, club={Club}", request.Datum, clubCode);
+
+            var response = await AutoPlanService.AutoPlanToepassenAsync(
+                PostgresDatabaseConfig.ConnectionString, request, clubCode, log);
+
+            return new OkObjectResult(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)" — een bewuste weigering,
+            // geen technische storing: 400, niet 500.
+            log.LogWarning("AutoPlanToepassen geweigerd: {Reden}", ex.Message);
+            return new BadRequestObjectResult(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "AutoPlanToepassen failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
     }
 }

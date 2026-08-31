@@ -2150,6 +2150,55 @@ een canonieke teamrij vindt de conflictcontrole stilzwijgend niets; (2) de plann
 (`planner.alle_wedstrijden_op_veld_ruw`) moet expliciet aangemaakt worden in de testopstelling, hij
 komt niet uit een migratie.
 
+## 42. AutoPlan: de laatste twee planner-endpoints, en twee verhuizingen in plaats van 676 regels duplicatie (#888)
+
+**Alle elf planner-endpoints zijn nu vertaald.** `AutoPlan` en `AutoPlanToepassen` waren de laatste
+501-stubs van de plannerlaag. Nieuw op deze tier: `AutoPlanService.AutoPlanAsync`/
+`AutoPlanToepassenAsync`, de AutoPlan-wire-DTO's, en drie repository-methoden
+(`GetVoorkeurTijdenLookupAsync`, `GetAllstarsVeldenAsync`, `UpdateAllstarsMatchAsync`).
+
+**Twee verhuizingen naar `Planner.Shared` in plaats van duplicatie — 676 regels.**
+
+| Verhuisd | Regels | Waarom niet dupliceren |
+|---|---|---|
+| `PlannerHtmlGenerator` (+ `OptimalisatieSuggestie`) | 576 | Enige tier-koppeling waren vier instellingen uit een statische cache. Die gaan nu als `HtmlInstellingen`-record naar binnen; de rest is pure stringopbouw. |
+| `AutoPlanRegels` (`PlanDoel`, `BepaalPlanDoel`, sorteersleutels, `BepaalVoorkeurStatus`) | ~100 | Rekenlogica over primitieven en gedeelde domeinmodellen. Geen SQL, geen cache, geen tier-type. |
+
+Dat is dezelfde afweging als §38 (`FieldScheduler`) en #889 (`TeamNaamNormalisatie`), en het
+tegenovergestelde van `PostgresSunsetCalculator`/`PostgresLeeftijdNormalisatie` (§41/§16) — daar
+woog 90 regels pure wiskunde niet op tegen een refactor van twee instellingencaches. **De grens die
+uit deze reeks volgt:** koppeling aan een tier-eigen cache is op zichzelf geen reden tot
+duplicatie zodra het om honderden regels gaat; injecteer de paar waarden en deel de rest.
+
+**`BepaalPlanDoel` neemt primitieven, geen wedstrijdmodel.** De twee tiers hebben elk hun eigen
+`WedstrijdRaw` (een class met setters op de SQL Server-tier, een positional record hier). Die vorm
+delen zou een DTO-verhuizing afdwingen die niets oplost; twee strings binnengeven koppelt niets.
+
+**Nul call-site-wijzigingen op de SQL Server-tier.** `AutoPlanService` houdt dunne, gelijknamige
+delegaties (zelfde patroon als `NormaliseerVeld` bij #819), dus `AutoPlanHelperTests` en alle
+aanroepers bleven ongewijzigd. Geverifieerd: 429 geslaagd / 5 geskipt, exact de baseline.
+
+**Een porteervalkuil die een subagent-analyse ving vóór hij een bug werd.** Het origineel bouwt
+`alleWedstrijden.ToDictionary(w => w, …)` — veilig daar, want `WedstrijdRaw` is een class
+(referentie-gelijkheid). Hier is het een `record` met waarde-gelijkheid; twee inhoudelijk
+identieke rijen zouden dezelfde sleutel zijn en een `ArgumentException` geven. Deze tier sorteert
+daarom een lijst van paren. *Eerlijk over de reikwijdte:* die botsing is vandaag niet bereikbaar
+(`wedstrijdcode` zit in de SELECT en heeft een unieke business key), dus dit is een defensieve
+keuze, geen bugfix — maar wel één die niet afhangt van een invariant drie lagen verderop.
+
+**Bijvangst: een echte beperking in de gedeelde planningsmotor (issue #939).** `FieldScheduler`
+gebruikt de teamnaam alleen voor buffers en stempelt er het slot mee; hij houdt niet bij dat een
+team al elders speelt. Twee wedstrijden van hetzelfde team kunnen daardoor op dezelfde tijd op twee
+velden landen. Dat geldt voor **beide** tiers — de motor is sinds §38 gedeeld — dus het is bestaand
+gedrag dat bij het porten zichtbaar werd, geen porteerfout. Vastgelegd in een test die bewust faalt
+zodra het gedrag verandert, en apart gemeld in plaats van stilzwijgend meegefixt in een port-PR.
+
+**Nog open op deze tier** (de enige resterende 501): `AdminTeambegeleidingDoorsturen`. Die hangt op
+de uitgaande e-mailverzendlaag — `GraphServiceClient`/`EmailGraphService` zijn hier nergens
+geregistreerd (`FunctionApp.Postgres/Program.cs` heeft bewust nog geen DI-registraties) en
+`OntvangerParser` is niet vertaald. Net als het real-time Sportlink-API-pad (§41) is dat een
+uitgaande integratie met een `EgressGuard`-gate (#857), en dus een eigen eenheid werk.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

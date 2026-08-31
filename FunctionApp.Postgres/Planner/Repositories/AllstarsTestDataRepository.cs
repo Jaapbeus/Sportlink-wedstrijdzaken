@@ -1,5 +1,6 @@
 using Database.Postgres;
 using Npgsql;
+using Planner.Shared;
 
 namespace FunctionApp.Postgres.Planner;
 
@@ -76,6 +77,61 @@ internal static class AllstarsTestDataRepository
                 LeeftijdsCategorie: reader.IsDBNull(7) ? null :
                     (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7))));
         return results;
+    }
+
+    /// <summary>
+    /// De demovelden van de testmodus: veldnummers &gt;= 100 (issue 888 vervolg, §42).
+    /// Postgres-vertaling van het gelijknamige SQL Server-origineel.
+    /// <para>
+    /// De grens op 100 is dezelfde afspraak als in <c>006_allstars_demodata.sql</c>, dat de
+    /// democlub bewust de nummers 101-103 geeft om een PK-botsing met de primaire club te vermijden
+    /// (<c>public.velden.veldnummer</c> is een kale PK zonder ClubCode-scope). Deze query filtert
+    /// dus op precies dezelfde conventie — géén tweede, eigen afspraak.
+    /// </para>
+    /// </summary>
+    internal static async Task<List<VeldInfo>> GetAllstarsVeldenAsync(string connectionString)
+    {
+        var results = new List<VeldInfo>();
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("""
+            SELECT veldnummer, veldnaam, COALESCE(veldtype, 'kunstgras'), heeftkunstlicht
+            FROM public.velden
+            WHERE actief = true AND veldnummer >= 100
+            ORDER BY veldnummer
+            """, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            results.Add(new VeldInfo
+            {
+                VeldNummer = reader.GetInt32(0),
+                VeldNaam = reader.GetString(1),
+                VeldType = reader.GetString(2),
+                HeeftKunstlicht = reader.GetBoolean(3)
+            });
+        return results;
+    }
+
+    /// <summary>
+    /// Schrijft een AutoPlan-resultaat terug op één demowedstrijd (issue 888 vervolg, §42).
+    /// Uitsluitend rijen met <c>clubcode = 'ALLSTARS'</c> — dit is een testmodus-schrijfpad en mag
+    /// nooit echte clubdata raken. <c>GETUTCDATE()</c> → <c>NOW()</c>: de kolom is
+    /// <c>TIMESTAMPTZ</c>, dus Postgres bewaart het tijdstip sowieso tijdzone-bewust.
+    /// </summary>
+    internal static async Task<int> UpdateAllstarsMatchAsync(
+        string connectionString, long wedstrijdCode, string nieuweVeld, string nieuweTijd)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("""
+            UPDATE his.matches
+            SET aanvangstijd = @tijd, veld = @veld, mta_modified = NOW()
+            WHERE wedstrijdcode = @code AND clubcode = 'ALLSTARS'
+            """, conn);
+        cmd.Parameters.AddWithValue("tijd", nieuweTijd);
+        cmd.Parameters.AddWithValue("veld", nieuweVeld);
+        cmd.Parameters.AddWithValue("code", wedstrijdCode);
+        return await cmd.ExecuteNonQueryAsync();
     }
 }
 

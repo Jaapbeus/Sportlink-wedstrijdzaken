@@ -35,7 +35,7 @@ public static class PostgresAppSettings
         // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
         // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
         await using var cmd = new NpgsqlCommand(
-            "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude FROM public.appsettings " +
+            "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam FROM public.appsettings " +
             "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
@@ -53,6 +53,9 @@ public static class PostgresAppSettings
                 Settings["accommodatieLatitude"] = reader.GetDouble(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (!reader.IsDBNull(4))
                 Settings["accommodatieLongitude"] = reader.GetDouble(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // plannerafzendernaam (§42): AutoPlan zet deze naam onder de gegenereerde HTML-planning.
+            if (!reader.IsDBNull(5))
+                Settings["plannerAfzenderNaam"] = reader.GetString(5);
         }
     }
 

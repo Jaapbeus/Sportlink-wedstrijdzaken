@@ -80,20 +80,9 @@ namespace SportlinkFunction.Planner
 
     // ── Optimalisatie modellen ──
     // OptimaliseerRequest/Response en VeldCapaciteitInfo zijn vervallen bij #666, samen met het
-    // endpoint /planner/optimaliseer. OptimalisatieSuggestie blijft: PlannerHtmlGenerator gebruikt
-    // het type om verplaatsingen in de HTML-weergave te markeren.
-
-    public class OptimalisatieSuggestie
-    {
-        public string Wedstrijd { get; set; } = string.Empty;
-        public int HuidigVeldNummer { get; set; }
-        public string HuidigVeld { get; set; } = string.Empty;
-        public string HuidigeTijd { get; set; } = string.Empty;
-        public int NieuwVeldNummer { get; set; }
-        public string NieuwVeld { get; set; } = string.Empty;
-        public string NieuweTijd { get; set; } = string.Empty;
-        public string Reden { get; set; } = string.Empty;
-    }
+    // endpoint /planner/optimaliseer. OptimalisatieSuggestie is bij issue 888 vervolg (§42) mee
+    // verhuisd naar Planner.Shared/PlannerDomeinModellen.cs, samen met PlannerHtmlGenerator dat het
+    // type als invoermodel gebruikt — using Planner.Shared; hierboven.
 
     // ── Doordeweeks beschikbaarheid modellen ──
 

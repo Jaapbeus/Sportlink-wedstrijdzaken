@@ -19,6 +19,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De automatische dagplanning (`AutoPlan` en `AutoPlanToepassen`) werkt nu ook op de
+  Postgres-tier (issue 888 vervolg).** Daarmee zijn alle elf planner-endpoints op die tier vertaald
+  — er is geen enkele planner-functie meer die "nog niet beschikbaar" meldt. De planningsregels
+  zelf (de rangorde regels → voorkeuren → standaardtijden per leeftijd) en de HTML-weergave van de
+  dagplanning zijn daarbij verplaatst naar de gedeelde laag in plaats van gekopieerd: één plek waar
+  ze staan, in plaats van twee die uit elkaar kunnen gaan lopen. Zeven nieuwe tests draaien tegen
+  een echte database; het onderscheidend vermogen is bevestigd door de code opzettelijk te
+  breken en te controleren dat precies de juiste tests rood werden.
+
+### Fixed
+- **Gevonden tijdens bovenstaand werk: de automatische planner kan één team twee wedstrijden op
+  dezelfde tijd geven** (op twee verschillende velden). De planner houdt wel bij welk veld bezet is,
+  maar niet dat een team al elders speelt. Het handmatige pad controleert dit wél. Dit gedrag is
+  niet nieuw en geldt voor beide databasevarianten; het werd zichtbaar doordat de nieuwe tests er
+  toevallig op stuitten. Vastgelegd in een test en apart gemeld — zie issue #939 — zodat het niet
+  ongemerkt blijft staan.
+
+### Added
 - **Nog vier planner-endpoints werken echt op de Postgres-tier (issue 888 vervolg):
   `CheckAvailability`, `DoordeweeksBeschikbaar`, `HerplanCheck` en `PopulateSunset`.** Daarmee zijn
   van de elf planner-endpoints er negen vertaald; alleen `AutoPlan` en `AutoPlanToepassen` geven nog
