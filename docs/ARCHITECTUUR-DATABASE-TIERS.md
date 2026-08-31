@@ -1108,6 +1108,112 @@ hetzelfde patroon — de gerichte audit die dit opleverde dekte alleen de Postgr
 een systematische sweep van de SQL Server-tier op hetzelfde gebrek is geen onderdeel van epic #815
 en dus niet in deze ronde meegenomen.
 
+## 27. Cross-tree kolomdekking — #864 deel 3, het niveau waarop de epic al twee keer een gat had
+
+Sectie 24 (#917) leverde de tabelvergelijking en noemde daarbij expliciet het volgende, nog
+ontbrekende niveau: **"de tabel-check bewijst alleen dat de tabel bestáát, niet dat elke kolom
+aanwezig is."** Dat is niet theoretisch — het is binnen deze epic al twee keer een echt gat
+geweest, beide keren pas gevonden toen iemand toevallig functionaliteit vertaalde die de kolom
+nodig had:
+
+- **#893** — `public.speeltijden` miste `WedstrijdHelft`/`WedstrijdRust`/`StandaardVoorkeurTijd`.
+- **Sectie 21** — `planner.geplandewedstrijden` miste `mta_modified`.
+
+Deze ronde dicht dat niveau, met **twee mechanismen in plaats van één** — niet uit voorkeur voor
+symmetrie, maar omdat de twee groepen tabellen structureel anders bestaan.
+
+### Waarom twee mechanismen
+
+| Groep | Waar de Postgres-kolommen vandaan komen | Bewaakt door |
+|---|---|---|
+| 19 tabellen | `Database.Postgres/migrations/*.sql` — statische DDL | `scripts/ci/check-postgres-column-coverage.sh` |
+| 6 ETL-tabellen (`his.*`/`stg.*`) | `PostgresSchemaGenerator` op sync-tijd, uit `KnownEntities.cs` (#818) | `Database.Postgres.Tests/EtlKolomdekkingTests.cs` |
+
+Voor de tweede groep bestaat geen `CREATE TABLE`-regel om te vinden. Een shellscript zou daarvoor
+de C#-lijst opnieuw moeten parseren — een tweede, eigen interpretatie van dezelfde waarheid, en
+precies het soort duplicatie waar sectie 23 voor waarschuwt. De test roept in plaats daarvan de
+**echte generator** aan en leest de kolommen uit de DDL die in productie ook daadwerkelijk wordt
+uitgevoerd. Dat is een sterker bewijs, niet alleen een goedkoper.
+
+### De vertaalregel bleek opnieuw deterministisch
+
+Net als bij tabelnamen (sectie 24) volstaat een directe naamvertaling: elke migratie tot nu toe
+schrijft de SQL Server-kolomnaam letterlijk in lowercase over (`ClubCode` → `clubcode`,
+`StandaardVoorkeurTijd` → `standaardvoorkeurtijd`). Geen fuzzy matching, geen handmatige
+mapping-tabel.
+
+**Kolom-typen en nullability blijven bewust buiten beide controles.** Dáár bestaat wél geen
+1-op-1-regel (`NVARCHAR` → `VARCHAR`/`TEXT`, `BIT` → `BOOLEAN`, `DATETIME2` → `TIMESTAMPTZ`, en per
+kolom een bewuste afweging — zie #854 voor een geval waarin dat een echte beslissing was). Een
+naamvergelijking dekt de twee historische gaten hierboven volledig af; een typevergelijking vergt
+een eigen vertaaltabel en is een aparte opgave.
+
+### Eerste bevinding: een echte, nog niet vastgelegde naamdivergentie
+
+De SQL Server-tier is bij de synthetische business-key-kolom **zelf inconsistent**:
+`his.Teams` en `his.Matches` gebruiken `bk_<entiteit>` (`bk_teams`, `bk_matches`), maar
+`his.MatchDetails` gebruikt de naam van de business-key-*kolom*: `bk_WedstrijdCode`.
+`PostgresSchemaGenerator.BusinessKeyColumnName` hanteert consequent `bk_<entiteit>` voor alle drie,
+dus daar heet hij `bk_matchdetails`.
+
+Een repo-brede zoekactie bevestigt dat niets buiten de SQL Server-boom naar `bk_WedstrijdCode`
+verwijst — alleen `mta.source_target_mapping` en `Script.PostDeployment1.sql`, en de Postgres-tier
+heeft die stuurtabel architecturaal niet (#818). De inconsistentie spiegelen zou de Postgres-boom
+dus onnodig onregelmatig maken zonder iets op te lossen. Vastgelegd als bewuste afwijking in
+`EtlKolomdekkingTests.BewusteAfwijkingen`, mét die redenering.
+
+### Vier bewust gedocumenteerde kolomuitzonderingen
+
+`planner.GeplandeWedstrijden` mist op de Postgres-tier nog `WedstrijdDuurMinuten`,
+`AangevraagdDoor`, `Opmerking` en `mta_inserted` — exact de vier kolommen die sectie 21 al als
+bekend en beredeneerd uitstel benoemde (ze horen bij `BevestigWedstrijd`/`SaveHerplanVerzoekAsync`,
+#888's nog niet gestarte scope). Ze staan nu met issuenummer in `KOLOM_UITZONDERINGEN`. Dat maakt
+het verschil tussen "vergeten" en "uitgesteld" voor het eerst machineleesbaar in plaats van
+alleen in proza.
+
+### Empirische verificatie — vier negatieve controles, want een groene poort die niet rood kan worden bewijst niets
+
+Schone staat: **19 tabellen en 191 kolommen** vergeleken door het script, **6 tests** groen voor de
+ETL-tabellen. Dat aantal wordt door het script zelf uitgeprint, zodat een stilzwijgend
+teruggevallen teller zichtbaar is.
+
+| # | Manipulatie | Verwacht | Gemeten |
+|---|---|---|---|
+| 1 | Uitzondering `planner.GeplandeWedstrijden.Opmerking` verwijderd | script faalt op precies die kolom | bevestigd, exitcode 1 |
+| 2 | Fictieve kolom `[NieuweTestKolom]` aan `dbo.Velden` toegevoegd | script faalt op die kolom | bevestigd, exitcode 1; daarna teruggedraaid (nooit gecommit) |
+| 3 | Migratiemap teruggebracht tot één lege migratie | de "nul Postgres-kolommen geparseerd"-guard slaat aan i.p.v. alles te laten slagen | bevestigd, exitcode 1 |
+| 4 | Tabelbestand zonder parseerbare kolommen toegevoegd | de "nul kolommen"-guard slaat aan | bevestigd, exitcode 1 |
+| 5 | `bk_wedstrijdcode`-afwijking uitgeschakeld in de test | 1 van 6 tests faalt | bevestigd |
+| 6 | Kolom `speeldagteam` uit `KnownEntities.cs` verwijderd | zowel de `his`- als de `stg`-test faalt, met de kolomnaam in de melding | bevestigd; daarna teruggedraaid |
+
+Controle 3 is er specifiek omdat een lege Postgres-verzameling élke vergelijking triviaal zou laten
+slagen — dat is precies de "nul asserties = groen"-val. Controle 4 dekt dezelfde val aan de andere
+kant, en die is niet hypothetisch: een eerste versie van de parser vereiste blokhaken rond de
+kolomnaam, en leverde daarom stilzwijgend **nul** kolommen op voor de twee bestanden die hun
+kolommen ongequote declareren (`dbo.DateTable`, `stg.MatchDetails`). Beide vallen in de definitieve
+opzet weliswaar binnen de overgeslagen tabellen, maar de faalwijze — een bestand dat geruisloos
+niets bijdraagt in plaats van een fout te geven — was echt. De parser accepteert nu beide
+schrijfwijzen, én een tabel die nul kolommen oplevert is expliciet een fout.
+
+Controle 4 leverde en passant nog een bewijs op dat niet gepland was: in die uitgeklede opstelling
+(alleen `001_baseline.sql`) meldde het script `dbo.Velden.VeldType` en `HeeftKunstlicht` als
+ontbrekend — die twee komen in de echte boom pas via een `ALTER TABLE ... ADD COLUMN` in
+`003_admin_tables.sql`. Dat toont aan dat het cumulatief samenvoegen van `ALTER TABLE`-blokken over
+meerdere migraties daadwerkelijk meeweegt in de groene meting, en geen dode code is.
+
+### Bewust niet in deze ronde
+
+- **Kolom-typen en nullability** — zie de motivering hierboven; een eigen opgave met een eigen
+  vertaaltabel.
+- **Stored procedures en views** — ongewijzigd ten opzichte van sectie 24: de Postgres-tier heeft
+  die niet als bestanden (#818/#861: procedurele logica leeft in C#-klassen), dus een
+  bestandsvergelijking heeft daar een wezenlijk ander karakter. Dit blijft het laatste open punt
+  van #864.
+- **De omgekeerde richting** (een Postgres-kolom zonder SQL Server-tegenhanger) — bewust geen fout,
+  en er is nu een concreet voorbeeld waarom: `stg.*` krijgt op de Postgres-tier een
+  `clubcode`-kolom die de SQL Server-tegenhanger niet heeft (daar komt de ClubCode pas bij de merge
+  naar `his.*`). Dat is een bewust verschil, geen drift.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

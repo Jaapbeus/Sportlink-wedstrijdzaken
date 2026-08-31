@@ -48,6 +48,16 @@ jobs:
       - name: Postgres tabeldekking-guard (cross-tree)
         run: bash scripts/ci/check-postgres-table-coverage.sh
 
+      # #864, deel 3: het kolomniveau dat deel 2 (#917) openliet. Een tabel die bestaat maar
+      # kolommen mist is binnen deze epic al twee keer voorgekomen (#893: public.speeltijden;
+      # sectie 21: planner.geplandewedstrijden.mta_modified) en werd beide keren pas gevonden toen
+      # iemand toevallig functionaliteit vertaalde die de kolom nodig had. De zes dynamisch
+      # aangemaakte ETL-tabellen vallen buiten dit script en worden gedekt door
+      # Database.Postgres.Tests/EtlKolomdekkingTests.cs (draait verderop in deze job). Geen
+      # database, geen secrets — zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 27.
+      - name: Postgres kolomdekking-guard (cross-tree)
+        run: bash scripts/ci/check-postgres-column-coverage.sh
+
       # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
       # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
       # Zonder deze test kunnen de shell-kant (CI) en de PowerShell-kant (lokale dev-scripts) uit
