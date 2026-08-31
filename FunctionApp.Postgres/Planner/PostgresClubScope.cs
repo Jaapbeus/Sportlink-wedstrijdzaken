@@ -3,12 +3,16 @@ using Npgsql;
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/ClubScope.cs</c> (#888/#890) —
-/// <b>bewust minimaal</b>: alleen de leden die <see cref="Repositories.PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync"/>
-/// vandaag nodig heeft. Het SQL Server-origineel heeft daarnaast <c>LegacyFilter</c> (voor
-/// <c>avg.Teambegeleiding</c>) en wordt breed hergebruikt door de nog niet vertaalde
-/// planner-repositories — die uitbreiding hoort bij #888's eigen, grotere scope, niet bij deze
-/// eenmalige portering.
+/// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/ClubScope.cs</c> (#888/#890).
+/// <para>
+/// <b><c>AddClubParam</c> toegevoegd</b> voor tabellen met <c>clubcode NOT NULL</c>
+/// (<c>public.veldperiode</c>, <c>public.veldbeschikbaarheid</c>, <c>public.veldtraining</c>, en de
+/// <c>clubcode</c>-uitvoerkolom van <c>planner.alle_wedstrijden_op_veld_ruw</c>) — de
+/// beschikbaarheids- en bezettingsrepository heeft dit nodig, in tegenstelling tot de eerdere,
+/// minimalere versie van deze klasse die alleen <c>his.*</c>-tabellen via <c>HisFilter</c>/
+/// <c>AddHisParams</c> raakte. <c>LegacyFilter</c> (voor <c>avg.Teambegeleiding</c>) blijft nog
+/// buiten scope — geen huidige aanroeper heeft hem nodig.
+/// </para>
 /// <para>
 /// Twee predicaten, om dezelfde reden als het origineel: <c>planner.*</c>/<c>public.*</c> heeft
 /// <c>clubcode NOT NULL</c> → strikt filteren; <c>his.*</c> heeft <c>clubcode</c> NULLABLE
@@ -44,11 +48,18 @@ internal static class PostgresClubScope
     internal static string Resolve(string? clubCode)
         => string.IsNullOrWhiteSpace(clubCode) ? Primary : clubCode;
 
-    /// <summary>Zet <c>@clubcode</c> en <c>@primaireclubcode</c> voor queries die <c>his.*</c> raken.</summary>
-    internal static void AddHisParams(NpgsqlCommand cmd, string? clubCode)
+    /// <summary>Zet <c>@clubcode</c> voor tabellen met <c>clubcode NOT NULL</c>.</summary>
+    internal static string AddClubParam(NpgsqlCommand cmd, string? clubCode)
     {
         var cc = Resolve(clubCode);
         cmd.Parameters.AddWithValue("clubcode", cc);
+        return cc;
+    }
+
+    /// <summary>Zet <c>@clubcode</c> en <c>@primaireclubcode</c> voor queries die <c>his.*</c> raken.</summary>
+    internal static void AddHisParams(NpgsqlCommand cmd, string? clubCode)
+    {
+        AddClubParam(cmd, clubCode);
         cmd.Parameters.AddWithValue("primaireclubcode", Primary);
     }
 

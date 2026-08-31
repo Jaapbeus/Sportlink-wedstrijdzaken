@@ -1,3 +1,5 @@
+using Planner.Shared;
+
 namespace FunctionApp.Postgres.Planner;
 
 internal sealed record VeldbezettingItem(
