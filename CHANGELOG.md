@@ -19,6 +19,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Schema-drift-guard en veldresolutie-drifttest uitgebreid naar de Postgres-tier, deel 1 (issue
+  864).** Drie concrete stukken geleverd: (1) `VeldResolutieDriftTests` bewaakt nu ook
+  `Database.Postgres/PostgresPlannerViewGenerator.cs` als vierde plek — als tripwire, niet omdat
+  daar vandaag een kopie van de zes-tekens-truncatiebug staat (#819 hield veldresolutie bewust
+  C#-side); (2) nieuwe CI-stap `scripts/ci/check-postgres-identifier-casing.sh` bewaakt de
+  lowercase-snake_case-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md §3) binnen de
+  migratiebestanden zelf — empirisch bewezen dat hij zowel een PascalCase-kolomnaam als een
+  gequote identifier detecteert; (3) de Postgres-CI-job krijgt de tegenhanger van de SQL
+  Server-assertie "speeltijden moeten voor de primaire club bestaan, niet alleen voor de
+  democlub" (#740), die ontbrak. **Bewust niet in deze ronde:** de SQL-Server-specifieke
+  DB-project-vs-PostDeployment-guard is niet naar Postgres uitgebreid — die twee bomen zijn
+  structureel verschillend (Postgres' migraties zíjn de uitrol, geen apart ontwerptijd-schema dat
+  kan driften; de bestaande `fresh-db-postgres`-idempotentiecontrole dekt het analoge risico al).
+  De grootste deelopgave — een controle die de twee bomen onderling vergelijkt op ontbrekende
+  tabellen/kolommen — blijft open scope op issue 864.
 - **CI-controle die bewijst dat de tier-tabel (`scripts/ci/database-tiers.json`) op de shell-kant
   (`resolve-database-tier.sh`) en de PowerShell-kant (`Get-DatabaseTierProject`) exact dezelfde
   uitkomst geeft (#865).** Laatste openstaande acceptatiecriterium van #816/#865: zonder deze test
