@@ -311,6 +311,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **De automatische controles voor de Postgres-tier deelden één database en zaten elkaar in de weg (#925).**
+  Eén testverzameling breekt de database met opzet af om te controleren of ze correct opnieuw wordt
+  opgebouwd; alles wat daarna draaide, kreeg een halve database te zien. Dat leverde deze week twee
+  keer een foutmelding op die niets met de eigenlijke wijziging te maken had. Elke verzameling
+  krijgt nu een eigen database, en een extra controle bewaakt dat de ene de andere niet meer kan
+  raken. Die controle is aantoonbaar: teruggezet naar de oude opzet slaat hij aan.
 - **Op de Postgres-tier zou de synchronisatie op termijn stilvallen.** Het seizoensoverzicht waaruit
   de synchronisatie afleidt hoe ver vooruit ze wedstrijden ophaalt, werd daar alleen bij de
   installatie gevuld en daarna nooit meer aangevuld — anders dan op de bestaande tier, waar dat bij
