@@ -1,6 +1,6 @@
 using FluentAssertions;
-using SportlinkFunction.Utilities;
 using Xunit;
+using Planner.Shared;
 
 namespace FunctionApp.Tests.Utilities;
 

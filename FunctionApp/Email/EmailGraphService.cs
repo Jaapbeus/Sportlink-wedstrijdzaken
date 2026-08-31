@@ -3,6 +3,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Microsoft.Graph.Users.Item.Outlook.MasterCategories;
+using Planner.Shared;
 
 namespace SportlinkFunction.Email;
 

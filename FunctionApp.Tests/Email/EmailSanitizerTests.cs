@@ -1,6 +1,7 @@
 using FluentAssertions;
 using SportlinkFunction;
 using Xunit;
+using Planner.Shared;
 
 namespace FunctionApp.Tests.Email;
 

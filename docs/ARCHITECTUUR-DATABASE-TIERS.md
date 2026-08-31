@@ -2199,6 +2199,53 @@ geregistreerd (`FunctionApp.Postgres/Program.cs` heeft bewust nog geen DI-regist
 `OntvangerParser` is niet vertaald. Net als het real-time Sportlink-API-pad (§41) is dat een
 uitgaande integratie met een `EgressGuard`-gate (#857), en dus een eigen eenheid werk.
 
+## 43. Het laatste 501-endpoint: uitgaande e-mail op de Postgres-tier (#888)
+
+**`AdminTeambegeleidingDoorsturen` is vertaald — de Postgres-tier heeft nul 501-stubs.** Daarmee is
+elk endpoint van deze tier een echte implementatie.
+
+**Wat erbij kwam:** `FunctionApp.Postgres/Email/EmailGraphService.cs` (interface + Graph-implementatie),
+de Graph-DI-registratie in `Program.cs`, en de handler zelf. `Microsoft.Graph` 6.5.0 is als
+package toegevoegd — dezelfde versie die de SQL Server-tier al gebruikt, dus geen nieuw
+afhankelijkheidsrisico.
+
+**Bewust een smaller contract dan het origineel.** `IEmailGraphService` heeft daar zes methoden;
+hier staat er één: `StuurTeamContactDoorAsync`. De andere vijf (`GetUnreadEmailsAsync`,
+`SetCategoriesAsync`, `EnsureMasterCategoryAsync`, `MarkAsReadAsync`, `SendReplyAsync`) horen bij de
+inkomende e-mailverwerkingspijplijn, die op deze tier niet bestaat. Meeporten zou onverifieerbare
+dode code opleveren — dezelfde afweging als §41/§42 bij ongebruikte repositorymethoden.
+
+**`EgressGuard` is de enige poort, ook hier.** `IEmailGraphService` wordt alleen geregistreerd als
+de Graph-secrets geconfigureerd zijn **én** `EgressGuard.ExternalIntegrationsAllowed()` true is
+(#857). Niet geregistreerd → het endpoint geeft een eerlijke 503. Geen tweede, impliciete
+is-dit-geconfigureerd-check in de handler; dat is precies wat #857 heeft opgeruimd.
+
+**Twee pure utilities verhuisd naar `Planner.Shared` in plaats van gekopieerd:**
+
+| Verhuisd | Regels | Waarom |
+|---|---|---|
+| `EmailSanitizer` | 144 | Veiligheidsrelevant. De doc-comment van `EmailGraphService` schreef al voor dat beide richtingen "één implementatie en één testsuite" delen — twee kopieën van sanitisatielogica die uit elkaar lopen is een beveiligingsbug in wording. |
+| `OntvangerParser` | 80 | Puur, geen enkele afhankelijkheid. |
+
+Beide zijn daarbij `public` geworden (aparte assembly). De bestaande testsuites in
+`FunctionApp.Tests` bleven staan en ongewijzigd draaien — 429 geslaagd / 5 geskipt, exact de
+baseline.
+
+> **Naamgeving.** `Planner.Shared` is inmiddels de facto de tier-agnostische gedeelde laag, niet
+> alleen planner-code — build.yml beschrijft hem ook zo, en hij bevat al `TeamNaamNormalisatie`,
+> `LeeftijdNormalisatie` en `PlannerHtmlGenerator`. Met een e-mailsanitizer erbij wringt de naam.
+> Een hernoeming is bewust **niet** in deze PR gedaan: dat raakt tien projectverwijzingen, de
+> `.slnf`, de CI-workflow en elke `using` — een eigen wijziging, geen bijvangst van een endpointport.
+
+**Bijvangst: een stille sorteerfout in het al vertaalde `GetBegeleiders` (#887).** Die query
+gebruikte nog `LIKE '%Trainer%'` — hoofdletterongevoelig op SQL Server via de
+`Latin1_General_CI_AS`-collatie, maar **niet** op Postgres. De teamrol komt uit een handmatig
+aangeleverde CSV, dus een rol in kleine letters komt voor; die viel stilzwijgend in de ELSE-tak,
+waardoor niet de trainer maar een willekeurige andere begeleider bovenaan kwam — en dus de vraag
+van een ouder kreeg. Nu `ILIKE`, met een test die faalt zodra de vergelijking weer gevoelig wordt.
+Zelfde klasse fout als #820; het patroon "LIKE op door mensen ingevoerde tekst" verdient op deze
+tier standaard argwaan.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

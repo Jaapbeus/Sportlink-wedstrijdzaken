@@ -14,9 +14,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.0.30.0</Version>
-    <AssemblyVersion>3.0.30.0</AssemblyVersion>
-    <FileVersion>3.0.30.0</FileVersion>
+    <Version>3.0.31.0</Version>
+    <AssemblyVersion>3.0.31.0</AssemblyVersion>
+    <FileVersion>3.0.31.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -48,6 +48,9 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Cronos" Version="0.13.0" />
+    <!-- §43: uitsluitend voor het uitgaande e-mailpad van AdminTeambegeleidingDoorsturen.
+         Zelfde versie als de SQL Server-tier, dus geen nieuw afhankelijkheidsrisico. -->
+    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
   </ItemGroup>
   <ItemGroup>
