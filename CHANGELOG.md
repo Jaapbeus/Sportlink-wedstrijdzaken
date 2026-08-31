@@ -311,6 +311,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **De zelftest stond stil op rood en de plannerlaag was volledig ongedekt (issue 888 vervolg).**
+  Drie dingen. (1) Poort G6 van de zelftest was daadwerkelijk rood: het endpoint voor
+  e-mailsjablonen was aan de verwachtingenlijst toegevoegd zonder bijbehorende controle, en het
+  script rekent dat — terecht — als een fout in plaats van als iets om over te slaan. Nu voorzien
+  van een echte inhoudscontrole. (2) De twee plannerpagina's van de nieuwe databasetier stonden
+  in het geheel niet in de verwachtingenlijst en werden dus door niets bewaakt; de veldbezetting
+  wordt nu per run gecontroleerd op een dag waarop er aantoonbaar demowedstrijden staan (de datum
+  wordt berekend, niet vastgelegd, anders verloopt hij binnen een week). (3) De plannercode van de
+  nieuwe tier had geen enkele blijvende test; het enige schrijfpad erin is nu vastgelegd in zes
+  tests, inclusief de regel dat een geleerde teamnaam pas meetelt ná goedkeuring. Dat die tests
+  werkelijk iets bewaken is apart gemeten: met die regel tijdelijk uit de code gesloopt wordt
+  precies de bijbehorende test rood. Tijdens dit werk bleek de teamroosterpagina in de zelftest
+  principieel nog niet te controleren — vastgelegd als issue #931 en zichtbaar geblokkeerd in
+  plaats van weggelaten.
 - **AVG-bewaartermijn: de instellingen-audittrail werd op de Postgres-tier nooit opgeschoond
   (issue 861 vervolg).** `public.appsettingsaudit` legt bij elke instellingswijziging vast wie hem
   doorvoerde, en oude/nieuwe waarden kunnen e-mailadressen bevatten — beide persoonsgegevens. De
