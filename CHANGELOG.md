@@ -49,6 +49,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   wordt daarbij nooit stilzwijgend door de sync overschreven. Empirisch geverifieerd tegen een
   wegwerp-Postgres-container: 21 asserties, plus drie opzettelijke faalscenario's die aantonen dat
   de vertaalkeuzes daadwerkelijk het verschil maken.
+- **De cross-tree CI-guard vergelijkt nu ook stored procedures en views, het derde en laatste
+  stuk van de bomen-vergelijking (issue 864, deel 4).** Kan geen bestandsvergelijking zijn zoals
+  tabellen/kolommen: de Postgres-tier heeft geen procedure-/viewbestanden, die logica leeft in C#.
+  `scripts/ci/check-postgres-procedure-view-coverage.sh` vergelijkt daarom tegen een expliciete
+  mapping naar C#-symbolen en bewaakt dat die mapping niet verweest. Een echte bug tijdens het
+  bouwen gevonden: de eerste, ongeankerde regex zag een hernoeming die de oude naam als
+  voorvoegsel behield (`EnsureSeasonsAsync` → `EnsureSeasonsAsyncV2`) niet als verweesd — pas met
+  woordgrenzen faalde de test zoals bedoeld. Alle drie faalscenario's apart bevestigd.
 - **De cross-tree CI-guard kijkt nu ook naar kolommen, niet alleen naar tabellen (issue 864, deel
   3).** Een tabel die op de Postgres-tier wél bestaat maar kolommen mist, bleef tot nu toe
   onopgemerkt tot iemand toevallig functionaliteit vertaalde die de kolom nodig had — dat gebeurde
