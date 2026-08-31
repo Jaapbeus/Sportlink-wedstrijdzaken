@@ -7,13 +7,32 @@ internal sealed record Speeltijd(
 
 /// <summary>
 /// Postgres-tier-tegenhanger van
-/// <c>FunctionApp/Planner/Repositories/PlannerSettingsRepository.cs</c> (#888). Alleen
-/// <see cref="GetSpeeltijdenLookupAsync"/> is vertaald — nodig voor het
-/// <c>GET /api/planner/veldbezetting</c>-endpoint. De overige settings-lookups (Velden,
-/// Zonsondergang, Seizoen, VoorkeurTijden) horen bij het auto-plan-pad en zijn nog niet vertaald.
+/// <c>FunctionApp/Planner/Repositories/PlannerSettingsRepository.cs</c> (#888). Vertaald zijn
+/// <see cref="GetSpeeltijdenLookupAsync"/> (voor <c>GET /api/planner/veldbezetting</c>) en
+/// <see cref="GetSeasonEndDateAsync"/> (voor <c>GET /api/planner/team-schedule</c>). De overige
+/// settings-lookups (Velden, Zonsondergang, VoorkeurTijden) horen bij het auto-plan-pad en zijn
+/// nog niet vertaald.
 /// </summary>
 internal static class PlannerSettingsRepository
 {
+    /// <summary>
+    /// Einddatum van het laatst bekende seizoen, of <c>null</c> als <c>public.season</c> leeg is.
+    /// <para>
+    /// Bewust <c>null</c> bij een lege tabel en géén stille terugval hier: de aanroeper hoort te
+    /// beslissen wat "geen seizoen bekend" betekent. Vergelijk <c>PostgresSeasonHelper</c>, dat op
+    /// dezelfde tabel een week-offset berekent voor de synchronisatie en daar wél een
+    /// gedocumenteerde default heeft — een andere vraag, dus een ander antwoord.
+    /// </para>
+    /// </summary>
+    internal static async Task<DateOnly?> GetSeasonEndDateAsync(string connectionString)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season", conn);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is DateTime einde ? DateOnly.FromDateTime(einde) : null;
+    }
+
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(
         string connectionString, string clubCode)
     {

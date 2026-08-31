@@ -27,6 +27,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   daadwerkelijk gebruikte. Geen database nodig, draait ook op een fork. Empirisch getest met twee
   opzettelijke faalscenario's (een uitzondering verwijderd; een nieuwe, fictieve tabel
   toegevoegd) — beide gaven de verwachte foutmelding.
+- **Het teamrooster werkt nu ook op de Postgres-tier** (issue 888): `GET /api/planner/team-schedule`
+  toont per zaterdag tot het einde van het seizoen of een team vrij is, met de wedstrijdenlijst
+  erbij, en met `?format=html` dezelfde leesbare pagina als op de bestaande tier. Bij de vertaling
+  zijn drie verschillen tussen de twee databasemotoren gedicht die elk een team stilzwijgend uit het
+  rooster hadden laten vallen: een wedstrijd waarvan de teamnaam met andere hoofdletters binnenkomt,
+  een teamnaam met een spatie aan het eind, en een afgelaste wedstrijd die de bron in kleine letters
+  aanlevert — die laatste zou een vrije zaterdag ten onrechte als bezet tonen. Alle drie empirisch
+  aangetoond op een wegwerpdatabase, samen met 36 asserties tegen de echte API.
 - **Zelftest-poorten G5 (juiste engine) en G6 (API-inhoudsasserties) draaien nu tegen een echte
   functiehost** in `scripts/dev/Test-PostgresTier.ps1` (issue 909). De zelftest start
   `FunctionApp.Postgres` zelf op, wacht op `/api/health`, en toetst daarna dertien

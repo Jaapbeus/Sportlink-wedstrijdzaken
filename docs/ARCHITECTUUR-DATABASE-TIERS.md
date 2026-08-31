@@ -990,6 +990,84 @@ onopgemerkt ontbreekt, is het geen toeval meer dat iemand het ontdekt.
   scenario waarin dat een reëel risico is, aangezien de Postgres-boom uitsluitend een vertaling
   ván de SQL Server-boom is, nooit andersom.
 
+## 25. Planner-endpoint 2 van 12: het teamrooster (#888, vervolg)
+
+Na `GET /api/planner/veldbezetting` (§16) is `GET /api/planner/team-schedule` vertaald: per zaterdag
+tot het seizoenseinde of het team vrij is, plus de wedstrijdenlijst, en met `?format=html` dezelfde
+leesbare pagina als op de SQL Server-tier.
+
+Dit endpoint was tot nu toe geblokkeerd op iets wat §21 heeft opgelost: het leest het seizoenseinde,
+en `public.season` bestond niet vóór migratie 008. Dat maakte het de goedkoopste volgende stap.
+
+### Drie engineverschillen die stuk voor stuk een team stil uit het rooster laten vallen
+
+De vertaling van `GetFutureMatchesForTeamAsync`/`TeamExistsAsync` raakt precies de plek waar SQL
+Server impliciet vriendelijk is en Postgres letterlijk. Alle drie zijn ze empirisch aangetoond op
+een wegwerpcontainer met een naïeve en een vertaalde variant naast elkaar:
+
+| Verschil | Naïeve vertaling | Gevolg in productie |
+|---|---|---|
+| **Collatie** (#820) — SQL Server's `Latin1_General_CI_AS` vergelijkt hoofdletterongevoelig, Postgres' default niet | `teamnaam = ANY(...)` | Een wedstrijdrij met afwijkende kast (`ALLSTARS JO10 1`) verdwijnt stil uit het teamrooster |
+| **Padding** — SQL Server negeert bij `=`/`IN` op `varchar` de spaties aan het eind, Postgres niet | idem | Een rij met een afsluitende spatie in `teamnaam` verdwijnt stil, terwijl dezelfde rij op de andere tier meetelt |
+| **Statusvergelijking** | `m.status <> 'Afgelast'` | Een afgelaste wedstrijd die de bron als `afgelast` levert, blijft staan — de zaterdag toont dan "bezet" terwijl het team vrij is |
+
+Vandaar `UPPER(TRIM(m.teamnaam)) = ANY(@sleutels)` en `UPPER(m.status) <> 'AFGELAST'`. De meting die
+dat onderbouwt, op vier bewust lastige rijen: de naïeve variant vond `900003,900004`, de vertaalde
+`900001,900002,900003,900004` — en de naïeve statusvergelijking liet de afgelaste `900003` staan waar
+de vertaalde hem uitsluit.
+
+**Let op de asymmetrie in dezelfde methode:** `planner.geplandewedstrijden.status` wordt door de
+applicatie zelf gezet (kolomdefault `'Te bevestigen'`), dus daar staat bewust een kale vergelijking.
+`his.matches.status` en `his.matches.teamnaam` komen uit de externe bron en staan daarom wél in
+`UPPER(...)`. "Overal maar `UPPER()` zetten" zou dat onderscheid wegpoetsen.
+
+### Twee vertaalpunten in de teamresolutie
+
+`TeamSchrijfwijzenAsync` (#700) is in het origineel een T-SQL-batch met `DECLARE @teamId` en een
+vroege `RETURN`; buiten een functie of DO-blok bestaat dat in Postgres niet. Het is nu één query met
+een CTE die hetzelfde `COALESCE` van twee scalaire subquery's doet — vindt die niets, dan levert de
+CTE `NULL` en matcht geen enkele rij, wat exact het gedrag van de `RETURN` is. Verder gaan de
+schrijfwijzen als één array-parameter mee (`= ANY(...)`) in plaats van als een dynamisch opgebouwde
+`IN`-lijst met genummerde parameters: dezelfde semantiek, maar de querytekst hangt niet meer af van
+het aantal aliassen.
+
+### Empirische verificatie
+
+Tegen een wegwerp-Postgres-16-container met de volledige demodata-seed, via de **echte
+HTTP-endpoints** op een draaiende functiehost — niet via een testharnas dat de repository
+rechtstreeks aanroept: **36 asserties, 0 gefaald.** Onder meer:
+
+- de drie engineverschillen hierboven, elk met een rij die alleen door de vertaling wordt gevonden
+  respectievelijk uitgesloten;
+- teamresolutie via de canonieke naam én via een gevalideerde alias, waarbij de aliastekst bewust
+  *niet* naar dezelfde genormaliseerde sleutel herleidt — anders zou het aliaspad niet los van het
+  normalisatiepad getoetst zijn;
+- de negatieve controles: onbekend team → 404, lege parameter → 400, alias met status `pending` →
+  404 (en de bijbehorende wedstrijdrij valt dan ook uit het rooster), inactief team → 404, en de
+  primaire club ziet het team van de democlub niet;
+- de zaterdagenlijst: elke datum is werkelijk een zaterdag, de reeks loopt tot het seizoenseinde uit
+  `public.season`, en `bezet`/`oefenwedstrijd`/`vrij` klopt per dag — inclusief de zaterdag met
+  uitsluitend een afgelaste wedstrijd, die `vrij` hoort te zijn;
+- de zelf ingeplande oefenwedstrijd uit `planner.geplandewedstrijden`, met veldnaam via de join en
+  zonder wedstrijdcode;
+- `?format=html`: statuscode, content-type en de aanwezigheid van kalenderstrook en wedstrijdtabel.
+
+### Bewust niet in deze ronde
+
+- **De tien resterende planner-endpoints:** `CheckAvailability`, `DoordeweeksBeschikbaar`,
+  `BevestigWedstrijd`, `AutoPlan`/`AutoPlanToepassen` (de FieldScheduler-dagplanning-optimalisatie,
+  #666), `HerplanCheck`/`HerplanBevestig`, `ZoekWedstrijd` en `PopulateSunset`. Die hangen samen aan
+  `AvailabilityService`, `PlannerShared`'s FieldScheduler-engine en `RescheduleService` — ruim 1600
+  regels bedrijfslogica met schrijfpaden, en dus een wezenlijk ander verificatierisico dan de twee
+  lezende endpoints die er nu staan.
+- **`TeamScheduleHtmlRenderer` verhuizen naar `Planner.Shared/`.** Het is pure presentatie zonder
+  databaseafhankelijkheid en zou daar passen, maar een verhuizing sleept `TeamScheduleResponse` en
+  zijn twee onderliggende typen mee en raakt dus de SQL Server-boom. Zelfde afweging en hetzelfde
+  antwoord als bij `LeeftijdNormalisatie.Normaliseer` in §16: een aparte refactor-beslissing, hier
+  opnieuw vastgelegd als bekende schuld. `TeamNaamNormalisatie` valt hier nadrukkelijk **niet** onder
+  — daarvoor geldt de "precies één plek"-regel uit CLAUDE.md, en die wordt hier gewoon uit
+  `Planner.Shared` gebruikt (transitief via `Database.Postgres`).
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
