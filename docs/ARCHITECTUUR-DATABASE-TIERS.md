@@ -2354,6 +2354,81 @@ verbruiksbudget dat medio augustus 2026 al een keer uitgeput raakte — herstel 
 expliciete handeling (de sync, een timer, of een bewuste beheerhandeling), niet achter een
 leesverzoek. Zie issue #946.
 
+## 46. De laatste twee geblokkeerde zelftestpoorten: een herstelpad in plaats van een fixture (#931/#946)
+
+Na §45 stonden er nog twee poorten op `blocked`: `api/beheer/teams` en `api/planner/team-schedule`.
+Beide leunen op de canonieke teamlijst (`public.teams`/`public.teamaliassen`), en die is een
+**afgeleide** tabel: de demoseed vult `his.teams`/`his.matches`, maar de afleiding gebeurt pas aan
+het eind van een synchronisatie. De zelftest draait geen synchronisatie, dus de lijst bleef leeg en
+gaven beide endpoints een correct maar onmeetbaar antwoord.
+
+### Waarom niet de voor de hand liggende oplossingen
+
+Drie richtingen zijn tegen elkaar afgewogen; de twee afgevallen opties zijn het vermelden waard,
+want ze klinken allebei redelijk.
+
+**`public.teams` in SQL seeden — afgewezen.** Dat zou `teamnaamgenormaliseerd` een tweede keer
+berekenen buiten `Planner.Shared/TeamNaamNormalisatie.cs`. Precies de architectuurschending die
+#766 al een keer heeft aangetoond: de sleutel is opgeslagen data, en een tweede berekening loopt
+stilzwijgend uit de pas bij de eerstvolgende regelwijziging. Bovendien zou de poort daarna zijn
+eigen seed meten in plaats van de applicatie.
+
+**De canonicalisatie automatisch draaien vanuit de leesende endpoints — afgewezen.** Dit was de
+aantrekkelijkste optie: één gereedheidspoort op de leesgrens, en alles heelt zichzelf. Maar het
+maakt `GET`-paden schrijvend op een database met automatische pauzering en een verbruiksbudget dat
+medio augustus 2026 al een keer uitgeput raakte, op een platform dat kan uitschalen naar meerdere
+instanties. Herstel hoort achter een handeling van een mens.
+
+**Gekozen: een expliciet herstelpad (#946).** `POST /api/beheer/teams/herstel` bouwt de canonieke
+lijst opnieuw op, op beide tiers, met een knop op de pagina Teamaliassen. Poort G5b roept dat pad
+aan vóórdat G6 meet. De lijst die G6 daarna telt is dus door **productiecode** opgebouwd, langs het
+pad dat een beheerder ook zou nemen — geen fixture die levert wat productie zou moeten leveren.
+
+Het endpoint heeft ook los van de zelftest bestaansrecht: de democlub werd tot nu toe alleen als
+bijproduct van de synchronisatie van de primaire club gecanonicaliseerd, en er was geen enkel
+herstelpad na een normalisatiewijziging behalve een handmatig script.
+
+### De negatieve controle vond een fout in de fix zelf
+
+Dit is het deel dat het opschrijven waard is.
+
+De eerste versie van het endpoint riep twee dingen aan: `RefreshAsync` én daarna expliciet
+`MigreerSleuteldriftAsync`. De negatieve controle op G5b — de tweede aanroep uitschakelen en
+verwachten dat `G5b.sleuteldrift.hersteld` rood wordt — leverde **groen** op.
+
+Dat was geen tekortkoming van de poort maar een fout in de productiecode: `RefreshAsync` draait de
+sleutelmigratie al als zijn eigen eerste stap. De tweede aanroep rapporteerde daardoor altijd `0/0`
+en kostte een extra ronde over de database. Zonder die controle was dit als "werkend" opgeleverd,
+met een teller die de beheerder structureel `0 herstelde teams` had getoond — óók wanneer er wél
+iets hersteld was.
+
+De fix: één aanroep, en `RefreshAsync` geeft de tellingen terug die het toch al berekende in plaats
+van ze alleen te loggen. De losse, publieke `MigreerSleuteldriftAsync`-ingang die hier eerst voor
+was toegevoegd, is weer verwijderd — op deze tier heeft die geen consument, en dat maakt hem dode
+code. (Op de SQL Server-tier blijft hij, daar roept `TeamlijstGereedheid` hem aan vanuit het
+e-mailpad.)
+
+De juiste negatieve controle breekt de migratie **binnen** `RefreshAsync`. Uitkomst: twee poorten
+rood — `G5b.sleuteldrift.hersteld` én `G6.api-beheer-teams` (27 in plaats van 28 teams, want het
+team met de kapotte sleutel wordt gedeactiveerd). Precies de cascade die #766 beschrijft, nu
+zichtbaar gemaakt door een test.
+
+### De te zwakke assertie die hierbij aan het licht kwam
+
+`api/planner/team-schedule` eiste alleen dat de zaterdaglijst niet leeg was. Die lijst wordt
+opgebouwd van vandaag tot het seizoenseinde in een lus die de wedstrijden niet eens raakt — hij is
+dus per definitie gevuld zodra het team herkend wordt. Een volledig kapotte aliaskoppeling zou een
+volle agenda zonder één bezette dag opleveren, en dat leest als een rustig seizoen in plaats van
+als een defect. De assertie eist nu minstens één zaterdag met status `bezet`.
+
+De poort mocht niet voor het eerst écht draaien met de zwakste assertie die hij ooit had.
+
+### Stand van de zelftest
+
+`Test-PostgresTier.ps1 -Tier Postgres -Mode Verify`: **54 geslaagd, 0 gefaald, 0 geblokkeerd.**
+Geen enkele API-poort staat nog geblokkeerd. Wat nog openstaat zijn G7/G8 (browsersweep en
+schrijfpaden, uitgevoerd door de skill) en de tijdertaak `FetchAndStoreApiData`, die op #867 wacht.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.0.31",
+    "version": "3.0.32",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -3532,6 +3532,95 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/teams/herstel": {
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "herstelTeamlijst",
+        "summary": "Canonieke teamlijst opnieuw opbouwen",
+        "description": "Bouwt de canonieke teamlijst (`dbo.Teams`/`dbo.TeamAliassen`) opnieuw op uit de\ngesynchroniseerde teams. Draait twee stappen, altijd allebei: de volledige\ncanonicalisatie en de sleutelmigratie die opgeslagen sleutels in lijn brengt met de\nhuidige normalisatieregels.\n\nBedoeld als handmatige hersteloptie wanneer de synchronisatie uit staat of sinds de\nuitrol nog niet gelopen heeft — dan is de teamlijst leeg en werkt teamherkenning niet.\n\nIdempotent: herhalen verandert niets en laat de team-id's ongemoeid.\n\nBewust een POST en geen neveneffect van een leesverzoek: herstel schrijft, en dat hoort\nachter een expliciete handeling te zitten.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teamlijst opnieuw opgebouwd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "clubCode": {
+                      "type": "string"
+                    },
+                    "teamsVoor": {
+                      "type": "integer",
+                      "description": "Aantal actieve teams vóór het herstel"
+                    },
+                    "teamsNa": {
+                      "type": "integer",
+                      "description": "Aantal actieve teams na het herstel"
+                    },
+                    "aliassenNa": {
+                      "type": "integer",
+                      "description": "Aantal goedgekeurde schrijfwijzen na het herstel"
+                    },
+                    "sleutelsGemigreerd": {
+                      "type": "integer",
+                      "description": "Aantal teams waarvan de opgeslagen sleutel herberekend moest worden"
+                    },
+                    "dubbelenOpgeruimd": {
+                      "type": "integer",
+                      "description": "Aantal dubbele schrijfwijzen dat is samengevoegd"
+                    }
+                  },
+                  "example": {
+                    "clubCode": "[ClubCode]",
+                    "teamsVoor": 0,
+                    "teamsNa": 28,
+                    "aliassenNa": 56,
+                    "sleutelsGemigreerd": 0,
+                    "dubbelenOpgeruimd": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Geen gesynchroniseerde teams om uit af te leiden. Bewust geen 200 met nul teams:\n\"de synchronisatie heeft nog nooit gelopen\" moet te onderscheiden zijn van \"hersteld\".\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

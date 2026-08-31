@@ -53,6 +53,13 @@ public class AdminApiClient
     public async Task<ApiResult<List<string>>> GetTeamsAsync()
         => await GetAsync<List<string>>("api/beheer/teams");
 
+    /// <summary>
+    /// Bouwt de canonieke teamlijst opnieuw op uit de gesynchroniseerde teams (#946). Geeft 409
+    /// terug wanneer er nog niets gesynchroniseerd is — dan valt er niets af te leiden.
+    /// </summary>
+    public async Task<ApiResult<TeamHerstelDto>> HerstelTeamlijstAsync()
+        => await PostAsync<TeamHerstelDto>("api/beheer/teams/herstel", new { });
+
     // ── Voorkeurstijden ──
 
     public async Task<ApiResult<List<VoorkeurTijdDto>>> GetVoorkeurTijdenAsync(string? team = null)

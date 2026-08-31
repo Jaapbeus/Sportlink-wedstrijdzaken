@@ -45,6 +45,42 @@
     </div>
 }
 
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Teamlijst opnieuw opbouwen</h5>
+        <p class="card-text text-muted mb-3">
+            De teamlijst waar aliassen aan hangen wordt normaal bijgewerkt na elke nachtelijke
+            synchronisatie. Staat die uit, of heeft die sinds een update nog niet gelopen, dan kan de
+            lijst leeg of verouderd zijn — teamkeuzelijsten blijven dan leeg en teamherkenning werkt
+            niet. Met deze knop bouwt u de lijst direct opnieuw op uit de al opgehaalde Sportlink-teams.
+            Herhalen kan zonder bezwaar; goedgekeurde aliassen blijven staan.
+        </p>
+        <button class="btn btn-outline-primary" @onclick="HerstelTeamlijstAsync" disabled="@_herstelBezig">
+            @(_herstelBezig ? "Bezig..." : "Teamlijst opnieuw opbouwen")
+        </button>
+        @if (_herstelResultaat != null)
+        {
+            <div class="alert alert-success mt-3 mb-0">
+                Teamlijst bijgewerkt: @_herstelResultaat.TeamsNa team(s) actief
+                (was @_herstelResultaat.TeamsVoor), @_herstelResultaat.AliassenNa goedgekeurde
+                schrijfwijze(n).
+                @if (_herstelResultaat.SleutelsGemigreerd > 0 || _herstelResultaat.DubbelenOpgeruimd > 0)
+                {
+                    <text>
+                        @_herstelResultaat.SleutelsGemigreerd team(s) hersteld na een wijziging in de
+                        naamherkenning, @_herstelResultaat.DubbelenOpgeruimd dubbele schrijfwijze(n)
+                        samengevoegd.
+                    </text>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_herstelFout))
+        {
+            <div class="alert alert-warning mt-3 mb-0">@_herstelFout</div>
+        }
+    </div>
+</div>
+
 <div class="mb-3 d-flex gap-2 flex-wrap">
     <button class="btn btn-outline-primary @(_filterStatus == "pending" ? "active" : "")"
             @onclick='() => LaadAsync("pending")'>Alleen te beoordelen</button>
@@ -177,6 +213,9 @@ else
     private string? _melding;
     private int? _verwijderConfirmId;
     private readonly HashSet<int> _actieBezigId = new();
+    private bool _herstelBezig;
+    private TeamHerstelDto? _herstelResultaat;
+    private string? _herstelFout;
 
     protected override async Task OnInitializedAsync()
     {
@@ -188,6 +227,43 @@ else
         _ = InvokeAsync(async () => { await LaadAsync(_filterStatus); StateHasChanged(); });
 
     public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    /// <summary>
+    /// Bouwt de canonieke teamlijst opnieuw op (#946) en herlaadt daarna de aliaslijst, omdat de
+    /// canonicalisatie zelf gevalideerde Sync-aliassen bijwerkt.
+    /// </summary>
+    private async Task HerstelTeamlijstAsync()
+    {
+        _herstelBezig = true;
+        _herstelResultaat = null;
+        _herstelFout = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.HerstelTeamlijstAsync();
+            if (result.Success && result.Data != null)
+            {
+                _herstelResultaat = result.Data;
+                await LaadAsync(_filterStatus);
+            }
+            else
+            {
+                // Een 409 betekent: er is nog niets gesynchroniseerd, dus er valt niets af te leiden.
+                // Dat is geen storing maar een stand van zaken — vandaar een waarschuwing en geen fout.
+                _herstelFout = result.ErrorMessage ?? "Opnieuw opbouwen mislukt";
+            }
+        }
+        catch (Exception ex)
+        {
+            _herstelFout = ex.Message;
+        }
+        finally
+        {
+            _herstelBezig = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task LaadAsync(string status)
     {

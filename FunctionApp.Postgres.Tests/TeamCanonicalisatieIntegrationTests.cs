@@ -128,6 +128,83 @@ public class TeamCanonicalisatieIntegrationTests
             .Should().BeTrue("het team bestaat nog in his.teams en hoort dus actief te blijven");
     }
 
+    /// <summary>
+    /// De sleutelmigratie binnen <c>RefreshAsync</c> (#766), die met #946 zichtbaar wordt gemaakt in
+    /// de uitkomst.
+    ///
+    /// <para>
+    /// <b>Wat dit afgrendelt.</b> De opgeslagen sleutel <c>teamnaamgenormaliseerd</c> wordt door
+    /// C#-code berekend en persistent bewaard. Verandert er een normalisatieregel, dan matcht de
+    /// upsert de bestaande rij niet meer, botst hij op de unique index over de teamnaam, en zet de
+    /// deactiveringsstap het team op <c>isactief = false</c> — het team verdwijnt en komt ook bij een
+    /// volgende synchronisatie nooit terug. De sleutelmigratie herstelt dat door de sleutel te
+    /// herberekenen uit de al opgeslagen teamnaam.
+    /// </para>
+    ///
+    /// <para>
+    /// De drift wordt hier <b>nagebootst</b> door de sleutel opzettelijk kapot te schrijven. Dat is
+    /// het enige eerlijke alternatief voor het terugdraaien van een echte regelwijziging, en het meet
+    /// precies wat de migratie moet doen: de sleutel weer in lijn brengen zonder een tweede teamrij
+    /// te maken en zonder het <c>teamid</c> te veranderen — verwijzingen uit
+    /// <c>public.teamaliassen</c> hangen daaraan.
+    /// </para>
+    ///
+    /// <para>
+    /// Bewust via <c>RefreshAsync</c> en niet via een losse ingang: dát is het pad dat de sync en het
+    /// herstelendpoint ook nemen. Een test die een ingang gebruikt die productie niet gebruikt, meet
+    /// iets anders dan hij lijkt te meten.
+    /// </para>
+    /// </summary>
+    [PostgresFact]
+    public async Task RefreshAsync_KapotteSleutel_WordtHersteldZonderHetTeamTeVerliezen()
+    {
+        await SchoonAsync();
+        await HisTeamAsync("TESTCANON JO13-1", "JO13", "lokaal");
+        await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        var sleutelVooraf = await ScalarAsync<string?>(
+            "SELECT teamnaamgenormaliseerd FROM public.teams WHERE clubcode = @club");
+        sleutelVooraf.Should().NotBeNullOrWhiteSpace();
+        var teamIdVooraf = await ScalarAsync<int>("SELECT teamid FROM public.teams WHERE clubcode = @club");
+
+        await ExecAsync(
+            "UPDATE public.teams SET teamnaamgenormaliseerd = 'ZZZ-DRIFT-946' WHERE clubcode = @club",
+            ("club", ClubCode));
+
+        var uitkomst = await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        uitkomst.SleutelsBijgewerkt.Should().Be(1,
+            "precies één rij had een sleutel die niet meer klopte; deze telling wordt aan de beheerder "
+            + "getoond, dus een verkeerd getal is even misleidend als een mislukt herstel");
+        uitkomst.DubbelenOpgeruimd.Should().Be(0, "er was maar één team, dus er valt niets samen te voegen");
+
+        (await ScalarAsync<string?>("SELECT teamnaamgenormaliseerd FROM public.teams WHERE clubcode = @club"))
+            .Should().Be(sleutelVooraf, "de sleutel hoort herberekend te zijn uit de opgeslagen teamnaam");
+        (await CountAsync("SELECT count(*) FROM public.teams WHERE clubcode = @club"))
+            .Should().Be(1, "herstel mag geen tweede teamrij opleveren");
+        (await ScalarAsync<int>("SELECT teamid FROM public.teams WHERE clubcode = @club"))
+            .Should().Be(teamIdVooraf, "aliassen verwijzen naar dit teamid; een nieuw id zou ze losknippen");
+    }
+
+    /// <summary>
+    /// Zonder drift meldt de canonicalisatie nul herstelde sleutels. Dat is geen detail: het
+    /// herstelendpoint (#946) toont dit getal aan de beheerder, en een teller die altijd oploopt zou
+    /// suggereren dat er telkens iets stuk was.
+    /// </summary>
+    [PostgresFact]
+    public async Task RefreshAsync_ZonderDrift_MeldtNulHersteldeSleutels()
+    {
+        await SchoonAsync();
+        await HisTeamAsync("TESTCANON JO15-3", "JO15", "lokaal");
+        await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        var uitkomst = await TeamCanonicalisatieService.RefreshAsync(ConnectionString, ClubCode, NullLogger.Instance);
+
+        uitkomst.SleutelsBijgewerkt.Should().Be(0);
+        uitkomst.DubbelenOpgeruimd.Should().Be(0);
+        uitkomst.Teams.Should().Be(1, "het team blijft bestaan na een tweede ronde");
+    }
+
     private static async Task SchoonAsync()
     {
         // Beide tabellen, niet alleen his.teams: RegistreerBronSchrijfwijzenAsync leest de
