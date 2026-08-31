@@ -35,6 +35,14 @@ namespace SportlinkFunction.Planner;
 /// <c>Database/Script.PostDeployment1.sql</c>. CI rolt alleen dat laatste script uit, dus een wijziging
 /// die alleen in het DB-project landt verdwijnt geruisloos. <c>VeldResolutieDriftTests</c> bewaakt dit.
 /// </para>
+/// <para>
+/// <b>Postgres-tier (#819, #864):</b> daar is bewust GEEN vierde SQL-kopie van deze truncatie
+/// bijgekomen — <c>Database.Postgres/PostgresPlannerViewGenerator.cs</c> levert de ruwe,
+/// ongeresolveerde veldstring terug en laat de resolutie volledig aan
+/// <c>Planner.Shared.VeldResolver</c> (tier-agnostisch, gedeeld tussen beide tiers). Dat bestand
+/// staat wél in <c>VeldResolutieDriftTests</c> als vierde plek: geen kopie van de truncatie-bug
+/// vandaag, maar een tripwire mocht iemand de resolutie ooit weer SQL-side willen doen.
+/// </para>
 /// </summary>
 internal static class VeldResolutie
 {

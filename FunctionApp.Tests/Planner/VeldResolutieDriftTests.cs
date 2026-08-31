@@ -42,25 +42,35 @@ public class VeldResolutieDriftTests
     /// De zes-tekens-afkap mag nergens meer terugkomen. Dat patroon vereist dat élke veldnaam maximaal
     /// zes tekens is én in de eerste zes uniek: "veld 10" werd "veld 1" (bezetting op het verkeerde
     /// veld → dubbele boeking) en "hoofdveld" matchte niets (viel volledig uit de bezetting).
+    ///
+    /// <para>
+    /// <c>Database.Postgres/PostgresPlannerViewGenerator.cs</c> is de vierde plek (#864) — niet omdat
+    /// daar vandaag een kopie van de truncatie staat (#819's architectuurbesluit hield veldresolutie
+    /// bewust volledig C#-side, via het tier-agnostische <c>Planner.Shared.VeldResolver</c>), maar als
+    /// tripwire: mocht iemand die resolutie ooit alsnog SQL-side willen doen, dan valt dat hier meteen op.
+    /// </para>
     /// </summary>
     [Theory]
     [InlineData("Database/planner/Views/AlleWedstrijdenOpVeld.sql")]
     [InlineData("Database/Script.PostDeployment1.sql")]
     [InlineData("FunctionApp/Planner/Repositories/PlannerMatchRepository.cs")]
+    [InlineData("Database.Postgres/PostgresPlannerViewGenerator.cs")]
     public void GeenAfkapOpZesTekensMeer(string relatiefPad)
     {
         var inhoud = Lees(relatiefPad);
 
         // Zowel LEFT(...) als SUBSTRING(..., 7, ...) op de veldkolom: de twee helften van dezelfde
-        // aanname. Commentaarregels die de oude vorm citeren worden weggefilterd.
+        // aanname. Commentaarregels die de oude vorm citeren worden weggefilterd. De kolomverwijzing
+        // is optioneel gebracket ('m.[veld]' op SQL Server, 'm.veld' op Postgres, #864) zodat deze
+        // check op beide tiers hetzelfde patroon opvangt.
         var zonderCommentaar = string.Join(
             '\n',
             inhoud.Split('\n').Where(r => !r.TrimStart().StartsWith("--") && !r.TrimStart().StartsWith("///")));
 
-        Regex.IsMatch(zonderCommentaar, @"LEFT\s*\(\s*m\.\[veld\]\s*,\s*6\s*\)", RegexOptions.IgnoreCase)
+        Regex.IsMatch(zonderCommentaar, @"LEFT\s*\(\s*m\.\[?veld\]?\s*,\s*6\s*\)", RegexOptions.IgnoreCase)
             .Should().BeFalse($"{relatiefPad} mag de veldnaam niet op zes tekens afkappen (#719)");
 
-        Regex.IsMatch(zonderCommentaar, @"SUBSTRING\s*\(\s*m\.\[veld\]\s*,\s*7\s*,", RegexOptions.IgnoreCase)
+        Regex.IsMatch(zonderCommentaar, @"SUBSTRING\s*\(\s*m\.\[?veld\]?\s*,\s*7\s*,", RegexOptions.IgnoreCase)
             .Should().BeFalse($"{relatiefPad} mag de subpositie niet op positie 7 hardcoderen (#719)");
     }
 

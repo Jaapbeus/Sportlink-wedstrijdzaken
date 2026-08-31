@@ -35,6 +35,12 @@ jobs:
       - name: Bestandssysteem-casing-guard
         run: bash scripts/ci/check-path-casing.sh
 
+      # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
+      # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
+      # casing hierboven (#825). Geen database, geen secrets.
+      - name: Postgres identifier-casing-guard
+        run: bash scripts/ci/check-postgres-identifier-casing.sh
+
       # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
       # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
       # Zonder deze test kunnen de shell-kant (CI) en de PowerShell-kant (lokale dev-scripts) uit
@@ -619,6 +625,17 @@ jobs:
             exit 1
           fi
           echo "AllStars-demodata (velden/veldbeschikbaarheid/speeltijden/teamregels): rijtellingen kloppen."
+
+          # #864: Postgres-tegenhanger van de SQL Server-assertie hierboven ("Speeltijden moeten
+          # voor de primaire club bestaan, niet alleen voor de democlub", #740) — zonder deze
+          # assertie zou een seed die per ongeluk alleen ALLSTARS vult onopgemerkt blijven, ook al
+          # bewijst de rijtelling hierboven alleen dat de KOPIE naar ALLSTARS klopt.
+          niet_demo=$(psql_ci -c "SELECT COUNT(*) FROM public.speeltijden WHERE clubcode <> 'ALLSTARS';")
+          if [ "$niet_demo" = "0" ]; then
+            echo "::error::public.speeltijden heeft geen rijen voor een niet-democlub — seed koos de verkeerde club (#864, Postgres-tegenhanger van #740)."
+            exit 1
+          fi
+          echo "public.speeltijden: $niet_demo rij(en) voor een niet-democlub bevestigd."
 
       - name: AllStars-demodata verifiëren (teams/teambegeleiding/wedstrijden, na simulatie van na-de-eerste-sync, #862)
         run: |

@@ -91,6 +91,11 @@ resulteert in een tabel die intern `teams` heet; een daaropvolgende query tegen 
 SQL Server's eigen schemaconventie is `dbo`; Postgres gebruikt idiomatisch `public` (of een
 projectgekozen naam) — nooit `dbo` letterlijk overnemen in de Postgres-boom.
 
+**Geautomatiseerde bewaking (#864):** `scripts/ci/check-postgres-identifier-casing.sh` scant elke
+`Database.Postgres/migrations/*.sql` op tabel- en kolomnamen met een hoofdletter, of die tussen
+dubbele aanhalingstekens staan — beide zijn een schending van deze conventie. Draait als CI-stap,
+zonder database en zonder secrets.
+
 ## 4. Bestandssysteem-casing / Linux-CI-risico
 
 Git's `core.ignorecase=true` (gangbare default op Windows/macOS) merkt een casing-mismatch lokaal
@@ -662,6 +667,41 @@ wedstrijd (inclusief de door /uitslagen bijgewerkte score en status) en de match
 - **`MarkeerVervallenGeplandeWedstrijdenAsync`** is in het origineel juist ONGUARD (geen try/catch —
   een fout daar hoort de hele sync te laten falen). Op de Postgres-tier ontbreekt deze logica nog
   volledig; dit is dus een echt gat, geen best-effort-omissie zoals de teamcanonicalisatie hierboven.
+
+## 19. Schema-drift-guard en veldresolutie-drifttest uitgebreid naar de tweede boom (#864, deel 1)
+
+**Gedaan:**
+- **Veldresolutie-drifttest**: `VeldResolutieDriftTests.GeenAfkapOpZesTekensMeer` bewaakt nu ook
+  `Database.Postgres/PostgresPlannerViewGenerator.cs` (vierde plek, zie sectie 16 en de
+  klasse-doc-comment van `FunctionApp/Planner/VeldResolutie.cs`). Niet omdat daar vandaag een kopie
+  van de zes-tekens-truncatie staat — #819's architectuurbesluit hield veldresolutie bewust
+  volledig C#-side via het tier-agnostische `Planner.Shared.VeldResolver` — maar als tripwire mocht
+  die resolutie ooit alsnog SQL-side terugkomen. De regex is verbreed om zowel SQL Servers
+  `m.[veld]` als Postgres' ongequote `m.veld` te herkennen.
+- **Identifier-casing-guard** (zie sectie 3 hierboven):
+  `scripts/ci/check-postgres-identifier-casing.sh`, nieuwe CI-stap.
+- **Niet-demoklub-assertie voor Postgres**: de `fresh-db-postgres`-job insertte al een
+  niet-democlub-speeltijdenrij als bronrij voor de AllStars-kopieerstap (#862), maar asserteerde
+  nooit expliciet dat die rij blijft bestaan — de Postgres-tegenhanger van de SQL Server-assertie
+  "Speeltijden moeten voor de primaire club bestaan, niet alleen voor de democlub" (#740) ontbrak
+  dus. Toegevoegd.
+
+**Bewust niet in deze ronde, met reden — geen gat maar een architecturale constatering:**
+- **De SQL-Server-specifieke schema-drift-guard** (`Database`-DB-project vs.
+  `Script.PostDeployment1.sql`) is NIET letterlijk uitgebreid naar Postgres, omdat de twee bomen
+  structureel verschillen: SQL Server heeft een apart ontwerptijd-schema (het DB-project) dat kan
+  uiteenlopen van wat er daadwerkelijk wordt uitgerold (`PostDeployment1.sql`) — precies het risico
+  dat die guard afdekt. Postgres heeft die splitsing niet: `Database.Postgres/migrations/*.sql`
+  ZIJN de uitrol, er is geen aparte kopie die kan driften. De bestaande
+  `fresh-db-postgres`-CI-job dekt het analoge risico al (migraties tweemaal uitvoeren,
+  `schema_migrations`-rijaantal vergelijken met het aantal `.sql`-bestanden) — dat is dus geen gat,
+  maar een architecturaal andere invulling van hetzelfde doel.
+- **De onderlinge boomvergelijking** ("welke tabellen/kolommen/procedures/views bestaan in de ene
+  boom en niet in de andere, met een expliciete uitzonderingenlijst") is de grootste en risicovolste
+  deelopgave van #864 en is nog niet gebouwd — vereist het robuust matchen van PascalCase
+  SQL-Server-identifiers tegen hun lowercase Postgres-tegenhangers over twee volledig verschillende
+  bestandsindelingen (los DB-projectbestand per tabel vs. cumulatieve migratiebestanden). Blijft
+  open scope op #864.
 
 ## Gerelateerd
 
