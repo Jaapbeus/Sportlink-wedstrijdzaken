@@ -98,32 +98,46 @@ public static class AdminTemplatesFunction
 
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            await using var command = new NpgsqlCommand(@"
-                INSERT INTO public.emailtemplateinstellingen
-                    (templatekey, onderwerp, bodytemplate, actief, clubcode)
-                VALUES (@key, @onderwerp, @bodytemplate, @actief, @clubcode)
-                ON CONFLICT (templatekey, clubcode) DO UPDATE SET
-                    onderwerp = @onderwerp,
-                    bodytemplate = @bodytemplate,
-                    actief = @actief,
-                    mta_modified = NOW()", connection);
-            command.Parameters.AddWithValue("key", key);
-            command.Parameters.AddWithValue("onderwerp", dto.Onderwerp);
-            command.Parameters.AddWithValue("bodytemplate", dto.BodyTemplate);
-            command.Parameters.AddWithValue("actief", dto.Actief ?? true);
-            command.Parameters.AddWithValue("clubcode", clubCode);
-            await command.ExecuteNonQueryAsync();
+            // Issue 913/916-precedent: upsert + auditlog-insert in één transactie, zelfde patroon
+            // als AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
+            // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
+            await using var transaction = await connection.BeginTransactionAsync();
+            try
+            {
+                await using var command = new NpgsqlCommand(@"
+                    INSERT INTO public.emailtemplateinstellingen
+                        (templatekey, onderwerp, bodytemplate, actief, clubcode)
+                    VALUES (@key, @onderwerp, @bodytemplate, @actief, @clubcode)
+                    ON CONFLICT (templatekey, clubcode) DO UPDATE SET
+                        onderwerp = @onderwerp,
+                        bodytemplate = @bodytemplate,
+                        actief = @actief,
+                        mta_modified = NOW()", connection, transaction);
+                command.Parameters.AddWithValue("key", key);
+                command.Parameters.AddWithValue("onderwerp", dto.Onderwerp);
+                command.Parameters.AddWithValue("bodytemplate", dto.BodyTemplate);
+                command.Parameters.AddWithValue("actief", dto.Actief ?? true);
+                command.Parameters.AddWithValue("clubcode", clubCode);
+                await command.ExecuteNonQueryAsync();
 
-            var gewijzigdDoor = dto.GewijzigdDoor ?? "onbekend";
-            await using var auditCmd = new NpgsqlCommand(@"
-                INSERT INTO public.appsettingsaudit
-                    (gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode)
-                VALUES (@gewijzigddoor, @veld, NULL, @nieuwewaarde, @clubcode)", connection);
-            auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
-            auditCmd.Parameters.AddWithValue("veld", $"template:{key}");
-            auditCmd.Parameters.AddWithValue("nieuwewaarde", dto.Onderwerp);
-            auditCmd.Parameters.AddWithValue("clubcode", clubCode);
-            await auditCmd.ExecuteNonQueryAsync();
+                var gewijzigdDoor = dto.GewijzigdDoor ?? "onbekend";
+                await using var auditCmd = new NpgsqlCommand(@"
+                    INSERT INTO public.appsettingsaudit
+                        (gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode)
+                    VALUES (@gewijzigddoor, @veld, NULL, @nieuwewaarde, @clubcode)", connection, transaction);
+                auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
+                auditCmd.Parameters.AddWithValue("veld", $"template:{key}");
+                auditCmd.Parameters.AddWithValue("nieuwewaarde", dto.Onderwerp);
+                auditCmd.Parameters.AddWithValue("clubcode", clubCode);
+                await auditCmd.ExecuteNonQueryAsync();
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
 
             return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
         }
