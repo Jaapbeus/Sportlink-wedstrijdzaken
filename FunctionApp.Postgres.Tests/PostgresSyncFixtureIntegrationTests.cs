@@ -142,6 +142,54 @@ public class PostgresSyncFixtureIntegrationTests
                 "elke bronschrijfwijze hoort als gevalideerde Sync-alias vastgelegd te worden (#700)");
     }
 
+    /// <summary>
+    /// Bewijst dat de sync de plannerview aanmaakt (#861).
+    ///
+    /// <para>
+    /// <b>De bug die deze test bewaakt.</b> <c>planner.alle_wedstrijden_op_veld_ruw</c> werd door
+    /// géén migratie en géén applicatiecode aangemaakt — alleen door de testsuites zelf. Op een
+    /// verse installatie ontbrak de view dus volledig, en elk endpoint dat eruit leest
+    /// (veldbezetting, check-availability, doordeweeks-beschikbaar, herplan-check, auto-plan) faalde
+    /// met <c>42P01: relation does not exist</c>. Empirisch bevestigd op een verse database vóór de
+    /// fix: <c>to_regclass</c> gaf <c>NULL</c>.
+    /// </para>
+    ///
+    /// <para>
+    /// De view wordt hier eerst expliciet <b>gedropt</b>. Zonder die stap zou de assertie ook slagen
+    /// op een view die een andere testklasse toevallig had aangemaakt — dan bewijst hij niets over
+    /// de pipeline.
+    /// </para>
+    /// </summary>
+    [PostgresFact]
+    public async Task RunSyncAsync_MaaktDePlannerviewAan()
+    {
+        await SchoonAsync();
+
+        await using (var conn = new NpgsqlConnection(ConnectionString))
+        {
+            await conn.OpenAsync();
+            await using var drop = new NpgsqlCommand(
+                $"DROP VIEW IF EXISTS {PostgresPlannerViewGenerator.ViewName}", conn);
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        (await BestaatDeViewAsync())
+            .Should().BeFalse("de view moet vóór de sync echt weg zijn, anders bewijst deze test niets");
+
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        (await BestaatDeViewAsync())
+            .Should().BeTrue(
+                "de sync hoort de plannerview aan te maken; zonder view faalt de halve plannerlaag met 42P01");
+
+        // En hij moet ook echt bevraagbaar zijn — een view die bestaat maar niet te lezen is,
+        // helpt de plannerlaag niets.
+        (await CountAsync(
+                $"SELECT count(*) FROM {PostgresPlannerViewGenerator.ViewName} WHERE clubcode = @club"))
+            .Should().BeGreaterOrEqualTo(0);
+    }
+
     private static async Task RunAsync(SportlinkFixtureServer fixtureServer) =>
         await PostgresSyncPipeline.RunSyncAsync(
             fromWeekOffset: 0, toWeekOffset: 0,
@@ -179,6 +227,15 @@ public class PostgresSyncFixtureIntegrationTests
     }
 
     private static async Task<long> CountAsync(string sql) => await ScalarAsync<long>(sql);
+
+    /// <summary>
+    /// <c>to_regclass</c> geeft <c>NULL</c> als het object niet bestaat. De <c>IS NOT NULL</c> zit
+    /// bewust in SQL en niet in C#: dan komt er altijd een bool terug en hoeft de client het
+    /// <c>regclass</c>-OID-type niet te mappen.
+    /// </summary>
+    private static async Task<bool> BestaatDeViewAsync() =>
+        await ScalarAsync<bool>(
+            $"SELECT to_regclass('{PostgresPlannerViewGenerator.ViewName}') IS NOT NULL");
 
     private static async Task<T?> ScalarAsync<T>(string sql)
     {

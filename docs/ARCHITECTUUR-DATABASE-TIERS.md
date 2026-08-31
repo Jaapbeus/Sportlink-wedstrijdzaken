@@ -527,6 +527,9 @@ fix vermoedelijk: `CreateView` idempotent (`CREATE OR REPLACE`) uitvoeren vanuit
 `PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync` zelf, vlak vóór de `SELECT`. Gemeld
 hier zodat #888 dit niet opnieuw hoeft te ontdekken.
 
+> **Opgelost in §44.** De bevinding klopte en is empirisch bevestigd; de daar voorgestelde plaats
+> (in de reader) bleek bij nader inzien niet de juiste — zie §44 voor de gekozen plek en waarom.
+
 ## 16. Planner-logica — eerste vertaalde endpoint: Veldbezetting (#888)
 
 **`GET /api/planner/veldbezetting` volledig vertaald**, inclusief bewijs voor de twee valkuilen die
@@ -2245,6 +2248,69 @@ waardoor niet de trainer maar een willekeurige andere begeleider bovenaan kwam �
 van een ouder kreeg. Nu `ILIKE`, met een test die faalt zodra de vergelijking weer gevoelig wordt.
 Zelfde klasse fout als #820; het patroon "LIKE op door mensen ingevoerde tekst" verdient op deze
 tier standaard argwaan.
+
+## 44. De plannerview bestond op een verse installatie helemaal niet (#861)
+
+De losstaande bevinding uit §21 is nagemeten en klopte — met een grotere impact dan daar
+ingeschat, want §41 en §42 hebben sindsdien de rest van de planner aangesloten.
+
+**De meting.** Verse container, alle migraties toegepast via `Database.Postgres.Cli`, daarna:
+
+```
+SELECT to_regclass('planner.alle_wedstrijden_op_veld_ruw')  →  NULL
+```
+
+De view werd door **niets** aangemaakt behalve de testsuites zelf, die hem in hun eigen
+opstelling neerzetten (§40 documenteert dat expliciet als valkuil). Precies daardoor bleef het
+onzichtbaar: elke testrun was groen, en toch was er geen enkel pad waarlangs een echte installatie
+aan die view kwam. Vijf endpoints leunen erop — `veldbezetting`, `check-availability`,
+`doordeweeks-beschikbaar`, `herplan-check` en `auto-plan` — en die zouden op een nieuwe installatie
+alle vijf `42P01: relation does not exist` hebben gegeven.
+
+**Waarom geen migratie.** Ook nagemeten, niet aangenomen:
+
+```
+CREATE OR REPLACE VIEW planner.test_dep AS SELECT 1 FROM his.matches LIMIT 1;
+→ ERROR: relation "his.matches" does not exist
+```
+
+`his.matches`/`his.teams` worden niet door een migratie aangemaakt maar dynamisch door
+`PostgresMergeOrchestrator` bij de eerste sync (#818). Een migratie die de view aanmaakt zou dus op
+een verse database hard falen — dezelfde #856-klasse beperking als bij de demodata.
+
+**Waarom in de sync en niet in de reader.** §21 stelde voor om `CreateView` uit te voeren vanuit
+`PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync`, vlak vóór de `SELECT`. Dat was toen
+een redelijke gok — er was één consument. Nu zijn het er vijf, verdeeld over drie klassen, en dan
+valt die optie af:
+
+| | Reader | Sync (gekozen) |
+|---|---|---|
+| Aantal plekken | 3 klassen, elk met eigen `CREATE OR REPLACE` vóór elke `SELECT` | één |
+| Nieuwe consument | moet eraan denken; vergeet hij het, dan is de bug terug | krijgt het gratis |
+| Kosten | een DDL-statement per leesverzoek | eens per sync |
+| Volgordegarantie | geen — de reader weet niet of `his.*` al bestaat | direct ná `EnsureHisTableAsync`, dus gegarandeerd |
+
+De aanroep staat daarom in `PostgresSyncPipeline.RunSyncAsync`, direct na de drie
+`EnsureHisTableAsync`/`MergeStgToHisAsync`-paren en vóór `CanonicaliseerBestEffortAsync`. Dat is
+het vroegste punt waarop de onderliggende tabellen gegarandeerd bestaan.
+
+**Bewust niet best-effort.** `CanonicaliseerBestEffortAsync` ernaast staat wél in een `try/catch`,
+en het verschil is principieel: een mislukte canonicalisatie laat de al geslaagde ETL intact, maar
+een ontbrekende view maakt de halve plannerlaag stuk. Die stil doorlaten zou de sync groen laten
+melden terwijl de applicatie erna kapot is — precies het faalpatroon uit
+[[feedback_db_migrate_meldt_success_bij_fouten]].
+
+**Eén bron van waarheid.** De DDL komt uit `PostgresPlannerViewGenerator.CreateView`, niet uit een
+tweede kopie in een SQL-bestand. `VeldResolutieDriftTests` bewaakt die generator al; een
+migratie-kopie ernaast zou stilzwijgend uit de pas kunnen lopen — en juist de veldresolutie in die
+view is de risicovolste vertaalstap van de hele tier (§38).
+
+**De test die dit vasthoudt.** `RunSyncAsync_MaaktDePlannerviewAan` **dropt de view eerst
+expliciet** en asserteert dát hij weg is, vóórdat de sync draait. Zonder die stap zou de test ook
+slagen op een view die een andere testklasse toevallig had achtergelaten — dan bewijst hij niets
+over de pipeline. Negatieve controle uitgevoerd: met de aanroep uitgecommentarieerd faalt exact
+deze ene test (`Expected ... to be True ... but found False`) en blijven de twee andere tests in
+dezelfde klasse groen.
 
 ## Gerelateerd
 
