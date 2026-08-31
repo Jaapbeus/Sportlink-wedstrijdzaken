@@ -760,27 +760,58 @@ jobs:
       # 'build'-job hierboven en kosten hier verwaarloosbaar veel extra tijd (<1s).
       # Issue 890: het equivalent van SportlinkFixtureSyncIntegrationTests (#867) voor de
       # Postgres-tier, plus de e-mailpersistentie- (#889-acceptatiecriterium 3) en
-      # teamcanonicalisatietests (§28).
-      #
-      # DEZE VOLGORDE IS NIET WILLEKEURIG — empirisch vastgesteld bij issue 890.
-      # Database.Postgres.Tests hieronder demonteert de gedeelde database met opzet: het dropt
-      # public.appsettings/speeltijden/velden, planner.geplandewedstrijden, avg.teambegeleiding/
-      # importlog, his.teams/matches/matchdetails en public.schema_migrations, en bouwt daar
-      # minimale, synthetische versies van terug (TestEntities gebruikt dezelfde entiteitsnamen
-      # 'teams'/'matches' als productie, maar met veel minder kolommen en deels zonder clubcode).
-      # Dat is legitiem voor die suite — hij test de generator, niet het schema — maar het laat de
-      # database wél in een niet-productievorm achter. Deze suite heeft juist het echte,
-      # gemigreerde schema nodig en draait daarom ervóór. Zie ARCHITECTUUR-DATABASE-TIERS.md §29.
+      # teamcanonicalisatietests (§28). Draait tegen sportlink_ci: de database die deze job hierboven
+      # heeft gemigreerd en geseed.
       #
       # Draait ná de AllStars-demodata-assertie hierboven: deze tests schrijven onder eigen
       # 'testclub-*'-clubcodes en ruimen die zelf op, maar de volgorde maakt onafhankelijk van die
       # belofte zichtbaar dat ze de demodatatelling niet kunnen beïnvloeden.
-      - name: FunctionApp.Postgres.Tests draaien (integratietests, tegen deze instantie)
+      - name: FunctionApp.Postgres.Tests draaien (integratietests, tegen sportlink_ci)
         env:
           POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
         run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity normal
 
-      - name: Database.Postgres.Tests draaien (inclusief integratietests, tegen deze instantie)
+      # #925: Database.Postgres.Tests krijgt een EIGEN database.
+      #
+      # Die suite demonteert met opzet de database waartegen hij draait: hij dropt
+      # public.appsettings/speeltijden/velden, planner.geplandewedstrijden, avg.teambegeleiding/
+      # importlog, his.teams/matches/matchdetails en public.schema_migrations, en bouwt daar
+      # minimale, synthetische versies van terug (TestEntities gebruikt dezelfde entiteitsnamen
+      # 'teams'/'matches' als productie, maar met veel minder kolommen en deels zonder clubcode).
+      # Dat is legitiem — die suite test de generator en de runner, niet het schema — maar het laat
+      # de database in een niet-productievorm achter.
+      #
+      # Tot deze wijziging werd dat opgevangen met een stapvolgorde (#924) plus vangnetten in de
+      # testcode. Beide zijn fragiel: de vorm van de database hing af van de volgorde in dit
+      # YAML-bestand, en een derde suite zou tegen hetzelfde aanlopen. Een eigen database haalt de
+      # oorzaak weg in plaats van het symptoom. Zie ARCHITECTUUR-DATABASE-TIERS.md §33.
+      - name: Eigen database voor Database.Postgres.Tests aanmaken en migreren
+        run: |
+          PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci             -v ON_ERROR_STOP=1 -c "CREATE DATABASE sportlink_ci_dbtests;"
+          POSTGRES_CONNECTION_STRING="Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_dbtests"             dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
+
+      - name: Database.Postgres.Tests draaien (inclusief integratietests, tegen sportlink_ci_dbtests)
         env:
-          POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
+          POSTGRES_TEST_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_dbtests"
         run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity normal
+
+      # #925: bewijst dat de isolatie werkt en niet alleen bedoeld is. sportlink_ci is de database
+      # die FunctionApp.Postgres.Tests gebruikte; die moet ná de suite hierboven nog steeds de
+      # volledige, gemigreerde vorm hebben. Vóór deze wijziging stonden hier 3 kolommen en 0
+      # migratierijen — precies de meting uit ARCHITECTUUR-DATABASE-TIERS.md §29.
+      - name: Bewijzen dat sportlink_ci onaangetast is gebleven (#925)
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+          kolommen=$(psql_ci -c "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='appsettings';")
+          migraties=$(psql_ci -c "SELECT count(*) FROM public.schema_migrations;")
+          bestanden=$(ls -1 Database.Postgres/migrations/*.sql | wc -l | tr -d ' ')
+          echo "sportlink_ci: appsettings-kolommen=$kolommen schema_migrations=$migraties (verwacht $bestanden)"
+          if [ "$migraties" != "$bestanden" ]; then
+            echo "::error::public.schema_migrations in sportlink_ci is aangetast: $migraties rijen, verwacht $bestanden (#925)"
+            exit 1
+          fi
+          if [ "$kolommen" -lt 20 ]; then
+            echo "::error::public.appsettings in sportlink_ci is teruggebracht tot $kolommen kolommen — de testisolatie werkt niet (#925)"
+            exit 1
+          fi
+          echo "Testisolatie bevestigd: sportlink_ci heeft nog de volledige gemigreerde vorm."

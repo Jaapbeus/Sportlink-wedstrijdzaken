@@ -709,8 +709,19 @@ dotnet test FunctionApp.Postgres.Tests
 docker rm -f pgfixture
 ```
 
-Zonder `POSTGRES_TEST_CONNECTION_STRING` meldt dezelfde opdracht `Skipped: 8` met de reden erbij —
+Zonder `POSTGRES_TEST_CONNECTION_STRING` meldt dezelfde opdracht `Skipped` met de reden erbij —
 geen stilzwijgend groen resultaat.
+
+> **Let op bij het lokaal draaien van béide Postgres-testsuites tegen één container (#925).**
+> `Database.Postgres.Tests` sloopt met opzet een reeks tabellen om te controleren of ze correct
+> opnieuw worden opgebouwd — `public.appsettings`/`speeltijden`/`velden`,
+> `planner.geplandewedstrijden`, `avg.*`, `his.*` en `public.schema_migrations`. Draai je die suite
+> vóór `FunctionApp.Postgres.Tests` tegen dezelfde database, dan kan die laatste struikelen over een
+> tabel in een niet-productievorm. In CI is dat opgelost met een aparte database
+> (`sportlink_ci_dbtests`); lokaal is de eenvoudigste route: `FunctionApp.Postgres.Tests` eerst, of
+> de migraties opnieuw toepassen tussen de twee suites door. De vangnetten in de testcode
+> (`HisTabelVorm`, en de kolomherstelstap in `PostgresSeasonProceduresIntegrationTests`) vangen de
+> gangbare gevallen al op.
 
 **Wat de suite dekt:** het synchronisatiepad end-to-end tegen de fixtureserver inclusief
 idempotentie (`PostgresSyncFixtureIntegrationTests`, het acceptatiecriterium van issue 890),

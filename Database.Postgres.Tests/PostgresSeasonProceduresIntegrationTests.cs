@@ -181,6 +181,9 @@ public class PostgresSeasonProceduresIntegrationTests
         // xUnit legt de klassevolgorde niet vast, dus zonder deze stap slaagt deze klasse alleen
         // wanneer ze toevallig als eerste draait. De twee ALTER-regels zijn letterlijk die uit
         // migratie 003_admin_tables.sql; op een correct gemigreerde database zijn ze een no-op.
+        //
+        // #925 gaf dit project een eigen database, maar dat lost dít geval niet op: de slopende
+        // klassen zitten in hetzelfde project en draaien dus tegen dezelfde database als deze.
         await using (var herstel = new NpgsqlCommand(
             "ALTER TABLE public.appsettings ADD COLUMN IF NOT EXISTS clubname VARCHAR(100) NOT NULL DEFAULT ''; " +
             "ALTER TABLE public.appsettings ADD COLUMN IF NOT EXISTS seasonstartmonth INTEGER NOT NULL DEFAULT 7;", conn))

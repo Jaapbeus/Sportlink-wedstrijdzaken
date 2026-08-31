@@ -26,8 +26,12 @@ namespace FunctionApp.Postgres.Tests;
 /// niet tegen een handmatig lijstje kolomnamen, zodat een nieuwe kolom daar automatisch meetelt.
 /// </para>
 /// <para>
-/// De structurele oplossing (een eigen database of eigen schema per testsuite) staat als issue #925
-/// open; deze klasse is bewust alleen een vangnet voor <c>his.*</c>.
+/// <b>Bijgewerkt bij #925:</b> in CI is de oorzaak inmiddels weg — <c>Database.Postgres.Tests</c>
+/// draait daar tegen een eigen database (<c>sportlink_ci_dbtests</c>) en kan deze suite dus niet
+/// meer raken. Dit vangnet blijft desondanks staan: <b>lokaal</b> draaien beide suites tegen
+/// dezelfde wegwerpcontainer, precies zoals docs/DEVELOPER-SETUP.md §7.2 het beschrijft. Zonder
+/// deze stap zou een lokale run in de verkeerde volgorde alsnog omvallen — en dat is de run waarin
+/// een ontwikkelaar zijn wijziging voor het eerst ziet.
 /// </para>
 /// </summary>
 internal static class HisTabelVorm

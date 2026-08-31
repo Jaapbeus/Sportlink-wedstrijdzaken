@@ -1699,6 +1699,85 @@ volgordeprobleem als §30 beschrijft, nu binnen één testproject in plaats van 
 - **`dbo.DateTable`/`sp_CreateDateTable`** — ongewijzigd gemotiveerd weggelaten, zie de tabel
   hierboven en §21.
 
+## 33. Eén database per testsuite (#925) — de oorzaak weg in plaats van het symptoom
+
+§29 legde de bevinding vast: `Database.Postgres.Tests` **dropt met opzet** een reeks tabellen
+(`public.appsettings`/`speeltijden`/`velden`, `planner.geplandewedstrijden`, `avg.*`, `his.*`,
+`public.schema_migrations`) en bouwt daar minimale, synthetische versies van terug. Legitiem — die
+suite test de generator en de runner, niet het schema — maar het laat de gedeelde CI-database in een
+niet-productievorm achter.
+
+**Binnen twee rondes heeft dat twee keer toegeslagen**, allebei op een manier die niets met de
+eigenlijke wijziging te maken had:
+
+| Ronde | Symptoom |
+|---|---|
+| §29 (#924) | `42703: column "clubcode" does not exist` — `his.matches` had de `TestEntities`-vorm |
+| §32 (#928) | `42703: column "clubname" does not exist` — `public.appsettings` was teruggebracht tot drie kolommen |
+
+De maatregelen daar waren een stapvolgorde en vangnetten in de testcode: symptoombestrijding. De
+vorm van de database hing af van de volgorde in een YAML-bestand, en een derde suite zou tegen
+hetzelfde aanlopen.
+
+### De maatregel
+
+`Database.Postgres.Tests` draait in CI nu tegen een **eigen database**, `sportlink_ci_dbtests`, die
+in dezelfde containerservice wordt aangemaakt en apart wordt gemigreerd.
+`FunctionApp.Postgres.Tests` houdt `sportlink_ci` — de database die de job zelf al migreert en
+seedt. Geen codewijziging, geen extra container: één `CREATE DATABASE` en één extra migratieronde.
+
+### Waarom dit onzichtbaar bleef, en wat de nieuwe controle daaraan doet
+
+**De slopende suite is altijd groen.** Hij bouwt precies terug wat hij zelf nodig heeft; hij merkt
+niets van de schade die hij aanricht. Alleen wat erná draait, breekt. Zolang die suite de laatste
+stap was, viel er dus per definitie niets op — en toen er een suite achter kwam, leek het alsof
+díe suite stuk was.
+
+Vandaar een expliciete controlestap ná beide suites: `sportlink_ci` moet nog de volledige
+gemigreerde vorm hebben (`public.schema_migrations` gelijk aan het aantal migratiebestanden, en
+`public.appsettings` met meer dan twintig kolommen).
+
+**Empirisch, één container met twee databases:**
+
+| | `sportlink_ci` | `sportlink_ci_dbtests` |
+|---|---|---|
+| Na migreren | 30 kolommen, 11 migratierijen | 30 kolommen, 11 migratierijen |
+| Na beide suites | **30 kolommen, 11 migratierijen** | 5 kolommen, 0 migratierijen |
+
+De rechterkolom hoort zo: die database is er om gesloopt te worden. Beide suites groen
+(14/14 respectievelijk 82/82).
+
+**Negatieve controle:** `Database.Postgres.Tests` bewust tegen `sportlink_ci` gedraaid — de oude,
+niet-geïsoleerde situatie. De suite zelf blijft **groen** (82/82, precies het punt hierboven), maar
+de nieuwe controlestap slaat aan op beide condities: 5 kolommen in plaats van 30, en 0 in plaats van
+11 migratierijen. Zonder die controle zou een toekomstige terugval naar één database opnieuw
+onzichtbaar zijn tot de volgende suite erover struikelt.
+
+### De vangnetten blijven staan — met opzet
+
+`HisTabelVorm` (§29) en de `ADD COLUMN IF NOT EXISTS`-herstelstap in
+`PostgresSeasonProceduresIntegrationTests` (§32) worden niet verwijderd. In CI is hun oorzaak weg,
+maar **lokaal** draaien beide suites tegen dezelfde wegwerpcontainer — precies zoals
+`docs/DEVELOPER-SETUP.md` §7.2 het beschrijft. Zonder die vangnetten zou een lokale run in de
+verkeerde volgorde alsnog omvallen, en dat is de run waarin een ontwikkelaar zijn wijziging voor het
+eerst ziet.
+
+Voor de seizoenstests geldt bovendien dat isolatie per *project* hun geval niet oplost: de slopende
+klassen zitten in hetzelfde project en dus achter dezelfde connectiestring.
+
+### Bewust niet in deze ronde
+
+- **`TestEntities` hernoemen.** Die gebruikt bewust de productienamen `teams`/`matches`. Andere
+  namen zouden de botsing op `his.*` wegnemen, maar de suite test juist dat de generator werkt voor
+  namen zoals die in productie voorkomen. Met een eigen database is de botsing bovendien geen
+  probleem meer.
+- **Isolatie per testklasse** (eigen schema of database per klasse). Dat zou ook het
+  binnen-project-geval oplossen dat de seizoenstests raakt, maar vereist dat
+  `PostgresMergeOrchestrator` een schemanaam accepteert — een productiecode-wijziging omwille van
+  een test, en dus een eigen afweging.
+- **De SQL Server-tier.** Die kent hetzelfde patroon niet: `PartialFailureIntegrationTests` en
+  `SportlinkFixtureSyncIntegrationTests` draaien nergens automatisch (§29's laatste punt).
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
