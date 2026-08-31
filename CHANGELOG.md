@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **De maskering van afzenderadressen in het e-maillog kon stilzwijgend wegvallen (#858).** De
+  maskering zocht de kolom op exacte schrijfwijze (`Afzender`). Heette die kolom net anders — wat
+  onder de schrijfwijze-afspraak van een andere databasevariant het geval is — dan sloeg de
+  maskering over en ging het **volledige e-mailadres** naar de browser: geen foutmelding, geen
+  logregel, niets dat opviel. Dezelfde stille uitval trad op zodra iemand de kolomnaam in de query
+  aanpaste. De maskering loopt nu via één gedeelde functie die de kolom hoofdletterongevoelig zoekt
+  én een fout gooit als er niets te maskeren viel — een zichtbare storing is beter dan een stille
+  privacyschending. De zelftest controleert dit voortaan echt: de demodata bevat nu twee
+  e-maillogregels, zodat "alles gemaskeerd" niet meer verward kan worden met "er stond niets in".
+
+
 ### Added
 - **Het laatste "nog niet beschikbaar"-endpoint op de Postgres-tier is weg: een vraag over
   teambegeleiding doorsturen werkt nu ook daar (issue 888 vervolg).** Daarmee kent die

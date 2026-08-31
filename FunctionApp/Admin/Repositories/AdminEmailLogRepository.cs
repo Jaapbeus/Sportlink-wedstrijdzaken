@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared;
 
 namespace SportlinkFunction.Admin;
 
@@ -39,12 +40,9 @@ internal static class AdminEmailLogRepository
                 var raw = r.IsDBNull(i) ? null : r.GetValue(i);
                 row[r.GetName(i)] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
             }
-            // AVG: mask afzender — only domain, never full address
-            if (row.TryGetValue("Afzender", out var afz) && afz is string email)
-            {
-                var at = email.IndexOf('@');
-                row["Afzender"] = at > 0 ? "***" + email[at..] : "***";
-            }
+            // AVG (#858): via het gedeelde AvgMaskering — hoofdletterongevoelig, en het gooit
+            // als er niets te maskeren viel in plaats van stil door te gaan.
+            AvgMaskering.MaskeerAfzender(row);
             list.Add(row);
         }
         return list;

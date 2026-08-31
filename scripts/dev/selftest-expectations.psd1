@@ -104,7 +104,11 @@
         # canonicalisatie draait alleen als onderdeel van een echte sync. Een verkeerd toegewezen
         # blokkade is precies zo misleidend als een overgeslagen assertie die groen meldt.
         @{ Path = 'api/beheer/teams';                Assert = 'De teamnamen uit public.teams voor de democlub.'; Context = 'demo'; Blocked = @(931) }
-        @{ Path = 'api/beheer/email-log';            Assert = 'ELK afzenderveld is gemaskeerd. Een onvermaskerd adres is een AVG-bevinding, geen cosmetisch defect.'; Blocked = @(858) }
+        # Niet langer geblokkeerd (#858 opgelost): de maskering loopt nu via het gedeelde
+        # Planner.Shared.AvgMaskering — hoofdletterongevoelig, en het gooit als er niets te
+        # maskeren viel. De demoseed levert sinds dezelfde wijziging twee e-maillogrijen, zodat
+        # deze assertie iets meet in plaats van een lege lijst te bevestigen.
+        @{ Path = 'api/beheer/email-log';            Assert = 'Minstens 2 rijen, en ELK afzenderveld is gemaskeerd (begint met ***). Een onvermaskerd adres is een AVG-bevinding, geen cosmetisch defect.'; Context = 'demo' }
         # #911: de demodata-seed levert nu twee sjablonen voor de democlub op BEIDE tiers, dus deze
         # assertie meet weer iets in plaats van een lege lijst die twee heel verschillende oorzaken
         # kan hebben (geen seed vs. een stilgevallen sjabloonquery).

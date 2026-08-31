@@ -1108,6 +1108,32 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
                     'api/beheer/veldbeschikbaarheid' { Assert-Rijtelling -Id $id -Json $j -Verwacht 21 }
                     'api/beheer/teams'               { Assert-Rijtelling -Id $id -Json $j -Verwacht 28 }
                     'api/beheer/teamregels'          { Assert-Rijtelling -Id $id -Json $j -Minimaal 1 }
+                    'api/beheer/email-log' {
+                        # AVG-assertie (#858). Twee dingen moeten kloppen, en de eerste maakt de
+                        # tweede pas iets waard: er MOETEN rijen zijn, anders bevestigt "alles
+                        # gemaskeerd" alleen dat er niets te maskeren viel.
+                        #
+                        # Vorm: een omhulsel met count/limit plus een items-lijst — zelfde patroon
+                        # als api/beheer/teamaliassen hierboven, niet een kale lijst.
+                        $rijen = if ($null -ne $j -and $j.PSObject.Properties.Name -contains 'items') { @($j.items) } else { @() }
+                        $onvermaskerd = @($rijen | Where-Object {
+                            $veld = $_.PSObject.Properties | Where-Object { $_.Name -ieq 'Afzender' } | Select-Object -First 1
+                            $veld -and $veld.Value -and -not ("$($veld.Value)".StartsWith('***'))
+                        })
+                        if ($rijen.Count -lt 2) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected '>= 2 rijen uit de demoseed' -Actual "$($rijen.Count) rijen"
+                        } elseif ($onvermaskerd.Count -gt 0) {
+                            # Bewust GEEN adres in de melding: dat zou de lek die we net vonden in
+                            # het testrapport herhalen.
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'elk afzenderveld begint met ***' `
+                                -Actual "$($onvermaskerd.Count) van $($rijen.Count) afzenders onvermaskerd (adressen bewust niet gelogd)"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                -Actual "$($rijen.Count) rijen, alle afzenders gemaskeerd"
+                        }
+                    }
                     'api/beheer/voorkeurstijden'     { Assert-Lijst -Id $id -Json $j -Body $r.Body }
                     'api/beheer/uitgesloten-emails'  { Assert-Lijst -Id $id -Json $j -Body $r.Body }
                     'api/beheer/teamaliassen' {
