@@ -407,6 +407,15 @@ jobs:
           IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden] WHERE [ClubCode] <> 'ALLSTARS')
               RAISERROR('dbo.Speeltijden heeft geen rijen voor een niet-democlub — seed koos de verkeerde club.', 16, 1);
           SELECT 'Speeltijden: ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR) FROM [dbo].[Speeltijden] GROUP BY [ClubCode];
+
+          -- #911: de democlub moet e-mailsjablonen hebben met een niet-leeg onderwerp. Zonder deze
+          -- rijen geeft GET /api/beheer/templates een lege lijst, en kan de zelftest 'geen seed'
+          -- niet onderscheiden van 'de sjabloonquery is stilgevallen'. De Postgres-job hieronder
+          -- controleert exact hetzelfde — dat symmetrie-punt is de kern van #911.
+          IF (SELECT COUNT(*) FROM [dbo].[EmailTemplateInstellingen]
+               WHERE [ClubCode] = 'ALLSTARS' AND [Actief] = 1 AND LEN(LTRIM(RTRIM([Onderwerp]))) > 0) < 2
+              RAISERROR('dbo.EmailTemplateInstellingen heeft minder dan 2 actieve democlub-sjablonen met een niet-leeg onderwerp (#911).', 16, 1);
+          SELECT 'EmailTemplates ALLSTARS: ' + [TemplateKey] FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS';
           "
 
       # #856: bewijst dat scripts/migrations/003-seed-allstars-demo-matches.sql daadwerkelijk werkt
@@ -648,6 +657,20 @@ jobs:
             echo "::error::AllStars-demodata (#862) rijtellingen komen niet overeen: verwacht velden=3 veldbeschikbaarheid=21 speeltijden=1 teamregels=1, gevonden velden=$velden veldbeschikbaarheid=$vb speeltijden=$speeltijden teamregels=$teamregels"
             exit 1
           fi
+
+          # #911: exact dezelfde assertie als de SQL Server-job hierboven — dat de twee tiers hier
+          # hetzelfde meten is de kern van dat issue. Migratie 010 is door de CLI al toegepast
+          # (ALLSTARS bestaat op dat moment, want 006 maakt die appsettings-rij zelf aan).
+          sjablonen=$(psql_ci -c "
+            SELECT COUNT(*) FROM public.emailtemplateinstellingen
+            WHERE clubcode='ALLSTARS' AND actief AND length(btrim(onderwerp)) > 0;
+          ")
+          echo "emailtemplateinstellingen ALLSTARS (actief, niet-leeg onderwerp)=$sjablonen"
+          if [ "$sjablonen" -lt 2 ]; then
+            echo "::error::public.emailtemplateinstellingen heeft minder dan 2 actieve democlub-sjablonen met een niet-leeg onderwerp (#911); gevonden $sjablonen"
+            exit 1
+          fi
+          psql_ci -c "SELECT templatekey FROM public.emailtemplateinstellingen WHERE clubcode='ALLSTARS' ORDER BY 1;"
           echo "AllStars-demodata (velden/veldbeschikbaarheid/speeltijden/teamregels): rijtellingen kloppen."
 
           # #864: Postgres-tegenhanger van de SQL Server-assertie hierboven ("Speeltijden moeten

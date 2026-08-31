@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De demo-club AllStars FC heeft nu twee voorbeeld-e-mailsjablonen (#911).** Op een verse
+  installatie was het scherm Beheer → Berichtsjablonen leeg, op beide databasevarianten: het scherm
+  toont alleen wat in de database staat, en geen van beide installatiescripts vulde die tabel. Wie
+  de demo-omgeving bekeek, kon daardoor niet zien hoe een sjabloon eruitziet — en de automatische
+  controle kon "er staat terecht niets" niet onderscheiden van "het ophalen van sjablonen is
+  stukgelopen". Beide scripts zetten nu dezelfde twee voorbeeldteksten klaar, letterlijk gelijk aan
+  wat de knop "Terugzetten naar standaard" oplevert. Woord voor woord identiek op beide varianten
+  geverifieerd, en een controle in de bouwstraat bewaakt dat ze blijven staan.
 - **Aangepaste e-mailteksten werken nu ook op de Postgres-tier (#889).** De sjablonenlaag was daar
   als laatste onderdeel nog niet vertaald. Een beheerder die via Beheer → Berichtsjablonen een tekst
   aanpaste, zag die wijziging op die tier tot vijf minuten later pas doorkomen; nu is ze meteen

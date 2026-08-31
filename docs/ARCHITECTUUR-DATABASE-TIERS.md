@@ -1528,6 +1528,88 @@ geteste code aanraakt — niet alleen voor de tabel die hij zelf vult. Voor `Ref
   daadwerkelijk zou aanroepen.
 - **`TeamResolver`/`TeamDisambiguationAiService`/`TeamlijstGereedheid`** — zelfde reden, zie §28.
 
+## 31. Demodata-sjablonen op beide tiers (#911) — en waarom dit géén aanvulling op migratie 006 werd
+
+### De blinde vlek
+
+`GET /api/beheer/templates` leest uitsluitend `dbo.EmailTemplateInstellingen` /
+`public.emailtemplateinstellingen` en voegt geen standaardteksten uit code toe. Geen van beide bomen
+seedde die tabel, dus op een verse database gaf het endpoint `[]` — **symmetrisch, dus geen
+Postgres-regressie.** Maar het maakte de zelftest (#909, poort G6) blind: twee heel verschillende
+situaties zien er allebei uit als een lege lijst.
+
+1. de seed levert (terecht) geen sjablonen, of
+2. de sjabloonquery valt stil door een kolom-/casingfout — precies het defect dat #855 elders wél
+   opleverde.
+
+De assertie stond daarom op `blocked`. Nu seeden beide bomen dezelfde twee sjablonen voor de
+democlub, en meet de poort weer iets.
+
+### Het belangrijkste besluit: een nieuw migratiebestand, geen aanvulling op 006
+
+De voor de hand liggende plek voor deze rijen was `006_allstars_demodata.sql` — daar staat de rest
+van de AllStars-demodata al. **Dat zou elke bestaande installatie hebben laten omvallen.**
+
+`MigrationRunner` legt van elk toegepast bestand de SHA-256 vast en faalt hard zodra een reeds
+toegepast bestand later een andere checksum heeft (*"Migratie '…' is al toegepast met een andere
+checksum"*, #821 — met een eigen test in `MigrationRunnerIntegrationTests`). Een migratie is
+onveranderlijk zodra hij ergens is toegepast; nieuwe rijen horen in een nieuw bestand. Vandaar
+`010_allstars_emailtemplates.sql`.
+
+**Dit is een structureel verschil met de SQL Server-tier dat het onthouden waard is:**
+`Script.PostDeployment1.sql` is één bestand dat bij élke deploy opnieuw draait en dus idempotent
+móet zijn — daar is uitbreiden ter plekke juist het correcte patroon. Op de Postgres-tier is het
+tegenovergestelde waar. Dezelfde functionele wijziging vraagt dus om een tegengestelde
+werkwijze per boom.
+
+### Één regeleinde-verschil dat de symmetrie zou hebben gebroken
+
+De eerste versie van het SQL Server-blok gebruikte `CHAR(13) + CHAR(10)` (CRLF), de Postgres-migratie
+`E'\n'` (LF). Beide tiers gaven `LEN`/`length` = dezelfde waarde niet — 157/158 tegen 150/156 — en
+dat viel alleen op omdat de tellingen naast elkaar zijn gelegd. Omdat de hardcoded standaarden in
+`BlazorAdmin/Pages/EmailTemplates.razor` `\n` gebruiken, is de SQL Server-kant naar `CHAR(10)`
+gebracht. Zonder die correctie zou #911 een asymmetrie hebben opgelost door er een nieuwe,
+subtielere voor terug te geven.
+
+### Empirische verificatie — beide tiers, echte containers
+
+| Meting | SQL Server 2022 (wegwerpcontainer) | Postgres 16 (wegwerpcontainer) |
+|---|---|---|
+| Seed toegepast | `Script.PostDeployment1.sql` tweemaal, exitcode 0 | `Database.Postgres.Cli` tweemaal, 11 migraties |
+| Severity-16-fouten in het log | 0 (expliciet gescand op `Msg <n>, Level 1[6-9]` — een "success"-melding alleen is niet genoeg, zie de les uit v2.18.0.0) | n.v.t. |
+| Rijen voor ALLSTARS | 2 | 2 |
+| Idempotent | ja, tweede run voegt niets toe | ja, checksum ongewijzigd |
+
+**Woord-voor-woord gelijk op beide tiers:** de sleutels, onderwerpen en bodyteksten zijn uit beide
+databases gedumpt met `chr(10)` → `<LF>` genormaliseerd; de twee dumps hebben dezelfde MD5. Een
+directe `HASHBYTES`/`sha256`-vergelijking zou hier misleiden — SQL Server hasht `NVARCHAR` als
+UTF-16 en Postgres `text` als UTF-8, dus die geven per definitie verschillende waarden voor
+identieke tekst (de em-dash in het onderwerp maakt dat zichtbaar). De tekstvergelijking is het
+bewijs, de hashvergelijking was het niet.
+
+**Drie negatieve controles op de nieuwe CI-asserties:**
+
+| # | Manipulatie | Gemeten |
+|---|---|---|
+| 1 | `Actief = 0` op één sjabloon (SQL Server) | assertie faalt, sqlcmd-exitcode 16 |
+| 2 | Onderwerp op `'   '` gezet (SQL Server) | assertie faalt, exitcode 16 — de `LTRIM(RTRIM(...)) > 0`-eis is dus load-bearing |
+| 3 | Rijen verwijderd (Postgres) | telling 0, assertie zou falen |
+
+Controles 1 en 2 tonen dat het niet volstaat dat de *rij* bestaat: de assertie eist een **actief**
+sjabloon met een **niet-leeg** onderwerp, precies wat het endpoint teruggeeft.
+
+### Bewust niet in deze ronde
+
+- **Meer dan twee sjablonen.** De vijf bekende sleutels (`beschikbaarheid_check`, `herplan_verzoek`,
+  `bevestiging`, `team_contact_opvragen`, `buiten_scope`) staan alle vijf als standaardtekst in de
+  GUI. Twee is genoeg om de assertie betekenis te geven; alle vijf seeden zou de demodata laten
+  suggereren dat een club ze allemaal heeft aangepast, terwijl een leeg veld juist betekent "gebruik
+  de standaard".
+- **De primaire club seeden.** Een lege sjablonenlijst is daar het correcte gedrag op een verse
+  installatie: de club vult ze zelf, en tot die tijd gelden de hardcoded standaarden. De
+  zelftest-verwachting voor `/email-templates` is daarom naar de democlub-context verplaatst in
+  plaats van de eis te laten staan voor een context waar hij niet hoort.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -65,7 +65,7 @@
         @{ Path = '/instellingen/thema';       Context = 'primair'; Assert = 'Kleurvelden gevuld met geldige hexwaarden uit de instellingen.' }
         @{ Path = '/voorkeurstijden';          Context = 'primair'; Assert = 'De rij die fase 8 aanmaakt is zichtbaar. Leeg is niet genoeg: dan bewijst de pagina niets.'; DependsOnCrud = 'voorkeurstijden' }
         @{ Path = '/teamaliassen';             Context = 'primair'; Assert = 'De alias die fase 8 aanmaakt is zichtbaar.'; DependsOnCrud = 'teamaliassen' }
-        @{ Path = '/email-templates';          Context = 'primair'; Assert = 'Minstens een sjabloonsleutel zichtbaar met een niet-leeg onderwerp.' }
+        @{ Path = '/email-templates';          Context = 'demo';    Assert = 'Minstens een sjabloonsleutel zichtbaar met een niet-leeg onderwerp — de democlub heeft er sinds #911 twee uit de seed. In de primaire context is een lege lijst op een verse database juist correct.' }
         @{ Path = '/leermomenten';             Context = 'primair'; Assert = 'De tabel rendert en de statistiek geeft een getal terug.' }
         @{ Path = '/email-tester';             Context = 'demo';    Assert = 'De pagina rendert. Let op: deze doet bij het laden geen enkele API-aanroep, dus openen alleen bewijst niets over de database.'; ReadsDatabase = $false }
     )
@@ -99,7 +99,10 @@
         # vult deze tabel.
         @{ Path = 'api/beheer/teams';                Assert = 'De teamnamen uit public.teams voor de democlub.'; Context = 'demo'; Blocked = @(890) }
         @{ Path = 'api/beheer/email-log';            Assert = 'ELK afzenderveld is gemaskeerd. Een onvermaskerd adres is een AVG-bevinding, geen cosmetisch defect.'; Blocked = @(858) }
-        @{ Path = 'api/beheer/templates';            Assert = 'Minstens een sjabloon met een niet-leeg onderwerp.'; Blocked = @(911) }
+        # #911: de demodata-seed levert nu twee sjablonen voor de democlub op BEIDE tiers, dus deze
+        # assertie meet weer iets in plaats van een lege lijst die twee heel verschillende oorzaken
+        # kan hebben (geen seed vs. een stilgevallen sjabloonquery).
+        @{ Path = 'api/beheer/templates';            Assert = 'Minstens een sjabloon met een niet-leeg onderwerp; voor de democlub minimaal de sleutels bevestiging en buiten_scope.'; Context = 'demo' }
         @{ Path = 'api/beheer/voorkeurstijden';      Assert = 'Geldige lijst; na fase 8 bevat hij de testrij.' }
         @{ Path = 'api/beheer/teamregels';           Assert = 'Minstens een regel voor de democlub.'; Context = 'demo' }
         @{ Path = 'api/beheer/uitgesloten-emails';   Assert = 'Geldige lijst.' }

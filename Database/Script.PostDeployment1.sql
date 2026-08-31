@@ -1540,6 +1540,46 @@ BEGIN
 END
 GO
 
+-- #911: twee demo-sjablonen voor AllStars FC.
+--
+-- Zonder deze rijen geeft GET /api/beheer/templates op een verse database een lege lijst, op BEIDE
+-- tiers: het endpoint leest uitsluitend de tabel en voegt geen standaardteksten uit code toe. De
+-- zelftest kon daardoor twee heel verschillende situaties niet uit elkaar houden, want ze zien er
+-- allebei uit als '[]': "de seed levert terecht niets" en "de sjabloonquery valt stil door een
+-- kolom-/casingfout". Zie issue #911.
+--
+-- De teksten zijn letterlijk de hardcoded standaarden uit BlazorAdmin/Pages/EmailTemplates.razor
+-- (OnTemplateKeyChange), zodat de demodata toont wat een beheerder bij 'Terugzetten naar standaard'
+-- ook krijgt — niet een derde, afwijkende variant.
+--
+-- AVG: geen persoonsgegevens; uitsluitend sjabloontekst met {{placeholders}}, alleen voor ClubCode
+-- 'ALLSTARS'. Idempotent per sleutel, zodat een club die er zelf een aanpast niet overschreven wordt.
+IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS')
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS' AND [TemplateKey] = 'bevestiging')
+        INSERT INTO [dbo].[EmailTemplateInstellingen] ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+        VALUES ('bevestiging',
+                'Bevestiging wedstrijd {{datum}} — {{team}} vs {{tegenstander}}',
+                -- CHAR(10) zonder CHAR(13): de standaardteksten in BlazorAdmin gebruiken '\n', en
+                -- de Postgres-tegenhanger (migratie 010) doet hetzelfde. CRLF hier zou de twee
+                -- tiers ongelijke bodyteksten geven — precies de asymmetrie die #911 wegneemt.
+                'Beste {{aanhef}},' + CHAR(10) + CHAR(10)
+                + 'Hierbij bevestigen wij de wedstrijd op {{datum}} om {{aanvangstijd}}.' + CHAR(10) + CHAR(10)
+                + 'Thuisteam: {{team}}' + CHAR(10) + 'Tegenstander: {{tegenstander}}' + CHAR(10) + CHAR(10)
+                + 'Tot dan!',
+                1, 'ALLSTARS');
+
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS' AND [TemplateKey] = 'buiten_scope')
+        INSERT INTO [dbo].[EmailTemplateInstellingen] ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+        VALUES ('buiten_scope',
+                'Uw bericht ontvangen',
+                'Beste {{voornaam}},' + CHAR(10) + CHAR(10)
+                + 'Bedankt voor uw bericht. Uw vraag valt buiten het bereik van de automatische verwerking. '
+                + 'Neem contact op met de club voor verdere hulp.',
+                1, 'ALLSTARS');
+END
+GO
+
 -- ============================================================
 -- #365: veld_subpositie — ALLSTARS testdata veldsplitsing
 -- Slaat het velddeel op (A, B, A1, A2, B1, B2) zodat de planner
