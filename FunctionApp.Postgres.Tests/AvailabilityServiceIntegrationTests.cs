@@ -79,6 +79,60 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         response.TeamConflict.Should().NotBeNull();
         response.TeamConflict!.AanvangsTijd.Should().Be("09:00");
         response.Reden.Should().Contain(team);
+
+        response.Waarschuwingen.Should().NotContain(w => w.Contains("NIET gecontroleerd"),
+            "dit team staat wél in de canonieke lijst; de niet-gecontroleerd-waarschuwing uit #945 hoort "
+            + "hier juist te ontbreken — anders zou die waarschuwing altijd meekomen en niets onderscheiden");
+    }
+
+    /// <summary>
+    /// Het team staat NIET in de canonieke teamlijst, maar heeft die dag wél een wedstrijd in
+    /// <c>his.matches</c> (#945).
+    ///
+    /// <para>
+    /// <b>Het gedrag dat deze test afgrendelt.</b> De teamconflictcontrole zoekt het team eerst op in
+    /// <c>public.teams</c>/<c>public.teamaliassen</c>. Levert dat niets op, dan is er niets om mee te
+    /// vergelijken — maar tot #945 gaf dat een lege lijst terug, precies zoals "dit team heeft die dag
+    /// geen wedstrijd". Het antwoord luidde dan <c>beschikbaar</c>, zonder waarschuwing en zonder
+    /// logregel, terwijl het team op hetzelfde moment al ingepland stond. De planner kon daarop een
+    /// dubbele boeking maken.
+    /// </para>
+    ///
+    /// <para>
+    /// Let op het contrast met <see cref="CheckAvailabilityAsync_TeamHeeftAlWedstrijd_GeeftTeamConflict"/>
+    /// hierboven: die gebruikt hetzelfde scenario mét een canonieke rij en moet een echt conflict
+    /// melden. Samen scheiden de twee tests "niet gecontroleerd" van "gecontroleerd, geen conflict" —
+    /// los van elkaar bewijst geen van beide dat onderscheid.
+    /// </para>
+    /// </summary>
+    [PostgresFact]
+    public async Task CheckAvailabilityAsync_TeamNietInTeamlijst_WaarschuwtDatErNietsIsGecontroleerd()
+    {
+        await using var conn = await OpstellingAsync();
+
+        // Bewust GEEN rij in public.teams/public.teamaliassen voor deze naam.
+        const string team = "T-availsvc JO99-9";
+        await ExecAsync(conn, @"
+            INSERT INTO his.matches (wedstrijdcode, kaledatum, aanvangstijd, veld, teamnaam, wedstrijd, accommodatie, status, clubcode, mta_inserted, mta_modified)
+            VALUES (9400009, '2026-09-05', '09:00', 'veld 1', @team, @team || ' - Bestaande tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
+            ("team", team), ("club", Club));
+
+        var request = new CheckAvailabilityRequest
+        {
+            Datum = Zaterdag.ToString("yyyy-MM-dd"),
+            AanvangsTijd = "14:00",
+            LeeftijdsCategorie = "JO13",
+            TeamNaam = team
+        };
+        var response = await AvailabilityService.CheckAvailabilityAsync(ConnectionString, request, NullLogger.Instance, Club);
+
+        response.Waarschuwingen.Should().Contain(w => w.Contains("NIET gecontroleerd"),
+            "een niet-herleidbaar team betekent dat de conflictcontrole is overgeslagen; dat moet in het "
+            + "antwoord staan en mag niet als 'geen conflict' lezen (#945)");
+
+        response.TeamConflict.Should().BeNull(
+            "er is geen conflict vastgesteld — de controle kon juist niet worden uitgevoerd; een verzonnen "
+            + "conflict zou net zo misleidend zijn als een verzwegen waarschuwing");
     }
 
     [PostgresFact]

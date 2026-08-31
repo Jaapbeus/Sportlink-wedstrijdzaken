@@ -19,6 +19,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **De beschikbaarheidscontrole meldde "beschikbaar" zonder gecontroleerd te hebben of het team die
+  dag al speelt (issue 945).** Herkende de applicatie de opgegeven teamnaam niet — bijvoorbeeld
+  omdat de teamlijst nog niet was gevuld, of omdat de naam in een schrijfwijze stond die nog geen
+  goedgekeurd alternatief heeft — dan werd de controle op een dubbele wedstrijd stilzwijgend
+  overgeslagen. Het antwoord was dan niet te onderscheiden van "dit team heeft die dag inderdaad
+  niets", zonder foutmelding, waarschuwing of logregel, waardoor een team dubbel ingepland kon
+  worden. De controle meldt nu expliciet dat zij niet is uitgevoerd; die melding komt ook in het
+  antwoordbericht terecht, zodat de coördinator het zelf kan nakijken. Gold op beide
+  databasevarianten.
 - **Op een verse installatie van de nieuwe databasevariant ontbrak de plannerweergave volledig,
   waardoor de halve veldplanner niet werkte (issue 861 vervolg).** De weergave waar de planner al
   zijn wedstrijden uit leest werd door geen enkele installatiestap aangemaakt — alleen de

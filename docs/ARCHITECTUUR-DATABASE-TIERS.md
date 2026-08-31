@@ -2312,6 +2312,48 @@ over de pipeline. Negatieve controle uitgevoerd: met de aanroep uitgecommentarie
 deze ene test (`Expected ... to be True ... but found False`) en blijven de twee andere tests in
 dezelfde klasse groen.
 
+## 45. Een gedeeld defect gevonden door naar de tiers náást elkaar te kijken (#945)
+
+Het vertaalwerk van deze epic levert af en toe iets op wat geen van beide tiers los zou hebben
+opgeleverd: een fout die er altijd al zat, maar pas opvalt als je dezelfde code twee keer naast
+elkaar leest.
+
+`GetTeamMatchesOnDateAsync` gaf op **beide** tiers een lege `List<BestaandeWedstrijd>` terug zodra
+de teamnaam niet naar een team in de canonieke lijst te herleiden was — bit voor bit hetzelfde als
+"dit team heeft die dag geen wedstrijd". `AvailabilityService` las dat als "geen conflict" en
+antwoordde `beschikbaar`, zonder fout, waarschuwing of logregel, terwijl het team op dat moment al
+ingepland stond.
+
+Het commentaar boven de SQL Server-methode benoemde het risico zelfs al — *"een gemiste vergelijking
+hier zou stilzwijgend een dubbele boeking van hetzelfde team toelaten"* — maar dekte alleen de
+vergelijking zelf, niet het geval waarin er niets te vergelijken viel.
+
+**Waar de fix landt, en waarom dat de gedeelde laag is.** Het onderscheid "niet gecontroleerd" versus
+"gecontroleerd, geen conflict" is een eigenschap van het *domein*, niet van een database. Het nieuwe
+type `TeamWedstrijdenOpDatum` staat daarom in `Planner.Shared` naast `BestaandeWedstrijd`, precies
+volgens de grens uit §42: pure logica zonder tierafhankelijkheid krijgt één plek. Twee kopieën zouden
+hier bovendien uit de pas kunnen lopen op exact het punt waar de fout zat.
+
+De repositories zelf blijven volledig gescheiden — die kennen `NpgsqlCommand` respectievelijk
+`SqlCommand`. Ze geven alleen hetzelfde domeintype terug.
+
+**Testdekking, en waar die ophoudt.** De Postgres-tier heeft een integratietest die het volledige
+pad meet: een team dat níet in `public.teams` staat maar wél een wedstrijd heeft in `his.matches`,
+met daarnaast de bestaande conflicttest als tegenhanger — samen scheiden ze "niet gecontroleerd" van
+"gecontroleerd, geen conflict". Negatieve controle uitgevoerd: met de nieuwe tak uitgeschakeld faalt
+exact die ene test.
+
+Voor de SQL Server-tier bestaat zo'n harnas niet — `FunctionApp.Tests` heeft geen enkele test tegen
+een levende SQL Server. Daar grendelt `Planner.Shared.Tests` alleen de semantiek van het type af.
+Dat is eerlijk gezegd de zwakkere kant van deze fix, en het is het vermelden waard: de tier die het
+langst in productie draait, is de tier met de minste geautomatiseerde dekking op dit pad.
+
+**Wat bewust NIET in deze fix zit.** De canonieke lijst automatisch alsnog vullen vanuit een
+leesverzoek. Dat maakt een `GET` schrijvend op een database met automatische pauzering en een
+verbruiksbudget dat medio augustus 2026 al een keer uitgeput raakte — herstel hoort achter een
+expliciete handeling (de sync, een timer, of een bewuste beheerhandeling), niet achter een
+leesverzoek. Zie issue #946.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

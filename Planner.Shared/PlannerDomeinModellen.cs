@@ -157,6 +157,53 @@ public class BestaandeWedstrijd
     public string Bron { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Uitkomst van "welke wedstrijden heeft dit team op deze datum" (#945).
+///
+/// <para>
+/// <b>Waarom dit type bestaat en een kale lijst niet volstaat.</b> De teamconflictcontrole zoekt het
+/// team eerst op in de canonieke teamlijst. Levert dat niets op — de naam staat er niet in, of er is
+/// nog geen gevalideerde alias voor deze schrijfwijze — dan is er niets om wedstrijden mee te
+/// vergelijken. Met een kale <c>List</c> als retourwaarde is die uitkomst niet te onderscheiden van
+/// "het team heeft die dag geen wedstrijd", en beide lezen dan als "geen conflict". Zo meldde
+/// <c>check-availability</c> "beschikbaar" terwijl de controle helemaal niet was uitgevoerd, zonder
+/// fout, waarschuwing of logregel.
+/// </para>
+///
+/// <para>
+/// De twee toestanden zijn daarom alleen via de fabrieksmethoden te maken: een niet-herkend team met
+/// wedstrijden is geen geldige toestand en kan hier niet worden geconstrueerd.
+/// </para>
+///
+/// <para>
+/// Bewust een <c>class</c> en geen <c>record</c>: recordgelijkheid zou de lijst op referentie
+/// vergelijken en daarmee een misleidende <c>==</c> opleveren.
+/// </para>
+/// </summary>
+public sealed class TeamWedstrijdenOpDatum
+{
+    private TeamWedstrijdenOpDatum(bool teamHerkend, List<BestaandeWedstrijd> wedstrijden)
+    {
+        TeamHerkend = teamHerkend;
+        Wedstrijden = wedstrijden;
+    }
+
+    /// <summary>
+    /// False als de teamnaam niet naar een team in de canonieke lijst te herleiden was. Dan is
+    /// <see cref="Wedstrijden"/> per definitie leeg, en dat betekent <b>niet gecontroleerd</b> —
+    /// nooit "geen conflict".
+    /// </summary>
+    public bool TeamHerkend { get; }
+
+    public List<BestaandeWedstrijd> Wedstrijden { get; }
+
+    /// <summary>De teamnaam was niet herleidbaar; er is niets gecontroleerd.</summary>
+    public static TeamWedstrijdenOpDatum NietHerkend() => new(false, new List<BestaandeWedstrijd>());
+
+    /// <summary>Het team is herkend; <paramref name="wedstrijden"/> is de volledige uitkomst — leeg betekent hier écht "geen wedstrijd die dag".</summary>
+    public static TeamWedstrijdenOpDatum Herkend(List<BestaandeWedstrijd> wedstrijden) => new(true, wedstrijden);
+}
+
 public class TeamRegel
 {
     public string TeamNaam { get; set; } = string.Empty;
