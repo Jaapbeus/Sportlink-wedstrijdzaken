@@ -130,13 +130,24 @@ public class TeamCanonicalisatieIntegrationTests
 
     private static async Task SchoonAsync()
     {
-        // his.teams bestaat op een verse database pas na de eerste EnsureHisTableAsync, én kan door
-        // een andere testsuite in een afwijkende vorm zijn achtergelaten — zie HisTabelVorm. Altijd
-        // via de echte productie-generator, nooit handgeschreven DDL.
-        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams);
+        // Beide tabellen, niet alleen his.teams: RegistreerBronSchrijfwijzenAsync leest de
+        // bronschrijfwijzen uit een UNION van his.teams én his.matches (#700), dus zonder
+        // his.matches faalt RefreshAsync met 42P01.
+        //
+        // Dit was een echte, latente volgorde-afhankelijkheid: xUnit bepaalt de volgorde van
+        // testklassen niet-deterministisch, en deze klasse slaagde alleen zolang
+        // PostgresSyncFixtureIntegrationTests toevallig eerder draaide en de tabel al had
+        // aangemaakt. Gemeten over vier verse databases: twee runs groen, twee rood — precies
+        // dezelfde code. Zie ARCHITECTUUR-DATABASE-TIERS.md §30.
+        //
+        // Altijd via de echte productie-generator, nooit handgeschreven DDL — en via HisTabelVorm,
+        // omdat een andere suite de tabellen in een afwijkende vorm kan hebben achtergelaten.
+        await HisTabelVorm.ZorgVoorProductievormAsync(
+            ConnectionString, KnownEntities.Teams, KnownEntities.Matches);
 
         await ExecAsync(
             "DELETE FROM his.teams WHERE clubcode = @club; " +
+            "DELETE FROM his.matches WHERE clubcode = @club; " +
             "DELETE FROM public.teamaliassen WHERE clubcode = @club; " +
             "DELETE FROM public.teams WHERE clubcode = @club;", ("club", ClubCode));
     }
