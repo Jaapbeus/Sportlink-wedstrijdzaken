@@ -58,6 +58,16 @@ jobs:
       - name: Postgres kolomdekking-guard (cross-tree)
         run: bash scripts/ci/check-postgres-column-coverage.sh
 
+      # #864, deel 4: het derde en laatste stuk van de bomen-vergelijking (na tabellen in deel 2
+      # en kolommen in deel 3) — stored procedures en views. Kan geen bestandsvergelijking zijn
+      # zoals de andere twee: de Postgres-tier heeft geen procedure-/viewbestanden (#818/#861,
+      # de logica leeft in C#), dus dit script vergelijkt tegen een expliciete mapping naar
+      # C#-symbolen en bewaakt dat die mapping niet verweest (een hernoeming of verwijdering van
+      # het gemapte symbool). Geen database, geen secrets — zie
+      # docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 36.
+      - name: Postgres procedures/views-dekking-guard (cross-tree)
+        run: bash scripts/ci/check-postgres-procedure-view-coverage.sh
+
       # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
       # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
       # Zonder deze test kunnen de shell-kant (CI) en de PowerShell-kant (lokale dev-scripts) uit

@@ -11,9 +11,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.0.26.3</Version>
-    <AssemblyVersion>3.0.26.3</AssemblyVersion>
-    <FileVersion>3.0.26.3</FileVersion>
+    <Version>3.0.26.4</Version>
+    <AssemblyVersion>3.0.26.4</AssemblyVersion>
+    <FileVersion>3.0.26.4</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members via InternalsVisibleTo (#476) -->

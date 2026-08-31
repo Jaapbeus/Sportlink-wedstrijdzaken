@@ -1885,6 +1885,34 @@ volgens het precedent van §25 buiten een implementatie-PR te worden genomen, en
 schemablokkades vragen nieuwe migratiebestanden omdat `MigrationRunner` hard faalt op elke
 checksumwijziging.
 
+## 36. Procedures/views-dekkingsguard — de derde en laatste bomen-vergelijking (#864, deel 4)
+
+**Sluit de bomen-vergelijking af.** Deel 2 (#917) bewaakt tabellen, deel 3 (#922) kolommen; dit is
+het derde en laatste stuk: stored procedures en views. Sectie 34's inventarisatie was compleet maar
+handmatig — een nieuwe SQL Server-procedure zonder Postgres-tegenhanger zou onopgemerkt blijven tot
+iemand de Postgres-tier daadwerkelijk gebruikt, exact het patroon waarom #893 en de
+`mta_modified`-kolom uit sectie 21 allebei pas gevonden werden toen iemand toevallig
+functionaliteit vertaalde die de ontbrekende kolom nodig had.
+
+**Waarom dit geen bestandsvergelijking kan zijn, in tegenstelling tot de andere twee.** Een
+tabelnaam vertaalt mechanisch (`dbo` → `public`, PascalCase → lowercase) — daar volstaat een
+regel. Een procedurenaam wordt een willekeurige C#-methodenaam
+(`sp_CleanupAppSettingsAudit` → `CleanupAppSettingsAuditAsync`, `sp_MergeStgToHis` →
+`MergeStgToHisAsync` op een generieke orchestratorklasse). `scripts/ci/check-postgres-procedure-view-coverage.sh`
+vergelijkt daarom tegen een expliciete `MAPPING`-array (object → bestand + regex op het C#-symbool),
+met dezelfde `EXCEPTIONS`-discipline als de andere twee scripts voor de vier objecten zonder
+tegenhanger (`dbo.sp_CreateDateTable`, `pub.DateTable`, `pub.Matches`, `pub.Teams` — zie sectie 34).
+
+**Een echte bug gevonden tijdens het bouwen, niet alleen tijdens het gebruiken.** De eerste versie
+matchte het C#-symbool met een ongeankerde `grep -qE`. Een opzettelijke test — `EnsureSeasonsAsync`
+hernoemen naar `EnsureSeasonsAsyncV2` — hoorde de mapping als verweesd te melden, maar de oude naam
+bleef als *voorvoegsel* van de nieuwe staan en de ongeankerde regex matchte hem gewoon door. Pas na
+`\b...\b`-woordgrenzen toe te voegen faalde die test zoals bedoeld. Zonder die correctie zou het
+script bij precies het scenario dat het moet vangen — een hernoemd of verwijderd symbool — stil
+blijven doorgaan. Alle drie faalscenario's zijn nu apart bewezen: een nieuwe procedure zonder
+mapping/exceptie, een verweesde mapping (het symbool bestaat niet meer), en een mapping die naar
+een niet-bestaand bestand wijst.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
