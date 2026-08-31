@@ -2077,6 +2077,22 @@ zijn `herplanverzoeken`-uitzondering; `check-postgres-column-coverage.sh`'s
 `KOLOM_UITZONDERINGEN`-lijst werd leeg (was vier regels voor exact de vier kolommen hierboven).
 Beide opnieuw groen na de wijziging — geen enkele guard is uitgeschakeld om dit te laten slagen.
 
+**Bijvangst 2: een CI-only regressie, niet in de applicatie zelf.** De eerste `gh pr checks`-run op
+deze PR faalde deterministisch op "PostDeployment op verse Postgres-database" — drie tests in
+`PlannerAvailabilityRepositoryIntegrationTests` (niet door deze PR aangeraakt) kregen een lege
+collectie terug voor iets dat wél in `his.matches` stond. Reproductie lokaal (verse container +
+exact dezelfde migratie-/seedstappen als de workflow) bevestigde: `planner.alle_wedstrijden_op_veld_ruw`
+kiest de "primaire club" via `CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY clubcode
+LIMIT 1` — identiek aan het SQL Server-origineel (`Database/planner/Views/AlleWedstrijdenOpVeld.sql`),
+correct zolang er precies één `syncenabled`-club is (§"Deployment-model" in CLAUDE.md). De
+CI-workflow zette echter een tweede, synthetische club (`CIPRIMARY`, alleen bedoeld als
+kopieerbron voor #862's speeltijden-seed) óók op `syncenabled = true`, zonder accommodatie —
+sorteert vóór elke `testclub-*`, dus werd DIE rij de "gekozen" primaire club, en filterde elke
+wedstrijd van élke andere club op een lege accommodatie. Gefixt in `.github/workflows/build.yml`
+(`syncenabled = false` voor `CIPRIMARY` — de kopieerquery in 006 filtert daar toch niet op), niet
+in de view: de view se aanname is een bewuste, correcte architectuurkeuze voor productie, alleen de
+testomgeving overtrad hem per ongeluk.
+
 **Empirisch geverifieerd.** Zeven permanente integratietests tegen een echte Postgres-container:
 teamresolutie via alias (niet de canonieke naam zelf), een onbekend team levert `null` op (geen
 LIKE-terugval), een ontbrekende speeltijd gooit dezelfde foutmelding als het origineel,
