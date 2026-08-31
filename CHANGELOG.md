@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De cross-tree CI-guard kijkt nu ook naar kolommen, niet alleen naar tabellen (issue 864, deel
+  3).** Een tabel die op de Postgres-tier wél bestaat maar kolommen mist, bleef tot nu toe
+  onopgemerkt tot iemand toevallig functionaliteit vertaalde die de kolom nodig had — dat gebeurde
+  binnen deze epic al twee keer. `scripts/ci/check-postgres-column-coverage.sh` vergelijkt 19
+  tabellen en 191 kolommen tussen de twee bomen; de zes dynamisch aangemaakte ETL-tabellen worden
+  gedekt door een nieuwe test die de échte schemagenerator-output vergelijkt met dezelfde SQL
+  Server-schemabestanden. Geen database nodig, draait ook op een fork. Vier opzettelijke
+  faalscenario's bevestigden dat beide controles daadwerkelijk rood kunnen worden. Eerste
+  bevinding: `his.MatchDetails` heet op de SQL Server-tier `bk_WedstrijdCode` en op de
+  Postgres-tier `bk_matchdetails` — een bewuste, nu vastgelegde afwijking.
 - **Nieuwe CI-guard vergelijkt de SQL Server- en Postgres-databaseboom op tabelniveau (issue 864,
   deel 2 — de grootste deelopgave die deel 1 openliet).** `scripts/ci/check-postgres-table-coverage.sh`
   faalt zichtbaar zodra een tabel aan de SQL Server-boom wordt toegevoegd zonder Postgres-
