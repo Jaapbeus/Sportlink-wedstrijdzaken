@@ -260,7 +260,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   de functiehost wel opkwam maar `PostgresFetchAndStoreApiData` permanent in foutstatus stond —
   zichtbaar in het opstartlog, onzichtbaar voor wie alleen de HTTP-endpoints uitprobeerde.
   Gevonden doordat de nieuwe zelftest-poort G5 op indexeringsfouten controleert (issue 909).
-
+- **Postgres-tier: teambegeleiding-import kon de club zonder data achterlaten bij een fout
+  halverwege (#913).** `AdminTeambegeleidingFunction.Import` deed de delete, de per-rij-insert
+  en de auditlog-insert als drie losse, niet-getransactioneerde stappen — een crash tussen de
+  delete en de insert-lus liet de club zonder teambegeleidingsdata achter, terwijl
+  `Database.Postgres/TeambegeleidingImporter` (issue 824) precies deze atomiciteit al gebouwd,
+  gereviewd en getest had, maar hier nooit werd aangeroepen. Het endpoint delegeert nu naar die
+  bestaande implementatie in plaats van de databaselaag opnieuw te bouwen. Empirisch geverifieerd
+  tegen een wegwerp-Postgres-container: een tweede import die halverwege faalt (een te lange
+  teamnaam) laat de data van de voorgaande, geslaagde import nu volledig intact — vóór deze fix zou
+  de delete al zijn doorgevoerd.
 - **Postgres-tier: teamherkenning kon stilzwijgend falen bij afwijkende hoofdlettergebruik, en
   stond een casing-only-duplicaatteam toe waar de SQL Server-tier dat al weigerde (issue 820,
   vervolgronde op #869).** Postgres' default-collatie is case-sensitief; de bij #889 gebouwde

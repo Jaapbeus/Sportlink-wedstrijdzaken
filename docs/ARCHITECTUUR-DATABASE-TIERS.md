@@ -895,6 +895,35 @@ demomodus" suggereerde dat G4 en G6 hetzelfde meten, wat niet zo is.
 - **Een permanente CI-variant van G5/G6.** De poort draait lokaal en gebruikt Docker, Azurite en
   Core Tools. Of dat op een CI-runner betaalbaar is, is niet onderzocht.
 
+## 23. Waarschuwing: twee onafhankelijk gebouwde eindpunten kunnen alsnog dezelfde databaselaag dupliceren (#913)
+
+**Bevinding, geen nieuwe regel — een concreet, empirisch voorbeeld van een risico dat sectie 2
+al benoemt.** `AdminTeambegeleidingFunction.Import` (#887, vertaalde het beheer-endpoint) en
+`Database.Postgres/TeambegeleidingImporter` (#824, vertaalde specifiek de CSV-importpijplijn) zijn
+**onafhankelijk van elkaar** gebouwd — beide leveren dezelfde AVG-gevoelige databasebewerking
+(delete + bulklaad + auditlog-insert voor `avg.teambegeleiding`/`avg.importlog`). Toen #887 aan de
+beurt was, herbouwde het de databaselaag zelf in plaats van de al bestaande, door #824's eigen
+review-fact-check-addendum geharde `TeambegeleidingImporter.ImportAsync` aan te roepen — met als
+gevolg dat de atomiciteitsgarantie die #824 specifiek toevoegde (delete + bulklaad + auditlog-insert
+in één transactie) in de daadwerkelijk aangeroepen productiecode ontbrak: een fout tussen de delete
+en de insert-lus liet de club zonder teambegeleidingsdata achter.
+
+**Fix:** `AdminTeambegeleidingFunction.Import` behoudt zijn eigen CSV-parselogica (kolomherkenning,
+aliassen — hoort daar, is een presentatie-/inputlaag-concern), maar delegeert de databaselaag nu
+naar `TeambegeleidingImporter.ImportAsync` in plaats van hem te herbouwen.
+
+**Empirisch bevestigd** (wegwerp-Postgres-16-container): een tweede import die halverwege faalt (een
+teamnaam die de `VARCHAR(100)`-kolomlengte overschrijdt, tijdens de binaire COPY) laat de data van
+een voorgaande, geslaagde import nu volledig intact — vóór de fix zou de delete al zijn doorgevoerd
+zonder dat de nieuwe data volledig werd weggeschreven.
+
+**Waarom hier vermeld, niet alleen in de PR:** dit is het eerste concrete, empirisch aangetoonde
+geval van de duplicatie die sectie 2 in algemene termen waarschuwt te vermijden — nuttig als
+precedent voor toekomstige sub-issues die een endpoint vertalen dat al een eigen, specifiek
+gebouwde datalaag elders in de Postgres-boom heeft. Controleer bij het vertalen van een nieuw
+beheer-endpoint altijd eerst of er al een specifiekere, geharde implementatie bestaat vóór je de
+databasebewerking zelf herbouwt.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

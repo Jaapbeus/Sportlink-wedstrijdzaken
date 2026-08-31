@@ -16,6 +16,16 @@ namespace FunctionApp.Postgres.Admin;
 /// is databasetier-onafhankelijk en ongewijzigd gekopieerd.
 /// </para>
 /// <para>
+/// <b>Databaselaag van Import gedelegeerd naar <see cref="Database.Postgres.TeambegeleidingImporter"/>
+/// (issue 913, ná #887).</b> Deze klasse implementeerde die laag oorspronkelijk zelf, met een
+/// niet-atomische delete + per-rij-insert-lus + losse auditlog-insert — terwijl #824 precies deze
+/// laag al had gebouwd, gereviewd en empirisch getest mét transactionele atomiciteit. Twee
+/// onafhankelijke implementaties van dezelfde AVG-gevoelige databasebewerking op dezelfde tier is
+/// exact het soort duplicatie dat CLAUDE.md's architectuurregels willen voorkomen — nu opgelost
+/// door deze klasse uitsluitend nog CSV te parsen en de al bestaande, geharde implementatie aan te
+/// roepen.
+/// </para>
+/// <para>
 /// <b>Doorsturen is bewust NIET vertaald.</b> Die functie hangt af van <c>GraphServiceClient</c>,
 /// <c>EmailGraphService</c>, <c>IEmailPersistenceRepository</c> en <c>OntvangerParser</c> — de
 /// volledige e-mailverzend-/teamresolutielaag die nog niet bestaat op de Postgres-tier (issue 889,
@@ -146,7 +156,6 @@ public static class AdminTeambegeleidingFunction
                 return new BadRequestObjectResult(new { error = "csvContent is vereist" });
 
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            var sw = System.Diagnostics.Stopwatch.StartNew();
 
             var parseResult = ParseCsv(dto.CsvContent);
             if (!parseResult.IsValid)
@@ -156,58 +165,30 @@ public static class AdminTeambegeleidingFunction
                     ontbreekt = parseResult.Ontbreekt
                 });
 
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-
-            await using (var deleteCmd = new NpgsqlCommand(
-                "DELETE FROM avg.teambegeleiding WHERE clubcode = @clubcode", connection))
-            {
-                deleteCmd.Parameters.AddWithValue("clubcode", clubCode);
-                await deleteCmd.ExecuteNonQueryAsync();
-            }
-
-            await using (var tx = await connection.BeginTransactionAsync())
-            {
-                foreach (var row in parseResult.Rows)
-                {
-                    await using var ins = new NpgsqlCommand(@"
-                        INSERT INTO avg.teambegeleiding
-                            (team, leeftijdscategorieteam, teamrol, naam, emailadres, telefoonnummer, clubcode)
-                        VALUES
-                            (@team, @leeftijd, @teamrol, @naam, @email, @telefoon, @clubcode)",
-                        connection, tx);
-                    ins.Parameters.AddWithValue("team",     (object?)row.Team ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("teamrol",  (object?)row.Teamrol ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("naam",     (object?)row.Naam ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("email",    (object?)row.Emailadres ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("clubcode", clubCode);
-                    await ins.ExecuteNonQueryAsync();
-                }
-                await tx.CommitAsync();
-            }
-
-            sw.Stop();
+            // Databaselaag gedelegeerd naar Database.Postgres.TeambegeleidingImporter (issue 824)
+            // in plaats van een eigen, niet-atomische delete/insert/auditlog-implementatie (issue
+            // 913: dat was hier eerder drie losse, niet-getransactioneerde stappen — een crash
+            // tussen de delete en de insert-lus liet de club zonder teambegeleidingsdata achter).
+            // ParseCsv's ImportRij en TeambegeleidingImporter's TeambegeleidingRow hebben dezelfde
+            // zes velden; alleen de CSV-parselogica (kolomherkenning, aliassen) blijft hier staan.
+            var rows = parseResult.Rows
+                .Select(r => new Database.Postgres.TeambegeleidingRow(
+                    r.Team, r.LeeftijdscategorieTeam, r.Teamrol, r.Naam, r.Emailadres, r.Telefoonnummer))
+                .ToList();
 
             var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
-            await using (var logCmd = new NpgsqlCommand(@"
-                INSERT INTO avg.importlog (aantalrijen, csvbestand, importerendedoor, duur_ms, clubcode)
-                VALUES (@rijen, @csv, @door, @duur, @club)", connection))
-            {
-                logCmd.Parameters.AddWithValue("rijen", parseResult.Rows.Count);
-                logCmd.Parameters.AddWithValue("csv",   (object?)dto.Bestandsnaam ?? DBNull.Value);
-                logCmd.Parameters.AddWithValue("door",  importeerder);
-                logCmd.Parameters.AddWithValue("duur",  (int)sw.ElapsedMilliseconds);
-                logCmd.Parameters.AddWithValue("club",  clubCode);
-                await logCmd.ExecuteNonQueryAsync();
-            }
 
-            log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen (geen PII gelogd — AVG)", parseResult.Rows.Count);
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            var importResult = await Database.Postgres.TeambegeleidingImporter.ImportAsync(
+                connection, clubCode, rows, dto.Bestandsnaam, importeerder);
+
+            log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen in {Duur}ms (geen PII gelogd — AVG)",
+                importResult.AantalRijen, importResult.DuurMs);
 
             return new OkObjectResult(new
             {
-                rijen         = parseResult.Rows.Count,
+                rijen         = importResult.AantalRijen,
                 herkend       = parseResult.Herkend,
                 ontbreekt     = new List<string>(),
                 waarschuwingen = parseResult.Waarschuwingen
