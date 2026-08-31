@@ -109,6 +109,24 @@
         @{ Path = 'api/beheer/teamaliassen';         Assert = 'Geldige lijst; na fase 8 bevat hij de testalias.' }
         @{ Path = 'api/beheer/sync/status';          Assert = 'Elke datumwaarde eindigt op een UTC-markering en ligt niet in de toekomst.' }
         @{ Path = 'api/beheer/leermomenten/stats';   Assert = 'Numerieke waarden.' }
+
+        # De twee planner-endpoints die vandaag op de Postgres-tier bestaan (#888). Ze stonden
+        # hiervoor NIET in deze lijst en werden dus door niets gedekt — terwijl de plannerlaag juist
+        # het onderdeel is waar een omzetting stil fout kan gaan (lege bezetting leest als een
+        # rustige dag, niet als een defect).
+        #
+        # {EERSTVOLGENDE_ZATERDAG} wordt door Test-PostgresTier.ps1 vervangen door de datum waarop de
+        # demoseed zijn eerste speelronde zet. Bewust een token en geen vaste datum: die zou binnen
+        # een week verlopen en de meting op een lege dag laten uitkomen.
+        @{ Path = 'api/planner/veldbezetting?datum={EERSTVOLGENDE_ZATERDAG}'; Context = 'demo'
+           Assert = 'Minstens een bezettingsrij op de eerste demospeeldag, elk met een teamnaam en een aanvangstijd. Leeg is FOUT: de seed zet 28 teams x 8 ronden neer, waarvan de helft thuis speelt. Let op: veld is bij demodata NULL — de seed plant niets op een veld in, dus daar valt niets over te beweren.' }
+
+        # Kan pas gemeten worden als de zelftest een canonieke teamlijst heeft (#931): dit endpoint
+        # resolvet de teamnaam via public.teams/public.teamaliassen, en die vult de demoseed niet.
+        # Een 404 is hier dus correct gedrag van het endpoint, geen defect — vandaar Blocked en niet
+        # weglaten: zo blijft zichtbaar dat hier dekking hoort te komen.
+        @{ Path = 'api/planner/team-schedule?team=AllStars%20JO13%201'; Context = 'demo'; Blocked = @(931)
+           Assert = 'Object met zaterdagen- en wedstrijden-lijst; de zaterdaglijst loopt tot het seizoenseinde en is dus niet leeg.' }
     )
 
     # De toepassingsnaam die de Postgres-tier op elke verbinding meegeeft

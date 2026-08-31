@@ -1829,6 +1829,62 @@ Server-ETL-boom. `sp_CreateDateTable` deelt diezelfde status (zie sectie 32). Da
 de cross-tree-vergelijking van procedures en views (#864) alleen nog het *geautomatiseerd* bewaken
 van deze mapping; de inhoudelijke inventarisatie is met deze sectie compleet.
 
+## 35. Planner-regressienet vóór verdere portering (#888, slice 1)
+
+**Uitgangspunt: er stond 873 regels plannercode op de Postgres-tier met nul blijvende testdekking.**
+Een verkenning met zeven parallelle lezers over de plannerlaag leverde één conclusie die de volgorde
+van al het resterende #888-werk bepaalt: elke volgende port zou zichzelf moeten bewijzen tegen een
+laag die zelf nergens tegen afgerekend werd. Vandaar deze slice vóór verdere vertaling, niet erna.
+
+**Drie dingen geleverd.**
+
+1. **Zelftestpoort G6 stond daadwerkelijk rood.** `api/beheer/templates` was bij #911/#927 aan
+   `selftest-expectations.psd1` toegevoegd zonder bijbehorende assertie-tak in
+   `Test-PostgresTier.ps1`. De `default`-tak markeert dat expliciet als fout — *"een endpoint
+   toevoegen aan de verwachtingenlijst zonder assertie hier is een fout, geen overslag"* — en dat
+   werkte precies zoals bedoeld: het ontwerp ving een echte omissie. Nu voorzien van een
+   inhoudscontrole (niet-leeg onderwerp én de twee verwachte democlubsleutels).
+2. **De twee bestaande planner-endpoints stonden in het geheel niet in de verwachtingenlijst.** Ze
+   waren dus door niets gedekt — terwijl juist de plannerlaag stil fout kan gaan: een lege
+   veldbezetting leest als een rustige dag, niet als een defect. Toegevoegd, met een
+   `{EERSTVOLGENDE_ZATERDAG}`-token dat het script vervangt door de dag waarop de demoseed zijn
+   eerste speelronde zet. Bewust een token en geen vaste datum: die zou binnen een week verlopen en
+   de meting stilzwijgend op een lege dag laten uitkomen.
+3. **Het enige geporte schrijfpad is vastgelegd**: zes tests op
+   `MarkeerVervallenGeplandeWedstrijdenAsync`, inclusief de #692-regel dat alleen een
+   `validated`-alias mag koppelen, de #820-hoofdletterongevoeligheid, de accommodatiefilter, en de
+   overslaan-zonder-fout-route als de accommodatie-instelling ontbreekt.
+
+**Twee assertiefouten die alleen door daadwerkelijk uitvoeren aan het licht kwamen.** Beide waren
+plausibel en zouden als groen zijn gepasseerd zonder de run:
+
+- De eerste versie eiste dat elke veldbezettingsrij een veld noemt. De demoseed plant niets op een
+  veld in, dus `veld` is daar altijd `NULL` — de assertie was aantoonbaar fout, niet de code. Nu
+  wordt op teamnaam + aanvangstijd getoetst: de inhoud die uit `his.matches` moet komen en die bij
+  een porteerfout wegvalt.
+- De teamrooster-assertie kreeg een 404. Oorzaak: `TeamExistsAsync` resolvet via
+  `public.teams`/`public.teamaliassen` — de *canonieke* lijst — en die vult de demoseed niet
+  (geverifieerd: nul `INSERT`s in beide seedbestanden). De 404 was dus correct gedrag van het
+  endpoint. Dat legt een bredere leemte bloot: in de zelftest is **alles wat op teamresolutie leunt
+  structureel onbereikbaar**, omdat er geen synchronisatie draait en canonicalisatie dus nooit
+  plaatsvindt. Vastgelegd als issue #931; het endpoint staat nu met een `Blocked`-markering in de
+  lijst in plaats van weggelaten, zodat zichtbaar blijft dat hier dekking hoort te komen.
+
+**Onderscheidend vermogen apart gemeten.** Met de `validated`-eis tijdelijk uit de query gesloopt
+(`status = 'validated'` → `status IS NOT NULL`) wordt precies één test rood: de test die die regel
+bewaakt. Daarna hersteld en opnieuw groen geverifieerd. Volledige suite 26/26; de zelftest ging van
+G6-rood naar 46 geslaagd, 0 gefaald, 3 geblokkeerd.
+
+**Bewust niet in deze ronde.** De verkenning leverde een plan van negentien slices op, waarvan dit
+de eerste is. De grootste bevinding daaruit hoort hier genoteerd: #888 is géén "negen endpoints
+porten". Onder die negen wrappers (~340 regels) ligt ~1570 regels service, ~1360 regels repository
+en een planningsmotor, en van de ~34 repositorymethoden op de SQL Server-tier staan er vandaag zes
+op de Postgres-tier — twee volledige repositories hebben er nog geen bestand. Twee
+architectuurbesluiten (waar de pure planningsmotor woont; waar de planner-DTO's wonen) horen
+volgens het precedent van §25 buiten een implementatie-PR te worden genomen, en twee harde
+schemablokkades vragen nieuwe migratiebestanden omdat `MigrationRunner` hard faalt op elke
+checksumwijziging.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -801,10 +801,13 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
             $srv = if ($cs -match '(?:Data Source|Server|Address|Addr|Network Address)\s*=\s*([^;]+)') { $Matches[1].Trim() }
             $db  = if ($cs -match '(?:Initial Catalog|Database)\s*=\s*([^;]+)') { $Matches[1].Trim() }
             $usr = if ($cs -match '(?:User ID|User Id|UID)\s*=\s*([^;]+)') { $Matches[1].Trim() }
-            $pwd = if ($cs -match '(?:Password|PWD)\s*=\s*([^;]+)') { $Matches[1].Trim() }
+            # Bewust NIET $pwd: dat is in PowerShell de automatische variabele voor de huidige
+            # werkmap. Hem overschrijven met een wachtwoord werkt hier toevallig, maar laat een
+            # valstrik achter voor elke latere regel in deze scope die $pwd als pad gebruikt.
+            $sqlPwd = if ($cs -match '(?:Password|PWD)\s*=\s*([^;]+)') { $Matches[1].Trim() }
             $trustCert = $cs -match 'TrustServerCertificate\s*=\s*(?:True|Yes)'
 
-            $env:SQLCMDPASSWORD = $pwd
+            $env:SQLCMDPASSWORD = $sqlPwd
             $sqlArgs = @('-U', $usr)
             if ($trustCert) { $sqlArgs += '-C' }
 
@@ -1054,8 +1057,21 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
                     continue
                 }
 
-                $r = Invoke-ZelftestApi -Pad $ep.Path -Context $context
-                $g6Bewijs[$ep.Path] = @{ code = $r.Code; body = $r.Body }
+                # {EERSTVOLGENDE_ZATERDAG} vervangen door de datum waarop de demoseed zijn eerste
+                # speelronde zet. Een vaste datum in de verwachtingenlijst zou binnen een week
+                # verlopen en de meting stilzwijgend op een lege dag laten uitkomen — nul rijen
+                # geeft geen fout, dus dat zou als "goed" doorgaan. De berekening is dezelfde als in
+                # scripts/migrations/003-seed-allstars-demo-matches-postgres.sql: de eerstvolgende
+                # zaterdag, of vandaag als vandaag zaterdag is.
+                $pad = $ep.Path
+                if ($pad -like '*{EERSTVOLGENDE_ZATERDAG}*') {
+                    $vandaag  = (Get-Date).Date
+                    $zaterdag = $vandaag.AddDays(((6 - [int]$vandaag.DayOfWeek) + 7) % 7)
+                    $pad = $pad -replace '\{EERSTVOLGENDE_ZATERDAG\}', $zaterdag.ToString('yyyy-MM-dd')
+                }
+
+                $r = Invoke-ZelftestApi -Pad $pad -Context $context
+                $g6Bewijs[$ep.Path] = @{ opgevraagd = $pad; code = $r.Code; body = $r.Body }
 
                 if (-not $r.Ok) {
                     Add-Check -Gate 'G6' -Id $id -Status 'fail' -Expected '200' -Actual "$($r.Body)"
@@ -1124,6 +1140,77 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
                                 Add-Check -Gate 'G6' -Id $id -Status 'pass' `
                                     -Actual "$($stempels.Count) tijdstempel(s), alle UTC en niet in de toekomst"
                             }
+                        }
+                    }
+                    'api/planner/veldbezetting?datum={EERSTVOLGENDE_ZATERDAG}' {
+                        # De demoseed zet 28 teams x 8 ronden neer, waarvan de helft thuis speelt —
+                        # op de eerste speelzaterdag hoort dus bezetting te staan. Een lege lijst is
+                        # hier FOUT en geen "toevallig rustige dag": dat zou precies de stille
+                        # nul-rijen-uitkomst zijn die dit script niet als groen mag laten passeren.
+                        # Bewust NIET op 'veld' asserteren: de demoseed plant niets op een veld in,
+                        # dus veld is daar altijd NULL. Empirisch vastgesteld tijdens #888 — een
+                        # eerdere versie van deze assertie eiste wél een veld en was daarmee
+                        # aantoonbaar fout. Wat hier telt is teamnaam + aanvangstijd: dat is de
+                        # inhoud die uit his.matches moet komen en die bij een porteerfout wegvalt.
+                        $rijen = @($j)
+                        $metInhoud = @($rijen | Where-Object {
+                            -not [string]::IsNullOrWhiteSpace($_.teamNaam) -and
+                            -not [string]::IsNullOrWhiteSpace($_.aanvangsTijd) })
+                        if ($rijen.Count -eq 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'minstens een bezettingsrij op de eerste demospeeldag' `
+                                -Actual 'lege lijst — of de seed staat er niet, of de datumberekening loopt uiteen'
+                        } elseif ($metInhoud.Count -ne $rijen.Count) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'elke rij noemt een teamnaam en een aanvangstijd' `
+                                -Actual "$($rijen.Count - $metInhoud.Count) van $($rijen.Count) rij(en) mist er een"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                -Actual "$($rijen.Count) bezettingsrij(en), alle met teamnaam en aanvangstijd"
+                        }
+                    }
+                    'api/planner/team-schedule?team=AllStars%20JO13%201' {
+                        # Vorm: een omhulsel met team, zaterdagen en wedstrijden. Alleen "HTTP 200"
+                        # bewijst hier niets — een onbekend team geeft 404 en een bestaand team met
+                        # een lege agenda zou als lege lijsten terugkomen. Daarom zowel de vorm als
+                        # een ondergrens op de zaterdaglijst: die loopt tot het seizoenseinde en is
+                        # dus per definitie niet leeg zolang er nog een zaterdag te gaan is.
+                        $heeftVorm = $null -ne $j -and
+                                     $j.PSObject.Properties.Name -contains 'wedstrijden' -and
+                                     $j.PSObject.Properties.Name -contains 'zaterdagen'
+                        if (-not $heeftVorm) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'object met zaterdagen- en wedstrijden-lijst' -Actual $r.Body
+                        } elseif (@($j.zaterdagen).Count -eq 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'minstens een zaterdag tot het seizoenseinde' `
+                                -Actual 'lege zaterdaglijst — seizoenseinde niet gevuld of team niet herkend'
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                -Actual "team=$($j.team), zaterdagen=$(@($j.zaterdagen).Count), wedstrijden=$(@($j.wedstrijden).Count)"
+                        }
+                    }
+                    'api/beheer/templates' {
+                        # Vorm: een platte lijst sjabloonobjecten (TemplateKey/Onderwerp/...).
+                        # Twee eisen, want alleen "de lijst is niet leeg" zou een lijst met lege
+                        # onderwerpen groen laten — en juist een leeg onderwerp levert een
+                        # onbruikbare e-mail op zonder dat er ergens een fout optreedt.
+                        $sjablonen = @($j)
+                        $metOnderwerp = @($sjablonen | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Onderwerp) })
+                        $sleutels = @($sjablonen | ForEach-Object { $_.TemplateKey })
+                        $verwachteDemoSleutels = @('bevestiging', 'buiten_scope')
+                        $ontbrekend = @($verwachteDemoSleutels | Where-Object { $sleutels -notcontains $_ })
+
+                        if ($metOnderwerp.Count -eq 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'minstens een sjabloon met een niet-leeg onderwerp' -Actual $r.Body
+                        } elseif ($ontbrekend.Count -gt 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected "democlubsleutels: $($verwachteDemoSleutels -join ', ')" `
+                                -Actual "ontbreekt: $($ontbrekend -join ', ') (gevonden: $($sleutels -join ', '))"
+                        } else {
+                            Add-Check -Gate 'G6' -Id $id -Status 'pass' `
+                                -Actual "$($sjablonen.Count) sjabloon(en), $($metOnderwerp.Count) met onderwerp: $($sleutels -join ', ')"
                         }
                     }
                     'api/beheer/leermomenten/stats' {
