@@ -1,4 +1,5 @@
 using Npgsql;
+using Planner.Shared;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -7,7 +8,12 @@ namespace FunctionApp.Postgres.Admin;
 /// (#887). Vertaling: <c>[planner].[EmailVerwerking]</c> → <c>planner.emailverwerking</c>,
 /// <c>TOP (@Limit)</c> → <c>LIMIT @limit</c>, gequote PascalCase-aliassen (#855). Geen
 /// <c>DateTime.SpecifyKind</c> nodig — Npgsql geeft <c>TIMESTAMPTZ</c> al terug met <c>Kind=Utc</c>.
-/// AVG-maskering van de afzender is ongewijzigd.
+/// <para>
+/// AVG-maskering loopt sinds #858 via het gedeelde <see cref="Planner.Shared.AvgMaskering"/>: die
+/// zoekt hoofdletterongevoelig en gooit als er niets te maskeren viel. De maskering hing eerder aan
+/// het PascalCase-alias in de SELECT hierboven — viel dat alias weg, dan ging het volledige
+/// e-mailadres onvermaskerd naar de browser zonder enige melding.
+/// </para>
 /// </summary>
 internal static class AdminEmailLogRepository
 {
@@ -44,11 +50,9 @@ internal static class AdminEmailLogRepository
             for (int i = 0; i < r.FieldCount; i++)
                 row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
 
-            if (row.TryGetValue("Afzender", out var afz) && afz is string email)
-            {
-                var at = email.IndexOf('@');
-                row["Afzender"] = at > 0 ? "***" + email[at..] : "***";
-            }
+            // AVG (#858): hoofdletterongevoelig én luidruchtig — ontbreekt de kolom, dan gooit
+            // dit in plaats van stilzwijgend een onvermaskerd adres door te laten.
+            AvgMaskering.MaskeerAfzender(row);
             list.Add(row);
         }
         return list;

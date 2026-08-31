@@ -69,5 +69,26 @@ BEGIN
                     '1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld', demo_club);
         END IF;
 
+        -- E-maillog (#858): twee voorbeeldrijen, zodat de AVG-maskering van het afzenderadres
+        -- daadwerkelijk te meten is. Zonder deze rijen levert GET /api/beheer/email-log een lege
+        -- lijst op, en dan is "alles gemaskeerd" niet te onderscheiden van "er viel niets te
+        -- maskeren" — precies het soort loze groene assertie dat de zelftest (#851) wil vermijden.
+        --
+        -- AVG: fictieve afzenders op het gereserveerde .test-TLD (RFC 2606), conform dezelfde
+        -- vastgelegde uitzondering als de rest van dit bestand. Het endpoint hoort deze adressen
+        -- bovendien gemaskeerd terug te geven; staat er ooit een volledig adres in het antwoord,
+        -- dan is dat een bevinding.
+        IF NOT EXISTS (SELECT 1 FROM planner.emailverwerking WHERE clubcode = demo_club) THEN
+            INSERT INTO planner.emailverwerking
+                (messageid, afzender, onderwerp, ontvangstdatum, verzoektype, status, clubcode)
+            VALUES
+                ('allstars-demo-0001', 'frenkie@allstars-fc.test',
+                 'Verzoek verplaatsing wedstrijd JO13-1', NOW() - INTERVAL '2 days',
+                 'Verzetverzoek', 'Beantwoord', demo_club),
+                ('allstars-demo-0002', 'john@allstars-fc.test',
+                 'Vraag over veldindeling zaterdag', NOW() - INTERVAL '1 day',
+                 'Vraag', 'Ontvangen', demo_club);
+        END IF;
+
     END IF;
 END $$;
