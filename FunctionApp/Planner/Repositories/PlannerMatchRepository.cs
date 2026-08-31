@@ -93,7 +93,7 @@ internal static class PlannerMatchRepository
     /// alle bekende schrijfwijzen van het team: een gemiste vergelijking hier zou stilzwijgend een
     /// dubbele boeking van hetzelfde team toelaten.
     /// </remarks>
-    internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(
+    internal static async Task<TeamWedstrijdenOpDatum> GetTeamMatchesOnDateAsync(
         string teamNaam, DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
@@ -101,7 +101,9 @@ internal static class PlannerMatchRepository
         await conn.OpenAsync();
         var cc = ClubScope.Resolve(clubCode);
         var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
-        if (schrijfwijzen.Count == 0) return results;
+        // Geen schrijfwijzen = de naam is niet naar een team te herleiden. Dat is NIET "geen
+        // conflict" maar "niet gecontroleerd" (#945) — de aanroeper moet dat verschil zien.
+        if (schrijfwijzen.Count == 0) return TeamWedstrijdenOpDatum.NietHerkend();
 
         using var cmd = new SqlCommand();
         var matchFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
@@ -157,7 +159,7 @@ internal static class PlannerMatchRepository
                 Bron         = reader.GetString(6)
             });
         }
-        return results;
+        return TeamWedstrijdenOpDatum.Herkend(results);
     }
 
     internal static async Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(

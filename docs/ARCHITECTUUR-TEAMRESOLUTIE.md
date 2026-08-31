@@ -177,10 +177,33 @@ Schrijfwijzen die niet herleidbaar zijn, zijn in de praktijk geen clubteams — 
 toernooi-inschrijvingen en tegenstanders in oefenwedstrijden. Die krijgen bewust geen alias en worden
 alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de review-lijst te vervuilen.
 
+## Een onherleidbare naam is "niet gecontroleerd", nooit "geen conflict" (#945)
+
+Elke lezer van de canonieke teamlijst kan nul rijen terugkrijgen: de naam staat er niet in, of er is
+nog geen gevalideerde alias voor déze schrijfwijze. Dat is een normale, verwachte uitkomst van deze
+laag — variatie in schrijfwijze is precies het probleem dat zij oplost.
+
+**De harde regel: die uitkomst mag nergens dezelfde vorm hebben als een geslaagde controle met een
+lege uitslag.** Dat ging één keer mis en het is een instructief voorbeeld:
+`GetTeamMatchesOnDateAsync` gaf bij een onherleidbare naam een lege `List` terug — bit voor bit
+hetzelfde als "dit team heeft die dag geen wedstrijd". `AvailabilityService` las dat als "geen
+conflict" en antwoordde `beschikbaar`, zonder waarschuwing en zonder logregel, terwijl het team op
+dat moment al ingepland stond. De planner kon daarop een dubbele boeking maken.
+
+De methode geeft daarom `Planner.Shared.TeamWedstrijdenOpDatum` terug, waarin `TeamHerkend` de twee
+gevallen scheidt; de toestand "niet herkend, mét wedstrijden" is niet construeerbaar. Bij een
+onherleidbare naam zet `check-availability` een expliciete waarschuwing in het antwoord, die via
+`BerichtResponseGenerator`' "Let op:"-regel ook in het antwoordbericht aan de coördinator terechtkomt.
+
+**Bij codereview:** komt er een nieuwe lezer van de canonieke lijst bij, stel dan één vraag — geeft
+dit pad bij nul rijen een *correct* antwoord, of een *verkeerd* antwoord? Bij het tweede hoort de
+onherleidbaarheid zichtbaar te worden, niet weggemiddeld in een lege collectie.
+
 ## Bestanden
 
 | Bestand | Verantwoordelijkheid |
 |---|---|
+| `Planner.Shared/TeamWedstrijdenOpDatum.cs` (in `PlannerDomeinModellen.cs`) | Scheidt "team niet herleidbaar" van "team herkend, geen wedstrijd". **Tier-onafhankelijk** — beide bomen geven dit type terug (#945). |
 | `Planner.Shared/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. **Tier-onafhankelijk** — beide databasebomen gebruiken exact deze klasse (verhuisd hierheen bij #889; stond tot dan in `FunctionApp/TeamResolution/`). |
 | `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen`, altijd op ClubCode. |

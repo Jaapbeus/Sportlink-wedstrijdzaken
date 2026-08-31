@@ -236,7 +236,7 @@ internal static class PlannerMatchRepository
     /// Postgres-tier heeft bewust geen vierde SQL-kopie van die matching (#819).
     /// </para>
     /// </summary>
-    internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(
+    internal static async Task<TeamWedstrijdenOpDatum> GetTeamMatchesOnDateAsync(
         string connectionString, string teamNaam, DateOnly date, string? clubCode)
     {
         var results = new List<BestaandeWedstrijd>();
@@ -244,7 +244,9 @@ internal static class PlannerMatchRepository
         await conn.OpenAsync();
         var cc = PostgresClubScope.Resolve(clubCode);
         var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
-        if (schrijfwijzen.Count == 0) return results;
+        // Geen schrijfwijzen = de naam is niet naar een team te herleiden. Dat is NIET "geen
+        // conflict" maar "niet gecontroleerd" (#945) — de aanroeper moet dat verschil zien.
+        if (schrijfwijzen.Count == 0) return TeamWedstrijdenOpDatum.NietHerkend();
         var sleutels = Vergelijkingssleutels(schrijfwijzen);
 
         var velden = await PlannerSettingsRepository.GetVeldenAsync(connectionString, cc);
@@ -321,7 +323,7 @@ internal static class PlannerMatchRepository
             }
         }
 
-        return results;
+        return TeamWedstrijdenOpDatum.Herkend(results);
     }
 
     /// <summary>

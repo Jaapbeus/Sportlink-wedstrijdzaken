@@ -67,10 +67,20 @@ internal static class AvailabilityService
 
         if (!string.IsNullOrEmpty(request.TeamNaam))
         {
-            var teamMatches = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date, clubCode);
-            if (teamMatches.Count > 0)
+            var teamWedstrijden = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date, clubCode);
+            if (!teamWedstrijden.TeamHerkend)
             {
-                var conflict = teamMatches[0];
+                // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
+                // dat mag nooit als "geen conflict" lezen. De aanvraag wordt niet geweigerd — de
+                // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
+                // ontbreken van de controle staat wel in het antwoord.
+                response.Waarschuwingen.Add(
+                    $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
+                    "team die dag al een wedstrijd heeft — controleer dat zelf.");
+            }
+            else if (teamWedstrijden.Wedstrijden.Count > 0)
+            {
+                var conflict = teamWedstrijden.Wedstrijden[0];
                 response.TeamConflict = new TeamConflictInfo
                 {
                     Wedstrijd = conflict.Wedstrijd ?? "",
