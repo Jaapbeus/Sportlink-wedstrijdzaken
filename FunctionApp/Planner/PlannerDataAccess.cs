@@ -89,10 +89,10 @@ namespace SportlinkFunction.Planner
             long wedstrijdcode, string huidigeWedstrijd, DateOnly huidigeDatum,
             TimeOnly huidigeAanvangsTijd, string? huidigeVeldNaam,
             TimeOnly gewensteAanvangsTijd, int? gewenstVeldNummer,
-            string? aangevraagdDoor, string? opmerking)
+            string? aangevraagdDoor, string? opmerking, string? clubCode = null)
             => PlannerMatchRepository.SaveHerplanVerzoekAsync(wedstrijdcode, huidigeWedstrijd, huidigeDatum,
                    huidigeAanvangsTijd, huidigeVeldNaam, gewensteAanvangsTijd, gewenstVeldNummer,
-                   aangevraagdDoor, opmerking);
+                   aangevraagdDoor, opmerking, clubCode);
 
         public static Task MarkeerVervallenGeplandeWedstrijdenAsync(ILogger log, string? clubCode = null)
             => PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(log, clubCode);

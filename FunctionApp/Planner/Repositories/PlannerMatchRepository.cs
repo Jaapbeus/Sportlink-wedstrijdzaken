@@ -441,21 +441,31 @@ internal static class PlannerMatchRepository
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
+    /// <remarks>
+    /// <b>Bugfix (issue 888 vervolg, gevonden tijdens de Postgres-vertaling).</b> Deze methode miste
+    /// <c>ClubCode</c> volledig in de INSERT, terwijl <c>[planner].[HerplanVerzoeken].[ClubCode]</c>
+    /// <c>NOT NULL</c> is zonder <c>DEFAULT</c> — elke aanroep van <c>HerplanBevestig</c> gooide dus
+    /// een SQL-fout ("Cannot insert the value NULL into column 'ClubCode'"). Niet zichtbaar in de
+    /// zelftest omdat die de Postgres-tier bewaakt, niet de SQL Server-tier. Same-shape fix als de
+    /// andere <c>PlannerMatchRepository</c>-methoden: <c>clubCode</c> optioneel met
+    /// <c>ClubScope.Resolve</c>-fallback naar de primaire club.
+    /// </remarks>
     internal static async Task<int> SaveHerplanVerzoekAsync(
         long wedstrijdcode, string huidigeWedstrijd, DateOnly huidigeDatum,
         TimeOnly huidigeAanvangsTijd, string? huidigeVeldNaam,
         TimeOnly gewensteAanvangsTijd, int? gewenstVeldNummer,
-        string? aangevraagdDoor, string? opmerking)
+        string? aangevraagdDoor, string? opmerking, string? clubCode = null)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var cc = ClubScope.Resolve(clubCode);
         using var cmd = new SqlCommand(@"
             INSERT INTO [planner].[HerplanVerzoeken]
                 ([Wedstrijdcode], [HuidigeWedstrijd], [HuidigeDatum], [HuidigeAanvangsTijd],
                  [HuidigeVeldNaam], [GewensteAanvangsTijd], [GewenstVeldNummer],
-                 [Status], [AangevraagdDoor], [Opmerking])
+                 [Status], [AangevraagdDoor], [Opmerking], [ClubCode])
             OUTPUT INSERTED.[Id]
-            VALUES (@code, @wedstrijd, @datum, @aanvang, @veld, @gewensteTijd, @gewenstVeld, 'Aangevraagd', @door, @opmerking)
+            VALUES (@code, @wedstrijd, @datum, @aanvang, @veld, @gewensteTijd, @gewenstVeld, 'Aangevraagd', @door, @opmerking, @cc)
         ", conn);
         cmd.Parameters.AddWithValue("@code", wedstrijdcode);
         cmd.Parameters.AddWithValue("@wedstrijd", huidigeWedstrijd);
@@ -466,6 +476,7 @@ internal static class PlannerMatchRepository
         cmd.Parameters.AddWithValue("@gewenstVeld", (object?)gewenstVeldNummer ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@door", (object?)aangevraagdDoor ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@opmerking", (object?)opmerking ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@cc", cc);
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 

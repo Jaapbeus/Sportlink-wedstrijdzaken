@@ -6,11 +6,20 @@ namespace FunctionApp.Postgres.Planner.Repositories;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van (een deel van) <c>FunctionApp/Planner/Repositories/PlannerMatchRepository.cs</c>
-/// (#888). Vertaald zijn <see cref="MarkeerVervallenGeplandeWedstrijdenAsync"/> (#890) en de twee
-/// leesmethoden achter <c>GET /api/planner/team-schedule</c>: <see cref="TeamExistsAsync"/> en
-/// <see cref="GetFutureMatchesForTeamAsync"/>. De schrijf- en beschikbaarheidsmethoden
-/// (CheckAvailability, SavePlannedMatchAsync, SaveHerplanVerzoekAsync, FindMatch*) blijven #888's
-/// eigen, aanzienlijk grotere scope — zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16.
+/// (#888). Vertaald zijn <see cref="MarkeerVervallenGeplandeWedstrijdenAsync"/> (#890), de twee
+/// leesmethoden achter <c>GET /api/planner/team-schedule</c> (<see cref="TeamExistsAsync"/>,
+/// <see cref="GetFutureMatchesForTeamAsync"/>), en — sinds #888 vervolg — de drie kleinste van de
+/// vier resterende gaten die de klasse-doc-comment van <c>PlannerFunction.cs</c> ooit noemde:
+/// <see cref="FindMatchAsync"/>, <see cref="FindMatchByCodeAsync"/>,
+/// <see cref="SavePlannedMatchAsync"/> en <see cref="SaveHerplanVerzoekAsync"/> — genoeg om
+/// <c>ZoekWedstrijd</c>, <c>BevestigWedstrijd</c> en <c>HerplanBevestig</c> echt te wireren.
+/// <para>
+/// Nog niet vertaald: <c>GetTeamMatchesOnDateAsync</c>, <c>GetGeplandeWedstrijdenOnlyAsync</c> en
+/// <c>FindMatchByOpponentAsync</c> — die hebben geen consument op deze tier vóórdat
+/// <c>AvailabilityService</c>/<c>RescheduleService</c> bestaan (<c>CheckAvailability</c>,
+/// <c>HerplanCheck</c>), dus vertalen zou onverifieerbare dode code opleveren. Zie
+/// docs/ARCHITECTUUR-DATABASE-TIERS.md §16/§40.
+/// </para>
 /// </summary>
 internal static class PlannerMatchRepository
 {
@@ -210,6 +219,207 @@ internal static class PlannerMatchRepository
         if (lower.Contains("oefen")) return "oefenwedstrijd";
         if (lower.Contains("beker")) return "beker";
         return "competitie";
+    }
+
+    /// <summary>
+    /// Eén wedstrijd van een team op een datum — Postgres-vertaling van het SQL Server-origineel
+    /// (#888 vervolg, ontsluit <c>POST /api/planner/zoek-wedstrijd</c>).
+    /// <para>
+    /// <b><c>VeldNaam</c> is hier bewust de RUWE Sportlink-veldstring</b> (<c>m.veld</c>), geen
+    /// geresolveerd veldnummer — het origineel doet hier géén <c>VeldResolutie</c>-lookup, dit
+    /// endpoint toont alleen zoekresultaten aan een beheerder. Vergelijk
+    /// <see cref="Repositories.PlannerAvailabilityRepository"/>, dat wél resolveert omdat de
+    /// FieldScheduler-engine een numeriek veldnummer nodig heeft.
+    /// </para>
+    /// </summary>
+    internal static async Task<ZoekWedstrijdResponse?> FindMatchAsync(
+        string connectionString, string teamNaam, DateOnly date, string? clubCode)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        var cc = PostgresClubScope.Resolve(clubCode);
+        var accommodatie = await PostgresClubScope.RequireAccommodatieAsync(conn, cc);
+
+        var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
+        if (schrijfwijzen.Count == 0) return null;
+        var sleutels = Vergelijkingssleutels(schrijfwijzen);
+
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT m.wedstrijdcode, m.wedstrijd,
+                   m.kaledatum::date, m.aanvangstijd,
+                   COALESCE(s.wedstrijdtotaal, 0), m.veld,
+                   t.leeftijdscategorie, COALESCE(s.veldafmeting, 1.00)
+            FROM his.matches m
+            LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
+                 AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
+                 AND {PostgresClubScope.HisFilter("t")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+                 AND s.clubcode = {PostgresClubScope.ClubCodeParam}
+            WHERE m.kaledatum::date = @date
+              AND m.accommodatie ILIKE @accommodatiepattern
+              AND UPPER(m.status) <> 'AFGELAST'
+              AND UPPER(TRIM(m.teamnaam)) = ANY(@sleutels)
+              AND {PostgresClubScope.HisFilter("m")}
+            ORDER BY m.aanvangstijd
+            LIMIT 1
+        ", conn);
+        cmd.Parameters.AddWithValue("date", date.ToDateTime(TimeOnly.MinValue).Date);
+        cmd.Parameters.AddWithValue("accommodatiepattern", $"%{accommodatie}%");
+        cmd.Parameters.AddWithValue("sleutels", sleutels);
+        PostgresClubScope.AddHisParams(cmd, clubCode);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
+        return LeesZoekWedstrijdResponse(reader, vasteDatum: date);
+    }
+
+    /// <summary>
+    /// Eén wedstrijd op Sportlink-wedstrijdcode — Postgres-vertaling van het SQL Server-origineel
+    /// (#888 vervolg, ontsluit <c>POST /api/planner/herplan-bevestig</c>). Bewust geen
+    /// <c>status &lt;&gt; 'Afgelast'</c>-filter: dit pad zoekt een bekende wedstrijd op code voor een
+    /// herplanverzoek, ook als de status inmiddels is gewijzigd — zelfde als het origineel.
+    /// </summary>
+    internal static async Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(
+        string connectionString, long wedstrijdcode, string? clubCode)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        var cc = PostgresClubScope.Resolve(clubCode);
+        var accommodatie = await PostgresClubScope.RequireAccommodatieAsync(conn, cc);
+
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT m.wedstrijdcode, m.wedstrijd,
+                   m.kaledatum::date, m.aanvangstijd,
+                   COALESCE(s.wedstrijdtotaal, 0), m.veld,
+                   t.leeftijdscategorie, COALESCE(s.veldafmeting, 1.00)
+            FROM his.matches m
+            LEFT JOIN his.teams t ON t.teamnaam = m.teamnaam
+                 AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
+                 AND {PostgresClubScope.HisFilter("t")}
+            LEFT JOIN public.speeltijden s ON s.leeftijd = {Database.Postgres.PostgresLeeftijdNormalisatie.SqlExpr("t.leeftijdscategorie")}
+                 AND s.clubcode = {PostgresClubScope.ClubCodeParam}
+            WHERE m.wedstrijdcode = @code
+              AND m.accommodatie ILIKE @accommodatiepattern
+              AND {PostgresClubScope.HisFilter("m")}
+            LIMIT 1
+        ", conn);
+        cmd.Parameters.AddWithValue("code", wedstrijdcode);
+        cmd.Parameters.AddWithValue("accommodatiepattern", $"%{accommodatie}%");
+        PostgresClubScope.AddHisParams(cmd, clubCode);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
+        return LeesZoekWedstrijdResponse(reader, vasteDatum: null);
+    }
+
+    /// <summary>
+    /// Gedeelde rij-uitlezing voor <see cref="FindMatchAsync"/> en <see cref="FindMatchByCodeAsync"/>
+    /// — beide queries selecteren exact dezelfde acht kolommen in dezelfde volgorde.
+    /// <paramref name="vasteDatum"/> is de bekende zoekdatum (FindMatchAsync kreeg hem als
+    /// parameter); bij <c>null</c> (FindMatchByCodeAsync) komt de datum uit de rij zelf.
+    /// </summary>
+    private static ZoekWedstrijdResponse LeesZoekWedstrijdResponse(NpgsqlDataReader reader, DateOnly? vasteDatum)
+    {
+        var aanvangstijd = reader.IsDBNull(3) ? "" : reader.GetString(3).Trim();
+        var duur = reader.GetInt32(4);
+        var naam = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+        if (duur <= 0)
+            throw new InvalidOperationException(
+                $"Speelduur niet geconfigureerd voor wedstrijd '{naam}'. Voeg de leeftijdscategorie toe aan public.speeltijden via /instellingen/speeltijden.");
+        TimeOnly.TryParse(aanvangstijd, out var start);
+        var datum = vasteDatum ?? DateOnly.FromDateTime(reader.GetDateTime(2));
+        return new ZoekWedstrijdResponse
+        {
+            Wedstrijdcode = reader.GetInt64(0),
+            Wedstrijd = naam,
+            Datum = datum.ToString("yyyy-MM-dd"),
+            AanvangsTijd = aanvangstijd,
+            EindTijd = start.AddMinutes(duur).ToString("HH:mm"),
+            DuurMinuten = duur,
+            VeldNaam = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+            LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+            VeldDeelGebruik = reader.GetDecimal(7)
+        };
+    }
+
+    /// <summary>
+    /// Slaat een handmatig ingeplande wedstrijd op — Postgres-vertaling van het SQL Server-origineel
+    /// (#888 vervolg, ontsluit <c>POST /api/planner/bevestig</c>). <c>RETURNING id</c> i.p.v.
+    /// <c>OUTPUT INSERTED.Id</c>, verder één-op-één dezelfde kolommen en dezelfde harde
+    /// <c>'Te bevestigen'</c>-startstatus.
+    /// </summary>
+    internal static async Task<int> SavePlannedMatchAsync(
+        string connectionString,
+        DateOnly datum, TimeOnly aanvangsTijd, TimeOnly eindTijd, int veldNummer,
+        decimal veldDeelGebruik, string? leeftijdsCategorie, string? teamNaam,
+        string? tegenstander, int wedstrijdDuurMinuten, string? aangevraagdDoor,
+        string? clubCode)
+    {
+        var cc = PostgresClubScope.Resolve(clubCode);
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO planner.geplandewedstrijden
+                (datum, aanvangstijd, eindtijd, veldnummer, velddeelgebruik,
+                 leeftijdscategorie, teamnaam, tegenstander, wedstrijdduurminuten,
+                 status, aangevraagddoor, clubcode)
+            VALUES (@datum, @aanvang, @eind, @veld, @deel, @cat, @team, @tegen, @duur, 'Te bevestigen', @door, @cc)
+            RETURNING id
+        ", conn);
+        cmd.Parameters.AddWithValue("datum", datum.ToDateTime(TimeOnly.MinValue).Date);
+        cmd.Parameters.AddWithValue("aanvang", aanvangsTijd.ToTimeSpan());
+        cmd.Parameters.AddWithValue("eind", eindTijd.ToTimeSpan());
+        cmd.Parameters.AddWithValue("veld", veldNummer);
+        cmd.Parameters.AddWithValue("deel", veldDeelGebruik);
+        cmd.Parameters.AddWithValue("cat", (object?)leeftijdsCategorie ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("team", (object?)teamNaam ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("tegen", (object?)tegenstander ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("duur", wedstrijdDuurMinuten);
+        cmd.Parameters.AddWithValue("door", (object?)aangevraagdDoor ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("cc", cc);
+        return (int)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>
+    /// Legt een herplanverzoek vast — Postgres-vertaling van het SQL Server-origineel (#888
+    /// vervolg, ontsluit <c>POST /api/planner/herplan-bevestig</c>).
+    /// <para>
+    /// <b>Bevat, in tegenstelling tot het huidige SQL Server-origineel, wél <c>ClubCode</c>.</b>
+    /// Tijdens deze vertaling bleek de SQL Server-kant <c>ClubCode</c> volledig te missen in de
+    /// INSERT terwijl de kolom <c>NOT NULL</c> is zonder <c>DEFAULT</c> — elke aanroep zou daar een
+    /// SQL-fout gooien. Apart gefixt in <c>FunctionApp/Planner/Repositories/PlannerMatchRepository.cs</c>
+    /// (zelfde commit); de Postgres-versie is vanaf het begin correct.
+    /// </para>
+    /// </summary>
+    internal static async Task<int> SaveHerplanVerzoekAsync(
+        string connectionString,
+        long wedstrijdcode, string huidigeWedstrijd, DateOnly huidigeDatum,
+        TimeOnly huidigeAanvangsTijd, string? huidigeVeldNaam,
+        TimeOnly gewensteAanvangsTijd, int? gewenstVeldNummer,
+        string? aangevraagdDoor, string? opmerking, string? clubCode)
+    {
+        var cc = PostgresClubScope.Resolve(clubCode);
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(@"
+            INSERT INTO planner.herplanverzoeken
+                (wedstrijdcode, huidigewedstrijd, huidigedatum, huidigeaanvangstijd,
+                 huidigeveldnaam, gewensteaanvangstijd, gewenstveldnummer,
+                 status, aangevraagddoor, opmerking, clubcode)
+            VALUES (@code, @wedstrijd, @datum, @aanvang, @veld, @gewensteTijd, @gewenstVeld, 'Aangevraagd', @door, @opmerking, @cc)
+            RETURNING id
+        ", conn);
+        cmd.Parameters.AddWithValue("code", wedstrijdcode);
+        cmd.Parameters.AddWithValue("wedstrijd", huidigeWedstrijd);
+        cmd.Parameters.AddWithValue("datum", huidigeDatum.ToDateTime(TimeOnly.MinValue).Date);
+        cmd.Parameters.AddWithValue("aanvang", huidigeAanvangsTijd.ToTimeSpan());
+        cmd.Parameters.AddWithValue("veld", (object?)huidigeVeldNaam ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("gewensteTijd", gewensteAanvangsTijd.ToTimeSpan());
+        cmd.Parameters.AddWithValue("gewenstVeld", (object?)gewenstVeldNummer ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("door", (object?)aangevraagdDoor ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("opmerking", (object?)opmerking ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("cc", cc);
+        return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
     /// <summary>

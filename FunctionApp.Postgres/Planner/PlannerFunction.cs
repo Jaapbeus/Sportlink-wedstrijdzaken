@@ -1,17 +1,20 @@
 using FunctionApp.Postgres.Admin;
+using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Planner/PlannerFunction.cs</c> (#888). Vertaald
 /// zijn <c>Veldbezetting</c> — de "lichtgewicht wat staat er nu gepland"-weergave (#566) zonder
-/// FieldScheduler-berekening — en <c>GetTeamSchedule</c>, het teamrooster.
+/// FieldScheduler-berekening —, <c>GetTeamSchedule</c> (het teamrooster), en — sinds #888 vervolg —
+/// <c>BevestigWedstrijd</c>, <c>ZoekWedstrijd</c> en <c>HerplanBevestig</c>.
 /// <para>
-/// <b>De overige negen planner-endpoints zijn NIET vertaald en geven een expliciete 501</b> in
+/// <b>De overige zes planner-endpoints zijn NIET vertaald en geven een expliciete 501</b> in
 /// plaats van de stille 404 die de afwezigheid van een route anders zou opleveren — zelfde
 /// discipline als <c>AdminTeambegeleidingFunction.Doorsturen</c> en <c>AdminSyncFunction</c>
 /// vóór #890. Elke 501-melding noemt de daadwerkelijke, geverifieerde ontbrekende afhankelijkheid
@@ -20,25 +23,21 @@ namespace FunctionApp.Postgres.Planner;
 /// <list type="bullet">
 /// <item><b>Twee ontbrekende repositories.</b> <c>CheckAvailability</c>, <c>DoordeweeksBeschikbaar</c>
 /// en <c>HerplanCheck</c> hangen (via <c>AvailabilityService</c>/<c>RescheduleService</c>) allemaal
-/// af van <c>PlannerAvailabilityRepository</c> en <c>TeamRulesRepository</c> — geen van beide heeft
-/// een bestand op deze tier — plus zonsondergangdata (zie volgende punt).</item>
-/// <item><b>Twee ontbrekende schematabellen.</b> <c>PopulateSunset</c> schrijft naar
-/// <c>dbo.Zonsondergang</c>, <c>HerplanBevestig</c> naar <c>planner.HerplanVerzoeken</c> — beide
-/// staan als gemotiveerde uitzondering in <c>scripts/ci/check-postgres-table-coverage.sh</c>, dus
-/// dit is geen losse aanname maar dezelfde, al bewaakte lijst.</item>
-/// <item><b>Ontbrekende <c>PlannerMatchRepository</c>-methoden.</b> <c>BevestigWedstrijd</c>,
-/// <c>ZoekWedstrijd</c> en <c>HerplanBevestig</c> hebben verder alleen
-/// <c>SavePlannedMatchAsync</c>/<c>FindMatchAsync</c>/<c>FindMatchByCodeAsync</c> nodig — dat zijn
-/// de kleinste van de drie gaten, want <c>planner.geplandewedstrijden</c> en <c>his.matches</c>
-/// bestaan al.</item>
+/// af van <c>PlannerAvailabilityRepository</c> en <c>TeamRulesRepository</c> — die bestaan inmiddels
+/// wél als bestand op deze tier (#888 vervolg), maar er is nog geen <c>AvailabilityService</c>/
+/// <c>RescheduleService</c> die ze aanroept — plus zonsondergangdata (zie volgende punt).</item>
+/// <item><b>Eén ontbrekende schematabel.</b> <c>PopulateSunset</c> schrijft naar
+/// <c>dbo.Zonsondergang</c> — <c>public.zonsondergang</c> bestaat inmiddels wél (#888 vervolg,
+/// migratie 011), maar er is nog geen <c>PostgresSunsetCalculator</c>/repository-methode die hem
+/// vult. <c>planner.HerplanVerzoeken</c>/<c>planner.herplanverzoeken</c> is met dezelfde migratie
+/// gedekt EN aangesloten (zie <c>HerplanBevestig</c> hieronder) — geen gat meer.</item>
 /// <item><b>De FieldScheduler-engine.</b> <c>AutoPlan</c> en <c>AutoPlanToepassen</c> hangen af van
-/// <c>PlannerShared</c> (538 regels), waarvan nog niet is vastgelegd of hij naar
-/// <c>Planner.Shared</c> verhuist of een tweede tier-kopie krijgt — een architectuurbeslissing die
-/// buiten een implementatie-PR hoort te vallen (precedent §25), niet iets wat deze klasse zelf kan
-/// beslissen.
+/// <c>PlannerShared</c>/<c>FieldScheduler</c>, die inmiddels wél in <c>Planner.Shared</c> woont
+/// (#888 vervolg, architectuurbeslissing genomen — precedent §25 gevolgd), maar er is nog geen
+/// <c>AutoPlanService</c>/<c>PlannerHtmlGenerator</c>-poort die hem aanroept.
 /// </item>
 /// </list>
-/// <para>Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16, §25 en §35.</para>
+/// <para>Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16, §25, §35 en §40.</para>
 /// </summary>
 public static class PlannerFunction
 {
@@ -143,32 +142,191 @@ public static class PlannerFunction
     public static Task<IActionResult> HerplanCheck(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-check")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req, GeenAvailabilityRepository + " Hangt bovendien af van PlannerMatchRepository.FindMatchByCodeAsync, die op deze tier ook nog ontbreekt.");
+        => Stub501(req, GeenAvailabilityRepository);
 
+    /// <summary>
+    /// Legt een handmatig ingeplande wedstrijd vast — Postgres-vertaling van het gelijknamige
+    /// SQL Server-endpoint (#888 vervolg). Zelfde speeltijd-first, override-tweede logica: de
+    /// leeftijdscategorie levert standaardwaarden voor duur/veldfractie, expliciete
+    /// requestvelden (<c>WedstrijdDuurMinuten</c>, <c>HeelVeld</c>) overschrijven die.
+    /// </summary>
     [Function("BevestigWedstrijd")]
-    public static Task<IActionResult> BevestigWedstrijd(
+    public static async Task<IActionResult> BevestigWedstrijd(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/bevestig")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req,
-            "PlannerMatchRepository.SavePlannedMatchAsync bestaat nog niet op deze tier (issue 888) " +
-            "— planner.geplandewedstrijden zelf bestaat al, alleen de schrijfmethode nog niet.");
+    {
+        var log = context.GetLogger("BevestigWedstrijd");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<BevestigRequest>(body);
+            if (request == null || string.IsNullOrEmpty(request.Datum) || string.IsNullOrEmpty(request.AanvangsTijd))
+                return new BadRequestObjectResult(new { error = "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht." });
+
+            log.LogInformation("BevestigWedstrijd: datum={Datum}, tijd={Tijd}, veld={Veld}",
+                request.Datum, request.AanvangsTijd, request.VeldNummer);
+
+            if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
+                return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            var cc = PostgresClubScope.Resolve(clubCode);
+
+            int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
+            decimal veldFractie = 1.00m;
+            if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+            {
+                var speeltijden = await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(
+                    PostgresDatabaseConfig.ConnectionString, cc);
+                if (speeltijden.TryGetValue(request.LeeftijdsCategorie, out var speeltijd))
+                {
+                    duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
+                    veldFractie = speeltijd.Veldafmeting;
+                }
+            }
+            if (request.HeelVeld == true && veldFractie < 1.00m)
+                veldFractie = 1.00m;
+
+            var eindTijd = tijd.AddMinutes(duurMinuten);
+
+            var id = await PlannerMatchRepository.SavePlannedMatchAsync(
+                PostgresDatabaseConfig.ConnectionString,
+                date, tijd, eindTijd, request.VeldNummer, veldFractie,
+                request.LeeftijdsCategorie, request.TeamNaam, request.Tegenstander,
+                duurMinuten, request.AangevraagdDoor, clubCode);
+
+            log.LogInformation("BevestigWedstrijd: saved with id={Id}", id);
+
+            return new OkObjectResult(new
+            {
+                id,
+                datum = date.ToString("yyyy-MM-dd"),
+                aanvangsTijd = tijd.ToString("HH:mm"),
+                eindTijd = eindTijd.ToString("HH:mm"),
+                veldNummer = request.VeldNummer,
+                status = "Te bevestigen"
+            });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "BevestigWedstrijd failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// Zoekt een gesynchroniseerde wedstrijd van een team op datum — Postgres-vertaling van het
+    /// gelijknamige SQL Server-endpoint (#888 vervolg). Geeft <c>gevonden: false</c> terug (HTTP
+    /// 200) bij geen match, net als het origineel — een niet-gevonden wedstrijd is geen serverfout.
+    /// </summary>
     [Function("ZoekWedstrijd")]
-    public static Task<IActionResult> ZoekWedstrijd(
+    public static async Task<IActionResult> ZoekWedstrijd(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/zoek-wedstrijd")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req,
-            "PlannerMatchRepository.FindMatchAsync bestaat nog niet op deze tier (issue 888) " +
-            "— his.matches en planner.geplandewedstrijden zelf bestaan al, alleen de zoekmethode nog niet.");
+    {
+        var log = context.GetLogger("ZoekWedstrijd");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<ZoekWedstrijdRequest>(body);
+            if (request == null || string.IsNullOrEmpty(request.TeamNaam) || string.IsNullOrEmpty(request.Datum))
+                return new BadRequestObjectResult(new { error = "Request body met 'teamNaam' en 'datum' is verplicht." });
+
+            if (!DateOnly.TryParse(request.Datum, out var date))
+                return new BadRequestObjectResult(new { error = $"Ongeldige datum: {request.Datum}" });
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            log.LogInformation("ZoekWedstrijd: team={Team}, datum={Datum}, club={Club}",
+                request.TeamNaam, request.Datum, clubCode);
+
+            var match = await PlannerMatchRepository.FindMatchAsync(
+                PostgresDatabaseConfig.ConnectionString, request.TeamNaam, date, clubCode);
+            if (match == null)
+                return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
+
+            return new OkObjectResult(new { gevonden = true, wedstrijd = match });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "ZoekWedstrijd failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// Legt een herplanverzoek vast voor een bekende (gesynchroniseerde) wedstrijd — Postgres-
+    /// vertaling van het gelijknamige SQL Server-endpoint (#888 vervolg).
+    /// </summary>
     [Function("HerplanBevestig")]
-    public static Task<IActionResult> HerplanBevestig(
+    public static async Task<IActionResult> HerplanBevestig(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/herplan-bevestig")] HttpRequest req,
         FunctionContext context)
-        => Stub501(req,
-            "planner.HerplanVerzoeken bestaat nog niet op deze tier (issue 888, zie ook " +
-            "scripts/ci/check-postgres-table-coverage.sh) — PlannerMatchRepository.FindMatchByCodeAsync " +
-            "en SaveHerplanVerzoekAsync ontbreken bovendien.");
+    {
+        var log = context.GetLogger("HerplanBevestig");
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        try
+        {
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var request = JsonConvert.DeserializeObject<HerplanBevestigRequest>(body);
+            if (request == null || request.Wedstrijdcode == 0 || string.IsNullOrEmpty(request.GewensteAanvangsTijd))
+                return new BadRequestObjectResult(new { error = "Request body met 'wedstrijdcode' en 'gewensteAanvangsTijd' is verplicht." });
+
+            if (!TimeOnly.TryParse(request.GewensteAanvangsTijd, out var gewensteTijd))
+                return new BadRequestObjectResult(new { error = "Ongeldige tijd." });
+
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            var match = await PlannerMatchRepository.FindMatchByCodeAsync(
+                PostgresDatabaseConfig.ConnectionString, request.Wedstrijdcode, clubCode);
+            if (match == null)
+                return new OkObjectResult(new { error = $"Wedstrijd met code {request.Wedstrijdcode} niet gevonden." });
+
+            TimeOnly.TryParse(match.AanvangsTijd, out var huidigeAanvang);
+
+            log.LogInformation("HerplanBevestig: wedstrijdcode={Code}, gewenst={Tijd}",
+                request.Wedstrijdcode, request.GewensteAanvangsTijd);
+
+            var id = await PlannerMatchRepository.SaveHerplanVerzoekAsync(
+                PostgresDatabaseConfig.ConnectionString,
+                request.Wedstrijdcode,
+                match.Wedstrijd,
+                DateOnly.Parse(match.Datum),
+                huidigeAanvang,
+                match.VeldNaam,
+                gewensteTijd,
+                request.GewenstVeldNummer,
+                request.AangevraagdDoor,
+                request.Opmerking,
+                clubCode);
+
+            log.LogInformation("HerplanBevestig: saved with id={Id}", id);
+
+            return new OkObjectResult(new HerplanBevestigResponse
+            {
+                Id = id,
+                Wedstrijdcode = request.Wedstrijdcode,
+                HuidigeWedstrijd = match.Wedstrijd,
+                GewensteAanvangsTijd = request.GewensteAanvangsTijd,
+                GewenstVeldNummer = request.GewenstVeldNummer,
+                Status = "Aangevraagd"
+            });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "HerplanBevestig failed");
+            return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+        }
+    }
 
     [Function("PopulateSunset")]
     public static Task<IActionResult> PopulateSunset(

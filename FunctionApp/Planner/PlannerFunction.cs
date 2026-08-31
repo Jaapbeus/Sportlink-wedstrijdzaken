@@ -353,7 +353,8 @@ namespace SportlinkFunction.Planner
                     gewensteTijd,
                     request.GewenstVeldNummer,
                     request.AangevraagdDoor,
-                    request.Opmerking);
+                    request.Opmerking,
+                    clubCode);
 
                 log.LogInformation("HerplanBevestig: saved with id={Id}", id);
 
