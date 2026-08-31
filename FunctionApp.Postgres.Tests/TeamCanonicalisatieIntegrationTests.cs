@@ -130,10 +130,10 @@ public class TeamCanonicalisatieIntegrationTests
 
     private static async Task SchoonAsync()
     {
-        // his.teams bestaat op een verse database pas na de eerste EnsureHisTableAsync — die roepen
-        // we hier expliciet aan (de echte productie-generator, geen handgeschreven DDL) zodat deze
-        // klasse niet afhankelijk is van de volgorde waarin testklassen draaien.
-        await new PostgresMergeOrchestrator(ConnectionString).EnsureHisTableAsync(KnownEntities.Teams);
+        // his.teams bestaat op een verse database pas na de eerste EnsureHisTableAsync, én kan door
+        // een andere testsuite in een afwijkende vorm zijn achtergelaten — zie HisTabelVorm. Altijd
+        // via de echte productie-generator, nooit handgeschreven DDL.
+        await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams);
 
         await ExecAsync(
             "DELETE FROM his.teams WHERE clubcode = @club; " +

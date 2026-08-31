@@ -161,16 +161,17 @@ public class PostgresSyncFixtureIntegrationTests
     /// </summary>
     private static async Task SchoonAsync()
     {
+        // Eerst de vorm, dan de inhoud: een andere testsuite kan his.* in een afwijkende vorm hebben
+        // achtergelaten — zie HisTabelVorm voor de gemeten aanleiding.
+        await HisTabelVorm.ZorgVoorProductievormAsync(
+            ConnectionString, KnownEntities.Teams, KnownEntities.Matches, KnownEntities.MatchDetails);
+
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
-        foreach (var tabel in new[] { "his.matchdetails", "his.matches", "his.teams" })
-        {
-            await using var cmd = new NpgsqlCommand(
-                $"DO $$ BEGIN IF to_regclass('{tabel}') IS NOT NULL THEN " +
-                $"DELETE FROM {tabel} WHERE clubcode = '{ClubCode}'; END IF; END $$;", conn);
-            await cmd.ExecuteNonQueryAsync();
-        }
         await using var opruimen = new NpgsqlCommand(
+            "DELETE FROM his.matchdetails WHERE clubcode = @club; " +
+            "DELETE FROM his.matches WHERE clubcode = @club; " +
+            "DELETE FROM his.teams WHERE clubcode = @club; " +
             "DELETE FROM public.teamaliassen WHERE clubcode = @club; " +
             "DELETE FROM public.teams WHERE clubcode = @club;", conn);
         opruimen.Parameters.AddWithValue("club", ClubCode);

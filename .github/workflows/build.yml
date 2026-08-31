@@ -735,18 +735,29 @@ jobs:
       # (al gemigreerd hierboven) is precies zo'n wegwerpcontainer, dus geen aparte opzet nodig.
       # Draait het hele project i.p.v. een --filter: de ~46 unit tests erin zijn toch al groen in de
       # 'build'-job hierboven en kosten hier verwaarloosbaar veel extra tijd (<1s).
-      - name: Database.Postgres.Tests draaien (inclusief integratietests, tegen deze instantie)
-        env:
-          POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
-        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity normal
-
       # Issue 890: het equivalent van SportlinkFixtureSyncIntegrationTests (#867) voor de
       # Postgres-tier, plus de e-mailpersistentie- (#889-acceptatiecriterium 3) en
-      # teamcanonicalisatietests (§28). Draait bewust NA de AllStars-demodata-assertie hierboven:
-      # deze tests schrijven onder eigen 'testclub-*'-clubcodes en ruimen die zelf op, maar de
-      # volgorde maakt onafhankelijk van die belofte zichtbaar dat ze de demodatatelling niet
-      # kunnen beïnvloeden.
+      # teamcanonicalisatietests (§28).
+      #
+      # DEZE VOLGORDE IS NIET WILLEKEURIG — empirisch vastgesteld bij issue 890.
+      # Database.Postgres.Tests hieronder demonteert de gedeelde database met opzet: het dropt
+      # public.appsettings/speeltijden/velden, planner.geplandewedstrijden, avg.teambegeleiding/
+      # importlog, his.teams/matches/matchdetails en public.schema_migrations, en bouwt daar
+      # minimale, synthetische versies van terug (TestEntities gebruikt dezelfde entiteitsnamen
+      # 'teams'/'matches' als productie, maar met veel minder kolommen en deels zonder clubcode).
+      # Dat is legitiem voor die suite — hij test de generator, niet het schema — maar het laat de
+      # database wél in een niet-productievorm achter. Deze suite heeft juist het echte,
+      # gemigreerde schema nodig en draait daarom ervóór. Zie ARCHITECTUUR-DATABASE-TIERS.md §29.
+      #
+      # Draait ná de AllStars-demodata-assertie hierboven: deze tests schrijven onder eigen
+      # 'testclub-*'-clubcodes en ruimen die zelf op, maar de volgorde maakt onafhankelijk van die
+      # belofte zichtbaar dat ze de demodatatelling niet kunnen beïnvloeden.
       - name: FunctionApp.Postgres.Tests draaien (integratietests, tegen deze instantie)
         env:
           POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
         run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity normal
+
+      - name: Database.Postgres.Tests draaien (inclusief integratietests, tegen deze instantie)
+        env:
+          POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
+        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity normal

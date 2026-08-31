@@ -1413,6 +1413,44 @@ assertie het verschil kán zien.
   die zelf op, maar de volgorde maakt onafhankelijk van die belofte zichtbaar dat ze de
   demodatatelling niet kunnen beïnvloeden.
 
+### Bevinding: de bestaande `Database.Postgres.Tests` laat de gedeelde database gesloopt achter
+
+**De eerste CI-run van deze PR viel om**, met `42703: column "clubcode" does not exist`. Oorzaak:
+`Database.Postgres.Tests` draaide ervóór en **dropt met opzet** een reeks tabellen in zijn setup —
+`public.appsettings`/`speeltijden`/`velden`, `planner.geplandewedstrijden`,
+`avg.teambegeleiding`/`importlog`, `his.teams`/`matches`/`matchdetails` en
+`public.schema_migrations` — en bouwt daar minimale, synthetische versies van terug. `TestEntities`
+gebruikt daarbij **dezelfde entiteitsnamen als productie** (`teams`, `matches`) met een veel kleinere
+kolomverzameling, en twee van de vier varianten zonder `clubcode`.
+
+Dat is op zichzelf legitiem: die suite test de schemagenerator, niet het schema. Het probleem is dat
+de gedeelde database daarna **niet meer de vorm heeft die de jobnaam suggereert**, en dat viel tot nu
+toe niemand op omdat het de laatste stap was. Gemeten in één doorloop:
+
+| Moment | `public.appsettings` | `public.schema_migrations` |
+|---|---|---|
+| na `Database.Postgres.Cli` (alle migraties) | 30 kolommen | 10 rijen |
+| na `FunctionApp.Postgres.Tests` | 30 kolommen | 10 rijen |
+| na `Database.Postgres.Tests` | **3 kolommen** | **0 rijen** |
+
+Twee maatregelen, met verschillende reikwijdte:
+
+1. **Volgorde in de CI-job omgedraaid** — `FunctionApp.Postgres.Tests` draait nu vóór
+   `Database.Postgres.Tests`. Deze suite heeft het echte gemigreerde schema nodig; die andere maakt
+   het juist kapot. Dit lost het concrete probleem op.
+2. **`HisTabelVorm` als vangnet voor `his.*`** — vóór elke test wordt gecontroleerd of
+   `his.teams`/`matches`/`matchdetails` alle kolommen uit `KnownEntities` (#818) hebben; zo niet, dan
+   wordt de tabel gedropt en door de productiegenerator herbouwd. Nodig omdat
+   `EnsureHisTableAsync` een `CREATE TABLE IF NOT EXISTS` is en een afwijkende vorm dus niet uit
+   zichzelf herstelt. Dit maakt de suite volgorde-onafhankelijk, wat lokaal net zo goed telt als in
+   CI. Empirisch bevestigd: tegen een door `TestEntities` vervormde `his.*` herstelt deze stap de
+   productievorm (51/22/65 kolommen).
+
+Maatregel 1 is een pleister op de volgorde, geen structurele oplossing: een derde suite die later
+wordt toegevoegd loopt tegen hetzelfde aan, en de vorm van de database hangt nu af van de
+stapvolgorde in een YAML-bestand. De structurele oplossing — elke suite een eigen database, of de
+sloopwerkzaamheden in een eigen schema — is vastgelegd als issue #925 en valt buiten deze ronde.
+
 ### Bewust niet in deze ronde
 
 - **De SQL Server-suite omzetten naar hetzelfde env-gestuurde mechanisme.**
