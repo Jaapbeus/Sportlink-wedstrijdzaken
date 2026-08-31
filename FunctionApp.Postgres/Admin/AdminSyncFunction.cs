@@ -3,22 +3,20 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using FunctionApp.Postgres.Sync;
 
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
-/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/AdminSyncFunction.cs</c> (#887).
+/// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/AdminSyncFunction.cs</c> (#887/#890).
 /// <para>
 /// <b>Status</b> is volledig vertaald: <c>SELECT TOP 1</c> → <c>LIMIT 1</c>, geen
 /// <c>DateTime.SpecifyKind</c> nodig (Npgsql geeft <c>TIMESTAMPTZ</c> al terug met <c>Kind=Utc</c>).
 /// </para>
 /// <para>
-/// <b>Trigger is bewust NIET vertaald.</b> De SQL Server-tier roept
-/// <c>FetchAndStoreApiData.RunSyncAsync</c> aan — de volledige Sportlink-ETL-pipeline (staging →
-/// merge → history). Die pipeline bestaat nog niet op de Postgres-tier; dat is exact de scope van
-/// #890 ("Synchronisatie- en stagingpad vertalen"), nog niet gestart. Een sync "starten" die niets
-/// doet zou stil falen — dus retourneert deze tier een expliciete 501 met verwijzing naar #890 in
-/// plaats van een no-op 202 te faken.
+/// <b>Trigger</b> roept nu <see cref="PostgresSyncPipeline.RunSyncAsync"/> aan (#890) — dezelfde
+/// fire-and-forget-vorm als de SQL Server-tier. <c>toWeekOffset</c> gebruikt de gedocumenteerde
+/// vaste fallback (zie <see cref="SyncFunction"/>) omdat er geen Postgres-seizoenstabel bestaat.
 /// </para>
 /// </summary>
 public static class AdminSyncFunction
@@ -69,18 +67,40 @@ public static class AdminSyncFunction
     }
 
     [Function("AdminSyncTrigger")]
-    public static Task<IActionResult> Trigger(
+    public static async Task<IActionResult> Trigger(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/sync/trigger")] HttpRequest req,
         FunctionContext context)
     {
+        var log = context.GetLogger("AdminSyncTrigger");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return Task.FromResult(authResult);
+        if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
-        return Task.FromResult<IActionResult>(new ObjectResult(new
+        const int toWeekOffset = SyncFunction.DefaultToWeekOffset;
+        log.LogInformation("AdminSyncTrigger: range -1 .. {To} — fire-and-forget gestart", toWeekOffset);
+
+        // Fire-and-forget: zelfde vorm als de SQL Server-tier — client pollt /status op wijziging lastsynctimestamp.
+        _ = Task.Run(async () =>
         {
-            error = "Sync-trigger is nog niet beschikbaar op de Postgres-tier — zie issue 890 " +
-                    "(synchronisatie- en stagingpad). /api/beheer/sync/status werkt al wel."
+            try
+            {
+                await SyncFunction.RunConfiguredSyncAsync(-1, toWeekOffset, log);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Achtergrond sync mislukt");
+            }
+        });
+
+        return new ObjectResult(new
+        {
+            status = "gestart",
+            weekOffsetFrom = -1,
+            weekOffsetTo = toWeekOffset,
+            tijdstip = DateTime.UtcNow,
+            melding = "Sync gestart op achtergrond. Controleer lastSyncTimestamp via /beheer/sync/status voor resultaat."
         })
-        { StatusCode = 501 });
+        { StatusCode = 202 };
     }
 }

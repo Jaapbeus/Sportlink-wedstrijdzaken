@@ -19,6 +19,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Synchronisatie- en stagingpad vertaald naar de Postgres-tier: `GET /api/postgres/sync-matches`,
+  de timertrigger, en `AdminSyncFunction.Trigger` (issue 890).** `PostgresSyncPipeline` orkestreert
+  fetch → `stg.*` → `his.*` met `PostgresMergeOrchestrator` (#818) voor het schema-/mergewerk; de
+  drie SQL-Server-specifieke `IF EXISTS ... ELSE IF ...`-staging-guards (programma-dedup,
+  uitslagen-upsert-of-alleen-invoegen-als-niet-toekomstig) zijn vertaald naar expliciete
+  `SELECT`/`UPDATE`/`INSERT`-stappen in C#, met de datumvergelijking als ordinale stringvergelijking
+  i.p.v. `CONVERT(..., 127)`. `Team`/`Match`/`MatchDetails`-modellen gedupliceerd in
+  `FunctionApp.Postgres/Sync/SportlinkModels.cs` (aparte implementatieboom, geen referentie naar
+  `FunctionApp`). Empirisch geverifieerd tegen een wegwerp-Postgres-container met de bestaande,
+  tier-onafhankelijke `SportlinkFixtureServer` (#867): teams/programma/uitslagen/matchdetails komen
+  correct in `his.*` terecht, de uitslagen-verrijking overschrijft de programma-rij zoals verwacht,
+  en een tweede identieke run blijft idempotent (geen dubbele rijen). **Bewust niet in deze ronde,
+  gedocumenteerd als tijdelijk gat:** seizoensgrenzen (`dbo.Season` is niet geport — de standaard-
+  synchronisatie gebruikt dezelfde vaste fallback die de SQL Server-tier al gebruikt zodra
+  `dbo.Season` onbereikbaar is; de reset-modus met een specifiek seizoen geeft een expliciete 501),
+  teamcanonicalisatie (al best-effort in het origineel) en
+  `MarkeerVervallenGeplandeWedstrijdenAsync` (in het origineel juist ongeguard — hier ontbreekt dus
+  écht gedrag, geen equivalent).
 - **E-mailpersistentie en teamresolutie vertaald naar de Postgres-tier (issue 889).**
   `SqlEmailPersistenceRepository` (audit-trail/dedup, 15 methoden), `LearningMomentRepository`
   en `TeamCandidateRepository`/`TeamAliasLearningService`. `SCOPE_IDENTITY()` → `RETURNING id`,

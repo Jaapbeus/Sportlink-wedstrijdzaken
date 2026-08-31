@@ -677,10 +677,14 @@ gezet is"-mechanisme dat dit zou vervangen, is de scope van een apart issue (#86
 uitgewerkt voor de Postgres-tier). Zolang dat niet is toegepast op deze test, is de enige manier om
 hem te draaien de bovenstaande handmatige stappen.
 
-**Bewust niet gedekt:** de Postgres-tier heeft nog geen eigen synchronisatiepad om tegen te testen
-(zie epic #815, #860) — deze fixtureserver en test zijn vandaag alleen bruikbaar voor de bestaande
-SQL Server-tier. `SportlinkFixtureServer` zelf is tier-onafhankelijk (een generieke HTTP-stub) en
-kan hergebruikt worden zodra de Postgres-tier een vergelijkbaar synchronisatiepad krijgt.
+**Bijgewerkt (#890):** de Postgres-tier heeft inmiddels een eigen synchronisatiepad
+(`FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs`). `SportlinkFixtureServer`/`SportlinkFixtures`
+zijn — zoals hierboven al vermeld, tier-onafhankelijk — rechtstreeks hergebruikt om dat pad te
+verifiëren (zie docs/ARCHITECTUUR-DATABASE-TIERS.md §18): een wegwerp-Postgres-container, de zes
+migraties, en een console-harnas dat `PostgresSyncPipeline.RunSyncAsync` aanroept tegen
+`SportlinkFixtures.BuildServer(...)`. Er bestaat nog geen permanente, geautomatiseerde
+`[Fact(Skip=...)]`-integratietest zoals `SportlinkFixtureSyncIntegrationTests` hierboven voor de
+Postgres-tier — dat is nog open scope voor een vervolgissue.
 
 ---
 
