@@ -1,10 +1,15 @@
 using System.Text.RegularExpressions;
 
-namespace SportlinkFunction.TeamResolution;
+namespace Planner.Shared;
 
 /// <summary>
 /// Onderdeel van de teamnaam→ID-vertaallaag (#692, #697). Deze klasse is de ENIGE plek waar
-/// teamnaam-strings deterministisch (geen AI) genormaliseerd worden voor vergelijking/matching.
+/// teamnaam-strings deterministisch (geen AI) genormaliseerd worden voor vergelijking/matching —
+/// tier-agnostisch (#889), verhuisd uit <c>FunctionApp/TeamResolution/TeamNaamNormalisatie.cs</c>
+/// naar hier zodat de Postgres-tier dezelfde, enige implementatie gebruikt in plaats van een
+/// tweede kopie te bouwen — precies het architectuurrisico dat CLAUDE.md's regel "Normalisatieregels
+/// horen uitsluitend in TeamNaamNormalisatie.cs" bedoelt te voorkomen. Woordelijk gelijk gedrag,
+/// zelfde precedent als <see cref="VeldResolver"/> (#819).
 ///
 /// <para>
 /// <b>Waarom dit nodig is.</b> Sportlink levert per team twee schrijfwijzen aan, die naar

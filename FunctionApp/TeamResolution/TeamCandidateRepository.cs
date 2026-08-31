@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Planner.Shared;
 
 namespace SportlinkFunction.TeamResolution;
 

@@ -19,6 +19,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **E-mailpersistentie en teamresolutie vertaald naar de Postgres-tier (issue 889).**
+  `SqlEmailPersistenceRepository` (audit-trail/dedup, 15 methoden), `LearningMomentRepository`
+  en `TeamCandidateRepository`/`TeamAliasLearningService`. `SCOPE_IDENTITY()` → `RETURNING id`,
+  unique-violation-detectie → `PostgresErrorCodes.UniqueViolation`, de alias-upsert → `INSERT …
+  ON CONFLICT DO UPDATE`. **Architectuurrefactor:** `TeamNaamNormalisatie.cs` verhuisd naar
+  `Planner.Shared/` (in tegenstelling tot #888's `LeeftijdNormalisatie`, die als tijdelijke schuld
+  gedupliceerd bleef) — CLAUDE.md's harde regel "normalisatie hoort op precies één plek" liet geen
+  tweede kopie toe. Negen SQL Server-tier-bestanden aangepast, volledige testsuite (431 tests) en de
+  verhuisde normalisatietests (59 tests, nu in `Planner.Shared.Tests`) slagen ongewijzigd. Empirisch
+  geverifieerd tegen een wegwerp-Postgres-container: dedup-exceptie, reply-detectie,
+  classificatiecorrectie, en het expliciete acceptatiecriterium van dit issue — een geleerde
+  teamalias telt pas mee ná handmatige validatie. Bewust niet in deze ronde:
+  `TeamCanonicalisatieService` (AI-disambiguatie-orkestratie) en de e-mail-AI-pijplijn
+  (`BerichtAiService`/`EmailProcessorFunction`/`EmailGraphService`, >2700 regels zonder directe
+  SQL-toegang, al buiten dit issue's eigen scope).
 - **Eerste planner-endpoint vertaald naar de Postgres-tier: `GET /api/planner/veldbezetting`
   (issue 888).** Bewijst de twee valkuilen die het issue zelf noemt: `OUTER APPLY` → 
   `LEFT JOIN LATERAL … ON TRUE` (tweede plek na #819's plannerview) en

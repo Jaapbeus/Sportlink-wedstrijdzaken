@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Planner.Shared;
 using SportlinkFunction.TeamResolution;
 using Xunit;
 
