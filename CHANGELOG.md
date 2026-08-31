@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Eerste planner-endpoint vertaald naar de Postgres-tier: `GET /api/planner/veldbezetting`
+  (issue 888).** Bewijst de twee valkuilen die het issue zelf noemt: `OUTER APPLY` → 
+  `LEFT JOIN LATERAL … ON TRUE` (tweede plek na #819's plannerview) en
+  `LeeftijdNormalisatie.SqlExpr` → `PostgresLeeftijdNormalisatie.SqlExpr` (`+`→`||`,
+  `LIKE`→`ILIKE` waar SQL Server's collatie al hoofdletterongevoelig was). Empirisch
+  geverifieerd tegen een wegwerp-Postgres-container: zowel het ALLSTARS-democlubpad
+  (teamnaam-extractie) als een "echte" primaire-clubpad (`his.teams`-LATERAL-JOIN +
+  leeftijdsnormalisatie) leveren de verwachte leeftijdscategorie en wedstrijdduur op. De overige elf
+  planner-endpoints (auto-plan/FieldScheduler-engine, herplannen, teamrooster, beschikbaarheid) zijn
+  aanzienlijk groter (samen >1600 regels bedrijfslogica) en blijven open scope op issue 888.
 - **Alle zestien beheer-endpointparen vertaald naar de Postgres-tier (#887), plus de gedeelde
   admin-infrastructuur die ze allemaal gebruiken.** `FunctionApp.Postgres/Admin/EasyAuthHelper.cs`
   en `AdminEndpoint.cs` (bewuste kopieën van hun SQL Server-tegenhangers — geen gedeelde

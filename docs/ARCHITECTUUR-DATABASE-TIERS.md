@@ -522,6 +522,44 @@ fix vermoedelijk: `CreateView` idempotent (`CREATE OR REPLACE`) uitvoeren vanuit
 `PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync` zelf, vlak vóór de `SELECT`. Gemeld
 hier zodat #888 dit niet opnieuw hoeft te ontdekken.
 
+## 16. Planner-logica — eerste vertaalde endpoint: Veldbezetting (#888)
+
+**`GET /api/planner/veldbezetting` volledig vertaald**, inclusief bewijs voor de twee valkuilen die
+#888 zelf noemt:
+
+- **`OUTER APPLY` → `LATERAL JOIN`.** `AllstarsTestDataRepository.GetAllMatchesForDatumAsync`'s
+  niet-ALLSTARS-tak zocht via `OUTER APPLY (SELECT TOP 1 …) t` het team op bij een wedstrijd.
+  Postgres-vertaling: `LEFT JOIN LATERAL (SELECT … LIMIT 1) t ON TRUE` — hetzelfde precedent als
+  `PostgresPlannerViewGenerator` (#819), nu voor een tweede plek.
+- **`LeeftijdNormalisatie.SqlExpr`** (de leeftijdscategorie-normalisatie, bijv. "Onder 13" → "JO13")
+  is vertaald naar `PostgresLeeftijdNormalisatie.SqlExpr` — `+` → `||`, `LTRIM(RTRIM(…))` → `TRIM(…)`,
+  en `LIKE '%Meiden'` → `ILIKE '%Meiden'` (SQL Server's default collatie maakt `LIKE` daar al
+  hoofdletterongevoelig; Postgres' niet — zelfde soort lokale fix als #819's `~` → `~*`, de
+  systemische collatiekwestie blijft #820's scope). **Alleen de SQL-generatie is verhuisd** — de
+  pure C#-methode `Normaliseer` (geen SQL-afhankelijkheid) is bewust **niet** naar
+  `Planner.Shared` verplaatst in deze PR: die verhuizing raakt ook de SQL Server-tier (twee
+  bestaande call sites + een testbestand) en is een aparte, gemotiveerde refactor-beslissing,
+  geen onderdeel van een Postgres-vertaling. Tot die verhuizing gebeurt bestaat de pure
+  normalisatielogica dus kortstondig in twee vormen (FunctionApp en, waar nodig, opnieuw
+  geïmplementeerd in de Postgres-tier) — bekende, hier vastgelegde schuld.
+
+**Empirisch geverifieerd** tegen een wegwerp-Postgres-container: zowel het ALLSTARS-democlubpad
+(`ExtractLeeftijdFromTeamNaam`-fallback, geen `his.teams`-koppeling nodig) als het pad van een
+"echte" primaire club (`his.teams`-`LATERAL JOIN` + `LeeftijdNormalisatie`-vertaling) leverden de
+verwachte leeftijdscategorie en duur op — voor de primaire club: teamnaam "VRC JO13-1" met
+`leeftijdscategorie = 'Onder 13'` in `his.teams` leverde via de `LATERAL JOIN` +
+`PostgresLeeftijdNormalisatie.SqlExpr` correct `"leeftijdsCategorie":"JO13"` en de bijbehorende
+`duurMinuten`/`veldafmeting` uit `public.speeltijden` op.
+
+**Bewust niet in deze ronde (aanzienlijk grotere, apart te verifiëren stap):** de overige elf
+planner-endpoints (`CheckAvailability`, `DoordeweeksBeschikbaar`, `BevestigWedstrijd`,
+`AutoPlan`/`AutoPlanToepassen`, `HerplanCheck`/`HerplanBevestig`, `ZoekWedstrijd`,
+`GetTeamSchedule`) hangen af van `AvailabilityService`, `AutoPlanService`'s FieldScheduler-engine
+(de eigenlijke dagplanning-optimalisatie, regels→voorkeuren→defaults-rangorde uit #666),
+`RescheduleService` en `TeamScheduleService` — samen ruim 1600 regels bedrijfslogica, exclusief de
+vijf repositories die ze aanroepen. `GetTeamSchedule` hangt bovendien af van `dbo.Season`, dat nog
+geen Postgres-migratie heeft (zelfde gat als #861's `sp_UpdateSeasonTable`-uitstel).
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
