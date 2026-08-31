@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Aangepaste e-mailteksten werken nu ook op de Postgres-tier (#889).** De sjablonenlaag was daar
+  als laatste onderdeel nog niet vertaald. Een beheerder die via Beheer → Berichtsjablonen een tekst
+  aanpaste, zag die wijziging op die tier tot vijf minuten later pas doorkomen; nu is ze meteen
+  actief. Elke club krijgt gegarandeerd haar eigen sjabloon, ook wanneer productieclub en democlub
+  hetzelfde sjabloonsleutelwoord gebruiken.
 - **De Postgres-tier heeft nu een eigen, automatisch meedraaiende testsuite (#890).** Tot nu toe werd
   elke wijziging op die tier geverifieerd met een wegwerp-testopstelling die daarna werd
   weggegooid: dat bewees dat het op dát moment werkte, maar bewaakte daarna niets meer. Er is nu
@@ -35,8 +40,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   als goedgekeurde alias. Een door een coördinator goedgekeurde of handmatig toegevoegde alias
   wordt daarbij nooit stilzwijgend door de sync overschreven. Empirisch geverifieerd tegen een
   wegwerp-Postgres-container: 21 asserties, plus drie opzettelijke faalscenario's die aantonen dat
-  de vertaalkeuzes daadwerkelijk het verschil maken. Zie issue 889 — dat blijft open voor
-  `EmailTemplateService`, het laatste e-mailbestand met directe databasetoegang.
+  de vertaalkeuzes daadwerkelijk het verschil maken.
 - **De cross-tree CI-guard kijkt nu ook naar kolommen, niet alleen naar tabellen (issue 864, deel
   3).** Een tabel die op de Postgres-tier wél bestaat maar kolommen mist, bleef tot nu toe
   onopgemerkt tot iemand toevallig functionaliteit vertaalde die de kolom nodig had — dat gebeurde
@@ -299,6 +303,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **Een testcontrole voor de Postgres-tier kon willekeurig omvallen.** Drie van de tests uit de
+  nieuwe Postgres-testsuite slaagden alleen als ze in een bepaalde volgorde draaiden, en die
+  volgorde ligt niet vast. Gemeten over vier verse databases: twee keer groen, twee keer rood met
+  exact dezelfde code. Opgelost; vijf achtereenvolgende metingen zijn nu groen. Zie issue #890.
 - **E-mailtemplate opslaan kon een onvolledig audit-spoor achterlaten, op beide databasetiers
   (#916).** `AdminTemplatesFunction.Put` deed de template-upsert en de auditlog-insert als twee
   losse, niet-getransactioneerde statements — een fout tussen de twee liet de templatewijziging

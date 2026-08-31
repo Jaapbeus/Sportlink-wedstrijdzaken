@@ -1463,6 +1463,71 @@ sloopwerkzaamheden in een eigen schema — is vastgelegd als issue #925 en valt 
   overgenomen waarvoor §28 ook een negatieve controle heeft vastgelegd; de overige zes blijven
   gedocumenteerde eenmalige metingen. Ze toevoegen kan later goedkoop — de infrastructuur staat nu.
 
+## 30. `EmailTemplateService` — #889 afgerond, plus een latente flake uit §29 opgelost
+
+### Het laatste bestand uit #889's scope
+
+`FunctionApp/Email/EmailTemplateService.cs` was het laatste bestand uit de scope-omschrijving van
+#889 met directe databasetoegang zonder Postgres-tegenhanger. De vertaling zelf is klein
+(`SELECT TOP 1 ... WHERE [Actief] = 1` → `... WHERE actief = TRUE LIMIT 1`,
+`SystemUtilities.AppSettings.RequireClubCode` → `PostgresClubScope.Resolve`), maar twee punten
+verdienen een aantekening.
+
+**Geen `UPPER(...)`-wrap, anders dan bij de teamresolutie.** #820's collatie-fix geldt voor waarden
+die uit een externe bron komen. `templatekey` en `clubcode` worden door de applicatie zelf gezet —
+de Beheer-GUI en de vaste sleutels in `BerichtResponseGenerator` — dus hier staat bewust een kale
+vergelijking. Zelfde onderscheid als §25 maakt tussen `planner.geplandewedstrijden.status` (kaal) en
+`his.matches.status` (ge-upper't). "Overal maar `UPPER()` zetten" zou dat onderscheid wegpoetsen.
+
+**De cachesleutel is `(clubcode, key)`, niet `key`.** Dat is geen optimalisatiedetail maar een
+correctness-eis uit #706: een deployment bevat naast de productieclub ook de democlub, dus met alleen
+de sleutel krijgt de tweede club het sjabloon van de eerste die het ophaalde — gegevens van een
+andere club in haar eigen antwoord. Vastgelegd met een test waarin beide clubs bewust hetzelfde
+sleutelwoord gebruiken.
+
+**Een echt gat gedicht, geen kosmetiek.** `AdminTemplatesFunction` op deze tier riep
+`EmailTemplateService.InvalidateCache()` niet aan — bewust, want de service bestond niet (zo stond
+het ook in zijn doc-comment). Nu wel, in zowel `Put` als `Reset`. Zonder die aanroep zou een
+beheerder die een tekst aanpast tot vijf minuten moeten wachten voordat de wijziging effect heeft.
+
+**Bewust vastgelegd: `GetTemplateAsync` heeft op deze tier nog geen productieconsument.** De
+e-mailverwerkingspijplijn (`BerichtResponseGenerator`) die hem op de SQL Server-tier aanroept, valt
+buiten #889's scope-omschrijving en is niet vertaald. De methode is toch meegenomen omdat de klasse
+anders half zou bestaan — een cache invalideren die niets vult is zinlozer dan een lezer die nog geen
+aanroeper heeft — en omdat het gedrag ervan nu al met tests is vastgelegd.
+
+### De flake die §29 achterliet, en waarom hij pas nu zichtbaar werd
+
+Het toevoegen van een vijfde testklasse veranderde de volgorde waarin xUnit de klassen draait, en
+daarmee viel `TeamCanonicalisatieIntegrationTests` (uit §29) om met
+`42P01: relation "his.matches" does not exist`.
+
+**Oorzaak:** `TeamCanonicalisatieService.RegistreerBronSchrijfwijzenAsync` leest de bronschrijfwijzen
+uit een `UNION` van `his.teams` **én** `his.matches` (#700). De opzet van die testklasse zorgde
+alleen voor `his.teams`. De tests slaagden in §29 uitsluitend omdat
+`PostgresSyncFixtureIntegrationTests` toevallig eerder draaide en `his.matches` al had aangemaakt —
+en xUnit legt die volgorde niet vast.
+
+**Dit was dus een latente fout in de ronde van §29 zelf, niet in deze.** Hij is daar niet opgevallen
+omdat vier metingen achter elkaar toevallig dezelfde volgorde kregen. Gemeten na de ontdekking, elk
+tegen een eigen verse database en met identieke code: **twee runs groen, twee runs rood.** Een test
+die van toevallige volgorde afhangt bewaakt niets — hij meldt alleen ruis.
+
+**Fix:** de opzet zorgt nu voor beide tabellen via `HisTabelVorm`. **Vijf achtereenvolgende runs
+tegen vijf verse databases zijn groen** (14 tests elk).
+
+**De les, breder dan dit geval:** een integratietest moet zelf zorgen voor élke tabel die de
+geteste code aanraakt — niet alleen voor de tabel die hij zelf vult. Voor `RefreshAsync` is
+`his.matches` net zo goed invoer als `his.teams`, ook al schrijft de test daar niets in.
+
+### Bewust niet in deze ronde
+
+- **De e-mail-AI-pijplijn** (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProcessorFunction`,
+  `EmailGraphService` — samen >2700 regels). Die bevat geen directe SQL-toegang en valt daarmee al
+  buiten #889's eigen scope-omschrijving; het is de eerstvolgende consument die `GetTemplateAsync`
+  daadwerkelijk zou aanroepen.
+- **`TeamResolver`/`TeamDisambiguationAiService`/`TeamlijstGereedheid`** — zelfde reden, zie §28.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

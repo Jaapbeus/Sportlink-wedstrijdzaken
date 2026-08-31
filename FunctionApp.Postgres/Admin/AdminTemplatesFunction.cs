@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using FunctionApp.Postgres.Email;
 using Newtonsoft.Json;
 using Npgsql;
 
@@ -14,11 +15,9 @@ namespace FunctionApp.Postgres.Admin;
 /// <c>MERGE ... WHEN MATCHED/NOT MATCHED</c> → <c>INSERT ... ON CONFLICT (templatekey, clubcode)
 /// DO UPDATE SET</c>.
 /// <para>
-/// <b>Bewust weggelaten t.o.v. de SQL Server-tier:</b> de aanroep naar
-/// <c>EmailTemplateService.InvalidateCache()</c>. Die service — en de e-mailverwerkingspijplijn die
-/// er gebruik van maakt — bestaat nog niet op de Postgres-tier (dat is #889's scope); een cache
-/// invalideren die nergens leest is een no-op die alleen een niet-bestaande afhankelijkheid zou
-/// toevoegen. Terug te zetten zodra #889 die service levert.
+/// <b>Cache-invalidatie (#889):</b> <c>Put</c> en <c>Reset</c> roepen nu
+/// <see cref="Email.EmailTemplateService.InvalidateCache"/> aan, gelijk aan de SQL Server-tier.
+/// Die aanroep ontbrak eerder bewust omdat de service op deze tier nog niet bestond; hij bestaat nu.
 /// </para>
 /// </summary>
 public static class AdminTemplatesFunction
@@ -139,6 +138,9 @@ public static class AdminTemplatesFunction
                 throw;
             }
 
+            // Cache invalideren zodat het nieuwe sjabloon direct gebruikt wordt (#889).
+            EmailTemplateService.InvalidateCache();
+
             return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
         }
         catch (Exception ex)
@@ -176,6 +178,7 @@ public static class AdminTemplatesFunction
             command.Parameters.AddWithValue("clubcode", clubCode);
             var rows = await command.ExecuteNonQueryAsync();
 
+            EmailTemplateService.InvalidateCache();
             return new OkObjectResult(new { templateKey = key, verwijderd = rows, status = "hardcoded default actief" });
         }
         catch (Exception ex)
