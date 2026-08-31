@@ -117,6 +117,25 @@ internal static class PostgresSyncPipeline
         await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
         await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
 
+        // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
+        //
+        // WAAROM HIER EN NIET IN EEN MIGRATIE. De view selecteert uit his.matches/his.teams, en die
+        // tabellen worden niet door een migratie aangemaakt maar dynamisch door
+        // PostgresMergeOrchestrator zodra de eerste sync draait (#818). Postgres controleert de
+        // gerefereerde relaties al bij CREATE VIEW, dus een migratie zou hard falen met
+        // "relation his.matches does not exist" — empirisch bevestigd op een verse database.
+        // Dit is het vroegste punt waarop de view wél gemaakt kan worden.
+        //
+        // ZONDER DEZE AANROEP was de view op een verse installatie volledig afwezig: hij werd
+        // alleen door de testsuites aangemaakt. Elk endpoint dat eruit leest
+        // (veldbezetting, check-availability, doordeweeks-beschikbaar, herplan-check, auto-plan)
+        // faalde daardoor met 42P01 — een gat dat sectie 32 al signaleerde maar dat nog geen
+        // eigenaar had.
+        //
+        // CREATE OR REPLACE is idempotent, dus meelopen op elke sync is veilig en houdt de view
+        // bovendien vanzelf gelijk aan PostgresPlannerViewGenerator na een wijziging daar.
+        await EnsurePlannerViewAsync(connectionString, log);
+
         // Teamcanonicalisatie (#889): vult public.teams/public.teamaliassen uit his.teams/his.matches.
         //
         // BEST-EFFORT, met opzet — exact zoals het SQL Server-origineel, dat beide aanroepen met
@@ -149,6 +168,28 @@ internal static class PostgresSyncPipeline
     /// de foutmelding, zodat de twee aanroepen (primaire club en democlub) in het log uit elkaar
     /// te houden zijn.
     /// </summary>
+    /// <summary>
+    /// Maakt of vervangt <c>planner.alle_wedstrijden_op_veld_ruw</c> (#861). Eén bron van waarheid:
+    /// de DDL komt uit <see cref="Database.Postgres.PostgresPlannerViewGenerator.CreateView"/>, niet
+    /// uit een tweede kopie in een migratiebestand — <c>VeldResolutieDriftTests</c> bewaakt die
+    /// generator, en een SQL-kopie ernaast zou stilzwijgend uit de pas kunnen lopen.
+    /// <para>
+    /// Bewust NIET best-effort. Zonder deze view faalt de halve plannerlaag met een
+    /// <c>relation does not exist</c>; dat stil doorlaten zou de sync groen laten melden terwijl de
+    /// applicatie erna kapot is. Vergelijk <see cref="CanonicaliseerBestEffortAsync"/>, die juist
+    /// wél geguard is omdat een mislukte canonicalisatie de al geslaagde ETL niet ongedaan maakt.
+    /// </para>
+    /// </summary>
+    private static async Task EnsurePlannerViewAsync(string connectionString, ILogger log)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(Database.Postgres.PostgresPlannerViewGenerator.CreateView, conn);
+        await cmd.ExecuteNonQueryAsync();
+        log.LogInformation("PLANNERVIEW - {View} aangemaakt of bijgewerkt",
+            Database.Postgres.PostgresPlannerViewGenerator.ViewName);
+    }
+
     private static async Task CanonicaliseerBestEffortAsync(
         string connectionString, string clubCode, string omschrijving, ILogger log)
     {

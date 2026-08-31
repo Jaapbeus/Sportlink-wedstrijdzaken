@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Op een verse installatie van de nieuwe databasevariant ontbrak de plannerweergave volledig,
+  waardoor de halve veldplanner niet werkte (issue 861 vervolg).** De weergave waar de planner al
+  zijn wedstrijden uit leest werd door geen enkele installatiestap aangemaakt — alleen de
+  testsuites maakten hem zelf aan, waardoor het probleem in de tests onzichtbaar bleef. Op een
+  nieuw ingerichte database gaven veldbezetting, beschikbaarheidscontrole, doordeweekse
+  beschikbaarheid, herplancontrole én automatisch inplannen daardoor alle vijf een databasefout.
+  De weergave kon niet in een gewone installatiestap staan omdat hij leest uit tabellen die pas
+  bij de eerste gegevenssynchronisatie ontstaan; hij wordt nu bij elke synchronisatie aangemaakt
+  of bijgewerkt, direct nadat die tabellen er zijn. Een blijvende test dropt de weergave eerst
+  expliciet en controleert daarna dat de synchronisatie hem terugzet.
+
 ### Security
 - **De maskering van afzenderadressen in het e-maillog kon stilzwijgend wegvallen (#858).** De
   maskering zocht de kolom op exacte schrijfwijze (`Afzender`). Heette die kolom net anders — wat
