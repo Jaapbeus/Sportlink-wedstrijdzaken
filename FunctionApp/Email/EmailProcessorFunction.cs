@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using SportlinkFunction.Monitoring;
 using SportlinkFunction.Processing;
 using SportlinkFunction.TeamResolution;
+using Planner.Shared;
 
 namespace SportlinkFunction.Email;
 

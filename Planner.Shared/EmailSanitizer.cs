@@ -1,19 +1,24 @@
 using System.Net;
 using System.Text.RegularExpressions;
 
-namespace SportlinkFunction;
+namespace Planner.Shared;
 
 /// <summary>
 /// Utility voor het saneren van e-mailinhoud:
 /// - foutmeldingen anonimiseren vóór DB-opslag of logging (#420),
 /// - HTML strippen uit inkomende berichttekst,
 /// - gebruikerstekst veilig maken vóórdat die als HTML-mail wordt verstuurd.
-/// Internal zodat unit tests via InternalsVisibleTo toegang hebben. (#476)
+/// <para>
+/// Verhuisd naar <c>Planner.Shared</c> bij issue 888 vervolg (§43): puur (geen SQL, geen
+/// instellingencache) en veiligheidsrelevant — sanitisatie hoort per definitie één implementatie
+/// en één testsuite te hebben, precies wat de doc-comment van EmailGraphService al voorschreef.
+/// Daarom <c>public</c> i.p.v. <c>internal</c>: het is nu een eigen assembly.
+/// </para>
 /// </summary>
-internal static partial class EmailSanitizer
+public static partial class EmailSanitizer
 {
     // Verwijdert e-mailadressen en knipt af op 200 tekens. (#420)
-    internal static string SanitizeFoutMelding(string message)
+    public static string SanitizeFoutMelding(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
             return "Onbekende fout";
@@ -40,7 +45,7 @@ internal static partial class EmailSanitizer
     /// echte markup wordt. Met alleen "strip, dan decode" overleefde zulke markup de sanitisatie
     /// en kwam hij als klikbare (phishing-)link in de doorgestuurde mail terecht.
     /// </summary>
-    internal static string StripHtml(string html)
+    public static string StripHtml(string html)
     {
         if (string.IsNullOrWhiteSpace(html))
             return "";
@@ -90,7 +95,7 @@ internal static partial class EmailSanitizer
     /// inhoud van script- en style-blokken. Entiteiten worden NIET gedecodeerd: al ge-escapete
     /// gebruikerstekst moet als leestekst blijven staan.
     /// </summary>
-    internal static string SanitizeHtmlAllowlist(string html)
+    public static string SanitizeHtmlAllowlist(string html)
     {
         if (string.IsNullOrEmpty(html))
             return "";
@@ -115,7 +120,7 @@ internal static partial class EmailSanitizer
     /// die zijn tekst als "eigen HTML" laat doorgaan, krijgt nog steeds geen link, afbeelding,
     /// script of style in de mail.
     /// </summary>
-    internal static string BouwVeiligeHtmlBody(string body)
+    public static string BouwVeiligeHtmlBody(string body)
     {
         if (string.IsNullOrEmpty(body))
             return "";

@@ -19,6 +19,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Het laatste "nog niet beschikbaar"-endpoint op de Postgres-tier is weg: een vraag over
+  teambegeleiding doorsturen werkt nu ook daar (issue 888 vervolg).** Daarmee kent die
+  databasevariant geen enkel endpoint meer dat een 501 teruggeeft. Staat de e-mailkoppeling niet
+  ingericht, dan meldt het endpoint dat eerlijk (503) in plaats van te doen alsof er verstuurd is.
+  De HTML-sanitisatie en de ontvangersvalidatie zijn daarbij naar de gedeelde laag verhuisd in
+  plaats van gekopieerd — veiligheidsgevoelige code hoort één implementatie en één testsuite te
+  hebben.
+
+### Fixed
+- **Gevonden tijdens bovenstaand werk: bij het opvragen van de begeleiders van een team stond de
+  trainer niet bovenaan als de rol in de import met een kleine letter geschreven was**
+  ("trainer" in plaats van "Trainer"). De sortering vergeleek hoofdlettergevoelig, waardoor zo'n rij
+  onderaan belandde en een willekeurige andere begeleider bovenaan kwam. Dit raakte alleen de
+  Postgres-variant. Vastgelegd met een test die faalt zodra de vergelijking weer gevoelig wordt.
+
+### Added
 - **De automatische dagplanning (`AutoPlan` en `AutoPlanToepassen`) werkt nu ook op de
   Postgres-tier (issue 888 vervolg).** Daarmee zijn alle elf planner-endpoints op die tier vertaald
   — er is geen enkele planner-functie meer die "nog niet beschikbaar" meldt. De planningsregels

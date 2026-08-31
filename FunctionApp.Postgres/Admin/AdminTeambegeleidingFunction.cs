@@ -1,9 +1,12 @@
+using FunctionApp.Postgres.Email;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Shared;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -26,10 +29,12 @@ namespace FunctionApp.Postgres.Admin;
 /// roepen.
 /// </para>
 /// <para>
-/// <b>Doorsturen is bewust NIET vertaald.</b> Die functie hangt af van <c>GraphServiceClient</c>,
-/// <c>EmailGraphService</c>, <c>IEmailPersistenceRepository</c> en <c>OntvangerParser</c> — de
-/// volledige e-mailverzend-/teamresolutielaag die nog niet bestaat op de Postgres-tier (issue 889,
-/// nog niet gestart). Retourneert een expliciete 501 in plaats van een verzending te faken.
+/// <b>Doorsturen is sinds issue 888 vervolg (§43) ook vertaald</b> — daarmee heeft deze tier geen
+/// enkel 501-endpoint meer. De uitgaande e-mail loopt via
+/// <see cref="FunctionApp.Postgres.Email.IEmailGraphService"/>, dat in <c>Program.cs</c> alleen
+/// wordt geregistreerd als de Graph-secrets geconfigureerd zijn én
+/// <c>EgressGuard.ExternalIntegrationsAllowed()</c> true is (#857). Is dat niet zo, dan geeft dit
+/// endpoint een eerlijke 503 — geen gefakete "verstuurd"-melding.
 /// </para>
 /// </summary>
 public static class AdminTeambegeleidingFunction
@@ -90,9 +95,14 @@ public static class AdminTeambegeleidingFunction
                 WHERE team = @team
                   AND clubcode = @clubcode
                 ORDER BY
-                    CASE WHEN teamrol LIKE '%Trainer%' THEN 1
-                         WHEN teamrol LIKE '%Coach%' THEN 2
-                         WHEN teamrol LIKE '%Teamleider%' THEN 3
+                    -- ILIKE, niet LIKE (§43): op de SQL Server-tier is LIKE hoofdletterongevoelig
+                    -- via de Latin1_General_CI_AS-collatie, op Postgres niet. De teamrol komt uit
+                    -- een handmatig aangeleverde CSV-import, dus een rol in kleine letters komt in
+                    -- de praktijk voor — met LIKE viel die stilzwijgend in de ELSE-tak en stond de
+                    -- trainer onderaan in plaats van bovenaan. Zelfde klasse fout als #820.
+                    CASE WHEN teamrol ILIKE '%Trainer%' THEN 1
+                         WHEN teamrol ILIKE '%Coach%' THEN 2
+                         WHEN teamrol ILIKE '%Teamleider%' THEN 3
                          ELSE 4 END,
                     naam
             ", connection);
@@ -119,26 +129,156 @@ public static class AdminTeambegeleidingFunction
         }
     }
 
+    /// <summary>
+    /// Stuurt een vraag over teambegeleiding door naar de begeleider(s) — Postgres-vertaling van
+    /// het gelijknamige SQL Server-endpoint (issue 888 vervolg, §43).
+    /// <para>
+    /// AVG: e-mailadressen van begeleiders worden server-side opgezocht en komen <b>nooit</b> in de
+    /// respons of in een logregel. Vrij ingetypte ontvangers worden vastgelegd in de audittrail,
+    /// net als op de SQL Server-tier.
+    /// </para>
+    /// </summary>
     [Function("AdminTeambegeleidingDoorsturen")]
-    public static Task<IActionResult> Doorsturen(
+    public static async Task<IActionResult> Doorsturen(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/teambegeleiding/doorsturen")] HttpRequest req,
         FunctionContext context)
     {
+        var log = context.GetLogger("AdminTeambegeleidingDoorsturen");
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return Task.FromResult(authResult);
-
-        return Task.FromResult<IActionResult>(new ObjectResult(new
+        if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
+        try
         {
-            // Bijgewerkt bij §42: de teamresolutielaag uit #889 bestaat inmiddels wél. Wat nu nog
-            // ontbreekt is uitsluitend de uitgaande e-mailverzendlaag — GraphServiceClient en
-            // EmailGraphService zijn op deze tier nergens geregistreerd (FunctionApp.Postgres/
-            // Program.cs heeft bewust nog geen DI-registraties), plus OntvangerParser.
-            error = "Doorsturen is nog niet beschikbaar op de Postgres-tier — de uitgaande " +
-                    "e-mailverzendlaag ontbreekt: GraphServiceClient/EmailGraphService zijn hier " +
-                    "niet geregistreerd, en OntvangerParser is niet vertaald (issue 888 vervolg, §42)."
-        })
-        { StatusCode = 501 });
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+
+            using var bodyReader = new StreamReader(req.Body);
+            var body = await bodyReader.ReadToEndAsync();
+            var dto = JsonConvert.DeserializeObject<DoorsturenRequest>(body);
+            if (dto == null || string.IsNullOrWhiteSpace(dto.TeamNaam))
+                return new BadRequestObjectResult(new { error = "TeamNaam is vereist" });
+            if (string.IsNullOrWhiteSpace(dto.Bericht))
+                return new BadRequestObjectResult(new { error = "Bericht is vereist" });
+
+            // Naam + e-mail van de aanvrager uit de Entra-claims (server-side — nooit in de respons)
+            var aanvragerNaam = EasyAuthHelper.GetCallerName(req) ?? "een club-gebruiker";
+            var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            var cs = PostgresDatabaseConfig.ConnectionString;
+
+            // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
+            // houdt het oude gedrag (server-side lookup + coördinator-fallback) intact.
+            List<string>? ontvangers = null;
+            if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
+            {
+                var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
+                if (!parseResultaat.IsValid)
+                    return new BadRequestObjectResult(new { error = parseResultaat.FoutMelding });
+
+                var uitgesloten = await SqlEmailPersistenceRepository.GetExcludedEmailAddressesAsync(cs, clubCode);
+                var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
+                if (geweigerdAdres != null)
+                    return new BadRequestObjectResult(new
+                    {
+                        error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
+                    });
+
+                ontvangers = [.. parseResultaat.Emailadressen];
+            }
+
+            var coordinatorEmail = PostgresAppSettings.GetSetting("plannerEmailAdres");
+
+            if (ontvangers == null)
+            {
+                var begeleiderEmail = await ZoekBegeleiderEmailAsync(cs, dto.TeamNaam, clubCode);
+
+                if (string.IsNullOrEmpty(begeleiderEmail))
+                {
+                    if (string.IsNullOrEmpty(coordinatorEmail))
+                        return new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 };
+                    begeleiderEmail = coordinatorEmail;
+                    log.LogWarning("Geen begeleider-e-mail gevonden voor team — doorgestuurd naar coördinator");
+                }
+                ontvangers = [begeleiderEmail];
+            }
+
+            // EgressGuard (#857): buiten productie is IEmailGraphService onvoorwaardelijk
+            // ongeregistreerd, ook met geconfigureerde Graph-secrets. Niet geregistreerd → 503, geen
+            // gefakete "verstuurd"-melding.
+            var emailService = context.InstanceServices.GetService<IEmailGraphService>();
+            if (emailService == null)
+            {
+                log.LogWarning("Graph SDK niet geconfigureerd — e-mail doorsturen niet mogelijk");
+                return new ObjectResult(new { error = "E-mail service niet geconfigureerd" }) { StatusCode = 503 };
+            }
+
+            var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
+            var htmlBody = $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(dto.TeamNaam)}</strong>.</p>
+<p><strong>Vraagsteller:</strong> {System.Net.WebUtility.HtmlEncode(aanvragerNaam)}</p>
+<p><strong>Onderwerp:</strong> {System.Net.WebUtility.HtmlEncode(dto.Onderwerp ?? "")}</p>
+<hr />
+<p>{System.Net.WebUtility.HtmlEncode(dto.Bericht).Replace("\n", "<br />")}</p>
+<hr />
+<p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
+
+            await emailService.StuurTeamContactDoorAsync(ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+
+            // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
+            // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
+            // geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
+            // verzendpoging kunnen leiden).
+            try
+            {
+                await SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
+                    cs, dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
+            }
+            catch (Exception auditEx)
+            {
+                log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
+            }
+
+            return new OkObjectResult(new
+            {
+                success = true,
+                bericht = $"Uw vraag over de begeleiding van {dto.TeamNaam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op."
+            });
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij doorsturen teambegeleiding-vraag (geen PII gelogd — AVG)");
+            return new ObjectResult(new { error = "Doorsturen mislukt" }) { StatusCode = 500 };
+        }
     }
+
+    /// <summary>
+    /// Zoekt het e-mailadres van de meest geschikte begeleider van een team (AVG: nooit in respons
+    /// of log). Zelfde rolvoorkeur als het SQL Server-origineel: trainer vóór coach vóór teamleider
+    /// vóór de rest. <c>ILIKE</c> in plaats van <c>LIKE</c> — de rolomschrijving komt uit een
+    /// handmatige CSV-import en Postgres' <c>LIKE</c> is hoofdlettergevoelig (#820).
+    /// </summary>
+    internal static async Task<string?> ZoekBegeleiderEmailAsync(string connectionString, string teamNaam, string clubCode)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("""
+            SELECT emailadres
+            FROM avg.teambegeleiding
+            WHERE team = @team
+              AND emailadres IS NOT NULL
+              AND clubcode = @clubcode
+            ORDER BY
+                CASE WHEN teamrol ILIKE '%Trainer%'    THEN 1
+                     WHEN teamrol ILIKE '%Coach%'      THEN 2
+                     WHEN teamrol ILIKE '%Teamleider%' THEN 3
+                     ELSE 4 END
+            LIMIT 1
+            """, conn);
+        cmd.Parameters.AddWithValue("team", teamNaam);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
+
+    private record DoorsturenRequest(string TeamNaam, string? Onderwerp, string Bericht, string? Ontvangers);
 
     [Function("AdminTeambegeleidingImport")]
     public static async Task<IActionResult> Import(

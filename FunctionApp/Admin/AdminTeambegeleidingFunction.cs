@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
-using SportlinkFunction.Utilities;
+using Planner.Shared;
 
 namespace SportlinkFunction.Admin;
 

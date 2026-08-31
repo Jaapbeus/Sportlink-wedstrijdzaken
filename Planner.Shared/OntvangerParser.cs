@@ -1,4 +1,4 @@
-namespace SportlinkFunction.Utilities;
+namespace Planner.Shared;
 
 /// <summary>
 /// Resultaat van <see cref="OntvangerParser.Parse"/>. Bij een ongeldige regel bevat
