@@ -14,9 +14,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.0.14.1</Version>
-    <AssemblyVersion>3.0.14.1</AssemblyVersion>
-    <FileVersion>3.0.14.1</FileVersion>
+    <Version>3.0.15.0</Version>
+    <AssemblyVersion>3.0.15.0</AssemblyVersion>
+    <FileVersion>3.0.15.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- #863-precedent: tier-herkomst voor /api/health als build-time metadata, nooit een
