@@ -1990,6 +1990,45 @@ worktrees identiek.** `Planner.Shared.Tests` (83 tests, incl. `TeamNaamNormalisa
 tier-agnostische code, maar staan nog op de oude plek — een cosmetische opruiming die de risicoarme
 scope van deze refactor niet hoefde te vergroten. Blijft open scope voor een latere, kleine slice.
 
+## 39. Twee repositories erbij: beschikbaarheid en teamregels (#888)
+
+**De laatste twee ontbrekende repositories uit §35's inventarisatie.** `PlannerAvailabilityRepository`
+en `TeamRulesRepository` bestonden nog helemaal niet op deze tier — met deze sectie staat de volledige
+repositorylaag onder de scheduling-engine (§38) op zijn plek, op de nog niet vertaalde
+`PlannerMatchRepository`-methoden (`FindMatchAsync`, `FindMatchByCodeAsync`,
+`SavePlannedMatchAsync`, `SaveHerplanVerzoekAsync`) na.
+
+**`PostgresClubScope` kreeg `AddClubParam`.** De eerdere, minimale versie had alleen
+`HisFilter`/`AddHisParams` (voor `his.*`-tabellen) — deze repositories raken tabellen met
+`clubcode NOT NULL` (`public.veldperiode`, `public.veldbeschikbaarheid`, `public.veldtraining`, en
+de `clubcode`-uitvoerkolom van de view) en hebben het strikte predicaat nodig.
+
+**De risicovolste stap: veldresolutie in C#, niet in SQL.** `planner.alle_wedstrijden_op_veld_ruw`
+levert voor "Competitie"-rijen bewust de ruwe Sportlink-veldstring terug in plaats van een
+veldnummer (#819's architectuurbeslissing — zie `PostgresPlannerViewGenerator`'s eigen
+doc-comment). `PlannerAvailabilityRepository.GetFieldOccupationsAsync` resolveert die zelf met
+`Planner.Shared.PlannerShared.VindVeldNummer` — dezelfde matching die de SQL Server-tier gebruikt,
+sinds §38 letterlijk dezelfde implementatie. Een rij die niet resolveert (veldnummer blijft `0`)
+valt stil weg, exact het SQL Server-origineel se `WHERE v.VeldNummer IS NOT NULL`-filter. De
+SQL-Server-dedup (per veldnummer+aanvangstijd+wedstrijd de eerste rij, gesorteerd op bron) kan hier
+pas ná de C#-resolutie plaatsvinden — vóór resolutie is het veldnummer voor Competitie-rijen nog
+leeg, dus zou de dedup-sleutel voor die rijen altijd `NULL` zijn.
+
+**Bijvangst: een duplicaat opgeruimd, niet ernaast gelegd.** Deze tier had al een eigen
+`internal sealed record Speeltijd` in `PlannerSettingsRepository.cs`, met exact dezelfde vier velden
+als de nu gedeelde `Planner.Shared.Speeltijd` (§38). Twee modellen met identieke vorm is precies de
+duplicatie die de architectuurregels willen voorkomen — verwijderd, de twee aanroepers
+(`AutoPlanService`, `PlannerSettingsRepository` zelf) gebruiken nu de gedeelde klasse.
+
+**Empirisch geverifieerd**, inclusief het scenario dat er het meest toe doet: een gesynchroniseerde
+wedstrijd met een veldstring die tegen geen enkel veld matcht valt stil uit de bezetting — geen
+crash, geen "veld 0", gewoon afwezig, zoals het origineel. Zes permanente integratietests dekken
+periode-aware beschikbaarheid, de drie bezettingsbronnen (Competitie/Planner/Training) samen,
+exacte wedstrijdcode-uitsluiting, en de teamregel-aggregaties (buffers, voorkeursveld, meerdere
+teams in één query). Onderscheidend vermogen apart bevestigd: met het resolutiefilter tijdelijk
+gesloopt (`.Where(w => w.VeldNummer != 0)` → altijd waar) wordt precies de test rood die dat
+scenario dekt; hersteld weer groen.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

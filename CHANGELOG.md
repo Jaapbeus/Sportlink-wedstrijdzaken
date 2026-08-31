@@ -18,6 +18,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Veldbeschikbaarheid en teamregels vertaald naar de Postgres-tier (issue 888 vervolg).**
+  `PlannerAvailabilityRepository` (beschikbaarheid periode-aware, #581; wedstrijdbezetting +
+  trainingsbezetting) en `TeamRulesRepository` (buffers, voorkeursvelden) — de twee repositories
+  die de vertaalde plannerlaag nog volledig miste. `PostgresClubScope` kreeg `AddClubParam` voor
+  tabellen met `clubcode NOT NULL`. De risicovolste stap: `planner.alle_wedstrijden_op_veld_ruw`
+  levert voor gesynchroniseerde wedstrijden bewust de rúwe Sportlink-veldstring terug (#819), dus
+  deze repository resolveert die zelf naar een veldnummer — exact dezelfde matching als de SQL
+  Server-tier, en met dezelfde `WHERE veldnummer IS NOT NULL`-uitsluiting voor een niet-
+  resolveerbare string. Een duplicaat `Speeltijd`-type op deze tier (identieke vorm als de nu
+  gedeelde `Planner.Shared.Speeltijd`) is opgeruimd in plaats van ernaast te blijven bestaan.
+  Empirisch geverifieerd tegen een wegwerp-Postgres-container, inclusief een opzettelijk
+  onresolveerbare veldstring (valt stil weg, geen crash en geen "veld 0"). Zes permanente
+  integratietests; onderscheidend vermogen apart bevestigd — met het resolutiefilter tijdelijk
+  gesloopt wordt precies de bijbehorende test rood.
+
 ### Changed
 - **De planningsmotor (FieldScheduler) en de domeinmodellen waarop hij werkt zijn verhuisd naar
   `Planner.Shared` (issue 888 vervolg) — zuiver intern, geen enkel gedragsverschil.** De motor was
