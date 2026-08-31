@@ -10,7 +10,8 @@
       "Planner.Shared\\Planner.Shared.csproj",
       "Planner.Shared.Tests\\Planner.Shared.Tests.csproj",
       "Database.Postgres.Cli\\Database.Postgres.Cli.csproj",
-      "FunctionApp.Postgres\\FunctionApp.Postgres.csproj"
+      "FunctionApp.Postgres\\FunctionApp.Postgres.csproj",
+      "FunctionApp.Postgres.Tests\\FunctionApp.Postgres.Tests.csproj"
     ]
   }
 }

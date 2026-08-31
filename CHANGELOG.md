@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De Postgres-tier heeft nu een eigen, automatisch meedraaiende testsuite (#890).** Tot nu toe werd
+  elke wijziging op die tier geverifieerd met een wegwerp-testopstelling die daarna werd
+  weggegooid: dat bewees dat het op dát moment werkte, maar bewaakte daarna niets meer. Er is nu
+  een blijvend testproject dat bij elke pull request meedraait tegen een verse database, en dat de
+  volledige synchronisatie end-to-end natrekt — inclusief de belangrijkste eigenschap: een tweede
+  synchronisatie met dezelfde brongegevens verandert niets en maakt geen dubbele regels aan. Ook de
+  e-mailregistratie en de teamlijstopbouw worden zo bewaakt. Vier opzettelijke faalscenario's
+  bevestigden dat de suite daadwerkelijk rood wordt wanneer een van die eigenschappen wegvalt.
 - **De Postgres-tier bouwt na een synchronisatie zelf zijn canonieke teamlijst op (issue 889).** Tot nu
   toe vulde een sync op die tier wel de ruwe Sportlink-historie, maar bleef de ontdubbelde
   teamlijst leeg — waardoor de teamdropdown in de Admin GUI en alle teamherkenning per e-mail daar

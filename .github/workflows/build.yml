@@ -99,6 +99,13 @@ jobs:
       - name: FunctionApp.Postgres bouwen (net9.0)
         run: dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj --configuration Release
 
+      # Issue 890: het testproject voor de Postgres-applicatielaag. Hier bewust ZONDER
+      # POSTGRES_TEST_CONNECTION_STRING: de integratietests slaan zichzelf dan zichtbaar over
+      # (#866) en deze stap bewijst alleen dat de suite compileert en start. De echte uitvoering
+      # gebeurt in de job 'fresh-db-postgres' hieronder, die al een gemigreerde instantie heeft.
+      - name: FunctionApp.Postgres.Tests draaien (unit only, geen Postgres nodig)
+        run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity minimal
+
       # #819: Planner.Shared bevat de tier-agnostische veldresolutielogica (VeldResolver/
       # VeldNormalisatie) — gedeeld tussen FunctionApp (SQL Server-tier) en Database.Postgres,
       # zodat er nooit een derde, onafhankelijke kopie van deze matching ontstaat naast de
@@ -732,3 +739,14 @@ jobs:
         env:
           POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
         run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity normal
+
+      # Issue 890: het equivalent van SportlinkFixtureSyncIntegrationTests (#867) voor de
+      # Postgres-tier, plus de e-mailpersistentie- (#889-acceptatiecriterium 3) en
+      # teamcanonicalisatietests (§28). Draait bewust NA de AllStars-demodata-assertie hierboven:
+      # deze tests schrijven onder eigen 'testclub-*'-clubcodes en ruimen die zelf op, maar de
+      # volgorde maakt onafhankelijk van die belofte zichtbaar dat ze de demodatatelling niet
+      # kunnen beïnvloeden.
+      - name: FunctionApp.Postgres.Tests draaien (integratietests, tegen deze instantie)
+        env:
+          POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
+        run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity normal

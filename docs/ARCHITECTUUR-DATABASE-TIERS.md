@@ -1335,6 +1335,96 @@ niet alleen een vergelijkingskwestie in `WHERE`-clausules, maar bepaalt hij ook 
   in principe, maar vereist dat de zelftest een synchronisatie draait of `public.teams` anderszins
   vult; dat hoort bij #909's vervolg, niet hier.
 
+## 29. `FunctionApp.Postgres.Tests` — het einde van de wegwerpharnas-verificatie (#890 afgerond)
+
+Elke ronde in deze epic tot nu toe eindigde met dezelfde zin: *"empirisch geverifieerd tegen een
+wegwerp-Postgres-container"* — met een consoleproject dat na afloop werd weggegooid, plus een
+tijdelijke `InternalsVisibleTo` die weer werd verwijderd (§18, §21, §23, §26, §28). Dat bewees
+telkens dat het op dát moment werkte. Het bewaakte daarna niets.
+
+Deze ronde levert het testproject dat daar een eind aan maakt, en dicht daarmee het laatste
+openstaande acceptatiecriterium van #890.
+
+### Waarom dit er niet al was, en waarom het niet triviaal was
+
+`Database.Postgres.Tests` bestond al — maar dat project referenceert `Database.Postgres`, niet
+`FunctionApp.Postgres`. Alles wat §17 t/m §28 heeft opgeleverd (de repositories, de sync-pijplijn,
+de canonicalisatie) leeft in dat tweede project en is bewust `internal`: het is een Functions-host,
+geen bibliotheek. Vandaar `InternalsVisibleTo("FunctionApp.Postgres.Tests")` — hetzelfde patroon
+als de SQL Server-tier al had (#476), nu permanent in plaats van per meting tijdelijk.
+
+**De fixtures zijn gedeeld via `<Compile Link>`, niet gekopieerd en niet via een
+`ProjectReference`.** Drie bestanden komen uit andere projecten:
+
+| Bestand | Herkomst | Waarom niet dupliceren |
+|---|---|---|
+| `SportlinkFixtureServer.cs` | `FunctionApp.Tests/Sync/` (#867) | Een tweede kopie van opgenomen API-antwoorden zou tussen de tiers uiteen gaan lopen — precies waar deze epic voor waakt |
+| `SportlinkFixtures.cs` | idem | idem |
+| `PostgresIntegrationTestAttributes.cs` | `Database.Postgres.Tests/` (#866) | Eén CI-variabele hoort beide suites aan te zetten, met dezelfde skip-reden |
+
+Een `ProjectReference` naar `FunctionApp.Tests` was géén optie: dat sleept transitief `FunctionApp`
+mee — de **SQL Server-tier** — en dat is exact de cross-tree-koppeling die §2 verbiedt. Bovendien
+zouden de twee testassemblies dan elkaars tests ontdekken. Link-compileren geeft één bronbestand met
+twee compilaties: wijzigt de fixture, dan wijzigt hij voor beide tiers tegelijk.
+
+### Wat de suite meet — acht tests, drie klassen
+
+| Klasse | Dekt | Criterium |
+|---|---|---|
+| `PostgresSyncFixtureIntegrationTests` | volledige sync tegen `SportlinkFixtureServer`: welke endpoints geraakt zijn, rijen in `his.*`, en — het kernpunt — een tweede run met identieke brondata die géén duplicaten en géén `mta_modified`-update oplevert | #890, criterium 1 |
+| `PostgresEmailPersistenceIntegrationTests` | insert + dedup + status/pogingen + `isbeantwoord` los van het te anonimiseren `verstuurdnaar` | #889, criterium 3 |
+| `TeamCanonicalisatieIntegrationTests` | ontdubbeling van de twee schrijfwijzen, de goedkeuringsregel voor geleerde aliassen, en #820's casing-scenario | §28, blijvend gemaakt |
+
+De tweede sync-test verdient een aparte vermelding: hij asserteert dat na een sync ook
+`public.teams`/`public.teamaliassen` gevuld zijn. Die stap staat in een `try/catch` (best-effort,
+§28) — zonder deze assertie zou een volledig gebroken canonicalisatie **stil** zijn. Een guard die
+fouten opslikt heeft een test nodig die controleert dat er ook echt iets gebeurd is.
+
+### Empirische verificatie — inclusief het bewijs dat de suite zichzelf niet voor de gek houdt
+
+Tegen een wegwerp-`postgres:16` met het volledige migratiepad via `Database.Postgres.Cli`:
+
+- **Zonder** `POSTGRES_TEST_CONNECTION_STRING`: `Skipped: 8` — zichtbaar overgeslagen, met reden.
+  Geen stilzwijgend groen.
+- **Met** de variabele: **8 geslaagd, 0 gefaald**. Daarna in de database gecontroleerd dat er
+  daadwerkelijk rijen stonden (`his.teams`/`matches`/`matchdetails` voor de sync-testclub, plus
+  `public.teams`/`teamaliassen` uit de canonicalisatiestap) — een groene testrun die niets
+  wegschrijft zou er hetzelfde uitzien.
+
+**Vier negatieve controles**, elk gericht op één eigenschap die de suite claimt te bewaken:
+
+| # | Manipulatie in productiecode | Verwacht | Gemeten |
+|---|---|---|---|
+| 1 | Canonicalisatie-aanroep uit `PostgresSyncPipeline` verwijderd | de best-effort-stap wordt zichtbaar gemist | 1 van 8 rood |
+| 2 | Dedup-exceptievertaling (`SqlState`-herkenning) uitgeschakeld | een dubbele `MessageId` lekt als rauwe `PostgresException` | 1 van 8 rood |
+| 3 | `WHERE bron = 'Sync'` weggelaten uit de aliasupsert | geleerde alias springt naar `validated` | 1 van 8 rood |
+| 4 | Changedetectie (`WHERE ... IS DISTINCT FROM ...`) in `PostgresUpsertGenerator` uitgeschakeld | `mta_modified` wordt bij een herhaalde run alsnog bijgewerkt | 1 van 8 rood, met beide tijdstempels in de foutmelding |
+
+Controle 4 is de belangrijkste: dat is letterlijk het acceptatiecriterium van #890 (*"geen dubbele
+`mta_modified`-updates bij een herhaalde run"*). Zonder die meting zou onbekend blijven of de
+assertie het verschil kán zien.
+
+### CI-bedrading — twee stappen, met opzet verschillend
+
+- In de bestaande `build`-job draait de suite **zonder** verbindingsvariabele: dat bewijst alleen
+  dat ze compileert en start (en meldt `Skipped`), zonder dat die job een database nodig heeft.
+- In `fresh-db-postgres` draait ze **mét** de variabele, tegen de instantie die die job al opzet —
+  ná de AllStars-demodata-assertie. De tests schrijven onder eigen `testclub-*`-clubcodes en ruimen
+  die zelf op, maar de volgorde maakt onafhankelijk van die belofte zichtbaar dat ze de
+  demodatatelling niet kunnen beïnvloeden.
+
+### Bewust niet in deze ronde
+
+- **De SQL Server-suite omzetten naar hetzelfde env-gestuurde mechanisme.**
+  `SportlinkFixtureSyncIntegrationTests` en `PartialFailureIntegrationTests` staan nog op
+  `[Fact(Skip = "...")]` en draaien dus nergens automatisch. #866 loste dit alleen voor de
+  Postgres-tier op; docs/DEVELOPER-SETUP.md §7.1 benoemt dat al als openstaand. Deze ronde raakt de
+  SQL Server-boom bewust niet.
+- **De overige scenario's uit §28** (sleuteldriftmigratie, samenvoegen van dubbele schrijfwijzen,
+  deactivering, clubisolatie, lege bron). Van de negen daar gemeten scenario's zijn de drie
+  overgenomen waarvoor §28 ook een negatieve controle heeft vastgelegd; de overige zes blijven
+  gedocumenteerde eenmalige metingen. Ze toevoegen kan later goedkoop — de infrastructuur staat nu.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

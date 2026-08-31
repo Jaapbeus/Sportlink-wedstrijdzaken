@@ -14,6 +14,13 @@ namespace Database.Postgres.Tests;
 /// Vervangt de individuele, letterlijk-gelijke Skip-strings die voorheen op elke integratietest
 /// stonden — één plek voor de conditie in plaats van 23 herhalingen ervan.
 /// </para>
+/// <para>
+/// <b>Let op — dit bestand wordt in TWEE testassemblies gecompileerd (issue 890):</b> ook
+/// <c>FunctionApp.Postgres.Tests</c> neemt het op via <c>&lt;Compile Link&gt;</c>, zodat beide
+/// suites dezelfde omgevingsvariabele en dezelfde skip-reden gebruiken en één CI-variabele ze
+/// allebei aanzet. Een wijziging hier raakt dus beide. Een <c>ProjectReference</c> was geen optie:
+/// het ene testproject naar het andere laten verwijzen levert dubbele testontdekking op.
+/// </para>
 /// </summary>
 public sealed class PostgresFactAttribute : FactAttribute
 {
