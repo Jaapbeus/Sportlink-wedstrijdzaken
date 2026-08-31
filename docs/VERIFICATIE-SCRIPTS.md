@@ -253,6 +253,34 @@ PowerShell wordt aangeroepen:
 - WSL's launcher vertaalt een los meegegeven Windows-pad (`C:\...` of `C:/...`) niet automatisch
   naar `/mnt/c/...` — zonder vertaling faalt elke aanroep met exitcode 127.
 
+### G2-G4 zijn nu echte metingen (#860, vervolg op #851)
+
+Tot deze ronde stonden G2 (schema, eerste run), G3 (idempotentie, tweede run) en G4 (demodata en
+rijtellingen) allemaal op `blocked`, in afwachting van de applicatie-datalaag (#860). Die datalaag
+bestaat inmiddels (deels) — G2-G4 zijn daarom nu echte metingen:
+
+- **G2/G3** draaien `Database.Postgres.Cli` tweemaal tegen de wegwerpcontainer en controleren de
+  kernobjecten en het aantal rijen in `public.schema_migrations` — zelfde asserties als de
+  CI-job `fresh-db-postgres`, hier lokaal herhaalbaar.
+- **G4** seedt de AllStars-demodata (dezelfde volgorde als die CI-job: bronrij voor de primaire
+  club → `006_allstars_demodata.sql` → de gesimuleerde `his.teams`/`his.matches`-DDL →
+  `003-seed-allstars-demo-matches-postgres.sql`, tweemaal) en toetst de rijtellingen **altijd**
+  tegen het contract in `selftest-expectations.psd1` — niet tegen een `-BaselinePath`-meting. Een
+  levende ontwikkeldatabase (Baseline, SQL Server) mag van dat contract afwijken zonder dat de run
+  faalt: dat IS precies waarom een deel van de rijen in het contract `Min` is in plaats van
+  `Exact` (speeltijden/teamregels hopen zich op door jarenlang handmatig testen). Baseline-metingen
+  worden daarom altijd als geslaagd vastgelegd, met een informatieve notitie als ze van het
+  contract afwijken.
+- **G5/G6 blijven bewust `blocked`** — vereisen een daadwerkelijk draaiende functiehost
+  (`func start`), een aanzienlijk grotere en risicovollere stap dan G2-G4. Zie issue #909 voor de
+  vervolgopgave en de reden waarom dit geen kleine aanvulling op G2-G4 is.
+
+**Bijkomende fix tijdens deze ronde:** `Wait-ForPostgres` kon "gereed" melden (via `pg_isready -d`)
+vlak vóórdat de server daadwerkelijk queries accepteerde — empirisch aangetroffen als "gereed na 3
+pogingen" gevolgd door `FATAL: the database system is starting up` op de eerstvolgende échte query.
+De functie doet nu, ná een geslaagde `pg_isready`, ook een `SELECT 1` als de `postgres`-OS-gebruiker
+(peer-auth via het Unix-socket, geen wachtwoord nodig) en blijft pollen tot die ook slaagt.
+
 ### Wat het script niet doet
 
 De browsersweep over alle beheerpagina's en de schrijfpaden door de GUI zitten in de skill
