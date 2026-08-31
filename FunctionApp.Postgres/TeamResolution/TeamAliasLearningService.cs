@@ -7,12 +7,15 @@ namespace FunctionApp.Postgres.TeamResolution;
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/TeamResolution/TeamAliasLearningService.cs</c>
 /// (#889). Vertaling: <c>IF NOT EXISTS ... INSERT ELSE UPDATE</c> →
-/// <c>INSERT ... ON CONFLICT (clubcode, ruwetekst) DO UPDATE SET</c> — <c>public.teamaliassen</c>
-/// heeft (#887) een unique constraint op <c>(clubcode, ruwetekst)</c>, dus de conflict-vorm kan
-/// hier wél (in tegenstelling tot <c>LearningMomentRepository</c>, waar zo'n constraint ontbreekt).
-/// Een alias wordt — zelfde harde regel als het origineel — NOOIT automatisch als waarheid
-/// gebruikt: alleen door een coördinator gevalideerde (<c>status = 'validated'</c>) aliassen tellen
-/// mee in teamresolutie.
+/// <c>INSERT ... ON CONFLICT (clubcode, upper(ruwetekst)) DO UPDATE SET</c> —
+/// <c>public.teamaliassen</c> heeft (#887, herzien in #820) een expression-based unique index op
+/// <c>(clubcode, upper(ruwetekst))</c> in plaats van een kale <c>UNIQUE(clubcode, ruwetekst)</c>:
+/// Postgres' default-collatie is case-sensitive (SQL Server's CI-collatie niet), dus zonder de
+/// <c>upper(...)</c>-wrap zou dezelfde ruwe tekst in afwijkende hoofdlettering een tweede rij
+/// aanmaken in plaats van de teller op de bestaande rij te verhogen. Zie
+/// <c>Database.Postgres/migrations/007_teams_collation_fix.sql</c>. Een alias wordt — zelfde harde
+/// regel als het origineel — NOOIT automatisch als waarheid gebruikt: alleen door een coördinator
+/// gevalideerde (<c>status = 'validated'</c>) aliassen tellen mee in teamresolutie.
 /// </summary>
 internal sealed class TeamAliasLearningService(string connectionString, ILogger logger)
 {
@@ -29,7 +32,7 @@ internal sealed class TeamAliasLearningService(string connectionString, ILogger 
                 INSERT INTO public.teamaliassen
                     (clubcode, ruwetekst, ruwetekstgenormaliseerd, teamid, bron, status, aantalkeergebruikt)
                 VALUES (@clubcode, @ruwetekst, @genormaliseerd, @teamid, @bron, 'pending', 1)
-                ON CONFLICT (clubcode, ruwetekst) DO UPDATE SET
+                ON CONFLICT (clubcode, upper(ruwetekst)) DO UPDATE SET
                     aantalkeergebruikt = public.teamaliassen.aantalkeergebruikt + 1,
                     mta_modified = NOW()
             ", conn);

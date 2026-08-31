@@ -608,6 +608,13 @@ e-mail-AI-pijplijn (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProces
 `EmailGraphService` — samen >2700 regels, bevatten geen directe SQL-toegang en vallen dus al
 buiten #889's eigen scope-omschrijving).
 
+**Nagekomen fix (#820):** deze paragraaf se `TeamCandidateRepository`/`TeamAliasLearningService`
+kregen een correctness-fix ná deze ronde — Postgres' case-sensitieve default-collatie liet
+`FindExactTeamAsync`/`FindValidatedAliasAsync` stilzwijgend falen bij afwijkende opgeslagen casing,
+en de kale `UNIQUE`-constraints op `public.teams`/`public.teamaliassen` lieten een casing-only-
+duplicaat toe. Volledige analyse en verificatie: docs/ARCHITECTUUR-TEAMRESOLUTIE.md, sectie
+"Postgres-collatie-kanttekening (#820)".
+
 ## 18. Synchronisatie- en stagingpad vertaald (#890)
 
 **Volledig vertaald:** de kernorkestratie `PostgresSyncPipeline.RunSyncAsync` — API ophalen →

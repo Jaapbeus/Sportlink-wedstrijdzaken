@@ -186,6 +186,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   draait bewust op Nederlandse tijd en niet op UTC: een tijdzonefout in de tijdstempels is op een
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
+### Fixed
+- **Postgres-tier: teamherkenning kon stilzwijgend falen bij afwijkende hoofdlettergebruik, en
+  stond een casing-only-duplicaatteam toe waar de SQL Server-tier dat al weigerde (issue 820,
+  vervolgronde op #869).** Postgres' default-collatie is case-sensitief; de bij #889 gebouwde
+  `TeamCandidateRepository`/`TeamAliasLearningService` vergeleken `teamnaamgenormaliseerd`/
+  `ruwetekst`/`ruwetekstgenormaliseerd` nog kaal, en `public.teams`/`public.teamaliassen` (#887)
+  hadden nog gewone `UNIQUE`-constraints. Nieuwe migratie
+  `Database.Postgres/migrations/007_teams_collation_fix.sql` vervangt die door expression-based
+  unique indexes op `upper(...)`; de repository-laag vergelijkt nu net als de SQL Server-tier
+  (#869) expliciet via `UPPER(...)`, inclusief `ON CONFLICT (clubcode, upper(ruwetekst))`.
+  Empirisch geverifieerd tegen een wegwerp-Postgres-container: een casing-only-duplicaat wordt
+  geweigerd, teamlookup slaagt ondanks afwijkende opgeslagen casing, en een herhaalde alias-melding
+  met andere casing verhoogt de teller in plaats van te dupliceren. **Blijft open:** de audit/replay
+  tegen echte historische productiedata vereist toegang tot echte clubdata en is daarom niet
+  autonoom uitgevoerd — zie issue #820.
+
 ### Changed
 - De vertaling van de gekozen databasetier naar het bijbehorende project staat nu in één
   gegevensbestand (`scripts/ci/database-tiers.json`) in plaats van in het CI-script. De
