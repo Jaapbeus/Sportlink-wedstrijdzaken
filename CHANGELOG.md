@@ -18,6 +18,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Beheerders kunnen de teamlijst nu zelf opnieuw laten opbouwen (issue 946).** De teamlijst waar
+  teamherkenning en alle teamkeuzelijsten op leunen wordt normaal bijgewerkt aan het eind van elke
+  nachtelijke synchronisatie. Staat die uit, of heeft die sinds een update nog niet gelopen, dan
+  bleven keuzelijsten leeg en werden teams niet herkend — en was er niets te doen behalve wachten.
+  Op de pagina Teamaliassen staat daar nu een knop voor, die laat zien hoeveel teams er vóór en na
+  actief zijn. Herhalen mag: goedgekeurde en afgewezen schrijfwijzen blijven staan. Is er nog nooit
+  gesynchroniseerd, dan meldt de knop dat eerlijk in plaats van te doen alsof er iets hersteld is.
+  De knop herstelt ook teams die na een wijziging in de naamherkenning uit de lijst zouden vallen —
+  iets wat voorheen alleen gebeurde als er toevallig e-mail verwerkt werd.
+
 ### Fixed
 - **De beschikbaarheidscontrole meldde "beschikbaar" zonder gecontroleerd te hebben of het team die
   dag al speelt (issue 945).** Herkende de applicatie de opgegeven teamnaam niet — bijvoorbeeld

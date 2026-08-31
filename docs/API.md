@@ -40,6 +40,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
 | `GET` | `/beheer/teamaliassen` | **Admin** | Teamnaam-aliassen ophalen (`?status=pending\|validated\|rejected&limit=100`) — inclusief canonieke teamnaam |
+| `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.Teams`: volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`) |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL) — gefilterd op `X-Club-Code` header |

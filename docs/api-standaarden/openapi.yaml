@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.0.31
+  version: 3.0.32
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2667,6 +2667,79 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/teams/herstel:
+    post:
+      tags: [beheer]
+      operationId: herstelTeamlijst
+      summary: Canonieke teamlijst opnieuw opbouwen
+      description: |
+        Bouwt de canonieke teamlijst (`dbo.Teams`/`dbo.TeamAliassen`) opnieuw op uit de
+        gesynchroniseerde teams. Draait twee stappen, altijd allebei: de volledige
+        canonicalisatie en de sleutelmigratie die opgeslagen sleutels in lijn brengt met de
+        huidige normalisatieregels.
+
+        Bedoeld als handmatige hersteloptie wanneer de synchronisatie uit staat of sinds de
+        uitrol nog niet gelopen heeft — dan is de teamlijst leeg en werkt teamherkenning niet.
+
+        Idempotent: herhalen verandert niets en laat de team-id's ongemoeid.
+
+        Bewust een POST en geen neveneffect van een leesverzoek: herstel schrijft, en dat hoort
+        achter een expliciete handeling te zitten.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Teamlijst opnieuw opgebouwd
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clubCode:
+                    type: string
+                  teamsVoor:
+                    type: integer
+                    description: Aantal actieve teams vóór het herstel
+                  teamsNa:
+                    type: integer
+                    description: Aantal actieve teams na het herstel
+                  aliassenNa:
+                    type: integer
+                    description: Aantal goedgekeurde schrijfwijzen na het herstel
+                  sleutelsGemigreerd:
+                    type: integer
+                    description: Aantal teams waarvan de opgeslagen sleutel herberekend moest worden
+                  dubbelenOpgeruimd:
+                    type: integer
+                    description: Aantal dubbele schrijfwijzen dat is samengevoegd
+                example:
+                  clubCode: "[ClubCode]"
+                  teamsVoor: 0
+                  teamsNa: 28
+                  aliassenNa: 56
+                  sleutelsGemigreerd: 0
+                  dubbelenOpgeruimd: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: |
+            Geen gesynchroniseerde teams om uit af te leiden. Bewust geen 200 met nul teams:
+            "de synchronisatie heeft nog nooit gelopen" moet te onderscheiden zijn van "hersteld".
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
         '500':
           $ref: '#/components/responses/InternalServerError'
 

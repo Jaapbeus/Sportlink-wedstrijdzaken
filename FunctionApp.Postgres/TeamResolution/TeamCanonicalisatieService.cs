@@ -45,7 +45,20 @@ namespace FunctionApp.Postgres.TeamResolution;
 /// </summary>
 internal static class TeamCanonicalisatieService
 {
-    internal static async Task RefreshAsync(string connectionString, string clubCode, ILogger log)
+    /// <summary>
+    /// Uitkomst van een canonicalisatieronde (#946). De sleutelmigratie draait ALTIJD als eerste stap
+    /// binnen <c>RefreshAsync</c>; deze tellingen komen daaruit. Ze worden teruggegeven in plaats van
+    /// alleen gelogd, zodat het herstelendpoint kan laten zien of er werkelijk iets hersteld is —
+    /// anders is "hersteld" voor een beheerder niet te onderscheiden van "er gebeurde niets".
+    /// <para>
+    /// Alles nul betekent: de canonicalisatie is overgeslagen omdat er geen bronrijen waren.
+    /// </para>
+    /// </summary>
+    internal readonly record struct CanonicalisatieResultaat(
+        int Teams, int SleutelsBijgewerkt, int DubbelenOpgeruimd);
+
+    internal static async Task<CanonicalisatieResultaat> RefreshAsync(
+        string connectionString, string clubCode, ILogger log)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new ArgumentException("ClubCode is verplicht voor teamcanonicalisatie.", nameof(clubCode));
@@ -54,7 +67,7 @@ internal static class TeamCanonicalisatieService
         if (rijen.Count == 0)
         {
             log.LogWarning("TEAMS CANONICALISATIE - geen rijen in his.teams voor club {ClubCode} — overgeslagen", clubCode);
-            return;
+            return default;
         }
 
         // Groepeer op genormaliseerde sleutel: dit is de ontdubbelingsstap.
@@ -103,6 +116,8 @@ internal static class TeamCanonicalisatieService
             + "gemigreerd, {DubbelenOpgeruimd} dubbele schrijfwijzen samengevoegd) voor club {ClubCode}",
             teams, rijen.Count, aliassen, onbekend, gedeactiveerd, fouten,
             sleutelsBijgewerkt, dubbelenOpgeruimd, clubCode);
+
+        return new CanonicalisatieResultaat(teams, sleutelsBijgewerkt, dubbelenOpgeruimd);
     }
 
     /// <summary>
@@ -118,6 +133,13 @@ internal static class TeamCanonicalisatieService
     /// gevangen en gelogd, terwijl <see cref="DeactiveerOntbrekendeTeamsAsync"/> de oude rij op
     /// <c>isactief = FALSE</c> zet. Netto resultaat zonder deze migratiestap: de teams verdwijnen
     /// uit <c>public.teams</c> en komen ook bij een volgende sync nooit terug.
+    /// </para>
+    /// <para>
+    /// <b>Geen losse, publieke ingang op deze tier</b>, anders dan op de SQL Server-tier. Daar heeft
+    /// die ingang één aanroeper (<c>TeamlijstGereedheid</c>, aan het e-mailpad) die hier niet
+    /// bestaat. <c>RefreshAsync</c> draait deze stap altijd als eerste, dus elk pad dat op deze tier
+    /// herstel nodig heeft — inclusief het herstelendpoint uit #946 — krijgt hem daar gratis bij.
+    /// Een tweede ingang zou dode code zijn.
     /// </para>
     /// </summary>
     private static async Task<(int SleutelsBijgewerkt, int DubbelenOpgeruimd)> MigreerSleuteldriftAsync(

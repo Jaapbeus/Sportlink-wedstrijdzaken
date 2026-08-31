@@ -93,17 +93,16 @@
         # LET OP — dit endpoint leest public.teams (de canonicalisatietabel), NIET his.teams (de
         # ETL-historie die rowCounts hierboven telt). Dat zijn twee verschillende tabellen met
         # dezelfde naam in de volksmond; de eerdere formulering "28 teams" haalde ze door elkaar.
-        # public.teams wordt gevuld door de teamcanonicalisatie tijdens een synchronisatie, en die
-        # is op de Postgres-tier nog niet vertaald (gedocumenteerd gat 2 van #890). Op een verse,
-        # geseede database is het antwoord daarom leeg — op BEIDE tiers, want geen van beide seeds
-        # vult deze tabel.
-        # Blocked-verwijzing gecorrigeerd van #890 naar #931 (issue 888 vervolg, §43): #890 (het
-        # synchronisatie- en stagingpad) is inmiddels af, dus daarnaar verwijzen suggereerde ten
-        # onrechte dat hier nog een port openstond. De werkelijke oorzaak staat in de opmerking
-        # hierboven en is dezelfde als bij team-schedule: de demoseed vult public.teams niet, en
-        # canonicalisatie draait alleen als onderdeel van een echte sync. Een verkeerd toegewezen
-        # blokkade is precies zo misleidend als een overgeslagen assertie die groen meldt.
-        @{ Path = 'api/beheer/teams';                Assert = 'De teamnamen uit public.teams voor de democlub.'; Context = 'demo'; Blocked = @(931) }
+        # Niet langer geblokkeerd (#931 opgelost). public.teams wordt gevuld door de
+        # teamcanonicalisatie, en die draaide alleen als onderdeel van een echte synchronisatie —
+        # die deze run niet heeft. Sinds #946 bestaat daar een expliciet beheerpad voor
+        # (POST /api/beheer/teams/herstel), en poort G5b roept dat pad aan vóórdat G6 meet. De
+        # lijst die hier geteld wordt is dus door productiecode opgebouwd, niet door een seed.
+        #
+        # Een ondergrens en niet 'geldige lijst': dit endpoint geeft 200 met een LEGE lijst als de
+        # canonieke lijst leeg is — nooit een foutcode. Zonder telling zou de assertie precies de
+        # toestand groen melden die zij moet uitsluiten.
+        @{ Path = 'api/beheer/teams';                Assert = 'Exact 28 teamnamen uit public.teams voor de democlub — evenveel als de demoseed aan teams neerzet. Een lege lijst geeft hier 200, dus zonder telling meet deze poort niets.'; Context = 'demo' }
         # Niet langer geblokkeerd (#858 opgelost): de maskering loopt nu via het gedeelde
         # Planner.Shared.AvgMaskering — hoofdletterongevoelig, en het gooit als er niets te
         # maskeren viel. De demoseed levert sinds dezelfde wijziging twee e-maillogrijen, zodat
@@ -131,12 +130,16 @@
         @{ Path = 'api/planner/veldbezetting?datum={EERSTVOLGENDE_ZATERDAG}'; Context = 'demo'
            Assert = 'Minstens een bezettingsrij op de eerste demospeeldag, elk met een teamnaam en een aanvangstijd. Leeg is FOUT: de seed zet 28 teams x 8 ronden neer, waarvan de helft thuis speelt. Let op: veld is bij demodata NULL — de seed plant niets op een veld in, dus daar valt niets over te beweren.' }
 
-        # Kan pas gemeten worden als de zelftest een canonieke teamlijst heeft (#931): dit endpoint
-        # resolvet de teamnaam via public.teams/public.teamaliassen, en die vult de demoseed niet.
-        # Een 404 is hier dus correct gedrag van het endpoint, geen defect — vandaar Blocked en niet
-        # weglaten: zo blijft zichtbaar dat hier dekking hoort te komen.
-        @{ Path = 'api/planner/team-schedule?team=AllStars%20JO13%201'; Context = 'demo'; Blocked = @(931)
-           Assert = 'Object met zaterdagen- en wedstrijden-lijst; de zaterdaglijst loopt tot het seizoenseinde en is dus niet leeg.' }
+        # Niet langer geblokkeerd (#931 opgelost): poort G5b bouwt de canonieke teamlijst op via
+        # het beheerpad uit #946, zodat de teamresolutie hier iets te resolven heeft.
+        #
+        # De eis op BEZETTE zaterdagen is essentieel en verving een te zwakke assertie. De
+        # zaterdaglijst wordt opgebouwd van vandaag tot het seizoenseinde, volledig los van de
+        # wedstrijden — die lijst is dus per definitie gevuld zodra het team herkend wordt. Een
+        # kapotte aliaskoppeling levert daarmee een volle agenda zonder één bezette dag op, en dat
+        # leest als een rustig seizoen in plaats van als een defect.
+        @{ Path = 'api/planner/team-schedule?team=AllStars%20JO13%201'; Context = 'demo'
+           Assert = 'Object met zaterdagen- en wedstrijden-lijst; minstens een zaterdag met status bezet. Alleen een niet-lege zaterdaglijst is niet genoeg: die loopt sowieso tot het seizoenseinde.' }
     )
 
     # De toepassingsnaam die de Postgres-tier op elke verbinding meegeeft

@@ -104,6 +104,7 @@ $Gates = @(
     @{ Id = 'G3'; Naam = 'Idempotentie (tweede run)';    Modes = @('Verify') }
     @{ Id = 'G4'; Naam = 'Demodata en rijtellingen';     Modes = @('Baseline','Verify') }
     @{ Id = 'G5'; Naam = 'Applicatie praat aantoonbaar met de juiste engine'; Modes = @('Baseline','Verify') }
+    @{ Id = 'G5b'; Naam = 'Canonieke teamlijst via het herstelpad'; Modes = @('Baseline','Verify') }
     @{ Id = 'G6'; Naam = 'API met inhoudsasserties';     Modes = @('Baseline','Verify') }
     @{ Id = 'G7'; Naam = 'Browsersweep (skill)';         Modes = @('Baseline','Verify') }
     @{ Id = 'G8'; Naam = 'Schrijfpaden (skill)';         Modes = @('Baseline','Verify') }
@@ -897,7 +898,7 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
     $g5Actief = ($Gates | Where-Object { $_.Id -eq 'G5' }).Modes -contains $Mode
 
     if ($g5Actief -and $Tier -ne 'Postgres') {
-        foreach ($gate in @('G5', 'G6')) {
+        foreach ($gate in @('G5', 'G5b', 'G6')) {
             Write-Kop "$gate — $(($Gates | Where-Object { $_.Id -eq $gate }).Naam)"
             Add-Check -Gate $gate -Id "$gate.basismeting-niet-geautomatiseerd" -Status 'blocked' -Blocked @(909) `
                 -Message ('Een functiehost tegen de LEVENDE ontwikkeldatabase kan die database wijzigen ' +
@@ -1008,6 +1009,143 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
             }
         }
         $g5 = Complete-Gate -Gate 'G5'
+
+        # ──────────────────────────────────────────────────────────────────
+        # G5b — Canonieke teamlijst via het herstelpad (#931/#946)
+        #
+        # WAAROM DEZE POORT BESTAAT. public.teams/public.teamaliassen zijn AFGELEIDE tabellen: de
+        # demoseed vult his.teams/his.matches, maar de canonieke lijst wordt normaal pas aan het
+        # eind van een synchronisatie gevuld. Deze run draait geen synchronisatie (de externe
+        # databron is afgesloten), dus zonder deze poort blijft de lijst leeg en geeft elk endpoint
+        # dat op teamresolutie leunt een leeg of afwijzend antwoord — correct gedrag, maar het maakt
+        # die endpoints structureel onmeetbaar. Dat was issue 931.
+        #
+        # WAT DEZE POORT NIET DOET: public.teams met SQL vullen. Dat zou de normalisatieregels een
+        # tweede keer implementeren buiten Planner.Shared/TeamNaamNormalisatie.cs — precies de
+        # architectuurschending die #766 al een keer heeft aangetoond — en de poort zou daarna zijn
+        # eigen seed meten in plaats van de applicatie.
+        #
+        # Wat hij WEL doet: het echte beheerpad aanroepen dat een beheerder ook zou gebruiken
+        # (POST /api/beheer/teams/herstel, #946), via de draaiende functiehost, tegen deze database.
+        # Daarmee meet G6 hierna een lijst die door productiecode is opgebouwd.
+        #
+        # De begintoestand wordt hard geasserteerd: is de lijst al gevuld, dan is dat een FOUT en
+        # geen overslag — dan bewijst alles wat erna komt niets meer over het herstelpad.
+        # ──────────────────────────────────────────────────────────────────
+        Write-Kop 'G5b — Canonieke teamlijst via het herstelpad'
+
+        if ($g5 -eq 'fail') {
+            Add-Check -Gate 'G5b' -Id 'G5b.grondslag.ontbreekt' -Status 'fail' `
+                -Message 'G5 is rood: niet vastgesteld dat deze functiehost met de juiste engine praat.'
+            [void](Complete-Gate -Gate 'G5b')
+        } else {
+            function Get-CanoniekeTeamTelling {
+                [int](Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                    -Sql "SELECT COUNT(*) FROM public.teams WHERE clubcode = 'ALLSTARS' AND isactief = TRUE;").Output
+            }
+
+            function Get-TeamIdVingerafdruk {
+                (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                    -Sql "SELECT md5(string_agg(teamid::text, ',' ORDER BY teamid)) FROM public.teams WHERE clubcode = 'ALLSTARS';").Output
+            }
+
+            function Invoke-Teamherstel {
+                try {
+                    $resp = Invoke-WebRequest -Uri "$hostBasis/api/beheer/teams/herstel" -Method Post `
+                        -Headers @{ 'X-Club-Code' = $Expect.demoClub } -Body '{}' -ContentType 'application/json' `
+                        -TimeoutSec 60 -UseBasicParsing
+                    [pscustomobject]@{ Ok = $true; Code = [int]$resp.StatusCode; Body = "$($resp.Content)" }
+                } catch {
+                    [pscustomobject]@{ Ok = $false; Code = 0; Body = $_.Exception.Message }
+                }
+            }
+
+            $verwachtTeams = [int](($Expect.rowCounts | Where-Object { $_.Key -eq 'teams' }).Exact)
+
+            $vooraf = Get-CanoniekeTeamTelling
+            if ($vooraf -ne 0) {
+                Add-Check -Gate 'G5b' -Id 'G5b.begintoestand.leeg' -Status 'fail' `
+                    -Expected '0 canonieke teams voor het herstel' -Actual "$vooraf" `
+                    -Message 'De lijst was al gevuld; dan bewijst het herstel hierna niets meer over het herstelpad.'
+            } else {
+                Add-Check -Gate 'G5b' -Id 'G5b.begintoestand.leeg' -Status 'pass' -Actual '0' `
+                    -Message 'De canonieke lijst is leeg, dus het herstel hierna meet echt iets.'
+            }
+
+            $herstel = Invoke-Teamherstel
+            Save-Artifact -Naam 'g5b-teamherstel.json' -Inhoud $herstel.Body | Out-Null
+
+            if (-not $herstel.Ok -or $herstel.Code -ne 200) {
+                Add-Check -Gate 'G5b' -Id 'G5b.herstel.aanroep' -Status 'fail' `
+                    -Expected 'HTTP 200' -Actual "$($herstel.Code) $($herstel.Body)"
+            } else {
+                Add-Check -Gate 'G5b' -Id 'G5b.herstel.aanroep' -Status 'pass' -Actual 'HTTP 200'
+
+                # De uitkomst in de DATABASE meten, niet in het antwoord van het endpoint: een
+                # endpoint dat een getal verzint zou zichzelf anders goedkeuren.
+                $na = Get-CanoniekeTeamTelling
+                if ($na -eq $verwachtTeams) {
+                    Add-Check -Gate 'G5b' -Id 'G5b.teams.opgebouwd' -Status 'pass' -Actual "$na" `
+                        -Message 'Gemeten in de database, niet in het antwoord van het endpoint.'
+                } else {
+                    Add-Check -Gate 'G5b' -Id 'G5b.teams.opgebouwd' -Status 'fail' `
+                        -Expected "$verwachtTeams" -Actual "$na"
+                }
+
+                $aliassen = [int](Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                    -Sql "SELECT COUNT(*) FROM public.teamaliassen WHERE clubcode = 'ALLSTARS' AND status = 'validated';").Output
+                if ($aliassen -gt 0) {
+                    Add-Check -Gate 'G5b' -Id 'G5b.aliassen.vastgelegd' -Status 'pass' -Actual "$aliassen" `
+                        -Message 'Elke aangetroffen schrijfwijze hoort als gevalideerde Sync-alias vastgelegd te worden (#700).'
+                } else {
+                    Add-Check -Gate 'G5b' -Id 'G5b.aliassen.vastgelegd' -Status 'fail' -Expected '>= 1' -Actual '0'
+                }
+            }
+
+            # Idempotentie: een beheerder mag de knop twee keer indrukken. Zelfde telling, en de
+            # teamid-verzameling mag niet verschuiven, want public.teamaliassen verwijst ernaar.
+            $vingerafdrukVoor = Get-TeamIdVingerafdruk
+            $tweede = Invoke-Teamherstel
+            $vingerafdrukNa = Get-TeamIdVingerafdruk
+
+            if ($tweede.Ok -and $tweede.Code -eq 200 -and "$vingerafdrukVoor" -eq "$vingerafdrukNa" -and (Get-CanoniekeTeamTelling) -eq $verwachtTeams) {
+                Add-Check -Gate 'G5b' -Id 'G5b.herstel.idempotent' -Status 'pass' `
+                    -Actual 'zelfde teamid-verzameling na een tweede aanroep'
+            } else {
+                Add-Check -Gate 'G5b' -Id 'G5b.herstel.idempotent' -Status 'fail' `
+                    -Expected 'HTTP 200 en een ongewijzigde teamid-verzameling' `
+                    -Actual "code=$($tweede.Code), voor=$vingerafdrukVoor, na=$vingerafdrukNa"
+            }
+
+            # Sleuteldriftherstel (#766). Dit is de tak die BOVENOP een kale canonicalisatie komt en
+            # die nergens anders in deze zelftest voorkomt: de opgeslagen sleutel wordt opzettelijk
+            # kapotgeschreven, waarna het herstelpad hem moet herberekenen uit de teamnaam, zonder
+            # het teamid te veranderen.
+            $driftTeamId = (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                -Sql "SELECT teamid FROM public.teams WHERE clubcode = 'ALLSTARS' ORDER BY teamid LIMIT 1;").Output
+            $sleutelVoor = (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                -Sql "SELECT teamnaamgenormaliseerd FROM public.teams WHERE teamid = $driftTeamId;").Output
+            Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -StopOnError `
+                -Sql "UPDATE public.teams SET teamnaamgenormaliseerd = 'ZZZ-DRIFT-931' WHERE teamid = $driftTeamId;" | Out-Null
+
+            $derde = Invoke-Teamherstel
+            $sleutelNa = (Invoke-Psql -ContainerName $PgContainer -Password $pgPassword -Database 'sportlink_selftest' -Tuples `
+                -Sql "SELECT teamnaamgenormaliseerd FROM public.teams WHERE teamid = $driftTeamId;").Output
+            $teamsNaDrift = Get-CanoniekeTeamTelling
+
+            if ($derde.Ok -and "$sleutelNa" -eq "$sleutelVoor" -and $teamsNaDrift -eq $verwachtTeams) {
+                Add-Check -Gate 'G5b' -Id 'G5b.sleuteldrift.hersteld' -Status 'pass' `
+                    -Actual "sleutel terug op '$sleutelVoor', teamid ongewijzigd" `
+                    -Message 'Zonder deze stap verdwijnen teams definitief na een wijziging in de naamherkenning (#766).'
+            } else {
+                Add-Check -Gate 'G5b' -Id 'G5b.sleuteldrift.hersteld' -Status 'fail' `
+                    -Expected "sleutel terug op '$sleutelVoor' en $verwachtTeams actieve teams" `
+                    -Actual "sleutel='$sleutelNa', teams=$teamsNaDrift, code=$($derde.Code)"
+            }
+
+            [void](Complete-Gate -Gate 'G5b')
+        }
+
 
         # ──────────────────────────────────────────────────────────────────
         # G6 — API met inhoudsasserties
@@ -1198,22 +1336,36 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
                     'api/planner/team-schedule?team=AllStars%20JO13%201' {
                         # Vorm: een omhulsel met team, zaterdagen en wedstrijden. Alleen "HTTP 200"
                         # bewijst hier niets — een onbekend team geeft 404 en een bestaand team met
-                        # een lege agenda zou als lege lijsten terugkomen. Daarom zowel de vorm als
-                        # een ondergrens op de zaterdaglijst: die loopt tot het seizoenseinde en is
-                        # dus per definitie niet leeg zolang er nog een zaterdag te gaan is.
+                        # een lege agenda zou als lege lijsten terugkomen.
+                        #
+                        # DE ZATERDAGLIJST IS GEEN BEWIJS. Die wordt opgebouwd van vandaag tot het
+                        # seizoenseinde in een lus die de wedstrijden niet eens raakt, dus zodra het
+                        # team herkend wordt is hij per definitie gevuld. De eerdere assertie eiste
+                        # alleen dat hij niet leeg was, en zou dus groen zijn geworden bij een
+                        # volledig kapotte aliaskoppeling: een volle agenda zonder één bezette dag
+                        # leest dan als een rustig seizoen in plaats van als een defect.
+                        #
+                        # Daarom de eis op BEZETTE zaterdagen: die status ontstaat alleen als er
+                        # daadwerkelijk een competitie- of bekerwedstrijd aan dit team gekoppeld is,
+                        # en dat is precies wat de teamresolutie moet opleveren.
                         $heeftVorm = $null -ne $j -and
                                      $j.PSObject.Properties.Name -contains 'wedstrijden' -and
                                      $j.PSObject.Properties.Name -contains 'zaterdagen'
+                        $bezet = if ($heeftVorm) { @($j.zaterdagen | Where-Object { $_.status -eq 'bezet' }) } else { @() }
                         if (-not $heeftVorm) {
                             Add-Check -Gate 'G6' -Id $id -Status 'fail' `
                                 -Expected 'object met zaterdagen- en wedstrijden-lijst' -Actual $r.Body
                         } elseif (@($j.zaterdagen).Count -eq 0) {
                             Add-Check -Gate 'G6' -Id $id -Status 'fail' `
                                 -Expected 'minstens een zaterdag tot het seizoenseinde' `
-                                -Actual 'lege zaterdaglijst — seizoenseinde niet gevuld of team niet herkend'
+                                -Actual 'lege zaterdaglijst - seizoenseinde niet gevuld of team niet herkend'
+                        } elseif ($bezet.Count -eq 0) {
+                            Add-Check -Gate 'G6' -Id $id -Status 'fail' `
+                                -Expected 'minstens een zaterdag met status bezet' `
+                                -Actual "$(@($j.zaterdagen).Count) zaterdagen, geen enkele bezet - het team is herkend maar er is geen wedstrijd aan gekoppeld"
                         } else {
                             Add-Check -Gate 'G6' -Id $id -Status 'pass' `
-                                -Actual "team=$($j.team), zaterdagen=$(@($j.zaterdagen).Count), wedstrijden=$(@($j.wedstrijden).Count)"
+                                -Actual "team=$($j.team), zaterdagen=$(@($j.zaterdagen).Count), bezet=$($bezet.Count), wedstrijden=$(@($j.wedstrijden).Count)"
                         }
                     }
                     'api/beheer/templates' {

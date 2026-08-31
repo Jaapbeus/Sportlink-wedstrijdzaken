@@ -331,6 +331,21 @@ public class TeamAliasDto
     public DateTime? MtaModified { get; set; }
 }
 
+/// <summary>
+/// Antwoord van <c>POST /api/beheer/teams/herstel</c> (#946). De voor- en na-tellingen staan er
+/// bewust allebei in: "hersteld" zonder te laten zien wat er veranderde, is voor een beheerder niet
+/// te onderscheiden van "er gebeurde niets".
+/// </summary>
+public class TeamHerstelDto
+{
+    public string ClubCode { get; set; } = string.Empty;
+    public int TeamsVoor { get; set; }
+    public int TeamsNa { get; set; }
+    public int AliassenNa { get; set; }
+    public int SleutelsGemigreerd { get; set; }
+    public int DubbelenOpgeruimd { get; set; }
+}
+
 public class TeamAliassenResponse
 {
     public int Count { get; set; }

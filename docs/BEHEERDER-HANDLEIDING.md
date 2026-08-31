@@ -844,6 +844,32 @@ opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoo
 veiliger dan een fout vastleggen — een goedgekeurde alias stuurt namelijk toekomstige
 e-mailverwerking naar dat team.
 
+### Teamlijst opnieuw opbouwen
+
+Bovenaan dezelfde pagina staat de knop **"Teamlijst opnieuw opbouwen"**.
+
+Aliassen hangen aan de teamlijst, en die lijst wordt normaal bijgewerkt aan het eind van elke
+nachtelijke synchronisatie. Staat de synchronisatie uit, of heeft die sinds een update nog niet
+gelopen, dan kan de lijst leeg of verouderd zijn. U merkt dat aan:
+
+- teamkeuzelijsten (bijvoorbeeld bij Voorkeurstijden) die leeg blijven;
+- de melding dat er **niet** gecontroleerd kon worden of een team die dag al speelt;
+- teams die niet herkend worden in binnenkomende e-mail.
+
+De knop bouwt de lijst direct opnieuw op uit de al opgehaalde Sportlink-teams. U krijgt terug
+hoeveel teams er nu actief zijn (en hoeveel het er daarvoor waren), zodat zichtbaar is of er
+werkelijk iets veranderd is.
+
+| Situatie | Wat u ziet |
+|---|---|
+| Lijst opnieuw opgebouwd | Aantal actieve teams vóór en na, plus het aantal goedgekeurde schrijfwijzen |
+| Teams hersteld na een wijziging in de naamherkenning | Een extra regel met het aantal herstelde teams |
+| Er is nog nooit gesynchroniseerd | Een waarschuwing dat er niets is om uit af te leiden — draai eerst een synchronisatie |
+
+**Herhalen mag.** De knop is idempotent: twee keer indrukken verandert niets extra. Goedgekeurde
+en afgewezen aliassen blijven staan; alleen de schrijfwijzen die uit de Sportlink-data zelf komen
+worden bijgewerkt.
+
 ### API-endpoints
 
 | Endpoint | Beschrijving |
@@ -851,6 +877,7 @@ e-mailverwerking naar dat team.
 | `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
 | `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
 | `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+| `POST /api/beheer/teams/herstel` | Teamlijst opnieuw opbouwen (de knop hierboven) |
 
 ---
 

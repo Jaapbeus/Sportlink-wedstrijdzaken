@@ -22,7 +22,19 @@ public static class TeamCanonicalisatieService
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
-    public static async Task RefreshAsync(string clubCode, ILogger log)
+    /// <summary>
+    /// Uitkomst van een canonicalisatieronde (#946). De sleutelmigratie draait ALTIJD als eerste stap
+    /// binnen <c>RefreshAsync</c>; deze tellingen komen daaruit. Ze worden teruggegeven in plaats van
+    /// alleen gelogd, zodat het herstelendpoint kan laten zien of er werkelijk iets hersteld is —
+    /// anders is "hersteld" voor een beheerder niet te onderscheiden van "er gebeurde niets".
+    /// <para>
+    /// Alles nul betekent: de canonicalisatie is overgeslagen omdat er geen bronrijen waren.
+    /// </para>
+    /// </summary>
+    public readonly record struct CanonicalisatieResultaat(
+        int Teams, int SleutelsBijgewerkt, int DubbelenOpgeruimd);
+
+    public static async Task<CanonicalisatieResultaat> RefreshAsync(string clubCode, ILogger log)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new ArgumentException("ClubCode is verplicht voor teamcanonicalisatie.", nameof(clubCode));
@@ -31,7 +43,7 @@ public static class TeamCanonicalisatieService
         if (rijen.Count == 0)
         {
             log.LogWarning("TEAMS CANONICALISATIE - geen rijen in his.teams voor club {ClubCode} — overgeslagen", clubCode);
-            return;
+            return default;
         }
 
         // Groepeer op genormaliseerde sleutel: dit is de ontdubbelingsstap.
@@ -80,6 +92,8 @@ public static class TeamCanonicalisatieService
             + "gemigreerd, {DubbelenOpgeruimd} dubbele schrijfwijzen samengevoegd) voor club {ClubCode}",
             teams, rijen.Count, aliassen, onbekend, gedeactiveerd, fouten,
             sleutelsBijgewerkt, dubbelenOpgeruimd, clubCode);
+
+        return new CanonicalisatieResultaat(teams, sleutelsBijgewerkt, dubbelenOpgeruimd);
     }
 
     /// <summary>
