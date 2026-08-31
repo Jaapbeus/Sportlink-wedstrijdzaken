@@ -19,6 +19,21 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Postgres-tier synchronisatiepad: seizoensgrenzen vertaald + een echt gat gedicht (vervolg op
+  issue 890).** `public.season` (nieuwe migraties 008/009) vervangt de vaste `30`-weken-fallback:
+  zowel de standaardsync als de reset-modus (`?reset=true&season=`, gaf voorheen een expliciete
+  501) gebruiken nu de echte seizoenstabel via het nieuwe `PostgresSeasonHelper`.
+  `MarkeerVervallenGeplandeWedstrijdenAsync` (teamalias-gebaseerde matching, #700/#820-precedent
+  voor de `UPPER(...)`-vergelijkingen) is vertaald naar `FunctionApp.Postgres/Planner/Repositories/
+  PlannerMatchRepository.cs` en wordt — net als het SQL Server-origineel — ongeguard aangeroepen
+  ná elke sync; dit was voorheen een echt, gedocumenteerd gat (geen gelijkwaardig gedrag), in
+  tegenstelling tot de teamcanonicalisatie die bewust nog ontbreekt. Beide empirisch geverifieerd
+  tegen een wegwerp-Postgres-16-container, inclusief een niet-matchende controlerij die bewust
+  ongemoeid moest blijven. **Bewust niet in deze ronde:** `dbo.DateTable`/`sp_CreateDateTable` (nul
+  consumenten binnen de applicatie, zelfde reden als issue 861's al vervallen `pub.*`-views) en het
+  jaarlijks automatisch doorrollen van het seizoen (een Postgres-migratie draait één keer, in
+  tegenstelling tot de SQL Server-tier se `Script.PostDeployment1.sql` die dit bij elke deploy
+  herhaalt) — beide gedocumenteerd in `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
 - **Zelftest-poorten G2 (schema), G3 (idempotentie) en G4 (demodata/rijtellingen) zijn nu echte
   metingen in `scripts/dev/Test-PostgresTier.ps1` (#860-acceptatiecriterium, vervolg op #851).**
   G2/G3 herhalen lokaal de CI-job `fresh-db-postgres` (migraties tweemaal draaien,

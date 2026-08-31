@@ -9,22 +9,14 @@ namespace FunctionApp.Postgres.Sync;
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Function1.cs</c> (#890).
 /// <para>
-/// <b>Seizoensgrenzen (<c>dbo.Season</c>) zijn niet geport</b> — er bestaat geen Postgres-migratie
-/// voor een seizoenstabel (zie docs/ARCHITECTUUR-DATABASE-TIERS.md). De SQL Server-tier se eigen
-/// <c>SeasonHelper.GetSeasonEndWeekOffsetAsync</c> valt bij elke fout al terug op een hardcoded
-/// <c>30</c> (~30 weken vooruit) — deze tier gebruikt diezelfde gedocumenteerde fallbackwaarde
-/// rechtstreeks in plaats van een niet-bestaande tabel te bevragen. De reset-modus
-/// (<c>?reset=true&amp;season=</c>), die <c>GetSeasonStartWeekOffsetAsync</c> nodig heeft, is
-/// daarom bewust NIET vertaald — een expliciete 501 in plaats van een geraden seizoensstart.
+/// <b>Seizoensgrenzen (<c>dbo.Season</c>)</b> zijn vertaald naar <c>public.season</c> (migratie
+/// 008, #890) — zie <see cref="PostgresSeasonHelper"/>. Zowel de standaardsync (einde seizoen) als
+/// de reset-modus (<c>?reset=true&amp;season=</c>, seizoensstart) gebruiken nu de echte tabel in
+/// plaats van een geraden of geweigerde waarde.
 /// </para>
 /// </summary>
 public static class SyncFunction
 {
-    // Zelfde gedocumenteerde fallback als SeasonHelper.GetSeasonEndWeekOffsetAsync op de SQL
-    // Server-tier gebruikt zolang dbo.Season niet bereikbaar is — zie klasse-doc-comment.
-    // Internal: ook hergebruikt door AdminSyncFunction.Trigger (#890).
-    internal const int DefaultToWeekOffset = 30;
-
     [Function("PostgresFetchAndStoreApiData")]
     public static async Task Run([TimerTrigger("%FETCH_SCHEDULE%")] TimerInfo myTimer, FunctionContext context)
     {
@@ -40,7 +32,8 @@ public static class SyncFunction
         try
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-            await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset: DefaultToWeekOffset, log);
+            var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+            await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
         }
         catch (Exception ex)
         {
@@ -48,6 +41,13 @@ public static class SyncFunction
         }
     }
 
+    /// <summary>
+    /// Default (geen params): vorige week t/m einde seizoen.
+    /// Reset mode: GET /api/postgres/sync-matches?reset=true&amp;season=2024 — downloadt alle
+    /// wedstrijden vanaf de start van het opgegeven seizoensjaar t/m het einde van het huidige
+    /// seizoen. Zelfde gedrag als een ontbrekende/onparseerbare <c>season</c>-param bij het
+    /// SQL Server-origineel: valt dan stil terug op de standaardmodus (fromWeekOffset = -1).
+    /// </summary>
     [Function("PostgresSyncMatchesHttp")]
     public static async Task<IActionResult> SyncMatchesHttp(
         [HttpTrigger(AuthorizationLevel.Admin, "get", Route = "postgres/sync-matches")] HttpRequest req,
@@ -56,22 +56,29 @@ public static class SyncFunction
         var log = context.GetLogger("PostgresSyncMatchesHttp");
         log.LogInformation("HTTP trigger PostgresSyncMatchesHttp uitgevoerd om: {Now}", DateTime.UtcNow);
 
-        if (string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase))
-        {
-            return new ObjectResult(new
-            {
-                error = "Reset-modus (volledig seizoen opnieuw ophalen) vereist een seizoenstabel " +
-                         "die nog niet bestaat op de Postgres-tier — zie issue 890. Standaardmodus " +
-                         "(geen querystring) werkt al wel."
-            })
-            { StatusCode = 501 };
-        }
+        var isReset = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
+        string? seasonParam = req.Query["season"];
 
         try
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-            await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset: DefaultToWeekOffset, log);
-            return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: -1 tot {DefaultToWeekOffset}.");
+
+            var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+            var fromWeekOffset = -1;
+
+            if (isReset && int.TryParse(seasonParam, out var seasonStartYear))
+            {
+                fromWeekOffset = await PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
+                log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
+                    seasonStartYear, fromWeekOffset, toWeekOffset);
+            }
+            else
+            {
+                log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+            }
+
+            await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
+            return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
         }
         catch (Exception ex)
         {

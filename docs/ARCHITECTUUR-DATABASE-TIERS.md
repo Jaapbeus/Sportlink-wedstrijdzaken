@@ -741,6 +741,68 @@ startwachttijd (~20s, #175) en een eigen teardown-verantwoordelijkheid voor het 
 Dat is een wezenlijk ander soort risico dan G2-G4 (die alleen tegen de database praten) — een
 halfbakken versie zou precies de "nep-groen"-fout opleveren die dit script elders bewust vermijdt.
 
+## 21. Seizoensgrenzen vertaald + `MarkeerVervallenGeplandeWedstrijdenAsync` gedicht (#890, vervolg)
+
+**`public.season` (migratie 008)** is de Postgres-tegenhanger van `dbo.Season`, gebruikt door het
+nieuwe `PostgresSeasonHelper` (`FunctionApp.Postgres/Sync/PostgresSeasonHelper.cs`) —
+`GetSeasonEndWeekOffsetAsync`/`GetSeasonStartWeekOffsetAsync`, functioneel gelijk aan de SQL
+Server-tier se `SystemUtilities.SeasonHelper`, met dezelfde fallbackwaarden (30 resp. -40 weken) bij
+een fout of lege tabel. `SyncFunction`'s standaardsync gebruikt nu het echte seizoenseinde in
+plaats van een vaste `30`; de reset-modus (`?reset=true&season=`), die voorheen een expliciete 501
+gaf, werkt nu volledig.
+
+**Eenmalige seed, geen doorlopende aanvulling.** De migratie zaait bij toepassing dezelfde twee/drie
+seizoenen die `dbo.sp_UpdateSeasonTable` op een verse SQL Server-installatie zou zaaien (berekend
+tegen `CURRENT_DATE` op het moment van migreren, uit `public.appsettings.seasonstartmonth` met
+fallback `7`). **Structureel verschil met de SQL Server-tier, bewust gedocumenteerd, geen gat dat
+deze ronde oplost:** `Script.PostDeployment1.sql` roept `sp_UpdateSeasonTable` bij ELKE productie-
+deploy opnieuw aan en rolt het seizoen zo automatisch door zodra de kalender twee maanden voor de
+volgende start zit. Een Postgres-migratie draait precies één keer, ooit — er bestaat op deze tier
+nog geen mechanisme dat vanzelf een nieuw seizoen toevoegt naarmate de tijd verstrijkt. Een
+toekomstige installatie die lang genoeg meedraait zonder handmatige aanvulling van `public.season`
+loopt op een gegeven moment uit de seizoenen; dat is een reëel, apart op te pakken vervolgpunt.
+
+**Bewust niet meegenomen: `dbo.DateTable`/`sp_CreateDateTable`.** Een repo-brede zoekactie toont
+precies één consument binnen de applicatie: de view `pub.DateTable` — en die drie `pub.*`-
+rapportageviews zijn al expliciet en gemotiveerd laten vervallen voor de Postgres-tier (§15,
+issue #861: nul consumenten binnen de applicatie). Een Postgres-tegenhanger van `dbo.DateTable` zou
+dus uitsluitend een tabel zijn die nergens gelezen wordt.
+
+**`MarkeerVervallenGeplandeWedstrijdenAsync` vertaald** naar
+`FunctionApp.Postgres/Planner/Repositories/PlannerMatchRepository.cs` — bewust **uitsluitend** deze
+ene methode, niet de rest van die klasse (die blijft #888's grotere, nog niet gestarte scope, zie
+§16). Dit was het derde, expliciet als "echt gat" gedocumenteerde punt uit §18 (in tegenstelling tot
+de teamcanonicalisatie, die in het origineel al best-effort is): `PostgresSyncPipeline.RunSyncAsync`
+riep hem nog helemaal niet aan. Nu wél, en — net als het SQL Server-origineel — ONGEGUARD: een fout
+hier hoort de hele sync te laten falen.
+
+Zelfde teamalias-gebaseerde matching als het origineel (#700: de teamnaam in
+`planner.geplandewedstrijden` en de teamnaam in `his.matches` gebruiken verschillende
+schrijfwijzen, dus beide kanten worden via gevalideerde aliassen naar hetzelfde team herleid), met
+`UPPER(...)`-vergelijkingen op de alias-tekst — zelfde precedent als #820 (Postgres' default-
+collatie is case-sensitive). Een nieuwe, minimale `PostgresClubScope`
+(`FunctionApp.Postgres/Planner/PostgresClubScope.cs`) levert alleen wat deze ene methode nodig
+heeft (`Resolve`/`Primary`/`AddHisParams`/`HisFilter`/`RequireAccommodatieAsync`) — niet een
+volledige 1-op-1-vertaling van het SQL Server-origineel se `ClubScope` (die ook `LegacyFilter` heeft
+voor `avg.Teambegeleiding` en breed hergebruikt wordt door de nog niet vertaalde
+planner-repositories); die uitbreiding hoort bij #888 zodra er een echte tweede consument is.
+
+**`planner.geplandewedstrijden` mist nog steeds vier kolommen** t.o.v. `planner.GeplandeWedstrijden`
+(`wedstrijdduurminuten`, `aangevraagddoor`, `opmerking`, `mta_inserted`) — alleen `mta_modified`
+(migratie 009, nodig om deze ene methode te laten werken) is toegevoegd. De overige vier horen bij
+functionaliteit die nog niet bestaat op deze tier (`BevestigWedstrijd`, `SaveHerplanVerzoekAsync`,
+...) — toevoegen zodra die daadwerkelijk vertaald wordt, niet vooruitlopend hierop.
+
+**Empirisch geverifieerd** tegen een wegwerp-Postgres-16-container: het migratiepad tweemaal
+toegepast (idempotent — `public.season` blijft op 3 rijen, geen dubbele seed); `PostgresSeasonHelper`
+geeft de echte week-offsets terug (niet de fallbackwaarden) tegen de geseede seizoenen, én valt
+terug op de gedocumenteerde fallback voor een niet-bestaand seizoensjaar;
+`MarkeerVervallenGeplandeWedstrijdenAsync` markeert — via `his.matches` echt aangemaakt met de
+productie-schemagenerator, niet aangenomen — precies de rij die via de teamalias en de datum matcht
+(inclusief een andere-hoofdlettergebruik-teamnaam om de `UPPER(...)`-vergelijking daadwerkelijk te
+toetsen), laat een niet-matchende controlerij (andere datum) ongemoeid, en logt een waarschuwing
+zonder te crashen wanneer de accommodatie-instelling ontbreekt — net als het origineel.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -1,4 +1,5 @@
 using Database.Postgres;
+using FunctionApp.Postgres.Planner.Repositories;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Npgsql;
@@ -19,11 +20,13 @@ namespace FunctionApp.Postgres.Sync;
 /// Postgres-tier bestaat deze service nog niet, dus wordt de aanroep overgeslagen in plaats van
 /// een nooit-geslaagde try/catch te faken. <c>his.teams</c>/<c>his.matches</c> worden hierdoor wel
 /// gevuld; alleen de afgeleide, ontdubbelde <c>dbo.Teams</c>-achtige canonicalisatie ontbreekt nog.</item>
-/// <item><b><c>MarkeerVervallenGeplandeWedstrijdenAsync</c></b> is in het origineel ONGUARD (geen
-/// try/catch) — een falen daar hoort de hele sync te laten falen. Omdat deze logica nog niet
-/// bestaat op de Postgres-tier, is dit een echt, tijdelijk gat (geen gelijkwaardig gedrag) in
-/// plaats van een neptoevoeging. Zie issue 890 vervolgwerk.</item>
 /// </list>
+/// <para>
+/// <b><c>MarkeerVervallenGeplandeWedstrijdenAsync</c></b> is inmiddels wél vertaald (#890, zie
+/// <see cref="Planner.Repositories.PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync"/>)
+/// en wordt hieronder — net als het origineel — ONGUARD aangeroepen (geen try/catch): een fout
+/// daar hoort de hele sync te laten falen, in tegenstelling tot de wél best-effort teamcanonicalisatie.
+/// </para>
 /// <para>
 /// <b>Seizoensgrenzen (<c>dbo.Season</c>) zijn hier evenmin geport</b> — <see cref="RunSyncAsync"/>
 /// zelf heeft daar geen afhankelijkheid van (het neemt <c>fromWeekOffset</c>/<c>toWeekOffset</c> als
@@ -121,8 +124,10 @@ internal static class PostgresSyncPipeline
         await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
         await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
 
-        // Teamcanonicalisatie en MarkeerVervallenGeplandeWedstrijden: zie klasse-doc-comment
-        // hierboven — bewust (nog) niet geport, geen equivalent gedrag.
+        // Teamcanonicalisatie: zie klasse-doc-comment hierboven — bewust (nog) niet geport.
+
+        // Ongeguard, met opzet — zie klasse-doc-comment hierboven.
+        await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(connectionString, clubCode, log);
 
         if (!partialFailure)
             await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
