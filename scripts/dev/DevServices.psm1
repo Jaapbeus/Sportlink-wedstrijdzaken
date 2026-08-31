@@ -466,13 +466,163 @@ function Get-SelftestPorts {
         hardcodeert die URL en dat bestand staat in git — een andere poort zou een getrackt
         bestand moeten wijzigen. De zelftest neemt 7094 dus over in plaats van ernaast te gaan
         zitten, en stopt daarom eerst de dev-omgeving (zie Stop-DebugServices).
+
+        FunctionAppSelftest (7098) is die uitzondering op zijn beurt bewust NIET (#909).
+        De reden dat 7094 vastligt geldt uitsluitend voor de browsersweep (G7/G8): daar praat
+        BlazorAdmin met de functiehost via de URL uit dat getrackte appsettings.json. G5/G6
+        roepen de functiehost rechtstreeks aan vanuit dit script en zijn dus aan géén enkele
+        vastgelegde URL gebonden. Een eigen poort betekent dat G5/G6 een draaiende
+        ontwikkelsessie niet hoeven te stoppen — en dus ook niet kunnen vergeten terug te
+        zetten. Dat is een echte teardown-verantwoordelijkheid die hier simpelweg vervalt.
     #>
     @{
-        Postgres    = 55432   # niet 5432: een zelf geïnstalleerde Postgres blijft ongemoeid
-        SqlServer   = 1433    # de bestaande dev-container; wordt gestopt, niet verplaatst
-        FunctionApp = 7094
-        BlazorAdmin = 5242
-        Fixture     = 7099    # lokale stub voor de externe databron (#867)
+        Postgres            = 55432   # niet 5432: een zelf geïnstalleerde Postgres blijft ongemoeid
+        SqlServer           = 1433    # de bestaande dev-container; wordt gestopt, niet verplaatst
+        FunctionApp         = 7094    # browsersweep (G7/G8) — vastgelegd in BlazorAdmin's appsettings.json
+        FunctionAppSelftest = 7098    # G5/G6 — eigen poort, verstoort een dev-sessie niet (#909)
+        BlazorAdmin         = 5242
+        Azurite             = 10000   # blob; queue/table volgen op 10001/10002
+        Fixture             = 7099    # lokale stub voor de externe databron (#867)
+    }
+}
+
+function Start-SelftestAzurite {
+    <#
+        Zorgt dat er een Azurite-instantie luistert, en meldt eerlijk of hij die zelf heeft
+        gestart of een bestaande heeft hergebruikt.
+
+        WAAROM AZURITE ÜBERHAUPT NODIG IS
+        De functiehost weigert op te starten zonder bruikbare AzureWebJobsStorage zodra er ook
+        maar één niet-HTTP-trigger geïndexeerd wordt. FunctionApp.Postgres heeft er drie
+        (twee opschoontimers en de synchronisatietimer), dus dit is niet weg te configureren
+        door "alleen de HTTP-endpoints" te willen gebruiken.
+
+        WAAROM 'UseDevelopmentStorage=true' EN DUS DE VASTE POORTEN 10000-10002
+        Die verkorte notatie verwijst per definitie naar die poorten. De alternatieve route —
+        een volledige connectiereeks met een eigen poort — vereist een accountsleutel in de
+        aanroep, en die hoort niet in een script in git. Vandaar: bestaat er al een listener op
+        10000, dan is dat de Azurite van de ontwikkelaar en gebruiken we die; anders zetten we
+        er zelf een wegwerpcontainer neer die de teardown weer opruimt.
+
+        Hergebruik is veilig: de functiehost gebruikt deze opslag alleen voor timer-boekhouding
+        en functiesleutels, niet voor gegevens waar een assertie iets over zegt.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ContainerName,
+        [int]$Port = 10000,
+        [int]$TimeoutSeconds = 60
+    )
+
+    if (Test-PortListening -Port $Port) {
+        return [pscustomobject]@{ Ready = $true; Started = $false; Reason = 'bestaande Azurite hergebruikt' }
+    }
+
+    & docker rm -f $ContainerName 2>&1 | Out-Null
+    & docker run -d --name $ContainerName `
+        -p "${Port}:10000" -p "$($Port + 1):10001" -p "$($Port + 2):10002" `
+        mcr.microsoft.com/azure-storage/azurite 2>&1 | Out-Null
+
+    $ready = Wait-ForPort -Port $Port -TimeoutSeconds $TimeoutSeconds -Quiet
+    [pscustomobject]@{
+        Ready   = $ready
+        Started = $true
+        Reason  = if ($ready) { 'wegwerpcontainer gestart' } else { 'wegwerpcontainer kwam niet op' }
+    }
+}
+
+function Start-FunctionHost {
+    <#
+        Start 'func start' voor één functieproject en wacht tot /api/health antwoordt.
+
+        DRIE DINGEN DIE HIER EMPIRISCH ZIJN VASTGESTELD (#909)
+
+        1. 'func' is op Windows een npm-shim (func.ps1/func.cmd), geen executable.
+           Start-Process -FilePath 'func' faalt daarop met "%1 is not a valid Win32
+           application". Vandaar de omweg via de shell — precies zoals Start-Debug.ps1 het doet.
+
+        2. De host heeft GEEN local.settings.json nodig. Alle waarden uit het 'Values'-blok
+           worden ook uit de omgeving van het proces gelezen, en Start-Process geeft de
+           omgeving van deze sessie door aan het kindproces. De aanroeper zet dus gewoon
+           $env:... vóór de aanroep; er hoeft niets naar schijf en het bestand van de
+           ontwikkelaar blijft ongemoeid.
+
+        3. De procesboom is drie lagen diep (shell -> npm-shim -> func -> dotnet-worker).
+           Alleen het teruggegeven wrapper-PID stoppen is niet genoeg; gebruik
+           Stop-FunctionHost, die de hele boom neemt.
+
+        Output gaat altijd naar een logbestand: op macOS opent Start-Process geen venster en
+        zou de output anders verloren gaan (#800). Het logbestand is bovendien het bewijsstuk
+        waarmee op indexeringsfouten gecontroleerd wordt.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectDir,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$LogPath,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $errLogPath = "$LogPath.err"
+    foreach ($p in @($LogPath, $errLogPath)) {
+        $map = Split-Path -Parent $p
+        if ($map -and -not (Test-Path $map)) { New-Item -ItemType Directory -Path $map -Force | Out-Null }
+        Remove-Item $p -Force -ErrorAction SilentlyContinue
+    }
+
+    $shellExe = if ($script:OnWindows) { 'powershell' } else { 'pwsh' }
+    $command  = "Set-Location '$ProjectDir'; func start --port $Port"
+
+    $startArgs = @{
+        FilePath               = $shellExe
+        ArgumentList           = @('-NoProfile', '-Command', $command)
+        RedirectStandardOutput = $LogPath
+        RedirectStandardError  = $errLogPath
+        PassThru               = $true
+    }
+    if ($script:OnWindows) { $startArgs.WindowStyle = 'Hidden' }
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $proc      = Start-Process @startArgs
+    $health    = Wait-ForHealth -Url "http://localhost:$Port/api/health" -TimeoutSeconds $TimeoutSeconds -Quiet
+    $stopwatch.Stop()
+
+    [pscustomobject]@{
+        Ready            = ($null -ne $health)
+        Process          = $proc
+        ProcessId        = $proc.Id
+        Health           = $health
+        LogPath          = $LogPath
+        ErrorLogPath     = $errLogPath
+        ColdStartSeconds = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
+    }
+}
+
+function Stop-FunctionHost {
+    <#
+        Stopt een met Start-FunctionHost gestarte functiehost inclusief zijn hele procesboom en
+        wacht tot de poort daadwerkelijk vrij is.
+
+        Idempotent: aanroepen voor een al gestopt proces doet niets en meldt de poort vrij. Dat
+        is bewust, want de teardown moet ook werken als de run halverwege is afgebroken en niet
+        meer weet hoe ver hij was.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][int]$Port,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $stopped = Stop-ProcessTree -RootPid $ProcessId -Quiet
+
+    # Vangnet: is de poort nog bezet door een proces buiten die boom (bijv. een func-proces dat
+    # zich van zijn wrapper heeft losgemaakt), stop dan alsnog de eigenaar van de poort.
+    if (Test-PortListening -Port $Port) {
+        $owner = Get-PortOwner -Port $Port
+        if ($owner) { $stopped += Stop-ProcessTree -RootPid $owner.Id -Quiet }
+    }
+
+    [pscustomobject]@{
+        StoppedCount = $stopped
+        PortFree     = (Wait-ForPort -Port $Port -TimeoutSeconds $TimeoutSeconds -Free -Quiet)
     }
 }
 
@@ -675,4 +825,5 @@ Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts
     Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
     Wait-ForHttp, Stop-DebugServices,
     Get-SelftestPorts, Test-DockerAvailable, Get-ContainerState, Wait-ForPostgres,
-    Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject
+    Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject,
+    Start-SelftestAzurite, Start-FunctionHost, Stop-FunctionHost

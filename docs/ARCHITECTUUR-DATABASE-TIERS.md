@@ -803,6 +803,98 @@ productie-schemagenerator, niet aangenomen — precies de rij die via de teamali
 toetsen), laat een niet-matchende controlerij (andere datum) ongemoeid, en logt een waarschuwing
 zonder te crashen wanneer de accommodatie-instelling ontbreekt — net als het origineel.
 
+## 22. Zelftest-poorten G5/G6 draaien tegen een echte functiehost (#909)
+
+De opgave die §20 bewust vooruitschoof is uitgevoerd voor de Postgres-tier.
+`scripts/dev/Test-PostgresTier.ps1` start `FunctionApp.Postgres` nu zelf op, bewijst dat die host
+met de bedoelde databaseserver praat (G5) en toetst daarna dertien API-endpoints op **inhoud**
+(G6). Voor het eerst wordt in deze zelftest de applicatiecode zelf gemeten, niet alleen het schema
+eronder.
+
+### Vier ontwerpkeuzes, elk uit een empirische bevinding
+
+**1. Een eigen poort (7098), geen overname van 7094.** De documentatie bij `Get-SelftestPorts`
+legde vast dat de zelftest poort 7094 overneemt omdat `BlazorAdmin/wwwroot/appsettings.json` die URL hardcodeert. Die
+reden geldt alleen voor de browsersweep (G7/G8), die via BlazorAdmin loopt. G5/G6 roepen de host
+rechtstreeks aan en zijn dus aan geen enkele vastgelegde URL gebonden. Gevolg: een draaiende
+ontwikkelsessie hoeft niet gestopt te worden — en kan dus ook niet vergeten worden terug te zetten.
+De teardown-verantwoordelijkheid die het issue noemde vervalt daarmee, in plaats van dat er een
+mechanisme voor gebouwd moest worden.
+
+**2. Configuratie volledig via omgevingsvariabelen — empirisch bevestigd.** De open vraag uit #909
+was of Azure Functions Core Tools zonder `local.settings.json` kan starten. Dat kan: alle waarden
+uit het `Values`-blok worden ook uit de procesomgeving gelezen, en `Start-Process` geeft de omgeving
+van de aanroepende sessie door aan het kindproces. Er komt dus niets nieuws op schijf en het bestand
+van de ontwikkelaar wordt niet aangeraakt. Bevestigd met een run waarin `local.settings.json`
+aantoonbaar afwezig was en de host desondanks volledig opkwam.
+
+**3. `func` is op Windows geen executable.** `Start-Process -FilePath 'func'` faalt met
+*"%1 is not a valid Win32 application"*: npm installeert `func.ps1`/`func.cmd`-shims. De start loopt
+daarom via de shell, exact zoals `Start-Debug.ps1` het al deed. De procesboom is daardoor vier lagen
+diep (shell → npm-shim → `func` → dotnet-worker); alleen het wrapper-PID stoppen is niet genoeg,
+vandaar `Stop-FunctionHost`, die `Get-ProcessTree` gebruikt en daarna wacht tot de poort echt vrij
+is. Gemeten koude start: 18 seconden, in lijn met de ~20s uit #175.
+
+**4. Azurite is niet weg te configureren.** `FunctionApp.Postgres` heeft drie timer-triggers, en de
+host weigert te starten zonder bruikbare `AzureWebJobsStorage` zodra er één niet-HTTP-trigger
+geïndexeerd wordt. `Start-SelftestAzurite` hergebruikt een al draaiende Azurite en zet er anders een
+wegwerpcontainer neer die de teardown weer opruimt. Bewust `UseDevelopmentStorage=true` en dus de
+vaste poorten 10000-10002: de alternatieve route (een volledige connectiereeks op een eigen poort)
+vereist een accountsleutel in de aanroep, en die hoort niet in een script in git.
+
+### Wat G5 bewijst — drie bewijzen die los van elkaar staan
+
+| Assertie | Waarom die op zichzelf niet genoeg is |
+|---|---|
+| `health.tier` / `health.provider` | Komt uit build-time assembly-metadata (#863). Bewijst welke bóom draait, niet met welke database die praat. |
+| `health.serverversie` | De applicatie meldt een serverversie; die wordt vergeleken met wat de container zélf op `SHOW server_version` antwoordt. Sluit een andere Postgres uit, maar komt nog steeds uit de applicatie. |
+| `engine.onafhankelijk-bevestigd` | Het enige bewijs dat **niet** van de applicatie komt: `pg_stat_activity` in de wegwerpcontainer toont een verbinding met `application_name = 'SportlinkFunctionAppPostgres'`. Samen met G1's negatieve controle (de SQL Server-container is aantoonbaar gestopt) sluit dit een stille terugval uit. |
+
+Daarnaast controleert G5 dat **geen enkele functie in foutstatus staat**. Dat is geen formaliteit:
+een indexeringsfout maakt de host niet onbereikbaar — de HTTP-endpoints blijven gewoon 200 geven
+terwijl een andere functie stil onbruikbaar is. Precies dat werd hier gevonden (zie hieronder).
+
+### Gevonden defect: de synchronisatietimer startte nooit bij wie het sjabloon volgde
+
+`FunctionApp.Postgres/local.settings.template.json` miste `FETCH_SCHEDULE`. De host kwam op,
+`/api/health` gaf 200, alle beheer-endpoints werkten — en `PostgresFetchAndStoreApiData` stond
+permanent in foutstatus met *"'%FETCH_SCHEDULE%' does not resolve to a value"*. Alleen zichtbaar in
+het opstartlog. Sjabloon aangevuld; de zelftest zet de waarde zelf ook als hij ontbreekt.
+
+### Negatieve controle — de poort kan aantoonbaar rood worden
+
+Een groene poort die nooit rood kán worden bewijst niets. Met `FETCH_SCHEDULE='dit-is-geen-cron'`
+werd G5 rood op `geen-indexeringsfout`, weigerde G6 überhaupt te meten (een inhoudsassertie bewijst
+niets zolang niet vaststaat dát deze host met de juiste engine praat), en gaf het script exitcode 1
+— met een volledig geslaagde opruiming. Zonder die manipulatie: 44 geslaagd, 0 gefaald,
+3 geblokkeerd, exitcode 0.
+
+### Drie geblokkeerde asserties, elk met een echt nummer
+
+| Endpoint | Blokkade |
+|---|---|
+| `api/beheer/email-log` | #858 — AVG-maskering van afzenderadressen, nog open. Bovendien staan er nul rijen in een verse database, dus er valt niets te maskeren; beide redenen wijzen naar hetzelfde issue. |
+| `api/beheer/templates` | #911 (nieuw) — **geen van beide** bomen seedt e-mailsjablonen, en geen van beide endpoints voegt standaardteksten uit code toe. Op een verse database is het antwoord dus leeg, symmetrisch over de tiers. Geen Postgres-regressie. |
+| `api/beheer/teams` | #890 — de verwachting haalde twee tabellen door elkaar. Dit endpoint leest `public.teams` (de canonicalisatietabel), niet `his.teams` (de ETL-historie die G4 telt en waar de 28 demoteams wél in staan). `public.teams` wordt gevuld door de teamcanonicalisatie tijdens een synchronisatie, en die is op de Postgres-tier nog niet vertaald — gedocumenteerd gat 2 van §18. |
+
+De formulering in `selftest-expectations.psd1` is voor die laatste gecorrigeerd: "28 teams in
+demomodus" suggereerde dat G4 en G6 hetzelfde meten, wat niet zo is.
+
+### Bewust niet in deze ronde
+
+- **G5/G6 voor de basismeting (SQL Server).** Die zou een volledige functiehost tegen de **levende**
+  ontwikkeldatabase starten. Achtergrondtaken lopen bij het opstarten alsnog als hun geplande moment
+  al verstreken is, dus die host kan die database wijzigen — terwijl G4 de basismeting juist bewust
+  alleen-lezen houdt. Op de Postgres-tier speelt dat niet: daar is de database een wegwerpcontainer.
+  Veilig maken vergt een wegwerp-SQL-Server-database of het gericht uitschakelen van de timers, en
+  dat is een eigen opgave. Beide poorten melden dit in Baseline-modus als `blocked` met deze reden,
+  niet als geslaagd.
+- **G7/G8 (browsersweep en schrijfpaden).** Ongewijzigd bij de skill; een client-side gerenderde
+  pagina is niet met een HTTP-aanroep te beoordelen. Die fase start nog steeds een eigen
+  dev-omgeving op poort 7094.
+- **Een permanente CI-variant van G5/G6.** De poort draait lokaal en gebruikt Docker, Azurite en
+  Core Tools. Of dat op een CI-runner betaalbaar is, is niet onderzocht.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

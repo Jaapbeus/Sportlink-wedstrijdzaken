@@ -19,6 +19,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Zelftest-poorten G5 (juiste engine) en G6 (API-inhoudsasserties) draaien nu tegen een echte
+  functiehost** in `scripts/dev/Test-PostgresTier.ps1` (issue 909). De zelftest start
+  `FunctionApp.Postgres` zelf op, wacht op `/api/health`, en toetst daarna dertien
+  API-endpoints op inhoud in plaats van op statuscode. G5 bevat drie bewijzen die los van
+  elkaar staan: de tier-herkomst uit de applicatie, de serverversie die de applicatie meldt
+  vergeleken met wat de databasecontainer zélf zegt, en — het enige bewijs dat niet van de
+  applicatie komt — de verbinding die de databaseserver in `pg_stat_activity` ziet staan.
+  Bovendien controleert G5 dat géén enkele functie in foutstatus staat: de HTTP-endpoints
+  blijven namelijk gewoon werken terwijl een andere functie stil onbruikbaar is.
+  De poort verstoort een draaiende ontwikkelsessie niet (eigen poort 7098), heeft geen
+  `local.settings.json` nodig (alles via omgevingsvariabelen) en ruimt de functiehost, de
+  opslagemulator en de wegwerpdatabase ook na een afgebroken run op.
 - **Postgres-tier synchronisatiepad: seizoensgrenzen vertaald + een echt gat gedicht (vervolg op
   issue 890).** `public.season` (nieuwe migraties 008/009) vervangt de vaste `30`-weken-fallback:
   zowel de standaardsync als de reset-modus (`?reset=true&season=`, gaf voorheen een expliciete
@@ -243,6 +255,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   UTC-server namelijk onzichtbaar. Zie issue #851.
 
 ### Fixed
+- **De synchronisatietimer van de Postgres-tier startte nooit bij wie het configuratiesjabloon
+  volgde.** `FunctionApp.Postgres/local.settings.template.json` miste `FETCH_SCHEDULE`, waardoor
+  de functiehost wel opkwam maar `PostgresFetchAndStoreApiData` permanent in foutstatus stond —
+  zichtbaar in het opstartlog, onzichtbaar voor wie alleen de HTTP-endpoints uitprobeerde.
+  Gevonden doordat de nieuwe zelftest-poort G5 op indexeringsfouten controleert (issue 909).
+
 - **Postgres-tier: teamherkenning kon stilzwijgend falen bij afwijkende hoofdlettergebruik, en
   stond een casing-only-duplicaatteam toe waar de SQL Server-tier dat al weigerde (issue 820,
   vervolgronde op #869).** Postgres' default-collatie is case-sensitief; de bij #889 gebouwde

@@ -31,16 +31,18 @@
     # geen momentopname: het is bewust opgeschreven vóór er een Postgres-seed bestond, zodat de
     # test die seed toetst in plaats van hem te beschrijven.
     #
-    # Twee bekende blokkades laten dit vandaag falen — dat is de bedoeling:
-    #   #853 de business-key-kolom is GENERATED ALWAYS terwijl de seed erin schrijft
-    #   #856 de seed slaat zichzelf over als de historische tabellen nog niet bestaan
+    # De twee blokkades die dit aanvankelijk lieten falen zijn opgelost en de verwachtingen worden
+    # sindsdien echt gehaald: #853 (de business-key-kolom was GENERATED ALWAYS terwijl de seed
+    # erin schreef) en #856 (de seed sloeg zichzelf over als de historische tabellen nog niet
+    # bestonden). De Blocked-verwijzingen zijn daarom weg — laten staan zou suggereren dat hier
+    # nog iets ongemeten is.
     # ──────────────────────────────────────────────────────────────────────────
     rowCounts = @(
         @{ Key = 'velden';             Exact = 3;   Reden = 'nummers 101-103, vermijden PK-conflict met de primaire club' }
         @{ Key = 'veldbeschikbaarheid';Exact = 21;  Reden = '3 velden x 7 dagen' }
-        @{ Key = 'teams';              Exact = 28;  Reden = '14 categorieen x 2'; Blocked = @(853, 856) }
-        @{ Key = 'teambegeleiding';    Exact = 28;  Reden = 'een begeleider per team'; Blocked = @(853, 856) }
-        @{ Key = 'matches';            Exact = 224; Reden = '28 teams x 8 ronden'; Blocked = @(856) }
+        @{ Key = 'teams';              Exact = 28;  Reden = '14 categorieen x 2' }
+        @{ Key = 'teambegeleiding';    Exact = 28;  Reden = 'een begeleider per team' }
+        @{ Key = 'matches';            Exact = 224; Reden = '28 teams x 8 ronden' }
         @{ Key = 'speeltijden';        Min   = 1;   Reden = 'gekopieerd van de primaire club, aantal varieert' }
         @{ Key = 'teamregels';         Min   = 1;   Reden = 'een demoregel' }
     )
@@ -74,15 +76,30 @@
 
     # ──────────────────────────────────────────────────────────────────────────
     # API-endpoints. Een statuscode is niet genoeg: elk endpoint krijgt een inhoudseis.
+    #
+    # G6 in Test-PostgresTier.ps1 loopt exact deze lijst af en heeft voor elk pad een
+    # geïmplementeerde assertie. Staat een pad hier wel maar kent de poort er geen assertie voor,
+    # dan is dat een FOUT — niet een stilzwijgende overslag. Zo kan deze lijst niet uit de pas
+    # gaan lopen met wat er daadwerkelijk gemeten wordt.
+    #
+    # 'Context = demo' stuurt de democlubcode als header mee; zonder Context praat de aanroep
+    # tegen de primaire club van de deployment.
     # ──────────────────────────────────────────────────────────────────────────
     apiEndpoints = @(
-        @{ Path = 'api/health';                      Assert = 'Bevat een tier-veld dat de verwachte tier noemt.'; Blocked = @(863) }
-        @{ Path = 'api/beheer/settings';             Assert = 'Bevat de leesbare planning en de volgende momenten — die verdwijnen stil bij afwijkende kolomcasing.'; Blocked = @(855) }
+        @{ Path = 'api/health';                      Assert = 'Bevat een tier-veld dat de verwachte tier noemt.' }
+        @{ Path = 'api/beheer/settings';             Assert = 'Bevat de leesbare planning en de volgende momenten — die verdwijnen stil bij afwijkende kolomcasing.' }
         @{ Path = 'api/beheer/velden';               Assert = 'Drie velden in demomodus.'; Context = 'demo' }
         @{ Path = 'api/beheer/veldbeschikbaarheid';  Assert = '21 rijen in demomodus.'; Context = 'demo' }
-        @{ Path = 'api/beheer/teams';                Assert = '28 teams in demomodus.'; Context = 'demo'; Blocked = @(853, 856) }
+        # LET OP — dit endpoint leest public.teams (de canonicalisatietabel), NIET his.teams (de
+        # ETL-historie die rowCounts hierboven telt). Dat zijn twee verschillende tabellen met
+        # dezelfde naam in de volksmond; de eerdere formulering "28 teams" haalde ze door elkaar.
+        # public.teams wordt gevuld door de teamcanonicalisatie tijdens een synchronisatie, en die
+        # is op de Postgres-tier nog niet vertaald (gedocumenteerd gat 2 van #890). Op een verse,
+        # geseede database is het antwoord daarom leeg — op BEIDE tiers, want geen van beide seeds
+        # vult deze tabel.
+        @{ Path = 'api/beheer/teams';                Assert = 'De teamnamen uit public.teams voor de democlub.'; Context = 'demo'; Blocked = @(890) }
         @{ Path = 'api/beheer/email-log';            Assert = 'ELK afzenderveld is gemaskeerd. Een onvermaskerd adres is een AVG-bevinding, geen cosmetisch defect.'; Blocked = @(858) }
-        @{ Path = 'api/beheer/templates';            Assert = 'Minstens een sjabloon met een niet-leeg onderwerp.' }
+        @{ Path = 'api/beheer/templates';            Assert = 'Minstens een sjabloon met een niet-leeg onderwerp.'; Blocked = @(911) }
         @{ Path = 'api/beheer/voorkeurstijden';      Assert = 'Geldige lijst; na fase 8 bevat hij de testrij.' }
         @{ Path = 'api/beheer/teamregels';           Assert = 'Minstens een regel voor de democlub.'; Context = 'demo' }
         @{ Path = 'api/beheer/uitgesloten-emails';   Assert = 'Geldige lijst.' }
@@ -90,6 +107,12 @@
         @{ Path = 'api/beheer/sync/status';          Assert = 'Elke datumwaarde eindigt op een UTC-markering en ligt niet in de toekomst.' }
         @{ Path = 'api/beheer/leermomenten/stats';   Assert = 'Numerieke waarden.' }
     )
+
+    # De toepassingsnaam die de Postgres-tier op elke verbinding meegeeft
+    # (FunctionApp.Postgres/PostgresDatabaseConfig.cs). G5 zoekt hem terug in pg_stat_activity:
+    # dat is het bewijs dat de applicatie met DEZE databaseserver praat, onafhankelijk van wat de
+    # applicatie in /api/health over zichzelf beweert.
+    applicationName = 'SportlinkFunctionAppPostgres'
 
     # ──────────────────────────────────────────────────────────────────────────
     # Schrijfpaden. Elke ronde: aanroep -> herladen in de GUI -> controle in de database.
