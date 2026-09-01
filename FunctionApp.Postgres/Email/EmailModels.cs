@@ -11,6 +11,10 @@ public sealed class InkomendBericht
     public string MessageId { get; set; } = "";
     public string? ConversationId { get; set; }
     public string Afzender { get; set; } = "";
+    // #889 vervolg (BerichtPipeline/EmailTestFunction): de SQL Server-tier se InkomendBericht
+    // heeft dit veld al sinds het begin — hier toegevoegd toen de eerste consument die het
+    // daadwerkelijk gebruikt (EmailTestFunction) werd vertaald.
+    public string AfzenderNaam { get; set; } = "";
     public string Onderwerp { get; set; } = "";
     public DateTime OntvangstDatum { get; set; }
     public string? Body { get; set; }

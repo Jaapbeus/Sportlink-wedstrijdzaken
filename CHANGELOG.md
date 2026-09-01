@@ -24,6 +24,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   verwijderen, teams ophalen) gaven daar voorheen `404`. De pagina zelf is ongewijzigd.
 - **De FEEDBACK-knop werkt nu ook op de nieuwe databasevariant (issue 966).** Beide stappen
   (Controleren en Versturen) gaven daar voorheen `404`. De widget zelf is ongewijzigd.
+- **De Email-tester "Dry-run classificeren"-knop werkt nu ook op de nieuwe databasevariant
+  (issue 889).** Gaf daar voorheen `404`. Drie deelscenario's zijn op deze variant nog niet
+  ondersteund en vallen terug op hetzelfde eerlijke gedrag als wanneer de bijbehorende instelling
+  ontbreekt: het "tegenstander wijst alsnog ons team aan"-pad, de contactgegevens bij "wie is de
+  trainer van team X", en het KNVB-bijlage-voorstel bij een verzet zonder concrete datum.
 
 ### Changed
 - **Interne onderhoudbaarheidsslag over de hele C#-codebase (issue 953).** Geen zichtbare
