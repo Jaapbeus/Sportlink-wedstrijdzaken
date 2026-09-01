@@ -106,8 +106,12 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     /// </para>
     /// </summary>
     [PostgresFact]
-    public async Task AutoPlanAsync_ZelfdeTeamTweeKeerOpEenDag_PlantBeideOpEigenVeld()
+    public async Task AutoPlanAsync_ZelfdeTeamTweeKeerOpEenDag_PlantBeideOpEigenTijdstip()
     {
+        // #939: FieldScheduler hield bezetting alleen per veld bij, niet per team. Twee wedstrijden
+        // van hetzelfde team konden daardoor allebei op hetzelfde tijdstip belanden, op twee
+        // verschillende velden — een team kan niet op twee velden tegelijk spelen. De unieke-
+        // veldnummer-assertie hieronder alleen bewees dat niet: die stond al vóór de fix groen.
         await using var conn = await OpstellingAsync();
         await ZetWedstrijdAsync(conn, 9500004, "ALLSTARS JO13-1", aanvang: null, veld: null);
         await ZetWedstrijdAsync(conn, 9500005, "ALLSTARS JO13-1", aanvang: null, veld: null,
@@ -120,6 +124,8 @@ public class AutoPlanServiceIntegrationTests : IDisposable
         response.NietInplanbaar.Should().Be(0);
         response.Wedstrijden.Select(w => w.OptimaalVeldNummer).Should().OnlyHaveUniqueItems(
             "twee gelijktijdige wedstrijden kunnen niet op hetzelfde veld staan");
+        response.Wedstrijden.Select(w => w.OptimaalTijd).Should().OnlyHaveUniqueItems(
+            "hetzelfde team kan niet op twee velden tegelijk spelen, ook al zijn er genoeg vrije velden");
     }
 
     [PostgresFact]
