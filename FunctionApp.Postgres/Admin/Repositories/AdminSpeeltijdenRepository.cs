@@ -74,11 +74,14 @@ internal static class AdminSpeeltijdenRepository
     {
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
+        // #956: LOWER(...) i.p.v. kale '=' — Postgres' default tekstvergelijking is case-sensitive,
+        // SQL Server's Latin1_General_CI_AS-collatie niet. Zonder deze wrap gaf een leeftijd met een
+        // afwijkende hoofdlettering t.o.v. de opgeslagen sleutel hier stilzwijgend 0 bijgewerkte rijen.
         await using var cmd = new NpgsqlCommand(@"
             UPDATE public.speeltijden
             SET veldafmeting = @vf, wedstrijdtotaal = @wt, wedstrijdhelft = @wh, wedstrijdrust = @wr,
                 standaardvoorkeurtijd = @svt
-            WHERE leeftijd = @l AND clubcode = @cc", conn);
+            WHERE LOWER(leeftijd) = LOWER(@l) AND clubcode = @cc", conn);
         cmd.Parameters.AddWithValue("l", leeftijd);
         cmd.Parameters.AddWithValue("vf", i.Veldafmeting);
         cmd.Parameters.AddWithValue("wt", i.WedstrijdTotaal);
@@ -94,8 +97,9 @@ internal static class AdminSpeeltijdenRepository
     {
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
+        // #956: zelfde case-sensitiviteitsredenering als UpdateAsync hierboven.
         await using var cmd = new NpgsqlCommand(
-            "DELETE FROM public.speeltijden WHERE leeftijd = @l AND clubcode = @cc", conn);
+            "DELETE FROM public.speeltijden WHERE LOWER(leeftijd) = LOWER(@l) AND clubcode = @cc", conn);
         cmd.Parameters.AddWithValue("l", leeftijd);
         cmd.Parameters.AddWithValue("cc", clubCode);
         return await cmd.ExecuteNonQueryAsync();
