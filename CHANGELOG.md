@@ -35,6 +35,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   groen.
 
 ### Fixed
+- **AutoPlan kon één team twee wedstrijden op hetzelfde tijdstip geven, op twee verschillende
+  velden (issue 939).** De planningsmotor hield bezetting alleen per veld bij, niet per team. Een
+  team met twee wedstrijden op één dag kon daardoor allebei op hetzelfde tijdstip krijgen zolang er
+  maar twee vrije velden waren. Zowel de automatische planning als het conflictoverzicht bij
+  handmatig slepen in de dagplanning bewaken dit nu.
 - **De gezondheidscheck meldde "alles goed" ook als de database helemaal niet bereikbaar was
   (issue 859).** Een ontbrekende of onbruikbare connectiereeks gaf voorheen gewoon `200 OK` terug
   — nu levert dat een duidelijke foutstatus op. Ook een mislukte instellingenlaadt (bijv. de
