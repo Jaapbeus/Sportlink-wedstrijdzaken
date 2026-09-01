@@ -1048,7 +1048,11 @@ Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
 
 Samenvatting: **development** = `feat:` → PATCH, `fix:` → REVISION. **Release** = MINOR als er features in zitten.
 
-Zet alle drie velden synchroon in **beide** csproj's:
+Zet alle drie velden synchroon in **alle drie** csproj's — `FunctionApp/fa-dev-sportlink-01.csproj`,
+`BlazorAdmin/BlazorAdmin.csproj` **én `FunctionApp.Postgres/FunctionApp.Postgres.csproj`**. De derde
+wordt gemist zodra een wijziging alleen in Postgres-tier-bestanden zit: geen enkele van de eerste
+twee verandert dan mee, en niets waarschuwt ervoor. Gebeurd bij #859/#952/#939 (gecorrigeerd), zie
+`/api/health`'s `version`-veld op de Postgres-tier als je twijfelt of dit nog synchroon loopt.
 ```xml
 <Version>2.15.1.0</Version>
 <AssemblyVersion>2.15.1.0</AssemblyVersion>
