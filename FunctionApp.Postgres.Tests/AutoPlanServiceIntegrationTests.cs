@@ -92,26 +92,17 @@ public class AutoPlanServiceIntegrationTests : IDisposable
     }
 
     /// <summary>
-    /// Legt het HUIDIGE gedrag vast bij twee wedstrijden van hetzelfde team op één dag: beide
-    /// worden ingepland, elk op een eigen veld.
-    ///
-    /// <para>
-    /// <b>Let op — dit legt ook een bekende beperking vast, geen wenselijk gedrag.</b>
-    /// <see cref="FieldScheduler"/> gebruikt de teamnaam uitsluitend om teambuffers op te zoeken en
-    /// om het slot te stempelen; hij houdt niet bij dat een team al ergens anders speelt. Twee
-    /// wedstrijden van hetzelfde team kunnen daardoor op dezelfde tijd op twee velden landen. Dat
-    /// geldt voor beide tiers (de engine is sinds §38 gedeeld) en is dus geen porteerfout — zie het
-    /// aparte issue dat hierover is aangemaakt. Deze test faalt bewust zodra dat gedrag verandert,
-    /// zodat de fix niet stilzwijgend langs deze suite glipt.
-    /// </para>
+    /// #939: <see cref="FieldScheduler"/> hield bezetting alleen per veld bij, niet per team, en kon
+    /// zo twee wedstrijden van hetzelfde team op één dag op hetzelfde tijdstip inplannen — op twee
+    /// verschillende velden. Sinds de fix mogen de twee wedstrijden best hetzelfde veld gebruiken
+    /// (na elkaar, met buffer — vaak zelfs het voorkeursveld voor beide), maar mogen hun tijdvakken
+    /// nooit overlappen. Dat is dus de assertie hieronder, niet "elk op een eigen veld": die eis was
+    /// zelf de eerste versie van deze test en bewees niets — hij stond al vóór de fix groen omdat
+    /// AutoPlan toevallig verschillende velden koos, niet omdat overlap onmogelijk was.
     /// </summary>
     [PostgresFact]
-    public async Task AutoPlanAsync_ZelfdeTeamTweeKeerOpEenDag_PlantBeideOpEigenTijdstip()
+    public async Task AutoPlanAsync_ZelfdeTeamTweeKeerOpEenDag_TijdvakkenOverlappenNooit()
     {
-        // #939: FieldScheduler hield bezetting alleen per veld bij, niet per team. Twee wedstrijden
-        // van hetzelfde team konden daardoor allebei op hetzelfde tijdstip belanden, op twee
-        // verschillende velden — een team kan niet op twee velden tegelijk spelen. De unieke-
-        // veldnummer-assertie hieronder alleen bewees dat niet: die stond al vóór de fix groen.
         await using var conn = await OpstellingAsync();
         await ZetWedstrijdAsync(conn, 9500004, "ALLSTARS JO13-1", aanvang: null, veld: null);
         await ZetWedstrijdAsync(conn, 9500005, "ALLSTARS JO13-1", aanvang: null, veld: null,
@@ -122,9 +113,15 @@ public class AutoPlanServiceIntegrationTests : IDisposable
 
         response.TotaalWedstrijden.Should().Be(2);
         response.NietInplanbaar.Should().Be(0);
-        response.Wedstrijden.Select(w => w.OptimaalVeldNummer).Should().OnlyHaveUniqueItems(
-            "twee gelijktijdige wedstrijden kunnen niet op hetzelfde veld staan");
-        response.Wedstrijden.Select(w => w.OptimaalTijd).Should().OnlyHaveUniqueItems(
+        response.Wedstrijden.Should().OnlyContain(w => w.OptimaalTijd != null && w.DuurMinuten > 0);
+
+        var tijdvakken = response.Wedstrijden
+            .Select(w => (Start: TimeOnly.Parse(w.OptimaalTijd!), Eind: TimeOnly.Parse(w.OptimaalTijd!).AddMinutes(w.DuurMinuten)))
+            .ToList();
+        var (eersteStart, eersteEind) = tijdvakken[0];
+        var (tweedeStart, tweedeEind) = tijdvakken[1];
+        bool overlapt = eersteStart < tweedeEind && eersteEind > tweedeStart;
+        overlapt.Should().BeFalse(
             "hetzelfde team kan niet op twee velden tegelijk spelen, ook al zijn er genoeg vrije velden");
     }
 
