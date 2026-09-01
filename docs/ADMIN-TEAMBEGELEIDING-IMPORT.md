@@ -2,15 +2,15 @@
 
 Deze handleiding legt stap voor stap uit hoe je de lijst met teambegeleiders (trainers, leiders, coaches) exporteert uit Sportlink Club. Je hebt hier geen technische kennis voor nodig.
 
-> **Ontwikkelaarsnotitie — Postgres-tier (#824, epic #815).** Deze handleiding beschrijft het
-> SQL Server-pad, het enige dat vandaag daadwerkelijk door een beheerder gebruikt wordt. Voor de
-> Postgres-tier bestaat sinds #824 het AVG-gevoelige database-interactiedeel (`avg.teambegeleiding`/
-> `avg.importlog` via `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-
-> import, ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie) — getest tegen
-> een lokale Postgres-devcontainer, uitsluitend met fictieve testdata. De flexibele
-> CSV-kolomherkenning van dit script (stap 3 hieronder) is daar bewust nog niet herbouwd: er is dus
-> nog geen door een beheerder bruikbaar Postgres-importpad. Zie de PR-beschrijving van #824 voor de
-> volledige scope-afbakening.
+> **Ontwikkelaarsnotitie — Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de
+> stappen hieronder (Sportlink-export + upload via **Teambegeleiding → Teambegeleiding importeren**)
+> werken identiek op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
+> CSV-kolomherkenning (aliassen, dedup, validatie — `FunctionApp.Postgres/Admin/
+> AdminTeambegeleidingFunction.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
+> database-interactiedeel uit #824 zelf (`avg.teambegeleiding`/`avg.importlog` via
+> `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-import,
+> ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie). Getest tegen een
+> lokale Postgres-devcontainer, uitsluitend met fictieve testdata.
 
 ---
 
