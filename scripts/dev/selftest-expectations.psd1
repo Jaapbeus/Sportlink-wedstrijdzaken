@@ -74,12 +74,9 @@
         # bevat alle demoteams, en die lijst komt uit public.teams.
         @{ Path = '/teambegeleiding';          Context = 'demo';    Assert = 'De teamkeuzelijst bevat alle 28 demoteams (bewijs dat de canonieke teamlijst gevuld is). Geen e-mailadressen: die geeft het endpoint bewust nooit terug.' }
 
-        # Geblokkeerd op #952 (afgesplitst van #949, dat alleen de verwachtingen hierboven dekte en
-        # daarom bij de eerstvolgende release sluit): zes endpoints achter deze pagina bestaan niet
-        # op de Postgres-tier
-        # (404, geen niet-geimplementeerd-antwoord — daarom viel het buiten de stub-telling). De
-        # pagina meldt zichtbaar "Teams ophalen mislukt: HTTP 404" en toont nul wedstrijden.
-        @{ Path = '/testdata/wedstrijden';     Context = 'demo';    Assert = 'Exact 224 wedstrijden. Deze route is alleen zichtbaar in demomodus.'; Blocked = @(952) }
+        # #952 opgelost: de zes endpoints achter deze pagina zijn vertaald naar de Postgres-tier
+        # (AdminTestDataFunction, DeriveWedstrijdcode voor de sleutelvertaling). Niet langer geblokkeerd.
+        @{ Path = '/testdata/wedstrijden';     Context = 'demo';    Assert = 'Exact 224 wedstrijden. Deze route is alleen zichtbaar in demomodus.' }
         @{ Path = '/instellingen';             Context = 'demo';    Assert = 'De testmodus-melding is zichtbaar. Een gevulde instellingenpagina is hier FOUT — dat bewijst juist dat de clubscheiding werkt.' }
         @{ Path = '/instellingen/velden';      Context = 'demo';    Assert = 'Drie velden en 21 beschikbaarheidsrijen.' }
         @{ Path = '/instellingen/speeltijden'; Context = 'demo';    Assert = 'Minstens een speeltijdregel.' }
