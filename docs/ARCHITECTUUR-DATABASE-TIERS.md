@@ -2505,6 +2505,44 @@ is nog geen gedocumenteerde schakelaar die de ontwikkelomgeving op deze tier sta
 handmatig gedaan. Wie dat herhaalt: de functiehost moet `local.settings.json` hebben (niet alleen
 omgevingsvariabelen), anders ontbreekt het CORS-blok en blokkeert de browser élke API-aanroep.
 
+## 48. Testdata-endpoints op Postgres — Optie B gekozen (#952)
+
+Vervolg op §47. De keuze die daar nog openstond ("de sleutelvorm van bestaande demorijen") is nu
+gemaakt: **Optie B** — het endpoint vertaalt de sleutel, de Blazor-pagina blijft ongewijzigd.
+
+### Waarom Optie B en niet Optie A
+
+Optie A (de pagina genereert zelf een numerieke sleutel) is inhoudelijk aantrekkelijker — één
+sleutelvorm, geen vertaling nodig — maar vraagt een wijziging aan `BlazorAdmin/Pages/TestData/
+Wedstrijden.razor`, een bestand dat **beide** tiers delen. Zo'n wijziging raakt daarmee ook het
+bestaande, live SQL Server-contract puur om de nieuwe tier te bedienen — exact de regressie die
+§2 van dit document en de zelftest-skill (`Wat je nooit zelf aanpast: de bestaande, draaiende
+tier`) uitsluiten. Optie B houdt de wijziging volledig binnen de nieuwe Postgres-boom.
+
+### De vertaling
+
+`FunctionApp.Postgres/Admin/AdminTestDataFunction.cs`'s `DeriveWedstrijdcode`:
+
+- Is de aangeboden sleutel al numeriek (het geval ná een paginaherlaad — de pagina heeft dan de
+  door de database afgeleide `bk_matches`-waarde teruggekregen), gebruik die rechtstreeks.
+- Anders: een deterministische SHA-256-hash van de tekstsleutel, gemapt naar het bereik
+  `900.000.000+`. **Bewust niet `string.GetHashCode()`** — die is sinds .NET Core per proces
+  gerandomiseerd (beveiligingsmaatregel); dezelfde tekstsleutel zou na een herstart een andere
+  wedstrijdcode opleveren, waardoor een upsert de bestaande rij niet meer terugvindt en een
+  duplicaat aanmaakt in plaats van bij te werken.
+- Bereik `900.000.000+` ligt ruim buiten zowel echte Sportlink-wedstrijdcodes (8 cijfers, zie
+  `FunctionApp/CLAUDE.md`) als het gezaaide demobereik `9.000.001-9.000.224`
+  (`scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`).
+
+De upsert gebruikt `ON CONFLICT (bk_matches) DO UPDATE` — hetzelfde patroon als
+`PostgresUpsertGenerator.cs` al gebruikt voor de reguliere ETL-upserts tegen een gegenereerde
+business-key-kolom.
+
+### Wat dit niet oplost
+
+De browsersweep uit §47 (G7/G8, schrijfpaden via de GUI) is met deze wijziging nog niet opnieuw
+uitgevoerd — dat is de volgende stap vóór dit issue als volledig bewezen geldt.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
