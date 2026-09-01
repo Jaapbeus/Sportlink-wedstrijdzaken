@@ -150,12 +150,17 @@ public static class AdminVeldBeschikbaarheidFunction
         return ValideerTijden(dto.BeschikbaarVanaf, dto.BeschikbaarTot);
     }
 
-    private static IActionResult? ValideerTijden(string? vanf, string? tot)
+    // internal (#476-precedent): testbaar zonder de HTTP-triggerwrapper na te bootsen.
+    internal static IActionResult? ValideerTijden(string? vanf, string? tot)
     {
-        if (string.IsNullOrWhiteSpace(vanf) || !TimeSpan.TryParse(vanf, out _))
+        if (string.IsNullOrWhiteSpace(vanf) || !TimeSpan.TryParse(vanf, out var vanfTijd))
             return new BadRequestObjectResult(new { error = "BeschikbaarVanaf vereist HH:mm formaat" });
-        if (string.IsNullOrWhiteSpace(tot) || !TimeSpan.TryParse(tot, out _))
+        if (string.IsNullOrWhiteSpace(tot) || !TimeSpan.TryParse(tot, out var totTijd))
             return new BadRequestObjectResult(new { error = "BeschikbaarTot vereist HH:mm formaat" });
+        // #957: zonder deze check accepteerde de API stilzwijgend een venster dat vóór het begin
+        // eindigt (bijv. verwisselde velden), met onvoorspelbaar effect op de planner.
+        if (totTijd <= vanfTijd)
+            return new BadRequestObjectResult(new { error = "BeschikbaarTot moet na BeschikbaarVanaf liggen" });
         return null;
     }
 

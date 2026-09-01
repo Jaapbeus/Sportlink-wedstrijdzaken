@@ -35,6 +35,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   groen.
 
 ### Fixed
+- **Veldbeschikbaarheid accepteerde een eindtijd vóór de begintijd zonder foutmelding (issue 957).**
+  Een verwisselde begin- en eindtijd (bijv. per ongeluk 19:00-10:00 i.p.v. 10:00-19:00) werd
+  stilzwijgend opgeslagen. Geeft nu een duidelijke foutmelding op beide databasevarianten.
 - **AutoPlan kon één team twee wedstrijden op hetzelfde tijdstip geven, op twee verschillende
   velden (issue 939).** De planningsmotor hield bezetting alleen per veld bij, niet per team. Een
   team met twee wedstrijden op één dag kon daardoor allebei op hetzelfde tijdstip krijgen zolang er
