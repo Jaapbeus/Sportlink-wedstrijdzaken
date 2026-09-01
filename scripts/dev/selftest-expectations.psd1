@@ -160,6 +160,42 @@
            Assert = 'Object met zaterdagen- en wedstrijden-lijst; minstens een zaterdag met status bezet. Alleen een niet-lege zaterdaglijst is niet genoeg: die loopt sowieso tot het seizoenseinde.' }
     )
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Actie-knoppen — knoppen die een API aanroepen die NIET onder crudCases valt (geen opslaan/
+    # ophalen van een beheerrij, maar een losse actie: classificeren, valideren, versturen).
+    #
+    # G0b in Test-PostgresTier.ps1 controleert deterministisch of het genoemde Endpoint op de
+    # geteste tier bestaat (technisch — geen browser nodig). Fase B van de skill klikt de knop
+    # daadwerkelijk en beoordeelt de Assertie (functioneel — bewijst dat het RESULTAAT klopt, niet
+    # alleen dat de aanroep geen 404/500 geeft).
+    #
+    # Route = '*' betekent: overal in de Admin GUI zichtbaar (de FeedbackWidget rendert op elke
+    # pagina). De skill hoeft zo'n knop dan maar één keer per volledige sweep te klikken, niet per
+    # pagina — anders loopt de rate limit vol voor niets.
+    #
+    # NOOIT een knop opnemen die een echte externe aanroep doet (een e-mail verstuurt, een GitHub-
+    # issue aanmaakt, een betaalde dienst meer dan één keer per run raakt) — zie "Externe diensten
+    # blijven uit" in SKILL.md. Daarom staat hier de FEEDBACK-knop wél met zijn Valideren-stap,
+    # maar NIET met zijn Versturen-stap: die laatste maakt een echt GitHub-issue aan.
+    # ──────────────────────────────────────────────────────────────────────────
+    actionButtons = @(
+        @{ Route = '/email-tester'; Knop = 'Dry-run classificeren'; Endpoint = 'POST /api/test/email'
+           Assertie = 'Response bevat classificatie (niet leeg) en voorbeeldAntwoord.body (niet leeg). Kost een echte AI-aanroep — rate limit 10/min, precies zoals de waarschuwing op de pagina zelf al zegt.' }
+        @{ Route = '*'; Knop = 'FEEDBACK -> Valideren'; Endpoint = 'POST /api/feedback/validate'
+           Assertie = 'Response geeft een geldig/ongeldig-oordeel terug zonder 4xx/5xx. Klik in de zelftest NOOIT de Versturen-knop erna: die roept /api/feedback/submit aan en maakt een echt GitHub-issue aan.' }
+    )
+
+    # Bekende, al-getrackte gaten in G0b — een ontbrekende route hierin is BLOCKED, geen FAIL.
+    # Zonder deze lijst zou G0b elke openstaande tier-portingsissue als onverwachte fout melden,
+    # terwijl er al een issue voor openstaat. Verwijder een rij pas als het genoemde issue dicht is
+    # EN de route daadwerkelijk bestaat — anders verdwijnt de dekking stil (zelfde valkuil als een
+    # verwijderde assertie).
+    knownActionGaps = @(
+        @{ Route = 'api/test/email';        Blocked = @(889) }
+        @{ Route = 'api/feedback/validate'; Blocked = @(966) }
+        @{ Route = 'api/feedback/submit';   Blocked = @(966) }
+    )
+
     # De toepassingsnaam die de Postgres-tier op elke verbinding meegeeft
     # (FunctionApp.Postgres/PostgresDatabaseConfig.cs). G5 zoekt hem terug in pg_stat_activity:
     # dat is het bewijs dat de applicatie met DEZE databaseserver praat, onafhankelijk van wat de
