@@ -35,6 +35,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   groen.
 
 ### Fixed
+- **Speeltijden bewerken/verwijderen op de nieuwe databasevariant faalde stilzwijgend bij een
+  afwijkende hoofdlettering (issue 956).** Een leeftijdscategorie als "jo9" i.p.v. de opgeslagen
+  "JO9" gaf daar een onterechte "niet gevonden" — werkte wel op de bestaande variant.
 - **Veldbeschikbaarheid accepteerde een eindtijd vóór de begintijd zonder foutmelding (issue 957).**
   Een verwisselde begin- en eindtijd (bijv. per ongeluk 19:00-10:00 i.p.v. 10:00-19:00) werd
   stilzwijgend opgeslagen. Geeft nu een duidelijke foutmelding op beide databasevarianten.
