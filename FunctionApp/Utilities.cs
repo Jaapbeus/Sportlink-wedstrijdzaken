@@ -12,6 +12,12 @@ namespace SportlinkFunction
         {
             private static readonly ConcurrentDictionary<string, string> settings = new ConcurrentDictionary<string, string>();
 
+            // #859: een mislukte instellingenlaadt liet de cache stil (deels) leeg achter — zichtbaar
+            // alleen in het log, niet in de gezondheidscheck. Deze vlag maakt dat zichtbaar voor
+            // PlannerFunction.Health() zonder de foutdetails zelf (die kunnen verbindingsgegevens
+            // bevatten) op een anonieme endpoint te exposen.
+            public static bool LastLoadFailed { get; private set; }
+
             public static async Task LoadSettingsAsync(ILogger log)
             {
                 try
@@ -23,10 +29,12 @@ namespace SportlinkFunction
                         await LoadUseRealtimeApiSettingAsync(connection);
                         await LoadKnvbSettingsAsync(connection);
                     }
+                    LastLoadFailed = false;
                     log.LogInformation("App settings loaded successfully.");
                 }
                 catch (Exception ex)
                 {
+                    LastLoadFailed = true;
                     log.LogError(ex, "Error loading app settings");
                 }
             }
@@ -207,11 +215,17 @@ namespace SportlinkFunction
             // Pooling=false: op de free-tier serverless database blijft een pooled connectie na Dispose()
             // als actieve sessie op de server staan, wat auto-pause blokkeert (zie #808) en het gratis
             // vCore-secondenbudget kan opmaken terwijl er verder niets gebeurt.
-            public static readonly string ConnectionString = BuildConnectionString();
+            public static readonly string ConnectionString = BuildConnectionString(Environment.GetEnvironmentVariable("SqlConnectionString"));
 
-            private static string BuildConnectionString()
+            // #859: apart van de statische veldinitialisatie zodat een test een ongeldige of
+            // ontbrekende reeks kan aanbieden zonder de omgevingsvariabele van het testproces te
+            // hoeven wijzigen (ConnectionString hierboven is al gevuld tegen de tijd dat een test
+            // draait). Zelfde uitzonderingen als voorheen: ontbrekend -> InvalidOperationException,
+            // syntactisch ongeldig -> de ArgumentException/FormatException van SqlConnectionStringBuilder.
+            internal static string BuildConnectionString(string? raw)
             {
-                var raw = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new InvalidOperationException("The connection string is not set in the environment variables.");
+                if (raw is null)
+                    throw new InvalidOperationException("The connection string is not set in the environment variables.");
                 // #863: herkenbare toepassingsnaam op elke verbinding — een onafhankelijke
                 // bevestiging (vanuit de database zelf op te vragen, bijv. sys.dm_exec_sessions)
                 // naast wat de applicatie in /api/health over zichzelf zegt.
@@ -219,9 +233,21 @@ namespace SportlinkFunction
             }
         }
 
-        // Azure SQL Serverless auto-resume takes 30-90s; 20 retries = 5 min total
-        private const int MaxDatabaseConnectRetries = 20;
-        private const int DatabaseConnectRetryDelayMs = 15000;
+        // Azure SQL Serverless auto-resume takes 30-90s; 20 retries = 5 min total. Buiten Azure-hosting
+        // (WEBSITE_SITE_NAME afwezig, zelfde productie-signaal als EgressGuard/EasyAuthHelper) heeft dat
+        // venster geen nut en verbergt het een configuratiefout 5 minuten lang achter een timeout (#859).
+        // Beide waarden zijn bovendien expliciet overschrijfbaar via omgevingsvariabelen.
+        private static readonly bool IsAzureHosted = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+        private static readonly int MaxDatabaseConnectRetries =
+            GetConfiguredInt("DbWaitMaxRetries", IsAzureHosted ? 20 : 3);
+        private static readonly int DatabaseConnectRetryDelayMs =
+            GetConfiguredInt("DbWaitDelayMs", IsAzureHosted ? 15000 : 2000);
+
+        private static int GetConfiguredInt(string envVarName, int fallback)
+        {
+            var raw = Environment.GetEnvironmentVariable(envVarName);
+            return int.TryParse(raw, out var parsed) && parsed > 0 ? parsed : fallback;
+        }
 
         public static async Task WaitForDatabaseAsync(ILogger log)
         {

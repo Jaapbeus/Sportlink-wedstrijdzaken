@@ -28,34 +28,50 @@ public static class PostgresAppSettings
     private static readonly Dictionary<string, string> Settings = new();
     private static readonly object Lock = new();
 
+    // #859: zichtbaar maken voor HealthFunction dat de cache leeg/verouderd is, in plaats van
+    // alleen een logregel — zelfde signaal als SystemUtilities.AppSettings.LastLoadFailed op de
+    // SQL Server-tier. Gooit hierbeneden nog steeds door: WaitForDatabaseAsync's retry-lus moet
+    // een echte databasefout hier blijven zien als reden om opnieuw te proberen.
+    public static bool LastLoadFailed { get; private set; }
+
     public static async Task LoadSettingsAsync(ILogger log)
     {
-        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-        await connection.OpenAsync();
-        // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
-        // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
-        await using var cmd = new NpgsqlCommand(
-            "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam FROM public.appsettings " +
-            "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
-        await using var reader = await cmd.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+        try
         {
-            log.LogWarning("public.appsettings heeft geen rij met syncenabled=true — instellingencache blijft leeg.");
-            return;
-        }
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
+            // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
+            await using var cmd = new NpgsqlCommand(
+                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam FROM public.appsettings " +
+                "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                log.LogWarning("public.appsettings heeft geen rij met syncenabled=true — instellingencache blijft leeg.");
+                LastLoadFailed = true;
+                return;
+            }
 
-        lock (Lock)
+            lock (Lock)
+            {
+                Settings["clubCode"] = reader.GetString(0);
+                if (!reader.IsDBNull(1))
+                    Settings["accommodatie"] = reader.GetString(1);
+                if (!reader.IsDBNull(3))
+                    Settings["accommodatieLatitude"] = reader.GetDouble(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (!reader.IsDBNull(4))
+                    Settings["accommodatieLongitude"] = reader.GetDouble(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                // plannerafzendernaam (§42): AutoPlan zet deze naam onder de gegenereerde HTML-planning.
+                if (!reader.IsDBNull(5))
+                    Settings["plannerAfzenderNaam"] = reader.GetString(5);
+            }
+            LastLoadFailed = false;
+        }
+        catch
         {
-            Settings["clubCode"] = reader.GetString(0);
-            if (!reader.IsDBNull(1))
-                Settings["accommodatie"] = reader.GetString(1);
-            if (!reader.IsDBNull(3))
-                Settings["accommodatieLatitude"] = reader.GetDouble(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (!reader.IsDBNull(4))
-                Settings["accommodatieLongitude"] = reader.GetDouble(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            // plannerafzendernaam (§42): AutoPlan zet deze naam onder de gegenereerde HTML-planning.
-            if (!reader.IsDBNull(5))
-                Settings["plannerAfzenderNaam"] = reader.GetString(5);
+            LastLoadFailed = true;
+            throw;
         }
     }
 
@@ -76,5 +92,6 @@ public static class PostgresAppSettings
     {
         lock (Lock)
             Settings.Clear();
+        LastLoadFailed = false;
     }
 }

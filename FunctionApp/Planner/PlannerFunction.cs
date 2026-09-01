@@ -234,19 +234,32 @@ namespace SportlinkFunction.Planner
         {
             var version = typeof(PlannerFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
             var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
-            return new OkObjectResult(new
+            var settingsLoaded = !SystemUtilities.AppSettings.LastLoadFailed;
+            var status = dbStatus == "online" && settingsLoaded ? "ok" : "degraded";
+            var body = new
             {
-                status = dbStatus == "online" ? "ok" : "degraded",
+                status,
                 version,
                 timestamp = DateTime.UtcNow,
                 database = dbStatus,
+                // #859: apart van 'database', want een geslaagde verbinding zegt niets over of de
+                // instellingencache ook echt gevuld is (#767 liet precies dat stilzwijgend misgaan).
+                // Bewust geen foutdetails hier — dit endpoint is anoniem toegankelijk; de volledige
+                // exceptie staat al in het functielog.
+                settingsLoaded,
                 // #863: tier/provider komen uit build-time assembly-metadata (nooit een runtime-gok),
                 // dus altijd gevuld — ook als de database onbereikbaar is. serverVersion komt
                 // aantoonbaar uit de database zelf en is daarom null zolang die niet bereikbaar is.
                 tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
                 provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
                 serverVersion
-            });
+            };
+            // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
+            // draaiende maar onbereikbare database (paused/timeout/unavailable) blijft wel 200 met
+            // status "degraded", want dat is een tijdelijke toestand waar Azure zelf uit herstelt.
+            return dbStatus == "unconfigured"
+                ? new ObjectResult(body) { StatusCode = StatusCodes.Status503ServiceUnavailable }
+                : new OkObjectResult(body);
         }
 
         // internal zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476)
@@ -262,10 +275,14 @@ namespace SportlinkFunction.Planner
         // serverVersion is alleen gevuld bij "online" — #863 eist dat dit veld aantoonbaar uit de
         // database komt, dus geen fallback-waarde als de verbinding niet lukt.
         // Error 40613 = Azure SQL serverless auto-paused; verbinding triggert automatisch resume.
-        private static async Task<(string status, string? serverVersion)> GetDatabaseStatusAsync()
+        // connectionStringOverride is uitsluitend voor tests (#859): DatabaseConfig.ConnectionString
+        // is een static readonly veld, al gevuld vóórdat een test kan draaien, en dus niet
+        // bruikbaar om het "geen bruikbare connectiereeks"-pad te simuleren.
+        internal static async Task<(string status, string? serverVersion)> GetDatabaseStatusAsync(
+            Func<string>? connectionStringOverride = null)
         {
             string connStr;
-            try { connStr = SystemUtilities.DatabaseConfig.ConnectionString; }
+            try { connStr = (connectionStringOverride ?? (() => SystemUtilities.DatabaseConfig.ConnectionString))(); }
             catch { return ("unconfigured", null); }
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
