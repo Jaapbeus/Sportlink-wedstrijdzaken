@@ -2,10 +2,12 @@ using Azure.Identity;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Infrastructure;
 using Microsoft.Azure.Functions.Worker.Builder;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
+using OpenAI.Chat;
 
 // #891: minimale host-bootstrap voor de Postgres-tier — bewust géén 1-op-1-kopie van
 // FunctionApp/Program.cs' DI-registraties (AI, noodmail-throttle, monitoring): die horen bij
@@ -37,6 +39,23 @@ if (!string.IsNullOrWhiteSpace(tenantId)
         new EmailGraphService(
             sp.GetRequiredService<GraphServiceClient>(),
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<EmailGraphService>()));
+}
+
+// IChatClient: provider-agnostische AI-abstractie (CLAUDE.md architectuurregel), uitsluitend nodig
+// voor FeedbackFunction (#966) op deze tier — BerichtAiService/teamdisambiguatie zijn hier nog niet
+// vertaald (#889). Zelfde patroon als FunctionApp/Program.cs: EgressGuard (#857) houdt dit
+// onvoorwaardelijk ongeregistreerd buiten productie, ook als OpenAiApiKey lokaal geconfigureerd is.
+var openAiApiKey = Environment.GetEnvironmentVariable("OpenAiApiKey");
+if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrationsAllowed())
+{
+    // Fallback is puur een provider-model-identifier — geen club-specifieke waarde, dus toegestaan.
+    const string defaultAiModelName = "gpt-4o-mini";
+    var aiModelName = Environment.GetEnvironmentVariable("AiModelName");
+    if (string.IsNullOrWhiteSpace(aiModelName)) aiModelName = defaultAiModelName;
+
+    builder.Services.AddSingleton<IChatClient>(
+        new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
+            .AsIChatClient());
 }
 
 builder.Build().Run();
