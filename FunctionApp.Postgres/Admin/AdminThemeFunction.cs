@@ -16,6 +16,11 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class AdminThemeFunction
 {
+    private const string DefaultPrimaryColor = "#1b6ec2";
+    private const string DefaultSecondaryColor = "#6c757d";
+    private const string DefaultAccentColor = "#0071c1";
+    private const string DefaultTextOnPrimaryColor = "#ffffff";
+
     private static readonly HttpClient _httpClient;
     private static readonly Regex _hexColorRegex    = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.Compiled);
     private static readonly Regex _hexColorValidRegex = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.Compiled);
@@ -27,8 +32,8 @@ public static class AdminThemeFunction
 
     static AdminThemeFunction()
     {
-        _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "SportlinkAdmin/2.0");
+        _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", AdminEndpoint.OutboundUserAgent);
     }
 
     [Function("AdminThemeGet")]
@@ -58,10 +63,10 @@ public static class AdminThemeFunction
 
             return new OkObjectResult(new
             {
-                primary        = reader.IsDBNull(0) ? "#1b6ec2" : reader.GetString(0),
-                secondary      = reader.IsDBNull(1) ? "#6c757d" : reader.GetString(1),
-                accent         = reader.IsDBNull(2) ? "#0071c1" : reader.GetString(2),
-                textOnPrimary  = reader.IsDBNull(3) ? "#ffffff" : reader.GetString(3),
+                primary        = reader.IsDBNull(0) ? DefaultPrimaryColor : reader.GetString(0),
+                secondary      = reader.IsDBNull(1) ? DefaultSecondaryColor : reader.GetString(1),
+                accent         = reader.IsDBNull(2) ? DefaultAccentColor : reader.GetString(2),
+                textOnPrimary  = reader.IsDBNull(3) ? DefaultTextOnPrimaryColor : reader.GetString(3),
                 clubWebsiteUrl = reader.IsDBNull(4) ? ""        : reader.GetString(4),
                 faviconUrl     = reader.IsDBNull(5) ? null      : reader.GetString(5),
                 logoUrl        = reader.IsDBNull(6) ? null      : reader.GetString(6)
@@ -122,10 +127,10 @@ public static class AdminThemeFunction
                     faviconurl              = @faviconurl,
                     logourl                 = @logourl
                 WHERE clubcode             = @clubcode", connection);
-            command.Parameters.AddWithValue("primary",        dto.Primary       ?? "#1b6ec2");
-            command.Parameters.AddWithValue("secondary",      dto.Secondary     ?? "#6c757d");
-            command.Parameters.AddWithValue("accent",         dto.Accent        ?? "#0071c1");
-            command.Parameters.AddWithValue("textonprimary",  dto.TextOnPrimary ?? "#ffffff");
+            command.Parameters.AddWithValue("primary",        dto.Primary       ?? DefaultPrimaryColor);
+            command.Parameters.AddWithValue("secondary",      dto.Secondary     ?? DefaultSecondaryColor);
+            command.Parameters.AddWithValue("accent",         dto.Accent        ?? DefaultAccentColor);
+            command.Parameters.AddWithValue("textonprimary",  dto.TextOnPrimary ?? DefaultTextOnPrimaryColor);
             command.Parameters.AddWithValue("websiteurl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
             command.Parameters.AddWithValue("faviconurl",     (object?)dto.FaviconUrl     ?? DBNull.Value);
             command.Parameters.AddWithValue("logourl",        (object?)dto.LogoUrl        ?? DBNull.Value);
@@ -161,7 +166,7 @@ public static class AdminThemeFunction
 
         await PostgresSystemUtilities.WaitForDatabaseAsync(log);
         var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-        var toegestaneHost = await GetToegestaneWebsiteHostAsync(clubCode);
+        var toegestaneHost = await GetToegestaneWebsiteHostAsync(clubCode, log);
         if (toegestaneHost == null || !parsedUri.Host.Equals(toegestaneHost, StringComparison.OrdinalIgnoreCase))
             return new BadRequestObjectResult(new { error = "URL-domein is niet toegestaan. Stel eerst de club-website in via het thema-scherm." });
 
@@ -182,7 +187,7 @@ public static class AdminThemeFunction
         }
     }
 
-    private static async Task<string?> GetToegestaneWebsiteHostAsync(string clubCode)
+    private static async Task<string?> GetToegestaneWebsiteHostAsync(string clubCode, ILogger log)
     {
         try
         {
@@ -196,8 +201,9 @@ public static class AdminThemeFunction
             if (string.IsNullOrWhiteSpace(websiteUrl)) return null;
             return Uri.TryCreate(websiteUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
         }
-        catch
+        catch (Exception ex)
         {
+            log.LogWarning(ex, "Kon toegestane website-host niet bepalen voor extractie");
             return null;
         }
     }
@@ -254,10 +260,10 @@ public static class AdminThemeFunction
 
     private static object DefaultTheme() => new
     {
-        primary        = "#1b6ec2",
-        secondary      = "#6c757d",
-        accent         = "#0071c1",
-        textOnPrimary  = "#ffffff",
+        primary        = DefaultPrimaryColor,
+        secondary      = DefaultSecondaryColor,
+        accent         = DefaultAccentColor,
+        textOnPrimary  = DefaultTextOnPrimaryColor,
         clubWebsiteUrl = "",
         faviconUrl     = (string?)null,
         logoUrl        = (string?)null

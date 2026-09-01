@@ -6,8 +6,7 @@ internal static class AdminVeldBeschikbaarheidRepository
 {
     internal static async Task<List<Dictionary<string, object?>>> GetAlleAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT vb.[Id], vb.[VeldNummer], v.[VeldNaam], vb.[DagVanWeek],
                    CONVERT(VARCHAR(5), vb.[BeschikbaarVanaf]) AS [BeschikbaarVanaf],
@@ -22,19 +21,13 @@ internal static class AdminVeldBeschikbaarheidRepository
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-            list.Add(row);
-        }
+            list.Add(AdminRepositoryHelpers.LeesAlleKolommen(r));
         return list;
     }
 
     internal static async Task<List<Dictionary<string, object?>>> GetVeldenAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             @"SELECT [VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief]
               FROM [dbo].[Velden] WHERE [ClubCode] = @Cc ORDER BY [VeldNummer]", conn);
@@ -60,8 +53,7 @@ internal static class AdminVeldBeschikbaarheidRepository
     /// </summary>
     internal static async Task<bool> VeldNummerBestaatAsync(int veldNummer, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "SELECT COUNT(1) FROM [dbo].[Velden] WHERE [VeldNummer] = @Vn", conn);
         cmd.Parameters.AddWithValue("@Vn", veldNummer);
@@ -72,8 +64,7 @@ internal static class AdminVeldBeschikbaarheidRepository
         int veldNummer, string veldNaam, string veldType, bool heeftKunstlicht, bool actief,
         string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[Velden]
                 ([VeldNummer], [VeldNaam], [VeldType], [HeeftKunstlicht], [Actief], [ClubCode])
@@ -91,8 +82,7 @@ internal static class AdminVeldBeschikbaarheidRepository
         int veldNummer, string veldNaam, string veldType, bool heeftKunstlicht, bool actief,
         string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[Velden]
             SET [VeldNaam] = @Naam, [VeldType] = @Type, [HeeftKunstlicht] = @Licht, [Actief] = @Act
@@ -109,8 +99,7 @@ internal static class AdminVeldBeschikbaarheidRepository
     internal static async Task<int> UpdateAsync(
         int id, TimeSpan vanf, TimeSpan tot, bool zon, int? periodeId, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[VeldBeschikbaarheid]
             SET [BeschikbaarVanaf] = @Vanf, [BeschikbaarTot] = @Tot, [GebruikZonsondergang] = @Zon,
@@ -132,8 +121,7 @@ internal static class AdminVeldBeschikbaarheidRepository
     /// </summary>
     internal static async Task<bool> BestaatAsync(int veldNummer, int dagVanWeek, int? periodeId, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT COUNT(1) FROM [dbo].[VeldBeschikbaarheid]
             WHERE [VeldNummer] = @Vn AND [DagVanWeek] = @Dag AND [ClubCode] = @Cc
@@ -148,8 +136,7 @@ internal static class AdminVeldBeschikbaarheidRepository
     internal static async Task<int> InsertAsync(
         int veldNummer, int dagVanWeek, TimeSpan vanf, TimeSpan tot, bool zon, int? periodeId, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[VeldBeschikbaarheid]
                 ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [PeriodeId], [ClubCode])
@@ -167,8 +154,7 @@ internal static class AdminVeldBeschikbaarheidRepository
 
     internal static async Task<int> DeleteAsync(int id, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "DELETE FROM [dbo].[VeldBeschikbaarheid] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id", id);

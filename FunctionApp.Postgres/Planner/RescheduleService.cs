@@ -60,25 +60,13 @@ public static class RescheduleService
         var allTeamRules = await TeamRulesRepository.GetTeamRulesForTeamsAsync(
             connectionString, occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), cc);
 
-        TimeOnly? sunset = await PlannerSettingsRepository.GetSunsetAsync(connectionString, date);
-        sunset ??= PostgresSunsetCalculator.GetSunset(date);
-        foreach (var field in availableFields)
-            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                field.BeschikbaarTot = sunset.Value;
+        TimeOnly? sunset = await PlannerSettingsRepository.ResolveEnPasZonsondergangToeAsync(connectionString, date, availableFields);
 
         TimeOnly? preferredTime = null;
         if (!string.IsNullOrEmpty(request.VoorkeurTijd) && TimeOnly.TryParse(request.VoorkeurTijd, out var parsed))
             preferredTime = parsed;
 
-        TimeOnly dagdeelVan = new(8, 30);
-        TimeOnly dagdeelTot = new(22, 0);
-        if (!string.IsNullOrEmpty(request.Dagdeel))
-            switch (request.Dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": dagdeelVan = new(8, 30); dagdeelTot = new(12, 0); break;
-                case "middag": dagdeelVan = new(12, 0); dagdeelTot = new(17, 0); break;
-                case "avond": dagdeelVan = new(17, 0); dagdeelTot = new(22, 0); break;
-            }
+        (TimeOnly dagdeelVan, TimeOnly dagdeelTot) = AvailabilityService.ResolveDagdeelVenster(request.Dagdeel, new(8, 30), new(22, 0));
 
         if (preferredTime.HasValue)
         {

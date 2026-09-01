@@ -21,6 +21,8 @@ namespace FunctionApp.Postgres.Email;
 /// </summary>
 internal static class SqlEmailPersistenceRepository
 {
+    private const int MaxFoutmeldingLength = 1000;
+
     internal static bool IsUniekeSleutelFout(PostgresException ex) =>
         ex.SqlState == PostgresErrorCodes.UniqueViolation;
 
@@ -230,7 +232,7 @@ internal static class SqlEmailPersistenceRepository
               AND isbeantwoord = FALSE
               AND verstuurdnaar IS NULL", conn);
         cmd.Parameters.AddWithValue("id", verwerkingId);
-        cmd.Parameters.AddWithValue("fout", foutMelding.Length > 1000 ? foutMelding[..1000] : foutMelding);
+        cmd.Parameters.AddWithValue("fout", foutMelding.Length > MaxFoutmeldingLength ? foutMelding[..MaxFoutmeldingLength] : foutMelding);
         await cmd.ExecuteNonQueryAsync();
     }
 

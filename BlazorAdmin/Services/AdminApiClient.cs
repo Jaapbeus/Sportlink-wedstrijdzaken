@@ -224,45 +224,19 @@ public class AdminApiClient
 
     // ── HTTP-helpers ──
 
-    private async Task<ApiResult<T>> GetAsync<T>(string path)
+    private async Task<ApiResult<T>> SendAsync<T>(Func<Task<HttpResponseMessage>> send)
     {
         try
         {
-            var resp = await _http.GetAsync(path);
-            return await HandleAsync<T>(resp);
+            return await HandleAsync<T>(await send());
         }
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
     }
 
-    private async Task<ApiResult<T>> PostAsync<T>(string path, object body)
-    {
-        try
-        {
-            var resp = await _http.PostAsJsonAsync(path, body);
-            return await HandleAsync<T>(resp);
-        }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
-    }
-
-    private async Task<ApiResult<T>> PutAsync<T>(string path, object body)
-    {
-        try
-        {
-            var resp = await _http.PutAsJsonAsync(path, body);
-            return await HandleAsync<T>(resp);
-        }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
-    }
-
-    private async Task<ApiResult<T>> DeleteAsync<T>(string path)
-    {
-        try
-        {
-            var resp = await _http.DeleteAsync(path);
-            return await HandleAsync<T>(resp);
-        }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
-    }
+    private Task<ApiResult<T>> GetAsync<T>(string path) => SendAsync<T>(() => _http.GetAsync(path));
+    private Task<ApiResult<T>> PostAsync<T>(string path, object body) => SendAsync<T>(() => _http.PostAsJsonAsync(path, body));
+    private Task<ApiResult<T>> PutAsync<T>(string path, object body) => SendAsync<T>(() => _http.PutAsJsonAsync(path, body));
+    private Task<ApiResult<T>> DeleteAsync<T>(string path) => SendAsync<T>(() => _http.DeleteAsync(path));
 
     // ── Velden (#679) ──
     public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()

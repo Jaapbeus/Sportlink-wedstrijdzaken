@@ -12,6 +12,9 @@ namespace FunctionApp.Postgres.Email;
 /// </summary>
 internal static class LearningMomentRepository
 {
+    private const int MaxSamenvattingLength = 500;
+    private const int MaxLeermomentVoorbeelden = 20;
+
     internal static async Task InsertClassificatieCorrectieAsync(
         string connectionString,
         int origineleVerwerkingId, int correctionVerwerkingId,
@@ -33,8 +36,8 @@ internal static class LearningMomentRepository
         cmd.Parameters.AddWithValue("correctionid", correctionVerwerkingId);
         cmd.Parameters.AddWithValue("origineeltype", origineelType);
         cmd.Parameters.AddWithValue("afgeleidtype", (object?)afgeleidType ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("originelesamenvatting", (object?)Truncate(originaleSamenvatting, 500) ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("correctiesamenvatting", (object?)Truncate(correctieSamenvatting, 500) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("originelesamenvatting", (object?)Truncate(originaleSamenvatting, MaxSamenvattingLength) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("correctiesamenvatting", (object?)Truncate(correctieSamenvatting, MaxSamenvattingLength) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
         await cmd.ExecuteNonQueryAsync();
     }
@@ -46,13 +49,13 @@ internal static class LearningMomentRepository
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync();
-            await using var cmd = new NpgsqlCommand(@"
+            await using var cmd = new NpgsqlCommand($@"
                 SELECT origineelverzoektype, afgeleidjuisttype,
                        originelesamenvatting, correctiesamenvatting
                 FROM planner.classificatiecorrectie
                 WHERE isgevalideerd = TRUE AND isafgewezen = FALSE AND clubcode = @clubcode
                 ORDER BY mta_modified DESC
-                LIMIT 20", conn);
+                LIMIT {MaxLeermomentVoorbeelden}", conn);
             cmd.Parameters.AddWithValue("clubcode", clubCode);
 
             var list = new List<ClassificatieCorrectieVoorbeeld>();

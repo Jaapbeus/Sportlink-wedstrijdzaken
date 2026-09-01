@@ -9,51 +9,40 @@ namespace SportlinkFunction.Planner;
 /// </summary>
 internal static class AutoPlanService
 {
+    private const string AllstarsClubCode = "ALLSTARS";
+
     public static async Task<AutoPlanResponse> AutoPlanAsync(
         AutoPlanRequest request, string clubCode, ILogger log)
     {
-        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+        bool isAllstars = clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase);
         int buffer = request.BufferMinuten ?? PlannerShared.StandardBufferMinutes;
 
         if (!DateOnly.TryParse(request.Datum, out var datum))
             return new AutoPlanResponse { Datum = request.Datum };
 
-        var alleWedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+        var (alleWedstrijden, velden, beschikbaarheid, speeltijden, veldInfoLookup, voorkeurLookup, teamBuffers, voorkeurVelden) =
+            await LoadAutoPlanBronnenAsync(datum, clubCode, isAllstars);
 
-        List<VeldInfo> velden;
-        List<VeldBeschikbaarheidInfo> beschikbaarheid;
-        if (isAllstars)
-        {
-            velden = await PlannerDataAccess.GetAllstarsVeldenAsync();
-            beschikbaarheid = velden.Select(v => new VeldBeschikbaarheidInfo
-            {
-                VeldNummer = v.VeldNummer,
-                BeschikbaarVanaf = new TimeOnly(8, 0),
-                BeschikbaarTot = new TimeOnly(22, 0),
-                GebruikZonsondergang = false
-            }).ToList();
-        }
-        else
-        {
-            velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
-            beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
-        }
+        var (gesorteerd, doelen) = BepaalEnSorteerWedstrijden(alleWedstrijden, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden);
 
-        // Speeltijden per club, met terugval op de primaire club (#573/#666): oudere databases hebben
-        // nog geen ALLSTARS-rijen, en zonder speeltijden is géén enkele wedstrijd inplanbaar.
-        var speeltijden    = await GetSpeeltijdenMetTerugvalAsync(clubCode);
-        var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
-        int dagVanWeek     = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
-        var voorkeurLookup = await PlannerDataAccess.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
+        var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
+        var items = PlanWedstrijdItems(gesorteerd, doelen, scheduler, speeltijden, veldInfoLookup, teamBuffers, buffer);
 
-        // TeamRegels expliciet op de opgevraagde club (#666). Dit stond eerder op de primaire club met
-        // de aanname "er zijn geen ALLSTARS-rijen" (#573). Die aanname klopt niet meer: de demomodus
-        // heeft inmiddels eigen teamregels, en die werden daardoor stilzwijgend genegeerd — buffers en
-        // voorkeursveld hadden in testmodus dus geen effect, precies de modus waarin je het test.
-        // Géén terugval hier: een leeg resultaat betekent gewoon "dit team heeft geen regels".
-        var teamBuffers    = await PlannerDataAccess.GetAllTeamBuffersAsync(clubCode);
-        var voorkeurVelden = await PlannerDataAccess.GetAllTeamVoorkeurVeldenAsync(clubCode);
+        return BuildAutoPlanResponse(request.Datum, datum, items, velden, log);
+    }
 
+    /// <summary>
+    /// Bepaalt per wedstrijd het planningsdoel volgens de vastgelegde rangorde (#666) en sorteert de
+    /// wedstrijden op basis daarvan in de volgorde waarin de scheduler ze moet claimen. Verplaatst
+    /// ongewijzigd uit AutoPlanAsync.
+    /// </summary>
+    private static (List<WedstrijdRaw> Gesorteerd, Dictionary<WedstrijdRaw, PlanDoel> Doelen) BepaalEnSorteerWedstrijden(
+        List<WedstrijdRaw> alleWedstrijden,
+        bool isAllstars,
+        Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
+        Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
+        Dictionary<string, Speeltijd> speeltijden)
+    {
         // Per wedstrijd het planningsdoel bepalen volgens de vastgelegde rangorde (#666):
         //   1. Regels     — dbo.TeamRegels: buffers (altijd van kracht) en VoorkeurVeld (veld + evt. tijd)
         //   2. Voorkeuren — dbo.TeamVoorkeurTijden voor deze speeldag
@@ -74,7 +63,23 @@ internal static class AutoPlanService
             .ThenBy(w => w.TeamNaam)
             .ToList();
 
-        var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
+        return (gesorteerd, doelen);
+    }
+
+    /// <summary>
+    /// Plant elke wedstrijd (in de al bepaalde volgorde) in via de <paramref name="scheduler"/> en
+    /// bouwt daaruit de bijbehorende <see cref="AutoPlanWedstrijdItem"/>'s op — onbekend-team,
+    /// niet-inplanbaar of een geslaagd/ongewijzigd slot. Verplaatst ongewijzigd uit AutoPlanAsync.
+    /// </summary>
+    private static List<AutoPlanWedstrijdItem> PlanWedstrijdItems(
+        List<WedstrijdRaw> gesorteerd,
+        Dictionary<WedstrijdRaw, PlanDoel> doelen,
+        FieldScheduler scheduler,
+        Dictionary<string, Speeltijd> speeltijden,
+        Dictionary<int, VeldInfo> veldInfoLookup,
+        Dictionary<string, (int bufferVoor, int bufferNa)> teamBuffers,
+        int buffer)
+    {
         var items = new List<AutoPlanWedstrijdItem>();
 
         foreach (var wedstrijd in gesorteerd)
@@ -194,6 +199,159 @@ internal static class AutoPlanService
             });
         }
 
+        return items;
+    }
+
+    // Lichtgewicht "wat staat er nu gepland"-weergave (#566): geen FieldScheduler-berekening,
+    // alleen de ruwe wedstrijddata die AutoPlanAsync anders ook al zonder optimalisatie zou tonen.
+    // Duur/veldafmeting komen uit de goedkope speeltijden-lookup (één simpele SELECT) — niet uit
+    // de FieldScheduler, die pas nodig is zodra er ook daadwerkelijk geoptimaliseerd wordt.
+    public static async Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
+    {
+        bool isAllstars = clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase);
+        var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+        // Eigen club met terugval op de primaire club — zelfde bron als AutoPlanAsync (#573/#666),
+        // zodat de duur die hier getoond wordt overeenkomt met waarmee de planner rekent.
+        var speeltijden = await GetSpeeltijdenMetTerugvalAsync(clubCode);
+
+        return wedstrijden
+            .Select(w =>
+            {
+                var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
+                    ? w.LeeftijdsCategorie
+                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
+                speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
+
+                return new VeldbezettingItem
+                {
+                    WedstrijdCode = w.WedstrijdCode,
+                    Wedstrijd = w.Wedstrijd,
+                    TeamNaam = w.TeamNaam,
+                    Uitteam = w.Uitteam,
+                    AanvangsTijd = w.AanvangsTijd,
+                    Veld = w.Veld,
+                    Competitiesoort = w.Competitiesoort,
+                    LeeftijdsCategorie = w.LeeftijdsCategorie,
+                    DuurMinuten = speeltijdInfo?.WedstrijdTotaal ?? 0,
+                    Veldafmeting = speeltijdInfo?.Veldafmeting ?? 1.00m
+                };
+            })
+            .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
+            .ToList();
+    }
+
+    public static async Task<AutoPlanToepassenResponse> AutoPlanToepassenAsync(
+        AutoPlanToepassenRequest request, string clubCode, ILogger log)
+    {
+        if (!clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
+
+        var planResponse = await AutoPlanAsync(new AutoPlanRequest { Datum = request.Datum, BufferMinuten = request.BufferMinuten }, clubCode, log);
+        var response = new AutoPlanToepassenResponse();
+
+        foreach (var item in planResponse.Wedstrijden)
+        {
+            if (item.Status == "ongewijzigd") continue;
+            if (item.Status == "niet-inplanbaar") continue;
+            if (item.Status == "onbekend-team") continue;
+            if (item.WedstrijdCode == null) continue;
+            if (item.OptimaalVeld == null || item.OptimaalTijd == null) continue;
+            try
+            {
+                int updated = await PlannerDataAccess.UpdateAllstarsMatchAsync(item.WedstrijdCode.Value, item.OptimaalVeld, item.OptimaalTijd);
+                if (updated > 0) response.Bijgewerkt++;
+                else { response.Mislukt++; response.Fouten.Add($"{item.Wedstrijd}: wedstrijdcode {item.WedstrijdCode} niet gevonden"); }
+            }
+            catch (Exception ex)
+            {
+                response.Mislukt++;
+                log.LogError(ex, "AutoPlan: fout bij toepassen wedstrijd {Wedstrijd} ({Code})", item.Wedstrijd, item.WedstrijdCode);
+                response.Fouten.Add($"{item.Wedstrijd}: technische fout bij toepassen — zie logs");
+            }
+        }
+        log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
+            request.Datum, response.Bijgewerkt, response.Mislukt);
+        return response;
+    }
+
+    /// <summary>
+    /// Speeltijden van de opgevraagde club; is die tabel voor deze club leeg, dan de primaire club.
+    /// De terugval bestaat omdat zonder speeltijden geen enkele wedstrijd een duur of veldafmeting
+    /// heeft en de hele dag als "onbekend-team" terugkomt (#573/#666).
+    /// </summary>
+    private static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenMetTerugvalAsync(string clubCode)
+    {
+        var eigen = await PlannerDataAccess.GetSpeeltijdenLookupAsync(clubCode);
+        if (eigen.Count > 0) return eigen;
+        return await PlannerDataAccess.GetSpeeltijdenLookupAsync();
+    }
+
+    /// <summary>
+    /// Laadt alle databronnen die AutoPlanAsync nodig heeft vóórdat het planningsdoel per wedstrijd
+    /// bepaald kan worden: wedstrijden, velden/beschikbaarheid (ALLSTARS-testmodus heeft een eigen,
+    /// vaste beschikbaarheid — #573/#666), speeltijden (met terugval op de primaire club),
+    /// teamvoorkeurtijden voor deze speeldag, teambuffers en teamvoorkeursvelden (beide expliciet op
+    /// de opgevraagde club, géén terugval — #666: een leeg resultaat betekent "dit team heeft geen
+    /// regels", niet "kijk bij de andere club").
+    /// </summary>
+    private static async Task<(
+        List<WedstrijdRaw> AlleWedstrijden,
+        List<VeldInfo> Velden,
+        List<VeldBeschikbaarheidInfo> Beschikbaarheid,
+        Dictionary<string, Speeltijd> Speeltijden,
+        Dictionary<int, VeldInfo> VeldInfoLookup,
+        Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> VoorkeurLookup,
+        Dictionary<string, (int bufferVoor, int bufferNa)> TeamBuffers,
+        Dictionary<string, TeamVoorkeurVeld> VoorkeurVelden)>
+        LoadAutoPlanBronnenAsync(DateOnly datum, string clubCode, bool isAllstars)
+    {
+        var alleWedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
+
+        List<VeldInfo> velden;
+        List<VeldBeschikbaarheidInfo> beschikbaarheid;
+        if (isAllstars)
+        {
+            velden = await PlannerDataAccess.GetAllstarsVeldenAsync();
+            beschikbaarheid = velden.Select(v => new VeldBeschikbaarheidInfo
+            {
+                VeldNummer = v.VeldNummer,
+                BeschikbaarVanaf = new TimeOnly(8, 0),
+                BeschikbaarTot = new TimeOnly(22, 0),
+                GebruikZonsondergang = false
+            }).ToList();
+        }
+        else
+        {
+            velden = await PlannerDataAccess.GetVeldenAsync(clubCode);
+            beschikbaarheid = await PlannerDataAccess.GetAvailableFieldsAsync(datum, clubCode);
+        }
+
+        // Speeltijden per club, met terugval op de primaire club (#573/#666): oudere databases hebben
+        // nog geen ALLSTARS-rijen, en zonder speeltijden is géén enkele wedstrijd inplanbaar.
+        var speeltijden    = await GetSpeeltijdenMetTerugvalAsync(clubCode);
+        var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
+        int dagVanWeek     = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
+        var voorkeurLookup = await PlannerDataAccess.GetVoorkeurTijdenLookupAsync(dagVanWeek, clubCode);
+
+        // TeamRegels expliciet op de opgevraagde club (#666). Dit stond eerder op de primaire club met
+        // de aanname "er zijn geen ALLSTARS-rijen" (#573). Die aanname klopt niet meer: de demomodus
+        // heeft inmiddels eigen teamregels, en die werden daardoor stilzwijgend genegeerd — buffers en
+        // voorkeursveld hadden in testmodus dus geen effect, precies de modus waarin je het test.
+        // Géén terugval hier: een leeg resultaat betekent gewoon "dit team heeft geen regels".
+        var teamBuffers    = await PlannerDataAccess.GetAllTeamBuffersAsync(clubCode);
+        var voorkeurVelden = await PlannerDataAccess.GetAllTeamVoorkeurVeldenAsync(clubCode);
+
+        return (alleWedstrijden, velden, beschikbaarheid, speeltijden, veldInfoLookup, voorkeurLookup, teamBuffers, voorkeurVelden);
+    }
+
+    /// <summary>
+    /// Bouwt de uiteindelijke <see cref="AutoPlanResponse"/> uit de al ingeplande <paramref name="items"/>:
+    /// telstatistieken, de geschatte eindtijd, de huidige-versus-optimale bezettingslijst en de bijbehorende
+    /// HTML-weergaven. Pure nabewerking — raakt geen scheduler-state.
+    /// </summary>
+    private static AutoPlanResponse BuildAutoPlanResponse(
+        string requestDatum, DateOnly datum, List<AutoPlanWedstrijdItem> items, List<VeldInfo> velden, ILogger log)
+    {
         int zonderVeld     = items.Count(i => !i.HeeftVeld);
         int zonderTijd     = items.Count(i => !i.HeeftTijd);
         int teWijzigen     = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
@@ -208,6 +366,8 @@ internal static class AutoPlanService
             .Where(i => i.HeeftVeld && i.HeeftTijd && i.OptimaalVeldNummer.HasValue)
             .Select(i =>
             {
+                // Sportlink-veldnamen kunnen een subpositie-suffix bevatten (bv. "veld 3 A"); de eerste
+                // twee spatie-gescheiden tokens geven altijd "veld <nummer>", vandaar Take(2).LastOrDefault().
                 var huidigVeldNr = velden.FirstOrDefault(v =>
                     NormaliseerVeld(v.VeldNaam) == NormaliseerVeld(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
                 if (huidigVeldNr == 0) return null;
@@ -249,96 +409,12 @@ internal static class AutoPlanService
 
         return new AutoPlanResponse
         {
-            Datum = request.Datum, TotaalWedstrijden = items.Count,
+            Datum = requestDatum, TotaalWedstrijden = items.Count,
             ZonderVeld = zonderVeld, ZonderTijd = zonderTijd,
             TeWijzigen = teWijzigen, NietInplanbaar = nietInplanbaar,
             GeschatteEindTijd = eindTijd, Wedstrijden = items,
             HuidigeHtml = huidigeHtml, OptimaleHtml = optimaleHtml
         };
-    }
-
-    // Lichtgewicht "wat staat er nu gepland"-weergave (#566): geen FieldScheduler-berekening,
-    // alleen de ruwe wedstrijddata die AutoPlanAsync anders ook al zonder optimalisatie zou tonen.
-    // Duur/veldafmeting komen uit de goedkope speeltijden-lookup (één simpele SELECT) — niet uit
-    // de FieldScheduler, die pas nodig is zodra er ook daadwerkelijk geoptimaliseerd wordt.
-    public static async Task<List<VeldbezettingItem>> VeldbezettingAsync(DateOnly datum, string clubCode)
-    {
-        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
-        var wedstrijden = await PlannerDataAccess.GetAllMatchesForDatumAsync(datum, clubCode);
-        // Eigen club met terugval op de primaire club — zelfde bron als AutoPlanAsync (#573/#666),
-        // zodat de duur die hier getoond wordt overeenkomt met waarmee de planner rekent.
-        var speeltijden = await GetSpeeltijdenMetTerugvalAsync(clubCode);
-
-        return wedstrijden
-            .Select(w =>
-            {
-                var leeftijd = (!string.IsNullOrWhiteSpace(w.LeeftijdsCategorie))
-                    ? w.LeeftijdsCategorie
-                    : (isAllstars ? ExtractLeeftijdFromTeamNaam(w.TeamNaam) ?? "" : "");
-                speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
-
-                return new VeldbezettingItem
-                {
-                    WedstrijdCode = w.WedstrijdCode,
-                    Wedstrijd = w.Wedstrijd,
-                    TeamNaam = w.TeamNaam,
-                    Uitteam = w.Uitteam,
-                    AanvangsTijd = w.AanvangsTijd,
-                    Veld = w.Veld,
-                    Competitiesoort = w.Competitiesoort,
-                    LeeftijdsCategorie = w.LeeftijdsCategorie,
-                    DuurMinuten = speeltijdInfo?.WedstrijdTotaal ?? 0,
-                    Veldafmeting = speeltijdInfo?.Veldafmeting ?? 1.00m
-                };
-            })
-            .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
-            .ToList();
-    }
-
-    public static async Task<AutoPlanToepassenResponse> AutoPlanToepassenAsync(
-        AutoPlanToepassenRequest request, string clubCode, ILogger log)
-    {
-        if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Toepassen is alleen beschikbaar in testmodus (ALLSTARS).");
-
-        var planResponse = await AutoPlanAsync(new AutoPlanRequest { Datum = request.Datum, BufferMinuten = request.BufferMinuten }, clubCode, log);
-        var response = new AutoPlanToepassenResponse();
-
-        foreach (var item in planResponse.Wedstrijden)
-        {
-            if (item.Status == "ongewijzigd") continue;
-            if (item.Status == "niet-inplanbaar") continue;
-            if (item.Status == "onbekend-team") continue;
-            if (item.WedstrijdCode == null) continue;
-            if (item.OptimaalVeld == null || item.OptimaalTijd == null) continue;
-            try
-            {
-                int updated = await PlannerDataAccess.UpdateAllstarsMatchAsync(item.WedstrijdCode.Value, item.OptimaalVeld, item.OptimaalTijd);
-                if (updated > 0) response.Bijgewerkt++;
-                else { response.Mislukt++; response.Fouten.Add($"{item.Wedstrijd}: wedstrijdcode {item.WedstrijdCode} niet gevonden"); }
-            }
-            catch (Exception ex)
-            {
-                response.Mislukt++;
-                log.LogError(ex, "AutoPlan: fout bij toepassen wedstrijd {Wedstrijd} ({Code})", item.Wedstrijd, item.WedstrijdCode);
-                response.Fouten.Add($"{item.Wedstrijd}: technische fout bij toepassen — zie logs");
-            }
-        }
-        log.LogInformation("AutoPlan toepassen {Datum}: {Bijgewerkt} bijgewerkt, {Mislukt} mislukt",
-            request.Datum, response.Bijgewerkt, response.Mislukt);
-        return response;
-    }
-
-    /// <summary>
-    /// Speeltijden van de opgevraagde club; is die tabel voor deze club leeg, dan de primaire club.
-    /// De terugval bestaat omdat zonder speeltijden geen enkele wedstrijd een duur of veldafmeting
-    /// heeft en de hele dag als "onbekend-team" terugkomt (#573/#666).
-    /// </summary>
-    private static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenMetTerugvalAsync(string clubCode)
-    {
-        var eigen = await PlannerDataAccess.GetSpeeltijdenLookupAsync(clubCode);
-        if (eigen.Count > 0) return eigen;
-        return await PlannerDataAccess.GetSpeeltijdenLookupAsync();
     }
 
     // ── Planningsdoel en pure helpers (#666) ──

@@ -79,7 +79,7 @@ internal static class AutoPlanService
         // Speeltijden per club, met terugval op de primaire club (#573/#666).
         var speeltijden = await GetSpeeltijdenMetTerugvalAsync(connectionString, clubCode);
         var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
-        int dagVanWeek = datum.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)datum.DayOfWeek;
+        int dagVanWeek = IsoDagVanWeek(datum);
         var voorkeurLookup = await PlannerSettingsRepository.GetVoorkeurTijdenLookupAsync(connectionString, dagVanWeek, clubCode);
 
         // TeamRegels expliciet op de opgevraagde club (#666) — géén terugval: leeg betekent
@@ -101,6 +101,72 @@ internal static class AutoPlanService
             .ToList();
 
         var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
+        var items = PlanWedstrijden(metDoel, scheduler, speeltijden, veldInfoLookup, teamBuffers, buffer);
+
+        int zonderVeld = items.Count(i => !i.HeeftVeld);
+        int zonderTijd = items.Count(i => !i.HeeftTijd);
+        int teWijzigen = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
+        int nietInplanbaar = items.Count(i => i.Status == "niet-inplanbaar");
+
+        var eindTijden = items
+            .Where(i => i.OptimaalTijd != null && i.DuurMinuten > 0 && TimeOnly.TryParse(i.OptimaalTijd, out _))
+            .Select(i => TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten)).ToList();
+        string? eindTijd = eindTijden.Count > 0 ? eindTijden.Max().ToString("HH:mm") : null;
+
+        var huidigeOccupations = items
+            .Where(i => i.HeeftVeld && i.HeeftTijd && i.OptimaalVeldNummer.HasValue)
+            .Select(i =>
+            {
+                var huidigVeldNr = velden.FirstOrDefault(v =>
+                    VeldNormalisatie.Normaliseer(v.VeldNaam) == VeldNormalisatie.Normaliseer(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
+                if (huidigVeldNr == 0) return null;
+                if (!TimeOnly.TryParse(i.HuidigeTijd, out var aTime)) return null;
+                return new BestaandeWedstrijd
+                {
+                    Datum = datum, AanvangsTijd = aTime, EindTijd = aTime.AddMinutes(i.DuurMinuten),
+                    VeldNummer = huidigVeldNr, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                    LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Sportlink"
+                };
+            }).Where(o => o != null).Cast<BestaandeWedstrijd>().ToList();
+
+        var optimaleOccupations = items
+            .Where(i => i.OptimaalVeldNummer.HasValue && i.OptimaalTijd != null && TimeOnly.TryParse(i.OptimaalTijd, out _))
+            .Select(i => new BestaandeWedstrijd
+            {
+                Datum = datum, AanvangsTijd = TimeOnly.Parse(i.OptimaalTijd!),
+                EindTijd = TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten),
+                VeldNummer = i.OptimaalVeldNummer!.Value, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
+                VeldSubpositie = i.OptimaalVeld?.Contains(' ') == true ? i.OptimaalVeld.Split(' ').LastOrDefault() : null,
+                LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Optimaal"
+            }).ToList();
+
+        var htmlInstellingen = BouwHtmlInstellingen();
+        string huidigeHtml = PlannerHtmlGenerator.GenereerHtml(datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig", htmlInstellingen);
+        string optimaleHtml = PlannerHtmlGenerator.GenereerHtml(datum, optimaleOccupations, new List<OptimalisatieSuggestie>(), velden, "optimaal", htmlInstellingen);
+
+        log.LogInformation("AutoPlan {Datum}: {Totaal} wedstrijden, {Wijzigen} te wijzigen, eindtijd {Eind}",
+            datum, items.Count, teWijzigen, eindTijd ?? "?");
+
+        return new AutoPlanResponse
+        {
+            Datum = request.Datum, TotaalWedstrijden = items.Count,
+            ZonderVeld = zonderVeld, ZonderTijd = zonderTijd,
+            TeWijzigen = teWijzigen, NietInplanbaar = nietInplanbaar,
+            GeschatteEindTijd = eindTijd, Wedstrijden = items,
+            HuidigeHtml = huidigeHtml, OptimaleHtml = optimaleHtml
+        };
+    }
+
+    /// <summary>
+    /// Wijst elke wedstrijd in <paramref name="metDoel"/> (al gesorteerd op planningsrangorde) een
+    /// slot toe via de gedeelde <see cref="FieldScheduler"/> — geëxtraheerd uit
+    /// <see cref="AutoPlanAsync"/> als de meest zelfstandige sub-stap.
+    /// </summary>
+    private static List<AutoPlanWedstrijdItem> PlanWedstrijden(
+        List<(WedstrijdRaw Wedstrijd, PlanDoel Doel)> metDoel, FieldScheduler scheduler,
+        Dictionary<string, Speeltijd> speeltijden, Dictionary<int, VeldInfo> veldInfoLookup,
+        Dictionary<string, (int bufferVoor, int bufferNa)> teamBuffers, int buffer)
+    {
         var items = new List<AutoPlanWedstrijdItem>();
 
         foreach (var (wedstrijd, doel) in metDoel)
@@ -215,58 +281,7 @@ internal static class AutoPlanService
             });
         }
 
-        int zonderVeld = items.Count(i => !i.HeeftVeld);
-        int zonderTijd = items.Count(i => !i.HeeftTijd);
-        int teWijzigen = items.Count(i => i.Status is "nieuw-slot" or "wijziging");
-        int nietInplanbaar = items.Count(i => i.Status == "niet-inplanbaar");
-
-        var eindTijden = items
-            .Where(i => i.OptimaalTijd != null && i.DuurMinuten > 0 && TimeOnly.TryParse(i.OptimaalTijd, out _))
-            .Select(i => TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten)).ToList();
-        string? eindTijd = eindTijden.Count > 0 ? eindTijden.Max().ToString("HH:mm") : null;
-
-        var huidigeOccupations = items
-            .Where(i => i.HeeftVeld && i.HeeftTijd && i.OptimaalVeldNummer.HasValue)
-            .Select(i =>
-            {
-                var huidigVeldNr = velden.FirstOrDefault(v =>
-                    VeldNormalisatie.Normaliseer(v.VeldNaam) == VeldNormalisatie.Normaliseer(i.HuidigeVeld?.Split(' ').Take(2).LastOrDefault() ?? ""))?.VeldNummer ?? 0;
-                if (huidigVeldNr == 0) return null;
-                if (!TimeOnly.TryParse(i.HuidigeTijd, out var aTime)) return null;
-                return new BestaandeWedstrijd
-                {
-                    Datum = datum, AanvangsTijd = aTime, EindTijd = aTime.AddMinutes(i.DuurMinuten),
-                    VeldNummer = huidigVeldNr, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
-                    LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Sportlink"
-                };
-            }).Where(o => o != null).Cast<BestaandeWedstrijd>().ToList();
-
-        var optimaleOccupations = items
-            .Where(i => i.OptimaalVeldNummer.HasValue && i.OptimaalTijd != null && TimeOnly.TryParse(i.OptimaalTijd, out _))
-            .Select(i => new BestaandeWedstrijd
-            {
-                Datum = datum, AanvangsTijd = TimeOnly.Parse(i.OptimaalTijd!),
-                EindTijd = TimeOnly.Parse(i.OptimaalTijd!).AddMinutes(i.DuurMinuten),
-                VeldNummer = i.OptimaalVeldNummer!.Value, VeldDeelGebruik = i.Veldafmeting > 0 ? i.Veldafmeting : 1m,
-                VeldSubpositie = i.OptimaalVeld?.Contains(' ') == true ? i.OptimaalVeld.Split(' ').LastOrDefault() : null,
-                LeeftijdsCategorie = i.LeeftijdsCategorie, TeamNaam = i.TeamNaam, Wedstrijd = i.Wedstrijd, Bron = "Optimaal"
-            }).ToList();
-
-        var htmlInstellingen = BouwHtmlInstellingen();
-        string huidigeHtml = PlannerHtmlGenerator.GenereerHtml(datum, huidigeOccupations, new List<OptimalisatieSuggestie>(), velden, "huidig", htmlInstellingen);
-        string optimaleHtml = PlannerHtmlGenerator.GenereerHtml(datum, optimaleOccupations, new List<OptimalisatieSuggestie>(), velden, "optimaal", htmlInstellingen);
-
-        log.LogInformation("AutoPlan {Datum}: {Totaal} wedstrijden, {Wijzigen} te wijzigen, eindtijd {Eind}",
-            datum, items.Count, teWijzigen, eindTijd ?? "?");
-
-        return new AutoPlanResponse
-        {
-            Datum = request.Datum, TotaalWedstrijden = items.Count,
-            ZonderVeld = zonderVeld, ZonderTijd = zonderTijd,
-            TeWijzigen = teWijzigen, NietInplanbaar = nietInplanbaar,
-            GeschatteEindTijd = eindTijd, Wedstrijden = items,
-            HuidigeHtml = huidigeHtml, OptimaleHtml = optimaleHtml
-        };
+        return items;
     }
 
     /// <summary>
@@ -365,6 +380,9 @@ internal static class AutoPlanService
             ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in public.appsettings");
         return await PlannerSettingsRepository.GetSpeeltijdenLookupAsync(connectionString, primair);
     }
+
+    /// <summary>ISO-weekdag (1=maandag..7=zondag) — <see cref="DayOfWeek"/> telt zondag als 0.</summary>
+    private static int IsoDagVanWeek(DateOnly datum) => (int)datum.DayOfWeek == 0 ? 7 : (int)datum.DayOfWeek;
 
     private static string? ExtractLeeftijdFromTeamNaam(string? teamNaam)
     {

@@ -30,8 +30,7 @@ internal static class AdminTeamAliassenRepository
                 ORDER BY CASE WHEN ta.[Status] = 'pending' THEN 0 ELSE 1 END,
                          ta.[mta_inserted] DESC";
 
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Limit", limit);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
@@ -62,8 +61,7 @@ internal static class AdminTeamAliassenRepository
 
     internal static async Task<(int pending, int validated, int rejected)> GetStatsAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT
                 SUM(CASE WHEN [Status] = 'pending'   THEN 1 ELSE 0 END),
@@ -82,8 +80,7 @@ internal static class AdminTeamAliassenRepository
     /// <summary>Zet de status van één alias. Retourneert het aantal geraakte rijen (0 = niet gevonden).</summary>
     internal static async Task<int> ZetStatusAsync(int id, string status, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[TeamAliassen]
             SET [Status] = @Status, [mta_modified] = GETUTCDATE()
@@ -96,8 +93,7 @@ internal static class AdminTeamAliassenRepository
 
     internal static async Task<int> DeleteAsync(int id, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "DELETE FROM [dbo].[TeamAliassen] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id", id);

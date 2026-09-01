@@ -24,17 +24,31 @@ public sealed record TeamCandidate(int TeamId, string Teamnaam, string? Leeftijd
 /// </remarks>
 internal sealed class TeamCandidateRepository(string connectionString)
 {
+    private async Task<NpgsqlConnection> OpenConnectionAsync()
+    {
+        var conn = new NpgsqlConnection(connectionString);
+        try
+        {
+            await conn.OpenAsync();
+            return conn;
+        }
+        catch
+        {
+            await conn.DisposeAsync();
+            throw;
+        }
+    }
+
     internal async Task<TeamCandidate?> FindValidatedAliasAsync(
         string clubCode, string ruweTekst, string genormaliseerdeSleutel)
     {
-        await using var conn = new NpgsqlConnection(connectionString);
-        await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand(@"
+        await using var conn = await OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand($@"
             SELECT t.teamid, t.teamnaam, t.leeftijdscategorie
             FROM public.teamaliassen a
             INNER JOIN public.teams t ON t.teamid = a.teamid
             WHERE a.clubcode = @clubcode
-              AND a.status = 'validated'
+              AND a.status = '{TeamAliasConstanten.StatusValidated}'
               AND t.isactief = TRUE
               AND (UPPER(a.ruwetekst) = UPPER(@ruwetekst) OR UPPER(a.ruwetekstgenormaliseerd) = UPPER(@sleutel))
             ORDER BY CASE WHEN UPPER(a.ruwetekst) = UPPER(@ruwetekst) THEN 0 ELSE 1 END
@@ -49,8 +63,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
 
     internal async Task<TeamCandidate?> FindExactTeamAsync(string clubCode, string genormaliseerdeSleutel)
     {
-        await using var conn = new NpgsqlConnection(connectionString);
-        await conn.OpenAsync();
+        await using var conn = await OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(@"
             SELECT teamid, teamnaam, leeftijdscategorie
             FROM public.teams
@@ -70,8 +83,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
         if (componenten.LeeftijdNummer is null || componenten.TeamNummer is null)
             return [];
 
-        await using var conn = new NpgsqlConnection(connectionString);
-        await conn.OpenAsync();
+        await using var conn = await OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(@"
             SELECT teamid, teamnaam, leeftijdscategorie
             FROM public.teams
@@ -93,8 +105,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
 
     internal async Task<bool> HeeftActieveTeamsAsync(string clubCode)
     {
-        await using var conn = new NpgsqlConnection(connectionString);
-        await conn.OpenAsync();
+        await using var conn = await OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(
             "SELECT 1 FROM public.teams WHERE clubcode = @clubcode AND isactief = TRUE LIMIT 1", conn);
         cmd.Parameters.AddWithValue("clubcode", clubCode);

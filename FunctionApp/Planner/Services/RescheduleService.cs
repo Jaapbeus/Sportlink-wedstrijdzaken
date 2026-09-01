@@ -53,25 +53,13 @@ internal static class RescheduleService
         var allTeamRules = await PlannerDataAccess.GetTeamRulesForTeamsAsync(
             occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), clubCode);
 
-        TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date);
-        if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
-        foreach (var field in availableFields)
-            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                field.BeschikbaarTot = sunset.Value;
+        var sunset = await AvailabilityService.BepaalEnPasZonsondergangToeAsync(date, availableFields);
 
         TimeOnly? preferredTime = null;
         if (!string.IsNullOrEmpty(request.VoorkeurTijd) && TimeOnly.TryParse(request.VoorkeurTijd, out var parsed))
             preferredTime = parsed;
 
-        TimeOnly dagdeelVan = new(8, 30);
-        TimeOnly dagdeelTot = new(22, 0);
-        if (!string.IsNullOrEmpty(request.Dagdeel))
-            switch (request.Dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": dagdeelVan = new(8, 30); dagdeelTot = new(12, 0); break;
-                case "middag":  dagdeelVan = new(12, 0); dagdeelTot = new(17, 0); break;
-                case "avond":   dagdeelVan = new(17, 0); dagdeelTot = new(22, 0); break;
-            }
+        (TimeOnly dagdeelVan, TimeOnly dagdeelTot) = AvailabilityService.BepaalDagdeelVenster(request.Dagdeel, new TimeOnly(8, 30), new TimeOnly(22, 0));
 
         if (preferredTime.HasValue)
         {
@@ -88,9 +76,47 @@ internal static class RescheduleService
                                       veldFractie, duurMinuten, dagdeelVan, dagdeelTot, sunset);
         candidates = candidates.Where(c => !(c.VeldNummer == matchVeldNr && c.AanvangsTijd == matchStart)).ToList();
 
-        bool vervroegen = string.Equals(request.Richting, "vervroegen", StringComparison.OrdinalIgnoreCase);
-        bool verlaten   = string.Equals(request.Richting, "verlaten",   StringComparison.OrdinalIgnoreCase);
-        int neemAantal  = response.Beschikbaar ? 2 : 3;
+        int neemAantal;
+        (candidates, neemAantal) = BepaalKandidatenVoorRichting(request.Richting, preferredTime, candidates,
+            availableFields, occupations, allTeamRules, teamRules, veldFractie, duurMinuten, matchStart,
+            matchVeldNr, dagdeelVan, response.Beschikbaar);
+
+        foreach (var c in candidates.Take(neemAantal))
+        {
+            var slot = PlannerShared.ToSlotToewijzing(date, c, duurMinuten, velden);
+            if (!response.Alternatieven.Any(a => a.AanvangsTijd == slot.AanvangsTijd && a.VeldNummer == slot.VeldNummer))
+                response.Alternatieven.Add(slot);
+        }
+
+        if (response.Alternatieven.Count == 0)
+            response.Reden = $"Geen alternatieve tijdsloten gevonden op {date.ToString("dddd d MMMM", PlannerShared.NL)}.";
+        else
+            response.Beschikbaar = true;
+
+        PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
+        return response;
+    }
+
+    // ── Privé helpers (alleen voor herplan) ──
+
+    /// <summary>
+    /// Bepaalt de kandidatenlijst en het aantal alternatieven dat wordt getoond, afhankelijk van
+    /// <paramref name="richting"/>: "vervroegen" zoekt het laatst passende slot per veld vóór de
+    /// huidige aanvangstijd, "verlaten" houdt per veld alleen het eerstvolgende slot ná de huidige
+    /// aanvangstijd over, en zonder richting sorteert een expliciete voorkeurstijd de bestaande
+    /// kandidaten op afstand daartoe. Puur een berekening — geen response-mutatie of early-return.
+    /// </summary>
+    private static (List<CandidateSlot> Candidates, int NeemAantal) BepaalKandidatenVoorRichting(
+        string? richting, TimeOnly? preferredTime, List<CandidateSlot> candidates,
+        List<VeldBeschikbaarheidInfo> availableFields, List<BestaandeWedstrijd> occupations,
+        Dictionary<string, List<TeamRegel>> allTeamRules, List<TeamRegel> teamRules,
+        decimal veldFractie, int duurMinuten, TimeOnly matchStart, int matchVeldNr,
+        TimeOnly dagdeelVan, bool responseAlBeschikbaar)
+    {
+        int neemAantal = responseAlBeschikbaar ? 2 : 3;
+
+        bool vervroegen = string.Equals(richting, "vervroegen", StringComparison.OrdinalIgnoreCase);
+        bool verlaten   = string.Equals(richting, "verlaten",   StringComparison.OrdinalIgnoreCase);
 
         if (vervroegen)
         {
@@ -116,23 +142,8 @@ internal static class RescheduleService
                 .ToList();
         }
 
-        foreach (var c in candidates.Take(neemAantal))
-        {
-            var slot = PlannerShared.ToSlotToewijzing(date, c, duurMinuten, velden);
-            if (!response.Alternatieven.Any(a => a.AanvangsTijd == slot.AanvangsTijd && a.VeldNummer == slot.VeldNummer))
-                response.Alternatieven.Add(slot);
-        }
-
-        if (response.Alternatieven.Count == 0)
-            response.Reden = $"Geen alternatieve tijdsloten gevonden op {date.ToString("dddd d MMMM", PlannerShared.NL)}.";
-        else
-            response.Beschikbaar = true;
-
-        PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
-        return response;
+        return (candidates, neemAantal);
     }
-
-    // ── Privé helper (alleen voor herplan) ──
 
     private static List<CandidateSlot> FindLatestFitPerField(
         List<VeldBeschikbaarheidInfo> availableFields,

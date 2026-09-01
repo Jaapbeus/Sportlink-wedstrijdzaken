@@ -48,8 +48,8 @@ internal sealed class EmailBatchFilterService
         {
             try
             {
-                await graphService.EnsureMasterCategoryAsync("Geen AI antwoord", "preset0");
-                await graphService.SetCategoriesAsync(email.MessageId, "Geen AI antwoord");
+                await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+                await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
                 await graphService.MarkAsReadAsync(email.MessageId);
                 log.LogInformation("Email {MessageId} buiten scope — gelabeld in Outlook, database slaapt", email.MessageId);
             }

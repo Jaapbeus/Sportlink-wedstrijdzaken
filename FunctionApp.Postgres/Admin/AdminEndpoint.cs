@@ -11,6 +11,9 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 internal static class AdminEndpoint
 {
+    internal const int OutboundHttpTimeoutSeconds = 10;
+    internal const string OutboundUserAgent = "SportlinkAdmin/2.0";
+
     internal static async Task<IActionResult> ExecuteAsync(
         HttpRequest req,
         ILogger log,

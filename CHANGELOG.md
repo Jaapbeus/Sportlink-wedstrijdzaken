@@ -18,6 +18,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Interne onderhoudbaarheidsslag over de hele C#-codebase (issue 953).** Geen zichtbare
+  wijziging voor beheerders — puur intern: lange methodes opgesplitst in kleinere, herkenbare
+  stappen (o.a. `AdminSettingsFunction.Put`, `AdminTeambegeleidingFunction.Doorsturen`,
+  `PlannerHtmlGenerator.GenereerHtml`, `AutoPlanService.AutoPlanAsync`), herhaalde
+  SQL-verbindings- en rij-mapping-logica binnen de Admin-repositories samengevoegd in gedeelde
+  helpers, magic strings/getallen benoemd als constanten, en enkele stille `catch`-blokken
+  loggen nu een waarschuwing in plaats van de fout te slikken. Uitgevoerd per module met een
+  onafhankelijke tweede review vóór toepassing; volledige build en testsuite (576 tests) blijven
+  groen.
+
 ### Fixed
 - **Drie controles in de zelftest konden nooit slagen of stonden onterecht uit (issue 949).** Twee
   schermen — de dagplanning en de begeleidingspagina — werden overgeslagen wegens een probleem dat

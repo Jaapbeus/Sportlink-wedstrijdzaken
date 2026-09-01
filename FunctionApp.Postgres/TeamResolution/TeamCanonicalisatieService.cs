@@ -145,39 +145,8 @@ internal static class TeamCanonicalisatieService
     private static async Task<(int SleutelsBijgewerkt, int DubbelenOpgeruimd)> MigreerSleuteldriftAsync(
         NpgsqlConnection conn, string clubCode, ILogger log)
     {
-        var rijen = new List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)>();
-        await using (var cmd = new NpgsqlCommand(@"
-            SELECT teamid, teamnaam, teamnaamgenormaliseerd, leeftijdnummer, teamnummer
-              FROM public.teams WHERE clubcode = @clubcode", conn))
-        {
-            cmd.Parameters.AddWithValue("clubcode", clubCode);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                rijen.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2),
-                           reader.IsDBNull(3) ? null : reader.GetInt32(3),
-                           reader.IsDBNull(4) ? null : reader.GetInt32(4)));
-        }
-
-        // LeeftijdNummer/TeamNummer worden hier meegenomen omdat ze uit dezelfde normalisatie komen:
-        // een sleutel zonder streepje leverde geen ontleding op, dus stonden ze op NULL — en dan geeft
-        // FindKandidatenAsync nul kandidaten en valt het hele kandidaten-/disambiguatiepad stil.
-        var doelen = rijen
-            .Select(r =>
-            {
-                var componenten = TeamNaamNormalisatie.Parse(r.Teamnaam, clubCode);
-                return (r.TeamId, r.Teamnaam, r.OudeSleutel, r.OudeLeeftijd, r.OudTeamNummer,
-                        NieuweSleutel: TeamNaamNormalisatie.NormaliseerVoorVergelijking(r.Teamnaam, clubCode),
-                        NieuweLeeftijd: componenten?.LeeftijdNummer,
-                        NieuwTeamNummer: componenten?.TeamNummer);
-            })
-            .Where(r => r.NieuweSleutel.Length > 0)
-            .ToList();
-
-        static bool IsOngewijzigd((int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd,
-            int? OudTeamNummer, string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer) r)
-            => r.OudeSleutel == r.NieuweSleutel
-               && r.OudeLeeftijd == r.NieuweLeeftijd
-               && r.OudTeamNummer == r.NieuwTeamNummer;
+        var rijen = await LoadTeamRowsAsync(conn, clubCode);
+        var doelen = BerekenSleutelMigratieDoelen(rijen, clubCode);
 
         if (doelen.All(IsOngewijzigd))
             return (0, 0);
@@ -186,48 +155,9 @@ internal static class TeamCanonicalisatieService
 
         foreach (var groep in doelen.GroupBy(r => r.NieuweSleutel, StringComparer.Ordinal))
         {
-            // De rij die deze sleutel al heeft is de winnaar: dan hoeft er niets te verschuiven.
-            // Anders de oudste rij, zodat de uitkomst deterministisch is.
-            var kandidaten = groep.ToList();
-            var winnaar = kandidaten.FirstOrDefault(
-                r => r.OudeSleutel == r.NieuweSleutel,
-                kandidaten.OrderBy(r => r.TeamId).First());
-
-            foreach (var verliezer in kandidaten.Where(r => r.TeamId != winnaar.TeamId))
-            {
-                await HangAliassenOmAsync(conn, clubCode, verliezer.TeamId, winnaar.TeamId);
-                await using var deleteCmd = new NpgsqlCommand(
-                    "DELETE FROM public.teams WHERE teamid = @teamid", conn);
-                deleteCmd.Parameters.AddWithValue("teamid", verliezer.TeamId);
-                await deleteCmd.ExecuteNonQueryAsync();
-                opgeruimd++;
-
-                log.LogInformation(
-                    "TEAMS CANONICALISATIE - dubbele schrijfwijze '{Dubbel}' samengevoegd met '{Winnaar}' "
-                    + "(sleutel {Sleutel})", verliezer.Teamnaam, winnaar.Teamnaam, winnaar.NieuweSleutel);
-            }
-
-            if (IsOngewijzigd(winnaar)) continue;
-
-            await using var updateCmd = new NpgsqlCommand(@"
-                UPDATE public.teams
-                   SET teamnaamgenormaliseerd = @nieuwesleutel,
-                       leeftijdnummer         = @leeftijdnummer,
-                       teamnummer             = @teamnummer,
-                       mta_modified           = NOW()
-                 WHERE teamid = @teamid", conn);
-            updateCmd.Parameters.AddWithValue("nieuwesleutel", winnaar.NieuweSleutel);
-            updateCmd.Parameters.AddWithValue("leeftijdnummer", (object?)winnaar.NieuweLeeftijd ?? DBNull.Value);
-            updateCmd.Parameters.AddWithValue("teamnummer", (object?)winnaar.NieuwTeamNummer ?? DBNull.Value);
-            updateCmd.Parameters.AddWithValue("teamid", winnaar.TeamId);
-            await updateCmd.ExecuteNonQueryAsync();
-            bijgewerkt++;
-
-            log.LogInformation(
-                "TEAMS CANONICALISATIE - sleutel gemigreerd voor '{Teamnaam}': {Oud} → {Nieuw} "
-                + "(leeftijd={Leeftijd}, teamnummer={TeamNummer})",
-                winnaar.Teamnaam, winnaar.OudeSleutel, winnaar.NieuweSleutel,
-                winnaar.NieuweLeeftijd, winnaar.NieuwTeamNummer);
+            var (groepBijgewerkt, groepOpgeruimd) = await VerwerkSleutelGroepAsync(conn, clubCode, groep, log);
+            bijgewerkt += groepBijgewerkt;
+            opgeruimd += groepOpgeruimd;
         }
 
         // Aliassen met bron='Sync' worden verderop toch bijgewerkt, maar geleerde en handmatig
@@ -238,6 +168,99 @@ internal static class TeamCanonicalisatieService
             log.LogInformation("TEAMS CANONICALISATIE - {Aantal} aliassleutels gemigreerd", aliasBijgewerkt);
 
         return (bijgewerkt, opgeruimd);
+    }
+
+    private static async Task<List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)>> LoadTeamRowsAsync(
+        NpgsqlConnection conn, string clubCode)
+    {
+        var rijen = new List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)>();
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT teamid, teamnaam, teamnaamgenormaliseerd, leeftijdnummer, teamnummer
+              FROM public.teams WHERE clubcode = @clubcode", conn);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            rijen.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2),
+                       reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                       reader.IsDBNull(4) ? null : reader.GetInt32(4)));
+        return rijen;
+    }
+
+    // LeeftijdNummer/TeamNummer worden hier meegenomen omdat ze uit dezelfde normalisatie komen:
+    // een sleutel zonder streepje leverde geen ontleding op, dus stonden ze op NULL — en dan geeft
+    // FindKandidatenAsync nul kandidaten en valt het hele kandidaten-/disambiguatiepad stil.
+    private static List<SleutelMigratieDoel> BerekenSleutelMigratieDoelen(
+        List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)> rijen,
+        string clubCode)
+    {
+        return rijen
+            .Select(r =>
+            {
+                var componenten = TeamNaamNormalisatie.Parse(r.Teamnaam, clubCode);
+                return new SleutelMigratieDoel(r.TeamId, r.Teamnaam, r.OudeSleutel, r.OudeLeeftijd, r.OudTeamNummer,
+                    TeamNaamNormalisatie.NormaliseerVoorVergelijking(r.Teamnaam, clubCode),
+                    componenten?.LeeftijdNummer,
+                    componenten?.TeamNummer);
+            })
+            .Where(r => r.NieuweSleutel.Length > 0)
+            .ToList();
+    }
+
+    private static bool IsOngewijzigd(SleutelMigratieDoel r)
+        => r.OudeSleutel == r.NieuweSleutel
+           && r.OudeLeeftijd == r.NieuweLeeftijd
+           && r.OudTeamNummer == r.NieuwTeamNummer;
+
+    private static async Task<(int Bijgewerkt, int Opgeruimd)> VerwerkSleutelGroepAsync(
+        NpgsqlConnection conn, string clubCode,
+        IGrouping<string, SleutelMigratieDoel> groep,
+        ILogger log)
+    {
+        // De rij die deze sleutel al heeft is de winnaar: dan hoeft er niets te verschuiven.
+        // Anders de oudste rij, zodat de uitkomst deterministisch is.
+        var kandidaten = groep.ToList();
+        var winnaar = kandidaten.FirstOrDefault(
+            r => r.OudeSleutel == r.NieuweSleutel,
+            kandidaten.OrderBy(r => r.TeamId).First());
+
+        int opgeruimd = 0;
+        foreach (var verliezer in kandidaten.Where(r => r.TeamId != winnaar.TeamId))
+        {
+            await HangAliassenOmAsync(conn, clubCode, verliezer.TeamId, winnaar.TeamId);
+            await using var deleteCmd = new NpgsqlCommand(
+                "DELETE FROM public.teams WHERE teamid = @teamid", conn);
+            deleteCmd.Parameters.AddWithValue("teamid", verliezer.TeamId);
+            await deleteCmd.ExecuteNonQueryAsync();
+            opgeruimd++;
+
+            log.LogInformation(
+                "TEAMS CANONICALISATIE - dubbele schrijfwijze '{Dubbel}' samengevoegd met '{Winnaar}' "
+                + "(sleutel {Sleutel})", verliezer.Teamnaam, winnaar.Teamnaam, winnaar.NieuweSleutel);
+        }
+
+        if (IsOngewijzigd(winnaar))
+            return (0, opgeruimd);
+
+        await using var updateCmd = new NpgsqlCommand(@"
+            UPDATE public.teams
+               SET teamnaamgenormaliseerd = @nieuwesleutel,
+                   leeftijdnummer         = @leeftijdnummer,
+                   teamnummer             = @teamnummer,
+                   mta_modified           = NOW()
+             WHERE teamid = @teamid", conn);
+        updateCmd.Parameters.AddWithValue("nieuwesleutel", winnaar.NieuweSleutel);
+        updateCmd.Parameters.AddWithValue("leeftijdnummer", (object?)winnaar.NieuweLeeftijd ?? DBNull.Value);
+        updateCmd.Parameters.AddWithValue("teamnummer", (object?)winnaar.NieuwTeamNummer ?? DBNull.Value);
+        updateCmd.Parameters.AddWithValue("teamid", winnaar.TeamId);
+        await updateCmd.ExecuteNonQueryAsync();
+
+        log.LogInformation(
+            "TEAMS CANONICALISATIE - sleutel gemigreerd voor '{Teamnaam}': {Oud} → {Nieuw} "
+            + "(leeftijd={Leeftijd}, teamnummer={TeamNummer})",
+            winnaar.Teamnaam, winnaar.OudeSleutel, winnaar.NieuweSleutel,
+            winnaar.NieuweLeeftijd, winnaar.NieuwTeamNummer);
+
+        return (1, opgeruimd);
     }
 
     /// <summary>
@@ -397,7 +420,7 @@ internal static class TeamCanonicalisatieService
     private static async Task<bool> UpsertBronAliasAsync(
         NpgsqlConnection conn, string clubCode, string ruweTekst, string sleutel)
     {
-        await using var cmd = new NpgsqlCommand(@"
+        await using var cmd = new NpgsqlCommand($@"
             WITH doel AS (
                 SELECT teamid FROM public.teams
                  WHERE clubcode = @clubcode
@@ -408,14 +431,14 @@ internal static class TeamCanonicalisatieService
             geschreven AS (
                 INSERT INTO public.teamaliassen
                     (clubcode, ruwetekst, ruwetekstgenormaliseerd, teamid, bron, status)
-                SELECT @clubcode, @ruwetekst, @sleutel, doel.teamid, 'Sync', 'validated'
+                SELECT @clubcode, @ruwetekst, @sleutel, doel.teamid, '{TeamAliasConstanten.BronSync}', '{TeamAliasConstanten.StatusValidated}'
                   FROM doel
                 ON CONFLICT (clubcode, upper(ruwetekst)) DO UPDATE
                     SET teamid                  = EXCLUDED.teamid,
                         ruwetekstgenormaliseerd = EXCLUDED.ruwetekstgenormaliseerd,
-                        status                  = 'validated',
+                        status                  = '{TeamAliasConstanten.StatusValidated}',
                         mta_modified            = NOW()
-                    WHERE teamaliassen.bron = 'Sync'
+                    WHERE teamaliassen.bron = '{TeamAliasConstanten.BronSync}'
                 RETURNING 1
             ),
             bestaand AS (
@@ -538,4 +561,8 @@ internal static class TeamCanonicalisatieService
     }
 
     private sealed record HisTeamRow(string Teamnaam, string? BkTeams, string? LeeftijdsCategorie, string? Teamsoort);
+
+    private readonly record struct SleutelMigratieDoel(
+        int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer,
+        string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer);
 }

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 
 namespace SportlinkFunction.Planner;
@@ -9,9 +10,19 @@ public static class TeamScheduleHtmlRenderer
     public static string Render(TeamScheduleResponse schedule)
     {
         var sb = new StringBuilder();
+        AppendHead(sb, schedule.Team);
+        AppendTitelEnLegenda(sb, schedule);
+        AppendKalenderStrook(sb, schedule);
+        AppendWedstrijdenTabel(sb, schedule);
+        sb.AppendLine("</body></html>");
+        return sb.ToString();
+    }
+
+    private static void AppendHead(StringBuilder sb, string team)
+    {
         sb.AppendLine("<!DOCTYPE html><html lang=\"nl\"><head><meta charset=\"UTF-8\">");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        sb.AppendLine($"<title>Teamschema {System.Net.WebUtility.HtmlEncode(schedule.Team)}</title>");
+        sb.AppendLine($"<title>Teamschema {WebUtility.HtmlEncode(team)}</title>");
         sb.AppendLine("<style>");
         sb.AppendLine("body{font-family:Arial,sans-serif;margin:24px;background:#f5f5f5;}");
         sb.AppendLine("h1{color:#2c3e50;}");
@@ -30,16 +41,21 @@ public static class TeamScheduleHtmlRenderer
         sb.AppendLine(".thuis{color:#27ae60;font-weight:600;}");
         sb.AppendLine(".uit{color:#e74c3c;font-weight:600;}");
         sb.AppendLine("</style></head><body>");
+    }
 
-        sb.AppendLine($"<h1>Teamschema — {System.Net.WebUtility.HtmlEncode(schedule.Team)}</h1>");
+    private static void AppendTitelEnLegenda(StringBuilder sb, TeamScheduleResponse schedule)
+    {
+        sb.AppendLine($"<h1>Teamschema — {WebUtility.HtmlEncode(schedule.Team)}</h1>");
         sb.AppendLine($"<p>Seizoen loopt tot: <strong>{schedule.SeizoenEinde}</strong></p>");
 
         // Legenda
         sb.AppendLine("<p><span style=\"display:inline-block;width:14px;height:14px;background:#27ae60;border-radius:3px;margin-right:4px;\"></span>Vrij &nbsp;");
         sb.AppendLine("<span style=\"display:inline-block;width:14px;height:14px;background:#e67e22;border-radius:3px;margin-right:4px;\"></span>Oefenwedstrijd &nbsp;");
         sb.AppendLine("<span style=\"display:inline-block;width:14px;height:14px;background:#e74c3c;border-radius:3px;margin-right:4px;\"></span>Bezet (competitie/beker)</p>");
+    }
 
-        // Kalender-strook
+    private static void AppendKalenderStrook(StringBuilder sb, TeamScheduleResponse schedule)
+    {
         sb.AppendLine("<div class=\"kalender\">");
         foreach (var zat in schedule.Zaterdagen)
         {
@@ -51,11 +67,13 @@ public static class TeamScheduleHtmlRenderer
                 "oefenwedstrijd" => "dag oefenwedstrijd",
                 _ => "dag vrij"
             };
-            sb.AppendLine($"<div class=\"{cls}\" title=\"{System.Net.WebUtility.HtmlEncode(zat.Status)}\">{System.Net.WebUtility.HtmlEncode(label)}</div>");
+            sb.AppendLine($"<div class=\"{cls}\" title=\"{WebUtility.HtmlEncode(zat.Status)}\">{WebUtility.HtmlEncode(label)}</div>");
         }
         sb.AppendLine("</div>");
+    }
 
-        // Wedstrijdenlijst
+    private static void AppendWedstrijdenTabel(StringBuilder sb, TeamScheduleResponse schedule)
+    {
         if (schedule.Wedstrijden.Count == 0)
         {
             sb.AppendLine("<p><em>Geen wedstrijden gevonden in de komende periode.</em></p>");
@@ -75,17 +93,14 @@ public static class TeamScheduleHtmlRenderer
                     "oefenwedstrijd" => "badge badge-oefenwedstrijd",
                     _ => "badge badge-competitie"
                 };
-                sb.AppendLine($"<tr><td>{System.Net.WebUtility.HtmlEncode(datumLabel)}</td>" +
-                    $"<td>{System.Net.WebUtility.HtmlEncode(w.AanvangsTijd)}</td>" +
-                    $"<td><span class=\"{thuisUitClass}\">{System.Net.WebUtility.HtmlEncode(w.ThuisUit)}</span></td>" +
-                    $"<td>{System.Net.WebUtility.HtmlEncode(w.Tegenstander)}</td>" +
-                    $"<td><span class=\"{badgeClass}\">{System.Net.WebUtility.HtmlEncode(w.Type)}</span></td>" +
-                    $"<td>{System.Net.WebUtility.HtmlEncode(w.Veld ?? "")}</td></tr>");
+                sb.AppendLine($"<tr><td>{WebUtility.HtmlEncode(datumLabel)}</td>" +
+                    $"<td>{WebUtility.HtmlEncode(w.AanvangsTijd)}</td>" +
+                    $"<td><span class=\"{thuisUitClass}\">{WebUtility.HtmlEncode(w.ThuisUit)}</span></td>" +
+                    $"<td>{WebUtility.HtmlEncode(w.Tegenstander)}</td>" +
+                    $"<td><span class=\"{badgeClass}\">{WebUtility.HtmlEncode(w.Type)}</span></td>" +
+                    $"<td>{WebUtility.HtmlEncode(w.Veld ?? "")}</td></tr>");
             }
             sb.AppendLine("</tbody></table>");
         }
-
-        sb.AppendLine("</body></html>");
-        return sb.ToString();
     }
 }

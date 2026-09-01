@@ -14,7 +14,6 @@ internal enum ReplyVerwerkingUitkomst
 internal sealed class EmailReplyPolicyService
 {
     private const string HandmatigePlanningLabel = "Handmatige planning";
-    private const string GeenAiAntwoordLabel = "Geen AI antwoord";
 
     internal async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(
         int verwerkingId,
@@ -36,59 +35,90 @@ internal sealed class EmailReplyPolicyService
         // mail is het voorstel alleen via directe databasetoegang te lezen, omdat de Admin GUI
         // AntwoordEmail bewust nooit teruggeeft (AVG). Een mislukte reviewmail blokkeert de opslag
         // en labeling niet — het voorstel blijft dan alsnog in de database te vinden.
-        if (reviewMode)
-        {
-            var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
-            if (reviewBesluit.MoetVersturen)
-            {
-                var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
-                await persistenceService.UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
-                log.LogInformation(
-                    "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
+        return reviewMode
+            ? await HandelReviewModeAsync(
+                verwerkingId, email, classificatie, plannerResponseJson, reviewRecipient,
+                graphService, persistenceService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log)
+            : await HandelNormaalVerstuurAsync(
+                verwerkingId, email, classificatie, plannerResponseJson,
+                graphService, persistenceService, bouwTemplateAntwoordAsync, sanitizeFoutMelding, log);
+    }
 
-                if (!string.IsNullOrWhiteSpace(reviewRecipient))
+    private async Task<ReplyVerwerkingUitkomst> HandelReviewModeAsync(
+        int verwerkingId,
+        InkomendBericht email,
+        BerichtClassificatie classificatie,
+        string plannerResponseJson,
+        string? reviewRecipient,
+        IEmailGraphService graphService,
+        IEmailPersistenceService persistenceService,
+        Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
+        Func<string, string> sanitizeFoutMelding,
+        ILogger log)
+    {
+        var reviewBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
+        if (reviewBesluit.MoetVersturen)
+        {
+            var (voorgesteldOnderwerp, voorgesteldeBody) = await bouwTemplateAntwoordAsync();
+            await persistenceService.UpdateVoorgesteldAntwoordAsync(verwerkingId, voorgesteldeBody);
+            log.LogInformation(
+                "Email {Id} review mode — voorgesteld antwoord opgeslagen ter beoordeling", verwerkingId);
+
+            if (!string.IsNullOrWhiteSpace(reviewRecipient))
+            {
+                try
                 {
-                    try
-                    {
-                        await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp, voorgesteldeBody, email.ConversationId);
-                        log.LogInformation(
-                            "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
-                    }
-                    catch (Exception ex)
-                    {
-                        log.LogWarning(ex,
-                            "Email {Id} review mode — testmail naar EmailReviewRecipient mislukt, voorstel blijft wel opgeslagen in de database",
-                            verwerkingId);
-                    }
-                }
-                else
-                {
+                    await graphService.SendReplyAsync(reviewRecipient, voorgesteldOnderwerp, voorgesteldeBody, email.ConversationId);
                     log.LogInformation(
-                        "Email {Id} review mode — EmailReviewRecipient niet geconfigureerd, geen testmail verstuurd", verwerkingId);
+                        "Email {Id} review mode — testantwoord verstuurd naar EmailReviewRecipient", verwerkingId);
+                }
+                catch (Exception ex)
+                {
+                    log.LogWarning(ex,
+                        "Email {Id} review mode — testmail naar EmailReviewRecipient mislukt, voorstel blijft wel opgeslagen in de database",
+                        verwerkingId);
                 }
             }
             else
             {
-                await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
                 log.LogInformation(
-                    "Email {Id} review mode — geen antwoord voorgesteld: {Reden}", verwerkingId, reviewBesluit.Reden);
+                    "Email {Id} review mode — EmailReviewRecipient niet geconfigureerd, geen testmail verstuurd", verwerkingId);
             }
-
-            try
-            {
-                await graphService.EnsureMasterCategoryAsync(GeenAiAntwoordLabel, "preset0");
-                await graphService.SetCategoriesAsync(email.MessageId, GeenAiAntwoordLabel);
-                await graphService.MarkAsReadAsync(email.MessageId);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
-                try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); } catch { }
-            }
-
-            return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
+        }
+        else
+        {
+            await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Review, null);
+            log.LogInformation(
+                "Email {Id} review mode — geen antwoord voorgesteld: {Reden}", verwerkingId, reviewBesluit.Reden);
         }
 
+        try
+        {
+            await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+            await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
+            await graphService.MarkAsReadAsync(email.MessageId);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Graph-categorie mislukt voor verwerking {Id} in review mode", verwerkingId);
+            try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
+            catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
+        }
+
+        return ReplyVerwerkingUitkomst.AfgerondZonderAntwoord;
+    }
+
+    private async Task<ReplyVerwerkingUitkomst> HandelNormaalVerstuurAsync(
+        int verwerkingId,
+        InkomendBericht email,
+        BerichtClassificatie classificatie,
+        string plannerResponseJson,
+        IEmailGraphService graphService,
+        IEmailPersistenceService persistenceService,
+        Func<Task<(string onderwerp, string body)>> bouwTemplateAntwoordAsync,
+        Func<string, string> sanitizeFoutMelding,
+        ILogger log)
+    {
         var replyBesluit = ReplyPolicy.Bepaal(classificatie, plannerResponseJson);
         if (!replyBesluit.MoetVersturen)
         {
@@ -168,7 +198,8 @@ internal sealed class EmailReplyPolicyService
                     "Verzendintentie kon niet gewist worden voor verwerking {Id} — een volgende poll legt dit "
                     + "bericht ter beoordeling neer in plaats van opnieuw te versturen", verwerkingId);
             }
-            try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); } catch { }
+            try { await persistenceService.UpdateFoutAsync(verwerkingId, sanitizeFoutMelding(ex.Message)); }
+            catch (Exception logEx) { log.LogWarning(logEx, "Kon foutstatus niet vastleggen voor verwerking {Id}", verwerkingId); }
             return ReplyVerwerkingUitkomst.VerzendFout;
         }
 

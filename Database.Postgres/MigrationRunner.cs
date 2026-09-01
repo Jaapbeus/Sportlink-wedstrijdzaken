@@ -65,46 +65,49 @@ public static class MigrationRunner
                 .ToList();
 
             foreach (var file in files)
-            {
-                var content = await File.ReadAllTextAsync(file.Path, ct);
-                var checksum = ComputeChecksum(content);
-                var existing = await GetAppliedChecksumAsync(connection, file.Naam, ct);
-
-                if (existing is not null)
-                {
-                    if (!string.Equals(existing, checksum, StringComparison.Ordinal))
-                        throw new InvalidOperationException(
-                            $"Migratie '{file.Naam}' is al toegepast met een andere checksum. " +
-                            "Een reeds toegepast migratiebestand mag nooit achteraf gewijzigd worden — " +
-                            "voeg een nieuw, opvolgend migratiebestand toe in plaats daarvan.");
-                    continue; // al toegepast, checksum klopt — no-op
-                }
-
-                await using var tx = await connection.BeginTransactionAsync(ct);
-                try
-                {
-                    await using (var cmd = new NpgsqlCommand(content, connection, tx))
-                        await cmd.ExecuteNonQueryAsync(ct);
-
-                    await using var record = new NpgsqlCommand(
-                        "INSERT INTO schema_migrations (filename, checksum, applied_at) VALUES (@f, @c, NOW())",
-                        connection, tx);
-                    record.Parameters.AddWithValue("f", file.Naam);
-                    record.Parameters.AddWithValue("c", checksum);
-                    await record.ExecuteNonQueryAsync(ct);
-
-                    await tx.CommitAsync(ct);
-                }
-                catch
-                {
-                    await tx.RollbackAsync(ct);
-                    throw;
-                }
-            }
+                await ApplyMigrationFileAsync(connection, file.Path, file.Naam, ct);
         }
         finally
         {
             await ReleaseAdvisoryLockAsync(connection, ct);
+        }
+    }
+
+    private static async Task ApplyMigrationFileAsync(NpgsqlConnection connection, string filePath, string fileName, CancellationToken ct)
+    {
+        var content = await File.ReadAllTextAsync(filePath, ct);
+        var checksum = ComputeChecksum(content);
+        var existing = await GetAppliedChecksumAsync(connection, fileName, ct);
+
+        if (existing is not null)
+        {
+            if (!string.Equals(existing, checksum, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"Migratie '{fileName}' is al toegepast met een andere checksum. " +
+                    "Een reeds toegepast migratiebestand mag nooit achteraf gewijzigd worden — " +
+                    "voeg een nieuw, opvolgend migratiebestand toe in plaats daarvan.");
+            return; // al toegepast, checksum klopt — no-op
+        }
+
+        await using var tx = await connection.BeginTransactionAsync(ct);
+        try
+        {
+            await using (var cmd = new NpgsqlCommand(content, connection, tx))
+                await cmd.ExecuteNonQueryAsync(ct);
+
+            await using var record = new NpgsqlCommand(
+                "INSERT INTO schema_migrations (filename, checksum, applied_at) VALUES (@f, @c, NOW())",
+                connection, tx);
+            record.Parameters.AddWithValue("f", fileName);
+            record.Parameters.AddWithValue("c", checksum);
+            await record.ExecuteNonQueryAsync(ct);
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
         }
     }
 

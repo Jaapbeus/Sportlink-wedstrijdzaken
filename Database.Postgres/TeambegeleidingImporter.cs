@@ -76,43 +76,10 @@ public static class TeambegeleidingImporter
         await using var tx = await connection.BeginTransactionAsync(ct);
         try
         {
-            await using (var delete = new NpgsqlCommand(
-                "DELETE FROM avg.teambegeleiding WHERE clubcode = @cc", connection, tx))
-            {
-                delete.Parameters.AddWithValue("cc", clubCode);
-                await delete.ExecuteNonQueryAsync(ct);
-            }
-
-            await using (var writer = await connection.BeginBinaryImportAsync(
-                "COPY avg.teambegeleiding (team, leeftijdscategorieteam, teamrol, naam, emailadres, telefoonnummer, clubcode) FROM STDIN (FORMAT BINARY)",
-                ct))
-            {
-                foreach (var row in rows)
-                {
-                    await writer.StartRowAsync(ct);
-                    await WriteNullableAsync(writer, row.Team, ct);
-                    await WriteNullableAsync(writer, row.LeeftijdscategorieTeam, ct);
-                    await WriteNullableAsync(writer, row.Teamrol, ct);
-                    await WriteNullableAsync(writer, row.Naam, ct);
-                    await WriteNullableAsync(writer, row.Emailadres, ct);
-                    await WriteNullableAsync(writer, row.Telefoonnummer, ct);
-                    await writer.WriteAsync(clubCode, NpgsqlDbType.Varchar, ct);
-                }
-                await writer.CompleteAsync(ct);
-            }
-
-            await using (var log = new NpgsqlCommand("""
-                INSERT INTO avg.importlog (aantalrijen, csvbestand, importerendedoor, duur_ms, clubcode)
-                VALUES (@rijen, @csv, @door, @duur, @club)
-                """, connection, tx))
-            {
-                log.Parameters.AddWithValue("rijen", rows.Count);
-                log.Parameters.AddWithValue("csv", (object?)csvBestand ?? DBNull.Value);
-                log.Parameters.AddWithValue("door", (object?)importerendeDoor ?? DBNull.Value);
-                log.Parameters.AddWithValue("duur", (int)stopwatch.ElapsedMilliseconds);
-                log.Parameters.AddWithValue("club", clubCode);
-                await log.ExecuteNonQueryAsync(ct);
-            }
+            await DeleteBestaandeRijenAsync(connection, tx, clubCode, ct);
+            await KopieerRijenAsync(connection, clubCode, rows, ct);
+            var duurMs = (int)stopwatch.ElapsedMilliseconds;
+            await SchrijfAuditLogAsync(connection, tx, clubCode, rows.Count, csvBestand, importerendeDoor, duurMs, ct);
 
             await tx.CommitAsync(ct);
         }
@@ -124,6 +91,48 @@ public static class TeambegeleidingImporter
 
         stopwatch.Stop();
         return new TeambegeleidingImportResult(rows.Count, stopwatch.ElapsedMilliseconds);
+    }
+
+    private static async Task DeleteBestaandeRijenAsync(NpgsqlConnection connection, NpgsqlTransaction tx, string clubCode, CancellationToken ct)
+    {
+        await using var delete = new NpgsqlCommand(
+            "DELETE FROM avg.teambegeleiding WHERE clubcode = @cc", connection, tx);
+        delete.Parameters.AddWithValue("cc", clubCode);
+        await delete.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task KopieerRijenAsync(NpgsqlConnection connection, string clubCode, IReadOnlyList<TeambegeleidingRow> rows, CancellationToken ct)
+    {
+        await using var writer = await connection.BeginBinaryImportAsync(
+            "COPY avg.teambegeleiding (team, leeftijdscategorieteam, teamrol, naam, emailadres, telefoonnummer, clubcode) FROM STDIN (FORMAT BINARY)",
+            ct);
+
+        foreach (var row in rows)
+        {
+            await writer.StartRowAsync(ct);
+            await WriteNullableAsync(writer, row.Team, ct);
+            await WriteNullableAsync(writer, row.LeeftijdscategorieTeam, ct);
+            await WriteNullableAsync(writer, row.Teamrol, ct);
+            await WriteNullableAsync(writer, row.Naam, ct);
+            await WriteNullableAsync(writer, row.Emailadres, ct);
+            await WriteNullableAsync(writer, row.Telefoonnummer, ct);
+            await writer.WriteAsync(clubCode, NpgsqlDbType.Varchar, ct);
+        }
+        await writer.CompleteAsync(ct);
+    }
+
+    private static async Task SchrijfAuditLogAsync(NpgsqlConnection connection, NpgsqlTransaction tx, string clubCode, int aantalRijen, string? csvBestand, string? importerendeDoor, long duurMs, CancellationToken ct)
+    {
+        await using var log = new NpgsqlCommand("""
+            INSERT INTO avg.importlog (aantalrijen, csvbestand, importerendedoor, duur_ms, clubcode)
+            VALUES (@rijen, @csv, @door, @duur, @club)
+            """, connection, tx);
+        log.Parameters.AddWithValue("rijen", aantalRijen);
+        log.Parameters.AddWithValue("csv", (object?)csvBestand ?? DBNull.Value);
+        log.Parameters.AddWithValue("door", (object?)importerendeDoor ?? DBNull.Value);
+        log.Parameters.AddWithValue("duur", (int)duurMs);
+        log.Parameters.AddWithValue("club", clubCode);
+        await log.ExecuteNonQueryAsync(ct);
     }
 
     private static Task WriteNullableAsync(NpgsqlBinaryImporter writer, string? value, CancellationToken ct)

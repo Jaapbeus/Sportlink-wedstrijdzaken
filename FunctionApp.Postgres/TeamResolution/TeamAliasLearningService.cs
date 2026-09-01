@@ -28,10 +28,10 @@ internal sealed class TeamAliasLearningService(string connectionString, ILogger 
         {
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync();
-            await using var cmd = new NpgsqlCommand(@"
+            await using var cmd = new NpgsqlCommand($@"
                 INSERT INTO public.teamaliassen
                     (clubcode, ruwetekst, ruwetekstgenormaliseerd, teamid, bron, status, aantalkeergebruikt)
-                VALUES (@clubcode, @ruwetekst, @genormaliseerd, @teamid, @bron, 'pending', 1)
+                VALUES (@clubcode, @ruwetekst, @genormaliseerd, @teamid, @bron, '{TeamAliasConstanten.StatusPending}', 1)
                 ON CONFLICT (clubcode, upper(ruwetekst)) DO UPDATE SET
                     aantalkeergebruikt = public.teamaliassen.aantalkeergebruikt + 1,
                     mta_modified = NOW()

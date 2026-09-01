@@ -37,69 +37,15 @@ public static class AvailabilityService
             return response;
         }
 
-        Speeltijd? speeltijd = null;
-        int duurMinuten = 0;
-        decimal veldFractie = 1.00m;
-
-        if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+        var (duurMinuten, veldFractie, foutReden) = await ResolveDuurEnVeldfractieAsync(connectionString, request, cc, response.Waarschuwingen);
+        if (foutReden != null)
         {
-            speeltijd = await PlannerSettingsRepository.GetSpeeltijdAsync(connectionString, request.LeeftijdsCategorie, cc);
-            if (speeltijd == null)
-            {
-                response.Reden = $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}. Voeg de categorie toe aan public.speeltijden via /instellingen/speeltijden.";
-                return response;
-            }
-            duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
-            veldFractie = speeltijd.Veldafmeting;
-        }
-        else if (request.WedstrijdDuurMinuten.HasValue)
-        {
-            duurMinuten = request.WedstrijdDuurMinuten.Value;
-        }
-
-        if (request.HeelVeld == true && veldFractie < 1.00m)
-        {
-            if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
-                response.Waarschuwingen.Add(
-                    $"{request.LeeftijdsCategorie} speelt normaal op een halftijdsspeelveld ({veldFractie:P0} veld). " +
-                    $"Inplannen op heel veld conform het verzoek (speelduur blijft {duurMinuten} min).");
-            veldFractie = 1.00m;
-        }
-
-        if (duurMinuten <= 0)
-        {
-            response.Reden = "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan public.speeltijden via /instellingen/speeltijden.";
+            response.Reden = foutReden;
             return response;
         }
 
-        if (!string.IsNullOrEmpty(request.TeamNaam))
-        {
-            var teamWedstrijden = await PlannerMatchRepository.GetTeamMatchesOnDateAsync(connectionString, request.TeamNaam, date, cc);
-            if (!teamWedstrijden.TeamHerkend)
-            {
-                // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
-                // dat mag nooit als "geen conflict" lezen. De aanvraag wordt niet geweigerd — de
-                // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
-                // ontbreken van de controle staat wel in het antwoord.
-                response.Waarschuwingen.Add(
-                    $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
-                    "team die dag al een wedstrijd heeft — controleer dat zelf.");
-            }
-            else if (teamWedstrijden.Wedstrijden.Count > 0)
-            {
-                var conflict = teamWedstrijden.Wedstrijden[0];
-                response.TeamConflict = new TeamConflictInfo
-                {
-                    Wedstrijd = conflict.Wedstrijd ?? "",
-                    AanvangsTijd = conflict.AanvangsTijd.ToString("HH:mm"),
-                    EindTijd = conflict.EindTijd.ToString("HH:mm"),
-                    VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
-                };
-                response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
-                                 $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
-                return response;
-            }
-        }
+        var teamConflictResponse = await CheckTeamConflictAsync(connectionString, request, date, cc, response);
+        if (teamConflictResponse != null) return teamConflictResponse;
 
         var availableFields = await PlannerAvailabilityRepository.GetAvailableFieldsAsync(connectionString, date, cc);
         if (availableFields.Count == 0)
@@ -122,11 +68,7 @@ public static class AvailabilityService
         var allTeamRules = await TeamRulesRepository.GetTeamRulesForTeamsAsync(
             connectionString, occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), cc);
 
-        TimeOnly? sunset = await PlannerSettingsRepository.GetSunsetAsync(connectionString, date);
-        sunset ??= PostgresSunsetCalculator.GetSunset(date);
-        foreach (var field in availableFields)
-            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                field.BeschikbaarTot = sunset.Value;
+        TimeOnly? sunset = await PlannerSettingsRepository.ResolveEnPasZonsondergangToeAsync(connectionString, date, availableFields);
 
         if (string.IsNullOrEmpty(request.AanvangsTijd))
         {
@@ -146,15 +88,7 @@ public static class AvailabilityService
         if (!string.IsNullOrEmpty(request.AanvangsTijd) && TimeOnly.TryParse(request.AanvangsTijd, out var parsed))
             preferredTime = parsed;
 
-        TimeOnly dagdeelVan = new(8, 30);
-        TimeOnly dagdeelTot = new(22, 0);
-        if (!string.IsNullOrEmpty(request.Dagdeel))
-            switch (request.Dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": dagdeelVan = new(8, 30); dagdeelTot = new(12, 0); break;
-                case "middag": dagdeelVan = new(12, 0); dagdeelTot = new(17, 0); break;
-                case "avond": dagdeelVan = new(17, 0); dagdeelTot = new(22, 0); break;
-            }
+        (TimeOnly dagdeelVan, TimeOnly dagdeelTot) = ResolveDagdeelVenster(request.Dagdeel, new(8, 30), new(22, 0));
 
         var venstersResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
         if (duurMinuten > 0 && venstersResponse.BeschikbareVensters != null)
@@ -246,12 +180,8 @@ public static class AvailabilityService
             var availableFields = await PlannerAvailabilityRepository.GetAvailableFieldsAsync(connectionString, date, cc);
             if (availableFields.Count == 0) continue;
 
-            TimeOnly? sunset = await PlannerSettingsRepository.GetSunsetAsync(connectionString, date);
-            sunset ??= PostgresSunsetCalculator.GetSunset(date);
+            TimeOnly? sunset = await PlannerSettingsRepository.ResolveEnPasZonsondergangToeAsync(connectionString, date, availableFields);
             string sunsetStr = sunset.HasValue ? sunset.Value.ToString("HH:mm") : "";
-            foreach (var field in availableFields)
-                if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                    field.BeschikbaarTot = sunset.Value;
 
             var occupations = await PlannerAvailabilityRepository.GetFieldOccupationsAsync(connectionString, date, cc);
 
@@ -295,6 +225,108 @@ public static class AvailabilityService
 
     // ── Privé helpers ──
 
+    /// <summary>
+    /// Bepaalt wedstrijdduur en veldfractie: leeftijdscategorie levert de defaults, expliciete
+    /// requestvelden overschrijven die — zelfde speeltijd-first, override-tweede logica als
+    /// <c>BevestigWedstrijd</c>. Retourneert een foutreden i.p.v. te gooien, zodat de aanroeper
+    /// zelf de <see cref="CheckAvailabilityResponse"/> vult en teruggeeft.
+    /// </summary>
+    private static async Task<(int DuurMinuten, decimal VeldFractie, string? FoutReden)> ResolveDuurEnVeldfractieAsync(
+        string connectionString, CheckAvailabilityRequest request, string cc, List<string> waarschuwingen)
+    {
+        Speeltijd? speeltijd = null;
+        int duurMinuten = 0;
+        decimal veldFractie = 1.00m;
+
+        if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+        {
+            speeltijd = await PlannerSettingsRepository.GetSpeeltijdAsync(connectionString, request.LeeftijdsCategorie, cc);
+            if (speeltijd == null)
+                return (0, 1.00m, $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}. Voeg de categorie toe aan public.speeltijden via /instellingen/speeltijden.");
+            duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
+            veldFractie = speeltijd.Veldafmeting;
+        }
+        else if (request.WedstrijdDuurMinuten.HasValue)
+        {
+            duurMinuten = request.WedstrijdDuurMinuten.Value;
+        }
+
+        if (request.HeelVeld == true && veldFractie < 1.00m)
+        {
+            if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+                waarschuwingen.Add(
+                    $"{request.LeeftijdsCategorie} speelt normaal op een halftijdsspeelveld ({veldFractie:P0} veld). " +
+                    $"Inplannen op heel veld conform het verzoek (speelduur blijft {duurMinuten} min).");
+            veldFractie = 1.00m;
+        }
+
+        if (duurMinuten <= 0)
+            return (duurMinuten, veldFractie, "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan public.speeltijden via /instellingen/speeltijden.");
+
+        return (duurMinuten, veldFractie, null);
+    }
+
+    /// <summary>
+    /// Controleert of het opgegeven team op deze datum al een wedstrijd heeft. Retourneert de
+    /// afgeronde <see cref="CheckAvailabilityResponse"/> bij een conflict (aanroeper geeft die
+    /// direct terug), of <c>null</c> als er geen conflict is (of geen team opgegeven) — dan gaat
+    /// <c>CheckAvailabilityAsync</c> verder met het zoeken naar een slot.
+    /// </summary>
+    private static async Task<CheckAvailabilityResponse?> CheckTeamConflictAsync(
+        string connectionString, CheckAvailabilityRequest request, DateOnly date, string cc, CheckAvailabilityResponse response)
+    {
+        if (string.IsNullOrEmpty(request.TeamNaam)) return null;
+
+        var teamWedstrijden = await PlannerMatchRepository.GetTeamMatchesOnDateAsync(connectionString, request.TeamNaam, date, cc);
+        if (!teamWedstrijden.TeamHerkend)
+        {
+            // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
+            // dat mag nooit als "geen conflict" lezen. De aanvraag wordt niet geweigerd — de
+            // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
+            // ontbreken van de controle staat wel in het antwoord.
+            response.Waarschuwingen.Add(
+                $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
+                "team die dag al een wedstrijd heeft — controleer dat zelf.");
+            return null;
+        }
+
+        if (teamWedstrijden.Wedstrijden.Count > 0)
+        {
+            var conflict = teamWedstrijden.Wedstrijden[0];
+            response.TeamConflict = new TeamConflictInfo
+            {
+                Wedstrijd = conflict.Wedstrijd ?? "",
+                AanvangsTijd = conflict.AanvangsTijd.ToString("HH:mm"),
+                EindTijd = conflict.EindTijd.ToString("HH:mm"),
+                VeldNaam = conflict.VeldNummer > 0 ? $"veld {conflict.VeldNummer}" : "onbekend"
+            };
+            response.Reden = $"{request.TeamNaam} heeft al een wedstrijd op {date.ToString("d MMMM", PlannerShared.NL)}: " +
+                             $"{conflict.Wedstrijd} om {conflict.AanvangsTijd:HH:mm} ({response.TeamConflict.VeldNaam}).";
+            return response;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Vertaalt een dagdeel ("ochtend"/"middag"/"avond") naar een tijdvenster; onbekend of leeg
+    /// dagdeel levert de meegegeven defaults op. Gedeeld met <see cref="BuildWindowsResponse"/> en
+    /// <c>RescheduleService.CheckRescheduleAvailabilityAsync</c> — vandaar internal i.p.v. private.
+    /// </summary>
+    internal static (TimeOnly Van, TimeOnly Tot) ResolveDagdeelVenster(string? dagdeel, TimeOnly defaultVan, TimeOnly defaultTot)
+    {
+        var van = defaultVan;
+        var tot = defaultTot;
+        if (!string.IsNullOrEmpty(dagdeel))
+            switch (dagdeel.ToLowerInvariant())
+            {
+                case "ochtend": van = new(8, 30); tot = new(12, 0); break;
+                case "middag": van = new(12, 0); tot = new(17, 0); break;
+                case "avond": van = new(17, 0); tot = new(22, 0); break;
+            }
+        return (van, tot);
+    }
+
     private static SlotToewijzing ToSlotMetVeldType(
         DateOnly date, CandidateSlot slot, int duurMinuten, List<VeldInfo> velden)
     {
@@ -310,15 +342,7 @@ public static class AvailabilityService
     {
         var response = new CheckAvailabilityResponse();
         var windows = new List<BeschikbaarVenster>();
-        TimeOnly filterVan = new(0, 0);
-        TimeOnly filterTot = new(23, 59);
-        if (!string.IsNullOrEmpty(dagdeel))
-            switch (dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": filterVan = new(8, 30); filterTot = new(12, 0); break;
-                case "middag": filterVan = new(12, 0); filterTot = new(17, 0); break;
-                case "avond": filterVan = new(17, 0); filterTot = new(22, 0); break;
-            }
+        (TimeOnly filterVan, TimeOnly filterTot) = ResolveDagdeelVenster(dagdeel, new(0, 0), new(23, 59));
         foreach (var field in fields)
         {
             var veldInfo = velden.FirstOrDefault(v => v.VeldNummer == field.VeldNummer);
