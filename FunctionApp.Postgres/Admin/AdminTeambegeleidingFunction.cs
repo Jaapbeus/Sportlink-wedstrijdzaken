@@ -39,6 +39,14 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class AdminTeambegeleidingFunction
 {
+    // ILIKE, niet LIKE (§43): op de SQL Server-tier is LIKE hoofdletterongevoelig via de
+    // Latin1_General_CI_AS-collatie, op Postgres niet. De teamrol komt uit een handmatig
+    // aangeleverde CSV-import, dus een rol in kleine letters komt in de praktijk voor — met LIKE
+    // viel die stilzwijgend in de ELSE-tak en stond de trainer onderaan in plaats van bovenaan.
+    // Zelfde klasse fout als #820.
+    private const string RolVoorkeurCase =
+        "CASE WHEN teamrol ILIKE '%Trainer%' THEN 1 WHEN teamrol ILIKE '%Coach%' THEN 2 WHEN teamrol ILIKE '%Teamleider%' THEN 3 ELSE 4 END";
+
     [Function("AdminTeambegeleidingTeams")]
     public static async Task<IActionResult> GetTeams(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/teambegeleiding")] HttpRequest req,
@@ -89,22 +97,12 @@ public static class AdminTeambegeleidingFunction
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            await using var command = new NpgsqlCommand(@"
+            await using var command = new NpgsqlCommand($@"
                 SELECT naam, teamrol, emailadres, telefoonnummer
                 FROM avg.teambegeleiding
                 WHERE team = @team
                   AND clubcode = @clubcode
-                ORDER BY
-                    -- ILIKE, niet LIKE (§43): op de SQL Server-tier is LIKE hoofdletterongevoelig
-                    -- via de Latin1_General_CI_AS-collatie, op Postgres niet. De teamrol komt uit
-                    -- een handmatig aangeleverde CSV-import, dus een rol in kleine letters komt in
-                    -- de praktijk voor — met LIKE viel die stilzwijgend in de ELSE-tak en stond de
-                    -- trainer onderaan in plaats van bovenaan. Zelfde klasse fout als #820.
-                    CASE WHEN teamrol ILIKE '%Trainer%' THEN 1
-                         WHEN teamrol ILIKE '%Coach%' THEN 2
-                         WHEN teamrol ILIKE '%Teamleider%' THEN 3
-                         ELSE 4 END,
-                    naam
+                ORDER BY {RolVoorkeurCase}, naam
             ", connection);
             command.Parameters.AddWithValue("team", team);
             command.Parameters.AddWithValue("clubcode", clubCode);
@@ -166,41 +164,10 @@ public static class AdminTeambegeleidingFunction
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             var cs = PostgresDatabaseConfig.ConnectionString;
 
-            // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
-            // houdt het oude gedrag (server-side lookup + coördinator-fallback) intact.
-            List<string>? ontvangers = null;
-            if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
-            {
-                var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
-                if (!parseResultaat.IsValid)
-                    return new BadRequestObjectResult(new { error = parseResultaat.FoutMelding });
-
-                var uitgesloten = await SqlEmailPersistenceRepository.GetExcludedEmailAddressesAsync(cs, clubCode);
-                var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
-                if (geweigerdAdres != null)
-                    return new BadRequestObjectResult(new
-                    {
-                        error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
-                    });
-
-                ontvangers = [.. parseResultaat.Emailadressen];
-            }
-
             var coordinatorEmail = PostgresAppSettings.GetSetting("plannerEmailAdres");
 
-            if (ontvangers == null)
-            {
-                var begeleiderEmail = await ZoekBegeleiderEmailAsync(cs, dto.TeamNaam, clubCode);
-
-                if (string.IsNullOrEmpty(begeleiderEmail))
-                {
-                    if (string.IsNullOrEmpty(coordinatorEmail))
-                        return new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 };
-                    begeleiderEmail = coordinatorEmail;
-                    log.LogWarning("Geen begeleider-e-mail gevonden voor team — doorgestuurd naar coördinator");
-                }
-                ontvangers = [begeleiderEmail];
-            }
+            var (ontvangers, ontvangerFout) = await ResolveOntvangersAsync(dto, clubCode, cs, coordinatorEmail, log);
+            if (ontvangerFout != null) return ontvangerFout;
 
             // EgressGuard (#857): buiten productie is IEmailGraphService onvoorwaardelijk
             // ongeregistreerd, ook met geconfigureerde Graph-secrets. Niet geregistreerd → 503, geen
@@ -213,15 +180,9 @@ public static class AdminTeambegeleidingFunction
             }
 
             var subject = $"[{dto.TeamNaam}] Vraag van {aanvragerNaam}";
-            var htmlBody = $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(dto.TeamNaam)}</strong>.</p>
-<p><strong>Vraagsteller:</strong> {System.Net.WebUtility.HtmlEncode(aanvragerNaam)}</p>
-<p><strong>Onderwerp:</strong> {System.Net.WebUtility.HtmlEncode(dto.Onderwerp ?? "")}</p>
-<hr />
-<p>{System.Net.WebUtility.HtmlEncode(dto.Bericht).Replace("\n", "<br />")}</p>
-<hr />
-<p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
+            var htmlBody = BouwDoorsturenHtml(dto.TeamNaam, aanvragerNaam, dto.Onderwerp, dto.Bericht);
 
-            await emailService.StuurTeamContactDoorAsync(ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+            await emailService.StuurTeamContactDoorAsync(ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail);
 
             // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
             // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
@@ -230,7 +191,7 @@ public static class AdminTeambegeleidingFunction
             try
             {
                 await SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
-                    cs, dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
+                    cs, dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers!), clubCode);
             }
             catch (Exception auditEx)
             {
@@ -250,6 +211,49 @@ public static class AdminTeambegeleidingFunction
         }
     }
 
+    // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld houdt
+    // het oude gedrag (server-side lookup + coördinator-fallback) intact.
+    private static async Task<(List<string>? Ontvangers, IActionResult? Fout)> ResolveOntvangersAsync(
+        DoorsturenRequest dto, string clubCode, string cs, string? coordinatorEmail, ILogger log)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
+        {
+            var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
+            if (!parseResultaat.IsValid)
+                return (null, new BadRequestObjectResult(new { error = parseResultaat.FoutMelding }));
+
+            var uitgesloten = await SqlEmailPersistenceRepository.GetExcludedEmailAddressesAsync(cs, clubCode);
+            var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
+            if (geweigerdAdres != null)
+                return (null, new BadRequestObjectResult(new
+                {
+                    error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
+                }));
+
+            return ([.. parseResultaat.Emailadressen], null);
+        }
+
+        var begeleiderEmail = await ZoekBegeleiderEmailAsync(cs, dto.TeamNaam, clubCode);
+
+        if (string.IsNullOrEmpty(begeleiderEmail))
+        {
+            if (string.IsNullOrEmpty(coordinatorEmail))
+                return (null, new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 });
+            begeleiderEmail = coordinatorEmail;
+            log.LogWarning("Geen begeleider-e-mail gevonden voor team — doorgestuurd naar coördinator");
+        }
+
+        return ([begeleiderEmail], null);
+    }
+
+    private static string BouwDoorsturenHtml(string teamNaam, string aanvragerNaam, string? onderwerp, string bericht) => $@"<p>Er is een vraag binnengekomen over de begeleiding van <strong>{System.Net.WebUtility.HtmlEncode(teamNaam)}</strong>.</p>
+<p><strong>Vraagsteller:</strong> {System.Net.WebUtility.HtmlEncode(aanvragerNaam)}</p>
+<p><strong>Onderwerp:</strong> {System.Net.WebUtility.HtmlEncode(onderwerp ?? "")}</p>
+<hr />
+<p>{System.Net.WebUtility.HtmlEncode(bericht).Replace("\n", "<br />")}</p>
+<hr />
+<p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
+
     /// <summary>
     /// Zoekt het e-mailadres van de meest geschikte begeleider van een team (AVG: nooit in respons
     /// of log). Zelfde rolvoorkeur als het SQL Server-origineel: trainer vóór coach vóór teamleider
@@ -260,17 +264,13 @@ public static class AdminTeambegeleidingFunction
     {
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand("""
+        await using var cmd = new NpgsqlCommand($"""
             SELECT emailadres
             FROM avg.teambegeleiding
             WHERE team = @team
               AND emailadres IS NOT NULL
               AND clubcode = @clubcode
-            ORDER BY
-                CASE WHEN teamrol ILIKE '%Trainer%'    THEN 1
-                     WHEN teamrol ILIKE '%Coach%'      THEN 2
-                     WHEN teamrol ILIKE '%Teamleider%' THEN 3
-                     ELSE 4 END
+            ORDER BY {RolVoorkeurCase}
             LIMIT 1
             """, conn);
         cmd.Parameters.AddWithValue("team", teamNaam);
@@ -394,20 +394,7 @@ public static class AdminTeambegeleidingFunction
 
         var headers = SplitCsvLine(lines[0]);
 
-        var mapping = new Dictionary<string, int>();
-        foreach (var (canonical, aliases) in _kolomAliassen)
-        {
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
-                {
-                    mapping[canonical] = i;
-                    break;
-                }
-            }
-        }
-
-        var ontbreekt = _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
+        var (mapping, ontbreekt) = BuildKolomMapping(headers);
         if (ontbreekt.Count > 0)
         {
             result.IsValid = false;
@@ -423,6 +410,40 @@ public static class AdminTeambegeleidingFunction
         if (!mapping.ContainsKey("LeeftijdscategorieTeam"))
             result.Waarschuwingen.Add("Kolom 'Leeftijdscategorie team' niet gevonden — wordt leeg.");
 
+        result.Rows = BouwRijen(lines, mapping);
+
+        var (deduped, duplicaten) = DedupliceerRijen(result.Rows);
+        result.Rows = deduped;
+        if (duplicaten > 0)
+            result.Waarschuwingen.Add(
+                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
+
+        result.IsValid = true;
+        return result;
+    }
+
+    private static (Dictionary<string, int> Mapping, List<string> Ontbreekt) BuildKolomMapping(string[] headers)
+    {
+        var mapping = new Dictionary<string, int>();
+        foreach (var (canonical, aliases) in _kolomAliassen)
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
+                {
+                    mapping[canonical] = i;
+                    break;
+                }
+            }
+        }
+
+        var ontbreekt = _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
+        return (mapping, ontbreekt);
+    }
+
+    private static List<ImportRij> BouwRijen(List<string> lines, Dictionary<string, int> mapping)
+    {
+        var rows = new List<ImportRij>();
         for (int i = 1; i < lines.Count; i++)
         {
             var fields = SplitCsvLine(lines[i]);
@@ -440,7 +461,7 @@ public static class AdminTeambegeleidingFunction
 
             var telefoon = GetVeld("MobielNummer") ?? GetVeld("TelefoonnummerKolom");
 
-            result.Rows.Add(new ImportRij(
+            rows.Add(new ImportRij(
                 GetVeld("Team"),
                 GetVeld("LeeftijdscategorieTeam"),
                 GetVeld("Teamrol"),
@@ -448,23 +469,23 @@ public static class AdminTeambegeleidingFunction
                 GetVeld("Emailadres"),
                 telefoon));
         }
+        return rows;
+    }
 
-        var voorDedup = result.Rows.Count;
-        result.Rows = [.. result.Rows
+    private static (List<ImportRij> Rows, int Duplicaten) DedupliceerRijen(List<ImportRij> rows)
+    {
+        var voorDedup = rows.Count;
+        var deduped = rows
             .GroupBy(r => (
                 Team: r.Team?.Trim().ToUpperInvariant(),
                 Teamrol: r.Teamrol?.Trim().ToUpperInvariant(),
                 Naam: r.Naam?.Trim().ToUpperInvariant(),
                 Email: r.Emailadres?.Trim().ToUpperInvariant(),
                 Telefoon: r.Telefoonnummer?.Trim().ToUpperInvariant()))
-            .Select(g => g.First())];
-        var duplicaten = voorDedup - result.Rows.Count;
-        if (duplicaten > 0)
-            result.Waarschuwingen.Add(
-                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
-
-        result.IsValid = true;
-        return result;
+            .Select(g => g.First())
+            .ToList();
+        var duplicaten = voorDedup - deduped.Count;
+        return (deduped, duplicaten);
     }
 
     private static string[] SplitCsvLine(string line)

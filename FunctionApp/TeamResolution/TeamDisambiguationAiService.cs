@@ -40,8 +40,7 @@ public sealed class TeamDisambiguationAiService(
             return null;
         }
 
-        var opties = string.Join("\n", kandidaten.Select((k, i) =>
-            $"{i + 1}. {k.Teamnaam}{(string.IsNullOrWhiteSpace(k.LeeftijdsCategorie) ? "" : $" (categorie {k.LeeftijdsCategorie})")}"));
+        var opties = BouwOptiesTekst(kandidaten);
 
         const string systemPrompt = """
             Je koppelt een teamaanduiding uit een e-mail aan precies één team uit een gegeven lijst.
@@ -79,31 +78,40 @@ public sealed class TeamDisambiguationAiService(
             using var doc = JsonDocument.Parse(response.Text ?? "");
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("keuze", out var keuzeElement)
-                || keuzeElement.ValueKind is JsonValueKind.Null
-                || !keuzeElement.TryGetInt32(out var keuze))
-            {
-                logger.LogInformation("Teamdisambiguatie: model gaf geen keuze — terugvragen aan afzender");
-                return null;
-            }
-
-            // Harde validatie: het model kan een nummer buiten de lijst teruggeven.
-            if (keuze < 1 || keuze > kandidaten.Count)
-            {
-                logger.LogWarning(
-                    "Teamdisambiguatie: keuze {Keuze} valt buiten de kandidatenlijst (1-{Max}) — genegeerd",
-                    keuze, kandidaten.Count);
-                return null;
-            }
-
-            var gekozen = kandidaten[keuze - 1];
-            logger.LogInformation("Teamdisambiguatie: gekozen TeamId={TeamId} uit {Aantal} kandidaten", gekozen.TeamId, kandidaten.Count);
-            return gekozen.TeamId;
+            return ValideerEnParseKeuze(root, kandidaten);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Teamdisambiguatie mislukt — doorgaan zonder keuze");
             return null;
         }
+    }
+
+    private static string BouwOptiesTekst(IReadOnlyList<TeamCandidate> kandidaten)
+        => string.Join("\n", kandidaten.Select((k, i) =>
+            $"{i + 1}. {k.Teamnaam}{(string.IsNullOrWhiteSpace(k.LeeftijdsCategorie) ? "" : $" (categorie {k.LeeftijdsCategorie})")}"));
+
+    private int? ValideerEnParseKeuze(JsonElement root, IReadOnlyList<TeamCandidate> kandidaten)
+    {
+        if (!root.TryGetProperty("keuze", out var keuzeElement)
+            || keuzeElement.ValueKind is JsonValueKind.Null
+            || !keuzeElement.TryGetInt32(out var keuze))
+        {
+            logger.LogInformation("Teamdisambiguatie: model gaf geen keuze — terugvragen aan afzender");
+            return null;
+        }
+
+        // Harde validatie: het model kan een nummer buiten de lijst teruggeven.
+        if (keuze < 1 || keuze > kandidaten.Count)
+        {
+            logger.LogWarning(
+                "Teamdisambiguatie: keuze {Keuze} valt buiten de kandidatenlijst (1-{Max}) — genegeerd",
+                keuze, kandidaten.Count);
+            return null;
+        }
+
+        var gekozen = kandidaten[keuze - 1];
+        logger.LogInformation("Teamdisambiguatie: gekozen TeamId={TeamId} uit {Aantal} kandidaten", gekozen.TeamId, kandidaten.Count);
+        return gekozen.TeamId;
     }
 }

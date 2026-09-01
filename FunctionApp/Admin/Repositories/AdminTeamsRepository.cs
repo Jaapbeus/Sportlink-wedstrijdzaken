@@ -6,8 +6,7 @@ internal static class AdminTeamsRepository
 {
     internal static async Task<List<string>> GetTeamnamenAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT [Teamnaam]
             FROM [dbo].[Teams]

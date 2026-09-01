@@ -31,6 +31,9 @@ namespace FunctionApp.Postgres.Planner;
 /// </summary>
 public static class PlannerFunction
 {
+    // Fallback-duur wanneer geen leeftijdscategorie/speeltijd is opgegeven bij handmatige bevestiging.
+    private const int DefaultWedstrijdDuurMinutenZonderCategorie = 105;
+
     [Function("Veldbezetting")]
     public static async Task<IActionResult> Veldbezetting(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "planner/veldbezetting")] HttpRequest req,
@@ -255,7 +258,7 @@ public static class PlannerFunction
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             var cc = PostgresClubScope.Resolve(clubCode);
 
-            int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
+            int duurMinuten = request.WedstrijdDuurMinuten ?? DefaultWedstrijdDuurMinutenZonderCategorie;
             decimal veldFractie = 1.00m;
             if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
             {

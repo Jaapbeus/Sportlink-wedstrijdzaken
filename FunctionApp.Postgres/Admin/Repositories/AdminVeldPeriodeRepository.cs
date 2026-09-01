@@ -34,12 +34,7 @@ internal static class AdminVeldPeriodeRepository
         await using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-            list.Add(row);
-        }
+            list.Add(RepositoryRijMapper.LeesRij(r));
         return list;
     }
 

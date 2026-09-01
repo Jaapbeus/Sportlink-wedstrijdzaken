@@ -43,7 +43,6 @@ public static class EmailTemplateService
 {
     private static readonly ConcurrentDictionary<(string clubCode, string key), (EmailTemplate template, DateTime expiresAt)> _cache = new();
     private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(5);
-    private static readonly object _lock = new();
 
     /// <summary>
     /// Probeert een sjabloon op te halen uit de database. Retourneert <c>null</c> als het sjabloon
@@ -126,10 +125,7 @@ public static class EmailTemplateService
     /// </summary>
     public static void InvalidateCache()
     {
-        lock (_lock)
-        {
-            _cache.Clear();
-        }
+        _cache.Clear();
     }
 
     /// <summary>Past een sjabloon toe met simpele placeholder-substitutie (<c>{{key}}</c>).</summary>

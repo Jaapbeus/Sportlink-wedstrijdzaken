@@ -18,35 +18,37 @@ internal static class EasyAuthHelper
 {
     private static readonly JsonSerializerOptions Opts = new(JsonSerializerDefaults.Web);
 
+    private static ClientPrincipal? TryGetPrincipal(HttpRequest req)
+    {
+        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
+            string.IsNullOrEmpty(encoded))
+            return null;
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+            return JsonSerializer.Deserialize<ClientPrincipal>(json, Opts);
+        }
+        catch { return null; }
+    }
+
     public static IActionResult? RequireRole(HttpRequest req, params string[] allowedRoles)
     {
         var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
         if (string.IsNullOrEmpty(siteName))
             return null;
 
-        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
-            string.IsNullOrEmpty(encoded))
+        var principal = TryGetPrincipal(req);
+        if (principal?.Claims == null)
             return new UnauthorizedResult();
 
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
-            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, Opts);
-            if (principal?.Claims == null)
-                return new UnauthorizedResult();
+        var hasRole = principal.Claims.Any(c =>
+            string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
+            allowedRoles.Any(r => string.Equals(c.Val, r, StringComparison.OrdinalIgnoreCase)));
 
-            var hasRole = principal.Claims.Any(c =>
-                string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
-                allowedRoles.Any(r => string.Equals(c.Val, r, StringComparison.OrdinalIgnoreCase)));
-
-            return hasRole
-                ? null
-                : new ObjectResult(new { error = "Forbidden: vereiste rol ontbreekt" }) { StatusCode = 403 };
-        }
-        catch
-        {
-            return new UnauthorizedResult();
-        }
+        return hasRole
+            ? null
+            : new ObjectResult(new { error = "Forbidden: vereiste rol ontbreekt" }) { StatusCode = 403 };
     }
 
     public static IActionResult? RequireAdmin(HttpRequest req) => RequireRole(req, "admin");
@@ -55,39 +57,21 @@ internal static class EasyAuthHelper
 
     public static string? GetCallerName(HttpRequest req)
     {
-        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
-            string.IsNullOrEmpty(encoded))
-            return null;
-
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
-            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, Opts);
-            return principal?.Claims?
-                .FirstOrDefault(c => string.Equals(c.Typ, "name", StringComparison.OrdinalIgnoreCase))
-                ?.Val;
-        }
-        catch { return null; }
+        var principal = TryGetPrincipal(req);
+        return principal?.Claims?
+            .FirstOrDefault(c => string.Equals(c.Typ, "name", StringComparison.OrdinalIgnoreCase))
+            ?.Val;
     }
 
     public static string? GetCallerEmail(HttpRequest req)
     {
-        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
-            string.IsNullOrEmpty(encoded))
-            return null;
-
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
-            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, Opts);
-            return principal?.Claims?
-                .FirstOrDefault(c =>
-                    string.Equals(c.Typ, "preferred_username", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(c.Typ, "upn", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(c.Typ, "email", StringComparison.OrdinalIgnoreCase))
-                ?.Val;
-        }
-        catch { return null; }
+        var principal = TryGetPrincipal(req);
+        return principal?.Claims?
+            .FirstOrDefault(c =>
+                string.Equals(c.Typ, "preferred_username", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c.Typ, "upn", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c.Typ, "email", StringComparison.OrdinalIgnoreCase))
+            ?.Val;
     }
 
     public static string GetClubCodeFromRequest(HttpRequest req)

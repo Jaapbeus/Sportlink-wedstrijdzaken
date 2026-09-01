@@ -63,11 +63,6 @@ internal static class PlannerSettingsRepository
     }
 
     /// <summary>
-    /// Actieve velden van een club, met veldtype/kunstlicht — de invoer die de scheduling-engine
-    /// (<see cref="Planner.Shared.FieldScheduler"/>) nodig heeft voor de kunstgras-voorkeursvolgorde
-    /// en waarop <see cref="Planner.Shared.VeldTypeClassificatie"/> werkt.
-    /// </summary>
-    /// <summary>
     /// Eén speeltijd-rij opzoeken — dunne wrapper om <see cref="GetSpeeltijdenLookupAsync"/> heen
     /// i.p.v. een eigen query: zelfde resultaat, geen tweede SQL-implementatie van dezelfde lookup.
     /// </summary>
@@ -91,6 +86,23 @@ internal static class PlannerSettingsRepository
         cmd.Parameters.AddWithValue("datum", date.ToDateTime(TimeOnly.MinValue).Date);
         var result = await cmd.ExecuteScalarAsync();
         return result is TimeSpan ts ? TimeOnly.FromTimeSpan(ts) : null;
+    }
+
+    /// <summary>
+    /// Zonsondergang opzoeken (met terugval op <see cref="PostgresSunsetCalculator"/>) en meteen
+    /// <c>BeschikbaarTot</c> van elk veld met <c>GebruikZonsondergang</c> afknijpen tot die tijd —
+    /// gedeelde stap van <c>CheckAvailabilityAsync</c>, <c>CheckDoordeweeksBeschikbaarAsync</c> en
+    /// <c>RescheduleService.CheckRescheduleAvailabilityAsync</c>.
+    /// </summary>
+    internal static async Task<TimeOnly?> ResolveEnPasZonsondergangToeAsync(
+        string connectionString, DateOnly date, List<VeldBeschikbaarheidInfo> availableFields)
+    {
+        TimeOnly? sunset = await GetSunsetAsync(connectionString, date);
+        sunset ??= PostgresSunsetCalculator.GetSunset(date);
+        foreach (var field in availableFields)
+            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
+                field.BeschikbaarTot = sunset.Value;
+        return sunset;
     }
 
     /// <inheritdoc cref="GetSunsetAsync"/>
@@ -151,6 +163,11 @@ internal static class PlannerSettingsRepository
         return result;
     }
 
+    /// <summary>
+    /// Actieve velden van een club, met veldtype/kunstlicht — de invoer die de scheduling-engine
+    /// (<see cref="Planner.Shared.FieldScheduler"/>) nodig heeft voor de kunstgras-voorkeursvolgorde
+    /// en waarop <see cref="Planner.Shared.VeldTypeClassificatie"/> werkt.
+    /// </summary>
     internal static async Task<List<VeldInfo>> GetVeldenAsync(string connectionString, string clubCode)
     {
         var result = new List<VeldInfo>();

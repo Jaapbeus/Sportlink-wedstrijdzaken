@@ -16,7 +16,7 @@ internal static class AdminUitgeslotenEmailRepository
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
-            SELECT id, emailadres, omschrijving, actief, clubcode, mta_inserted
+            SELECT id, emailadres, omschrijving, actief, clubcode
             FROM public.uitgeslotenemailadressen
             WHERE clubcode = @cc
             ORDER BY emailadres", conn);

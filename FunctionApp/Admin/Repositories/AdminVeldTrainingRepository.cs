@@ -11,8 +11,7 @@ internal static class AdminVeldTrainingRepository
 {
     internal static async Task<List<Dictionary<string, object?>>> GetAlleAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT t.[Id], t.[VeldNummer], v.[VeldNaam], t.[DagVanWeek],
                    CONVERT(VARCHAR(5), t.[VanTijd]) AS [VanTijd],
@@ -26,12 +25,7 @@ internal static class AdminVeldTrainingRepository
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-            list.Add(row);
-        }
+            list.Add(AdminRepositoryHelpers.LeesAlleKolommen(r));
         return list;
     }
 
@@ -39,8 +33,7 @@ internal static class AdminVeldTrainingRepository
         int veldNummer, int dagVanWeek, TimeSpan vanTijd, TimeSpan totTijd, string? omschrijving,
         bool actief, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[VeldTraining]
                 ([VeldNummer], [DagVanWeek], [VanTijd], [TotTijd], [Omschrijving], [Actief], [ClubCode])
@@ -60,8 +53,7 @@ internal static class AdminVeldTrainingRepository
         int id, int veldNummer, int dagVanWeek, TimeSpan vanTijd, TimeSpan totTijd, string? omschrijving,
         bool actief, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[VeldTraining]
             SET [VeldNummer] = @Vn, [DagVanWeek] = @Dag, [VanTijd] = @Van, [TotTijd] = @Tot,
@@ -80,8 +72,7 @@ internal static class AdminVeldTrainingRepository
 
     internal static async Task<int> DeleteAsync(int id, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "DELETE FROM [dbo].[VeldTraining] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id", id);

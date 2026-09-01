@@ -6,8 +6,7 @@ internal static class AdminClubsRepository
 {
     internal static async Task<List<object>> GetClubsAsync(string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT [ClubCode], [ClubName], [SyncEnabled]
             FROM [dbo].[AppSettings]

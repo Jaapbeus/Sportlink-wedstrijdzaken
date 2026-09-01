@@ -46,7 +46,7 @@ internal static class PostgresSeasonHelper
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             var toegevoegd = await PostgresSeasonProcedures.EnsureSeasonsAsync(
-                connection, DateOnly.FromDateTime(DateTime.Today));
+                connection, DateOnly.FromDateTime(DateTime.UtcNow.Date));
             if (toegevoegd > 0)
                 log.LogInformation("SEIZOENEN - {Aantal} seizoensrij(en) toegevoegd aan public.season", toegevoegd);
         }
@@ -66,7 +66,7 @@ internal static class PostgresSeasonHelper
             await using var command = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season", connection);
             var result = await command.ExecuteScalarAsync();
             if (result is DateTime endDate)
-                return (int)Math.Ceiling((endDate - DateTime.Today).TotalDays / 7.0);
+                return (int)Math.Ceiling((endDate - DateTime.UtcNow.Date).TotalDays / 7.0);
         }
         catch (Exception ex)
         {
@@ -90,7 +90,7 @@ internal static class PostgresSeasonHelper
             command.Parameters.AddWithValue("jaar", startYear);
             var result = await command.ExecuteScalarAsync();
             if (result is DateTime startDate)
-                return (int)Math.Floor((startDate - DateTime.Today).TotalDays / 7.0);
+                return (int)Math.Floor((startDate - DateTime.UtcNow.Date).TotalDays / 7.0);
         }
         catch (Exception ex)
         {

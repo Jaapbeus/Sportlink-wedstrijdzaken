@@ -15,20 +15,14 @@ internal static class AdminVoorkeurTijdenRepository
         if (team != null) sql += " AND [TeamNaam] = @Team";
         sql += " ORDER BY [TeamNaam], [DagVanWeek], [VoorkeurTijd]";
 
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
         if (team != null) cmd.Parameters.AddWithValue("@Team", team);
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-            list.Add(row);
-        }
+            list.Add(AdminRepositoryHelpers.LeesAlleKolommen(r));
         return list;
     }
 
@@ -36,8 +30,7 @@ internal static class AdminVoorkeurTijdenRepository
         string teamNaam, int dagVanWeek, TimeSpan voorkeurTijd, int prioriteit, bool actief,
         string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[TeamVoorkeurTijden]
                 ([TeamNaam], [DagVanWeek], [VoorkeurTijd], [Prioriteit], [Actief], [ClubCode])
@@ -56,8 +49,7 @@ internal static class AdminVoorkeurTijdenRepository
         int id, string teamNaam, int dagVanWeek, TimeSpan voorkeurTijd, int prioriteit, bool actief,
         string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[TeamVoorkeurTijden]
             SET [TeamNaam] = @Tn, [DagVanWeek] = @Dag, [VoorkeurTijd] = @Tijd,
@@ -75,8 +67,7 @@ internal static class AdminVoorkeurTijdenRepository
 
     internal static async Task<int> SoftDeleteVoorkeurTijdAsync(int id, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[TeamVoorkeurTijden]
             SET [Actief] = 0, [mta_modified] = GETUTCDATE()
@@ -90,8 +81,7 @@ internal static class AdminVoorkeurTijdenRepository
 
     internal static async Task<List<Dictionary<string, object?>>> GetTeamRegelsAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT [Id], [TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer],
                    CONVERT(VARCHAR(5), [WaardeTijd]) AS [WaardeTijd],
@@ -103,12 +93,7 @@ internal static class AdminVoorkeurTijdenRepository
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-            list.Add(row);
-        }
+            list.Add(AdminRepositoryHelpers.LeesAlleKolommen(r));
         return list;
     }
 
@@ -117,8 +102,7 @@ internal static class AdminVoorkeurTijdenRepository
         TimeSpan? waardeTijd, int prioriteit, bool actief, string? opmerking,
         string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[TeamRegels]
                 ([TeamNaam], [RegelType], [WaardeMinuten], [WaardeVeldNummer], [WaardeTijd],
@@ -142,8 +126,7 @@ internal static class AdminVoorkeurTijdenRepository
         TimeSpan? waardeTijd, int prioriteit, bool actief, string? opmerking,
         string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[TeamRegels]
             SET [TeamNaam] = @Tn, [RegelType] = @Rt,
@@ -165,8 +148,7 @@ internal static class AdminVoorkeurTijdenRepository
 
     internal static async Task<int> SoftDeleteTeamRegelAsync(int id, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "UPDATE [dbo].[TeamRegels] SET [Actief] = 0 WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id", id);

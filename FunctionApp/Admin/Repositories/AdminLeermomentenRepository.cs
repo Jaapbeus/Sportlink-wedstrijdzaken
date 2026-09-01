@@ -24,30 +24,20 @@ internal static class AdminLeermomentenRepository
                 WHERE cc.[ClubCode] = @Cc {whereExtra}
                 ORDER BY cc.[mta_inserted] DESC";
 
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("@Limit", limit);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
         using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-            {
-                var raw = r.IsDBNull(i) ? null : r.GetValue(i);
-                row[r.GetName(i)] = raw is DateTime dt ? DateTime.SpecifyKind(dt, DateTimeKind.Utc) : raw;
-            }
-            list.Add(row);
-        }
+            list.Add(AdminRepositoryHelpers.LeesAlleKolommenMetUtcDatums(r));
         return (list.Count, limit, list);
     }
 
     internal static async Task<(int pending, int validated, int rejected)> GetStatsAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT
                 SUM(CASE WHEN [IsGevalideerd] = 0 AND [IsAfgewezen] = 0 THEN 1 ELSE 0 END),
@@ -65,8 +55,7 @@ internal static class AdminLeermomentenRepository
 
     internal static async Task<int> ValideerAsync(int id, bool isGevalideerd, bool isAfgewezen, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [planner].[ClassificatieCorrectie]
             SET [IsGevalideerd] = @IsGv, [IsAfgewezen] = @IsAf, [mta_modified] = GETUTCDATE()

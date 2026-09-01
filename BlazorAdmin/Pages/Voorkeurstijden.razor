@@ -40,7 +40,7 @@ else
             {
                 <tr class="@(!v.Actief ? "text-muted" : "")">
                     <td>@v.TeamNaam</td>
-                    <td>@DagNaam(v.DagVanWeek)</td>
+                    <td>@DagNamen.Naam(v.DagVanWeek)</td>
                     <td>@v.VoorkeurTijd</td>
                     <td>@v.Prioriteit</td>
                     <td>@(v.Actief ? "ja" : "nee")</td>
@@ -354,13 +354,6 @@ else
         regelMessage = r.Success ? "Verwijderd." : "Fout: " + r.ErrorMessage;
         await LoadAsync();
     }
-
-    private static string DagNaam(int dag) => dag switch
-    {
-        1 => "Maandag", 2 => "Dinsdag", 3 => "Woensdag", 4 => "Donderdag",
-        5 => "Vrijdag", 6 => "Zaterdag", 7 => "Zondag",
-        _ => $"Dag {dag}"
-    };
 
     private static string RegelTypeNederlands(string? type) => type switch
     {

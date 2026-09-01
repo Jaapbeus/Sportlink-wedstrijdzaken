@@ -12,7 +12,7 @@ internal static class SportlinkStagingRepository
 {
     private static string Cs => DatabaseConfig.ConnectionString;
 
-    internal static async Task<List<string>> GetWedstrijdcodesAsync(ILogger log)
+    internal static async Task<List<string>> GetWedstrijdcodesAsync()
     {
         var list = new List<string>();
         using var conn = new SqlConnection(Cs);
@@ -208,6 +208,13 @@ internal static class SportlinkStagingRepository
                 @UitTeamWebsite, @UitTeamShirtKleur, @UitTeamStraat, @UitTeamPostcodePlaats, @UitTeamTelefoon, @UitTeamEmail,
                 @ClubCode
             )", conn);
+        BindMatchDetailsParameters(cmd, matchDetails, clubCode);
+        await cmd.ExecuteNonQueryAsync();
+        log.LogInformation("MATCHDETAILS - stg.matchdetails rij opgeslagen.");
+    }
+
+    private static void BindMatchDetailsParameters(SqlCommand cmd, MatchDetails matchDetails, string clubCode)
+    {
         cmd.Parameters.AddWithValue("@ClubCode", clubCode ?? (object)DBNull.Value);
 
         var wi = matchDetails.Wedstrijdinformatie;
@@ -273,8 +280,6 @@ internal static class SportlinkStagingRepository
         cmd.Parameters.AddWithValue("@UitTeamPostcodePlaats",        matchDetails.Uitteam.Postcodeplaats                   ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@UitTeamTelefoon",              matchDetails.Uitteam.Telefoon                         ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@UitTeamEmail",                 matchDetails.Uitteam.Email                            ?? (object)DBNull.Value);
-        await cmd.ExecuteNonQueryAsync();
-        log.LogInformation("MATCHDETAILS - stg.matchdetails rij opgeslagen.");
     }
 
     // Gedeelde basisvelden voor programma én uitslagen.

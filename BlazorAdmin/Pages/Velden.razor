@@ -216,7 +216,7 @@ else
             {
                 <tr>
                     <td>@b.VeldNaam</td>
-                    <td>@DagNaam(b.DagVanWeek)</td>
+                    <td>@DagNamen.Naam(b.DagVanWeek)</td>
                     <td>@b.BeschikbaarVanaf</td>
                     <td>@b.BeschikbaarTot</td>
                     <td>@(b.GebruikZonsondergang ? "ja" : "nee")</td>
@@ -257,7 +257,7 @@ else
                     <select class="form-select" @bind="editingBeschikbaarheid.DagVanWeek" disabled="@(!isNewBeschikbaarheid)">
                         @for (int d = 1; d <= 7; d++)
                         {
-                            <option value="@d">@DagNaam(d)</option>
+                            <option value="@d">@DagNamen.Naam(d)</option>
                         }
                     </select>
                 </div>
@@ -329,7 +329,7 @@ else
             {
                 <tr class="@(!t.Actief ? "text-muted" : "")">
                     <td>@t.VeldNaam</td>
-                    <td>@DagNaam(t.DagVanWeek)</td>
+                    <td>@DagNamen.Naam(t.DagVanWeek)</td>
                     <td>@t.VanTijd</td>
                     <td>@t.TotTijd</td>
                     <td>@t.Omschrijving</td>
@@ -370,7 +370,7 @@ else
                     <select class="form-select" @bind="editingTraining.DagVanWeek">
                         @for (int d = 1; d <= 7; d++)
                         {
-                            <option value="@d">@DagNaam(d)</option>
+                            <option value="@d">@DagNamen.Naam(d)</option>
                         }
                     </select>
                 </div>
@@ -596,10 +596,4 @@ else
         await LoadAsync();
     }
 
-    private static string DagNaam(int dag) => dag switch
-    {
-        1 => "Maandag", 2 => "Dinsdag", 3 => "Woensdag", 4 => "Donderdag",
-        5 => "Vrijdag", 6 => "Zaterdag", 7 => "Zondag",
-        _ => $"Dag {dag}"
-    };
 }

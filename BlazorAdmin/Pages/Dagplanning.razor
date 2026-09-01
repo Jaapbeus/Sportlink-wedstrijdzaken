@@ -616,6 +616,8 @@
 }
 
 @code {
+    private const int KleineAfwijkingDrempelMinuten = 15;
+
     private DateTime _datumDt;
     private int _bufferMinuten = 15;
     private bool _bezig;
@@ -917,7 +919,16 @@
         _sleepItem = null;
         if (item == null || _plan == null) return;
 
-        var rect = await JS.InvokeAsync<ElementRect?>("blazorHelpers.getElementRect", $"gantt-rij-{rijIndex}");
+        // Het element kan tijdens een snelle re-render al verdwenen zijn (#597).
+        ElementRect? rect;
+        try
+        {
+            rect = await JS.InvokeAsync<ElementRect?>("blazorHelpers.getElementRect", $"gantt-rij-{rijIndex}");
+        }
+        catch (JSException)
+        {
+            return;
+        }
         if (rect == null || rect.Width <= 0) return;
 
         double blokLinksPx = e.ClientX - rect.Left - _sleepGrijpOffsetPx;
@@ -999,7 +1010,7 @@
         {
             item.VoorkeurAfwijkingMinuten = (int)(nt.ToTimeSpan() - vt.ToTimeSpan()).TotalMinutes;
             int abs = Math.Abs(item.VoorkeurAfwijkingMinuten.Value);
-            item.VoorkeurStatus = abs == 0 ? "op-tijd" : abs <= 15 ? "kleine-afwijking" : "grote-afwijking";
+            item.VoorkeurStatus = abs == 0 ? "op-tijd" : abs <= KleineAfwijkingDrempelMinuten ? "kleine-afwijking" : "grote-afwijking";
         }
 
         if (item.VoorkeurVeldNummer.HasValue)
@@ -1183,7 +1194,7 @@
         if (voorkeurTijd == null || !afwijking.HasValue) return string.Empty;
         int abs = Math.Abs(afwijking.Value);
         if (abs == 0) return "#22c55e";    // Exact op voorkeurstijd → groen
-        if (abs <= 15) return "#f59e0b";   // Binnen 15 minuten → amber
+        if (abs <= KleineAfwijkingDrempelMinuten) return "#f59e0b";   // Binnen 15 minuten → amber
         return "#ef4444";                  // Meer dan 15 min afwijking → rood
     }
 

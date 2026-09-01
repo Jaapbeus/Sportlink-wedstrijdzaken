@@ -19,100 +19,113 @@ namespace SportlinkFunction
                     using (SqlConnection connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
                     {
                         await connection.OpenAsync();
-                        // SyncEnabled bestaat pas na migratie #324. Dynamisch controleren of de
-                        // kolom aanwezig is zodat de query bij oudere DB-installaties ook werkt.
-                        using var syncCheckCmd = new SqlCommand(
-                            "SELECT COUNT(1) FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AppSettings]') AND name = 'SyncEnabled'",
-                            connection);
-                        var hasSyncEnabled = (int)(await syncCheckCmd.ExecuteScalarAsync() ?? 0) > 0;
-                        var syncFilter = hasSyncEnabled ? "WHERE [SyncEnabled] = 1" : "";
-
-                        string query = $@"
-                            SELECT TOP 1 [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
-                                   [SeasonStartMonth], [LastSyncTimestamp], [FetchSchedule],
-                                   [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
-                                   [PlannerEmailAdres], [Accommodatie],
-                                   [HerplanDeadlineDagen], [BufferMinuten],
-                                   [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
-                                   [AccommodatiePlaats]
-                            FROM [dbo].[AppSettings]
-                            {syncFilter}";
-                        using (SqlCommand command = new SqlCommand(query, connection))
-                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                        {
-                            if (await reader.ReadAsync())
-                            {
-                                void Set(string key, int col) {
-                                    if (!reader.IsDBNull(col))
-                                        settings[key] = reader.GetValue(col).ToString() ?? "";
-                                }
-
-                                settings["clubName"]        = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                                settings["clubCode"]        = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                                settings["sportlinkApiUrl"] = reader.IsDBNull(2) ? "" : reader.GetString(2);
-                                settings["sportlinkClientId"] = reader.IsDBNull(3) ? "" : reader.GetString(3);
-                                Set("seasonStartMonth", 4);
-                                if (!reader.IsDBNull(5))
-                                    settings["lastSyncTimestamp"] = Convert.ToDateTime(reader.GetValue(5)).ToString("yyyy-MM-dd HH:mm:ss");
-                                settings["fetchSchedule"]   = reader.IsDBNull(6) ? "0 0 4 * * *" : reader.GetString(6);
-                                Set("plannerAfzenderNaam", 7);
-                                Set("coordinatorNaam", 8);
-                                Set("coordinatorFunctie", 9);
-                                Set("plannerEmailAdres", 10);
-                                Set("accommodatie", 11);
-                                Set("herplanDeadlineDagen", 12);
-                                Set("bufferMinuten", 13);
-                                Set("accommodatieLatitude", 14);
-                                Set("accommodatieLongitude", 15);
-                                Set("emailVoetnoot", 16);
-                                Set("accommodatiePlaats", 17);
-                            }
-                        }
-
-                        // UseRealtimeApi: kolom bestaat pas na DB-migratie — dynamisch laden zodat
-                        // de Function App ook opstart als de kolom nog niet aangemaakt is.
-                        using var rtaCmd = new SqlCommand(@"
-                            DECLARE @v BIT = 1;
-                            DECLARE @sql NVARCHAR(200) = CASE
-                                WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
-                                THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings]'
-                                ELSE N'SELECT @v = CAST(1 AS BIT)'
-                            END;
-                            EXEC sp_executesql @sql, N'@v BIT OUTPUT', @v = @v OUTPUT;
-                            SELECT @v;", connection);
-                        var rtaResult = await rtaCmd.ExecuteScalarAsync();
-                        settings["useRealtimeApi"] = (rtaResult is bool b && !b) ? "0" : "1";
-
-                        // #561: KnvbPdfBijlageIngeschakeld/KnvbStandaardRegio bestaan pas na migratie —
-                        // dynamisch laden zodat de Function App ook opstart tegen een database die nog
-                        // niet gemigreerd is (zelfde patroon als UseRealtimeApi/SyncEnabled hierboven).
-                        using var knvbCmd = new SqlCommand(@"
-                            DECLARE @regio NVARCHAR(20) = NULL;
-                            DECLARE @bijlage BIT = 1;
-                            DECLARE @sql NVARCHAR(400) = CASE
-                                WHEN COL_LENGTH('[dbo].[AppSettings]', 'KnvbStandaardRegio') IS NOT NULL
-                                     AND COL_LENGTH('[dbo].[AppSettings]', 'KnvbPdfBijlageIngeschakeld') IS NOT NULL
-                                THEN N'SELECT TOP 1 @r = [KnvbStandaardRegio], @b = [KnvbPdfBijlageIngeschakeld] FROM [dbo].[AppSettings]'
-                                ELSE N'SELECT @r = CAST(NULL AS NVARCHAR(20)), @b = CAST(1 AS BIT)'
-                            END;
-                            EXEC sp_executesql @sql, N'@r NVARCHAR(20) OUTPUT, @b BIT OUTPUT', @r = @regio OUTPUT, @b = @bijlage OUTPUT;
-                            -- @r/@b zijn de parameternamen BINNEN sp_executesql; in deze batch heten ze
-                            -- @regio/@bijlage. 'SELECT @r' gaf Msg 137 (compile-time), dus deze hele
-                            -- settings-load faalde altijd en beide KNVB-instellingen bleven leeg (#767).
-                            SELECT @regio, @bijlage;", connection);
-                        using var knvbReader = await knvbCmd.ExecuteReaderAsync();
-                        if (await knvbReader.ReadAsync())
-                        {
-                            if (!knvbReader.IsDBNull(0))
-                                settings["knvbStandaardRegio"] = knvbReader.GetString(0);
-                            settings["knvbPdfBijlageIngeschakeld"] = (!knvbReader.IsDBNull(1) && !knvbReader.GetBoolean(1)) ? "0" : "1";
-                        }
+                        await LoadCoreAppSettingsAsync(connection);
+                        await LoadUseRealtimeApiSettingAsync(connection);
+                        await LoadKnvbSettingsAsync(connection);
                     }
                     log.LogInformation("App settings loaded successfully.");
                 }
                 catch (Exception ex)
                 {
                     log.LogError(ex, "Error loading app settings");
+                }
+            }
+
+            private static async Task LoadCoreAppSettingsAsync(SqlConnection connection)
+            {
+                // SyncEnabled bestaat pas na migratie #324. Dynamisch controleren of de
+                // kolom aanwezig is zodat de query bij oudere DB-installaties ook werkt.
+                using var syncCheckCmd = new SqlCommand(
+                    "SELECT COUNT(1) FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AppSettings]') AND name = 'SyncEnabled'",
+                    connection);
+                var hasSyncEnabled = (int)(await syncCheckCmd.ExecuteScalarAsync() ?? 0) > 0;
+                var syncFilter = hasSyncEnabled ? "WHERE [SyncEnabled] = 1" : "";
+
+                string query = $@"
+                    SELECT TOP 1 [ClubName], [ClubCode], [SportlinkApiUrl], [SportlinkClientId],
+                           [SeasonStartMonth], [LastSyncTimestamp], [FetchSchedule],
+                           [PlannerAfzenderNaam], [CoordinatorNaam], [CoordinatorFunctie],
+                           [PlannerEmailAdres], [Accommodatie],
+                           [HerplanDeadlineDagen], [BufferMinuten],
+                           [AccommodatieLatitude], [AccommodatieLongitude], [EmailVoetnoot],
+                           [AccommodatiePlaats]
+                    FROM [dbo].[AppSettings]
+                    {syncFilter}";
+                using (SqlCommand command = new SqlCommand(query, connection))
+                using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        void Set(string key, int col) {
+                            if (!reader.IsDBNull(col))
+                                settings[key] = reader.GetValue(col).ToString() ?? "";
+                        }
+
+                        settings["clubName"]        = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                        settings["clubCode"]        = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                        settings["sportlinkApiUrl"] = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                        settings["sportlinkClientId"] = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                        Set("seasonStartMonth", 4);
+                        if (!reader.IsDBNull(5))
+                            settings["lastSyncTimestamp"] = Convert.ToDateTime(reader.GetValue(5)).ToString("yyyy-MM-dd HH:mm:ss");
+                        settings["fetchSchedule"]   = reader.IsDBNull(6) ? "0 0 4 * * *" : reader.GetString(6);
+                        Set("plannerAfzenderNaam", 7);
+                        Set("coordinatorNaam", 8);
+                        Set("coordinatorFunctie", 9);
+                        Set("plannerEmailAdres", 10);
+                        Set("accommodatie", 11);
+                        Set("herplanDeadlineDagen", 12);
+                        Set("bufferMinuten", 13);
+                        Set("accommodatieLatitude", 14);
+                        Set("accommodatieLongitude", 15);
+                        Set("emailVoetnoot", 16);
+                        Set("accommodatiePlaats", 17);
+                    }
+                }
+            }
+
+            private static async Task LoadUseRealtimeApiSettingAsync(SqlConnection connection)
+            {
+                // UseRealtimeApi: kolom bestaat pas na DB-migratie — dynamisch laden zodat
+                // de Function App ook opstart als de kolom nog niet aangemaakt is.
+                using var rtaCmd = new SqlCommand(@"
+                    DECLARE @v BIT = 1;
+                    DECLARE @sql NVARCHAR(200) = CASE
+                        WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
+                        THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings]'
+                        ELSE N'SELECT @v = CAST(1 AS BIT)'
+                    END;
+                    EXEC sp_executesql @sql, N'@v BIT OUTPUT', @v = @v OUTPUT;
+                    SELECT @v;", connection);
+                var rtaResult = await rtaCmd.ExecuteScalarAsync();
+                settings["useRealtimeApi"] = (rtaResult is bool b && !b) ? "0" : "1";
+            }
+
+            private static async Task LoadKnvbSettingsAsync(SqlConnection connection)
+            {
+                // #561: KnvbPdfBijlageIngeschakeld/KnvbStandaardRegio bestaan pas na migratie —
+                // dynamisch laden zodat de Function App ook opstart tegen een database die nog
+                // niet gemigreerd is (zelfde patroon als UseRealtimeApi/SyncEnabled hierboven).
+                using var knvbCmd = new SqlCommand(@"
+                    DECLARE @regio NVARCHAR(20) = NULL;
+                    DECLARE @bijlage BIT = 1;
+                    DECLARE @sql NVARCHAR(400) = CASE
+                        WHEN COL_LENGTH('[dbo].[AppSettings]', 'KnvbStandaardRegio') IS NOT NULL
+                             AND COL_LENGTH('[dbo].[AppSettings]', 'KnvbPdfBijlageIngeschakeld') IS NOT NULL
+                        THEN N'SELECT TOP 1 @r = [KnvbStandaardRegio], @b = [KnvbPdfBijlageIngeschakeld] FROM [dbo].[AppSettings]'
+                        ELSE N'SELECT @r = CAST(NULL AS NVARCHAR(20)), @b = CAST(1 AS BIT)'
+                    END;
+                    EXEC sp_executesql @sql, N'@r NVARCHAR(20) OUTPUT, @b BIT OUTPUT', @r = @regio OUTPUT, @b = @bijlage OUTPUT;
+                    -- @r/@b zijn de parameternamen BINNEN sp_executesql; in deze batch heten ze
+                    -- @regio/@bijlage. 'SELECT @r' gaf Msg 137 (compile-time), dus deze hele
+                    -- settings-load faalde altijd en beide KNVB-instellingen bleven leeg (#767).
+                    SELECT @regio, @bijlage;", connection);
+                using var knvbReader = await knvbCmd.ExecuteReaderAsync();
+                if (await knvbReader.ReadAsync())
+                {
+                    if (!knvbReader.IsDBNull(0))
+                        settings["knvbStandaardRegio"] = knvbReader.GetString(0);
+                    settings["knvbPdfBijlageIngeschakeld"] = (!knvbReader.IsDBNull(1) && !knvbReader.GetBoolean(1)) ? "0" : "1";
                 }
             }
 
@@ -206,12 +219,16 @@ namespace SportlinkFunction
             }
         }
 
+        // Azure SQL Serverless auto-resume takes 30-90s; 20 retries = 5 min total
+        private const int MaxDatabaseConnectRetries = 20;
+        private const int DatabaseConnectRetryDelayMs = 15000;
+
         public static async Task WaitForDatabaseAsync(ILogger log)
         {
             bool isDatabaseAvailable = false;
             int retryCount = 0;
-            int maxRetries = 20;
-            int delayBetweenRetries = 15000; // 15 seconds — Azure SQL Serverless auto-resume takes 30-90s; 20 retries = 5 min total
+            int maxRetries = MaxDatabaseConnectRetries;
+            int delayBetweenRetries = DatabaseConnectRetryDelayMs;
 
             while (!isDatabaseAvailable && retryCount < maxRetries)
             {
@@ -278,6 +295,11 @@ namespace SportlinkFunction
 
         public static class SeasonHelper
         {
+            // Fallback: ~30 weeks ahead
+            private const int DefaultSeasonEndWeeksAhead = 30;
+            // ~40 weeks back
+            private const int DefaultSeasonStartWeeksBack = -40;
+
             /// <summary>
             /// Returns the number of weeks from today to the end of the latest season in dbo.Season.
             /// </summary>
@@ -299,7 +321,7 @@ namespace SportlinkFunction
                 {
                     log.LogError(ex, "Error fetching season end date");
                 }
-                return 30; // Fallback: ~30 weeks ahead
+                return DefaultSeasonEndWeeksAhead;
             }
 
             /// <summary>
@@ -326,7 +348,7 @@ namespace SportlinkFunction
                 {
                     log.LogError(ex, "Error fetching season start for year {StartYear}", startYear);
                 }
-                return -40; // Fallback: ~40 weeks back
+                return DefaultSeasonStartWeeksBack;
             }
 
             /// <summary>

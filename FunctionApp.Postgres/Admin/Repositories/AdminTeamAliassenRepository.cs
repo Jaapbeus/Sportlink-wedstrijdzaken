@@ -43,22 +43,7 @@ internal static class AdminTeamAliassenRepository
         await using var r = await cmd.ExecuteReaderAsync();
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
-        {
-            list.Add(new()
-            {
-                ["id"] = r.GetInt32(r.GetOrdinal("id")),
-                ["ruweTekst"] = r.GetString(r.GetOrdinal("ruwetekst")),
-                ["ruweTekstGenormaliseerd"] = r.GetString(r.GetOrdinal("ruwetekstgenormaliseerd")),
-                ["teamId"] = r.GetInt32(r.GetOrdinal("teamid")),
-                ["teamnaam"] = Nullable(r, "teamnaam"),
-                ["leeftijdsCategorie"] = Nullable(r, "leeftijdscategorie"),
-                ["bron"] = r.GetString(r.GetOrdinal("bron")),
-                ["status"] = r.GetString(r.GetOrdinal("status")),
-                ["aantalKeerGebruikt"] = r.GetInt32(r.GetOrdinal("aantalkeergebruikt")),
-                ["mtaInserted"] = NullableDateTime(r, "mta_inserted"),
-                ["mtaModified"] = NullableDateTime(r, "mta_modified"),
-            });
-        }
+            list.Add(MapRow(r));
         return (list.Count, limit, list);
     }
 
@@ -105,6 +90,21 @@ internal static class AdminTeamAliassenRepository
         cmd.Parameters.AddWithValue("cc", clubCode);
         return await cmd.ExecuteNonQueryAsync();
     }
+
+    private static Dictionary<string, object?> MapRow(NpgsqlDataReader r) => new()
+    {
+        ["id"] = r.GetInt32(r.GetOrdinal("id")),
+        ["ruweTekst"] = r.GetString(r.GetOrdinal("ruwetekst")),
+        ["ruweTekstGenormaliseerd"] = r.GetString(r.GetOrdinal("ruwetekstgenormaliseerd")),
+        ["teamId"] = r.GetInt32(r.GetOrdinal("teamid")),
+        ["teamnaam"] = Nullable(r, "teamnaam"),
+        ["leeftijdsCategorie"] = Nullable(r, "leeftijdscategorie"),
+        ["bron"] = r.GetString(r.GetOrdinal("bron")),
+        ["status"] = r.GetString(r.GetOrdinal("status")),
+        ["aantalKeerGebruikt"] = r.GetInt32(r.GetOrdinal("aantalkeergebruikt")),
+        ["mtaInserted"] = NullableDateTime(r, "mta_inserted"),
+        ["mtaModified"] = NullableDateTime(r, "mta_modified"),
+    };
 
     private static string? Nullable(NpgsqlDataReader r, string kolom)
     {

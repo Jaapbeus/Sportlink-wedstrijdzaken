@@ -77,8 +77,8 @@ public static class AdminSettingsFunction
     private static readonly HttpClient _geocodeClient;
     static AdminSettingsFunction()
     {
-        _geocodeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        _geocodeClient.DefaultRequestHeaders.Add("User-Agent", "SportlinkAdmin/2.0");
+        _geocodeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds) };
+        _geocodeClient.DefaultRequestHeaders.Add("User-Agent", AdminEndpoint.OutboundUserAgent);
     }
 
     [Function("AdminSettingsGet")]
@@ -171,84 +171,17 @@ public static class AdminSettingsFunction
             if (string.IsNullOrWhiteSpace(gewijzigdDoor)) gewijzigdDoor = "onbekend";
 
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            var changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-            if (updateRequest.Velden != null)
-            {
-                foreach (var (key, value) in updateRequest.Velden)
-                {
-                    if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
-                    {
-                        log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", key);
-                        continue;
-                    }
-                    if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
-                    {
-                        log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", key);
-                        continue;
-                    }
-                    changes[key] = value;
-                }
-            }
 
-            if (changes.Count == 0)
-                return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
-
-            if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
-            {
-                if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
-                    return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
-            }
-
-            if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
-                !string.IsNullOrWhiteSpace(nieuweRegio) &&
-                !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
-            {
-                return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
-            }
+            var validatieFout = ValidateAndFilterChanges(updateRequest, log, out var changes);
+            if (validatieFout != null) return validatieFout;
+            changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
 
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
 
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            await using var transaction = await connection.BeginTransactionAsync();
 
-            try
-            {
-                var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
-
-                foreach (var (veld, nieuweWaarde) in changes)
-                {
-                    var cast = FieldCasts.GetValueOrDefault(veld, "");
-                    var updateCmd = new NpgsqlCommand(
-                        $"UPDATE public.appsettings SET {veld} = @waarde{cast} WHERE clubcode = @clubcode",
-                        connection, transaction);
-                    updateCmd.Parameters.AddWithValue("waarde", (object?)nieuweWaarde ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("clubcode", clubCode);
-                    await updateCmd.ExecuteNonQueryAsync();
-                    await updateCmd.DisposeAsync();
-
-                    currentValues.TryGetValue(veld, out var oud);
-                    var auditCmd = new NpgsqlCommand(@"
-                        INSERT INTO public.appsettingsaudit
-                            (gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode)
-                        VALUES (@gewijzigddoor, @veld, @oudewaarde, @nieuwewaarde, @clubcode)",
-                        connection, transaction);
-                    auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
-                    auditCmd.Parameters.AddWithValue("veld", veld);
-                    auditCmd.Parameters.AddWithValue("oudewaarde", (object?)oud ?? DBNull.Value);
-                    auditCmd.Parameters.AddWithValue("nieuwewaarde", (object?)nieuweWaarde ?? DBNull.Value);
-                    auditCmd.Parameters.AddWithValue("clubcode", clubCode);
-                    await auditCmd.ExecuteNonQueryAsync();
-                    await auditCmd.DisposeAsync();
-                }
-
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            await ApplyChangesAsync(connection, changes, gewijzigdDoor, clubCode);
 
             await PostgresAppSettings.LoadSettingsAsync(log);
 
@@ -287,6 +220,91 @@ public static class AdminSettingsFunction
         {
             log.LogError(ex, "Fout bij opslaan AppSettings");
             return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    private static IActionResult? ValidateAndFilterChanges(
+        UpdateSettingsRequest updateRequest, ILogger log, out Dictionary<string, string?> changes)
+    {
+        changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        if (updateRequest.Velden != null)
+        {
+            foreach (var (key, value) in updateRequest.Velden)
+            {
+                if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
+                {
+                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", key);
+                    continue;
+                }
+                if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
+                {
+                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", key);
+                    continue;
+                }
+                changes[key] = value;
+            }
+        }
+
+        if (changes.Count == 0)
+            return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
+
+        if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
+        {
+            if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
+                return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
+        }
+
+        if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
+            !string.IsNullOrWhiteSpace(nieuweRegio) &&
+            !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
+        {
+            return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
+        }
+
+        return null;
+    }
+
+    private static async Task ApplyChangesAsync(
+        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode)
+    {
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        try
+        {
+            var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+
+            foreach (var (veld, nieuweWaarde) in changes)
+            {
+                var cast = FieldCasts.GetValueOrDefault(veld, "");
+                var updateCmd = new NpgsqlCommand(
+                    $"UPDATE public.appsettings SET {veld} = @waarde{cast} WHERE clubcode = @clubcode",
+                    connection, transaction);
+                updateCmd.Parameters.AddWithValue("waarde", (object?)nieuweWaarde ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("clubcode", clubCode);
+                await updateCmd.ExecuteNonQueryAsync();
+                await updateCmd.DisposeAsync();
+
+                currentValues.TryGetValue(veld, out var oud);
+                var auditCmd = new NpgsqlCommand(@"
+                    INSERT INTO public.appsettingsaudit
+                        (gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode)
+                    VALUES (@gewijzigddoor, @veld, @oudewaarde, @nieuwewaarde, @clubcode)",
+                    connection, transaction);
+                auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
+                auditCmd.Parameters.AddWithValue("veld", veld);
+                auditCmd.Parameters.AddWithValue("oudewaarde", (object?)oud ?? DBNull.Value);
+                auditCmd.Parameters.AddWithValue("nieuwewaarde", (object?)nieuweWaarde ?? DBNull.Value);
+                auditCmd.Parameters.AddWithValue("clubcode", clubCode);
+                await auditCmd.ExecuteNonQueryAsync();
+                await auditCmd.DisposeAsync();
+            }
+
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
         }
     }
 

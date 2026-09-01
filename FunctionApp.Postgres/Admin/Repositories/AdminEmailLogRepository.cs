@@ -46,9 +46,7 @@ internal static class AdminEmailLogRepository
         var list = new List<Dictionary<string, object?>>();
         while (await r.ReadAsync())
         {
-            var row = new Dictionary<string, object?>();
-            for (int i = 0; i < r.FieldCount; i++)
-                row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
+            var row = RepositoryRijMapper.LeesRij(r);
 
             // AVG (#858): hoofdletterongevoelig én luidruchtig — ontbreekt de kolom, dan gooit
             // dit in plaats van stilzwijgend een onvermaskerd adres door te laten.

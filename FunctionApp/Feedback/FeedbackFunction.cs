@@ -129,6 +129,24 @@ public static class FeedbackFunction
         }
     }
 
+    // ── AI: gedeeld JSON-ophaal-en-parse-blok ──────────────────────────────────
+
+    private static async Task<JObject> RoepAiJsonAanAsync(
+        IChatClient chatClient, List<Microsoft.Extensions.AI.ChatMessage> messages, float temperature, string logLabel, ILogger log)
+    {
+        var options = new ChatOptions
+        {
+            Temperature = temperature,
+            ResponseFormat = ChatResponseFormat.Json
+        };
+
+        var response = await chatClient.GetResponseAsync(messages, options);
+        var json = response.Text ?? "";
+        log.LogDebug("{Label} AI response: {Json}", logLabel, json);
+
+        return JObject.Parse(json);
+    }
+
     // ── AI: volledigheid valideren ─────────────────────────────────────────────
 
     private static async Task<ValidateResponse> ValideerVolledigheid(
@@ -172,17 +190,7 @@ public static class FeedbackFunction
             new(ChatRole.User, userPrompt)
         };
 
-        var options = new ChatOptions
-        {
-            Temperature = 0.1f,
-            ResponseFormat = ChatResponseFormat.Json
-        };
-
-        var response = await chatClient.GetResponseAsync(messages, options);
-        var json = response.Text ?? "";
-        log.LogDebug("Validate AI response: {Json}", json);
-
-        var parsed = JObject.Parse(json);
+        var parsed = await RoepAiJsonAanAsync(chatClient, messages, 0.1f, "Validate", log);
         var volledig = parsed["volledig"]?.Value<bool>() ?? false;
         var vragen = parsed["vragen"]?.ToObject<List<string>>() ?? [];
 
@@ -235,17 +243,7 @@ public static class FeedbackFunction
             new(ChatRole.User, userPrompt)
         };
 
-        var options = new ChatOptions
-        {
-            Temperature = 0.2f,
-            ResponseFormat = ChatResponseFormat.Json
-        };
-
-        var response = await chatClient.GetResponseAsync(messages, options);
-        var json = response.Text ?? "";
-        log.LogDebug("Submit AI response: {Json}", json);
-
-        var parsed = JObject.Parse(json);
+        var parsed = await RoepAiJsonAanAsync(chatClient, messages, 0.2f, "Submit", log);
         return new StructuredIssue(
             parsed["title"]?.Value<string>() ?? $"[{dto.Type}] Gebruikersmelding",
             parsed["samenvatting"]?.Value<string>() ?? "",

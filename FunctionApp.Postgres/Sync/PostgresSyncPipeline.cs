@@ -42,80 +42,16 @@ internal static class PostgresSyncPipeline
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Teams);
-        try
-        {
-            await FetchAndStoreTeamsAsync(connectionString, $"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
-            log.LogInformation("TEAMS - GET endpoint=/teams");
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "TEAMS - fetch mislukt");
-            partialFailure = true;
-        }
+        partialFailure |= await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Matches);
-
-        log.LogInformation("MATCHES/PROGRAMMA - Fetching weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
-        for (var weekOffset = fromWeekOffset; weekOffset <= toWeekOffset; weekOffset++)
-        {
-            try
-            {
-                await FetchAndStoreProgrammaAsync(
-                    connectionString, $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
-                log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "MATCHES/PROGRAMMA - fetch mislukt weekOffset={WeekOffset}", weekOffset);
-                partialFailure = true;
-            }
-        }
-
-        var scoreFrom = Math.Min(fromWeekOffset, -2);
-        log.LogInformation("MATCHES/UITSLAGEN - Fetching weekOffset {From} to 0", scoreFrom);
-        for (var weekOffset = scoreFrom; weekOffset <= 0; weekOffset++)
-        {
-            try
-            {
-                await FetchAndStoreUitslagenAsync(
-                    connectionString, $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
-                log.LogInformation("MATCHES/UITSLAGEN - GET weekOffset={WeekOffset}", weekOffset);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "MATCHES/UITSLAGEN - fetch mislukt weekOffset={WeekOffset}", weekOffset);
-                partialFailure = true;
-            }
-        }
+        partialFailure |= await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, log);
+        partialFailure |= await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, log);
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.MatchDetails);
-        var wedstrijdcodes = await PostgresStagingRepository.GetWedstrijdcodesAsync(connectionString, log);
-        int mdOk = 0, mdFout = 0;
-        foreach (var wedstrijdcode in wedstrijdcodes)
-        {
-            if (await FetchAndStoreMatchDetailsAsync(
-                    connectionString,
-                    $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}",
-                    clubCode, log))
-            {
-                mdOk++;
-                log.LogInformation("MATCHDETAILS - GET wedstrijdcode={Code}", wedstrijdcode);
-            }
-            else
-            {
-                mdFout++;
-                partialFailure = true;
-            }
-        }
-        log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Total}",
-            mdOk, mdFout, wedstrijdcodes.Count);
+        partialFailure |= await FetchMatchDetailsPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
 
-        await orchestrator.EnsureHisTableAsync(KnownEntities.Teams);
-        await orchestrator.MergeStgToHisAsync(KnownEntities.Teams);
-        await orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
-        await orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
-        await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
-        await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
+        await MergeAllEntitiesAsync(orchestrator);
 
         // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
         //
@@ -162,12 +98,110 @@ internal static class PostgresSyncPipeline
             log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
     }
 
-    /// <summary>
-    /// Roept de teamcanonicalisatie aan zonder dat een fout de rest van de sync raakt — zelfde
-    /// try/catch-vorm als het SQL Server-origineel. <paramref name="omschrijving"/> staat alleen in
-    /// de foutmelding, zodat de twee aanroepen (primaire club en democlub) in het log uit elkaar
-    /// te houden zijn.
-    /// </summary>
+    private static async Task<bool> FetchTeamsPhaseAsync(
+        PostgresMergeOrchestrator orchestrator, string connectionString,
+        string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    {
+        try
+        {
+            await FetchAndStoreTeamsAsync(connectionString, $"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
+            log.LogInformation("TEAMS - GET endpoint=/teams");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "TEAMS - fetch mislukt");
+            return true;
+        }
+    }
+
+    private static async Task<bool> FetchProgrammaPhaseAsync(
+        string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode,
+        int fromWeekOffset, int toWeekOffset, ILogger log)
+    {
+        var partialFailure = false;
+
+        log.LogInformation("MATCHES/PROGRAMMA - Fetching weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+        for (var weekOffset = fromWeekOffset; weekOffset <= toWeekOffset; weekOffset++)
+        {
+            try
+            {
+                await FetchAndStoreProgrammaAsync(
+                    connectionString, $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
+                log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "MATCHES/PROGRAMMA - fetch mislukt weekOffset={WeekOffset}", weekOffset);
+                partialFailure = true;
+            }
+        }
+
+        return partialFailure;
+    }
+
+    private static async Task<bool> FetchUitslagenPhaseAsync(
+        string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode,
+        int fromWeekOffset, ILogger log)
+    {
+        var partialFailure = false;
+
+        var scoreFrom = Math.Min(fromWeekOffset, -2);
+        log.LogInformation("MATCHES/UITSLAGEN - Fetching weekOffset {From} to 0", scoreFrom);
+        for (var weekOffset = scoreFrom; weekOffset <= 0; weekOffset++)
+        {
+            try
+            {
+                await FetchAndStoreUitslagenAsync(
+                    connectionString, $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log);
+                log.LogInformation("MATCHES/UITSLAGEN - GET weekOffset={WeekOffset}", weekOffset);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "MATCHES/UITSLAGEN - fetch mislukt weekOffset={WeekOffset}", weekOffset);
+                partialFailure = true;
+            }
+        }
+
+        return partialFailure;
+    }
+
+    private static async Task<bool> FetchMatchDetailsPhaseAsync(
+        string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    {
+        var wedstrijdcodes = await PostgresStagingRepository.GetWedstrijdcodesAsync(connectionString, log);
+        int mdOk = 0, mdFout = 0;
+        foreach (var wedstrijdcode in wedstrijdcodes)
+        {
+            if (await FetchAndStoreMatchDetailsAsync(
+                    connectionString,
+                    $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}",
+                    clubCode, log))
+            {
+                mdOk++;
+                log.LogInformation("MATCHDETAILS - GET wedstrijdcode={Code}", wedstrijdcode);
+            }
+            else
+            {
+                mdFout++;
+            }
+        }
+        log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Total}",
+            mdOk, mdFout, wedstrijdcodes.Count);
+
+        return mdFout > 0;
+    }
+
+    private static async Task MergeAllEntitiesAsync(PostgresMergeOrchestrator orchestrator)
+    {
+        await orchestrator.EnsureHisTableAsync(KnownEntities.Teams);
+        await orchestrator.MergeStgToHisAsync(KnownEntities.Teams);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
+        await orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
+        await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
+        await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
+    }
+
     /// <summary>
     /// Maakt of vervangt <c>planner.alle_wedstrijden_op_veld_ruw</c> (#861). Eén bron van waarheid:
     /// de DDL komt uit <see cref="Database.Postgres.PostgresPlannerViewGenerator.CreateView"/>, niet
@@ -190,6 +224,12 @@ internal static class PostgresSyncPipeline
             Database.Postgres.PostgresPlannerViewGenerator.ViewName);
     }
 
+    /// <summary>
+    /// Roept de teamcanonicalisatie aan zonder dat een fout de rest van de sync raakt — zelfde
+    /// try/catch-vorm als het SQL Server-origineel. <paramref name="omschrijving"/> staat alleen in
+    /// de foutmelding, zodat de twee aanroepen (primaire club en democlub) in het log uit elkaar
+    /// te houden zijn.
+    /// </summary>
     private static async Task CanonicaliseerBestEffortAsync(
         string connectionString, string clubCode, string omschrijving, ILogger log)
     {

@@ -31,7 +31,7 @@ internal static class PlannerAvailabilityRepository
         string connectionString, DateOnly date, string? clubCode = null)
     {
         var results = new List<VeldBeschikbaarheidInfo>();
-        int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
+        int dagVanWeek = IsoDagVanWeek(date);
 
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
@@ -146,7 +146,7 @@ internal static class PlannerAvailabilityRepository
         string connectionString, DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
-        int dagVanWeek = ((int)date.DayOfWeek == 0) ? 7 : (int)date.DayOfWeek;
+        int dagVanWeek = IsoDagVanWeek(date);
         var cc = PostgresClubScope.Resolve(clubCode);
 
         await using var conn = new NpgsqlConnection(connectionString);
@@ -202,4 +202,7 @@ internal static class PlannerAvailabilityRepository
               o.Wedstrijd != null && o.Wedstrijd.Trim() == wedstrijdNaam.Trim())
         ).ToList();
     }
+
+    /// <summary>ISO-weekdag (1=maandag..7=zondag) — <see cref="DayOfWeek"/> telt zondag als 0.</summary>
+    private static int IsoDagVanWeek(DateOnly date) => (int)date.DayOfWeek == 0 ? 7 : (int)date.DayOfWeek;
 }
