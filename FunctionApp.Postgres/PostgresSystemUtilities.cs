@@ -13,10 +13,12 @@ namespace FunctionApp.Postgres;
 /// </summary>
 public static class PostgresSystemUtilities
 {
+    // #859: overschrijfbaar via omgevingsvariabelen (zelfde namen als de SQL Server-tier), zodat
+    // deze waarden net als daar centraal instelbaar zijn i.p.v. een tweede hardcoded aanname.
     public static async Task WaitForDatabaseAsync(ILogger log)
     {
-        const int maxRetries = 5;
-        const int delayMs = 3000;
+        var maxRetries = GetConfiguredInt("DbWaitMaxRetries", 5);
+        var delayMs = GetConfiguredInt("DbWaitDelayMs", 3000);
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
@@ -37,5 +39,11 @@ public static class PostgresSystemUtilities
         }
 
         throw new Exception("Unable to establish a database connection after multiple attempts.");
+    }
+
+    private static int GetConfiguredInt(string envVarName, int fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(envVarName);
+        return int.TryParse(raw, out var parsed) && parsed > 0 ? parsed : fallback;
     }
 }

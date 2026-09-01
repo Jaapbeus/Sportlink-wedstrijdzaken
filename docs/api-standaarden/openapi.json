@@ -118,6 +118,57 @@
       }
     },
     "schemas": {
+      "HealthStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "\"ok\" als database \"online\" is én settingsLoaded true is, anders \"degraded\".",
+            "example": "ok"
+          },
+          "version": {
+            "type": "string",
+            "example": "2.2.0.0"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "database": {
+            "type": "string",
+            "description": "Databaseverbindingsstatus. \"unconfigured\" geeft HTTP 503 i.p.v. 200 (#859).",
+            "enum": [
+              "online",
+              "paused",
+              "timeout",
+              "unavailable",
+              "unconfigured"
+            ],
+            "example": "online"
+          },
+          "settingsLoaded": {
+            "type": "boolean",
+            "description": "false als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog.",
+            "example": true
+          },
+          "tier": {
+            "type": "string",
+            "description": "De databasetier waarmee dit artefact gebouwd is (build-time metadata).",
+            "example": "SqlServer"
+          },
+          "provider": {
+            "type": "string",
+            "description": "De gebruikte databasedriver (build-time metadata).",
+            "example": "Microsoft.Data.SqlClient"
+          },
+          "serverVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Het versienummer dat de databaseserver zelf teruggeeft; null als de database niet bereikbaar is.",
+            "example": "16.0.4265.3"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {
@@ -2729,57 +2780,25 @@
         ],
         "operationId": "getHealth",
         "summary": "Status en versie van de API",
-        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.\n\n`tier` en `provider` komen uit build-time metadata van het artefact (niet uit een\nruntime-gok) en zijn daarom altijd gevuld, ook als `database` niet \"online\" is.\n`serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer\n`database` \"online\" is (#863).\n",
+        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.\n\n`tier` en `provider` komen uit build-time metadata van het artefact (niet uit een\nruntime-gok) en zijn daarom altijd gevuld, ook als `database` niet \"online\" is.\n`serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer\n`database` \"online\" is (#863).\n\n`database: \"unconfigured\"` (geen bruikbare connectiereeks) geeft 503, niet 200 (#859).\nElke andere waarde (ook de tijdelijke toestanden paused/timeout/unavailable) blijft 200\nmet `status: \"degraded\"`.\n",
         "security": [],
         "responses": {
           "200": {
-            "description": "API is beschikbaar",
+            "description": "API is beschikbaar (database online, of een tijdelijke, niet-configuratie-gerelateerde toestand)",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "ok"
-                    },
-                    "version": {
-                      "type": "string",
-                      "example": "2.2.0.0"
-                    },
-                    "timestamp": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "database": {
-                      "type": "string",
-                      "description": "Databaseverbindingsstatus.",
-                      "enum": [
-                        "online",
-                        "paused",
-                        "timeout",
-                        "unavailable",
-                        "unconfigured"
-                      ],
-                      "example": "online"
-                    },
-                    "tier": {
-                      "type": "string",
-                      "description": "De databasetier waarmee dit artefact gebouwd is (build-time metadata).",
-                      "example": "SqlServer"
-                    },
-                    "provider": {
-                      "type": "string",
-                      "description": "De gebruikte databasedriver (build-time metadata).",
-                      "example": "Microsoft.Data.SqlClient"
-                    },
-                    "serverVersion": {
-                      "type": "string",
-                      "nullable": true,
-                      "description": "Het versienummer dat de databaseserver zelf teruggeeft; null als de database niet bereikbaar is.",
-                      "example": "16.0.4265.3"
-                    }
-                  }
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Geen bruikbare connectiereeks geconfigureerd (#859)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
                 }
               }
             }

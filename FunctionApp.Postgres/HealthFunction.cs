@@ -27,17 +27,27 @@ public static class HealthFunction
     {
         var version = typeof(HealthFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
         var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
-
-        return new OkObjectResult(new
+        var settingsLoaded = !PostgresAppSettings.LastLoadFailed;
+        var body = new
         {
-            status = dbStatus == "online" ? "ok" : "degraded",
+            status = dbStatus == "online" && settingsLoaded ? "ok" : "degraded",
             version,
             timestamp = DateTime.UtcNow,
             database = dbStatus,
+            // #859: apart van 'database' — een geslaagde verbinding zegt niets over of de
+            // instellingencache ook echt gevuld is. Bewust geen foutdetails hier: dit endpoint is
+            // anoniem toegankelijk, de volledige exceptie staat al in het functielog.
+            settingsLoaded,
             tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
             provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
             serverVersion
-        });
+        };
+        // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
+        // draaiende maar onbereikbare database (timeout/unavailable) blijft wel 200 met status
+        // "degraded", dat is een tijdelijke toestand.
+        return dbStatus == "unconfigured"
+            ? new ObjectResult(body) { StatusCode = StatusCodes.Status503ServiceUnavailable }
+            : new OkObjectResult(body);
     }
 
     internal static string? GetAssemblyMetadata(string key) =>
@@ -45,10 +55,14 @@ public static class HealthFunction
             .GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(a => a.Key == key)?.Value;
 
-    private static async Task<(string status, string? serverVersion)> GetDatabaseStatusAsync()
+    // connectionStringOverride is uitsluitend voor tests (#859), zelfde precedent als de SQL
+    // Server-tier: PostgresDatabaseConfig.ConnectionString is static readonly en dus al gevuld
+    // vóórdat een test kan draaien.
+    internal static async Task<(string status, string? serverVersion)> GetDatabaseStatusAsync(
+        Func<string>? connectionStringOverride = null)
     {
         string connStr;
-        try { connStr = PostgresDatabaseConfig.ConnectionString; }
+        try { connStr = (connectionStringOverride ?? (() => PostgresDatabaseConfig.ConnectionString))(); }
         catch { return ("unconfigured", null); }
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));

@@ -30,6 +30,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   groen.
 
 ### Fixed
+- **De gezondheidscheck meldde "alles goed" ook als de database helemaal niet bereikbaar was
+  (issue 859).** Een ontbrekende of onbruikbare connectiereeks gaf voorheen gewoon `200 OK` terug
+  — nu levert dat een duidelijke foutstatus op. Ook een mislukte instellingenlaadt (bijv. de
+  clubinstellingen konden niet uit de database gelezen worden) is voortaan zichtbaar in
+  `/api/health` via het veld `settingsLoaded`, in plaats van alleen in het achtergrondlog. Verder
+  is de wachttijd bij het opstarten voortaan kort buiten productie (was standaard tot 5 minuten),
+  zodat een verkeerde lokale configuratie meteen zichtbaar is in plaats van als een hang.
 - **Drie controles in de zelftest konden nooit slagen of stonden onterecht uit (issue 949).** Twee
   schermen — de dagplanning en de begeleidingspagina — werden overgeslagen wegens een probleem dat
   alleen op de andere databasevariant speelt; op deze variant tonen ze de demogegevens gewoon. Een

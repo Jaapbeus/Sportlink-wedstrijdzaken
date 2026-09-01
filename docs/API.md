@@ -68,6 +68,10 @@ Status, versie en databaseherkomst van de API. Geen authenticatie vereist.
 runtime-gok — en zijn daarom altijd gevuld, ook als `database` niet `"online"` is. `serverVersion`
 komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"online"` is (#863).
 
+**HTTP-statuscode (#859):** `database: "unconfigured"` (geen bruikbare connectiereeks — env var
+ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `database`-waarde
+(ook `paused`/`timeout`/`unavailable`, tijdelijke toestanden) blijft 200 met `status: "degraded"`.
+
 ### Antwoord
 
 ```json
@@ -76,6 +80,7 @@ komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"o
   "version": "3.0.9.0",
   "timestamp": "2026-08-30T15:00:00Z",
   "database": "online",
+  "settingsLoaded": true,
   "tier": "SqlServer",
   "provider": "Microsoft.Data.SqlClient",
   "serverVersion": "16.0.4265.3"
@@ -84,8 +89,9 @@ komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"o
 
 | Veld | Type | Beschrijving |
 |---|---|---|
-| `status` | `string` | `"ok"` als `database` `"online"` is, anders `"degraded"` |
-| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` |
+| `status` | `string` | `"ok"` als `database` `"online"` is én `settingsLoaded` `true` is, anders `"degraded"` |
+| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
+| `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
 | `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
 | `provider` | `string` | De gebruikte databasedriver |
 | `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |

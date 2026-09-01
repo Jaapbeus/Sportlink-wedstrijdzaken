@@ -22,12 +22,15 @@ public static class PostgresDatabaseConfig
 {
     private const string ConnectionStringEnvVar = "POSTGRES_CONNECTION_STRING";
 
-    public static string ConnectionString { get; } = BuildConnectionString();
+    public static string ConnectionString { get; } = BuildConnectionString(Environment.GetEnvironmentVariable(ConnectionStringEnvVar));
 
-    private static string BuildConnectionString()
+    // internal + parameter (#859): ConnectionString hierboven is static readonly en dus al gevuld
+    // vóórdat een test kan draaien — dit maakt het "geen bruikbare connectiereeks"-pad los daarvan
+    // testbaar, zelfde precedent als SystemUtilities.DatabaseConfig.BuildConnectionString.
+    internal static string BuildConnectionString(string? raw)
     {
-        var raw = Environment.GetEnvironmentVariable(ConnectionStringEnvVar)
-            ?? throw new InvalidOperationException($"Omgevingsvariabele '{ConnectionStringEnvVar}' is niet gezet.");
+        if (raw is null)
+            throw new InvalidOperationException($"Omgevingsvariabele '{ConnectionStringEnvVar}' is niet gezet.");
 
         // Herkenbare toepassingsnaam op elke verbinding (#863-precedent) — een onafhankelijke
         // bevestiging (bijv. via pg_stat_activity) naast wat de applicatie in /api/health over
