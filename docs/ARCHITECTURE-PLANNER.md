@@ -516,12 +516,19 @@ prioriteit 10.
 3. **Ondergrens** — met een streeftijd is de ondergrens de veldbeschikbaarheid zelf, niet de vaste
    09:00-dagstart. Een team dat 08:30 wil en een veld dat om 08:00 opengaat, krijgt 08:30.
 4. **Buffers** — `PastOpVeld` is de enige plek die bepaalt of een wedstrijd op een veld past, en bewaakt
-   twee dingen tegelijk:
+   drie dingen tegelijk:
+   - **Teamconflict** (#939) — het team van de kandidaat mag op géén enkel veld al ingepland staan
+     binnen dit tijdvak. Deze check gaat vóór de capaciteitscheck en scant alle velden, niet alleen het
+     veld dat op dat moment beoordeeld wordt: een team kan zichzelf niet dubbel boeken, ongeacht hoeveel
+     andere velden er nog vrij zijn. Vóór #939 hield `FieldScheduler` bezetting alleen per veld bij, dus
+     kon AutoPlan hetzelfde team tweemaal op hetzelfde tijdstip inplannen, op twee verschillende velden.
    - **Capaciteit** — wedstrijden die elkaar in tijd overlappen delen het veld; toegestaan zolang de som
      van de veldfracties binnen 1.00 blijft. Tussen zulke gelijktijdige wedstrijden hoort géén buffer:
      die staan naast elkaar, niet achter elkaar.
    - **Buffer** — wedstrijden die elkaar niet overlappen gebruiken het veld ná elkaar; daartussen geldt
      de grootste van de standaardbuffer en de teamspecifieke `BufferNa`/`BufferVoor` uit `dbo.TeamRegels`.
+     Dezelfde buffer geldt ook tussen twee niet-overlappende wedstrijden van hetzelfde team, ook als die
+     op verschillende velden staan.
 
    Deze controle zat vóór #666 alleen in `FindEarliestSlot`. Het pad dat op een voorkeurstijd plant keek
    uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul minuten ertussen
@@ -539,9 +546,10 @@ volledig client-side in `Dagplanning.razor`; er is geen extra endpoint.
 - Na een zet worden `Status`, `VoorkeurAfwijkingMinuten`, `VoorkeurStatus`, het aantal te wijzigen
   wedstrijden en de geschatte eindtijd opnieuw bepaald met dezelfde regels als de server, zodat een
   handmatige zet net zo eerlijk beoordeeld wordt als een berekende.
-- `ControleerConflicten` bewaakt dezelfde twee regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
-  opeenvolging) en toont per overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus
-  wel een onmogelijke planning opleveren, maar niet stilzwijgend.
+- `ControleerConflicten` bewaakt dezelfde regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
+  opeenvolging, én sinds #939 een teamconflict-doorsnede over alle velden heen) en toont per
+  overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus wel een onmogelijke
+  planning opleveren, maar niet stilzwijgend.
 - Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
 
 ### Twee losse statussen — bewust gescheiden

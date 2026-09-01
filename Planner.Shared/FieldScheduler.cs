@@ -299,8 +299,50 @@ public class FieldScheduler
         Math.Max(TeamBufferNa(occTeamNaam), nieuwBufVoor);
 
     /// <summary>
+    /// Is <paramref name="teamNaam"/> al ingepland op een willekeurig ander veld binnen dit
+    /// tijdvak (#939)? <see cref="_occupations"/> houdt per veld bij wélk team er staat; dit scant
+    /// alle velden — niet alleen het veld dat op dit moment beoordeeld wordt — want een team kan
+    /// zichzelf niet dubbel boeken, ongeacht welk veld de tweede wedstrijd zou gebruiken.
+    ///
+    /// <para>Zelfde bufferbewuste overlap-berekening als <see cref="PastOpVeld"/> gebruikt voor
+    /// veldbezetting: gelijktijdig is altijd een conflict, en tussen twee niet-overlappende
+    /// wedstrijden van hetzelfde team geldt nog steeds de grootste van de twee teambuffers — een
+    /// team kan niet direct aansluitend op twee velden tegelijk spelen.</para>
+    /// </summary>
+    private bool TeamHeeftConflict(string? teamNaam, TimeOnly start, TimeOnly end, int nieuwBufVoor)
+    {
+        if (string.IsNullOrEmpty(teamNaam)) return false;
+        int nieuwBufNa = TeamBufferNa(teamNaam);
+        foreach (var occs in _occupations.Values)
+        {
+            foreach (var occ in occs)
+            {
+                if (!string.Equals(occ.TeamNaam, teamNaam, StringComparison.OrdinalIgnoreCase)) continue;
+
+                if (occ.AanvangsTijd < end && occ.EindTijd > start) return true;
+
+                if (occ.EindTijd <= start)
+                {
+                    int buf = Math.Max(TeamBufferNa(occ.TeamNaam), nieuwBufVoor);
+                    if (start < occ.EindTijd.AddMinutes(buf)) return true;
+                }
+                else
+                {
+                    int buf = Math.Max(nieuwBufNa, TeamBufferVoor(occ.TeamNaam));
+                    if (occ.AanvangsTijd < end.AddMinutes(buf)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Past een wedstrijd van <paramref name="fractie"/> veld tussen <paramref name="start"/> en
-    /// <paramref name="end"/> op dit veld? Bewaakt twee dingen tegelijk (#666):
+    /// <paramref name="end"/> op dit veld? Bewaakt drie dingen tegelijk (#666, #939):
+    ///
+    /// <para><b>Teamconflict</b> — <paramref name="teamNaam"/> mag op geen enkel veld al ingepland
+    /// staan binnen dit tijdvak. Dit gaat vóór de veld-capaciteitscheck: een team kan zichzelf niet
+    /// dubbel boeken, ongeacht of er op dit veld nog ruimte zou zijn.</para>
     ///
     /// <para><b>Capaciteit</b> — wedstrijden die elkaar in tijd overlappen delen het veld. Dat mag
     /// zolang de som van de veldfracties binnen 1.00 blijft (twee halve velden naast elkaar). Tussen
@@ -314,6 +356,7 @@ public class FieldScheduler
         int nieuwBufVoor, string? teamNaam, out string subpositie)
     {
         subpositie = string.Empty;
+        if (TeamHeeftConflict(teamNaam, start, end, nieuwBufVoor)) return false;
         var occs = _occupations.TryGetValue(veldNummer, out var list) ? list : new List<IngeplandSlot>();
         int nieuwBufNa = TeamBufferNa(teamNaam);
         var bezet = new bool[4];

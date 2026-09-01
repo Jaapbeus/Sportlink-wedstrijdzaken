@@ -1074,6 +1074,42 @@
                 }
             }
         }
+
+        // #939: dezelfde controle als hierboven, maar per TEAM in plaats van per veld — een team kan
+        // niet op twee velden tegelijk staan, ongeacht of er op elk van die velden zelf nog ruimte
+        // was. Zonder deze doorsnede kon een handmatige sleepactie een team dubbel boeken zonder
+        // enige waarschuwing, terwijl FieldScheduler datzelfde scenario server-side al weigert.
+        var perTeam = _plan.Wedstrijden
+            .Where(w => w.OptimaalTijd != null && w.DuurMinuten > 0 && TimeOnly.TryParse(w.OptimaalTijd, out _)
+                        && !string.IsNullOrWhiteSpace(w.TeamNaam))
+            .GroupBy(w => w.TeamNaam);
+
+        foreach (var team in perTeam)
+        {
+            var lijst = team.OrderBy(w => TimeOnly.Parse(w.OptimaalTijd!)).ToList();
+            for (int i = 0; i < lijst.Count; i++)
+            {
+                var a = lijst[i];
+                var aStart = TimeOnly.Parse(a.OptimaalTijd!);
+                var aEind = aStart.AddMinutes(a.DuurMinuten);
+                for (int j = i + 1; j < lijst.Count; j++)
+                {
+                    var b = lijst[j];
+                    var bStart = TimeOnly.Parse(b.OptimaalTijd!);
+                    var bEind = bStart.AddMinutes(b.DuurMinuten);
+
+                    bool overlapt = aStart < bEind && aEind > bStart;
+                    if (overlapt)
+                    {
+                        _conflicten.Add($"{team.Key}: staat tegelijk ingepland op {a.OptimaalVeldNaam} en {b.OptimaalVeldNaam} om {aStart:HH\\:mm}.");
+                        continue;
+                    }
+                    int gat = (int)(bStart.ToTimeSpan() - aEind.ToTimeSpan()).TotalMinutes;
+                    if (gat >= 0 && gat < _bufferMinuten)
+                        _conflicten.Add($"{team.Key}: tussen de wedstrijd op {a.OptimaalVeldNaam} en die op {b.OptimaalVeldNaam} zit {gat} min, minder dan de ingestelde buffer van {_bufferMinuten} min.");
+                }
+            }
+        }
     }
 
     private static string NormaliseerVeld(string? veld) =>
