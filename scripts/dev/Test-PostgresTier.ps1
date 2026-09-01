@@ -616,19 +616,27 @@ try {
     # Het actionButtons-contract zelf mag niet wegdrijven van de werkelijkheid — zelfde reden als
     # de @page-routecontrole in G0: een lijst die niemand meer bijwerkt is precies hoe
     # /veldbeschikbaarheid maandenlang groen bleef staan terwijl de route niet meer bestond.
+    #
+    # Een actionButtons-rij mag best een endpoint noemen dat NOG niet bestaat — dat is precies het
+    # nut van #966/#889 hier opnemen: zodra de route landt, meet Fase B hem meteen. Alleen een rij
+    # die een route noemt zonder backend-tegenhanger ÉN zonder bekende verklaring in
+    # knownActionGaps is een echte contractfout (bijv. een typefout, of een endpoint dat hernoemd
+    # is zonder de rij bij te werken).
     $ontbrekendeContractActies = @()
     foreach ($ab in $Expect.actionButtons) {
         $methodeEnPad = $ab.Endpoint -split '\s+', 2
         if ($methodeEnPad.Count -lt 2) { continue }
         $genorm = Get-GenormaliseerdeRoute $methodeEnPad[1]
-        if ($backendRoutes -notcontains $genorm) { $ontbrekendeContractActies += $ab.Endpoint }
+        if ($backendRoutes -contains $genorm) { continue }
+        if ($bekendeGaten | Where-Object { $_.Route -eq $genorm }) { continue }
+        $ontbrekendeContractActies += $ab.Endpoint
     }
     if ($Expect.actionButtons.Count -eq 0) {
         Add-Check -Gate 'G0b' -Id 'G0b.actieknoppen.contract-klopt' -Status 'fail' `
             -Message 'selftest-expectations.psd1 heeft geen actionButtons — zonder contract meet Fase B van de skill niets.'
     } elseif ($ontbrekendeContractActies.Count -gt 0) {
         Add-Check -Gate 'G0b' -Id 'G0b.actieknoppen.contract-klopt' -Status 'fail' `
-            -Message "actionButtons in selftest-expectations.psd1 noemt endpoints die niet bestaan: $($ontbrekendeContractActies -join ', ')"
+            -Message "actionButtons in selftest-expectations.psd1 noemt endpoints zonder backend EN zonder bekende verklaring: $($ontbrekendeContractActies -join ', ')"
     } else {
         Add-Check -Gate 'G0b' -Id 'G0b.actieknoppen.contract-klopt' -Status 'pass' `
             -Actual "$($Expect.actionButtons.Count) actie-knoppen in het contract"
