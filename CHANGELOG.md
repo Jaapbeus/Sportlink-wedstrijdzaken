@@ -18,6 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Testdata-beheerpagina werkt nu ook op de nieuwe databasevariant (issue 952).** De zes
+  ontbrekende routes onder Test data → Wedstrijden (wedstrijden ophalen/opslaan/verplaatsen/
+  verwijderen, teams ophalen) gaven daar voorheen `404`. De pagina zelf is ongewijzigd.
+
 ### Changed
 - **Interne onderhoudbaarheidsslag over de hele C#-codebase (issue 953).** Geen zichtbare
   wijziging voor beheerders — puur intern: lange methodes opgesplitst in kleinere, herkenbare
