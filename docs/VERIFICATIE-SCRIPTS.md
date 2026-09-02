@@ -209,17 +209,40 @@ applicatie en controleert per stap of het resultaat klopt.
 ### Waarin dit verschilt van Test-App.ps1
 
 `Test-App.ps1` controleert of de ontwikkelomgeving gezond is. Deze zelftest controleert of een
-*omzetting* geslaagd is, en hanteert daarom drie strengere regels:
+*omzetting* geslaagd is, en hanteert daarom striktere regels:
 
 | Regel | Waarom |
 |---|---|
 | **Overslaan is falen** | `Test-App.ps1` slaat secties over als een poort niet luistert en meldt daarna "alles in orde". Een niet-uitgevoerde meting is hier rood |
 | **Nul asserties is falen** | Anders is "niets gemeten" niet te onderscheiden van "alles goed" |
 | **De routelijst wordt geverifieerd** | De verwachtingen worden bij elke run vergeleken met de `@page`-directives in de broncode. Een verschil in beide richtingen is een fout |
+| **Een expectations-blok moet aantoonbaar uitgevoerd worden** | Een verwachting die alleen gedeclareerd staat maar door geen enkel script gelezen wordt, is even misleidend als "overslaan is falen" — het ziet er gedekt uit maar meet niets |
 
-Die laatste regel lost een bestaand probleem op: `Test-App.ps1` test vandaag `/veldbeschikbaarheid`
+Die derde regel lost een bestaand probleem op: `Test-App.ps1` test vandaag `/veldbeschikbaarheid`
 en `/uitgesloten-emails`. Die routes bestaan niet meer, maar omdat Blazor WebAssembly op élke
 route dezelfde pagina met statuscode 200 teruggeeft, staan ze al maanden op groen.
+
+### G0b — een pagina die laadt bewijst niet dat een knop erop werkt (#967)
+
+Alle bovenstaande regels bewijzen dat een *pagina* bestaat en rendert. Ze bewijzen niets over een
+*knop* op die pagina: `EmailTestDryRun` (#889) en de twee Feedback-endpoints (#966) ontbraken
+allebei volledig op de Postgres-tier, onopgemerkt, omdat de browsersweep (G7) alleen "pagina laadt"
+controleert.
+
+`G0b` dekt het technische deel deterministisch, zonder browser: elke API-route die
+`BlazorAdmin/Services/AdminApiClient.cs` aanroept wordt genormaliseerd (padparameters naar een
+vaste token, querystrings eraf) en vergeleken met elke `Route = "..."` die de geteste tier
+daadwerkelijk registreert. Een client-route zonder backend-tegenhanger is `blocked` als
+`selftest-expectations.psd1`'s `knownActionGaps` er een issuenummer bij noemt, en anders `fail` —
+dat laatste betekent een onverwacht, ongetrackt gat.
+
+Het functionele deel — geeft de knop ook het juiste resultaat, niet alleen een geslaagde
+statuscode — staat in `selftest-expectations.psd1`'s `actionButtons`-contract en wordt door Fase B
+van `.claude/skills/zelftest/SKILL.md` uitgevoerd: de knop wordt echt geklikt en de respons-inhoud
+getoetst. Bewust **niet** geautomatiseerd in het PowerShell-script zelf: beide huidige
+actie-knoppen roepen een externe, deels betaalde dienst aan (AI-classificatie resp.
+PII-validatie), en de zelftest mag geen externe dienst blind bij elke run raken (zie "Externe
+diensten blijven uit" in de skill).
 
 ### G5/G6 starten een echte functiehost (#909)
 

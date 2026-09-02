@@ -99,6 +99,7 @@ $ArtifactDir = Get-SelftestArtifactRoot -RepoRoot $RepoRoot -RunId $RunId
 # Poorten, in volgorde. 'Modes' zegt in welke modus een poort betekenis heeft.
 $Gates = @(
     @{ Id = 'G0'; Naam = 'Preflight en isolatie';        Modes = @('Baseline','Verify') }
+    @{ Id = 'G0b'; Naam = 'Actiedekking (GUI -> API)';   Modes = @('Baseline','Verify') }
     @{ Id = 'G1'; Naam = 'Database beschikbaar';         Modes = @('Baseline','Verify') }
     @{ Id = 'G2'; Naam = 'Schema (eerste run)';          Modes = @('Verify') }
     @{ Id = 'G3'; Naam = 'Idempotentie (tweede run)';    Modes = @('Verify') }
@@ -543,6 +544,105 @@ try {
 
     $g0 = Complete-Gate -Gate 'G0'
     if ($g0 -eq 'fail') { throw 'G0 gefaald — de run stopt hier; verder meten heeft geen zin.' }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # G0b — Actiedekking: elke API-route die de GUI aanroept moet op deze tier bestaan
+    #
+    # De routecontrole in G0 hierboven bewijst alleen dat een PAGINA bestaat. Een pagina kan
+    # prima renderen terwijl een knop erop een endpoint aanroept dat op deze tier niet bestaat —
+    # precies zo bleef EmailTestDryRun (#889) en de twee Feedback-endpoints (#966) onopgemerkt: de
+    # browsersweep bewijst alleen dat een pagina laadt, nooit dat een knop werkt. Deze poort dekt
+    # dat technische deel (bestaat de route?) deterministisch en zonder browser; het functionele
+    # deel (geeft de knop het juiste resultaat?) staat in Fase B van de skill.
+    #
+    # Bewust GEEN throw bij falen: een ontbrekende actie-route blokkeert de rest van de meting
+    # niet — G1-G9 blijven net zo goed zinvol, ook als een bekend, al-getrackt gat hier rood
+    # staat. Alleen G0/G1 zijn fataal, omdat zonder tier-project resp. database niets daarna nog
+    # betekenis heeft.
+    # ──────────────────────────────────────────────────────────────────────
+    Write-Kop 'G0b — Actiedekking (GUI -> API)'
+
+    function Get-GenormaliseerdeRoute([string]$Ruw) {
+        # Kopspatie/leidende slash eraf zodat 'api/x' en '/api/x' gelijk vergelijken.
+        $zonderSlash = $Ruw.TrimStart('/')
+        # Querystring hoort niet bij een routetemplate.
+        $zonderQuery = $zonderSlash.Split('?')[0].TrimEnd('/')
+        # Een accolade die niet direct op een '/' volgt is een los-geplakte querystring-
+        # placeholder (bijv. "wedstrijden{qs}", waarbij $qs zelf het vraagteken al bevat) — geen
+        # padsegment. Die wordt weggehaald, niet genormaliseerd, anders levert hij een vals gat op.
+        $zonderLosseSuffix = [regex]::Replace($zonderQuery, '(?<!/)\{[^}]*\}\s*$', '')
+        # Wat overblijft is een echte padparameter (bijv. '/{id}'). Genormaliseerd naar een vaste
+        # token, want client en backend gebruiken niet altijd dezelfde parameternaam.
+        [regex]::Replace($zonderLosseSuffix, '\{[^}]*\}', '{*}')
+    }
+
+    $apiClientPad = Join-Path $RepoRoot 'BlazorAdmin' 'Services' 'AdminApiClient.cs'
+    $clientRoutes = @(
+        [regex]::Matches((Get-Content $apiClientPad -Raw), '\$?"(api/[^"]*)"') |
+            ForEach-Object { Get-GenormaliseerdeRoute $_.Groups[1].Value }
+    ) | Sort-Object -Unique
+
+    $tierProjectMap = Split-Path -Parent $tierInfo.FullPath
+    $backendRoutes = @(
+        Get-ChildItem -Path $tierProjectMap -Filter '*.cs' -Recurse |
+            ForEach-Object { [regex]::Matches((Get-Content $_.FullName -Raw), 'Route\s*=\s*"([^"]*)"') } |
+            ForEach-Object { Get-GenormaliseerdeRoute "api/$($_.Groups[1].Value)" }
+    ) | Sort-Object -Unique
+
+    # Een ontbrekende route die al een genummerd, open issue heeft is BLOCKED, geen FAIL: dat is
+    # dezelfde nuance als G0's tier.gebouwd-check. Alleen een ontbrekende route ZONDER bekende
+    # verklaring is een echte, onverwachte fout — die mag niet als "bekend" wegschuiven.
+    $ontbrekendeActies = @($clientRoutes | Where-Object { $backendRoutes -notcontains $_ })
+    $bekendeGaten     = @($Expect.knownActionGaps)
+    $ontbrekendGeblokkeerd = @($ontbrekendeActies | Where-Object { $r = $_; $bekendeGaten | Where-Object { $_.Route -eq $r } })
+    $ontbrekendOnverwacht  = @($ontbrekendeActies | Where-Object { $r = $_; -not ($bekendeGaten | Where-Object { $_.Route -eq $r }) })
+
+    if ($ontbrekendOnverwacht.Count -gt 0) {
+        Add-Check -Gate 'G0b' -Id 'G0b.acties.gedekt' -Status 'fail' `
+            -Message "GUI roept API-routes aan zonder bekende verklaring: $($ontbrekendOnverwacht -join ', ')"
+    } elseif ($ontbrekendGeblokkeerd.Count -gt 0) {
+        $issues = @($ontbrekendGeblokkeerd | ForEach-Object { $r = $_; $bekendeGaten | Where-Object { $_.Route -eq $r } } | ForEach-Object { $_.Blocked }) | Select-Object -Unique
+        Add-Check -Gate 'G0b' -Id 'G0b.acties.gedekt' -Status 'blocked' -Blocked $issues `
+            -Message "Bekende, getrackte gaten: $($ontbrekendGeblokkeerd -join ', ')"
+    } else {
+        Add-Check -Gate 'G0b' -Id 'G0b.acties.gedekt' -Status 'pass' `
+            -Actual "$($clientRoutes.Count) aangeroepen routes, allemaal gedekt"
+    }
+    Save-Artifact -Naam 'acties.json' -Inhoud @{
+        client = $clientRoutes; backend = $backendRoutes
+        ontbrekendGeblokkeerd = $ontbrekendGeblokkeerd; ontbrekendOnverwacht = $ontbrekendOnverwacht
+    } | Out-Null
+
+    # Het actionButtons-contract zelf mag niet wegdrijven van de werkelijkheid — zelfde reden als
+    # de @page-routecontrole in G0: een lijst die niemand meer bijwerkt is precies hoe
+    # /veldbeschikbaarheid maandenlang groen bleef staan terwijl de route niet meer bestond.
+    #
+    # Een actionButtons-rij mag best een endpoint noemen dat NOG niet bestaat — dat is precies het
+    # nut van #966/#889 hier opnemen: zodra de route landt, meet Fase B hem meteen. Alleen een rij
+    # die een route noemt zonder backend-tegenhanger ÉN zonder bekende verklaring in
+    # knownActionGaps is een echte contractfout (bijv. een typefout, of een endpoint dat hernoemd
+    # is zonder de rij bij te werken).
+    $ontbrekendeContractActies = @()
+    foreach ($ab in $Expect.actionButtons) {
+        $methodeEnPad = $ab.Endpoint -split '\s+', 2
+        if ($methodeEnPad.Count -lt 2) { continue }
+        $genorm = Get-GenormaliseerdeRoute $methodeEnPad[1]
+        if ($backendRoutes -contains $genorm) { continue }
+        if ($bekendeGaten | Where-Object { $_.Route -eq $genorm }) { continue }
+        $ontbrekendeContractActies += $ab.Endpoint
+    }
+    if ($Expect.actionButtons.Count -eq 0) {
+        Add-Check -Gate 'G0b' -Id 'G0b.actieknoppen.contract-klopt' -Status 'fail' `
+            -Message 'selftest-expectations.psd1 heeft geen actionButtons — zonder contract meet Fase B van de skill niets.'
+    } elseif ($ontbrekendeContractActies.Count -gt 0) {
+        Add-Check -Gate 'G0b' -Id 'G0b.actieknoppen.contract-klopt' -Status 'fail' `
+            -Message "actionButtons in selftest-expectations.psd1 noemt endpoints zonder backend EN zonder bekende verklaring: $($ontbrekendeContractActies -join ', ')"
+    } else {
+        Add-Check -Gate 'G0b' -Id 'G0b.actieknoppen.contract-klopt' -Status 'pass' `
+            -Actual "$($Expect.actionButtons.Count) actie-knoppen in het contract"
+    }
+
+    [void](Complete-Gate -Gate 'G0b')
 
     # ──────────────────────────────────────────────────────────────────────
     # G1 — Database beschikbaar, en de andere engine aantoonbaar niet
@@ -1428,9 +1528,10 @@ CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
         crudCases            = $Expect.crudCases
         crudPrefix           = $Expect.crudPrefix
         apiEndpoints         = $Expect.apiEndpoints
+        actionButtons        = $Expect.actionButtons
     } | Out-Null
     Add-Check -Gate 'G7' -Id 'G7.opdracht.geschreven' -Status 'pass' `
-        -Message 'skill-opdracht.json bevat de routes en asserties voor de browsersweep.'
+        -Message 'skill-opdracht.json bevat de routes, actie-knoppen en asserties voor de browsersweep.'
     [void](Complete-Gate -Gate 'G7')
 
 } catch {
