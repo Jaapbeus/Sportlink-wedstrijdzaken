@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.1.0.0] — 2026-09-02
+
 ### Added
 - **Testdata-beheerpagina werkt nu ook op de nieuwe databasevariant (issue 952).** De zes
   ontbrekende routes onder Test data → Wedstrijden (wedstrijden ophalen/opslaan/verplaatsen/
