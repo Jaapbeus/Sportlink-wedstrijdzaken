@@ -42,8 +42,11 @@ public static class PostgresAppSettings
             await connection.OpenAsync();
             // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
             // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
+            // clubname erbij (#889): BerichtAiService's classificatie-systemprompt noemt de clubnaam
+            // ("Je bent een assistent voor de coördinator thuiswedstrijden van {clubNaam}") — zonder
+            // deze kolom gooit die prompt-opbouw een InvalidOperationException.
             await using var cmd = new NpgsqlCommand(
-                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam FROM public.appsettings " +
+                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname FROM public.appsettings " +
                 "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
@@ -65,6 +68,9 @@ public static class PostgresAppSettings
                 // plannerafzendernaam (§42): AutoPlan zet deze naam onder de gegenereerde HTML-planning.
                 if (!reader.IsDBNull(5))
                     Settings["plannerAfzenderNaam"] = reader.GetString(5);
+                // clubname (#889): zie de aanroep hierboven.
+                if (!reader.IsDBNull(6))
+                    Settings["clubName"] = reader.GetString(6);
             }
             LastLoadFailed = false;
         }

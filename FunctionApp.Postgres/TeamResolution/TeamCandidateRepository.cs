@@ -22,7 +22,7 @@ public sealed record TeamCandidate(int TeamId, string Teamnaam, string? Leeftijd
 /// hoofdletterongevoelige sleutel gebruiken. <c>RuweTekst</c> is bewust óók ge-upper't — zelfde
 /// intentie-kanttekening als de SQL Server-tier (#869).
 /// </remarks>
-internal sealed class TeamCandidateRepository(string connectionString)
+internal sealed class TeamCandidateRepository(string connectionString) : ITeamCandidateRepository
 {
     private async Task<NpgsqlConnection> OpenConnectionAsync()
     {
@@ -39,7 +39,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
         }
     }
 
-    internal async Task<TeamCandidate?> FindValidatedAliasAsync(
+    public async Task<TeamCandidate?> FindValidatedAliasAsync(
         string clubCode, string ruweTekst, string genormaliseerdeSleutel)
     {
         await using var conn = await OpenConnectionAsync();
@@ -61,7 +61,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
         return await reader.ReadAsync() ? ReadCandidate(reader) : null;
     }
 
-    internal async Task<TeamCandidate?> FindExactTeamAsync(string clubCode, string genormaliseerdeSleutel)
+    public async Task<TeamCandidate?> FindExactTeamAsync(string clubCode, string genormaliseerdeSleutel)
     {
         await using var conn = await OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(@"
@@ -78,7 +78,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
         return await reader.ReadAsync() ? ReadCandidate(reader) : null;
     }
 
-    internal async Task<IReadOnlyList<TeamCandidate>> FindKandidatenAsync(string clubCode, TeamNaamComponenten componenten)
+    public async Task<IReadOnlyList<TeamCandidate>> FindKandidatenAsync(string clubCode, TeamNaamComponenten componenten)
     {
         if (componenten.LeeftijdNummer is null || componenten.TeamNummer is null)
             return [];
@@ -103,7 +103,7 @@ internal sealed class TeamCandidateRepository(string connectionString)
         return resultaten;
     }
 
-    internal async Task<bool> HeeftActieveTeamsAsync(string clubCode)
+    public async Task<bool> HeeftActieveTeamsAsync(string clubCode)
     {
         await using var conn = await OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(
