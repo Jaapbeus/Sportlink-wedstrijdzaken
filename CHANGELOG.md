@@ -22,6 +22,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Testdata-beheerpagina werkt nu ook op de nieuwe databasevariant (issue 952).** De zes
   ontbrekende routes onder Test data → Wedstrijden (wedstrijden ophalen/opslaan/verplaatsen/
   verwijderen, teams ophalen) gaven daar voorheen `404`. De pagina zelf is ongewijzigd.
+- **De FEEDBACK-knop werkt nu ook op de nieuwe databasevariant (issue 966).** Beide stappen
+  (Controleren en Versturen) gaven daar voorheen `404`. De widget zelf is ongewijzigd.
 
 ### Changed
 - **Interne onderhoudbaarheidsslag over de hele C#-codebase (issue 953).** Geen zichtbare
