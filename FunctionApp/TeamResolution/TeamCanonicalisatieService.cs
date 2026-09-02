@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Shared;
 using SportlinkFunction.Planner;
 
 namespace SportlinkFunction.TeamResolution;
@@ -21,7 +22,22 @@ public static class TeamCanonicalisatieService
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
-    public static async Task RefreshAsync(string clubCode, ILogger log)
+    private const string BronSync = "Sync";
+    private const string StatusValidated = "validated";
+
+    /// <summary>
+    /// Uitkomst van een canonicalisatieronde (#946). De sleutelmigratie draait ALTIJD als eerste stap
+    /// binnen <c>RefreshAsync</c>; deze tellingen komen daaruit. Ze worden teruggegeven in plaats van
+    /// alleen gelogd, zodat het herstelendpoint kan laten zien of er werkelijk iets hersteld is —
+    /// anders is "hersteld" voor een beheerder niet te onderscheiden van "er gebeurde niets".
+    /// <para>
+    /// Alles nul betekent: de canonicalisatie is overgeslagen omdat er geen bronrijen waren.
+    /// </para>
+    /// </summary>
+    public readonly record struct CanonicalisatieResultaat(
+        int Teams, int SleutelsBijgewerkt, int DubbelenOpgeruimd);
+
+    public static async Task<CanonicalisatieResultaat> RefreshAsync(string clubCode, ILogger log)
     {
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new ArgumentException("ClubCode is verplicht voor teamcanonicalisatie.", nameof(clubCode));
@@ -30,20 +46,11 @@ public static class TeamCanonicalisatieService
         if (rijen.Count == 0)
         {
             log.LogWarning("TEAMS CANONICALISATIE - geen rijen in his.teams voor club {ClubCode} — overgeslagen", clubCode);
-            return;
+            return default;
         }
 
         // Groepeer op genormaliseerde sleutel: dit is de ontdubbelingsstap.
-        var groepen = new Dictionary<string, List<HisTeamRow>>(StringComparer.Ordinal);
-        foreach (var rij in rijen)
-        {
-            var sleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(rij.Teamnaam, clubCode);
-            if (sleutel.Length == 0) continue;
-
-            if (!groepen.TryGetValue(sleutel, out var lijst))
-                groepen[sleutel] = lijst = [];
-            lijst.Add(rij);
-        }
+        var groepen = GroepeerOpSleutel(rijen, clubCode);
 
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -79,6 +86,23 @@ public static class TeamCanonicalisatieService
             + "gemigreerd, {DubbelenOpgeruimd} dubbele schrijfwijzen samengevoegd) voor club {ClubCode}",
             teams, rijen.Count, aliassen, onbekend, gedeactiveerd, fouten,
             sleutelsBijgewerkt, dubbelenOpgeruimd, clubCode);
+
+        return new CanonicalisatieResultaat(teams, sleutelsBijgewerkt, dubbelenOpgeruimd);
+    }
+
+    private static Dictionary<string, List<HisTeamRow>> GroepeerOpSleutel(List<HisTeamRow> rijen, string clubCode)
+    {
+        var groepen = new Dictionary<string, List<HisTeamRow>>(StringComparer.Ordinal);
+        foreach (var rij in rijen)
+        {
+            var sleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(rij.Teamnaam, clubCode);
+            if (sleutel.Length == 0) continue;
+
+            if (!groepen.TryGetValue(sleutel, out var lijst))
+                groepen[sleutel] = lijst = [];
+            lijst.Add(rij);
+        }
+        return groepen;
     }
 
     /// <summary>
@@ -130,6 +154,34 @@ public static class TeamCanonicalisatieService
     private static async Task<(int SleutelsBijgewerkt, int DubbelenOpgeruimd)> MigreerSleuteldriftAsync(
         SqlConnection conn, string clubCode, ILogger log)
     {
+        var rijen = await LaadTeamsMetSleutelsAsync(conn, clubCode);
+        var doelen = BerekenSleutelDoelen(rijen, clubCode);
+
+        if (doelen.All(IsOngewijzigd))
+            return (0, 0);
+
+        int bijgewerkt = 0, opgeruimd = 0;
+
+        foreach (var groep in doelen.GroupBy(r => r.NieuweSleutel, StringComparer.Ordinal))
+        {
+            var (b, o) = await VerwerkSleutelGroepAsync(conn, clubCode, groep, log);
+            bijgewerkt += b;
+            opgeruimd += o;
+        }
+
+        // Aliassen met Bron='Sync' worden verderop toch bijgewerkt, maar geleerde en handmatig
+        // toegevoegde aliassen niet. Zonder deze stap blijft hun genormaliseerde kolom naar de oude
+        // regels verwijzen en vindt de resolver ze alleen nog op de exacte ruwe tekst.
+        var aliasBijgewerkt = await MigreerAliasSleutelsAsync(conn, clubCode);
+        if (aliasBijgewerkt > 0)
+            log.LogInformation("TEAMS CANONICALISATIE - {Aantal} aliassleutels gemigreerd", aliasBijgewerkt);
+
+        return (bijgewerkt, opgeruimd);
+    }
+
+    private static async Task<List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)>> LaadTeamsMetSleutelsAsync(
+        SqlConnection conn, string clubCode)
+    {
         var rijen = new List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)>();
         using (var cmd = new SqlCommand(@"
             SELECT [TeamId], [Teamnaam], [TeamnaamGenormaliseerd], [LeeftijdNummer], [TeamNummer]
@@ -142,7 +194,12 @@ public static class TeamCanonicalisatieService
                            reader.IsDBNull(3) ? null : reader.GetInt32(3),
                            reader.IsDBNull(4) ? null : reader.GetInt32(4)));
         }
+        return rijen;
+    }
 
+    private static List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer, string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer)> BerekenSleutelDoelen(
+        List<(int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer)> rijen, string clubCode)
+    {
         // LeeftijdNummer/TeamNummer worden hier meegenomen omdat ze uit dezelfde normalisatie komen:
         // een sleutel zonder streepje leverde geen ontleding op, dus stonden ze op NULL — en dan geeft
         // FindKandidatenAsync nul kandidaten en valt het hele kandidaten-/disambiguatiepad stil. Alleen
@@ -160,69 +217,65 @@ public static class TeamCanonicalisatieService
             .Where(r => r.NieuweSleutel.Length > 0)
             .ToList();
 
-        static bool IsOngewijzigd((int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd,
-            int? OudTeamNummer, string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer) r)
-            => r.OudeSleutel == r.NieuweSleutel
-               && r.OudeLeeftijd == r.NieuweLeeftijd
-               && r.OudTeamNummer == r.NieuwTeamNummer;
+        return doelen;
+    }
 
-        if (doelen.All(IsOngewijzigd))
-            return (0, 0);
+    private static bool IsOngewijzigd((int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd,
+        int? OudTeamNummer, string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer) r)
+        => r.OudeSleutel == r.NieuweSleutel
+           && r.OudeLeeftijd == r.NieuweLeeftijd
+           && r.OudTeamNummer == r.NieuwTeamNummer;
 
+    private static async Task<(int Bijgewerkt, int Opgeruimd)> VerwerkSleutelGroepAsync(
+        SqlConnection conn, string clubCode,
+        IGrouping<string, (int TeamId, string Teamnaam, string OudeSleutel, int? OudeLeeftijd, int? OudTeamNummer, string NieuweSleutel, int? NieuweLeeftijd, int? NieuwTeamNummer)> groep,
+        ILogger log)
+    {
         int bijgewerkt = 0, opgeruimd = 0;
 
-        foreach (var groep in doelen.GroupBy(r => r.NieuweSleutel, StringComparer.Ordinal))
+        // De rij die deze sleutel al heeft is de winnaar: dan hoeft er niets te verschuiven.
+        // Anders de oudste rij, zodat de uitkomst deterministisch is.
+        var kandidaten = groep.ToList();
+        var winnaar = kandidaten.FirstOrDefault(
+            r => r.OudeSleutel == r.NieuweSleutel,
+            kandidaten.OrderBy(r => r.TeamId).First());
+
+        foreach (var verliezer in kandidaten.Where(r => r.TeamId != winnaar.TeamId))
         {
-            // De rij die deze sleutel al heeft is de winnaar: dan hoeft er niets te verschuiven.
-            // Anders de oudste rij, zodat de uitkomst deterministisch is.
-            var kandidaten = groep.ToList();
-            var winnaar = kandidaten.FirstOrDefault(
-                r => r.OudeSleutel == r.NieuweSleutel,
-                kandidaten.OrderBy(r => r.TeamId).First());
-
-            foreach (var verliezer in kandidaten.Where(r => r.TeamId != winnaar.TeamId))
-            {
-                await HangAliassenOmAsync(conn, clubCode, verliezer.TeamId, winnaar.TeamId);
-                using var deleteCmd = new SqlCommand(
-                    "DELETE FROM [dbo].[Teams] WHERE [TeamId] = @teamId", conn);
-                deleteCmd.Parameters.AddWithValue("@teamId", verliezer.TeamId);
-                await deleteCmd.ExecuteNonQueryAsync();
-                opgeruimd++;
-
-                log.LogInformation(
-                    "TEAMS CANONICALISATIE - dubbele schrijfwijze '{Dubbel}' samengevoegd met '{Winnaar}' "
-                    + "(sleutel {Sleutel})", verliezer.Teamnaam, winnaar.Teamnaam, winnaar.NieuweSleutel);
-            }
-
-            if (IsOngewijzigd(winnaar)) continue;
-
-            using var updateCmd = new SqlCommand(@"
-                UPDATE [dbo].[Teams]
-                   SET [TeamnaamGenormaliseerd] = @nieuweSleutel,
-                       [LeeftijdNummer]         = @leeftijdNummer,
-                       [TeamNummer]             = @teamNummer,
-                       [mta_modified]           = GETUTCDATE()
-                 WHERE [TeamId] = @teamId", conn);
-            updateCmd.Parameters.AddWithValue("@nieuweSleutel", winnaar.NieuweSleutel);
-            updateCmd.Parameters.AddWithValue("@leeftijdNummer", (object?)winnaar.NieuweLeeftijd ?? DBNull.Value);
-            updateCmd.Parameters.AddWithValue("@teamNummer", (object?)winnaar.NieuwTeamNummer ?? DBNull.Value);
-            updateCmd.Parameters.AddWithValue("@teamId", winnaar.TeamId);
-            await updateCmd.ExecuteNonQueryAsync();
-            bijgewerkt++;
+            await HangAliassenOmAsync(conn, clubCode, verliezer.TeamId, winnaar.TeamId);
+            using var deleteCmd = new SqlCommand(
+                "DELETE FROM [dbo].[Teams] WHERE [TeamId] = @teamId", conn);
+            deleteCmd.Parameters.AddWithValue("@teamId", verliezer.TeamId);
+            await deleteCmd.ExecuteNonQueryAsync();
+            opgeruimd++;
 
             log.LogInformation(
-                "TEAMS CANONICALISATIE - sleutel gemigreerd voor '{Teamnaam}': {Oud} → {Nieuw} "
-                + "(leeftijd={Leeftijd}, teamnummer={TeamNummer})",
-                winnaar.Teamnaam, winnaar.OudeSleutel, winnaar.NieuweSleutel,
-                winnaar.NieuweLeeftijd, winnaar.NieuwTeamNummer);
+                "TEAMS CANONICALISATIE - dubbele schrijfwijze '{Dubbel}' samengevoegd met '{Winnaar}' "
+                + "(sleutel {Sleutel})", verliezer.Teamnaam, winnaar.Teamnaam, winnaar.NieuweSleutel);
         }
 
-        // Aliassen met Bron='Sync' worden verderop toch bijgewerkt, maar geleerde en handmatig
-        // toegevoegde aliassen niet. Zonder deze stap blijft hun genormaliseerde kolom naar de oude
-        // regels verwijzen en vindt de resolver ze alleen nog op de exacte ruwe tekst.
-        var aliasBijgewerkt = await MigreerAliasSleutelsAsync(conn, clubCode);
-        if (aliasBijgewerkt > 0)
-            log.LogInformation("TEAMS CANONICALISATIE - {Aantal} aliassleutels gemigreerd", aliasBijgewerkt);
+        if (IsOngewijzigd(winnaar))
+            return (bijgewerkt, opgeruimd);
+
+        using var updateCmd = new SqlCommand(@"
+            UPDATE [dbo].[Teams]
+               SET [TeamnaamGenormaliseerd] = @nieuweSleutel,
+                   [LeeftijdNummer]         = @leeftijdNummer,
+                   [TeamNummer]             = @teamNummer,
+                   [mta_modified]           = GETUTCDATE()
+             WHERE [TeamId] = @teamId", conn);
+        updateCmd.Parameters.AddWithValue("@nieuweSleutel", winnaar.NieuweSleutel);
+        updateCmd.Parameters.AddWithValue("@leeftijdNummer", (object?)winnaar.NieuweLeeftijd ?? DBNull.Value);
+        updateCmd.Parameters.AddWithValue("@teamNummer", (object?)winnaar.NieuwTeamNummer ?? DBNull.Value);
+        updateCmd.Parameters.AddWithValue("@teamId", winnaar.TeamId);
+        await updateCmd.ExecuteNonQueryAsync();
+        bijgewerkt++;
+
+        log.LogInformation(
+            "TEAMS CANONICALISATIE - sleutel gemigreerd voor '{Teamnaam}': {Oud} → {Nieuw} "
+            + "(leeftijd={Leeftijd}, teamnummer={TeamNummer})",
+            winnaar.Teamnaam, winnaar.OudeSleutel, winnaar.NieuweSleutel,
+            winnaar.NieuweLeeftijd, winnaar.NieuwTeamNummer);
 
         return (bijgewerkt, opgeruimd);
     }
@@ -361,7 +414,7 @@ public static class TeamCanonicalisatieService
     private static async Task<bool> UpsertBronAliasAsync(
         SqlConnection conn, string clubCode, string ruweTekst, string sleutel)
     {
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             DECLARE @teamId INT = (
                 SELECT TOP 1 [TeamId] FROM [dbo].[Teams]
                 WHERE [ClubCode] = @clubCode AND [TeamnaamGenormaliseerd] = @sleutel AND [IsActief] = 1);
@@ -375,14 +428,14 @@ public static class TeamCanonicalisatieService
             MERGE [dbo].[TeamAliassen] AS target
             USING (SELECT @clubCode AS ClubCode, @ruweTekst AS RuweTekst) AS src
                 ON target.[ClubCode] = src.[ClubCode] AND target.[RuweTekst] = src.[RuweTekst]
-            WHEN MATCHED AND target.[Bron] = 'Sync' THEN
+            WHEN MATCHED AND target.[Bron] = '{BronSync}' THEN
                 UPDATE SET [TeamId] = @teamId,
                            [RuweTekstGenormaliseerd] = @sleutel,
-                           [Status] = 'validated',
+                           [Status] = '{StatusValidated}',
                            [mta_modified] = GETUTCDATE()
             WHEN NOT MATCHED THEN
                 INSERT ([ClubCode], [RuweTekst], [RuweTekstGenormaliseerd], [TeamId], [Bron], [Status])
-                VALUES (@clubCode, @ruweTekst, @sleutel, @teamId, 'Sync', 'validated');
+                VALUES (@clubCode, @ruweTekst, @sleutel, @teamId, '{BronSync}', '{StatusValidated}');
 
             SELECT CAST(1 AS BIT);
         ", conn);

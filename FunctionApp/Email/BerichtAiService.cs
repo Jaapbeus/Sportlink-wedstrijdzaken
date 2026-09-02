@@ -158,6 +158,21 @@ public class BerichtAiService
               + "verouderd zijn.\n"
             : "";
 
+    private static string BouwFewShotSectie(IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden)
+    {
+        if (voorbeelden == null || voorbeelden.Count == 0) return "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("## Gecorrigeerde classificaties (geleerde voorbeelden)");
+        sb.AppendLine("Let extra op deze patronen — eerder is de classificatie hier fout gegaan:");
+        foreach (var v in voorbeelden)
+        {
+            sb.AppendLine($"- Samenvatting: \"{v.OrigineleSamenvatting}\" → was geclassificeerd als {v.OrigineelType}, maar was eigenlijk {v.JuistType}. Correctie: \"{v.CorrectieSamenvatting}\"");
+        }
+        return sb.ToString();
+    }
+
     private static string BouwClassificatieSystemPrompt(
         DateTime today, string dataMarkerId, IReadOnlyList<ClassificatieCorrectieVoorbeeld>? voorbeelden = null)
     {
@@ -174,19 +189,7 @@ public class BerichtAiService
 
         var knvbStalenessWaarschuwing = BouwKnvbStalenessWaarschuwing(today);
 
-        var fewShotSectie = "";
-        if (voorbeelden != null && voorbeelden.Count > 0)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine();
-            sb.AppendLine("## Gecorrigeerde classificaties (geleerde voorbeelden)");
-            sb.AppendLine("Let extra op deze patronen — eerder is de classificatie hier fout gegaan:");
-            foreach (var v in voorbeelden)
-            {
-                sb.AppendLine($"- Samenvatting: \"{v.OrigineleSamenvatting}\" → was geclassificeerd als {v.OrigineelType}, maar was eigenlijk {v.JuistType}. Correctie: \"{v.CorrectieSamenvatting}\"");
-            }
-            fewShotSectie = sb.ToString();
-        }
+        var fewShotSectie = BouwFewShotSectie(voorbeelden);
 
         return $$"""
             Vandaag is {{today:dddd d MMMM yyyy}}.

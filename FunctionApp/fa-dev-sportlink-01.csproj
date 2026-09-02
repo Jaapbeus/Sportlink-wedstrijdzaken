@@ -11,18 +11,30 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>2.20.0.0</Version>
-    <AssemblyVersion>2.20.0.0</AssemblyVersion>
-    <FileVersion>2.20.0.0</FileVersion>
+    <Version>3.1.0.0</Version>
+    <AssemblyVersion>3.1.0.0</AssemblyVersion>
+    <FileVersion>3.1.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members via InternalsVisibleTo (#476) -->
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>FunctionApp.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- #863: tier-herkomst voor /api/health — build-time metadata, nooit een runtime-gok, dus
+         ook gevuld wanneer de database onbereikbaar is. "SqlServer" is de canonieke tier-naam uit
+         scripts/ci/database-tiers.json (#816/#865) — nooit een los, eigen naamschema hier. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseTier</_Parameter1>
+      <_Parameter2>SqlServer</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseProvider</_Parameter1>
+      <_Parameter2>Microsoft.Data.SqlClient</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Azure.Data.Tables" Version="12.12.0" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Cronos" Version="0.13.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
@@ -30,11 +42,11 @@
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
-    <PackageReference Include="Microsoft.Graph" Version="6.2.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="OpenAI" Version="2.12.0" />
+    <PackageReference Include="OpenAI" Version="2.13.0" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
@@ -53,5 +65,10 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tier-agnostische veldresolutie-logica (#819) — gedeeld met Database.Postgres, geen
+         gedeelde DB-provider-abstractie (zie Planner.Shared/VeldResolver.cs). -->
+    <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
   </ItemGroup>
 </Project>

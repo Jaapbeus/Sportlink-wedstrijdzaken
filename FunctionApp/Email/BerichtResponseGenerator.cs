@@ -1,3 +1,4 @@
+using Planner.Shared;
 using System.Globalization;
 using SportlinkFunction.Planner;
 
@@ -6,6 +7,7 @@ namespace SportlinkFunction.Email;
 public static class BerichtResponseGenerator
 {
     private static readonly CultureInfo NL = new("nl-NL");
+    internal const string NlTijdzoneId = "W. Europe Standard Time";
 
     // ── Beschikbaarheid ──
 
@@ -44,13 +46,7 @@ public static class BerichtResponseGenerator
             inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"Op {datumTekst} om {classificatie.AanvangsTijd} is helaas geen ruimte. Beschikbare mogelijkheden:\n";
             foreach (var v in vensters)
-            {
-                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
-                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
-                if (!string.IsNullOrEmpty(v.Opmerking))
-                    inhoud += $" ({v.Opmerking})";
-                inhoud += "\n";
-            }
+                inhoud += FormatVensterRegel(v);
             inhoud += "\nGeef een voorkeurstijd door, dan plannen we het in.";
         }
         else if (response.BeschikbareVensters?.Count > 0)
@@ -60,13 +56,7 @@ public static class BerichtResponseGenerator
             inhoud = $"{aanhef} {voornaam},\n\n"
                    + $"Op {datumTekst} zijn de volgende mogelijkheden:\n";
             foreach (var v in vensters)
-            {
-                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
-                inhoud += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
-                if (!string.IsNullOrEmpty(v.Opmerking))
-                    inhoud += $" ({v.Opmerking})";
-                inhoud += "\n";
-            }
+                inhoud += FormatVensterRegel(v);
             inhoud += "\nGeef een voorkeurstijd door, dan plannen we het in.";
         }
         else if (!response.Beschikbaar && response.Alternatieven.Count > 0)
@@ -81,8 +71,7 @@ public static class BerichtResponseGenerator
             if (alternatieven.Count > 0)
             {
                 inhoud += " Alternatieven:\n";
-                foreach (var alt in alternatieven.Take(3))
-                    inhoud += $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n";
+                inhoud += FormatAlternatievenLijst(alternatieven);
             }
 
             if (response.Waarschuwingen.Count > 0)
@@ -188,13 +177,7 @@ public static class BerichtResponseGenerator
                 sectie += $" Om {classificatie.AanvangsTijd}";
             sectie += " is helaas geen ruimte. Beschikbare mogelijkheden:\n";
             foreach (var v in vensters)
-            {
-                var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
-                sectie += $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
-                if (!string.IsNullOrEmpty(v.Opmerking))
-                    sectie += $" ({v.Opmerking})";
-                sectie += "\n";
-            }
+                sectie += FormatVensterRegel(v);
             return sectie;
         }
 
@@ -208,8 +191,7 @@ public static class BerichtResponseGenerator
             if (alternatieven.Count > 0)
             {
                 sectie += " Alternatieven:\n";
-                foreach (var alt in alternatieven.Take(3))
-                    sectie += $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n";
+                sectie += FormatAlternatievenLijst(alternatieven);
             }
             return sectie;
         }
@@ -285,14 +267,12 @@ public static class BerichtResponseGenerator
                 if (eerdere.Count > 0)
                 {
                     inhoud += "\nEerdere mogelijkheden:\n";
-                    foreach (var alt in eerdere.Take(3))
-                        inhoud += $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n";
+                    inhoud += FormatAlternatievenLijst(eerdere);
                 }
                 if (latere.Count > 0)
                 {
                     inhoud += "\nLatere mogelijkheden:\n";
-                    foreach (var alt in latere.Take(3))
-                        inhoud += $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n";
+                    inhoud += FormatAlternatievenLijst(latere);
                 }
 
                 inhoud += "\nLaat weten welke optie de voorkeur heeft.";
@@ -627,9 +607,21 @@ public static class BerichtResponseGenerator
 
     // ── Helpers ──
 
+    private static string FormatVensterRegel(BeschikbaarVenster v)
+    {
+        var totTekst = IsEindeDag(v.Tot) ? "einde dag" : v.Tot;
+        var regel = $"- {v.VeldNaam}: beschikbaar van {v.Van} tot {totTekst}";
+        if (!string.IsNullOrEmpty(v.Opmerking))
+            regel += $" ({v.Opmerking})";
+        return regel + "\n";
+    }
+
+    private static string FormatAlternatievenLijst(IEnumerable<SlotToewijzing> alternatieven)
+        => string.Concat(alternatieven.Take(3).Select(alt => $"- {alt.VeldNaam} om {alt.AanvangsTijd} (eindigt {alt.EindTijd})\n"));
+
     public static string GetTijdsgebondenAanhef()
     {
-        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById(NlTijdzoneId);
         var uur = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone).Hour;
         if (uur < 12) return "Goedemorgen";
         if (uur < 18) return "Goedemiddag";

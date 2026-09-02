@@ -32,20 +32,24 @@ jobs:
             // 'status: '-label op een issue staat. Voorheen werd 'awaiting-release'
             // alleen toegevoegd, waardoor een issue dat al op 'in-progress' of
             // 'review-needed' stond twee statussen tegelijk kreeg (#690).
-            const { extractIssueRefs, setIssueStatus } =
+            const { extractIssueRefs, setIssueStatus, isEpic } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const label = 'status: awaiting-release';
             const pr = context.payload.pull_request;
 
-            // `all` voor het LABELEN van open issues: ruim scannen is daar onschadelijk en
-            // levert de meeste zichtbaarheid op. `strong` voor het HEROPENEN van een al
-            // gesloten issue — zie de toelichting bij extractIssueRefs (#630).
-            const { all: numbers, strong } = extractIssueRefs(pr.title, pr.body);
-            const mayReopen = n => strong.has(n);
+            // #838-vervolg: `all` labelde eerder ELK issue dat een PR-body ook maar in
+            // proza noemde (bijv. een cross-reference-tabel of "zie #NNN e.v.") als
+            // 'awaiting-release', ook als er nog niets aan gebouwd was — niet alleen bij
+            // epics (de oorspronkelijke, te smalle #838-fix), maar bij elk gewoon issue.
+            // `strong` (titel-conventie 'fix(#NNN): ...' of een sluitend keyword in de
+            // body) is de enige betrouwbare indicatie dat déze PR dat issue daadwerkelijk
+            // aanpakt — hetzelfde onderscheid dat #630 al voor heropenen vastlegde.
+            const { strong } = extractIssueRefs(pr.title, pr.body);
+            const numbers = [...strong];
 
             if (numbers.length === 0) {
-              core.notice('Geen #issuenummer gevonden in PR-titel of -body — niets te labelen.');
+              core.notice('Geen sterke #issuenummer-referentie (titel of sluitend keyword) gevonden — niets te labelen.');
               return;
             }
 
@@ -67,12 +71,18 @@ jobs:
                 continue;
               }
 
-              // Gesloten issue zonder titel- of sluitend-keyword-referentie: volledig overslaan.
-              // Niet labelen en niet heropenen — het is hier alleen als kruisverwijzing genoemd (#630).
-              if (issue.state === 'closed' && !mayReopen(number)) {
-                core.notice(`#${number}: gesloten en alleen als kruisverwijzing genoemd — overgeslagen`);
+              // Epics zijn geen losse release-eenheid — ze worden nooit via een
+              // commit-subject of CHANGELOG-attributie "gefixt", dus
+              // close-released-issues.yml verwijdert hun label nooit. Zonder deze guard
+              // blijft een epic permanent op awaiting-release staan zodra een
+              // sub-issue-PR er ook maar in proza naar verwijst (#838).
+              if (isEpic(issue)) {
+                core.notice(`#${number}: draagt het label 'epic' — overgeslagen (geen losse release-eenheid)`);
                 continue;
               }
+
+              // Geen aparte "alleen kruisverwijzing"-check meer nodig: elk nummer hier komt al
+              // uit `strong`, dus een gesloten issue mag hier altijd heropend worden (#630/#838).
 
               // respectProtected: false — een merge naar develop is een feit, niet een
               // voorkeur. Ook een issue dat op 'blocked' of 'waiting-owner' staat wacht

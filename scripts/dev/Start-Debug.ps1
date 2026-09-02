@@ -34,9 +34,18 @@ param(
     [switch]$Clean     # dotnet clean op BlazorAdmin vóór het starten
 )
 
-$root    = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$logDir  = Join-Path $env:TEMP 'sportlink-debug-logs'
+$root    = Resolve-Path (Join-Path $PSScriptRoot "../..")
+$logDir  = Join-Path ([System.IO.Path]::GetTempPath()) 'sportlink-debug-logs'
 $started = Get-Date
+
+# Cross-platform (#800):
+#  - Op Windows start elke service in een eigen console-venster (ongewijzigd gedrag).
+#  - Op macOS/Linux kan dat niet: Start-Process opent daar nooit een venster en
+#    -WindowStyle is er een no-op (gedocumenteerd in de Start-Process-docs). Daarom
+#    loopt de output daar altijd naar een logbestand, precies zoals bij -Tail.
+$onWindows    = [bool]$IsWindows
+$shellExe     = if ($onWindows) { 'powershell' } else { 'pwsh' }
+$useLogFiles  = $Tail -or -not $onWindows
 
 Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
 
@@ -62,21 +71,25 @@ $teardown = Stop-DebugServices
 if (-not $teardown.AllPortsFree) {
     Write-Host ""
     Write-Host "Poorten zijn niet vrijgegeven — starten afgebroken." -ForegroundColor Red
-    Write-Host "Controleer met: Get-NetTCPConnection -LocalPort 7094,5242,4280 -State Listen" -ForegroundColor Yellow
+    if ($IsWindows) {
+        Write-Host "Controleer met: Get-NetTCPConnection -LocalPort 7094,5242,4280 -State Listen" -ForegroundColor Yellow
+    } else {
+        Write-Host "Controleer met: lsof -nP -iTCP:7094 -iTCP:5242 -iTCP:4280 -sTCP:LISTEN" -ForegroundColor Yellow
+    }
     exit 1
 }
 
 if ($Clean) {
     Write-Host "BlazorAdmin cleanen (verwijdert stale fingerprints)..." -ForegroundColor Cyan
-    dotnet clean (Join-Path $root 'BlazorAdmin\BlazorAdmin.csproj') | Out-Null
+    dotnet clean (Join-Path $root 'BlazorAdmin/BlazorAdmin.csproj') | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "dotnet clean mislukt — starten afgebroken." -ForegroundColor Red
         exit 1
     }
 }
 
-if ($Tail) {
-    if (Test-Path $logDir) { Remove-Item "$logDir\*.log" -Force -ErrorAction SilentlyContinue }
+if ($useLogFiles) {
+    if (Test-Path $logDir) { Remove-Item (Join-Path $logDir '*.log') -Force -ErrorAction SilentlyContinue }
     else { New-Item -ItemType Directory -Path $logDir | Out-Null }
 }
 
@@ -87,8 +100,13 @@ $logSources = [ordered]@{}
 
 function Start-Service {
     <#
-        Start één service. Met -Tail gaat de output naar een logbestand (venster verborgen),
-        anders naar een eigen venster met -NoExit zoals voorheen.
+        Start één service.
+
+        Windows : zonder -Tail krijgt elke service een eigen console-venster (-NoExit),
+                  met -Tail gaat de output naar een logbestand.
+        macOS   : altijd naar een logbestand. Start-Process opent daar nooit een venster
+                  en -WindowStyle is er een gedocumenteerde no-op, dus zonder redirect
+                  zou alle service-output verloren gaan.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -98,19 +116,25 @@ function Start-Service {
         [switch]$Minimized
     )
 
-    if ($Tail) {
+    if ($useLogFiles) {
         $logFile = Join-Path $logDir "$Name.log"
-        $proc = Start-Process powershell -ArgumentList @('-NoProfile', '-Command', $Command) `
-            -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput $logFile `
-            -RedirectStandardError  "$logFile.err"
+        $startArgs = @{
+            FilePath               = $shellExe
+            ArgumentList           = @('-NoProfile', '-Command', $Command)
+            PassThru               = $true
+            RedirectStandardOutput = $logFile
+            RedirectStandardError  = "$logFile.err"
+        }
+        # -WindowStyle bestaat alleen zinvol op Windows; op macOS wordt de parameter genegeerd.
+        if ($onWindows) { $startArgs.WindowStyle = 'Hidden' }
+        $proc = Start-Process @startArgs
         $logSources[$Name] = $logFile
     } else {
         $inner = if ($Banner) {
             "Write-Host '$Banner' -ForegroundColor $BannerColor; $Command"
         } else { $Command }
         $style = if ($Minimized) { 'Minimized' } else { 'Normal' }
-        $proc = Start-Process powershell -ArgumentList @('-NoExit', '-Command', $inner) `
+        $proc = Start-Process -FilePath $shellExe -ArgumentList @('-NoExit', '-Command', $inner) `
             -WindowStyle $style -PassThru
     }
 
@@ -123,10 +147,11 @@ if (Test-PortListening -Port $ports.Azurite) {
     Write-Host "Azurite actief (poort $($ports.Azurite))." -ForegroundColor DarkGray
 } else {
     Write-Host "Azurite niet gevonden - starten..." -ForegroundColor Yellow
-    $azuriteDir = Join-Path $env:TEMP 'azurite'
+    $azuriteDir = Join-Path ([System.IO.Path]::GetTempPath()) 'azurite'
     if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
+    $azuriteLog = Join-Path $azuriteDir 'debug.log'
     Start-Service -Name 'azurite' -Minimized `
-        -Command "azurite --location '$azuriteDir' --debug '$azuriteDir\debug.log'" | Out-Null
+        -Command "azurite --location '$azuriteDir' --debug '$azuriteLog'" | Out-Null
 
     if (-not (Wait-ForPort -Port $ports.Azurite -TimeoutSeconds 30 -Label 'Azurite')) {
         Write-Host "Azurite is niet binnen 30s gestart." -ForegroundColor Red
@@ -141,19 +166,19 @@ Write-Host "FunctionApp starten op http://localhost:$($ports.FunctionApp) ..." -
 Write-Host "  FunctionApp heeft GEEN hot reload. Na codewijzigingen: Stop-Debug.ps1 + Start-Debug.ps1." -ForegroundColor DarkYellow
 Start-Service -Name 'func' `
     -Banner "FunctionApp - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
-    -Command "Set-Location '$root\FunctionApp'; func start --port $($ports.FunctionApp)" | Out-Null
+    -Command "Set-Location '$root/FunctionApp'; func start --port $($ports.FunctionApp)" | Out-Null
 
 # --- BlazorAdmin ---
 if ($NoWatch) {
     Write-Host "BlazorAdmin starten op http://localhost:$($ports.BlazorAdmin) (geen hot reload) ..." -ForegroundColor Cyan
     Start-Service -Name 'blazor' `
         -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (geen hot reload)" `
-        -Command "Set-Location '$root\BlazorAdmin'; dotnet run --launch-profile http" | Out-Null
+        -Command "Set-Location '$root/BlazorAdmin'; dotnet run --launch-profile http" | Out-Null
 } else {
     Write-Host "BlazorAdmin starten op http://localhost:$($ports.BlazorAdmin) (hot reload actief) ..." -ForegroundColor Cyan
     Start-Service -Name 'blazor' -BannerColor 'Green' `
         -Banner "BlazorAdmin - poort $($ports.BlazorAdmin)  (hot reload: wijzigingen in .razor/.cs/.css herladen automatisch)" `
-        -Command "Set-Location '$root\BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; dotnet watch run --launch-profile http --non-interactive" | Out-Null
+        -Command "Set-Location '$root/BlazorAdmin'; `$env:MSBUILDDISABLENODEREUSE = '1'; dotnet watch run --launch-profile http --non-interactive" | Out-Null
 }
 
 # --- SWA emulator (optioneel) ---
@@ -223,7 +248,7 @@ if ($failures.Count -gt 0) {
     Write-Host "NIET ALLE SERVICES ZIJN GESTART ($duur s)" -ForegroundColor Red
     Write-Host "  Mislukt: $($failures -join ', ')" -ForegroundColor Red
     Write-Host ""
-    if ($Tail) {
+    if ($useLogFiles) {
         Write-Host "  Bekijk de logs in: $logDir" -ForegroundColor Yellow
     } else {
         Write-Host "  Controleer de foutmelding in het bijbehorende venster." -ForegroundColor Yellow

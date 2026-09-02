@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
-using SportlinkFunction.Utilities;
+using Planner.Shared;
 
 namespace SportlinkFunction.Admin;
 
@@ -142,65 +142,15 @@ public static class AdminTeambegeleidingFunction
             var aanvragerEmail = EasyAuthHelper.GetCallerEmail(req);
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
-            // #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
-            // houdt het oude gedrag (server-side TOP 1-lookup + coördinator-fallback) intact —
-            // bestaande API-consumers blijven werken zonder het nieuwe veld mee te sturen.
-            List<string>? ontvangers = null;
-            if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
-            {
-                var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
-                if (!parseResultaat.IsValid)
-                    return new BadRequestObjectResult(new { error = parseResultaat.FoutMelding });
-
-                var uitgesloten = await new SqlEmailPersistenceRepository().GetExcludedEmailAddressesAsync(clubCode);
-                var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
-                if (geweigerdAdres != null)
-                    return new BadRequestObjectResult(new
-                    {
-                        error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
-                    });
-
-                ontvangers = [.. parseResultaat.Emailadressen];
-            }
+            // #827: één keer geresolved, gebruikt voor zowel de opt-out-check als de audit-insert
+            // hieronder — geen directe `new SqlEmailPersistenceRepository()` meer.
+            var persistenceRepository = context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>();
 
             // Coördinator-email ophalen uit AppSettings (BCC — ongewijzigd)
             var coordinatorEmail = SystemUtilities.AppSettings.GetSetting("plannerEmailAdres");
 
-            if (ontvangers == null)
-            {
-                // Coach-email server-side ophalen (NOOIT in response)
-                string? coachEmail = null;
-                using (var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
-                {
-                    await connection.OpenAsync();
-                    using var cmd = new SqlCommand(@"
-                        SELECT TOP 1 [Emailadres]
-                        FROM [avg].[Teambegeleiding]
-                        WHERE [Team] = @team
-                          AND [Emailadres] IS NOT NULL
-                          AND [ClubCode] = @ClubCode
-                        ORDER BY
-                            CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
-                                 WHEN [Teamrol] LIKE '%Coach%' THEN 2
-                                 WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
-                                 ELSE 4 END
-                    ", connection);
-                    cmd.Parameters.AddWithValue("@team", dto.TeamNaam);
-                    cmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                    var result = await cmd.ExecuteScalarAsync();
-                    coachEmail = result as string;
-                }
-
-                if (string.IsNullOrEmpty(coachEmail))
-                {
-                    // Geen coach gevonden: stuur naar coördinator als fallback
-                    if (string.IsNullOrEmpty(coordinatorEmail))
-                        return new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 };
-                    coachEmail = coordinatorEmail;
-                    log.LogWarning("Geen coach-email gevonden voor team — doorgestuurd naar coordinator");
-                }
-                ontvangers = [coachEmail];
-            }
+            var (ontvangers, ontvangersFout) = await ResolveOntvangersAsync(dto, clubCode, coordinatorEmail, persistenceRepository, log);
+            if (ontvangersFout != null) return ontvangersFout;
 
             var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
             if (graphClient == null)
@@ -221,21 +171,9 @@ public static class AdminTeambegeleidingFunction
 <hr />
 <p><em>U kunt direct antwoorden op dit bericht — uw antwoord gaat naar de vraagsteller.</em></p>";
 
-            await emailService.StuurTeamContactDoorAsync(ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail);
-
-            // Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
-            // hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
-            // geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
-            // verzendpoging kunnen leiden).
-            try
-            {
-                await EmailProcessingRepository.InsertTeambegeleidingDoorsturenAuditAsync(
-                    dto.TeamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
-            }
-            catch (Exception auditEx)
-            {
-                log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
-            }
+            await VerstuurEnAuditeerAsync(
+                emailService, ontvangers!, subject, htmlBody, aanvragerEmail, coordinatorEmail,
+                persistenceRepository, dto.TeamNaam, clubCode, log);
 
             return new OkObjectResult(new
             {
@@ -247,6 +185,90 @@ public static class AdminTeambegeleidingFunction
         {
             log.LogError(ex, "Fout bij doorsturen teambegeleiding-vraag (geen PII gelogd — AVG)");
             return new ObjectResult(new { error = "Doorsturen mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// #765: "Email Aan" bepaalt de ontvangers zodra het veld gevuld is. Leeg/afwezig veld
+    /// houdt het oude gedrag (server-side TOP 1-lookup + coördinator-fallback) intact —
+    /// bestaande API-consumers blijven werken zonder het nieuwe veld mee te sturen.
+    /// </summary>
+    private static async Task<(List<string>? Ontvangers, IActionResult? Fout)> ResolveOntvangersAsync(
+        DoorsturenRequest dto, string clubCode, string? coordinatorEmail, IEmailPersistenceRepository persistenceRepository, ILogger log)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.Ontvangers))
+        {
+            var parseResultaat = OntvangerParser.Parse(dto.Ontvangers);
+            if (!parseResultaat.IsValid)
+                return (null, new BadRequestObjectResult(new { error = parseResultaat.FoutMelding }));
+
+            var uitgesloten = await persistenceRepository.GetExcludedEmailAddressesAsync(clubCode);
+            var geweigerdAdres = parseResultaat.Emailadressen.FirstOrDefault(uitgesloten.Contains);
+            if (geweigerdAdres != null)
+                return (null, new BadRequestObjectResult(new
+                {
+                    error = $"E-mailadres \"{geweigerdAdres}\" staat op de uitsluitingslijst en kan niet als ontvanger worden gebruikt."
+                }));
+
+            return ([.. parseResultaat.Emailadressen], null);
+        }
+
+        // Coach-email server-side ophalen (NOOIT in response)
+        string? coachEmail = null;
+        using (var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString))
+        {
+            await connection.OpenAsync();
+            using var cmd = new SqlCommand(@"
+                SELECT TOP 1 [Emailadres]
+                FROM [avg].[Teambegeleiding]
+                WHERE [Team] = @team
+                  AND [Emailadres] IS NOT NULL
+                  AND [ClubCode] = @ClubCode
+                ORDER BY
+                    CASE WHEN [Teamrol] LIKE '%Trainer%' THEN 1
+                         WHEN [Teamrol] LIKE '%Coach%' THEN 2
+                         WHEN [Teamrol] LIKE '%Teamleider%' THEN 3
+                         ELSE 4 END
+            ", connection);
+            cmd.Parameters.AddWithValue("@team", dto.TeamNaam);
+            cmd.Parameters.AddWithValue("@ClubCode", clubCode);
+            var result = await cmd.ExecuteScalarAsync();
+            coachEmail = result as string;
+        }
+
+        if (string.IsNullOrEmpty(coachEmail))
+        {
+            // Geen coach gevonden: stuur naar coördinator als fallback
+            if (string.IsNullOrEmpty(coordinatorEmail))
+                return (null, new ObjectResult(new { error = "Geen begeleider en geen coördinator geconfigureerd" }) { StatusCode = 503 });
+            coachEmail = coordinatorEmail;
+            log.LogWarning("Geen coach-email gevonden voor team — doorgestuurd naar coordinator");
+        }
+
+        return ([coachEmail], null);
+    }
+
+    /// <summary>
+    /// Audit-trail (#765): vrij ingetypte ontvangers zijn nieuwe persoonsgegevens. De mail is
+    /// hierboven al verstuurd — een fout in het wegschrijven van de audit-rij mag de
+    /// geslaagde verzending niet alsnog als mislukt melden (dat zou tot een dubbele
+    /// verzendpoging kunnen leiden).
+    /// </summary>
+    private static async Task VerstuurEnAuditeerAsync(
+        EmailGraphService emailService, List<string> ontvangers, string subject, string htmlBody,
+        string? aanvragerEmail, string? coordinatorEmail, IEmailPersistenceRepository persistenceRepository,
+        string teamNaam, string clubCode, ILogger log)
+    {
+        await emailService.StuurTeamContactDoorAsync(ontvangers, subject, htmlBody, aanvragerEmail, coordinatorEmail);
+
+        try
+        {
+            await persistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync(
+                teamNaam, aanvragerEmail ?? "onbekend", string.Join("; ", ontvangers), clubCode);
+        }
+        catch (Exception auditEx)
+        {
+            log.LogWarning(auditEx, "Audit-trail voor teambegeleiding-doorsturen kon niet worden weggeschreven (verzending zelf is wel geslaagd)");
         }
     }
 
@@ -397,21 +419,9 @@ public static class AdminTeambegeleidingFunction
         }
 
         var headers = SplitCsvLine(lines[0]);
+        var mapping = BouwKolomMapping(headers);
 
-        var mapping = new Dictionary<string, int>();
-        foreach (var (canonical, aliases) in _kolomAliassen)
-        {
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
-                {
-                    mapping[canonical] = i;
-                    break;
-                }
-            }
-        }
-
-        var ontbreekt = _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
+        var ontbreekt = ValideerVerplichteKolommen(mapping);
         if (ontbreekt.Count > 0)
         {
             result.IsValid = false;
@@ -453,8 +463,40 @@ public static class AdminTeambegeleidingFunction
                 telefoon));
         }
 
-        var voorDedup = result.Rows.Count;
-        result.Rows = [.. result.Rows
+        var (rows, duplicaten) = DedupliceerRijen(result.Rows);
+        result.Rows = rows;
+        if (duplicaten > 0)
+            result.Waarschuwingen.Add(
+                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
+
+        result.IsValid = true;
+        return result;
+    }
+
+    private static Dictionary<string, int> BouwKolomMapping(string[] headers)
+    {
+        var mapping = new Dictionary<string, int>();
+        foreach (var (canonical, aliases) in _kolomAliassen)
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (aliases.Any(a => string.Equals(a, headers[i], StringComparison.OrdinalIgnoreCase)))
+                {
+                    mapping[canonical] = i;
+                    break;
+                }
+            }
+        }
+        return mapping;
+    }
+
+    private static List<string> ValideerVerplichteKolommen(Dictionary<string, int> mapping)
+        => _vereistKolommen.Where(v => !mapping.ContainsKey(v)).ToList();
+
+    private static (List<ImportRij> Rows, int Duplicaten) DedupliceerRijen(List<ImportRij> rows)
+    {
+        var voorDedup = rows.Count;
+        List<ImportRij> gededupliceerd = [.. rows
             .GroupBy(r => (
                 Team: r.Team?.Trim().ToUpperInvariant(),
                 Teamrol: r.Teamrol?.Trim().ToUpperInvariant(),
@@ -462,13 +504,7 @@ public static class AdminTeambegeleidingFunction
                 Email: r.Emailadres?.Trim().ToUpperInvariant(),
                 Telefoon: r.Telefoonnummer?.Trim().ToUpperInvariant()))
             .Select(g => g.First())];
-        var duplicaten = voorDedup - result.Rows.Count;
-        if (duplicaten > 0)
-            result.Waarschuwingen.Add(
-                $"{duplicaten} exacte duplicaat-rij{(duplicaten == 1 ? "" : "en")} overgeslagen (zelfde team, rol, naam en e-mailadres).");
-
-        result.IsValid = true;
-        return result;
+        return (gededupliceerd, voorDedup - gededupliceerd.Count);
     }
 
     private static string[] SplitCsvLine(string line)

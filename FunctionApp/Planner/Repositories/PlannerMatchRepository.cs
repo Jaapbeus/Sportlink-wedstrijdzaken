@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Planner.Shared;
 
 namespace SportlinkFunction.Planner;
 
@@ -37,7 +38,7 @@ internal static class PlannerMatchRepository
         SqlConnection conn, string clubCode, string? teamNaam)
     {
         var resultaten = new List<string>();
-        var sleutel = TeamResolution.TeamNaamNormalisatie.NormaliseerVoorVergelijking(teamNaam, clubCode);
+        var sleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(teamNaam, clubCode);
         if (sleutel.Length == 0) return resultaten;
 
         using var cmd = new SqlCommand(@"
@@ -92,7 +93,7 @@ internal static class PlannerMatchRepository
     /// alle bekende schrijfwijzen van het team: een gemiste vergelijking hier zou stilzwijgend een
     /// dubbele boeking van hetzelfde team toelaten.
     /// </remarks>
-    internal static async Task<List<BestaandeWedstrijd>> GetTeamMatchesOnDateAsync(
+    internal static async Task<TeamWedstrijdenOpDatum> GetTeamMatchesOnDateAsync(
         string teamNaam, DateOnly date, string? clubCode = null)
     {
         var results = new List<BestaandeWedstrijd>();
@@ -100,7 +101,9 @@ internal static class PlannerMatchRepository
         await conn.OpenAsync();
         var cc = ClubScope.Resolve(clubCode);
         var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, teamNaam);
-        if (schrijfwijzen.Count == 0) return results;
+        // Geen schrijfwijzen = de naam is niet naar een team te herleiden. Dat is NIET "geen
+        // conflict" maar "niet gecontroleerd" (#945) — de aanroeper moet dat verschil zien.
+        if (schrijfwijzen.Count == 0) return TeamWedstrijdenOpDatum.NietHerkend();
 
         using var cmd = new SqlCommand();
         var matchFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
@@ -115,7 +118,7 @@ internal static class PlannerMatchRepository
             FROM [his].[matches] m
             LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam]
                  AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
                  AND s.[ClubCode] = {ClubScope.ClubCodeParam}
             {VeldResolutie.SqlOuterApply("m.[veld]", ClubScope.ClubCodeParam)}
             WHERE CAST(m.[kaledatum] AS DATE) = @date
@@ -156,7 +159,7 @@ internal static class PlannerMatchRepository
                 Bron         = reader.GetString(6)
             });
         }
-        return results;
+        return TeamWedstrijdenOpDatum.Herkend(results);
     }
 
     internal static async Task<List<BestaandeWedstrijd>> GetGeplandeWedstrijdenOnlyAsync(
@@ -199,6 +202,55 @@ internal static class PlannerMatchRepository
         return results;
     }
 
+    /// <summary>
+    /// Gedeelde SELECT/FROM/JOIN voor <see cref="FindMatchAsync"/>, de <c>his.matches</c>-tak van
+    /// <see cref="FindMatchByOpponentAsync"/> en <see cref="FindMatchByCodeAsync"/> — geverifieerd
+    /// regel voor regel identiek, kolomvolgorde (0-7) hoort bij <see cref="MapZoekWedstrijdResponse"/>.
+    /// Property i.p.v. veld: <see cref="ClubScope.HisFilter"/>/<see cref="ClubScope.ClubCodeParam"/> en
+    /// <see cref="LeeftijdNormalisatieSql.SqlExpr"/> zijn pure, deterministische functies met dezelfde
+    /// argumenten op alle drie de plekken, dus opnieuw interpoleren bij elke opvraging is veilig.
+    /// </summary>
+    private static string ZoekWedstrijdSelectEnJoin => $@"
+            SELECT TOP 1
+                CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
+                CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
+                ISNULL(s.[WedstrijdTotaal], 0), m.[veld],
+                t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
+            FROM [his].[matches] m
+            LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
+                 AND {ClubScope.HisFilter("t")}
+            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatieSql.SqlExpr("t.[leeftijdscategorie]")}
+                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
+        ";
+
+    /// <summary>
+    /// Mapt de gedeelde kolomvolgorde van <see cref="ZoekWedstrijdSelectEnJoin"/> naar een
+    /// <see cref="ZoekWedstrijdResponse"/>. <paramref name="datumOverride"/> is voor aanroepers die al
+    /// hard filteren op <c>CAST(m.[kaledatum] AS DATE) = @date</c> — dat is exact gelijk aan kolom 2, dus
+    /// geen extra leesactie nodig.
+    /// </summary>
+    private static ZoekWedstrijdResponse MapZoekWedstrijdResponse(SqlDataReader reader, DateOnly? datumOverride = null)
+    {
+        var aanvangstijd = reader.GetString(3).Trim();
+        var duur = reader.GetInt32(4);
+        var naam = reader.GetString(1).Trim();
+        if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{naam}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
+        TimeOnly.TryParse(aanvangstijd, out var start);
+        var datum = datumOverride ?? DateOnly.FromDateTime(reader.GetDateTime(2));
+        return new ZoekWedstrijdResponse
+        {
+            Wedstrijdcode      = reader.GetInt64(0),
+            Wedstrijd          = naam,
+            Datum              = datum.ToString("yyyy-MM-dd"),
+            AanvangsTijd       = aanvangstijd,
+            EindTijd           = start.AddMinutes(duur).ToString("HH:mm"),
+            DuurMinuten        = duur,
+            VeldNaam           = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+            LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+            VeldDeelGebruik    = reader.GetDecimal(7)
+        };
+    }
+
     /// <remarks>
     /// Sinds #700 wordt <paramref name="teamNaam"/> eerst herleid tot een bekend team en daarna exact
     /// vergeleken met alle schrijfwijzen van dat team. Er is geen terugval op een <c>LIKE</c>-patroon:
@@ -219,17 +271,7 @@ internal static class PlannerMatchRepository
         var teamFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
 
         cmd.Connection = conn;
-        cmd.CommandText = $@"
-            SELECT TOP 1
-                CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
-                CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
-                ISNULL(s.[WedstrijdTotaal], 0), m.[veld],
-                t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
-            FROM [his].[matches] m
-            LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-                 AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
-                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
+        cmd.CommandText = ZoekWedstrijdSelectEnJoin + $@"
             WHERE CAST(m.[kaledatum] AS DATE) = @date
               AND m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
@@ -241,27 +283,7 @@ internal static class PlannerMatchRepository
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-        {
-            var aanvangstijd = reader.GetString(3).Trim();
-            var duur = reader.GetInt32(4);
-            var naam = reader.GetString(1).Trim();
-            if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{naam}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
-            TimeOnly.TryParse(aanvangstijd, out var start);
-            return new ZoekWedstrijdResponse
-            {
-                Wedstrijdcode      = reader.GetInt64(0),
-                Wedstrijd          = naam,
-                Datum              = date.ToString("yyyy-MM-dd"),
-                AanvangsTijd       = aanvangstijd,
-                EindTijd           = start.AddMinutes(duur).ToString("HH:mm"),
-                DuurMinuten        = duur,
-                VeldNaam           = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
-                LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
-                VeldDeelGebruik    = reader.GetDecimal(7)
-            };
-        }
-        return null;
+        return await reader.ReadAsync() ? MapZoekWedstrijdResponse(reader, datumOverride: date) : null;
     }
 
     internal static async Task<ZoekWedstrijdResponse?> FindMatchByOpponentAsync(
@@ -272,17 +294,7 @@ internal static class PlannerMatchRepository
         var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
 
         // Zoek in his.matches
-        using (var cmd = new SqlCommand($@"
-            SELECT TOP 1
-                CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
-                CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
-                ISNULL(s.[WedstrijdTotaal], 0), m.[veld],
-                t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
-            FROM [his].[matches] m
-            LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-                 AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
-                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
+        using (var cmd = new SqlCommand(ZoekWedstrijdSelectEnJoin + $@"
             WHERE m.[accommodatie] LIKE @accommodatiePattern
               AND m.[status] <> 'Afgelast'
               AND m.[wedstrijd] LIKE @tegPattern
@@ -298,23 +310,7 @@ internal static class PlannerMatchRepository
             ClubScope.AddHisParams(cmd, clubCode);
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
-            {
-                var aanvangstijd = reader.GetString(3).Trim();
-                var duur = reader.GetInt32(4);
-                var naam = reader.GetString(1).Trim();
-                if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{naam}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
-                var datumResult = DateOnly.FromDateTime(reader.GetDateTime(2));
-                TimeOnly.TryParse(aanvangstijd, out var start);
-                return new ZoekWedstrijdResponse
-                {
-                    Wedstrijdcode = reader.GetInt64(0), Wedstrijd = naam,
-                    Datum = datumResult.ToString("yyyy-MM-dd"), AanvangsTijd = aanvangstijd,
-                    EindTijd = start.AddMinutes(duur).ToString("HH:mm"), DuurMinuten = duur,
-                    VeldNaam = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
-                    LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
-                    VeldDeelGebruik = reader.GetDecimal(7)
-                };
-            }
+                return MapZoekWedstrijdResponse(reader);
         }
 
         // Zoek in planner.GeplandeWedstrijden
@@ -369,17 +365,7 @@ internal static class PlannerMatchRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         var accommodatie = await ClubScope.RequireAccommodatieAsync(conn, ClubScope.Resolve(clubCode));
-        using var cmd = new SqlCommand($@"
-            SELECT TOP 1
-                CAST(m.[wedstrijdcode] AS BIGINT), m.[wedstrijd],
-                CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
-                ISNULL(s.[WedstrijdTotaal], 0), m.[veld],
-                t.[leeftijdscategorie], COALESCE(s.[Veldafmeting], 1.00)
-            FROM [his].[matches] m
-            LEFT JOIN [his].[teams] t ON t.[teamnaam] = m.[teamnaam] AND t.[leeftijdscategorie] IS NOT NULL AND t.[leeftijdscategorie] <> ''
-                 AND {ClubScope.HisFilter("t")}
-            LEFT JOIN [dbo].[Speeltijden] s ON s.[Leeftijd] = {LeeftijdNormalisatie.SqlExpr("t.[leeftijdscategorie]")}
-                 AND s.[ClubCode] = {ClubScope.ClubCodeParam}
+        using var cmd = new SqlCommand(ZoekWedstrijdSelectEnJoin + $@"
             WHERE CAST(m.[wedstrijdcode] AS BIGINT) = @code
               AND m.[accommodatie] LIKE @accommodatiePattern
               AND {ClubScope.HisFilter("m")}
@@ -388,25 +374,7 @@ internal static class PlannerMatchRepository
         cmd.Parameters.AddWithValue("@accommodatiePattern", $"%{accommodatie}%");
         ClubScope.AddHisParams(cmd, clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-        {
-            var aanvangstijd = reader.GetString(3).Trim();
-            var duur = reader.GetInt32(4);
-            var naam = reader.GetString(1).Trim();
-            if (duur <= 0) throw new InvalidOperationException($"Speelduur niet geconfigureerd voor wedstrijd '{naam}'. Voeg de leeftijdscategorie toe aan dbo.Speeltijden via /instellingen/speeltijden.");
-            var datum = DateOnly.FromDateTime(reader.GetDateTime(2));
-            TimeOnly.TryParse(aanvangstijd, out var start);
-            return new ZoekWedstrijdResponse
-            {
-                Wedstrijdcode = reader.GetInt64(0), Wedstrijd = naam,
-                Datum = datum.ToString("yyyy-MM-dd"), AanvangsTijd = aanvangstijd,
-                EindTijd = start.AddMinutes(duur).ToString("HH:mm"), DuurMinuten = duur,
-                VeldNaam = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
-                LeeftijdsCategorie = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
-                VeldDeelGebruik = reader.GetDecimal(7)
-            };
-        }
-        return null;
+        return await reader.ReadAsync() ? MapZoekWedstrijdResponse(reader) : null;
     }
 
     internal static async Task<int> SavePlannedMatchAsync(
@@ -440,21 +408,31 @@ internal static class PlannerMatchRepository
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
+    /// <remarks>
+    /// <b>Bugfix (issue 888 vervolg, gevonden tijdens de Postgres-vertaling).</b> Deze methode miste
+    /// <c>ClubCode</c> volledig in de INSERT, terwijl <c>[planner].[HerplanVerzoeken].[ClubCode]</c>
+    /// <c>NOT NULL</c> is zonder <c>DEFAULT</c> — elke aanroep van <c>HerplanBevestig</c> gooide dus
+    /// een SQL-fout ("Cannot insert the value NULL into column 'ClubCode'"). Niet zichtbaar in de
+    /// zelftest omdat die de Postgres-tier bewaakt, niet de SQL Server-tier. Same-shape fix als de
+    /// andere <c>PlannerMatchRepository</c>-methoden: <c>clubCode</c> optioneel met
+    /// <c>ClubScope.Resolve</c>-fallback naar de primaire club.
+    /// </remarks>
     internal static async Task<int> SaveHerplanVerzoekAsync(
         long wedstrijdcode, string huidigeWedstrijd, DateOnly huidigeDatum,
         TimeOnly huidigeAanvangsTijd, string? huidigeVeldNaam,
         TimeOnly gewensteAanvangsTijd, int? gewenstVeldNummer,
-        string? aangevraagdDoor, string? opmerking)
+        string? aangevraagdDoor, string? opmerking, string? clubCode = null)
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        var cc = ClubScope.Resolve(clubCode);
         using var cmd = new SqlCommand(@"
             INSERT INTO [planner].[HerplanVerzoeken]
                 ([Wedstrijdcode], [HuidigeWedstrijd], [HuidigeDatum], [HuidigeAanvangsTijd],
                  [HuidigeVeldNaam], [GewensteAanvangsTijd], [GewenstVeldNummer],
-                 [Status], [AangevraagdDoor], [Opmerking])
+                 [Status], [AangevraagdDoor], [Opmerking], [ClubCode])
             OUTPUT INSERTED.[Id]
-            VALUES (@code, @wedstrijd, @datum, @aanvang, @veld, @gewensteTijd, @gewenstVeld, 'Aangevraagd', @door, @opmerking)
+            VALUES (@code, @wedstrijd, @datum, @aanvang, @veld, @gewensteTijd, @gewenstVeld, 'Aangevraagd', @door, @opmerking, @cc)
         ", conn);
         cmd.Parameters.AddWithValue("@code", wedstrijdcode);
         cmd.Parameters.AddWithValue("@wedstrijd", huidigeWedstrijd);
@@ -465,6 +443,7 @@ internal static class PlannerMatchRepository
         cmd.Parameters.AddWithValue("@gewenstVeld", (object?)gewenstVeldNummer ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@door", (object?)aangevraagdDoor ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@opmerking", (object?)opmerking ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@cc", cc);
         return (int)(await cmd.ExecuteScalarAsync())!;
     }
 
@@ -542,11 +521,25 @@ internal static class PlannerMatchRepository
         var schrijfwijzen = await TeamSchrijfwijzenAsync(conn, cc, team);
         if (schrijfwijzen.Count == 0) return results;
 
-        using (var cmd = new SqlCommand())
+        results.AddRange(await GetCompetitiematchesVoorTeamAsync(conn, schrijfwijzen, van, tot, clubCode));
+        results.AddRange(await GetGeplandeWedstrijdenVoorTeamAsync(conn, schrijfwijzen, van, tot, clubCode));
+
+        results.Sort((a, b) =>
         {
-            var matchFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
-            cmd.Connection = conn;
-            cmd.CommandText = $@"
+            var cmp = string.Compare(a.Datum, b.Datum, StringComparison.Ordinal);
+            return cmp != 0 ? cmp : string.Compare(a.AanvangsTijd, b.AanvangsTijd, StringComparison.Ordinal);
+        });
+        return results;
+    }
+
+    private static async Task<List<TeamScheduleWedstrijd>> GetCompetitiematchesVoorTeamAsync(
+        SqlConnection conn, List<string> schrijfwijzen, DateOnly van, DateOnly tot, string? clubCode)
+    {
+        var results = new List<TeamScheduleWedstrijd>();
+        using var cmd = new SqlCommand();
+        var matchFilter = BouwSchrijfwijzenFilter(cmd, "m.[teamnaam]", schrijfwijzen, "team");
+        cmd.Connection = conn;
+        cmd.CommandText = $@"
             SELECT CAST(m.[kaledatum] AS DATE), m.[aanvangstijd],
                    m.[thuisteam], m.[uitteam], m.[competitiesoort], m.[veld],
                    CAST(m.[wedstrijdcode] AS BIGINT)
@@ -557,34 +550,38 @@ internal static class PlannerMatchRepository
               AND {ClubScope.HisFilter("m")}
             ORDER BY m.[kaledatum], m.[aanvangstijd]
         ";
-            cmd.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
-            cmd.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
-            ClubScope.AddHisParams(cmd, clubCode);
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                var datum = DateOnly.FromDateTime(reader.GetDateTime(0));
-                var aanvang = reader.GetString(1).Trim();
-                var thuisTeam = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
-                var uitTeam = reader.IsDBNull(3) ? "" : reader.GetString(3).Trim();
-                bool isThuis = schrijfwijzen.Any(w => thuisTeam.Equals(w, StringComparison.OrdinalIgnoreCase));
-                results.Add(new TeamScheduleWedstrijd
-                {
-                    Datum = datum.ToString("yyyy-MM-dd"), AanvangsTijd = aanvang,
-                    ThuisUit = isThuis ? "thuis" : "uit",
-                    Tegenstander = isThuis ? uitTeam : thuisTeam,
-                    Type = DetermineMatchType(reader.IsDBNull(4) ? "" : reader.GetString(4)),
-                    Veld = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
-                    Wedstrijdcode = reader.GetInt64(6)
-                });
-            }
-        }
-
-        using (var cmd2 = new SqlCommand())
+        cmd.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
+        cmd.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
+        ClubScope.AddHisParams(cmd, clubCode);
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            var plannerFilter = BouwSchrijfwijzenFilter(cmd2, "gw.[TeamNaam]", schrijfwijzen, "gwteam");
-            cmd2.Connection = conn;
-            cmd2.CommandText = $@"
+            var datum = DateOnly.FromDateTime(reader.GetDateTime(0));
+            var aanvang = reader.GetString(1).Trim();
+            var thuisTeam = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
+            var uitTeam = reader.IsDBNull(3) ? "" : reader.GetString(3).Trim();
+            bool isThuis = schrijfwijzen.Any(w => thuisTeam.Equals(w, StringComparison.OrdinalIgnoreCase));
+            results.Add(new TeamScheduleWedstrijd
+            {
+                Datum = datum.ToString("yyyy-MM-dd"), AanvangsTijd = aanvang,
+                ThuisUit = isThuis ? "thuis" : "uit",
+                Tegenstander = isThuis ? uitTeam : thuisTeam,
+                Type = DetermineMatchType(reader.IsDBNull(4) ? "" : reader.GetString(4)),
+                Veld = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                Wedstrijdcode = reader.GetInt64(6)
+            });
+        }
+        return results;
+    }
+
+    private static async Task<List<TeamScheduleWedstrijd>> GetGeplandeWedstrijdenVoorTeamAsync(
+        SqlConnection conn, List<string> schrijfwijzen, DateOnly van, DateOnly tot, string? clubCode)
+    {
+        var results = new List<TeamScheduleWedstrijd>();
+        using var cmd2 = new SqlCommand();
+        var plannerFilter = BouwSchrijfwijzenFilter(cmd2, "gw.[TeamNaam]", schrijfwijzen, "gwteam");
+        cmd2.Connection = conn;
+        cmd2.CommandText = $@"
             SELECT gw.[Datum], CONVERT(VARCHAR(8), gw.[AanvangsTijd], 108),
                    gw.[Tegenstander], v.[VeldNaam]
             FROM [planner].[GeplandeWedstrijden] gw
@@ -596,27 +593,20 @@ internal static class PlannerMatchRepository
               AND gw.[ClubCode] = {ClubScope.ClubCodeParam}
             ORDER BY gw.[Datum], gw.[AanvangsTijd]
         ";
-            cmd2.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
-            cmd2.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
-            ClubScope.AddClubParam(cmd2, clubCode);
-            using var reader2 = await cmd2.ExecuteReaderAsync();
-            while (await reader2.ReadAsync())
-                results.Add(new TeamScheduleWedstrijd
-                {
-                    Datum = DateOnly.FromDateTime(reader2.GetDateTime(0)).ToString("yyyy-MM-dd"),
-                    AanvangsTijd = reader2.GetString(1), ThuisUit = "thuis",
-                    Tegenstander = reader2.IsDBNull(2) ? "" : reader2.GetString(2),
-                    Type = "oefenwedstrijd",
-                    Veld = reader2.IsDBNull(3) ? null : reader2.GetString(3),
-                    Wedstrijdcode = null
-                });
-        }
-
-        results.Sort((a, b) =>
-        {
-            var cmp = string.Compare(a.Datum, b.Datum, StringComparison.Ordinal);
-            return cmp != 0 ? cmp : string.Compare(a.AanvangsTijd, b.AanvangsTijd, StringComparison.Ordinal);
-        });
+        cmd2.Parameters.AddWithValue("@van", van.ToDateTime(TimeOnly.MinValue));
+        cmd2.Parameters.AddWithValue("@tot", tot.ToDateTime(TimeOnly.MinValue));
+        ClubScope.AddClubParam(cmd2, clubCode);
+        using var reader2 = await cmd2.ExecuteReaderAsync();
+        while (await reader2.ReadAsync())
+            results.Add(new TeamScheduleWedstrijd
+            {
+                Datum = DateOnly.FromDateTime(reader2.GetDateTime(0)).ToString("yyyy-MM-dd"),
+                AanvangsTijd = reader2.GetString(1), ThuisUit = "thuis",
+                Tegenstander = reader2.IsDBNull(2) ? "" : reader2.GetString(2),
+                Type = "oefenwedstrijd",
+                Veld = reader2.IsDBNull(3) ? null : reader2.GetString(3),
+                Wedstrijdcode = null
+            });
         return results;
     }
 

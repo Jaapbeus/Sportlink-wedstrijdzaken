@@ -98,10 +98,10 @@ internal sealed class EmailPersistenceService : IEmailPersistenceService
     private readonly Func<string?> _clubCodeProvider;
 
     internal EmailPersistenceService(
-        IEmailPersistenceRepository? repository = null,
+        IEmailPersistenceRepository repository,
         Func<string?>? clubCodeProvider = null)
     {
-        _repository = repository ?? new SqlEmailPersistenceRepository();
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _clubCodeProvider = clubCodeProvider ?? (() => SystemUtilities.AppSettings.GetSetting("clubCode"));
     }
 

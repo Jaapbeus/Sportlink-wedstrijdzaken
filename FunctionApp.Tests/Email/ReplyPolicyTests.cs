@@ -1,3 +1,4 @@
+using Planner.Shared;
 using FluentAssertions;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;

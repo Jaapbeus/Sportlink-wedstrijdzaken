@@ -58,11 +58,7 @@ internal static class EasyAuthHelper
     public static IActionResult? RequireAuthenticated(HttpRequest req)
         => RequireRole(req, "admin", "user");
 
-    /// <summary>
-    /// Haalt de weergavenaam van de aanroeper op uit de Entra ID claims.
-    /// Geeft null terug in lokale ontwikkeling of als de claim ontbreekt.
-    /// </summary>
-    public static string? GetCallerName(HttpRequest req)
+    private static string? GetClaimValue(HttpRequest req, params string[] claimTypes)
     {
         if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
             string.IsNullOrEmpty(encoded))
@@ -73,35 +69,25 @@ internal static class EasyAuthHelper
             var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
             var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
             return principal?.Claims?
-                .FirstOrDefault(c => string.Equals(c.Typ, "name", StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(c => claimTypes.Any(t => string.Equals(c.Typ, t, StringComparison.OrdinalIgnoreCase)))
                 ?.Val;
         }
         catch { return null; }
     }
+
+    /// <summary>
+    /// Haalt de weergavenaam van de aanroeper op uit de Entra ID claims.
+    /// Geeft null terug in lokale ontwikkeling of als de claim ontbreekt.
+    /// </summary>
+    public static string? GetCallerName(HttpRequest req)
+        => GetClaimValue(req, "name");
 
     /// <summary>
     /// Haalt het e-mailadres van de aanroeper op uit de Entra ID claims.
     /// Uitsluitend voor server-side gebruik (Reply-To in doorstuur-email). Nooit in response terugsturen.
     /// </summary>
     public static string? GetCallerEmail(HttpRequest req)
-    {
-        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
-            string.IsNullOrEmpty(encoded))
-            return null;
-
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
-            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
-            return principal?.Claims?
-                .FirstOrDefault(c =>
-                    string.Equals(c.Typ, "preferred_username", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(c.Typ, "upn", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(c.Typ, "email", StringComparison.OrdinalIgnoreCase))
-                ?.Val;
-        }
-        catch { return null; }
-    }
+        => GetClaimValue(req, "preferred_username", "upn", "email");
 
     /// <summary>
     /// Leest de club-code uit de X-Club-Code request header.

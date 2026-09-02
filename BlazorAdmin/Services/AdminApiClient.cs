@@ -53,6 +53,13 @@ public class AdminApiClient
     public async Task<ApiResult<List<string>>> GetTeamsAsync()
         => await GetAsync<List<string>>("api/beheer/teams");
 
+    /// <summary>
+    /// Bouwt de canonieke teamlijst opnieuw op uit de gesynchroniseerde teams (#946). Geeft 409
+    /// terug wanneer er nog niets gesynchroniseerd is — dan valt er niets af te leiden.
+    /// </summary>
+    public async Task<ApiResult<TeamHerstelDto>> HerstelTeamlijstAsync()
+        => await PostAsync<TeamHerstelDto>("api/beheer/teams/herstel", new { });
+
     // ── Voorkeurstijden ──
 
     public async Task<ApiResult<List<VoorkeurTijdDto>>> GetVoorkeurTijdenAsync(string? team = null)
@@ -217,45 +224,19 @@ public class AdminApiClient
 
     // ── HTTP-helpers ──
 
-    private async Task<ApiResult<T>> GetAsync<T>(string path)
+    private async Task<ApiResult<T>> SendAsync<T>(Func<Task<HttpResponseMessage>> send)
     {
         try
         {
-            var resp = await _http.GetAsync(path);
-            return await HandleAsync<T>(resp);
+            return await HandleAsync<T>(await send());
         }
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
     }
 
-    private async Task<ApiResult<T>> PostAsync<T>(string path, object body)
-    {
-        try
-        {
-            var resp = await _http.PostAsJsonAsync(path, body);
-            return await HandleAsync<T>(resp);
-        }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
-    }
-
-    private async Task<ApiResult<T>> PutAsync<T>(string path, object body)
-    {
-        try
-        {
-            var resp = await _http.PutAsJsonAsync(path, body);
-            return await HandleAsync<T>(resp);
-        }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
-    }
-
-    private async Task<ApiResult<T>> DeleteAsync<T>(string path)
-    {
-        try
-        {
-            var resp = await _http.DeleteAsync(path);
-            return await HandleAsync<T>(resp);
-        }
-        catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
-    }
+    private Task<ApiResult<T>> GetAsync<T>(string path) => SendAsync<T>(() => _http.GetAsync(path));
+    private Task<ApiResult<T>> PostAsync<T>(string path, object body) => SendAsync<T>(() => _http.PostAsJsonAsync(path, body));
+    private Task<ApiResult<T>> PutAsync<T>(string path, object body) => SendAsync<T>(() => _http.PutAsJsonAsync(path, body));
+    private Task<ApiResult<T>> DeleteAsync<T>(string path) => SendAsync<T>(() => _http.DeleteAsync(path));
 
     // ── Velden (#679) ──
     public async Task<ApiResult<List<VeldDto>>> GetVeldenAsync()
@@ -279,6 +260,19 @@ public class AdminApiClient
 
     public async Task<ApiResult<object>> DeleteVeldBeschikbaarheidAsync(int id)
         => await DeleteAsync<object>($"api/beheer/veldbeschikbaarheid/{id}");
+
+    // ── VeldPeriode (#581: herbruikbare regimes zoals "Zomerstop" en "Competitie") ──
+    public async Task<ApiResult<List<VeldPeriodeDto>>> GetVeldPeriodesAsync()
+        => await GetAsync<List<VeldPeriodeDto>>("api/beheer/veldperiodes");
+
+    public async Task<ApiResult<object>> CreateVeldPeriodeAsync(VeldPeriodeDto dto)
+        => await PostAsync<object>("api/beheer/veldperiodes", dto);
+
+    public async Task<ApiResult<object>> UpdateVeldPeriodeAsync(int id, VeldPeriodeDto dto)
+        => await PutAsync<object>($"api/beheer/veldperiodes/{id}", dto);
+
+    public async Task<ApiResult<object>> DeleteVeldPeriodeAsync(int id)
+        => await DeleteAsync<object>($"api/beheer/veldperiodes/{id}");
 
     // ── VeldTraining (#679: trainingsschema per veld per weekdag) ──
     public async Task<ApiResult<List<VeldTrainingDto>>> GetVeldTrainingAsync()

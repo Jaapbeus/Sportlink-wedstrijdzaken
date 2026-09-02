@@ -107,12 +107,23 @@ komen terug in de Sportlink-veldstring ("Kunstgras 1 A2").
 > Dit stond ooit als `LEFT(veld, 6)` in de SQL-paden. Die afkap vereist dat élke veldnaam maximaal zes
 > tekens is én in de eerste zes uniek, en dat is twee keer niet waar: `veld 10` werd `veld 1` (bezetting
 > op het verkeerde veld, waarna veld 10 vrij leek → **dubbele boeking**) en `hoofdveld` matchte niets en
-> viel volledig uit de bezetting. De matching zit nu in `PlannerShared.ResolveVeld` (C#),
-> `VeldResolutie.SqlOuterApply` (SQL vanuit C#) en de view `planner.AlleWedstrijdenOpVeld`.
+> viel volledig uit de bezetting. De matching zit nu in `Planner.Shared.VeldResolver.Resolve` (C#,
+> tier-agnostisch — sinds #819 verplaatst uit `PlannerShared.ResolveVeld`; die methode en
+> `AutoPlanService.NormaliseerVeld` zijn nu dunne delegaties, gedrag ongewijzigd),
+> `VeldResolutie.SqlOuterApply` (SQL Server-specifieke SQL-generatie vanuit C#) en de view
+> `planner.AlleWedstrijdenOpVeld`.
 >
 > De view staat op **twee** plekken — het DB-project én `Script.PostDeployment1.sql` — en CI rolt alleen
 > dat laatste uit. `VeldResolutieDriftTests` faalt als ze uiteenlopen of als de zes-tekens-afkap
 > terugkomt.
+>
+> **Postgres-tier (#819):** de Postgres-vertaling van deze view (`Database.Postgres/PostgresPlannerViewGenerator.cs`)
+> bouwt de veldresolutie bewust **niet** opnieuw in SQL na — dat zou een derde, onafhankelijke kopie
+> van deze matching zijn. De view levert daar de ruwe, ongeresolveerde veldstring terug;
+> `PostgresPlannerAvailabilityReader` resolveert die met exact dezelfde `Planner.Shared.VeldResolver`
+> die ook de SQL Server-tier gebruikt. Zie de doc-comment op `PostgresPlannerViewGenerator` voor de
+> volledige motivatie en voor een empirisch gevonden hoofdlettergevoeligheidsverschil tussen SQL
+> Server's collatie en Postgres' regex-operator (opgelost met `~*`; gerelateerd aan #820).
 
 | Veldafmeting | Banen | Toegestane plekken |
 |---|---|---|
@@ -406,12 +417,27 @@ Voorbeeld seeddata: veld 1–4 kunstgras + kunstlicht, veld 5 natuurgras zonder 
 Beschikbaarheidsvensters per dag van de week per veld. Bepaalt welke velden op welke dagen
 beschikbaar zijn. Beheerbaar via Instellingen → Velden (#679).
 
+Optioneel gekoppeld aan een `dbo.VeldPeriode` via `PeriodeId` (#581): `NULL` is het
+standaardregime en geldt buiten elke actieve periode (exact het gedrag van vóór #581). Is er voor
+de club een actieve periode op de gevraagde datum, dan gelden uitsluitend de rijen met dat
+`PeriodeId` — nooit een samenvoeging met het standaardregime, want periodes zoals "Zomerstop" en
+"Competitie" zijn expliciet tegengestelde regimes. `PlannerAvailabilityRepository.GetAvailableFieldsAsync`
+bepaalt dit per aanroep opnieuw aan de hand van de opgevraagde datum.
+
+### dbo.VeldPeriode
+Herbruikbaar regime met een vaste geldigheidsrange (`DatumVan`/`DatumTot`), bijv. "Zomerstop" of
+"Competitie" (#581). Er mag nooit meer dan één actieve periode van dezelfde club tegelijk lopen —
+overlap wordt bij het opslaan geweigerd (`AdminVeldPeriodeRepository.OverlaptMetAndereAsync`). Een
+club zonder periodes heeft hier geen rijen; dat verandert niets aan het bestaande gedrag.
+
 ### dbo.VeldTraining
 Terugkerende trainingsbezetting per veld per weekdag — een tweede, club-vrij-instelbare
 bezettingsbron naast wedstrijden (#679, uitwerking van #581). Elke club legt zelf vast welke velden
 op welke dag door training bezet zijn, en dat mag per dag verschillen (bijv. maandag ruim,
-donderdag vol). Geen periode-begrip (zomerstop vs. competitie) — dat blijft toekomstig werk, zie
-#581.
+donderdag vol). Heeft (nog) geen periode-begrip: een trainingsblok geldt het hele jaar. Wil een
+club dat trainingen tijdens de zomerstop niet meetellen, dan is dat vandaag nog handwerk (het
+trainingsblok tijdelijk op `Actief = 0` zetten) — periode-scoping van trainingsblokken is bewust
+buiten de scope van #581 gehouden en zou een vervolgissue zijn.
 
 | Kolom | Beschrijving |
 |-------|-------------|
@@ -490,12 +516,19 @@ prioriteit 10.
 3. **Ondergrens** — met een streeftijd is de ondergrens de veldbeschikbaarheid zelf, niet de vaste
    09:00-dagstart. Een team dat 08:30 wil en een veld dat om 08:00 opengaat, krijgt 08:30.
 4. **Buffers** — `PastOpVeld` is de enige plek die bepaalt of een wedstrijd op een veld past, en bewaakt
-   twee dingen tegelijk:
+   drie dingen tegelijk:
+   - **Teamconflict** (#939) — het team van de kandidaat mag op géén enkel veld al ingepland staan
+     binnen dit tijdvak. Deze check gaat vóór de capaciteitscheck en scant alle velden, niet alleen het
+     veld dat op dat moment beoordeeld wordt: een team kan zichzelf niet dubbel boeken, ongeacht hoeveel
+     andere velden er nog vrij zijn. Vóór #939 hield `FieldScheduler` bezetting alleen per veld bij, dus
+     kon AutoPlan hetzelfde team tweemaal op hetzelfde tijdstip inplannen, op twee verschillende velden.
    - **Capaciteit** — wedstrijden die elkaar in tijd overlappen delen het veld; toegestaan zolang de som
      van de veldfracties binnen 1.00 blijft. Tussen zulke gelijktijdige wedstrijden hoort géén buffer:
      die staan naast elkaar, niet achter elkaar.
    - **Buffer** — wedstrijden die elkaar niet overlappen gebruiken het veld ná elkaar; daartussen geldt
      de grootste van de standaardbuffer en de teamspecifieke `BufferNa`/`BufferVoor` uit `dbo.TeamRegels`.
+     Dezelfde buffer geldt ook tussen twee niet-overlappende wedstrijden van hetzelfde team, ook als die
+     op verschillende velden staan.
 
    Deze controle zat vóór #666 alleen in `FindEarliestSlot`. Het pad dat op een voorkeurstijd plant keek
    uitsluitend naar capaciteit, waardoor wedstrijden rug-aan-rug werden ingepland met nul minuten ertussen
@@ -513,9 +546,10 @@ volledig client-side in `Dagplanning.razor`; er is geen extra endpoint.
 - Na een zet worden `Status`, `VoorkeurAfwijkingMinuten`, `VoorkeurStatus`, het aantal te wijzigen
   wedstrijden en de geschatte eindtijd opnieuw bepaald met dezelfde regels als de server, zodat een
   handmatige zet net zo eerlijk beoordeeld wordt als een berekende.
-- `ControleerConflicten` bewaakt dezelfde twee regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
-  opeenvolging) en toont per overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus
-  wel een onmogelijke planning opleveren, maar niet stilzwijgend.
+- `ControleerConflicten` bewaakt dezelfde regels als `PastOpVeld` (capaciteit bij overlap, buffer bij
+  opeenvolging, én sinds #939 een teamconflict-doorsnede over alle velden heen) en toont per
+  overtreding welke twee wedstrijden het betreft. Een handmatige zet kan dus wel een onmogelijke
+  planning opleveren, maar niet stilzwijgend.
 - Wegschrijven gaat ongewijzigd via **Toepassen in testmodus** (`/planner/auto-plan/toepassen`).
 
 ### Twee losse statussen — bewust gescheiden

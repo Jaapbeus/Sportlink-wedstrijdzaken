@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Planner.Shared;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -12,6 +13,7 @@ namespace SportlinkFunction.Planner
     // Valt terug op de database als de API onbereikbaar is of UseRealtimeApi=false.
     public static class SportlinkApiClient
     {
+        private const string ApiBron = "API";
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
 
         public static async Task<List<BestaandeWedstrijd>> GetFieldOccupationsWithApiAsync(
@@ -65,52 +67,11 @@ namespace SportlinkFunction.Planner
                 // zodat de bezetting exact hetzelfde veld kiest als het herplanpad (#707).
                 var veldenPerNaam = veldenLookup.Select(kv => ((string?)kv.Key, kv.Value)).ToList();
 
-                var apiEntries = new List<BestaandeWedstrijd>();
-                foreach (var m in matches)
-                {
-                    // Alleen thuiswedstrijden op eigen accommodatie
-                    if (string.IsNullOrEmpty(m.Accommodatie)) continue;
-                    if (accommodatie != null &&
-                        !m.Accommodatie.Contains(accommodatie, StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    if (string.Equals(m.Status, "Afgelast", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (string.IsNullOrEmpty(m.Aanvangstijd) || string.IsNullOrEmpty(m.Veld)) continue;
-
-                    // veld → VeldNummer + subpositie via de gedeelde matcher. Hier stond een harde
-                    // afkap op zes tekens (m.Veld[..6]), gespiegeld op RTRIM(LEFT(veld, 6)) in SQL.
-                    // Die maakte van "veld 10" veld 1: de bezetting van veld 10 landde op veld 1 en
-                    // veld 10 leek de hele dag vrij — een tweede wedstrijd kon er bovenop worden
-                    // aangeboden. Veldnamen langer dan zes tekens vielen zelfs volledig uit de
-                    // bezetting weg, met hetzelfde effect. (#707)
-                    var (veldNummer, subpositie) = PlannerShared.ResolveVeld(m.Veld, veldenPerNaam);
-                    if (veldNummer == 0) continue;
-
-                    // teamnaam → Speeltijden-sleutel
-                    var speeltijdKey = MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup);
-                    if (speeltijdKey == null || !speeltijdenLookup.TryGetValue(speeltijdKey, out var speeltijd))
-                        continue;
-
-                    if (!TimeOnly.TryParse(m.Aanvangstijd, out var aanvang)) continue;
-
-                    var eindTijd     = aanvang.AddMinutes(speeltijd.WedstrijdTotaal);
-
-                    apiEntries.Add(new BestaandeWedstrijd
-                    {
-                        Datum            = date,
-                        AanvangsTijd     = aanvang,
-                        EindTijd         = eindTijd,
-                        VeldNummer       = veldNummer,
-                        VeldDeelGebruik  = speeltijd.Veldafmeting,
-                        LeeftijdsCategorie = speeltijdKey,
-                        TeamNaam         = m.Teamnaam,
-                        Wedstrijd        = m.Wedstrijd,
-                        VeldSubpositie   = subpositie,
-                        // Zonder deze sleutel kan de herplan-exclusie de eigen wedstrijd niet
-                        // vinden en valt ze terug op (veld, tijd, naam) — precies wat #707 brak.
-                        Wedstrijdcode    = m.Wedstrijdcode,
-                        Bron             = "API"
-                    });
-                }
+                var apiEntries = matches
+                    .Select(m => TryMapToBezetting(m, date, accommodatie, clubCode, veldenPerNaam, speeltijdenLookup, teamLeeftijdLookup))
+                    .Where(e => e != null)
+                    .Select(e => e!)
+                    .ToList();
 
                 // Samenvoegen: API-entries + planner-entries + trainingsblokken, dedupliceren op
                 // (VeldNummer, AanvangsTijd, Wedstrijd)
@@ -118,7 +79,7 @@ namespace SportlinkFunction.Planner
                     .Concat(plannerEntries)
                     .Concat(trainingEntries)
                     .GroupBy(w => (w.VeldNummer, w.AanvangsTijd, (w.Wedstrijd ?? "").ToLowerInvariant()))
-                    .Select(g => g.OrderBy(w => w.Bron == "API" ? 0 : 1).First())
+                    .Select(g => g.OrderBy(w => w.Bron == ApiBron ? 0 : 1).First())
                     .ToList();
 
                 log.LogInformation(
@@ -161,6 +122,56 @@ namespace SportlinkFunction.Planner
                     "controleer of de bron een wedstrijdcode meelevert.", excludeWedstrijdcode, date);
 
             return resultaat;
+        }
+
+        private static BestaandeWedstrijd? TryMapToBezetting(
+            SportlinkProgrammaMatch m, DateOnly date, string? accommodatie, string clubCode,
+            List<(string? Naam, int VeldNummer)> veldenPerNaam,
+            Dictionary<string, Speeltijd> speeltijdenLookup,
+            Dictionary<string, string> teamLeeftijdLookup)
+        {
+            // Alleen thuiswedstrijden op eigen accommodatie
+            if (string.IsNullOrEmpty(m.Accommodatie)) return null;
+            if (accommodatie != null &&
+                !m.Accommodatie.Contains(accommodatie, StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (string.Equals(m.Status, "Afgelast", StringComparison.OrdinalIgnoreCase)) return null;
+            if (string.IsNullOrEmpty(m.Aanvangstijd) || string.IsNullOrEmpty(m.Veld)) return null;
+
+            // veld → VeldNummer + subpositie via de gedeelde matcher. Hier stond een harde
+            // afkap op zes tekens (m.Veld[..6]), gespiegeld op RTRIM(LEFT(veld, 6)) in SQL.
+            // Die maakte van "veld 10" veld 1: de bezetting van veld 10 landde op veld 1 en
+            // veld 10 leek de hele dag vrij — een tweede wedstrijd kon er bovenop worden
+            // aangeboden. Veldnamen langer dan zes tekens vielen zelfs volledig uit de
+            // bezetting weg, met hetzelfde effect. (#707)
+            var (veldNummer, subpositie) = PlannerShared.ResolveVeld(m.Veld, veldenPerNaam);
+            if (veldNummer == 0) return null;
+
+            // teamnaam → Speeltijden-sleutel
+            var speeltijdKey = MapTeamNaamToSpeeltijdKey(m.Teamnaam, clubCode, teamLeeftijdLookup);
+            if (speeltijdKey == null || !speeltijdenLookup.TryGetValue(speeltijdKey, out var speeltijd))
+                return null;
+
+            if (!TimeOnly.TryParse(m.Aanvangstijd, out var aanvang)) return null;
+
+            var eindTijd = aanvang.AddMinutes(speeltijd.WedstrijdTotaal);
+
+            return new BestaandeWedstrijd
+            {
+                Datum            = date,
+                AanvangsTijd     = aanvang,
+                EindTijd         = eindTijd,
+                VeldNummer       = veldNummer,
+                VeldDeelGebruik  = speeltijd.Veldafmeting,
+                LeeftijdsCategorie = speeltijdKey,
+                TeamNaam         = m.Teamnaam,
+                Wedstrijd        = m.Wedstrijd,
+                VeldSubpositie   = subpositie,
+                // Zonder deze sleutel kan de herplan-exclusie de eigen wedstrijd niet
+                // vinden en valt ze terug op (veld, tijd, naam) — precies wat #707 brak.
+                Wedstrijdcode    = m.Wedstrijdcode,
+                Bron             = ApiBron
+            };
         }
 
         private static string? MapTeamNaamToSpeeltijdKey(

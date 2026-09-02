@@ -1,7 +1,7 @@
 namespace SportlinkFunction.Planner;
 
 /// <summary>
-/// SQL-tegenhanger van <see cref="Services.PlannerShared.ResolveVeld"/> — Sportlink-veldstring naar
+/// SQL-tegenhanger van <see cref="Planner.Shared.PlannerShared.ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/> — Sportlink-veldstring naar
 /// het veldnummer uit <c>dbo.Velden</c> (#719).
 ///
 /// <para>
@@ -35,6 +35,14 @@ namespace SportlinkFunction.Planner;
 /// <c>Database/Script.PostDeployment1.sql</c>. CI rolt alleen dat laatste script uit, dus een wijziging
 /// die alleen in het DB-project landt verdwijnt geruisloos. <c>VeldResolutieDriftTests</c> bewaakt dit.
 /// </para>
+/// <para>
+/// <b>Postgres-tier (#819, #864):</b> daar is bewust GEEN vierde SQL-kopie van deze truncatie
+/// bijgekomen — <c>Database.Postgres/PostgresPlannerViewGenerator.cs</c> levert de ruwe,
+/// ongeresolveerde veldstring terug en laat de resolutie volledig aan
+/// <c>Planner.Shared.VeldResolver</c> (tier-agnostisch, gedeeld tussen beide tiers). Dat bestand
+/// staat wél in <c>VeldResolutieDriftTests</c> als vierde plek: geen kopie van de truncatie-bug
+/// vandaag, maar een tripwire mocht iemand de resolutie ooit weer SQL-side willen doen.
+/// </para>
 /// </summary>
 internal static class VeldResolutie
 {
@@ -55,7 +63,7 @@ internal static class VeldResolutie
     /// subpositie — nooit een langer veldnummer, zodat <c>"veld 10"</c> niet op <c>"veld 1"</c> valt.
     /// Langste veldnaam eerst: bestaat naast "veld 1" ook "veld 1 achter", dan hoort "veld 1 achter B"
     /// bij dat tweede veld en is "achter" geen subpositie van veld 1. Identiek aan
-    /// <see cref="Services.PlannerShared.ResolveVeld"/>.
+    /// <see cref="Planner.Shared.PlannerShared.ResolveVeld(string?, IEnumerable{ValueTuple{string?, int}})"/>.
     /// </para>
     ///
     /// <para>

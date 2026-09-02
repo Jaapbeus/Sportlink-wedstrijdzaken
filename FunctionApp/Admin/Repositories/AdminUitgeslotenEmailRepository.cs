@@ -6,8 +6,7 @@ internal static class AdminUitgeslotenEmailRepository
 {
     internal static async Task<List<Dictionary<string, object?>>> GetAlleAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT [Id], [EmailAdres], [Omschrijving], [Actief], [ClubCode], [mta_inserted]
             FROM [dbo].[UitgeslotenEmailAdressen]
@@ -30,8 +29,7 @@ internal static class AdminUitgeslotenEmailRepository
 
     internal static async Task<int> InsertAsync(string emailAdres, string? omschrijving, bool actief, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[UitgeslotenEmailAdressen] ([EmailAdres], [Omschrijving], [Actief], [ClubCode])
             VALUES (@Email, @Omschr, @Actief, @Cc);
@@ -45,8 +43,7 @@ internal static class AdminUitgeslotenEmailRepository
 
     internal static async Task<int> DeleteAsync(int id, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "DELETE FROM [dbo].[UitgeslotenEmailAdressen] WHERE [Id] = @Id AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@Id", id);

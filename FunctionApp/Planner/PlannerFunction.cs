@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -15,15 +17,35 @@ namespace SportlinkFunction.Planner
 {
     public static class PlannerFunction
     {
+        private const int DefaultWedstrijdDuurMinuten = 105;
+        private const decimal VolledigVeldFractie = 1.00m;
+
+        private static async Task<IActionResult> HandleAsync(HttpRequest req, ILogger log, string operationName, Func<Task<IActionResult>> handler)
+        {
+            var authResult = EasyAuthHelper.RequireAdmin(req);
+            if (authResult != null) return authResult;
+            try
+            {
+                return await handler();
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, operationName + " failed");
+                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
+            }
+        }
+
+        private static string RequireClubCode(HttpRequest req) =>
+            EasyAuthHelper.GetClubCodeFromRequest(req)
+                ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
+
         [Function("CheckAvailability")]
         public static async Task<IActionResult> CheckAvailability(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "planner/check-availability")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("CheckAvailability");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "CheckAvailability", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -39,12 +61,7 @@ namespace SportlinkFunction.Planner
                 var response = await PlannerService.CheckAvailabilityAsync(request, log, clubCode);
 
                 return new OkObjectResult(response);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "CheckAvailability failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("DoordeweeksBeschikbaar")]
@@ -53,9 +70,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("DoordeweeksBeschikbaar");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "DoordeweeksBeschikbaar", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -70,12 +85,7 @@ namespace SportlinkFunction.Planner
                 var response = await PlannerService.CheckDoordeweeksBeschikbaarAsync(request, log, clubCode);
 
                 return new OkObjectResult(response);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "DoordeweeksBeschikbaar failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("BevestigWedstrijd")]
@@ -84,9 +94,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("BevestigWedstrijd");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "BevestigWedstrijd", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -101,8 +109,8 @@ namespace SportlinkFunction.Planner
                 if (!DateOnly.TryParse(request.Datum, out var date) || !TimeOnly.TryParse(request.AanvangsTijd, out var tijd))
                     return new BadRequestObjectResult(new { error = "Ongeldige datum of tijd." });
 
-                int duurMinuten = request.WedstrijdDuurMinuten ?? 105;
-                decimal veldFractie = 1.00m;
+                int duurMinuten = request.WedstrijdDuurMinuten ?? DefaultWedstrijdDuurMinuten;
+                decimal veldFractie = VolledigVeldFractie;
                 var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
                 if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
                 {
@@ -114,8 +122,8 @@ namespace SportlinkFunction.Planner
                     }
                 }
                 // Heel-veld override: als expliciet gevraagd, overschrijf de speeltijd-veldafmeting
-                if (request.HeelVeld == true && veldFractie < 1.00m)
-                    veldFractie = 1.00m;
+                if (request.HeelVeld == true && veldFractie < VolledigVeldFractie)
+                    veldFractie = VolledigVeldFractie;
 
                 var eindTijd = tijd.AddMinutes(duurMinuten);
 
@@ -135,12 +143,7 @@ namespace SportlinkFunction.Planner
                     veldNummer = request.VeldNummer,
                     status = "Te bevestigen"
                 });
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "BevestigWedstrijd failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("PopulateSunset")]
@@ -149,9 +152,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("PopulateSunset");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "PopulateSunset", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -163,12 +164,7 @@ namespace SportlinkFunction.Planner
                 await PlannerDataAccess.PopulateSunsetTableAsync(from, to);
 
                 return new OkObjectResult(new { message = $"Sunset data populated from {from} to {to}." });
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "PopulateSunset failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
         // POST /api/planner/optimaliseer is vervallen bij #666. Er is nu één dagplanning-optimalisatie:
         // POST /api/planner/auto-plan (AutoPlanService), die regels, voorkeurstijden en de defaults per
@@ -182,9 +178,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("ZoekWedstrijd");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "ZoekWedstrijd", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -205,12 +199,7 @@ namespace SportlinkFunction.Planner
                     return new OkObjectResult(new { gevonden = false, reden = $"Geen wedstrijd gevonden voor {request.TeamNaam} op {request.Datum}." });
 
                 return new OkObjectResult(new { gevonden = true, wedstrijd = match });
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "ZoekWedstrijd failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("HerplanCheck")]
@@ -219,9 +208,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("HerplanCheck");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "HerplanCheck", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -237,12 +224,7 @@ namespace SportlinkFunction.Planner
                 var response = await PlannerService.CheckRescheduleAvailabilityAsync(request, log, clubCode);
 
                 return new OkObjectResult(response);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "HerplanCheck failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("Health")]
@@ -251,46 +233,81 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var version = typeof(PlannerFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
-            var dbStatus = await GetDatabaseStatusAsync();
-            return new OkObjectResult(new
+            var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
+            var settingsLoaded = !SystemUtilities.AppSettings.LastLoadFailed;
+            var status = dbStatus == "online" && settingsLoaded ? "ok" : "degraded";
+            var body = new
             {
-                status = dbStatus == "online" ? "ok" : "degraded",
+                status,
                 version,
                 timestamp = DateTime.UtcNow,
-                database = dbStatus
-            });
+                database = dbStatus,
+                // #859: apart van 'database', want een geslaagde verbinding zegt niets over of de
+                // instellingencache ook echt gevuld is (#767 liet precies dat stilzwijgend misgaan).
+                // Bewust geen foutdetails hier — dit endpoint is anoniem toegankelijk; de volledige
+                // exceptie staat al in het functielog.
+                settingsLoaded,
+                // #863: tier/provider komen uit build-time assembly-metadata (nooit een runtime-gok),
+                // dus altijd gevuld — ook als de database onbereikbaar is. serverVersion komt
+                // aantoonbaar uit de database zelf en is daarom null zolang die niet bereikbaar is.
+                tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
+                provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
+                serverVersion
+            };
+            // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
+            // draaiende maar onbereikbare database (paused/timeout/unavailable) blijft wel 200 met
+            // status "degraded", want dat is een tijdelijke toestand waar Azure zelf uit herstelt.
+            return dbStatus == "unconfigured"
+                ? new ObjectResult(body) { StatusCode = StatusCodes.Status503ServiceUnavailable }
+                : new OkObjectResult(body);
         }
 
-        // Geeft "online", "paused", "timeout" of "unavailable" terug.
+        // internal zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476)
+        // zonder Health() zelf te hoeven aanroepen — dat vereist een HttpRequest/FunctionContext die
+        // deze codebase bewust niet namaakt (zie Function1.cs-tests: de logica wordt getest, niet de
+        // Azure Functions-trigger-wrapper).
+        internal static string? GetAssemblyMetadata(string key) =>
+            typeof(PlannerFunction).Assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == key)?.Value;
+
+        // Geeft ("online"|"paused"|"timeout"|"unavailable"|"unconfigured", serverVersion) terug.
+        // serverVersion is alleen gevuld bij "online" — #863 eist dat dit veld aantoonbaar uit de
+        // database komt, dus geen fallback-waarde als de verbinding niet lukt.
         // Error 40613 = Azure SQL serverless auto-paused; verbinding triggert automatisch resume.
-        private static async Task<string> GetDatabaseStatusAsync()
+        // connectionStringOverride is uitsluitend voor tests (#859): DatabaseConfig.ConnectionString
+        // is een static readonly veld, al gevuld vóórdat een test kan draaien, en dus niet
+        // bruikbaar om het "geen bruikbare connectiereeks"-pad te simuleren.
+        internal static async Task<(string status, string? serverVersion)> GetDatabaseStatusAsync(
+            Func<string>? connectionStringOverride = null)
         {
             string connStr;
-            try { connStr = SystemUtilities.DatabaseConfig.ConnectionString; }
-            catch { return "unconfigured"; }
+            try { connStr = (connectionStringOverride ?? (() => SystemUtilities.DatabaseConfig.ConnectionString))(); }
+            catch { return ("unconfigured", null); }
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try
             {
                 using var conn = new SqlConnection(connStr);
                 await conn.OpenAsync(cts.Token);
-                using var cmd = new SqlCommand("SELECT 1", conn) { CommandTimeout = 5 };
-                await cmd.ExecuteScalarAsync(cts.Token);
-                return "online";
+                using var cmd = new SqlCommand(
+                    "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128))", conn) { CommandTimeout = 5 };
+                var serverVersion = (string?)await cmd.ExecuteScalarAsync(cts.Token);
+                return ("online", serverVersion);
             }
             catch (SqlException ex) when (ex.Number == 40613)
             {
                 // Database is paused (free tier limiet of normale auto-pause).
                 // Azure begint automatisch te resumeren zodra we verbinding proberen.
-                return "paused";
+                return ("paused", null);
             }
             catch (OperationCanceledException)
             {
-                return "timeout";
+                return ("timeout", null);
             }
             catch
             {
-                return "unavailable";
+                return ("unavailable", null);
             }
         }
 
@@ -300,9 +317,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("HerplanBevestig");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "HerplanBevestig", async () =>
             {
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -333,7 +348,8 @@ namespace SportlinkFunction.Planner
                     gewensteTijd,
                     request.GewenstVeldNummer,
                     request.AangevraagdDoor,
-                    request.Opmerking);
+                    request.Opmerking,
+                    clubCode);
 
                 log.LogInformation("HerplanBevestig: saved with id={Id}", id);
 
@@ -346,12 +362,7 @@ namespace SportlinkFunction.Planner
                     GewenstVeldNummer = request.GewenstVeldNummer,
                     Status = "Aangevraagd"
                 });
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "HerplanBevestig failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         // ── Auto-plan endpoints (#380) ──
@@ -362,11 +373,8 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("AutoPlan");
-            try
+            return await HandleAsync(req, log, "AutoPlan", async () =>
             {
-                var authResult = EasyAuthHelper.RequireAdmin(req);
-                if (authResult != null) return authResult;
-
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
                 string body = await new StreamReader(req.Body).ReadToEndAsync();
@@ -374,18 +382,12 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
-    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
+                var clubCode = RequireClubCode(req);
                 log.LogInformation("AutoPlan: datum={Datum}, club={Club}", request.Datum, clubCode);
 
                 var response = await PlannerService.AutoPlanAsync(request, clubCode, log);
                 return new OkObjectResult(response);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "AutoPlan failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("AutoPlanToepassen")]
@@ -394,11 +396,8 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("AutoPlanToepassen");
-            try
+            return await HandleAsync(req, log, "AutoPlanToepassen", async () =>
             {
-                var authResult = EasyAuthHelper.RequireAdmin(req);
-                if (authResult != null) return authResult;
-
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
                 string body = await new StreamReader(req.Body).ReadToEndAsync();
@@ -406,8 +405,7 @@ namespace SportlinkFunction.Planner
                 if (request == null || string.IsNullOrEmpty(request.Datum))
                     return new BadRequestObjectResult(new { error = "Request body met 'datum' veld is verplicht." });
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
-    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
+                var clubCode = RequireClubCode(req);
 
                 if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
                     return new ObjectResult(new { error = "Toepassen is alleen beschikbaar in testmodus (ALLSTARS)." }) { StatusCode = 403 };
@@ -416,12 +414,7 @@ namespace SportlinkFunction.Planner
 
                 var response = await PlannerService.AutoPlanToepassenAsync(request, clubCode, log);
                 return new OkObjectResult(response);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "AutoPlanToepassen failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         // Lichtgewicht "wat staat er nu gepland"-weergave (#566) — zonder FieldScheduler-berekening.
@@ -431,9 +424,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("Veldbezetting");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "Veldbezetting", async () =>
             {
                 var datumParam = req.Query["datum"].ToString();
                 if (string.IsNullOrWhiteSpace(datumParam) || !DateOnly.TryParse(datumParam, out var datum))
@@ -441,18 +432,12 @@ namespace SportlinkFunction.Planner
 
                 await SystemUtilities.WaitForDatabaseAsync(log);
 
-                var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req)
-                    ?? throw new InvalidOperationException("ClubCode kon niet worden bepaald uit de request — controleer Easy Auth configuratie.");
+                var clubCode = RequireClubCode(req);
                 log.LogInformation("Veldbezetting: datum={Datum}, club={Club}", datumParam, clubCode);
 
                 var items = await PlannerService.VeldbezettingAsync(datum, clubCode);
                 return new OkObjectResult(items);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Veldbezetting failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
 
         [Function("GetTeamSchedule")]
@@ -461,9 +446,7 @@ namespace SportlinkFunction.Planner
             FunctionContext context)
         {
             var log = context.GetLogger("GetTeamSchedule");
-            var authResult = EasyAuthHelper.RequireAdmin(req);
-            if (authResult != null) return authResult;
-            try
+            return await HandleAsync(req, log, "GetTeamSchedule", async () =>
             {
                 var team = req.Query["team"].ToString();
                 if (string.IsNullOrWhiteSpace(team))
@@ -487,12 +470,7 @@ namespace SportlinkFunction.Planner
                 }
 
                 return new OkObjectResult(schedule);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "GetTeamSchedule failed");
-                return new ObjectResult(new { error = "Verzoek mislukt" }) { StatusCode = 500 };
-            }
+            });
         }
     }
 }

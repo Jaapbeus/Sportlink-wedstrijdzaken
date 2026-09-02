@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Canonieke tier-tabel (#816, #865). DIT is de enige plek waar tier-naam -> projectpad wordt",
+    "vertaald. Zowel scripts/ci/resolve-database-tier.sh (CI, bash) als Get-DatabaseTierProject",
+    "in scripts/dev/DevServices.psm1 (lokaal, PowerShell) lezen dit bestand. Voeg nooit een",
+    "tweede switch/case toe elders - dat is precies wat #816 wilde voorkomen.",
+    "",
+    "'built' onderscheidt twee verschillende fouten: een ONBEKENDE waarde is een tikfout, een",
+    "geldige-maar-nog-niet-gebouwde tier is een geplande situatie. Een verificatiescript moet",
+    "daar anders op reageren (afbreken met een andere exitcode) dan op een tikfout.",
+    "",
+    "Zet 'built' op true in dezelfde PR die de implementatieboom toevoegt, nooit eerder."
+  ],
+  "tiers": [
+    {
+      "name": "SqlServer",
+      "csproj": "FunctionApp/fa-dev-sportlink-01.csproj",
+      "built": true,
+      "epicIssue": null
+    },
+    {
+      "name": "Postgres",
+      "csproj": "FunctionApp.Postgres/FunctionApp.Postgres.csproj",
+      "built": true,
+      "epicIssue": 860
+    },
+    {
+      "name": "Sqlite",
+      "csproj": "FunctionApp.Sqlite/FunctionApp.Sqlite.csproj",
+      "built": false,
+      "epicIssue": 826
+    }
+  ]
+}

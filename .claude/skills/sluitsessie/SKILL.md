@@ -19,25 +19,41 @@ Symbolen:
 
 **0a. Branch-check**
 Voer uit: `git branch --show-current`
-- Op `feature/*` of `hotfix/*` → ✅
-- Op `main`, `v2/develop` of detached HEAD → ❌ HARDE BLOCKER — stop hier.
+- Op `feature/*` of `hotfix/*` → ✅, ongeacht de rest van deze fase.
+- Op `main`, `develop` of detached HEAD → nog geen oordeel — wacht op 0b/0c en pas dan het
+  **branch-oordeel** hieronder toe. Op zichzelf is dit geen harde blocker: pas 0b/0c samen bepalen
+  of er van déze sessie iets op het spel staat.
 
 **0b. Uncommitted werk**
 Voer uit: `git status --short`
 - Geen output → ✅
-- Wijzigingen aanwezig → ❌ HARDE BLOCKER — lijst bestanden op en stop hier.
+- Wijzigingen aanwezig → ❌ HARDE BLOCKER, altijd, ongeacht de branch — lijst bestanden op en stop hier.
 
 **0c. Ongepushte commits**
 Voer uit: `git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null || git log --oneline -5`
 - Geen output → ✅
-- Commits aanwezig die niet op origin staan → ⚠️
+- Commits aanwezig die niet op origin staan → ⚠️ (of ❌ in combinatie met 0a — zie branch-oordeel)
+
+**Branch-oordeel (combineert 0a + 0b + 0c — bepaalt of 0a een harde blocker is):**
+- `feature/*`/`hotfix/*` → altijd ✅.
+- `main`/`develop`/detached HEAD, mét 0b schoon (geen output) én 0c leeg (geen ongepushte
+  commits) → **geen harde blocker, wel ⚠️**. Dit was een puur read-only/onderzoeksessie of de
+  checkout staat zo door een andere, gelijktijdige sessie ([[feedback_worktree_isolation_required]]
+  — meerdere sessies delen deze working directory zonder git-worktree). Er staat niets van déze
+  sessie op het spel: geen wijzigingen, niets te verliezen. Rapporteer dit expliciet als ⚠️ en ga
+  NIET zelf een branch aanmaken of wisselen — dat kan een andere sessie die deze checkout verwacht
+  aan te treffen verstoren.
+- `main`/`develop`/detached HEAD MET 0b-wijzigingen of MET 0c-commits van déze sessie → ❌ HARDE
+  BLOCKER — stop hier. Dit is het scenario waar de regel voor bedoeld is: eigen werk dat op een
+  beschermde branch staat en verloren kan gaan of per ongeluk gedeeld wordt.
 
 **0d. Open PR**
 Voer uit: `gh pr list --head $(git branch --show-current) 2>/dev/null`
 - PR aanwezig → noteer PR-nummer
 - Geen PR → ⚠️
 
-→ Toon triage-samenvatting. Stop bij harde blockers (0a of 0b) — ga pas verder als de gebruiker de blocker oplost of expliciet vraagt door te gaan.
+→ Toon triage-samenvatting. Stop bij een harde blocker uit het branch-oordeel of bij 0b op
+zichzelf — ga pas verder als de gebruiker de blocker oplost of expliciet vraagt door te gaan.
 
 ---
 
@@ -153,3 +169,17 @@ Update ook de `session_latest`-regel in MEMORY.md.
 - ❌ aanwezig → `❌ NIET afgesloten — los blocker op en voer /sluitsessie opnieuw uit`
 
 Sluit af met één aanbevolen volgende actie.
+
+**Alleen als alle checks ✅ zijn** (volledig groen, geen enkele ⚠️ of ❌): plaats na de
+aanbevolen volgende actie, als allerlaatste in de response, dit banner in een code block:
+
+```
+  ██████╗ ██╗  ██╗ █████╗ ██╗   ██╗
+ ██╔═══██╗██║ ██╔╝██╔══██╗╚██╗ ██╔╝
+ ██║   ██║█████╔╝ ███████║ ╚████╔╝
+ ██║   ██║██╔═██╗ ██╔══██║  ╚██╔╝
+ ╚██████╔╝██║  ██╗██║  ██║   ██║
+  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+```
+
+Bij ⚠️ of ❌ dit banner NIET tonen — dat zou een onafgeronde sessie als voltooid voorspiegelen.

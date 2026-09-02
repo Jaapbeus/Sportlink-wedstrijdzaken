@@ -2,6 +2,16 @@
 
 Deze handleiding legt stap voor stap uit hoe je de lijst met teambegeleiders (trainers, leiders, coaches) exporteert uit Sportlink Club. Je hebt hier geen technische kennis voor nodig.
 
+> **Ontwikkelaarsnotitie — Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de
+> stappen hieronder (Sportlink-export + upload via **Teambegeleiding → Teambegeleiding importeren**)
+> werken identiek op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
+> CSV-kolomherkenning (aliassen, dedup, validatie — `FunctionApp.Postgres/Admin/
+> AdminTeambegeleidingFunction.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
+> database-interactiedeel uit #824 zelf (`avg.teambegeleiding`/`avg.importlog` via
+> `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-import,
+> ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie). Getest tegen een
+> lokale Postgres-devcontainer, uitsluitend met fictieve testdata.
+
 ---
 
 ## Wat heb je nodig?

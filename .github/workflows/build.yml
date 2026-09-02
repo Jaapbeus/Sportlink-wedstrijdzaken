@@ -27,6 +27,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # #825: bewaakt dat elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact
+      # (case-sensitief) overeenkomt met het daadwerkelijke getrackte bestand. Git's
+      # core.ignorecase=true (Windows/macOS-default) merkt een casing-mismatch lokaal niet op;
+      # deze Linux-CI-runner (core.ignorecase=false) wel — specifiek relevant voor de nieuwe
+      # Database.Postgres/-boom, waar nog geen gevestigde conventie/spiergeheugen bestaat.
+      - name: Bestandssysteem-casing-guard
+        run: bash scripts/ci/check-path-casing.sh
+
+      # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
+      # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
+      # casing hierboven (#825). Geen database, geen secrets.
+      - name: Postgres identifier-casing-guard
+        run: bash scripts/ci/check-postgres-identifier-casing.sh
+
+      # #864, deel 2: de "grootste deelopgave" die #908 (deel 1) open liet — een tabel die aan de
+      # SQL Server-boom wordt toegevoegd (of hernoemd) zonder Postgres-tegenhanger blijft anders
+      # onopgemerkt tot iemand de Postgres-tier daadwerkelijk gebruikt. Geen database, geen
+      # secrets — pure bestandsvergelijking, zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 23.
+      - name: Postgres tabeldekking-guard (cross-tree)
+        run: bash scripts/ci/check-postgres-table-coverage.sh
+
+      # #864, deel 3: het kolomniveau dat deel 2 (#917) openliet. Een tabel die bestaat maar
+      # kolommen mist is binnen deze epic al twee keer voorgekomen (#893: public.speeltijden;
+      # sectie 21: planner.geplandewedstrijden.mta_modified) en werd beide keren pas gevonden toen
+      # iemand toevallig functionaliteit vertaalde die de kolom nodig had. De zes dynamisch
+      # aangemaakte ETL-tabellen vallen buiten dit script en worden gedekt door
+      # Database.Postgres.Tests/EtlKolomdekkingTests.cs (draait verderop in deze job). Geen
+      # database, geen secrets — zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 27.
+      - name: Postgres kolomdekking-guard (cross-tree)
+        run: bash scripts/ci/check-postgres-column-coverage.sh
+
+      # #864, deel 4: het derde en laatste stuk van de bomen-vergelijking (na tabellen in deel 2
+      # en kolommen in deel 3) — stored procedures en views. Kan geen bestandsvergelijking zijn
+      # zoals de andere twee: de Postgres-tier heeft geen procedure-/viewbestanden (#818/#861,
+      # de logica leeft in C#), dus dit script vergelijkt tegen een expliciete mapping naar
+      # C#-symbolen en bewaakt dat die mapping niet verweest (een hernoeming of verwijdering van
+      # het gemapte symbool). Geen database, geen secrets — zie
+      # docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 36.
+      - name: Postgres procedures/views-dekking-guard (cross-tree)
+        run: bash scripts/ci/check-postgres-procedure-view-coverage.sh
+
+      # #865: bewijst dat resolve-database-tier.sh (bash) en Get-DatabaseTierProject
+      # (scripts/dev/DevServices.psm1, PowerShell) voor elke tier exact dezelfde uitkomst geven.
+      # Zonder deze test kunnen de shell-kant (CI) en de PowerShell-kant (lokale dev-scripts) uit
+      # elkaar drijven zonder dat iets dat opmerkt — precies wat #816's belofte van "één
+      # vertaalpunt" zou breken. Geen database, geen secrets — draait ook op forks.
+      - name: Tier-mapping consistentie (shell vs. PowerShell)
+        run: pwsh scripts/ci/Test-TierMappingConsistency.ps1
+
       # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
       # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
       - name: .NET SDK installeren
@@ -41,6 +90,43 @@ jobs:
 
       - name: BlazorAdmin bouwen (net10.0)
         run: dotnet build BlazorAdmin/BlazorAdmin.csproj --configuration Release
+
+      # #818: Database.Postgres bouwt de C#-schemadefinitie/DDL-generator voor de Postgres-tier.
+      # Deze build/test is onafhankelijk van welke DatabaseTier déze fork daadwerkelijk deployt
+      # (#816) — PR-build verifieert dat elke gecommitte boom compileert, niet alleen de
+      # geselecteerde. De integratietests (tegen een échte Postgres-instantie) zijn hier env-gestuurd
+      # zichtbaar overgeslagen ([PostgresFact]/[PostgresTheory], #866) — de fresh-db-postgres-job
+      # verderop in dit bestand draait ze wél, tegen de instantie die die job zelf opzet.
+      - name: Database.Postgres bouwen (net9.0)
+        run: dotnet build Database.Postgres/Database.Postgres.csproj --configuration Release
+
+      - name: Database.Postgres.Tests draaien (unit tests, geen Postgres nodig)
+        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity minimal
+
+      # #891: FunctionApp.Postgres — de applicatie-datalaag voor de Postgres-tier (#860). Vandaag
+      # nog een minimaal project (alleen /api/health); #887-#890 breiden dit verder uit. Build-only
+      # hier, zelfde reden als Database.Postgres.Cli hieronder — geen live database in deze job.
+      - name: FunctionApp.Postgres bouwen (net9.0)
+        run: dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj --configuration Release
+
+      # Issue 890: het testproject voor de Postgres-applicatielaag. Hier bewust ZONDER
+      # POSTGRES_TEST_CONNECTION_STRING: de integratietests slaan zichzelf dan zichtbaar over
+      # (#866) en deze stap bewijst alleen dat de suite compileert en start. De echte uitvoering
+      # gebeurt in de job 'fresh-db-postgres' hieronder, die al een gemigreerde instantie heeft.
+      - name: FunctionApp.Postgres.Tests draaien (unit only, geen Postgres nodig)
+        run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity minimal
+
+      # #819: Planner.Shared bevat de tier-agnostische veldresolutielogica (VeldResolver/
+      # VeldNormalisatie) — gedeeld tussen FunctionApp (SQL Server-tier) en Database.Postgres,
+      # zodat er nooit een derde, onafhankelijke kopie van deze matching ontstaat naast de
+      # bestaande SQL Server-view en de C#-implementatie. Puur tekstlogica, geen databaseafhankelijkheid.
+      - name: Planner.Shared bouwen en testen (net9.0)
+        run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
+
+      # #821: migratie-runner-CLI voor de Postgres-tier. Build-only hier (geen live database) —
+      # MigrationRunnerIntegrationTests hierboven dekt het gedrag [Fact(Skip=...)], zie #822/#823.
+      - name: Database.Postgres.Cli bouwen (net9.0)
+        run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
 
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
@@ -331,8 +417,425 @@ jobs:
           IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden] WHERE [ClubCode] <> 'ALLSTARS')
               RAISERROR('dbo.Speeltijden heeft geen rijen voor een niet-democlub — seed koos de verkeerde club.', 16, 1);
           SELECT 'Speeltijden: ' + [ClubCode] + ' = ' + CAST(COUNT(*) AS VARCHAR) FROM [dbo].[Speeltijden] GROUP BY [ClubCode];
+
+          -- #911: de democlub moet e-mailsjablonen hebben met een niet-leeg onderwerp. Zonder deze
+          -- rijen geeft GET /api/beheer/templates een lege lijst, en kan de zelftest 'geen seed'
+          -- niet onderscheiden van 'de sjabloonquery is stilgevallen'. De Postgres-job hieronder
+          -- controleert exact hetzelfde — dat symmetrie-punt is de kern van #911.
+          IF (SELECT COUNT(*) FROM [dbo].[EmailTemplateInstellingen]
+               WHERE [ClubCode] = 'ALLSTARS' AND [Actief] = 1 AND LEN(LTRIM(RTRIM([Onderwerp]))) > 0) < 2
+              RAISERROR('dbo.EmailTemplateInstellingen heeft minder dan 2 actieve democlub-sjablonen met een niet-leeg onderwerp (#911).', 16, 1);
+          SELECT 'EmailTemplates ALLSTARS: ' + [TemplateKey] FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS';
           "
+
+      # #856: bewijst dat scripts/migrations/003-seed-allstars-demo-matches.sql daadwerkelijk werkt
+      # zodra his.teams/his.matches bestaan (i.e. na de eerste Sportlink-sync) — een scenario dat
+      # PostDeployment zelf niet meer test (die stopt bewust met een RAISERROR zolang de sync nog
+      # niet gelopen heeft, zie hierboven). his.teams/his.matches worden hier met de hand aangemaakt
+      # (kolommen 1-op-1 overgenomen uit Database/his/Tables/Teams.sql en Matches.sql) omdat een
+      # echte sync in deze job niet beschikbaar is — #867's fixtureserver dekt dat traject apart.
+      - name: 003-seed-allstars-demo-matches.sql draaien tegen simulatie van na-de-eerste-sync
+        run: |
+          sql() { docker exec sqlfresh /opt/mssql-tools18/bin/sqlcmd \
+                    -S localhost -U sa -P "$SA_PW" -C -d SportlinkFresh -b -V 11 -h -1 -W "$@"; }
+
+          cat > /tmp/his-tables-voor-856.sql << 'SQLEOF'
+          CREATE TABLE [his].[teams](
+              [bk_teams] [nvarchar](100) NOT NULL, [teamcode] [bigint] NULL, [lokaleteamcode] [bigint] NULL,
+              [poulecode] [bigint] NULL, [teamnaam] [nvarchar](100) NULL, [competitienaam] [nvarchar](200) NULL,
+              [klasse] [nvarchar](200) NULL, [poule] [nvarchar](50) NULL, [klassepoule] [nvarchar](200) NULL,
+              [spelsoort] [nvarchar](50) NULL, [competitiesoort] [nvarchar](50) NULL, [geslacht] [nvarchar](50) NULL,
+              [teamsoort] [nvarchar](50) NULL, [leeftijdscategorie] [nvarchar](50) NULL, [kalespelsoort] [nvarchar](50) NULL,
+              [speeldag] [nvarchar](50) NULL, [speeldagteam] [nvarchar](100) NULL, [more] [nvarchar](200) NULL,
+              [mta_inserted] [datetime] NULL, [mta_modified] [datetime] NULL, [mta_deleted] [datetime] NULL,
+              [ClubCode] [nvarchar](20) NULL
+          );
+          GO
+          CREATE TABLE [his].[matches](
+              [bk_matches] NVARCHAR(100) NOT NULL, [wedstrijddatum] NVARCHAR(50) NULL, [wedstrijdcode] BIGINT NULL,
+              [wedstrijdnummer] BIGINT NULL, [datum] NVARCHAR(50) NULL, [wedstrijd] NVARCHAR(200) NULL,
+              [accommodatie] NVARCHAR(200) NULL, [aanvangstijd] NVARCHAR(50) NULL, [thuisteam] NVARCHAR(100) NULL,
+              [thuisteamid] NVARCHAR(50) NULL, [thuisteamlogo] NVARCHAR(1000) NULL,
+              [thuisteamclubrelatiecode] NVARCHAR(50) NULL, [uitteamclubrelatiecode] NVARCHAR(50) NULL,
+              [uitteam] NVARCHAR(100) NULL, [uitteamid] NVARCHAR(50) NULL, [uitteamlogo] NVARCHAR(1000) NULL,
+              [competitiesoort] NVARCHAR(200) NULL, [status] NVARCHAR(50) NULL, [meer] NVARCHAR(1000) NULL,
+              [teamnaam] NVARCHAR(100) NULL, [teamvolgorde] INT NULL, [competitie] NVARCHAR(200) NULL,
+              [klasse] NVARCHAR(100) NULL, [poule] NVARCHAR(100) NULL, [klassepoule] NVARCHAR(200) NULL,
+              [kaledatum] NVARCHAR(50) NULL, [vertrektijd] NVARCHAR(50) NULL, [verzameltijd] NVARCHAR(50) NULL,
+              [scheidsrechters] NVARCHAR(500) NULL, [scheidsrechter] NVARCHAR(200) NULL, [veld] NVARCHAR(100) NULL,
+              [veld_subpositie] NVARCHAR(5) NULL, [locatie] NVARCHAR(100) NULL, [plaats] NVARCHAR(100) NULL,
+              [rijders] NVARCHAR(200) NULL, [kleedkamerthuisteam] NVARCHAR(50) NULL, [kleedkameruitteam] NVARCHAR(50) NULL,
+              [kleedkamerscheidsrechter] NVARCHAR(50) NULL, [datumopgemaakt] NVARCHAR(50) NULL, [uitslag] NVARCHAR(50) NULL,
+              [uitslag-regulier] NVARCHAR(50) NULL, [uitslag-nv] NVARCHAR(50) NULL, [uitslag-s] NVARCHAR(50) NULL,
+              [competitienaam] NVARCHAR(200) NULL, [eigenteam] NVARCHAR(50) NULL, [sportomschrijving] NVARCHAR(100) NULL,
+              [verenigingswedstrijd] NVARCHAR(50) NULL, [mta_inserted] DATETIME NULL, [mta_modified] DATETIME NULL,
+              [mta_deleted] DATETIME NULL, [ClubCode] NVARCHAR(20) NULL
+          );
+          GO
+          SQLEOF
+          docker cp /tmp/his-tables-voor-856.sql sqlfresh:/tmp/his-tables-voor-856.sql
+          sql -i /tmp/his-tables-voor-856.sql
+
+          docker cp scripts/migrations/003-seed-allstars-demo-matches.sql sqlfresh:/tmp/003-seed.sql
+          echo "───── Run 1 ─────"
+          sql -i /tmp/003-seed.sql
+          echo "───── Run 2 (idempotentie) ─────"
+          sql -i /tmp/003-seed.sql
+
+          aantallen=$(sql -Q "
+            SET NOCOUNT ON;
+            SELECT CAST((SELECT COUNT(*) FROM his.teams WHERE ClubCode = 'ALLSTARS') AS VARCHAR)
+                 + ' ' + CAST((SELECT COUNT(*) FROM avg.Teambegeleiding WHERE ClubCode = 'ALLSTARS') AS VARCHAR)
+                 + ' ' + CAST((SELECT COUNT(*) FROM his.matches WHERE ClubCode = 'ALLSTARS') AS VARCHAR);
+          ")
+          read -r teams begeleiding matches <<< "$aantallen"
+          echo "teams=$teams begeleiding=$begeleiding matches=$matches"
+          if [ "$teams" != "28" ] || [ "$begeleiding" != "28" ] || [ "$matches" != "224" ]; then
+            echo "::error::Verwacht 28 teams/28 begeleiders/224 wedstrijden (#856), gevonden: teams=$teams begeleiding=$begeleiding matches=$matches"
+            exit 1
+          fi
+          echo "AllStars-demodata (#856): 28 teams, 28 begeleiders, 224 wedstrijden — bevestigd, ook na een herhaalde run (idempotent)."
 
       - name: Container opruimen
         if: always()
         run: docker rm -f sqlfresh || true
+
+  # #823: Postgres-tegenhanger van fresh-db hierboven — bewijst dat het migratiepad uit #821
+  # (Database.Postgres/migrations/ + MigrationRunner) daadwerkelijk idempotent is tegen een verse
+  # Postgres-instantie. Gebruikt het native services:-blok i.p.v. een rauwe 'docker run' (aanbevolen
+  # in het issue): declaratief, GitHub Actions regelt zelf container-lifecycle/poort-mapping, en
+  # health-cmd/health-interval dekt de wait-loop die fresh-db hierboven met de hand implementeert.
+  # Migreren van fresh-db naar hetzelfde patroon is expliciet buiten scope van dit issue.
+  #
+  # Geen GitHub Secrets voor de credentials: services:-containers worden geprovisioneerd VOORDAT
+  # enige step draait, dus een in een step gegenereerd wegwerpwachtwoord (zoals fresh-db hierboven
+  # doet) kan hier niet — dat zou pas bekend zijn ná het moment waarop de container al gestart is.
+  # Secrets.* zou bovendien op elke fork-PR falen (forks hebben geen toegang tot repository-secrets).
+  # In plaats daarvan: een vast, niet-geheim wegwerpwachtwoord. Dit is geen echt secret-risico — de
+  # container is volledig geïsoleerd (GitHub-hosted runner, eigen ephemere VM), bevat nooit
+  # productiedata, en wordt aan het eind van de job onherroepelijk vernietigd.
+  fresh-db-postgres:
+    name: PostDeployment op verse Postgres-database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci_postgres
+          POSTGRES_PASSWORD: ci-wegwerpwachtwoord-niet-geheim
+          POSTGRES_DB: sportlink_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_postgres -d sportlink_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Migratiepad toepassen (1e keer — verse database)
+        run: dotnet run --project Database.Postgres.Cli --configuration Release -- Database.Postgres/migrations
+
+      - name: Migratiepad opnieuw toepassen (2e keer — bewijs idempotentie)
+        run: dotnet run --project Database.Postgres.Cli --configuration Release -- Database.Postgres/migrations
+
+      - name: Controleren dat de kernobjecten er staan
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+
+          # Positieve assertie bovenop de afwezigheid van fouten: ontbreekt er een kernobject, dan
+          # faalt deze stap expliciet in plaats van stil door te gaan — zelfde discipline als de
+          # SQL Server-fresh-db-job hierboven.
+          missing=$(psql_ci -c "
+            SELECT string_agg(verwacht, ' ') FROM (VALUES
+              ('public.appsettings'), ('public.velden'), ('public.speeltijden'),
+              ('planner.geplandewedstrijden'), ('public.schema_migrations')
+            ) AS v(verwacht)
+            WHERE to_regclass(v.verwacht) IS NULL;
+          ")
+          if [ -n "$missing" ]; then
+            echo "::error::Ontbrekende objecten na migratie op een verse Postgres-database: $missing"
+            exit 1
+          fi
+          echo "Alle verwachte objecten aanwezig."
+
+          # ClubCode-dekking: elke configuratietabel die in de SQL Server-tier een ClubCode-kolom
+          # heeft, moet die ook hier hebben (lowercase, conform de identifier-casing-conventie).
+          missing_clubcode=$(psql_ci -c "
+            SELECT string_agg(verwacht, ' ') FROM (VALUES
+              ('appsettings'), ('velden'), ('speeltijden'), ('geplandewedstrijden')
+            ) AS v(verwacht)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = v.verwacht AND column_name = 'clubcode'
+            );
+          ")
+          if [ -n "$missing_clubcode" ]; then
+            echo "::error::Tabellen zonder clubcode-kolom: $missing_clubcode"
+            exit 1
+          fi
+          echo "ClubCode-dekking bevestigd voor alle vier tabellen."
+
+          # schema_migrations moet precies evenveel rijen tonen als er .sql-bestanden in de
+          # migratiemap staan — geen dubbele rij door de tweede run hierboven. Geteld vanaf schijf
+          # i.p.v. hardcoded, zodat een volgend migratiebestand (#824 voegde het tweede toe) deze
+          # assertie niet stil laat verouderen.
+          verwacht_aantal=$(ls Database.Postgres/migrations/*.sql | wc -l)
+          count=$(psql_ci -c "SELECT COUNT(*) FROM public.schema_migrations;")
+          if [ "$count" != "$verwacht_aantal" ]; then
+            echo "::error::Verwacht $verwacht_aantal toegepaste migratie(s) in schema_migrations, gevonden: $count"
+            exit 1
+          fi
+          echo "schema_migrations: exact $verwacht_aantal toegepaste migratie(s), geen duplicaat door de idempotentie-run."
+
+          # Identifier-casing-conventie (ARCHITECTUUR-DATABASE-TIERS.md §3): geen enkele kolomnaam
+          # in de vier tabellen mag afwijken van zijn eigen lowercase-vorm.
+          bad_casing=$(psql_ci -c "
+            SELECT string_agg(table_name || '.' || column_name, ', ')
+            FROM information_schema.columns
+            WHERE table_name IN ('appsettings','velden','speeltijden','geplandewedstrijden')
+              AND column_name <> lower(column_name);
+          ")
+          if [ -n "$bad_casing" ]; then
+            echo "::error::Kolomnamen wijken af van lowercase (ARCHITECTUUR-DATABASE-TIERS.md §3): $bad_casing"
+            exit 1
+          fi
+          echo "Identifier-casing bevestigd: alle kolomnamen zijn lowercase."
+
+          # #893: public.speeltijden mistte drie kolommen t.o.v. dbo.Speeltijden — bewaakt zodat
+          # een toekomstige wijziging deze niet stilzwijgend opnieuw laat verdwijnen.
+          missing_speeltijden_kolommen=$(psql_ci -c "
+            SELECT string_agg(verwacht, ' ') FROM (VALUES
+              ('wedstrijdhelft'), ('wedstrijdrust'), ('standaardvoorkeurtijd')
+            ) AS v(verwacht)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'speeltijden' AND column_name = v.verwacht
+            );
+          ")
+          if [ -n "$missing_speeltijden_kolommen" ]; then
+            echo "::error::public.speeltijden mist kolommen (#893): $missing_speeltijden_kolommen"
+            exit 1
+          fi
+          echo "public.speeltijden-kolomdekking bevestigd (#893)."
+
+      # Open beslispunt uit het issue, bewust niet stilzwijgend overgeslagen: een aparte
+      # drift-diff-stap (SSDT-projectstructuur vs. uitgerold script, zoals de SQL Server-tier heeft)
+      # is voor de Postgres-tier nog niet aan de orde. Database.Postgres/migrations/ gebruikt losse,
+      # doorlopend genummerde bestanden zonder een "bron vs. gegenereerd script"-onderscheid — er is
+      # dus geen aparte drift-klasse om tegen te bewaken. Deze dubbele-run-idempotentieproef is voor
+      # het huidige, kleine migratiebestand voldoende. Herzie deze beslissing zodra
+      # Database.Postgres/migrations/ meerdere bestanden bevat of een generator-stap krijgt.
+
+      # #862 (deel 1): AllStars-demodata op de Postgres-tier — hetzelfde rijcontract als de
+      # SQL Server-tier (#851's fase 3). Twee stukken, net als op de SQL Server-tier (#856-les):
+      # 006_allstars_demodata.sql (velden/veldbeschikbaarheid/speeltijden/teamregels — bestaan al na
+      # de migraties hierboven) en scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+      # (teams/teambegeleiding/wedstrijden — vereist his.teams/his.matches, die pas na de eerste
+      # sync bestaan, dus hier gesimuleerd met de exacte PostgresSchemaGenerator-DDL).
+      - name: AllStars-demodata verifiëren (velden/veldbeschikbaarheid/speeltijden/teamregels, #862)
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+
+          # Primaire club + speeltijden-bronrij, zodat de Speeltijden-copy in 006 iets te kopiëren
+          # heeft — zonder dit zou de kopieerstap stil 0 rijen opleveren en niets bewijzen. 006's
+          # copyquery kiest de bron via "MIN(clubcode) WHERE clubcode <> demo_club" — géén
+          # syncenabled-filter — dus deze rij hoeft niet syncenabled=true te zijn.
+          #
+          # BEWUST false (issue 888 vervolg, empirisch gevonden): planner.alle_wedstrijden_op_veld_ruw
+          # (en zijn SQL Server-origineel, Database/planner/Views/AlleWedstrijdenOpVeld.sql) kiest
+          # de "primaire club" via één rij — CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY
+          # clubcode LIMIT 1 — en filtert DAARNA elke wedstrijd van ELKE club op DIE ene club se
+          # accommodatie. Dat klopt in productie (daar is precies één syncenabled-club, zie de
+          # "één fork, één primaire club"-architectuurkeuze in CLAUDE.md) maar niet hier: met
+          # syncenabled=true zou 'CIPRIMARY' (geen accommodatie, sorteert vóór elke 'testclub-*')
+          # de gekozen rij worden, waardoor ELK Competitie-wedstrijdonderzoek in
+          # FunctionApp.Postgres.Tests silently leeg terugkomt (geen foutmelding — gewoon een lege
+          # collectie). Reproduceerbaar zelfs zonder enige testklasse: één ruwe SQL-insert in
+          # his.matches voor een willekeurige club levert dan 0 rijen op uit de view.
+          psql_ci -c "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('CIPRIMARY', 'CI Primary', false) ON CONFLICT DO NOTHING;"
+          psql_ci -c "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode) VALUES ('JO13', 1.0, 60, 30, 10, 'CIPRIMARY') ON CONFLICT DO NOTHING;"
+
+          # 006 is door de CLI hierboven al via de ledger toegepast (vóór CIPRIMARY bestond, dus
+          # zonder iets te kopiëren) — hier opnieuw uitgevoerd als los SQL-bestand (niet via de
+          # ledger, die 006 al als toegepast beschouwt) om de copy-logica alsnog te bewijzen. Het
+          # bestand is zelf idempotent (NOT EXISTS-gated), dus een tweede uitvoering is veilig.
+          psql_ci -v ON_ERROR_STOP=1 -f Database.Postgres/migrations/006_allstars_demodata.sql
+
+          aantallen=$(psql_ci -c "
+            SELECT (SELECT COUNT(*) FROM public.velden WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM public.veldbeschikbaarheid WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM public.teamregels WHERE clubcode='ALLSTARS');
+          ")
+          read -r velden vb speeltijden teamregels <<< "$aantallen"
+          echo "velden=$velden veldbeschikbaarheid=$vb speeltijden=$speeltijden teamregels=$teamregels"
+          if [ "$velden" != "3" ] || [ "$vb" != "21" ] || [ "$speeltijden" != "1" ] || [ "$teamregels" != "1" ]; then
+            echo "::error::AllStars-demodata (#862) rijtellingen komen niet overeen: verwacht velden=3 veldbeschikbaarheid=21 speeltijden=1 teamregels=1, gevonden velden=$velden veldbeschikbaarheid=$vb speeltijden=$speeltijden teamregels=$teamregels"
+            exit 1
+          fi
+
+          # #911: exact dezelfde assertie als de SQL Server-job hierboven — dat de twee tiers hier
+          # hetzelfde meten is de kern van dat issue. Migratie 010 is door de CLI al toegepast
+          # (ALLSTARS bestaat op dat moment, want 006 maakt die appsettings-rij zelf aan).
+          sjablonen=$(psql_ci -c "
+            SELECT COUNT(*) FROM public.emailtemplateinstellingen
+            WHERE clubcode='ALLSTARS' AND actief AND length(btrim(onderwerp)) > 0;
+          ")
+          echo "emailtemplateinstellingen ALLSTARS (actief, niet-leeg onderwerp)=$sjablonen"
+          if [ "$sjablonen" -lt 2 ]; then
+            echo "::error::public.emailtemplateinstellingen heeft minder dan 2 actieve democlub-sjablonen met een niet-leeg onderwerp (#911); gevonden $sjablonen"
+            exit 1
+          fi
+          psql_ci -c "SELECT templatekey FROM public.emailtemplateinstellingen WHERE clubcode='ALLSTARS' ORDER BY 1;"
+          echo "AllStars-demodata (velden/veldbeschikbaarheid/speeltijden/teamregels): rijtellingen kloppen."
+
+          # #864: Postgres-tegenhanger van de SQL Server-assertie hierboven ("Speeltijden moeten
+          # voor de primaire club bestaan, niet alleen voor de democlub", #740) — zonder deze
+          # assertie zou een seed die per ongeluk alleen ALLSTARS vult onopgemerkt blijven, ook al
+          # bewijst de rijtelling hierboven alleen dat de KOPIE naar ALLSTARS klopt.
+          niet_demo=$(psql_ci -c "SELECT COUNT(*) FROM public.speeltijden WHERE clubcode <> 'ALLSTARS';")
+          if [ "$niet_demo" = "0" ]; then
+            echo "::error::public.speeltijden heeft geen rijen voor een niet-democlub — seed koos de verkeerde club (#864, Postgres-tegenhanger van #740)."
+            exit 1
+          fi
+          echo "public.speeltijden: $niet_demo rij(en) voor een niet-democlub bevestigd."
+
+      - name: AllStars-demodata verifiëren (teams/teambegeleiding/wedstrijden, na simulatie van na-de-eerste-sync, #862)
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+          psql_ci_f() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -v ON_ERROR_STOP=1 "$@"; }
+
+          # his.teams/his.matches bestaan pas na de eerste sync (#856-les, ook op de Postgres-tier).
+          # DDL hier is de letterlijke PostgresSchemaGenerator.GenerateHisTable-output voor
+          # KnownEntities.Teams/Matches (#818) — geen losstaande aanname, 1:1 overgenomen.
+          psql_ci -c "CREATE SCHEMA IF NOT EXISTS his;"
+          cat > /tmp/his-teams-matches.sql <<'SQLEOF'
+          CREATE TABLE IF NOT EXISTS his."teams" (
+              "teamcode" BIGINT, "lokaleteamcode" BIGINT, "poulecode" BIGINT,
+              "teamnaam" VARCHAR(100), "competitienaam" VARCHAR(200), "klasse" VARCHAR(200),
+              "poule" VARCHAR(50), "klassepoule" VARCHAR(200), "spelsoort" VARCHAR(50),
+              "competitiesoort" VARCHAR(50), "geslacht" VARCHAR(50), "teamsoort" VARCHAR(50),
+              "leeftijdscategorie" VARCHAR(50), "kalespelsoort" VARCHAR(50), "speeldag" VARCHAR(50),
+              "speeldagteam" VARCHAR(100), "more" VARCHAR(200), "clubcode" VARCHAR(20),
+              "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
+              "mta_deleted" TIMESTAMPTZ NULL,
+              "bk_teams" TEXT GENERATED ALWAYS AS (COALESCE("teamcode"::text, '') || '' || COALESCE("lokaleteamcode"::text, '') || '' || COALESCE("poulecode"::text, '')) STORED
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "UQ_teams_bk" ON his."teams" ("bk_teams");
+          CREATE INDEX IF NOT EXISTS "IX_teams_clubcode" ON his."teams" ("clubcode");
+          CREATE TABLE IF NOT EXISTS his."matches" (
+              "wedstrijddatum" VARCHAR(50), "wedstrijdcode" BIGINT, "wedstrijdnummer" BIGINT,
+              "datum" VARCHAR(50), "wedstrijd" VARCHAR(200), "accommodatie" VARCHAR(200),
+              "aanvangstijd" VARCHAR(50), "thuisteam" VARCHAR(100), "thuisteamid" VARCHAR(50),
+              "thuisteamlogo" VARCHAR(1000), "thuisteamclubrelatiecode" VARCHAR(50),
+              "uitteamclubrelatiecode" VARCHAR(50), "uitteam" VARCHAR(100), "uitteamid" VARCHAR(50),
+              "uitteamlogo" VARCHAR(1000), "competitiesoort" VARCHAR(200), "status" VARCHAR(50),
+              "meer" VARCHAR(1000), "teamnaam" VARCHAR(100), "teamvolgorde" INTEGER,
+              "competitie" VARCHAR(200), "klasse" VARCHAR(100), "poule" VARCHAR(100),
+              "klassepoule" VARCHAR(200), "kaledatum" VARCHAR(50), "vertrektijd" VARCHAR(50),
+              "verzameltijd" VARCHAR(50), "scheidsrechters" VARCHAR(500), "scheidsrechter" VARCHAR(200),
+              "veld" VARCHAR(100), "veld_subpositie" VARCHAR(5), "locatie" VARCHAR(100),
+              "plaats" VARCHAR(100), "rijders" VARCHAR(200), "kleedkamerthuisteam" VARCHAR(50),
+              "kleedkameruitteam" VARCHAR(50), "kleedkamerscheidsrechter" VARCHAR(50),
+              "datumopgemaakt" VARCHAR(50), "uitslag" VARCHAR(50), "uitslag-regulier" VARCHAR(50),
+              "uitslag-nv" VARCHAR(50), "uitslag-s" VARCHAR(50), "competitienaam" VARCHAR(200),
+              "eigenteam" VARCHAR(50), "sportomschrijving" VARCHAR(100),
+              "verenigingswedstrijd" VARCHAR(50), "clubcode" VARCHAR(20),
+              "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
+              "mta_deleted" TIMESTAMPTZ NULL,
+              "bk_matches" TEXT GENERATED ALWAYS AS (COALESCE("wedstrijdcode"::text, '')) STORED
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "UQ_matches_bk" ON his."matches" ("bk_matches");
+          CREATE INDEX IF NOT EXISTS "IX_matches_clubcode" ON his."matches" ("clubcode");
+          SQLEOF
+          psql_ci_f -f /tmp/his-teams-matches.sql
+
+          # Twee keer uitvoeren — bewijst idempotentie, zelfde discipline als de migraties hierboven.
+          psql_ci_f -f scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+          psql_ci_f -f scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+
+          aantallen=$(psql_ci -c "
+            SELECT (SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM his.matches WHERE clubcode='ALLSTARS');
+          ")
+          read -r teams begeleiding matches <<< "$aantallen"
+          echo "teams=$teams begeleiding=$begeleiding matches=$matches"
+          if [ "$teams" != "28" ] || [ "$begeleiding" != "28" ] || [ "$matches" != "224" ]; then
+            echo "::error::AllStars-demodata (#862) teams/teambegeleiding/wedstrijden komen niet overeen: verwacht 28/28/224, gevonden teams=$teams begeleiding=$begeleiding matches=$matches"
+            exit 1
+          fi
+          echo "AllStars-demodata (teams/teambegeleiding/wedstrijden): rijtellingen kloppen (28/28/224), idempotent bevestigd."
+
+      # #866: Database.Postgres.Tests' integratietests (PostgresMergeOrchestrator, MigrationRunner,
+      # de plannerview, TeambegeleidingImporter, de #854-UTC-audittest) draaien env-gestuurd via
+      # PostgresFactAttribute/PostgresTheoryAttribute — zichtbaar overgeslagen zonder
+      # POSTGRES_TEST_CONNECTION_STRING, en onveranderd draaiend zodra die gezet is. Deze instantie
+      # (al gemigreerd hierboven) is precies zo'n wegwerpcontainer, dus geen aparte opzet nodig.
+      # Draait het hele project i.p.v. een --filter: de ~46 unit tests erin zijn toch al groen in de
+      # 'build'-job hierboven en kosten hier verwaarloosbaar veel extra tijd (<1s).
+      # Issue 890: het equivalent van SportlinkFixtureSyncIntegrationTests (#867) voor de
+      # Postgres-tier, plus de e-mailpersistentie- (#889-acceptatiecriterium 3) en
+      # teamcanonicalisatietests (§28). Draait tegen sportlink_ci: de database die deze job hierboven
+      # heeft gemigreerd en geseed.
+      #
+      # Draait ná de AllStars-demodata-assertie hierboven: deze tests schrijven onder eigen
+      # 'testclub-*'-clubcodes en ruimen die zelf op, maar de volgorde maakt onafhankelijk van die
+      # belofte zichtbaar dat ze de demodatatelling niet kunnen beïnvloeden.
+      - name: FunctionApp.Postgres.Tests draaien (integratietests, tegen sportlink_ci)
+        env:
+          POSTGRES_TEST_CONNECTION_STRING: ${{ env.POSTGRES_CONNECTION_STRING }}
+        run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity normal
+
+      # #925: Database.Postgres.Tests krijgt een EIGEN database.
+      #
+      # Die suite demonteert met opzet de database waartegen hij draait: hij dropt
+      # public.appsettings/speeltijden/velden, planner.geplandewedstrijden, avg.teambegeleiding/
+      # importlog, his.teams/matches/matchdetails en public.schema_migrations, en bouwt daar
+      # minimale, synthetische versies van terug (TestEntities gebruikt dezelfde entiteitsnamen
+      # 'teams'/'matches' als productie, maar met veel minder kolommen en deels zonder clubcode).
+      # Dat is legitiem — die suite test de generator en de runner, niet het schema — maar het laat
+      # de database in een niet-productievorm achter.
+      #
+      # Tot deze wijziging werd dat opgevangen met een stapvolgorde (#924) plus vangnetten in de
+      # testcode. Beide zijn fragiel: de vorm van de database hing af van de volgorde in dit
+      # YAML-bestand, en een derde suite zou tegen hetzelfde aanlopen. Een eigen database haalt de
+      # oorzaak weg in plaats van het symptoom. Zie ARCHITECTUUR-DATABASE-TIERS.md §33.
+      - name: Eigen database voor Database.Postgres.Tests aanmaken en migreren
+        run: |
+          PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci             -v ON_ERROR_STOP=1 -c "CREATE DATABASE sportlink_ci_dbtests;"
+          POSTGRES_CONNECTION_STRING="Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_dbtests"             dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
+
+      - name: Database.Postgres.Tests draaien (inclusief integratietests, tegen sportlink_ci_dbtests)
+        env:
+          POSTGRES_TEST_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_dbtests"
+        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity normal
+
+      # #925: bewijst dat de isolatie werkt en niet alleen bedoeld is. sportlink_ci is de database
+      # die FunctionApp.Postgres.Tests gebruikte; die moet ná de suite hierboven nog steeds de
+      # volledige, gemigreerde vorm hebben. Vóór deze wijziging stonden hier 3 kolommen en 0
+      # migratierijen — precies de meting uit ARCHITECTUUR-DATABASE-TIERS.md §29.
+      - name: Bewijzen dat sportlink_ci onaangetast is gebleven (#925)
+        run: |
+          psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }
+          kolommen=$(psql_ci -c "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='appsettings';")
+          migraties=$(psql_ci -c "SELECT count(*) FROM public.schema_migrations;")
+          bestanden=$(ls -1 Database.Postgres/migrations/*.sql | wc -l | tr -d ' ')
+          echo "sportlink_ci: appsettings-kolommen=$kolommen schema_migrations=$migraties (verwacht $bestanden)"
+          if [ "$migraties" != "$bestanden" ]; then
+            echo "::error::public.schema_migrations in sportlink_ci is aangetast: $migraties rijen, verwacht $bestanden (#925)"
+            exit 1
+          fi
+          if [ "$kolommen" -lt 20 ]; then
+            echo "::error::public.appsettings in sportlink_ci is teruggebracht tot $kolommen kolommen — de testisolatie werkt niet (#925)"
+            exit 1
+          fi
+          echo "Testisolatie bevestigd: sportlink_ci heeft nog de volledige gemigreerde vorm."

@@ -4,7 +4,11 @@
 
 .PARAMETER NewPatch
     Verhoogt de patch-versie (3e component) en reset de build-teller naar 0.
-    Synchroniseert ook <Version> en <FileVersion>.
+    <Version>, <AssemblyVersion> en <FileVersion> blijven altijd alle drie gelijk (4
+    componenten) — conform CLAUDE.md's versiebeheer-afspraak. Vóór #806 keek de regex voor
+    <Version> naar een 3-componenten-waarde terwijl beide .csproj's al 4 componenten
+    gebruikten; daardoor bleef <Version> altijd achter en moest hij één keer met de hand
+    worden rechtgezet.
 
 .EXAMPLE
     .\scripts\dev\Bump-Build.ps1             # 2.2.0.4 → 2.2.0.5
@@ -12,11 +16,11 @@
 #>
 param([switch]$NewPatch)
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$root = Resolve-Path (Join-Path $PSScriptRoot "../..")
 
 $projects = @(
-    (Join-Path $root "FunctionApp\fa-dev-sportlink-01.csproj"),
-    (Join-Path $root "BlazorAdmin\BlazorAdmin.csproj")
+    (Join-Path $root "FunctionApp/fa-dev-sportlink-01.csproj"),
+    (Join-Path $root "BlazorAdmin/BlazorAdmin.csproj")
 )
 
 $newVersionLabel = $null
@@ -42,14 +46,13 @@ foreach ($proj in $projects) {
     }
 
     $newAssembly = "$major.$minor.$patch.$build"
-    $newSemver   = "$major.$minor.$patch"
 
+    # <Version> gebruikt in beide .csproj's dezelfde 4-componenten-notatie als
+    # <AssemblyVersion>/<FileVersion> — alle drie horen altijd gelijk te lopen, ook bij een
+    # gewone build-bump (niet alleen bij -NewPatch).
+    $content = $content -replace '<Version>\d+\.\d+\.\d+\.\d+</Version>',                 "<Version>$newAssembly</Version>"
     $content = $content -replace '<AssemblyVersion>\d+\.\d+\.\d+\.\d+</AssemblyVersion>', "<AssemblyVersion>$newAssembly</AssemblyVersion>"
     $content = $content -replace '<FileVersion>\d+\.\d+\.\d+\.\d+</FileVersion>',         "<FileVersion>$newAssembly</FileVersion>"
-
-    if ($NewPatch) {
-        $content = $content -replace '<Version>\d+\.\d+\.\d+</Version>', "<Version>$newSemver</Version>"
-    }
 
     # Bewaar zonder BOM (UTF-8 zonder BOM, zoals de originelen)
     [System.IO.File]::WriteAllText((Resolve-Path $proj).Path, $content, [System.Text.UTF8Encoding]::new($false))

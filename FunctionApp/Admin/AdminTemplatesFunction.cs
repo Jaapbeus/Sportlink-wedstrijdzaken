@@ -91,35 +91,51 @@ public static class AdminTemplatesFunction
 
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                MERGE [dbo].[EmailTemplateInstellingen] AS T
-                USING (SELECT @Key AS [TemplateKey], @ClubCode AS [ClubCode]) AS S
-                  ON  T.[TemplateKey] = S.[TemplateKey] AND T.[ClubCode] = S.[ClubCode]
-                WHEN MATCHED THEN UPDATE SET
-                    [Onderwerp] = @Onderwerp,
-                    [BodyTemplate] = @BodyTemplate,
-                    [Actief] = @Actief,
-                    [mta_modified] = GETUTCDATE()
-                WHEN NOT MATCHED THEN INSERT
-                    ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
-                    VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);", connection);
-            command.Parameters.AddWithValue("@Key", key);
-            command.Parameters.AddWithValue("@Onderwerp", dto.Onderwerp);
-            command.Parameters.AddWithValue("@BodyTemplate", dto.BodyTemplate);
-            command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            await command.ExecuteNonQueryAsync();
+            // Issue 916: upsert + auditlog-insert in één transactie, zelfde patroon als
+            // AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
+            // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
+            using var transaction = await connection.BeginTransactionAsync();
+            try
+            {
+                using var command = new SqlCommand(@"
+                    MERGE [dbo].[EmailTemplateInstellingen] AS T
+                    USING (SELECT @Key AS [TemplateKey], @ClubCode AS [ClubCode]) AS S
+                      ON  T.[TemplateKey] = S.[TemplateKey] AND T.[ClubCode] = S.[ClubCode]
+                    WHEN MATCHED THEN UPDATE SET
+                        [Onderwerp] = @Onderwerp,
+                        [BodyTemplate] = @BodyTemplate,
+                        [Actief] = @Actief,
+                        [mta_modified] = GETUTCDATE()
+                    WHEN NOT MATCHED THEN INSERT
+                        ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+                        VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);",
+                    connection, (SqlTransaction)transaction);
+                command.Parameters.AddWithValue("@Key", key);
+                command.Parameters.AddWithValue("@Onderwerp", dto.Onderwerp);
+                command.Parameters.AddWithValue("@BodyTemplate", dto.BodyTemplate);
+                command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                await command.ExecuteNonQueryAsync();
 
-            var gewijzigdDoor = dto.GewijzigdDoor ?? "onbekend";
-            using var auditCmd = new SqlCommand(@"
-                INSERT INTO [dbo].[AppSettingsAudit]
-                    ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
-                VALUES (@GewijzigdDoor, @Veld, NULL, @NieuweWaarde, @ClubCode)", connection);
-            auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
-            auditCmd.Parameters.AddWithValue("@Veld", $"template:{key}");
-            auditCmd.Parameters.AddWithValue("@NieuweWaarde", dto.Onderwerp);
-            auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-            await auditCmd.ExecuteNonQueryAsync();
+                var gewijzigdDoor = dto.GewijzigdDoor ?? "onbekend";
+                using var auditCmd = new SqlCommand(@"
+                    INSERT INTO [dbo].[AppSettingsAudit]
+                        ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
+                    VALUES (@GewijzigdDoor, @Veld, NULL, @NieuweWaarde, @ClubCode)",
+                    connection, (SqlTransaction)transaction);
+                auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
+                auditCmd.Parameters.AddWithValue("@Veld", $"template:{key}");
+                auditCmd.Parameters.AddWithValue("@NieuweWaarde", dto.Onderwerp);
+                auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                await auditCmd.ExecuteNonQueryAsync();
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
 
             // Cache invalideren zodat de nieuwe template direct gebruikt wordt
             EmailTemplateService.InvalidateCache();

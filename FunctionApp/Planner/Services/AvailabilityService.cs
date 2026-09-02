@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Extensions.Logging;
 
 namespace SportlinkFunction.Planner;
@@ -29,47 +30,33 @@ internal static class AvailabilityService
             return response;
         }
 
-        Speeltijd? speeltijd = null;
-        int duurMinuten = 0;
-        decimal veldFractie = 1.00m;
-
-        if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+        var duurBepaling = await BepaalDuurEnVeldfractieAsync(request, clubCode);
+        if (duurBepaling.Reden != null)
         {
-            speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie, clubCode);
-            if (speeltijd == null)
-            {
-                response.Reden = $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
-                return response;
-            }
-            duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
-            veldFractie = speeltijd.Veldafmeting;
-        }
-        else if (request.WedstrijdDuurMinuten.HasValue)
-        {
-            duurMinuten = request.WedstrijdDuurMinuten.Value;
-        }
-
-        if (request.HeelVeld == true && veldFractie < 1.00m)
-        {
-            if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
-                response.Waarschuwingen.Add(
-                    $"{request.LeeftijdsCategorie} speelt normaal op een halftijdsspeelveld ({veldFractie:P0} veld). " +
-                    $"Inplannen op heel veld conform het verzoek (speelduur blijft {duurMinuten} min).");
-            veldFractie = 1.00m;
-        }
-
-        if (duurMinuten <= 0)
-        {
-            response.Reden = "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.";
+            response.Reden = duurBepaling.Reden;
             return response;
         }
+        if (duurBepaling.Waarschuwing != null)
+            response.Waarschuwingen.Add(duurBepaling.Waarschuwing);
+        int duurMinuten = duurBepaling.Duur;
+        decimal veldFractie = duurBepaling.VeldFractie;
 
         if (!string.IsNullOrEmpty(request.TeamNaam))
         {
-            var teamMatches = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date, clubCode);
-            if (teamMatches.Count > 0)
+            var teamWedstrijden = await PlannerDataAccess.GetTeamMatchesOnDateAsync(request.TeamNaam, date, clubCode);
+            if (!teamWedstrijden.TeamHerkend)
             {
-                var conflict = teamMatches[0];
+                // Niet stilzwijgend doorlopen (#945): zonder herkend team is er niets vergeleken, en
+                // dat mag nooit als "geen conflict" lezen. De aanvraag wordt niet geweigerd — de
+                // beheerder plant vaker een team in dat de teamlijst nog niet kent — maar het
+                // ontbreken van de controle staat wel in het antwoord.
+                response.Waarschuwingen.Add(
+                    $"'{request.TeamNaam}' staat niet in de teamlijst. Er is NIET gecontroleerd of dit " +
+                    "team die dag al een wedstrijd heeft — controleer dat zelf.");
+            }
+            else if (teamWedstrijden.Wedstrijden.Count > 0)
+            {
+                var conflict = teamWedstrijden.Wedstrijden[0];
                 response.TeamConflict = new TeamConflictInfo
                 {
                     Wedstrijd = conflict.Wedstrijd ?? "",
@@ -105,11 +92,7 @@ internal static class AvailabilityService
         var allTeamRules = await PlannerDataAccess.GetTeamRulesForTeamsAsync(
             occupations.Where(o => !string.IsNullOrEmpty(o.TeamNaam)).Select(o => o.TeamNaam!), clubCode);
 
-        TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date);
-        if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
-        foreach (var field in availableFields)
-            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                field.BeschikbaarTot = sunset.Value;
+        var sunset = await BepaalEnPasZonsondergangToeAsync(date, availableFields);
 
         if (string.IsNullOrEmpty(request.AanvangsTijd))
         {
@@ -129,15 +112,7 @@ internal static class AvailabilityService
         if (!string.IsNullOrEmpty(request.AanvangsTijd) && TimeOnly.TryParse(request.AanvangsTijd, out var parsed))
             preferredTime = parsed;
 
-        TimeOnly dagdeelVan = new(8, 30);
-        TimeOnly dagdeelTot = new(22, 0);
-        if (!string.IsNullOrEmpty(request.Dagdeel))
-            switch (request.Dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": dagdeelVan = new(8, 30); dagdeelTot = new(12, 0); break;
-                case "middag":  dagdeelVan = new(12, 0); dagdeelTot = new(17, 0); break;
-                case "avond":   dagdeelVan = new(17, 0); dagdeelTot = new(22, 0); break;
-            }
+        (TimeOnly dagdeelVan, TimeOnly dagdeelTot) = BepaalDagdeelVenster(request.Dagdeel, new TimeOnly(8, 30), new TimeOnly(22, 0));
 
         var venstersResponse = BuildWindowsResponse(date, availableFields, occupations, velden, sunset, request.Dagdeel);
         if (duurMinuten > 0 && venstersResponse.BeschikbareVensters != null)
@@ -154,7 +129,7 @@ internal static class AvailabilityService
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 AddSunsetWarning(response, exactMatch, sunset, velden);
                 AddNabijeWedstrijdWaarschuwing(response, exactMatch, duurMinuten, occupations, velden);
-                PlannerShared.AddWeekdayWarning(response, date);
+                PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
                 return response;
             }
         }
@@ -174,7 +149,7 @@ internal static class AvailabilityService
                 response.Reden = $"Gewenste tijd {preferredTime.Value:HH:mm} is niet beschikbaar.";
                 response.Alternatieven = alternatives.Prepend(best).Select(c => ToSlotMetVeldType(date, c, duurMinuten, velden)).Take(3).ToList();
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
-                PlannerShared.AddWeekdayWarning(response, date);
+                PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
             }
             else
             {
@@ -184,13 +159,13 @@ internal static class AvailabilityService
                 response.Alternatieven = alternatives.Select(c => ToSlotMetVeldType(date, c, duurMinuten, velden)).ToList();
                 response.BeschikbareVensters = venstersResponse.BeschikbareVensters;
                 AddSunsetWarning(response, best, sunset, velden);
-                PlannerShared.AddWeekdayWarning(response, date);
+                PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
             }
         }
         else
         {
             response.Reden = $"Geen beschikbaar veld gevonden op {date.ToString("dddd d MMMM", PlannerShared.NL)}.";
-            PlannerShared.AddWeekdayWarning(response, date);
+            PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
         }
         return response;
     }
@@ -229,23 +204,15 @@ internal static class AvailabilityService
             var availableFields = await PlannerDataAccess.GetAvailableFieldsAsync(date, clubCode);
             if (availableFields.Count == 0) continue;
 
-            TimeOnly? sunset = await PlannerDataAccess.GetSunsetAsync(date);
-            if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
+            var sunset = await BepaalEnPasZonsondergangToeAsync(date, availableFields);
             string sunsetStr = sunset.HasValue ? sunset.Value.ToString("HH:mm") : "";
-            foreach (var field in availableFields)
-                if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
-                    field.BeschikbaarTot = sunset.Value;
 
             var occupations = await SportlinkApiClient.GetFieldOccupationsWithApiAsync(date, log, clubCode);
 
             foreach (var field in availableFields)
             {
                 var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).OrderBy(o => o.AanvangsTijd).ToList();
-                var gapStart = field.BeschikbaarVanaf;
-                void AddVenster(TimeOnly van, TimeOnly tot)
-                {
-                    int maxDuur = (int)(tot.ToTimeSpan() - van.ToTimeSpan()).TotalMinutes;
-                    if (maxDuur < 30) return;
+                foreach (var (van, tot, maxDuur) in VindOpenGaten(field.BeschikbaarVanaf, field.BeschikbaarTot, fieldOccs))
                     response.BeschikbareDatums.Add(new DoordeweekseDatum
                     {
                         Datum = date.ToString("yyyy-MM-dd"),
@@ -262,14 +229,6 @@ internal static class AvailabilityService
                             EindTijd = o.EindTijd.ToString("HH:mm")
                         }).ToList()
                     });
-                }
-                foreach (var occ in fieldOccs)
-                {
-                    var occStart = occ.AanvangsTijd.AddMinutes(-PlannerShared.StandardBufferMinutes);
-                    if (occStart > gapStart) AddVenster(gapStart, occStart);
-                    gapStart = occ.EindTijd.AddMinutes(PlannerShared.StandardBufferMinutes);
-                }
-                if (gapStart < field.BeschikbaarTot) AddVenster(gapStart, field.BeschikbaarTot);
             }
         }
         response.AantalBeschikbaar = response.BeschikbareDatums.Count;
@@ -277,6 +236,117 @@ internal static class AvailabilityService
     }
 
     // ── Privé helpers ──
+
+    private readonly record struct DuurBepaling(int Duur, decimal VeldFractie, string? Reden, string? Waarschuwing);
+
+    /// <summary>
+    /// Bepaalt de speelduur en veldfractie voor een beschikbaarheidscontrole: leest desgevraagd
+    /// <c>dbo.Speeltijden</c> op de leeftijdscategorie, past de <c>HeelVeld</c>-uitzondering toe
+    /// (inplannen op een heel veld ondanks een leeftijdscategorie die normaal op een halftijdsveld
+    /// speelt) en valideert dat er een duur is. <see cref="DuurBepaling.Reden"/> gezet betekent: de
+    /// aanroeper moet direct met die foutmelding stoppen; <see cref="DuurBepaling.Waarschuwing"/>
+    /// gezet betekent: toevoegen aan de warningslijst van de response, verder gaan.
+    /// </summary>
+    private static async Task<DuurBepaling> BepaalDuurEnVeldfractieAsync(CheckAvailabilityRequest request, string clubCode)
+    {
+        int duurMinuten = 0;
+        decimal veldFractie = 1.00m;
+
+        if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+        {
+            var speeltijd = await PlannerDataAccess.GetSpeeltijdAsync(request.LeeftijdsCategorie, clubCode);
+            if (speeltijd == null)
+                return new DuurBepaling(0, veldFractie,
+                    $"Onbekende leeftijdscategorie: {request.LeeftijdsCategorie}. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.",
+                    null);
+            duurMinuten = request.WedstrijdDuurMinuten ?? speeltijd.WedstrijdTotaal;
+            veldFractie = speeltijd.Veldafmeting;
+        }
+        else if (request.WedstrijdDuurMinuten.HasValue)
+        {
+            duurMinuten = request.WedstrijdDuurMinuten.Value;
+        }
+
+        string? waarschuwing = null;
+        if (request.HeelVeld == true && veldFractie < 1.00m)
+        {
+            if (!string.IsNullOrEmpty(request.LeeftijdsCategorie))
+                waarschuwing =
+                    $"{request.LeeftijdsCategorie} speelt normaal op een halftijdsspeelveld ({veldFractie:P0} veld). " +
+                    $"Inplannen op heel veld conform het verzoek (speelduur blijft {duurMinuten} min).";
+            veldFractie = 1.00m;
+        }
+
+        if (duurMinuten <= 0)
+            return new DuurBepaling(duurMinuten, veldFractie,
+                "Leeftijdscategorie of wedstrijdduur is vereist. Voeg de categorie toe aan dbo.Speeltijden via /instellingen/speeltijden.",
+                waarschuwing);
+
+        return new DuurBepaling(duurMinuten, veldFractie, null, waarschuwing);
+    }
+
+    /// <summary>
+    /// Ochtend/middag/avond → tijdvenster. Bij een leeg of onbekend dagdeel de meegegeven
+    /// standaardwaarden. Gedeeld tussen CheckAvailabilityAsync, BuildWindowsResponse en
+    /// RescheduleService.CheckRescheduleAvailabilityAsync — alleen de defaults verschillen per
+    /// aanroeper.
+    /// </summary>
+    internal static (TimeOnly Van, TimeOnly Tot) BepaalDagdeelVenster(string? dagdeel, TimeOnly standaardVan, TimeOnly standaardTot)
+    {
+        if (string.IsNullOrEmpty(dagdeel)) return (standaardVan, standaardTot);
+        return dagdeel.ToLowerInvariant() switch
+        {
+            "ochtend" => (new TimeOnly(8, 30), new TimeOnly(12, 0)),
+            "middag"  => (new TimeOnly(12, 0), new TimeOnly(17, 0)),
+            "avond"   => (new TimeOnly(17, 0), new TimeOnly(22, 0)),
+            _ => (standaardVan, standaardTot)
+        };
+    }
+
+    /// <summary>
+    /// Haalt de zonsondergangstijd op (met terugval op <see cref="SunsetCalculator"/> als
+    /// <c>PlannerDataAccess.GetSunsetAsync</c> niets teruggeeft) en begrenst in-place elk veld met
+    /// <c>GebruikZonsondergang</c> tot die tijd. Gedeeld tussen CheckAvailabilityAsync,
+    /// CheckDoordeweeksBeschikbaarAsync en RescheduleService.CheckRescheduleAvailabilityAsync.
+    /// </summary>
+    internal static async Task<TimeOnly?> BepaalEnPasZonsondergangToeAsync(DateOnly date, List<VeldBeschikbaarheidInfo> velden)
+    {
+        var sunset = await PlannerDataAccess.GetSunsetAsync(date);
+        if (sunset == null) sunset = SunsetCalculator.GetSunset(date);
+        foreach (var field in velden)
+            if (field.GebruikZonsondergang && sunset.HasValue && sunset.Value < field.BeschikbaarTot)
+                field.BeschikbaarTot = sunset.Value;
+        return sunset;
+    }
+
+    /// <summary>
+    /// Vindt open gaten tussen bezettingen op één veld, met <see cref="PlannerShared.StandardBufferMinutes"/>
+    /// marge vóór/na elke bezetting en een minimum van 30 minuten per gat. <paramref name="fieldOccs"/>
+    /// moet al op <c>AanvangsTijd</c> gesorteerd zijn (beide aanroepers doen dat al). Gedeeld tussen
+    /// BuildWindowsResponse en CheckDoordeweeksBeschikbaarAsync.
+    /// </summary>
+    private static List<(TimeOnly Van, TimeOnly Tot, int MaxDuurMinuten)> VindOpenGaten(
+        TimeOnly vanaf, TimeOnly tot, List<BestaandeWedstrijd> fieldOccs)
+    {
+        var gaten = new List<(TimeOnly Van, TimeOnly Tot, int MaxDuurMinuten)>();
+        var gapStart = vanaf;
+        foreach (var occ in fieldOccs)
+        {
+            var occStart = occ.AanvangsTijd.AddMinutes(-PlannerShared.StandardBufferMinutes);
+            if (occStart > gapStart)
+            {
+                int gapMin = (int)(occStart.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
+                if (gapMin >= 30) gaten.Add((gapStart, occStart, gapMin));
+            }
+            gapStart = occ.EindTijd.AddMinutes(PlannerShared.StandardBufferMinutes);
+        }
+        if (gapStart < tot)
+        {
+            int gapMin = (int)(tot.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
+            if (gapMin >= 30) gaten.Add((gapStart, tot, gapMin));
+        }
+        return gaten;
+    }
 
     /// <summary>
     /// Slot-DTO inclusief het werkelijke veldtype uit <c>dbo.Velden</c> (#705). Het automatische
@@ -298,63 +368,30 @@ internal static class AvailabilityService
     {
         var response = new CheckAvailabilityResponse();
         var windows = new List<BeschikbaarVenster>();
-        TimeOnly filterVan = new(0, 0);
-        TimeOnly filterTot = new(23, 59);
-        if (!string.IsNullOrEmpty(dagdeel))
-            switch (dagdeel.ToLowerInvariant())
-            {
-                case "ochtend": filterVan = new(8, 30); filterTot = new(12, 0); break;
-                case "middag":  filterVan = new(12, 0); filterTot = new(17, 0); break;
-                case "avond":   filterVan = new(17, 0); filterTot = new(22, 0); break;
-            }
+        (TimeOnly filterVan, TimeOnly filterTot) = BepaalDagdeelVenster(dagdeel, new TimeOnly(0, 0), new TimeOnly(23, 59));
         foreach (var field in fields)
         {
             var veldInfo  = velden.FirstOrDefault(v => v.VeldNummer == field.VeldNummer);
             var fieldOccs = occupations.Where(o => o.VeldNummer == field.VeldNummer).OrderBy(o => o.AanvangsTijd).ToList();
             var effectiveStart = field.BeschikbaarVanaf < filterVan ? filterVan : field.BeschikbaarVanaf;
             var effectiveEnd   = field.BeschikbaarTot   > filterTot ? filterTot : field.BeschikbaarTot;
-            var gapStart = effectiveStart;
-            foreach (var occ in fieldOccs)
-            {
-                var occStart = occ.AanvangsTijd.AddMinutes(-PlannerShared.StandardBufferMinutes);
-                if (occStart > gapStart)
+            foreach (var (van, tot, maxDuur) in VindOpenGaten(effectiveStart, effectiveEnd, fieldOccs))
+                windows.Add(new BeschikbaarVenster
                 {
-                    int gapMin = (int)(occStart.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
-                    if (gapMin >= 30)
-                        windows.Add(new BeschikbaarVenster
-                        {
-                            VeldNummer = field.VeldNummer,
-                            VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
-                            VeldType = veldInfo?.VeldType,
-                            Van = gapStart.ToString("HH:mm"),
-                            Tot = occStart.ToString("HH:mm"),
-                            MaxDuurMinuten = gapMin,
-                            Opmerking = !field.GebruikZonsondergang ? null : $"Zonsondergang {sunset:HH:mm}, geen kunstlicht"
-                        });
-                }
-                gapStart = occ.EindTijd.AddMinutes(PlannerShared.StandardBufferMinutes);
-            }
-            if (gapStart < effectiveEnd)
-            {
-                int gapMin = (int)(effectiveEnd.ToTimeSpan() - gapStart.ToTimeSpan()).TotalMinutes;
-                if (gapMin >= 30)
-                    windows.Add(new BeschikbaarVenster
-                    {
-                        VeldNummer = field.VeldNummer,
-                        VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
-                        VeldType = veldInfo?.VeldType,
-                        Van = gapStart.ToString("HH:mm"),
-                        Tot = effectiveEnd.ToString("HH:mm"),
-                        MaxDuurMinuten = gapMin,
-                        Opmerking = !field.GebruikZonsondergang ? null : $"Zonsondergang {sunset:HH:mm}, geen kunstlicht"
-                    });
-            }
+                    VeldNummer = field.VeldNummer,
+                    VeldNaam = veldInfo?.VeldNaam ?? $"veld {field.VeldNummer}",
+                    VeldType = veldInfo?.VeldType,
+                    Van = van.ToString("HH:mm"),
+                    Tot = tot.ToString("HH:mm"),
+                    MaxDuurMinuten = maxDuur,
+                    Opmerking = !field.GebruikZonsondergang ? null : $"Zonsondergang {sunset:HH:mm}, geen kunstlicht"
+                });
         }
         response.Beschikbaar = windows.Count > 0;
         response.BeschikbareVensters = windows;
         if (!response.Beschikbaar)
             response.Reden = $"Geen beschikbare vensters op {date.ToString("dddd d MMMM", PlannerShared.NL)}.";
-        PlannerShared.AddWeekdayWarning(response, date);
+        PlannerShared.AddWeekdayWarning(response.Waarschuwingen, date);
         return response;
     }
 

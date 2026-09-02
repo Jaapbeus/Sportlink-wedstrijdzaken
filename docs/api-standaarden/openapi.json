@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "2.20.0",
+    "version": "3.0.32",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -118,6 +118,57 @@
       }
     },
     "schemas": {
+      "HealthStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "\"ok\" als database \"online\" is én settingsLoaded true is, anders \"degraded\".",
+            "example": "ok"
+          },
+          "version": {
+            "type": "string",
+            "example": "2.2.0.0"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "database": {
+            "type": "string",
+            "description": "Databaseverbindingsstatus. \"unconfigured\" geeft HTTP 503 i.p.v. 200 (#859).",
+            "enum": [
+              "online",
+              "paused",
+              "timeout",
+              "unavailable",
+              "unconfigured"
+            ],
+            "example": "online"
+          },
+          "settingsLoaded": {
+            "type": "boolean",
+            "description": "false als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog.",
+            "example": true
+          },
+          "tier": {
+            "type": "string",
+            "description": "De databasetier waarmee dit artefact gebouwd is (build-time metadata).",
+            "example": "SqlServer"
+          },
+          "provider": {
+            "type": "string",
+            "description": "De gebruikte databasedriver (build-time metadata).",
+            "example": "Microsoft.Data.SqlClient"
+          },
+          "serverVersion": {
+            "type": "string",
+            "nullable": true,
+            "description": "Het versienummer dat de databaseserver zelf teruggeeft; null als de database niet bereikbaar is.",
+            "example": "16.0.4265.3"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "properties": {
@@ -1280,6 +1331,16 @@
           },
           "GebruikZonsondergang": {
             "type": "boolean"
+          },
+          "PeriodeId": {
+            "type": "integer",
+            "nullable": true,
+            "description": "NULL = standaardregime, geldt buiten elke actieve periode (#581). Een waarde koppelt dit venster aan een VeldPeriode — geldt dan uitsluitend terwijl die periode actief is."
+          },
+          "PeriodeNaam": {
+            "type": "string",
+            "nullable": true,
+            "description": "Naam van de gekoppelde periode, of null bij het standaardregime."
           }
         }
       },
@@ -1303,6 +1364,11 @@
           "gebruikZonsondergang": {
             "type": "boolean",
             "default": false
+          },
+          "periodeId": {
+            "type": "integer",
+            "nullable": true,
+            "description": "NULL = standaardregime (#581)."
           }
         }
       },
@@ -1336,8 +1402,69 @@
           "gebruikZonsondergang": {
             "type": "boolean",
             "default": false
+          },
+          "periodeId": {
+            "type": "integer",
+            "nullable": true,
+            "description": "NULL = standaardregime (#581)."
           }
         }
+      },
+      "VeldPeriodeItem": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "integer"
+          },
+          "Naam": {
+            "type": "string",
+            "example": "Zomerstop"
+          },
+          "DatumVan": {
+            "type": "string",
+            "format": "date"
+          },
+          "DatumTot": {
+            "type": "string",
+            "format": "date"
+          },
+          "Actief": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VeldPeriodeCreateRequest": {
+        "type": "object",
+        "required": [
+          "naam",
+          "datumVan",
+          "datumTot"
+        ],
+        "properties": {
+          "naam": {
+            "type": "string",
+            "example": "Zomerstop"
+          },
+          "datumVan": {
+            "type": "string",
+            "format": "date"
+          },
+          "datumTot": {
+            "type": "string",
+            "format": "date"
+          },
+          "actief": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "VeldPeriodeUpdateRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/VeldPeriodeCreateRequest"
+          }
+        ]
       },
       "VeldItem": {
         "type": "object",
@@ -2653,29 +2780,25 @@
         ],
         "operationId": "getHealth",
         "summary": "Status en versie van de API",
-        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.",
+        "description": "Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.\n\n`tier` en `provider` komen uit build-time metadata van het artefact (niet uit een\nruntime-gok) en zijn daarom altijd gevuld, ook als `database` niet \"online\" is.\n`serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer\n`database` \"online\" is (#863).\n\n`database: \"unconfigured\"` (geen bruikbare connectiereeks) geeft 503, niet 200 (#859).\nElke andere waarde (ook de tijdelijke toestanden paused/timeout/unavailable) blijft 200\nmet `status: \"degraded\"`.\n",
         "security": [],
         "responses": {
           "200": {
-            "description": "API is beschikbaar",
+            "description": "API is beschikbaar (database online, of een tijdelijke, niet-configuratie-gerelateerde toestand)",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "example": "ok"
-                    },
-                    "version": {
-                      "type": "string",
-                      "example": "2.2.0.0"
-                    },
-                    "timestamp": {
-                      "type": "string",
-                      "format": "date-time"
-                    }
-                  }
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Geen bruikbare connectiereeks geconfigureerd (#859)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
                 }
               }
             }
@@ -3428,6 +3551,95 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/teams/herstel": {
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "herstelTeamlijst",
+        "summary": "Canonieke teamlijst opnieuw opbouwen",
+        "description": "Bouwt de canonieke teamlijst (`dbo.Teams`/`dbo.TeamAliassen`) opnieuw op uit de\ngesynchroniseerde teams. Draait twee stappen, altijd allebei: de volledige\ncanonicalisatie en de sleutelmigratie die opgeslagen sleutels in lijn brengt met de\nhuidige normalisatieregels.\n\nBedoeld als handmatige hersteloptie wanneer de synchronisatie uit staat of sinds de\nuitrol nog niet gelopen heeft — dan is de teamlijst leeg en werkt teamherkenning niet.\n\nIdempotent: herhalen verandert niets en laat de team-id's ongemoeid.\n\nBewust een POST en geen neveneffect van een leesverzoek: herstel schrijft, en dat hoort\nachter een expliciete handeling te zitten.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teamlijst opnieuw opgebouwd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "clubCode": {
+                      "type": "string"
+                    },
+                    "teamsVoor": {
+                      "type": "integer",
+                      "description": "Aantal actieve teams vóór het herstel"
+                    },
+                    "teamsNa": {
+                      "type": "integer",
+                      "description": "Aantal actieve teams na het herstel"
+                    },
+                    "aliassenNa": {
+                      "type": "integer",
+                      "description": "Aantal goedgekeurde schrijfwijzen na het herstel"
+                    },
+                    "sleutelsGemigreerd": {
+                      "type": "integer",
+                      "description": "Aantal teams waarvan de opgeslagen sleutel herberekend moest worden"
+                    },
+                    "dubbelenOpgeruimd": {
+                      "type": "integer",
+                      "description": "Aantal dubbele schrijfwijzen dat is samengevoegd"
+                    }
+                  },
+                  "example": {
+                    "clubCode": "[ClubCode]",
+                    "teamsVoor": 0,
+                    "teamsNa": 28,
+                    "aliassenNa": 56,
+                    "sleutelsGemigreerd": 0,
+                    "dubbelenOpgeruimd": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Geen gesynchroniseerde teams om uit af te leiden. Bewust geen 200 met nul teams:\n\"de synchronisatie heeft nog nooit gelopen\" moet te onderscheiden zijn van \"hersteld\".\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -4595,6 +4807,256 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/veldperiodes": {
+      "get": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "getVeldPeriodes",
+        "summary": "Periodes ophalen",
+        "description": "Geeft alle periodes (herbruikbare regimes zoals \"Zomerstop\" of \"Competitie\") van de club.\nEen veldbeschikbaarheid-venster kan naar een periode verwijzen via PeriodeId — geldt dan\nuitsluitend terwijl die periode actief is (#581).\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Periodes",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VeldPeriodeItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "createVeldPeriode",
+        "summary": "Periode aanmaken",
+        "description": "Overlapt de opgegeven range met een bestaande actieve periode van deze club, dan wordt de\naanvraag met 409 geweigerd — er mag nooit meer dan één periode tegelijk actief zijn.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldPeriodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Periode aangemaakt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "aangemaakt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Periode overlapt met een bestaande actieve periode van deze club"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/veldperiodes/{id}": {
+      "put": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "updateVeldPeriode",
+        "summary": "Periode bijwerken",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VeldPeriodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Periode bijgewerkt",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "bijgewerkt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Periode overlapt met een bestaande actieve periode van deze club"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "deleteVeldPeriode",
+        "summary": "Periode verwijderen",
+        "description": "Weigert de verwijdering met 409 als er nog VeldBeschikbaarheid-vensters naar deze periode\nverwijzen — koppel die eerst los of verwijder ze.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Periode verwijderd",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "verwijderd"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Periode is nog gekoppeld aan één of meer veldbeschikbaarheid-vensters"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

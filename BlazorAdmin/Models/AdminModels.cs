@@ -331,6 +331,21 @@ public class TeamAliasDto
     public DateTime? MtaModified { get; set; }
 }
 
+/// <summary>
+/// Antwoord van <c>POST /api/beheer/teams/herstel</c> (#946). De voor- en na-tellingen staan er
+/// bewust allebei in: "hersteld" zonder te laten zien wat er veranderde, is voor een beheerder niet
+/// te onderscheiden van "er gebeurde niets".
+/// </summary>
+public class TeamHerstelDto
+{
+    public string ClubCode { get; set; } = string.Empty;
+    public int TeamsVoor { get; set; }
+    public int TeamsNa { get; set; }
+    public int AliassenNa { get; set; }
+    public int SleutelsGemigreerd { get; set; }
+    public int DubbelenOpgeruimd { get; set; }
+}
+
 public class TeamAliassenResponse
 {
     public int Count { get; set; }
@@ -388,6 +403,19 @@ public class VeldBeschikbaarheidDto
     public string BeschikbaarVanaf     { get; set; } = "";
     public string BeschikbaarTot       { get; set; } = "";
     public bool   GebruikZonsondergang { get; set; }
+    // #581: NULL = standaardregime (geldt buiten elke actieve periode, zoals vóór deze feature).
+    public int?    PeriodeId           { get; set; }
+    public string? PeriodeNaam         { get; set; }
+}
+
+// VeldPeriode (#581: herbruikbaar regime, bijv. "Zomerstop" of "Competitie", met een geldigheidsrange)
+public class VeldPeriodeDto
+{
+    public int    Id       { get; set; }
+    public string Naam     { get; set; } = "";
+    public string DatumVan { get; set; } = "";
+    public string DatumTot { get; set; } = "";
+    public bool   Actief   { get; set; } = true;
 }
 
 // VeldTraining (#679: trainingsschema per veld per weekdag)

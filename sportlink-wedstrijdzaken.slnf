@@ -1,0 +1,17 @@
+{
+  "solution": {
+    "path": "sportlink-wedstrijdzaken.sln",
+    "projects": [
+      "BlazorAdmin\\BlazorAdmin.csproj",
+      "FunctionApp\\fa-dev-sportlink-01.csproj",
+      "FunctionApp.Tests\\FunctionApp.Tests.csproj",
+      "Database.Postgres\\Database.Postgres.csproj",
+      "Database.Postgres.Tests\\Database.Postgres.Tests.csproj",
+      "Planner.Shared\\Planner.Shared.csproj",
+      "Planner.Shared.Tests\\Planner.Shared.Tests.csproj",
+      "Database.Postgres.Cli\\Database.Postgres.Cli.csproj",
+      "FunctionApp.Postgres\\FunctionApp.Postgres.csproj",
+      "FunctionApp.Postgres.Tests\\FunctionApp.Postgres.Tests.csproj"
+    ]
+  }
+}

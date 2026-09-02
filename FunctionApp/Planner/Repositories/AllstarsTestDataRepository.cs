@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Data.SqlClient;
 
 namespace SportlinkFunction.Planner;
@@ -9,6 +10,7 @@ namespace SportlinkFunction.Planner;
 internal static class AllstarsTestDataRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
+    private const string AllstarsClubCode = "ALLSTARS";
 
     // ALLSTARS testmodus: velden met VeldNummer >= 100
     internal static async Task<List<VeldInfo>> GetAllstarsVeldenAsync()
@@ -32,7 +34,7 @@ internal static class AllstarsTestDataRepository
 
     internal static async Task<List<WedstrijdRaw>> GetAllMatchesForDatumAsync(DateOnly datum, string clubCode)
     {
-        bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
+        bool isAllstars = clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase);
         var results = new List<WedstrijdRaw>();
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
@@ -42,7 +44,7 @@ internal static class AllstarsTestDataRepository
             // [uitteam] en de tegenstander in [thuisteam] (zo levert Sportlink het aan). Deze tak
             // filtert bewust niet op accommodatie en ziet dus ook uitwedstrijden, waardoor de oude
             // aanname 'uitteam == tegenstander' een uitwedstrijd toonde als 'Team - Team'. (#635)
-            ? @"SELECT m.[wedstrijdcode],
+            ? $@"SELECT m.[wedstrijdcode],
                        COALESCE(NULLIF(m.[wedstrijd], ''),
                                 COALESCE(m.[teamnaam], '') + ' - ' +
                                 COALESCE(CASE WHEN m.[teamnaam] = m.[thuisteam]
@@ -54,12 +56,12 @@ internal static class AllstarsTestDataRepository
                        NULL AS leeftijdscategorie
                 FROM [his].[matches] m
                 WHERE CAST(m.[kaledatum] AS DATE) = @date
-                  AND m.[ClubCode] = 'ALLSTARS'
+                  AND m.[ClubCode] = '{AllstarsClubCode}'
                   AND (m.[status] IS NULL OR m.[status] <> 'Afgelast')
                 ORDER BY m.[teamnaam]"
             : $@"SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
-                       {LeeftijdNormalisatie.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
+                       {LeeftijdNormalisatieSql.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie
                 FROM [his].[matches] m
                 OUTER APPLY (
                     SELECT TOP 1 [leeftijdscategorie]
@@ -97,10 +99,10 @@ internal static class AllstarsTestDataRepository
     {
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             UPDATE [his].[matches]
             SET [aanvangstijd] = @tijd, [veld] = @veld, [mta_modified] = GETUTCDATE()
-            WHERE [wedstrijdcode] = @code AND [ClubCode] = 'ALLSTARS'
+            WHERE [wedstrijdcode] = @code AND [ClubCode] = '{AllstarsClubCode}'
         ", conn);
         cmd.Parameters.AddWithValue("@tijd", nieuweTijd);
         cmd.Parameters.AddWithValue("@veld", nieuweVeld);

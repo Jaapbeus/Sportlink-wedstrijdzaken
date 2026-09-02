@@ -377,6 +377,20 @@ BEGIN
 END
 GO
 
+-- AppSettings: AppSettingsAuditBewaarDagen kolom toevoegen (idempotent) — #781 (AVG art. 5 lid 1
+-- sub e). Configureerbare bewaartermijn (dagen) voor dbo.AppSettingsAudit, gelezen door
+-- dbo.sp_CleanupAppSettingsAudit verderop in dit script. Default 730 dagen (24 maanden) is een
+-- gedocumenteerd uitgangspunt — zie Database/dbo/System Stored Procedures/sp_CleanupAppSettingsAudit.sql
+-- voor de volledige toelichting en de reden dat dit geen "club-specifieke string" is.
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'AppSettingsAuditBewaarDagen'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [AppSettingsAuditBewaarDagen] INT NOT NULL DEFAULT 730
+END
+GO
+
 -- AppSettings: email-integratie velden vullen
 IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [PlannerAfzenderNaam] IS NULL)
 BEGIN
@@ -1526,6 +1540,46 @@ BEGIN
 END
 GO
 
+-- #911: twee demo-sjablonen voor AllStars FC.
+--
+-- Zonder deze rijen geeft GET /api/beheer/templates op een verse database een lege lijst, op BEIDE
+-- tiers: het endpoint leest uitsluitend de tabel en voegt geen standaardteksten uit code toe. De
+-- zelftest kon daardoor twee heel verschillende situaties niet uit elkaar houden, want ze zien er
+-- allebei uit als '[]': "de seed levert terecht niets" en "de sjabloonquery valt stil door een
+-- kolom-/casingfout". Zie issue #911.
+--
+-- De teksten zijn letterlijk de hardcoded standaarden uit BlazorAdmin/Pages/EmailTemplates.razor
+-- (OnTemplateKeyChange), zodat de demodata toont wat een beheerder bij 'Terugzetten naar standaard'
+-- ook krijgt — niet een derde, afwijkende variant.
+--
+-- AVG: geen persoonsgegevens; uitsluitend sjabloontekst met {{placeholders}}, alleen voor ClubCode
+-- 'ALLSTARS'. Idempotent per sleutel, zodat een club die er zelf een aanpast niet overschreven wordt.
+IF EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS')
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS' AND [TemplateKey] = 'bevestiging')
+        INSERT INTO [dbo].[EmailTemplateInstellingen] ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+        VALUES ('bevestiging',
+                'Bevestiging wedstrijd {{datum}} — {{team}} vs {{tegenstander}}',
+                -- CHAR(10) zonder CHAR(13): de standaardteksten in BlazorAdmin gebruiken '\n', en
+                -- de Postgres-tegenhanger (migratie 010) doet hetzelfde. CRLF hier zou de twee
+                -- tiers ongelijke bodyteksten geven — precies de asymmetrie die #911 wegneemt.
+                'Beste {{aanhef}},' + CHAR(10) + CHAR(10)
+                + 'Hierbij bevestigen wij de wedstrijd op {{datum}} om {{aanvangstijd}}.' + CHAR(10) + CHAR(10)
+                + 'Thuisteam: {{team}}' + CHAR(10) + 'Tegenstander: {{tegenstander}}' + CHAR(10) + CHAR(10)
+                + 'Tot dan!',
+                1, 'ALLSTARS');
+
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[EmailTemplateInstellingen] WHERE [ClubCode] = 'ALLSTARS' AND [TemplateKey] = 'buiten_scope')
+        INSERT INTO [dbo].[EmailTemplateInstellingen] ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+        VALUES ('buiten_scope',
+                'Uw bericht ontvangen',
+                'Beste {{voornaam}},' + CHAR(10) + CHAR(10)
+                + 'Bedankt voor uw bericht. Uw vraag valt buiten het bereik van de automatische verwerking. '
+                + 'Neem contact op met de club voor verdere hulp.',
+                1, 'ALLSTARS');
+END
+GO
+
 -- ============================================================
 -- #365: veld_subpositie — ALLSTARS testdata veldsplitsing
 -- Slaat het velddeel op (A, B, A1, A2, B1, B2) zodat de planner
@@ -2566,11 +2620,11 @@ GO
 -- ============================================================
 -- #707: AVG-retentieprocedures — CREATE OR ALTER, niet IF NOT EXISTS
 --
--- Deze vier procedures stonden eerder verderop in dit script als
+-- Deze procedures stonden eerder verderop in dit script als
 -- 'IF NOT EXISTS (... type = ''P'') BEGIN EXEC(N''CREATE PROCEDURE ...'') END'. De deploy-pipeline
 -- publiceert geen dacpac — db-migrate runt uitsluitend dit script — en de procedures bestaan al
 -- sinds een eerdere release. De guard was dus permanent onwaar en ELKE wijziging aan een van deze
--- vier procedures verdween geruisloos bij de deploy.
+-- procedures verdween geruisloos bij de deploy.
 --
 -- Dat was al ingetreden: de anonimisering van planner.EmailVerwerking.FoutMelding (#420) stond wel
 -- in Database/planner/System Stored Procedures/sp_CleanupEmailVerwerking.sql en in de CHANGELOG,
@@ -2585,8 +2639,9 @@ GO
 -- hoeven nog niet te bestaan (deferred name resolution), maar het schema wel.
 --
 -- Definities één-op-één gelijk aan de bronbestanden onder
--- Database/{planner,avg}/System Stored Procedures/ — wijzig een procedure dus altijd op BEIDE
--- plekken.
+-- Database/{planner,avg,dbo}/System Stored Procedures/ — wijzig een procedure dus altijd op BEIDE
+-- plekken. #781 voegde sp_CleanupAppSettingsAudit toe (dbo-schema, bestaat al bij CREATE TABLE
+-- hierboven, dus geen schema-afhankelijkheid zoals bij de andere vier).
 -- ============================================================
 
 -- Bron: Database/planner/System Stored Procedures/sp_CleanupClassificatieCorrectie.sql  (#424)
@@ -2739,6 +2794,45 @@ BEGIN
 END;
 GO
 
+-- Bron: Database/dbo/System Stored Procedures/sp_CleanupAppSettingsAudit.sql  (#781)
+--
+-- AVG art. 5 lid 1 sub e: dbo.AppSettingsAudit had geen bewaartermijn. [GewijzigdDoor] is een
+-- Entra-gebruikersnaam en [OudeWaarde]/[NieuweWaarde] kunnen e-mailadressen bevatten — beide
+-- persoonsgegevens. Bewaartermijn is UITGANGSPUNT (730 dagen), geen definitief beleid — zie de
+-- volledige toelichting in het bronbestand. Configureerbaar via
+-- dbo.AppSettings.AppSettingsAuditBewaarDagen. Bewust géén anonimiseer-fase zoals bij de vier
+-- procedures hierboven: het doel van dit log IS "wie heeft wat gewijzigd", dus een tussentijdse
+-- anonimisering zou de traceerbaarheid ondermijnen zonder het risico wezenlijk te verkleinen.
+CREATE OR ALTER PROCEDURE [dbo].[sp_CleanupAppSettingsAudit]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BewaarDagen INT;
+
+    -- Primaire club (niet de ALLSTARS-democlub) is leidend voor deployment-brede instellingen,
+    -- zelfde patroon als elders in dit script (#598/#740).
+    SELECT TOP 1 @BewaarDagen = [AppSettingsAuditBewaarDagen]
+    FROM [dbo].[AppSettings]
+    WHERE [ClubCode] <> 'ALLSTARS'
+    ORDER BY [ClubCode];
+
+    -- Vangnet: alleen de democlub aanwezig, of de kolom bevat NULL door een pre-migratie rij.
+    IF @BewaarDagen IS NULL
+        SELECT TOP 1 @BewaarDagen = [AppSettingsAuditBewaarDagen]
+        FROM [dbo].[AppSettings]
+        ORDER BY [ClubCode];
+
+    -- Kolom ontbreekt (nog niet gemigreerd) of bevat een onzinnige waarde: val terug op de
+    -- gedocumenteerde default in plaats van nooit op te ruimen.
+    IF @BewaarDagen IS NULL OR @BewaarDagen <= 0
+        SET @BewaarDagen = 730;
+
+    DELETE FROM [dbo].[AppSettingsAudit]
+    WHERE [Tijdstip] < DATEADD(DAY, -@BewaarDagen, GETUTCDATE());
+END;
+GO
+
 -- ============================================================
 -- #635: AllStars FC demodata (idempotent)
 --
@@ -2771,17 +2865,32 @@ BEGIN
                (102, 'Kunstgras 2', 'kunstgras',  1, 1, @DemoClub),
                (103, 'Gras',        'natuurgras', 0, 1, @DemoClub);
 
-    -- VeldBeschikbaarheid: DagVanWeek volgt .NET DayOfWeek (0 = zondag, 6 = zaterdag), dezelfde
-    -- conventie als de bestaande rijen van de primaire club.
+    -- VeldBeschikbaarheid: DagVanWeek volgt dezelfde conventie als de rest van de applicatie —
+    -- 1=maandag ... 7=zondag (zie PlannerAvailabilityRepository, dat .NET DayOfWeek.Sunday (0)
+    -- expliciet omzet naar 7) — niet de .NET-native DayOfWeek-waarden. Een eerdere versie van deze
+    -- seed gebruikte per abuis .NET DayOfWeek en zaaide daardoor maar 2 van de 7 dagen, met de
+    -- "zondag"-rij als DagVanWeek=0 (geen match in DagNaam() en onvindbaar voor de planner, die
+    -- altijd op 7 zoekt) — zie #812.
     -- 08:30-22:00 sluit aan op wat een club in de praktijk aanhoudt en is ruim genoeg voor de
     -- 14 thuiswedstrijden per speeldag; met een krapper venster loopt de planner over zijn
     -- beschikbaarheid heen en eindigt de demo met een onrealistisch schema.
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[VeldBeschikbaarheid] WHERE [ClubCode] = @DemoClub)
-        INSERT INTO [dbo].[VeldBeschikbaarheid]
-            ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
-        SELECT v.[VeldNummer], d.[Dag], '08:30', '22:00', 0, @DemoClub
-        FROM (VALUES (101), (102), (103)) AS v([VeldNummer])
-        CROSS JOIN (VALUES (6), (0)) AS d([Dag]);
+    --
+    -- Idempotente correctie (i.p.v. IF NOT EXISTS ... INSERT): een omgeving die al met de foutieve
+    -- #812-seed is gevuld, herstelt zichzelf zo alsnog bij de volgende deploy, in plaats van dat de
+    -- oude IF NOT EXISTS-guard verdere seeding blokkeert omdat er al (foutieve) rijen bestaan.
+    UPDATE [dbo].[VeldBeschikbaarheid]
+    SET [DagVanWeek] = 7
+    WHERE [ClubCode] = @DemoClub AND [DagVanWeek] = 0;
+
+    INSERT INTO [dbo].[VeldBeschikbaarheid]
+        ([VeldNummer], [DagVanWeek], [BeschikbaarVanaf], [BeschikbaarTot], [GebruikZonsondergang], [ClubCode])
+    SELECT v.[VeldNummer], d.[Dag], '08:30', '22:00', 0, @DemoClub
+    FROM (VALUES (101), (102), (103)) AS v([VeldNummer])
+    CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7)) AS d([Dag])
+    WHERE NOT EXISTS (
+        SELECT 1 FROM [dbo].[VeldBeschikbaarheid] vb
+        WHERE vb.[ClubCode] = @DemoClub AND vb.[VeldNummer] = v.[VeldNummer] AND vb.[DagVanWeek] = d.[Dag]
+    );
 
     -- Speeltijden: overgenomen van de primaire club in plaats van hardcoded. Dit zijn
     -- KNVB-standaarden, dus zo blijft de demo consistent met wat de club zelf heeft ingesteld
@@ -2793,122 +2902,28 @@ BEGIN
         FROM [dbo].[Speeltijden]
         WHERE [ClubCode] = (SELECT MIN([ClubCode]) FROM [dbo].[AppSettings] WHERE [ClubCode] <> @DemoClub);
 
-    -- #734: alles hierna vult his.teams en his.matches. Die tabellen worden niet door dit script
-    -- aangemaakt maar door de ETL bij de eerste Sportlink-sync. Op een verse clubinstallatie bestaan
-    -- ze nog niet en faalden deze inserts op "Invalid object name". De demodata voor velden,
-    -- veldbeschikbaarheid en speeltijden hierboven is al wél geplaatst; de wedstrijd- en teamdemo
-    -- volgt bij de volgende deploy, na de eerste sync.
+    -- TeamRegels (#862): één voorbeeldrij voor de democlub, zelfde vorm als de primaire-club-rij
+    -- hierboven maar dan voor "AllStars Heren 1" — de teamnaam die de his.teams-seed
+    -- (scripts/migrations/003-seed-allstars-demo-matches.sql) voor categorie "Heren" nummer 1
+    -- aanmaakt. Geen FK op TeamNaam, dus deze rij kan onafhankelijk van die (mogelijk nog niet
+    -- gelopen) seed bestaan.
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[TeamRegels] WHERE [ClubCode] = @DemoClub)
+        INSERT INTO [dbo].[TeamRegels] ([TeamNaam], [RegelType], [WaardeMinuten], [Prioriteit], [Actief], [Opmerking], [ClubCode])
+        VALUES ('AllStars Heren 1', 'BufferVoor', 60, 10, 1,
+                '1 uur voor de wedstrijd geen andere wedstrijden op hetzelfde veld', @DemoClub);
+
+    -- #856 (architectuurbesluit "Optie B", 2026-08-30): his.teams/his.matches worden niet door dit
+    -- script aangemaakt maar door de ETL bij de eerste Sportlink-sync. Op een verse clubinstallatie
+    -- bestaan ze dus nog niet op het moment dat dit script draait. De team-/teambegeleiding-/
+    -- wedstrijddemo staat daarom niet meer in dit script (dat gaf voorheen een stille PRINT+RETURN
+    -- zonder enige foutmelding, #856) maar in het losse, expliciet aan te roepen
+    -- scripts/migrations/003-seed-allstars-demo-matches.sql — uit te voeren NA de eerste sync.
+    -- RAISERROR (i.p.v. de vorige PRINT) is machineleesbaar: zichtbaar als "Msg 50000, Level 10" in
+    -- elke sqlcmd-uitvoer, dezelfde greppable vorm als andere gerapporteerde fouten in dit project.
     IF OBJECT_ID('his.teams') IS NULL OR OBJECT_ID('his.matches') IS NULL
-    BEGIN
-        PRINT 'AllStars-demodata: his.teams/his.matches bestaan nog niet (eerste Sportlink-sync nog niet gelopen) — team- en wedstrijddemo overgeslagen.';
-        RETURN;
-    END
-
-    -- his.teams: twee teams per categorie. Set-based gegenereerd zodat de lijst compact blijft;
-    -- de leeftijdscategorieen sluiten aan op de sleutels in dbo.Speeltijden.
-    IF NOT EXISTS (SELECT 1 FROM [his].[teams] WHERE [ClubCode] = @DemoClub)
-        INSERT INTO [his].[teams]
-            ([bk_teams], [teamnaam], [teamsoort], [geslacht], [leeftijdscategorie],
-             [competitiesoort], [mta_inserted], [mta_modified], [ClubCode])
-        SELECT
-            CONCAT('ALLSTARS-', c.[Cat], '-', n.[Nr]),
-            CONCAT('AllStars ', c.[Cat], ' ', n.[Nr]),
-            c.[Soort], c.[Geslacht], c.[Leeftijd], 'regulier',
-            GETUTCDATE(), GETUTCDATE(), @DemoClub
-        FROM (VALUES
-                ('JO8',   'JO8',  'Jeugd',    'Jongens'),
-                ('JO9',   'JO9',  'Jeugd',    'Jongens'),
-                ('JO10',  'JO10', 'Jeugd',    'Jongens'),
-                ('JO11',  'JO11', 'Jeugd',    'Jongens'),
-                ('JO12',  'JO12', 'Jeugd',    'Jongens'),
-                ('JO13',  'JO13', 'Jeugd',    'Jongens'),
-                ('JO14',  'JO14', 'Jeugd',    'Jongens'),
-                ('JO15',  'JO15', 'Jeugd',    'Jongens'),
-                ('JO17',  'JO17', 'Jeugd',    'Jongens'),
-                ('JO19',  'JO19', 'Jeugd',    'Jongens'),
-                ('MO13',  'MO13', 'Jeugd',    'Meisjes'),
-                ('MO15',  'MO15', 'Jeugd',    'Meisjes'),
-                ('Heren', '1-99', 'Senioren', 'Mannen'),
-                ('VR',    'VR',   'Senioren', 'Vrouwen')
-             ) AS c([Cat], [Leeftijd], [Soort], [Geslacht])
-        CROSS JOIN (VALUES (1), (2)) AS n([Nr]);
-
-    -- avg.Teambegeleiding: een fictieve trainer per team. Voornaam zonder achternaam, .test-domein.
-    -- Het rijnummer in het e-mailadres houdt de adressen uniek zonder achternamen te verzinnen.
-    IF NOT EXISTS (SELECT 1 FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @DemoClub)
-        INSERT INTO [avg].[Teambegeleiding] ([Team], [Naam], [Emailadres], [Teamrol], [ClubCode])
-        SELECT
-            t.[teamnaam],
-            v.[Naam],
-            CONCAT(LOWER(v.[Naam]), '.',
-                   ROW_NUMBER() OVER (ORDER BY t.[teamnaam]), '@allstars-fc.test'),
-            'Trainer',
-            @DemoClub
-        FROM [his].[teams] t
-        CROSS APPLY (
-            SELECT [Naam] FROM (VALUES
-                ('Frenkie'), ('Bas'), ('Stef'), ('Peer'), ('Bram'), ('Ralf'), ('Gijs'),
-                ('Jacco'), ('Sjaak'), ('Guus'), ('Ferry'), ('Nico'), ('Edwin'), ('Dirkje')
-            ) AS namen([Naam])
-            ORDER BY (SELECT NULL)
-            OFFSET (ABS(CHECKSUM(t.[bk_teams])) % 14) ROWS FETCH NEXT 1 ROWS ONLY
-        ) v
-        WHERE t.[ClubCode] = @DemoClub;
-
-    -- his.matches: acht speelronden vanaf de eerstvolgende zaterdag, afwisselend thuis en uit.
-    -- De zaterdagberekening is onafhankelijk van SET DATEFIRST: 1900-01-01 was een maandag, dus
-    -- DATEDIFF % 7 geeft 0 = maandag en 5 = zaterdag.
-    -- Wedstrijdcodes vanaf 9000001 overlappen niet met echte Sportlink-codes.
-    IF NOT EXISTS (SELECT 1 FROM [his].[matches] WHERE [ClubCode] = @DemoClub)
-    BEGIN
-        DECLARE @Vandaag DATE = CAST(GETDATE() AS DATE);
-        DECLARE @Zaterdag1 DATE =
-            DATEADD(DAY, (5 - (DATEDIFF(DAY, '19000101', @Vandaag) % 7) + 7) % 7, @Vandaag);
-
-        -- De planner filtert thuiswedstrijden op m.[accommodatie] LIKE de AppSettings-waarde van de
-        -- club (PlannerMatchRepository). Zonder die waarde vindt de Dagplanner niets.
-        DECLARE @DemoAccommodatie NVARCHAR(200) =
-            (SELECT [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = @DemoClub);
-
-        INSERT INTO [his].[matches]
-            ([bk_matches], [wedstrijdcode], [datum], [kaledatum], [wedstrijd], [aanvangstijd],
-             [thuisteam], [uitteam], [status], [teamnaam], [competitiesoort],
-             [accommodatie], [mta_inserted], [mta_modified], [ClubCode])
-        SELECT
-            CONCAT('ALLSTARS-', 9000000 + x.[Code]),
-            9000000 + x.[Code],
-            x.[Datum],
-            -- kaledatum is de kolom waarop de planner filtert; datum alleen is niet genoeg.
-            x.[Datum],
-            CASE WHEN x.[Thuis] = 1
-                 THEN CONCAT(x.[Team], ' - Tegenstander ', x.[Ronde])
-                 ELSE CONCAT('Tegenstander ', x.[Ronde], ' - ', x.[Team]) END,
-            x.[Tijd],
-            CASE WHEN x.[Thuis] = 1 THEN x.[Team] ELSE CONCAT('Tegenstander ', x.[Ronde]) END,
-            CASE WHEN x.[Thuis] = 1 THEN CONCAT('Tegenstander ', x.[Ronde]) ELSE x.[Team] END,
-            'Te spelen',
-            x.[Team],
-            'regulier',
-            -- Uitwedstrijden staan op het complex van de tegenstander, dus bewust NIET de eigen
-            -- accommodatie: anders zou de planner ze als thuiswedstrijd meenemen in de bezetting.
-            CASE WHEN x.[Thuis] = 1 THEN @DemoAccommodatie ELSE 'Sportpark Tegenstander' END,
-            GETUTCDATE(), GETUTCDATE(), @DemoClub
-        FROM (
-            SELECT
-                t.[teamnaam] AS [Team],
-                r.[Ronde],
-                ROW_NUMBER() OVER (ORDER BY t.[teamnaam], r.[Ronde]) AS [Code],
-                DATEADD(WEEK, r.[Ronde] - 1, @Zaterdag1) AS [Datum],
-                -- Thuis/uit wisselt per ronde EN per team, zodat op elke speeldag ongeveer de helft
-                -- thuis speelt. Alleen op ronde alterneren zou alle teams op dezelfde dag thuis
-                -- zetten - onrealistisch en niet in te plannen op drie velden.
-                (r.[Ronde] + ROW_NUMBER() OVER (PARTITION BY r.[Ronde] ORDER BY t.[teamnaam])) % 2 AS [Thuis],
-                CASE WHEN t.[teamsoort] = 'Senioren' THEN '14:30' ELSE '09:00' END AS [Tijd]
-            FROM [his].[teams] t
-            CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7), (8)) AS r([Ronde])
-            WHERE t.[ClubCode] = @DemoClub
-        ) AS x;
-    END
+        RAISERROR('AllStars-demodata (#856): his.teams/his.matches bestaan nog niet (eerste Sportlink-sync nog niet gelopen) — voer scripts/migrations/003-seed-allstars-demo-matches.sql uit zodra die sync gelopen heeft.', 10, 1) WITH NOWAIT;
+    ELSE
+        RAISERROR('AllStars-demodata (#856): his.teams/his.matches bestaan al — voer scripts/migrations/003-seed-allstars-demo-matches.sql uit om team-/wedstrijddemo te (her)seeden.', 10, 1) WITH NOWAIT;
 END
 GO
 
@@ -3185,4 +3200,42 @@ IF EXISTS (
       AND max_length < 2000 -- NVARCHAR: 2 bytes per teken, dus 2000 = 1000 tekens
 )
     ALTER TABLE [planner].[EmailVerwerking] ALTER COLUMN [VerstuurdNaar] NVARCHAR(1000) NULL;
+GO
+
+-- ============================================================
+-- #581: VeldPeriode — veldbeschikbaarheid per periode (zomerstop vs. competitie).
+--
+-- Een periode is een herbruikbaar regime met een vaste geldigheidsrange (bijv. "Zomerstop"
+-- 2026-07-01 t/m 2026-08-16). VeldBeschikbaarheid.PeriodeId koppelt een venster aan zo'n periode;
+-- NULL blijft het standaardregime. Achterwaartse compatibiliteit is de harde eis uit #581: een
+-- club zonder periodes heeft alleen NULL-rijen en het gedrag is exact hetzelfde als vóór deze
+-- feature. FunctionApp\Planner\Repositories\PlannerAvailabilityRepository.GetAvailableFieldsAsync
+-- bepaalt per datum welke periode (indien aanwezig) actief is en gebruikt dán uitsluitend de
+-- rijen met dat PeriodeId, anders uitsluitend de NULL-rijen — nooit een samenvoeging van beide,
+-- want zomerstop en competitie zijn in dit issue expliciet tegengestelde regimes, geen aanvulling
+-- op elkaar. Overlappende periodes voor dezelfde club worden bij het aanmaken/bijwerken al op
+-- applicatieniveau geweigerd (AdminVeldPeriodeRepository) zodat er nooit meer dan één periode
+-- tegelijk actief kan zijn.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.VeldPeriode'))
+BEGIN
+    CREATE TABLE [dbo].[VeldPeriode] (
+        [Id]       INT          IDENTITY(1,1) NOT NULL,
+        [Naam]     NVARCHAR(50) NOT NULL,
+        [DatumVan] DATE         NOT NULL,
+        [DatumTot] DATE         NOT NULL,
+        [Actief]   BIT          NOT NULL CONSTRAINT [DF_VeldPeriode_Actief] DEFAULT 1,
+        [ClubCode] NVARCHAR(20) NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
+        CONSTRAINT [PK_VeldPeriode] PRIMARY KEY CLUSTERED ([Id] ASC),
+        CONSTRAINT [CK_VeldPeriode_Datums] CHECK ([DatumTot] >= [DatumVan])
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.VeldBeschikbaarheid') AND name = 'PeriodeId')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid] ADD [PeriodeId] INT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_VeldBeschikbaarheid_VeldPeriode')
+    ALTER TABLE [dbo].[VeldBeschikbaarheid]
+        ADD CONSTRAINT [FK_VeldBeschikbaarheid_VeldPeriode] FOREIGN KEY ([PeriodeId]) REFERENCES [dbo].[VeldPeriode]([Id]);
 GO

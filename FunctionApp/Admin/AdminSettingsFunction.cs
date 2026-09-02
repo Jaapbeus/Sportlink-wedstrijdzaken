@@ -105,26 +105,8 @@ public static class AdminSettingsFunction
             }
             reader.Close();
 
-            // UseRealtimeApi: dynamisch laden — kolom bestaat pas na DB-migratie
-            using var rtaCmd = new SqlCommand(@"
-                DECLARE @v BIT = 1;
-                DECLARE @sql NVARCHAR(300) = CASE
-                    WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
-                    THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings] WHERE [ClubCode] = @cc'
-                    ELSE N'SELECT @v = CAST(1 AS BIT)'
-                END;
-                EXEC sp_executesql @sql, N'@v BIT OUTPUT, @cc NVARCHAR(20)', @v = @v OUTPUT, @cc = @ClubCode;
-                SELECT @v;", connection);
-            rtaCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-            var rtaScalar = await rtaCmd.ExecuteScalarAsync();
-            result["UseRealtimeApi"] = rtaScalar is bool rtaBool ? rtaBool : true;
-
-            // Voeg CRON-preview toe als FetchSchedule aanwezig is
-            if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
-            {
-                result["fetchScheduleLeesbaar"] = VertaalCronNaarLeesbaar(schedStr);
-                result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
-            }
+            result["UseRealtimeApi"] = await LeesUseRealtimeApiAsync(connection, clubCode);
+            VerrijkMetCronPreview(result);
 
             return new OkObjectResult(result);
         }
@@ -132,6 +114,33 @@ public static class AdminSettingsFunction
         {
             log.LogError(ex, "Fout bij ophalen AppSettings");
             return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
+        }
+    }
+
+    // UseRealtimeApi: dynamisch laden — kolom bestaat pas na DB-migratie
+    private static async Task<bool> LeesUseRealtimeApiAsync(SqlConnection connection, string clubCode)
+    {
+        using var rtaCmd = new SqlCommand(@"
+            DECLARE @v BIT = 1;
+            DECLARE @sql NVARCHAR(300) = CASE
+                WHEN COL_LENGTH('[dbo].[AppSettings]', 'UseRealtimeApi') IS NOT NULL
+                THEN N'SELECT TOP 1 @v = [UseRealtimeApi] FROM [dbo].[AppSettings] WHERE [ClubCode] = @cc'
+                ELSE N'SELECT @v = CAST(1 AS BIT)'
+            END;
+            EXEC sp_executesql @sql, N'@v BIT OUTPUT, @cc NVARCHAR(20)', @v = @v OUTPUT, @cc = @ClubCode;
+            SELECT @v;", connection);
+        rtaCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+        var rtaScalar = await rtaCmd.ExecuteScalarAsync();
+        return rtaScalar is bool rtaBool ? rtaBool : true;
+    }
+
+    // Voeg CRON-preview toe als FetchSchedule aanwezig is
+    private static void VerrijkMetCronPreview(Dictionary<string, object?> result)
+    {
+        if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
+        {
+            result["fetchScheduleLeesbaar"] = VertaalCronNaarLeesbaar(schedStr);
+            result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
         }
     }
 
@@ -161,42 +170,15 @@ public static class AdminSettingsFunction
 
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
-            var changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-            if (updateRequest.Velden != null)
-            {
-                foreach (var (key, value) in updateRequest.Velden)
-                {
-                    if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
-                    {
-                        log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", key);
-                        continue;
-                    }
-                    if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
-                    {
-                        log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", key);
-                        continue;
-                    }
-                    changes[key] = value;
-                }
-            }
+            var changes = FilterToegestaneVelden(updateRequest, log);
 
             if (changes.Count == 0)
                 return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
 
-            // Valideer CRON-expressie vóór opslaan
-            if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
-            {
-                if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
-                    return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
-            }
+            var fout = ValideerWijzigingen(changes);
+            if (fout != null) return fout;
 
-            // Valideer KnvbStandaardRegio vóór opslaan — moet, indien aanwezig en niet leeg, een geldige regio zijn
-            if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
-                !string.IsNullOrWhiteSpace(nieuweRegio) &&
-                !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
-            {
-                return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
-            }
+            changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
 
             await SystemUtilities.WaitForDatabaseAsync(log);
 
@@ -206,30 +188,7 @@ public static class AdminSettingsFunction
 
             try
             {
-                var currentValues = await ReadCurrentValuesAsync(connection, (SqlTransaction)transaction, changes.Keys, clubCode);
-
-                foreach (var (veld, nieuweWaarde) in changes)
-                {
-                    var updateCmd = new SqlCommand(
-                        $"UPDATE [dbo].[AppSettings] SET [{veld}] = @Waarde WHERE [ClubCode] = @ClubCode",
-                        connection, (SqlTransaction)transaction);
-                    updateCmd.Parameters.AddWithValue("@Waarde", (object?)nieuweWaarde ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                    await updateCmd.ExecuteNonQueryAsync();
-
-                    currentValues.TryGetValue(veld, out var oud);
-                    var auditCmd = new SqlCommand(@"
-                        INSERT INTO [dbo].[AppSettingsAudit]
-                            ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
-                        VALUES (@GewijzigdDoor, @Veld, @OudeWaarde, @NieuweWaarde, @ClubCode)",
-                        connection, (SqlTransaction)transaction);
-                    auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
-                    auditCmd.Parameters.AddWithValue("@Veld", veld);
-                    auditCmd.Parameters.AddWithValue("@OudeWaarde", (object?)oud ?? DBNull.Value);
-                    auditCmd.Parameters.AddWithValue("@NieuweWaarde", (object?)nieuweWaarde ?? DBNull.Value);
-                    auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                    await auditCmd.ExecuteNonQueryAsync();
-                }
+                await PersisteerWijzigingenAsync(connection, (SqlTransaction)transaction, changes, clubCode, gewijzigdDoor);
 
                 await transaction.CommitAsync();
             }
@@ -242,23 +201,7 @@ public static class AdminSettingsFunction
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
             var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
-            string? herstartOpmerking = null;
-            bool herstartAutomatisch = false;
-
-            if (fetchScheduleChanged && nieuweSchedule != null)
-            {
-                var restartResult = await TriggerFunctionAppRestartAsync(nieuweSchedule, log);
-                if (restartResult != null)
-                {
-                    herstartAutomatisch = true;
-                    herstartOpmerking = restartResult;
-                }
-                else
-                {
-                    herstartOpmerking = "FetchSchedule gewijzigd — herstart van de Function App vereist om effect te laten gelden. " +
-                                        "Configureer AzureSubscriptionId, AzureResourceGroupName en AzureFunctionAppName voor automatische herstart.";
-                }
-            }
+            var (herstartOpmerking, herstartAutomatisch) = await BouwHerstartInfoAsync(changes, nieuweSchedule, log);
 
             return new OkObjectResult(new
             {
@@ -277,6 +220,104 @@ public static class AdminSettingsFunction
             log.LogError(ex, "Fout bij opslaan AppSettings");
             return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
         }
+    }
+
+    // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
+    private static Dictionary<string, string?> FilterToegestaneVelden(UpdateSettingsRequest updateRequest, ILogger log)
+    {
+        var changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        if (updateRequest.Velden != null)
+        {
+            foreach (var (key, value) in updateRequest.Velden)
+            {
+                if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
+                {
+                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", key);
+                    continue;
+                }
+                if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
+                {
+                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", key);
+                    continue;
+                }
+                changes[key] = value;
+            }
+        }
+        return changes;
+    }
+
+    private static IActionResult? ValideerWijzigingen(Dictionary<string, string?> changes)
+    {
+        // Valideer CRON-expressie vóór opslaan
+        if (changes.TryGetValue("FetchSchedule", out var nieuweSchedule) && nieuweSchedule != null)
+        {
+            if (!CronExpression.TryParse(nieuweSchedule, CronFormat.IncludeSeconds, out _))
+                return new BadRequestObjectResult(new { error = $"Ongeldige CRON-expressie: '{nieuweSchedule}'. Verwacht 6 velden (seconden minuten uren dag maand weekdag)." });
+        }
+
+        // Valideer KnvbStandaardRegio vóór opslaan — moet, indien aanwezig en niet leeg, een geldige regio zijn
+        if (changes.TryGetValue("KnvbStandaardRegio", out var nieuweRegio) &&
+            !string.IsNullOrWhiteSpace(nieuweRegio) &&
+            !GeldigeKnvbRegios.Contains(nieuweRegio, StringComparer.Ordinal))
+        {
+            return new BadRequestObjectResult(new { error = $"Ongeldige KnvbStandaardRegio: '{nieuweRegio}'. Toegestaan: {string.Join(", ", GeldigeKnvbRegios)}." });
+        }
+
+        return null;
+    }
+
+    private static async Task PersisteerWijzigingenAsync(
+        SqlConnection connection, SqlTransaction transaction, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor)
+    {
+        var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+
+        foreach (var (veld, nieuweWaarde) in changes)
+        {
+            var updateCmd = new SqlCommand(
+                $"UPDATE [dbo].[AppSettings] SET [{veld}] = @Waarde WHERE [ClubCode] = @ClubCode",
+                connection, transaction);
+            updateCmd.Parameters.AddWithValue("@Waarde", (object?)nieuweWaarde ?? DBNull.Value);
+            updateCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+            await updateCmd.ExecuteNonQueryAsync();
+
+            currentValues.TryGetValue(veld, out var oud);
+            var auditCmd = new SqlCommand(@"
+                INSERT INTO [dbo].[AppSettingsAudit]
+                    ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
+                VALUES (@GewijzigdDoor, @Veld, @OudeWaarde, @NieuweWaarde, @ClubCode)",
+                connection, transaction);
+            auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
+            auditCmd.Parameters.AddWithValue("@Veld", veld);
+            auditCmd.Parameters.AddWithValue("@OudeWaarde", (object?)oud ?? DBNull.Value);
+            auditCmd.Parameters.AddWithValue("@NieuweWaarde", (object?)nieuweWaarde ?? DBNull.Value);
+            auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+            await auditCmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task<(string? herstartOpmerking, bool herstartAutomatisch)> BouwHerstartInfoAsync(
+        Dictionary<string, string?> changes, string? nieuweSchedule, ILogger log)
+    {
+        var fetchScheduleChanged = changes.ContainsKey("FetchSchedule");
+        string? herstartOpmerking = null;
+        bool herstartAutomatisch = false;
+
+        if (fetchScheduleChanged && nieuweSchedule != null)
+        {
+            var restartResult = await TriggerFunctionAppRestartAsync(nieuweSchedule, log);
+            if (restartResult != null)
+            {
+                herstartAutomatisch = true;
+                herstartOpmerking = restartResult;
+            }
+            else
+            {
+                herstartOpmerking = "FetchSchedule gewijzigd — herstart van de Function App vereist om effect te laten gelden. " +
+                                    "Configureer AzureSubscriptionId, AzureResourceGroupName en AzureFunctionAppName voor automatische herstart.";
+            }
+        }
+
+        return (herstartOpmerking, herstartAutomatisch);
     }
 
     /// <summary>

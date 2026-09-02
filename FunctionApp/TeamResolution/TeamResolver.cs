@@ -1,3 +1,5 @@
+using Planner.Shared;
+
 namespace SportlinkFunction.TeamResolution;
 
 /// <summary>
@@ -60,23 +62,29 @@ public sealed class TeamResolver(
                 return Opgelost(kandidaten[0], UniekeKandidaatConfidence, [], ResolutionBron.ExacteMatch);
 
             default:
-                if (disambiguator is null)
-                    return Onbeslist(kandidaten);
-
-                var gekozenId = await disambiguator.KiesAsync(ruweTekst, kandidaten);
-                var gekozen = gekozenId is null ? null : kandidaten.FirstOrDefault(k => k.TeamId == gekozenId);
-
-                if (gekozen is null) return Onbeslist(kandidaten);
-
-                // Leg de keuze vast als 'pending' alias. Zonder dit wordt voor élke terugkerende
-                // afwijkende schrijfwijze opnieuw een AI-call betaald, blijft de keuze
-                // niet-deterministisch, en ziet de coördinator op de aliassenpagina nooit iets staan.
-                // Pas na goedkeuring wordt de alias vertrouwd, dus dit kan zich niet zelfversterken.
-                if (aliasLearning is not null)
-                    await aliasLearning.LegVastAsync(request.ClubCode, ruweTekst, gekozen.TeamId, "AiDisambiguatie");
-
-                return Opgelost(gekozen, DisambiguatieConfidence, kandidaten, ResolutionBron.AiDisambiguatie);
+                return await ResolveMetDisambiguatieAsync(request, ruweTekst, kandidaten);
         }
+    }
+
+    private async Task<TeamResolutionResult> ResolveMetDisambiguatieAsync(
+        TeamResolutionRequest request, string ruweTekst, IReadOnlyList<TeamCandidate> kandidaten)
+    {
+        if (disambiguator is null)
+            return Onbeslist(kandidaten);
+
+        var gekozenId = await disambiguator.KiesAsync(ruweTekst, kandidaten);
+        var gekozen = gekozenId is null ? null : kandidaten.FirstOrDefault(k => k.TeamId == gekozenId);
+
+        if (gekozen is null) return Onbeslist(kandidaten);
+
+        // Leg de keuze vast als 'pending' alias. Zonder dit wordt voor élke terugkerende
+        // afwijkende schrijfwijze opnieuw een AI-call betaald, blijft de keuze
+        // niet-deterministisch, en ziet de coördinator op de aliassenpagina nooit iets staan.
+        // Pas na goedkeuring wordt de alias vertrouwd, dus dit kan zich niet zelfversterken.
+        if (aliasLearning is not null)
+            await aliasLearning.LegVastAsync(request.ClubCode, ruweTekst, gekozen.TeamId, "AiDisambiguatie");
+
+        return Opgelost(gekozen, DisambiguatieConfidence, kandidaten, ResolutionBron.AiDisambiguatie);
     }
 
     private static TeamResolutionResult Onbeslist(IReadOnlyList<TeamCandidate> kandidaten)

@@ -18,6 +18,882 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.1.0.0] — 2026-09-02
+
+### Added
+- **Testdata-beheerpagina werkt nu ook op de nieuwe databasevariant (issue 952).** De zes
+  ontbrekende routes onder Test data → Wedstrijden (wedstrijden ophalen/opslaan/verplaatsen/
+  verwijderen, teams ophalen) gaven daar voorheen `404`. De pagina zelf is ongewijzigd.
+- **De FEEDBACK-knop werkt nu ook op de nieuwe databasevariant (issue 966).** Beide stappen
+  (Controleren en Versturen) gaven daar voorheen `404`. De widget zelf is ongewijzigd.
+- **De Email-tester "Dry-run classificeren"-knop werkt nu ook op de nieuwe databasevariant
+  (issue 889).** Gaf daar voorheen `404`. Drie deelscenario's zijn op deze variant nog niet
+  ondersteund en vallen terug op hetzelfde eerlijke gedrag als wanneer de bijbehorende instelling
+  ontbreekt: het "tegenstander wijst alsnog ons team aan"-pad, de contactgegevens bij "wie is de
+  trainer van team X", en het KNVB-bijlage-voorstel bij een verzet zonder concrete datum.
+
+### Changed
+- **Interne onderhoudbaarheidsslag over de hele C#-codebase (issue 953).** Geen zichtbare
+  wijziging voor beheerders — puur intern: lange methodes opgesplitst in kleinere, herkenbare
+  stappen (o.a. `AdminSettingsFunction.Put`, `AdminTeambegeleidingFunction.Doorsturen`,
+  `PlannerHtmlGenerator.GenereerHtml`, `AutoPlanService.AutoPlanAsync`), herhaalde
+  SQL-verbindings- en rij-mapping-logica binnen de Admin-repositories samengevoegd in gedeelde
+  helpers, magic strings/getallen benoemd als constanten, en enkele stille `catch`-blokken
+  loggen nu een waarschuwing in plaats van de fout te slikken. Uitgevoerd per module met een
+  onafhankelijke tweede review vóór toepassing; volledige build en testsuite (576 tests) blijven
+  groen.
+
+### Fixed
+- **Speeltijden bewerken/verwijderen op de nieuwe databasevariant faalde stilzwijgend bij een
+  afwijkende hoofdlettering (issue 956).** Een leeftijdscategorie als "jo9" i.p.v. de opgeslagen
+  "JO9" gaf daar een onterechte "niet gevonden" — werkte wel op de bestaande variant.
+- **Veldbeschikbaarheid accepteerde een eindtijd vóór de begintijd zonder foutmelding (issue 957).**
+  Een verwisselde begin- en eindtijd (bijv. per ongeluk 19:00-10:00 i.p.v. 10:00-19:00) werd
+  stilzwijgend opgeslagen. Geeft nu een duidelijke foutmelding op beide databasevarianten.
+- **AutoPlan kon één team twee wedstrijden op hetzelfde tijdstip geven, op twee verschillende
+  velden (issue 939).** De planningsmotor hield bezetting alleen per veld bij, niet per team. Een
+  team met twee wedstrijden op één dag kon daardoor allebei op hetzelfde tijdstip krijgen zolang er
+  maar twee vrije velden waren. Zowel de automatische planning als het conflictoverzicht bij
+  handmatig slepen in de dagplanning bewaken dit nu.
+- **De gezondheidscheck meldde "alles goed" ook als de database helemaal niet bereikbaar was
+  (issue 859).** Een ontbrekende of onbruikbare connectiereeks gaf voorheen gewoon `200 OK` terug
+  — nu levert dat een duidelijke foutstatus op. Ook een mislukte instellingenlaadt (bijv. de
+  clubinstellingen konden niet uit de database gelezen worden) is voortaan zichtbaar in
+  `/api/health` via het veld `settingsLoaded`, in plaats van alleen in het achtergrondlog. Verder
+  is de wachttijd bij het opstarten voortaan kort buiten productie (was standaard tot 5 minuten),
+  zodat een verkeerde lokale configuratie meteen zichtbaar is in plaats van als een hang.
+- **Drie controles in de zelftest konden nooit slagen of stonden onterecht uit (issue 949).** Twee
+  schermen — de dagplanning en de begeleidingspagina — werden overgeslagen wegens een probleem dat
+  alleen op de andere databasevariant speelt; op deze variant tonen ze de demogegevens gewoon. Een
+  derde controle eiste een e-mailadres op een pagina die er bewust nooit een teruggeeft, en kon dus
+  per definitie niet slagen. Een controle die niet kan slagen is even schadelijk als een die
+  ontbreekt: hij maakt de bewaking onbruikbaar in plaats van bewakend. Bij dezelfde ronde bleek de
+  testdatapagina op de nieuwe variant niet te werken; die staat nu zichtbaar als bekend openstaand
+  punt in plaats van stilzwijgend groen.
+
+### Added
+- **Beheerders kunnen de teamlijst nu zelf opnieuw laten opbouwen (issue 946).** De teamlijst waar
+  teamherkenning en alle teamkeuzelijsten op leunen wordt normaal bijgewerkt aan het eind van elke
+  nachtelijke synchronisatie. Staat die uit, of heeft die sinds een update nog niet gelopen, dan
+  bleven keuzelijsten leeg en werden teams niet herkend — en was er niets te doen behalve wachten.
+  Op de pagina Teamaliassen staat daar nu een knop voor, die laat zien hoeveel teams er vóór en na
+  actief zijn. Herhalen mag: goedgekeurde en afgewezen schrijfwijzen blijven staan. Is er nog nooit
+  gesynchroniseerd, dan meldt de knop dat eerlijk in plaats van te doen alsof er iets hersteld is.
+  De knop herstelt ook teams die na een wijziging in de naamherkenning uit de lijst zouden vallen —
+  iets wat voorheen alleen gebeurde als er toevallig e-mail verwerkt werd.
+
+### Fixed
+- **De beschikbaarheidscontrole meldde "beschikbaar" zonder gecontroleerd te hebben of het team die
+  dag al speelt (issue 945).** Herkende de applicatie de opgegeven teamnaam niet — bijvoorbeeld
+  omdat de teamlijst nog niet was gevuld, of omdat de naam in een schrijfwijze stond die nog geen
+  goedgekeurd alternatief heeft — dan werd de controle op een dubbele wedstrijd stilzwijgend
+  overgeslagen. Het antwoord was dan niet te onderscheiden van "dit team heeft die dag inderdaad
+  niets", zonder foutmelding, waarschuwing of logregel, waardoor een team dubbel ingepland kon
+  worden. De controle meldt nu expliciet dat zij niet is uitgevoerd; die melding komt ook in het
+  antwoordbericht terecht, zodat de coördinator het zelf kan nakijken. Gold op beide
+  databasevarianten.
+- **Op een verse installatie van de nieuwe databasevariant ontbrak de plannerweergave volledig,
+  waardoor de halve veldplanner niet werkte (issue 861 vervolg).** De weergave waar de planner al
+  zijn wedstrijden uit leest werd door geen enkele installatiestap aangemaakt — alleen de
+  testsuites maakten hem zelf aan, waardoor het probleem in de tests onzichtbaar bleef. Op een
+  nieuw ingerichte database gaven veldbezetting, beschikbaarheidscontrole, doordeweekse
+  beschikbaarheid, herplancontrole én automatisch inplannen daardoor alle vijf een databasefout.
+  De weergave kon niet in een gewone installatiestap staan omdat hij leest uit tabellen die pas
+  bij de eerste gegevenssynchronisatie ontstaan; hij wordt nu bij elke synchronisatie aangemaakt
+  of bijgewerkt, direct nadat die tabellen er zijn. Een blijvende test dropt de weergave eerst
+  expliciet en controleert daarna dat de synchronisatie hem terugzet.
+
+### Security
+- **De maskering van afzenderadressen in het e-maillog kon stilzwijgend wegvallen (#858).** De
+  maskering zocht de kolom op exacte schrijfwijze (`Afzender`). Heette die kolom net anders — wat
+  onder de schrijfwijze-afspraak van een andere databasevariant het geval is — dan sloeg de
+  maskering over en ging het **volledige e-mailadres** naar de browser: geen foutmelding, geen
+  logregel, niets dat opviel. Dezelfde stille uitval trad op zodra iemand de kolomnaam in de query
+  aanpaste. De maskering loopt nu via één gedeelde functie die de kolom hoofdletterongevoelig zoekt
+  én een fout gooit als er niets te maskeren viel — een zichtbare storing is beter dan een stille
+  privacyschending. De zelftest controleert dit voortaan echt: de demodata bevat nu twee
+  e-maillogregels, zodat "alles gemaskeerd" niet meer verward kan worden met "er stond niets in".
+
+
+### Added
+- **Het laatste "nog niet beschikbaar"-endpoint op de Postgres-tier is weg: een vraag over
+  teambegeleiding doorsturen werkt nu ook daar (issue 888 vervolg).** Daarmee kent die
+  databasevariant geen enkel endpoint meer dat een 501 teruggeeft. Staat de e-mailkoppeling niet
+  ingericht, dan meldt het endpoint dat eerlijk (503) in plaats van te doen alsof er verstuurd is.
+  De HTML-sanitisatie en de ontvangersvalidatie zijn daarbij naar de gedeelde laag verhuisd in
+  plaats van gekopieerd — veiligheidsgevoelige code hoort één implementatie en één testsuite te
+  hebben.
+
+### Fixed
+- **Gevonden tijdens bovenstaand werk: bij het opvragen van de begeleiders van een team stond de
+  trainer niet bovenaan als de rol in de import met een kleine letter geschreven was**
+  ("trainer" in plaats van "Trainer"). De sortering vergeleek hoofdlettergevoelig, waardoor zo'n rij
+  onderaan belandde en een willekeurige andere begeleider bovenaan kwam. Dit raakte alleen de
+  Postgres-variant. Vastgelegd met een test die faalt zodra de vergelijking weer gevoelig wordt.
+
+### Added
+- **De automatische dagplanning (`AutoPlan` en `AutoPlanToepassen`) werkt nu ook op de
+  Postgres-tier (issue 888 vervolg).** Daarmee zijn alle elf planner-endpoints op die tier vertaald
+  — er is geen enkele planner-functie meer die "nog niet beschikbaar" meldt. De planningsregels
+  zelf (de rangorde regels → voorkeuren → standaardtijden per leeftijd) en de HTML-weergave van de
+  dagplanning zijn daarbij verplaatst naar de gedeelde laag in plaats van gekopieerd: één plek waar
+  ze staan, in plaats van twee die uit elkaar kunnen gaan lopen. Zeven nieuwe tests draaien tegen
+  een echte database; het onderscheidend vermogen is bevestigd door de code opzettelijk te
+  breken en te controleren dat precies de juiste tests rood werden.
+
+### Fixed
+- **Gevonden tijdens bovenstaand werk: de automatische planner kan één team twee wedstrijden op
+  dezelfde tijd geven** (op twee verschillende velden). De planner houdt wel bij welk veld bezet is,
+  maar niet dat een team al elders speelt. Het handmatige pad controleert dit wél. Dit gedrag is
+  niet nieuw en geldt voor beide databasevarianten; het werd zichtbaar doordat de nieuwe tests er
+  toevallig op stuitten. Vastgelegd in een test en apart gemeld — zie issue #939 — zodat het niet
+  ongemerkt blijft staan.
+
+### Added
+- **Nog vier planner-endpoints werken echt op de Postgres-tier (issue 888 vervolg):
+  `CheckAvailability`, `DoordeweeksBeschikbaar`, `HerplanCheck` en `PopulateSunset`.** Daarmee zijn
+  van de elf planner-endpoints er negen vertaald; alleen `AutoPlan` en `AutoPlanToepassen` geven nog
+  een expliciete 501 (die wachten op een `AutoPlanService`/`PlannerHtmlGenerator`-poort, niet meer op
+  de planningsmotor zelf — die staat sinds een eerdere stap al in `Planner.Shared`). Nieuw op deze
+  tier: `AvailabilityService`, `RescheduleService`, `PostgresSunsetCalculator`, plus
+  zonsondergang-opslag/-uitlezing en een team-conflictcontrole ("dit team speelt die dag al").
+  **Bewuste beperking, expliciet genoemd:** deze vier endpoints gebruiken uitsluitend de
+  databasebezetting, niet het real-time Sportlink-API-pad van de SQL Server-tier — dat is precies
+  het bestaande, ondersteunde `useRealtimeApi = 0`-gedrag; de live-API-integratie zelf is een
+  aparte, forse eenheid werk. Zeven permanente integratietests tegen een echte Postgres-container;
+  onderscheidend vermogen bevestigd (met de team-conflictcontrole tijdelijk uitgeschakeld wordt
+  precies de bijbehorende test rood, de andere 48 blijven groen).
+- **`BevestigWedstrijd`, `ZoekWedstrijd` en `HerplanBevestig` werken nu echt op de Postgres-tier
+  (issue 888 vervolg) — drie van de resterende zes 501-stubs zijn vervangen door de echte
+  implementatie.** `planner.geplandewedstrijden` miste vier kolommen t.o.v. de SQL Server-tier
+  (`wedstrijdduurminuten`, `aangevraagddoor`, `opmerking`, `mta_inserted` — al aangekondigd als
+  bewust uitgesteld door een eerdere migratie), plus een UNIQUE-slotconstraint en een FK naar
+  `velden`; alle drie zijn nu aanwezig. Twee nieuwe tabellen: `public.zonsondergang` en
+  `planner.herplanverzoeken` (beide stonden als gemotiveerde uitzondering in de tabeldekking-guard
+  — die uitzondering is nu vervallen voor `herplanverzoeken`, `zonsondergang` blijft er nog in
+  staan totdat `PopulateSunset` ook is vertaald). Een kale `ADD CONSTRAINT` bleek niet idempotent
+  (Postgres kent geen `IF NOT EXISTS` daarvoor, in tegenstelling tot kolommen/indexen) — opgelost
+  met een `DO $$ ... $$`-guard, empirisch bevestigd door de migratie twee keer achter elkaar tegen
+  een verse container te draaien. Zeven permanente integratietests tegen een echte
+  Postgres-container, inclusief een opzettelijk kapotgemaakte `ClubCode`-parameter die precies één
+  test rood laat gaan.
+- **Veldbeschikbaarheid en teamregels vertaald naar de Postgres-tier (issue 888 vervolg).**
+  `PlannerAvailabilityRepository` (beschikbaarheid periode-aware, #581; wedstrijdbezetting +
+  trainingsbezetting) en `TeamRulesRepository` (buffers, voorkeursvelden) — de twee repositories
+  die de vertaalde plannerlaag nog volledig miste. `PostgresClubScope` kreeg `AddClubParam` voor
+  tabellen met `clubcode NOT NULL`. De risicovolste stap: `planner.alle_wedstrijden_op_veld_ruw`
+  levert voor gesynchroniseerde wedstrijden bewust de rúwe Sportlink-veldstring terug (#819), dus
+  deze repository resolveert die zelf naar een veldnummer — exact dezelfde matching als de SQL
+  Server-tier, en met dezelfde `WHERE veldnummer IS NOT NULL`-uitsluiting voor een niet-
+  resolveerbare string. Een duplicaat `Speeltijd`-type op deze tier (identieke vorm als de nu
+  gedeelde `Planner.Shared.Speeltijd`) is opgeruimd in plaats van ernaast te blijven bestaan.
+  Empirisch geverifieerd tegen een wegwerp-Postgres-container, inclusief een opzettelijk
+  onresolveerbare veldstring (valt stil weg, geen crash en geen "veld 0"). Zes permanente
+  integratietests; onderscheidend vermogen apart bevestigd — met het resolutiefilter tijdelijk
+  gesloopt wordt precies de bijbehorende test rood.
+
+### Changed
+- **De planningsmotor (FieldScheduler) en de domeinmodellen waarop hij werkt zijn verhuisd naar
+  `Planner.Shared` (issue 888 vervolg) — zuiver intern, geen enkel gedragsverschil.** De motor was
+  al aantoonbaar SQL-vrij en delegeerde de veldnaam-matching al aan `Planner.Shared.VeldResolver`
+  (#819); alleen de motor zelf stond nog op de SQL Server-tier, getypeerd tegen modellen die de
+  Postgres-tier dan had moeten dupliceren. Zelfde precedent als `TeamNaamNormalisatie` (#889):
+  logica zonder tier-afhankelijkheid hoort op precies één plek te staan. De HTTP-wire-contracten
+  (`CheckAvailabilityRequest`, `AutoPlanResponse`, ...) blijven bewust per tier eigen bestanden.
+  Zestig-plus aanroepen in `AvailabilityService`, `RescheduleService`, `AutoPlanService` en
+  `SportlinkApiClient` bleven ongewijzigd werken met alleen een `using`-toevoeging. Geverifieerd
+  door de volledige bestaande testsuite vóór en ná de verhuizing te draaien in twee losse
+  worktrees: exact 429 geslaagd / 5 geskipt / 0 gefaald, beide keren identiek.
+
+### Added
+- **De negen niet-vertaalde planner-endpoints op de Postgres-tier geven nu een expliciete 501 in
+  plaats van een stille 404 (issue 888 vervolg).** `CheckAvailability`, `DoordeweeksBeschikbaar`,
+  `BevestigWedstrijd`, `ZoekWedstrijd`, `HerplanCheck`, `HerplanBevestig`, `PopulateSunset`,
+  `AutoPlan` en `AutoPlanToepassen` bestonden nog niet op deze tier — een aanroep verdween
+  onzichtbaar in een generieke 404 in plaats van te melden wát er precies ontbreekt. Elke melding
+  noemt de daadwerkelijke, geverifieerde afhankelijkheid: twee ontbrekende repositories
+  (`PlannerAvailabilityRepository`, `TeamRulesRepository`), twee ontbrekende schematabellen
+  (`dbo.Zonsondergang`, `planner.HerplanVerzoeken` — al bekende uitzonderingen in de
+  tabeldekking-guard), ontbrekende `PlannerMatchRepository`-methoden, of de nog niet vastgelegde
+  architectuurkeuze voor de FieldScheduler-planningsmotor. Twaalf blijvende tests (geen database
+  nodig) leggen zowel de statuscode als de exacte inhoud van elke melding vast; statisch
+  geverifieerd dat naam, HTTP-werkwoord en route van alle elf planner-endpoints (`Health` loopt
+  via een apart bestand) tussen de twee tiers exact overeenkomen.
+- **De demo-club AllStars FC heeft nu twee voorbeeld-e-mailsjablonen (#911).** Op een verse
+  installatie was het scherm Beheer → Berichtsjablonen leeg, op beide databasevarianten: het scherm
+  toont alleen wat in de database staat, en geen van beide installatiescripts vulde die tabel. Wie
+  de demo-omgeving bekeek, kon daardoor niet zien hoe een sjabloon eruitziet — en de automatische
+  controle kon "er staat terecht niets" niet onderscheiden van "het ophalen van sjablonen is
+  stukgelopen". Beide scripts zetten nu dezelfde twee voorbeeldteksten klaar, letterlijk gelijk aan
+  wat de knop "Terugzetten naar standaard" oplevert. Woord voor woord identiek op beide varianten
+  geverifieerd, en een controle in de bouwstraat bewaakt dat ze blijven staan.
+- **Aangepaste e-mailteksten werken nu ook op de Postgres-tier (#889).** De sjablonenlaag was daar
+  als laatste onderdeel nog niet vertaald. Een beheerder die via Beheer → Berichtsjablonen een tekst
+  aanpaste, zag die wijziging op die tier tot vijf minuten later pas doorkomen; nu is ze meteen
+  actief. Elke club krijgt gegarandeerd haar eigen sjabloon, ook wanneer productieclub en democlub
+  hetzelfde sjabloonsleutelwoord gebruiken.
+- **De Postgres-tier heeft nu een eigen, automatisch meedraaiende testsuite (#890).** Tot nu toe werd
+  elke wijziging op die tier geverifieerd met een wegwerp-testopstelling die daarna werd
+  weggegooid: dat bewees dat het op dát moment werkte, maar bewaakte daarna niets meer. Er is nu
+  een blijvend testproject dat bij elke pull request meedraait tegen een verse database, en dat de
+  volledige synchronisatie end-to-end natrekt — inclusief de belangrijkste eigenschap: een tweede
+  synchronisatie met dezelfde brongegevens verandert niets en maakt geen dubbele regels aan. Ook de
+  e-mailregistratie en de teamlijstopbouw worden zo bewaakt. Vier opzettelijke faalscenario's
+  bevestigden dat de suite daadwerkelijk rood wordt wanneer een van die eigenschappen wegvalt.
+- **De Postgres-tier bouwt na een synchronisatie zelf zijn canonieke teamlijst op (issue 889).** Tot nu
+  toe vulde een sync op die tier wel de ruwe Sportlink-historie, maar bleef de ontdubbelde
+  teamlijst leeg — waardoor de teamdropdown in de Admin GUI en alle teamherkenning per e-mail daar
+  niets te werken hadden. Sportlink levert elk team in twee schrijfwijzen (`JO10-1` lokaal en
+  `[club] O10-1` bondsnotatie); die worden nu tot één team samengevoegd, met beide schrijfwijzen
+  als goedgekeurde alias. Een door een coördinator goedgekeurde of handmatig toegevoegde alias
+  wordt daarbij nooit stilzwijgend door de sync overschreven. Empirisch geverifieerd tegen een
+  wegwerp-Postgres-container: 21 asserties, plus drie opzettelijke faalscenario's die aantonen dat
+  de vertaalkeuzes daadwerkelijk het verschil maken.
+- **De cross-tree CI-guard vergelijkt nu ook stored procedures en views, het derde en laatste
+  stuk van de bomen-vergelijking (issue 864, deel 4).** Kan geen bestandsvergelijking zijn zoals
+  tabellen/kolommen: de Postgres-tier heeft geen procedure-/viewbestanden, die logica leeft in C#.
+  `scripts/ci/check-postgres-procedure-view-coverage.sh` vergelijkt daarom tegen een expliciete
+  mapping naar C#-symbolen en bewaakt dat die mapping niet verweest. Een echte bug tijdens het
+  bouwen gevonden: de eerste, ongeankerde regex zag een hernoeming die de oude naam als
+  voorvoegsel behield (`EnsureSeasonsAsync` → `EnsureSeasonsAsyncV2`) niet als verweesd — pas met
+  woordgrenzen faalde de test zoals bedoeld. Alle drie faalscenario's apart bevestigd.
+- **De cross-tree CI-guard kijkt nu ook naar kolommen, niet alleen naar tabellen (issue 864, deel
+  3).** Een tabel die op de Postgres-tier wél bestaat maar kolommen mist, bleef tot nu toe
+  onopgemerkt tot iemand toevallig functionaliteit vertaalde die de kolom nodig had — dat gebeurde
+  binnen deze epic al twee keer. `scripts/ci/check-postgres-column-coverage.sh` vergelijkt 19
+  tabellen en 191 kolommen tussen de twee bomen; de zes dynamisch aangemaakte ETL-tabellen worden
+  gedekt door een nieuwe test die de échte schemagenerator-output vergelijkt met dezelfde SQL
+  Server-schemabestanden. Geen database nodig, draait ook op een fork. Vier opzettelijke
+  faalscenario's bevestigden dat beide controles daadwerkelijk rood kunnen worden. Eerste
+  bevinding: `his.MatchDetails` heet op de SQL Server-tier `bk_WedstrijdCode` en op de
+  Postgres-tier `bk_matchdetails` — een bewuste, nu vastgelegde afwijking.
+- **Nieuwe CI-guard vergelijkt de SQL Server- en Postgres-databaseboom op tabelniveau (issue 864,
+  deel 2 — de grootste deelopgave die deel 1 openliet).** `scripts/ci/check-postgres-table-coverage.sh`
+  faalt zichtbaar zodra een tabel aan de SQL Server-boom wordt toegevoegd zonder Postgres-
+  tegenhanger (via migratie, de dynamische ETL-laag, of een expliciete, beredeneerde
+  uitzondering) — voorheen kon dat gat onopgemerkt blijven tot iemand de Postgres-tier
+  daadwerkelijk gebruikte. Geen database nodig, draait ook op een fork. Empirisch getest met twee
+  opzettelijke faalscenario's (een uitzondering verwijderd; een nieuwe, fictieve tabel
+  toegevoegd) — beide gaven de verwachte foutmelding.
+- **Het teamrooster werkt nu ook op de Postgres-tier** (issue 888): `GET /api/planner/team-schedule`
+  toont per zaterdag tot het einde van het seizoen of een team vrij is, met de wedstrijdenlijst
+  erbij, en met `?format=html` dezelfde leesbare pagina als op de bestaande tier. Bij de vertaling
+  zijn drie verschillen tussen de twee databasemotoren gedicht die elk een team stilzwijgend uit het
+  rooster hadden laten vallen: een wedstrijd waarvan de teamnaam met andere hoofdletters binnenkomt,
+  een teamnaam met een spatie aan het eind, en een afgelaste wedstrijd die de bron in kleine letters
+  aanlevert — die laatste zou een vrije zaterdag ten onrechte als bezet tonen. Alle drie empirisch
+  aangetoond op een wegwerpdatabase, samen met 36 asserties tegen de echte API.
+- **Zelftest-poorten G5 (juiste engine) en G6 (API-inhoudsasserties) draaien nu tegen een echte
+  functiehost** in `scripts/dev/Test-PostgresTier.ps1` (issue 909). De zelftest start
+  `FunctionApp.Postgres` zelf op, wacht op `/api/health`, en toetst daarna dertien
+  API-endpoints op inhoud in plaats van op statuscode. G5 bevat drie bewijzen die los van
+  elkaar staan: de tier-herkomst uit de applicatie, de serverversie die de applicatie meldt
+  vergeleken met wat de databasecontainer zélf zegt, en — het enige bewijs dat niet van de
+  applicatie komt — de verbinding die de databaseserver in `pg_stat_activity` ziet staan.
+  Bovendien controleert G5 dat géén enkele functie in foutstatus staat: de HTTP-endpoints
+  blijven namelijk gewoon werken terwijl een andere functie stil onbruikbaar is.
+  De poort verstoort een draaiende ontwikkelsessie niet (eigen poort 7098), heeft geen
+  `local.settings.json` nodig (alles via omgevingsvariabelen) en ruimt de functiehost, de
+  opslagemulator en de wegwerpdatabase ook na een afgebroken run op.
+- **Postgres-tier synchronisatiepad: seizoensgrenzen vertaald + een echt gat gedicht (vervolg op
+  issue 890).** `public.season` (nieuwe migraties 008/009) vervangt de vaste `30`-weken-fallback:
+  zowel de standaardsync als de reset-modus (`?reset=true&season=`, gaf voorheen een expliciete
+  501) gebruiken nu de echte seizoenstabel via het nieuwe `PostgresSeasonHelper`.
+  `MarkeerVervallenGeplandeWedstrijdenAsync` (teamalias-gebaseerde matching, #700/#820-precedent
+  voor de `UPPER(...)`-vergelijkingen) is vertaald naar `FunctionApp.Postgres/Planner/Repositories/
+  PlannerMatchRepository.cs` en wordt — net als het SQL Server-origineel — ongeguard aangeroepen
+  ná elke sync; dit was voorheen een echt, gedocumenteerd gat (geen gelijkwaardig gedrag), in
+  tegenstelling tot de teamcanonicalisatie die bewust nog ontbreekt. Beide empirisch geverifieerd
+  tegen een wegwerp-Postgres-16-container, inclusief een niet-matchende controlerij die bewust
+  ongemoeid moest blijven. **Bewust niet in deze ronde:** `dbo.DateTable`/`sp_CreateDateTable` (nul
+  consumenten binnen de applicatie, zelfde reden als issue 861's al vervallen `pub.*`-views) en het
+  jaarlijks automatisch doorrollen van het seizoen (een Postgres-migratie draait één keer, in
+  tegenstelling tot de SQL Server-tier se `Script.PostDeployment1.sql` die dit bij elke deploy
+  herhaalt) — beide gedocumenteerd in `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
+- **Zelftest-poorten G2 (schema), G3 (idempotentie) en G4 (demodata/rijtellingen) zijn nu echte
+  metingen in `scripts/dev/Test-PostgresTier.ps1` (#860-acceptatiecriterium, vervolg op #851).**
+  G2/G3 herhalen lokaal de CI-job `fresh-db-postgres` (migraties tweemaal draaien,
+  `schema_migrations`-telling toetsen). G4 seedt de AllStars-demodata en toetst de rijtellingen
+  altijd tegen het contract in `selftest-expectations.psd1` — nooit tegen een levende
+  SQL-Server-basismeting, sinds die tijdens het bouwen valse mismatches gaf op rijen die het
+  contract zelf al als `Min` (niet `Exact`) classificeert vanwege legitieme opeenhoping door
+  handmatig testen. Baseline-runs (SQL Server) leggen nu vast in plaats van te oordelen.
+  **Bijkomende bugfix:** `Wait-ForPostgres` kon "gereed" melden vlak vóórdat de server
+  daadwerkelijk queries accepteerde (`pg_isready` slaagde, de eerstvolgende échte query gaf
+  `FATAL: the database system is starting up`) — nu opgelost met een `SELECT 1`-naverificatie via
+  peer-auth. **Bewust niet in deze ronde:** G5/G6 vereisen een daadwerkelijk draaiende
+  functiehost (Azurite-afhankelijkheid, geen gecommit `local.settings.json`, eigen
+  teardown-verantwoordelijkheid) — een wezenlijk grotere stap, uitgewerkt in het nieuwe issue #909.
+- **Schema-drift-guard en veldresolutie-drifttest uitgebreid naar de Postgres-tier, deel 1 (issue
+  864).** Drie concrete stukken geleverd: (1) `VeldResolutieDriftTests` bewaakt nu ook
+  `Database.Postgres/PostgresPlannerViewGenerator.cs` als vierde plek — als tripwire, niet omdat
+  daar vandaag een kopie van de zes-tekens-truncatiebug staat (#819 hield veldresolutie bewust
+  C#-side); (2) nieuwe CI-stap `scripts/ci/check-postgres-identifier-casing.sh` bewaakt de
+  lowercase-snake_case-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md §3) binnen de
+  migratiebestanden zelf — empirisch bewezen dat hij zowel een PascalCase-kolomnaam als een
+  gequote identifier detecteert; (3) de Postgres-CI-job krijgt de tegenhanger van de SQL
+  Server-assertie "speeltijden moeten voor de primaire club bestaan, niet alleen voor de
+  democlub" (#740), die ontbrak. **Bewust niet in deze ronde:** de SQL-Server-specifieke
+  DB-project-vs-PostDeployment-guard is niet naar Postgres uitgebreid — die twee bomen zijn
+  structureel verschillend (Postgres' migraties zíjn de uitrol, geen apart ontwerptijd-schema dat
+  kan driften; de bestaande `fresh-db-postgres`-idempotentiecontrole dekt het analoge risico al).
+  De grootste deelopgave — een controle die de twee bomen onderling vergelijkt op ontbrekende
+  tabellen/kolommen — blijft open scope op issue 864.
+- **CI-controle die bewijst dat de tier-tabel (`scripts/ci/database-tiers.json`) op de shell-kant
+  (`resolve-database-tier.sh`) en de PowerShell-kant (`Get-DatabaseTierProject`) exact dezelfde
+  uitkomst geeft (#865).** Laatste openstaande acceptatiecriterium van #816/#865: zonder deze test
+  konden de twee lezers van de tabel stilzwijgend uit elkaar drijven. Nieuw script
+  `scripts/ci/Test-TierMappingConsistency.ps1` toetst elke tier uit de tabel plus een bewust
+  onbekende naam; draait als stap in `Build FunctionApp + BlazorAdmin` (geen database, geen
+  secrets, ook bruikbaar op een fork). Detecteert en compenseert automatisch twee WSL-
+  eigenaardigheden die tijdens het bouwen aan het licht kwamen (relevant voor lokale Windows-
+  runs waar `bash` naar de WSL-launcher wijst i.p.v. Git Bash): WSL forwardt Windows-
+  omgevingsvariabelen alleen via `WSLENV`, en vertaalt een los Windows-pad niet automatisch naar
+  `/mnt/c/...`. Empirisch bewezen dat de test daadwerkelijk drift detecteert: een tijdelijk
+  geïnjecteerd verschil tussen beide kanten liet de test falen; na herstel weer groen.
+- **Synchronisatie- en stagingpad vertaald naar de Postgres-tier: `GET /api/postgres/sync-matches`,
+  de timertrigger, en `AdminSyncFunction.Trigger` (issue 890).** `PostgresSyncPipeline` orkestreert
+  fetch → `stg.*` → `his.*` met `PostgresMergeOrchestrator` (#818) voor het schema-/mergewerk; de
+  drie SQL-Server-specifieke `IF EXISTS ... ELSE IF ...`-staging-guards (programma-dedup,
+  uitslagen-upsert-of-alleen-invoegen-als-niet-toekomstig) zijn vertaald naar expliciete
+  `SELECT`/`UPDATE`/`INSERT`-stappen in C#, met de datumvergelijking als ordinale stringvergelijking
+  i.p.v. `CONVERT(..., 127)`. `Team`/`Match`/`MatchDetails`-modellen gedupliceerd in
+  `FunctionApp.Postgres/Sync/SportlinkModels.cs` (aparte implementatieboom, geen referentie naar
+  `FunctionApp`). Empirisch geverifieerd tegen een wegwerp-Postgres-container met de bestaande,
+  tier-onafhankelijke `SportlinkFixtureServer` (#867): teams/programma/uitslagen/matchdetails komen
+  correct in `his.*` terecht, de uitslagen-verrijking overschrijft de programma-rij zoals verwacht,
+  en een tweede identieke run blijft idempotent (geen dubbele rijen). **Bewust niet in deze ronde,
+  gedocumenteerd als tijdelijk gat:** seizoensgrenzen (`dbo.Season` is niet geport — de standaard-
+  synchronisatie gebruikt dezelfde vaste fallback die de SQL Server-tier al gebruikt zodra
+  `dbo.Season` onbereikbaar is; de reset-modus met een specifiek seizoen geeft een expliciete 501),
+  teamcanonicalisatie (al best-effort in het origineel) en
+  `MarkeerVervallenGeplandeWedstrijdenAsync` (in het origineel juist ongeguard — hier ontbreekt dus
+  écht gedrag, geen equivalent).
+- **E-mailpersistentie en teamresolutie vertaald naar de Postgres-tier (issue 889).**
+  `SqlEmailPersistenceRepository` (audit-trail/dedup, 15 methoden), `LearningMomentRepository`
+  en `TeamCandidateRepository`/`TeamAliasLearningService`. `SCOPE_IDENTITY()` → `RETURNING id`,
+  unique-violation-detectie → `PostgresErrorCodes.UniqueViolation`, de alias-upsert → `INSERT …
+  ON CONFLICT DO UPDATE`. **Architectuurrefactor:** `TeamNaamNormalisatie.cs` verhuisd naar
+  `Planner.Shared/` (in tegenstelling tot #888's `LeeftijdNormalisatie`, die als tijdelijke schuld
+  gedupliceerd bleef) — CLAUDE.md's harde regel "normalisatie hoort op precies één plek" liet geen
+  tweede kopie toe. Negen SQL Server-tier-bestanden aangepast, volledige testsuite (431 tests) en de
+  verhuisde normalisatietests (59 tests, nu in `Planner.Shared.Tests`) slagen ongewijzigd. Empirisch
+  geverifieerd tegen een wegwerp-Postgres-container: dedup-exceptie, reply-detectie,
+  classificatiecorrectie, en het expliciete acceptatiecriterium van dit issue — een geleerde
+  teamalias telt pas mee ná handmatige validatie. Bewust niet in deze ronde:
+  `TeamCanonicalisatieService` (AI-disambiguatie-orkestratie) en de e-mail-AI-pijplijn
+  (`BerichtAiService`/`EmailProcessorFunction`/`EmailGraphService`, >2700 regels zonder directe
+  SQL-toegang, al buiten dit issue's eigen scope).
+- **Eerste planner-endpoint vertaald naar de Postgres-tier: `GET /api/planner/veldbezetting`
+  (issue 888).** Bewijst de twee valkuilen die het issue zelf noemt: `OUTER APPLY` → 
+  `LEFT JOIN LATERAL … ON TRUE` (tweede plek na #819's plannerview) en
+  `LeeftijdNormalisatie.SqlExpr` → `PostgresLeeftijdNormalisatie.SqlExpr` (`+`→`||`,
+  `LIKE`→`ILIKE` waar SQL Server's collatie al hoofdletterongevoelig was). Empirisch
+  geverifieerd tegen een wegwerp-Postgres-container: zowel het ALLSTARS-democlubpad
+  (teamnaam-extractie) als een "echte" primaire-clubpad (`his.teams`-LATERAL-JOIN +
+  leeftijdsnormalisatie) leveren de verwachte leeftijdscategorie en wedstrijdduur op. De overige elf
+  planner-endpoints (auto-plan/FieldScheduler-engine, herplannen, teamrooster, beschikbaarheid) zijn
+  aanzienlijk groter (samen >1600 regels bedrijfslogica) en blijven open scope op issue 888.
+- **Alle zestien beheer-endpointparen vertaald naar de Postgres-tier (#887), plus de gedeelde
+  admin-infrastructuur die ze allemaal gebruiken.** `FunctionApp.Postgres/Admin/EasyAuthHelper.cs`
+  en `AdminEndpoint.cs` (bewuste kopieën van hun SQL Server-tegenhangers — geen gedeelde
+  abstractie), `PostgresAppSettings` en `PostgresSystemUtilities.WaitForDatabaseAsync`. Vertaald:
+  Clubs, Speeltijden, VeldPeriode, VeldBeschikbaarheid (incl. de Velden-CRUD die daarin meelift),
+  VeldTraining, VoorkeurTijden/TeamRegels, UitgeslotenEmail, TeamAliassen, Templates, Teams,
+  Settings (incl. geocode), Theme, Sync (status), EmailLog, Leermomenten, Teambegeleiding
+  (GetTeams/GetBegeleiders/Import) — elk empirisch geverifieerd met een volledige CRUD-cyclus tegen
+  een wegwerp-Postgres-container, niet alleen `dotnet build`. Vier nieuwe migraties
+  (`003_admin_tables.sql` t/m `005_appsettings_theme_assets.sql`) leveren de ontbrekende tabellen en
+  kolommen (Teams, TeamAliassen, TeamRegels, TeamVoorkeurTijden, UitgeslotenEmailAdressen,
+  VeldPeriode, VeldBeschikbaarheid, VeldTraining, EmailTemplateInstellingen, AppSettingsAudit,
+  `planner.EmailVerwerking`, `planner.ClassificatieCorrectie`, `appsettings.faviconurl/logourl`).
+  Twee genuine Postgres-vs-SQL-Server-verschillen empirisch aangetroffen en gefixt: impliciete
+  tekst→numeriek-conversie bestaat niet in Postgres (dynamische AppSettings-UPDATE kreeg een
+  expliciete `::type`-cast per veld), en Npgsql weigert een `DateTime` met `Kind=Unspecified` voor
+  een `TIMESTAMPTZ`-parameter (EmailLog-datumfilters kregen `DateTime.SpecifyKind(…, Utc)`).
+  `AdminSyncFunction.Trigger` en `AdminTeambegeleidingFunction.Doorsturen` zijn bewuste 501-stubs
+  die op resp. issue 890 (ETL-pipeline) en issue 889 (e-mailverzend-/teamresolutielaag) wachten —
+  geen gemiste scope, een expliciet gedocumenteerde afhankelijkheid op nog niet gestart werk.
+  Tijdens de eerste vertaling ook ontdekt: `public.speeltijden` miste drie kolommen ten opzichte van
+  de SQL Server-tier — apart getrackt en gefixt, zie issue 893.
+- **AllStars-demodata voor de Postgres-tier, deel 1 van issue 862: hetzelfde rijcontract als de
+  SQL Server-tier.** `Database.Postgres/migrations/006_allstars_demodata.sql` (velden=3,
+  veldbeschikbaarheid=21, speeltijden gekopieerd van de primaire club, teamregels=1 — automatisch
+  toegepast, deze tabellen bestaan altijd) en
+  `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql` (teams=28, teambegeleiding=28,
+  wedstrijden=224 — los, expliciet aan te roepen script, want `his.teams`/`his.matches` bestaan pas
+  na de eerste Postgres-Sportlink-sync, dezelfde les als issue 856). Een teamregels-demorij voor de
+  democlub bestond nog niet op geen van beide tiers — toegevoegd aan beide. Empirisch geverifieerd
+  tegen een wegwerp-Postgres-container (inclusief de his.teams/his.matches-simulatie via de
+  letterlijke PostgresSchemaGenerator-output): exact dezelfde zeven aantallen als het SQL
+  Server-contract, idempotent, en beide faalpaden (democlub ontbreekt; sync nog niet gelopen) geven
+  een duidelijke foutmelding. Deel 2 (circa elf tabellen zonder demodata op beide tiers, plus een
+  dekkingscontrole per GUI-route) is bewust niet in deze ronde meegenomen — blijft open op issue 862.
+- **Vier AVG-opschoonprocedures vertaald naar de Postgres-tier (issue 861).**
+  `Database.Postgres/PostgresCleanupProcedures.cs` (C#-methoden, zelfde architectuurkeuze als #818's
+  `PostgresMergeOrchestrator`) plus twee nieuwe timer-triggered functies in
+  `FunctionApp.Postgres/Email/` (`CleanupEmailVerwerkingFunction`, `CleanupTeambegeleidingFunction`)
+  met dezelfde CRON-schema's als de SQL Server-tier. Dekt `planner.emailverwerking`,
+  `planner.classificatiecorrectie`, `avg.teambegeleiding` en `avg.importlog` — elk met de
+  twee-fase-anonimiseer-dan-verwijder-logica van het origineel, inclusief de FK-opruimvolgorde
+  (#424) die een jonge correctierij verwijdert zodra hij naar een oude, te verwijderen e-mailrij
+  verwijst. Empirisch geverifieerd tegen een wegwerp-Postgres-container met vijf voorbereide rijen
+  op uiteenlopende leeftijden (5/45/100/120/10 dagen): exact de verwachte anonimisering/verwijdering
+  per venster, inclusief het lastige FK-scenario (jonge correctierij, oude ouderrij). Bewust niet in
+  deze ronde: `sp_CreateDateTable`/`sp_UpdateSeasonTable` (wachten op issue 890, geen Postgres-
+  migratie voor `dbo.Season`/`dbo.DateTable` nog) en de drie `pub.*`-rapportageviews (expliciet
+  laten vervallen — nul consumenten in de broncode, conform de optie die het issue zelf aanbiedt).
+  Losstaande, ongefixte bevinding gemeld voor #888: `PostgresPlannerViewGenerator.CreateView` (#819)
+  wordt vandaag alleen door tests uitgevoerd, niet door een migratie of applicatiecode.
+- **`FunctionApp.Postgres` — de applicatie-datalaag voor de Postgres-tier bestaat nu daadwerkelijk**,
+  na epic #815's grootste ontbrekende stuk (#860, uitgewerkt naar vijf sub-issues). Een minimaal,
+  zelfstandig Azure Functions isolated-worker-project (net9.0) met een eigen configuratielaag
+  (`PostgresDatabaseConfig`, connectiestring via `POSTGRES_CONNECTION_STRING` — dezelfde naam als
+  het bestaande migratiepad) en een `/api/health` in hetzelfde format als de SQL Server-tier
+  (`tier="Postgres"`, `provider="Npgsql"`, `serverVersion` via `SHOW server_version`).
+  `scripts/ci/database-tiers.json`'s Postgres-rij staat nu op `"built": true` — de tier-resolver
+  levert voortaan een geldig projectpad op. Empirisch bevestigd: `func start` tegen een
+  wegwerp-Postgres-container levert een werkende `/api/health` op met de echte, live opgehaalde
+  serverversie. De feitelijke functionaliteit (beheer-, planner-, e-mail- en synchronisatiepaden)
+  volgt in vier vervolgissues (#887-#890) — dit levert uitsluitend de projectopzet zelf. (#891)
+- **`/api/health` toont nu aantoonbaar met welke databasetier en -driver het draait, en het
+  daadwerkelijke versienummer van de databaseserver.** Drie nieuwe, puur additieve velden: `tier`
+  en `provider` komen uit build-time assembly-metadata (nooit een runtime-gok), dus ook gevuld
+  wanneer de database onbereikbaar is; `serverVersion` (`SERVERPROPERTY('ProductVersion')`) komt
+  aantoonbaar uit de database zelf en is alleen gevuld als die online is. Verbindingen van de
+  applicatie zijn voortaan ook herkenbaar aan een `ApplicationName` op de connection string — een
+  onafhankelijke bevestiging naast wat de applicatie over zichzelf zegt. Bestaand gedrag van de
+  statusbewaking in de Admin GUI is ongewijzigd (leest alleen `status`/`database`, negeert onbekende
+  velden). `docs/API.md` en `docs/api-standaarden/openapi.yaml`/`.json` bijgewerkt. (#863)
+- **De Postgres-tier-integratietests draaien voortaan automatisch in CI in plaats van
+  onvoorwaardelijk uitgeschakeld te staan.** `PostgresFactAttribute`/`PostgresTheoryAttribute`
+  (`Database.Postgres.Tests/PostgresIntegrationTestAttributes.cs`) vervangen de losse
+  `[Fact(Skip="...")]`/`[Theory(Skip="...")]` op alle 22 integratietests: zichtbaar overgeslagen
+  (met reden in de testuitvoer) zonder `POSTGRES_TEST_CONNECTION_STRING`, onveranderd draaiend
+  zodra die gezet is — zonder enige codewijziging. De CI-job "PostDeployment op verse
+  Postgres-database" zet die variabele nu en draait de volledige testsuite na de migratiestap,
+  tegen de instantie die de job zelf al opzet. `docs/VERIFICATIE-SCRIPTS.md` beschrijft hoe je
+  dezelfde tests lokaal tegen een eigen wegwerpcontainer draait. (#866)
+- **Eén centrale schakelaar (`EgressGuard`) die alle uitgaande integraties blokkeert buiten
+  productie** — de Sportlink-synchronisatie (timer-trigger), GitHub-issue-rapportage, e-mail via
+  Microsoft Graph en de AI-diensten. Herkent productie aan `WEBSITE_SITE_NAME` (dezelfde signaal
+  die `EasyAuthHelper` al gebruikt); lokaal en in CI blijven deze integraties altijd geblokkeerd,
+  ook als een secret (`OpenAiApiKey`, `GitHubPat`, Graph-credentials) toevallig wél geconfigureerd
+  is. Vervangt vier losse, impliciete "is dit geconfigureerd?"-controles door één expliciete poort.
+  Tegelijk gefixt: de bedoelde per-club synchronisatie-rem (`SyncEnabled`-instelling) bleek dode
+  code — `syncEnabled` werd nooit in de instellingencache gezet, dus de vergelijking met `"0"` in
+  `Function1.cs` kon nooit waar zijn. `docs/DEVELOPER-SETUP.md` §5.1 beschrijft hoe je lokaal werkt
+  zonder externe diensten te raken, inclusief de expliciete opt-in voor een bewuste, eenmalige
+  handmatige test. (#857)
+- **Een lokale fixtureserver voor de Sportlink-synchronisatie, plus een end-to-end-test die het
+  volledige synchronisatiepad bewijst zonder de echte Sportlink-API te raken.**
+  `SportlinkFixtureServer` (`FunctionApp.Tests/Sync/`) is een minimale, wegwerpbare HTTP-server met
+  opgenomen antwoorden in het echte gegevensformaat (velden en datumnotaties uit
+  FunctionApp/CLAUDE.md's Sportlink-API-referentie, niet uit de demodata — die twee verschillen
+  net op het punt waar database-engines ook verschillen: datuminterpretatie). De nieuwe test
+  (`SportlinkFixtureSyncIntegrationTests`) draait `SportlinkSyncPipeline.RunSyncAsync` tweemaal
+  tegen die fixture en bewijst zo zowel dat het volledige pad werkt als dat een tweede run met
+  identieke brondata geen duplicaten oplevert en `mta_modified` niet bijwerkt op ongewijzigde rijen.
+  Bijkomend gefixt tijdens het bouwen hiervan: `SystemUtilities.AppSettings`' procesbrede statische
+  instellingencache had geen manier om in een test te vullen zonder een echte databaseoproep, en
+  geen manier om af te sluiten — nu via `SetForTests`/`ResetForTests` (test-only, internal).
+  Testparallellisme staat voortaan projectbreed uit voor `FunctionApp.Tests` (net als eerder al voor
+  `Database.Postgres.Tests`), want die cache is gedeeld met andere testklassen. `docs/DEVELOPER-SETUP.md`
+  beschrijft hoe je dit lokaal draait. **Bewust nog niet gedekt:** de Postgres-tier heeft nog geen
+  eigen synchronisatiepad om tegen te testen (#860); wiring in CI is de scope van #866. Zie issue 867.
+- **Een zelftest die bewijst dat een databasetier daadwerkelijk werkt, in plaats van dat de
+  onderdelen compileren.** `scripts/dev/Test-PostgresTier.ps1` zet een wegwerpdatabase op, rolt het
+  schema uit, laadt de demodata, en controleert per stap of het resultaat klopt — met exacte
+  rijaantallen, niet met "er ging niets mis". De bijbehorende skill opent daarna alle
+  beheerpagina's in een echte browser en controleert per pagina of de demogegevens ook echt
+  zichtbaar zijn. Drie ontwerpkeuzes maken het verschil met de bestaande controles: een stap die
+  niet uitgevoerd kon worden geldt als mislukt (niet als overgeslagen), een pagina zonder
+  demogegevens krijgt de status "niet getest" (niet "goed"), en de lijst met te controleren
+  pagina's wordt bij elke run vergeleken met de werkelijke pagina's in de broncode — zodat een
+  controle op een verdwenen pagina niet jarenlang groen kan blijven staan, wat nu wél gebeurt.
+  De zelftest is nog niet compleet: de stappen die een draaiende applicatie op de nieuwe tier
+  vereisen staan bewust op 'geblokkeerd' tot die er is. Zie issue #851.
+- `docker-compose.selftest.yml` — een aparte wegwerpdatabase voor die zelftest, met een eigen
+  poort en zonder opslagvolume, zodat de ontwikkeldatabase er niet door geraakt kan worden. Hij
+  draait bewust op Nederlandse tijd en niet op UTC: een tijdzonefout in de tijdstempels is op een
+  UTC-server namelijk onzichtbaar. Zie issue #851.
+
+### Fixed
+- **CI-job "PostDeployment op verse Postgres-database" faalde deterministisch op een verse database
+  (issue 888 vervolg, gevonden tijdens het verifiëren van deze PR's eigen CI-run).** De workflow
+  zette een synthetische `CIPRIMARY`-clubrij op `syncenabled = true` puur om #862's
+  speeltijden-kopieerstap iets te laten kopiëren — die kopieerquery filtert zelf niet op
+  `syncenabled` (`MIN(clubcode) WHERE clubcode <> demo_club`), dus dat was nooit nodig geweest.
+  Bijwerking: `planner.alle_wedstrijden_op_veld_ruw` (en zijn SQL Server-origineel) kiest de
+  "primaire club" via `CROSS JOIN LATERAL ... WHERE syncenabled = true ORDER BY clubcode LIMIT 1`
+  en filtert daarna ELKE wedstrijd van ELKE club op DIE ene club se accommodatie — correct zodra er
+  precies één syncenabled-club is (de architectuurkeuze uit CLAUDE.md), maar `CIPRIMARY` (zonder
+  accommodatie, sorteert vóór elke `testclub-*`) werd zo de gekozen rij en liet elk
+  Competitie-wedstrijdonderzoek in `FunctionApp.Postgres.Tests` stilzwijgend leeg terugkomen — geen
+  foutmelding, gewoon een lege collectie. `CIPRIMARY` staat nu op `syncenabled = false`.
+- **Een herplanverzoek indienen sloeg altijd stuk op de SQL Server-tier (issue 888 vervolg,
+  gevonden tijdens de Postgres-vertaling).** `PlannerMatchRepository.SaveHerplanVerzoekAsync` miste
+  `ClubCode` volledig in de INSERT, terwijl `[planner].[HerplanVerzoeken].[ClubCode]` `NOT NULL` is
+  zonder `DEFAULT` — elke aanroep van `POST /api/planner/herplan-bevestig` gooide een SQL-fout in
+  plaats van een herplanverzoek op te slaan. Niet zichtbaar in de bestaande testsuite, die dit
+  pad niet dekte. `clubCode` is nu een optionele parameter door de hele aanroepketen, met dezelfde
+  `ClubScope.Resolve`-terugval naar de primaire club als de rest van deze repository.
+- **De zelftest stond stil op rood en de plannerlaag was volledig ongedekt (issue 888 vervolg).**
+  Drie dingen. (1) Poort G6 van de zelftest was daadwerkelijk rood: het endpoint voor
+  e-mailsjablonen was aan de verwachtingenlijst toegevoegd zonder bijbehorende controle, en het
+  script rekent dat — terecht — als een fout in plaats van als iets om over te slaan. Nu voorzien
+  van een echte inhoudscontrole. (2) De twee plannerpagina's van de nieuwe databasetier stonden
+  in het geheel niet in de verwachtingenlijst en werden dus door niets bewaakt; de veldbezetting
+  wordt nu per run gecontroleerd op een dag waarop er aantoonbaar demowedstrijden staan (de datum
+  wordt berekend, niet vastgelegd, anders verloopt hij binnen een week). (3) De plannercode van de
+  nieuwe tier had geen enkele blijvende test; het enige schrijfpad erin is nu vastgelegd in zes
+  tests, inclusief de regel dat een geleerde teamnaam pas meetelt ná goedkeuring. Dat die tests
+  werkelijk iets bewaken is apart gemeten: met die regel tijdelijk uit de code gesloopt wordt
+  precies de bijbehorende test rood. Tijdens dit werk bleek de teamroosterpagina in de zelftest
+  principieel nog niet te controleren — vastgelegd als issue #931 en zichtbaar geblokkeerd in
+  plaats van weggelaten.
+- **AVG-bewaartermijn: de instellingen-audittrail werd op de Postgres-tier nooit opgeschoond
+  (issue 861 vervolg).** `public.appsettingsaudit` legt bij elke instellingswijziging vast wie hem
+  doorvoerde, en oude/nieuwe waarden kunnen e-mailadressen bevatten — beide persoonsgegevens. De
+  tabel én de bewaartermijn-instelling bestonden al op deze tier, maar er was niets dat er ooit
+  naar handelde: rijen bleven onbeperkt staan, in strijd met AVG art. 5 lid 1 sub e
+  (opslagbeperking). De migratie die de tabel aanmaakte benoemde dit gat zelf al als openstaand
+  werk. Nu voorzien van dezelfde maandelijkse opschoontaak als de SQL Server-tier, inclusief de
+  drietraps-terugval voor de bewaartermijn (primaire club → willekeurige club → 730 dagen). Een
+  onzinnige instelling (0 of negatief) valt bewust terug op de default in plaats van alles te
+  verwijderen. Vastgelegd in zes blijvende integratietests; die zijn aantoonbaar
+  onderscheidend — met de terugvalbescherming er tijdelijk uit gesloopt worden er twee rood.
+- **De automatische controles voor de Postgres-tier deelden één database en zaten elkaar in de weg (#925).**
+  Eén testverzameling breekt de database met opzet af om te controleren of ze correct opnieuw wordt
+  opgebouwd; alles wat daarna draaide, kreeg een halve database te zien. Dat leverde deze week twee
+  keer een foutmelding op die niets met de eigenlijke wijziging te maken had. Elke verzameling
+  krijgt nu een eigen database, en een extra controle bewaakt dat de ene de andere niet meer kan
+  raken. Die controle is aantoonbaar: teruggezet naar de oude opzet slaat hij aan.
+- **Op de Postgres-tier zou de synchronisatie op termijn stilvallen.** Het seizoensoverzicht waaruit
+  de synchronisatie afleidt hoe ver vooruit ze wedstrijden ophaalt, werd daar alleen bij de
+  installatie gevuld en daarna nooit meer aangevuld — anders dan op de bestaande tier, waar dat bij
+  elke uitrol opnieuw gebeurt. Een installatie die lang genoeg meedraait raakte zo door haar
+  seizoenen heen, waarna het ophaalvenster in het verleden kwam te liggen en er niets meer werd
+  opgehaald. De synchronisatie vult het overzicht nu zelf aan, vanaf twee maanden vóór de start van
+  een nieuw seizoen — precies zoals de bestaande tier het doet. Zowel de situatie vóór als na de fix
+  is gemeten, en een opzettelijk faalscenario bevestigde dat de controle het verschil ziet. Zie
+  issue 861.
+- **Een testcontrole voor de Postgres-tier kon willekeurig omvallen.** Drie van de tests uit de
+  nieuwe Postgres-testsuite slaagden alleen als ze in een bepaalde volgorde draaiden, en die
+  volgorde ligt niet vast. Gemeten over vier verse databases: twee keer groen, twee keer rood met
+  exact dezelfde code. Opgelost; vijf achtereenvolgende metingen zijn nu groen. Zie issue #890.
+- **E-mailtemplate opslaan kon een onvolledig audit-spoor achterlaten, op beide databasetiers
+  (#916).** `AdminTemplatesFunction.Put` deed de template-upsert en de auditlog-insert als twee
+  losse, niet-getransactioneerde statements — een fout tussen de twee liet de templatewijziging
+  wél doorgevoerd zien terwijl er geen auditrij bijkwam. Geen dataverlies (in tegenstelling tot
+  #913), wel een onvolledige audittrail voor een wijziging die wél had plaatsgevonden. Beide
+  tiers wrappen dit nu in één transactie, hetzelfde patroon dat `AdminSettingsFunction.Put` al
+  correct toepaste. Empirisch geverifieerd op beide tiers (wegwerp-`postgres:16`-container en een
+  wegwerpdatabase op de lokale SQL-Server-2022-container): een opzettelijk geforceerde
+  constraintfout in de audit-insert laat de eerder geslaagde templatewijziging nu volledig
+  terugdraaien in plaats van achter te blijven — per tier bevestigd met drie scenario's (bug
+  reproduceerbaar zónder transactie, teruggedraaid mét transactie, happy path voert beide rijen door).
+- **De synchronisatietimer van de Postgres-tier startte nooit bij wie het configuratiesjabloon
+  volgde.** `FunctionApp.Postgres/local.settings.template.json` miste `FETCH_SCHEDULE`, waardoor
+  de functiehost wel opkwam maar `PostgresFetchAndStoreApiData` permanent in foutstatus stond —
+  zichtbaar in het opstartlog, onzichtbaar voor wie alleen de HTTP-endpoints uitprobeerde.
+  Gevonden doordat de nieuwe zelftest-poort G5 op indexeringsfouten controleert (issue 909).
+- **Postgres-tier: teambegeleiding-import kon de club zonder data achterlaten bij een fout
+  halverwege (#913).** `AdminTeambegeleidingFunction.Import` deed de delete, de per-rij-insert
+  en de auditlog-insert als drie losse, niet-getransactioneerde stappen — een crash tussen de
+  delete en de insert-lus liet de club zonder teambegeleidingsdata achter, terwijl
+  `Database.Postgres/TeambegeleidingImporter` (issue 824) precies deze atomiciteit al gebouwd,
+  gereviewd en getest had, maar hier nooit werd aangeroepen. Het endpoint delegeert nu naar die
+  bestaande implementatie in plaats van de databaselaag opnieuw te bouwen. Empirisch geverifieerd
+  tegen een wegwerp-Postgres-container: een tweede import die halverwege faalt (een te lange
+  teamnaam) laat de data van de voorgaande, geslaagde import nu volledig intact — vóór deze fix zou
+  de delete al zijn doorgevoerd.
+- **Postgres-tier: teamherkenning kon stilzwijgend falen bij afwijkende hoofdlettergebruik, en
+  stond een casing-only-duplicaatteam toe waar de SQL Server-tier dat al weigerde (issue 820,
+  vervolgronde op #869).** Postgres' default-collatie is case-sensitief; de bij #889 gebouwde
+  `TeamCandidateRepository`/`TeamAliasLearningService` vergeleken `teamnaamgenormaliseerd`/
+  `ruwetekst`/`ruwetekstgenormaliseerd` nog kaal, en `public.teams`/`public.teamaliassen` (#887)
+  hadden nog gewone `UNIQUE`-constraints. Nieuwe migratie
+  `Database.Postgres/migrations/007_teams_collation_fix.sql` vervangt die door expression-based
+  unique indexes op `upper(...)`; de repository-laag vergelijkt nu net als de SQL Server-tier
+  (#869) expliciet via `UPPER(...)`, inclusief `ON CONFLICT (clubcode, upper(ruwetekst))`.
+  Empirisch geverifieerd tegen een wegwerp-Postgres-container: een casing-only-duplicaat wordt
+  geweigerd, teamlookup slaagt ondanks afwijkende opgeslagen casing, en een herhaalde alias-melding
+  met andere casing verhoogt de teller in plaats van te dupliceren. **Blijft open:** de audit/replay
+  tegen echte historische productiedata vereist toegang tot echte clubdata en is daarom niet
+  autonoom uitgevoerd — zie issue #820.
+
+### Changed
+- De vertaling van de gekozen databasetier naar het bijbehorende project staat nu in één
+  gegevensbestand (`scripts/ci/database-tiers.json`) in plaats van in het CI-script. De
+  deploy-pijplijn en de lokale scripts lezen daardoor dezelfde bron — anders zou de mapping op
+  twee plekken bijgehouden moeten worden, precies wat bij het opzetten van het tier-mechanisme
+  voorkomen moest worden. Gedrag is ongewijzigd: een ontbrekende of onbekende waarde faalt nog
+  steeds hard. Nieuw is dat een geldige tier waarvan het project nog niet bestaat een eigen
+  foutcode geeft, zodat een verificatiescript dat kan onderscheiden van een echte fout. (#865)
+- **Audit-log entries in `dbo.AppSettingsAudit` ouder dan de bewaartermijn worden nu automatisch
+  opgeruimd (AVG-bewaartermijn).** Elke instellingenwijziging in Beheer → Instellingen werd tot nu
+  toe voor onbepaalde tijd bewaard, inclusief de naam van de beheerder en eventuele
+  e-mailadressen in de gewijzigde waarde. Een nieuwe maandelijkse achtergrondtaak verwijdert
+  rijen ouder dan de ingestelde bewaartermijn (standaard 730 dagen / 24 maanden — instelbaar via
+  `dbo.AppSettings.AppSettingsAuditBewaarDagen`, zonder dat een nieuwe versie nodig is). (#781)
+- **De lokale ontwikkelomgeving draait nu ook op macOS (Apple Silicon), naast Windows.** Alle
+  dev-scripts (`Start-Debug.ps1`, `Stop-Debug.ps1`, `Test-App.ps1`, `Bump-Build.ps1`,
+  `smoke-test.ps1`) werken op beide platforms. Concreet: poortdetectie loopt via een
+  cross-platform .NET-API in plaats van `Get-NetTCPConnection`, de procesboom-teardown gebruikt
+  op macOS `ps` in plaats van WMI, de tijdelijke map wordt platform-onafhankelijk bepaald
+  (`$env:TEMP` bestaat niet op macOS), en alle padverwijzingen gebruiken forward slashes — een
+  backslash is op macOS namelijk een geldig teken ín een bestandsnaam en geen scheidingsteken.
+  Op macOS schrijft `Start-Debug.ps1` de output van elke service naar een logbestand, omdat
+  daar geen apart consolevenster geopend kan worden. Windows-gedrag is ongewijzigd. (#800)
+- `sportlink-wedstrijdzaken.slnf` — een solution filter met de drie .NET-projecten. Nodig omdat
+  het databaseproject een verouderd Visual Studio-formaat heeft dat buiten Windows niet te
+  bouwen is; `dotnet build sportlink-wedstrijdzaken.slnf` werkt wél op beide platforms. (#800)
+- `.gitattributes` — legt vast dat shell-scripts en git-hooks LF-regeleindes houden, zodat een
+  commit vanaf Windows de hooks op macOS niet onbruikbaar kan maken. (#800)
+- `docker-compose.yml` — de lokale ontwikkeldatabase draait nu op **beide** platforms als
+  SQL Server 2022 in een container (`docker compose up -d`). Eén image, één poort, één
+  verbindingsreeks, dezelfde stappen op Windows en macOS. Het SA-wachtwoord komt uit een
+  lokaal `.env`-bestand en staat niet in de repository. (#800)
+- **Beheerders kunnen nu een periode instellen op Instellingen → Velden, zoals "Zomerstop" of
+  "Competitie", en een veldbeschikbaarheid-venster daaraan koppelen.** Een venster zonder periode
+  blijft het hele jaar gelden zoals voorheen; een venster gekoppeld aan een periode geldt
+  uitsluitend terwijl die periode loopt. Zo hoeft een club niet langer twee keer per jaar
+  handmatig vensters toe te voegen en weer te verwijderen om de zomerstop te overbruggen — de
+  velden die doordeweeks alleen tijdens de zomerstop bespeelbaar zijn, krijgen nu hun eigen
+  periode-gebonden venster naast het reguliere competitieschema. Bestaande vensters blijven
+  ongewijzigd werken (geen periode = standaardregime, exact zoals vóór deze wijziging). (#581)
+- **`Database.Postgres/`: de eerste bouwsteen van de Postgres-tier (epic #815) — een C#-schemadefinitie
+  die zowel de stg- als de his-tabel-DDL, de unieke-sleutelindex en het upsert-/change-detection-statement
+  genereert voor de drie bestaande ETL-entiteiten (teams, matches, matchdetails).** Bewust géén
+  gedeelde abstractie met de bestaande SQL Server-laag (die blijft functioneel ongewijzigd), en géén
+  afhankelijkheid van Postgres' eigen systeemcatalogus tijdens runtime. Business-key-kolommen die
+  NULL-baar zijn (zoals `poulecode`) krijgen een gegenereerde, nooit-NULL synthetische sleutelkolom
+  — anders zou Postgres' `ON CONFLICT` een NULL-waarde als "nieuwe rij" behandelen in plaats van de
+  bestaande bij te werken. Nog geen live databaseverbinding vanuit de FunctionApp zelf: dat is de
+  scope van latere sub-issues (#821 e.v.). Empirisch geverifieerd tegen een lokale wegwerp-Postgres
+  16-container, inclusief het NULL-in-compositesleutel-scenario. (#818)
+- **Postgres-vertaling van de planner-kernview `planner.AlleWedstrijdenOpVeld`** (epic #815):
+  `Database.Postgres/PostgresPlannerViewGenerator.cs` + `PostgresPlannerAvailabilityReader.cs`.
+  De veldresolutie (Sportlink-veldstring "veld 1 A" → veldnummer + subpositie) is bewust
+  **niet** opnieuw in SQL herbouwd — dat zou een derde, onafhankelijke kopie zijn naast de
+  bestaande T-SQL-`OUTER APPLY` en de C#-implementatie (bewaakt door `VeldResolutieDriftTests`).
+  In plaats daarvan is die matching-logica geëxtraheerd naar het nieuwe, tier-agnostische
+  project `Planner.Shared/` (`VeldResolver`/`VeldNormalisatie`, pure tekstlogica zonder
+  databaseafhankelijkheid) en door zowel `FunctionApp` als `Database.Postgres` hergebruikt —
+  `PlannerShared.ResolveVeld`/`AutoPlanService.NormaliseerVeld` zijn nu dunne delegaties,
+  gedrag ongewijzigd (115 bestaande planner-tests blijven groen). Empirisch gevonden tijdens de
+  integratietests: SQL Server's G-team-detectie werkt ongemerkt door de case-insensitive
+  standaardcollatie; Postgres' regex-operator `~` is dat niet en liet G-teams stil uit de
+  bezetting vallen bij afwijkende hoofdlettering tussen ClubCode en teamnaam — opgelost met de
+  hoofdletterongevoelige variant `~*`. Overige gelijkheidsvergelijkingen in deze view dragen
+  hetzelfde class-of-bug totdat #820 een tier-brede collatiefix levert. (#819)
+- **`Database.Postgres.Cli` + `MigrationRunner`: genummerde-migratiebestanden-mechanisme voor de
+  Postgres-tier.** Een verse club-installatie op Postgres krijgt het huidige schema in één keer via
+  genummerde `.sql`-bestanden in `Database.Postgres/migrations/`, bijgehouden in een
+  `schema_migrations`-ledger-tabel — geen catalogus-probing-ceremonie zoals het SQL Server
+  `PostDeployment`-script nodig heeft voor een jaren-oude, al-draaiende database. Elke toegepaste
+  migratie krijgt zijn SHA-256-checksum vastgelegd; een later gewijzigd, al toegepast bestand faalt
+  hard in plaats van stilzwijgend opnieuw uit te voeren. Een PostgreSQL advisory lock beschermt
+  tegen twee gelijktijdige runners — empirisch gevonden tijdens het testen: de lock moet vóór de
+  allereerste DDL-aanraking genomen worden, anders raceten twee runners al op het aanmaken van de
+  ledger-tabel zelf. Lokaal draaien via `scripts/dev/Invoke-PostgresMigrations.ps1`.
+  `001_baseline.sql` dekt vooralsnog alleen de vier configuratietabellen die de planner-kernview
+  (#819) nodig heeft — zie issue #821 voor de resterende, nog niet geporte tabellen.
+- **Lokale Postgres-ontwikkelcontainer naast de bestaande SQL Server-container** (#822, epic #815).
+  `docker-compose.yml` krijgt een `postgres`-service (image `postgres:16`), bewust achter een
+  compose-profile — een gewone `docker compose up -d` start alléén `sqlserver`, niet ongevraagd ook
+  Postgres. Credentials via `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` uit hetzelfde lokale
+  `.env`-patroon als het bestaande SA-wachtwoord. Nieuw `scripts/dev/Test-PostgresConnection.ps1`
+  verifieert connectiviteit via `psql`, de Postgres-tegenhanger van het bestaande
+  `sqlcmd`-verificatiepad. Empirisch bevestigd: `postgres:16` is een echt multi-arch image
+  (linux/amd64 én linux/arm64) — in tegenstelling tot SQL Server draait dit op Apple Silicon dus
+  native, zonder Rosetta-emulatie. macOS-uitvoeringsverificatie kon in deze sessie niet
+  plaatsvinden (geen Apple Silicon-hardware beschikbaar) — de configuratie volgt wel consequent de
+  bestaande cross-platform-regels. Zie `docs/DEVELOPER-SETUP.md` §4.3.
+- **Nieuwe CI-job `PostDeployment op verse Postgres-database`** (#823, epic #815) — de
+  Postgres-tegenhanger van de bestaande SQL Server-`fresh-db`-job. Past `Database.Postgres/migrations/`
+  twee keer toe via `Database.Postgres.Cli` (#821) tegen een verse Postgres 16-container en bewijst
+  daarmee idempotentie. Gebruikt het native GitHub Actions `services:`-blok (aanbevolen boven een
+  rauwe `docker run`) met een vast, niet-geheim wegwerpwachtwoord — geen GitHub Secret, want
+  `services:`-containers provisioneren vóór elke step (te vroeg voor een in-step gegenereerd
+  wachtwoord) en secrets falen sowieso op fork-PR's; de container is volledig geïsoleerd en wordt
+  aan het eind van de job vernietigd. Controleert kernobjecten, ClubCode-dekking, exact één
+  ledger-rij na de tweede run, en lowercase-identifier-casing. Empirisch gedraaid tegen een
+  wegwerpcontainer met dezelfde credentials/queries als de workflow gebruikt.
+- **Postgres-equivalent van het AVG-gevoelige database-interactiedeel van de teambegeleiding-import**
+  (#824, epic #815): `Database.Postgres/TeambegeleidingImporter.cs` + migratie
+  `002_avg_teambegeleiding.sql` (`avg.teambegeleiding`/`avg.importlog`). Native Postgres-COPY
+  (binaire import) i.p.v. `SqlBulkCopy`, delete-vóór-insert strikt op één ClubCode (nooit een
+  Postgres-equivalent van `TRUNCATE`). Drie bewuste verbeteringen t.o.v. het SQL Server-origineel:
+  delete+bulklaad+auditlog-insert lopen nu in één transactie (het origineel deed drie losse,
+  niet-getransactioneerde aanroepen), een impliciete clubselectie valideert expliciet
+  `syncenabled = true` zodat de AllStars FC-democlub nooit per ongeluk als doelclub voor échte
+  persoonsgegevens wordt gekozen, en de AVG #208-staleness-check is nu ClubCode-gescoped (het
+  origineel keek over alle clubs heen). De flexibele CSV-kolomherkenning van het originele
+  PowerShell-script is hier bewust niet herbouwd — dit levert alleen het geteste, AVG-kritieke
+  databasedeel op; zie issue #824 voor de resterende scope. Getest tegen een lokale
+  Postgres-devcontainer, uitsluitend met fictieve testdata conform CLAUDE.md's goedgekeurde
+  AVG-uitzonderingen.
+- **Nieuwe CI-stap `scripts/ci/check-path-casing.sh`** (#825, epic #815): bewaakt dat elke
+  padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact overeenkomt met het daadwerkelijke,
+  getrackte bestand. Git's `core.ignorecase=true` (Windows/macOS-default) merkt een
+  casing-mismatch lokaal niet op; de Linux-CI-runner (`core.ignorecase=false`) faalt daar hard op
+  — specifiek relevant voor de nieuwe `Database.Postgres/`-boom. Nulmeting tegen de huidige
+  repo-staat (165 bestanden) is groen; empirisch geverifieerd met geïsoleerde, tijdelijke fixtures
+  (niet in de echte repo-tree) dat de guard een bewuste casing-typo detecteert en genest-pad-,
+  dotfile- en spatie-bevattende referenties correct negeert.
+
+### Changed
+- **De lokale database draait voortaan altijd in Docker, ook op Windows.** Werken tegen een
+  rechtstreeks op Windows geïnstalleerde SQL Server-service wordt niet meer ondersteund: dat
+  pad werkte alleen op Windows en dwong overal een tweede variant af in scripts én handleiding.
+  Gevolg voor bestaande Windows-werkplekken: `Integrated Security=True` in
+  `FunctionApp/local.settings.json` vervangen door de SQL-login uit `docs/DEVELOPER-SETUP.md`.
+  `Test-App.ps1` meldt dit expliciet met de benodigde stappen als de oude instelling nog
+  gebruikt wordt. (#800)
+
+### Removed
+- `FunctionApp/setup/pre-debug-check.ps1` en `FunctionApp/setup/setup-local-debug.ps1`. Beide
+  gingen uit van een lokaal geïnstalleerde SQL Server op Windows met Windows-authenticatie, en
+  waren daarnaast achterhaald (ze verwezen naar poort 7071 en naar F5 in Visual Studio).
+  `Start-Debug.ps1` en `Test-App.ps1` dekken deze controles volledig en werken op beide
+  platforms. De SQL-scripts in dezelfde map blijven bestaan — die vullen juist een verse
+  database. (#800)
+
+### Changed
+- **BREAKING CHANGE: de productie-deploy vereist voortaan de repository-variabele `DatabaseTier`.** Epic #815 introduceert een multi-tier databasestrategie (SQL Server → Postgres → SQLite → Cosmos DB voor het e-maillog); dit issue legt vast hoe een fork op build/deploytijd precies één tier kiest — geen gedeelde runtime-abstractie, een aparte, volledig zelfstandige implementatieboom per tier. `deploy.yml` bouwt en publiceert nu het `.csproj` dat bij de gekozen tier hoort via een canonieke resolver (`scripts/ci/resolve-database-tier.sh`); ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow hard — er is bewust geen stille terugval naar `SqlServer`. **Migratie-instructie voor bestaande forks:** zet vóór de volgende push naar `main` de variabele `DatabaseTier` op `SqlServer` (de enige vandaag geïmplementeerde waarde) via GitHub → Settings → Secrets and variables → Actions → Variables. Zonder deze stap faalt de eerstvolgende productie-deploy. (#816)
+
+### Fixed
+- **Twee race-conditions in de #851-zelftestharness (`scripts/dev/Test-PostgresTier.ps1`,
+  `DevServices.psm1`), gevonden bij de eerste echte end-to-end-run van G0/G1.**
+  `Wait-ForPostgres` riep `pg_isready` uitsluitend met `-U` aan, zonder `-d <database>` — de
+  officiële Postgres-image draait de aanmaak van `POSTGRES_DB` via een tijdelijke, alleen-lokale
+  server vóórdat de "echte" server extern gaat luisteren, en `pg_isready` zonder `-d` verbindt
+  impliciet met een database die naar de OS-gebruiker is genoemd (altijd meteen aanwezig). Gevolg:
+  het script meldde "gereed" terwijl de aangevraagde database `sportlink_selftest` een fractie
+  later pas bestond, en de eerstvolgende query crashte met "database … does not exist". Fix:
+  `-d $Database` toegevoegd, zelfde database die de aanroeper meteen daarna gebruikt. Daarnaast
+  controleerde G1 (`G1.andere-engine.uit`) de SQL Server-poort met één meting direct na `docker
+  stop` — op Windows/Docker Desktop kan de host-poortmapping een fractie later loslaten dan het
+  containerproces zelf stopt. Fix: een korte polling-lus (max 10s) in plaats van een enkele meting.
+  Beide empirisch bevestigd tegen een echte lokale run: G0 en G1 slagen nu reproduceerbaar
+  (twee opeenvolgende runs, beide 100% groen op de niet-geblokkeerde poorten).
+- **De AllStars-demodata sloeg zichzelf stil over op een verse database (#856).**
+  `Script.PostDeployment1.sql` probeerde teams/wedstrijden te zaaien in `his.teams`/`his.matches` —
+  tabellen die pas ontstaan bij de eerste Sportlink-sync en op een verse installatie dus nog niet
+  bestaan. De oude code ving dat op met een stille `PRINT` + `RETURN`: geen foutmelding, geen
+  afwijkende exitcode, HTTP 200 op elke route terwijl de dagplanning, teambegeleidingspagina en
+  testdatapagina leeg bleven. Architectuurbesluit (eigenaar, Optie B): de team-/teambegeleiding-/
+  wedstrijddemo verhuist naar een los, expliciet aan te roepen script
+  (`scripts/migrations/003-seed-allstars-demo-matches.sql`, uit te voeren ná de eerste sync);
+  `Script.PostDeployment1.sql` meldt voortaan met een zichtbare `RAISERROR` (i.p.v. de stille
+  `PRINT`) of die tabellen al bestaan. Empirisch geverifieerd: het nieuwe script zaait exact 28
+  teams, 28 begeleiders en 224 wedstrijden en is idempotent; de `fresh-db`-CI-job bootst dit
+  scenario nu ook zelf na en bewaakt deze aantallen. **Nog niet gedekt:** de Postgres-tier heeft
+  nog geen eigen demodata-seed (zie issue 862) om ditzelfde probleem in te hebben.
+- **`public.speeltijden` (Postgres-tier) miste drie kolommen ten opzichte van `dbo.Speeltijden`**
+  (`WedstrijdHelft`, `WedstrijdRust`, `StandaardVoorkeurTijd`, #666) — ontdekt tijdens #887's
+  vertaling van `AdminSpeeltijdenRepository`, die alle drie gebruikt. Nieuwe migratie
+  (`003_speeltijden_kolommen.sql`) voegt ze toe; de `fresh-db-postgres`-CI-job bewaakt voortaan ook
+  deze kolomdekking. Empirisch geverifieerd: migratiepad tweemaal toegepast tegen een
+  wegwerp-Postgres-container, idempotent, eindschema komt overeen met de SQL Server-tier. (#893)
+- **De Postgres-ETL-boom (`KnownEntities.cs`) week op twee plekken af van de vastgelegde
+  lowercase-snake_case-identifier-conventie** (`docs/ARCHITECTUUR-DATABASE-TIERS.md` §3): de
+  `ClubCode`-kolom (alle drie entiteiten) en vrijwel de volledige `matchdetails`-entiteit
+  (~60 kolommen) waren PascalCase, letterlijk overgenomen uit de SQL Server-brontabellen. Omdat
+  elke identifier onvoorwaardelijk gequote wordt, landde die casing letterlijk in de database —
+  elke latere, ongequote verwijzing (`WHERE clubcode = @club`) zou daarop stukgelopen zijn. Alle
+  kolommen zijn nu lowercase; `EntityDefinition.Create` valideert dit voortaan af bij constructie
+  en een nieuwe test bewaakt de daadwerkelijk gegenereerde DDL van alle drie entiteiten tegen
+  regressie. Design-afweging vastgelegd in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §9. (#855)
+- **Audit-tijdstempels (`mta_inserted`/`mta_modified`/`mta_deleted`) van de Postgres-ETL-his-tabellen
+  kregen lokale tijd in plaats van UTC** — `NOW()` in een naïeve `TIMESTAMP`-kolom gebruikt de
+  sessietijdzone bij de impliciete cast; draaide de databaseserver niet op UTC, dan stond er lokale
+  tijd in een kolom die de rest van de applicatie als UTC behandelt. Exact de regressie die PR #246
+  al oploste voor SQL Server, nu voor Postgres. Kolommen zijn nu `TIMESTAMPTZ` (Postgres normaliseert
+  die intern altijd naar UTC, ongeacht sessietijdzone — `NOW()` hoefde daardoor niet aangepast te
+  worden). Design-afweging vastgelegd in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §8. Empirisch
+  bevestigd met een integratietest die de databasesessie expliciet op Europe/Amsterdam zet en
+  aantoont dat de geschreven waarde binnen een seconde van de werkelijke UTC-tijd ligt.
+  Bijkomend gevonden en gefixt tijdens deze verificatie: `PostgresMergeOrchestrator` maakte het
+  `stg`/`his`-schema zelf nooit aan (moest tot nu toe handmatig per test gebeuren); en xUnit's
+  standaard testparallellisatie liet meerdere testklassen races op elkaar lopen tegen de gedeelde
+  Postgres-testinstantie — testparallellisatie nu uitgeschakeld voor `Database.Postgres.Tests`.
+- **De AllStars FC-demodataseed vulde de business-key-bronkolommen (`teamcode`, `lokaleteamcode`,
+  `poulecode`) van `his.teams` nooit, alleen de afgeleide sleutelweergave `bk_teams` rechtstreeks.**
+  Op SQL Server bleef dat onopgemerkt (`bk_teams` is daar een gewone kolom); op de Postgres-tier
+  (#818) is `bk_`  een `GENERATED ALWAYS`-kolom afgeleid uit exact die drie bronkolommen — met
+  alle drie `NULL` kregen alle 28 demoteams dezelfde afgeleide sleutel en liet de unieke index er
+  nog maar één over. Seed vult nu unieke, herkenbaar-fictieve waarden (`9000000+`, dezelfde
+  gereserveerde demo-range als `wedstrijdcode`) in alle drie de kolommen. Design-afweging
+  (waarom de bronkolommen vullen i.p.v. de gegenereerde kolom terugzetten naar een gewone kolom)
+  vastgelegd in `docs/ARCHITECTUUR-DATABASE-TIERS.md` §7. Empirisch geverifieerd tegen een
+  wegwerp-SQL-Server-container: exact 28 rijen, 28 unieke teamcodes, geen enkele NULL meer in de
+  drie kolommen. **Geautomatiseerde CI-telling blijft nog open** — de bestaande `fresh-db`-job
+  draait de seed tegen een database zonder `his.teams`/`his.matches`, waardoor het hele
+  AllStars-blok zich stil overslaat (zie #856, aparte architectuurvraag die aan de eigenaar is
+  voorgelegd).
+- **`close-released-issues.yml` kon een issue ten onrechte sluiten bij de volgende release als een
+  ander, nog niet afgerond issue-nummer toevallig in dezelfde commit-subjectregel voorkwam** (bijv.
+  `fix: ... (#820) (#869)` — het PR-referentienummer ná een bewuste, losse kruisverwijzing naar een
+  opzettelijk nog open issue). De oude, losse `#[0-9]+`-scan pakte élk nummer in de hele regel; de
+  scan matcht nu uitsluitend de titel-conventie `type(#NNN): ...` aan het bégin van de subjectregel
+  — hetzelfde onderscheid dat #838 al voor `label-awaiting-release.yml` vastlegde, nu voor de
+  workflow die daadwerkelijk sluit in plaats van labelt. Empirisch geverifieerd tegen de laatste 60
+  commits van deze repository: de nieuwe scan laat #820/#821 (bewust nog open) en alle
+  merge-commit-ruis terecht buiten beeld, en blijft #818/#819/#822/#823/#827/#838 (echt afgerond)
+  correct herkennen. (#838)
+- **Teamherkenning (`TeamCandidateRepository.cs`) leunde stilzwijgend op SQL Server's case-insensitive
+  default-collatie in plaats van expliciet te normaliseren.** Onder de huidige collatie "werkte" een
+  kale sleutelvergelijking toevallig; een toekomstige tier met een case-sensitive default (Postgres)
+  zou stilzwijgend nul rijen matchen zodra de opgeslagen casing afwijkt van de vers berekende sleutel
+  — geen foutmelding, gewoon "team niet gevonden". Alle drie de lookups vergelijken nu expliciet via
+  `UPPER(...)`, portable naar elke tier. Zie issue #820 voor het vervolg (Postgres-schema met
+  expression-based unique indexes) — dat vereist een nog niet bestaande teamherkenning-datalaag voor
+  de Postgres-tier en is bewust niet in deze wijziging meegenomen.
+- **`label-awaiting-release.yml` zette 'status: awaiting-release' op issues waar nog niets aan gebouwd was**, zodra een andere PR-body ze ook maar in proza noemde (bijv. een cross-referentietabel of "zie #NNN e.v.") — de #838-fix loste dit eerder alleen voor epics op; #820/#821/#822/#823 liepen dezelfde mislabeling op via gewone sub-issues. De labelloop selecteert nu uitsluitend "sterke" referenties (PR-titel of een sluitend keyword als `Closes #NNN`), dezelfde maatstaf die #630 al voor heropenen gebruikte. (#838)
+- **AllStars FC-democlub had geen veldbeschikbaarheid voor maandag t/m donderdag en vrijdag, en de zondagrij werd nooit door de planner gevonden.** De demoseed gebruikte per abuis de .NET-native dagconventie (0=zondag) in plaats van de 1=maandag/7=zondag-conventie die de rest van de applicatie hanteert, en zaaide daardoor maar 2 van de 7 dagen. De UI toonde de foutieve rij als "Dag 0". Seedscript gecorrigeerd naar alle 7 dagen met de juiste conventie; al gezaaide omgevingen herstellen zichzelf bij de volgende deploy. (#812)
+- **Database-verbindingen laten de gratis vCore-secondenlimiet niet meer onnodig snel oplopen.** Alle SQL-verbindingen in de FunctionApp draaiden met standaard connection-pooling; een pooled verbinding blijft na afsluiten als actieve sessie op de server staan, wat de free-tier database verhindert automatisch te pauzeren. Pooling staat nu uit voor alle databaseverbindingen. (#808)
+- **`Verify-AzureAuthSetup.ps1` rapporteerde de auth-lagen 4 en 5 altijd als FAIL**, ook als ze
+  correct waren. Het script zocht `App.razor` en de admin-endpoints één directoryniveau te hoog,
+  vond niets, en concludeerde daaruit dat de controles ontbraken. Dit was ook op Windows fout. (#800)
+- `scripts/dev/smoke-test.ps1` bepaalde de repository-hoofdmap één niveau te hoog en verwees
+  daardoor naar niet-bestaande projectpaden; het script was hierdoor onbruikbaar. (#800)
+- `Test-App.ps1` accepteert nu zowel `Server=`/`Database=` als `Data Source=`/`Initial Catalog=`
+  in de verbindingsreeks. De eerste schrijfwijze staat in het meegeleverde configuratiesjabloon,
+  maar werd niet herkend. (#800)
+- **`scripts/dev/Bump-Build.ps1` liet `<Version>` achterlopen op `<AssemblyVersion>`/`<FileVersion>`.**
+  De regex voor `<Version>` verwachtte een 3-componenten-waarde, terwijl beide `.csproj`-bestanden
+  daar al 4 componenten gebruikten — een gewone build-bump raakte `<Version>` daardoor helemaal
+  niet, en zelfs `-NewPatch` faalde stil omdat de waarde nooit matchte. Alle drie de velden
+  synchroniseren nu bij elke bump, conform de projectafspraak dat ze altijd gelijk lopen. (#806)
+- **Een herhaalde storing opende steeds opnieuw een nieuw GitHub-issue in plaats van een reactie
+  op het bestaande.** De zelfherstellende foutmelding controleert bij elke storing of dezelfde
+  fout al eerder gemeld is, maar die controle gebruikte de GitHub Search API — die bleek
+  onbetrouwbaar met het gebruikte toegangstoken en faalde stil, waarna altijd een nieuw issue
+  werd aangemaakt. Twee keer leidde dit tot vijf losse issues voor exact dezelfde storing. De
+  controle gebruikt nu de gewone issue-lijst van GitHub in plaats van de zoekfunctie. Een
+  herhaalde storing krijgt voortaan een reactie op het bestaande issue (en heropent het als het
+  ondertussen gesloten was) in plaats van een duplicaat. (#830)
+
+- **Testmodus stuurt weer een testantwoord naar de reviewer.** In testmodus (`EmailReviewMode=true`) bouwt de AI al sinds een eerdere wijziging een voorgesteld antwoord op, maar dat werd alleen in de database bewaard — nergens te lezen zonder rechtstreekse databasetoegang. Dat testantwoord gaat nu ook naar het ingestelde reviewadres, zoals eerder ook het geval was voordat dit bewust werd uitgeschakeld. Mislukt die verzending, dan blijft het voorstel gewoon in de database staan. (#801)
+- **De automatische e-mailverwerking en het handmatig doorsturen van teambegeleiding-vragen gebruiken nu overal dezelfde, centraal geregistreerde opslaglaag voor `planner.EmailVerwerking`.** Beide paden bouwden voorheen op sommige plekken hun eigen kopie van deze laag op in plaats van de gedeelde registratie te gebruiken — onzichtbaar voor de gebruiker, maar daardoor moeilijker betrouwbaar te testen en een risico dat een toekomstige wijziging per ongeluk maar één van de twee paden raakt. Gedrag is ongewijzigd; geverifieerd via de volledige verificatielus inclusief een live doorstuur-test. (#827)
+- **De noodmail bij een langdurige database-uitval komt nu betrouwbaar aan, ook zonder frequente herstarts van de achtergrondtaak.** De "al verstuurd"-registratie stond in het geheugen van de lopende taak en kon daardoor verdwijnen zodra die taak opnieuw opstart — het gedrag hing dus af van iets wat niet zichtbaar of controleerbaar was. Die registratie staat nu in de bestaande opslag van de applicatie, dus hij overleeft een herstart. Daarnaast controleert een nieuwe, dagelijkse en volledig losstaande controle rechtstreeks bij Azure of de database uitzonderlijk lang gepauzeerd staat (langer dan een paar uur) — voorheen kwam die controle namelijk alleen aan bod als er toevallig een passend inkomend e-mailbericht was, waardoor er tijdens de uitval van eind augustus 2026 geen enkele melding is verstuurd. Optioneel: deze losstaande controle vereist een eenmalige extra instelling; zonder die instelling blijft alleen de bestaande melding actief. Geen nieuwe Azure-kosten. (#831)
+- **Epics blijven niet meer permanent hangen op de status "wacht op release".** Elke keer dat een sub-issue-PR er in de tekst naar verwees (bijvoorbeeld "epic #815"), kreeg het epic-issue dat label opnieuw — maar omdat een epic nooit via een losse release wordt "afgesloten", werd het label daarna nooit meer automatisch verwijderd. Issues met het label `epic` worden nu overgeslagen bij het toekennen van deze status. (#838)
+
+### Security
+- **De git-hooks werden op macOS stilzwijgend overgeslagen.** Geen enkel bestand in de repository
+  had de executable-vlag, en git negeert een hook zonder die vlag zonder foutmelding — de
+  secrets- en AVG-scan zou op een Mac dus helemaal niet draaien terwijl alles groen oogde.
+  Beide hooks staan nu als uitvoerbaar geregistreerd. (#800)
+- **De AVG-controle op e-mailadressen in documentatie werkte niet op macOS.** De controle
+  gebruikte `grep -P`, dat de meegeleverde grep van macOS niet kent; door de foutonderdrukking
+  meldde de hook vervolgens "geen persoonsgegevens gevonden" zonder iets te hebben gecontroleerd.
+  Omgezet naar een uitdrukking die op beide platforms werkt, met identiek resultaat. (#800)
+- `Test-App.ps1` geeft het databasewachtwoord niet langer mee als commandoregel-argument maar via
+  een omgevingsvariabele; argumenten zijn op beide platforms zichtbaar in de processenlijst. (#800)
+
 ## [2.20.0.0] — 2026-08-09
 
 ### Added

@@ -9,6 +9,7 @@ namespace SportlinkFunction.Admin;
 
 public static class AdminTestDataFunction
 {
+    private const string AllstarsClubCode = "ALLSTARS";
     private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
     // GET /api/beheer/testdata/wedstrijden
@@ -25,11 +26,11 @@ public static class AdminTestDataFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            using var command = new SqlCommand(@"
+            using var command = new SqlCommand($@"
                 SELECT [bk_matches], [datum], [aanvangstijd],
                        [thuisteam], [uitteam], [veld], [competitiesoort], [veld_subpositie]
                 FROM   [his].[matches]
-                WHERE  [ClubCode] = 'ALLSTARS'
+                WHERE  [ClubCode] = '{AllstarsClubCode}'
                 ORDER  BY [datum], [aanvangstijd], [thuisteam]",
                 connection);
             using var reader = await command.ExecuteReaderAsync();
@@ -69,10 +70,10 @@ public static class AdminTestDataFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            using var command = new SqlCommand(@"
+            using var command = new SqlCommand($@"
                 SELECT DISTINCT [Team]
                 FROM   [avg].[Teambegeleiding]
-                WHERE  [Team] IS NOT NULL AND [ClubCode] = 'ALLSTARS'
+                WHERE  [Team] IS NOT NULL AND [ClubCode] = '{AllstarsClubCode}'
                 ORDER  BY [Team]",
                 connection);
             using var reader = await command.ExecuteReaderAsync();
@@ -120,7 +121,7 @@ public static class AdminTestDataFunction
             // PlannerMatchRepository.FindMatchAsync filtert HerplanVerzoek-lookups op
             // m.[accommodatie] LIKE <AppSettings.Accommodatie> — zonder deze kolom vindt de
             // planner nooit een via Testdata aangemaakte wedstrijd terug (#694).
-            using var command = new SqlCommand(@"
+            using var command = new SqlCommand($@"
                 MERGE [his].[matches] AS target
                 USING (SELECT @BkMatches AS bk) AS source ON target.bk_matches = source.bk
                 WHEN MATCHED THEN UPDATE SET
@@ -134,7 +135,7 @@ public static class AdminTestDataFunction
                     [veld]             = @VeldNaam,
                     [veld_subpositie]  = @VeldSubpositie,
                     [competitiesoort]  = @Soort,
-                    [accommodatie]     = (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS'),
+                    [accommodatie]     = (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = '{AllstarsClubCode}'),
                     [mta_modified]     = GETUTCDATE()
                 WHEN NOT MATCHED THEN INSERT
                     ([bk_matches], [datum], [wedstrijddatum], [kaledatum], [aanvangstijd],
@@ -143,8 +144,8 @@ public static class AdminTestDataFunction
                 VALUES
                     (@BkMatches, @Datum, @Wedstrijddatum, @Kaledatum, @Aanvangstijd,
                      @ThuisTeam, @ThuisTeam, @UitTeam, @VeldNaam, @VeldSubpositie, @Soort,
-                     (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = 'ALLSTARS'),
-                     'ALLSTARS', GETUTCDATE(), GETUTCDATE());",
+                     (SELECT TOP 1 [Accommodatie] FROM [dbo].[AppSettings] WHERE [ClubCode] = '{AllstarsClubCode}'),
+                     '{AllstarsClubCode}', GETUTCDATE(), GETUTCDATE());",
                 connection);
 
             command.Parameters.AddWithValue("@BkMatches",      dto.BkMatches);
@@ -191,7 +192,7 @@ public static class AdminTestDataFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            using var command = new SqlCommand(@"
+            using var command = new SqlCommand($@"
                 UPDATE [his].[matches]
                 SET
                     [datum]          = @NieuweDatum,
@@ -202,7 +203,7 @@ public static class AdminTestDataFunction
                         ELSE @NieuweDatum
                     END,
                     [mta_modified]   = GETUTCDATE()
-                WHERE [ClubCode] = 'ALLSTARS'
+                WHERE [ClubCode] = '{AllstarsClubCode}'
                   AND [datum] = @OudeDatum",
                 connection);
             command.Parameters.AddWithValue("@OudeDatum",       dto.OudeDatum);
@@ -233,9 +234,9 @@ public static class AdminTestDataFunction
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
-            using var command = new SqlCommand(@"
+            using var command = new SqlCommand($@"
                 DELETE FROM [his].[matches]
-                WHERE  [bk_matches] = @Bk AND [ClubCode] = 'ALLSTARS'",
+                WHERE  [bk_matches] = @Bk AND [ClubCode] = '{AllstarsClubCode}'",
                 connection);
             command.Parameters.AddWithValue("@Bk", bk);
             await command.ExecuteNonQueryAsync();
@@ -263,7 +264,7 @@ public static class AdminTestDataFunction
             var vanStr = req.Query.ContainsKey("van") ? req.Query["van"].ToString() : null;
             var totStr = req.Query.ContainsKey("tot") ? req.Query["tot"].ToString() : null;
 
-            var sql = "DELETE FROM [his].[matches] WHERE [ClubCode] = 'ALLSTARS'";
+            var sql = $"DELETE FROM [his].[matches] WHERE [ClubCode] = '{AllstarsClubCode}'";
             if (!string.IsNullOrEmpty(vanStr)) sql += " AND [datum] >= @Van";
             if (!string.IsNullOrEmpty(totStr)) sql += " AND [datum] <= @Tot";
 

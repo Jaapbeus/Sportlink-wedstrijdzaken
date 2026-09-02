@@ -11,6 +11,7 @@ namespace SportlinkFunction;
 internal static class SportlinkSyncPipeline
 {
     private static readonly HttpClient _client = new();
+    private const string AllstarsClubCode = "ALLSTARS";
 
     // partialFailure: als één stap faalt, slaan we LastSyncTimestamp NIET op. (#438, #464)
     internal static async Task RunSyncAsync(
@@ -23,21 +24,44 @@ internal static class SportlinkSyncPipeline
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
+        partialFailure |= await FetchTeamsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        partialFailure |= await FetchProgrammaPhaseAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        partialFailure |= await FetchUitslagenPhaseAsync(fromWeekOffset, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        partialFailure |= await FetchMatchDetailsPhaseAsync(sportlinkApiUrl, sportlinkClientId, clubCode, log);
+
+        await MergeAllToHisAsync(log);
+        await RefreshTeamCanonicalisatieAsync(clubCode, log);
+
+        await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
+
+        if (!partialFailure)
+            await AppSettings.SaveLastSyncTimestampAsync(log);
+        else
+            log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
+    }
+
+    private static async Task<bool> FetchTeamsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    {
         await CreateStagingTable.ExecuteAsync("teams");
         try
         {
             await FetchAndStoreTeamsAsync($"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log);
             log.LogInformation("TEAMS - GET endpoint=/teams");
+            return false;
         }
         catch (Exception ex)
         {
             log.LogError(ex, "TEAMS - fetch mislukt");
-            partialFailure = true;
+            return true;
         }
+    }
 
+    private static async Task<bool> FetchProgrammaPhaseAsync(int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    {
         await CreateStagingTable.ExecuteAsync("matches");
 
         log.LogInformation("MATCHES/PROGRAMMA - Fetching weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+        var partialFailure = false;
         for (int weekOffset = fromWeekOffset; weekOffset <= toWeekOffset; weekOffset++)
         {
             try
@@ -52,9 +76,14 @@ internal static class SportlinkSyncPipeline
                 partialFailure = true;
             }
         }
+        return partialFailure;
+    }
 
+    private static async Task<bool> FetchUitslagenPhaseAsync(int fromWeekOffset, string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    {
         int scoreFrom = Math.Min(fromWeekOffset, -2);
         log.LogInformation("MATCHES/UITSLAGEN - Fetching weekOffset {From} to 0", scoreFrom);
+        var partialFailure = false;
         for (int weekOffset = scoreFrom; weekOffset <= 0; weekOffset++)
         {
             try
@@ -69,9 +98,13 @@ internal static class SportlinkSyncPipeline
                 partialFailure = true;
             }
         }
+        return partialFailure;
+    }
 
+    private static async Task<bool> FetchMatchDetailsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)
+    {
         await CreateStagingTable.ExecuteAsync("matchdetails");
-        var wedstrijdcodes = await SportlinkStagingRepository.GetWedstrijdcodesAsync(log);
+        var wedstrijdcodes = await SportlinkStagingRepository.GetWedstrijdcodesAsync();
         int mdOk = 0, mdFout = 0;
         foreach (var wedstrijdcode in wedstrijdcodes)
         {
@@ -85,16 +118,22 @@ internal static class SportlinkSyncPipeline
             else
             {
                 mdFout++;
-                partialFailure = true;
             }
         }
         log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Total}",
             mdOk, mdFout, wedstrijdcodes.Count);
+        return mdFout > 0;
+    }
 
+    private static async Task MergeAllToHisAsync(ILogger log)
+    {
         await new MergeStgToHis("stg", "teams",        "his", "teams").ExecuteAsync(log);
         await new MergeStgToHis("stg", "matches",      "his", "matches").ExecuteAsync(log);
         await new MergeStgToHis("stg", "matchdetails", "his", "matchdetails").ExecuteAsync(log);
+    }
 
+    private static async Task RefreshTeamCanonicalisatieAsync(string clubCode, ILogger log)
+    {
         try
         {
             await TeamResolution.TeamCanonicalisatieService.RefreshAsync(clubCode, log);
@@ -111,24 +150,17 @@ internal static class SportlinkSyncPipeline
         // voor de democlub voor altijd leeg, terwijl her/matches wel gevuld zijn: de teamdropdown in de
         // Admin UI zou dan voor de democlub 0 teams tonen in plaats van de rauwe (niet-ontdubbelde) lijst
         // van vóór #756. Meelopen op elke echte sync houdt de demodata dus canoniek zonder een aparte job.
-        if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
+        if (!clubCode.Equals(AllstarsClubCode, StringComparison.OrdinalIgnoreCase))
         {
             try
             {
-                await TeamResolution.TeamCanonicalisatieService.RefreshAsync("ALLSTARS", log);
+                await TeamResolution.TeamCanonicalisatieService.RefreshAsync(AllstarsClubCode, log);
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "TEAMS CANONICALISATIE - mislukt voor democlub ALLSTARS");
             }
         }
-
-        await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
-
-        if (!partialFailure)
-            await AppSettings.SaveLastSyncTimestampAsync(log);
-        else
-            log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
     }
 
     private static async Task FetchAndStoreTeamsAsync(string apiUrl, string clubCode, ILogger log)

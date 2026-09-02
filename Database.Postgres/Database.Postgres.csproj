@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Tier-agnostische veldresolutie-logica (#819) — gedeeld met FunctionApp, geen gedeelde
+         DB-provider-abstractie (zie Planner.Shared/VeldResolver.cs). -->
+    <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

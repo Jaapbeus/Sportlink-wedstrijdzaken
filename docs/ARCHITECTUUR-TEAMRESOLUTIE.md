@@ -177,17 +177,48 @@ Schrijfwijzen die niet herleidbaar zijn, zijn in de praktijk geen clubteams — 
 toernooi-inschrijvingen en tegenstanders in oefenwedstrijden. Die krijgen bewust geen alias en worden
 alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de review-lijst te vervuilen.
 
+## Een onherleidbare naam is "niet gecontroleerd", nooit "geen conflict" (#945)
+
+Elke lezer van de canonieke teamlijst kan nul rijen terugkrijgen: de naam staat er niet in, of er is
+nog geen gevalideerde alias voor déze schrijfwijze. Dat is een normale, verwachte uitkomst van deze
+laag — variatie in schrijfwijze is precies het probleem dat zij oplost.
+
+**De harde regel: die uitkomst mag nergens dezelfde vorm hebben als een geslaagde controle met een
+lege uitslag.** Dat ging één keer mis en het is een instructief voorbeeld:
+`GetTeamMatchesOnDateAsync` gaf bij een onherleidbare naam een lege `List` terug — bit voor bit
+hetzelfde als "dit team heeft die dag geen wedstrijd". `AvailabilityService` las dat als "geen
+conflict" en antwoordde `beschikbaar`, zonder waarschuwing en zonder logregel, terwijl het team op
+dat moment al ingepland stond. De planner kon daarop een dubbele boeking maken.
+
+De methode geeft daarom `Planner.Shared.TeamWedstrijdenOpDatum` terug, waarin `TeamHerkend` de twee
+gevallen scheidt; de toestand "niet herkend, mét wedstrijden" is niet construeerbaar. Bij een
+onherleidbare naam zet `check-availability` een expliciete waarschuwing in het antwoord, die via
+`BerichtResponseGenerator`' "Let op:"-regel ook in het antwoordbericht aan de coördinator terechtkomt.
+
+**Bij codereview:** komt er een nieuwe lezer van de canonieke lijst bij, stel dan één vraag — geeft
+dit pad bij nul rijen een *correct* antwoord, of een *verkeerd* antwoord? Bij het tweede hoort de
+onherleidbaarheid zichtbaar te worden, niet weggemiddeld in een lege collectie.
+
 ## Bestanden
 
 | Bestand | Verantwoordelijkheid |
 |---|---|
-| `FunctionApp/TeamResolution/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. |
+| `Planner.Shared/TeamWedstrijdenOpDatum.cs` (in `PlannerDomeinModellen.cs`) | Scheidt "team niet herleidbaar" van "team herkend, geen wedstrijd". **Tier-onafhankelijk** — beide bomen geven dit type terug (#945). |
+| `Planner.Shared/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. **Tier-onafhankelijk** — beide databasebomen gebruiken exact deze klasse (verhuisd hierheen bij #889; stond tot dan in `FunctionApp/TeamResolution/`). |
 | `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen`, altijd op ClubCode. |
 | `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. |
 | `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
 | `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
 | `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. |
+
+**Postgres-tier (epic #815).** De datatoegangslaag bestaat als parallelle boom onder
+`FunctionApp.Postgres/TeamResolution/` — `TeamCandidateRepository`, `TeamAliasLearningService`
+(#889, deel 1) en `TeamCanonicalisatieService` (#889, deel 2), tegen `public.teams`/
+`public.teamaliassen`. De normalisatielogica zelf is **niet** gedupliceerd: beide bomen gebruiken
+`Planner.Shared.TeamNaamNormalisatie`. `TeamResolver`, `TeamDisambiguationAiService` en
+`TeamlijstGereedheid` zijn daar (nog) niet vertaald — zie
+`docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
 
 ## Regels bij wijzigingen
 
@@ -200,3 +231,49 @@ alleen geteld in de logregel, zodat een onverwachte stijging opvalt zonder de re
 4. **Nieuwe naamvormen eerst tegen echte data verifiëren** (`stg.teams` / `his.teams`) vóór je de
    normalisatie aanpast. De vormen in dit document zijn zo gevonden, niet bedacht.
 5. **Test met de clubprefix als parameter**, nooit hardcoded: de prefix komt uit `dbo.AppSettings`.
+
+## Postgres-collatie-kanttekening (#820)
+
+`Database/SportlinkSqlDb.sqlproj` zet het volledige SQL Server-schema op de case-insensitive
+default-collatie (`ModelCollation = 1033, CI`). `TeamCandidateRepository.cs` leunde daar
+stilzwijgend op: een kale `[TeamnaamGenormaliseerd] = @sleutel`-vergelijking "werkte" alleen omdat
+de kolom-collatie hoofdlettergevoeligheid al wegfiltert. Postgres' default-collatie is
+case-sensitief — diezelfde vergelijking matcht daar stilzwijgend nul rijen zodra de opgeslagen
+casing afwijkt van de vers berekende sleutel (geen foutmelding, gewoon "team niet gevonden").
+
+Alle drie de lookups in `TeamCandidateRepository.cs` (`TeamnaamGenormaliseerd`, `RuweTekst`,
+`RuweTekstGenormaliseerd`) vergelijken daarom expliciet via `UPPER(...)` op beide kanten — portable
+naar elke tier, geen afhankelijkheid van een onzichtbare schema-eigenschap.
+`TeamCandidateRepositoryCollationTests` bewaakt dit tekstueel, net als `VeldResolutieDriftTests`
+voor de veldresolutie.
+
+**`RuweTekst` is bewust ook ge-upper't.** De intentie van die tak is "exacte bronschrijfwijze",
+maar onder de huidige CI-collatie is die vergelijking vandaag al feitelijk hoofdletterongevoelig.
+`UPPER()` behoudt het waargenomen gedrag; een bewust hoofdlettergevoelige variant zou een
+gedragswijziging zijn (mogelijk minder validated-alias-treffers) en is niet gekozen.
+
+**Bijgewerkt (#820, vervolgronde):** de Postgres-tier heeft inmiddels wél een teamherkenning-
+datalaag (`FunctionApp.Postgres/TeamResolution/TeamCandidateRepository.cs`/
+`TeamAliasLearningService.cs`, #889) tegen `public.teams`/`public.teamaliassen`. Daar was dit
+risico geen theoretisch vervolgpunt meer maar een levende bug: Postgres' default-collatie is
+case-sensitief, dus zonder de `UPPER()`-wrap gaf `FindExactTeamAsync`/`FindValidatedAliasAsync`
+stilzwijgend nul resultaten bij afwijkende opgeslagen casing — en de kale
+`UNIQUE(clubcode, teamnaam)`/`UNIQUE(clubcode, ruwetekst)`-constraints uit de eerste Postgres-
+migratie (#887) lieten een casing-only-duplicaat toe die SQL Server vandaag al zou weigeren.
+
+`Database.Postgres/migrations/007_teams_collation_fix.sql` vervangt die kale `UNIQUE`-constraints
+door expression-based unique indexes op `upper(...)` (`ux_teams_club_teamnaam_upper`,
+`ux_teams_club_teamnaamgenormaliseerd_upper`, `ux_teamaliassen_club_ruwetekst_upper`). De Postgres-
+tier's `TeamCandidateRepository`/`TeamAliasLearningService` wrappen dezelfde drie vergelijkingen nu
+ook expliciet in `UPPER(...)` — inclusief `TeamAliasLearningService`'s `ON CONFLICT (clubcode,
+upper(ruwetekst))`, dat moest meeveranderen omdat de conflict-doeltabel exact moet matchen met de
+onderliggende (nu expression-based) unique index. Empirisch geverifieerd tegen een wegwerp-
+Postgres-16-container (2026-08-31): een casing-only-duplicaat wordt geweigerd, `FindExactTeamAsync`/
+`FindValidatedAliasAsync` vinden het team ondanks afwijkende opgeslagen casing, en een herhaalde
+`LegVastAsync`-aanroep met andere casing verhoogt de teller op de bestaande rij in plaats van een
+duplicaat aan te maken.
+
+**Nog niet gedaan — vereist expliciete eigenaargoedkeuring, niet autonoom uit te voeren:** de
+audit/replay tegen échte, historische productiedata (`his.teams`/`stg.teams`/`dbo.Teams`) om te
+bepalen of er vandaag al casing-drift verborgen zit achter SQL Server's CI-collatie. Dat vereist
+toegang tot echte clubdata — zie issue #820 voor de openstaande status.

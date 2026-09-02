@@ -16,12 +16,18 @@ valideert het token server-side.
 
 ### Voorbereiding (eenmalig)
 
-1. Stel `FunctionApp/local.settings.json` correct in (zie `local.settings.template.json`)
-2. Voer alle migraties uit op de lokale SQL Server:
+1. Start de lokale database (SQL Server 2022 in Docker — identiek op Windows en macOS):
    ```powershell
-   sqlcmd -S YOUR_SQL_SERVER -d SportlinkSqlDb -E -i .\Database\Script.PostDeployment1.sql
+   docker compose up -d
    ```
-3. Installeer Azurite (voor storage emulator): `npm install -g azurite`
+2. Stel `FunctionApp/local.settings.json` correct in (zie `local.settings.template.json`)
+3. Voer alle migraties uit op die database:
+   ```powershell
+   sqlcmd -S localhost,1433 -d SportlinkSqlDb -U sa -C -i Database/Script.PostDeployment1.sql
+   ```
+   Het wachtwoord geeft u mee via de omgevingsvariabele `SQLCMDPASSWORD`, zodat het niet in de
+   opdrachtregel en dus niet in de processenlijst terechtkomt.
+4. Installeer Azurite (voor storage emulator): `npm install -g azurite`
 
 ### Services starten
 
@@ -175,20 +181,13 @@ De resources zijn aangemaakt en actief. Deze sectie is documentatie voor toekoms
 ### Static Web App aanmaken
 
 ```bash
-az staticwebapp create \
-  --name swa-<clubcode>-sportlink \
-  --resource-group rg-<clubcode>-sportlink \
-  --location westeurope \
-  --sku Free
+az staticwebapp create --name swa-<clubcode>-sportlink --resource-group rg-<clubcode>-sportlink --location westeurope --sku Free
 ```
 
 ### Deployment token ophalen en opslaan als GitHub Secret
 
 ```bash
-az staticwebapp secrets list \
-  --name swa-<clubcode>-sportlink \
-  --resource-group rg-<clubcode>-sportlink \
-  --query "properties.apiKey" -o tsv
+az staticwebapp secrets list --name swa-<clubcode>-sportlink --resource-group rg-<clubcode>-sportlink --query "properties.apiKey" -o tsv
 ```
 
 Sla de waarde op als GitHub Secret `AZURE_STATIC_WEB_APPS_API_TOKEN`. De `blazor-deploy` job
@@ -733,16 +732,41 @@ in (#679).
 | **Kunstlicht** | Bepaalt of de zonsondergang-beperking geldt voor dit veld |
 | **Actief** | Uitvinken deactiveert het veld zonder het te verwijderen (geen harde delete — andere tabellen verwijzen ernaar) |
 
+### Periodes
+
+Een periode is een herbruikbaar regime met een vaste geldigheidsrange, bijvoorbeeld "Zomerstop"
+(bijv. 1 juli t/m 15 augustus) of "Competitie". Een veldbeschikbaarheid-venster kan aan een periode
+gekoppeld worden — het geldt dan uitsluitend terwijl die periode loopt, in plaats van het hele jaar.
+Zo hoeft u niet langer twee keer per jaar handmatig vensters toe te voegen en weer te verwijderen
+om de zomerstop te overbruggen (#581).
+
+| Veld | Uitleg |
+|---|---|
+| **Naam** | Vrije tekst, bijv. "Zomerstop" |
+| **Van / Tot** | Geldigheidsrange (kalenderdatums, beide inclusief) |
+| **Actief** | Uitvinken schakelt de periode tijdelijk uit zonder hem te verwijderen |
+
+Er mag nooit meer dan één actieve periode van dezelfde club tegelijk lopen — een overlappende
+periode wordt bij het opslaan geweigerd. Verwijder eerst de gekoppelde veldbeschikbaarheid-vensters
+(of koppel ze los) voordat u een periode verwijdert.
+
 ### Veldbeschikbaarheid
 
-Het wekelijkse openingsvenster van het sportpark per veld per dag. Een combinatie veld + dag komt
-één keer voor; pas een bestaand venster aan in plaats van een tweede toe te voegen.
+Het wekelijkse openingsvenster van het sportpark per veld per dag, optioneel gekoppeld aan een
+periode. Een combinatie veld + dag + periode komt één keer voor; pas een bestaand venster aan in
+plaats van een tweede toe te voegen.
 
 | Veld | Uitleg |
 |---|---|
 | **Veld / Dag** | Alleen instelbaar bij aanmaken — verwijder en maak opnieuw aan om veld of dag te wijzigen |
 | **Van / Tot** | Openingsvenster, bijv. 18:00–22:00 |
 | **Beperkt tot zonsondergang** | Venster sluit eerder als de zon eerder ondergaat dan de ingestelde eindtijd (alleen relevant zonder kunstlicht) |
+| **Periode** | "Standaard" (leeg) laat het venster het hele jaar gelden, behalve wanneer een andere periode actief is. Een gekozen periode laat het venster uitsluitend tijdens die periode gelden |
+
+**Voorbeeld:** een kunstgrasveld is doordeweeks normaal gesproken gesloten (geen venster), maar is
+tijdens de zomerstop juist wel beschikbaar omdat er geen trainingen zijn. Maak een periode
+"Zomerstop" aan en voeg voor dat veld een venster toe dat aan die periode gekoppeld is — buiten de
+zomerstop verandert er niets aan het reguliere schema.
 
 ### Trainingsschema
 
@@ -776,6 +800,10 @@ telt nergens in mee.
 | `POST /api/beheer/veldtraining` | Nieuw trainingsblok aanmaken |
 | `PUT /api/beheer/veldtraining/{id}` | Trainingsblok bijwerken |
 | `DELETE /api/beheer/veldtraining/{id}` | Trainingsblok verwijderen |
+| `GET /api/beheer/veldperiodes` | Alle periodes voor de club |
+| `POST /api/beheer/veldperiodes` | Nieuwe periode aanmaken |
+| `PUT /api/beheer/veldperiodes/{id}` | Periode bijwerken |
+| `DELETE /api/beheer/veldperiodes/{id}` | Periode verwijderen |
 
 ---
 
@@ -816,6 +844,32 @@ opent standaard op **Alleen te beoordelen**; met **Alles** ziet u ook de al beoo
 veiliger dan een fout vastleggen — een goedgekeurde alias stuurt namelijk toekomstige
 e-mailverwerking naar dat team.
 
+### Teamlijst opnieuw opbouwen
+
+Bovenaan dezelfde pagina staat de knop **"Teamlijst opnieuw opbouwen"**.
+
+Aliassen hangen aan de teamlijst, en die lijst wordt normaal bijgewerkt aan het eind van elke
+nachtelijke synchronisatie. Staat de synchronisatie uit, of heeft die sinds een update nog niet
+gelopen, dan kan de lijst leeg of verouderd zijn. U merkt dat aan:
+
+- teamkeuzelijsten (bijvoorbeeld bij Voorkeurstijden) die leeg blijven;
+- de melding dat er **niet** gecontroleerd kon worden of een team die dag al speelt;
+- teams die niet herkend worden in binnenkomende e-mail.
+
+De knop bouwt de lijst direct opnieuw op uit de al opgehaalde Sportlink-teams. U krijgt terug
+hoeveel teams er nu actief zijn (en hoeveel het er daarvoor waren), zodat zichtbaar is of er
+werkelijk iets veranderd is.
+
+| Situatie | Wat u ziet |
+|---|---|
+| Lijst opnieuw opgebouwd | Aantal actieve teams vóór en na, plus het aantal goedgekeurde schrijfwijzen |
+| Teams hersteld na een wijziging in de naamherkenning | Een extra regel met het aantal herstelde teams |
+| Er is nog nooit gesynchroniseerd | Een waarschuwing dat er niets is om uit af te leiden — draai eerst een synchronisatie |
+
+**Herhalen mag.** De knop is idempotent: twee keer indrukken verandert niets extra. Goedgekeurde
+en afgewezen aliassen blijven staan; alleen de schrijfwijzen die uit de Sportlink-data zelf komen
+worden bijgewerkt.
+
 ### API-endpoints
 
 | Endpoint | Beschrijving |
@@ -823,6 +877,7 @@ e-mailverwerking naar dat team.
 | `GET /api/beheer/teamaliassen?status=pending` | Aliassen ophalen, optioneel gefilterd op status |
 | `PUT /api/beheer/teamaliassen/{id}/valideer` | Alias goedkeuren (`validated`) of afwijzen (`rejected`) |
 | `DELETE /api/beheer/teamaliassen/{id}` | Alias definitief verwijderen |
+| `POST /api/beheer/teams/herstel` | Teamlijst opnieuw opbouwen (de knop hierboven) |
 
 ---
 

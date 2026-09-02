@@ -13,7 +13,12 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$root = Resolve-Path (Join-Path $PSScriptRoot "../..")
+
+# Poortdetectie loopt via DevServices.psm1: Get-NetTCPConnection bestaat alleen op Windows,
+# en dit script moet ook op macOS een eerlijk oordeel geven in plaats van secties stilzwijgend
+# over te slaan omdat de cmdlet ontbreekt (#800).
+Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
 $issues  = [System.Collections.Generic.List[string]]::new()
 $fixed   = [System.Collections.Generic.List[string]]::new()
 $ok      = [System.Collections.Generic.List[string]]::new()
@@ -31,7 +36,7 @@ $hooksPath = git config core.hooksPath 2>$null
 if ($hooksPath -ne ".githooks") {
     Write-Warning "Git hooks niet geactiveerd! Voer uit: git config core.hooksPath .githooks"
 } else {
-    $patternsFile = Join-Path $root ".githooks\sensitive-patterns.txt"
+    $patternsFile = Join-Path $root ".githooks/sensitive-patterns.txt"
     if (-not (Test-Path $patternsFile)) {
         Write-Warning "sensitive-patterns.txt ontbreekt. Kopieer van .githooks\sensitive-patterns.template.txt"
     } else {
@@ -44,7 +49,7 @@ if ($hooksPath -ne ".githooks") {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Database verbinding"
 
-$settingsPath = Join-Path $root "FunctionApp\local.settings.json"
+$settingsPath = Join-Path $root "FunctionApp/local.settings.json"
 if (-not (Test-Path $settingsPath)) {
     Write-Issue "local.settings.json niet gevonden — kopieer van local.settings.template.json"
     exit 1
@@ -57,9 +62,11 @@ if (-not $connStr) {
     exit 1
 }
 
-# Extraheer Server en Database uit connection string
-$server = if ($connStr -match 'Data Source=([^;]+)') { $Matches[1] } else { $null }
-$db     = if ($connStr -match 'Initial Catalog=([^;]+)') { $Matches[1] } else { $null }
+# Extraheer Server en Database uit connection string.
+# Beide schrijfwijzen accepteren: 'Data Source'/'Initial Catalog' én 'Server'/'Database'
+# (dat laatste is wat local.settings.template.json gebruikt).
+$server = if ($connStr -match '(?:Data Source|Server|Address|Addr|Network Address)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
+$db     = if ($connStr -match '(?:Initial Catalog|Database)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
 
 if (-not $server -or -not $db) {
     Write-Issue "Kon server/database niet parsen uit connection string"
@@ -67,8 +74,42 @@ if (-not $server -or -not $db) {
 }
 Write-Ok "Connection: $server / $db"
 
+# ── sqlcmd-authenticatie (#800) ───────────────────────────────────────────────
+# De lokale database draait op Windows én macOS als SQL Server 2022 in Docker, en dus
+# altijd met een SQL-login. Windows Integrated Authentication ('-E') wordt bewust niet
+# meer ondersteund: dat werkt alleen tegen een lokaal geïnstalleerde SQL Server-service
+# op Windows en dwong overal een tweede variant af.
+#
+# Het wachtwoord gaat via de omgevingsvariabele SQLCMDPASSWORD en NIET via -P: argumenten
+# zijn op beide platforms zichtbaar in de processenlijst, een omgevingsvariabele van het
+# kindproces niet.
+$sqlUser    = if ($connStr -match '(?:User ID|User Id|UID)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
+$sqlPass    = if ($connStr -match '(?:Password|PWD)\s*=\s*([^;]+)')        { $Matches[1].Trim() } else { $null }
+$integrated = $connStr -match '(?:Integrated Security|Trusted_Connection)\s*=\s*(?:True|Yes|SSPI)'
+$trustCert  = $connStr -match 'TrustServerCertificate\s*=\s*(?:True|Yes)'
+
+if (-not ($sqlUser -and $sqlPass)) {
+    if ($integrated) {
+        Write-Issue "De verbindingsreeks gebruikt 'Integrated Security'. Dat pad is vervallen — de lokale database draait nu op beide platforms als SQL Server 2022 in Docker."
+    } else {
+        Write-Issue "Geen SQL-login gevonden in de verbindingsreeks."
+    }
+    Write-Host "    Start de database met : docker compose up -d" -ForegroundColor Yellow
+    Write-Host "    Zet daarna in FunctionApp/local.settings.json:" -ForegroundColor Yellow
+    Write-Host "      Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=<jouw SA-wachtwoord>;TrustServerCertificate=True;" -ForegroundColor Yellow
+    Write-Host "    Zie docs/DEVELOPER-SETUP.md voor de volledige stappen." -ForegroundColor Yellow
+    exit 1
+}
+
+$env:SQLCMDPASSWORD = $sqlPass
+$sqlAuthArgs = @('-U', $sqlUser)
+
+# ODBC Driver 18 zet standaard Encrypt=yes en valideert het certificaat. De container heeft
+# een self-signed certificaat, dus -C (TrustServerCertificate) is nodig.
+if ($trustCert) { $sqlAuthArgs += '-C' }
+
 function Invoke-Sql($query) {
-    sqlcmd -S $server -d $db -E -Q $query -h -1 -W 2>&1
+    sqlcmd -S $server -d $db @sqlAuthArgs -Q $query -h -1 -W 2>&1
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -87,7 +128,8 @@ $expectedColumns = @{
         "EmailVoetnoot","UseRealtimeApi","SyncEnabled",
         "ThemeColorPrimary","ThemeColorSecondary","ThemeColorAccent",
         "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl",
-        "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio"
+        "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio",
+        "AppSettingsAuditBewaarDagen"
     )
     "dbo.TeamVoorkeurTijden" = @(
         "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",
@@ -95,7 +137,10 @@ $expectedColumns = @{
     )
     "dbo.VeldBeschikbaarheid" = @(
         "Id","VeldNummer","DagVanWeek","BeschikbaarVanaf","BeschikbaarTot",
-        "GebruikZonsondergang","ClubCode"
+        "GebruikZonsondergang","PeriodeId","ClubCode"
+    )
+    "dbo.VeldPeriode" = @(
+        "Id","Naam","DatumVan","DatumTot","Actief","ClubCode"
     )
     "dbo.UitgeslotenEmailAdressen" = @(
         "Id","EmailAdres","Omschrijving","Actief","ClubCode","mta_inserted"
@@ -123,7 +168,7 @@ $expectedColumns = @{
 # Elke tabel in Database\dbo\Tables\<Tabel>.sql is de bron van waarheid voor kolomdefinities.
 function Get-SchemaSqlPath($tableKey) {
     $parts = $tableKey -split '\.'
-    Join-Path $root "Database\$($parts[0])\Tables\$($parts[1]).sql"
+    Join-Path $root "Database/$($parts[0])/Tables/$($parts[1]).sql"
 }
 
 function Get-SchemaColumns($sqlPath) {
@@ -188,8 +233,12 @@ foreach ($tableKey in $expectedColumns.Keys) {
         $sqlFile = Get-SchemaSqlPath $tableKey
         if ($Fix) {
             if (Test-Path $sqlFile) {
-                $createSql = Get-Content $sqlFile -Raw
-                $result = sqlcmd -S $server -d $db -E -Q $createSql 2>&1
+                # -i <bestand> in plaats van -Q <inhoud> (#581): de complete bestandsinhoud
+                # inline als -Q-argument doorgeven breekt sqlcmd's argumentparser zodra het
+                # bestand een letterlijk aanhalingsteken of niet-ASCII-teken in commentaar bevat
+                # ("- of / does not have an associated argument") — precies zoals de productie-
+                # deploy het al doet (azure/sql-action met een file-path, geen inline query).
+                $result = sqlcmd -S $server -d $db @sqlAuthArgs -i $sqlFile 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-Fixed "Tabel $tableKey aangemaakt"
                 } else {
@@ -266,15 +315,15 @@ foreach ($tableKey in $expectedColumns.Keys) {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Build verificatie"
 
-$funcProj   = Join-Path $root "FunctionApp\fa-dev-sportlink-01.csproj"
-$blazorProj = Join-Path $root "BlazorAdmin\BlazorAdmin.csproj"
+$funcProj   = Join-Path $root "FunctionApp/fa-dev-sportlink-01.csproj"
+$blazorProj = Join-Path $root "BlazorAdmin/BlazorAdmin.csproj"
 
 # BlazorAdmin NIET bouwen terwijl de dev server draait (#684).
 # BlazorAdmin genereert content-hash fingerprints per compilatie. Een tweede compilatiepas
 # naast de draaiende 'dotnet watch' levert een tweede set fingerprints op → 404 op
 # framework-JS → "An unhandled error has occurred. Reload" in de browser. Dit is dezelfde
 # KRITIEKE REGEL als in CLAUDE.md; het script hield zich er zelf niet aan.
-$blazorLive = [bool](Get-NetTCPConnection -LocalPort 5242 -State Listen -ErrorAction SilentlyContinue)
+$blazorLive = Test-PortListening -Port 5242
 
 foreach ($proj in @($funcProj, $blazorProj)) {
     $name   = Split-Path $proj -Parent | Split-Path -Leaf
@@ -303,7 +352,7 @@ foreach ($proj in @($funcProj, $blazorProj)) {
 Write-Section "API smoke tests"
 
 $funcBase = "http://localhost:7094"
-$funcRunning = [bool](Get-NetTCPConnection -LocalPort 7094 -State Listen -ErrorAction SilentlyContinue)
+$funcRunning = Test-PortListening -Port 7094
 
 # Lees func-sleutel uit local.settings.json indien aanwezig
 $funcKey = $settings.Values.FunctionAppKey
@@ -320,6 +369,8 @@ $endpoints = @(
     @{ Method="GET";  Path="api/beheer/uitgesloten-emails";  Desc="Uitgesloten e-mails" }
     @{ Method="GET";  Path="api/beheer/velden";              Desc="Velden" }
     @{ Method="GET";  Path="api/beheer/veldbeschikbaarheid"; Desc="Veldbeschikbaarheid" }
+    @{ Method="GET";  Path="api/beheer/veldtraining";        Desc="Trainingsschema" }
+    @{ Method="GET";  Path="api/beheer/veldperiodes";        Desc="Veldperiodes" }
     @{ Method="GET";  Path="api/beheer/email-log";           Desc="E-maillog" }
     @{ Method="GET";  Path="api/beheer/teams";               Desc="Teams" }
     @{ Method="GET";  Path="api/beheer/teamaliassen";        Desc="Teamaliassen" }
@@ -390,7 +441,7 @@ if (-not $ghPat -or -not $ghOwner) {
 Write-Section "Blazor pagina checks"
 
 $blazorBase    = "http://localhost:5242"
-$blazorRunning = [bool](Get-NetTCPConnection -LocalPort 5242 -State Listen -ErrorAction SilentlyContinue)
+$blazorRunning = Test-PortListening -Port 5242
 
 $pages = @(
     @{ Path="/";                    Desc="Home / Dashboard" }
@@ -430,7 +481,7 @@ if (-not $blazorRunning) {
 Write-Section "SWA emulator checks"
 
 $swaBase    = "http://localhost:4280"
-$swaRunning = [bool](Get-NetTCPConnection -LocalPort 4280 -State Listen -ErrorAction SilentlyContinue)
+$swaRunning = Test-PortListening -Port 4280
 
 if (-not $swaRunning) {
     Write-Host "  SWA emulator niet actief op :4280 — SWA-tests overgeslagen." -ForegroundColor DarkGray

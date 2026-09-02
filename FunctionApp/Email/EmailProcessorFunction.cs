@@ -1,10 +1,11 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Graph;
 using Newtonsoft.Json;
+using SportlinkFunction.Monitoring;
 using SportlinkFunction.Processing;
 using SportlinkFunction.TeamResolution;
+using Planner.Shared;
 
 namespace SportlinkFunction.Email;
 
@@ -187,11 +188,15 @@ internal sealed class UitsluitingslijstCache
 
 public class EmailProcessorFunction
 {
-    private const string GeenAiAntwoordLabel = "Geen AI antwoord";
+    // Throttle-sleutels voor INoodmailThrottleStore (#831). Vóór #831 stond deze staat in een
+    // static/volatile veld op deze klasse (procesgeheugen) — dat reset bij een cold start van de
+    // Consumption-plan-worker, waardoor het throttle-gedrag afhing van iets wat de code zelf niet
+    // controleert: hoe vaak de host in de praktijk herstart. Zie INoodmailThrottleStore voor de
+    // volledige onderbouwing en DatabaseUitvalMonitorFunction voor de sleutel die hiermee gedeeld wordt.
+    internal const string DatabaseNoodmailSleutel = DatabaseUitvalMonitorFunction.ThrottleSleutel;
+    internal const string OpenAiQuotaNoodmailSleutel = "openai-quota-noodmail";
+    private static readonly TimeSpan OpenAiQuotaNoodmailInterval = TimeSpan.FromHours(24);
 
-    // volatile voor thread-safe reads vanuit meerdere invocaties (#382)
-    private static volatile bool _databaseNoodmailVerstuurd;
-    private static DateTime? _openAiQuotaNoodmailVerstuurdenOp;
     // Uitsluitingslijst: geladen vóór elke AI-classificatie (fail-closed bij cold start). (#423, #709)
     private static readonly UitsluitingslijstCache _uitsluitingslijst = new();
 
@@ -209,8 +214,10 @@ public class EmailProcessorFunction
             return;
         }
 
-        var graphClient = context.InstanceServices.GetService<GraphServiceClient>();
-        if (graphClient == null)
+        // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is (Program.cs) — een
+        // ontbrekende registratie betekent hier hetzelfde als een eerder ontbrekende GraphServiceClient.
+        var graphService = context.InstanceServices.GetService<IEmailGraphService>();
+        if (graphService == null)
         {
             log.LogError("GraphServiceClient niet beschikbaar — controleer Graph settings");
             return;
@@ -228,8 +235,11 @@ public class EmailProcessorFunction
             return;
         }
 
-        IEmailGraphService graphService = new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>());
-        IEmailPersistenceService persistenceService = new EmailPersistenceService();
+        // IEmailPersistenceService is onvoorwaardelijk geregistreerd (#827) — geen eigen `new` meer.
+        var persistenceService = context.InstanceServices.GetRequiredService<IEmailPersistenceService>();
+        // Persistente noodmail-throttle (#831) — onvoorwaardelijk geregistreerd, want AzureWebJobsStorage
+        // is sowieso vereist voor de Functions-host zelf.
+        var throttleStore = context.InstanceServices.GetRequiredService<INoodmailThrottleStore>();
         var batchFilterService = new EmailBatchFilterService();
         var classificationService = new EmailClassificationService();
         var replyPolicyService = new EmailReplyPolicyService();
@@ -298,10 +308,9 @@ public class EmailProcessorFunction
         if (classificationResult.AiAborted && classificationResult.QuotaException != null)
         {
             var quotaEx = classificationResult.QuotaException;
-            if (_openAiQuotaNoodmailVerstuurdenOp == null
-                || (DateTime.UtcNow - _openAiQuotaNoodmailVerstuurdenOp.Value).TotalHours >= 24)
+            if (await MoetOpenAiQuotaNoodmailVersturenAsync(throttleStore, DateTime.UtcNow))
             {
-                await StuurOpenAiNoodmailAsync(graphService, CategorizeerFout(quotaEx), log);
+                await StuurOpenAiNoodmailAsync(graphService, CategorizeerFout(quotaEx), throttleStore, log);
             }
             else
             {
@@ -345,25 +354,13 @@ public class EmailProcessorFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            if (_databaseNoodmailVerstuurd)
-            {
-                _databaseNoodmailVerstuurd = false;
-                log.LogInformation("Database weer bereikbaar — email processor hervat");
-            }
+            await BehandelDatabaseHerstelAsync(throttleStore, log);
             await SystemUtilities.AppSettings.LoadSettingsAsync(log);
         }
         catch (Exception dbEx)
         {
-            if (!_databaseNoodmailVerstuurd)
-            {
-                log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
-                await StuurDatabaseNoodmailAsync(
-                    graphService, teVerwerken.Count + mislukteClassificaties.Count, CategorizeerFout(dbEx), log);
-            }
-            else
-            {
-                log.LogWarning("Email processor gepauzeerd — database nog niet bereikbaar (noodmail al verstuurd)");
-            }
+            await BehandelDatabaseVerbindingsFoutAsync(
+                dbEx, graphService, teVerwerken.Count + mislukteClassificaties.Count, throttleStore, log);
             return;
         }
 
@@ -477,38 +474,7 @@ public class EmailProcessorFunction
             return;
 
         // #323: reply-detectie — is dit een reply op een eerder door ons beantwoord bericht?
-        if (!string.IsNullOrWhiteSpace(email.ConversationId))
-        {
-            var (isReply, origineleVerwerkingId, origineelType, originaleSamenvatting) =
-                await persistenceService.DetecteerReplyOpOnsAntwoordAsync(email.ConversationId, log);
-
-            if (isReply && origineleVerwerkingId.HasValue)
-            {
-                await persistenceService.UpdateReplyStatusAsync(verwerkingId, true, origineleVerwerkingId.Value);
-                log.LogInformation("Email {Id} is reply op verwerking {OrigineleId}", verwerkingId, origineleVerwerkingId);
-
-                // Detecteer of het een correctie is op de eerdere classificatie
-                try
-                {
-                    var (isCorrectie, afgeleidType, correctieSamenvatting) = await aiService.DetecteerCorrectieAsync(
-                        email.Body, email.Onderwerp, origineelType ?? "", originaleSamenvatting);
-
-                    if (isCorrectie)
-                    {
-                        await persistenceService.InsertClassificatieCorrectieAsync(
-                            origineleVerwerkingId.Value, verwerkingId,
-                            origineelType ?? "", afgeleidType,
-                            originaleSamenvatting, correctieSamenvatting);
-                        log.LogInformation("Correctie gedetecteerd voor verwerking {OrigineleId}: {OrigineelType} → {JuistType}",
-                            origineleVerwerkingId, origineelType, afgeleidType);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log.LogWarning(ex, "Correctie-detectie mislukt voor reply {Id} — doorgaan zonder correctie", verwerkingId);
-                }
-            }
-        }
+        await DetecteerEnRegistreerCorrectieAsync(verwerkingId, email, persistenceService, aiService, log);
 
         // #323: few-shot herclassificatie als er gevalideerde leermomenten zijn
         var voorbeelden = await persistenceService.HaalLeermomentVoorbeeldenOpAsync(log);
@@ -545,12 +511,14 @@ public class EmailProcessorFunction
 
         var reviewMode = string.Equals(
             Environment.GetEnvironmentVariable("EmailReviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+        var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
         var replyUitkomst = await replyPolicyService.HandelReplyFlowAfAsync(
             verwerkingId,
             email,
             classificatie,
             plannerResponseJson,
             reviewMode,
+            reviewRecipient,
             graphService,
             persistenceService,
             () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log),
@@ -560,6 +528,66 @@ public class EmailProcessorFunction
         if (replyUitkomst != ReplyVerwerkingUitkomst.AntwoordVerstuurd)
             return;
 
+        await StuurVervolgNotificatiesAsync(classificatie, email, graphService, log);
+    }
+
+    /// <summary>
+    /// Detecteert of dit bericht een reply is op een eerder door ons beantwoord bericht (#323) en,
+    /// zo ja, of de afzender daarin een correctie geeft op de eerdere classificatie. Faalt de
+    /// correctie-detectie zelf, dan gaat de hoofdverwerking gewoon door zonder correctie.
+    /// </summary>
+    private static async Task DetecteerEnRegistreerCorrectieAsync(
+        int verwerkingId,
+        InkomendBericht email,
+        IEmailPersistenceService persistenceService,
+        BerichtAiService aiService,
+        ILogger log)
+    {
+        if (string.IsNullOrWhiteSpace(email.ConversationId))
+            return;
+
+        var (isReply, origineleVerwerkingId, origineelType, originaleSamenvatting) =
+            await persistenceService.DetecteerReplyOpOnsAntwoordAsync(email.ConversationId, log);
+
+        if (!isReply || !origineleVerwerkingId.HasValue)
+            return;
+
+        await persistenceService.UpdateReplyStatusAsync(verwerkingId, true, origineleVerwerkingId.Value);
+        log.LogInformation("Email {Id} is reply op verwerking {OrigineleId}", verwerkingId, origineleVerwerkingId);
+
+        // Detecteer of het een correctie is op de eerdere classificatie
+        try
+        {
+            var (isCorrectie, afgeleidType, correctieSamenvatting) = await aiService.DetecteerCorrectieAsync(
+                email.Body, email.Onderwerp, origineelType ?? "", originaleSamenvatting);
+
+            if (isCorrectie)
+            {
+                await persistenceService.InsertClassificatieCorrectieAsync(
+                    origineleVerwerkingId.Value, verwerkingId,
+                    origineelType ?? "", afgeleidType,
+                    originaleSamenvatting, correctieSamenvatting);
+                log.LogInformation("Correctie gedetecteerd voor verwerking {OrigineleId}: {OrigineelType} → {JuistType}",
+                    origineleVerwerkingId, origineelType, afgeleidType);
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Correctie-detectie mislukt voor reply {Id} — doorgaan zonder correctie", verwerkingId);
+        }
+    }
+
+    /// <summary>
+    /// Stuurt de interne vervolgnotificaties die horen bij een succesvol verstuurd antwoord:
+    /// teamleider-notificatie bij een herplanverzoek (#66) en het doorsturen van een
+    /// team-contact-vraag naar de coach (#168).
+    /// </summary>
+    private static async Task StuurVervolgNotificatiesAsync(
+        BerichtClassificatie classificatie,
+        InkomendBericht email,
+        IEmailGraphService graphService,
+        ILogger log)
+    {
         // Stuur interne notificatie naar teamleider bij herplanverzoeken van externe afzender (#66)
         if (classificatie.Type == VerzoekType.HerplanVerzoek
             && !string.IsNullOrWhiteSpace(classificatie.TeamNaam)
@@ -680,8 +708,8 @@ public class EmailProcessorFunction
     {
         try
         {
-            await graphService.EnsureMasterCategoryAsync(GeenAiAntwoordLabel, "preset0");
-            await graphService.SetCategoriesAsync(messageId, GeenAiAntwoordLabel);
+            await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+            await graphService.SetCategoriesAsync(messageId, EmailCategorieLabels.GeenAiAntwoord);
             await graphService.MarkAsReadAsync(messageId);
         }
         catch (Exception ex)
@@ -794,8 +822,8 @@ public class EmailProcessorFunction
 
         try
         {
-            await graphService.EnsureMasterCategoryAsync(GeenAiAntwoordLabel, "preset0");
-            await graphService.SetCategoriesAsync(email.MessageId, GeenAiAntwoordLabel);
+            await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+            await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
         }
         catch (Exception ex)
         {
@@ -964,14 +992,49 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
+    /// Reageert op een geslaagde databaseverbinding: als er een noodmail-registratie openstaat van een
+    /// eerdere uitval, wordt die gewist zodat een volgende, nieuwe uitval weer een verse melding
+    /// oplevert in plaats van stil te blijven omdat de oude registratie nog "openstond" (#831).
+    /// </summary>
+    internal static async Task BehandelDatabaseHerstelAsync(INoodmailThrottleStore throttleStore, ILogger log)
+    {
+        if (await throttleStore.LaatsteKeerVerstuurdAsync(DatabaseNoodmailSleutel) is not null)
+        {
+            await throttleStore.WisAsync(DatabaseNoodmailSleutel);
+            log.LogInformation("Database weer bereikbaar — email processor hervat");
+        }
+    }
+
+    /// <summary>
+    /// Reageert op een mislukte databaseverbinding: stuurt een noodmail, tenzij er al één openstaat
+    /// voor deze uitval. De registratie staat in <see cref="INoodmailThrottleStore"/> — niet in een
+    /// static veld — zodat het gedrag niet afhangt van cold starts (#831).
+    /// </summary>
+    internal static async Task BehandelDatabaseVerbindingsFoutAsync(
+        Exception dbEx, IEmailGraphService graphService, int aantalOnverwerkt,
+        INoodmailThrottleStore throttleStore, ILogger log)
+    {
+        if (await throttleStore.LaatsteKeerVerstuurdAsync(DatabaseNoodmailSleutel) is null)
+        {
+            log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
+            await StuurDatabaseNoodmailAsync(graphService, aantalOnverwerkt, CategorizeerFout(dbEx), throttleStore, log);
+        }
+        else
+        {
+            log.LogWarning("Email processor gepauzeerd — database nog niet bereikbaar (noodmail al verstuurd)");
+        }
+    }
+
+    /// <summary>
     /// Stuurt een noodmail als de database niet beschikbaar is.
     /// Emails blijven ongelezen in de inbox en worden bij de volgende poll opnieuw opgepikt.
     /// </summary>
-    private static async Task StuurDatabaseNoodmailAsync(
-        IEmailGraphService graphService, int aantalEmails, string foutmelding, ILogger log)
+    internal static async Task StuurDatabaseNoodmailAsync(
+        IEmailGraphService graphService, int aantalEmails, string foutmelding,
+        INoodmailThrottleStore throttleStore, ILogger log)
     {
         var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
-        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById(BerichtResponseGenerator.NlTijdzoneId);
         var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
 
         var body = $"URGENT: De database is niet bereikbaar.\n\n"
@@ -992,7 +1055,7 @@ public class EmailProcessorFunction
         {
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: Database niet bereikbaar — email-processor gepauzeerd", body, null);
-            _databaseNoodmailVerstuurd = true;
+            await throttleStore.RegistreerVerstuurdAsync(DatabaseNoodmailSleutel, DateTime.UtcNow);
             log.LogWarning("Noodmail verstuurd naar {Mailbox} — processor gepauzeerd tot database weer bereikbaar", mailbox);
         }
         catch (Exception ex)
@@ -1030,11 +1093,21 @@ public class EmailProcessorFunction
     private static string SanitizeFoutMelding(string message)
         => EmailSanitizer.SanitizeFoutMelding(message);
 
-    private static async Task StuurOpenAiNoodmailAsync(
-        IEmailGraphService graphService, string foutmelding, ILogger log)
+    /// <summary>
+    /// Bepaalt of de OpenAI-quota-noodmail verstuurd mag worden, op basis van een persistente
+    /// registratie in plaats van een static veld (zelfde defect als de database-noodmail, #831).
+    /// </summary>
+    internal static async Task<bool> MoetOpenAiQuotaNoodmailVersturenAsync(INoodmailThrottleStore throttleStore, DateTime nuUtc)
+    {
+        var laatsteKeer = await throttleStore.LaatsteKeerVerstuurdAsync(OpenAiQuotaNoodmailSleutel);
+        return laatsteKeer is null || (nuUtc - laatsteKeer.Value) >= OpenAiQuotaNoodmailInterval;
+    }
+
+    internal static async Task StuurOpenAiNoodmailAsync(
+        IEmailGraphService graphService, string foutmelding, INoodmailThrottleStore throttleStore, ILogger log)
     {
         var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
-        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById(BerichtResponseGenerator.NlTijdzoneId);
         var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
 
         var body = $"URGENT: OpenAI quota overschreden — email-processor gepauzeerd.\n\n"
@@ -1051,7 +1124,7 @@ public class EmailProcessorFunction
         {
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: OpenAI quota overschreden — email-processor gepauzeerd", body, null);
-            _openAiQuotaNoodmailVerstuurdenOp = DateTime.UtcNow;
+            await throttleStore.RegistreerVerstuurdAsync(OpenAiQuotaNoodmailSleutel, DateTime.UtcNow);
             log.LogWarning("OpenAI quota-noodmail verstuurd naar {Mailbox}", mailbox);
         }
         catch (Exception ex)

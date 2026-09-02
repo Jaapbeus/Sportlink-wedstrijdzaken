@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- net9.0 is verplicht, niet een keuze: Azure Functions op een Linux Consumption Plan
+         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24). Nooit
+         verhogen zonder de infrastructuurwijziging (Flex Consumption Plan) die daarvoor nodig is. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FunctionApp.Postgres</RootNamespace>
+    <Platforms>AnyCPU;x86</Platforms>
+    <DockerFastModeProjectMountDirectory>/home/site/wwwroot</DockerFastModeProjectMountDirectory>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileContext>.</DockerfileContext>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Version>3.1.0.0</Version>
+    <AssemblyVersion>3.1.0.0</AssemblyVersion>
+    <FileVersion>3.1.0.0</FileVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
+         (#476). Nodig omdat vrijwel alles in dit project bewust internal is: het is een
+         Functions-host, geen bibliotheek. Vóór issue 890 werd elke verificatie op deze tier gedaan
+         met een wegwerp-consoleproject plus een tijdelijk InternalsVisibleTo dat daarna weer werd
+         verwijderd — reproduceerbaar op het moment zelf, maar niet bewaakt tegen regressie. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>FunctionApp.Postgres.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <!-- #863-precedent: tier-herkomst voor /api/health als build-time metadata, nooit een
+         runtime-gok. "Postgres" is de canonieke tier-naam uit scripts/ci/database-tiers.json
+         (#816/#865) — nooit een los, eigen naamschema hier. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseTier</_Parameter1>
+      <_Parameter2>Postgres</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>DatabaseProvider</_Parameter1>
+      <_Parameter2>Npgsql</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Cronos" Version="0.13.0" />
+    <!-- §43: uitsluitend voor het uitgaande e-mailpad van AdminTeambegeleidingDoorsturen.
+         Zelfde versie als de SQL Server-tier, dus geen nieuw afhankelijkheidsrisico. -->
+    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <!-- #966: uitsluitend voor FeedbackFunction (IChatClient — provider-agnostisch,
+         CLAUDE.md-architectuurregel). Zelfde versies als de SQL Server-tier. -->
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
+    <PackageReference Include="OpenAI" Version="2.13.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- #818: PostgresIdentifier/schema-generatie-bouwstenen — dit project bouwt de applicatie-
+         datalaag (#860 t/m #887-890) bovenop wat #818 al levert, geen tweede implementatie ervan. -->
+    <ProjectReference Include="..\Database.Postgres\Database.Postgres.csproj" />
+    <!-- #888: directe referentie i.p.v. alleen transitief via Database.Postgres — nodig zodra
+         planner-code hier de gedeelde scheduling-engine (FieldScheduler) en de tier-agnostische
+         domeinmodellen uit Planner.Shared aanroept, niet alleen VeldResolver/VeldNormalisatie/
+         TeamNaamNormalisatie die al transitief binnenkwamen. Een impliciete afhankelijkheid keert
+         de bedoelde gelaagdheid om zodra er planner-logica in Planner.Shared bijkomt. -->
+    <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
+  </ItemGroup>
+</Project>

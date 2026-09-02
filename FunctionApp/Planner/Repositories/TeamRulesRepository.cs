@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Data.SqlClient;
 
 namespace SportlinkFunction.Planner;
@@ -9,6 +10,8 @@ namespace SportlinkFunction.Planner;
 internal static class TeamRulesRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
+    private const string RegelTypeBufferVoor = "BufferVoor";
+    private const string RegelTypeBufferNa = "BufferNa";
 
     internal static async Task<List<TeamRegel>> GetTeamRulesAsync(string teamNaam, string? clubCode = null)
     {
@@ -144,10 +147,10 @@ internal static class TeamRulesRepository
         var result = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
-        using var cmd = new SqlCommand(@"
+        using var cmd = new SqlCommand($@"
             SELECT [TeamNaam], [RegelType], [WaardeMinuten]
             FROM [dbo].[TeamRegels]
-            WHERE [RegelType] IN ('BufferVoor', 'BufferNa') AND [Actief] = 1 AND [WaardeMinuten] IS NOT NULL
+            WHERE [RegelType] IN ('{RegelTypeBufferVoor}', '{RegelTypeBufferNa}') AND [Actief] = 1 AND [WaardeMinuten] IS NOT NULL
               AND [ClubCode] = @cc
         ", conn);
         cmd.Parameters.AddWithValue("@cc", cc);
@@ -159,7 +162,7 @@ internal static class TeamRulesRepository
             var min    = reader.GetInt32(2);
             if (!result.ContainsKey(team)) result[team] = (0, 0);
             var cur = result[team];
-            result[team] = type == "BufferVoor"
+            result[team] = type == RegelTypeBufferVoor
                 ? (Math.Max(cur.bufferVoor, min), cur.bufferNa)
                 : (cur.bufferVoor, Math.Max(cur.bufferNa, min));
         }

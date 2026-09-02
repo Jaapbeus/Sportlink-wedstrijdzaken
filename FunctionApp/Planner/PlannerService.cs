@@ -18,7 +18,8 @@ namespace SportlinkFunction.Planner
     /// voorkeuren niet respecteerden. AutoPlanService is nu de enige optimalisatie.
     ///
     /// Gedeelde utilities en de FieldScheduler engine:
-    ///   PlannerShared        — constanten, helpers, FieldScheduler, CandidateSlot, IngeplandSlot
+    ///   Planner.Shared.PlannerShared — constanten, helpers, FieldScheduler, CandidateSlot,
+    ///                          IngeplandSlot — verhuisd naar Planner.Shared (#888), tier-agnostisch
     /// </summary>
     public static class PlannerService
     {

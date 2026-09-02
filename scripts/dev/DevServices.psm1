@@ -3,6 +3,19 @@
 #
 # Bevat readiness-detectie en teardown, zodat geen enkel script nog vertrouwt op een
 # vaste Start-Sleep. Zie #684 voor de aanleiding.
+#
+# CROSS-PLATFORM (#800): deze module draait op Windows én macOS onder PowerShell 7.
+# Regels bij het uitbreiden ervan:
+#   1. Poortdetectie loopt via de .NET BCL (IPGlobalProperties), niet via Get-NetTCPConnection:
+#      die zit in de module NetTCPIP en bestaat alleen op Windows.
+#   2. Alles wat een PID bij een poort of een procesboom nodig heeft is per definitie
+#      OS-specifiek — Windows via NetTCPIP/CIM, macOS via lsof/ps. Kapsel dat in achter
+#      een functie in deze module, nooit inline in een script.
+#   3. Gebruik nooit $env:TEMP: dat bestaat niet op macOS (daar heet het TMPDIR).
+#      Gebruik Get-DebugTempDir.
+#   4. Gebruik nooit een backslash in een padliteral. Op Unix is '\' een geldig teken in
+#      een bestandsnaam, dus Join-Path 'a' 'b\c' levert daar één bestand 'b\c' op in
+#      plaats van 'b/c'. Forward slashes werken op beide platforms.
 
 $script:DebugPorts = @{
     Azurite     = 10000
@@ -11,8 +24,33 @@ $script:DebugPorts = @{
     Swa         = 4280
 }
 
+# $IsWindows bestaat vanaf PowerShell 6 op alle platforms; deze module vereist PowerShell 7.
+$script:OnWindows = [bool]$IsWindows
+
+# Het pad naar de NATIVE ps, expliciet.
+#
+# 'ps' kaal aanroepen is riskant: op Windows is 'ps' een PowerShell-alias voor Get-Process.
+# PowerShell verwijdert die alias op Unix juist om de systeem-ps niet te overschaduwen, dus
+# in de praktijk zou het goed gaan — maar dan hangt correcte werking af van een alias die er
+# níet is. Expliciet het pad gebruiken haalt die aanname weg.
+$script:PsExe = if ($script:OnWindows) { $null }
+                elseif (Test-Path '/bin/ps') { '/bin/ps' }
+                else { '/usr/bin/ps' }
+
+function Get-DebugTempDir {
+    <#
+        De tijdelijke map van de huidige gebruiker, cross-platform.
+
+        $env:TEMP bestaat NIET op macOS/Linux. GetTempPath() honoreert daar TMPDIR
+        (macOS zet die per gebruiker bij inloggen) en valt anders terug op /tmp;
+        op Windows levert het dezelfde map als $env:TEMP. Het resultaat eindigt
+        altijd op een directory-separator.
+    #>
+    [System.IO.Path]::GetTempPath()
+}
+
 function Get-DebugPidFile {
-    Join-Path $env:TEMP 'sportlink-debug-pids.txt'
+    Join-Path (Get-DebugTempDir) 'sportlink-debug-pids.txt'
 }
 
 function Get-DebugPorts {
@@ -20,8 +58,55 @@ function Get-DebugPorts {
 }
 
 function Test-PortListening {
+    <#
+        Luistert er een proces op $Port?
+
+        Gebruikt de .NET BCL in plaats van Get-NetTCPConnection: dat laatste zit in de
+        module NetTCPIP, die alleen op Windows bestaat. GetActiveTcpListeners() somt de
+        daadwerkelijke listeners op (IPv4 én IPv6) en werkt op alle platforms.
+
+        Bewust géén TcpClient-connectiepoging: die maakt een echte verbinding (socket,
+        TIME_WAIT) en bewijst minder precies dát er een listener is.
+    #>
     param([Parameter(Mandatory)][int]$Port)
-    [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+
+    $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+    [bool]($listeners | Where-Object { $_.Port -eq $Port })
+}
+
+function Get-PortOwnerId {
+    <#
+        Het PID van het proces dat op $Port luistert, of $null.
+
+        Onvermijdelijk OS-specifiek: de .NET-API die de listeners oplevert geeft alleen
+        IPEndPoints terug, zonder proces-eigenaar.
+          Windows → Get-NetTCPConnection (OwningProcess)
+          macOS   → lsof -t (alleen PIDs)
+        lsof zit standaard in macOS. Ontbreekt het toch, dan levert deze functie $null
+        en valt de teardown terug op het PID-bestand.
+    #>
+    param([Parameter(Mandatory)][int]$Port)
+
+    if ($script:OnWindows) {
+        $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+        if (-not $conn) { return $null }
+        return [int]$conn.OwningProcess
+    }
+
+    if (-not (Get-Command lsof -ErrorAction SilentlyContinue)) { return $null }
+
+    # -n/-P: geen DNS- en servicenaam-lookups (sneller en voorspelbaarder).
+    # -sTCP:LISTEN: alleen echte listeners.  -t: alleen PIDs, één per regel.
+    #
+    # De argumenten worden eerst als losse strings opgebouwd. Een token als '-iTCP:$Port'
+    # direct in de aanroep zetten leest als PowerShell's parameter-dubbelepunt-syntax; bij
+    # een native commando gaat dat goed, maar expliciet is hier veiliger dan impliciet.
+    $iArg = '-iTCP:' + $Port
+    $found = & lsof '-nP' $iArg '-sTCP:LISTEN' '-t' 2>$null
+    $first = @($found | Where-Object { "$_".Trim() -match '^\d+$' }) | Select-Object -First 1
+    if (-not $first) { return $null }
+    return [int]("$first".Trim())
 }
 
 function Get-PortOwner {
@@ -30,10 +115,59 @@ function Get-PortOwner {
     #>
     param([Parameter(Mandatory)][int]$Port)
 
-    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-    if (-not $conn) { return $null }
-    Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+    $ownerPid = Get-PortOwnerId -Port $Port
+    if (-not $ownerPid) { return $null }
+    Get-Process -Id $ownerPid -ErrorAction SilentlyContinue
+}
+
+function Get-ParentProcessId {
+    <#
+        Het PID van de parent van $ProcessId, of $null.
+
+        System.Diagnostics.Process kent geen ParentProcessId, dus dit kan niet puur in .NET.
+          Windows → CIM (Win32_Process bestaat alleen daar)
+          macOS   → ps -o ppid=
+    #>
+    param([Parameter(Mandatory)][int]$ProcessId)
+
+    if ($script:OnWindows) {
+        $parentId = (Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue).ParentProcessId
+        if ($parentId) { return [int]$parentId }
+        return $null
+    }
+
+    $out = & $script:PsExe '-o' 'ppid=' '-p' $ProcessId 2>$null
+    if (-not $out) { return $null }
+    # ps vult de kolom op met spaties, dus altijd eerst trimmen.
+    $trimmed = "$(@($out)[0])".Trim()
+    if ($trimmed -match '^\d+$') { return [int]$trimmed }
+    return $null
+}
+
+function Get-ChildProcessId {
+    <#
+        De directe kindprocessen van $ProcessId.
+
+        Op Unix bewust één 'ps'-aanroep met de hele pid/ppid-tabel in plaats van pgrep:
+        dat scheelt een externe afhankelijkheid en levert alles in één keer.
+    #>
+    param([Parameter(Mandatory)][int]$ProcessId)
+
+    if ($script:OnWindows) {
+        $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue
+        return @($children | ForEach-Object { [int]$_.ProcessId })
+    }
+
+    $lines = & $script:PsExe '-Ao' 'pid=,ppid=' 2>$null
+    if (-not $lines) { return @() }
+
+    $result = foreach ($line in $lines) {
+        $parts = ("$line".Trim() -split '\s+')
+        if ($parts.Count -ge 2 -and $parts[1] -eq "$ProcessId" -and $parts[0] -match '^\d+$') {
+            [int]$parts[0]
+        }
+    }
+    return @($result)
 }
 
 function Wait-ForPort {
@@ -177,8 +311,7 @@ function Get-ProcessTree {
         if (-not $seen.Add($current)) { continue }
         $all += $current
 
-        $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $current" -ErrorAction SilentlyContinue
-        foreach ($child in $children) { $queue.Enqueue([int]$child.ProcessId) }
+        foreach ($child in (Get-ChildProcessId -ProcessId $current)) { $queue.Enqueue($child) }
     }
 
     # Omkeren: de laatst gevonden PIDs zitten het diepst in de boom.
@@ -286,7 +419,7 @@ function Stop-DebugServices {
             $stopped += Stop-ProcessTree -RootPid $proc.Id -Quiet:$Quiet
 
             # De parent (watcher) staat niet in de boom van het kind — stop die ook.
-            $parentId = (Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue).ParentProcessId
+            $parentId = Get-ParentProcessId -ProcessId $proc.Id
             if ($parentId) {
                 $parent = Get-Process -Id $parentId -ErrorAction SilentlyContinue
                 if ($parent -and $parent.ProcessName -in @('dotnet', 'func', 'node', 'powershell', 'pwsh')) {
@@ -317,6 +450,380 @@ function Stop-DebugServices {
     }
 }
 
-Export-ModuleMember -Function Get-DebugPidFile, Get-DebugPorts, Test-PortListening,
-    Get-PortOwner, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
-    Wait-ForHttp, Stop-DebugServices
+# ══════════════════════════════════════════════════════════════════════════
+# Zelftest-helpers (#851)
+#
+# Alles wat de zelftest aan OS- of Docker-specifiek gedrag nodig heeft staat hier, niet inline
+# in Test-PostgresTier.ps1 — zelfde regel als hierboven: één plek voor platformverschillen.
+# ══════════════════════════════════════════════════════════════════════════
+
+function Get-SelftestPorts {
+    <#
+        Poorten van de zelftest. Bewust ANDERE poorten dan Get-DebugPorts waar dat kan, zodat een
+        draaiende dev-omgeving of een eigen Postgres niet in de weg zit.
+
+        Uitzondering: de FunctionApp-poort blijft 7094. BlazorAdmin/wwwroot/appsettings.json
+        hardcodeert die URL en dat bestand staat in git — een andere poort zou een getrackt
+        bestand moeten wijzigen. De zelftest neemt 7094 dus over in plaats van ernaast te gaan
+        zitten, en stopt daarom eerst de dev-omgeving (zie Stop-DebugServices).
+
+        FunctionAppSelftest (7098) is die uitzondering op zijn beurt bewust NIET (#909).
+        De reden dat 7094 vastligt geldt uitsluitend voor de browsersweep (G7/G8): daar praat
+        BlazorAdmin met de functiehost via de URL uit dat getrackte appsettings.json. G5/G6
+        roepen de functiehost rechtstreeks aan vanuit dit script en zijn dus aan géén enkele
+        vastgelegde URL gebonden. Een eigen poort betekent dat G5/G6 een draaiende
+        ontwikkelsessie niet hoeven te stoppen — en dus ook niet kunnen vergeten terug te
+        zetten. Dat is een echte teardown-verantwoordelijkheid die hier simpelweg vervalt.
+    #>
+    @{
+        Postgres            = 55432   # niet 5432: een zelf geïnstalleerde Postgres blijft ongemoeid
+        SqlServer           = 1433    # de bestaande dev-container; wordt gestopt, niet verplaatst
+        FunctionApp         = 7094    # browsersweep (G7/G8) — vastgelegd in BlazorAdmin's appsettings.json
+        FunctionAppSelftest = 7098    # G5/G6 — eigen poort, verstoort een dev-sessie niet (#909)
+        BlazorAdmin         = 5242
+        Azurite             = 10000   # blob; queue/table volgen op 10001/10002
+        Fixture             = 7099    # lokale stub voor de externe databron (#867)
+    }
+}
+
+function Start-SelftestAzurite {
+    <#
+        Zorgt dat er een Azurite-instantie luistert, en meldt eerlijk of hij die zelf heeft
+        gestart of een bestaande heeft hergebruikt.
+
+        WAAROM AZURITE ÜBERHAUPT NODIG IS
+        De functiehost weigert op te starten zonder bruikbare AzureWebJobsStorage zodra er ook
+        maar één niet-HTTP-trigger geïndexeerd wordt. FunctionApp.Postgres heeft er drie
+        (twee opschoontimers en de synchronisatietimer), dus dit is niet weg te configureren
+        door "alleen de HTTP-endpoints" te willen gebruiken.
+
+        WAAROM 'UseDevelopmentStorage=true' EN DUS DE VASTE POORTEN 10000-10002
+        Die verkorte notatie verwijst per definitie naar die poorten. De alternatieve route —
+        een volledige connectiereeks met een eigen poort — vereist een accountsleutel in de
+        aanroep, en die hoort niet in een script in git. Vandaar: bestaat er al een listener op
+        10000, dan is dat de Azurite van de ontwikkelaar en gebruiken we die; anders zetten we
+        er zelf een wegwerpcontainer neer die de teardown weer opruimt.
+
+        Hergebruik is veilig: de functiehost gebruikt deze opslag alleen voor timer-boekhouding
+        en functiesleutels, niet voor gegevens waar een assertie iets over zegt.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ContainerName,
+        [int]$Port = 10000,
+        [int]$TimeoutSeconds = 60
+    )
+
+    if (Test-PortListening -Port $Port) {
+        return [pscustomobject]@{ Ready = $true; Started = $false; Reason = 'bestaande Azurite hergebruikt' }
+    }
+
+    & docker rm -f $ContainerName 2>&1 | Out-Null
+    & docker run -d --name $ContainerName `
+        -p "${Port}:10000" -p "$($Port + 1):10001" -p "$($Port + 2):10002" `
+        mcr.microsoft.com/azure-storage/azurite 2>&1 | Out-Null
+
+    $ready = Wait-ForPort -Port $Port -TimeoutSeconds $TimeoutSeconds -Quiet
+    [pscustomobject]@{
+        Ready   = $ready
+        Started = $true
+        Reason  = if ($ready) { 'wegwerpcontainer gestart' } else { 'wegwerpcontainer kwam niet op' }
+    }
+}
+
+function Start-FunctionHost {
+    <#
+        Start 'func start' voor één functieproject en wacht tot /api/health antwoordt.
+
+        DRIE DINGEN DIE HIER EMPIRISCH ZIJN VASTGESTELD (#909)
+
+        1. 'func' is op Windows een npm-shim (func.ps1/func.cmd), geen executable.
+           Start-Process -FilePath 'func' faalt daarop met "%1 is not a valid Win32
+           application". Vandaar de omweg via de shell — precies zoals Start-Debug.ps1 het doet.
+
+        2. De host heeft GEEN local.settings.json nodig. Alle waarden uit het 'Values'-blok
+           worden ook uit de omgeving van het proces gelezen, en Start-Process geeft de
+           omgeving van deze sessie door aan het kindproces. De aanroeper zet dus gewoon
+           $env:... vóór de aanroep; er hoeft niets naar schijf en het bestand van de
+           ontwikkelaar blijft ongemoeid.
+
+        3. De procesboom is drie lagen diep (shell -> npm-shim -> func -> dotnet-worker).
+           Alleen het teruggegeven wrapper-PID stoppen is niet genoeg; gebruik
+           Stop-FunctionHost, die de hele boom neemt.
+
+        Output gaat altijd naar een logbestand: op macOS opent Start-Process geen venster en
+        zou de output anders verloren gaan (#800). Het logbestand is bovendien het bewijsstuk
+        waarmee op indexeringsfouten gecontroleerd wordt.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ProjectDir,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$LogPath,
+        [int]$TimeoutSeconds = 180
+    )
+
+    $errLogPath = "$LogPath.err"
+    foreach ($p in @($LogPath, $errLogPath)) {
+        $map = Split-Path -Parent $p
+        if ($map -and -not (Test-Path $map)) { New-Item -ItemType Directory -Path $map -Force | Out-Null }
+        Remove-Item $p -Force -ErrorAction SilentlyContinue
+    }
+
+    $shellExe = if ($script:OnWindows) { 'powershell' } else { 'pwsh' }
+    $command  = "Set-Location '$ProjectDir'; func start --port $Port"
+
+    $startArgs = @{
+        FilePath               = $shellExe
+        ArgumentList           = @('-NoProfile', '-Command', $command)
+        RedirectStandardOutput = $LogPath
+        RedirectStandardError  = $errLogPath
+        PassThru               = $true
+    }
+    if ($script:OnWindows) { $startArgs.WindowStyle = 'Hidden' }
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $proc      = Start-Process @startArgs
+    $health    = Wait-ForHealth -Url "http://localhost:$Port/api/health" -TimeoutSeconds $TimeoutSeconds -Quiet
+    $stopwatch.Stop()
+
+    [pscustomobject]@{
+        Ready            = ($null -ne $health)
+        Process          = $proc
+        ProcessId        = $proc.Id
+        Health           = $health
+        LogPath          = $LogPath
+        ErrorLogPath     = $errLogPath
+        ColdStartSeconds = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
+    }
+}
+
+function Stop-FunctionHost {
+    <#
+        Stopt een met Start-FunctionHost gestarte functiehost inclusief zijn hele procesboom en
+        wacht tot de poort daadwerkelijk vrij is.
+
+        Idempotent: aanroepen voor een al gestopt proces doet niets en meldt de poort vrij. Dat
+        is bewust, want de teardown moet ook werken als de run halverwege is afgebroken en niet
+        meer weet hoe ver hij was.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][int]$Port,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $stopped = Stop-ProcessTree -RootPid $ProcessId -Quiet
+
+    # Vangnet: is de poort nog bezet door een proces buiten die boom (bijv. een func-proces dat
+    # zich van zijn wrapper heeft losgemaakt), stop dan alsnog de eigenaar van de poort.
+    if (Test-PortListening -Port $Port) {
+        $owner = Get-PortOwner -Port $Port
+        if ($owner) { $stopped += Stop-ProcessTree -RootPid $owner.Id -Quiet }
+    }
+
+    [pscustomobject]@{
+        StoppedCount = $stopped
+        PortFree     = (Wait-ForPort -Port $Port -TimeoutSeconds $TimeoutSeconds -Free -Quiet)
+    }
+}
+
+function Test-DockerAvailable {
+    <#
+        Draait de Docker-daemon? 'docker info' is de goedkoopste betrouwbare controle: 'docker
+        --version' slaagt ook als de daemon stilstaat, want dat leest alleen de client.
+    #>
+    try {
+        $null = & docker info 2>&1
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
+function Get-ContainerState {
+    <#
+        De staat van één container, of $null als hij niet bestaat.
+
+        Gebruikt door de zelftest om vóór de run vast te leggen of de SQL Server-container draaide,
+        zodat de teardown hem exact zo kan achterlaten. Zonder die vastlegging zou een zelftest
+        die op een gestopte container start, hem daarna 'behulpzaam' aanzetten.
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+
+    $out = & docker inspect --format '{{.State.Running}}' $Name 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    [pscustomobject]@{
+        Name    = $Name
+        Exists  = $true
+        Running = ($out.Trim() -eq 'true')
+    }
+}
+
+function Wait-ForPostgres {
+    <#
+        Pollt tot Postgres verbindingen accepteert, of tot de time-out verstrijkt.
+
+        pg_isready draait ín de container, dus dit werkt zonder een lokale psql-installatie —
+        op Windows en macOS gelijk. Geen Start-Sleep vooraf: eerst proberen, dan pas wachten.
+
+        VERPLICHT -d <database> meegeven, niet alleen -U: de officiële Postgres-image draait
+        initdb.d (incl. het aanmaken van POSTGRES_DB) via een tijdelijke, alleen-lokale
+        server vóórdat de "echte" server extern gaat luisteren. pg_isready zonder -d verbindt
+        impliciet met een database die naar de OS-gebruiker is genoemd (hier: 'postgres',
+        altijd meteen aanwezig) en kan daardoor "ready" melden vóórdat de aangevraagde
+        POSTGRES_DB-database daadwerkelijk bestaat — empirisch aangetroffen bij de #851-zelftest:
+        "gereed na 4 pogingen" gevolgd door "database sportlink_selftest does not exist" op de
+        allereerstvolgende query. -d checkt dezelfde database die de aanroeper zo meteen gebruikt.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ContainerName,
+        [Parameter(Mandatory)][string]$Database,
+        [string]$User = 'postgres',
+        [int]$TimeoutSeconds = 120
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $poging = 0
+    while ((Get-Date) -lt $deadline) {
+        $poging++
+        $null = & docker exec $ContainerName pg_isready -U $User -d $Database 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            # #851 (vervolg op de -d-fix hierboven): pg_isready kan "ready" melden vlak vóórdat de
+            # server daadwerkelijk queries accepteert — empirisch aangetroffen: "gereed na 3
+            # pogingen" gevolgd door "FATAL: the database system is starting up" op de eerstvolgende
+            # échte query. Als postgres OS-gebruiker via het Unix-socket (peer-auth, geen wachtwoord
+            # nodig) een verbinding proberen sluit dat gat, met dezelfde retry-discipline.
+            & docker exec -u postgres $ContainerName psql -U $User -d $Database -c 'SELECT 1;' 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return [pscustomobject]@{ Ready = $true; Attempts = $poging }
+            }
+        }
+        Start-Sleep -Milliseconds 1000
+    }
+    return [pscustomobject]@{ Ready = $false; Attempts = $poging }
+}
+
+function Invoke-Psql {
+    <#
+        Voert SQL uit in de Postgres-container en geeft de ruwe uitvoer terug.
+
+        Het wachtwoord gaat via de omgevingsvariabele PGPASSWORD van het KINDproces (docker exec
+        -e), nooit als argument: argumenten zijn op beide platforms zichtbaar in de processenlijst.
+        Zelfde afweging als SQLCMDPASSWORD in Test-App.ps1 (#800).
+
+        -Tuples geeft alleen de waarden terug (psql -t -A), handig voor asserties op één getal.
+
+        -SqlFile voert een lokaal .sql-bestand uit (bijv. een migratie- of seedbestand) in plaats
+        van -Sql: het bestand wordt eerst naar de container gekopieerd (#864/#851, nodig zodra een
+        meting een bestaand .sql-bestand moet hergebruiken in plaats van het inline te herhalen).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ContainerName,
+        [Parameter(ParameterSetName = 'Inline', Mandatory)][string]$Sql,
+        [Parameter(ParameterSetName = 'File', Mandatory)][string]$SqlFile,
+        [Parameter(Mandatory)][string]$Password,
+        [string]$User     = 'postgres',
+        [string]$Database = 'postgres',
+        [switch]$Tuples,
+        [switch]$StopOnError
+    )
+
+    $args = @('exec', '-e', "PGPASSWORD=$Password", $ContainerName,
+              'psql', '-U', $User, '-d', $Database)
+    if ($StopOnError) { $args += @('-v', 'ON_ERROR_STOP=1') }
+    if ($Tuples)      { $args += @('-t', '-A') }
+
+    if ($PSCmdlet.ParameterSetName -eq 'File') {
+        $doelPad = "/tmp/$([Guid]::NewGuid().ToString('N')).sql"
+        & docker cp $SqlFile "${ContainerName}:${doelPad}" 2>&1 | Out-Null
+        $args += @('-f', $doelPad)
+    } else {
+        $args += @('-c', $Sql)
+    }
+
+    $out = & docker @args 2>&1
+    [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output   = ($out -join "`n").Trim()
+    }
+}
+
+function New-SelftestPassword {
+    <#
+        Wegwerpwachtwoord per run. Cryptografisch willekeurig, blijft in het procesgeheugen en
+        wordt nergens weggeschreven — zelfde patroon als de CI-job 'fresh-db', die per run een
+        wachtwoord genereert en maskeert.
+    #>
+    $bytes = [byte[]]::new(16)
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    # Alfanumeriek houden: sommige tools struikelen over leestekens in een wachtwoord dat via een
+    # omgevingsvariabele door meerdere lagen heen gaat.
+    (( $bytes | ForEach-Object { $_.ToString('x2') } ) -join '') + 'Aa1'
+}
+
+function Get-DatabaseTierProject {
+    <#
+        Vertaalt een tier-naam naar zijn projectpad, door scripts/ci/database-tiers.json te lezen —
+        hetzelfde bestand dat resolve-database-tier.sh gebruikt (#865).
+
+        Dupliceer deze mapping nooit: #816 legt vast dat er precies één vertaalpunt is, en die
+        belofte sneuvelt zodra een tweede plek zijn eigen lijst bijhoudt.
+
+        Geeft een object terug in plaats van te gooien, zodat de aanroeper de drie gevallen kan
+        onderscheiden:
+          Found=$false              -> onbekende waarde (tikfout)
+          Found=$true, Built=$false -> geldige tier, boom bestaat nog niet
+          Found=$true, Built=$true  -> bruikbaar; Exists zegt of het bestand er ook echt staat
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Tier,
+        [Parameter(Mandatory)][string]$RepoRoot
+    )
+
+    $tabel = Join-Path $RepoRoot 'scripts' 'ci' 'database-tiers.json'
+    if (-not (Test-Path $tabel)) {
+        throw "Tier-tabel ontbreekt: $tabel"
+    }
+
+    $data = Get-Content $tabel -Raw | ConvertFrom-Json
+    $entry = $data.tiers | Where-Object { $_.name -eq $Tier } | Select-Object -First 1
+
+    if (-not $entry) {
+        return [pscustomobject]@{
+            Found = $false; Built = $false; Tier = $Tier
+            Csproj = $null; Exists = $false
+            Valid = ($data.tiers | ForEach-Object { $_.name })
+        }
+    }
+
+    $pad = Join-Path $RepoRoot $entry.csproj
+    [pscustomobject]@{
+        Found     = $true
+        Built     = [bool]$entry.built
+        Tier      = $entry.name
+        Csproj    = $entry.csproj
+        FullPath  = $pad
+        Exists    = (Test-Path $pad)
+        EpicIssue = $entry.epicIssue
+        Valid     = ($data.tiers | ForEach-Object { $_.name })
+    }
+}
+
+function Get-SelftestArtifactRoot {
+    <#
+        De map waar één zelftestrun zijn bewijsmateriaal neerzet. In de repo (niet in temp), zodat
+        het bij de code blijft die het beoordeelt; 'artifacts/' staat in .gitignore.
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot,
+          [string]$RunId = (Get-Date -Format 'yyyyMMdd-HHmmss'))
+
+    Join-Path $RepoRoot 'artifacts' 'selftest' $RunId
+}
+
+Export-ModuleMember -Function Get-DebugTempDir, Get-DebugPidFile, Get-DebugPorts,
+    Test-PortListening, Get-PortOwner, Get-PortOwnerId, Get-ParentProcessId,
+    Get-ChildProcessId, Get-ProcessTree, Stop-ProcessTree, Wait-ForPort, Wait-ForHealth,
+    Wait-ForHttp, Stop-DebugServices,
+    Get-SelftestPorts, Test-DockerAvailable, Get-ContainerState, Wait-ForPostgres,
+    Invoke-Psql, New-SelftestPassword, Get-SelftestArtifactRoot, Get-DatabaseTierProject,
+    Start-SelftestAzurite, Start-FunctionHost, Stop-FunctionHost

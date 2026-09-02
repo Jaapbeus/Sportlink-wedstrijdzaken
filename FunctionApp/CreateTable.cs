@@ -7,20 +7,7 @@ namespace SportlinkFunction
     //public static class CreateStagingTableMatchDetails
     public static class CreateStagingTable
     {
-        public static async Task ExecuteAsync(string tableName)
-        {
-            if (string.IsNullOrWhiteSpace(tableName))
-            {
-                throw new ArgumentException("Table name cannot be null or empty.", nameof(tableName));
-            }
-            using (SqlConnection connection = new SqlConnection(DatabaseConfig.ConnectionString))
-            {
-                string query = string.Empty;
-
-                switch (tableName.ToLower())
-                {
-                    case "teams":
-                        query = @"
+        private static readonly string TeamsTableDdl = @"
                         IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[stg].[teams]') AND type in (N'U'))
 	                        DROP TABLE [stg].[teams];
 
@@ -44,10 +31,8 @@ namespace SportlinkFunction
 	                        [more]					[nvarchar](200)     NULL,
 	                        [ClubCode]				[nvarchar](20)      NULL
                         ) ON [PRIMARY] ;";
-                        break;
 
-                    case "matches":
-                        query = @"
+        private static readonly string MatchesTableDdl = @"
                         IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[stg].[matches]') AND type in (N'U'))
 	                        DROP TABLE [stg].[matches];
 
@@ -102,10 +87,8 @@ namespace SportlinkFunction
                             [verenigingswedstrijd]      NVARCHAR(50)    NULL,
                             [ClubCode]                  NVARCHAR(20)    NULL
                         ) ON [PRIMARY];";
-                        break;
 
-                    case "matchdetails":
-                        query = @"
+        private static readonly string MatchDetailsTableDdl = @"
                         IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[stg].[matchdetails]') AND type in (N'U'))
                             DROP TABLE [stg].[matchdetails];
 
@@ -144,34 +127,57 @@ namespace SportlinkFunction
                             VerenigingScheidsrechterCode NVARCHAR(200),
                             VerenigingScheidsrechter NVARCHAR(200),
                             OverigeOfficialCode NVARCHAR(200),
-                            OverigeOfficial NVARCHAR(200), 
-                            Scheidsrechters NVARCHAR(1000), 
-                            KleedkamerThuis NVARCHAR(200), 
-                            KleedkamerUit NVARCHAR(200), 
-                            KleedkamerOfficial NVARCHAR(200), 
-                            AccommodatieNaam NVARCHAR(200), 
-                            AccommodatieStraat NVARCHAR(150), 
-                            AccommodatiePlaats NVARCHAR(150), 
-                            AccommodatieTelefoon NVARCHAR(200), 
-                            AccommodatieRouteplanner NVARCHAR(1000), 
-                            ThuisTeamNaam NVARCHAR(200), 
-                            ThuisTeamCode NVARCHAR(200), 
-                            ThuisTeamWebsite NVARCHAR(1000), 
-                            ThuisTeamShirtKleur NVARCHAR(200), 
-                            ThuisTeamStraat NVARCHAR(150), 
-                            ThuisTeamPostcodePlaats NVARCHAR(150), 
-                            ThuisTeamTelefoon NVARCHAR(200), 
-                            ThuisTeamEmail NVARCHAR(200), 
-                            UitTeamNaam NVARCHAR(200), 
-                            UitTeamCode NVARCHAR(200), 
-                            UitTeamWebsite NVARCHAR(1000), 
-                            UitTeamShirtKleur NVARCHAR(200), 
-                            UitTeamStraat NVARCHAR(150), 
-                            UitTeamPostcodePlaats NVARCHAR(150), 
+                            OverigeOfficial NVARCHAR(200),
+                            Scheidsrechters NVARCHAR(1000),
+                            KleedkamerThuis NVARCHAR(200),
+                            KleedkamerUit NVARCHAR(200),
+                            KleedkamerOfficial NVARCHAR(200),
+                            AccommodatieNaam NVARCHAR(200),
+                            AccommodatieStraat NVARCHAR(150),
+                            AccommodatiePlaats NVARCHAR(150),
+                            AccommodatieTelefoon NVARCHAR(200),
+                            AccommodatieRouteplanner NVARCHAR(1000),
+                            ThuisTeamNaam NVARCHAR(200),
+                            ThuisTeamCode NVARCHAR(200),
+                            ThuisTeamWebsite NVARCHAR(1000),
+                            ThuisTeamShirtKleur NVARCHAR(200),
+                            ThuisTeamStraat NVARCHAR(150),
+                            ThuisTeamPostcodePlaats NVARCHAR(150),
+                            ThuisTeamTelefoon NVARCHAR(200),
+                            ThuisTeamEmail NVARCHAR(200),
+                            UitTeamNaam NVARCHAR(200),
+                            UitTeamCode NVARCHAR(200),
+                            UitTeamWebsite NVARCHAR(1000),
+                            UitTeamShirtKleur NVARCHAR(200),
+                            UitTeamStraat NVARCHAR(150),
+                            UitTeamPostcodePlaats NVARCHAR(150),
                             UitTeamTelefoon NVARCHAR(200),
                             UitTeamEmail NVARCHAR(200),
                             ClubCode NVARCHAR(20) NULL );
                         ";
+
+        public static async Task ExecuteAsync(string tableName)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+            {
+                throw new ArgumentException("Table name cannot be null or empty.", nameof(tableName));
+            }
+            using (SqlConnection connection = new SqlConnection(DatabaseConfig.ConnectionString))
+            {
+                string query = string.Empty;
+
+                switch (tableName.ToLower())
+                {
+                    case "teams":
+                        query = TeamsTableDdl;
+                        break;
+
+                    case "matches":
+                        query = MatchesTableDdl;
+                        break;
+
+                    case "matchdetails":
+                        query = MatchDetailsTableDdl;
                         break;
                     default:
                         throw new ArgumentException("Invalid table name.", nameof(tableName));
@@ -182,7 +188,7 @@ namespace SportlinkFunction
                 {
                     await cmd.ExecuteNonQueryAsync();
                 }
-                connection.Close(); 
+                connection.Close();
             }
         }
     }

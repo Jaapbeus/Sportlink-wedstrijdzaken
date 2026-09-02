@@ -774,6 +774,27 @@ afzender **geen** bericht. De verwerking legt vast:
 Beide noodmails bevatten een gecategoriseerde foutomschrijving, nooit de ruwe exception-tekst
 (#425).
 
+**Throttle-registratie is persistent, niet in-memory (#831).** Vóór #831 stond "is de noodmail al
+verstuurd" in een `static`/`volatile` veld op `EmailProcessorFunction` — procesgeheugen dat bij een
+cold start van de Consumption-plan-worker terugvalt naar de default. Tijdens de 5+ dagen durende
+database-uitval van 25-30 augustus 2026 (#799/#808) is hierdoor geen enkele noodmail aangekomen.
+De registratie staat nu in `INoodmailThrottleStore` (Azure Table Storage via de bestaande
+`AzureWebJobsStorage`-opslagaccount — geen SQL, want de meest waarschijnlijke aanleiding om een
+noodmail te versturen ís dat de SQL-database onbereikbaar is) en overleeft dus een herstart.
+
+**De database-noodmail hangt bovendien niet meer uitsluitend af van inkomende e-mail.** De
+bestaande check in fase 2 van `EmailProcessorFunction` wordt alleen bereikt als er e-mail is die
+daar terechtkomt — komt er tijdens een uitval geen (of alleen buiten-scope) e-mail binnen, dan werd
+de databaseverbinding nooit geprobeerd en de uitval dus ook nooit gedetecteerd. Dit bleek de
+eigenlijke oorzaak van de stilte in augustus 2026. `DatabaseUitvalMonitorFunction`
+(`FunctionApp/Monitoring/`) draait daarom onafhankelijk, standaard 1x per dag
+(`DATABASE_STATUS_MONITOR_SCHEDULE`), en leest de status rechtstreeks via de Azure Management API
+(géén databaseverbinding, dus niet zelf slachtoffer van dezelfde storing). Optioneel: zonder de
+vier env vars `AzureSubscriptionId`/`AzureResourceGroupName`/`AzureSqlServerName`/
+`AzureSqlDatabaseName` slaat deze functie zichzelf over — zie
+[docs/MONITORING.md](MONITORING.md#onafhankelijke-database-uitvalmonitor-831) voor de configuratie
+en de vereiste (gratis) Reader-roltoewijzing.
+
 ---
 
 ## 3. Overzichtstabel — alle templates
@@ -911,4 +932,7 @@ Template: {key}          ← alleen bij template-gebaseerde antwoorden
 ==================
 ```
 
-Dit blok wordt in review-mode opgeslagen in `AntwoordEmail`; er wordt niets doorgestuurd.
+Dit blok wordt in review-mode opgeslagen in `AntwoordEmail` én verstuurd naar de app setting
+`EmailReviewRecipient` (herstel van een regressie uit #543, zie #801) — de originele afzender
+krijgt nog steeds nooit iets te zien. Is `EmailReviewRecipient` niet geconfigureerd, dan wordt
+alleen opgeslagen en gelogd dat er geen testmail is verstuurd.

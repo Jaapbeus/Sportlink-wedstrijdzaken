@@ -25,6 +25,11 @@ public sealed class DatabaseStatusService : IDisposable
     private CancellationTokenSource? _cts;
     private bool _polling;
 
+    private static readonly TimeSpan OnlineHerCheckInterval = TimeSpan.FromMinutes(5); // volgende alive-check na een geslaagde poll
+    private static readonly TimeSpan LimietBereiktHerCheckInterval = TimeSpan.FromMinutes(5); // volgende poging na LimietBereikt
+    private static readonly TimeSpan LimietWindow = TimeSpan.FromMinutes(2); // hoe lang falen getolereerd wordt vóór LimietBereikt
+    private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(15); // interval tussen faalpogingen (Starting-state)
+
     public DatabaseStatusService(HttpClient http) => _http = http;
 
     public void StartPolling()
@@ -52,17 +57,17 @@ public sealed class DatabaseStatusService : IDisposable
                 {
                     SetState(DbState.Online);
                     startedAt = DateTime.UtcNow; // reset: volgende storing krijgt weer 2 min
-                    await Task.Delay(TimeSpan.FromMinutes(5), token);
+                    await Task.Delay(OnlineHerCheckInterval, token);
                     continue;
                 }
 
                 // DB niet online — bepaal hoe lang we al wachten
                 var elapsed = DateTime.UtcNow - startedAt;
-                if (elapsed > TimeSpan.FromMinutes(2))
+                if (elapsed > LimietWindow)
                 {
                     SetState(DbState.LimietBereikt);
                     // Blijf elke 5 min checken: bij maandwisseling of handmatige herstart
-                    await Task.Delay(TimeSpan.FromMinutes(5), token);
+                    await Task.Delay(LimietBereiktHerCheckInterval, token);
                     startedAt = DateTime.UtcNow; // reset window voor volgende cyclus
                     continue;
                 }
@@ -72,7 +77,7 @@ public sealed class DatabaseStatusService : IDisposable
             catch (OperationCanceledException) { break; }
             catch { /* netwerk/parse-fout — opnieuw proberen */ }
 
-            await Task.Delay(TimeSpan.FromSeconds(15), token).ConfigureAwait(false);
+            await Task.Delay(RetryInterval, token).ConfigureAwait(false);
         }
     }
 

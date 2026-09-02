@@ -12,8 +12,7 @@ internal static class AdminSpeeltijdenRepository
 {
     internal static async Task<List<object>> GetAlleAsync(string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust],
                    CONVERT(VARCHAR(5), [StandaardVoorkeurTijd]) AS [StandaardVoorkeurTijd]
@@ -41,8 +40,7 @@ internal static class AdminSpeeltijdenRepository
 
     internal static async Task InsertAsync(SpeeltijdInput i, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[Speeltijden]
                 ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust],
@@ -61,8 +59,7 @@ internal static class AdminSpeeltijdenRepository
 
     internal static async Task<int> UpdateAsync(string leeftijd, SpeeltijdInput i, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[Speeltijden]
             SET [Veldafmeting] = @Vf, [WedstrijdTotaal] = @Wt, [WedstrijdHelft] = @Wh, [WedstrijdRust] = @Wr,
@@ -81,8 +78,7 @@ internal static class AdminSpeeltijdenRepository
 
     internal static async Task<int> DeleteAsync(string leeftijd, string clubCode, string cs)
     {
-        using var conn = new SqlConnection(cs);
-        await conn.OpenAsync();
+        using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(
             "DELETE FROM [dbo].[Speeltijden] WHERE [Leeftijd] = @L AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@L",  leeftijd);

@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.Data.SqlClient;
 
 namespace SportlinkFunction.Planner;
@@ -10,6 +11,14 @@ internal static class PlannerAvailabilityRepository
 {
     private static string Cs => SystemUtilities.DatabaseConfig.ConnectionString;
 
+    /// <summary>
+    /// Veldbeschikbaarheid op een datum, periode-aware (#581). Is er voor deze club een actieve
+    /// VeldPeriode op <paramref name="date"/> (bijv. "Zomerstop")? Dan gelden UITSLUITEND de
+    /// VeldBeschikbaarheid-rijen met dat PeriodeId — nooit een samenvoeging met het standaardregime,
+    /// want zomerstop en competitie zijn expliciet tegengestelde regimes (#581). Is er geen actieve
+    /// periode, dan gelden de rijen met PeriodeId IS NULL — exact het gedrag van vóór deze feature,
+    /// dus een club zonder periodes merkt niets van deze wijziging.
+    /// </summary>
     internal static async Task<List<VeldBeschikbaarheidInfo>> GetAvailableFieldsAsync(DateOnly date, string? clubCode = null)
     {
         var results = new List<VeldBeschikbaarheidInfo>();
@@ -19,14 +28,25 @@ internal static class PlannerAvailabilityRepository
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
         using var cmd = new SqlCommand(@"
+            DECLARE @ActievePeriodeId INT = (
+                SELECT TOP 1 [Id] FROM [dbo].[VeldPeriode]
+                WHERE [ClubCode] = @clubCode AND [Actief] = 1
+                  AND @datum BETWEEN [DatumVan] AND [DatumTot]
+                ORDER BY [DatumVan] DESC
+            );
             SELECT vb.[VeldNummer], vb.[BeschikbaarVanaf], vb.[BeschikbaarTot], vb.[GebruikZonsondergang]
             FROM [dbo].[VeldBeschikbaarheid] vb
             INNER JOIN [dbo].[Velden] v ON v.[VeldNummer] = vb.[VeldNummer]
             WHERE v.[Actief] = 1 AND vb.[DagVanWeek] = @dag AND vb.[ClubCode] = @clubCode
+              AND (
+                    (@ActievePeriodeId IS NOT NULL AND vb.[PeriodeId] = @ActievePeriodeId)
+                    OR (@ActievePeriodeId IS NULL AND vb.[PeriodeId] IS NULL)
+                  )
             ORDER BY vb.[VeldNummer]
         ", conn);
         cmd.Parameters.AddWithValue("@dag", dagVanWeek);
         cmd.Parameters.AddWithValue("@clubCode", clubCode);
+        cmd.Parameters.Add("@datum", System.Data.SqlDbType.Date).Value = date.ToDateTime(TimeOnly.MinValue);
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
             results.Add(new VeldBeschikbaarheidInfo

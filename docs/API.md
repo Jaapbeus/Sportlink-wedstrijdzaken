@@ -20,6 +20,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
+| `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
 | `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
@@ -39,6 +40,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
 | `GET` | `/beheer/teamaliassen` | **Admin** | Teamnaam-aliassen ophalen (`?status=pending\|validated\|rejected&limit=100`) — inclusief canonieke teamnaam |
+| `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.Teams`: volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`) |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL) — gefilterd op `X-Club-Code` header |
@@ -46,14 +48,53 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
 | `GET/POST/PUT` | `/beheer/velden` en `/{veldNummer}` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679) |
-| `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren |
+| `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren, optioneel gekoppeld aan een periode (`PeriodeId`, #581) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldtraining` en `/{id}` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679) |
+| `GET/POST/PUT/DELETE` | `/beheer/veldperiodes` en `/{id}` | **Admin** | Herbruikbare regimes (bijv. "Zomerstop", "Competitie") met een geldigheidsrange; koppel een veldbeschikbaarheid-venster eraan om het alleen tijdens die periode te laten gelden (#581) |
 | `GET` | `/beheer/testdata/wedstrijden` | **Admin** | Test-wedstrijden ophalen (`ClubCode='ALLSTARS'`) — altijd leeg voor echte clubs |
 | `GET` | `/beheer/testdata/teams` | **Admin** | Echte clubteams ophalen voor testdata-dropdown (filtert `ClubCode!='ALLSTARS'`) |
 | `POST` | `/beheer/testdata/wedstrijden` | **Admin** | Test-wedstrijd aanmaken of bijwerken (upsert op `bk_matches`) — forceert `ClubCode='ALLSTARS'` |
 | `DELETE` | `/beheer/testdata/wedstrijden/{bk}` | **Admin** | Één test-wedstrijd verwijderen op `bk_matches` |
 | `DELETE` | `/beheer/testdata/wedstrijden?van=YYYY-MM-DD&tot=YYYY-MM-DD` | **Admin** | Test-wedstrijden verwijderen voor datumbereik (beide params optioneel; zonder params: alles verwijderen) |
 | `POST` | `/beheer/testdata/wedstrijden/verplaats-datum` | **Admin** | Alle ALLSTARS-wedstrijden van `oudeDatum` naar `nieuweDatum` verplaatsen — raakt uitsluitend `ClubCode='ALLSTARS'` |
+
+---
+
+## GET /api/health
+
+Status, versie en databaseherkomst van de API. Geen authenticatie vereist.
+
+`tier` en `provider` komen uit build-time metadata van het gebouwde artefact — nooit een
+runtime-gok — en zijn daarom altijd gevuld, ook als `database` niet `"online"` is. `serverVersion`
+komt aantoonbaar uit de database zelf en is alleen gevuld wanneer `database` `"online"` is (#863).
+
+**HTTP-statuscode (#859):** `database: "unconfigured"` (geen bruikbare connectiereeks — env var
+ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `database`-waarde
+(ook `paused`/`timeout`/`unavailable`, tijdelijke toestanden) blijft 200 met `status: "degraded"`.
+
+### Antwoord
+
+```json
+{
+  "status": "ok",
+  "version": "3.0.9.0",
+  "timestamp": "2026-08-30T15:00:00Z",
+  "database": "online",
+  "settingsLoaded": true,
+  "tier": "SqlServer",
+  "provider": "Microsoft.Data.SqlClient",
+  "serverVersion": "16.0.4265.3"
+}
+```
+
+| Veld | Type | Beschrijving |
+|---|---|---|
+| `status` | `string` | `"ok"` als `database` `"online"` is én `settingsLoaded` `true` is, anders `"degraded"` |
+| `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
+| `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
+| `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
+| `provider` | `string` | De gebruikte databasedriver |
+| `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |
 
 ---
 
@@ -694,9 +735,7 @@ met nullen in plaats van een fout.
 ### PUT /api/beheer/teamaliassen/{id}/valideer
 
 ```bash
-curl -X PUT http://localhost:7094/api/beheer/teamaliassen/12/valideer \
-  -H "Content-Type: application/json" \
-  -d '{"status":"validated"}'
+curl -X PUT http://localhost:7094/api/beheer/teamaliassen/12/valideer -H "Content-Type: application/json" -d '{"status":"validated"}'
 ```
 
 ```json
@@ -761,33 +800,25 @@ Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (laatste keuze)
 ### Beschikbaarheid controleren voor JO13 op zaterdag
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/check-availability \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","leeftijdsCategorie":"JO13"}'
+curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","leeftijdsCategorie":"JO13"}'
 ```
 
 ### Maandagavond beschikbaarheid controleren (zonder categorie)
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/check-availability \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-05-18","dagdeel":"avond"}'
+curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Type: application/json" -d '{"datum":"2026-05-18","dagdeel":"avond"}'
 ```
 
 ### Controleren met teamconflictdetectie
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/check-availability \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"[ClubCode] JO11-9"}'
+curl -X POST http://localhost:7094/api/planner/check-availability -H "Content-Type: application/json" -d '{"datum":"2026-05-16","aanvangsTijd":"12:00","leeftijdsCategorie":"JO11","teamNaam":"[ClubCode] JO11-9"}'
 ```
 
 ### Wedstrijd boeken
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/bevestig \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
+curl -X POST http://localhost:7094/api/planner/bevestig -H "Content-Type: application/json" -d '{"datum":"2026-04-25","aanvangsTijd":"12:00","veldNummer":3,"leeftijdsCategorie":"JO13","teamNaam":"[ClubCode] JO13-1","tegenstander":"[Tegenstander] JO13-2","aangevraagdDoor":"trainer@voorbeeld.nl"}'
 ```
 
 ### Zonsondergangtabel vullen
@@ -799,33 +830,25 @@ curl -X POST http://localhost:7094/api/planner/populate-sunset
 ### Bestaande wedstrijd zoeken
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd \
-  -H "Content-Type: application/json" \
-  -d '{"teamNaam":"[ClubCode] JO8-2","datum":"2026-05-09"}'
+curl -X POST http://localhost:7094/api/planner/zoek-wedstrijd -H "Content-Type: application/json" -d '{"teamNaam":"[ClubCode] JO8-2","datum":"2026-05-09"}'
 ```
 
 ### Herplan-alternatieven controleren (simulatie)
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/herplan-check \
-  -H "Content-Type: application/json" \
-  -d '{"wedstrijdcode":12345678,"voorkeurTijd":"10:00","dagdeel":"ochtend"}'
+curl -X POST http://localhost:7094/api/planner/herplan-check -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"voorkeurTijd":"10:00","dagdeel":"ochtend"}'
 ```
 
 ### Herplanverzoek registreren
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/herplan-bevestig \
-  -H "Content-Type: application/json" \
-  -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
+curl -X POST http://localhost:7094/api/planner/herplan-bevestig -H "Content-Type: application/json" -d '{"wedstrijdcode":12345678,"gewensteAanvangsTijd":"10:00","gewenstVeldNummer":2,"aangevraagdDoor":"tegenstander via email","opmerking":"Tijdstip is niet haalbaar"}'
 ```
 
 ### Dagplanning optimaliseren
 
 ```bash
-curl -X POST http://localhost:7094/api/planner/auto-plan \
-  -H "Content-Type: application/json" \
-  -d '{"datum":"2026-04-18","bufferMinuten":15}'
+curl -X POST http://localhost:7094/api/planner/auto-plan -H "Content-Type: application/json" -d '{"datum":"2026-04-18","bufferMinuten":15}'
 ```
 
 De response bevat per wedstrijd het optimale veld en tijdslot, plus `voorkeurTijd`,
