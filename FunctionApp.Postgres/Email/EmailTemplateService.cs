@@ -29,14 +29,12 @@ namespace FunctionApp.Postgres.Email;
 /// </para>
 ///
 /// <para>
-/// <b>Bekende stand op deze tier:</b> <see cref="InvalidateCache"/> wordt aangeroepen door
-/// <c>AdminTemplatesFunction</c> (die aanroep ontbrak tot nu toe bewust, omdat deze service nog niet
-/// bestond). <see cref="GetTemplateAsync"/> heeft op deze tier nog géén productieconsument: de
-/// e-mailverwerkingspijplijn (<c>BerichtResponseGenerator</c>) die hem op de SQL Server-tier
-/// aanroept, valt buiten #889's scope-omschrijving en is nog niet vertaald. De methode is hier wel
-/// meegenomen omdat de klasse anders half zou bestaan — een cache invalideren die niets vult is
-/// zinlozer dan een lezer die nog geen aanroeper heeft — en omdat het gedrag ervan (clubisolatie,
-/// TTL, <c>actief</c>-filter) nu al met tests is vastgelegd.
+/// <b>Bekende stand op deze tier (bijgewerkt, #889-vervolg):</b> <see cref="InvalidateCache"/>
+/// wordt aangeroepen door <c>AdminTemplatesFunction</c>. <see cref="GetTemplateAsync"/> heeft
+/// inmiddels wél een productieconsument: <c>BerichtPipeline.BouwTemplateAntwoord</c> roept hem aan
+/// voor elk classificatietype (dry-run pad via <c>EmailTestFunction</c>) — dezelfde route als op de
+/// SQL Server-tier. De opmerking hierboven dat dit "nog niet vertaald" zou zijn is achterhaald
+/// sinds die PR; laten staan als geschiedenis zou een lezer op het verkeerde been zetten.
 /// </para>
 /// </summary>
 public static class EmailTemplateService

@@ -16,10 +16,11 @@ namespace FunctionApp.Postgres.Planner.Repositories;
 /// sinds #888 vervolg/§41, <see cref="GetTeamMatchesOnDateAsync"/> (nodig voor
 /// <c>AvailabilityService</c>'s team-conflictcontrole).
 /// <para>
-/// Nog niet vertaald: <c>GetGeplandeWedstrijdenOnlyAsync</c> en <c>FindMatchByOpponentAsync</c> —
-/// geen consument op deze tier (het eerste hoort bij een los "wat staat er gepland"-endpoint dat
-/// niet bestaat, het tweede bij de e-mail-AI-antwoordflow, buiten deze epic se scope). Zie
-/// docs/ARCHITECTUUR-DATABASE-TIERS.md §16/§40/§41.
+/// Nog niet vertaald: <c>GetGeplandeWedstrijdenOnlyAsync</c> (geen consument op deze tier — hoort
+/// bij een los "wat staat er gepland"-endpoint dat niet bestaat) en <c>FindMatchByOpponentAsync</c>
+/// (wél een consument sinds #889: <c>BerichtPipeline</c>'s opponent-lookup binnen
+/// <c>BeschikbaarheidCheck</c> — expliciet vastgelegd als vervolgwerk in #972, niet stilzwijgend
+/// overgeslagen). Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §16/§40/§41.
 /// </para>
 /// </summary>
 internal static class PlannerMatchRepository
