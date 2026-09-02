@@ -8,9 +8,12 @@ namespace FunctionApp.Postgres.Planner;
 /// Postgres-tier-tegenhanger van
 /// <c>FunctionApp/Planner/Repositories/AllstarsTestDataRepository.cs</c> (#888). Alleen
 /// <see cref="GetAllMatchesForDatumAsync"/> is vertaald — nodig voor het
-/// <c>GET /api/planner/veldbezetting</c>-endpoint. <c>GetAllstarsVeldenAsync</c>,
-/// <c>UpdateAllstarsMatchAsync</c> en <c>GetTeamleiderContactAsync</c> zijn nog niet vertaald;
-/// die horen bij de auto-plan-/testdata-schrijfpaden die buiten deze eerste #888-ronde vallen.
+/// <c>GET /api/planner/veldbezetting</c>-endpoint. <c>GetAllstarsVeldenAsync</c> en
+/// <c>UpdateAllstarsMatchAsync</c> horen bij de auto-plan-/testdata-schrijfpaden die buiten deze
+/// eerste #888-ronde vallen en zijn nog niet vertaald. <c>GetTeamleiderContactAsync</c> heeft
+/// sinds #889 wél een consument (<c>BerichtPipeline</c>'s <c>TeamContactOpvragen</c>-tak, die hier
+/// altijd <c>coachGevonden = false</c> teruggeeft zolang dit ontbreekt) — expliciet vastgelegd als
+/// vervolgwerk in #972, niet stilzwijgend overgeslagen.
 /// <para>
 /// <b>OUTER APPLY → LATERAL JOIN</b> (#888's genoemde valkuil): de niet-ALLSTARS-tak gebruikte
 /// <c>OUTER APPLY (SELECT TOP 1 …) t</c> om per wedstrijd het team op te zoeken. Postgres-
