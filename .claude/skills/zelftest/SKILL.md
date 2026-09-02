@@ -86,6 +86,30 @@ als één gefaalde route.
 Markeer per route: `PASS`, `FAIL`, `UNTESTED` (geen demodata in de brontabel) of `OUT-OF-SCOPE`
 (vereist een externe dienst).
 
+### Actie-knoppen — technisch bestaat ≠ functioneel werkt
+
+`G0b` in `Test-PostgresTier.ps1` heeft al deterministisch bewezen dat elke API-route die de GUI
+aanroept, op deze tier bestaat. Dat bewijst nog niets over het RESULTAAT van een klik — precies de
+reden dat `EmailTestDryRun` (#889) onopgemerkt bleef: de sweep hierboven bewijst alleen dat een
+pagina laadt, nooit dat een knop op die pagina het juiste antwoord geeft.
+
+Voor elke rij in `skill-opdracht.json`'s `actionButtons` waarvan `Route` overeenkomt met de
+huidige pagina (of `'*'`, dan maar **één keer per volledige sweep**, niet per pagina):
+
+1. Zorg dat de juiste clubcontext actief is (zelfde stap 1 als hierboven).
+2. Klik de knop uit `Knop`. Vul een minimale, geldige invoer in als het formulier dat vereist.
+3. Vang de netwerkrespons voor het `Endpoint` uit die rij op
+   (`mcp__playwright__browser_network_requests`). Status ≥ 400 is een FAIL, ongeacht de rest.
+4. Toets de `Assertie` uit die rij tegen de daadwerkelijke inhoud van de respons — niet alleen
+   "geen foutmelding". Een lege of placeholder-achtige respons is FAIL, ook bij status 200.
+5. **Nooit verder dan de knop die met naam in `actionButtons` staat.** Een knop die daar niet in
+   staat (zoals "Versturen" naast "Valideren" bij de FEEDBACK-widget) roept mogelijk een echte
+   externe dienst aan — zie "Externe diensten blijven uit" onderaan deze skill. Twijfel je of een
+   knop veilig te klikken is: sla hem over en meld dat in Fase E, klik hem niet voor de zekerheid.
+
+Markeer per actie-knop: `PASS`, `FAIL`, of `UNTESTED` (de rij staat niet in `actionButtons` — dan
+is de knop simpelweg nooit gecontroleerd, dat is geen `PASS`).
+
 ---
 
 ## FASE C — Schrijfpaden (G8)
@@ -165,6 +189,7 @@ G0 preflight   ✅   6 asserties
 G1 database    ✅   3 asserties
 ...
 G7 sweep       ❌   11/13 routes  — 2 UNTESTED (geen demodata)
+G7 acties      ❌   1/2 actie-knoppen  — 1 UNTESTED (niet in actionButtons)
 
 Nieuw t.o.v. de basismeting: <n>    Al aanwezig in de basismeting: <n>
 Fixes: <n>    Escalaties: <n>
@@ -181,6 +206,8 @@ Vier categorieën bij de vergelijking, en de vierde is de belangrijkste:
 
 Meld tot slot expliciet:
 - welke routes `UNTESTED` waren en waarom (dat is een gat in de demodata, geen succes);
+- welke actie-knoppen `FAIL` of `UNTESTED` waren, en of `G0b` ze als BLOCKED (bekend issue) of
+  onverwacht meldde;
 - welke poorten 🚧 stonden en door welk issuenummer;
 - wat je hebt gefixt, en wat je bewust hebt laten liggen.
 
