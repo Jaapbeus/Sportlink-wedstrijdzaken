@@ -148,6 +148,10 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
      blijft mensenwerk) en vangt de token-respons programmatisch op via het netwerk-response-event
      — geen handmatig kopiëren/plakken meer nodig. Schrijft het refresh_token direct naar
      `FunctionApp.Postgres/local.settings.json` (sleutel `SportlinkClubRefreshToken`).
+     **Live uitgevoerd door de eigenaar (2026-09-04): geslaagd.** Refresh-token staat nu echt
+     lokaal klaar (geverifieerd: sleutel aanwezig, 720 tekens — consistent met de eerdere
+     handmatige test) — dit is niet langer een test maar de daadwerkelijke, bruikbare koppeling
+     voor #991 en verder.
   3. **Bevestigd afgewezen (2026-09-04):** `device_code`-grant staat realm-breed aan, maar is
      **uitgeschakeld voor deze specifieke client** — `POST device_authorization_endpoint` met
      `client_id=sportlink-club-web` geeft `{"error":"unauthorized_client","error_description":
