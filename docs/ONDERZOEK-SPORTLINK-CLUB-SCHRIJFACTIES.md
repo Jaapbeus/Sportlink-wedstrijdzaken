@@ -184,7 +184,40 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
   `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
 - Gebruiksvoorwaarden van Sportlink niet gelezen; risico op accountblokkade bij geautomatiseerd gebruik is reëel maar niet gekwantificeerd.
 
-## 6. Bronnen
+## 6. Architectuurbeslissing (2026-09-04): rol-gebaseerde Sportlink-service-accounts, geen gedeelde credential
+
+Vastgelegd na een terechte vraag van de opdrachtgever: als de FunctionApp met één, breed
+Sportlink-account ("alle rechten") ververst en ALLE rollen in onze webapp (incl. een toekomstige,
+beperkte rol als "sectiehoofd — alleen personen") via die ene credential Sportlink-acties kunnen
+laten uitvoeren, is dat een privilege-escalatie: onze webapp zou dan bredere Sportlink-toegang
+"doorgeven" dan iemands eigen rol zou mogen hebben.
+
+**Beslissing:** elke functionele rol in de webapp die Sportlink-mutaties mag doen (bv.
+"Wedstrijdzaken") krijgt een **eigen, smal-geschaald Sportlink-serviceaccount** (aangemaakt en
+gescoped in Sportlink's eigen `/club-maintenance/users-roles`), met een **eigen refresh_token**,
+opgeslagen onder een eigen instellingennaam: `SportlinkClubRefreshToken__<Rol>` (bv.
+`SportlinkClubRefreshToken__Wedstrijdzaken`). `Tools/SportlinkTokenCapture` accepteert de rol als
+argument (`dotnet run --project Tools/SportlinkTokenCapture -- Wedstrijdzaken`) en slaat het
+refresh_token onder de bijbehorende sleutel op.
+
+**Twee gevolgen, allebei bewust aanvaard:**
+- **Twee plekken om in sync te houden:** wie in Entra ID de rol "Wedstrijdzaken" krijgt, moet ook
+  toegang hebben tot het bijbehorende Sportlink-serviceaccount (of de rechten daarvan). Er bestaat
+  geen API om Sportlink's eigen rolbeheer vanuit onze kant te sturen — dit blijft handmatig beheer,
+  eenmalig per rolwijziging, geen doorlopende last.
+- **Sportlink's eigen audit-log toont voortaan de servicenaam** (bv. "webapp-wedstrijdzaken"),
+  niet de persoonsnaam van de wedstrijdsecretaris — en het scoped Sportlink-account kan sowieso
+  niet meer dan waarvoor het in Sportlink zelf gemachtigd is, ook als onze eigen rolcheck in de
+  webapp ooit een gat heeft. Dit is een echte tweede verdedigingslinie, niet alleen een UI-gate.
+
+**Vereiste voor elk mutatie-/leesendpoint in #991-#998:** de backend-role-gate mag nooit alleen
+generiek "is admin" checken, maar moet de specifieke, functionele rol vereisen (bv.
+"Wedstrijdzaken") — en op basis daarvan de bijbehorende `SportlinkClubRefreshToken__<Rol>`-sleutel
+kiezen. Zie ook `dbo.SportlinkMutationAudit` (#998): omdat Sportlink's eigen log per rol/account
+groepeert (niet per individuele webapp-gebruiker), blijft onze eigen auditlog de enige plek waar
+te herleiden is wélke ingelogde webapp-gebruiker een specifieke actie heeft getriggerd.
+
+## 7. Bronnen
 - Live netwerkverkeer en Performance API in club.sportlink.com (ingelogde sessie, 2026-09-04).
 - `https://club.sportlink.com/config.json` en hoofdbundle `/assets/main-*.js`.
 - `https://idm.sportlink.com/realms/sportlink/.well-known/openid-configuration`.
