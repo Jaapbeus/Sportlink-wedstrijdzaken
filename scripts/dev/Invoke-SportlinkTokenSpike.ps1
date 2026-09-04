@@ -83,17 +83,21 @@ function Invoke-RefreshGrant {
 function Invoke-ApiCall {
     param([string]$AccessToken, [switch]$WithNavajoHeaders)
 
+    # Live bevestigde headerwaarden (2026-09-04, #990) — X-Navajo-Entity is NIET een vaste
+    # appnaam maar het aangeroepen entity/pad zelf (hier "user/UserInfo"); X-Navajo-Instance is
+    # een vaste realm-waarde "KNVB"; X-Navajo-Locale is de korte taalcode "nl" (geen cultuurcode).
+    $entityPath = "user/UserInfo"
     $headers = @{ Authorization = "Bearer $AccessToken" }
     if ($WithNavajoHeaders) {
-        $headers["X-Navajo-Entity"] = "clubweb"
-        $headers["X-Navajo-Instance"] = "1"
-        $headers["X-Navajo-Locale"] = "nl-NL"
+        $headers["X-Navajo-Entity"] = $entityPath
+        $headers["X-Navajo-Instance"] = "KNVB"
+        $headers["X-Navajo-Locale"] = "nl"
     }
     $label = if ($WithNavajoHeaders) { "MET X-Navajo-*-headers" } else { "ZONDER X-Navajo-*-headers" }
     Write-Host ""
-    Write-Host "=== API-call user/UserInfo ($label) ===" -ForegroundColor Cyan
+    Write-Host "=== API-call $entityPath ($label) ===" -ForegroundColor Cyan
     try {
-        $resp = Invoke-WebRequest -Uri "$apiBase/user/UserInfo" -Headers $headers -Method Get
+        $resp = Invoke-WebRequest -Uri "$apiBase/$entityPath" -Headers $headers -Method Get
         Write-Host "  HTTP $($resp.StatusCode) — geslaagd" -ForegroundColor Green
         $json = $resp.Content | ConvertFrom-Json
         Write-Host "  Top-level velden in respons: $($json.PSObject.Properties.Name -join ', ')"
