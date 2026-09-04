@@ -14,6 +14,9 @@
 
     Exitcode-contract van resolve-database-tier.sh (ongewijzigd, alleen hier expliciet getoetst):
       0 = gevonden + gebouwd, 1 = onbekende tier-naam, 2 = gevonden, boom bestaat nog niet.
+    Exitcode 3 (#976, DatabaseTierSwitchConfirmation komt niet overeen) heeft geen
+    PowerShell-tegenhanger — dit script zet die variabele altijd gelijk aan de geteste tier, zodat
+    uitsluitend de tier-naamresolutie (het doel van dit script) getoetst wordt.
 
 .EXAMPLE
     pwsh scripts/ci/Test-TierMappingConsistency.ps1
@@ -61,16 +64,23 @@ $resolverShellPath = ConvertTo-ShellPath (Join-Path $RepoRoot 'scripts' 'ci' 're
 function Invoke-ShellSide {
     param([string]$Tier)
     $env:DatabaseTier = $Tier
+    # #976: het tier-switch-veiligheidsmechanisme (DatabaseTierSwitchConfirmation) test dit
+    # script bewust NIET — dat is een apart, hier niet-getoetst gedrag (zie
+    # Test-TierSwitchConfirmation.ps1). Zonder deze regel gelijk te zetten aan $Tier zou elke
+    # aanroep hier op de nieuwe exitcode 3 stuklopen vóórdat de eigenlijke
+    # tier-naamresolutie-vergelijking (het doel van dít script) aan bod komt.
+    $env:DatabaseTierSwitchConfirmation = $Tier
     # WSL forwardt Windows-omgevingsvariabelen alleen als ze in WSLENV staan (gedocumenteerd
     # WSL-gedrag) — zonder deze regel ziet het bash-script $DatabaseTier als leeg. Onschadelijk
     # voor Git Bash/macOS/Linux: die negeren WSLENV gewoon.
-    if ($isWslLauncher) { $env:WSLENV = 'DatabaseTier' }
+    if ($isWslLauncher) { $env:WSLENV = 'DatabaseTier,DatabaseTierSwitchConfirmation' }
     try {
         $output = & bash $resolverShellPath 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
         Remove-Item Env:\DatabaseTier -ErrorAction SilentlyContinue
+        Remove-Item Env:\DatabaseTierSwitchConfirmation -ErrorAction SilentlyContinue
         Remove-Item Env:\WSLENV -ErrorAction SilentlyContinue
     }
     $csproj = $null

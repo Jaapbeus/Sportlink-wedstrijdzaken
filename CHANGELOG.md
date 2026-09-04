@@ -24,6 +24,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   statustabellen (instellingen, velden, teamregels, teambegeleiding, e-maillog e.d.) kopieert naar
   de Postgres-tier, met een verplichte `--dry-run`-telling en rijtelling-verificatie na afloop. Geen
   wijziging voor beheerders — dit is geen onderdeel van de draaiende applicatie.
+- **Tier-switch-veiligheidsmechanisme (issue 976).** De deploy-pipeline vereist voortaan naast
+  `DatabaseTier` ook een matchende `DatabaseTierSwitchConfirmation`-repository-variabele voordat een
+  tier-wijziging wordt toegepast — voorkomt dat een enkele, per ongeluk gewijzigde `DatabaseTier`
+  production stilzwijgend naar een andere database laat omschakelen. Nieuwe forks: zie
+  `docs/DEVELOPER-SETUP.md` §4 voor de vereiste setup.
 
 ## [3.1.0.0] — 2026-09-02
 
