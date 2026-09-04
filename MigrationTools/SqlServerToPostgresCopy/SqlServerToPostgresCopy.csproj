@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    #976: eenmalig cutover-hulpmiddel (SQL Server -> Supabase Postgres), geen onderdeel van een van
+    beide tier-implementatiebomen. Bevat daarom bewust wél beide providers tegelijk — de
+    "geen gedeelde providerabstractie"-regel (docs/ARCHITECTUUR-DATABASE-TIERS.md §2) betreft de
+    applicatie-runtime (FunctionApp/FunctionApp.Postgres), niet een handmatig gestart,
+    eenmalig migratiehulpmiddel dat na de cutover niet meer wordt gebruikt.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SqlServerToPostgresCopy</RootNamespace>
+    <AssemblyName>sqlserver-to-postgres-copy</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+</Project>

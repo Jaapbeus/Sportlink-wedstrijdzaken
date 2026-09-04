@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Eenmalig cutover-hulpmiddel SQL Server → Supabase Postgres (issue 976).** Nieuwe, losstaande
+  `MigrationTools/SqlServerToPostgresCopy`-tool die lokaal ingevoerde configuratie- en geleerde-
+  statustabellen (instellingen, velden, teamregels, teambegeleiding, e-maillog e.d.) kopieert naar
+  de Postgres-tier, met een verplichte `--dry-run`-telling en rijtelling-verificatie na afloop. Geen
+  wijziging voor beheerders — dit is geen onderdeel van de draaiende applicatie.
+
 ## [3.1.0.0] — 2026-09-02
 
 ### Added
