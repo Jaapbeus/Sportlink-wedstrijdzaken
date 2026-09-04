@@ -95,19 +95,26 @@ Uitgevoerd voor SLX-04/#990. Bevindingen, uitsluitend structureel/niet-herleidba
   redirect-URI; met deze uitkomst blijft variant 2 (§3.B) de enige haalbare route — er is geen
   "SSO-achtige" flow meer over die niet op een lang-levend, server-side bewaard refresh-token
   neerkomt.
-- **Niet getest (Test 2/refresh-rotatie en de X-Navajo-headers-vraag blijven liggen):** de agent die
-  dit onderzoek uitvoert (Claude Code) werd door zijn eigen auto-mode-veiligheidslaag **consequent
-  geblokkeerd** bij elke poging om het refresh-token zelf te gebruiken — zowel bij het uitlezen
-  ervan uit de browser, als bij het uitvoeren van een script met het token als parameter (ook nadat
-  de gebruiker het token al zelf had ingezien en expliciet toestemming gaf). Dit gebeurde op twee
-  onafhankelijke tokens, via twee onafhankelijke mechanismen — geen toevalstreffer. De
-  `device_code`-test hierboven werd overigens NIET geblokkeerd (geen credential in die aanroep) —
-  bevestigt dat de blokkade specifiek zit op "de agent gebruikt een echt refresh/access-token",
-  niet op elk contact met `idm.sportlink.com`. **Nieuw, structureel architectuurgegeven voor
-  #990/#998: een coding agent mag en kan dit mechanisme niet namens de gebruiker uitvoeren.**
-  Verificatie van de refresh-cyclus moet ofwel door een mens interactief gebeuren (zie
-  `scripts/dev/Invoke-SportlinkTokenSpike.ps1`), ofwel door de daadwerkelijk gedeployde Function
-  App-runtime zelf — nooit door een agent tijdens ontwikkeling.
+- **Rotatie: bevestigd, door de eigenaar zelf gedraaid via `Invoke-SportlinkTokenSpike.ps1`.**
+  Refresh #1 (bestaand token) → geslaagd, `expires_in: 3600`, `refresh_expires_in: 21600`. Refresh
+  #2 met het NIEUWE refresh_token uit #1 → **eveneens geslaagd**, met dezelfde `expires_in`/
+  `refresh_expires_in`. **De refresh-cyclus is dus herhaalbaar** (elke refresh geeft een nieuw
+  refresh_token, dat weer bruikbaar is voor de volgende refresh) — dit is het sluitende bewijs voor
+  de kernvraag van #990: een backend kan zelfstandig, zonder browser, indefiniet bij Sportlink
+  Club "ingelogd" blijven zolang hij minstens elke 6 uur ververst.
+- **API-call-test (`user/UserInfo`) nog niet geslaagd — aparte, oplosbare oorzaak.** Zowel met als
+  zonder `X-Navajo-*`-headers gaf de call een foutstatus. De headerwaarden in het testscript waren
+  echter **gegokt** (`X-Navajo-Instance: "1"` e.d.), nooit bevestigd tegen echt verkeer — een fout
+  resultaat hier bewijst dus een foute giswaarde, niet een ongeldig access-token. Vervolgstap:
+  echte headerwaarden aflezen uit een geslaagde call in de browser (geen credential, alleen
+  routeringsparameters) en het script daarmee bijwerken.
+- **Bevestigd, structureel: een coding agent mag en kan het refresh-token zelf niet gebruiken.** De
+  auto-mode-veiligheidslaag van Claude Code blokkeerde dit consequent, op twee onafhankelijke
+  tokens via twee mechanismen — maar blokkeerde niet de `device_code`-test (geen credential erin).
+  Bevestigt dat de blokkade specifiek zit op "de agent gebruikt een echt refresh/access-token".
+  Verificatie van dit mechanisme moet dus altijd door een mens (zoals hierboven) of door de
+  daadwerkelijk gedeployde Function App-runtime zelf gebeuren — nooit door een agent tijdens
+  ontwikkeling.
 - **Incident tijdens dit onderzoek:** een refresh-token kwam per ongeluk in de chatsessie met de
   coding agent terecht (bedoeld voor een lokale prompt, niet voor de chat). De gebruiker heeft
   daarna direct volledig uitgelogd bij Sportlink, wat die specifieke token ongeldig maakt. Les voor
