@@ -31,6 +31,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "MigrationTools", "Migration
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlServerToPostgresCopy", "MigrationTools\SqlServerToPostgresCopy\SqlServerToPostgresCopy.csproj", "{6C79F40B-F964-485D-BB12-B24827E86867}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{2A1B3C4D-5E6F-47A8-9B0C-1D2E3F4A5B6C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SportlinkTokenCapture", "Tools\SportlinkTokenCapture\SportlinkTokenCapture.csproj", "{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -187,11 +191,24 @@ Global
 		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x86.Build.0 = Release|Any CPU
 		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x64.ActiveCfg = Release|Any CPU
 		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x64.Build.0 = Release|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Debug|x86.Build.0 = Debug|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Debug|x64.Build.0 = Debug|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Release|x86.ActiveCfg = Release|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Release|x86.Build.0 = Release|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Release|x64.ActiveCfg = Release|Any CPU
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{6C79F40B-F964-485D-BB12-B24827E86867} = {1F82AA63-8BA9-FA14-7DE3-89C68430A4E0}
+		{3B2C4D5E-6F70-48A9-8B1C-2D3E4F5A6B7D} = {2A1B3C4D-5E6F-47A8-9B0C-1D2E3F4A5B6C}
 	EndGlobalSection
 EndGlobal
