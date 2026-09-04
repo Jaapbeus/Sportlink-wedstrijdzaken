@@ -7,10 +7,27 @@ internal static class Program
 {
     private const string TokenEndpointFragment = "/protocol/openid-connect/token";
     private const string LoginUrl = "https://club.sportlink.com/dashboard";
-    private const string SettingsKey = "SportlinkClubRefreshToken";
 
-    private static async Task<int> Main()
+    // Elke rol (bv. "Wedstrijdzaken", "Secretariaat") logt in met een eigen, los Sportlink-account
+    // met eigen, smal-geschaalde rechten (via Sportlink's /club-maintenance/users-roles) — dus
+    // een eigen refresh_token, opgeslagen onder een eigen instellingennaam. Zo blijft elke rol in
+    // Sportlink's eigen audit-log herkenbaar als "webapp-<rol>", niet als een persoonsnaam, en
+    // blijft een rol met beperkte Sportlink-rechten ook echt beperkt als onze eigen rolcheck ooit
+    // een gat heeft (tweede verdedigingslinie, niet alleen UI-niveau).
+    private static string SettingsKeyFor(string role) => $"SportlinkClubRefreshToken__{role}";
+
+    private static async Task<int> Main(string[] args)
     {
+        if (args.Length != 1 || string.IsNullOrWhiteSpace(args[0]))
+        {
+            Console.WriteLine("Gebruik: dotnet run --project Tools/SportlinkTokenCapture -- <rol>");
+            Console.WriteLine("Voorbeeld: dotnet run --project Tools/SportlinkTokenCapture -- Wedstrijdzaken");
+            Console.WriteLine("Log in het geopende venster in met het Sportlink-account dat bij deze rol hoort.");
+            return 1;
+        }
+        var role = args[0];
+        var settingsKey = SettingsKeyFor(role);
+
         var repoRoot = FindRepoRoot();
         if (repoRoot is null)
         {
@@ -75,7 +92,7 @@ internal static class Program
             }
         };
 
-        Console.WriteLine("Browser geopend. Log in op je Sportlink-account (inclusief eventuele MFA).");
+        Console.WriteLine($"Rol: {role} — log in met het Sportlink-account dat bij deze rol hoort (inclusief eventuele MFA).");
         Console.WriteLine("Dit venster sluit zichzelf automatisch zodra het token is opgevangen (max. 5 minuten).");
         await page.GotoAsync(LoginUrl);
 
@@ -93,12 +110,12 @@ internal static class Program
             return 1;
         }
 
-        WriteRefreshTokenToSettings(settingsPath, capturedRefreshToken);
-        Console.WriteLine($"Refresh-token opgeslagen als '{SettingsKey}' in {settingsPath}. Waarde niet getoond.");
+        WriteRefreshTokenToSettings(settingsPath, settingsKey, capturedRefreshToken);
+        Console.WriteLine($"Refresh-token opgeslagen als '{settingsKey}' in {settingsPath}. Waarde niet getoond.");
         return 0;
     }
 
-    private static void WriteRefreshTokenToSettings(string settingsPath, string refreshToken)
+    private static void WriteRefreshTokenToSettings(string settingsPath, string settingsKey, string refreshToken)
     {
         var json = File.ReadAllText(settingsPath);
         using var doc = JsonDocument.Parse(json);
@@ -115,10 +132,10 @@ internal static class Program
                     writer.WriteStartObject();
                     foreach (var valueProperty in property.Value.EnumerateObject())
                     {
-                        if (valueProperty.Name == SettingsKey) continue;
+                        if (valueProperty.Name == settingsKey) continue;
                         valueProperty.WriteTo(writer);
                     }
-                    writer.WriteString(SettingsKey, refreshToken);
+                    writer.WriteString(settingsKey, refreshToken);
                     writer.WriteEndObject();
                 }
                 else

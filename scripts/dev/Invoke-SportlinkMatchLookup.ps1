@@ -20,7 +20,11 @@
 param(
     [string]$PublicMatchId,
     [Nullable[long]]$ExternalMatchId,
-    [Nullable[long]]$WedstrijdCode
+    [Nullable[long]]$WedstrijdCode,
+    # Rol-specifieke instellingennaam (bv. "Wedstrijdzaken"), zie Tools/SportlinkTokenCapture.
+    # Zonder opgave wordt de oude, ongeschaalde sleutel SportlinkClubRefreshToken gebruikt
+    # (bestaand, al gevuld token uit vóór de rolindeling blijft dus bruikbaar).
+    [string]$Role
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +32,7 @@ $tokenEndpoint = "https://idm.sportlink.com/realms/sportlink/protocol/openid-con
 $clientId = "sportlink-club-web"
 $apiBase = "https://club.sportlink.com/navajo/entity/common/clubweb"
 $settingsPath = Join-Path $PSScriptRoot "..\..\FunctionApp.Postgres\local.settings.json"
+$settingsKey = if ($Role) { "SportlinkClubRefreshToken__$Role" } else { "SportlinkClubRefreshToken" }
 
 if (-not $PublicMatchId) {
     if (-not $WedstrijdCode) {
@@ -43,9 +48,9 @@ if (-not (Test-Path $settingsPath)) {
 }
 
 $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-$refreshToken = $settings.Values.SportlinkClubRefreshToken
+$refreshToken = $settings.Values.$settingsKey
 if ([string]::IsNullOrWhiteSpace($refreshToken)) {
-    Write-Host "SportlinkClubRefreshToken ontbreekt of is leeg in local.settings.json — draai eerst Tools/SportlinkTokenCapture." -ForegroundColor Red
+    Write-Host "'$settingsKey' ontbreekt of is leeg in local.settings.json — draai eerst Tools/SportlinkTokenCapture." -ForegroundColor Red
     exit 1
 }
 
@@ -65,7 +70,7 @@ catch {
 # ene run verbruikt.
 $settingsRaw = Get-Content $settingsPath -Raw
 $settingsObj = $settingsRaw | ConvertFrom-Json
-$settingsObj.Values.SportlinkClubRefreshToken = $tokenResp.refresh_token
+$settingsObj.Values.$settingsKey = $tokenResp.refresh_token
 ($settingsObj | ConvertTo-Json -Depth 10) | Set-Content $settingsPath
 Write-Host "  Nieuw refresh_token teruggeschreven naar local.settings.json (rotatie)." -ForegroundColor DarkGray
 
