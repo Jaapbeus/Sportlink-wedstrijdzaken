@@ -139,14 +139,15 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
      localStorage van dat andere origin (club.sportlink.com) niet uitlezen (browser same-origin-
      policy) — er is geen client-side manier om het resultaat "over te hevelen" zonder dat
      Sportlink zelf onze redirect-URI toevoegt aan de client, of ons een eigen OAuth-client geeft.
-  2. **Technisch bevestigd werkend (2026-09-04):** eenmalige interactieve login (handmatig, via
-     Network-tab het `refresh_token` uit de token-endpoint-respons kopiëren, zie §2.6) →
-     `refresh_token` opslaan als Function App-instelling (gekozen boven Key Vault, zie #990-comment)
-     → backend vernieuwt via `token_endpoint` met `grant_type=refresh_token&client_id=sportlink-club-web`.
-     Eerste refresh + gevolg-API-call live succesvol getest. **Nog niet getest:** rotatie bij een
-     tweede refresh, en of de X-Navajo-headers verplicht zijn — geblokkeerd doordat de coding agent
-     dit mechanisme niet zelf mag uitvoeren (zie §2.6); vereist een mens die het script
-     `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
+  2. **Technisch bevestigd werkend (2026-09-04):** eenmalige interactieve login → `refresh_token`
+     opslaan als Function App-instelling (gekozen boven Key Vault, zie #990-comment) → backend
+     vernieuwt via `token_endpoint` met `grant_type=refresh_token&client_id=sportlink-club-web`.
+     Refresh + rotatie (tweede refresh met het nieuwe token) live succesvol getest door de eigenaar.
+     De handmatige DevTools-Network-tab-stap is inmiddels geautomatiseerd: `Tools/
+     SportlinkTokenCapture` opent een echte browser, laat de gebruiker eenmalig inloggen (MFA
+     blijft mensenwerk) en vangt de token-respons programmatisch op via het netwerk-response-event
+     — geen handmatig kopiëren/plakken meer nodig. Schrijft het refresh_token direct naar
+     `FunctionApp.Postgres/local.settings.json` (sleutel `SportlinkClubRefreshToken`).
   3. **Bevestigd afgewezen (2026-09-04):** `device_code`-grant staat realm-breed aan, maar is
      **uitgeschakeld voor deze specifieke client** — `POST device_authorization_endpoint` met
      `client_id=sportlink-club-web` geeft `{"error":"unauthorized_client","error_description":
