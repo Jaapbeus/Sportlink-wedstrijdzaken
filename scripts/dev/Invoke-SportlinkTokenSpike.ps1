@@ -58,7 +58,7 @@ function Invoke-RefreshGrant {
     param([string]$RefreshToken, [string]$Label)
 
     Write-Host ""
-    Write-Host "=== $Label: refresh_token-grant ===" -ForegroundColor Cyan
+    Write-Host "=== ${Label}: refresh_token-grant ===" -ForegroundColor Cyan
     $body = @{
         grant_type    = "refresh_token"
         client_id     = $clientId
