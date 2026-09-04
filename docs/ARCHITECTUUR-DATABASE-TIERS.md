@@ -55,16 +55,22 @@ C#-versie, precies het onderhoudsrisico dat #719 al blootlegde voor die twee. Vu
 volgende tier: bevat de te herbouwen logica geen SQL en geen providerspecifieke aanroep, verhuis
 haar naar een gedeeld project in plaats van haar te dupliceren.
 
-**Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging nog niet gebouwd.** #816
+**Tier-keuze is bewust onveranderlijk na de eerste deploy — afdwinging gebouwd bij #976.** #816
 legt vast dat de repository-variabele `DatabaseTier` de keuze bepaalt (hard-fail bij een
-ontbrekende/onbekende waarde), maar een *wijziging* van een reeds actieve, geldige waarde naar
-een andere tier zou vandaag stilzwijgend bij de eerstvolgende reguliere deploy worden toegepast —
-dat mag niet zonder expliciete migratiebevestiging. Zolang er maar één tier (`SqlServer`)
-daadwerkelijk bestaat, is een echte switch fysiek niet mogelijk (de resolver weigert
-`Postgres`/`Sqlite` al hard omdat die bomen nog niet bestaan) — het handhavingsmechanisme zelf
-(bijv. een vergelijking met de vorige gedeployde tier + een handmatige approval-gate) is daarom
-een open ontwerppunt, te bouwen zodra een tweede tier daadwerkelijk gebouwd wordt en een switch
-voor het eerst fysiek mogelijk is.
+ontbrekende/onbekende waarde). Met de Postgres-tier inmiddels functioneel gereed werd een switch
+voor het eerst fysiek mogelijk (zie sectie 49 voor de eenmalige productiecutover die dat moment
+concreet maakte) — een *wijziging* van een reeds actieve, geldige waarde naar een andere tier zou
+zonder extra maatregel stilzwijgend bij de eerstvolgende reguliere deploy worden toegepast, en dat
+mag niet zonder expliciete bevestiging.
+
+`resolve-database-tier.sh` (#976) eist daarom een tweede, los te bewerken repository-variabele
+`DatabaseTierSwitchConfirmation` die exact moet overeenkomen met `DatabaseTier`. Bij de stabiele
+situatie (geen wissel) staan beide al gelijk en blokkeert dit niets — bij een enkele, per ongeluk
+gewijzigde `DatabaseTier` faalt de build hard (exitcode 3) met een duidelijke foutmelding, in
+plaats van production stilzwijgend naar een andere database te laten omschakelen. Een bewuste
+wissel vereist het expliciet bijwerken van *beide* variabelen in dezelfde actie. Getoetst door
+`scripts/ci/Test-TierSwitchConfirmation.ps1`, los van de tier-naamresolutie zelf
+(`Test-TierMappingConsistency.ps1`, #865).
 
 ## 3. Identifier-casing-conventie
 
@@ -2542,6 +2548,96 @@ business-key-kolom.
 
 De browsersweep uit §47 (G7/G8, schrijfpaden via de GUI) is met deze wijziging nog niet opnieuw
 uitgevoerd — dat is de volgende stap vóór dit issue als volledig bewezen geldt.
+
+## 49. Eenmalige productiecutover SQL Server → Supabase Postgres (#976)
+
+Het moment dat §2 al aankondigde ("een switch voor het eerst fysiek mogelijk") is aangebroken: de
+bestaande, live productie-installatie (niet een nieuwe fork) voert een eenmalige, expliciet
+goedgekeurde cutover uit naar Supabase Postgres (EU-regio, DPA aanwezig). Aanleiding: het in §1
+beschreven budgetuitputtings-faalmodel van Azure SQL's gratis serverless-tier.
+
+**Dit is een uitzondering specifiek voor déze ene, reeds-lopende installatie** — de algemene regel
+voor nieuwe forks/deployments (§2: één tier gekozen bij opzet, nooit runtime-switch, geen gedeelde
+providerabstractie) blijft ongewijzigd. Zie de bevestiging op issue
+[#814](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/814#issuecomment-5539376256).
+
+### Wat NIET gemigreerd hoeft te worden
+
+De ETL-pipeline (teams/programma/uitslagen/matchdetails → `his.*`) hoeft niet te worden overgezet:
+`FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs` roept `PostgresMergeOrchestrator` al dynamisch
+aan bij elke sync-run (`RecreateStgTableAsync`/`EnsureHisTableAsync`, §14/#818) — exact zoals §2
+voorschrijft. Na cutover kan de sync gewoon opnieuw starten vanaf de Sportlink API (desnoods met
+`?reset=true&season=YYYY` per seizoen voor volledige historie).
+
+### Wat wél gemigreerd moet worden
+
+Puur lokaal ingevoerde configuratie en geleerde status, nergens anders vandaan te halen dan de
+huidige SQL Server-productiedatabase: `AppSettings`, `AppSettingsAudit`, `Velden`,
+`VeldBeschikbaarheid`, `VeldPeriode`, `VeldTraining`, `Speeltijden`, `TeamVoorkeurTijden`,
+`TeamRegels`, `UitgeslotenEmailAdressen`, `EmailTemplateInstellingen`, `Season`, `TeamAliassen`,
+`Teams` (canoniek, niet `his.teams`), `avg.Teambegeleiding`/`avg.ImportLog` (persoonsgegevens),
+`planner.EmailVerwerking`/`ClassificatieCorrectie`/`GeplandeWedstrijden`/`HerplanVerzoeken`.
+
+`MigrationTools/SqlServerToPostgresCopy` (nieuw, losstaand van beide tier-bomen — zie de
+projectcommentaar in het .csproj voor waarom dit geen schending is van de "geen gedeelde
+providerabstractie"-regel) is de generieke, kolomonafhankelijke rijkopieerder hiervoor: leest de
+doelkolommen uit Postgres' eigen `information_schema`, scoped delete+copy op `ClubCode` (voorkomt
+dat AllStars FC-democlubrijen worden geraakt), en verifieert na afloop de rijtelling bron-vs-doel.
+`--dry-run` telt zonder te schrijven.
+
+**Identity-kolommen worden nooit letterlijk gekopieerd — end-to-end lokaal getest en daardoor
+ontdekt, niet vooraf bedacht.** Een eerste versie probeerde elke Postgres-`GENERATED ALWAYS AS
+IDENTITY`-kolom (16 van de 19 doeltabellen hebben er een) met zijn originele SQL-Server-waarde te
+vullen. Tegen een lokale Docker-opzet (SQL Server + Postgres, zie `docs/DEVELOPER-SETUP.md` §4)
+met een democlub CLUB naast de al aanwezige AllStars-democlubseed botste dat meteen:
+`veldbeschikbaarheid` begint in Postgres al bij `id=1` vanuit de AllStars-seed, en een
+onafhankelijke club heeft in SQL Server zijn eigen IDENTITY-reeks die net zo goed bij 1 begint.
+Surrogaatsleutels hebben geen betekenis buiten de database (in tegenstelling tot een natuurlijke
+sleutel als `veldnummer`, dat AllStars bewust in een gereserveerd bereik 101+ houdt) — de tool laat
+Postgres daarom altijd zelf een nieuwe waarde genereren, en vertaalt voor de drie
+foreign-key-ketens tussen doeltabellen (`veldperiode.id -> veldbeschikbaarheid.periodeid`,
+`teams.teamid -> teamaliassen.teamid`, `emailverwerking.id -> classificatiecorrectie.*verwerkingid`)
+de oude naar de nieuwe waarde via een gedeelde `IdMapRegistry`. Volgorde in `Program.cs`s
+tabellenlijst doet er daardoor toe: elke tabel met `IdentityMapKey` moet vóór zijn afhankelijke
+tabel staan.
+
+### Tier-switch-veiligheidsmechanisme
+
+Zie de bijgewerkte §2: `DatabaseTierSwitchConfirmation` moet expliciet matchen met `DatabaseTier`
+voordat de deploy-pipeline een tier-wijziging daadwerkelijk toepast.
+
+### Cutover-runbook (nog niet uitgevoerd — vereist telkens expliciete eindbevestiging)
+
+Rijtelling-/checksumvalidatie is in de kopieertool zelf ingebouwd. De resterende stappen, in
+volgorde:
+
+1. **Dry-run tegen productie** — telt rijen aan beide kanten, schrijft niets. Credentials lopen
+   bewust NIET via een geautomatiseerde sessie: production SQL-wachtwoord en Supabase-wachtwoord
+   zijn secrets, en de opdrachtgever voert dit zelf lokaal uit via
+   `scripts/dev/Invoke-ProductionCutoverKopie.ps1` — vraagt de twee connectiestrings op via
+   `Read-Host -AsSecureString` (niets op het scherm, niets in de PowerShell-commandogeschiedenis)
+   in plaats van een `$env:X = "..."`-toewijzing die het wachtwoord permanent in die geschiedenis
+   zou achterlaten.
+2. ✅ **Lokale end-to-end-test met synthetische testdata** — uitgevoerd tegen een verse lokale
+   Docker-opzet (SQL Server + Postgres, zelfde `docker-compose.yml` als elke ontwikkelaar
+   gebruikt) met de al aanwezige placeholder-club `CLUB` naast AllStars FC. Bewees zowel het
+   kopieerpad zelf als de ClubCode-scoping (AllStars-rijen ongemoeid) en legde de
+   identity-kolom-botsing bloot die hierboven beschreven staat — dat was de eigenlijke waarde van
+   deze stap, niet alleen "het draait zonder foutmelding".
+3. **Echte kopie tegen productie** (zelfde tool zonder `--dry-run`) — pas na 1, en pas na
+   expliciete eindbevestiging van de opdrachtgever.
+4. **`POSTGRES_CONNECTION_STRING` als Azure Function App-instelling zetten** — dit is GEEN
+   wijziging aan `deploy.yml` (dat bevat nooit connectiestrings): net als `SqlConnectionString`
+   vandaag is dit een eenmalige `az functionapp config appsettings set`/Portal-actie rechtstreeks
+   op de Function App, buiten de CI-pipeline om.
+5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
+   allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
+   dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
+6. **Deploy + volledige verificatielus uit CLAUDE.md**, inclusief de verplichte browser-
+   rendercheck op de LIVE Admin GUI (§2a) — groene CI-jobs en HTTP 200 bewijzen niets over de GUI.
+7. **Rollbackpad**: `DatabaseTier`/`DatabaseTierSwitchConfirmation` terug naar `SqlServer` +
+   opnieuw deployen — de SQL Server-database zelf wordt door deze cutover niet aangeraakt of
+   verwijderd, dus een terugval blijft mogelijk zolang die database blijft bestaan.
 
 ## Gerelateerd
 

@@ -209,6 +209,14 @@ git commit --allow-empty -m "test hooks"
 > App — vandaag altijd `SqlServer`, de enige geïmplementeerde waarde. Ontbreekt de variabele of
 > staat hij op een onbekende waarde, dan faalt de deploy-workflow hard (zie
 > `scripts/ci/resolve-database-tier.sh`) — er is bewust geen stille default.
+>
+> **Sinds #976 moet daarnaast ook `DatabaseTierSwitchConfirmation` gezet worden, met exact
+> dezelfde waarde als `DatabaseTier`** (dus bij een nieuwe fork: beide op `SqlServer`) — het
+> tier-switch-veiligheidsmechanisme dat voorkomt dat een latere, per ongeluk gewijzigde
+> `DatabaseTier` production stilzwijgend naar een andere database laat omschakelen (zie
+> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2). Vergeet je deze tweede variabele bij een nieuwe fork,
+> dan faalt de eerste deploy met exitcode 3 en een duidelijke foutmelding die naar deze paragraaf
+> verwijst.
 
 ### 4.1 Lokale database starten (Docker — identiek op Windows en macOS)
 
