@@ -2590,13 +2590,31 @@ dat AllStars FC-democlubrijen worden geraakt), en verifieert na afloop de rijtel
 Zie de bijgewerkte §2: `DatabaseTierSwitchConfirmation` moet expliciet matchen met `DatabaseTier`
 voordat de deploy-pipeline een tier-wijziging daadwerkelijk toepast.
 
-### Nog te doen (niet in deze stap)
+### Cutover-runbook (nog niet uitgevoerd — vereist telkens expliciete eindbevestiging)
 
-Rijtelling-/checksumvalidatie is in de kopieertool zelf ingebouwd; wat nog ontbreekt is de
-daadwerkelijke uitvoering tegen productiedata (na test tegen AllStars FC-democlubdata) en het
-daadwerkelijk omzetten van `DatabaseTier`/`DatabaseTierSwitchConfirmation` + het toevoegen van
-`POSTGRES_CONNECTION_STRING` als Azure Function App-instelling in `deploy.yml` — beide pas na
-expliciete eindbevestiging van de opdrachtgever, inclusief rollbackpad terug naar SQL Server.
+Rijtelling-/checksumvalidatie is in de kopieertool zelf ingebouwd. De resterende stappen, in
+volgorde:
+
+1. **Dry-run tegen productie** (`SqlServerToPostgresCopy --dry-run`) — telt rijen aan beide kanten,
+   schrijft niets. Credentials lopen bewust NIET via een geautomatiseerde sessie: production
+   SQL-wachtwoord en Supabase-wachtwoord zijn secrets, en de opdrachtgever voert dit zelf lokaal
+   uit (zie issue #976 voor de exacte commando's).
+2. **Test tegen AllStars FC-democlubdata** — bewijst het kopieerpad zonder persoonsgegevens aan te
+   raken.
+3. **Echte kopie** (zelfde tool zonder `--dry-run`) — pas na 1 en 2, en pas na expliciete
+   eindbevestiging van de opdrachtgever.
+4. **`POSTGRES_CONNECTION_STRING` als Azure Function App-instelling zetten** — dit is GEEN
+   wijziging aan `deploy.yml` (dat bevat nooit connectiestrings): net als `SqlConnectionString`
+   vandaag is dit een eenmalige `az functionapp config appsettings set`/Portal-actie rechtstreeks
+   op de Function App, buiten de CI-pipeline om.
+5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
+   allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
+   dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
+6. **Deploy + volledige verificatielus uit CLAUDE.md**, inclusief de verplichte browser-
+   rendercheck op de LIVE Admin GUI (§2a) — groene CI-jobs en HTTP 200 bewijzen niets over de GUI.
+7. **Rollbackpad**: `DatabaseTier`/`DatabaseTierSwitchConfirmation` terug naar `SqlServer` +
+   opnieuw deployen — de SQL Server-database zelf wordt door deze cutover niet aangeraakt of
+   verwijderd, dus een terugval blijft mogelijk zolang die database blijft bestaan.
 
 ## Gerelateerd
 
