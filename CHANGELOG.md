@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.2.0.0] — 2026-09-04
+
 ### Added
 - **Eenmalig cutover-hulpmiddel SQL Server → Supabase Postgres (issue 976).** Nieuwe, losstaande
   `MigrationTools/SqlServerToPostgresCopy`-tool die lokaal ingevoerde configuratie- en geleerde-
@@ -37,6 +39,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   tier-wijziging wordt toegepast — voorkomt dat een enkele, per ongeluk gewijzigde `DatabaseTier`
   production stilzwijgend naar een andere database laat omschakelen. Nieuwe forks: zie
   `docs/DEVELOPER-SETUP.md` §4 voor de vereiste setup.
+
+### Changed
+- **Productie-databasetier omgezet van SQL Server naar Postgres (issue 976).** Eenmalige cutover
+  van de bestaande productie-installatie — alle configuratie- en statustabellen zijn overgezet en
+  geverifieerd (rijtelling bron = doel op alle tabellen), `DatabaseTier`/
+  `DatabaseTierSwitchConfirmation` staan op `Postgres`. Aanleiding: het in
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §1 beschreven budgetuitputtings-faalmodel van Azure SQL's
+  gratis serverless-tier. De SQL Server-database zelf blijft bestaan als rollbackpad.
 
 ## [3.1.0.0] — 2026-09-02
 
