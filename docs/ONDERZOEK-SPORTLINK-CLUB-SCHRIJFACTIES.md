@@ -64,6 +64,46 @@ UI-tekst op de detailpagina bevestigt de semantiek: "Het wijzigen van datum, tij
 
 Conclusie: de UI wacht op een paar zware, voor ons irrelevante calls. Wie de API direct aanroept, betaalt alleen de 2 s van `Match` plus ~0,3 s per mutatie. De deep-link omzeilt de 21 s-overzichtscall maar niet de 7 s `PersonRegistrations`.
 
+### 2.6 Token-spike (2026-09-04, sessie 2) — live geverifieerd
+
+Uitgevoerd voor SLX-04/#990. Bevindingen, uitsluitend structureel/niet-herleidbaar:
+
+- **`SLC_OAUTH_TOKEN`, `SLC_USER` en een derde, hex-genaamde localStorage-sleutel bevatten
+  versleutelde blobs, geen leesbare JSON of JWT.** Sportlink Club versleutelt kennelijk elke
+  waarde die het in localStorage zet. **Dit weerlegt de aanname in §2.1 hierboven** ("Token-opslag:
+  localStorage `SLC_OAUTH_TOKEN`") dat het token daar in leesbare vorm te vinden is — dat is niet
+  (meer) zo. Het token is alleen in leesbare vorm zichtbaar in het Network-tabblad, tijdens de
+  daadwerkelijke `POST .../protocol/openid-connect/token`-call zelf (vóór de SPA het versleutelt).
+- **`login-status-iframe.html/init?client_id=...`** — een stille Keycloak-sessiecheck (check-SSO
+  iframe), geeft `204 No Content` als de sessie nog geldig is. Verklaart waarom een paginaherlaad
+  van een al-ingelogde sessie géén nieuwe token-uitwisseling oplevert: alleen een volledige
+  uit/inlog-cyclus doet dat.
+- **Live bevestigde token-respons** (structuur, geen waarden): `access_token`, `refresh_token`,
+  `id_token`, `token_type: "Bearer"`, `scope: "openid email profile"` (geen `roles`-scope),
+  **`expires_in: 3600`** (access-token 1 uur geldig) en **`refresh_expires_in: 21600`**
+  (refresh-token-sessie 6 uur geldig vanaf de eerste uitgifte — resolves gedeeltelijk de
+  onzekerheid in §5/#990; of dit ook geldt ná rotatie is niet getest, zie hieronder).
+- **Redirect-URI-whitelist: bevestigd afgewezen.** Een `GET` naar de `authorization_endpoint` met
+  `redirect_uri=http://localhost:5242/authentication/login-callback` (in plaats van Sportlink's
+  eigen `https://club.sportlink.com/dashboard`) geeft **HTTP 400** — geen loginscherm, directe
+  weigering. Bevestigt de aanname in §3.B-variant-1 hieronder: **onze eigen webapp kan niet als
+  OAuth-redirect-doel fungeren bij de bestaande client `sportlink-club-web`.**
+- **Niet getest (Test 2/refresh-rotatie en de X-Navajo-headers-vraag zijn blijven liggen):** de
+  agent die dit onderzoek uitvoert (Claude Code) werd door zijn eigen auto-mode-veiligheidslaag
+  **consequent geblokkeerd** bij elke poging om het refresh-token zelf te gebruiken — zowel bij het
+  uitlezen ervan uit de browser, als bij het uitvoeren van een script met het token als parameter
+  (ook nadat de gebruiker het token al zelf had ingezien en expliciet toestemming gaf). Dit gebeurde
+  op twee onafhankelijke tokens, via twee onafhankelijke mechanismen — geen toevalstreffer.
+  **Nieuw, structureel architectuurgegeven voor #990/#998: een coding agent mag en kan dit
+  mechanisme niet namens de gebruiker uitvoeren.** Verificatie van de refresh-cyclus moet ofwel
+  door een mens interactief gebeuren (zie `scripts/dev/Invoke-SportlinkTokenSpike.ps1`), ofwel door
+  de daadwerkelijk gedeployde Function App-runtime zelf — nooit door een agent tijdens ontwikkeling.
+- **Incident tijdens dit onderzoek:** een refresh-token kwam per ongeluk in de chatsessie met de
+  coding agent terecht (bedoeld voor een lokale prompt, niet voor de chat). De gebruiker heeft
+  daarna direct volledig uitgelogd bij Sportlink, wat die specifieke token ongeldig maakt. Les voor
+  toekomstige spikes: laat een token uitsluitend in een lokaal script-venster invoeren, nooit in een
+  gedeelde chat, en behandel elk per ongeluk gedeeld token als verbrand.
+
 ## 3. Drie oplossingsrichtingen, beoordeeld
 
 ### A. Deep-link/knop (laagste risico, snel te bouwen)
@@ -73,10 +113,30 @@ In `BlazorAdmin/Pages/Dagplanning.razor` (rij-rendering r. ~454-470) per wedstri
 
 ### B. Directe API-calls met de sessie van de wedstrijdsecretaris (snelst in gebruik)
 Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-token van Jaaps Sportlink-account.
-- Token verkrijgen: **[onzeker welke werkt]**
-  1. Authorization-code+PKCE via de bestaande client `sportlink-club-web`: alleen als Keycloak onze redirect-URI accepteert. Waarschijnlijk niet (whitelist), niet getest.
-  2. Eenmalige interactieve login (Playwright of handmatig) → `refresh_token` bewaren in Key Vault → backend vernieuwt via `token_endpoint` met `grant_type=refresh_token&client_id=sportlink-club-web`. Public client, dus geen secret nodig. Werkt zolang de Keycloak SSO-sessie niet verloopt; looptijden onbekend.
-  3. `device_code`-grant: endpoint bestaat realm-breed; of de client het toestaat is onbekend.
+- Token verkrijgen:
+  1. **Bevestigd afgewezen (2026-09-04, zie §2.6):** authorization-code+PKCE met onze eigen
+     redirect-URI op de bestaande client `sportlink-club-web` — Keycloak geeft HTTP 400, geen
+     loginscherm. Onze webapp kan dus niet zelf als OAuth-redirect-doel optreden bij deze client.
+     Dit sluit ook een "SSO-popup vanuit onze eigen webapp die het token zelf opvangt" uit: zelfs
+     als de popup Sportlink's eigen, wél-gewhitelist redirect gebruikt, kan onze pagina de
+     localStorage van dat andere origin (club.sportlink.com) niet uitlezen (browser same-origin-
+     policy) — er is geen client-side manier om het resultaat "over te hevelen" zonder dat
+     Sportlink zelf onze redirect-URI toevoegt aan de client, of ons een eigen OAuth-client geeft.
+  2. **Technisch bevestigd werkend (2026-09-04):** eenmalige interactieve login (handmatig, via
+     Network-tab het `refresh_token` uit de token-endpoint-respons kopiëren, zie §2.6) →
+     `refresh_token` opslaan als Function App-instelling (gekozen boven Key Vault, zie #990-comment)
+     → backend vernieuwt via `token_endpoint` met `grant_type=refresh_token&client_id=sportlink-club-web`.
+     Eerste refresh + gevolg-API-call live succesvol getest. **Nog niet getest:** rotatie bij een
+     tweede refresh, en of de X-Navajo-headers verplicht zijn — geblokkeerd doordat de coding agent
+     dit mechanisme niet zelf mag uitvoeren (zie §2.6); vereist een mens die het script
+     `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
+  3. `device_code`-grant: endpoint bestaat realm-breed (`device_authorization_endpoint`); of de
+     client dit toestaat is **nog steeds onbekend** — de test hierop werd door dezelfde
+     agent-veiligheidslaag geblokkeerd (zie §2.6). Dit is de enige variant die geen eigen
+     redirect-URI nodig heeft (de gebruiker rondt de login af op een Sportlink/Keycloak-eigen
+     pagina, de app pollt het resultaat) — daarmee de netste match met een "SSO-achtige" flow als
+     variant 1 alsnog gewenst is. Vereist een losse, door Jaap zelf uitgevoerde `curl`/PowerShell-test
+     tegen `device_authorization_endpoint`.
   4. `password`-grant staat realm-breed aan; per client meestal uit. Ook ongewenst (wachtwoord opslaan).
 - Voordeel: kleedkamer/veld/official wijzigen in < 1 s vanuit onze app; permissie-flags van de server bepalen wat mag; validatiefouten komen gestructureerd terug.
 - Nadeel: onofficieel, kan bij elke release van Sportlink breken (bundle-hashes wijzigen al; endpoints minder vaak). Sentry/GA zien ons verkeer niet, maar de server logt het wel op Jaaps account. Raakt de gebruiksvoorwaarden van Sportlink; niet onderzocht welke clausule. Alle acties gebeuren op naam van Jaap.
@@ -93,11 +153,16 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 
 ## 5. Wat ik NIET heb gedaan of weet
 - Geen enkele mutatie zelf uitgevoerd; de kleedkamerwijziging is door de wedstrijdsecretaris gedaan en teruggedraaid.
-- Geen token uitgelezen of opgeslagen.
 - Exacte body van `UpdateMatchDetails` en `ClubMatch` niet live gezien.
-- Token-/refresh-levensduur, MFA-eisen en redirect-URI-whitelist van de Keycloak-client niet getest.
+- **Opgelost (§2.6):** redirect-URI-whitelist getest en afgewezen (HTTP 400); access-/refresh-token-
+  levensduur bevestigd (1 uur / 6 uur bij eerste uitgifte).
+- **Nog steeds open:** MFA-eisen bij herlogin niet getest; of het refresh-token bij elke refresh
+  roteert (en of `refresh_expires_in` daarbij reset) niet getest; of `X-Navajo-*`-headers verplicht
+  zijn niet getest; of `device_code`-grant door de client wordt toegestaan niet getest — alle drie
+  geblokkeerd doordat een coding agent dit mechanisme niet zelf mag uitvoeren (zie §2.6). Vereist
+  een mens die `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt, of een losse
+  `device_authorization_endpoint`-test.
 - Gebruiksvoorwaarden van Sportlink niet gelezen; risico op accountblokkade bij geautomatiseerd gebruik is reëel maar niet gekwantificeerd.
-- Of `X-Navajo-*`-headers verplicht zijn is niet getest.
 
 ## 6. Bronnen
 - Live netwerkverkeer en Performance API in club.sportlink.com (ingelogde sessie, 2026-09-04).
