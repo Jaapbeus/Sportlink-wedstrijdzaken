@@ -22,4 +22,11 @@
     <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Alleen voor PostgresConnectionStringNormalizer (#976-vervolg) — gedeeld met
+         Database.Postgres.Cli, zodat beide plekken die zelf een NpgsqlConnection openen met een
+         door de gebruiker aangeleverde connectiestring dezelfde URI-vorm-detectie gebruiken. -->
+    <ProjectReference Include="..\..\Database.Postgres\Database.Postgres.csproj" />
+  </ItemGroup>
+
 </Project>

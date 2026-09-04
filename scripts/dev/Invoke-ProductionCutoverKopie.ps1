@@ -65,6 +65,20 @@ if (-not $env:PRODUCTIE_CLUBCODE) {
     $env:PRODUCTIE_CLUBCODE = Read-Host "ClubCode van de echte productieclub (uit dbo.AppSettings, NIET 'ALLSTARS')"
 }
 
+# Schema aanmaken/bijwerken in Postgres vóórdat er iets gekopieerd wordt — idempotent (#821),
+# dus altijd veilig om mee te lopen. Ontdekt bij de eerste echte poging tegen productie (#976): op
+# een verse Supabase-database bestaan de doeltabellen nog niet, en de kopieertool faalt dan met
+# "Geen kolommen gevonden voor doeltabel" — een verwarrende foutmelding voor wie deze vroege,
+# losse migratiestap uit de documentatie inmiddels was vergeten.
+Write-Host ""
+Write-Host "=== Postgres-schema aanmaken/bijwerken (idempotent) ===" -ForegroundColor Cyan
+$migrationsProject = Join-Path $root "Database.Postgres.Cli/Database.Postgres.Cli.csproj"
+& dotnet run --project $migrationsProject --configuration Release
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Schema aanmaken mislukt — zie foutmelding hierboven." -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
 $toolProject = Join-Path $root "MigrationTools/SqlServerToPostgresCopy/SqlServerToPostgresCopy.csproj"
 $runArgs = @("run", "--project", $toolProject, "--configuration", "Release", "--")
 
