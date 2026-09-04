@@ -72,7 +72,8 @@ BEGIN
         [ThemeClubWebsiteUrl]        NVARCHAR(300)  NULL,
         [SyncEnabled]                BIT            NOT NULL DEFAULT 1,
         [KnvbPdfBijlageIngeschakeld] BIT            NOT NULL DEFAULT 1,
-        [KnvbStandaardRegio]         NVARCHAR(20)   NULL
+        [KnvbStandaardRegio]         NVARCHAR(20)   NULL,
+        [SportlinkExtensionEnabled]  BIT            NOT NULL DEFAULT 0
     );
 END
 GO
@@ -1233,6 +1234,22 @@ IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_AppSettingsA
     ALTER TABLE [dbo].[AppSettingsAudit] ADD CONSTRAINT [CK_AppSettingsAudit_ClubCode] CHECK (LEN([ClubCode]) > 0);
 GO
 
+-- #988: SportlinkExtensieRollen — welke functionele rol (bv. 'Wedstrijdzaken') heeft een eigen,
+-- smal-geschaald Sportlink-serviceaccount gekoppeld gekregen (Sportlink Web Extension, epic #986).
+-- Geen live Sportlink-verificatie: SportlinkAccountNaam is handmatige invoer bij registratie.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SportlinkExtensieRollen'))
+BEGIN
+    CREATE TABLE [dbo].[SportlinkExtensieRollen] (
+        [RolNaam]              NVARCHAR(50)   NOT NULL,
+        [LaatstGekoppeldDoor]  NVARCHAR(200)  NULL,
+        [LaatstGekoppeldOp]    DATETIME2      NULL,
+        [SportlinkAccountNaam] NVARCHAR(200)  NULL,
+        [ClubCode]             NVARCHAR(20)   NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
+        CONSTRAINT [PK_SportlinkExtensieRollen] PRIMARY KEY CLUSTERED ([RolNaam] ASC)
+    );
+END
+GO
+
 -- v2 — #62: TeamVoorkeurTijden
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamVoorkeurTijden'))
 BEGIN
@@ -1462,6 +1479,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'KnvbStandaardRegio')
     ALTER TABLE [dbo].[AppSettings] ADD [KnvbStandaardRegio] NVARCHAR(20) NULL;
+GO
+
+-- #988: SportlinkExtensionEnabled kolom in dbo.AppSettings (Sportlink Web Extension, epic #986)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkExtensionEnabled')
+    ALTER TABLE [dbo].[AppSettings] ADD [SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0;
 GO
 
 -- UNIQUE constraint op ClubCode in dbo.AppSettings (slechts één rij per club)

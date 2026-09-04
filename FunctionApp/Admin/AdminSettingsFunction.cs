@@ -43,7 +43,8 @@ public static class AdminSettingsFunction
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
-        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio"
+        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
+        "SportlinkExtensionEnabled"
     };
 
     // Geldige waarden voor KnvbStandaardRegio — komt overeen met de PK-waarden in dbo.KnvbKalenderDag.
@@ -87,7 +88,7 @@ public static class AdminSettingsFunction
                     [CoordinatorFunctie], [PlannerEmailAdres], [HerplanDeadlineDagen],
                     [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                     [AccommodatieLatitude], [AccommodatieLongitude],
-                    [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio]
+                    [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled]
                 FROM [dbo].[AppSettings]
                 WHERE [ClubCode] = @ClubCode", connection);
             command.Parameters.AddWithValue("@ClubCode", clubCode);
