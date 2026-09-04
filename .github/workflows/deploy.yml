@@ -276,8 +276,18 @@ jobs:
           exit 1
 
       - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
+        # #976-incident: dit endpoint bestaat onder een ander pad per tier (SQL Server:
+        # /api/sync-matches, Postgres: /api/postgres/sync-matches — zie FunctionApp/Function1.cs
+        # resp. FunctionApp.Postgres/Sync/SyncFunction.cs, beide AuthorizationLevel.Admin). Een
+        # hardcoded SQL-Server-pad hier gaf een niet-gerelateerde 404 i.p.v. de bedoelde 401-check
+        # zodra de Postgres-tier gedeployed werd.
         run: |
-          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sync-matches?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          if [ "${{ vars.DatabaseTier }}" = "Postgres" ]; then
+            ADMIN_ROUTE="postgres/sync-matches"
+          else
+            ADMIN_ROUTE="sync-matches"
+          fi
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/${ADMIN_ROUTE}?code=${{ secrets.AZURE_FUNCTION_KEY }}"
           MAX=6; WAIT=20
           for i in $(seq 1 $MAX); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)

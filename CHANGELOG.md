@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.2.0.2] — 2026-09-04
+
+### Fixed
+- **Deploy-smoke-test testte een SQL-Server-tier-specifiek pad, ongeacht de gedeployde tier (issue
+  976).** `/api/sync-matches` bestaat alleen op de SQL Server-tier; de Postgres-tier heeft
+  hetzelfde endpoint onder `/api/postgres/sync-matches`. Gaf een niet-gerelateerde 404 i.p.v. de
+  bedoelde 401-beveiligingscheck zodra de Postgres-tier gedeployed werd. De smoke-teststap kiest nu
+  het pad op basis van `DatabaseTier`.
+
 ## [3.2.0.1] — 2026-09-04
 
 ### Fixed
