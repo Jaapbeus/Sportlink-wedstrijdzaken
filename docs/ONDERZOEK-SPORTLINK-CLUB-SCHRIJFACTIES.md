@@ -88,16 +88,26 @@ Uitgevoerd voor SLX-04/#990. Bevindingen, uitsluitend structureel/niet-herleidba
   eigen `https://club.sportlink.com/dashboard`) geeft **HTTP 400** — geen loginscherm, directe
   weigering. Bevestigt de aanname in §3.B-variant-1 hieronder: **onze eigen webapp kan niet als
   OAuth-redirect-doel fungeren bij de bestaande client `sportlink-club-web`.**
-- **Niet getest (Test 2/refresh-rotatie en de X-Navajo-headers-vraag zijn blijven liggen):** de
-  agent die dit onderzoek uitvoert (Claude Code) werd door zijn eigen auto-mode-veiligheidslaag
-  **consequent geblokkeerd** bij elke poging om het refresh-token zelf te gebruiken — zowel bij het
-  uitlezen ervan uit de browser, als bij het uitvoeren van een script met het token als parameter
-  (ook nadat de gebruiker het token al zelf had ingezien en expliciet toestemming gaf). Dit gebeurde
-  op twee onafhankelijke tokens, via twee onafhankelijke mechanismen — geen toevalstreffer.
-  **Nieuw, structureel architectuurgegeven voor #990/#998: een coding agent mag en kan dit
-  mechanisme niet namens de gebruiker uitvoeren.** Verificatie van de refresh-cyclus moet ofwel
-  door een mens interactief gebeuren (zie `scripts/dev/Invoke-SportlinkTokenSpike.ps1`), ofwel door
-  de daadwerkelijk gedeployde Function App-runtime zelf — nooit door een agent tijdens ontwikkeling.
+- **`device_code`-grant: bevestigd uitgeschakeld voor deze client.** `POST device_authorization_endpoint`
+  met `client_id=sportlink-club-web&scope=openid` geeft `{"error":"unauthorized_client",
+  "error_description":"...The flow is disabled for the client."}` — onafhankelijk gereproduceerd
+  door zowel de agent als de eigenaar zelf. Dit was de enige OAuth-variant zonder eigen
+  redirect-URI; met deze uitkomst blijft variant 2 (§3.B) de enige haalbare route — er is geen
+  "SSO-achtige" flow meer over die niet op een lang-levend, server-side bewaard refresh-token
+  neerkomt.
+- **Niet getest (Test 2/refresh-rotatie en de X-Navajo-headers-vraag blijven liggen):** de agent die
+  dit onderzoek uitvoert (Claude Code) werd door zijn eigen auto-mode-veiligheidslaag **consequent
+  geblokkeerd** bij elke poging om het refresh-token zelf te gebruiken — zowel bij het uitlezen
+  ervan uit de browser, als bij het uitvoeren van een script met het token als parameter (ook nadat
+  de gebruiker het token al zelf had ingezien en expliciet toestemming gaf). Dit gebeurde op twee
+  onafhankelijke tokens, via twee onafhankelijke mechanismen — geen toevalstreffer. De
+  `device_code`-test hierboven werd overigens NIET geblokkeerd (geen credential in die aanroep) —
+  bevestigt dat de blokkade specifiek zit op "de agent gebruikt een echt refresh/access-token",
+  niet op elk contact met `idm.sportlink.com`. **Nieuw, structureel architectuurgegeven voor
+  #990/#998: een coding agent mag en kan dit mechanisme niet namens de gebruiker uitvoeren.**
+  Verificatie van de refresh-cyclus moet ofwel door een mens interactief gebeuren (zie
+  `scripts/dev/Invoke-SportlinkTokenSpike.ps1`), ofwel door de daadwerkelijk gedeployde Function
+  App-runtime zelf — nooit door een agent tijdens ontwikkeling.
 - **Incident tijdens dit onderzoek:** een refresh-token kwam per ongeluk in de chatsessie met de
   coding agent terecht (bedoeld voor een lokale prompt, niet voor de chat). De gebruiker heeft
   daarna direct volledig uitgelogd bij Sportlink, wat die specifieke token ongeldig maakt. Les voor
@@ -130,13 +140,11 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
      tweede refresh, en of de X-Navajo-headers verplicht zijn — geblokkeerd doordat de coding agent
      dit mechanisme niet zelf mag uitvoeren (zie §2.6); vereist een mens die het script
      `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
-  3. `device_code`-grant: endpoint bestaat realm-breed (`device_authorization_endpoint`); of de
-     client dit toestaat is **nog steeds onbekend** — de test hierop werd door dezelfde
-     agent-veiligheidslaag geblokkeerd (zie §2.6). Dit is de enige variant die geen eigen
-     redirect-URI nodig heeft (de gebruiker rondt de login af op een Sportlink/Keycloak-eigen
-     pagina, de app pollt het resultaat) — daarmee de netste match met een "SSO-achtige" flow als
-     variant 1 alsnog gewenst is. Vereist een losse, door Jaap zelf uitgevoerde `curl`/PowerShell-test
-     tegen `device_authorization_endpoint`.
+  3. **Bevestigd afgewezen (2026-09-04):** `device_code`-grant staat realm-breed aan, maar is
+     **uitgeschakeld voor deze specifieke client** — `POST device_authorization_endpoint` met
+     `client_id=sportlink-club-web` geeft `{"error":"unauthorized_client","error_description":
+     "...The flow is disabled for the client."}`. Dit was de enige variant zonder eigen
+     redirect-URI; met deze uitkomst is er geen "SSO-achtige" route meer die niet via variant 2 loopt.
   4. `password`-grant staat realm-breed aan; per client meestal uit. Ook ongewenst (wachtwoord opslaan).
 - Voordeel: kleedkamer/veld/official wijzigen in < 1 s vanuit onze app; permissie-flags van de server bepalen wat mag; validatiefouten komen gestructureerd terug.
 - Nadeel: onofficieel, kan bij elke release van Sportlink breken (bundle-hashes wijzigen al; endpoints minder vaak). Sentry/GA zien ons verkeer niet, maar de server logt het wel op Jaaps account. Raakt de gebruiksvoorwaarden van Sportlink; niet onderzocht welke clausule. Alle acties gebeuren op naam van Jaap.
@@ -147,7 +155,7 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 
 ## 4. Aanbeveling
 1. **Nu**: A bouwen (knop in Dagplanning). Vooraf de mapping `PublicMatchId` ↔ `wedstrijdcode` verifiëren met één query.
-2. **Daarna, als proef buiten productie**: B-variant 2. Eerst een read-only spike: token vernieuwen via `refresh_token` en `GET competition/match/Match` aanroepen vanuit een lokale console. Meet hoe lang het refresh-token geldig blijft (dagen of weken bepaalt of dit praktisch is).
+2. **Deels afgerond (§2.6):** B-variant 2's read-only spike (token vernieuwen + een echte API-call) is live succesvol getest. Resterend vóór dit in productie kan: rotatie bij een tweede refresh en de X-Navajo-headers-vraag laten bevestigen door een mens (`scripts/dev/Invoke-SportlinkTokenSpike.ps1`) — een coding agent mag dit zelf niet uitvoeren (zie §2.6).
 3. **Eerste schrijfactie in de app**: kleedkamers (`UpdateMatchDressingRooms`), want die is live bevestigd, omkeerbaar en raakt geen tegenstander of KNVB. Daarna veld, dan officials. Datum/tijd (wijzigingsverzoek) als laatste, achter een expliciete bevestigingsdialoog met de `ValidationResultMessages` van Sportlink.
 4. Guardrails: alleen wedstrijden met `IsHomeMatch=true` en de betreffende `Is...Allowed=true`; elke mutatie loggen met vóór/na-waarde; EgressGuard-patroon hergebruiken zodat lokaal nooit per ongeluk naar Sportlink wordt geschreven.
 
@@ -155,13 +163,13 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 - Geen enkele mutatie zelf uitgevoerd; de kleedkamerwijziging is door de wedstrijdsecretaris gedaan en teruggedraaid.
 - Exacte body van `UpdateMatchDetails` en `ClubMatch` niet live gezien.
 - **Opgelost (§2.6):** redirect-URI-whitelist getest en afgewezen (HTTP 400); access-/refresh-token-
-  levensduur bevestigd (1 uur / 6 uur bij eerste uitgifte).
+  levensduur bevestigd (1 uur / 6 uur bij eerste uitgifte); `device_code`-grant getest en bevestigd
+  uitgeschakeld voor deze client.
 - **Nog steeds open:** MFA-eisen bij herlogin niet getest; of het refresh-token bij elke refresh
   roteert (en of `refresh_expires_in` daarbij reset) niet getest; of `X-Navajo-*`-headers verplicht
-  zijn niet getest; of `device_code`-grant door de client wordt toegestaan niet getest — alle drie
-  geblokkeerd doordat een coding agent dit mechanisme niet zelf mag uitvoeren (zie §2.6). Vereist
-  een mens die `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt, of een losse
-  `device_authorization_endpoint`-test.
+  zijn niet getest — alle drie geblokkeerd doordat een coding agent dit mechanisme (met een echt
+  token) niet zelf mag uitvoeren (zie §2.6). Vereist een mens die
+  `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
 - Gebruiksvoorwaarden van Sportlink niet gelezen; risico op accountblokkade bij geautomatiseerd gebruik is reëel maar niet gekwantificeerd.
 
 ## 6. Bronnen
