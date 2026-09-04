@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.2.0.1] — 2026-09-04
+
+### Fixed
+- **Postgres-tier Function App crashte bij opstarten op Supabase's URI-connectiestring (issue 976,
+  incident tijdens de eerste productiecutover).** `PostgresDatabaseConfig` bouwde de connectiestring
+  rechtstreeks uit de ruwe omgevingsvariabele, zonder de URI-naar-keyword=value-normalisatie die het
+  migratiehulpmiddel al had — de health-endpoint gaf daardoor aanhoudend 503 in plaats van een
+  cold-start-vertraging. Cutover teruggerold naar SQL Server tijdens het onderzoek; geen dataverlies.
+
 ## [3.2.0.0] — 2026-09-04
 
 ### Added
