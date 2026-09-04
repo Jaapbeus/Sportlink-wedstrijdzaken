@@ -1,7 +1,35 @@
 # Onderzoek: wedstrijdwijzigingen vanuit de wedstrijdzaken-app naar Sportlink Club
 
-> Datum: 2026-09-04. Status: onderzoek, geen code. Alleen-lezen analyse van club.sportlink.com plus één door de wedstrijdsecretaris zelf uitgevoerde en teruggedraaide kleedkamerwijziging (meegelezen in netwerkverkeer).
+> Datum: 2026-09-04. Status: **onderzoek/plan, nog geen enkele regel productiecode**. Alleen-lezen analyse van club.sportlink.com plus één door de wedstrijdsecretaris zelf uitgevoerde en teruggedraaide kleedkamerwijziging (meegelezen in netwerkverkeer).
 > Bevat bewust geen persoonsgegevens, club-/accommodatie-ID's, tokens of wachtwoorden. Waar iets niet hard is vastgesteld staat **[onzeker]**.
+> Uitwerking en verificatie van dit plan loopt via de comments op epic #986 en sub-issues #987-#998 — dit document blijft het bronrapport, niet de actuele status. Zie #986 voor de actuele architectuur-beslissingen.
+
+## 0. Correctie 2026-09-04 (na dit rapport): productie-databasetier is Postgres, niet SQL Server
+
+Dit rapport en de sub-issues #987-#998 zijn geschreven met `his.matches`/`dbo.AppSettings` (SQL
+Server, PascalCase) als impliciete aanname voor "onze database". Die aanname is **sinds vandaag
+niet meer juist**:
+
+- De GitHub-repositoryvariabele `DatabaseTier` staat sinds 2026-09-04T13:25 op `Postgres`
+  (bevestigd via `gh variable list`); issue #976 (eenmalige productiecutover) is gesloten.
+- Productie draait dus op **`FunctionApp.Postgres`**, niet op `FunctionApp` (SQL Server). De
+  SQL Server-database blijft bestaan als rollbackpad, maar is niet meer de bron van waarheid.
+- Volgens de vaste multi-tier-regel (`docs/ARCHITECTUUR-DATABASE-TIERS.md` §2: "nooit gelijktijdig,
+  geen gedeelde abstractie") krijgt de Sportlink Web Extension **twee parallelle implementaties**
+  als ze provider-specifieke code bevat (DB-lezen/schrijven): één in `FunctionApp.Postgres/Admin/`
+  (nu productie) en één in `FunctionApp/Admin/` (rollbackpad). Alleen pure, providervrije logica
+  (bijv. de HTTP-client naar `club.sportlink.com` zelf, die geen SQL/ADO.NET raakt) mag naar
+  `Planner.Shared/` — dezelfde uitzondering als `TeamNaamNormalisatie`/`VeldResolver`.
+- `public.appsettings` (Postgres) heeft **al** een `sportlinkapiurl`/`sportlinkclientid`-kolom en
+  bijna alle kolommen van `dbo.AppSettings` (geverifieerd via `\d public.appsettings` op de lokale
+  Postgres-container) — maar `PostgresAppSettings.LoadSettingsAsync` leest er procesbreed nog maar
+  7 van in de cache, en `AdminSettingsFunction.cs` (Postgres-tier) heeft een eigen
+  `AllowedFields`-whitelist die `SportlinkExtensionEnabled` nog mist. Een nieuwe instelling moet in
+  **beide** tier-specifieke `AdminSettingsFunction.cs`-whitelists en in **beide** DB-schema's
+  (`Database/dbo/Tables/AppSettings.sql` én een nieuwe `Database.Postgres/migrations/0xx_*.sql`).
+- **§2.2 mapping-hypothese is nog niet geverifieerd** — dat vereist een query tegen de echte
+  productiedatabase (nu Supabase Postgres), niet tegen een lokale, nog lege Postgres-container.
+  Zie de comment op #987 voor de exacte, Postgres-syntax-aangepaste query.
 
 ## 1. Antwoord in één alinea
 
