@@ -139,6 +139,7 @@ jobs:
         id: tier
         env:
           DatabaseTier: ${{ vars.DatabaseTier }}
+          DatabaseTierSwitchConfirmation: ${{ vars.DatabaseTierSwitchConfirmation }}
         run: bash scripts/ci/resolve-database-tier.sh
 
       - name: .NET SDK installeren

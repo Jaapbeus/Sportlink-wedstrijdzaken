@@ -27,6 +27,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionApp.Postgres", "Fun
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FunctionApp.Postgres.Tests", "FunctionApp.Postgres.Tests\FunctionApp.Postgres.Tests.csproj", "{AD50E98F-620D-434A-87E6-A4992001D120}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "MigrationTools", "MigrationTools", "{1F82AA63-8BA9-FA14-7DE3-89C68430A4E0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlServerToPostgresCopy", "MigrationTools\SqlServerToPostgresCopy\SqlServerToPostgresCopy.csproj", "{6C79F40B-F964-485D-BB12-B24827E86867}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -171,8 +175,23 @@ Global
 		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x86.Build.0 = Release|Any CPU
 		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x64.ActiveCfg = Release|Any CPU
 		{AD50E98F-620D-434A-87E6-A4992001D120}.Release|x64.Build.0 = Release|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Debug|x86.Build.0 = Debug|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Debug|x64.Build.0 = Debug|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x86.ActiveCfg = Release|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x86.Build.0 = Release|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x64.ActiveCfg = Release|Any CPU
+		{6C79F40B-F964-485D-BB12-B24827E86867}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{6C79F40B-F964-485D-BB12-B24827E86867} = {1F82AA63-8BA9-FA14-7DE3-89C68430A4E0}
 	EndGlobalSection
 EndGlobal

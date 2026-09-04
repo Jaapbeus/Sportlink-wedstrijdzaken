@@ -305,6 +305,14 @@ PowerShell wordt aangeroepen:
 - WSL's launcher vertaalt een los meegegeven Windows-pad (`C:\...` of `C:/...`) niet automatisch
   naar `/mnt/c/...` — zonder vertaling faalt elke aanroep met exitcode 127.
 
+### Tier-switch-veiligheidsmechanisme (#976)
+
+`scripts/ci/Test-TierSwitchConfirmation.ps1` toetst het omgekeerde van
+`Test-TierMappingConsistency.ps1`: dat `resolve-database-tier.sh` daadwerkelijk blokkeert
+(exitcode 3) als `DatabaseTierSwitchConfirmation` ontbreekt of niet overeenkomt met `DatabaseTier`,
+en niets blokkeert bij een matchende waarde. Zit als aparte stap in `build.yml`, direct na de
+tier-mapping-consistentietest. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2 voor de achtergrond.
+
 ### G2-G4 zijn nu echte metingen (#860, vervolg op #851)
 
 Tot deze ronde stonden G2 (schema, eerste run), G3 (idempotentie, tweede run) en G4 (demodata en

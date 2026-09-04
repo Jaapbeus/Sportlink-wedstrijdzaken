@@ -18,6 +18,36 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.2.0.0] — 2026-09-04
+
+### Added
+- **Eenmalig cutover-hulpmiddel SQL Server → Supabase Postgres (issue 976).** Nieuwe, losstaande
+  `MigrationTools/SqlServerToPostgresCopy`-tool die lokaal ingevoerde configuratie- en geleerde-
+  statustabellen (instellingen, velden, teamregels, teambegeleiding, e-maillog e.d.) kopieert naar
+  de Postgres-tier, met een verplichte `--dry-run`-telling en rijtelling-verificatie na afloop.
+  Vertaalt surrogaatsleutels via een gedeelde id-mapping in plaats van ze letterlijk te kopiëren —
+  end-to-end lokaal getest tegen een democlub naast de bestaande AllStars FC-seed, wat een
+  ID-botsing met identity-kolommen blootlegde en opgelost heeft. `scripts/dev/Invoke-
+  ProductionCutoverKopie.ps1` vraagt de connectiestrings veilig op (`Read-Host -AsSecureString`,
+  nooit in de PowerShell-commandogeschiedenis). Accepteert voor de Postgres-connectiestring zowel
+  Supabase's URI-vorm (`postgresql://gebruiker:wachtwoord@host:5432/database`) als Npgsql's eigen
+  keyword=value-vorm — de tool normaliseert automatisch, ontdekt bij de eerste echte poging tegen
+  productie toen de URI-vorm (het eerste wat Supabase's dashboard toont) een parseerfout gaf. Geen
+  wijziging voor beheerders — dit is geen onderdeel van de draaiende applicatie.
+- **Tier-switch-veiligheidsmechanisme (issue 976).** De deploy-pipeline vereist voortaan naast
+  `DatabaseTier` ook een matchende `DatabaseTierSwitchConfirmation`-repository-variabele voordat een
+  tier-wijziging wordt toegepast — voorkomt dat een enkele, per ongeluk gewijzigde `DatabaseTier`
+  production stilzwijgend naar een andere database laat omschakelen. Nieuwe forks: zie
+  `docs/DEVELOPER-SETUP.md` §4 voor de vereiste setup.
+
+### Changed
+- **Productie-databasetier omgezet van SQL Server naar Postgres (issue 976).** Eenmalige cutover
+  van de bestaande productie-installatie — alle configuratie- en statustabellen zijn overgezet en
+  geverifieerd (rijtelling bron = doel op alle tabellen), `DatabaseTier`/
+  `DatabaseTierSwitchConfirmation` staan op `Postgres`. Aanleiding: het in
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §1 beschreven budgetuitputtings-faalmodel van Azure SQL's
+  gratis serverless-tier. De SQL Server-database zelf blijft bestaan als rollbackpad.
+
 ## [3.1.0.0] — 2026-09-02
 
 ### Added

@@ -76,6 +76,14 @@ jobs:
       - name: Tier-mapping consistentie (shell vs. PowerShell)
         run: pwsh scripts/ci/Test-TierMappingConsistency.ps1
 
+      # #976: bewijst dat het tier-switch-veiligheidsmechanisme (DatabaseTierSwitchConfirmation)
+      # daadwerkelijk blokkeert bij een ontbrekende/niet-matchende bevestiging, en niets blokkeert
+      # bij een matchende. Zonder deze test zou een toekomstige refactor van
+      # resolve-database-tier.sh de guard stilzwijgend kunnen laten verdwijnen — precies het
+      # "open ontwerppunt" dat #814 sectie 2 noemde, nu zowel gebouwd als getest.
+      - name: Tier-switch-veiligheidsmechanisme (DatabaseTierSwitchConfirmation)
+        run: pwsh scripts/ci/Test-TierSwitchConfirmation.ps1
+
       # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
       # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
       - name: .NET SDK installeren

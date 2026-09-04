@@ -15,7 +15,7 @@ var migrationsPath = args.Length > 0 ? args[0] : ResolveDefaultMigrationsPath();
 
 try
 {
-    await MigrationRunner.RunAsync(connectionString, migrationsPath);
+    await MigrationRunner.RunAsync(PostgresConnectionStringNormalizer.Normalize(connectionString), migrationsPath);
     Console.WriteLine($"Migraties toegepast vanuit '{migrationsPath}'.");
     return 0;
 }

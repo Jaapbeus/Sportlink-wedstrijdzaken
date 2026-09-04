@@ -63,6 +63,25 @@ if [ "$FOUND" != "yes" ]; then
   exit 1
 fi
 
+# #976: tier-switch-veiligheidsmechanisme — het "open ontwerppunt" dat #814 sectie 2 al noemde
+# ("te bouwen zodra een switch voor het eerst fysiek mogelijk is"). vars.DatabaseTier is een kale
+# GitHub Actions repository-variabele: iedereen met schrijftoegang kan hem in Settings wijzigen, en
+# een enkele bewerking daar zou bij de eerstvolgende push naar main de HELE productie-Function-App
+# stilzwijgend naar een ander .csproj (en dus een andere database) laten omschakelen. Een tweede,
+# los te bewerken variabele die expliciet moet matchen dwingt een bewuste, tweede handeling af
+# vóórdat een tier-wijziging effect heeft — een enkele fat-fingered edit van DatabaseTier alleen
+# faalt de build hard in plaats van production stilzwijgend te laten omschakelen.
+#
+# Bij een bewuste, gewenste tier-wissel: zet BEIDE variabelen op de nieuwe tier-naam in dezelfde
+# actie. Bij de normale, stabiele situatie (geen wissel) staan ze al gelijk en blokkeert dit niets.
+CONFIRMATION="${DatabaseTierSwitchConfirmation:-}"
+if [ "$CONFIRMATION" != "$TIER" ]; then
+  echo "::error::DatabaseTier='${TIER}' maar DatabaseTierSwitchConfirmation='${CONFIRMATION:-<leeg>}' komt daar niet mee overeen."
+  echo "::error::Dit is het opzettelijke tier-switch-veiligheidsmechanisme (#976, zie #814 sectie 2) — voorkomt dat een enkele bewerking van DatabaseTier alleen production stilzwijgend naar een andere database laat omschakelen."
+  echo "::error::Bedoel je deze wissel? Zet DatabaseTierSwitchConfirmation in GitHub Settings -> Secrets and variables -> Actions -> Variables ook op '${TIER}' en deploy opnieuw."
+  exit 3
+fi
+
 if [ "$BUILT" != "true" ]; then
   echo "::error::DatabaseTier='${TIER}' is een geldige toekomstige waarde, maar de bijbehorende implementatieboom bestaat nog niet in deze repository (epic #815, zie issue #${ISSUE} en docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 6 voor de bouwvolgorde)."
   echo "::error::Zet DatabaseTier terug op 'SqlServer' totdat die tier daadwerkelijk gebouwd is."
