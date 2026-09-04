@@ -104,8 +104,18 @@ function Invoke-ApiCall {
         return $true
     }
     catch {
-        $status = $_.Exception.Response.StatusCode.value__
-        Write-Host "  HTTP $status — MISLUKT" -ForegroundColor Red
+        # Volledige diagnostiek i.p.v. alleen een (mogelijk zinloze) statuscode — een eerdere
+        # versie van dit script printte alleen $_.Exception.Response.StatusCode.value__, wat bij
+        # een non-HTTP-fout (DNS/TLS/timeout) een onzinnige waarde als "602" kan opleveren omdat
+        # .Response dan niet bestaat. Toon nu altijd het volledige exception-type en de body.
+        Write-Host "  MISLUKT" -ForegroundColor Red
+        Write-Host "  Aangeroepen URL: $apiBase/$entityPath" -ForegroundColor Red
+        Write-Host "  Exception-type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+        Write-Host "  Message: $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.Exception.Response) {
+            try { Write-Host "  HTTP-status: $([int]$_.Exception.Response.StatusCode)" -ForegroundColor Red } catch {}
+        }
+        if ($_.ErrorDetails.Message) { Write-Host "  Body: $($_.ErrorDetails.Message)" -ForegroundColor Red }
         return $false
     }
 }
