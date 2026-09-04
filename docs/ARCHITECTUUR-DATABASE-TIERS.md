@@ -2611,10 +2611,13 @@ voordat de deploy-pipeline een tier-wijziging daadwerkelijk toepast.
 Rijtelling-/checksumvalidatie is in de kopieertool zelf ingebouwd. De resterende stappen, in
 volgorde:
 
-1. **Dry-run tegen productie** (`SqlServerToPostgresCopy --dry-run`) — telt rijen aan beide kanten,
-   schrijft niets. Credentials lopen bewust NIET via een geautomatiseerde sessie: production
-   SQL-wachtwoord en Supabase-wachtwoord zijn secrets, en de opdrachtgever voert dit zelf lokaal
-   uit (zie issue #976 voor de exacte commando's).
+1. **Dry-run tegen productie** — telt rijen aan beide kanten, schrijft niets. Credentials lopen
+   bewust NIET via een geautomatiseerde sessie: production SQL-wachtwoord en Supabase-wachtwoord
+   zijn secrets, en de opdrachtgever voert dit zelf lokaal uit via
+   `scripts/dev/Invoke-ProductionCutoverKopie.ps1` — vraagt de twee connectiestrings op via
+   `Read-Host -AsSecureString` (niets op het scherm, niets in de PowerShell-commandogeschiedenis)
+   in plaats van een `$env:X = "..."`-toewijzing die het wachtwoord permanent in die geschiedenis
+   zou achterlaten.
 2. ✅ **Lokale end-to-end-test met synthetische testdata** — uitgevoerd tegen een verse lokale
    Docker-opzet (SQL Server + Postgres, zelfde `docker-compose.yml` als elke ontwikkelaar
    gebruikt) met de al aanwezige placeholder-club `CLUB` naast AllStars FC. Bewees zowel het

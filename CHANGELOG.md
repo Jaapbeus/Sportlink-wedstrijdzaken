@@ -25,8 +25,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   de Postgres-tier, met een verplichte `--dry-run`-telling en rijtelling-verificatie na afloop.
   Vertaalt surrogaatsleutels via een gedeelde id-mapping in plaats van ze letterlijk te kopiëren —
   end-to-end lokaal getest tegen een democlub naast de bestaande AllStars FC-seed, wat een
-  ID-botsing met identity-kolommen blootlegde en opgelost heeft. Geen wijziging voor beheerders —
-  dit is geen onderdeel van de draaiende applicatie.
+  ID-botsing met identity-kolommen blootlegde en opgelost heeft. `scripts/dev/Invoke-
+  ProductionCutoverKopie.ps1` vraagt de connectiestrings veilig op (`Read-Host -AsSecureString`,
+  nooit in de PowerShell-commandogeschiedenis). Geen wijziging voor beheerders — dit is geen
+  onderdeel van de draaiende applicatie.
 - **Tier-switch-veiligheidsmechanisme (issue 976).** De deploy-pipeline vereist voortaan naast
   `DatabaseTier` ook een matchende `DatabaseTierSwitchConfirmation`-repository-variabele voordat een
   tier-wijziging wordt toegepast — voorkomt dat een enkele, per ongeluk gewijzigde `DatabaseTier`
