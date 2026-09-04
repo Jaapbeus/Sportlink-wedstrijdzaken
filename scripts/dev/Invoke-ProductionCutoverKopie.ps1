@@ -17,13 +17,23 @@
 #   .\scripts\dev\Invoke-ProductionCutoverKopie.ps1                # dry-run (standaard, altijd eerst)
 #   .\scripts\dev\Invoke-ProductionCutoverKopie.ps1 -Execute        # echte kopie, met bevestigingsvraag
 #
-# Al connectiestrings als omgevingsvariabele gezet (bijv. via een andere secrets-manager)? Dan
-# worden die gebruikt zonder opnieuw te vragen — dit script overschrijft nooit een al gezette
-# waarde.
+# Vraagt bij ELKE run opnieuw — ook al staat de omgevingsvariabele al gezet in deze PowerShell-
+# sessie van een vorige (mogelijk foutieve) poging. Een eerdere versie hergebruikte een al gezette
+# waarde stilzwijgend: bij een tikfout in de eerste poging bleef die foutieve waarde dan actief
+# voor elke volgende poging in dezelfde sessie, zonder enige aanwijzing waarom het script opeens
+# niets meer vroeg en meteen dezelfde fout gaf. -ReuseEnvironment herstelt het oude gedrag voor het
+# uitzonderingsgeval dat je de waarden zelf al via een secrets-manager hebt gezet.
 
 param(
-    [switch]$Execute
+    [switch]$Execute,
+    [switch]$ReuseEnvironment
 )
+
+if (-not $ReuseEnvironment) {
+    Remove-Item Env:\SQLSERVER_CONNECTION_STRING -ErrorAction SilentlyContinue
+    Remove-Item Env:\POSTGRES_CONNECTION_STRING -ErrorAction SilentlyContinue
+    Remove-Item Env:\PRODUCTIE_CLUBCODE -ErrorAction SilentlyContinue
+}
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "../..")
