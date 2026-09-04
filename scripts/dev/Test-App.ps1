@@ -129,7 +129,10 @@ $expectedColumns = @{
         "ThemeColorPrimary","ThemeColorSecondary","ThemeColorAccent",
         "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl",
         "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio",
-        "AppSettingsAuditBewaarDagen"
+        "AppSettingsAuditBewaarDagen","SportlinkExtensionEnabled"
+    )
+    "dbo.SportlinkExtensieRollen" = @(
+        "RolNaam","LaatstGekoppeldDoor","LaatstGekoppeldOp","SportlinkAccountNaam","ClubCode"
     )
     "dbo.TeamVoorkeurTijden" = @(
         "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",

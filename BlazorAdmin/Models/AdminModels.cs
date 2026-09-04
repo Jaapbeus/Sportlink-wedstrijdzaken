@@ -26,6 +26,17 @@ public class AppSettingsDto
     public bool UseRealtimeApi { get; set; } = true;
     public bool KnvbPdfBijlageIngeschakeld { get; set; } = true;
     public string? KnvbStandaardRegio { get; set; }
+    public bool SportlinkExtensionEnabled { get; set; }
+}
+
+/// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
+public class SportlinkExtensieRolDto
+{
+    public string RolNaam { get; set; } = "";
+    public bool Gekoppeld { get; set; }
+    public string? LaatstGekoppeldDoor { get; set; }
+    public DateTime? LaatstGekoppeldOp { get; set; }
+    public string? SportlinkAccountNaam { get; set; }
 }
 
 public class GeocodeResultDto

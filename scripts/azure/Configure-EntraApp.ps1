@@ -103,7 +103,7 @@ $appObjectId = $app.id
 $spObjectId  = $sp.id
 
 # ── Step 1: App Roles ─────────────────────────────────────────────────────────
-Write-Section 'Step 1 — App Roles (admin + user)'
+Write-Section 'Step 1 — App Roles (admin + user + Wedstrijdzaken)'
 
 $wantedRoles = @(
     @{
@@ -117,6 +117,14 @@ $wantedRoles = @(
         value = 'user'
         displayName = 'User'
         description = 'Gebruiker met leestoegang tot Admin GUI'
+    },
+    @{
+        # #988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web Extension-
+        # mutaties (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.
+        id = '1c351f2b-da2a-4a25-8744-3e7f747d9942'
+        value = 'Wedstrijdzaken'
+        displayName = 'Wedstrijdzaken'
+        description = 'Mag Sportlink Web Extension-mutaties uitvoeren (naast admin/user, geen vervanging)'
     }
 )
 

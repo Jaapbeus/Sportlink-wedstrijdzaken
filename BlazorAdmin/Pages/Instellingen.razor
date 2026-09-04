@@ -267,6 +267,24 @@ else
             </div>
         </div>
 
+        <hr />
+        <h5>Sportlink Web Extension</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="sportlinkExtensionEnabled"
+                           @bind="settings.SportlinkExtensionEnabled" />
+                    <label class="form-check-label" for="sportlinkExtensionEnabled">
+                        Sportlink Web Extension inschakelen
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    Onofficiële koppeling met club.sportlink.com — schrijft wedstrijdwijzigingen terug op
+                    naam van een los, rol-gebonden Sportlink-serviceaccount. Staat standaard UIT.
+                </small>
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" disabled="@saving">
             @(saving ? "Opslaan..." : "Opslaan")
         </button>
@@ -280,6 +298,75 @@ else
             <div class="alert alert-info mt-3">@herstartMessage</div>
         }
     </EditForm>
+
+    <hr class="mt-4" />
+    <h5>Sportlink-serviceaccounts per rol</h5>
+    <p class="text-muted mb-2">
+        Elke functionele rol gebruikt een eigen, smal-geschaald Sportlink-account — nooit jouw
+        persoonlijke account — zodat Sportlink's eigen audit-log de rolnaam toont en een rol nooit
+        meer Sportlink-rechten krijgt dan zijn eigen account daar heeft.
+    </p>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Rol</th>
+                <th>Gekoppeld</th>
+                <th>Laatst gekoppeld door</th>
+                <th>Laatst gekoppeld op</th>
+                <th>Sportlink-account</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var rol in sportlinkRollen)
+            {
+                <tr>
+                    <td>@rol.RolNaam</td>
+                    <td>
+                        <span class="badge @(rol.Gekoppeld ? "bg-success" : "bg-secondary")">
+                            @(rol.Gekoppeld ? "Ja" : "Nee")
+                        </span>
+                    </td>
+                    <td>@(rol.LaatstGekoppeldDoor ?? "—")</td>
+                    <td>@(rol.LaatstGekoppeldOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm") ?? "—")</td>
+                    <td>@(rol.SportlinkAccountNaam ?? "—")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => StartRegistreerKoppeling(rol)">
+                            Koppeling (opnieuw) registreren
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (registreerRol != null)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Koppeling registreren voor rol '@registreerRol.RolNaam'</h5>
+                @if (registreerRol.Gekoppeld)
+                {
+                    <div class="alert alert-warning">
+                        Dit overschrijft de bestaande registratie van
+                        <strong>@registreerRol.LaatstGekoppeldDoor</strong> op
+                        <strong>@registreerRol.LaatstGekoppeldOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</strong>.
+                        Heb je zelf net <code>Tools/SportlinkTokenCapture -- @registreerRol.RolNaam</code> gedraaid?
+                    </div>
+                }
+                <div class="mb-3">
+                    <label class="form-label">Sportlink-accountnaam (ter herkenning, geen live verificatie)</label>
+                    <input class="form-control" @bind="registreerSportlinkAccountNaam" placeholder="bijv. webapp-wedstrijdzaken" />
+                </div>
+                <button class="btn btn-primary" @onclick="BevestigRegistreerKoppelingAsync">Registreren</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => registreerRol = null">Annuleren</button>
+                @if (!string.IsNullOrEmpty(sportlinkKoppelMessage))
+                {
+                    <div class="alert alert-info mt-2">@sportlinkKoppelMessage</div>
+                }
+            </div>
+        </div>
+    }
 
     <hr class="mt-4" />
     <div class="row mb-3">
@@ -365,6 +452,11 @@ else
     private UitgeslotenEmailAdresDto? nieuwAdres;
     private string? uitgeslotenMessage;
 
+    private List<SportlinkExtensieRolDto> sportlinkRollen = new();
+    private SportlinkExtensieRolDto? registreerRol;
+    private string? registreerSportlinkAccountNaam;
+    private string? sportlinkKoppelMessage;
+
     // Sync + email log (verplaatst van Dashboard #344)
     private SyncStatusDto? _status;
     private EmailLogResponse? _emailLog;
@@ -427,6 +519,7 @@ else
 
         _syncLoading = false;
         await LaadUitgeslotenEmailsAsync();
+        await LaadSportlinkExtensieRollenAsync();
     }
 
     private async Task TriggerSyncAsync()
@@ -489,6 +582,35 @@ else
     {
         var r = await Api.GetUitgeslotenEmailsAsync();
         uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
+    }
+
+    private async Task LaadSportlinkExtensieRollenAsync()
+    {
+        var r = await Api.GetSportlinkExtensieRollenAsync();
+        sportlinkRollen = r.Success ? r.Data ?? new() : new();
+    }
+
+    private void StartRegistreerKoppeling(SportlinkExtensieRolDto rol)
+    {
+        registreerRol = rol;
+        registreerSportlinkAccountNaam = rol.SportlinkAccountNaam;
+        sportlinkKoppelMessage = null;
+    }
+
+    private async Task BevestigRegistreerKoppelingAsync()
+    {
+        if (registreerRol == null) return;
+        var r = await Api.RegistreerSportlinkKoppelingAsync(registreerRol.RolNaam, registreerSportlinkAccountNaam);
+        if (r.Success)
+        {
+            registreerRol = null;
+            sportlinkKoppelMessage = null;
+            await LaadSportlinkExtensieRollenAsync();
+        }
+        else
+        {
+            sportlinkKoppelMessage = "Fout: " + r.ErrorMessage;
+        }
     }
 
     private void StartNieuwAdres()
@@ -572,6 +694,7 @@ else
                 ["UseRealtimeApi"] = settings.UseRealtimeApi ? "1" : "0",
                 ["KnvbPdfBijlageIngeschakeld"] = settings.KnvbPdfBijlageIngeschakeld ? "1" : "0",
                 ["KnvbStandaardRegio"] = settings.KnvbStandaardRegio,
+                ["SportlinkExtensionEnabled"] = settings.SportlinkExtensionEnabled ? "1" : "0",
             }
         };
 

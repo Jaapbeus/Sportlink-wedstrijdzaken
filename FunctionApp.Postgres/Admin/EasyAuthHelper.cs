@@ -55,6 +55,10 @@ internal static class EasyAuthHelper
 
     public static IActionResult? RequireAuthenticated(HttpRequest req) => RequireRole(req, "admin", "user");
 
+    // #988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web Extension-mutaties
+    // (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.
+    public static IActionResult? RequireWedstrijdzaken(HttpRequest req) => RequireRole(req, "Wedstrijdzaken");
+
     public static string? GetCallerName(HttpRequest req)
     {
         var principal = TryGetPrincipal(req);
