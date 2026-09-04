@@ -43,8 +43,9 @@ if (-not $env:SQLSERVER_CONNECTION_STRING) {
 }
 
 if (-not $env:POSTGRES_CONNECTION_STRING) {
-    Write-Host "Postgres-connectiestring (Supabase dashboard -> Project Settings -> Database ->" -ForegroundColor Cyan
-    Write-Host "tab 'Connection parameters', in de vorm Host=...;Port=5432;Database=postgres;Username=...;Password=...;SSL Mode=Require;Trust Server Certificate=true):" -ForegroundColor Cyan
+    Write-Host "Postgres-connectiestring (Supabase dashboard -> Project Settings -> Database)." -ForegroundColor Cyan
+    Write-Host "Zowel de URI-vorm (postgresql://gebruiker:wachtwoord@host:5432/database, de eerste" -ForegroundColor Cyan
+    Write-Host "die Supabase toont) als de keyword=value-vorm (tab 'Connection parameters') werken." -ForegroundColor Cyan
     $secure = Read-Host -AsSecureString "  POSTGRES_CONNECTION_STRING"
     $env:POSTGRES_CONNECTION_STRING = Get-PlainTextFromSecureString $secure
 }

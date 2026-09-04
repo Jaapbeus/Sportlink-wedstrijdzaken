@@ -81,7 +81,7 @@ var tables = new List<TableMapping>
 };
 
 await using var source = new SqlConnection(sourceConnectionString);
-await using var target = new NpgsqlConnection(targetConnectionString);
+await using var target = new NpgsqlConnection(NormalizePostgresConnectionString(targetConnectionString));
 await source.OpenAsync();
 await target.OpenAsync();
 
@@ -127,3 +127,33 @@ if (!dryRun)
 Console.WriteLine();
 Console.WriteLine("Klaar.");
 return 0;
+
+// Supabase's dashboard toont twee vormen naast elkaar: een "Connection string" (URI, bijv.
+// postgresql://postgres.<ref>:<wachtwoord>@<host>:5432/postgres) en "Connection parameters"
+// (keyword=value, Npgsql's eigen vorm). Beide zijn een voor de hand liggende keuze om te
+// kopiëren, en Npgsql accepteert alleen de tweede rechtstreeks — vandaar deze normalisatie in
+// plaats van uitsluitend documentatie die op één vorm aandringt.
+static string NormalizePostgresConnectionString(string raw)
+{
+    if (!raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+        !raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        return raw;
+
+    var uri = new Uri(raw);
+    var userInfo = uri.UserInfo.Split(':', 2);
+    var username = Uri.UnescapeDataString(userInfo[0]);
+    var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+    var database = uri.AbsolutePath.TrimStart('/');
+    var port = uri.Port > 0 ? uri.Port : 5432;
+
+    var builder = new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = port,
+        Database = string.IsNullOrEmpty(database) ? "postgres" : database,
+        Username = username,
+        Password = password,
+        SslMode = SslMode.Require,
+    };
+    return builder.ConnectionString;
+}

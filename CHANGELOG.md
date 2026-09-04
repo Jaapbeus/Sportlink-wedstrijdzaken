@@ -27,8 +27,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   end-to-end lokaal getest tegen een democlub naast de bestaande AllStars FC-seed, wat een
   ID-botsing met identity-kolommen blootlegde en opgelost heeft. `scripts/dev/Invoke-
   ProductionCutoverKopie.ps1` vraagt de connectiestrings veilig op (`Read-Host -AsSecureString`,
-  nooit in de PowerShell-commandogeschiedenis). Geen wijziging voor beheerders — dit is geen
-  onderdeel van de draaiende applicatie.
+  nooit in de PowerShell-commandogeschiedenis). Accepteert voor de Postgres-connectiestring zowel
+  Supabase's URI-vorm (`postgresql://gebruiker:wachtwoord@host:5432/database`) als Npgsql's eigen
+  keyword=value-vorm — de tool normaliseert automatisch, ontdekt bij de eerste echte poging tegen
+  productie toen de URI-vorm (het eerste wat Supabase's dashboard toont) een parseerfout gaf. Geen
+  wijziging voor beheerders — dit is geen onderdeel van de draaiende applicatie.
 - **Tier-switch-veiligheidsmechanisme (issue 976).** De deploy-pipeline vereist voortaan naast
   `DatabaseTier` ook een matchende `DatabaseTierSwitchConfirmation`-repository-variabele voordat een
   tier-wijziging wordt toegepast — voorkomt dat een enkele, per ongeluk gewijzigde `DatabaseTier`
