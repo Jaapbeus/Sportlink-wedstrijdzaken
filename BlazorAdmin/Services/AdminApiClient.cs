@@ -29,6 +29,15 @@ public class AdminApiClient
     public async Task<ApiResult<SettingsUpdateResultDto>> UpdateSettingsAsync(SettingsUpdateDto dto)
         => await PutAsync<SettingsUpdateResultDto>("api/beheer/settings", dto);
 
+    // ── Sportlink Web Extension — rol↔serviceaccount-koppelingsstatus (#988) ──
+
+    public async Task<ApiResult<List<SportlinkExtensieRolDto>>> GetSportlinkExtensieRollenAsync()
+        => await GetAsync<List<SportlinkExtensieRolDto>>("api/beheer/sportlink-extensie/rollen");
+
+    public async Task<ApiResult<object>> RegistreerSportlinkKoppelingAsync(string rolNaam, string? sportlinkAccountNaam)
+        => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}",
+            new { SportlinkAccountNaam = sportlinkAccountNaam });
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()

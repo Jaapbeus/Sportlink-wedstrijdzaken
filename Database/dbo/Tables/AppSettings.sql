@@ -34,5 +34,7 @@
 	-- dagen (24 maanden) als default is toegestaan. Dit is een gedocumenteerd UITGANGSPUNT, geen
 	-- definitief beleid — zie de toelichting in sp_CleanupAppSettingsAudit.sql. Beheerder kan de
 	-- waarde aanpassen via een directe UPDATE op deze tabel (nog geen GUI-veld).
-	[AppSettingsAuditBewaarDagen] INT NOT NULL DEFAULT 730
+	[AppSettingsAuditBewaarDagen] INT NOT NULL DEFAULT 730,
+	-- #988: schakelaar voor de Sportlink Web Extension (epic #986) — standaard UIT, club kiest zelf
+	[SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0
 	)

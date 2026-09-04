@@ -18,6 +18,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Feature-toggle "Sportlink Web Extension" in Instellingen, standaard uit (issue 988).**
+  Voorbereidende stap voor het terugschrijven van wedstrijdwijzigingen naar Sportlink Club (epic
+  986) — deze release doet zelf nog niets met Sportlink, alleen de schakelaar en een
+  rol↔serviceaccount-koppelingsstatus. Elke functionele rol (te beginnen met "Wedstrijdzaken")
+  krijgt een eigen, smal-geschaald Sportlink-serviceaccount in plaats van één gedeelde credential —
+  Instellingen toont per rol wie en wanneer laatst gekoppeld heeft, met een waarschuwing vóór het
+  overschrijven van een bestaande koppeling. Nieuwe Entra-approl `Wedstrijdzaken` (aanvullend op
+  admin/user, geen vervanging).
+
 ## [3.2.0.2] — 2026-09-04
 
 ### Fixed
