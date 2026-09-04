@@ -2585,6 +2585,22 @@ doelkolommen uit Postgres' eigen `information_schema`, scoped delete+copy op `Cl
 dat AllStars FC-democlubrijen worden geraakt), en verifieert na afloop de rijtelling bron-vs-doel.
 `--dry-run` telt zonder te schrijven.
 
+**Identity-kolommen worden nooit letterlijk gekopieerd — end-to-end lokaal getest en daardoor
+ontdekt, niet vooraf bedacht.** Een eerste versie probeerde elke Postgres-`GENERATED ALWAYS AS
+IDENTITY`-kolom (16 van de 19 doeltabellen hebben er een) met zijn originele SQL-Server-waarde te
+vullen. Tegen een lokale Docker-opzet (SQL Server + Postgres, zie `docs/DEVELOPER-SETUP.md` §4)
+met een democlub CLUB naast de al aanwezige AllStars-democlubseed botste dat meteen:
+`veldbeschikbaarheid` begint in Postgres al bij `id=1` vanuit de AllStars-seed, en een
+onafhankelijke club heeft in SQL Server zijn eigen IDENTITY-reeks die net zo goed bij 1 begint.
+Surrogaatsleutels hebben geen betekenis buiten de database (in tegenstelling tot een natuurlijke
+sleutel als `veldnummer`, dat AllStars bewust in een gereserveerd bereik 101+ houdt) — de tool laat
+Postgres daarom altijd zelf een nieuwe waarde genereren, en vertaalt voor de drie
+foreign-key-ketens tussen doeltabellen (`veldperiode.id -> veldbeschikbaarheid.periodeid`,
+`teams.teamid -> teamaliassen.teamid`, `emailverwerking.id -> classificatiecorrectie.*verwerkingid`)
+de oude naar de nieuwe waarde via een gedeelde `IdMapRegistry`. Volgorde in `Program.cs`s
+tabellenlijst doet er daardoor toe: elke tabel met `IdentityMapKey` moet vóór zijn afhankelijke
+tabel staan.
+
 ### Tier-switch-veiligheidsmechanisme
 
 Zie de bijgewerkte §2: `DatabaseTierSwitchConfirmation` moet expliciet matchen met `DatabaseTier`
@@ -2599,10 +2615,14 @@ volgorde:
    schrijft niets. Credentials lopen bewust NIET via een geautomatiseerde sessie: production
    SQL-wachtwoord en Supabase-wachtwoord zijn secrets, en de opdrachtgever voert dit zelf lokaal
    uit (zie issue #976 voor de exacte commando's).
-2. **Test tegen AllStars FC-democlubdata** — bewijst het kopieerpad zonder persoonsgegevens aan te
-   raken.
-3. **Echte kopie** (zelfde tool zonder `--dry-run`) — pas na 1 en 2, en pas na expliciete
-   eindbevestiging van de opdrachtgever.
+2. ✅ **Lokale end-to-end-test met synthetische testdata** — uitgevoerd tegen een verse lokale
+   Docker-opzet (SQL Server + Postgres, zelfde `docker-compose.yml` als elke ontwikkelaar
+   gebruikt) met de al aanwezige placeholder-club `CLUB` naast AllStars FC. Bewees zowel het
+   kopieerpad zelf als de ClubCode-scoping (AllStars-rijen ongemoeid) en legde de
+   identity-kolom-botsing bloot die hierboven beschreven staat — dat was de eigenlijke waarde van
+   deze stap, niet alleen "het draait zonder foutmelding".
+3. **Echte kopie tegen productie** (zelfde tool zonder `--dry-run`) — pas na 1, en pas na
+   expliciete eindbevestiging van de opdrachtgever.
 4. **`POSTGRES_CONNECTION_STRING` als Azure Function App-instelling zetten** — dit is GEEN
    wijziging aan `deploy.yml` (dat bevat nooit connectiestrings): net als `SqlConnectionString`
    vandaag is dit een eenmalige `az functionapp config appsettings set`/Portal-actie rechtstreeks

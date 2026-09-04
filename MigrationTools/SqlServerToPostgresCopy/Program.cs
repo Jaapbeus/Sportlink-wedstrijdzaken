@@ -44,13 +44,19 @@ if (productionClubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
 // door PostgresMergeOrchestrator en kunnen na cutover via een nieuwe sync (desnoods met
 // ?reset=true&season=YYYY per seizoen) opnieuw gevuld worden. Zie issue #976 voor de volledige
 // onderbouwing van deze afbakening.
+//
+// VOLGORDE DOET ERTOE voor drie tabellen met IdentityMapKey (Teams, VeldPeriode, EmailVerwerking):
+// die moeten vóór de tabel staan die hun (opnieuw gegenereerde) id via ForeignKeyRemaps overneemt
+// — anders faalt IdMapRegistry.Translate met "geen nieuwe id gevonden". Zie TableCopier.cs voor
+// waarom identity-waarden nooit letterlijk gekopieerd worden (AllStars-democlubdata-botsing).
 var tables = new List<TableMapping>
 {
     new("dbo", "AppSettings", "public", "appsettings", HasClubCode: true),
     new("dbo", "AppSettingsAudit", "public", "appsettingsaudit", HasClubCode: true),
     new("dbo", "Velden", "public", "velden", HasClubCode: true),
-    new("dbo", "VeldBeschikbaarheid", "public", "veldbeschikbaarheid", HasClubCode: true),
-    new("dbo", "VeldPeriode", "public", "veldperiode", HasClubCode: true),
+    new("dbo", "VeldPeriode", "public", "veldperiode", HasClubCode: true, IdentityMapKey: "veldperiode"),
+    new("dbo", "VeldBeschikbaarheid", "public", "veldbeschikbaarheid", HasClubCode: true,
+        ForeignKeyRemaps: new Dictionary<string, string> { ["periodeid"] = "veldperiode" }),
     new("dbo", "VeldTraining", "public", "veldtraining", HasClubCode: true),
     new("dbo", "Speeltijden", "public", "speeltijden", HasClubCode: true),
     new("dbo", "TeamVoorkeurTijden", "public", "teamvoorkeurtijden", HasClubCode: true),
@@ -58,12 +64,18 @@ var tables = new List<TableMapping>
     new("dbo", "UitgeslotenEmailAdressen", "public", "uitgeslotenemailadressen", HasClubCode: true),
     new("dbo", "EmailTemplateInstellingen", "public", "emailtemplateinstellingen", HasClubCode: true),
     new("dbo", "Season", "public", "season", HasClubCode: false),
-    new("dbo", "TeamAliassen", "public", "teamaliassen", HasClubCode: true),
-    new("dbo", "Teams", "public", "teams", HasClubCode: true),
+    new("dbo", "Teams", "public", "teams", HasClubCode: true, IdentityMapKey: "teams"),
+    new("dbo", "TeamAliassen", "public", "teamaliassen", HasClubCode: true,
+        ForeignKeyRemaps: new Dictionary<string, string> { ["teamid"] = "teams" }),
     new("avg", "Teambegeleiding", "avg", "teambegeleiding", HasClubCode: true),
     new("avg", "ImportLog", "avg", "importlog", HasClubCode: true),
-    new("planner", "EmailVerwerking", "planner", "emailverwerking", HasClubCode: true),
-    new("planner", "ClassificatieCorrectie", "planner", "classificatiecorrectie", HasClubCode: true),
+    new("planner", "EmailVerwerking", "planner", "emailverwerking", HasClubCode: true, IdentityMapKey: "emailverwerking"),
+    new("planner", "ClassificatieCorrectie", "planner", "classificatiecorrectie", HasClubCode: true,
+        ForeignKeyRemaps: new Dictionary<string, string>
+        {
+            ["origineleverwerkingid"] = "emailverwerking",
+            ["correctionverwerkingid"] = "emailverwerking",
+        }),
     new("planner", "GeplandeWedstrijden", "planner", "geplandewedstrijden", HasClubCode: true),
     new("planner", "HerplanVerzoeken", "planner", "herplanverzoeken", HasClubCode: true),
 };
@@ -78,6 +90,7 @@ Console.WriteLine(dryRun
     : $"LIVE-KOPIE — schrijft naar Postgres voor club '{productionClubCode}'.");
 Console.WriteLine();
 
+var idMaps = new IdMapRegistry();
 var results = new List<TableCopyResult>();
 foreach (var mapping in tables)
 {
@@ -85,7 +98,7 @@ foreach (var mapping in tables)
     try
     {
         var result = await TableCopier.CopyAsync(
-            source, target, mapping, productionClubCode, dryRun, Console.Out, CancellationToken.None);
+            source, target, mapping, productionClubCode, dryRun, idMaps, Console.Out, CancellationToken.None);
         results.Add(result);
     }
     catch (Exception ex)
