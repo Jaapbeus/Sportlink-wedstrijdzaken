@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.0.32
+  version: 3.0.33
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -760,6 +760,13 @@ components:
             Ontbreekt deze waarde, dan wordt de hele KnvbPdfBijlageIngeschakeld-flow overgeslagen —
             er is bewust geen standaardregio in code.
           enum: [West, Noord, Oost, Zuid, Landelijk, LandelijkJeugd]
+        SportlinkExtensionEnabled:
+          type: boolean
+          description: |
+            Schakelaar voor de Sportlink Web Extension (epic #986, issue #988) — schrijft
+            wedstrijdwijzigingen terug naar club.sportlink.com op naam van een rol-gebonden
+            Sportlink-serviceaccount. Standaard uit.
+          default: false
         fetchScheduleLeesbaar:
           type: string
           nullable: true
@@ -773,6 +780,26 @@ components:
             format: date-time
           description: Eerstvolgende 3 uitvoertijden
 
+    SportlinkExtensieRolResponse:
+      type: object
+      description: Rol↔serviceaccount-koppelingsstatus (Sportlink Web Extension, epic #986/#988).
+      properties:
+        RolNaam:
+          type: string
+          example: "Wedstrijdzaken"
+        Gekoppeld:
+          type: boolean
+        LaatstGekoppeldDoor:
+          type: string
+          nullable: true
+        LaatstGekoppeldOp:
+          type: string
+          format: date-time
+          nullable: true
+        SportlinkAccountNaam:
+          type: string
+          nullable: true
+
     UpdateSettingsRequest:
       type: object
       description: |
@@ -780,7 +807,7 @@ components:
         Witte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
-        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio.
+        KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.
       properties:
         gewijzigdDoor:
           type: string
@@ -2566,6 +2593,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UpdateSettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/sportlink-extensie/rollen:
+    get:
+      tags: [beheer]
+      operationId: getSportlinkExtensieRollen
+      summary: Rol↔serviceaccount-koppelingsstatus (Sportlink Web Extension)
+      description: |
+        Toont per functionele rol (bv. "Wedstrijdzaken", epic #986/#988) of er een eigen,
+        smal-geschaald Sportlink-serviceaccount gekoppeld is, en wie/wanneer dat laatst
+        registreerde. Geen live Sportlink-verificatie.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van rollen met koppelingsstatus
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SportlinkExtensieRolResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /beheer/sportlink-extensie/rollen/{rolNaam}:
+    put:
+      tags: [beheer]
+      operationId: registreerSportlinkExtensieRol
+      summary: Sportlink-serviceaccount-koppeling registreren voor een rol
+      description: |
+        Registreert (of overschrijft) dat een functionele rol een Sportlink-serviceaccount
+        gekoppeld heeft gekregen. `LaatstGekoppeldDoor` wordt altijd server-side bepaald uit de
+        ingelogde beheerder (X-MS-CLIENT-PRINCIPAL), nooit uit de request body.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: rolNaam
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [Wedstrijdzaken]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                SportlinkAccountNaam:
+                  type: string
+                  nullable: true
+                  description: Handmatige, niet-geverifieerde vrije tekst ter herkenning.
+      responses:
+        '200':
+          description: Koppeling geregistreerd
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  RolNaam:
+                    type: string
+                  LaatstGekoppeldDoor:
+                    type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

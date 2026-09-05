@@ -46,7 +46,8 @@ public static class AdminSettingsFunction
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
-        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio"
+        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
+        "SportlinkExtensionEnabled"
     };
 
     private static readonly string[] GeldigeKnvbRegios =
@@ -70,6 +71,7 @@ public static class AdminSettingsFunction
         ["AccommodatieLongitude"] = "::double precision",
         ["UseRealtimeApi"] = "::boolean",
         ["KnvbPdfBijlageIngeschakeld"] = "::boolean",
+        ["SportlinkExtensionEnabled"] = "::boolean",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -113,7 +115,8 @@ public static class AdminSettingsFunction
                     accommodatielongitude AS ""AccommodatieLongitude"",
                     knvbpdfbijlageingeschakeld AS ""KnvbPdfBijlageIngeschakeld"",
                     knvbstandaardregio AS ""KnvbStandaardRegio"",
-                    userealtimeapi AS ""UseRealtimeApi""
+                    userealtimeapi AS ""UseRealtimeApi"",
+                    sportlinkextensionenabled AS ""SportlinkExtensionEnabled""
                 FROM public.appsettings
                 WHERE clubcode = @clubcode
                 LIMIT 1", connection);

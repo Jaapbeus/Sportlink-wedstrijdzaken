@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    #990: eenmalig/herbruikbaar lokaal hulpmiddel dat de handmatige DevTools-Network-tab-dans
+    (zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §2.6) automatiseert. Draait een echte,
+    zichtbare browser (Playwright), laat de gebruiker zelf inloggen (MFA blijft mensenwerk, kan
+    niet en mag niet geautomatiseerd worden), en vangt de refresh_token/access_token-respons van
+    Keycloak's token_endpoint programmatisch op zodra die langskomt op het netwerk — dus NIET uit
+    localStorage (die is versleuteld door Sportlink zelf, zie §2.6) en niet door de gebruiker te
+    laten kopiëren/plakken. Schrijft alleen het refresh_token weg naar
+    FunctionApp.Postgres/local.settings.json; toont de waarde zelf nooit op het scherm.
+
+    Losstaand van beide tier-implementatiebomen, net als MigrationTools/SqlServerToPostgresCopy —
+    de "geen gedeelde providerabstractie"-regel (docs/ARCHITECTUUR-DATABASE-TIERS.md §2) betreft de
+    applicatie-runtime, niet een handmatig gestart lokaal hulpmiddel.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SportlinkTokenCapture</RootNamespace>
+    <AssemblyName>sportlink-token-capture</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
+  </ItemGroup>
+
+</Project>
