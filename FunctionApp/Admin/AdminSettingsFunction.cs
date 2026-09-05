@@ -166,8 +166,10 @@ public static class AdminSettingsFunction
             if (updateRequest == null)
                 return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
-            var gewijzigdDoor = updateRequest.GewijzigdDoor ?? req.Query["gewijzigdDoor"].ToString();
-            if (string.IsNullOrWhiteSpace(gewijzigdDoor)) gewijzigdDoor = "onbekend";
+            // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit de
+            // request-body of querystring — anders kan een beheerder de wijziging onder een
+            // zelfgekozen naam laten vastleggen.
+            var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
 
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
             // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
@@ -531,7 +533,9 @@ public static class AdminSettingsFunction
 
     public class UpdateSettingsRequest
     {
-        public string? GewijzigdDoor { get; set; }
+        // #1003: GewijzigdDoor bewust verwijderd uit dit publieke schrijfcontract — de audit-actor
+        // wordt uitsluitend server-side uit gevalideerde Easy Auth-claims bepaald
+        // (EasyAuthHelper.GetAuditActor), nooit uit client-input.
         public Dictionary<string, string?>? Velden { get; set; }
     }
 }

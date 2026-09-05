@@ -68,7 +68,8 @@ public class SportlinkMatchInfoDto
 
 public class SettingsUpdateDto
 {
-    public string? GewijzigdDoor { get; set; }
+    // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend
+    // server-side uit gevalideerde Easy Auth-claims, nooit uit client-input.
     public Dictionary<string, string?>? Velden { get; set; }
 }
 

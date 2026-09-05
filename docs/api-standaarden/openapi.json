@@ -1089,13 +1089,8 @@
       },
       "UpdateSettingsRequest": {
         "type": "object",
-        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.\n",
+        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
         "properties": {
-          "gewijzigdDoor": {
-            "type": "string",
-            "description": "Naam of ID van de beheerder die de wijziging doorvoert",
-            "example": "beheerder@voorbeeld.nl"
-          },
           "velden": {
             "type": "object",
             "additionalProperties": {
@@ -1239,6 +1234,7 @@
           "onderwerp",
           "bodyTemplate"
         ],
+        "description": "De audit-actor wordt uitsluitend server-side bepaald uit de door Easy Auth gevalideerde\nclaims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
         "properties": {
           "onderwerp": {
             "type": "string"
@@ -1249,10 +1245,6 @@
           "actief": {
             "type": "boolean",
             "default": true
-          },
-          "gewijzigdDoor": {
-            "type": "string",
-            "nullable": true
           }
         }
       },

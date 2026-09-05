@@ -167,7 +167,9 @@ De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEma
 
 `dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
 een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij
-`GraphMailbox` of `EmailReviewRecipient`).
+`GraphMailbox` of `EmailReviewRecipient`). Sinds #1003 wordt `GewijzigdDoor` uitsluitend server-side
+uit de door Easy Auth gevalideerde claim van de aanroeper bepaald — nooit uit de request-body of een
+querystring-parameter — zodat een beheerder de attributie niet zelf kan kiezen.
 
 | Fase | Wanneer | Actie |
 |---|---|---|
