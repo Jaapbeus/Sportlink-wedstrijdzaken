@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.0.34
+  version: 3.0.35
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2810,6 +2810,55 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           description: Wedstrijd, PublicMatchId of Sportlink-match niet gevonden
+        '409':
+          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/match/{wedstrijdcode}/public-match-id:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkPublicMatchId
+      summary: PublicMatchId opzoeken voor de deep-link-knop (#989, epic #986)
+      description: |
+        Lichtgewicht variant van `/sportlink/match/{wedstrijdcode}`: zoekt uitsluitend het
+        `PublicMatchId` op (gecached, zie `public.sportlinkpublicmatchidcache`; reverse-lookup bij
+        Sportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij
+        Sportlink te doen. Gebruikt door de "Open in Sportlink"-knop in Dagplanning om
+        `https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: wedstrijdcode
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId.
+      responses:
+        '200':
+          description: PublicMatchId
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  PublicMatchId:
+                    type: string
+                    nullable: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Wedstrijd niet gevonden, of nog niet bekend bij Sportlink voor deze datum
         '409':
           description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
         '500':

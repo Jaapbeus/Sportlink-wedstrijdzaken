@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.0.34",
+    "version": "3.0.35",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -3708,6 +3708,76 @@
           },
           "404": {
             "description": "Wedstrijd, PublicMatchId of Sportlink-match niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}/public-match-id": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkPublicMatchId",
+        "summary": "PublicMatchId opzoeken voor de deep-link-knop (#989, epic",
+        "description": "Lichtgewicht variant van `/sportlink/match/{wedstrijdcode}`: zoekt uitsluitend het\n`PublicMatchId` op (gecached, zie `public.sportlinkpublicmatchidcache`; reverse-lookup bij\nSportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij\nSportlink te doen. Gebruikt door de \"Open in Sportlink\"-knop in Dagplanning om\n`https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PublicMatchId",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "PublicMatchId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd niet gevonden, of nog niet bekend bij Sportlink voor deze datum"
           },
           "409": {
             "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"

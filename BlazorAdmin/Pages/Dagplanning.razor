@@ -446,7 +446,10 @@
                             <th>Competitie</th>
                             <th title="Gewenste tijd en de afwijking daarvan in de optimale planning">Voorkeurstijd</th>
                             <th title="Verplaatst de planner deze wedstrijd t.o.v. de huidige stand?">Wijziging</th>
-                            <th title="Wat Sportlink Club over deze wedstrijd weet (read-only)">Sportlink</th>
+                            @if (_sportlinkExtensionEnabled)
+                            {
+                                <th title="Wat Sportlink Club over deze wedstrijd weet (read-only)">Sportlink</th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
@@ -563,25 +566,37 @@
                                     }
                                 </td>
 
-                                <td style="font-size:0.85rem;">
-                                    @if (item.WedstrijdCode == null)
-                                    {
-                                        <span class="text-muted" title="Geen wedstrijdcode bekend voor deze regel">—</span>
-                                    }
-                                    else
-                                    {
-                                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                @onclick="() => ToggleSportlinkPaneelAsync(item.WedstrijdCode.Value)">
-                                            @(_sportlinkUitgeklapt.GetValueOrDefault(item.WedstrijdCode.Value) ? "Verberg" : "Toon")
-                                        </button>
-                                        @if (_sportlinkBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                @if (_sportlinkExtensionEnabled)
+                                {
+                                    <td style="font-size:0.85rem;">
+                                        @if (item.WedstrijdCode == null)
                                         {
-                                            <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+                                            <span class="text-muted" title="Geen wedstrijdcode bekend voor deze regel">—</span>
                                         }
-                                    }
-                                </td>
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => ToggleSportlinkPaneelAsync(item.WedstrijdCode.Value)">
+                                                @(_sportlinkUitgeklapt.GetValueOrDefault(item.WedstrijdCode.Value) ? "Verberg" : "Toon")
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-primary ms-1"
+                                                    title="Open deze wedstrijd in Sportlink Club (nieuw tabblad)"
+                                                    @onclick="() => OpenInSportlinkAsync(item.WedstrijdCode.Value)">
+                                                Open in Sportlink
+                                            </button>
+                                            @if (_sportlinkBezig.GetValueOrDefault(item.WedstrijdCode.Value) || _sportlinkDeeplinkBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                            {
+                                                <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(_sportlinkDeeplinkFout.GetValueOrDefault(item.WedstrijdCode.Value)))
+                                            {
+                                                <div class="text-danger" style="font-size:0.75rem;">@_sportlinkDeeplinkFout[item.WedstrijdCode.Value]</div>
+                                            }
+                                        }
+                                    </td>
+                                }
                             </tr>
-                            @if (item.WedstrijdCode != null && _sportlinkUitgeklapt.GetValueOrDefault(item.WedstrijdCode.Value))
+                            @if (_sportlinkExtensionEnabled && item.WedstrijdCode != null && _sportlinkUitgeklapt.GetValueOrDefault(item.WedstrijdCode.Value))
                             {
                                 <tr>
                                     <td colspan="7" class="bg-light" style="font-size:0.85rem;">
@@ -696,10 +711,39 @@
 
     // Sportlink-paneel per wedstrijd (#991) — lazy load per wedstrijdcode, niet bij page-load voor
     // alle rijen tegelijk (de #987-reverse-lookup is traag en niet club-gescoped).
+    private bool _sportlinkExtensionEnabled;
     private readonly Dictionary<long, bool> _sportlinkUitgeklapt = new();
     private readonly Dictionary<long, bool> _sportlinkBezig = new();
     private readonly Dictionary<long, SportlinkMatchInfoDto?> _sportlinkInfo = new();
     private readonly Dictionary<long, string?> _sportlinkFout = new();
+
+    // Deep-link-knop (#989) — apart van het uitklap-paneel: haalt alleen het PublicMatchId op
+    // (lichtgewicht endpoint, geen volledige Match-aanroep) en opent meteen een nieuw tabblad.
+    private readonly Dictionary<long, bool> _sportlinkDeeplinkBezig = new();
+    private readonly Dictionary<long, string?> _sportlinkDeeplinkFout = new();
+
+    private async Task OpenInSportlinkAsync(long wedstrijdCode)
+    {
+        _sportlinkDeeplinkFout[wedstrijdCode] = null;
+        _sportlinkDeeplinkBezig[wedstrijdCode] = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetSportlinkPublicMatchIdAsync(wedstrijdCode.ToString());
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Data?.PublicMatchId))
+            {
+                _sportlinkDeeplinkFout[wedstrijdCode] = result.ErrorMessage ?? "PublicMatchId niet gevonden.";
+                return;
+            }
+
+            var url = $"https://club.sportlink.com/competition-affairs/match-details/{Uri.EscapeDataString(result.Data.PublicMatchId)}";
+            await JS.InvokeVoidAsync("blazorHelpers.openInNewTab", url);
+        }
+        finally
+        {
+            _sportlinkDeeplinkBezig[wedstrijdCode] = false;
+        }
+    }
 
     private async Task ToggleSportlinkPaneelAsync(long wedstrijdCode)
     {
@@ -766,6 +810,10 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadVeldbezettingAsync();
+
+        // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
+        var settings = await Api.GetSettingsAsync();
+        _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
     }
 
     private async Task OnDatumChanged()

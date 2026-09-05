@@ -66,6 +66,12 @@ public class SportlinkMatchInfoDto
     public bool IsAddScoreAllowed { get; set; }
 }
 
+/// <summary>#989: respons van de lichtgewicht PublicMatchId-only endpoint (deep-link-knop).</summary>
+public class SportlinkPublicMatchIdDto
+{
+    public string? PublicMatchId { get; set; }
+}
+
 public class SettingsUpdateDto
 {
     // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend

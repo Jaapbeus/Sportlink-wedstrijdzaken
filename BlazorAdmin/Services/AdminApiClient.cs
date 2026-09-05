@@ -47,6 +47,10 @@ public class AdminApiClient
     public async Task<ApiResult<SportlinkMatchInfoDto>> GetSportlinkMatchInfoAsync(string wedstrijdcode)
         => await GetAsync<SportlinkMatchInfoDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}");
 
+    // #989: lichtgewicht variant voor de deep-link-knop — alleen PublicMatchId, geen volledige Match-aanroep.
+    public async Task<ApiResult<SportlinkPublicMatchIdDto>> GetSportlinkPublicMatchIdAsync(string wedstrijdcode)
+        => await GetAsync<SportlinkPublicMatchIdDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/public-match-id");
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()

@@ -12,8 +12,9 @@ namespace FunctionApp.Postgres.Sportlink;
 
 /// <summary>
 /// <c>GET /api/sportlink/match/{wedstrijdcode}</c> (#991, epic #986) — read-only paneel-endpoint
-/// voor Dagplanning. Eerste echte gebruik van <c>RequireWedstrijdzaken</c> (#988 Besluit 1: die
-/// granulaire rol-gating komt pas bij het eerste echte lees-/mutatie-endpoint).
+/// voor Dagplanning, en <c>GET .../public-match-id</c> (#989) — lichtgewicht variant voor de
+/// "Open in Sportlink"-deep-link-knop. Eerste echte gebruik van <c>RequireWedstrijdzaken</c> (#988
+/// Besluit 1: die granulaire rol-gating komt pas bij het eerste echte lees-/mutatie-endpoint).
 /// <para>
 /// Verbindt drie stukken die elk in een aparte issue/PR gebouwd zijn: de gedeelde
 /// <see cref="ISportlinkClubClient"/> (#991/#998, <c>Planner.Shared</c>), de Postgres-tier
@@ -36,38 +37,12 @@ public static class SportlinkMatchFunction
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
                     return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
-                if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
-                    return new ObjectResult(new { error = "Sportlink Web Extension staat uit." }) { StatusCode = 409 };
-
-                if (!EgressGuard.ExternalIntegrationsAllowed())
-                    return new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 };
-
                 var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                if (sportlinkClient == null)
-                    return new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 };
+                var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(
+                    sportlinkClient, wedstrijdcodeValue, clubCode);
+                if (voorbereidFout != null) return voorbereidFout;
 
-                await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-                await connection.OpenAsync();
-
-                var wedstrijd = await SportlinkPublicMatchIdRepository.ZoekWedstrijdAsync(connection, wedstrijdcodeValue, clubCode);
-                if (wedstrijd == null)
-                    return new NotFoundObjectResult(new { error = $"Wedstrijd met wedstrijdcode {wedstrijdcodeValue} niet gevonden." });
-
-                var publicMatchId = await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(connection, wedstrijdcodeValue, clubCode);
-
-                if (publicMatchId == null)
-                {
-                    var lookup = await sportlinkClient.ResolvePublicMatchIdAsync(RolNaam, wedstrijd.Wedstrijdnummer, wedstrijd.Datum);
-                    var lookupFout = VertaalStatusNaarFout(lookup.Status);
-                    if (lookupFout != null) return lookupFout;
-                    if (lookup.Data == null)
-                        return new NotFoundObjectResult(new { error = "Wedstrijd nog niet bekend bij Sportlink voor deze datum." });
-
-                    publicMatchId = lookup.Data.PublicMatchId;
-                    await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(connection, wedstrijdcodeValue, clubCode, publicMatchId);
-                }
-
-                var matchResult = await sportlinkClient.GetMatchAsync(RolNaam, publicMatchId);
+                var matchResult = await sportlinkClient!.GetMatchAsync(RolNaam, publicMatchId!);
                 var matchFout = VertaalStatusNaarFout(matchResult.Status);
                 if (matchFout != null) return matchFout;
                 if (matchResult.Data == null)
@@ -76,6 +51,71 @@ public static class SportlinkMatchFunction
                 return new OkObjectResult(matchResult.Data);
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
+    /// <summary>
+    /// <c>GET /api/sportlink/match/{wedstrijdcode}/public-match-id</c> (#989, epic #986) —
+    /// lichtgewicht variant voor de deep-link-knop in Dagplanning: geeft alleen het
+    /// <c>PublicMatchId</c> terug (cache-first, reverse-lookup bij een cache-miss) zonder de
+    /// volledige <c>Match</c>-aanroep bij Sportlink te doen — die extra aanroep is voor een
+    /// deep-link niet nodig.
+    /// </summary>
+    [Function("SportlinkMatchPublicMatchIdGet")]
+    public static Task<IActionResult> GetPublicMatchId(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}/public-match-id")] HttpRequest req,
+        string wedstrijdcode,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
+            async clubCode =>
+            {
+                if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
+                    return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
+
+                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
+                var (fout, publicMatchId) = await BereidPublicMatchIdVoorAsync(sportlinkClient, wedstrijdcodeValue, clubCode);
+                if (fout != null) return fout;
+
+                return new OkObjectResult(new { PublicMatchId = publicMatchId });
+            },
+            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
+    /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,
+    /// wedstrijd-lookup en PublicMatchId-cache/reverse-lookup. Geen van beide aanroepers heeft de
+    /// DB-connectie na afloop nog nodig (de resterende stap is telkens een HTTP-aanroep naar
+    /// Sportlink), dus de connectie leeft uitsluitend binnen deze methode.</summary>
+    private static async Task<(IActionResult? Fout, string? PublicMatchId)>
+        BereidPublicMatchIdVoorAsync(ISportlinkClubClient? sportlinkClient, long wedstrijdcodeValue, string clubCode)
+    {
+        if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
+            return (new ObjectResult(new { error = "Sportlink Web Extension staat uit." }) { StatusCode = 409 }, null);
+
+        if (!EgressGuard.ExternalIntegrationsAllowed())
+            return (new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 }, null);
+
+        if (sportlinkClient == null)
+            return (new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 }, null);
+
+        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await connection.OpenAsync();
+
+        var wedstrijd = await SportlinkPublicMatchIdRepository.ZoekWedstrijdAsync(connection, wedstrijdcodeValue, clubCode);
+        if (wedstrijd == null)
+            return (new NotFoundObjectResult(new { error = $"Wedstrijd met wedstrijdcode {wedstrijdcodeValue} niet gevonden." }), null);
+
+        var publicMatchId = await SportlinkPublicMatchIdRepository.LeesUitCacheAsync(connection, wedstrijdcodeValue, clubCode);
+        if (publicMatchId != null)
+            return (null, publicMatchId);
+
+        var lookup = await sportlinkClient.ResolvePublicMatchIdAsync(RolNaam, wedstrijd.Wedstrijdnummer, wedstrijd.Datum);
+        var lookupFout = VertaalStatusNaarFout(lookup.Status);
+        if (lookupFout != null)
+            return (lookupFout, null);
+        if (lookup.Data == null)
+            return (new NotFoundObjectResult(new { error = "Wedstrijd nog niet bekend bij Sportlink voor deze datum." }), null);
+
+        publicMatchId = lookup.Data.PublicMatchId;
+        await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(connection, wedstrijdcodeValue, clubCode, publicMatchId);
+        return (null, publicMatchId);
+    }
 
     /// <summary>Vertaalt <see cref="SportlinkClubCallStatus"/> naar een HTTP-foutrespons — nooit de
     /// onderliggende Sportlink-foutdetails 1-op-1 doorzetten (CISO-regel). Retourneert <c>null</c>
