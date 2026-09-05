@@ -2639,6 +2639,56 @@ volgorde:
    opnieuw deployen — de SQL Server-database zelf wordt door deze cutover niet aangeraakt of
    verwijderd, dus een terugval blijft mogelijk zolang die database blijft bestaan.
 
+## 50. Certificaatvalidatie in `PostgresConnectionStringNormalizer` verplicht gemaakt (#1004)
+
+**Kwetsbaarheid (HIGH/P1):** `PostgresConnectionStringNormalizer.Normalize` (Database.Postgres)
+negeerde elke `sslmode`-optie uit de URI-query van een `postgres://`/`postgresql://`-connectiestring
+en zette altijd `SslMode.Require`. Sinds Npgsql 8 valideert `Require` geen certificaatketen of
+hostnaam meer (zie [release notes](https://www.npgsql.org/doc/release-notes/8.0.html)) — een
+aanvaller die het netwerkpad of DNS naar de database kan beïnvloeden, kon zich zo als het
+database-endpoint voordoen (MITM), ook als de connectiestring zelf expliciet
+`?sslmode=verify-full&sslrootcert=...` opgaf. De keyword/value-vorm werd helemaal niet
+gevalideerd.
+
+**Fix:** `Normalize` parseert nu `sslmode` en `sslrootcert` uit de URI-query en vertaalt ze naar
+`NpgsqlConnectionStringBuilder.SslMode`/`RootCertificate`. Daarna geldt voor **beide** vormen
+(URI én keyword/value) hetzelfde beleid:
+
+- **Host is een lokale-ontwikkelhost** (`localhost`, `127.0.0.1`, `::1` — exact de hosts uit
+  `docker-compose.yml`'s `postgres`-service en `docs/DEVELOPER-SETUP.md` §7.2/de CI-job
+  `fresh-db-postgres`): geen TLS-eis. De officiële `postgres:16`-image draait zonder TLS-configuratie;
+  Npgsql's eigen default (`SslMode.Prefer`) valt terug op onversleuteld, precies zoals de
+  gedocumenteerde lokale workflow vandaag al werkt — er is dus geen aparte env-var of opt-in nodig
+  om lokaal te blijven werken.
+- **Elke andere host** (per definitie productie/staging): vereist expliciet `SslMode.VerifyFull`.
+  Ontbreekt dat — of staat er een zwakkere modus (`Disable`/`Allow`/`Prefer`/`Require`/`VerifyCA`) —
+  dan gooit `Normalize` een `InvalidOperationException` vóór er een verbinding wordt geopend. Een
+  `RootCertificate` zonder `VerifyCA`/`VerifyFull` wordt eveneens geweigerd (Npgsql zou het anders
+  stilzwijgend negeren, wat een beheerder ten onrechte kan doen geloven dat validatie actief is).
+  Een publiek vertrouwde CA (zoals Supabase gebruikt) heeft geen apart `sslrootcert` nodig —
+  `VerifyFull` alleen, steunend op de OS-truststore, is dan al voldoende.
+
+Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
+niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
+(§0/`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`) lokaal van productie onderscheidt
+(env-gebaseerd), maar toegepast op de vraag die hier telt: TLS-vertrouwen hoort af te hangen van
+de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
+`PostgresDatabaseConfig` (Function App), `Database.Postgres.Cli` (migratiepad) én
+`MigrationTools/SqlServerToPostgresCopy` (#976-cutoverkopie) — alle drie roepen dezelfde
+`Normalize`-methode aan, er is geen aparte, zwakkere check ergens anders.
+
+**Operationele consequentie — verplicht te verifiëren bij de eerste deploy na deze fix:** de
+Azure Function App-instelling `POSTGRES_CONNECTION_STRING` (zie stap 4 van het cutover-runbook
+hierboven) moet `?sslmode=verify-full` bevatten. Staat die er niet in, dan gooit
+`PostgresDatabaseConfig`'s statische constructor bij de eerstvolgende cold start een
+`InvalidOperationException` (gevangen door `/api/health` als `"unconfigured"` → HTTP 503, zie §10 —
+geen crash-loop van het hele proces, maar wel een niet-werkende database-tier totdat de instelling
+is aangevuld).
+
+**Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
+beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
+standaardpoort, lege pad → database `postgres`) blijven daarin behouden.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

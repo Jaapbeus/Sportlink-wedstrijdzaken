@@ -720,6 +720,19 @@ docker rm -f pgfixture
 Zonder `POSTGRES_TEST_CONNECTION_STRING` meldt dezelfde opdracht `Skipped` met de reden erbij —
 geen stilzwijgend groen resultaat.
 
+> **TLS-certificaatvalidatie (#1004).** `PostgresConnectionStringNormalizer.Normalize` — waar
+> `Database.Postgres.Cli`, `PostgresDatabaseConfig` (Function App) en
+> `MigrationTools/SqlServerToPostgresCopy` allemaal doorheen gaan — vereist voor elke host **behalve**
+> `localhost`/`127.0.0.1`/`::1` expliciet `sslmode=verify-full` (URI-vorm) of
+> `SSL Mode=VerifyFull` (keyword/value-vorm). Zonder dat gooit `Normalize` een
+> `InvalidOperationException` vóórdat er verbinding wordt gemaakt — dus ook al bij het opstarten
+> van de Function App. Tegen de lokale wegwerpcontainer hierboven (`localhost:55432`) is dit nooit
+> nodig: die draait zonder TLS, en de bovenstaande commando's blijven ongewijzigd werken. Verbindt
+> je in plaats daarvan met een echte (bijvoorbeeld Supabase-gehoste) Postgres-instantie, geef dan
+> `?sslmode=verify-full` mee in de connectiestring; een los root-CA-certificaat is alleen nodig als
+> die instantie geen publiek vertrouwde CA gebruikt (`&sslrootcert=/pad/naar/ca.pem`). Zie
+> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige onderbouwing.
+
 > **Let op bij het lokaal draaien van béide Postgres-testsuites tegen één container (#925).**
 > `Database.Postgres.Tests` sloopt met opzet een reeks tabellen om te controleren of ze correct
 > opnieuw worden opgebouwd — `public.appsettings`/`speeltijden`/`velden`,
