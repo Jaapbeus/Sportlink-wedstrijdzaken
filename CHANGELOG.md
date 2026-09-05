@@ -28,6 +28,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   gebruiken deze gedeelde generator, dus de fix geldt voor SQL Server én Postgres zonder verdere
   wijziging. Alleen de generator is aangepast; de bestaande iframe-sandbox in de preview blijft
   ongewijzigd.
+- **Feedback-widget: PII-controle dekt nu de volledige melding, vóór elke AI- en GitHub-aanroep (#1006).**
+  De eerdere controle keek alleen naar de beschrijving en de antwoorden op aanvulvragen, en pas nadat
+  het taalmodel de melding al had verwerkt. Contextvelden, vragen en de AI-samenvatting konden zo
+  ongecontroleerd in een openbaar GitHub-issue terechtkomen. Er zijn nu twee controlemomenten: vóór
+  elke AI-aanroep (op alle velden die in de prompt kunnen belanden) en vlak vóór het aanmaken van het
+  GitHub-issue (op de uiteindelijke titel en tekst, inclusief AI-output). Bij een treffer wordt de
+  melding geblokkeerd met een duidelijke foutmelding. De ruwe AI-respons wordt niet langer gelogd —
+  alleen lengte en verwerkingstijd.
 
 ### Added
 - **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**

@@ -52,15 +52,32 @@ public static class FeedbackFunction
 
             var chatClient = context.InstanceServices.GetService<IChatClient>()
                 ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
-            var result = await ValideerVolledigheid(chatClient, dto, log);
-
-            return new OkObjectResult(result);
+            return await ValidateCoreAsync(dto, chatClient, log);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij feedback validatie");
             return new ObjectResult(new { error = "Validatie tijdelijk niet beschikbaar." }) { StatusCode = 500 };
         }
+    }
+
+    /// <summary>
+    /// Testbare kern van <see cref="Validate"/>, los van <see cref="HttpRequest"/>/<see cref="FunctionContext"/>
+    /// zodat regressietests een <see cref="IChatClient"/>-fake kunnen injecteren (#1006). PII-gate draait
+    /// vóór de AI-aanroep en dekt alle velden die de prompt in kan gaan — niet alleen Beschrijving/Antwoord.
+    /// </summary>
+    internal static async Task<IActionResult> ValidateCoreAsync(FeedbackRequest dto, IChatClient chatClient, ILogger log)
+    {
+        if (BevatPii(VerzamelTeCheckenTekst(dto)))
+        {
+            log.LogWarning("Feedback-validatie geblokkeerd: PII gedetecteerd in invoer (vóór AI-aanroep)");
+            return new ObjectResult(new {
+                error = "Feedback bevat mogelijk persoonsgegevens. Verwijder e-mailadressen en telefoonnummers en probeer opnieuw."
+            }) { StatusCode = 422 };
+        }
+
+        var result = await ValideerVolledigheid(chatClient, dto, log);
+        return new OkObjectResult(result);
     }
 
     // ── Submit ─────────────────────────────────────────────────────────────────
@@ -101,32 +118,65 @@ public static class FeedbackFunction
 
             var chatClient = context.InstanceServices.GetService<IChatClient>()
                 ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
-            var structured = await StructureerIssue(chatClient, dto, log);
 
-            var issueBody = BouwIssueBody(dto, structured);
-            var labels = KiesLabels(dto.Type);
-            var title = Sanitize(structured.Title, 80);
+            Task<(int nummer, string url)> MaakIssue(string title, string body, string[] labels) =>
+                MaakGitHubIssueAsync(pat, owner, repo, title, body, labels, log);
 
-            // PII-gate: blokkeer publicatie als beschrijving of antwoorden persoonsgegevens bevatten. (#427)
-            var teChecken = dto.Beschrijving + " " + string.Join(" ",
-                dto.VragenAntwoorden?.Select(qa => qa.Antwoord ?? "") ?? []);
-            if (BevatPii(teChecken))
-            {
-                log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in submission");
-                return new ObjectResult(new {
-                    error = "Feedback bevat mogelijk persoonsgegevens. Verwijder e-mailadressen en telefoonnummers en probeer opnieuw."
-                }) { StatusCode = 422 };
-            }
-
-            var (issueNummer, issueUrl) = await MaakGitHubIssueAsync(pat, owner, repo, title, issueBody, labels, log);
-
-            return new OkObjectResult(new { issueNummer, issueUrl });
+            return await SubmitCoreAsync(dto, chatClient, MaakIssue, log);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Fout bij feedback submit");
             return new ObjectResult(new { error = "Indienen mislukt. Probeer het opnieuw." }) { StatusCode = 500 };
         }
+    }
+
+    /// <summary>
+    /// Testbare kern van <see cref="Submit"/>, los van <see cref="HttpRequest"/>/<see cref="FunctionContext"/>
+    /// en de echte GitHub-<see cref="HttpClient"/> zodat regressietests een <see cref="IChatClient"/>-fake en
+    /// een GitHub-fake kunnen injecteren (#1006).
+    ///
+    /// Twee PII-gates, niet één:
+    /// 1. Vóór de AI-aanroep — over alle velden die de prompt in kunnen gaan (Context.Pagina/Versie/Browser,
+    ///    elke Vraag én Antwoord), niet alleen Beschrijving/Antwoord zoals de oorspronkelijke #427-gate.
+    /// 2. Vlak vóór de GitHub-write — over de daadwerkelijke, uiteindelijke titel + body, dus inclusief
+    ///    AI-gegenereerde Samenvatting/acceptatiecriteria. AI-output wordt nooit impliciet vertrouwd als
+    ///    publiceerbare tekst.
+    /// Een blocked input doet daarom nooit een AI-aanroep; een blocked output doet nooit een GitHub-aanroep.
+    /// </summary>
+    internal static async Task<IActionResult> SubmitCoreAsync(
+        FeedbackRequest dto,
+        IChatClient chatClient,
+        Func<string, string, string[], Task<(int nummer, string url)>> maakGitHubIssueAsync,
+        ILogger log)
+    {
+        if (BevatPii(VerzamelTeCheckenTekst(dto)))
+        {
+            log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in invoer (vóór AI-aanroep)");
+            return new ObjectResult(new {
+                error = "Feedback bevat mogelijk persoonsgegevens. Verwijder e-mailadressen en telefoonnummers en probeer opnieuw."
+            }) { StatusCode = 422 };
+        }
+
+        var structured = await StructureerIssue(chatClient, dto, log);
+
+        var issueBody = BouwIssueBody(dto, structured);
+        var labels = KiesLabels(dto.Type);
+        var title = Sanitize(structured.Title, 80);
+
+        // Laatste controle vlak vóór de GitHub-write: op de daadwerkelijke, volledige titel + body —
+        // inclusief AI-output (samenvatting, acceptatiecriteria) en alle contextvelden. (#1006)
+        if (BevatPii(title) || BevatPii(issueBody))
+        {
+            log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in uiteindelijke titel/body vóór publicatie naar GitHub");
+            return new ObjectResult(new {
+                error = "Feedback bevat mogelijk persoonsgegevens. Verwijder e-mailadressen en telefoonnummers en probeer opnieuw."
+            }) { StatusCode = 422 };
+        }
+
+        var (issueNummer, issueUrl) = await maakGitHubIssueAsync(title, issueBody, labels);
+
+        return new OkObjectResult(new { issueNummer, issueUrl });
     }
 
     // ── AI: gedeeld JSON-ophaal-en-parse-blok ──────────────────────────────────
@@ -140,9 +190,13 @@ public static class FeedbackFunction
             ResponseFormat = ChatResponseFormat.Json
         };
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var response = await chatClient.GetResponseAsync(messages, options);
+        sw.Stop();
         var json = response.Text ?? "";
-        log.LogDebug("{Label} AI response: {Json}", logLabel, json);
+        // Nooit de ruwe AI-respons loggen (#1006) — die kan ongecontroleerde, mogelijk persoonsgegevens
+        // bevattende tekst bevatten. Alleen veilige technische metadata.
+        log.LogDebug("{Label} AI response ontvangen: {Lengte} tekens in {DuurMs} ms", logLabel, json.Length, sw.ElapsedMilliseconds);
 
         return JObject.Parse(json);
     }
@@ -376,8 +430,30 @@ public static class FeedbackFunction
         return sb.ToString();
     }
 
-    // PII-gate: detecteert e-mailadressen en Nederlandse telefoonnummers. (#427)
+    /// <summary>
+    /// Verzamelt alle velden van een <see cref="FeedbackRequest"/> die ooit in een AI-prompt of in de
+    /// gepubliceerde GitHub-body terechtkomen, zodat de PII-gate de volledige invoer controleert in
+    /// plaats van alleen Beschrijving + Antwoord (#1006 — de oorspronkelijke #427-gate miste
+    /// Context.Pagina/Versie/Browser en elke Vraag).
+    /// </summary>
+    private static string VerzamelTeCheckenTekst(FeedbackRequest dto)
+    {
+        var delen = new List<string?> { dto.Beschrijving, dto.Context?.Pagina, dto.Context?.Versie, dto.Context?.Browser };
+        if (dto.VragenAntwoorden != null)
+        {
+            foreach (var qa in dto.VragenAntwoorden)
+            {
+                delen.Add(qa.Vraag);
+                delen.Add(qa.Antwoord);
+            }
+        }
+        return string.Join(" ", delen.Where(d => !string.IsNullOrWhiteSpace(d)));
+    }
+
+    // PII-gate: detecteert e-mailadressen en Nederlandse telefoonnummers. (#427, uitgebreid #1006)
     // Blokkeert publicatie naar GitHub als mogelijke persoonsgegevens aanwezig zijn.
+    // Let op: dit is regex-detectie van e-mail/telefoon — geen algemene garantie tegen elke vorm van
+    // persoonsgegevens of secrets (bijv. namen, adressen, BSN's worden niet herkend).
     private static bool BevatPii(string tekst)
     {
         if (string.IsNullOrWhiteSpace(tekst)) return false;
