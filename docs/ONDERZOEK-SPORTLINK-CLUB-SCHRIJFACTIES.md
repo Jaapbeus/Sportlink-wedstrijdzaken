@@ -72,14 +72,22 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
   aantal cijfers (8 vs. 9), geen enkele herkenbare relatie (geen offset, geen bit-shift-patroon
   bekeken, maar op het eerste gezicht volledig ongerelateerd).
 - **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.
-  Elk toekomstig endpoint dat een `PublicMatchId` nodig heeft (deep-link, #991+) moet 'm via een
-  **reverse-lookup bij Sportlink zelf** opzoeken — vermoedelijk via
-  `competition/match/MatchProgramOverview?DateFrom=&DateTo=` (§2.5: bevat beide ID's per wedstrijd,
-  maar 21 s bij een breed bereik — smal date-bereik, idealiter één dag, is dus verplicht om dit
-  bruikbaar te maken) of een nog niet ontdekt, gerichter zoek-endpoint. **Nog niet getest**: of een
-  smal date-bereik (`DateFrom=DateTo=`één dag) de call ook echt versnelt, en of er een sneller
-  alternatief bestaat. Eenmaal gevonden: cache het resultaat in onze eigen DB (bv. een nieuwe
-  `PublicMatchId`-kolom op `his.matches`), zodat de trage lookup maar één keer per wedstrijd nodig is.
+  Elk endpoint dat een `PublicMatchId` nodig heeft moet 'm via een **reverse-lookup bij Sportlink
+  zelf** opzoeken.
+- **Reverse-lookup BEVESTIGD WERKEND (2026-09-05, live productietest,
+  `scripts/dev/Invoke-SportlinkMatchProgramLookup.ps1`):**
+  `competition/match/MatchProgramOverview?DateFrom=<dag>&DateTo=<dag>` met een smal (1-daags)
+  date-bereik gaf voor ExternalMatchId 3403 (dezelfde wedstrijd als hierboven) `PublicMatchId
+  M392686417` terug — exact de eerder live geobserveerde waarde. Timing: 12,2 s voor het 1-daagse
+  bereik (vs. 21,2 s voor een 4-weken-bereik) — nog steeds te traag voor synchroon gebruik bij een
+  klik. De respons is **niet club-gescoped**: 81 wedstrijden voor die ene dag (regio-/
+  competitiebreed), dus lokaal filteren op `ExternalMatchId` is verplicht.
+- **Geïmplementeerd in #991:** `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkClubClient.
+  ResolvePublicMatchIdAsync` doet exact deze lookup; het resultaat wordt gecachet in de nieuwe
+  tabel `public.sportlinkpublicmatchidcache` (migratie `013_sportlink_club_integratie.sql`), zodat
+  de trage lookup maar één keer per wedstrijd nodig is. Een achtergrond-warmup van die cache vóór
+  de eerstvolgende wedstrijddag (in plaats van pas bij de eerste klik) is apart uitgewerkt in
+  issue #1017 — nog niet geïmplementeerd.
 - De server levert per wedstrijd permissie-flags: `IsEditFieldAllowed`, `IsAssignDressingRoomsAllowed`, `IsAssignOfficialsAllowed`, `IsEditFieldSidePanelAllowed`, `IsAddScoreAllowed`, `IsHomeMatch`, plus `TaskStatus` (bv. `MISSING_DRESSINGROOMS`). Ideaal om knoppen in onze app aan/uit te zetten.
 
 ### 2.3 Deep-links (route in de SPA)
@@ -193,18 +201,24 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
      policy) — er is geen client-side manier om het resultaat "over te hevelen" zonder dat
      Sportlink zelf onze redirect-URI toevoegt aan de client, of ons een eigen OAuth-client geeft.
   2. **Technisch bevestigd werkend (2026-09-04):** eenmalige interactieve login → `refresh_token`
-     opslaan als Function App-instelling (gekozen boven Key Vault, zie #990-comment) → backend
-     vernieuwt via `token_endpoint` met `grant_type=refresh_token&client_id=sportlink-club-web`.
-     Refresh + rotatie (tweede refresh met het nieuwe token) live succesvol getest door de eigenaar.
-     De handmatige DevTools-Network-tab-stap is inmiddels geautomatiseerd: `Tools/
-     SportlinkTokenCapture` opent een echte browser, laat de gebruiker eenmalig inloggen (MFA
-     blijft mensenwerk) en vangt de token-respons programmatisch op via het netwerk-response-event
-     — geen handmatig kopiëren/plakken meer nodig. Schrijft het refresh_token direct naar
-     `FunctionApp.Postgres/local.settings.json` (sleutel `SportlinkClubRefreshToken`).
-     **Live uitgevoerd door de eigenaar (2026-09-04): geslaagd.** Refresh-token staat nu echt
+     lokaal opgevangen → backend vernieuwt via `token_endpoint` met
+     `grant_type=refresh_token&client_id=sportlink-club-web`. Refresh + rotatie (tweede refresh met
+     het nieuwe token) live succesvol getest door de eigenaar. De handmatige DevTools-Network-tab-
+     stap is inmiddels geautomatiseerd: `Tools/SportlinkTokenCapture` opent een echte browser, laat
+     de gebruiker eenmalig inloggen (MFA blijft mensenwerk) en vangt de token-respons
+     programmatisch op via het netwerk-response-event — geen handmatig kopiëren/plakken meer
+     nodig. Schrijft het refresh_token lokaal naar `FunctionApp.Postgres/local.settings.json`
+     (sleutel `SportlinkClubRefreshToken__<Rol>`).
+     **Live uitgevoerd door de eigenaar (2026-09-04): geslaagd.** Refresh-token stond echt
      lokaal klaar (geverifieerd: sleutel aanwezig, 720 tekens — consistent met de eerdere
-     handmatige test) — dit is niet langer een test maar de daadwerkelijke, bruikbare koppeling
-     voor #991 en verder.
+     handmatige test).
+     **Productie-persistente opslag (#990/#991, besloten):** een eigen DB-tabel
+     `public.sportlinkservicetokens` — niet Key Vault (kost geld, nieuwe Azure-resource, zie
+     kostenbeleid) en niet een Function App-instelling herschreven via de ARM-API (vereist een
+     aparte Azure AD-integratie met schrijfrechten op de eigen Function App). Bootstrap gebeurt via
+     `PUT /api/beheer/sportlink-extensie/rollen/{rolNaam}/token` (admin-only, write-only, valideert
+     het token met één refresh-poging vóór opslag). Zie
+     `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkClubTokenProvider.cs`.
   3. **Bevestigd afgewezen (2026-09-04):** `device_code`-grant staat realm-breed aan, maar is
      **uitgeschakeld voor deze specifieke client** — `POST device_authorization_endpoint` met
      `client_id=sportlink-club-web` geeft `{"error":"unauthorized_client","error_description":

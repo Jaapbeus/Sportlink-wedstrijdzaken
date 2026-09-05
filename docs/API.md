@@ -49,6 +49,8 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
 | `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |
 | `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}` | **Admin** | Koppeling registreren/overschrijven voor een rol (`{ SportlinkAccountNaam }`) — `LaatstGekoppeldDoor` altijd server-bepaald |
+| `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}/token` | **Admin** | Refresh-token productie-persistent registreren (`{ RefreshToken }`) — write-only, geen GET-tegenhanger, valideert vóór opslag (#990/#991) |
+| `GET` | `/sportlink/match/{wedstrijdcode}` | **Wedstrijdzaken** | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991) |
 | `GET/POST/PUT` | `/beheer/velden` en `/{veldNummer}` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren, optioneel gekoppeld aan een periode (`PeriodeId`, #581) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldtraining` en `/{id}` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679) |

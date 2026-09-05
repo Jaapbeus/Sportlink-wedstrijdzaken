@@ -364,6 +364,22 @@ else
                 {
                     <div class="alert alert-info mt-2">@sportlinkKoppelMessage</div>
                 }
+
+                <hr class="mt-3" />
+                <h6>Refresh-token registreren (#991)</h6>
+                <p class="text-muted" style="font-size:0.85rem;">
+                    Vul hier de <code>refresh_token</code>-waarde in die <code>Tools/SportlinkTokenCapture -- @registreerRol.RolNaam</code>
+                    zojuist heeft opgevangen. Dit veld schrijft alleen weg — het token wordt hierna
+                    nergens teruggetoond, ook niet in deze pagina.
+                </p>
+                <div class="input-group mb-2">
+                    <input type="password" class="form-control" @bind="registreerRefreshToken" placeholder="refresh_token" autocomplete="off" />
+                    <button class="btn btn-outline-primary" @onclick="BevestigRegistreerTokenAsync">Token registreren</button>
+                </div>
+                @if (!string.IsNullOrEmpty(sportlinkTokenMessage))
+                {
+                    <div class="alert alert-info mt-2">@sportlinkTokenMessage</div>
+                }
             </div>
         </div>
     }
@@ -456,6 +472,8 @@ else
     private SportlinkExtensieRolDto? registreerRol;
     private string? registreerSportlinkAccountNaam;
     private string? sportlinkKoppelMessage;
+    private string? registreerRefreshToken;
+    private string? sportlinkTokenMessage;
 
     // Sync + email log (verplaatst van Dashboard #344)
     private SyncStatusDto? _status;
@@ -595,6 +613,19 @@ else
         registreerRol = rol;
         registreerSportlinkAccountNaam = rol.SportlinkAccountNaam;
         sportlinkKoppelMessage = null;
+        registreerRefreshToken = null;
+        sportlinkTokenMessage = null;
+    }
+
+    // #991: schrijft het échte refresh-token weg — write-only, nooit teruggetoond.
+    private async Task BevestigRegistreerTokenAsync()
+    {
+        if (registreerRol == null || string.IsNullOrWhiteSpace(registreerRefreshToken)) return;
+        var r = await Api.RegistreerSportlinkTokenAsync(registreerRol.RolNaam, registreerRefreshToken);
+        registreerRefreshToken = null;
+        sportlinkTokenMessage = r.Success
+            ? "Token geregistreerd en gevalideerd."
+            : "Fout: " + r.ErrorMessage;
     }
 
     private async Task BevestigRegistreerKoppelingAsync()

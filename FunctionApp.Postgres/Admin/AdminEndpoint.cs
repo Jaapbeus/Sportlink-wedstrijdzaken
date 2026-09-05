@@ -18,10 +18,14 @@ internal static class AdminEndpoint
         HttpRequest req,
         ILogger log,
         string errorContext,
-        Func<string, Task<IActionResult>> work)
+        Func<string, Task<IActionResult>> work,
+        Func<HttpRequest, IActionResult?>? requireRole = null)
     {
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
+        // #991: optioneel overschrijfbaar — default blijft RequireAdmin, dus 100%
+        // backward-compatible voor alle bestaande aanroepen. Eerste afnemer van een andere waarde:
+        // SportlinkMatchFunction (RequireWedstrijdzaken), zie #988 Besluit 1.
+        var authResult = (requireRole ?? EasyAuthHelper.RequireAdmin)(req);
         if (authResult != null) return authResult;
 
         using var _ = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });

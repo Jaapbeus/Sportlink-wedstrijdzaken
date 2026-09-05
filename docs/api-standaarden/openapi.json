@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.0.33",
+    "version": "3.0.34",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -39,6 +39,10 @@
     {
       "name": "feedback",
       "description": "Feedback widget (vereist Entra ID authenticatie met admin-rol)"
+    },
+    {
+      "name": "sportlink",
+      "description": "Sportlink Web Extension read-only endpoints (#986/#991, vereist Entra-approl Wedstrijdzaken)"
     }
   ],
   "components": {
@@ -1029,6 +1033,72 @@
           "SportlinkAccountNaam": {
             "type": "string",
             "nullable": true
+          }
+        }
+      },
+      "SportlinkMatchInfoResponse": {
+        "type": "object",
+        "description": "Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Nested velden\n(Field/Facility/MatchDressingRooms) zijn ongetypeerd doorgegeven — hun exacte vorm is niet\nvolledig geverifieerd, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md.\n",
+        "properties": {
+          "PublicMatchId": {
+            "type": "string",
+            "nullable": true
+          },
+          "MatchDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "MatchStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "IsCanceledMatch": {
+            "type": "boolean"
+          },
+          "IsConceptMatch": {
+            "type": "boolean"
+          },
+          "IsHomeMatch": {
+            "type": "boolean"
+          },
+          "IsEditFieldAllowed": {
+            "type": "boolean"
+          },
+          "IsEditFieldSidePanelAllowed": {
+            "type": "boolean"
+          },
+          "IsAssignDressingRoomsAllowed": {
+            "type": "boolean"
+          },
+          "IsAssignOfficialsAllowed": {
+            "type": "boolean"
+          },
+          "IsAddScoreAllowed": {
+            "type": "boolean"
+          },
+          "IsEditFieldOffsetAllowed": {
+            "type": "boolean"
+          },
+          "IsEditFieldSizeAllowed": {
+            "type": "boolean"
+          },
+          "TaskStatus": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "Field": {
+            "nullable": true,
+            "description": "Ongetypeerd — exacte vorm niet geverifieerd."
+          },
+          "Facility": {
+            "nullable": true,
+            "description": "Ongetypeerd — exacte vorm niet geverifieerd."
+          },
+          "MatchDressingRooms": {
+            "nullable": true,
+            "description": "Ongetypeerd — exacte vorm niet geverifieerd."
           }
         }
       },
@@ -3527,6 +3597,149 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/sportlink-extensie/rollen/{rolNaam}/token": {
+      "put": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "registreerSportlinkExtensieToken",
+        "summary": "Refresh-token productie-persistent registreren (write-only)",
+        "description": "Bootstrap van het échte Sportlink refresh_token voor een rol (#990/#991, epic #986).\nValideert het token met één refresh-poging vóór opslag in `public.sportlinkservicetokens`.\nEr bestaat bewust géén GET-tegenhanger — het token wordt nooit teruggegeven.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rolNaam",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Wedstrijdzaken"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "RefreshToken"
+                ],
+                "properties": {
+                  "RefreshToken": {
+                    "type": "string",
+                    "description": "Ruwe refresh_token-waarde, bv. gevangen via Tools/SportlinkTokenCapture."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token gevalideerd en opgeslagen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "RolNaam": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Sportlink heeft het opgegeven refresh-token geweigerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkMatch",
+        "summary": "Read-only wedstrijdgegevens uit Sportlink Club (#991, epic",
+        "description": "Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie\n`public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss\n— #987) en haalt daarmee het niet-persoonsgebonden wedstrijdobject op bij Sportlink Club.\nUitsluitend lezen — geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of\nin plaats van admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wedstrijdgegevens",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMatchInfoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd, PublicMatchId of Sportlink-match niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
           }
         }
       }

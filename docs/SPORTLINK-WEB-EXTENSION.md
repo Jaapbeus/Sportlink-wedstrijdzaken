@@ -49,10 +49,16 @@ Sportlink-account, aangemaakt en gescoped in Sportlink's eigen
    ```
    dotnet run --project Tools/SportlinkTokenCapture -- Wedstrijdzaken
    ```
-3. Log in het geopende browservenster in met het zojuist aangemaakte serviceaccount.
+3. Log in het geopende browservenster in met het zojuist aangemaakte serviceaccount. Het
+   script schrijft het refresh_token lokaal weg — een echte, productie-persistente koppeling
+   vereist stap 5 hieronder.
 4. Klik in Instellingen op "Koppeling (opnieuw) registreren" en vul de accountnaam in ter
    herkenning — dit is geen live verificatie, puur een leesbaar label voor de statustabel.
-5. Herhaal deze koppeling alleen als Sportlink de onderliggende sessie ooit volledig intrekt
+5. Vul in datzelfde dialoogvenster het veld "Refresh-token registreren" in met de waarde uit
+   stap 3 (#991). Dit valideert het token met één refresh-poging en slaat het rotarende
+   refresh_token productie-persistent op in `public.sportlinkservicetokens` — write-only, nooit
+   ergens teruggetoond.
+6. Herhaal deze koppeling alleen als Sportlink de onderliggende sessie ooit volledig intrekt
    (zeldzaam) — niet routinematig.
 
 ### 3.4 Entra-rol "Wedstrijdzaken"
@@ -92,23 +98,47 @@ verplichte N-user-test.
   testscripts voor de refresh-cyclus resp. een read-only wedstrijd-lookup.
 - `FunctionApp.Postgres/Admin/SportlinkExtensieRollenFunction.cs` +
   `FunctionApp/Admin/SportlinkExtensieRollenFunction.cs` — rol↔serviceaccount-koppelingsstatus
-  (#988), geen live Sportlink-aanroep.
+  (#988), geen live Sportlink-aanroep. Sinds #991 ook `PUT .../rollen/{rolNaam}/token` — de
+  productie-bootstrap van het échte refresh_token.
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs` (#991) — read-only
-  Sportlink-client, in `Planner.Shared` (providervrije logica, geen SQL) zodat beide tiers hem via
-  DI kunnen gebruiken, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2 voor die uitzonderingsregel.
-  Accepteert `PublicMatchId` uitsluitend als expliciete parameter — geen automatische afleiding uit
-  wedstrijdcode/wedstrijdnummer (die hypothese is weerlegd, zie #987/#1016). Nog niet aangesloten op
-  een GUI-scherm of een schrijvend endpoint.
+  Sportlink-client, in `Planner.Shared` (providervrije logica: geen directe DB-toegang, alleen via
+  de geïnjecteerde `ISportlinkClubTokenStore`) zodat beide tiers hem via DI kunnen gebruiken. Sinds
+  #991/#1016 ook de reverse-lookup (`ResolvePublicMatchIdAsync`, `MatchProgramOverview`) — daarvóór
+  accepteerde de client `PublicMatchId` uitsluitend als expliciete parameter (de "M"+wedstrijdcode-
+  hypothese is weerlegd, zie #987).
+- `ISportlinkClubTokenStore` — twee tier-specifieke implementaties, bewust géén gedeelde: de
+  Postgres-tier (`FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs`, #991) bewaart
+  het rotarende refresh_token in een eigen DB-tabel (`public.sportlinkservicetokens`); de SQL
+  Server-tier (`Planner.Shared/Integrations/SportlinkClub/SportlinkClubAppSettingsTokenStore.cs`,
+  #998) herschrijft een Function App-instelling via de Azure Management API. **De DB-tabel is de
+  bewust gekozen aanpak voor de enige live tier** — zie §4.3.
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkMutationGuard.cs` (#998) — pure guardrail:
   staat een mutatie alleen toe bij `IsHomeMatch=true` én de bijbehorende Sportlink-permissievlag.
 - `FunctionApp/Sportlink/` + `FunctionApp.Postgres/Sportlink/` (#998) — per-tier, niet-gedeelde
   `ISportlinkMutationAuditService`-implementatie; logt vóór én na elke toekomstige mutatie in
   `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`.
+- `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkPublicMatchIdRepository.cs` (#991) —
+  de #987-reverse-lookup-cache (`public.sportlinkpublicmatchidcache`, migratie
+  `014_sportlink_club_matchid_cache.sql`) en de `his.matches`-opzoeking (wedstrijdcode →
+  wedstrijdnummer/datum) die de reverse-lookup nodig heeft.
+- `FunctionApp.Postgres/Sportlink/SportlinkMatchFunction.cs` (#991) — `GET
+  /api/sportlink/match/{wedstrijdcode}`, het eerste endpoint met `RequireWedstrijdzaken` i.p.v.
+  `RequireAdmin` (zie #988 Besluit 1). Enige plek die de reverse-lookup-cache, de token-store en de
+  Dagplanning-GUI met elkaar verbindt.
 
-### 4.3 Kostenbeleid-implicatie
-Opslag van het refresh_token als Azure Function App-instelling (gekozen) versus Key Vault staat nog
-open — Key Vault is "potentieel betaald" volgens het kostenbeleid in `CLAUDE.md`, dus vereist een
-prijscheck en expliciete goedkeuring vóór aanmaak, mocht die keuze ooit omgezet worden.
+### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
+Op de Postgres-tier (de enige tier die live draait) wordt het rotarende refresh_token opgeslagen in
+een **eigen DB-tabel** (`public.sportlinkservicetokens`), niet in Azure Key Vault en niet als
+Function App-instelling via de ARM-API. Key Vault is "potentieel betaald" volgens het kostenbeleid
+in `CLAUDE.md` (nieuwe Azure-resource, prijscheck + goedkeuring vereist); een Function
+App-instelling herschrijven vanuit de app zelf vereist een aparte Azure AD-integratie met
+schrijfrechten op de eigen Function App — een grotere attack surface voor hetzelfde resultaat. Een
+DB-tabel is een bestaande, gratis resource en dezelfde vertrouwensgrens als de bestaande
+`SqlConnectionString`-secrets.
+
+**Bekende inconsistentie (niet blokkerend):** de SQL Server-tier (`SportlinkClubAppSettingsTokenStore`,
+#998) gebruikt nog wél de ARM-API-aanpak — die tier is rollback-only en heeft geen productieverkeer,
+dus dit is bewust niet in dezelfde PR meegenomen. Zie #1020 voor het align/deprecate-vervolg.
 
 ### 4.4 HARDE REGEL: coding agents mogen dit mechanisme nooit zelf uitvoeren
 
@@ -155,12 +185,15 @@ Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment a
 - Sportlink logt alle acties op het gekoppelde serviceaccount; Sentry/GA in hun SPA zien ons
   verkeer niet, de server wel.
 - AVG: wedstrijd- en officials-data bevat persoonsgegevens (namen, telefoonnummers). Nooit opslaan
-  buiten wat al in onze eigen DB staat; nooit `MatchProgramOverview`/`PersonRegistrations`
-  aanroepen (traag, en bevat persoonsgegevens die we niet nodig hebben).
+  buiten wat al in onze eigen DB staat; nooit `PersonRegistrations`/officials-zoekendpoints
+  aanroepen (bevatten persoonsgegevens die we niet nodig hebben). `MatchProgramOverview` wordt
+  sinds #991 wél aangeroepen (voor de #987-reverse-lookup), maar uitsluitend het resultaat
+  `PublicMatchId` wordt gecachet — nooit de overige, niet-club-gescoped wedstrijdgegevens uit die
+  respons.
 - Volledige, actuele lijst met openstaande vragen en risico's: onderzoeksrapport §5/§7.
 
 ## 6. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport
 - Epic [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986) en sub-issues #987-#998
 - [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — rolbeheer en N-user-test
-- [`docs/ARCHITECTUUR-DATABASE-TIERS.md`](ARCHITECTUUR-DATABASE-TIERS.md) — waarom `SportlinkClubClient` in `Planner.Shared` hoort
+- [`docs/ARCHITECTUUR-DATABASE-TIERS.md`](ARCHITECTUUR-DATABASE-TIERS.md) — tier-bouwvolgorde; §4.2 hierboven legt uit waarom `SportlinkClubClient` wél in `Planner.Shared` zit maar de tokenopslag per tier verschilt
