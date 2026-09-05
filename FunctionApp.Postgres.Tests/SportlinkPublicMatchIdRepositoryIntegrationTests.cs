@@ -15,7 +15,12 @@ namespace FunctionApp.Postgres.Tests;
 public class SportlinkPublicMatchIdRepositoryIntegrationTests
 {
     private const string Club = "testclub-sportlink";
-    private const long Wedstrijdcode = 9200001;
+    // 9600001: his.matches.wedstrijdcode is GEEN clubcode-gescoped sleutel (UQ_matches_bk is
+    // globaal, businessKey=["wedstrijdcode"] — zie Database.Postgres/KnownEntities.cs), dus dit
+    // getal moet uniek zijn over ALLE testklassen in deze suite, niet alleen binnen deze klasse.
+    // 9100001/9200001-9200004/9300001-9300004/9400001-9400009/9500001-9500006/9999999 zijn al in
+    // gebruik door andere testklassen.
+    private const long Wedstrijdcode = 9600001;
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
         ?? throw new InvalidOperationException(
