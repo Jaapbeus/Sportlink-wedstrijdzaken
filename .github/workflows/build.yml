@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # #825: bewaakt dat elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact
       # (case-sensitief) overeenkomt met het daadwerkelijke getrackte bestand. Git's
@@ -87,7 +87,7 @@ jobs:
       # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
       # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             9.0.x
@@ -340,7 +340,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Wegwerpwachtwoord genereren
         run: |
@@ -541,10 +541,10 @@ jobs:
       POSTGRES_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci"
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 9.0.x
 
