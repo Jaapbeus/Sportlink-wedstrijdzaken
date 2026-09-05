@@ -1,12 +1,14 @@
--- 013_sportlink_club_integratie.sql — #991/#990 (epic #986): productie-tokenopslag + PublicMatchId-cache
+-- 014_sportlink_club_postgres_tokenstore.sql — #991/#990 (epic #986): Postgres-tier tokenopslag +
+-- PublicMatchId-cache voor de gedeelde Planner.Shared.Integrations.SportlinkClub-client (#991/#998).
 --
 -- 1. public.sportlinkservicetokens — het rotarende refresh_token per functionele rol, productie-
---    persistent. Besluit (zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6 / issue #990):
---    eigen DB-tabel i.p.v. Key Vault (geen nieuwe Azure-resource, geen extra kosten) en i.p.v. een
---    Function App Setting via ARM-API (zou een aparte Azure AD-integratie met schrijfrechten op de
---    eigen Function App vereisen). Bevat een echt geheim — nooit via een endpoint teruggegeven of
---    gelogd.
--- 2. public.sportlinkpublicmatchidcache — resultaat van de #987-reverse-lookup
+--    persistent, backing store voor PostgresSportlinkClubTokenStore (ISportlinkClubTokenStore).
+--    Besluit (zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6 / issue #990): eigen DB-tabel
+--    i.p.v. Key Vault (geen nieuwe Azure-resource, geen extra kosten) en i.p.v. een Function App
+--    Setting via de Azure Management API (SportlinkClubAppSettingsTokenStore, #998 — die aanpak
+--    vereist een Managed Identity met Website Contributor-rol per deployment; bewust niet gekozen
+--    voor de Postgres-tier). Bevat een echt geheim — nooit via een endpoint teruggegeven of gelogd.
+-- 2. public.sportlinkpublicmatchidcache — resultaat van de #987/#1016-reverse-lookup
 --    (MatchProgramOverview, matchend op ExternalMatchId = onze eigen wedstrijdnummer), zodat de
 --    trage (12+ s), niet-club-gescoped lookup maar één keer per wedstrijd nodig is.
 

@@ -1,4 +1,5 @@
 using Azure.Identity;
+using FunctionApp.Postgres;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Sportlink;
@@ -63,9 +64,16 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
 // EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een
 // onafhankelijke uitgaande integratie en hoort niet toevallig aan AI-configuratie vast te zitten.
+// Tokenopslag: PostgresSportlinkClubTokenStore (eigen DB-tabel) i.p.v. SportlinkClubAppSettingsTokenStore
+// (Function App-instelling via de Azure Management API, #998) — besloten voor de Postgres-tier
+// (enige live tier) omdat dat geen nieuwe Azure-resource of Managed Identity vereist. Zie
+// docs/SPORTLINK-WEB-EXTENSION.md §4.3.
 if (EgressGuard.ExternalIntegrationsAllowed())
 {
-    builder.Services.AddSingleton<ISportlinkClubTokenStore, SportlinkClubAppSettingsTokenStore>();
+    builder.Services.AddSingleton<ISportlinkClubTokenStore>(sp =>
+        new PostgresSportlinkClubTokenStore(
+            PostgresDatabaseConfig.ConnectionString,
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresSportlinkClubTokenStore>()));
     builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(15);

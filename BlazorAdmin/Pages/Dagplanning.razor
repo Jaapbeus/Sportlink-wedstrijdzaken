@@ -617,9 +617,9 @@
                                                 @if (_sportlinkData.IsAssignOfficialsAllowed) { <span class="badge bg-light text-dark border">Scheidsrechters toewijzen toegestaan</span> }
                                                 @if (_sportlinkData.IsAddScoreAllowed) { <span class="badge bg-light text-dark border">Uitslag invoeren toegestaan</span> }
                                             </div>
-                                            @if (_sportlinkData.TaskStatus.Count > 0)
+                                            @if (!string.IsNullOrWhiteSpace(_sportlinkData.TaskStatus))
                                             {
-                                                <div class="mt-1 text-muted">Openstaand: @string.Join(", ", _sportlinkData.TaskStatus)</div>
+                                                <div class="mt-1 text-muted">Openstaand: @_sportlinkData.TaskStatus</div>
                                             }
                                         }
                                     </td>

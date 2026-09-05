@@ -473,6 +473,112 @@ public class SportlinkClubClientTests
             Environment.SetEnvironmentVariable($"SportlinkClubRefreshToken__{uniqueRol}", null);
         }
     }
+
+    // ── ResolvePublicMatchIdAsync (#991/#1016) ──
+
+    private static string MatchProgramOverviewResponse(params (long ExternalMatchId, string PublicMatchId)[] entries)
+    {
+        var items = entries.Select(e => $$"""{ "externalMatchId": {{e.ExternalMatchId}}, "publicMatchId": "{{e.PublicMatchId}}" }""");
+        return $"[{string.Join(",", items)}]";
+    }
+
+    [Fact]
+    public async Task ResolvePublicMatchIdAsync_WedstrijdInResponsAanwezig_VindtHetJuistePublicMatchId()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                return JsonResponse(MatchProgramOverviewResponse((1111, "M100000001"), (3403, "M392686417")));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().NotBeNull();
+        result.Data!.PublicMatchId.Should().Be("M392686417");
+    }
+
+    [Fact]
+    public async Task ResolvePublicMatchIdAsync_WedstrijdNietInRespons_GeeftOkMetLegeDataTerug()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                return JsonResponse(MatchProgramOverviewResponse((1111, "M100000001")));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok, "de aanroep zelf slaagde, alleen deze wedstrijd stond er niet in");
+        result.Data.Should().BeNull();
+        result.IsSuccess.Should().BeFalse("Data is null, dus geen bruikbaar resultaat, ook al is Status Ok");
+    }
+
+    [Fact]
+    public async Task ResolvePublicMatchIdAsync_GenestOnderMatchesProperty_VindtHetJuistePublicMatchId()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                return JsonResponse("""{ "Matches": [ { "externalMatchId": 3403, "publicMatchId": "M392686417" } ] }""");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        result.Data.Should().NotBeNull();
+        result.Data!.PublicMatchId.Should().Be("M392686417");
+    }
+
+    [Fact]
+    public async Task ResolvePublicMatchIdAsync_ZetDeGevraagdeDatumAlsSmalBereikDoor()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        string? gevraagdeUrl = null;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            gevraagdeUrl = req.RequestUri?.AbsoluteUri;
+            return JsonResponse("[]");
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        gevraagdeUrl.Should().Contain("DateFrom=2026-09-05").And.Contain("DateTo=2026-09-05");
+    }
+
+    [Fact]
+    public async Task ResolvePublicMatchIdAsync_GeenRefreshTokenGeregistreerd_RetourneertRolNietGekoppeld()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore();
+        var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.RolNietGekoppeld);
+    }
 }
 
 /// <summary>

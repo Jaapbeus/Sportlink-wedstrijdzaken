@@ -805,52 +805,41 @@ components:
     SportlinkMatchInfoResponse:
       type: object
       description: |
-        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Nested velden
-        (Field/Facility/MatchDressingRooms) zijn ongetypeerd doorgegeven — hun exacte vorm is niet
-        volledig geverifieerd, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md.
+        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Spiegelt
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998).
       properties:
         PublicMatchId:
           type: string
           nullable: true
+        ExternalMatchId:
+          type: string
+          nullable: true
         MatchDate:
           type: string
+          format: date-time
           nullable: true
         MatchStatus:
           type: string
           nullable: true
+        IsHomeMatch:
+          type: boolean
         IsCanceledMatch:
           type: boolean
         IsConceptMatch:
           type: boolean
-        IsHomeMatch:
-          type: boolean
+        TaskStatus:
+          type: string
+          nullable: true
         IsEditFieldAllowed:
-          type: boolean
-        IsEditFieldSidePanelAllowed:
           type: boolean
         IsAssignDressingRoomsAllowed:
           type: boolean
         IsAssignOfficialsAllowed:
           type: boolean
+        IsEditFieldSidePanelAllowed:
+          type: boolean
         IsAddScoreAllowed:
           type: boolean
-        IsEditFieldOffsetAllowed:
-          type: boolean
-        IsEditFieldSizeAllowed:
-          type: boolean
-        TaskStatus:
-          type: array
-          items:
-            type: string
-        Field:
-          nullable: true
-          description: Ongetypeerd — exacte vorm niet geverifieerd.
-        Facility:
-          nullable: true
-          description: Ongetypeerd — exacte vorm niet geverifieerd.
-        MatchDressingRooms:
-          nullable: true
-          description: Ongetypeerd — exacte vorm niet geverifieerd.
 
     UpdateSettingsRequest:
       type: object

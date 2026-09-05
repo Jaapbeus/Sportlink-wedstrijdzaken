@@ -82,12 +82,12 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
   bereik (vs. 21,2 s voor een 4-weken-bereik) — nog steeds te traag voor synchroon gebruik bij een
   klik. De respons is **niet club-gescoped**: 81 wedstrijden voor die ene dag (regio-/
   competitiebreed), dus lokaal filteren op `ExternalMatchId` is verplicht.
-- **Geïmplementeerd in #991:** `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkClubClient.
-  ResolvePublicMatchIdAsync` doet exact deze lookup; het resultaat wordt gecachet in de nieuwe
-  tabel `public.sportlinkpublicmatchidcache` (migratie `013_sportlink_club_integratie.sql`), zodat
-  de trage lookup maar één keer per wedstrijd nodig is. Een achtergrond-warmup van die cache vóór
-  de eerstvolgende wedstrijddag (in plaats van pas bij de eerste klik) is apart uitgewerkt in
-  issue #1017 — nog niet geïmplementeerd.
+- **Geïmplementeerd in #991/#1016:** `Planner.Shared.Integrations.SportlinkClub.SportlinkClubClient.
+  ResolvePublicMatchIdAsync` (gedeelde client, #998) doet exact deze lookup; het resultaat wordt
+  gecachet in de nieuwe tabel `public.sportlinkpublicmatchidcache` (migratie
+  `014_sportlink_club_postgres_tokenstore.sql`), zodat de trage lookup maar één keer per wedstrijd
+  nodig is. Een achtergrond-warmup van die cache vóór de eerstvolgende wedstrijddag (in plaats van
+  pas bij de eerste klik) is apart uitgewerkt in issue #1017 — nog niet geïmplementeerd.
 - De server levert per wedstrijd permissie-flags: `IsEditFieldAllowed`, `IsAssignDressingRoomsAllowed`, `IsAssignOfficialsAllowed`, `IsEditFieldSidePanelAllowed`, `IsAddScoreAllowed`, `IsHomeMatch`, plus `TaskStatus` (bv. `MISSING_DRESSINGROOMS`). Ideaal om knoppen in onze app aan/uit te zetten.
 
 ### 2.3 Deep-links (route in de SPA)
@@ -218,7 +218,9 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
      aparte Azure AD-integratie met schrijfrechten op de eigen Function App). Bootstrap gebeurt via
      `PUT /api/beheer/sportlink-extensie/rollen/{rolNaam}/token` (admin-only, write-only, valideert
      het token met één refresh-poging vóór opslag). Zie
-     `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkClubTokenProvider.cs`.
+     `FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs` (implementeert
+     `ISportlinkClubTokenStore` uit `Planner.Shared`, i.p.v. de ARM-API-variant
+     `SportlinkClubAppSettingsTokenStore` die de SQL Server-tier gebruikt, #998).
   3. **Bevestigd afgewezen (2026-09-04):** `device_code`-grant staat realm-breed aan, maar is
      **uitgeschakeld voor deze specifieke client** — `POST device_authorization_endpoint` met
      `client_id=sportlink-club-web` geeft `{"error":"unauthorized_client","error_description":

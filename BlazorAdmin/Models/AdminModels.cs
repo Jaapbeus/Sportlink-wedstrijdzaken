@@ -46,29 +46,24 @@ public class GeocodeResultDto
     public string DisplayName { get; set; } = "";
 }
 
-/// <summary>#991: read-only Sportlink-paneel per wedstrijd, zie
-/// docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §2.2/§6. Nested Field/Facility/
-/// MatchDressingRooms-vorm is niet volledig geverifieerd, dus als ruwe JsonElement doorgegeven —
-/// zie FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkClubModels.cs.</summary>
+/// <summary>#991: read-only Sportlink-paneel per wedstrijd. Spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998) — houd deze
+/// twee synchroon bij een contractwijziging.</summary>
 public class SportlinkMatchInfoDto
 {
     public string? PublicMatchId { get; set; }
-    public string? MatchDate { get; set; }
+    public string? ExternalMatchId { get; set; }
+    public DateTimeOffset? MatchDate { get; set; }
     public string? MatchStatus { get; set; }
+    public bool IsHomeMatch { get; set; }
     public bool IsCanceledMatch { get; set; }
     public bool IsConceptMatch { get; set; }
-    public bool IsHomeMatch { get; set; }
+    public string? TaskStatus { get; set; }
     public bool IsEditFieldAllowed { get; set; }
-    public bool IsEditFieldSidePanelAllowed { get; set; }
     public bool IsAssignDressingRoomsAllowed { get; set; }
     public bool IsAssignOfficialsAllowed { get; set; }
+    public bool IsEditFieldSidePanelAllowed { get; set; }
     public bool IsAddScoreAllowed { get; set; }
-    public bool IsEditFieldOffsetAllowed { get; set; }
-    public bool IsEditFieldSizeAllowed { get; set; }
-    public List<string> TaskStatus { get; set; } = new();
-    public System.Text.Json.JsonElement? Field { get; set; }
-    public System.Text.Json.JsonElement? Facility { get; set; }
-    public System.Text.Json.JsonElement? MatchDressingRooms { get; set; }
 }
 
 public class SettingsUpdateDto
