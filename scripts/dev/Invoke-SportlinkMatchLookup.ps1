@@ -47,6 +47,21 @@ if (-not (Test-Path $settingsPath)) {
     exit 1
 }
 
+# VERPLICHTE mensbevestiging — dit script gebruikt een echt Sportlink refresh_token. Coding agents
+# (incl. Claude Code) mogen dit mechanisme NOOIT zelf uitvoeren, zie
+# docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §2.6: een eerder incident dwong een
+# token-intrekking af nadat een token per ongeluk in een agent-chatsessie belandde. Read-Host
+# blokkeert/faalt automatisch in een niet-interactieve agent-tool-omgeving (stdin op /dev/null) —
+# dit is dus een technische barrière, niet alleen een documentatie-afspraak.
+Write-Host "=== Mensbevestiging vereist ===" -ForegroundColor Yellow
+Write-Host "Dit script gebruikt een echt, opgeslagen Sportlink refresh_token. Een coding agent mag" -ForegroundColor Yellow
+Write-Host "dit NOOIT zelf draaien (zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §2.6)." -ForegroundColor Yellow
+$mensBevestiging = Read-Host "Typ JA om te bevestigen dat een mens dit nu zelf, interactief, uitvoert"
+if ($mensBevestiging -ne "JA") {
+    Write-Host "Geannuleerd — geen 'JA' ontvangen." -ForegroundColor Red
+    exit 1
+}
+
 $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
 $refreshToken = $settings.Values.$settingsKey
 if ([string]::IsNullOrWhiteSpace($refreshToken)) {

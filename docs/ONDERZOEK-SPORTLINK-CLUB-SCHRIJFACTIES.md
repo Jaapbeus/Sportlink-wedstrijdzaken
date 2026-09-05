@@ -1,6 +1,14 @@
 # Onderzoek: wedstrijdwijzigingen vanuit de wedstrijdzaken-app naar Sportlink Club
 
-> Datum: 2026-09-04. Status: **onderzoek/plan, nog geen enkele regel productiecode**. Alleen-lezen analyse van club.sportlink.com plus één door de wedstrijdsecretaris zelf uitgevoerde en teruggedraaide kleedkamerwijziging (meegelezen in netwerkverkeer).
+> **Dit is het technische bronrapport (historische onderzoeksnotities). Voor de levende,
+> samenvattende beschrijving — inclusief de verplichte regel dat coding agents dit mechanisme nooit
+> zelf mogen uitvoeren — zie [`docs/SPORTLINK-WEB-EXTENSION.md`](SPORTLINK-WEB-EXTENSION.md).**
+>
+> Datum: 2026-09-04. Status: **onderzoek/plan** — dit rapport zelf wordt niet meer actief
+> bijgewerkt als planstatus; de eerste implementatiestap (#988, feature-toggle + rolgebaseerde
+> serviceaccounts) is inmiddels gebouwd en gemerged. Alleen-lezen analyse van club.sportlink.com
+> plus één door de wedstrijdsecretaris zelf uitgevoerde en teruggedraaide kleedkamerwijziging
+> (meegelezen in netwerkverkeer).
 > Bevat bewust geen persoonsgegevens, club-/accommodatie-ID's, tokens of wachtwoorden. Waar iets niet hard is vastgesteld staat **[onzeker]**.
 > Uitwerking en verificatie van dit plan loopt via de comments op epic #986 en sub-issues #987-#998 — dit document blijft het bronrapport, niet de actuele status. Zie #986 voor de actuele architectuur-beslissingen.
 
@@ -22,11 +30,9 @@ niet meer juist**:
   `Planner.Shared/` — dezelfde uitzondering als `TeamNaamNormalisatie`/`VeldResolver`.
 - `public.appsettings` (Postgres) heeft **al** een `sportlinkapiurl`/`sportlinkclientid`-kolom en
   bijna alle kolommen van `dbo.AppSettings` (geverifieerd via `\d public.appsettings` op de lokale
-  Postgres-container) — maar `PostgresAppSettings.LoadSettingsAsync` leest er procesbreed nog maar
-  7 van in de cache, en `AdminSettingsFunction.cs` (Postgres-tier) heeft een eigen
-  `AllowedFields`-whitelist die `SportlinkExtensionEnabled` nog mist. Een nieuwe instelling moet in
-  **beide** tier-specifieke `AdminSettingsFunction.cs`-whitelists en in **beide** DB-schema's
-  (`Database/dbo/Tables/AppSettings.sql` én een nieuwe `Database.Postgres/migrations/0xx_*.sql`).
+  Postgres-container). **Opgelost (#988):** `PostgresAppSettings.LoadSettingsAsync` en
+  `AdminSettingsFunction.cs` (beide tiers) zijn inmiddels uitgebreid met `SportlinkExtensionEnabled`
+  — dit was hier nog als openstaand gat benoemd, is nu gebouwd en gemerged.
 - **§2.2 mapping-hypothese is nog niet geverifieerd** — dat vereist een query tegen de echte
   productiedatabase (nu Supabase Postgres), niet tegen een lokale, nog lege Postgres-container.
   Zie de comment op #987 voor de exacte, Postgres-syntax-aangepaste query.

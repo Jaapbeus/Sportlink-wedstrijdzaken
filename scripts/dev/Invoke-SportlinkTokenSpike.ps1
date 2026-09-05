@@ -18,6 +18,13 @@
 #
 # Vraagt bij ELKE run opnieuw naar het refresh_token (zelfde reden als het cutover-script: een
 # foutieve waarde uit een vorige poging mag niet stilzwijgend blijven hangen).
+#
+# AGENT-BARRIÈRE: de Read-Host-prompt hieronder is niet alleen voor jouw veiligheid maar ook een
+# technische barrière tegen coding agents — die draaien in een niet-interactieve tool-omgeving
+# (stdin op /dev/null) en kunnen een Read-Host-prompt dus niet invullen. Een coding agent mag dit
+# mechanisme sowieso NOOIT zelf uitvoeren, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §2.6:
+# een eerder incident dwong een token-intrekking af nadat een token per ongeluk in een
+# agent-chatsessie belandde.
 
 param(
     [switch]$ReuseEnvironment
