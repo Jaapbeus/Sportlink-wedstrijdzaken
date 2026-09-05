@@ -1,6 +1,5 @@
 @page "/email-templates"
 @inject AdminApiClient Api
-@inject IAuthService Auth
 @inject ClubSelectorService ClubSelector
 @using BlazorAdmin.Services
 @implements IDisposable
@@ -187,7 +186,6 @@ else
     {
         var dto = new SettingsUpdateDto
         {
-            GewijzigdDoor = Auth.UserName ?? "admin",
             Velden = new Dictionary<string, string?> { ["EmailVoetnoot"] = voetnoot }
         };
         var r = await Api.UpdateSettingsAsync(dto);

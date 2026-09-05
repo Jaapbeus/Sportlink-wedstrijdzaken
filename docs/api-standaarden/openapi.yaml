@@ -849,11 +849,10 @@ components:
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
         KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.
+
+        De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
+        door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
       properties:
-        gewijzigdDoor:
-          type: string
-          description: Naam of ID van de beheerder die de wijziging doorvoert
-          example: "beheerder@voorbeeld.nl"
         velden:
           type: object
           additionalProperties:
@@ -962,6 +961,9 @@ components:
       required:
         - onderwerp
         - bodyTemplate
+      description: |
+        De audit-actor wordt uitsluitend server-side bepaald uit de door Easy Auth gevalideerde
+        claims — dit contract kent daarom geen "wie"-veld (#1003).
       properties:
         onderwerp:
           type: string
@@ -970,9 +972,6 @@ components:
         actief:
           type: boolean
           default: true
-        gewijzigdDoor:
-          type: string
-          nullable: true
 
     TemplateResetResponse:
       type: object

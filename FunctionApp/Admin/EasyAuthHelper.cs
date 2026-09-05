@@ -95,6 +95,39 @@ internal static class EasyAuthHelper
         => GetClaimValue(req, "preferred_username", "upn", "email");
 
     /// <summary>
+    /// Bepaalt de audit-actor (<c>dbo.AppSettingsAudit.GewijzigdDoor</c>) uitsluitend server-side —
+    /// nooit uit client-input (#1003: een geldige admin-token liet de aanroeper voorheen zelf
+    /// <c>GewijzigdDoor</c> in de request-body of querystring kiezen, waardoor het auditlog niet
+    /// betrouwbaar was voor onderzoek naar misbruik of een gestolen beheerderssessie).
+    /// <para>
+    /// Productie (<c>WEBSITE_SITE_NAME</c> aanwezig): een stabiele identiteit uit de door Easy Auth
+    /// gevalideerde claims — <see cref="GetCallerEmail"/> (upn/preferred_username/email) met
+    /// <see cref="GetCallerName"/> als terugval. Ontbreken beide claims tóch (zou nooit mogen na een
+    /// geslaagde <see cref="RequireAdmin"/>-check, want Entra levert altijd minimaal één van de twee)
+    /// dan gooit dit een <see cref="InvalidOperationException"/> — een productiemutatie mag nooit
+    /// stilzwijgend als "onbekend" in het auditlog belanden.
+    /// </para>
+    /// <para>
+    /// Lokale ontwikkeling (geen <c>WEBSITE_SITE_NAME</c>, dus geen Easy Auth-principal beschikbaar):
+    /// de herkenbare synthetische testidentiteit <c>"lokale-ontwikkelaar"</c> — nooit "onbekend".
+    /// </para>
+    /// </summary>
+    public static string GetAuditActor(HttpRequest req)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName))
+            return "lokale-ontwikkelaar";
+
+        var actor = GetCallerEmail(req) ?? GetCallerName(req);
+        if (string.IsNullOrWhiteSpace(actor))
+            throw new InvalidOperationException(
+                "Audit-actor kon niet worden bepaald: gevalideerde Easy Auth-claims " +
+                "(upn/preferred_username/email/name) ontbreken. Mutatie geweigerd om audit-integriteit te waarborgen.");
+
+        return actor;
+    }
+
+    /// <summary>
     /// Leest de club-code uit de X-Club-Code request header.
     /// Terugval op ClubCode uit dbo.AppSettings als de header ontbreekt.
     /// </summary>

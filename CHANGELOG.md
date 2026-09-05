@@ -108,6 +108,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   draaide) zijn nu vastgezet op een geverifieerde volledige upstream-commit-SHA, met de bedoelde
   releaseversie als commentaar. Bestaande Dependabot-configuratie voor `github-actions` blijft
   actief zodat toekomstige versie-updates via reviewbare PR's binnenkomen.
+- **Auditlog voor instellingen- en templatewijzigingen kon niet meer vervalst worden naar een
+  andere beheerder (issue 1003).** Wie een wijziging heeft doorgevoerd werd voorheen uit de
+  request-body of een querystring-parameter gelezen — een beheerder kon dus zelf kiezen welke naam
+  in het auditlog kwam te staan. De actor komt nu uitsluitend uit de gevalideerde Easy Auth-claim
+  van de aanroeper, op beide database-tiers.
 
 ## [3.2.0.2] — 2026-09-04
 

@@ -1,6 +1,5 @@
 @page "/instellingen"
 @inject AdminApiClient Api
-@inject IAuthService Auth
 @inject ClubSelectorService ClubSelector
 @using BlazorAdmin.Services
 @implements IDisposable
@@ -708,7 +707,6 @@ else
 
         var update = new SettingsUpdateDto
         {
-            GewijzigdDoor = Auth.UserName,
             Velden = new()
             {
                 ["Accommodatie"] = settings.Accommodatie,

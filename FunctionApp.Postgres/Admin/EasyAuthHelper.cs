@@ -78,6 +78,26 @@ internal static class EasyAuthHelper
             ?.Val;
     }
 
+    /// <summary>
+    /// Bepaalt de audit-actor (<c>public.appsettingsaudit.gewijzigddoor</c>) uitsluitend server-side —
+    /// nooit uit client-input (#1003, zelfde precedent als de SQL Server-tier). Zie
+    /// <c>FunctionApp/Admin/EasyAuthHelper.cs</c> voor de volledige toelichting.
+    /// </summary>
+    public static string GetAuditActor(HttpRequest req)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName))
+            return "lokale-ontwikkelaar";
+
+        var actor = GetCallerEmail(req) ?? GetCallerName(req);
+        if (string.IsNullOrWhiteSpace(actor))
+            throw new InvalidOperationException(
+                "Audit-actor kon niet worden bepaald: gevalideerde Easy Auth-claims " +
+                "(upn/preferred_username/email/name) ontbreken. Mutatie geweigerd om audit-integriteit te waarborgen.");
+
+        return actor;
+    }
+
     public static string GetClubCodeFromRequest(HttpRequest req)
     {
         if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
