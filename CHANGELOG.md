@@ -46,9 +46,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
     (kleedkamers, velden, officials, uitslag). Beide tiers (SQL Server + Postgres) ondersteund.
   - `SportlinkMutationGuard`: guardrail-logica — controleert thuiswedstrijd-beperking en per-soort permissies 
     vóór elke mutatie-poging.
-  PublicMatchId-waarden zijn expliciet parameters; automatische berekening uit wedstrijdcode is buiten scope 
-  (#1016 trackert de reverse-lookup als toekomstige taak).
-
+- **Read-only Sportlink-paneel per wedstrijd in Dagplanning + PublicMatchId-reverse-lookup (issue
+  991/#1016, epic 986).** Toont wat Sportlink Club van een wedstrijd weet — status, kleedkamers/veld,
+  en welke wijzigingen daar toegestaan zouden zijn — zonder dat er ooit iets naar Sportlink wordt
+  teruggeschreven. `PublicMatchId` wordt automatisch gevonden via een reverse-lookup bij Sportlink
+  (gecachet, zodat de trage lookup maar één keer per wedstrijd nodig is) — dit sluit #1016.
+  Refresh-tokens worden op de Postgres-tier productie-persistent opgeslagen in een eigen
+  DB-tabel (niet Function App-instellingen via de Azure Management API). Werkt alleen als de
+  Sportlink Web Extension-schakelaar aan staat en vereist de aanvullende Wedstrijdzaken-rol.
+  Instellingen heeft een nieuw, write-only invoerveld om het echte Sportlink-token te registreren
+  (nooit teruggetoond).
 - **Feature-toggle "Sportlink Web Extension" in Instellingen, standaard uit (issue 988).**
   Voorbereidende stap voor het terugschrijven van wedstrijdwijzigingen naar Sportlink Club (epic
   986) — deze release doet zelf nog niets met Sportlink, alleen de schakelaar en een

@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.0.33
+  version: 3.0.34
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -38,6 +38,8 @@ tags:
     description: Testdata beheer voor ALLSTARS demo-club (vereist admin-rol)
   - name: feedback
     description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
+  - name: sportlink
+    description: Sportlink Web Extension read-only endpoints (#986/#991, vereist Entra-approl Wedstrijdzaken)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Beveiligingsschema's
@@ -799,6 +801,45 @@ components:
         SportlinkAccountNaam:
           type: string
           nullable: true
+
+    SportlinkMatchInfoResponse:
+      type: object
+      description: |
+        Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986). Spiegelt
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998).
+      properties:
+        PublicMatchId:
+          type: string
+          nullable: true
+        ExternalMatchId:
+          type: string
+          nullable: true
+        MatchDate:
+          type: string
+          format: date-time
+          nullable: true
+        MatchStatus:
+          type: string
+          nullable: true
+        IsHomeMatch:
+          type: boolean
+        IsCanceledMatch:
+          type: boolean
+        IsConceptMatch:
+          type: boolean
+        TaskStatus:
+          type: string
+          nullable: true
+        IsEditFieldAllowed:
+          type: boolean
+        IsAssignDressingRoomsAllowed:
+          type: boolean
+        IsAssignOfficialsAllowed:
+          type: boolean
+        IsEditFieldSidePanelAllowed:
+          type: boolean
+        IsAddScoreAllowed:
+          type: boolean
 
     UpdateSettingsRequest:
       type: object
@@ -2681,6 +2722,101 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /beheer/sportlink-extensie/rollen/{rolNaam}/token:
+    put:
+      tags: [beheer]
+      operationId: registreerSportlinkExtensieToken
+      summary: Refresh-token productie-persistent registreren (write-only)
+      description: |
+        Bootstrap van het échte Sportlink refresh_token voor een rol (#990/#991, epic #986).
+        Valideert het token met één refresh-poging vóór opslag in `public.sportlinkservicetokens`.
+        Er bestaat bewust géén GET-tegenhanger — het token wordt nooit teruggegeven.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: rolNaam
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [Wedstrijdzaken]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [RefreshToken]
+              properties:
+                RefreshToken:
+                  type: string
+                  description: Ruwe refresh_token-waarde, bv. gevangen via Tools/SportlinkTokenCapture.
+      responses:
+        '200':
+          description: Token gevalideerd en opgeslagen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  RolNaam:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Sportlink heeft het opgegeven refresh-token geweigerd
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sportlink/match/{wedstrijdcode}:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkMatch
+      summary: Read-only wedstrijdgegevens uit Sportlink Club (#991, epic #986)
+      description: |
+        Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
+        `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
+        — #987) en haalt daarmee het niet-persoonsgebonden wedstrijdobject op bij Sportlink Club.
+        Uitsluitend lezen — geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of
+        in plaats van admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: wedstrijdcode
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId.
+      responses:
+        '200':
+          description: Wedstrijdgegevens
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkMatchInfoResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Wedstrijd, PublicMatchId of Sportlink-match niet gevonden
+        '409':
+          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
   /beheer/geocode:
     get:

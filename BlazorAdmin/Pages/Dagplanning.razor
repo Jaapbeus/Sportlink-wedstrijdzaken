@@ -446,6 +446,7 @@
                             <th>Competitie</th>
                             <th title="Gewenste tijd en de afwijking daarvan in de optimale planning">Voorkeurstijd</th>
                             <th title="Verplaatst de planner deze wedstrijd t.o.v. de huidige stand?">Wijziging</th>
+                            <th title="Wat Sportlink Club over deze wedstrijd weet (read-only)">Sportlink</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -561,7 +562,69 @@
                                             break;
                                     }
                                 </td>
+
+                                <td style="font-size:0.85rem;">
+                                    @if (item.WedstrijdCode == null)
+                                    {
+                                        <span class="text-muted" title="Geen wedstrijdcode bekend voor deze regel">—</span>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                @onclick="() => ToggleSportlinkPaneelAsync(item.WedstrijdCode.Value)">
+                                            @(_sportlinkUitgeklapt.GetValueOrDefault(item.WedstrijdCode.Value) ? "Verberg" : "Toon")
+                                        </button>
+                                        @if (_sportlinkBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                        {
+                                            <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
+                                        }
+                                    }
+                                </td>
                             </tr>
+                            @if (item.WedstrijdCode != null && _sportlinkUitgeklapt.GetValueOrDefault(item.WedstrijdCode.Value))
+                            {
+                                <tr>
+                                    <td colspan="7" class="bg-light" style="font-size:0.85rem;">
+                                        @{
+                                            var _sportlinkFoutTekst = _sportlinkFout.GetValueOrDefault(item.WedstrijdCode.Value);
+                                            var _sportlinkData = _sportlinkInfo.GetValueOrDefault(item.WedstrijdCode.Value);
+                                        }
+                                        @if (!string.IsNullOrEmpty(_sportlinkFoutTekst))
+                                        {
+                                            <span class="text-danger">@_sportlinkFoutTekst</span>
+                                        }
+                                        else if (_sportlinkData == null)
+                                        {
+                                            <span class="text-muted">Bezig met laden…</span>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex flex-wrap gap-3">
+                                                <div><strong>PublicMatchId:</strong> @(_sportlinkData.PublicMatchId ?? "—")</div>
+                                                <div><strong>Status:</strong> @(_sportlinkData.MatchStatus ?? "—")</div>
+                                                @if (_sportlinkData.IsCanceledMatch)
+                                                {
+                                                    <span class="badge bg-danger">Geannuleerd</span>
+                                                }
+                                                @if (_sportlinkData.IsConceptMatch)
+                                                {
+                                                    <span class="badge bg-warning text-dark">Concept</span>
+                                                }
+                                            </div>
+                                            <div class="d-flex flex-wrap gap-2 mt-1">
+                                                @if (_sportlinkData.IsEditFieldAllowed) { <span class="badge bg-light text-dark border">Veld wijzigen toegestaan</span> }
+                                                @if (_sportlinkData.IsAssignDressingRoomsAllowed) { <span class="badge bg-light text-dark border">Kleedkamers toewijzen toegestaan</span> }
+                                                @if (_sportlinkData.IsAssignOfficialsAllowed) { <span class="badge bg-light text-dark border">Scheidsrechters toewijzen toegestaan</span> }
+                                                @if (_sportlinkData.IsAddScoreAllowed) { <span class="badge bg-light text-dark border">Uitslag invoeren toegestaan</span> }
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(_sportlinkData.TaskStatus))
+                                            {
+                                                <div class="mt-1 text-muted">Openstaand: @_sportlinkData.TaskStatus</div>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
@@ -630,6 +693,35 @@
     private List<VeldbezettingItemDto> _veldbezetting = new();
     private bool _veldbezettingBezig;
     private string? _veldbezettingError;
+
+    // Sportlink-paneel per wedstrijd (#991) — lazy load per wedstrijdcode, niet bij page-load voor
+    // alle rijen tegelijk (de #987-reverse-lookup is traag en niet club-gescoped).
+    private readonly Dictionary<long, bool> _sportlinkUitgeklapt = new();
+    private readonly Dictionary<long, bool> _sportlinkBezig = new();
+    private readonly Dictionary<long, SportlinkMatchInfoDto?> _sportlinkInfo = new();
+    private readonly Dictionary<long, string?> _sportlinkFout = new();
+
+    private async Task ToggleSportlinkPaneelAsync(long wedstrijdCode)
+    {
+        var nuUitgeklapt = !_sportlinkUitgeklapt.GetValueOrDefault(wedstrijdCode);
+        _sportlinkUitgeklapt[wedstrijdCode] = nuUitgeklapt;
+        if (!nuUitgeklapt || _sportlinkInfo.ContainsKey(wedstrijdCode)) return;
+
+        _sportlinkBezig[wedstrijdCode] = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetSportlinkMatchInfoAsync(wedstrijdCode.ToString());
+            if (result.Success)
+                _sportlinkInfo[wedstrijdCode] = result.Data;
+            else
+                _sportlinkFout[wedstrijdCode] = result.ErrorMessage ?? "Onbekende fout bij ophalen Sportlink-gegevens.";
+        }
+        finally
+        {
+            _sportlinkBezig[wedstrijdCode] = false;
+        }
+    }
 
     // HTML-export van de berekende planning (voorheen onderdeel van de klassieke flow, #666)
     private string? _kopieerStatus;

@@ -46,6 +46,26 @@ public class GeocodeResultDto
     public string DisplayName { get; set; } = "";
 }
 
+/// <summary>#991: read-only Sportlink-paneel per wedstrijd. Spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998) — houd deze
+/// twee synchroon bij een contractwijziging.</summary>
+public class SportlinkMatchInfoDto
+{
+    public string? PublicMatchId { get; set; }
+    public string? ExternalMatchId { get; set; }
+    public DateTimeOffset? MatchDate { get; set; }
+    public string? MatchStatus { get; set; }
+    public bool IsHomeMatch { get; set; }
+    public bool IsCanceledMatch { get; set; }
+    public bool IsConceptMatch { get; set; }
+    public string? TaskStatus { get; set; }
+    public bool IsEditFieldAllowed { get; set; }
+    public bool IsAssignDressingRoomsAllowed { get; set; }
+    public bool IsAssignOfficialsAllowed { get; set; }
+    public bool IsEditFieldSidePanelAllowed { get; set; }
+    public bool IsAddScoreAllowed { get; set; }
+}
+
 public class SettingsUpdateDto
 {
     public string? GewijzigdDoor { get; set; }
