@@ -14,9 +14,9 @@
          Wie dit terugzet naar true moet óók de CSP oplossen — en nonce/SRI kan niet op statische
          hosting. Zie index.html voor de volledige afweging. -->
     <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
-    <Version>3.2.2.4</Version>
-    <AssemblyVersion>3.2.2.4</AssemblyVersion>
-    <FileVersion>3.2.2.4</FileVersion>
+    <Version>3.2.2.5</Version>
+    <AssemblyVersion>3.2.2.5</AssemblyVersion>
+    <FileVersion>3.2.2.5</FileVersion>
     <!-- Azure Static Web Apps doet content negotiation op .wasm en serveert de pre-compressed
          .wasm.br data ZONDER 'Content-Encoding: br' header te zetten. Chrome (vooral Incognito)
          interpreteert de Brotli-bytes dan als raw wasm → SRI integrity check faalt → app crasht.

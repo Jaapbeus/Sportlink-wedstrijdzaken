@@ -68,6 +68,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   blijft beschikbaar via de bestaande structured logging (Application Insights). Hetzelfde beleid
   geldt nu voor alle drie de paden: nieuw issue, heropening en comment. Deduplicatie en de
   EgressGuard-uitknop zijn ongewijzigd. (#1008)
+- **SSRF-allowlist thema-extractor blokkeert redirects en interne adressen (#1007).** De
+  thema-extractor (club-website → kleuren/favicon/logo) volgde eerder automatisch redirects
+  zonder de nieuwe bestemming opnieuw te controleren, en een opgeslagen club-website-URL werd niet
+  gevalideerd tegen privé/interne adressen. Beide tiers (SQL Server + Postgres) gebruiken nu een
+  centrale SSRF-beschermingslaag: redirects staan uit en worden begrensd/opnieuw gevalideerd
+  gevolgd, en elke daadwerkelijke verbinding resolvet zelf — vlak vóór het openen van de
+  TCP-verbinding — en weigert privé/loopback/link-local/CGNAT-bestemmingen en niet-standaardpoorten
+  (voorkomt DNS-rebinding). Het opslaan van de club-website-instelling weigert nu al een
+  privé/interne bestemming, niet pas bij extractie.
 
 - **GitHub Actions gepind op commit-SHA i.p.v. wijzigbare tag/branch (supply-chain hardening, #1011).**
   Alle `uses:`-verwijzingen in `.github/workflows/*.yml` (45 stuks, incl. `azure/login`,
