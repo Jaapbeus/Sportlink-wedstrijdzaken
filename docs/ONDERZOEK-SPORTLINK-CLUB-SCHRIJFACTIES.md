@@ -33,9 +33,12 @@ niet meer juist**:
   Postgres-container). **Opgelost (#988):** `PostgresAppSettings.LoadSettingsAsync` en
   `AdminSettingsFunction.cs` (beide tiers) zijn inmiddels uitgebreid met `SportlinkExtensionEnabled`
   — dit was hier nog als openstaand gat benoemd, is nu gebouwd en gemerged.
-- **§2.2 mapping-hypothese is nog niet geverifieerd** — dat vereist een query tegen de echte
-  productiedatabase (nu Supabase Postgres), niet tegen een lokale, nog lege Postgres-container.
-  Zie de comment op #987 voor de exacte, Postgres-syntax-aangepaste query.
+- **§2.2 mapping-hypothese: WEERLEGD (2026-09-05), niet bevestigd.** Productiequery tegen Supabase
+  voor exact dezelfde `wedstrijdnummer` (3403) en datum (2026-09-05) als het onderzoek gaf
+  `wedstrijdcode = 20698956` — niet `392686417` (het cijfer achter `PublicMatchId M392686417` uit
+  het onderzoek). Andere lengte (8 vs. 9 cijfers), geen enkele herkenbare relatie.
+  **`PublicMatchId` is dus GEEN eenvoudige "M" + wedstrijdcode-samenvoeging.** Zie §2.2 voor het
+  gevolg: dit vereist een reverse-lookup-endpoint, niet een formule.
 
 ## 1. Antwoord in één alinea
 
@@ -59,8 +62,24 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 
 ### 2.2 Wedstrijd-identificatie
 - `PublicMatchId` (bv. `M392686417`) is de sleutel voor alle detail- en mutatiecalls.
-- `ExternalMatchId` (bv. `3403`) is het getoonde "Wedstrijdnr." in de UI.
-- Onze database heeft `his.matches.wedstrijdcode` en `wedstrijdnummer` (BIGINT). **[onzeker, te verifiëren]**: `PublicMatchId` = `"M" + wedstrijdcode` en `ExternalMatchId` = `wedstrijdnummer`. Dit is één SQL-query tegen de eigen DB om te bevestigen.
+- `ExternalMatchId` (bv. `3403`) is het getoonde "Wedstrijdnr." in de UI. Komt overeen met onze
+  eigen `his.matches.wedstrijdnummer` — dat deel van de hypothese is **wél correct** (zelfde
+  wedstrijdnummer 3403 teruggevonden op dezelfde datum in productie).
+- **WEERLEGD (2026-09-05, live productiequery tegen Supabase):** `PublicMatchId` is GEEN
+  `"M" + wedstrijdcode`. Voor exact dezelfde wedstrijd (wedstrijdnummer 3403, datum 2026-09-05)
+  geeft onze database `wedstrijdcode = 20698956` — niet `392686417` (het cijfer uit
+  `PublicMatchId M392686417` dat het onderzoek voor diezelfde wedstrijd noteerde). Verschillend
+  aantal cijfers (8 vs. 9), geen enkele herkenbare relatie (geen offset, geen bit-shift-patroon
+  bekeken, maar op het eerste gezicht volledig ongerelateerd).
+- **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.
+  Elk toekomstig endpoint dat een `PublicMatchId` nodig heeft (deep-link, #991+) moet 'm via een
+  **reverse-lookup bij Sportlink zelf** opzoeken — vermoedelijk via
+  `competition/match/MatchProgramOverview?DateFrom=&DateTo=` (§2.5: bevat beide ID's per wedstrijd,
+  maar 21 s bij een breed bereik — smal date-bereik, idealiter één dag, is dus verplicht om dit
+  bruikbaar te maken) of een nog niet ontdekt, gerichter zoek-endpoint. **Nog niet getest**: of een
+  smal date-bereik (`DateFrom=DateTo=`één dag) de call ook echt versnelt, en of er een sneller
+  alternatief bestaat. Eenmaal gevonden: cache het resultaat in onze eigen DB (bv. een nieuwe
+  `PublicMatchId`-kolom op `his.matches`), zodat de trage lookup maar één keer per wedstrijd nodig is.
 - De server levert per wedstrijd permissie-flags: `IsEditFieldAllowed`, `IsAssignDressingRoomsAllowed`, `IsAssignOfficialsAllowed`, `IsEditFieldSidePanelAllowed`, `IsAddScoreAllowed`, `IsHomeMatch`, plus `TaskStatus` (bv. `MISSING_DRESSINGROOMS`). Ideaal om knoppen in onze app aan/uit te zetten.
 
 ### 2.3 Deep-links (route in de SPA)
