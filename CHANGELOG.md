@@ -69,6 +69,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   geldt nu voor alle drie de paden: nieuw issue, heropening en comment. Deduplicatie en de
   EgressGuard-uitknop zijn ongewijzigd. (#1008)
 
+- **GitHub Actions gepind op commit-SHA i.p.v. wijzigbare tag/branch (supply-chain hardening, #1011).**
+  Alle `uses:`-verwijzingen in `.github/workflows/*.yml` (45 stuks, incl. `azure/login`,
+  `azure/sql-action`, `Azure/functions-action`, `Azure/static-web-apps-deploy`,
+  `gitleaks/gitleaks-action` en `aquasecurity/trivy-action`, die eerder op de wijzigbare `@master`
+  draaide) zijn nu vastgezet op een geverifieerde volledige upstream-commit-SHA, met de bedoelde
+  releaseversie als commentaar. Bestaande Dependabot-configuratie voor `github-actions` blijft
+  actief zodat toekomstige versie-updates via reviewbare PR's binnenkomen.
+
 ## [3.2.0.2] — 2026-09-04
 
 ### Fixed

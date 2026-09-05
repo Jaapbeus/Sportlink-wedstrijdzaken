@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (volledige geschiedenis + tags)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -82,7 +82,7 @@ jobs:
 
       - name: Issues sluiten en label verwijderen
         if: steps.issues.outputs.numbers != ''
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           ISSUE_NUMBERS: ${{ steps.issues.outputs.numbers }}
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
@@ -140,7 +140,7 @@ jobs:
       # precies de verwarring die #615 wilde wegnemen.
       - name: Rapporteer issues die nog op awaiting-release staan
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
           AFGEHANDELD: ${{ steps.issues.outputs.numbers }}

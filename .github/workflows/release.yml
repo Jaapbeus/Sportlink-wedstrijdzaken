@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout (volledige geschiedenis voor CHANGELOG-parsing)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -80,7 +80,7 @@ jobs:
           git push origin "${{ steps.version.outputs.tag }}" 2>/dev/null || echo "Tag staat al op remote — overgeslagen"
 
       - name: GitHub Release aanmaken
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           # Notes via env-var doorgeven — zo wordt CHANGELOG-content NIET als
           # JavaScript template literal geparsed. Backticks, ${...} en andere
