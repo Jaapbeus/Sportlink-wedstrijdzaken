@@ -73,13 +73,20 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
   bekeken, maar op het eerste gezicht volledig ongerelateerd).
 - **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.
   Elk toekomstig endpoint dat een `PublicMatchId` nodig heeft (deep-link, #991+) moet 'm via een
-  **reverse-lookup bij Sportlink zelf** opzoeken — vermoedelijk via
-  `competition/match/MatchProgramOverview?DateFrom=&DateTo=` (§2.5: bevat beide ID's per wedstrijd,
-  maar 21 s bij een breed bereik — smal date-bereik, idealiter één dag, is dus verplicht om dit
-  bruikbaar te maken) of een nog niet ontdekt, gerichter zoek-endpoint. **Nog niet getest**: of een
-  smal date-bereik (`DateFrom=DateTo=`één dag) de call ook echt versnelt, en of er een sneller
-  alternatief bestaat. Eenmaal gevonden: cache het resultaat in onze eigen DB (bv. een nieuwe
-  `PublicMatchId`-kolom op `his.matches`), zodat de trage lookup maar één keer per wedstrijd nodig is.
+  **reverse-lookup bij Sportlink zelf** opzoeken.
+- **Reverse-lookup BEVESTIGD WERKEND (2026-09-05, live productietest):**
+  `competition/match/MatchProgramOverview?DateFrom=<dag>&DateTo=<dag>` (1-daags bereik) gaf voor
+  `ExternalMatchId 3403` op 2026-09-05 exact `PublicMatchId M392686417` — gelijk aan de eerder live
+  waargenomen waarde uit §1. Methode bevestigd correct.
+  - **Timing:** 12,2 s bij een 1-daags bereik (vs. 21,2 s bij het 4-weken-bereik uit §2.5) — sneller,
+    maar nog steeds te traag voor een synchrone gebruikersactie (klik-en-wacht). **Moet dus op de
+    achtergrond gecached worden** (bv. een periodieke taak die voor aankomende wedstrijden alvast
+    `PublicMatchId` opzoekt en opslaat, bv. een nieuwe kolom op `his.matches`), nooit synchroon
+    per klik uitgevoerd worden.
+  - **De respons is niet club-gescoped:** 81 wedstrijden voor die ene dag, duidelijk regio-/
+    competitiebreed, niet beperkt tot onze eigen club. Lokaal filteren op onze eigen
+    `ExternalMatchId`'s is dus verplicht; nog te onderzoeken of een club-specifieke parameter
+    bestaat om dit al server-side te versmallen (zou de 12,2s mogelijk verder verlagen).
 - De server levert per wedstrijd permissie-flags: `IsEditFieldAllowed`, `IsAssignDressingRoomsAllowed`, `IsAssignOfficialsAllowed`, `IsEditFieldSidePanelAllowed`, `IsAddScoreAllowed`, `IsHomeMatch`, plus `TaskStatus` (bv. `MISSING_DRESSINGROOMS`). Ideaal om knoppen in onze app aan/uit te zetten.
 
 ### 2.3 Deep-links (route in de SPA)
