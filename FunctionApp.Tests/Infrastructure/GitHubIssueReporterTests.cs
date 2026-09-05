@@ -164,4 +164,143 @@ public class GitHubIssueReporterTests
         result.Should().NotBeNull("de lookup moet doorpagineren tot de fingerprint gevonden wordt");
         result!.Value.number.Should().Be(555);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Regressietests voor #1008: allowlist i.p.v. denylist voor publieke exception-rapportage.
+    //
+    // De oorspronkelijke SanitizeForPublic-denylist redigeerde key/value-vormen (bv.
+    // "Database=..."), maar niet een databasenaam die in een natuurlijke SQL-foutzin voorkomt
+    // (bv. "Cannot open database ""X"" requested by the login"). De fix vervangt vrije
+    // ex.Message/stacktrace-publicatie volledig door een vaste allowlist van technische velden
+    // (BuildPublicTitle/BuildPublicDiagnostics). Deze tests bewijzen dat de UITEINDELIJK
+    // gepubliceerde titel/body — inclusief de daadwerkelijk naar de GitHub API verzonden
+    // request-body — de synthetische marker nergens bevat, ongeacht welke zinsvorm de
+    // onderliggende SQL-foutmelding gebruikt.
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>Test-only exception waarvan de typenaam "Sql" bevat, ter simulatie van een
+    /// (in productie niet-instantieerbare) Microsoft.Data.SqlClient.SqlException.</summary>
+    private sealed class SyntheticSqlLikeException : Exception
+    {
+        public SyntheticSqlLikeException(string message, Exception? inner = null) : base(message, inner) { }
+    }
+
+    // Synthetische CREATE TABLE-permissionfout met een databasenaam-marker in de foutzin —
+    // exact het scenario uit het issue: "CREATE TABLE permission denied in database 'X'."
+    private const string CreateTablePermissionMarker = "MARKER_DB_9f3c2b1a_ACME";
+    private static readonly Exception CreateTablePermissionException = new SyntheticSqlLikeException(
+        $"CREATE TABLE permission denied in database '{CreateTablePermissionMarker}'. " +
+        "The user does not have permission to perform this action on schema 'stg'.");
+
+    // Synthetische database/login-fout met zowel een databasenaam- als een login-marker.
+    private const string DatabaseLoginDbMarker = "MARKER_DB_54321_CLUB";
+    private const string DatabaseLoginUserMarker = "MARKER_LOGIN_abcde12345";
+    private static readonly Exception DatabaseLoginException = new SyntheticSqlLikeException(
+        $"Login failed for user '{DatabaseLoginUserMarker}'. Cannot open database \"{DatabaseLoginDbMarker}\" " +
+        "requested by the login. The login failed.");
+
+    public static IEnumerable<object[]> SyntheticSqlFoutvormen()
+    {
+        yield return new object[] { CreateTablePermissionException, new[] { CreateTablePermissionMarker } };
+        yield return new object[] { DatabaseLoginException, new[] { DatabaseLoginDbMarker, DatabaseLoginUserMarker } };
+    }
+
+    [Theory]
+    [MemberData(nameof(SyntheticSqlFoutvormen))]
+    public void BuildPublicTitle_SyntheticSqlFout_BevatMarkerNergens(Exception ex, string[] markers)
+    {
+        var title = GitHubIssueReporter.BuildPublicTitle(ex, Fingerprint);
+
+        foreach (var marker in markers)
+            title.Should().NotContain(marker, "de titel mag nooit vrije ex.Message-tekst bevatten (#1008)");
+    }
+
+    [Theory]
+    [MemberData(nameof(SyntheticSqlFoutvormen))]
+    public void BuildPublicDiagnostics_SyntheticSqlFout_BevatMarkerNergensMaarWelAllowlistVelden(Exception ex, string[] markers)
+    {
+        var diagnostics = GitHubIssueReporter.BuildPublicDiagnostics(ex, "FetchAndStoreApiData", Fingerprint, DateTime.Now);
+
+        foreach (var marker in markers)
+            diagnostics.Should().NotContain(marker, "het diagnostiek-blok mag nooit vrije ex.Message-tekst bevatten (#1008)");
+
+        // De allowlist-velden moeten wél aanwezig zijn — dit is geen "verwijder alles"-fix.
+        diagnostics.Should().Contain("Foutcategorie");
+        diagnostics.Should().Contain("Exceptietype");
+        diagnostics.Should().Contain("Interne operationele naam");
+        diagnostics.Should().Contain("FetchAndStoreApiData");
+        diagnostics.Should().Contain("Fingerprint");
+        diagnostics.Should().Contain(Fingerprint);
+    }
+
+    [Theory]
+    [MemberData(nameof(SyntheticSqlFoutvormen))]
+    public async Task CreateIssueAsync_SyntheticSqlFout_VerzondenRequestBodyBevatMarkerNergens(Exception ex, string[] markers)
+    {
+        // Bewijst de daadwerkelijk naar de GitHub API verzonden request-body (title + body),
+        // niet alleen de geïsoleerde builder-functie.
+        string? capturedRequestBody = null;
+        var client = MakeClient(req =>
+        {
+            capturedRequestBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return JsonResponse("""{"number": 4242}""");
+        });
+
+        await GitHubIssueReporter.CreateIssueAsync(
+            client, Owner, Repo, Fingerprint, ex, "FetchAndStoreApiData", NullLogger.Instance);
+
+        capturedRequestBody.Should().NotBeNull();
+        foreach (var marker in markers)
+            capturedRequestBody.Should().NotContain(marker, "de verzonden issue-titel/body mag de synthetische marker nooit bevatten (#1008)");
+        capturedRequestBody.Should().Contain(Fingerprint);
+    }
+
+    [Theory]
+    [MemberData(nameof(SyntheticSqlFoutvormen))]
+    public async Task AddCommentAsync_SyntheticSqlFout_VerzondenRequestBodyBevatMarkerNergens(Exception ex, string[] markers)
+    {
+        // Zelfde beleid als CreateIssueAsync moet gelden voor het heropeningen-/comment-pad —
+        // het issue eist expliciet dat alle drie de paden (nieuw issue, heropening, comment)
+        // hetzelfde beleid volgen.
+        string? capturedRequestBody = null;
+        var client = MakeClient(req =>
+        {
+            capturedRequestBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created);
+        });
+
+        await GitHubIssueReporter.AddCommentAsync(
+            client, Owner, Repo, 370, ex, "FetchAndStoreApiData", Fingerprint, NullLogger.Instance);
+
+        capturedRequestBody.Should().NotBeNull();
+        foreach (var marker in markers)
+            capturedRequestBody.Should().NotContain(marker, "de verzonden comment-body mag de synthetische marker nooit bevatten (#1008)");
+        capturedRequestBody.Should().Contain(Fingerprint);
+    }
+
+    [Fact]
+    public void BuildPublicTitle_SqlAchtigeException_Classificeert_Als_Database()
+    {
+        // Categorisatie is onderdeel van de allowlist (#1008) — geen vrije tekst, wel een vast,
+        // veilig ingedeeld foutcategorie-veld.
+        var title = GitHubIssueReporter.BuildPublicTitle(CreateTablePermissionException, Fingerprint);
+
+        title.Should().Contain("Database");
+        title.Should().Contain(nameof(SyntheticSqlLikeException));
+    }
+
+    [Fact]
+    public void BuildPublicDiagnostics_InnerException_PubliceertAlleenInnerExceptietype()
+    {
+        // Ook de inner-exceptietekst (niet alleen de buitenste ex.Message) mag niet vrij
+        // gepubliceerd worden — alleen het inner-exceptietype (.NET-klassenaam) is toegestaan.
+        const string innerMarker = "MARKER_INNER_TEKST_should_never_leak";
+        var inner = new InvalidOperationException($"Interne foutdetail met {innerMarker}");
+        var outer = new SyntheticSqlLikeException("Buitenste fout zonder marker", inner);
+
+        var diagnostics = GitHubIssueReporter.BuildPublicDiagnostics(outer, "FetchAndStoreApiData", Fingerprint, DateTime.Now);
+
+        diagnostics.Should().NotContain(innerMarker);
+        diagnostics.Should().Contain(nameof(InvalidOperationException));
+    }
 }
