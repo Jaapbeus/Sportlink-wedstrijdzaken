@@ -372,6 +372,31 @@ buitengesloten.
 
 ---
 
+## Codereview-checklist: geleerde kwetsbaarheidspatronen (securitybatch #1003–#1011, 2026-09-05)
+
+Een CISO-review vond acht kwetsbaarheden die stuk voor stuk een **patroon** zijn, geen incident.
+Regressietests per fix voorkomen dat precies díe bug terugkomt; deze checklist voorkomt dat
+hetzelfde soort fout ergens anders opnieuw wordt geïntroduceerd. Loop deze door bij codereview
+wanneer nieuwe code in een van deze categorieën valt:
+
+| # | Patroon | Regel | Voorbeeld van de fix |
+|---|---|---|---|
+| 1 | **Identiteits-/auditvelden** | Wie-heeft-dit-gedaan komt altijd uit de server-gevalideerde Easy Auth-claim, nooit uit request-body of querystring. Een client mag nooit zelf claimen wie hij is. | `EasyAuthHelper.GetAuditActor()` (#1003) |
+| 2 | **Databaseverbindingen (TLS)** | Een niet-lokale (productie/staging) connectiestring moet certificaat + hostnaam valideren (`VerifyFull`/`verify-full`). Geen normalisatiestap mag dat stilzwijgend afzwakken naar `Require`, ook niet als de aanroeper het expliciet anders vroeg. | `PostgresConnectionStringNormalizer` (#1004) |
+| 3 | **PII-/secretscans vóór een externe call** | Een privacy- of secretcheck controleert de **volledige, uiteindelijke** payload (alle velden, inclusief AI-output) **vlak vóór** de externe aanroep — nooit een deelverzameling, en nooit vóór de payload nog aangevuld wordt. | Feedback-PII-gate (#1006) |
+| 4 | **Server-side HTTP-aanroepen naar een (deels) door de gebruiker bepaalde URL** | `AllowAutoRedirect=false` + iedere hop opnieuw valideren; resolve zelf en verbind met dat exacte IP (voorkomt DNS-rebinding); weiger private/loopback/link-local/CGNAT-bestemmingen en niet-standaardpoorten. Een allowlist die alleen de eerste URL checkt is geen SSRF-bescherming. | `SsrfProtection` (#1007) |
+| 5 | **Publieke foutrapportage** | Nooit vrije `ex.Message`/stacktrace/inner-exceptietekst in een publiek issue/comment. Alleen een vaste allowlist van velden (categorie, exceptietype, fingerprint, tijdstip). Denylist-sanitizers missen per definitie nieuwe foutvormen. | `GitHubIssueReporter` (#1008) |
+| 6 | **CI-workflows met productiecredentials** | Een `pull_request`-workflow draait met PR-inhoud (YAML én scripts) — geef zo'n workflow nooit bruikbare productiesecrets. Een privileged stap hoort in een `workflow_run`/protected-environment-context die zijn eigen YAML en bestanden van een vertrouwde ref (main) haalt. | `pre-release-db-check.yml` (#1009) |
+| 7 | **Dynamische waarden in gegenereerde HTML** | Alles wat in HTML-tekst of een attribuut terechtkomt wordt context-specifiek geëncodeerd (tekst vs. attribuut), ook als de bron "intern" (de eigen database) lijkt. String-interpolatie zonder encoding is per definitie een injectierisico. | `PlannerHtmlGenerator` (#1010) |
+| 8 | **Externe GitHub Actions** | Altijd pinnen op een geverifieerde volledige commit-SHA (met de bedoelde versie als commentaar), nooit op een tag of branch (`@v3`, `@master`) — die zijn wijzigbaar door de upstream-maintainer zonder review hier. | Alle `.github/workflows/*.yml` (#1011) |
+
+**Bij een nieuwe PR:** als de wijziging in een van deze acht categorieën valt, verifieer expliciet
+dat het bovenstaande patroon gevolgd wordt — niet alleen dat de functionaliteit werkt. Zie de
+individuele issues (#1003, #1004, #1006, #1007, #1008, #1009, #1010, #1011) voor de volledige
+analyse, reproductie en acceptatiecriteria per bevinding.
+
+---
+
 ## Gedeelde verantwoordelijkheid
 
 Iedereen die aan deze repository werkt — mens of AI-assistent — is verantwoordelijk voor het naleven van dit protocol.
