@@ -76,6 +76,23 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   admin/user, geen vervanging).
 
 ### Security
+- **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
+  verholpen (#1010).** `Planner.Shared/PlannerHtmlGenerator.cs` interpoleerde deze en andere
+  dynamische velden (locatie, footer, suggestieteksten) ongeëncodeerd als HTML — een script-tag in
+  een wedstrijdnaam werd letterlijk een uitvoerbaar element in de gedownloade HTML. Alle dynamische
+  tekst wordt nu HTML-geëncodeerd (tekst- én attribuutcontext apart), en een ingevoegde URL wordt
+  gevalideerd op `http`/`https`-schema — een `javascript:`-link wordt genegeerd. Beide database-tiers
+  gebruiken deze gedeelde generator, dus de fix geldt voor SQL Server én Postgres zonder verdere
+  wijziging. Alleen de generator is aangepast; de bestaande iframe-sandbox in de preview blijft
+  ongewijzigd.
+- **Feedback-widget: PII-controle dekt nu de volledige melding, vóór elke AI- en GitHub-aanroep (#1006).**
+  De eerdere controle keek alleen naar de beschrijving en de antwoorden op aanvulvragen, en pas nadat
+  het taalmodel de melding al had verwerkt. Contextvelden, vragen en de AI-samenvatting konden zo
+  ongecontroleerd in een openbaar GitHub-issue terechtkomen. Er zijn nu twee controlemomenten: vóór
+  elke AI-aanroep (op alle velden die in de prompt kunnen belanden) en vlak vóór het aanmaken van het
+  GitHub-issue (op de uiteindelijke titel en tekst, inclusief AI-output). Bij een treffer wordt de
+  melding geblokkeerd met een duidelijke foutmelding. De ruwe AI-respons wordt niet langer gelogd —
+  alleen lengte en verwerkingstijd.
 - **Exception-reporter publiceert nu een allowlist van vaste technische velden i.p.v. vrije
   foutteksten in publieke GitHub-issues/comments (#1008).** De eerdere denylist-sanitizer redigeerde
   bijvoorbeeld `Database=...`-vormen, maar niet een databasenaam die in een natuurlijke SQL-foutzin
@@ -94,6 +111,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   TCP-verbinding — en weigert privé/loopback/link-local/CGNAT-bestemmingen en niet-standaardpoorten
   (voorkomt DNS-rebinding). Het opslaan van de club-website-instelling weigert nu al een
   privé/interne bestemming, niet pas bij extractie.
+- **Postgres-connectiestring dwingt nu certificaatvalidatie af in plaats van die stilzwijgend uit
+  te schakelen (#1004).** De normalisatiestap las voorheen elke `sslmode`-optie uit een
+  `postgres://`-URI, maar zette daarna altijd een modus die sinds Npgsql 8 geen certificaatketen of
+  hostnaam meer controleert — ook wanneer expliciet `?sslmode=verify-full` was opgegeven. Elke
+  connectiestring naar een niet-lokale host (dus elke productie-/stagingdatabase) moet voortaan
+  expliciet `sslmode=verify-full` gebruiken; ontbreekt dat, dan weigert de applicatie te starten in
+  plaats van een onbeveiligde verbinding te openen. Geldt identiek voor de Function App, de
+  database-CLI en het migratiehulpmiddel. Lokale ontwikkeling tegen de Docker-Postgres-container
+  blijft ongewijzigd werken.
 
 - **GitHub Actions gepind op commit-SHA i.p.v. wijzigbare tag/branch (supply-chain hardening, #1011).**
   Alle `uses:`-verwijzingen in `.github/workflows/*.yml` (45 stuks, incl. `azure/login`,
