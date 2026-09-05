@@ -18,6 +18,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
+  verholpen (#1010).** `Planner.Shared/PlannerHtmlGenerator.cs` interpoleerde deze en andere
+  dynamische velden (locatie, footer, suggestieteksten) ongeëncodeerd als HTML — een script-tag in
+  een wedstrijdnaam werd letterlijk een uitvoerbaar element in de gedownloade HTML. Alle dynamische
+  tekst wordt nu HTML-geëncodeerd (tekst- én attribuutcontext apart), en een ingevoegde URL wordt
+  gevalideerd op `http`/`https`-schema — een `javascript:`-link wordt genegeerd. Beide database-tiers
+  gebruiken deze gedeelde generator, dus de fix geldt voor SQL Server én Postgres zonder verdere
+  wijziging. Alleen de generator is aangepast; de bestaande iframe-sandbox in de preview blijft
+  ongewijzigd.
+
 ### Added
 - **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**
   Twee components uit het Sportlink Web Extension-raamwerk, nog niet aangesloten op schrijvende acties:
