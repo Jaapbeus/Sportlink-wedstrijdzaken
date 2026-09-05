@@ -35,5 +35,10 @@ window.blazorHelpers = {
         // top/height erbij: de verticale droppositie bepaalt op welke kwartbaan van het veld
         // (A1/A2/B1/B2) een wedstrijd terechtkomt.
         return { left: r.left, width: r.width, top: r.top, height: r.height };
+    },
+    // #989: deep-link naar club.sportlink.com — 'noopener' i.p.v. rel="noopener" op een <a>,
+    // want de URL is pas bekend na een async API-call, niet vooraf in de markup beschikbaar.
+    openInNewTab: function (url) {
+        window.open(url, '_blank', 'noopener');
     }
 };

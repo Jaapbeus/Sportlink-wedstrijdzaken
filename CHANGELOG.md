@@ -19,6 +19,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **"Open in Sportlink"-knop per wedstrijd in Dagplanning (issue 989, epic 986).** Opent de
+  wedstrijd rechtstreeks op de detailpagina van Sportlink Club in een nieuw tabblad — scheelt het
+  trage overzichtsscherm en zelf zoeken. Alleen zichtbaar als de Sportlink Web Extension aan staat.
 - **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**
   Twee components uit het Sportlink Web Extension-raamwerk, nog niet aangesloten op schrijvende acties:
   - `SportlinkClubClient`: HTTP-client voor de read-only Match endpoint van Sportlink Club, met token-refresh 

@@ -25,6 +25,9 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
   blijft daarna zelfstandig geldig.
 - Alles wat de extension straks doet, doet zij op naam van dat aparte account — niet op jouw eigen
   naam — dus in Sportlink's eigen logs zie je dat terug als bijvoorbeeld "webapp-wedstrijdzaken".
+- Wat vandaag al werkt: bij elke wedstrijd in Dagplanning staat een knop "Open in Sportlink" die de
+  juiste wedstrijd direct in Sportlink Club opent (nieuw tabblad) — scheelt het zoeken in het trage
+  overzichtsscherm. Je klikt daar zelf nog op opslaan; deze knop wijzigt zelf niets (#989).
 
 ## 3. Voor beheerders
 
@@ -119,12 +122,13 @@ verplichte N-user-test.
   `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`.
 - `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkPublicMatchIdRepository.cs` (#991) —
   de #987-reverse-lookup-cache (`public.sportlinkpublicmatchidcache`, migratie
-  `014_sportlink_club_matchid_cache.sql`) en de `his.matches`-opzoeking (wedstrijdcode →
+  `014_sportlink_club_postgres_tokenstore.sql`) en de `his.matches`-opzoeking (wedstrijdcode →
   wedstrijdnummer/datum) die de reverse-lookup nodig heeft.
-- `FunctionApp.Postgres/Sportlink/SportlinkMatchFunction.cs` (#991) — `GET
-  /api/sportlink/match/{wedstrijdcode}`, het eerste endpoint met `RequireWedstrijdzaken` i.p.v.
-  `RequireAdmin` (zie #988 Besluit 1). Enige plek die de reverse-lookup-cache, de token-store en de
-  Dagplanning-GUI met elkaar verbindt.
+- `FunctionApp.Postgres/Sportlink/SportlinkMatchFunction.cs` — `GET
+  /api/sportlink/match/{wedstrijdcode}` (#991), het eerste endpoint met `RequireWedstrijdzaken`
+  i.p.v. `RequireAdmin` (zie #988 Besluit 1). Verbindt de reverse-lookup-cache, de token-store en de
+  Dagplanning-GUI met elkaar. Sinds #989 ook `GET .../public-match-id` — dezelfde resolutie zonder
+  de volledige `Match`-aanroep, voor de "Open in Sportlink"-deep-link-knop.
 
 ### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
 Op de Postgres-tier (de enige tier die live draait) wordt het rotarende refresh_token opgeslagen in
