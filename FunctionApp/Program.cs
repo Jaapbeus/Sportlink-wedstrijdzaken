@@ -61,8 +61,13 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
     // zonder OpenAiApiKey blijft TeamResolver puur deterministisch en geeft bij ambiguïteit
     // gewoon de kandidatenlijst terug in plaats van te kiezen.
     builder.Services.AddSingleton<ITeamDisambiguator, TeamDisambiguationAiService>();
+}
 
-    // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol
+// Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
+// EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een
+// onafhankelijke uitgaande integratie en hoort niet toevallig aan AI-configuratie vast te zitten.
+if (EgressGuard.ExternalIntegrationsAllowed())
+{
     builder.Services.AddSingleton<ISportlinkClubTokenStore, SportlinkClubAppSettingsTokenStore>();
     builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
     {
