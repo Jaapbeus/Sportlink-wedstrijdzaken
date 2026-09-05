@@ -19,6 +19,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**
+  Twee components uit het Sportlink Web Extension-raamwerk, nog niet aangesloten op schrijvende acties:
+  - `SportlinkClubClient`: HTTP-client voor de read-only Match endpoint van Sportlink Club, met token-refresh 
+    per functionele rol, in-memory caching (60s marge) en automatische retry na 401.
+  - `SportlinkMutationAudit` tabel + service: centraal audit-log voor alle toekomstige Sportlink-wijzigingen 
+    (kleedkamers, velden, officials, uitslag). Beide tiers (SQL Server + Postgres) ondersteund.
+  - `SportlinkMutationGuard`: guardrail-logica — controleert thuiswedstrijd-beperking en per-soort permissies 
+    vóór elke mutatie-poging.
+  PublicMatchId-waarden zijn expliciet parameters; automatische berekening uit wedstrijdcode is buiten scope 
+  (#1016 trackert de reverse-lookup als toekomstige taak).
+
 - **Feature-toggle "Sportlink Web Extension" in Instellingen, standaard uit (issue 988).**
   Voorbereidende stap voor het terugschrijven van wedstrijdwijzigingen naar Sportlink Club (epic
   986) — deze release doet zelf nog niets met Sportlink, alleen de schakelaar en een

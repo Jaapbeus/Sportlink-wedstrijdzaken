@@ -1,6 +1,7 @@
 using Azure.Identity;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Infrastructure;
+using FunctionApp.Postgres.Sportlink;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using OpenAI.Chat;
+using Planner.Shared.Integrations.SportlinkClub;
 
 // #891: minimale host-bootstrap voor de Postgres-tier — bewust géén 1-op-1-kopie van
 // FunctionApp/Program.cs' DI-registraties (AI, noodmail-throttle, monitoring): die horen bij
@@ -56,6 +58,16 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
     builder.Services.AddSingleton<IChatClient>(
         new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
             .AsIChatClient());
+
+    // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol
+    builder.Services.AddSingleton<ISportlinkClubTokenStore, SportlinkClubAppSettingsTokenStore>();
+    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(15);
+    });
 }
+
+// Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier
+builder.Services.AddSingleton<ISportlinkMutationAuditService, PostgresSportlinkMutationAuditService>();
 
 builder.Build().Run();

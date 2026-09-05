@@ -6,9 +6,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using OpenAI.Chat;
+using Planner.Shared.Integrations.SportlinkClub;
 using SportlinkFunction.Email;
 using SportlinkFunction.Infrastructure;
 using SportlinkFunction.Monitoring;
+using SportlinkFunction.Sportlink;
 using SportlinkFunction.TeamResolution;
 
 var builder = FunctionsApplication.CreateBuilder(args);
@@ -59,6 +61,13 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
     // zonder OpenAiApiKey blijft TeamResolver puur deterministisch en geeft bij ambiguïteit
     // gewoon de kandidatenlijst terug in plaats van te kiezen.
     builder.Services.AddSingleton<ITeamDisambiguator, TeamDisambiguationAiService>();
+
+    // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol
+    builder.Services.AddSingleton<ISportlinkClubTokenStore, SportlinkClubAppSettingsTokenStore>();
+    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(15);
+    });
 }
 
 builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();
@@ -96,6 +105,9 @@ builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 // AzureSqlDatabaseName zijn geconfigureerd (gecheckt in DatabaseUitvalMonitorFunction zelf); de reader
 // is onvoorwaardelijk registreerbaar omdat hij pas bij aanroep iets doet.
 builder.Services.AddSingleton<IDatabaseStatusReader, ArmDatabaseStatusReader>();
+
+// Audit-logging voor Sportlink-mutaties (#991, #998) — SQL Server tier
+builder.Services.AddSingleton<ISportlinkMutationAuditService, SqlSportlinkMutationAuditService>();
 
 // CORS voor lokale dev: geconfigureerd via Host.CORS in local.settings.json (Functions host-level).
 // In productie (Azure SWA) is CORS niet nodig: SWA proxying houdt alles op dezelfde origin.
