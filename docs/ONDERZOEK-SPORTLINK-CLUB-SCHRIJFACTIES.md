@@ -1,5 +1,9 @@
 # Onderzoek: wedstrijdwijzigingen vanuit de wedstrijdzaken-app naar Sportlink Club
 
+> **Dit is het technische bronrapport (historische onderzoeksnotities). Voor de levende,
+> samenvattende beschrijving — inclusief de verplichte regel dat coding agents dit mechanisme nooit
+> zelf mogen uitvoeren — zie [`docs/SPORTLINK-WEB-EXTENSION.md`](SPORTLINK-WEB-EXTENSION.md).**
+>
 > Datum: 2026-09-04. Status: onderzoek, geen code. Alleen-lezen analyse van club.sportlink.com plus één door de wedstrijdsecretaris zelf uitgevoerde en teruggedraaide kleedkamerwijziging (meegelezen in netwerkverkeer).
 > Bevat bewust geen persoonsgegevens, club-/accommodatie-ID's, tokens of wachtwoorden. Waar iets niet hard is vastgesteld staat **[onzeker]**.
 
