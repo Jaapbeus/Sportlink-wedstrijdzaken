@@ -18,35 +18,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-### Security
-- **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
-  verholpen (#1010).** `Planner.Shared/PlannerHtmlGenerator.cs` interpoleerde deze en andere
-  dynamische velden (locatie, footer, suggestieteksten) ongeëncodeerd als HTML — een script-tag in
-  een wedstrijdnaam werd letterlijk een uitvoerbaar element in de gedownloade HTML. Alle dynamische
-  tekst wordt nu HTML-geëncodeerd (tekst- én attribuutcontext apart), en een ingevoegde URL wordt
-  gevalideerd op `http`/`https`-schema — een `javascript:`-link wordt genegeerd. Beide database-tiers
-  gebruiken deze gedeelde generator, dus de fix geldt voor SQL Server én Postgres zonder verdere
-  wijziging. Alleen de generator is aangepast; de bestaande iframe-sandbox in de preview blijft
-  ongewijzigd.
-- **Feedback-widget: PII-controle dekt nu de volledige melding, vóór elke AI- en GitHub-aanroep (#1006).**
-  De eerdere controle keek alleen naar de beschrijving en de antwoorden op aanvulvragen, en pas nadat
-  het taalmodel de melding al had verwerkt. Contextvelden, vragen en de AI-samenvatting konden zo
-  ongecontroleerd in een openbaar GitHub-issue terechtkomen. Er zijn nu twee controlemomenten: vóór
-  elke AI-aanroep (op alle velden die in de prompt kunnen belanden) en vlak vóór het aanmaken van het
-  GitHub-issue (op de uiteindelijke titel en tekst, inclusief AI-output). Bij een treffer wordt de
-  melding geblokkeerd met een duidelijke foutmelding. De ruwe AI-respons wordt niet langer gelogd —
-  alleen lengte en verwerkingstijd.
-- **PR-validatie losgekoppeld van productiecredentials in de pre-release-check (issue #1009).**
-  De databasebeschikbaarheidscheck (`AZURE_CREDENTIALS` / `SQL_CONNECTION_STRING`) draaide
-  voorheen als onderdeel van de `pull_request`-workflow naar main, samen met de gewijzigde
-  PR-inhoud (inclusief `scripts/ci/wake-database.sql` en de workflow-YAML zelf) — een PR die
-  dat SQL-bestand of de workflow aanpaste, kon dus vóór review/merge SQL laten uitvoeren met
-  productiecredentials. De check staat nu in een eigen workflow
-  (`pre-release-db-check.yml`) die via `workflow_run` pas ná de secretloze buildcheck draait
-  en zijn eigen YAML én het uitgevoerde SQL-bestand altijd van de main-branch haalt — nooit
-  van de PR-branch die de run veroorzaakte. Geen functionele wijziging voor legitieme
-  develop→main-releases; alleen credentialtoegang is losgekoppeld van PR-inhoud.
-
 ### Added
 - **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**
   Twee components uit het Sportlink Web Extension-raamwerk, nog niet aangesloten op schrijvende acties:
@@ -120,7 +91,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   plaats van een onbeveiligde verbinding te openen. Geldt identiek voor de Function App, de
   database-CLI en het migratiehulpmiddel. Lokale ontwikkeling tegen de Docker-Postgres-container
   blijft ongewijzigd werken.
-
+- **PR-validatie losgekoppeld van productiecredentials in de pre-release-check (issue #1009).**
+  De databasebeschikbaarheidscheck (`AZURE_CREDENTIALS` / `SQL_CONNECTION_STRING`) draaide
+  voorheen als onderdeel van de `pull_request`-workflow naar main, samen met de gewijzigde
+  PR-inhoud (inclusief `scripts/ci/wake-database.sql` en de workflow-YAML zelf) — een PR die
+  dat SQL-bestand of de workflow aanpaste, kon dus vóór review/merge SQL laten uitvoeren met
+  productiecredentials. De check staat nu in een eigen workflow
+  (`pre-release-db-check.yml`) die via `workflow_run` pas ná de secretloze buildcheck draait
+  en zijn eigen YAML én het uitgevoerde SQL-bestand altijd van de main-branch haalt — nooit
+  van de PR-branch die de run veroorzaakte. Geen functionele wijziging voor legitieme
+  develop→main-releases; alleen credentialtoegang is losgekoppeld van PR-inhoud.
 - **GitHub Actions gepind op commit-SHA i.p.v. wijzigbare tag/branch (supply-chain hardening, #1011).**
   Alle `uses:`-verwijzingen in `.github/workflows/*.yml` (45 stuks, incl. `azure/login`,
   `azure/sql-action`, `Azure/functions-action`, `Azure/static-web-apps-deploy`,
