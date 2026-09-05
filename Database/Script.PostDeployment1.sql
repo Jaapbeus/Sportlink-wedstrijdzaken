@@ -1250,6 +1250,33 @@ BEGIN
 END
 GO
 
+-- #991/#998: SportlinkMutationAudit — eigen audit-trail voor Sportlink Web Extension-mutaties
+-- (epic #986). Sportlink's eigen log groepeert alleen per gekoppeld serviceaccount, niet per
+-- individuele webapp-gebruiker — deze tabel is de enige plek waar te herleiden is wélke ingelogde
+-- webapp-gebruiker een specifieke Sportlink-mutatie heeft getriggerd. Nog niet aangesloten op een
+-- schrijvend endpoint (dat volgt vanaf #992).
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SportlinkMutationAudit'))
+BEGIN
+    CREATE TABLE [dbo].[SportlinkMutationAudit] (
+        [Id]                      BIGINT IDENTITY(1,1) NOT NULL,
+        [ClubCode]                NVARCHAR(20)  NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
+        [FunctioneleRol]          NVARCHAR(50)  NOT NULL,
+        [TriggerdDoor]            NVARCHAR(200) NOT NULL,
+        [PublicMatchId]           NVARCHAR(50)  NOT NULL,
+        [Actie]                   NVARCHAR(100) NOT NULL,
+        [WaardeVoor]              NVARCHAR(MAX) NULL,
+        [WaardeNa]                NVARCHAR(MAX) NULL,
+        [Resultaat]               NVARCHAR(20)  NOT NULL CONSTRAINT [DF_SportlinkMutationAudit_Resultaat] DEFAULT ('Pending'),
+        [FoutmeldingSamenvatting] NVARCHAR(500) NULL,
+        [CorrelationId]           NVARCHAR(50)  NULL,
+        [Tijdstip]                DATETIME2     NOT NULL CONSTRAINT [DF_SportlinkMutationAudit_Tijdstip] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_SportlinkMutationAudit] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_SportlinkMutationAudit_ClubCode_Tijdstip] ON [dbo].[SportlinkMutationAudit] ([ClubCode], [Tijdstip] DESC);
+    CREATE NONCLUSTERED INDEX [IX_SportlinkMutationAudit_PublicMatchId] ON [dbo].[SportlinkMutationAudit] ([PublicMatchId]);
+END
+GO
+
 -- v2 — #62: TeamVoorkeurTijden
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamVoorkeurTijden'))
 BEGIN

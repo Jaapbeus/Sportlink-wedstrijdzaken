@@ -93,9 +93,17 @@ verplichte N-user-test.
 - `FunctionApp.Postgres/Admin/SportlinkExtensieRollenFunction.cs` +
   `FunctionApp/Admin/SportlinkExtensieRollenFunction.cs` — rol↔serviceaccount-koppelingsstatus
   (#988), geen live Sportlink-aanroep.
-- De eigenlijke Sportlink-client (`SportlinkClubClient`, #991) is nog niet gebouwd; hoort in
-  `Planner.Shared` (providervrije logica, geen SQL) zodat beide tiers hem via DI kunnen gebruiken —
-  zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2 voor die uitzonderingsregel.
+- `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs` (#991) — read-only
+  Sportlink-client, in `Planner.Shared` (providervrije logica, geen SQL) zodat beide tiers hem via
+  DI kunnen gebruiken, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2 voor die uitzonderingsregel.
+  Accepteert `PublicMatchId` uitsluitend als expliciete parameter — geen automatische afleiding uit
+  wedstrijdcode/wedstrijdnummer (die hypothese is weerlegd, zie #987/#1016). Nog niet aangesloten op
+  een GUI-scherm of een schrijvend endpoint.
+- `Planner.Shared/Integrations/SportlinkClub/SportlinkMutationGuard.cs` (#998) — pure guardrail:
+  staat een mutatie alleen toe bij `IsHomeMatch=true` én de bijbehorende Sportlink-permissievlag.
+- `FunctionApp/Sportlink/` + `FunctionApp.Postgres/Sportlink/` (#998) — per-tier, niet-gedeelde
+  `ISportlinkMutationAuditService`-implementatie; logt vóór én na elke toekomstige mutatie in
+  `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`.
 
 ### 4.3 Kostenbeleid-implicatie
 Opslag van het refresh_token als Azure Function App-instelling (gekozen) versus Key Vault staat nog
