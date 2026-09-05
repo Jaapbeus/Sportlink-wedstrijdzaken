@@ -1,0 +1,236 @@
+name: Pre-release database check (develop → main)
+
+# ── Waarom deze workflow apart staat van pre-release-check.yml (issue #1009) ──────────
+#
+# Probleem: een PR naar main kon vóór review/merge SQL laten uitvoeren met
+# productiecredentials (AZURE_CREDENTIALS / SQL_CONNECTION_STRING), omdat de oude
+# db-check-job op het `pull_request`-event draaide. GitHub voert een `pull_request`-
+# workflow ALTIJD uit met de YAML- én scriptinhoud van de PR-head (niet van main) — ook
+# bij een gewone, niet-fork PR binnen dezelfde repo krijgt die run gewoon toegang tot de
+# repository-secrets. Een schrijver kon dus zowel de conditie in de workflow als
+# scripts/ci/wake-database.sql wijzigen, en die wijziging draaide al vóórdat de PR
+# geaccepteerd was.
+#
+# Een `if: github.head_ref == 'develop'`-achtige conditie lost dit NIET op: die conditie
+# staat zelf óók in het YAML-bestand dat uit de PR-checkout komt, dus een auteur die de
+# credential-toegang wil misbruiken kan in dezelfde PR de conditie net zo goed verwijderen
+# of aanpassen. Een check die "vanuit de PR-inhoud" leest of "vanuit de PR-inhoud" beslist,
+# kan door diezelfde PR-inhoud omzeild worden — dat is precies het lek, geen fix ervan.
+#
+# Fix: deze workflow triggert op `workflow_run` (na afloop van "Pre-release check
+# (develop → main)"), niet op `pull_request`. GitHub haalt de YAML van een
+# workflow_run-workflow altijd op van de DEFAULT branch (main), ongeacht welke branch of
+# PR de aangehaakte workflow_run heeft veroorzaakt — zie GitHub's "Security hardening for
+# GitHub Actions" (events die PR-inhoud isoleren van secrets, hetzelfde principe als
+# `pull_request_target`). Een PR kan dit bestand dus zoveel wijzigen als hij wil; die
+# wijziging wordt pas van kracht ná de merge naar main.
+#
+# Extra laag: de checkout hieronder gebruikt expliciet `ref: main` — ook het
+# uitgevoerde SQL-bestand (scripts/ci/wake-database.sql) komt dus altijd uit main, nooit
+# uit de PR-branch die de workflow_run veroorzaakte. Zelfs een PR die dat bestand wijzigt
+# beïnvloedt geen enkele run van deze job vóórdat die wijziging gemerged is.
+#
+# We downloaden bewust GEEN artifacts van de triggerende "Pre-release check"-run — dat zou
+# een bekend lek zijn (untrusted build-output alsnog uitvoeren in een privileged context,
+# "pwn request"-patroon). Alle inhoud die hier draait komt uitsluitend uit de main-checkout.
+#
+# `head_repository.full_name == github.repository` sluit externe fork-PR's uit: die krijgen
+# sowieso geen bruikbare secrets, maar zo faalt de job niet onnodig op een lege credential —
+# hij meldt expliciet "niet van toepassing" via de check hieronder.
+#
+# Resultaat: PR-inhoud (workflow-YAML of SQL-bestand) bepaalt nooit welke SQL met
+# productiecredentials draait — precies de eis uit issue #1009's acceptatiecriteria.
+#
+# ── Check-run i.p.v. gewone job-conditie voor branch protection ──────────────────────
+# workflow_run-jobs verschijnen NIET automatisch als PR-status-check op de commit die de
+# aanroepende run veroorzaakte (dat is een bekende beperking van dit triggertype). Om
+# "db-check" als required status check in branch protection te kunnen blijven gebruiken,
+# maakt deze job zelf een check-run aan op github.event.workflow_run.head_sha via de
+# GitHub Checks API (GITHUB_TOKEN — het ingebouwde Actions-token, geen productiecredential)
+# en rondt die af met de uiteindelijke conclusie. Dit vervangt de vroegere job-level
+# `if: vars.AZURE_SQL_SERVER_NAME != ''`-skip: die skip gebeurt nu ook via een expliciete
+# check-conclusie (`skipped`) in plaats van het job simpelweg niet te laten draaien, zodat
+# er altijd een afgeronde check op de PR verschijnt (anders blijft branch protection voor
+# altijd op "expected" staan).
+
+on:
+  workflow_run:
+    workflows: ["Pre-release check (develop → main)"]
+    types: [completed]
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  SQL_SERVER:         ${{ vars.AZURE_SQL_SERVER_NAME }}
+  SQL_DATABASE:       ${{ vars.AZURE_SQL_DATABASE_NAME }}
+  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
+  CHECK_NAME: "Database beschikbaar voor deploy"
+
+jobs:
+  # ── Database beschikbaarheidscheck ─────────────────────────────────────────
+  # Blokkeert de merge als de database Paused, AutoPaused of unavailable is.
+  db-check:
+    name: "Database beschikbaar voor deploy"
+    runs-on: ubuntu-latest
+    # Alleen structurele voorwaarden die uit de API-payload komen (niet uit PR-inhoud):
+    # de aanroepende run moet van een pull_request-event zijn, en uit dezelfde repo komen
+    # (geen fork). Draait bewust ONGEACHT of build-check zelf slaagde — dat was in de oude
+    # opzet ook een onafhankelijke, parallelle job.
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+      - name: "▶ Check-run registreren (in_progress)"
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ID=$(gh api "repos/${{ github.repository }}/check-runs" \
+            -f name="$CHECK_NAME" \
+            -f head_sha="${{ github.event.workflow_run.head_sha }}" \
+            -f status=in_progress \
+            --jq '.id')
+          echo "check_id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: "▶ Configuratie bepalen"
+        id: config
+        run: |
+          if [ -n "$SQL_SERVER" ] && [ -n "$SQL_DATABASE" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Vaste, vertrouwde ref — bewust NIET de PR-head van de run die dit triggerde.
+      # Zie de uitleg bovenaan dit bestand: scripts/ci/wake-database.sql komt hierdoor
+      # altijd uit main, ongeacht wat de PR bevat.
+      - name: "Checkout vertrouwde ref (main)"
+        if: steps.config.outputs.configured == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Azure inloggen
+        if: steps.config.outputs.configured == 'true'
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "▶ Databasestatus bepalen"
+        id: status
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          STATUS=$(az sql db show \
+            --name "$SQL_DATABASE" \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --query 'status' --output tsv 2>/dev/null || echo "unknown")
+          echo "Database status: $STATUS"
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+
+          if [ "$STATUS" = "Disabled" ]; then
+            echo "::error::⛔ Database uitgeschakeld — maandlimiet bereikt. Wacht tot begin volgende maand."
+            exit 1
+          fi
+
+          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "AutoPaused" ]; then
+            echo "paused=true" >> $GITHUB_OUTPUT
+          else
+            echo "paused=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "▶ Runner-IP toevoegen aan SQL-firewall (alleen bij gepauzeerde database)"
+        if: steps.config.outputs.configured == 'true' && steps.status.outputs.paused == 'true'
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          az sql server firewall-rule create \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --name "db-check-pr-${{ github.event.workflow_run.id }}" \
+            --start-ip-address "$RUNNER_IP" \
+            --end-ip-address "$RUNNER_IP" 2>/dev/null || echo "Firewall rule aanmaken mislukt — doorgaan"
+
+      # Een echte login triggert Azure SQL Serverless auto-resume. Een kale TCP-verbinding
+      # doet dat NIET: die wordt door de SQL-gateway afgehandeld en bereikt de database nooit,
+      # waardoor de gate 20 checks lang 'Paused' bleef zien. Zie #624.
+      # De eerste login faalt verwacht (database wakker aan het worden) — daarom continue-on-error.
+      # path verwijst naar het bestand uit de main-checkout hierboven, niet naar PR-inhoud.
+      - name: "▶ Login-poging om auto-resume te triggeren"
+        if: steps.config.outputs.configured == 'true' && steps.status.outputs.paused == 'true'
+        continue-on-error: true
+        uses: azure/sql-action@eb1f9a80487ca52b90f41a473f53da4943526994 # v2.4
+        with:
+          connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
+          path: scripts/ci/wake-database.sql
+
+      - name: "▶ Wachten tot database Online is"
+        if: steps.config.outputs.configured == 'true' && steps.status.outputs.paused == 'true'
+        run: |
+          for i in $(seq 1 20); do
+            STATUS=$(az sql db show \
+              --name "$SQL_DATABASE" \
+              --resource-group "$SQL_RESOURCE_GROUP" \
+              --server "$SQL_SERVER" \
+              --query 'status' --output tsv 2>/dev/null || echo "unknown")
+            echo "  Check $i/20: $STATUS"
+            [ "$STATUS" = "Online" ] && break
+            sleep 15
+          done
+
+          if [ "$STATUS" != "Online" ]; then
+            echo "::error::⛔ Database nog niet Online na wachten (status: $STATUS)."
+            exit 1
+          fi
+          echo "✓ Database Online — release mag doorgaan"
+
+      # GEEN --yes: dat argument bestaat niet voor 'firewall-rule delete' en liet de delete stil
+      # falen, waardoor elke run een openstaande IP-regel achterliet (#632). Fouten worden nu
+      # gelogd i.p.v. naar /dev/null; opruimen mag de pipeline nog steeds niet laten falen.
+      - name: "▶ Firewall-regel opruimen"
+        if: always() && steps.config.outputs.configured == 'true' && steps.status.outputs.paused == 'true'
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "$SQL_RESOURCE_GROUP" \
+            --server "$SQL_SERVER" \
+            --name "db-check-pr-${{ github.event.workflow_run.id }}" \
+            || echo "::warning::Firewall-regel db-check-pr-${{ github.event.workflow_run.id }} niet verwijderd — handmatig opruimen"
+
+      - name: "▶ Eindstatus (log)"
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          if [ "${{ steps.status.outputs.status }}" = "unknown" ]; then
+            echo "::warning::⚠️ Database-status onbekend — merge toegestaan, controleer handmatig."
+          else
+            echo "✓ Database beschikbaar — release mag doorgaan"
+          fi
+
+      # ── Check-run afronden ──────────────────────────────────────────────────
+      # Drie takken, precies één van de drie matcht altijd:
+      #  - niet geconfigureerd (fork/lokale run zonder SQL-variabelen)      → skipped
+      #  - geconfigureerd én alle voorgaande stappen geslaagd               → success
+      #  - geconfigureerd én een voorgaande stap gefaald (bijv. niet Online) → failure
+      - name: "▶ Check-run afronden — niet geconfigureerd"
+        if: steps.config.outputs.configured == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PATCH "repos/${{ github.repository }}/check-runs/${{ steps.check.outputs.check_id }}" \
+            -f status=completed -f conclusion=skipped
+
+      - name: "▶ Check-run afronden — geslaagd"
+        if: steps.config.outputs.configured == 'true' && success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PATCH "repos/${{ github.repository }}/check-runs/${{ steps.check.outputs.check_id }}" \
+            -f status=completed -f conclusion=success
+
+      - name: "▶ Check-run afronden — mislukt"
+        if: always() && steps.config.outputs.configured == 'true' && failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PATCH "repos/${{ github.repository }}/check-runs/${{ steps.check.outputs.check_id }}" \
+            -f status=completed -f conclusion=failure

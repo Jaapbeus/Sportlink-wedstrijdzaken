@@ -1,9 +1,18 @@
 name: Pre-release check (develop → main)
 
 # Draait uitsluitend op PRs die naar main gaan.
-# Blokkeert de merge als de database niet Online is of de build faalt.
-# Configureer 'db-check' en 'build-check' als required status checks
-# in GitHub branch protection voor de main-branch.
+# Blokkeert de merge als de build faalt.
+#
+# BELANGRIJK (issue #1009): deze workflow bevat GEEN productiecredentials meer.
+# GitHub voert een `pull_request`-workflow altijd uit met de YAML- én scriptinhoud van de
+# PR zelf (head ref) — niet van main. Elke job hier moet dus veilig zijn om te draaien met
+# willekeurige, nog niet gereviewde PR-inhoud. De databasebeschikbaarheidscheck
+# (AZURE_CREDENTIALS / SQL_CONNECTION_STRING) staat daarom in een aparte workflow,
+# pre-release-db-check.yml, die via `workflow_run` pas ná deze job draait en zijn eigen
+# YAML altijd van main haalt. Zie die file voor de volledige onderbouwing.
+#
+# Configureer 'build-check' (en, via pre-release-db-check.yml, 'db-check') als required
+# status checks in GitHub branch protection voor de main-branch.
 
 on:
   pull_request:
@@ -11,115 +20,12 @@ on:
 
 env:
   DOTNET_VERSION: '10.0.x'
-  SQL_SERVER:         ${{ vars.AZURE_SQL_SERVER_NAME }}
-  SQL_DATABASE:       ${{ vars.AZURE_SQL_DATABASE_NAME }}
-  SQL_RESOURCE_GROUP: ${{ vars.AZURE_SQL_RESOURCE_GROUP }}
 
 jobs:
-  # ── 1. Database beschikbaarheidscheck ─────────────────────────────────────
-  # Blokkeert de merge als de database Paused, AutoPaused of unavailable is.
-  # Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is (fork).
-  db-check:
-    name: "Database beschikbaar voor deploy"
-    runs-on: ubuntu-latest
-    if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
-    steps:
-      # Nodig voor scripts/ci/wake-database.sql in de login-poging hieronder (#624).
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Azure inloggen
-        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: "▶ Databasestatus bepalen"
-        id: status
-        run: |
-          STATUS=$(az sql db show \
-            --name "$SQL_DATABASE" \
-            --resource-group "$SQL_RESOURCE_GROUP" \
-            --server "$SQL_SERVER" \
-            --query 'status' --output tsv 2>/dev/null || echo "unknown")
-          echo "Database status: $STATUS"
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-
-          if [ "$STATUS" = "Disabled" ]; then
-            echo "::error::⛔ Database uitgeschakeld — maandlimiet bereikt. Wacht tot begin volgende maand."
-            exit 1
-          fi
-
-          if [ "$STATUS" = "Paused" ] || [ "$STATUS" = "AutoPaused" ]; then
-            echo "paused=true" >> $GITHUB_OUTPUT
-          else
-            echo "paused=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: "▶ Runner-IP toevoegen aan SQL-firewall (alleen bij gepauzeerde database)"
-        if: steps.status.outputs.paused == 'true'
-        run: |
-          RUNNER_IP=$(curl -s https://api.ipify.org)
-          az sql server firewall-rule create \
-            --resource-group "$SQL_RESOURCE_GROUP" \
-            --server "$SQL_SERVER" \
-            --name "db-check-pr-${{ github.run_id }}" \
-            --start-ip-address "$RUNNER_IP" \
-            --end-ip-address "$RUNNER_IP" 2>/dev/null || echo "Firewall rule aanmaken mislukt — doorgaan"
-
-      # Een echte login triggert Azure SQL Serverless auto-resume. Een kale TCP-verbinding
-      # doet dat NIET: die wordt door de SQL-gateway afgehandeld en bereikt de database nooit,
-      # waardoor de gate 20 checks lang 'Paused' bleef zien. Zie #624.
-      # De eerste login faalt verwacht (database wakker aan het worden) — daarom continue-on-error.
-      - name: "▶ Login-poging om auto-resume te triggeren"
-        if: steps.status.outputs.paused == 'true'
-        continue-on-error: true
-        uses: azure/sql-action@eb1f9a80487ca52b90f41a473f53da4943526994 # v2.4
-        with:
-          connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
-          path: scripts/ci/wake-database.sql
-
-      - name: "▶ Wachten tot database Online is"
-        if: steps.status.outputs.paused == 'true'
-        run: |
-          for i in $(seq 1 20); do
-            STATUS=$(az sql db show \
-              --name "$SQL_DATABASE" \
-              --resource-group "$SQL_RESOURCE_GROUP" \
-              --server "$SQL_SERVER" \
-              --query 'status' --output tsv 2>/dev/null || echo "unknown")
-            echo "  Check $i/20: $STATUS"
-            [ "$STATUS" = "Online" ] && break
-            sleep 15
-          done
-
-          if [ "$STATUS" != "Online" ]; then
-            echo "::error::⛔ Database nog niet Online na wachten (status: $STATUS)."
-            exit 1
-          fi
-          echo "✓ Database Online — release mag doorgaan"
-
-      # GEEN --yes: dat argument bestaat niet voor 'firewall-rule delete' en liet de delete stil
-      # falen, waardoor elke run een openstaande IP-regel achterliet (#632). Fouten worden nu
-      # gelogd i.p.v. naar /dev/null; opruimen mag de pipeline nog steeds niet laten falen.
-      - name: "▶ Firewall-regel opruimen"
-        if: always() && steps.status.outputs.paused == 'true'
-        run: |
-          az sql server firewall-rule delete \
-            --resource-group "$SQL_RESOURCE_GROUP" \
-            --server "$SQL_SERVER" \
-            --name "db-check-pr-${{ github.run_id }}" \
-            || echo "::warning::Firewall-regel db-check-pr-${{ github.run_id }} niet verwijderd — handmatig opruimen"
-
-      - name: "▶ Eindstatus"
-        run: |
-          if [ "${{ steps.status.outputs.status }}" = "unknown" ]; then
-            echo "::warning::⚠️ Database-status onbekend — merge toegestaan, controleer handmatig."
-          else
-            echo "✓ Database beschikbaar — release mag doorgaan"
-          fi
-
-  # ── 2. Build-verificatie ──────────────────────────────────────────────────
+  # ── Build-verificatie ──────────────────────────────────────────────────
   # Controleert dat FunctionApp en BlazorAdmin compileren op de te mergen code.
+  # Gebruikt bewust geen secrets: de checkout hier is PR-head-inhoud die nog niet
+  # gereviewd/geaccepteerd is.
   build-check:
     name: "Build geslaagd vóór release"
     runs-on: ubuntu-latest

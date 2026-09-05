@@ -36,6 +36,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   GitHub-issue (op de uiteindelijke titel en tekst, inclusief AI-output). Bij een treffer wordt de
   melding geblokkeerd met een duidelijke foutmelding. De ruwe AI-respons wordt niet langer gelogd —
   alleen lengte en verwerkingstijd.
+- **PR-validatie losgekoppeld van productiecredentials in de pre-release-check (issue #1009).**
+  De databasebeschikbaarheidscheck (`AZURE_CREDENTIALS` / `SQL_CONNECTION_STRING`) draaide
+  voorheen als onderdeel van de `pull_request`-workflow naar main, samen met de gewijzigde
+  PR-inhoud (inclusief `scripts/ci/wake-database.sql` en de workflow-YAML zelf) — een PR die
+  dat SQL-bestand of de workflow aanpaste, kon dus vóór review/merge SQL laten uitvoeren met
+  productiecredentials. De check staat nu in een eigen workflow
+  (`pre-release-db-check.yml`) die via `workflow_run` pas ná de secretloze buildcheck draait
+  en zijn eigen YAML én het uitgevoerde SQL-bestand altijd van de main-branch haalt — nooit
+  van de PR-branch die de run veroorzaakte. Geen functionele wijziging voor legitieme
+  develop→main-releases; alleen credentialtoegang is losgekoppeld van PR-inhoud.
 
 ### Added
 - **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**
