@@ -31,7 +31,6 @@ public static class GitHubIssueReporter
     private static readonly Dictionary<string, DateTime> _recentlyReported = new();
     private static readonly object _lock = new();
 
-    private const int MaxStackTraceLines = 50;
     private const int RateLimitHours = 24;
 
     public static async Task ReportAsync(Exception ex, string functionName, ILogger log)
@@ -84,7 +83,7 @@ public static class GitHubIssueReporter
             {
                 if (existing.Value.isClosed)
                     await ReopenIssueAsync(http, owner, repo, existing.Value.number, log);
-                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, log);
+                await AddCommentAsync(http, owner, repo, existing.Value.number, ex, functionName, fp, log);
             }
             else
                 await CreateIssueAsync(http, owner, repo, fp, ex, functionName, log);
@@ -188,16 +187,20 @@ public static class GitHubIssueReporter
             log.LogWarning("GitHub issue heropenen mislukt: HTTP {Status}", (int)resp.StatusCode);
     }
 
-    private static async Task AddCommentAsync(
+    /// <summary>
+    /// Reageert op een recidiverende exception. <c>internal</c> zodat FunctionApp.Tests de
+    /// daadwerkelijk verzonden comment-body kan afdekken (InternalsVisibleTo, zie #476) —
+    /// regressietest voor #1008: de body mag nooit vrije <c>ex.Message</c>/stacktrace-tekst
+    /// bevatten, alleen de vaste allowlist-velden uit <see cref="BuildPublicDiagnostics"/>.
+    /// </summary>
+    internal static async Task AddCommentAsync(
         HttpClient http, string owner, string repo, int issueNumber,
-        Exception ex, string functionName, ILogger log)
+        Exception ex, string functionName, string fp, ILogger log)
     {
         var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
         var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
 
-        var body = $"🔁 Opnieuw opgetreden op {nlTijd:dd-MM-yyyy HH:mm} in functie `{functionName}`\n\n"
-                 + $"**Exception:** `{ex.GetType().FullName}: {SanitizeForPublic(ex.Message)}`\n\n"
-                 + $"**Stacktrace:**\n```\n{TruncateStackTrace(SanitizeForPublic(ex.StackTrace))}\n```";
+        var body = "🔁 Opnieuw opgetreden\n\n" + BuildPublicDiagnostics(ex, functionName, fp, nlTijd);
 
         var payload = JsonConvert.SerializeObject(new { body });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
@@ -209,23 +212,23 @@ public static class GitHubIssueReporter
             log.LogWarning("GitHub comment API: HTTP {Status}", (int)resp.StatusCode);
     }
 
-    private static async Task CreateIssueAsync(
+    /// <summary>
+    /// Maakt een nieuw issue aan. <c>internal</c> zodat FunctionApp.Tests de daadwerkelijk
+    /// verzonden issue-titel/body kan afdekken (InternalsVisibleTo, zie #476) — regressietest
+    /// voor #1008: titel en body mogen nooit vrije <c>ex.Message</c>/stacktrace-tekst bevatten,
+    /// alleen de vaste allowlist-velden uit <see cref="BuildPublicDiagnostics"/>.
+    /// </summary>
+    internal static async Task CreateIssueAsync(
         HttpClient http, string owner, string repo, string fp,
         Exception ex, string functionName, ILogger log)
     {
         var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
         var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
 
-        var sanitizedMessage = SanitizeForPublic(ex.Message);
-        var title = $"[bug][fp:{fp}] {ex.GetType().Name}: {TruncateMessage(sanitizedMessage)}";
-        var body = $"## Automatisch gerapporteerde exception\n\n"
-                 + $"**Tijdstip:** {nlTijd:dd-MM-yyyy HH:mm} (Europe/Amsterdam)\n"
-                 + $"**Functie:** `{functionName}`\n"
-                 + $"**Fingerprint:** `{fp}`\n\n"
-                 + $"**Exception:** `{ex.GetType().FullName}`\n"
-                 + $"**Bericht:** {sanitizedMessage}\n\n"
-                 + $"**Stacktrace:**\n```\n{TruncateStackTrace(SanitizeForPublic(ex.StackTrace))}\n```\n\n"
-                 + $"*Automatisch aangemaakt door GitHubIssueReporter (v2.1 zelfherstellend systeem)*";
+        var title = BuildPublicTitle(ex, fp);
+        var body = "## Automatisch gerapporteerde exception\n\n"
+                 + BuildPublicDiagnostics(ex, functionName, fp, nlTijd)
+                 + "\n\n*Automatisch aangemaakt door GitHubIssueReporter (v2.1 zelfherstellend systeem)*";
 
         var payload = JsonConvert.SerializeObject(new
         {
@@ -249,50 +252,57 @@ public static class GitHubIssueReporter
         }
     }
 
-    private static string TruncateStackTrace(string? stackTrace)
+    /// <summary>
+    /// Bouwt de publieke issue-titel. Bevat uitsluitend het exceptietype en de fingerprint-tag —
+    /// nooit <c>ex.Message</c> (#1008: vrije foutteksten kunnen databasenamen, servernamen of
+    /// andere identificerende inhoud bevatten die geen enkel bestaand denylist-patroon dekt).
+    /// <c>internal</c> zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476).
+    /// </summary>
+    internal static string BuildPublicTitle(Exception ex, string fp)
+        => $"[bug][fp:{fp}] {ClassifyErrorCategory(ex)}: {ex.GetType().Name}";
+
+    /// <summary>
+    /// Bouwt het publieke diagnostiek-blok volgens het allowlist-model uit #1008: uitsluitend
+    /// vaste technische velden (foutcategorie, exceptietype, interne operationele naam — de
+    /// Azure Function-naam — veilige fingerprint/hash, tijdstip). Vrije <c>ex.Message</c>,
+    /// inner-exceptietekst en bronpaden/stacktrace worden NOOIT overgenomen — die blijven
+    /// uitsluitend in de structured logging/Application Insights van deze Function App
+    /// (zie de <c>log.LogError(ex, ...)</c>-aanroep vóór <see cref="ReportAsync"/> in
+    /// Function1.cs), nooit in dit publieke GitHub-issue.
+    /// <c>internal</c> zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476).
+    /// </summary>
+    internal static string BuildPublicDiagnostics(Exception ex, string functionName, string fp, DateTime nlTijd)
     {
-        if (string.IsNullOrEmpty(stackTrace)) return "(geen stacktrace)";
-        var lines = stackTrace.Split('\n');
-        if (lines.Length <= MaxStackTraceLines) return stackTrace.Trim();
-        return string.Join('\n', lines.Take(MaxStackTraceLines)) + $"\n... ({lines.Length - MaxStackTraceLines} regels weggelaten)";
+        var innerType = ex.InnerException?.GetType().FullName ?? "(geen)";
+        return $"**Foutcategorie:** {ClassifyErrorCategory(ex)}\n"
+             + $"**Exceptietype:** `{ex.GetType().FullName}`\n"
+             + $"**Inner exceptietype:** `{innerType}`\n"
+             + $"**Interne operationele naam:** `{functionName}`\n"
+             + $"**Fingerprint:** `{fp}`\n"
+             + $"**Tijdstip:** {nlTijd:dd-MM-yyyy HH:mm} (Europe/Amsterdam)\n\n"
+             + "*Volledige diagnostiek (foutbericht, stacktrace, bronpaden) staat uitsluitend in de "
+             + "structured logging/Application Insights van deze Function App — nooit in dit publieke issue.*";
     }
 
-    private static string TruncateMessage(string message)
+    /// <summary>
+    /// Classificeert een exception (incl. inner exceptions) naar een vaste, veilige categorie —
+    /// onderdeel van het allowlist-model van #1008. Doorloopt de inner-exceptionketen zodat een
+    /// gewrapte SQL-fout (bv. via een repository-laag) ook als "Database" herkend wordt.
+    /// </summary>
+    private static string ClassifyErrorCategory(Exception ex)
     {
-        if (message.Length <= 120) return message;
-        return message[..117] + "...";
-    }
-
-    // Verwijdert PII en club-specifieke gegevens voordat tekst in publieke GitHub issues terechtkomt.
-    // Sanitiseert: e-mailadressen, GUIDs, SQL-connectiestring-fragmenten, URL queryparameters, datums, getallen.
-    private static string SanitizeForPublic(string? text)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-        var s = text;
-        // URL query-parameters met gevoelige namen — clientId, code, token, key, secret (#436)
-        s = System.Text.RegularExpressions.Regex.Replace(s,
-            @"([?&](clientId|code|token|key|secret|apikey|client_secret|client_id)=)[^&\s""'<>]+",
-            "$1<redacted>",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        // E-mailadressen
-        s = System.Text.RegularExpressions.Regex.Replace(s,
-            @"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", "<email>");
-        // GUIDs / client IDs
-        s = System.Text.RegularExpressions.Regex.Replace(s,
-            @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
-        // SQL-connectiestring-fragmenten (key=value paren die credentials kunnen bevatten)
-        s = System.Text.RegularExpressions.Regex.Replace(s,
-            @"(?i)\b(Server|Database|User Id|Data Source|Initial Catalog|Pwd|Uid)\s*=\s*[^\s;,'""<>]+",
-            "$1=<redacted>");
-        // Afzonderlijke credentials (pwd, pass, secret varianten)
-        s = System.Text.RegularExpressions.Regex.Replace(s,
-            @"(?i)\b(pass\w*|secret\w*|token\w*|key\w*)\s*[=:]\s*\S{4,}",
-            "$1=<redacted>");
-        // Datums
-        s = System.Text.RegularExpressions.Regex.Replace(s,
-            @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?", "<date>");
-        // Losse getallen
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d{5,}\b", "<n>");
-        return s.Trim();
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var typeName = current.GetType().FullName ?? "";
+            if (typeName.Contains("Sql", StringComparison.OrdinalIgnoreCase))
+                return "Database";
+            if (current is TimeoutException or TaskCanceledException or OperationCanceledException)
+                return "Timeout";
+            if (current is HttpRequestException or System.Net.WebException or System.Net.Sockets.SocketException)
+                return "Netwerk";
+            if (current is InvalidOperationException or ArgumentException or FormatException)
+                return "Configuratie/status";
+        }
+        return "Onbekend";
     }
 }

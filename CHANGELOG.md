@@ -39,6 +39,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   overschrijven van een bestaande koppeling. Nieuwe Entra-approl `Wedstrijdzaken` (aanvullend op
   admin/user, geen vervanging).
 
+### Security
+- **Exception-reporter publiceert nu een allowlist van vaste technische velden i.p.v. vrije
+  foutteksten in publieke GitHub-issues/comments (#1008).** De eerdere denylist-sanitizer redigeerde
+  bijvoorbeeld `Database=...`-vormen, maar niet een databasenaam die in een natuurlijke SQL-foutzin
+  voorkomt. `GitHubIssueReporter` publiceert voortaan uitsluitend foutcategorie, exceptietype
+  (incl. inner-exceptietype), de Azure Function-naam, de veilige fingerprint/hash en het tijdstip
+  — nooit meer `ex.Message`, inner-exceptietekst of stacktrace/bronpaden. Volledige diagnostiek
+  blijft beschikbaar via de bestaande structured logging (Application Insights). Hetzelfde beleid
+  geldt nu voor alle drie de paden: nieuw issue, heropening en comment. Deduplicatie en de
+  EgressGuard-uitknop zijn ongewijzigd. (#1008)
+
 ## [3.2.0.2] — 2026-09-04
 
 ### Fixed
