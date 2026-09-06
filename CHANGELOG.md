@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.2.0.3] — 2026-09-06
+
+### Fixed
+- Beheerders en coördinatoren krijgen weer automatisch antwoord op inkomende e-mail: de mailbox
+  werd sinds de overstap naar de Postgres-database (2026-09-04) nooit meer uitgelezen. Inkomende
+  verzoeken (beschikbaarheid, herplannen, teamcontact) worden weer automatisch geclassificeerd en
+  beantwoord, zie issue #972.
+
 ## [3.2.0.2] — 2026-09-04
 
 ### Fixed

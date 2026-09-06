@@ -8,9 +8,14 @@ namespace FunctionApp.Postgres.Email;
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Email/BerichtAiService.cs</c> (#889) — vrijwel
 /// woordelijke kopie. De enige inhoudelijke wijziging: <c>SystemUtilities.AppSettings</c> is
-/// vervangen door <see cref="PostgresAppSettings"/>. Geen few-shot-correctievoorbeelden op deze
-/// tier (<c>LearningMomentRepository</c>/de correctie-leerlus zijn hier niet vertaald) — de
-/// parameter blijft in de signatuur staan voor gelijkvormigheid, maar wordt altijd leeg aangeroepen.
+/// vervangen door <see cref="PostgresAppSettings"/>.
+/// <para>
+/// <b>Bijgewerkt bij #972:</b> de eerdere aantekening hier dat de <c>voorbeelden</c>-parameter
+/// "op deze tier altijd null" zou zijn is achterhaald sinds <c>EmailProcessorFunction</c> is
+/// vertaald — <c>LearningMomentRepository</c> bestond al langer en werkt, alleen had niemand hem
+/// nog aangeroepen met échte few-shot-voorbeelden. <see cref="DetecteerCorrectieAsync"/> is bij
+/// diezelfde gelegenheid toegevoegd (woordelijke kopie van het SQL Server-origineel).
+/// </para>
 ///
 /// Service voor het classificeren van inkomende emails en het genereren van antwoorden
 /// met behulp van OpenAI GPT-4o-mini.
@@ -264,7 +269,8 @@ public class BerichtAiService
     /// Classificeert een inkomend bericht met behulp van GPT-4o-mini.
     /// Retourneert een BerichtClassificatie met het type verzoek en geëxtraheerde gegevens.
     /// Optionele voorbeelden worden als few-shot context in de system prompt geïnjecteerd (#323) —
-    /// op deze tier altijd null, zie de klassekop.
+    /// gevuld door <c>LearningMomentRepository.HaalVoorbeeldenOpAsync</c> zodra er gevalideerde
+    /// leermomenten zijn (zie <c>EmailProcessorFunction</c>, #972).
     /// </summary>
     public async Task<BerichtClassificatie> ClassificeerBerichtAsync(
         string body, string subject, string afzender,
@@ -316,6 +322,83 @@ public class BerichtAiService
         {
             _logger.LogError(ex, "Fout bij het classificeren van bericht (onderwerp niet gelogd — AVG #210)");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Bepaalt of een reply-email aangeeft dat een eerdere classificatie onjuist was (#323/#972 —
+    /// port van EmailProcessorFunction). Woordelijke kopie van
+    /// <c>FunctionApp/Email/BerichtAiService.DetecteerCorrectieAsync</c>: zelfde injectie-oppervlak
+    /// als classificatie zelf (de reply-body is externe tekst), dus dezelfde datablok-marker-aanpak.
+    /// </summary>
+    public async Task<(bool IsCorrectie, string? AfgeleidJuistType, string? Samenvatting)> DetecteerCorrectieAsync(
+        string body, string subject, string origineelType, string? originaleSamenvatting)
+    {
+        _logger.LogInformation("Correctie-detectie gestart voor reply (onderwerp niet gelogd — AVG #210)");
+
+        var dataMarkerId = GenereerDataMarkerId();
+
+        var systemPrompt = """
+            Je analyseert een reply-email om te bepalen of de afzender aangeeft dat een eerdere classificatie onjuist was.
+            Een correctie is een reactie waarbij de afzender verduidelijkt dat het vorige antwoord op een verkeerde interpretatie was gebaseerd.
+
+            Geef ALTIJD JSON terug met dit formaat:
+            {
+              "isCorrectie": true of false,
+              "afgeleidType": "beschikbaarheid_check | herplan_verzoek | bevestiging | team_contact_opvragen | buiten_scope | null",
+              "samenvatting": "korte beschrijving van wat de afzender bedoelde, of null"
+            }
+
+            Regels:
+            - isCorrectie=true: afzender geeft aan dat ons antwoord onjuist was, of dat het verzoek anders bedoeld was
+            - isCorrectie=false: bevestiging, bedankje, akkoord, of follow-up die het oorspronkelijke type niet tegenspreekt
+            - afgeleidType: het type dat het verzoek eigenlijk had moeten zijn (null als isCorrectie=false of onduidelijk)
+            - samenvatting: beschrijving van wat de afzender bedoelde (ook bij isCorrectie=false)
+            """
+            + "\n\n" + BouwDataBlokInstructie(dataMarkerId);
+
+        var userPrompt =
+            $"Originele classificatie: {NeutraliseerDataMarkers(origineelType)}.\n"
+            + $"Originele samenvatting: {NeutraliseerDataMarkers(originaleSamenvatting ?? "(geen)")}.\n\n"
+            + "Reply:\n"
+            + $"{DataMarkerStart(dataMarkerId)}\n"
+            + $"Onderwerp: {NeutraliseerDataMarkers(subject)}\n\n"
+            + $"{NeutraliseerDataMarkers(body)}\n"
+            + DataMarkerEinde(dataMarkerId);
+
+        var messages = new List<Microsoft.Extensions.AI.ChatMessage>
+        {
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, userPrompt)
+        };
+
+        var options = new ChatOptions
+        {
+            Temperature = 0.1f,
+            ResponseFormat = ChatResponseFormat.Json
+        };
+
+        try
+        {
+            var response = await _chatClient.GetResponseAsync(messages, options);
+            var jsonResponse = response.Text ?? "";
+
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var root = doc.RootElement;
+
+            bool isCorrectie = root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("isCorrectie", out var ic)
+                && ic.ValueKind == JsonValueKind.True;
+            var afgeleidType = GetOptionalString(root, "afgeleidType");
+            var samenvatting = GetOptionalString(root, "samenvatting");
+
+            _logger.LogInformation("Correctie-detectie: isCorrectie={IsCorrectie}", isCorrectie);
+            return (isCorrectie, afgeleidType, samenvatting);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Fout bij correctie-detectie — doorgaan zonder correctie");
+            return (false, null, null);
         }
     }
 
