@@ -1046,8 +1046,10 @@ public class SportlinkClubClientTests
     //
     // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar, #1047): dit roept niet
     // "UpdateMatchField" aan (bestaat niet) maar "UpdateMatchDetails" met het VOLLEDIGE
-    // wedstrijdrecord — eerst een verse Match-GET-snapshot ophalen, dan UserInfo (voor
-    // PublicApplicantId), dan pas de PUT met snapshot + overschreven veld.
+    // wedstrijdrecord — eerst een verse Match-GET-snapshot ophalen, dan de PUT met snapshot +
+    // overschreven veld. PublicApplicantId gaat leeg mee (#1048): live bevestigd dat Sportlink dat
+    // accepteert voor een eigen-veld-wijziging — geen UserInfo-aanroep nodig voor dit pad (in
+    // tegenstelling tot #996's change-request-actie, die wél een echte aanvrager-identiteit heeft).
 
     private static string MatchDetailsSnapshotResponse() => """
         {
@@ -1077,8 +1079,6 @@ public class SportlinkClubClientTests
         {
             if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
                 return JsonResponse(TokenResponse(FictieveAccessToken));
-            if (req.RequestUri?.AbsoluteUri.Contains("UserInfo") == true)
-                return JsonResponse("""{"publicPersonId": "BCZK68R"}""");
             if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
             {
                 if (captureBody != null)
@@ -1139,7 +1139,7 @@ public class SportlinkClubClientTests
         capturedBody.Should().Contain(TestPublicMatchId)
             .And.Contain("BBCF989-OUTDOOR_FIELD-9")
             .And.Contain("\"IsForceUpdate\":false")
-            .And.Contain("\"PublicApplicantId\":\"BCZK68R\"");
+            .And.Contain("\"PublicApplicantId\":\"\"");
         // ...en de rest van het wedstrijdrecord komt ongewijzigd van de snapshot terug, niet
         // van een lokale aanname — bewijst dat teamnamen/omschrijving niet verloren gaan.
         capturedBody.Should().Contain("TEST 1").And.Contain("TEST 2").And.Contain("Oefenwedstrijd")
@@ -1189,8 +1189,6 @@ public class SportlinkClubClientTests
                 tokenCallCount++;
                 return JsonResponse(TokenResponse(FictieveAccessToken + tokenCallCount));
             }
-            if (req.RequestUri?.AbsoluteUri.Contains("UserInfo") == true)
-                return JsonResponse("""{"publicPersonId": "BCZK68R"}""");
             if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
             {
                 putCallCount++;

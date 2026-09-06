@@ -90,9 +90,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Dagplanning; dit is het eerste écht werkende schrijfpad naar Sportlink Club in deze applicatie.
 - **Veld wijzigen vanuit Dagplanning riep een endpoint aan dat niet bestaat (#1047).** Sportlink
   gebruikt `UpdateMatchDetails` met het volledige wedstrijdrecord, niet het aangenomen
-  `UpdateMatchField` met een klein patch. Herontworpen en live bevestigd correct — momenteel nog
-  geblokkeerd op een apart, eveneens live-gevonden probleem in de identiteitsherkenning (#1048)
-  vóórdat beheerders dit daadwerkelijk kunnen gebruiken.
+  `UpdateMatchField` met een klein patch. Herontworpen naar het echte endpoint.
+- **Veld wijzigen faalde nog steeds door een onnodige, kapotte identiteitsopvraag (#1048).** Bleek
+  voor een eigen-veld-wijziging niet nodig — Sportlink accepteert een lege aanvrager-identiteit.
+  Beheerders kunnen nu daadwerkelijk het veld van een wedstrijd wijzigen vanuit Dagplanning.
 
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
