@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.0.35",
+    "version": "3.0.36",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1084,6 +1084,87 @@
           },
           "IsAddScoreAllowed": {
             "type": "boolean"
+          }
+        }
+      },
+      "SportlinkMutationResponse": {
+        "type": "object",
+        "description": "Resultaat van een schrijvende Sportlink-actie (#992/#993/#996, epic #986). Spiegelt\nPlanner.Shared.Integrations.SportlinkClub.SportlinkMutationResult. `IsSuccess=false` met\nHTTP 200 betekent: de aanroep zelf lukte, Sportlink heeft de mutatie inhoudelijk afgewezen\n(zie Violations) — geen transportfout.\n",
+        "properties": {
+          "IsSuccess": {
+            "type": "boolean"
+          },
+          "Violations": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SportlinkChangeRequest": {
+        "type": "object",
+        "description": "Eén inkomend wijzigingsverzoek (#996, epic #986). Spiegelt\nPlanner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest. Veldnamen letterlijk uit\nSportlinks bundle-code (issue #996) — nog niet live geverifieerd.\n",
+        "properties": {
+          "PublicMatchId": {
+            "type": "string",
+            "nullable": true
+          },
+          "PublicRequestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "RequestStatus": {
+            "type": "string",
+            "description": "APPROVED, CONFIRM (wacht op ons), DENIED of REVOKED",
+            "nullable": true
+          },
+          "RequestData": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "CurrentDate": {
+                "type": "string",
+                "nullable": true
+              },
+              "CurrentStartTime": {
+                "type": "string",
+                "nullable": true
+              },
+              "CurrentFacilityName": {
+                "type": "string",
+                "nullable": true
+              },
+              "CurrentSubFacilityName": {
+                "type": "string",
+                "nullable": true
+              },
+              "RequestedDate": {
+                "type": "string",
+                "nullable": true
+              },
+              "RequestedStartTime": {
+                "type": "string",
+                "nullable": true
+              },
+              "RequestedFacilityName": {
+                "type": "string",
+                "nullable": true
+              },
+              "RequestedSubFacilityName": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "Reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "Remarks": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -3784,6 +3865,309 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}/dressingrooms": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkDressingRooms",
+        "summary": "Kleedkamers toewijzen (#992, epic",
+        "description": "Resolvet PublicMatchId, controleert `SportlinkMutationGuard` (IsHomeMatch +\nIsAssignDressingRoomsAllowed), logt de poging vóór en na in\n`public.sportlinkmutationaudit`, en voert dan `PUT UpdateMatchDressingRooms` uit bij\nSportlink Club. Retourneert HTTP 200 ook als Sportlink de mutatie inhoudelijk afwijst\n(`IsSuccess=false` + `Violations`) — dat is geen transportfout.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "HomeDressingRoomId": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "AwayDressingRoomId": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "OfficialDressingRoomId": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (IsSuccess kan alsnog false zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd of PublicMatchId niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}/field": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkField",
+        "summary": "Veld(deel) wijzigen (#993, epic",
+        "description": "Zelfde volgorde als `.../dressingrooms`, maar met `SportlinkMutationSoort.Veld`\n(IsEditFieldAllowed). `IsForceUpdate` staat server-side altijd hard op `false` — de\nsemantiek van die vlag is nooit live bevestigd (issue #993), dus geen client-parameter\nhiervoor.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "FieldId": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "FieldSize": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "FieldOffset": {
+                    "type": "integer",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (IsSuccess kan alsnog false zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd of PublicMatchId niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/change-requests": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkChangeRequests",
+        "summary": "Inkomende wijzigingsverzoeken ophalen (#996, epic",
+        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`RequestStatus == \"CONFIRM\"` voor verzoeken die op ons wachten.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lijst met wijzigingsverzoeken (kan leeg zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SportlinkChangeRequest"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/change-requests/{publicRequestId}/action": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkChangeRequestAction",
+        "summary": "Wijzigingsverzoek goedkeuren of afwijzen (#996, epic",
+        "description": "Haalt zelf `PublicPersonId` van het gekoppelde serviceaccount op via `user/UserInfo` vóór\nde actie. Geen `SportlinkMutationGuard`-check (die bewaakt onze eigen wedstrijd-\nmutatievlaggen, niet het afhandelen van andermans verzoek) — audit-logging blijft wel\nverplicht. `Remarks` is verplicht bij `DENY`.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "publicRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "PublicMatchId",
+                  "Actie"
+                ],
+                "properties": {
+                  "PublicMatchId": {
+                    "type": "string"
+                  },
+                  "Actie": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVE",
+                      "DENY"
+                    ]
+                  },
+                  "Remarks": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (IsSuccess kan alsnog false zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Ontbrekende/ongeldige actie, of Remarks ontbreekt bij DENY"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
           },
           "503": {
             "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"

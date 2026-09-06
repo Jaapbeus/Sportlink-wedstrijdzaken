@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.0.35
+  version: 3.0.36
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -840,6 +840,58 @@ components:
           type: boolean
         IsAddScoreAllowed:
           type: boolean
+
+    SportlinkMutationResponse:
+      type: object
+      description: |
+        Resultaat van een schrijvende Sportlink-actie (#992/#993/#996, epic #986). Spiegelt
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMutationResult. `IsSuccess=false` met
+        HTTP 200 betekent: de aanroep zelf lukte, Sportlink heeft de mutatie inhoudelijk afgewezen
+        (zie Violations) — geen transportfout.
+      properties:
+        IsSuccess:
+          type: boolean
+        Violations:
+          type: array
+          nullable: true
+          items:
+            type: string
+
+    SportlinkChangeRequest:
+      type: object
+      description: |
+        Eén inkomend wijzigingsverzoek (#996, epic #986). Spiegelt
+        Planner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest. Veldnamen letterlijk uit
+        Sportlinks bundle-code (issue #996) — nog niet live geverifieerd.
+      properties:
+        PublicMatchId:
+          type: string
+          nullable: true
+        PublicRequestId:
+          type: string
+          nullable: true
+        RequestStatus:
+          type: string
+          description: APPROVED, CONFIRM (wacht op ons), DENIED of REVOKED
+          nullable: true
+        RequestData:
+          type: object
+          nullable: true
+          properties:
+            CurrentDate: { type: string, nullable: true }
+            CurrentStartTime: { type: string, nullable: true }
+            CurrentFacilityName: { type: string, nullable: true }
+            CurrentSubFacilityName: { type: string, nullable: true }
+            RequestedDate: { type: string, nullable: true }
+            RequestedStartTime: { type: string, nullable: true }
+            RequestedFacilityName: { type: string, nullable: true }
+            RequestedSubFacilityName: { type: string, nullable: true }
+        Reason:
+          type: string
+          nullable: true
+        Remarks:
+          type: string
+          nullable: true
 
     UpdateSettingsRequest:
       type: object
@@ -2863,6 +2915,195 @@ paths:
           description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/match/{wedstrijdcode}/dressingrooms:
+    put:
+      tags: [sportlink]
+      operationId: putSportlinkDressingRooms
+      summary: Kleedkamers toewijzen (#992, epic #986) — eerste echte Sportlink-mutatie
+      description: |
+        Resolvet PublicMatchId, controleert `SportlinkMutationGuard` (IsHomeMatch +
+        IsAssignDressingRoomsAllowed), logt de poging vóór en na in
+        `public.sportlinkmutationaudit`, en voert dan `PUT UpdateMatchDressingRooms` uit bij
+        Sportlink Club. Retourneert HTTP 200 ook als Sportlink de mutatie inhoudelijk afwijst
+        (`IsSuccess=false` + `Violations`) — dat is geen transportfout.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: wedstrijdcode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                HomeDressingRoomId: { type: string, nullable: true }
+                AwayDressingRoomId: { type: string, nullable: true }
+                OfficialDressingRoomId: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Mutatieresultaat (IsSuccess kan alsnog false zijn)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Wedstrijd of PublicMatchId niet gevonden
+        '409':
+          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/match/{wedstrijdcode}/field:
+    put:
+      tags: [sportlink]
+      operationId: putSportlinkField
+      summary: Veld(deel) wijzigen (#993, epic #986)
+      description: |
+        Zelfde volgorde als `.../dressingrooms`, maar met `SportlinkMutationSoort.Veld`
+        (IsEditFieldAllowed). `IsForceUpdate` staat server-side altijd hard op `false` — de
+        semantiek van die vlag is nooit live bevestigd (issue #993), dus geen client-parameter
+        hiervoor.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: wedstrijdcode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                FieldId: { type: string, nullable: true }
+                FieldSize: { type: string, nullable: true }
+                FieldOffset: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Mutatieresultaat (IsSuccess kan alsnog false zijn)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Wedstrijd of PublicMatchId niet gevonden
+        '409':
+          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/change-requests:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkChangeRequests
+      summary: Inkomende wijzigingsverzoeken ophalen (#996, epic #986)
+      description: |
+        Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor
+        het gekoppelde serviceaccount in één keer. Filter client-side op
+        `RequestStatus == "CONFIRM"` voor verzoeken die op ons wachten.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst met wijzigingsverzoeken (kan leeg zijn)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SportlinkChangeRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/change-requests/{publicRequestId}/action:
+    put:
+      tags: [sportlink]
+      operationId: putSportlinkChangeRequestAction
+      summary: Wijzigingsverzoek goedkeuren of afwijzen (#996, epic #986)
+      description: |
+        Haalt zelf `PublicPersonId` van het gekoppelde serviceaccount op via `user/UserInfo` vóór
+        de actie. Geen `SportlinkMutationGuard`-check (die bewaakt onze eigen wedstrijd-
+        mutatievlaggen, niet het afhandelen van andermans verzoek) — audit-logging blijft wel
+        verplicht. `Remarks` is verplicht bij `DENY`.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: publicRequestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [PublicMatchId, Actie]
+              properties:
+                PublicMatchId: { type: string }
+                Actie:
+                  type: string
+                  enum: [APPROVE, DENY]
+                Remarks: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Mutatieresultaat (IsSuccess kan alsnog false zijn)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkMutationResponse'
+        '400':
+          description: Ontbrekende/ongeldige actie, of Remarks ontbreekt bij DENY
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 

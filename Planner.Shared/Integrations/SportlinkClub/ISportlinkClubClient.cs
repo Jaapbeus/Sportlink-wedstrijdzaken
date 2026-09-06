@@ -137,4 +137,29 @@ public interface ISportlinkClubClient
         int? fieldOffset,
         bool isForceUpdate,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Haalt alle inkomende wijzigingsverzoeken op (#996, epic #986) —
+    /// <c>competition/match/changerequest/MatchChangeRequests</c>. Niet club-/wedstrijd-gescoped —
+    /// filter zelf op <c>RequestStatus == "CONFIRM"</c> voor verzoeken die op ons wachten.
+    /// </summary>
+    Task<SportlinkClubResponse<IReadOnlyList<SportlinkChangeRequest>>> GetChangeRequestsAsync(
+        string functioneleRol,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Keurt een inkomend wijzigingsverzoek goed of af (#996) —
+    /// <c>PUT competition/match/changerequest/MatchChangeRequestAction</c>. Haalt zelf
+    /// <c>PublicPersonId</c> van de ingelogde (service-)gebruiker op via <c>user/UserInfo</c> —
+    /// de aanroeper hoeft dat niet te weten.
+    /// </summary>
+    /// <param name="actie"><c>"APPROVE"</c> of <c>"DENY"</c>.</param>
+    /// <param name="remarks">Verplicht bij afwijzen (toelichting) — validatie hiervan is aan de aanroeper.</param>
+    Task<SportlinkClubResponse<SportlinkMutationResult>> ActOnChangeRequestAsync(
+        string functioneleRol,
+        string actie,
+        string publicMatchId,
+        string publicRequestId,
+        string? remarks,
+        CancellationToken cancellationToken = default);
 }

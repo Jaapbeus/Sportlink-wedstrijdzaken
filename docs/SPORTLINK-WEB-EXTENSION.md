@@ -1,9 +1,10 @@
 # Sportlink Web Extension
 
-> **Status: gedeeltelijk gebouwd. Kleedkamers (#992) en veld (#993) zijn gebouwd en CI-groen, maar
-> nog niet live (in productie) geverifieerd** — dat vereist een mens die de knop zelf indrukt, zie
-> §4.4. #994/#995/#997 zijn bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld
-> (zie de betreffende issues). Epic
+> **Status: gedeeltelijk gebouwd. Kleedkamers (#992), veld (#993) en inkomende
+> wijzigingsverzoeken (#996) zijn gebouwd en CI-groen, maar nog niet live (in productie)
+> geverifieerd** — dat vereist een mens die de knop zelf indrukt, zie §4.4. #994/#995/#997 zijn
+> bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld (zie de betreffende
+> issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -148,6 +149,13 @@ verplichte N-user-test.
   per datum (één `MatchProgramOverview`-aanroep per dag, niet per wedstrijd — zie
   `ISportlinkClubClient.GetMatchProgramOverviewAsync`). Een cache-miss buiten dat venster valt nog
   steeds terug op de bestaande synchrone lookup in `SportlinkMatchFunction`, geen harde fout.
+- `FunctionApp.Postgres/Sportlink/SportlinkChangeRequestFunction.cs` (#996) — `GET
+  /api/sportlink/change-requests` + `PUT .../{publicRequestId}/action`. Niet wedstrijdcode-
+  gescoped (Sportlinks `MatchChangeRequests`-endpoint levert alles voor het gekoppelde
+  serviceaccount in één keer) en bewust ZONDER `SportlinkMutationGuard`-check: die guard bewaakt
+  onze eigen wedstrijd-mutatie-vlaggen, niet het afhandelen van een verzoek van een tegenstander.
+  Audit-logging blijft wel verplicht. `ActOnChangeRequestAsync` haalt `PublicPersonId` van het
+  service-account zelf op via `user/UserInfo` — de aanroeper hoeft dat niet te kennen.
 
 ### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
 Op de Postgres-tier (de enige tier die live draait) wordt het rotarende refresh_token opgeslagen in

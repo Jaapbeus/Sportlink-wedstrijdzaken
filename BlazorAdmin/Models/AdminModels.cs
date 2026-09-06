@@ -81,6 +81,31 @@ public class SportlinkMutatieResultaatDto
     public List<string>? Violations { get; set; }
 }
 
+/// <summary>#996: één inkomend wijzigingsverzoek — spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest (gedeelde DTO). Houd deze twee
+/// synchroon bij een contractwijziging.</summary>
+public class SportlinkChangeRequestDto
+{
+    public string? PublicMatchId { get; set; }
+    public string? PublicRequestId { get; set; }
+    public string? RequestStatus { get; set; }
+    public SportlinkChangeRequestDataDto? RequestData { get; set; }
+    public string? Reason { get; set; }
+    public string? Remarks { get; set; }
+}
+
+public class SportlinkChangeRequestDataDto
+{
+    public string? CurrentDate { get; set; }
+    public string? CurrentStartTime { get; set; }
+    public string? CurrentFacilityName { get; set; }
+    public string? CurrentSubFacilityName { get; set; }
+    public string? RequestedDate { get; set; }
+    public string? RequestedStartTime { get; set; }
+    public string? RequestedFacilityName { get; set; }
+    public string? RequestedSubFacilityName { get; set; }
+}
+
 public class SettingsUpdateDto
 {
     // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend
