@@ -31,7 +31,20 @@ public class AvailabilityServiceIntegrationTests : IDisposable
     public void Dispose() => PostgresAppSettings.ResetForTests();
 
     private const string Club = "testclub-availsvc";
-    private static readonly DateOnly Zaterdag = new(2026, 9, 5); // ver genoeg in de toekomst t.o.v. "vandaag" tijdens CI-runs
+
+    // Was een hardcoded datum ("ver genoeg in de toekomst t.o.v. 'vandaag' tijdens CI-runs") die
+    // op 2026-09-06 zelf verleden tijd werd en de hele testklasse liet falen op "moet in de
+    // toekomst zijn" — een klassieke datum-bom (zelfde categorie fout als CLAUDE.md's regel over
+    // geen hardcoded jaartallen in AI few-shot-voorbeelden). Nu altijd een zaterdag, minstens twee
+    // weken vooruit vanaf de dag van de testrun, dus nooit meer verleden tijd.
+    private static readonly DateOnly Zaterdag = VolgendeZaterdag(daysAhead: 14);
+
+    private static DateOnly VolgendeZaterdag(int daysAhead)
+    {
+        var basis = DateOnly.FromDateTime(DateTime.Today).AddDays(daysAhead);
+        var offsetTotZaterdag = ((int)DayOfWeek.Saturday - (int)basis.DayOfWeek + 7) % 7;
+        return basis.AddDays(offsetTotZaterdag);
+    }
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
         ?? throw new InvalidOperationException(
@@ -63,8 +76,8 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         const string team = "T-availsvc JO13-1";
         await ExecAsync(conn, @"
             INSERT INTO his.matches (wedstrijdcode, kaledatum, aanvangstijd, veld, teamnaam, wedstrijd, accommodatie, status, clubcode, mta_inserted, mta_modified)
-            VALUES (9400001, '2026-09-05', '09:00', 'veld 1', @team, @team || ' - Bestaande tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
-            ("team", team), ("club", Club));
+            VALUES (9400001, @datum, '09:00', 'veld 1', @team, @team || ' - Bestaande tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
+            ("team", team), ("club", Club), ("datum", Zaterdag));
 
         var request = new CheckAvailabilityRequest
         {
@@ -114,8 +127,8 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         const string team = "T-availsvc JO99-9";
         await ExecAsync(conn, @"
             INSERT INTO his.matches (wedstrijdcode, kaledatum, aanvangstijd, veld, teamnaam, wedstrijd, accommodatie, status, clubcode, mta_inserted, mta_modified)
-            VALUES (9400009, '2026-09-05', '09:00', 'veld 1', @team, @team || ' - Bestaande tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
-            ("team", team), ("club", Club));
+            VALUES (9400009, @datum, '09:00', 'veld 1', @team, @team || ' - Bestaande tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
+            ("team", team), ("club", Club), ("datum", Zaterdag));
 
         var request = new CheckAvailabilityRequest
         {
@@ -190,8 +203,8 @@ public class AvailabilityServiceIntegrationTests : IDisposable
         const string team = "T-availsvc JO13-1";
         await ExecAsync(conn, @"
             INSERT INTO his.matches (wedstrijdcode, kaledatum, aanvangstijd, veld, teamnaam, wedstrijd, accommodatie, status, clubcode, mta_inserted, mta_modified)
-            VALUES (9400002, '2026-09-05', '10:00', 'veld 1', @team, @team || ' - Tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
-            ("team", team), ("club", Club));
+            VALUES (9400002, @datum, '10:00', 'veld 1', @team, @team || ' - Tegenstander', 'Sportpark Testclub', 'Te spelen', @club, NOW(), NOW())",
+            ("team", team), ("club", Club), ("datum", Zaterdag));
 
         var request = new HerplanCheckRequest { Wedstrijdcode = 9400002 };
         var response = await RescheduleService.CheckRescheduleAvailabilityAsync(ConnectionString, request, NullLogger.Instance, Club);

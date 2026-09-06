@@ -33,7 +33,9 @@ namespace FunctionApp.Postgres.Tests.Email;
 /// </summary>
 public class EmailProcessorFunctionIntegrationTests
 {
-    private const string ClubCode = "testclub-emailprocessor";
+    // clubcode-kolommen zijn overal VarChar(20) (zie Database.Postgres/KnownEntities.cs) — deze
+    // waarde moet daaronder blijven, anders faalt de INSERT met "value too long".
+    private const string ClubCode = "testclub-emailproc";
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
         ?? throw new InvalidOperationException(
