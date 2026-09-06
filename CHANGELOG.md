@@ -72,6 +72,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   overschrijven van een bestaande koppeling. Nieuwe Entra-approl `Wedstrijdzaken` (aanvullend op
   admin/user, geen vervanging).
 
+### Fixed
+- **Sportlink-wedstrijdgegevens ophalen kon crashen als Sportlink het wedstrijdnummer als getal
+  in plaats van tekst terugstuurde (#1036).** Kwam boven water bij de eerste live-verificatie van
+  het Sportlink-paneel — geen enkele test had dit eerder gezien omdat de aanname over hoe
+  Sportlink dit veld aanlevert onjuist bleek.
+
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
   verholpen (#1010).** `Planner.Shared/PlannerHtmlGenerator.cs` interpoleerde deze en andere

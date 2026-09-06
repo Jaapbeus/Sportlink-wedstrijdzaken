@@ -108,6 +108,49 @@ public class SportlinkClubClientTests
         """;
 
     [Fact]
+    public async Task GetMatchAsync_ExternalMatchIdAlsJsonGetal_WordtCorrectGemaptNaarString()
+    {
+        // Regressietest voor een live-gevonden bug (2026-09-06): Sportlinks echte Match-endpoint
+        // levert externalMatchId als JSON-getal (bijv. 3403), niet als string ("3403") — de
+        // eerdere aanname dat JsonNumberHandling.AllowReadingFromString dit al opving was fout
+        // (die instelling werkt alleen andersom: string→getal, niet getal→string). Zonder
+        // FlexibleStringJsonConverter faalt deze deserialisatie met een JsonException.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse("""
+                    {
+                        "publicMatchId": "M000000001",
+                        "externalMatchId": 3403,
+                        "matchDate": "2026-09-15T19:30:00+02:00",
+                        "matchStatus": "CONCEPT",
+                        "isHomeMatch": true,
+                        "isCanceledMatch": false,
+                        "isConceptMatch": true,
+                        "taskStatus": null,
+                        "isEditFieldAllowed": true,
+                        "isAssignDressingRoomsAllowed": true,
+                        "isAssignOfficialsAllowed": true,
+                        "isEditFieldSidePanelAllowed": true,
+                        "isAddScoreAllowed": true
+                    }
+                    """);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().NotBeNull();
+        result.Data!.ExternalMatchId.Should().Be("3403");
+    }
+
+    [Fact]
     public async Task GetMatchAsync_GeldigTokenEnHappyPath_RetourneertGemapteMatch()
     {
         // Arrange

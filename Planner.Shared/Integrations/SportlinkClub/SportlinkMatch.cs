@@ -11,7 +11,10 @@ public sealed record SportlinkMatch
     [JsonPropertyName("publicMatchId")]
     public string PublicMatchId { get; set; } = "";
 
+    // Live vastgesteld (2026-09-06): Sportlink levert dit veld als JSON-getal, niet als string —
+    // zie FlexibleStringJsonConverter voor waarom AllowReadingFromString dit niet al opving.
     [JsonPropertyName("externalMatchId")]
+    [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string ExternalMatchId { get; set; } = "";
 
     [JsonPropertyName("matchDate")]
