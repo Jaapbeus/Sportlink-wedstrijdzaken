@@ -9,8 +9,17 @@
 > echte PUT → correct afgehandelde afwijzing), maar Sportlink wees de mutatie inhoudelijk af met
 > `INVALID_COMBINATION_FACILITY_DRESSINGROOM` (zie #1040 voor de bijbehorende parseerfout die
 > daarbij gevonden en gefixt is, en het nog openstaande vraagstuk: de juiste kleedkamer-identifier-
-> vorm is nog niet vastgesteld). Veld (#993) en inkomende wijzigingsverzoeken (#996) zijn gebouwd
-> en CI-groen; live-verificatie daarvan volgt nog. #994/#995/#997 zijn bewust nog niet gebouwd: de
+> vorm is nog niet vastgesteld). **Veld wijzigen (#993) is 2026-09-06 ook voor het eerst live
+> geprobeerd** (zelfde testwedstrijd, `FieldId` = de `SubFacilityId` uit de eigen live Match-
+> respons) — dit ging niet voorbij de eerste stap: Sportlink gaf HTTP 602 "Missing entity id:
+> Input is invalid: no valid entity key found", vóór enige veld-inhoudelijke validatie. De
+> requestvorm van `UpdateMatchField` (body-veldnamen) is dus zelf al onjuist, niet alleen de
+> waarde — vereist een live netwerktrace door een mens, zelfde categorie als #994/#995/#997.
+> **Inkomende wijzigingsverzoeken ophalen (#996, GET) is 2026-09-06 live bevestigd te werken** —
+> toont echte, actuele verzoeken van tegenstanders. De actie (goedkeuren/afwijzen) is bewust NIET
+> live getest: Sportlink scoped dit endpoint niet per wedstrijd, dus elk zichtbaar verzoek is een
+> echt verzoek van een echte tegenstander — testen zou een echte beslissing forceren op een
+> wedstrijd die niet de onze testwedstrijd is. #994/#995/#997 zijn bewust nog niet gebouwd: de
 > exacte requestvorm is niet live vastgesteld (zie de betreffende issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
@@ -267,6 +276,13 @@ test getriggerd wordt:
   ook niet tijdelijk — gebruik `JsonDocument` om gericht alleen de raw text van het specifieke
   veld te loggen dat de fout veroorzaakt (zie het patroon in git-historie van #1038 voor een
   voorbeeldimplementatie die nooit in `MatchOfficials` afdaalt zonder dat expliciet te bedoelen).
+- **#996's actie-pad (goedkeuren/afwijzen) kan niet veilig getest worden met de vaste testwedstrijd
+  (2026-09-06 vastgesteld).** In tegenstelling tot #992/#993 is `MatchChangeRequests` niet per
+  wedstrijd gescoped — het levert alle openstaande verzoeken van échte tegenstanders voor het hele
+  serviceaccount. Er bestaat geen manier om een fictief, veilig testbaar verzoek te laten ontstaan
+  binnen Sportlink zelf. Een test van de actie zou dus een echte beslissing forceren op een echt
+  verzoek van een echte tegenstander — alleen te doen met expliciete instemming van de eigenaar
+  over een specifiek, door hem aangewezen verzoek.
 - Volledige, actuele lijst met openstaande vragen en risico's: onderzoeksrapport §5/§7.
 
 ## 6. Bronnen
