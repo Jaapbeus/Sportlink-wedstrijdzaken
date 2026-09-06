@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Achtergrond-warmup van Sportlink-wedstrijdgegevens (issue 1017, epic 986).** De koppeling tussen
+  onze database en Sportlink Club (nodig voor het "Open in Sportlink"-paneel en de deep-link-knop)
+  wordt voortaan dagelijks vooraf opgehaald voor de eerstkomende dagen, in plaats van pas op het
+  moment dat een beheerder er zelf naar klikt — dat scheelt een wachttijd van 10+ seconden bij de
+  eerste keer openen.
+- **Sportlink-koppeling blijft actief tijdens rustige periodes (epic 986, vervolg op 990/991).**
+  Een uur-timer ververst het Sportlink-token voortaan proactief op de achtergrond, ook als er geen
+  enkele Wedstrijdzaken-actie plaatsvindt. Zonder deze timer kon de koppeling na een avond, nacht of
+  weekend zonder gebruik onbedoeld inactief raken, waarna een beheerder hem handmatig opnieuw moest
+  leggen. Alleen actief als de Sportlink Web Extension aan staat.
 - **"Open in Sportlink"-knop per wedstrijd in Dagplanning (issue 989, epic 986).** Opent de
   wedstrijd rechtstreeks op de detailpagina van Sportlink Club in een nieuw tabblad — scheelt het
   trage overzichtsscherm en zelf zoeken. Alleen zichtbaar als de Sportlink Web Extension aan staat.
