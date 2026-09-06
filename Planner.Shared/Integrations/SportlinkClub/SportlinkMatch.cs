@@ -17,7 +17,10 @@ public sealed record SportlinkMatch
     [JsonConverter(typeof(FlexibleStringJsonConverter))]
     public string ExternalMatchId { get; set; } = "";
 
+    // Live vastgesteld (2026-09-06, vervolg op #1036): Sportlink levert dit veld genest
+    // ({Date, StartTime, DateTime}), niet als losse ISO-string — zie MatchDateJsonConverter.
     [JsonPropertyName("matchDate")]
+    [JsonConverter(typeof(MatchDateJsonConverter))]
     public DateTimeOffset MatchDate { get; set; }
 
     [JsonPropertyName("matchStatus")]

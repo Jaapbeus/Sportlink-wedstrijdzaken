@@ -151,6 +151,77 @@ public class SportlinkClubClientTests
     }
 
     [Fact]
+    public async Task GetMatchAsync_MatchDateAlsGenestObject_WordtCorrectGemaptNaarDateTimeOffset()
+    {
+        // Regressietest voor een live-gevonden bug (2026-09-06, vervolg op de ExternalMatchId-fix
+        // hierboven): Sportlinks echte Match-endpoint levert matchDate niet als losse ISO-string,
+        // maar als geneste structuur {Date, StartTime, DateTime}. Zonder MatchDateJsonConverter
+        // faalt deserialisatie met "Cannot get the value of a token type 'StartObject' as a string."
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse("""
+                    {
+                        "publicMatchId": "M000000001",
+                        "externalMatchId": "69",
+                        "matchDate": {
+                            "Date": "2026-09-27",
+                            "StartTime": "10:30:00",
+                            "DateTime": "2026-09-27T10:30:00+0200"
+                        },
+                        "matchStatus": "SCHEDULED",
+                        "isHomeMatch": true,
+                        "isCanceledMatch": false,
+                        "isConceptMatch": false,
+                        "taskStatus": null,
+                        "isEditFieldAllowed": true,
+                        "isAssignDressingRoomsAllowed": true,
+                        "isAssignOfficialsAllowed": true,
+                        "isEditFieldSidePanelAllowed": true,
+                        "isAddScoreAllowed": false
+                    }
+                    """);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().NotBeNull();
+        result.Data!.MatchDate.Should().Be(DateTimeOffset.Parse("2026-09-27T10:30:00+0200"));
+    }
+
+    [Fact]
+    public async Task GetMatchAsync_MatchDateAlsLosseString_WordtCorrectGemaptNaarDateTimeOffset()
+    {
+        // Fallback-pad van MatchDateJsonConverter: als het veld ooit alsnog als losse ISO-string
+        // terugkomt (bijv. via een ander endpoint of toekomstige Sportlink-wijziging), moet dat
+        // ook blijven werken — geen aanname, puur verificatie van de bestaande happy-path-tests.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().NotBeNull();
+        result.Data!.MatchDate.Should().Be(DateTimeOffset.Parse("2026-09-15T19:30:00+02:00"));
+    }
+
+    [Fact]
     public async Task GetMatchAsync_GeldigTokenEnHappyPath_RetourneertGemapteMatch()
     {
         // Arrange

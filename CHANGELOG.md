@@ -77,6 +77,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   in plaats van tekst terugstuurde (#1036).** Kwam boven water bij de eerste live-verificatie van
   het Sportlink-paneel — geen enkele test had dit eerder gezien omdat de aanname over hoe
   Sportlink dit veld aanlevert onjuist bleek.
+- **Sportlink-wedstrijdgegevens ophalen kon ook crashen op de wedstrijddatum zelf (#1038).**
+  Vervolgvondst bij dezelfde live-verificatieronde als #1036: Sportlink levert de datum/tijd van
+  een wedstrijd genest (`{Date, StartTime, DateTime}`) in plaats van als losse tekstwaarde.
 
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
