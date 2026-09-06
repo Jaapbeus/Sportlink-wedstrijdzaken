@@ -1043,68 +1043,118 @@ public class SportlinkClubClientTests
     }
 
     // ── UpdateFieldAsync (#993, epic #986) ──
+    //
+    // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar, #1047): dit roept niet
+    // "UpdateMatchField" aan (bestaat niet) maar "UpdateMatchDetails" met het VOLLEDIGE
+    // wedstrijdrecord — eerst een verse Match-GET-snapshot ophalen, dan UserInfo (voor
+    // PublicApplicantId), dan pas de PUT met snapshot + overschreven veld.
+
+    private static string MatchDetailsSnapshotResponse() => """
+        {
+            "AgeClassCode": "001",
+            "Duration": 105,
+            "MatchStatus": "SCHEDULED",
+            "ExternalMatchId": 69,
+            "MatchDate": {"Date": "2026-09-27", "StartTime": "10:30:00"},
+            "Field": {"FieldId": "BBCF989-OUTDOOR_FIELD-6", "FieldSize": 1.0, "FieldOffset": 0},
+            "MatchField": {"FacilityId": "BBCF989"},
+            "Sport": {"IdTag": "SOCCER-VE-AL/SUNDAY"},
+            "Teams": {
+                "Home": {"TeamName": "TEST 1", "PublicTeamId": "T2010269033"},
+                "Away": {"TeamName": "TEST 2", "PublicTeamId": "T2010269034"}
+            },
+            "Result": {"HomeScore": null, "AwayScore": null},
+            "MatchDetails": {
+                "Description": {"Value": "Oefenwedstrijd"},
+                "MatchDetailsHome": {"AssemblyTime": {"Value": null}}
+            }
+        }
+        """;
+
+    private static Func<HttpRequestMessage, HttpResponseMessage> MakeUpdateFieldClient(
+        Func<string> updateMatchDetailsResponseJson, Action<string>? captureBody = null) =>
+        req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UserInfo") == true)
+                return JsonResponse("""{"publicPersonId": "BCZK68R"}""");
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
+            {
+                if (captureBody != null)
+                    captureBody(req.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? "");
+                return JsonResponse(updateMatchDetailsResponseJson());
+            }
+            // Match GET (snapshot-ophaal) — geen entity-header-check nodig, UpdateMatchDetails
+            // matcht hierboven al exclusief op zijn eigen padnaam.
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        };
 
     [Fact]
     public async Task UpdateFieldAsync_HappyPath_RetourneertIsSuccessTrue()
     {
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
-        var client = MakeClient(req =>
-        {
-            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
-                return JsonResponse(TokenResponse(FictieveAccessToken));
-            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchField") == true)
-                return JsonResponse(DressingRoomsSuccessResponse());
-            return new HttpResponseMessage(HttpStatusCode.NotFound);
-        });
+        var client = MakeClient(MakeUpdateFieldClient(DressingRoomsSuccessResponse));
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
 
-        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
         result.Data!.IsSuccess.Should().BeTrue();
     }
 
     [Fact]
-    public async Task UpdateFieldAsync_ZetJuisteBodyInclusiefIsForceUpdate()
+    public async Task UpdateFieldAsync_FieldSizeAlsJsonGetalInSnapshot_WordtCorrectGemaptNaarString()
     {
+        // Regressietest voor een live-gevonden bug (2026-09-06, #1047-vervolg): Match GET levert
+        // Field.FieldSize als JSON-getal (1.0), niet als string ("1.0") — zelfde wisselvallige-
+        // veldtype-patroon als ExternalMatchId (#1036). MatchDetailsSnapshotResponse() gebruikt
+        // hierboven al de numerieke vorm; deze test maakt de regressie expliciet traceerbaar.
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
-        string? capturedBody = null;
-        var client = MakeClient(req =>
-        {
-            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
-                return JsonResponse(TokenResponse(FictieveAccessToken));
-            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchField") == true)
-            {
-                capturedBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
-                return JsonResponse(DressingRoomsSuccessResponse());
-            }
-            return new HttpResponseMessage(HttpStatusCode.NotFound);
-        });
+        var client = MakeClient(MakeUpdateFieldClient(DressingRoomsSuccessResponse));
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
 
-        await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
 
-        capturedBody.Should().Contain(TestPublicMatchId).And.Contain("12345-1").And.Contain("1.0").And.Contain("\"IsForceUpdate\":false");
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateFieldAsync_ZetVolledigeMatchDataMetOverschrevenVeld()
+    {
+        string? capturedBody = null;
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(MakeUpdateFieldClient(DressingRoomsSuccessResponse, b => capturedBody = b));
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-9", "1.0", 0, isForceUpdate: false);
+
+        // Het gewijzigde veld staat erin...
+        capturedBody.Should().Contain(TestPublicMatchId)
+            .And.Contain("BBCF989-OUTDOOR_FIELD-9")
+            .And.Contain("\"IsForceUpdate\":false")
+            .And.Contain("\"PublicApplicantId\":\"BCZK68R\"");
+        // ...en de rest van het wedstrijdrecord komt ongewijzigd van de snapshot terug, niet
+        // van een lokale aanname — bewijst dat teamnamen/omschrijving niet verloren gaan.
+        capturedBody.Should().Contain("TEST 1").And.Contain("TEST 2").And.Contain("Oefenwedstrijd")
+            .And.Contain("SOCCER-VE-AL/SUNDAY").And.Contain("BBCF989");
     }
 
     [Fact]
     public async Task UpdateFieldAsync_SportlinkWijstMutatieAf_RetourneertOkMetIsSuccessFalseEnViolations()
     {
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
-        var client = MakeClient(req =>
-        {
-            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
-                return JsonResponse(TokenResponse(FictieveAccessToken));
-            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchField") == true)
-                return JsonResponse(DressingRoomsViolationResponse("INVALID_UPDATE_ACTION"));
-            return new HttpResponseMessage(HttpStatusCode.NotFound);
-        });
+        var client = MakeClient(MakeUpdateFieldClient(() => DressingRoomsViolationResponse("INVALID_UPDATE_ACTION")));
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
 
-        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
         result.Data!.IsSuccess.Should().BeFalse();
@@ -1139,13 +1189,17 @@ public class SportlinkClubClientTests
                 tokenCallCount++;
                 return JsonResponse(TokenResponse(FictieveAccessToken + tokenCallCount));
             }
-            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchField") == true)
+            if (req.RequestUri?.AbsoluteUri.Contains("UserInfo") == true)
+                return JsonResponse("""{"publicPersonId": "BCZK68R"}""");
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
             {
                 putCallCount++;
                 return putCallCount == 1
                     ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
                     : JsonResponse(DressingRoomsSuccessResponse());
             }
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchDetailsSnapshotResponse());
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
@@ -1162,14 +1216,7 @@ public class SportlinkClubClientTests
     public async Task UpdateFieldAsync_NetwerkfoutBijEndpoint_RetourneertNetwerkFout()
     {
         var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
-        var client = MakeClient(req =>
-        {
-            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
-                return JsonResponse(TokenResponse(FictieveAccessToken));
-            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchField") == true)
-                throw new HttpRequestException("Netwerk down");
-            return new HttpResponseMessage(HttpStatusCode.NotFound);
-        });
+        var client = MakeClient(MakeUpdateFieldClient(() => throw new HttpRequestException("Netwerk down")));
 
         var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
 
@@ -1177,6 +1224,33 @@ public class SportlinkClubClientTests
 
         result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
         result.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateFieldAsync_MatchSnapshotOphalenMislukt_RetourneertFoutZonderPutAanroep()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var putCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
+            {
+                putCallCount++;
+                return JsonResponse(DressingRoomsSuccessResponse());
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "12345-1", "1.0", 0, isForceUpdate: false);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        putCallCount.Should().Be(0, "zonder een geldige snapshot mag er nooit een PUT verstuurd worden");
     }
 
     // ── GetChangeRequestsAsync / ActOnChangeRequestAsync (#996, epic #986) ──

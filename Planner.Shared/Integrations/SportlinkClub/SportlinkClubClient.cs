@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Planner.Shared.Integrations.SportlinkClub;
 
@@ -16,7 +17,11 @@ public class SportlinkClubClient : ISportlinkClubClient
     private const string MatchEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/Match";
     private const string MatchProgramOverviewEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/MatchProgramOverview";
     private const string UpdateMatchDressingRoomsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchDressingRooms";
-    private const string UpdateMatchFieldEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchField";
+    // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar, #1047): Sportlinks eigen UI
+    // roept voor een veldwijziging niet "UpdateMatchField" aan (dat endpoint bestaat niet — gaf
+    // HTTP 602 "no valid entity key found") maar "UpdateMatchDetails", met het VOLLEDIGE
+    // wedstrijdrecord als payload. Zie UpdateFieldAsync/PutMatchDetailsAsync hieronder.
+    private const string UpdateMatchDetailsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchDetails";
     private const string MatchChangeRequestsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/changerequest/MatchChangeRequests";
     private const string MatchChangeRequestActionEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/changerequest/MatchChangeRequestAction";
     private const string UserInfoEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/user/UserInfo";
@@ -204,7 +209,29 @@ public class SportlinkClubClient : ISportlinkClubClient
         CancellationToken cancellationToken = default)
         => ExecuteMutationWithRetryAsync(
             functioneleRol,
-            (token, ct) => PutFieldAsync(publicMatchId, fieldId, fieldSize, fieldOffset, isForceUpdate, token, ct),
+            async (token, ct) =>
+            {
+                // Live vastgesteld (2026-09-06, #1047): UpdateMatchDetails verwacht het VOLLEDIGE
+                // wedstrijdrecord, niet een klein veld-only patch — Sportlinks eigen UI stuurt
+                // gewoon het al opgehaalde match-object terug met het gewijzigde veld erin. Daarom
+                // hier eerst een verse snapshot ophalen (dezelfde Match-GET, rijker gemodelleerd)
+                // in plaats van de aanroeper de volledige payload te laten opgeven.
+                var snapshot = await FetchMatchDetailsSnapshotAsync(publicMatchId, token, ct);
+                if (snapshot.Status != SportlinkClubCallStatus.Ok || snapshot.Data == null)
+                    return new SportlinkClubResponse<SportlinkMutationResult>(
+                        snapshot.Status == SportlinkClubCallStatus.Ok ? SportlinkClubCallStatus.SportlinkFout : snapshot.Status,
+                        null, snapshot.FoutmeldingVoorLog ?? "Kon wedstrijdgegevens niet ophalen voor veldwijziging", snapshot.HttpStatusCode);
+
+                var userInfo = await FetchUserInfoAsync(token, ct);
+                if (userInfo.Status != SportlinkClubCallStatus.Ok || string.IsNullOrWhiteSpace(userInfo.Data?.PublicPersonId))
+                    return new SportlinkClubResponse<SportlinkMutationResult>(
+                        userInfo.Status == SportlinkClubCallStatus.Ok ? SportlinkClubCallStatus.SportlinkFout : userInfo.Status,
+                        null, userInfo.FoutmeldingVoorLog ?? "Kon PublicPersonId niet ophalen via UserInfo", userInfo.HttpStatusCode);
+
+                return await PutMatchDetailsAsync(
+                    publicMatchId, userInfo.Data.PublicPersonId, snapshot.Data,
+                    fieldId, fieldSize, fieldOffset, isForceUpdate, token, ct);
+            },
             cancellationToken);
 
     public async Task<SportlinkClubResponse<IReadOnlyList<SportlinkChangeRequest>>> GetChangeRequestsAsync(
@@ -454,21 +481,170 @@ public class SportlinkClubClient : ISportlinkClubClient
             UpdateMatchDressingRoomsEndpoint, "competition/match/UpdateMatchDressingRooms", body, token, cancellationToken);
     }
 
-    private Task<SportlinkClubResponse<SportlinkMutationResult>> PutFieldAsync(
-        string publicMatchId, string? fieldId, string? fieldSize, int? fieldOffset, bool isForceUpdate,
+    /// <summary>
+    /// Bouwt de volledige <c>UpdateMatchDetails</c>-envelope door <paramref name="snapshot"/> (het
+    /// net opgehaalde, huidige wedstrijdrecord) terug te sturen met alleen het veld/velddeel
+    /// overschreven — exact het patroon dat Sportlinks eigen UI gebruikt (live vastgesteld,
+    /// #1047). Elk ander veld in <c>MatchData</c> komt dus altijd van de server zelf, nooit van
+    /// een aanname hier — voorkomt dat een verouderd of onvolledig lokaal model een echt
+    /// wedstrijdveld (teamnaam, uitslag, ...) zou overschrijven.
+    /// </summary>
+    private Task<SportlinkClubResponse<SportlinkMutationResult>> PutMatchDetailsAsync(
+        string publicMatchId, string publicApplicantId, SportlinkMatchDetailsSnapshot snapshot,
+        string? fieldId, string? fieldSize, int? fieldOffset, bool isForceUpdate,
         string token, CancellationToken cancellationToken)
     {
-        var body = new
-        {
-            PublicMatchId = publicMatchId,
-            FieldId = fieldId,
-            FieldSize = fieldSize,
-            FieldOffset = fieldOffset,
-            IsForceUpdate = isForceUpdate
-        };
+        var matchData = new MatchDataBody(
+            AgeClassCode: snapshot.AgeClassCode,
+            AssemblyTime: snapshot.MatchDetails?.MatchDetailsHome?.AssemblyTime?.Value,
+            AwayScore: snapshot.Result?.AwayScore,
+            AwayTeam: snapshot.Teams?.Away?.TeamName,
+            DepartureTime: null,
+            Description: snapshot.MatchDetails?.Description?.Value,
+            Drivers: "",
+            Duration: snapshot.Duration,
+            ExternalMatchId: snapshot.ExternalMatchId,
+            FacilityId: snapshot.MatchField?.FacilityId,
+            FieldId: fieldId ?? snapshot.Field?.FieldId,
+            FieldOffset: fieldOffset ?? snapshot.Field?.FieldOffset,
+            FieldSize: fieldSize ?? snapshot.Field?.FieldSize,
+            HomeScore: snapshot.Result?.HomeScore,
+            HomeTeam: snapshot.Teams?.Home?.TeamName,
+            MatchChangeRequestRemarks: "",
+            MatchDate: snapshot.MatchDate?.Date,
+            MatchStatus: snapshot.MatchStatus,
+            PublicAwayTeamId: snapshot.Teams?.Away?.PublicTeamId,
+            PublicHomeTeamId: snapshot.Teams?.Home?.PublicTeamId,
+            SportIdTag: snapshot.Sport?.IdTag,
+            StartTime: snapshot.MatchDate?.StartTime);
+
+        var body = new UpdateMatchDetailsBody(
+            ConfirmationNeeded: null,
+            IsForceUpdate: isForceUpdate,
+            IsMatchChangeRequestMandatory: false,
+            IsOwnFacility: true,
+            IsPlannableByClub: false,
+            IsSuccess: false,
+            PublicApplicantId: publicApplicantId,
+            PublicMatchId: publicMatchId,
+            MatchData: matchData);
+
         return PutMutationAsync(
-            UpdateMatchFieldEndpoint, "competition/match/UpdateMatchField", body, token, cancellationToken);
+            UpdateMatchDetailsEndpoint, "competition/match/UpdateMatchDetails", body, token, cancellationToken);
     }
+
+    private async Task<SportlinkClubResponse<SportlinkMatchDetailsSnapshot>> FetchMatchDetailsSnapshotAsync(
+        string publicMatchId, string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var url = $"{MatchEndpoint}?PublicMatchId={Uri.EscapeDataString(publicMatchId)}";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Add("X-Navajo-Entity", "competition/match/Match");
+            request.Headers.Add("X-Navajo-Instance", "KNVB");
+            request.Headers.Add("X-Navajo-Locale", "nl");
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(
+                    SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij match endpoint", 401);
+
+            if (!response.IsSuccessStatusCode)
+                return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(
+                    SportlinkClubCallStatus.SportlinkFout, null, $"Match endpoint gaf {response.StatusCode}", (int)response.StatusCode);
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var snapshot = JsonSerializer.Deserialize<SportlinkMatchDetailsSnapshot>(json, JsonOptions);
+            if (snapshot == null)
+                return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(
+                    SportlinkClubCallStatus.SportlinkFout, null, "Match data onvolledig in respons", (int)response.StatusCode);
+
+            return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(SportlinkClubCallStatus.Ok, snapshot, null, (int)response.StatusCode);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "JSON deserialisatie fout voor match-details-snapshot");
+            return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Onverwachte fout bij match-details-snapshot");
+            return new SportlinkClubResponse<SportlinkMatchDetailsSnapshot>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij match-details-snapshot", null);
+        }
+    }
+
+    // ── Rauwe modellen voor UpdateMatchDetails — uitsluitend intern, nooit publiek. Elk veld hier
+    // is live bevestigd aanwezig in Sportlinks eigen Match-GET-respons (2026-09-06, #1047),
+    // op naam gecontroleerd zonder ooit persoonsgegevens (MatchOfficials) te loggen. ──
+
+    private sealed record SportlinkMatchDetailsSnapshot(
+        string? AgeClassCode,
+        int? Duration,
+        string? MatchStatus,
+        [property: JsonConverter(typeof(FlexibleLongJsonConverter))] long? ExternalMatchId,
+        SportlinkMatchDateRaw? MatchDate,
+        SportlinkFieldRaw? Field,
+        SportlinkMatchField? MatchField,
+        SportlinkSportRaw? Sport,
+        SportlinkTeamsRaw? Teams,
+        SportlinkResultRaw? Result,
+        SportlinkMatchDetailsFieldsRaw? MatchDetails);
+
+    private sealed record SportlinkMatchDateRaw(string? Date, string? StartTime);
+    // Live vastgesteld (2026-09-06, #1047-vervolg): Field.FieldSize komt in de Match-GET-respons
+    // als JSON-getal terug, terwijl UpdateMatchDetails' eigen MatchData.FieldSize als string
+    // verwacht wordt (zie de netwerktrace) — zelfde wisselvallige-veldtype-patroon als #1036.
+    private sealed record SportlinkFieldRaw(
+        string? FieldId,
+        [property: JsonConverter(typeof(FlexibleStringJsonConverter))] string? FieldSize,
+        int? FieldOffset);
+    private sealed record SportlinkSportRaw(string? IdTag);
+    private sealed record SportlinkTeamRaw(string? TeamName, string? PublicTeamId);
+    private sealed record SportlinkTeamsRaw(SportlinkTeamRaw? Home, SportlinkTeamRaw? Away);
+    private sealed record SportlinkResultRaw(int? HomeScore, int? AwayScore);
+    private sealed record SportlinkEditableFieldRaw(string? Value);
+    private sealed record SportlinkMatchDetailsHomeRaw(SportlinkEditableFieldRaw? AssemblyTime);
+    private sealed record SportlinkMatchDetailsFieldsRaw(
+        SportlinkEditableFieldRaw? Description, SportlinkMatchDetailsHomeRaw? MatchDetailsHome);
+
+    // ── Uitgaande envelope voor UpdateMatchDetails (PascalCase = de wire-vorm, geen
+    // JsonPropertyName nodig — zelfde patroon als de bestaande PutDressingRoomsAsync/-body's). ──
+
+    private sealed record UpdateMatchDetailsBody(
+        object? ConfirmationNeeded,
+        bool IsForceUpdate,
+        bool IsMatchChangeRequestMandatory,
+        bool IsOwnFacility,
+        bool IsPlannableByClub,
+        bool IsSuccess,
+        string PublicApplicantId,
+        string PublicMatchId,
+        MatchDataBody MatchData);
+
+    private sealed record MatchDataBody(
+        string? AgeClassCode,
+        string? AssemblyTime,
+        int? AwayScore,
+        string? AwayTeam,
+        string? DepartureTime,
+        string? Description,
+        string? Drivers,
+        int? Duration,
+        long? ExternalMatchId,
+        string? FacilityId,
+        string? FieldId,
+        int? FieldOffset,
+        string? FieldSize,
+        int? HomeScore,
+        string? HomeTeam,
+        string? MatchChangeRequestRemarks,
+        string? MatchDate,
+        string? MatchStatus,
+        string? PublicAwayTeamId,
+        string? PublicHomeTeamId,
+        string? SportIdTag,
+        string? StartTime);
 
     /// <summary>
     /// Gedeelde PUT-uitvoering + responsparsing voor alle mutatie-endpoints — derde bijna-identieke
