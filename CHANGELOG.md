@@ -19,6 +19,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Inkomende wijzigingsverzoeken goedkeuren/afwijzen vanuit de webapp (issue 996, epic 986).**
+  Nieuwe pagina "Wijzigingsverzoeken" toont openstaande verzoeken van tegenstanders (datum/tijd/
+  accommodatie) en laat een beheerder ze met één klik goedkeuren of, met verplichte toelichting,
+  afwijzen — rechtstreeks in Sportlink Club, zonder dat u daar apart hoeft in te loggen.
 - **Veld(deel) wijzigen vanuit de webapp (issue 993, epic 986).** In het Sportlink-paneel kan een
   beheerder nu ook het veld van een wedstrijd doorzetten naar Sportlink Club, met dezelfde
   succes-/afwijzingsmelding als bij kleedkamers. Alleen mogelijk als Sportlink dit voor de

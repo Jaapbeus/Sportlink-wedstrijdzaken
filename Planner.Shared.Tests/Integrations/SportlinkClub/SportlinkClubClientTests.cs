@@ -1018,6 +1018,149 @@ public class SportlinkClubClientTests
         result.Data.Should().BeNull();
     }
 
+    // ── GetChangeRequestsAsync / ActOnChangeRequestAsync (#996, epic #986) ──
+
+    private static string ChangeRequestsResponse() => """
+        [
+          {
+            "publicMatchId": "M392686417",
+            "publicRequestId": "R1",
+            "requestStatus": "CONFIRM",
+            "requestData": {
+              "currentDate": "2026-09-27",
+              "currentStartTime": "10:30",
+              "requestedDate": "2026-09-27",
+              "requestedStartTime": "11:00"
+            },
+            "reason": "Testverzoek"
+          }
+        ]
+        """;
+
+    [Fact]
+    public async Task GetChangeRequestsAsync_HappyPath_MaptVeldenCorrect()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchChangeRequests") == true)
+                return JsonResponse(ChangeRequestsResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetChangeRequestsAsync(TestFunctioneleRol);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().ContainSingle();
+        var item = result.Data![0];
+        item.PublicRequestId.Should().Be("R1");
+        item.RequestStatus.Should().Be("CONFIRM");
+        item.RequestData!.RequestedStartTime.Should().Be("11:00");
+    }
+
+    [Fact]
+    public async Task GetChangeRequestsAsync_GenestOnderChangeRequestsProperty_WerktOok()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchChangeRequests") == true)
+                return JsonResponse($$"""{ "ChangeRequests": {{ChangeRequestsResponse()}} }""");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetChangeRequestsAsync(TestFunctioneleRol);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GetChangeRequestsAsync_GeenRefreshTokenGeregistreerd_RetourneertRolNietGekoppeld()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore();
+        var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetChangeRequestsAsync(TestFunctioneleRol);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.RolNietGekoppeld);
+    }
+
+    [Fact]
+    public async Task ActOnChangeRequestAsync_HappyPath_HaaltUserInfoOpEnStuurtJuisteBody()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        string? capturedBody = null;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UserInfo") == true)
+                return JsonResponse("""{"publicPersonId": "P999"}""");
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchChangeRequestAction") == true)
+            {
+                capturedBody = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+                return JsonResponse(DressingRoomsSuccessResponse());
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "APPROVE", TestPublicMatchId, "R1", null);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsSuccess.Should().BeTrue();
+        capturedBody.Should().Contain("APPROVE").And.Contain("P999").And.Contain("R1").And.Contain(TestPublicMatchId);
+    }
+
+    [Fact]
+    public async Task ActOnChangeRequestAsync_UserInfoMislukt_RetourneertFoutZonderActieAanroep()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var actionCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UserInfo") == true)
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchChangeRequestAction") == true)
+                actionCallCount++;
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "APPROVE", TestPublicMatchId, "R1", null);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.SportlinkFout);
+        actionCallCount.Should().Be(0, "zonder geldig PublicPersonId mag de actie-aanroep niet gebeuren");
+    }
+
+    [Fact]
+    public async Task ActOnChangeRequestAsync_GeenRefreshTokenGeregistreerd_RetourneertRolNietGekoppeld()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore();
+        var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "DENY", TestPublicMatchId, "R1", "Geen ruimte");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.RolNietGekoppeld);
+    }
+
     // ── VerversTokenAsync (proactieve keep-alive, zie #990-comment 2026-09-05) ──
 
     [Fact]

@@ -66,6 +66,16 @@ public class AdminApiClient
             $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/field",
             new { FieldId = fieldId, FieldSize = fieldSize, FieldOffset = fieldOffset });
 
+    // #996: inkomende wijzigingsverzoeken van tegenstanders.
+    public async Task<ApiResult<List<SportlinkChangeRequestDto>>> GetSportlinkChangeRequestsAsync()
+        => await GetAsync<List<SportlinkChangeRequestDto>>("api/sportlink/change-requests");
+
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkChangeRequestActionAsync(
+        string publicRequestId, string publicMatchId, string actie, string? remarks)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/change-requests/{Uri.EscapeDataString(publicRequestId)}/action",
+            new { PublicMatchId = publicMatchId, Actie = actie, Remarks = remarks });
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()
