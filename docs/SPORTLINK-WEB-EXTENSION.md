@@ -1,10 +1,11 @@
 # Sportlink Web Extension
 
-> **Status: gedeeltelijk gebouwd. Kleedkamers (#992), veld (#993) en inkomende
-> wijzigingsverzoeken (#996) zijn gebouwd en CI-groen, maar nog niet live (in productie)
-> geverifieerd** — dat vereist een mens die de knop zelf indrukt, zie §4.4. #994/#995/#997 zijn
-> bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld (zie de betreffende
-> issues). Epic
+> **Status: gedeeltelijk gebouwd. Het read-only Match-endpoint (#991) is 2026-09-06 lokaal live
+> geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036 voor de daarbij gevonden en
+> gefixte bug: `ExternalMatchId` kwam als JSON-getal terug, niet als string). Kleedkamers (#992),
+> veld (#993) en inkomende wijzigingsverzoeken (#996) zijn gebouwd en CI-groen; live-verificatie
+> van de daadwerkelijke schrijfacties volgt. #994/#995/#997 zijn bewust nog niet gebouwd: de
+> exacte requestvorm is niet live vastgesteld (zie de betreffende issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
