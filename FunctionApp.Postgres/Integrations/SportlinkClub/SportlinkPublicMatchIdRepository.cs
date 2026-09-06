@@ -7,6 +7,11 @@ namespace FunctionApp.Postgres.Integrations.SportlinkClub;
 /// nodig heeft.</summary>
 internal sealed record WedstrijdVoorLookup(long Wedstrijdnummer, DateOnly Datum);
 
+/// <summary>Eén rij zonder cache-entry, gebruikt door de #1017-warmup-timer — bevat ook
+/// <c>Wedstrijdcode</c> (de eigen sleutel om straks in de cache te schrijven), in tegenstelling tot
+/// <see cref="WedstrijdVoorLookup"/> dat alleen is wat de Sportlink-aanroep zelf nodig heeft.</summary>
+internal sealed record WedstrijdZonderCache(long Wedstrijdcode, long Wedstrijdnummer, DateOnly Datum);
+
 /// <summary>DB-toegang voor de PublicMatchId-cache (#991, epic #986). Cachet het resultaat van de
 /// trage (12+ s), niet-club-gescoped reverse-lookup in een eigen tabel — <b>niet</b> als kolom op
 /// <c>his.matches</c>, want die tabel wordt dynamisch beheerd door
@@ -39,6 +44,39 @@ internal static class SportlinkPublicMatchIdRepository
         var wedstrijdnummer = reader.GetInt64(0);
         var datum = DateOnly.FromDateTime(reader.GetDateTime(1));
         return new WedstrijdVoorLookup(wedstrijdnummer, datum);
+    }
+
+    /// <summary>Alle eigen wedstrijden binnen <paramref name="vanaf"/>–<paramref name="totEnMet"/>
+    /// (inclusief) die nog geen `PublicMatchId` in de cache hebben — gebruikt door de #1017-warmup-
+    /// timer om te bepalen wat er nog opgehaald moet worden vóórdat een gebruiker er zelf naar
+    /// vraagt.</summary>
+    internal static async Task<List<WedstrijdZonderCache>> ZoekWedstrijdenZonderCacheAsync(
+        NpgsqlConnection connection, DateOnly vanaf, DateOnly totEnMet, string clubCode)
+    {
+        var resultaat = new List<WedstrijdZonderCache>();
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT m.wedstrijdcode, m.wedstrijdnummer, m.kaledatum::date
+            FROM his.matches m
+            LEFT JOIN public.sportlinkpublicmatchidcache c
+                ON c.wedstrijdcode = m.wedstrijdcode AND c.clubcode = m.clubcode
+            WHERE m.clubcode = @clubcode
+              AND m.kaledatum::date BETWEEN @vanaf AND @totEnMet
+              AND m.wedstrijdnummer IS NOT NULL
+              AND c.wedstrijdcode IS NULL",
+            connection);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        cmd.Parameters.AddWithValue("vanaf", vanaf.ToDateTime(TimeOnly.MinValue));
+        cmd.Parameters.AddWithValue("totEnMet", totEnMet.ToDateTime(TimeOnly.MinValue));
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            resultaat.Add(new WedstrijdZonderCache(
+                reader.GetInt64(0),
+                reader.GetInt64(1),
+                DateOnly.FromDateTime(reader.GetDateTime(2))));
+        }
+        return resultaat;
     }
 
     internal static async Task<string?> LeesUitCacheAsync(NpgsqlConnection connection, long wedstrijdcode, string clubCode)

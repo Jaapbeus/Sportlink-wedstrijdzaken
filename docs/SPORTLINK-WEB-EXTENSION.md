@@ -129,6 +129,18 @@ verplichte N-user-test.
   i.p.v. `RequireAdmin` (zie #988 Besluit 1). Verbindt de reverse-lookup-cache, de token-store en de
   Dagplanning-GUI met elkaar. Sinds #989 ook `GET .../public-match-id` — dezelfde resolutie zonder
   de volledige `Match`-aanroep, voor de "Open in Sportlink"-deep-link-knop.
+- `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
+  `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
+  zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
+  periode zonder gebruik (`invalid_grant: "Token is not active"`, live vastgesteld 2026-09-05),
+  ondanks dat de 6-uurs `refresh_expires_in` nog niet verstreken was — een lui verversende client
+  (alleen bij een echte GUI-actie) is dus niet genoeg. Alleen voor de Postgres-tier; de SQL
+  Server-tier is rollback-only, zie #1020.
+- `FunctionApp.Postgres/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs` (#1017) — dagelijkse
+  timer die de PublicMatchId-cache vooraf vult voor de eerstkomende dagen (vandaag + 2), gegroepeerd
+  per datum (één `MatchProgramOverview`-aanroep per dag, niet per wedstrijd — zie
+  `ISportlinkClubClient.GetMatchProgramOverviewAsync`). Een cache-miss buiten dat venster valt nog
+  steeds terug op de bestaande synchrone lookup in `SportlinkMatchFunction`, geen harde fout.
 
 ### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
 Op de Postgres-tier (de enige tier die live draait) wordt het rotarende refresh_token opgeslagen in
