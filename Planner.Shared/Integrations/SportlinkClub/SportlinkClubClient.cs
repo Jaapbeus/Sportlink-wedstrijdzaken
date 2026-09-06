@@ -103,16 +103,39 @@ public class SportlinkClubClient : ISportlinkClubClient
         DateOnly datum,
         CancellationToken cancellationToken = default)
     {
+        var overview = await GetMatchProgramOverviewAsync(functioneleRol, datum, cancellationToken);
+        if (overview.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(overview.Status, null, overview.FoutmeldingVoorLog, overview.HttpStatusCode);
+
+        // Ok + Data=null: de aanroep zelf slaagde, deze wedstrijd stond er alleen niet in — geen
+        // fout, zie XML-doc op ISportlinkClubClient.ResolvePublicMatchIdAsync.
+        var gevonden = overview.Data?.FirstOrDefault(e => e.ExternalMatchId == wedstrijdnummer);
+        return new SportlinkClubResponse<SportlinkMatchProgramEntry>(SportlinkClubCallStatus.Ok, gevonden, null, overview.HttpStatusCode);
+    }
+
+    /// <summary>
+    /// Haalt het volledige, niet-club-gescoped wedstrijdprogramma van Sportlink op voor één dag
+    /// (<c>MatchProgramOverview</c>, smal 1-daags bereik — zie onderzoeksrapport §2.2/§2.5).
+    /// Losgetrokken van <see cref="ResolvePublicMatchIdAsync"/> zodat een aanroeper met meerdere
+    /// eigen wedstrijden op dezelfde datum de trage (12+ s) aanroep maar ÉÉN keer per datum hoeft te
+    /// doen in plaats van eenmaal per wedstrijd (zie <c>SportlinkPublicMatchIdWarmupTimerFunction</c>,
+    /// epic #986 issue #1017).
+    /// </summary>
+    public async Task<SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>> GetMatchProgramOverviewAsync(
+        string functioneleRol,
+        DateOnly datum,
+        CancellationToken cancellationToken = default)
+    {
         var tokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken);
         if (tokenResult.Status != SportlinkClubCallStatus.Ok)
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(tokenResult.Status, null, tokenResult.FoutmeldingVoorLog, null);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(tokenResult.Status, null, tokenResult.FoutmeldingVoorLog, null);
 
         var accessToken = tokenResult.AccessToken;
         if (string.IsNullOrWhiteSpace(accessToken))
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                 SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na vernieuwing", null);
 
-        var response = await FetchMatchProgramOverviewAsync(datum, wedstrijdnummer, accessToken, cancellationToken);
+        var response = await FetchMatchProgramOverviewRawAsync(datum, accessToken, cancellationToken);
 
         // Zelfde 401-eenmalige-retry als GetMatchAsync.
         if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
@@ -121,16 +144,16 @@ public class SportlinkClubClient : ISportlinkClubClient
         InvalidateTokenCache(functioneleRol);
         var retryTokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken, forceRefresh: true);
         if (retryTokenResult.Status != SportlinkClubCallStatus.Ok)
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(retryTokenResult.Status, null, retryTokenResult.FoutmeldingVoorLog, null);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(retryTokenResult.Status, null, retryTokenResult.FoutmeldingVoorLog, null);
 
         var retryAccessToken = retryTokenResult.AccessToken;
         if (string.IsNullOrWhiteSpace(retryAccessToken))
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                 SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na hernieuwing", null);
 
-        var retryResponse = await FetchMatchProgramOverviewAsync(datum, wedstrijdnummer, retryAccessToken, cancellationToken);
+        var retryResponse = await FetchMatchProgramOverviewRawAsync(datum, retryAccessToken, cancellationToken);
         if (retryResponse.HttpStatusCode == 401)
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                 SportlinkClubCallStatus.HerkoppelingVereist,
                 null,
                 "Refresh token is ongeldig (401 blijft terugkomen). Rol moet opnieuw gekoppeld worden.",
@@ -153,8 +176,8 @@ public class SportlinkClubClient : ISportlinkClubClient
         return result.Status;
     }
 
-    private async Task<SportlinkClubResponse<SportlinkMatchProgramEntry>> FetchMatchProgramOverviewAsync(
-        DateOnly datum, long wedstrijdnummer, string accessToken, CancellationToken cancellationToken)
+    private async Task<SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>> FetchMatchProgramOverviewRawAsync(
+        DateOnly datum, string accessToken, CancellationToken cancellationToken)
     {
         try
         {
@@ -169,14 +192,14 @@ public class SportlinkClubClient : ISportlinkClubClient
             var response = await _httpClient.SendAsync(request, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                     SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij MatchProgramOverview endpoint", 401);
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogWarning("MatchProgramOverview endpoint gaf {StatusCode}: {Body}", response.StatusCode, errorBody);
-                return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                     SportlinkClubCallStatus.SportlinkFout, null, $"MatchProgramOverview endpoint gaf {response.StatusCode}", (int)response.StatusCode);
             }
 
@@ -194,7 +217,7 @@ public class SportlinkClubClient : ISportlinkClubClient
                     : default;
 
                 if (items.ValueKind != JsonValueKind.Array)
-                    return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+                    return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                         SportlinkClubCallStatus.SportlinkFout, null, "MatchProgramOverview-respons had onverwachte vorm", (int)response.StatusCode);
 
                 entries = JsonSerializer.Deserialize<List<SportlinkMatchProgramEntry>>(items.GetRawText(), JsonOptions);
@@ -202,30 +225,27 @@ public class SportlinkClubClient : ISportlinkClubClient
             catch (JsonException ex)
             {
                 _logger.LogWarning(ex, "JSON deserialisatie fout voor MatchProgramOverview endpoint");
-                return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                     SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", (int)response.StatusCode);
             }
 
-            var gevonden = entries?.FirstOrDefault(e => e.ExternalMatchId == wedstrijdnummer);
-            // Ok + Data=null: de aanroep zelf slaagde, deze wedstrijd stond er alleen niet in —
-            // geen fout, zie XML-doc op ISportlinkClubClient.ResolvePublicMatchIdAsync.
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(
-                SportlinkClubCallStatus.Ok, gevonden, null, (int)response.StatusCode);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
+                SportlinkClubCallStatus.Ok, entries ?? new List<SportlinkMatchProgramEntry>(), null, (int)response.StatusCode);
         }
         catch (TaskCanceledException ex)
         {
             _logger.LogWarning(ex, "MatchProgramOverview endpoint timeout");
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(SportlinkClubCallStatus.NetwerkFout, null, "Timeout bij MatchProgramOverview endpoint", null);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(SportlinkClubCallStatus.NetwerkFout, null, "Timeout bij MatchProgramOverview endpoint", null);
         }
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "MatchProgramOverview endpoint netwerk fout");
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij MatchProgramOverview endpoint", null);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij MatchProgramOverview endpoint", null);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Onverwachte fout bij MatchProgramOverview endpoint");
-            return new SportlinkClubResponse<SportlinkMatchProgramEntry>(SportlinkClubCallStatus.SportlinkFout, null, "Onverwachte fout bij MatchProgramOverview endpoint", null);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(SportlinkClubCallStatus.SportlinkFout, null, "Onverwachte fout bij MatchProgramOverview endpoint", null);
         }
     }
 

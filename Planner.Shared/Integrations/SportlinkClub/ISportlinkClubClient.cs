@@ -47,6 +47,22 @@ public interface ISportlinkClubClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Haalt het volledige, niet-club-gescoped Sportlink-wedstrijdprogramma op voor één dag. Voor
+    /// een aanroeper met meerdere eigen wedstrijden op dezelfde datum (bijv. een achtergrond-warmup,
+    /// #1017) is dit ÉÉN trage (12+ s) aanroep in plaats van <see cref="ResolvePublicMatchIdAsync"/>
+    /// per wedstrijd afzonderlijk aan te roepen — die laatste gebruikt deze methode intern en
+    /// filtert lokaal op <c>ExternalMatchId</c>.
+    /// </summary>
+    /// <param name="functioneleRol">Functionele rol voor token-lookup.</param>
+    /// <param name="datum">Het bereik moet smal (1 dag) blijven, zie <see cref="ResolvePublicMatchIdAsync"/>.</param>
+    /// <returns>Bij <c>Status=Ok</c>: de volledige (niet-gefilterde) lijst voor die dag — kan leeg
+    /// zijn als er geen wedstrijden zijn.</returns>
+    Task<SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>> GetMatchProgramOverviewAsync(
+        string functioneleRol,
+        DateOnly datum,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Ververst proactief het access-/refresh-tokenpaar voor <paramref name="functioneleRol"/>,
     /// zonder een Sportlink-inhoudelijke aanroep te doen. Bedoeld voor een periodieke
     /// keep-alive-timer (zie <c>SportlinkTokenKeepAliveTimerFunction</c>), NIET voor gebruik in een

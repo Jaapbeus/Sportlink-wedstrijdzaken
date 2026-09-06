@@ -580,6 +580,129 @@ public class SportlinkClubClientTests
         result.Status.Should().Be(SportlinkClubCallStatus.RolNietGekoppeld);
     }
 
+    // ── GetMatchProgramOverviewAsync (#1017: één aanroep per datum, hergebruikt door
+    // ResolvePublicMatchIdAsync) ──
+
+    [Fact]
+    public async Task GetMatchProgramOverviewAsync_HappyPath_GeeftVolledigeNietGefilterdeLijstTerug()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                return JsonResponse(MatchProgramOverviewResponse((1111, "M100000001"), (3403, "M392686417")));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().HaveCount(2, "de volledige, niet-gefilterde dagrespons wordt teruggegeven");
+        result.Data.Should().Contain(e => e.ExternalMatchId == 1111 && e.PublicMatchId == "M100000001");
+        result.Data.Should().Contain(e => e.ExternalMatchId == 3403 && e.PublicMatchId == "M392686417");
+    }
+
+    [Fact]
+    public async Task GetMatchProgramOverviewAsync_LegeDagrespons_GeeftOkMetLegeLijstTerug()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                return JsonResponse("[]");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data.Should().NotBeNull().And.BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetMatchProgramOverviewAsync_MeerdereAanroepenVoorZelfdeDatum_ElkAanroepDoetEigenHttpCall()
+    {
+        // Documenteert bewust: deze methode zelf dedupliceert niet — dat is de verantwoordelijkheid
+        // van de aanroeper (bijv. de warmup-timer groepeert zelf per datum vóór hij dit aanroept).
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var overviewCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+            {
+                overviewCallCount++;
+                return JsonResponse(MatchProgramOverviewResponse((3403, "M392686417")));
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+        await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+
+        overviewCallCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetMatchProgramOverviewAsync_NetwerkfoutBijOverviewEndpoint_RetourneertNetwerkFout()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+                throw new HttpRequestException("Netwerk down");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetMatchProgramOverviewAsync(TestFunctioneleRol, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.NetwerkFout);
+        result.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolvePublicMatchIdAsync_HergebruiktGetMatchProgramOverviewAsync_EenAanroepPerDatum()
+    {
+        // Regressietest voor de #1017-refactor: ResolvePublicMatchIdAsync mag na het loskoppelen van
+        // GetMatchProgramOverviewAsync nog steeds precies één overview-aanroep per (rol, datum) doen.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var overviewCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchProgramOverview") == true)
+            {
+                overviewCallCount++;
+                return JsonResponse(MatchProgramOverviewResponse((3403, "M392686417")));
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.ResolvePublicMatchIdAsync(TestFunctioneleRol, 3403, new DateOnly(2026, 9, 5));
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.PublicMatchId.Should().Be("M392686417");
+        overviewCallCount.Should().Be(1);
+    }
+
     // ── VerversTokenAsync (proactieve keep-alive, zie #990-comment 2026-09-05) ──
 
     [Fact]
