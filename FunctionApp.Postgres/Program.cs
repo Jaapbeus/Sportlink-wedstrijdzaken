@@ -1,6 +1,7 @@
 using Azure.Identity;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Infrastructure;
+using FunctionApp.Postgres.Monitoring;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,9 +11,10 @@ using Microsoft.Graph;
 using OpenAI.Chat;
 
 // #891: minimale host-bootstrap voor de Postgres-tier — bewust géén 1-op-1-kopie van
-// FunctionApp/Program.cs' DI-registraties (AI, noodmail-throttle, monitoring): die horen bij
-// functionaliteit die nog niet vertaald is. Sinds issue 888 vervolg (§43) staat hier wél de
-// uitgaande e-mailregistratie, want AdminTeambegeleidingDoorsturen heeft die nodig.
+// FunctionApp/Program.cs' DI-registraties (AI, monitoring): die horen bij functionaliteit die nog
+// niet vertaald is. Sinds issue 888 vervolg (§43) staat hier wél de uitgaande e-mailregistratie
+// (AdminTeambegeleidingDoorsturen), en sinds #972 ook INoodmailThrottleStore
+// (EmailProcessorFunction — de mailbox-getriggerde inkomende e-mailverwerking).
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();
 
@@ -57,5 +59,21 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
         new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
             .AsIChatClient());
 }
+
+// Persistente noodmail-throttle (#972, port van FunctionApp/Program.cs' gelijknamige
+// registratie, #831 op de SQL Server-tier): Azure Table Storage via de bestaande
+// AzureWebJobsStorage-opslagaccount — geen nieuwe Azure-resource. Onvoorwaardelijk registreren:
+// AzureWebJobsStorage is sowieso vereist voor de Functions-host zelf, en anders dan
+// IEmailGraphService/IChatClient gaat dit nooit naar een externe (niet-Microsoft) dienst, dus
+// valt het niet onder EgressGuard (#857).
+builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
+{
+    var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+        ?? throw new InvalidOperationException(
+            "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+    return new TableStorageNoodmailThrottleStore(
+        storageConnectionString,
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
+});
 
 builder.Build().Run();
