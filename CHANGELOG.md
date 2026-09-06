@@ -88,6 +88,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   losse kleedkamercode ("10") bleek geen geldige Sportlink-identifier — vereist is
   `{FacilityId}-DRESSINGROOM-{n}`. Beheerders kunnen nu daadwerkelijk kleedkamers toewijzen vanuit
   Dagplanning; dit is het eerste écht werkende schrijfpad naar Sportlink Club in deze applicatie.
+- **Veld wijzigen vanuit Dagplanning riep een endpoint aan dat niet bestaat (#1047).** Sportlink
+  gebruikt `UpdateMatchDetails` met het volledige wedstrijdrecord, niet het aangenomen
+  `UpdateMatchField` met een klein patch. Herontworpen en live bevestigd correct — momenteel nog
+  geblokkeerd op een apart, eveneens live-gevonden probleem in de identiteitsherkenning (#1048)
+  vóórdat beheerders dit daadwerkelijk kunnen gebruiken.
 
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export

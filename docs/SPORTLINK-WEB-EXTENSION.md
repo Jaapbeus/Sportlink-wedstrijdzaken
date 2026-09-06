@@ -9,19 +9,20 @@
 > eigenaar de echte identifiervorm: `{FacilityId}-DRESSINGROOM-{n}` (bijv.
 > `"BBCF989-DRESSINGROOM-11"`), niet een los kleedkamernummer (zie #1045). Met die fix slaagde de
 > mutatie echt (`{"isSuccess":true}`, bevestigd in het audit-log en een verse GET). **Veld wijzigen
-> (#993) blijkt een heel ander endpoint te zijn.** Dezelfde netwerktrace toonde dat Sportlinks eigen
-> UI niet `UpdateMatchField` aanroept (wat deze app implementeerde en wat HTTP 602 "no valid entity
-> key found" gaf) maar `UpdateMatchDetails` — een endpoint dat het VOLLEDIGE wedstrijdrecord
-> verwacht (teams, datum, duur, veld, omschrijving, sport-tag, ...) gewrapt met
-> `PublicApplicantId`/`PublicMatchId`, niet een klein veld-only patch. Dit is een aparte, grotere
-> herontwerptaak (zie het vervolgissue) — #993 zoals nu gebouwd werkt niet en moet niet gebruikt
-> worden totdat dat herontwerp klaar is. **Inkomende wijzigingsverzoeken ophalen (#996, GET) is
-> 2026-09-06 live bevestigd te werken** — toont echte, actuele verzoeken van tegenstanders. De actie
-> (goedkeuren/afwijzen) is bewust NIET live getest: Sportlink scoped dit endpoint niet per
-> wedstrijd, dus elk zichtbaar verzoek is een echt verzoek van een echte tegenstander — testen zou
-> een echte beslissing forceren op een wedstrijd die niet onze testwedstrijd is. #994/#995/#997 zijn
-> bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld (zie de betreffende
-> issues). Epic
+> (#993) is herontworpen naar het juiste endpoint (#1047) en het herontwerp zelf is live bevestigd
+> correct.** Dezelfde netwerktrace toonde dat Sportlinks eigen UI niet `UpdateMatchField` aanroept
+> (wat deze app eerst implementeerde, HTTP 602 "no valid entity key found") maar `UpdateMatchDetails`
+> — een endpoint dat het VOLLEDIGE wedstrijdrecord verwacht, opgebouwd door een verse Match-GET-
+> snapshot terug te sturen met alléén het gewijzigde veld overschreven (Sportlinks eigen UI-patroon).
+> Live geverifieerd met een tijdelijke, nooit-gecommitte bypass van de laatste stap: `{"isSuccess":
+> true}`, audit-log `Success`. **Die laatste stap is `PublicApplicantId` ophalen via `UserInfo`
+> (#1048) — dat sub-endpoint zelf is stuk** (`HTTP 602`, nooit eerder live getest, ook gebruikt door
+> #996's actie-pad) en blokkeert momenteel #993's end-to-end-gebruik. Vereist nog één live
+> netwerktrace (zie #1048). **Inkomende wijzigingsverzoeken ophalen (#996, GET) is 2026-09-06 live
+> bevestigd te werken** — toont echte, actuele verzoeken van tegenstanders. De actie (goedkeuren/
+> afwijzen) is bewust NIET live getest en blijkt via #1048 ook een reële bug te bevatten, niet
+> alleen een test-gat. #994/#995/#997 zijn bewust nog niet gebouwd: de exacte requestvorm is niet
+> live vastgesteld (zie de betreffende issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -163,9 +164,16 @@ verplichte N-user-test.
   `{FacilityId}-DRESSINGROOM-{n}`, niet een los kleedkamernummer — `SportlinkMatchFunction` bouwt
   deze nu server-side op met de `FacilityId` uit de nieuwe `SportlinkMatch.MatchField`
   (`ExecuteMutationAsync`'s `mutationCall` krijgt daarom sinds #1045 ook de opgehaalde
-  `SportlinkMatch` mee, niet alleen `PublicMatchId`). **`.../field` (#993) blijkt het verkeerde
-  endpoint te zijn** (zie §1 hierboven) — dit endpoint blijft ongewijzigd staan maar mag niet
-  gebruikt worden totdat het herontwerp naar `UpdateMatchDetails` klaar is.
+  `SportlinkMatch` mee, niet alleen `PublicMatchId`). **`.../field` (#993) herontworpen naar
+  `UpdateMatchDetails` (#1047), 2026-09-06.** `UpdateFieldAsync` haalt eerst een verse
+  Match-GET-snapshot op (`SportlinkClubClient.SportlinkMatchDetailsSnapshot` — uitsluitend intern,
+  geen persoonsgegevens), stuurt die terug met alléén het gewijzigde veld overschreven — exact
+  Sportlinks eigen UI-patroon, live bevestigd correct. `PublicApplicantId` komt (net als bij #996)
+  via `FetchUserInfoAsync`/`user/UserInfo` — dát sub-endpoint is zelf stuk (`HTTP 602`, #1048) en
+  blokkeert momenteel het laatste stapje naar volledig functioneren. Twee live-gevonden en
+  gefixte bugs onderweg: `Field.FieldSize` komt als JSON-getal terug (niet string — zelfde
+  `FlexibleStringJsonConverter`-patroon als #1036), en `ExternalMatchId` in deze snapshot idem
+  (nieuwe `FlexibleLongJsonConverter`, spiegelbeeld van `FlexibleStringJsonConverter`).
 - `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
   `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
