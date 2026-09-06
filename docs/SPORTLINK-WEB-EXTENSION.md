@@ -198,6 +198,27 @@ Elk token dat ooit in een agent-sessie zichtbaar wordt, geldt vanaf dat moment a
   gebeurt dus altijd door een mens (met een van bovenstaande scripts) of door de daadwerkelijk
   gedeployde Function App-runtime zelf — nooit door een agent tijdens ontwikkeling.
 
+**Verfijning (besloten met de eigenaar, 2026-09-06): browser-automatisering tegen de eigen,
+lokaal draaiende webapp is wél toegestaan, en is geen uitzondering op bovenstaande regel maar
+een andere invulling ervan.** Het onderscheid zit in *wie het token vasthoudt*, niet in *hoe de
+test getriggerd wordt:
+
+- **Verboden blijft:** een agent die zelf een HTTP-aanroep naar Sportlink doet, een token uit een
+  bestand leest, of een token als scriptparameter doorgeeft — ongeacht hoe onschadelijk het doel
+  (bijv. een testwedstrijd) is. Dit is de blokkade uit het incident hierboven en de
+  auto-mode-veiligheidslaag; die triggert op *agent gebruikt zelf een token*, niet op *welke
+  wedstrijd geraakt wordt*.
+- **Toegestaan:** een agent die met browser-automatisering (Playwright) een knop indrukt op de
+  eigen, lokaal draaiende Admin GUI (`http://localhost:5242`), waarna de al-draaiende FunctionApp
+  (los proces, eigen geconfigureerde `ISportlinkClubTokenStore`) de daadwerkelijke Sportlink-
+  aanroep doet. De agent leest, ziet of geeft het token op geen enkel moment door — dat is precies
+  "de daadwerkelijk gedeployde Function App-runtime zelf" uit de regel hierboven, alleen lokaal
+  gestart in plaats van in Azure.
+- **Vaste, door de eigenaar goedgekeurde testwedstrijd** voor dit soort PUT/DELETE-verificatie:
+  zie de projectmemory `project_sportlink_testwedstrijd_put_del` (wedstrijdnummer 69, TEST1 vs
+  TEST2, veld 6, een zondag — geen echt team, geen echte speeldag). Gebruik altijd deze wedstrijd
+  voor mutatietests, nooit een willekeurige, tenzij opnieuw afgestemd met de eigenaar.
+
 ## 5. Risico's en beperkingen
 
 - Onofficiële integratie: kan bij een Sportlink-release breken (bundle-hashes wijzigen al vaker dan

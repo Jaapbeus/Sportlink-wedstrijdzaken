@@ -6,14 +6,16 @@ using System.Text.Json;
 namespace Planner.Shared.Integrations.SportlinkClub;
 
 /// <summary>
-/// Read-only HTTP client voor Sportlink Club API.
-/// Handelt token-vernieuwing per functionele rol af, met in-memory caching en per-rol locking.
+/// HTTP client voor Sportlink Club API. Handelt token-vernieuwing per functionele rol af, met
+/// in-memory caching en per-rol locking. Sinds #992 ook schrijvende aanroepen (nog altijd puur
+/// transport — guardrails/audit horen bij de aanroeper, zie <see cref="SportlinkMutationGuard"/>).
 /// </summary>
 public class SportlinkClubClient : ISportlinkClubClient
 {
     private const string TokenEndpoint = "https://idm.sportlink.com/realms/sportlink/protocol/openid-connect/token";
     private const string MatchEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/Match";
     private const string MatchProgramOverviewEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/MatchProgramOverview";
+    private const string UpdateMatchDressingRoomsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchDressingRooms";
     private const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
 
@@ -175,6 +177,138 @@ public class SportlinkClubClient : ISportlinkClubClient
                 functioneleRol, result.Status, result.FoutmeldingVoorLog);
         return result.Status;
     }
+
+    public async Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateDressingRoomsAsync(
+        string functioneleRol,
+        string publicMatchId,
+        string? homeDressingRoomId,
+        string? awayDressingRoomId,
+        string? officialDressingRoomId,
+        CancellationToken cancellationToken = default)
+    {
+        var tokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken);
+        if (tokenResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkMutationResult>(tokenResult.Status, null, tokenResult.FoutmeldingVoorLog, null);
+
+        var accessToken = tokenResult.AccessToken;
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return new SportlinkClubResponse<SportlinkMutationResult>(
+                SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na vernieuwing", null);
+
+        var response = await PutDressingRoomsAsync(
+            publicMatchId, homeDressingRoomId, awayDressingRoomId, officialDressingRoomId, accessToken, cancellationToken);
+
+        // Zelfde 401-eenmalige-retry als de read-only methodes.
+        if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
+            return response;
+
+        InvalidateTokenCache(functioneleRol);
+        var retryTokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken, forceRefresh: true);
+        if (retryTokenResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkMutationResult>(retryTokenResult.Status, null, retryTokenResult.FoutmeldingVoorLog, null);
+
+        var retryAccessToken = retryTokenResult.AccessToken;
+        if (string.IsNullOrWhiteSpace(retryAccessToken))
+            return new SportlinkClubResponse<SportlinkMutationResult>(
+                SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na hernieuwing", null);
+
+        var retryResponse = await PutDressingRoomsAsync(
+            publicMatchId, homeDressingRoomId, awayDressingRoomId, officialDressingRoomId, retryAccessToken, cancellationToken);
+        if (retryResponse.HttpStatusCode == 401)
+            return new SportlinkClubResponse<SportlinkMutationResult>(
+                SportlinkClubCallStatus.HerkoppelingVereist,
+                null,
+                "Refresh token is ongeldig (401 blijft terugkomen). Rol moet opnieuw gekoppeld worden.",
+                401);
+
+        return retryResponse;
+    }
+
+    private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutDressingRoomsAsync(
+        string publicMatchId, string? homeDressingRoomId, string? awayDressingRoomId, string? officialDressingRoomId,
+        string accessToken, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = new
+            {
+                PublicMatchId = publicMatchId,
+                HomeDressingRoomId = homeDressingRoomId,
+                AwayDressingRoomId = awayDressingRoomId,
+                OfficialDressingRoomId = officialDressingRoomId
+            };
+            var request = new HttpRequestMessage(HttpMethod.Put, UpdateMatchDressingRoomsEndpoint)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json")
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.Add("X-Navajo-Entity", "competition/match/UpdateMatchDressingRooms");
+            request.Headers.Add("X-Navajo-Instance", "KNVB");
+            request.Headers.Add("X-Navajo-Locale", "nl");
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SportlinkClubResponse<SportlinkMutationResult>(
+                    SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij UpdateMatchDressingRooms endpoint", 401);
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Onofficiële, niet-gedocumenteerde API: exacte responsvorm bij een validatiefout niet
+            // 100% bevestigd (zie onderzoeksrapport §2.4, "[exacte veldnamen onzeker]" voor een
+            // vergelijkbaar endpoint) — probeer daarom zowel het happy-path-veld (IsSuccess) als het
+            // violation-pad te lezen, ongeacht HTTP-status, in plaats van non-2xx als harde fout te
+            // behandelen. Een échte transport-/serverfout (leeg/kapot JSON) valt terug op SportlinkFout.
+            SportlinkMutationResultRaw? raw;
+            try
+            {
+                raw = JsonSerializer.Deserialize<SportlinkMutationResultRaw>(json, JsonOptions);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "JSON deserialisatie fout voor UpdateMatchDressingRooms endpoint");
+                return new SportlinkClubResponse<SportlinkMutationResult>(
+                    SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", (int)response.StatusCode);
+            }
+
+            if (raw == null)
+            {
+                _logger.LogWarning("UpdateMatchDressingRooms endpoint gaf {StatusCode} met lege/onherkenbare respons", response.StatusCode);
+                return new SportlinkClubResponse<SportlinkMutationResult>(
+                    SportlinkClubCallStatus.SportlinkFout, null, $"UpdateMatchDressingRooms endpoint gaf {response.StatusCode} zonder herkenbare respons", (int)response.StatusCode);
+            }
+
+            var violations = raw.EntityViolation?.Violations?.Select(v => v.Code ?? "onbekend").ToList();
+            var isSuccess = raw.IsSuccess ?? (violations == null || violations.Count == 0) && response.IsSuccessStatusCode;
+            return new SportlinkClubResponse<SportlinkMutationResult>(
+                SportlinkClubCallStatus.Ok, new SportlinkMutationResult(isSuccess, violations), null, (int)response.StatusCode);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(ex, "UpdateMatchDressingRooms endpoint timeout");
+            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.NetwerkFout, null, "Timeout bij UpdateMatchDressingRooms endpoint", null);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "UpdateMatchDressingRooms endpoint netwerk fout");
+            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij UpdateMatchDressingRooms endpoint", null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Onverwachte fout bij UpdateMatchDressingRooms endpoint");
+            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.SportlinkFout, null, "Onverwachte fout bij UpdateMatchDressingRooms endpoint", null);
+        }
+    }
+
+    // Rauwe deserialisatievorm — nooit publiek: de aanroeper krijgt SportlinkMutationResult
+    // (opgeschoonde Violations-lijst), niet deze ongedocumenteerde entityViolation-structuur.
+    private sealed record SportlinkMutationResultRaw(
+        bool? IsSuccess,
+        SportlinkEntityViolationRaw? EntityViolation);
+
+    private sealed record SportlinkEntityViolationRaw(List<SportlinkViolationRaw>? Violations);
+
+    private sealed record SportlinkViolationRaw(string? Code);
 
     private async Task<SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>> FetchMatchProgramOverviewRawAsync(
         DateOnly datum, string accessToken, CancellationToken cancellationToken)

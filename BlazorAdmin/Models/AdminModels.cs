@@ -72,6 +72,15 @@ public class SportlinkPublicMatchIdDto
     public string? PublicMatchId { get; set; }
 }
 
+/// <summary>#992: respons van een schrijvende Sportlink-actie (kleedkamers e.v.). Bij een
+/// inhoudelijke weigering door Sportlink zelf (HTTP 422) staat <see cref="Violations"/> gevuld —
+/// <c>ApiResult.ErrorMessage</c> bevat dan de generieke foutmelding, dit veld de details.</summary>
+public class SportlinkMutatieResultaatDto
+{
+    public bool IsSuccess { get; set; }
+    public List<string>? Violations { get; set; }
+}
+
 public class SettingsUpdateDto
 {
     // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend

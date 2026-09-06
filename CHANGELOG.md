@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Kleedkamers toewijzen vanuit de webapp (issue 992, epic 986) — eerste echte Sportlink-mutatie.**
+  In het Sportlink-paneel in Dagplanning kan een beheerder nu thuis-, uit- en officialkleedkamer
+  invullen en direct doorzetten naar Sportlink Club, met een duidelijke melding bij succes of
+  afwijzing. Alleen mogelijk als Sportlink dit voor de wedstrijd toestaat; elke poging wordt
+  gelogd.
 - **Achtergrond-warmup van Sportlink-wedstrijdgegevens (issue 1017, epic 986).** De koppeling tussen
   onze database en Sportlink Club (nodig voor het "Open in Sportlink"-paneel en de deep-link-knop)
   wordt voortaan dagelijks vooraf opgehaald voor de eerstkomende dagen, in plaats van pas op het

@@ -81,4 +81,30 @@ public interface ISportlinkClubClient
     Task<SportlinkClubCallStatus> VerversTokenAsync(
         string functioneleRol,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Wijst kleedkamers toe aan een wedstrijd (#992, epic #986) —
+    /// <c>PUT competition/match/UpdateMatchDressingRooms</c>. Live bevestigd endpoint (zie
+    /// onderzoeksrapport §2.4: 2× getest tijdens onderzoek, toewijzen en terugzetten).
+    /// <b>De aanroeper controleert VOORAF</b> <c>SportlinkMutationGuard.MagMuteren(match,
+    /// SportlinkMutationSoort.Kleedkamers)</c> — deze methode doet zelf geen guardrail-check, puur
+    /// transport.
+    /// </summary>
+    /// <param name="functioneleRol">Functionele rol voor token-lookup.</param>
+    /// <param name="publicMatchId">Zie de TODO(#987)-waarschuwing op <see cref="GetMatchAsync"/>.</param>
+    /// <param name="homeDressingRoomId">Kleedkamer-ID voor het thuisteam, of <c>null</c> om leeg te laten.</param>
+    /// <param name="awayDressingRoomId">Kleedkamer-ID voor het uitteam, of <c>null</c>.</param>
+    /// <param name="officialDressingRoomId">Kleedkamer-ID voor de officials, of <c>null</c>.</param>
+    /// <returns>
+    /// Bij <c>Status=Ok</c>: <c>Data.IsSuccess</c> geeft aan of Sportlink de mutatie zelf accepteerde
+    /// — <c>false</c> betekent een inhoudelijke weigering (bijv. een niet-toegestane
+    /// kleedkamercombinatie, zie <c>Data.Violations</c>), geen transportfout.
+    /// </returns>
+    Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateDressingRoomsAsync(
+        string functioneleRol,
+        string publicMatchId,
+        string? homeDressingRoomId,
+        string? awayDressingRoomId,
+        string? officialDressingRoomId,
+        CancellationToken cancellationToken = default);
 }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json;
 using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
 
@@ -77,6 +78,91 @@ public static class SportlinkMatchFunction
                 return new OkObjectResult(new { PublicMatchId = publicMatchId });
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
+    /// <summary>
+    /// <c>PUT /api/sportlink/match/{wedstrijdcode}/dressingrooms</c> (#992, epic #986) — eerste
+    /// echte Sportlink-mutatie vanuit deze app. Volgorde: PublicMatchId resolven → huidige
+    /// match-status ophalen (voor de guardrail) → <see cref="SportlinkMutationGuard"/> → audit
+    /// "Pending" loggen → mutatie uitvoeren → audit voltooien met het echte resultaat.
+    /// </summary>
+    [Function("SportlinkMatchDressingRoomsPut")]
+    public static Task<IActionResult> PutDressingRooms(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/dressingrooms")] HttpRequest req,
+        string wedstrijdcode,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
+            async clubCode =>
+            {
+                if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
+                    return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
+
+                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
+                var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(
+                    sportlinkClient, wedstrijdcodeValue, clubCode);
+                if (voorbereidFout != null) return voorbereidFout;
+
+                var dto = JsonConvert.DeserializeObject<KleedkamersDto>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
+
+                var matchResult = await sportlinkClient!.GetMatchAsync(RolNaam, publicMatchId!);
+                var matchFout = VertaalStatusNaarFout(matchResult.Status);
+                if (matchFout != null) return matchFout;
+                if (matchResult.Data == null)
+                    return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
+
+                var guard = SportlinkMutationGuard.MagMuteren(matchResult.Data, SportlinkMutationSoort.Kleedkamers);
+
+                var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
+                var triggerdDoor = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
+                var auditEntry = new SportlinkMutationAuditEntry(
+                    clubCode, RolNaam, triggerdDoor, publicMatchId!, "UpdateMatchDressingRooms",
+                    WaardeVoor: JsonConvert.SerializeObject(matchResult.Data.TaskStatus),
+                    WaardeNa: JsonConvert.SerializeObject(dto),
+                    CorrelationId: null);
+                var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
+
+                if (!guard.IsToegstaan)
+                {
+                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", guard.Reden);
+                    return new ObjectResult(new { error = guard.Reden }) { StatusCode = 409 };
+                }
+
+                var mutationResult = await sportlinkClient.UpdateDressingRoomsAsync(
+                    RolNaam, publicMatchId!, dto?.HomeDressingRoomId, dto?.AwayDressingRoomId, dto?.OfficialDressingRoomId);
+
+                var mutationFout = VertaalStatusNaarFout(mutationResult.Status);
+                if (mutationFout != null)
+                {
+                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", mutationResult.FoutmeldingVoorLog);
+                    return mutationFout;
+                }
+
+                if (mutationResult.Data == null)
+                {
+                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", "Geen respons-data van Sportlink");
+                    return new ObjectResult(new { error = "Sportlink gaf geen bruikbare respons." }) { StatusCode = 502 };
+                }
+
+                var violationsSamenvatting = mutationResult.Data.Violations is { Count: > 0 }
+                    ? string.Join(", ", mutationResult.Data.Violations)
+                    : null;
+                if (auditId.HasValue)
+                    await auditService!.VoltooiAsync(auditId.Value, mutationResult.Data.IsSuccess ? "Success" : "Failure", violationsSamenvatting);
+
+                // Altijd HTTP 200: "Sportlink heeft de mutatie inhoudelijk afgewezen" is geen
+                // transportfout maar een structureel resultaat — IsSuccess/Violations dragen de
+                // uitkomst, consistent met hoe BlazorAdmin/Services/AdminApiClient.cs elk
+                // non-2xx-antwoord behandelt (ruwe tekst in ErrorMessage, niet gedeserialiseerd).
+                return new OkObjectResult(mutationResult.Data);
+            },
+            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
+    private sealed class KleedkamersDto
+    {
+        public string? HomeDressingRoomId { get; set; }
+        public string? AwayDressingRoomId { get; set; }
+        public string? OfficialDressingRoomId { get; set; }
+    }
 
     /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,
     /// wedstrijd-lookup en PublicMatchId-cache/reverse-lookup. Geen van beide aanroepers heeft de
