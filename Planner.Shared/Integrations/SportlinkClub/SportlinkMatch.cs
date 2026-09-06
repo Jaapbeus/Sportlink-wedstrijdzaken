@@ -52,4 +52,23 @@ public sealed record SportlinkMatch
 
     [JsonPropertyName("isAddScoreAllowed")]
     public bool IsAddScoreAllowed { get; set; }
+
+    // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): nodig om de juiste
+    // kleedkamer-/veld-identifiervorm te bouwen ("{FacilityId}-DRESSINGROOM-{n}" resp.
+    // "{FacilityId}-OUTDOOR_FIELD-{n}") — geen persoonsgegeven, puur een accommodatiecode.
+    [JsonPropertyName("matchField")]
+    public SportlinkMatchField? MatchField { get; set; }
+}
+
+/// <summary>Facility-gegevens van een wedstrijd — geen persoonsgegevens, alleen accommodatiecodes.</summary>
+public sealed record SportlinkMatchField
+{
+    [JsonPropertyName("facilityId")]
+    public string? FacilityId { get; set; }
+
+    [JsonPropertyName("subFacilityId")]
+    public string? SubFacilityId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
 }
