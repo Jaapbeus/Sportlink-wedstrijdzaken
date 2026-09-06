@@ -497,11 +497,13 @@ public class SportlinkClubClient : ISportlinkClubClient
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            // Onofficiële, niet-gedocumenteerde API: exacte responsvorm bij een validatiefout niet
-            // 100% bevestigd (zie onderzoeksrapport §2.4, "[exacte veldnamen onzeker]" voor een
-            // vergelijkbaar endpoint) — probeer daarom zowel het happy-path-veld (IsSuccess) als het
-            // violation-pad te lezen, ongeacht HTTP-status, in plaats van non-2xx als harde fout te
-            // behandelen. Een échte transport-/serverfout (leeg/kapot JSON) valt terug op SportlinkFout.
+            // Live vastgesteld (2026-09-06, testwedstrijd wedstrijdnummer 69): een door Sportlink
+            // afgewezen mutatie geeft HTTP 420 met deze vorm — niet de eerder aangenomen
+            // {isSuccess:false, entityViolation:{violations:[{code:...}]}}:
+            //   {"Error":true,"Status":"420","Message":"Validation exception : X",
+            //    "ViolationCodes":["X","X"],"Violations":{"X":"Nederlandse omschrijving"}}
+            // De happy-path-vorm ({"isSuccess":true}) is niet live bevestigd — IsSuccessStatusCode
+            // blijft daarom de doorslaggevende factor voor succes, niet het losse veld.
             SportlinkMutationResultRaw? raw;
             try
             {
@@ -521,8 +523,10 @@ public class SportlinkClubClient : ISportlinkClubClient
                     SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf {response.StatusCode} zonder herkenbare respons", (int)response.StatusCode);
             }
 
-            var violations = raw.EntityViolation?.Violations?.Select(v => v.Code ?? "onbekend").ToList();
-            var isSuccess = raw.IsSuccess ?? (violations == null || violations.Count == 0) && response.IsSuccessStatusCode;
+            var violations = raw.Violations is { Count: > 0 }
+                ? raw.Violations.Select(kv => $"{kv.Key}: {kv.Value}").ToList()
+                : raw.ViolationCodes;
+            var isSuccess = raw.Error != true && response.IsSuccessStatusCode;
             return new SportlinkClubResponse<SportlinkMutationResult>(
                 SportlinkClubCallStatus.Ok, new SportlinkMutationResult(isSuccess, violations), null, (int)response.StatusCode);
         }
@@ -544,14 +548,15 @@ public class SportlinkClubClient : ISportlinkClubClient
     }
 
     // Rauwe deserialisatievorm — nooit publiek: de aanroeper krijgt SportlinkMutationResult
-    // (opgeschoonde Violations-lijst), niet deze ongedocumenteerde entityViolation-structuur.
+    // (opgeschoonde Violations-lijst), niet deze rauwe vorm. Live vastgesteld op een afgewezen
+    // UpdateMatchDressingRooms-aanroep (2026-09-06, wedstrijdnummer 69) — zie het commentaar bij
+    // de aanroepplek hierboven voor het exacte, geobserveerde JSON-voorbeeld.
     private sealed record SportlinkMutationResultRaw(
-        bool? IsSuccess,
-        SportlinkEntityViolationRaw? EntityViolation);
-
-    private sealed record SportlinkEntityViolationRaw(List<SportlinkViolationRaw>? Violations);
-
-    private sealed record SportlinkViolationRaw(string? Code);
+        bool? Error,
+        string? Status,
+        string? Message,
+        List<string>? ViolationCodes,
+        Dictionary<string, string>? Violations);
 
     private async Task<SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>> FetchMatchProgramOverviewRawAsync(
         DateOnly datum, string token, CancellationToken cancellationToken)
