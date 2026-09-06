@@ -636,6 +636,43 @@
                                             {
                                                 <div class="mt-1 text-muted">Openstaand: @_sportlinkData.TaskStatus</div>
                                             }
+                                            @if (_sportlinkData.IsAssignDressingRoomsAllowed)
+                                            {
+                                                <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">Thuis</label>
+                                                        <input class="form-control form-control-sm" style="width:6rem;"
+                                                               value="@_sportlinkKleedkamerThuis.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkKleedkamerThuis[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">Uit</label>
+                                                        <input class="form-control form-control-sm" style="width:6rem;"
+                                                               value="@_sportlinkKleedkamerUit.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkKleedkamerUit[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">Official</label>
+                                                        <input class="form-control form-control-sm" style="width:6rem;"
+                                                               value="@_sportlinkKleedkamerOfficial.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkKleedkamerOfficial[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <button class="btn btn-sm btn-outline-primary" disabled="@_sportlinkKleedkamerBezig.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                            @onclick="() => SaveDressingRoomsAsync(item.WedstrijdCode.Value)">
+                                                        Kleedkamers toewijzen
+                                                    </button>
+                                                    @if (_sportlinkKleedkamerBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                    }
+                                                </div>
+                                                if (!string.IsNullOrEmpty(_sportlinkKleedkamerMelding.GetValueOrDefault(item.WedstrijdCode.Value)))
+                                                {
+                                                    <div class="mt-1 @(_sportlinkKleedkamerMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value) ? "text-danger" : "text-success")">
+                                                        @_sportlinkKleedkamerMelding.GetValueOrDefault(item.WedstrijdCode.Value)
+                                                    </div>
+                                                }
+                                            }
                                         }
                                     </td>
                                 </tr>
@@ -764,6 +801,54 @@
         finally
         {
             _sportlinkBezig[wedstrijdCode] = false;
+        }
+    }
+
+    // #992: eerste echte Sportlink-mutatie — kleedkamers toewijzen. Alleen zichtbaar/actief als
+    // IsAssignDressingRoomsAllowed (server valideert dit sowieso opnieuw via SportlinkMutationGuard).
+    private readonly Dictionary<long, string?> _sportlinkKleedkamerThuis = new();
+    private readonly Dictionary<long, string?> _sportlinkKleedkamerUit = new();
+    private readonly Dictionary<long, string?> _sportlinkKleedkamerOfficial = new();
+    private readonly Dictionary<long, bool> _sportlinkKleedkamerBezig = new();
+    private readonly Dictionary<long, string?> _sportlinkKleedkamerMelding = new();
+    private readonly Dictionary<long, bool> _sportlinkKleedkamerMeldingFout = new();
+
+    private async Task SaveDressingRoomsAsync(long wedstrijdCode)
+    {
+        _sportlinkKleedkamerMelding[wedstrijdCode] = null;
+        _sportlinkKleedkamerBezig[wedstrijdCode] = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.PutSportlinkDressingRoomsAsync(
+                wedstrijdCode.ToString(),
+                _sportlinkKleedkamerThuis.GetValueOrDefault(wedstrijdCode),
+                _sportlinkKleedkamerUit.GetValueOrDefault(wedstrijdCode),
+                _sportlinkKleedkamerOfficial.GetValueOrDefault(wedstrijdCode));
+
+            if (!result.Success)
+            {
+                _sportlinkKleedkamerMeldingFout[wedstrijdCode] = true;
+                _sportlinkKleedkamerMelding[wedstrijdCode] = result.ErrorMessage ?? "Onbekende fout bij toewijzen kleedkamers.";
+                return;
+            }
+
+            if (result.Data?.IsSuccess == true)
+            {
+                _sportlinkKleedkamerMeldingFout[wedstrijdCode] = false;
+                _sportlinkKleedkamerMelding[wedstrijdCode] = "Kleedkamers toegewezen in Sportlink Club.";
+            }
+            else
+            {
+                _sportlinkKleedkamerMeldingFout[wedstrijdCode] = true;
+                var violations = result.Data?.Violations;
+                _sportlinkKleedkamerMelding[wedstrijdCode] = "Sportlink heeft de wijziging afgewezen"
+                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
+            }
+        }
+        finally
+        {
+            _sportlinkKleedkamerBezig[wedstrijdCode] = false;
         }
     }
 

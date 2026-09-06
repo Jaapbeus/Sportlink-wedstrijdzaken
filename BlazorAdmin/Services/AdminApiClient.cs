@@ -51,6 +51,13 @@ public class AdminApiClient
     public async Task<ApiResult<SportlinkPublicMatchIdDto>> GetSportlinkPublicMatchIdAsync(string wedstrijdcode)
         => await GetAsync<SportlinkPublicMatchIdDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/public-match-id");
 
+    // #992: eerste echte Sportlink-mutatie — kleedkamers toewijzen.
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkDressingRoomsAsync(
+        string wedstrijdcode, string? homeDressingRoomId, string? awayDressingRoomId, string? officialDressingRoomId)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/dressingrooms",
+            new { HomeDressingRoomId = homeDressingRoomId, AwayDressingRoomId = awayDressingRoomId, OfficialDressingRoomId = officialDressingRoomId });
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()
