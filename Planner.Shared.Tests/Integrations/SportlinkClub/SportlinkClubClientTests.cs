@@ -821,10 +821,15 @@ public class SportlinkClubClientTests
 
     private static string DressingRoomsSuccessResponse() => """{"isSuccess": true}""";
 
+    // Live vastgesteld (2026-09-06, testwedstrijd wedstrijdnummer 69) tegen het echte
+    // UpdateMatchDressingRooms-endpoint — de eerder aangenomen vorm
+    // ({"isSuccess":false,"entityViolation":{"violations":[{"code":...}]}}) bleek onjuist.
     private static string DressingRoomsViolationResponse(params string[] codes)
     {
-        var items = string.Join(",", codes.Select(c => "{\"code\": \"" + c + "\"}"));
-        return "{\"isSuccess\": false, \"entityViolation\": {\"violations\": [" + items + "]}}";
+        var codesJson = string.Join(",", codes.Select(c => "\"" + c + "\""));
+        var violationsJson = string.Join(",", codes.Distinct().Select(c => "\"" + c + "\": \"Nederlandse omschrijving\""));
+        return "{\"Error\": true, \"Status\": \"420\", \"Message\": \"Validation exception : " + codes[0] + "\", "
+             + "\"ViolationCodes\": [" + codesJson + "], \"Violations\": {" + violationsJson + "}}";
     }
 
     [Fact]
@@ -868,7 +873,49 @@ public class SportlinkClubClientTests
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok, "de aanroep zelf lukte, Sportlink wees de mutatie inhoudelijk af");
         result.Data!.IsSuccess.Should().BeFalse();
-        result.Data.Violations.Should().ContainSingle().Which.Should().Be("INVALID_UPDATE_ACTION");
+        result.Data.Violations.Should().ContainSingle().Which.Should().Be("INVALID_UPDATE_ACTION: Nederlandse omschrijving");
+    }
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_EchteAfwijzingMetHttp420_WordtCorrectGeparsed()
+    {
+        // Regressietest voor een live-gevonden bug (2026-09-06, testwedstrijd wedstrijdnummer 69,
+        // veld 6, kleedkamers 10/6/9): de aangenomen violation-vorm bleek onjuist. Sportlink gaf
+        // HTTP 420 met dit exacte, geobserveerde JSON terug — inclusief drie keer dezelfde code
+        // (één per kleedkamerveld) en een top-level "Error"/"Status"/"Message", niet het eerder
+        // aangenomen "isSuccess"/"entityViolation".
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDressingRooms") == true)
+                return new HttpResponseMessage((HttpStatusCode)420)
+                {
+                    Content = new StringContent(
+                        """
+                        {
+                          "Error" : true,
+                          "Status" : "420",
+                          "Message" : "Validation exception : INVALID_COMBINATION_FACILITY_DRESSINGROOM",
+                          "ViolationCodes" : [ "INVALID_COMBINATION_FACILITY_DRESSINGROOM", "INVALID_COMBINATION_FACILITY_DRESSINGROOM", "INVALID_COMBINATION_FACILITY_DRESSINGROOM" ],
+                          "Violations" : {
+                            "INVALID_COMBINATION_FACILITY_DRESSINGROOM" : "Een of meer gekozen kleedkamers, horen niet bij de gekozen accommodatie"
+                          }
+                        }
+                        """, System.Text.Encoding.UTF8, "application/json")
+                };
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok, "HTTP 420 is een structurele afwijzing, geen transportfout");
+        result.Data!.IsSuccess.Should().BeFalse();
+        result.Data.Violations.Should().ContainSingle()
+            .Which.Should().Be("INVALID_COMBINATION_FACILITY_DRESSINGROOM: Een of meer gekozen kleedkamers, horen niet bij de gekozen accommodatie");
     }
 
     [Fact]
@@ -1061,7 +1108,7 @@ public class SportlinkClubClientTests
 
         result.Status.Should().Be(SportlinkClubCallStatus.Ok);
         result.Data!.IsSuccess.Should().BeFalse();
-        result.Data.Violations.Should().ContainSingle().Which.Should().Be("INVALID_UPDATE_ACTION");
+        result.Data.Violations.Should().ContainSingle().Which.Should().Be("INVALID_UPDATE_ACTION: Nederlandse omschrijving");
     }
 
     [Fact]

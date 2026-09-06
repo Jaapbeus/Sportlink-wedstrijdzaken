@@ -80,6 +80,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Sportlink-wedstrijdgegevens ophalen kon ook crashen op de wedstrijddatum zelf (#1038).**
   Vervolgvondst bij dezelfde live-verificatieronde als #1036: Sportlink levert de datum/tijd van
   een wedstrijd genest (`{Date, StartTime, DateTime}`) in plaats van als losse tekstwaarde.
+- **Foutmelding van een afgewezen Sportlink-mutatie (bijv. kleedkamers toewijzen) kwam niet aan
+  in het audit-log (#1040).** Live-verificatie van #992 tegen een echte testwedstrijd toonde dat
+  Sportlink een andere afwijzingsvorm gebruikt dan aangenomen — de mutatie werd al wel correct als
+  mislukt herkend, maar zonder bruikbare reden in `sportlinkmutationaudit`.
 
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export

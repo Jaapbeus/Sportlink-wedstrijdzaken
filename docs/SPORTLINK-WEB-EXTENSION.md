@@ -4,9 +4,13 @@
 > geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036/#1038 voor de daarbij gevonden en
 > gefixte bugs: `ExternalMatchId` kwam als JSON-getal terug in plaats van string (#1036), en
 > `MatchDate` kwam genest terug (`{Date, StartTime, DateTime}`) in plaats van als losse ISO-string
-> (#1038)). Kleedkamers (#992),
-> veld (#993) en inkomende wijzigingsverzoeken (#996) zijn gebouwd en CI-groen; live-verificatie
-> van de daadwerkelijke schrijfacties volgt. #994/#995/#997 zijn bewust nog niet gebouwd: de
+> (#1038)). **Kleedkamers toewijzen (#992) is 2026-09-06 voor het eerst live geprobeerd** (tegen
+> dezelfde testwedstrijd, kleedkamers 10/6/9) — de aanroep zelf werkt end-to-end (guard → audit →
+> echte PUT → correct afgehandelde afwijzing), maar Sportlink wees de mutatie inhoudelijk af met
+> `INVALID_COMBINATION_FACILITY_DRESSINGROOM` (zie #1040 voor de bijbehorende parseerfout die
+> daarbij gevonden en gefixt is, en het nog openstaande vraagstuk: de juiste kleedkamer-identifier-
+> vorm is nog niet vastgesteld). Veld (#993) en inkomende wijzigingsverzoeken (#996) zijn gebouwd
+> en CI-groen; live-verificatie daarvan volgt nog. #994/#995/#997 zijn bewust nog niet gebouwd: de
 > exacte requestvorm is niet live vastgesteld (zie de betreffende issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
@@ -115,7 +119,12 @@ verplichte N-user-test.
   de geïnjecteerde `ISportlinkClubTokenStore`) zodat beide tiers hem via DI kunnen gebruiken. Sinds
   #991/#1016 ook de reverse-lookup (`ResolvePublicMatchIdAsync`, `MatchProgramOverview`) — daarvóór
   accepteerde de client `PublicMatchId` uitsluitend als expliciete parameter (de "M"+wedstrijdcode-
-  hypothese is weerlegd, zie #987).
+  hypothese is weerlegd, zie #987). **Mutatie-afwijzingsvorm live bevestigd (#1040, 2026-09-06):**
+  een door Sportlink afgewezen mutatie geeft HTTP 420 met
+  `{"Error":true,"Status":"420","Message":"...","ViolationCodes":[...],"Violations":{"CODE":"NL-omschrijving"}}`
+  — niet het eerder aangenomen `{"isSuccess":false,"entityViolation":{"violations":[{"code":...}]}}`.
+  De happy-path-vorm (`{"isSuccess":true}`) is nog altijd niet live bevestigd; succes wordt daarom
+  bepaald door `Error != true && response.IsSuccessStatusCode`, niet door een los veld.
 - `ISportlinkClubTokenStore` — twee tier-specifieke implementaties, bewust géén gedeelde: de
   Postgres-tier (`FunctionApp.Postgres/Sportlink/PostgresSportlinkClubTokenStore.cs`, #991) bewaart
   het rotarende refresh_token in een eigen DB-tabel (`public.sportlinkservicetokens`); de SQL
