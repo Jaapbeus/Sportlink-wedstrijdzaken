@@ -91,9 +91,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Veld wijzigen vanuit Dagplanning riep een endpoint aan dat niet bestaat (#1047).** Sportlink
   gebruikt `UpdateMatchDetails` met het volledige wedstrijdrecord, niet het aangenomen
   `UpdateMatchField` met een klein patch. Herontworpen naar het echte endpoint.
-- **Veld wijzigen faalde nog steeds door een onnodige, kapotte identiteitsopvraag (#1048).** Bleek
-  voor een eigen-veld-wijziging niet nodig — Sportlink accepteert een lege aanvrager-identiteit.
-  Beheerders kunnen nu daadwerkelijk het veld van een wedstrijd wijzigen vanuit Dagplanning.
+- **Veld wijzigen faalde nog steeds door een onnodige, kapotte identiteitsopvraag** (zie issue
+  #1048, dat verder openblijft voor #996). Bleek voor een eigen-veld-wijziging niet nodig —
+  Sportlink accepteert een lege aanvrager-identiteit. Beheerders kunnen nu daadwerkelijk het veld
+  van een wedstrijd wijzigen vanuit Dagplanning.
 
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
