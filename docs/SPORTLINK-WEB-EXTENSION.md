@@ -1,8 +1,10 @@
 # Sportlink Web Extension
 
 > **Status: gedeeltelijk gebouwd. Het read-only Match-endpoint (#991) is 2026-09-06 lokaal live
-> geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036 voor de daarbij gevonden en
-> gefixte bug: `ExternalMatchId` kwam als JSON-getal terug, niet als string). Kleedkamers (#992),
+> geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036/#1038 voor de daarbij gevonden en
+> gefixte bugs: `ExternalMatchId` kwam als JSON-getal terug in plaats van string (#1036), en
+> `MatchDate` kwam genest terug (`{Date, StartTime, DateTime}`) in plaats van als losse ISO-string
+> (#1038)). Kleedkamers (#992),
 > veld (#993) en inkomende wijzigingsverzoeken (#996) zijn gebouwd en CI-groen; live-verificatie
 > van de daadwerkelijke schrijfacties volgt. #994/#995/#997 zijn bewust nog niet gebouwd: de
 > exacte requestvorm is niet live vastgesteld (zie de betreffende issues). Epic
@@ -247,6 +249,15 @@ test getriggerd wordt:
   sinds #991 wél aangeroepen (voor de #987-reverse-lookup), maar uitsluitend het resultaat
   `PublicMatchId` wordt gecachet — nooit de overige, niet-club-gescoped wedstrijdgegevens uit die
   respons.
+- **Incident (2026-09-06): tijdelijke diagnostische logging loggede per ongeluk de volledige
+  Match-respons, inclusief `MatchOfficials` (naam, geboortedatum, foto-URL van de scheidsrechter).**
+  Ontstaan tijdens het live debuggen van issue #1038 (`MatchDate` kwam genest terug) — een `catch`-blok
+  logde tijdelijk de rauwe JSON-body om de exacte oorzaak te vinden. Het logbestand stond lokaal
+  (nooit gecommit) en is direct verwijderd; de inhoud kwam wel even in de agent-sessie terecht.
+  **Regel voor elke toekomstige diagnose van deze endpoint:** log nooit de volledige respons-body,
+  ook niet tijdelijk — gebruik `JsonDocument` om gericht alleen de raw text van het specifieke
+  veld te loggen dat de fout veroorzaakt (zie het patroon in git-historie van #1038 voor een
+  voorbeeldimplementatie die nooit in `MatchOfficials` afdaalt zonder dat expliciet te bedoelen).
 - Volledige, actuele lijst met openstaande vragen en risico's: onderzoeksrapport §5/§7.
 
 ## 6. Bronnen
