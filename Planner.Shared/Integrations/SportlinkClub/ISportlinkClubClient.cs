@@ -107,4 +107,34 @@ public interface ISportlinkClubClient
         string? awayDressingRoomId,
         string? officialDressingRoomId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Wijzigt het veld(deel) van een wedstrijd (#993, epic #986) —
+    /// <c>PUT competition/match/UpdateMatchField</c>. Body-vorm uit Sportlinks eigen bundle-code
+    /// (niet live gestest bij het schrijven van deze methode) — zie onderzoeksrapport §2.4 en
+    /// issue #993. <b>De aanroeper controleert VOORAF</b>
+    /// <c>SportlinkMutationGuard.MagMuteren(match, SportlinkMutationSoort.Veld)</c>.
+    /// </summary>
+    /// <param name="functioneleRol">Functionele rol voor token-lookup.</param>
+    /// <param name="publicMatchId">Zie de TODO(#987)-waarschuwing op <see cref="GetMatchAsync"/>.</param>
+    /// <param name="fieldId">Sportlink-veld-ID, bijv. <c>"&lt;FacilityId&gt;-1"</c> of
+    /// <c>"&lt;FacilityId&gt;-OUTDOOR_FIELD-6"</c> — op te halen via de picklist-endpoints, niet
+    /// hier te construeren.</param>
+    /// <param name="fieldSize">Veldgrootte-code (bijv. <c>"1.0"</c> voor heel veld) — als string,
+    /// omdat Sportlinks eigen UI dit soms als string verzendt (issue #993, "onzeker").</param>
+    /// <param name="fieldOffset">Veldpositie-offset, of <c>null</c>.</param>
+    /// <param name="isForceUpdate">
+    /// Semantiek NIET bevestigd (issue #993) — vermoedelijk om over een bezettingsconflict heen te
+    /// schrijven. Altijd <c>false</c> gebruiken totdat een mens dit live heeft bevestigd; nooit
+    /// standaard <c>true</c> aanbieden in een UI.
+    /// </param>
+    /// <returns>Zelfde semantiek als <see cref="UpdateDressingRoomsAsync"/>.</returns>
+    Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateFieldAsync(
+        string functioneleRol,
+        string publicMatchId,
+        string? fieldId,
+        string? fieldSize,
+        int? fieldOffset,
+        bool isForceUpdate,
+        CancellationToken cancellationToken = default);
 }

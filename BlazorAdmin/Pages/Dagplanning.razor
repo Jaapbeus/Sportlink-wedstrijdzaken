@@ -673,6 +673,37 @@
                                                     </div>
                                                 }
                                             }
+                                            @if (_sportlinkData.IsEditFieldAllowed)
+                                            {
+                                                <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">FieldId</label>
+                                                        <input class="form-control form-control-sm" style="width:10rem;"
+                                                               value="@_sportlinkVeldFieldId.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkVeldFieldId[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">FieldSize</label>
+                                                        <input class="form-control form-control-sm" style="width:6rem;"
+                                                               value="@_sportlinkVeldFieldSize.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkVeldFieldSize[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <button class="btn btn-sm btn-outline-primary" disabled="@_sportlinkVeldBezig.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                            @onclick="() => SaveFieldAsync(item.WedstrijdCode.Value)">
+                                                        Veld wijzigen
+                                                    </button>
+                                                    @if (_sportlinkVeldBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                    }
+                                                </div>
+                                                if (!string.IsNullOrEmpty(_sportlinkVeldMelding.GetValueOrDefault(item.WedstrijdCode.Value)))
+                                                {
+                                                    <div class="mt-1 @(_sportlinkVeldMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value) ? "text-danger" : "text-success")">
+                                                        @_sportlinkVeldMelding.GetValueOrDefault(item.WedstrijdCode.Value)
+                                                    </div>
+                                                }
+                                            }
                                         }
                                     </td>
                                 </tr>
@@ -849,6 +880,53 @@
         finally
         {
             _sportlinkKleedkamerBezig[wedstrijdCode] = false;
+        }
+    }
+
+    // #993: veld(deel) wijzigen. IsForceUpdate blijft server-side hard false (semantiek niet
+    // bevestigd) — hier dus geen UI-optie voor.
+    private readonly Dictionary<long, string?> _sportlinkVeldFieldId = new();
+    private readonly Dictionary<long, string?> _sportlinkVeldFieldSize = new();
+    private readonly Dictionary<long, bool> _sportlinkVeldBezig = new();
+    private readonly Dictionary<long, string?> _sportlinkVeldMelding = new();
+    private readonly Dictionary<long, bool> _sportlinkVeldMeldingFout = new();
+
+    private async Task SaveFieldAsync(long wedstrijdCode)
+    {
+        _sportlinkVeldMelding[wedstrijdCode] = null;
+        _sportlinkVeldBezig[wedstrijdCode] = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.PutSportlinkFieldAsync(
+                wedstrijdCode.ToString(),
+                _sportlinkVeldFieldId.GetValueOrDefault(wedstrijdCode),
+                _sportlinkVeldFieldSize.GetValueOrDefault(wedstrijdCode),
+                fieldOffset: null);
+
+            if (!result.Success)
+            {
+                _sportlinkVeldMeldingFout[wedstrijdCode] = true;
+                _sportlinkVeldMelding[wedstrijdCode] = result.ErrorMessage ?? "Onbekende fout bij wijzigen veld.";
+                return;
+            }
+
+            if (result.Data?.IsSuccess == true)
+            {
+                _sportlinkVeldMeldingFout[wedstrijdCode] = false;
+                _sportlinkVeldMelding[wedstrijdCode] = "Veld gewijzigd in Sportlink Club.";
+            }
+            else
+            {
+                _sportlinkVeldMeldingFout[wedstrijdCode] = true;
+                var violations = result.Data?.Violations;
+                _sportlinkVeldMelding[wedstrijdCode] = "Sportlink heeft de wijziging afgewezen"
+                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
+            }
+        }
+        finally
+        {
+            _sportlinkVeldBezig[wedstrijdCode] = false;
         }
     }
 

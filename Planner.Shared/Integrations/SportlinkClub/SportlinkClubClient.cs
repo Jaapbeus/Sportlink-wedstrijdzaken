@@ -16,6 +16,7 @@ public class SportlinkClubClient : ISportlinkClubClient
     private const string MatchEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/Match";
     private const string MatchProgramOverviewEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/MatchProgramOverview";
     private const string UpdateMatchDressingRoomsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchDressingRooms";
+    private const string UpdateMatchFieldEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchField";
     private const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
 
@@ -178,13 +179,41 @@ public class SportlinkClubClient : ISportlinkClubClient
         return result.Status;
     }
 
-    public async Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateDressingRoomsAsync(
+    public Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateDressingRoomsAsync(
         string functioneleRol,
         string publicMatchId,
         string? homeDressingRoomId,
         string? awayDressingRoomId,
         string? officialDressingRoomId,
         CancellationToken cancellationToken = default)
+        => ExecuteMutationWithRetryAsync(
+            functioneleRol,
+            (accessToken, ct) => PutDressingRoomsAsync(publicMatchId, homeDressingRoomId, awayDressingRoomId, officialDressingRoomId, accessToken, ct),
+            cancellationToken);
+
+    public Task<SportlinkClubResponse<SportlinkMutationResult>> UpdateFieldAsync(
+        string functioneleRol,
+        string publicMatchId,
+        string? fieldId,
+        string? fieldSize,
+        int? fieldOffset,
+        bool isForceUpdate,
+        CancellationToken cancellationToken = default)
+        => ExecuteMutationWithRetryAsync(
+            functioneleRol,
+            (accessToken, ct) => PutFieldAsync(publicMatchId, fieldId, fieldSize, fieldOffset, isForceUpdate, accessToken, ct),
+            cancellationToken);
+
+    /// <summary>
+    /// Gedeelde token-refresh/401-eenmalige-retry-wrapper voor alle schrijvende Sportlink-aanroepen
+    /// (#992 kleedkamers, #993 veld, en toekomstige mutaties) — derde bijna-identieke kopie van
+    /// dit patroon (na #992/#993) was de trigger om het hier te consolideren, zelfde overweging als
+    /// TeamNaamNormalisatie/VeldResolver: één vertaalpunt in plaats van een nieuwe kopie per issue.
+    /// </summary>
+    private async Task<SportlinkClubResponse<SportlinkMutationResult>> ExecuteMutationWithRetryAsync(
+        string functioneleRol,
+        Func<string, CancellationToken, Task<SportlinkClubResponse<SportlinkMutationResult>>> putAction,
+        CancellationToken cancellationToken)
     {
         var tokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken);
         if (tokenResult.Status != SportlinkClubCallStatus.Ok)
@@ -195,8 +224,7 @@ public class SportlinkClubClient : ISportlinkClubClient
             return new SportlinkClubResponse<SportlinkMutationResult>(
                 SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na vernieuwing", null);
 
-        var response = await PutDressingRoomsAsync(
-            publicMatchId, homeDressingRoomId, awayDressingRoomId, officialDressingRoomId, accessToken, cancellationToken);
+        var response = await putAction(accessToken, cancellationToken);
 
         // Zelfde 401-eenmalige-retry als de read-only methodes.
         if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
@@ -212,8 +240,7 @@ public class SportlinkClubClient : ISportlinkClubClient
             return new SportlinkClubResponse<SportlinkMutationResult>(
                 SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na hernieuwing", null);
 
-        var retryResponse = await PutDressingRoomsAsync(
-            publicMatchId, homeDressingRoomId, awayDressingRoomId, officialDressingRoomId, retryAccessToken, cancellationToken);
+        var retryResponse = await putAction(retryAccessToken, cancellationToken);
         if (retryResponse.HttpStatusCode == 401)
             return new SportlinkClubResponse<SportlinkMutationResult>(
                 SportlinkClubCallStatus.HerkoppelingVereist,
@@ -224,25 +251,53 @@ public class SportlinkClubClient : ISportlinkClubClient
         return retryResponse;
     }
 
-    private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutDressingRoomsAsync(
+    private Task<SportlinkClubResponse<SportlinkMutationResult>> PutDressingRoomsAsync(
         string publicMatchId, string? homeDressingRoomId, string? awayDressingRoomId, string? officialDressingRoomId,
         string accessToken, CancellationToken cancellationToken)
     {
+        var body = new
+        {
+            PublicMatchId = publicMatchId,
+            HomeDressingRoomId = homeDressingRoomId,
+            AwayDressingRoomId = awayDressingRoomId,
+            OfficialDressingRoomId = officialDressingRoomId
+        };
+        return PutMutationAsync(
+            UpdateMatchDressingRoomsEndpoint, "competition/match/UpdateMatchDressingRooms", body, accessToken, cancellationToken);
+    }
+
+    private Task<SportlinkClubResponse<SportlinkMutationResult>> PutFieldAsync(
+        string publicMatchId, string? fieldId, string? fieldSize, int? fieldOffset, bool isForceUpdate,
+        string accessToken, CancellationToken cancellationToken)
+    {
+        var body = new
+        {
+            PublicMatchId = publicMatchId,
+            FieldId = fieldId,
+            FieldSize = fieldSize,
+            FieldOffset = fieldOffset,
+            IsForceUpdate = isForceUpdate
+        };
+        return PutMutationAsync(
+            UpdateMatchFieldEndpoint, "competition/match/UpdateMatchField", body, accessToken, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gedeelde PUT-uitvoering + responsparsing voor alle mutatie-endpoints — derde bijna-identieke
+    /// kopie (na #992/#993) was de trigger om ook dit deel te consolideren, zie de doc-comment op
+    /// <see cref="ExecuteMutationWithRetryAsync"/>.
+    /// </summary>
+    private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutMutationAsync(
+        string endpoint, string entityName, object body, string accessToken, CancellationToken cancellationToken)
+    {
         try
         {
-            var body = new
-            {
-                PublicMatchId = publicMatchId,
-                HomeDressingRoomId = homeDressingRoomId,
-                AwayDressingRoomId = awayDressingRoomId,
-                OfficialDressingRoomId = officialDressingRoomId
-            };
-            var request = new HttpRequestMessage(HttpMethod.Put, UpdateMatchDressingRoomsEndpoint)
+            var request = new HttpRequestMessage(HttpMethod.Put, endpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json")
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            request.Headers.Add("X-Navajo-Entity", "competition/match/UpdateMatchDressingRooms");
+            request.Headers.Add("X-Navajo-Entity", entityName);
             request.Headers.Add("X-Navajo-Instance", "KNVB");
             request.Headers.Add("X-Navajo-Locale", "nl");
 
@@ -250,7 +305,7 @@ public class SportlinkClubClient : ISportlinkClubClient
 
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 return new SportlinkClubResponse<SportlinkMutationResult>(
-                    SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij UpdateMatchDressingRooms endpoint", 401);
+                    SportlinkClubCallStatus.SportlinkFout, null, $"Unauthorized bij {entityName} endpoint", 401);
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -266,16 +321,16 @@ public class SportlinkClubClient : ISportlinkClubClient
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "JSON deserialisatie fout voor UpdateMatchDressingRooms endpoint");
+                _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
                 return new SportlinkClubResponse<SportlinkMutationResult>(
                     SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", (int)response.StatusCode);
             }
 
             if (raw == null)
             {
-                _logger.LogWarning("UpdateMatchDressingRooms endpoint gaf {StatusCode} met lege/onherkenbare respons", response.StatusCode);
+                _logger.LogWarning("{Entity} endpoint gaf {StatusCode} met lege/onherkenbare respons", entityName, response.StatusCode);
                 return new SportlinkClubResponse<SportlinkMutationResult>(
-                    SportlinkClubCallStatus.SportlinkFout, null, $"UpdateMatchDressingRooms endpoint gaf {response.StatusCode} zonder herkenbare respons", (int)response.StatusCode);
+                    SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf {response.StatusCode} zonder herkenbare respons", (int)response.StatusCode);
             }
 
             var violations = raw.EntityViolation?.Violations?.Select(v => v.Code ?? "onbekend").ToList();
@@ -285,18 +340,18 @@ public class SportlinkClubClient : ISportlinkClubClient
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogWarning(ex, "UpdateMatchDressingRooms endpoint timeout");
-            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.NetwerkFout, null, "Timeout bij UpdateMatchDressingRooms endpoint", null);
+            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.NetwerkFout, null, $"Timeout bij {entityName} endpoint", null);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "UpdateMatchDressingRooms endpoint netwerk fout");
-            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij UpdateMatchDressingRooms endpoint", null);
+            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.NetwerkFout, null, $"Netwerk fout bij {entityName} endpoint", null);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Onverwachte fout bij UpdateMatchDressingRooms endpoint");
-            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.SportlinkFout, null, "Onverwachte fout bij UpdateMatchDressingRooms endpoint", null);
+            _logger.LogWarning(ex, "Onverwachte fout bij {Entity} endpoint", entityName);
+            return new SportlinkClubResponse<SportlinkMutationResult>(SportlinkClubCallStatus.SportlinkFout, null, $"Onverwachte fout bij {entityName} endpoint", null);
         }
     }
 
