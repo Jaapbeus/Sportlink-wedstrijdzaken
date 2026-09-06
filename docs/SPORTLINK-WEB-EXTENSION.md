@@ -140,9 +140,13 @@ schrijfrechten op de eigen Function App — een grotere attack surface voor hetz
 DB-tabel is een bestaande, gratis resource en dezelfde vertrouwensgrens als de bestaande
 `SqlConnectionString`-secrets.
 
-**Bekende inconsistentie (niet blokkerend):** de SQL Server-tier (`SportlinkClubAppSettingsTokenStore`,
-#998) gebruikt nog wél de ARM-API-aanpak — die tier is rollback-only en heeft geen productieverkeer,
-dus dit is bewust niet in dezelfde PR meegenomen. Zie #1020 voor het align/deprecate-vervolg.
+**Besluit (#1020, 2026-09-06):** de SQL Server-tier (`SportlinkClubAppSettingsTokenStore`, #998)
+behoudt bewust de oudere ARM-API-aanpak — géén migratie naar een DB-tabel, ook niet later. Die tier
+is rollback-only sinds de Postgres-cutover en heeft geen productieverkeer; een DB-tabel-migratie
+bouwen voor een tier die mogelijk nooit meer actief wordt is voorbarig werk. Deze twee tiers hebben
+dus bewust verschillende tokenopslag — geen halfslachtige tussenstand, maar een expliciete,
+blijvende keuze totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval eerst
+herbeoordelen, niet automatisch alignen).
 
 ### 4.4 HARDE REGEL: coding agents mogen dit mechanisme nooit zelf uitvoeren
 
