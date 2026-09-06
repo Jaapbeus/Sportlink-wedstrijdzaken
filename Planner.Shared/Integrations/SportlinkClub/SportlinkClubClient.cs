@@ -139,6 +139,20 @@ public class SportlinkClubClient : ISportlinkClubClient
         return retryResponse;
     }
 
+    public async Task<SportlinkClubCallStatus> VerversTokenAsync(
+        string functioneleRol,
+        CancellationToken cancellationToken = default)
+    {
+        // forceRefresh: true — een keep-alive moet de refresh_token-grant echt uitoefenen bij
+        // Keycloak, niet stoppen bij een nog geldig geachte in-memory access-tokencache (die cache
+        // bewijst niets over of de onderliggende refresh_token nog actief is bij Keycloak zelf).
+        var result = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken, forceRefresh: true);
+        if (result.Status != SportlinkClubCallStatus.Ok)
+            _logger.LogWarning("Keep-alive-refresh voor rol '{Rol}' gaf status {Status}: {Fout}",
+                functioneleRol, result.Status, result.FoutmeldingVoorLog);
+        return result.Status;
+    }
+
     private async Task<SportlinkClubResponse<SportlinkMatchProgramEntry>> FetchMatchProgramOverviewAsync(
         DateOnly datum, long wedstrijdnummer, string accessToken, CancellationToken cancellationToken)
     {

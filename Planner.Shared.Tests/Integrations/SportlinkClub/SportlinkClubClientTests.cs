@@ -579,6 +579,148 @@ public class SportlinkClubClientTests
 
         result.Status.Should().Be(SportlinkClubCallStatus.RolNietGekoppeld);
     }
+
+    // ── VerversTokenAsync (proactieve keep-alive, zie #990-comment 2026-09-05) ──
+
+    [Fact]
+    public async Task VerversTokenAsync_GeldigeRefreshToken_RetourneertOkEnSchrijftNieuwTokenTerug()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var tokenCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+            {
+                tokenCallCount++;
+                return JsonResponse(TokenResponse(FictieveAccessToken, newRefreshToken: NewFictieveRefreshToken));
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var status = await sut.VerversTokenAsync(TestFunctioneleRol);
+
+        status.Should().Be(SportlinkClubCallStatus.Ok);
+        tokenCallCount.Should().Be(1);
+        // SchrijfRefreshTokenAsync loopt async/fire-and-forget in de client — even wachten tot de
+        // fake store 'm ontvangen heeft (geen artificiële Task.Delay: pollen met een korte timeout).
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (tokenStore.LeesRefreshToken(TestFunctioneleRol) != NewFictieveRefreshToken && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+        tokenStore.LeesRefreshToken(TestFunctioneleRol).Should().Be(NewFictieveRefreshToken);
+    }
+
+    [Fact]
+    public async Task VerversTokenAsync_NooitEenMatchOfMatchProgramOverviewAanroep_UitsluitendTokenEndpoint()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var clubSportlinkCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                clubSportlinkCallCount++;
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        await sut.VerversTokenAsync(TestFunctioneleRol);
+
+        clubSportlinkCallCount.Should().Be(0, "een keep-alive-ververs mag nooit een inhoudelijke Sportlink-aanroep doen");
+    }
+
+    [Fact]
+    public async Task VerversTokenAsync_NegeertEenNogGeldigGeachteAccessTokenCache_VerversAltijdEcht()
+    {
+        // Arrange: eerst een gewone GetMatchAsync zodat er een geldige (niet-verlopen) access-token
+        // in de in-memory cache zit.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var tokenCallCount = 0;
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+            {
+                tokenCallCount++;
+                return JsonResponse(TokenResponse(FictieveAccessToken, expiresIn: 3600));
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+        await sut.GetMatchAsync(TestFunctioneleRol, TestPublicMatchId);
+        tokenCallCount.Should().Be(1, "voorwaarde: er staat nu een niet-verlopen access-token in de cache");
+
+        // Act: een keep-alive-ververs terwijl de cache nog geldig is (dit is precies het scenario
+        // dat #990 blootlegde — een geldig geachte cache bewijst niets over de Keycloak-kant).
+        var status = await sut.VerversTokenAsync(TestFunctioneleRol);
+
+        // Assert
+        status.Should().Be(SportlinkClubCallStatus.Ok);
+        tokenCallCount.Should().Be(2, "VerversTokenAsync moet het token-endpoint ECHT opnieuw aanroepen, niet de cache vertrouwen");
+    }
+
+    [Fact]
+    public async Task VerversTokenAsync_GeenRefreshTokenGeregistreerd_RetourneertRolNietGekoppeld()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore();
+        var client = MakeClient(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var status = await sut.VerversTokenAsync(TestFunctioneleRol);
+
+        status.Should().Be(SportlinkClubCallStatus.RolNietGekoppeld);
+    }
+
+    [Fact]
+    public async Task VerversTokenAsync_InvalidGrant_RetourneertHerkoppelingVereist()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                {
+                    Content = new StringContent("""{"error": "invalid_grant"}""")
+                };
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var status = await sut.VerversTokenAsync(TestFunctioneleRol);
+
+        status.Should().Be(SportlinkClubCallStatus.HerkoppelingVereist);
+    }
+
+    [Fact]
+    public async Task VerversTokenAsync_LogtNooitDeTokenwaarde()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var logger = new TestLogger();
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken, newRefreshToken: NewFictieveRefreshToken));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, logger);
+
+        await sut.VerversTokenAsync(TestFunctioneleRol);
+
+        foreach (var log in logger.AllLogs)
+        {
+            log.Should().NotContain(FictieveAccessToken);
+            log.Should().NotContain(FictieveRefreshToken);
+            log.Should().NotContain(NewFictieveRefreshToken);
+        }
+    }
 }
 
 /// <summary>
