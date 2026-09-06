@@ -222,14 +222,14 @@ public class SportlinkClubClient : ISportlinkClubClient
                         snapshot.Status == SportlinkClubCallStatus.Ok ? SportlinkClubCallStatus.SportlinkFout : snapshot.Status,
                         null, snapshot.FoutmeldingVoorLog ?? "Kon wedstrijdgegevens niet ophalen voor veldwijziging", snapshot.HttpStatusCode);
 
-                var userInfo = await FetchUserInfoAsync(token, ct);
-                if (userInfo.Status != SportlinkClubCallStatus.Ok || string.IsNullOrWhiteSpace(userInfo.Data?.PublicPersonId))
-                    return new SportlinkClubResponse<SportlinkMutationResult>(
-                        userInfo.Status == SportlinkClubCallStatus.Ok ? SportlinkClubCallStatus.SportlinkFout : userInfo.Status,
-                        null, userInfo.FoutmeldingVoorLog ?? "Kon PublicPersonId niet ophalen via UserInfo", userInfo.HttpStatusCode);
-
+                // Live vastgesteld (2026-09-06, #1048): een lege PublicApplicantId wordt door
+                // Sportlink geaccepteerd voor een eigen-veld-wijziging (bevestigd: isSuccess:true,
+                // audit-log Success). Dat veld is kennelijk alleen relevant voor #996's change-
+                // request-actie (waar een externe partij "aanvraagt"), niet voor een directe
+                // wijziging door de club zelf aan haar eigen wedstrijd — dus geen aparte
+                // UserInfo-aanroep (en de daar nog openstaande bug, #1048) nodig voor dit pad.
                 return await PutMatchDetailsAsync(
-                    publicMatchId, userInfo.Data.PublicPersonId, snapshot.Data,
+                    publicMatchId, "", snapshot.Data,
                     fieldId, fieldSize, fieldOffset, isForceUpdate, token, ct);
             },
             cancellationToken);
