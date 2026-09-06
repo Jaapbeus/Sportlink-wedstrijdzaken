@@ -4,23 +4,24 @@
 > geverifieerd tegen een echte testwedstrijd** (zie §4.4/#1036/#1038 voor de daarbij gevonden en
 > gefixte bugs: `ExternalMatchId` kwam als JSON-getal terug in plaats van string (#1036), en
 > `MatchDate` kwam genest terug (`{Date, StartTime, DateTime}`) in plaats van als losse ISO-string
-> (#1038)). **Kleedkamers toewijzen (#992) is 2026-09-06 voor het eerst live geprobeerd** (tegen
-> dezelfde testwedstrijd, kleedkamers 10/6/9) — de aanroep zelf werkt end-to-end (guard → audit →
-> echte PUT → correct afgehandelde afwijzing), maar Sportlink wees de mutatie inhoudelijk af met
-> `INVALID_COMBINATION_FACILITY_DRESSINGROOM` (zie #1040 voor de bijbehorende parseerfout die
-> daarbij gevonden en gefixt is, en het nog openstaande vraagstuk: de juiste kleedkamer-identifier-
-> vorm is nog niet vastgesteld). **Veld wijzigen (#993) is 2026-09-06 ook voor het eerst live
-> geprobeerd** (zelfde testwedstrijd, `FieldId` = de `SubFacilityId` uit de eigen live Match-
-> respons) — dit ging niet voorbij de eerste stap: Sportlink gaf HTTP 602 "Missing entity id:
-> Input is invalid: no valid entity key found", vóór enige veld-inhoudelijke validatie. De
-> requestvorm van `UpdateMatchField` (body-veldnamen) is dus zelf al onjuist, niet alleen de
-> waarde — vereist een live netwerktrace door een mens, zelfde categorie als #994/#995/#997.
-> **Inkomende wijzigingsverzoeken ophalen (#996, GET) is 2026-09-06 live bevestigd te werken** —
-> toont echte, actuele verzoeken van tegenstanders. De actie (goedkeuren/afwijzen) is bewust NIET
-> live getest: Sportlink scoped dit endpoint niet per wedstrijd, dus elk zichtbaar verzoek is een
-> echt verzoek van een echte tegenstander — testen zou een echte beslissing forceren op een
-> wedstrijd die niet de onze testwedstrijd is. #994/#995/#997 zijn bewust nog niet gebouwd: de
-> exacte requestvorm is niet live vastgesteld (zie de betreffende issues). Epic
+> (#1038)). **Kleedkamers toewijzen (#992) is 2026-09-06 live bevestigd te werken** — na een
+> afwijzing (`INVALID_COMBINATION_FACILITY_DRESSINGROOM`, #1040) leverde een netwerktrace door de
+> eigenaar de echte identifiervorm: `{FacilityId}-DRESSINGROOM-{n}` (bijv.
+> `"BBCF989-DRESSINGROOM-11"`), niet een los kleedkamernummer (zie #1045). Met die fix slaagde de
+> mutatie echt (`{"isSuccess":true}`, bevestigd in het audit-log en een verse GET). **Veld wijzigen
+> (#993) blijkt een heel ander endpoint te zijn.** Dezelfde netwerktrace toonde dat Sportlinks eigen
+> UI niet `UpdateMatchField` aanroept (wat deze app implementeerde en wat HTTP 602 "no valid entity
+> key found" gaf) maar `UpdateMatchDetails` — een endpoint dat het VOLLEDIGE wedstrijdrecord
+> verwacht (teams, datum, duur, veld, omschrijving, sport-tag, ...) gewrapt met
+> `PublicApplicantId`/`PublicMatchId`, niet een klein veld-only patch. Dit is een aparte, grotere
+> herontwerptaak (zie het vervolgissue) — #993 zoals nu gebouwd werkt niet en moet niet gebruikt
+> worden totdat dat herontwerp klaar is. **Inkomende wijzigingsverzoeken ophalen (#996, GET) is
+> 2026-09-06 live bevestigd te werken** — toont echte, actuele verzoeken van tegenstanders. De actie
+> (goedkeuren/afwijzen) is bewust NIET live getest: Sportlink scoped dit endpoint niet per
+> wedstrijd, dus elk zichtbaar verzoek is een echt verzoek van een echte tegenstander — testen zou
+> een echte beslissing forceren op een wedstrijd die niet onze testwedstrijd is. #994/#995/#997 zijn
+> bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld (zie de betreffende
+> issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -158,6 +159,13 @@ verplichte N-user-test.
   Sportlink-mutaties, beide via de gedeelde `ExecuteMutationAsync`-helper (resolve → guard →
   audit-Pending → mutatie → audit-voltooien). `IsForceUpdate` bij `.../field` staat hard op
   `false` in de hele keten: de semantiek van die vlag is nooit live bevestigd (issue #993).
+  **Kleedkamer-identifier live bevestigd en gefixt (#1045, 2026-09-06):** Sportlink verwacht
+  `{FacilityId}-DRESSINGROOM-{n}`, niet een los kleedkamernummer — `SportlinkMatchFunction` bouwt
+  deze nu server-side op met de `FacilityId` uit de nieuwe `SportlinkMatch.MatchField`
+  (`ExecuteMutationAsync`'s `mutationCall` krijgt daarom sinds #1045 ook de opgehaalde
+  `SportlinkMatch` mee, niet alleen `PublicMatchId`). **`.../field` (#993) blijkt het verkeerde
+  endpoint te zijn** (zie §1 hierboven) — dit endpoint blijft ongewijzigd staan maar mag niet
+  gebruikt worden totdat het herontwerp naar `UpdateMatchDetails` klaar is.
 - `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
   `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een

@@ -84,6 +84,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   in het audit-log (#1040).** Live-verificatie van #992 tegen een echte testwedstrijd toonde dat
   Sportlink een andere afwijzingsvorm gebruikt dan aangenomen — de mutatie werd al wel correct als
   mislukt herkend, maar zonder bruikbare reden in `sportlinkmutationaudit`.
+- **Kleedkamers toewijzen aan een wedstrijd werd altijd door Sportlink afgewezen (#1045).** Een
+  losse kleedkamercode ("10") bleek geen geldige Sportlink-identifier — vereist is
+  `{FacilityId}-DRESSINGROOM-{n}`. Beheerders kunnen nu daadwerkelijk kleedkamers toewijzen vanuit
+  Dagplanning; dit is het eerste écht werkende schrijfpad naar Sportlink Club in deze applicatie.
 
 ### Security
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export

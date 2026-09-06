@@ -103,8 +103,11 @@ public static class SportlinkMatchFunction
                 return await ExecuteMutationAsync(
                     req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchDressingRooms",
                     SportlinkMutationSoort.Kleedkamers, dto, context,
-                    publicMatchId => sportlinkClient!.UpdateDressingRoomsAsync(
-                        RolNaam, publicMatchId, dto?.HomeDressingRoomId, dto?.AwayDressingRoomId, dto?.OfficialDressingRoomId));
+                    (publicMatchId, match) => sportlinkClient!.UpdateDressingRoomsAsync(
+                        RolNaam, publicMatchId,
+                        BouwKleedkamerId(match.MatchField?.FacilityId, dto?.HomeDressingRoomId),
+                        BouwKleedkamerId(match.MatchField?.FacilityId, dto?.AwayDressingRoomId),
+                        BouwKleedkamerId(match.MatchField?.FacilityId, dto?.OfficialDressingRoomId)));
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
@@ -132,10 +135,21 @@ public static class SportlinkMatchFunction
                 return await ExecuteMutationAsync(
                     req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchField",
                     SportlinkMutationSoort.Veld, dto, context,
-                    publicMatchId => sportlinkClient!.UpdateFieldAsync(
+                    (publicMatchId, _) => sportlinkClient!.UpdateFieldAsync(
                         RolNaam, publicMatchId, dto?.FieldId, dto?.FieldSize, dto?.FieldOffset, isForceUpdate: false));
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
+    // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): Sportlink verwacht
+    // "{FacilityId}-DRESSINGROOM-{n}" (bijv. "BBCF989-DRESSINGROOM-11"), geen los kleedkamernummer.
+    // De DTO-veldnamen blijven ...DressingRoomId (wire-compatibel met BlazorAdmin), maar de waarde
+    // die de UI stuurt is het losse nummer — deze helper bouwt de echte identifier.
+    internal static string? BouwKleedkamerId(string? facilityId, string? kleedkamerNummer)
+    {
+        if (string.IsNullOrWhiteSpace(kleedkamerNummer)) return kleedkamerNummer;
+        if (string.IsNullOrWhiteSpace(facilityId)) return kleedkamerNummer;
+        return $"{facilityId}-DRESSINGROOM-{kleedkamerNummer}";
+    }
 
     private sealed class KleedkamersDto
     {
@@ -166,7 +180,7 @@ public static class SportlinkMatchFunction
         SportlinkMutationSoort soort,
         object? waardeNaDto,
         FunctionContext context,
-        Func<string, Task<SportlinkClubResponse<SportlinkMutationResult>>> mutationCall)
+        Func<string, SportlinkMatch, Task<SportlinkClubResponse<SportlinkMutationResult>>> mutationCall)
     {
         var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(sportlinkClient, wedstrijdcodeValue, clubCode);
         if (voorbereidFout != null) return voorbereidFout;
@@ -194,7 +208,7 @@ public static class SportlinkMatchFunction
             return new ObjectResult(new { error = guard.Reden }) { StatusCode = 409 };
         }
 
-        var mutationResult = await mutationCall(publicMatchId!);
+        var mutationResult = await mutationCall(publicMatchId!, matchResult.Data);
 
         var mutationFout = VertaalStatusNaarFout(mutationResult.Status);
         if (mutationFout != null)
