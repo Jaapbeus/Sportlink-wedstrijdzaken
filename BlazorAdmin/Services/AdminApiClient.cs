@@ -58,6 +58,14 @@ public class AdminApiClient
             $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/dressingrooms",
             new { HomeDressingRoomId = homeDressingRoomId, AwayDressingRoomId = awayDressingRoomId, OfficialDressingRoomId = officialDressingRoomId });
 
+    // #993: veld(deel) wijzigen. IsForceUpdate wordt server-side altijd op false gehouden
+    // (semantiek niet bevestigd) — hier dus bewust niet als parameter.
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkFieldAsync(
+        string wedstrijdcode, string? fieldId, string? fieldSize, int? fieldOffset)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/field",
+            new { FieldId = fieldId, FieldSize = fieldSize, FieldOffset = fieldOffset });
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()

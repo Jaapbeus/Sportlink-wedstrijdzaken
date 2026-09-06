@@ -19,6 +19,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Veld(deel) wijzigen vanuit de webapp (issue 993, epic 986).** In het Sportlink-paneel kan een
+  beheerder nu ook het veld van een wedstrijd doorzetten naar Sportlink Club, met dezelfde
+  succes-/afwijzingsmelding als bij kleedkamers. Alleen mogelijk als Sportlink dit voor de
+  wedstrijd toestaat.
 - **Kleedkamers toewijzen vanuit de webapp (issue 992, epic 986) — eerste echte Sportlink-mutatie.**
   In het Sportlink-paneel in Dagplanning kan een beheerder nu thuis-, uit- en officialkleedkamer
   invullen en direct doorzetten naar Sportlink Club, met een duidelijke melding bij succes of

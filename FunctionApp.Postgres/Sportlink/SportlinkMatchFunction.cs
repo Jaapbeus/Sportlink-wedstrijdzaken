@@ -97,63 +97,43 @@ public static class SportlinkMatchFunction
                     return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
                 var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(
-                    sportlinkClient, wedstrijdcodeValue, clubCode);
-                if (voorbereidFout != null) return voorbereidFout;
-
                 var dto = JsonConvert.DeserializeObject<KleedkamersDto>(
                     await new StreamReader(req.Body).ReadToEndAsync());
 
-                var matchResult = await sportlinkClient!.GetMatchAsync(RolNaam, publicMatchId!);
-                var matchFout = VertaalStatusNaarFout(matchResult.Status);
-                if (matchFout != null) return matchFout;
-                if (matchResult.Data == null)
-                    return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
+                return await ExecuteMutationAsync(
+                    req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchDressingRooms",
+                    SportlinkMutationSoort.Kleedkamers, dto, context,
+                    publicMatchId => sportlinkClient!.UpdateDressingRoomsAsync(
+                        RolNaam, publicMatchId, dto?.HomeDressingRoomId, dto?.AwayDressingRoomId, dto?.OfficialDressingRoomId));
+            },
+            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
-                var guard = SportlinkMutationGuard.MagMuteren(matchResult.Data, SportlinkMutationSoort.Kleedkamers);
+    /// <summary>
+    /// <c>PUT /api/sportlink/match/{wedstrijdcode}/field</c> (#993, epic #986) — veld(deel)
+    /// wijzigen. <c>IsForceUpdate</c> staat altijd hard op <c>false</c>: de semantiek van die vlag
+    /// is niet bevestigd (zie issue #993), dus geen enkel pad in deze app mag hem op <c>true</c>
+    /// zetten totdat een mens dit live heeft geverifieerd.
+    /// </summary>
+    [Function("SportlinkMatchFieldPut")]
+    public static Task<IActionResult> PutField(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/field")] HttpRequest req,
+        string wedstrijdcode,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchFieldPut"), "sportlink-veld wijzigen",
+            async clubCode =>
+            {
+                if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
+                    return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
-                var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
-                var triggerdDoor = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
-                var auditEntry = new SportlinkMutationAuditEntry(
-                    clubCode, RolNaam, triggerdDoor, publicMatchId!, "UpdateMatchDressingRooms",
-                    WaardeVoor: JsonConvert.SerializeObject(matchResult.Data.TaskStatus),
-                    WaardeNa: JsonConvert.SerializeObject(dto),
-                    CorrelationId: null);
-                var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
+                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
+                var dto = JsonConvert.DeserializeObject<VeldDto>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
 
-                if (!guard.IsToegstaan)
-                {
-                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", guard.Reden);
-                    return new ObjectResult(new { error = guard.Reden }) { StatusCode = 409 };
-                }
-
-                var mutationResult = await sportlinkClient.UpdateDressingRoomsAsync(
-                    RolNaam, publicMatchId!, dto?.HomeDressingRoomId, dto?.AwayDressingRoomId, dto?.OfficialDressingRoomId);
-
-                var mutationFout = VertaalStatusNaarFout(mutationResult.Status);
-                if (mutationFout != null)
-                {
-                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", mutationResult.FoutmeldingVoorLog);
-                    return mutationFout;
-                }
-
-                if (mutationResult.Data == null)
-                {
-                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", "Geen respons-data van Sportlink");
-                    return new ObjectResult(new { error = "Sportlink gaf geen bruikbare respons." }) { StatusCode = 502 };
-                }
-
-                var violationsSamenvatting = mutationResult.Data.Violations is { Count: > 0 }
-                    ? string.Join(", ", mutationResult.Data.Violations)
-                    : null;
-                if (auditId.HasValue)
-                    await auditService!.VoltooiAsync(auditId.Value, mutationResult.Data.IsSuccess ? "Success" : "Failure", violationsSamenvatting);
-
-                // Altijd HTTP 200: "Sportlink heeft de mutatie inhoudelijk afgewezen" is geen
-                // transportfout maar een structureel resultaat — IsSuccess/Violations dragen de
-                // uitkomst, consistent met hoe BlazorAdmin/Services/AdminApiClient.cs elk
-                // non-2xx-antwoord behandelt (ruwe tekst in ErrorMessage, niet gedeserialiseerd).
-                return new OkObjectResult(mutationResult.Data);
+                return await ExecuteMutationAsync(
+                    req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchField",
+                    SportlinkMutationSoort.Veld, dto, context,
+                    publicMatchId => sportlinkClient!.UpdateFieldAsync(
+                        RolNaam, publicMatchId, dto?.FieldId, dto?.FieldSize, dto?.FieldOffset, isForceUpdate: false));
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
@@ -162,6 +142,84 @@ public static class SportlinkMatchFunction
         public string? HomeDressingRoomId { get; set; }
         public string? AwayDressingRoomId { get; set; }
         public string? OfficialDressingRoomId { get; set; }
+    }
+
+    private sealed class VeldDto
+    {
+        public string? FieldId { get; set; }
+        public string? FieldSize { get; set; }
+        public int? FieldOffset { get; set; }
+    }
+
+    /// <summary>Gedeelde stappen voor elke mutatie-actie op een bestaande wedstrijd: PublicMatchId
+    /// resolven, huidige match ophalen (voor de guardrail), <see cref="SportlinkMutationGuard"/>,
+    /// audit "Pending" loggen, <paramref name="mutationCall"/> uitvoeren, audit voltooien met het
+    /// echte resultaat. Eén vertaalpunt voor #992/#993 en toekomstige match-mutaties — een losse
+    /// kopie per endpoint zou het risico geven dat een nieuw endpoint de guard of de audit-log
+    /// vergeet.</summary>
+    private static async Task<IActionResult> ExecuteMutationAsync(
+        HttpRequest req,
+        ISportlinkClubClient? sportlinkClient,
+        long wedstrijdcodeValue,
+        string clubCode,
+        string actie,
+        SportlinkMutationSoort soort,
+        object? waardeNaDto,
+        FunctionContext context,
+        Func<string, Task<SportlinkClubResponse<SportlinkMutationResult>>> mutationCall)
+    {
+        var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(sportlinkClient, wedstrijdcodeValue, clubCode);
+        if (voorbereidFout != null) return voorbereidFout;
+
+        var matchResult = await sportlinkClient!.GetMatchAsync(RolNaam, publicMatchId!);
+        var matchFout = VertaalStatusNaarFout(matchResult.Status);
+        if (matchFout != null) return matchFout;
+        if (matchResult.Data == null)
+            return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
+
+        var guard = SportlinkMutationGuard.MagMuteren(matchResult.Data, soort);
+
+        var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
+        var triggerdDoor = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
+        var auditEntry = new SportlinkMutationAuditEntry(
+            clubCode, RolNaam, triggerdDoor, publicMatchId!, actie,
+            WaardeVoor: JsonConvert.SerializeObject(matchResult.Data.TaskStatus),
+            WaardeNa: JsonConvert.SerializeObject(waardeNaDto),
+            CorrelationId: null);
+        var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
+
+        if (!guard.IsToegstaan)
+        {
+            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", guard.Reden);
+            return new ObjectResult(new { error = guard.Reden }) { StatusCode = 409 };
+        }
+
+        var mutationResult = await mutationCall(publicMatchId!);
+
+        var mutationFout = VertaalStatusNaarFout(mutationResult.Status);
+        if (mutationFout != null)
+        {
+            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", mutationResult.FoutmeldingVoorLog);
+            return mutationFout;
+        }
+
+        if (mutationResult.Data == null)
+        {
+            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", "Geen respons-data van Sportlink");
+            return new ObjectResult(new { error = "Sportlink gaf geen bruikbare respons." }) { StatusCode = 502 };
+        }
+
+        var violationsSamenvatting = mutationResult.Data.Violations is { Count: > 0 }
+            ? string.Join(", ", mutationResult.Data.Violations)
+            : null;
+        if (auditId.HasValue)
+            await auditService!.VoltooiAsync(auditId.Value, mutationResult.Data.IsSuccess ? "Success" : "Failure", violationsSamenvatting);
+
+        // Altijd HTTP 200: "Sportlink heeft de mutatie inhoudelijk afgewezen" is geen transportfout
+        // maar een structureel resultaat — IsSuccess/Violations dragen de uitkomst, consistent met
+        // hoe BlazorAdmin/Services/AdminApiClient.cs elk non-2xx-antwoord behandelt (ruwe tekst in
+        // ErrorMessage, niet gedeserialiseerd).
+        return new OkObjectResult(mutationResult.Data);
     }
 
     /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,

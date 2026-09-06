@@ -1,6 +1,9 @@
 # Sportlink Web Extension
 
-> **Status: gedeeltelijk gebouwd, nog geen enkele Sportlink-mutatie live.** Epic
+> **Status: gedeeltelijk gebouwd. Kleedkamers (#992) en veld (#993) zijn gebouwd en CI-groen, maar
+> nog niet live (in productie) geverifieerd** — dat vereist een mens die de knop zelf indrukt, zie
+> §4.4. #994/#995/#997 zijn bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld
+> (zie de betreffende issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -128,7 +131,11 @@ verplichte N-user-test.
   /api/sportlink/match/{wedstrijdcode}` (#991), het eerste endpoint met `RequireWedstrijdzaken`
   i.p.v. `RequireAdmin` (zie #988 Besluit 1). Verbindt de reverse-lookup-cache, de token-store en de
   Dagplanning-GUI met elkaar. Sinds #989 ook `GET .../public-match-id` — dezelfde resolutie zonder
-  de volledige `Match`-aanroep, voor de "Open in Sportlink"-deep-link-knop.
+  de volledige `Match`-aanroep, voor de "Open in Sportlink"-deep-link-knop. Sinds #992 ook `PUT
+  .../dressingrooms` (kleedkamers) en sinds #993 `PUT .../field` (veld) — de eerste echte
+  Sportlink-mutaties, beide via de gedeelde `ExecuteMutationAsync`-helper (resolve → guard →
+  audit-Pending → mutatie → audit-voltooien). `IsForceUpdate` bij `.../field` staat hard op
+  `false` in de hele keten: de semantiek van die vlag is nooit live bevestigd (issue #993).
 - `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
   `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
