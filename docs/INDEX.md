@@ -34,7 +34,8 @@ Voor bijdragers aan de codebase.
 
 | Document | Inhoud |
 |----------|--------|
-| [Architectuurprincipes](ARCHITECTURE.md) | Multi-club, ClubCode, kanaalstrategie, security-lagen |
+| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
+| [Architectuurprincipes (V2, gearchiveerd)](ARCHITECTURE-V2.md) | Historische snapshot vóór de Postgres-cutover — niet meer bijwerken |
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
 | [Planner architectuur](ARCHITECTURE-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
 | [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
