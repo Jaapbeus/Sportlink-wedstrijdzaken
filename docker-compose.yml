@@ -1,13 +1,11 @@
 # Lokale database(s) voor ontwikkeling — identiek op Windows en macOS (#800).
 #
-# sqlserver is vandaag de enige tier die de applicatie daadwerkelijk gebruikt — dit is de ENIGE
-# ondersteunde manier om die lokaal te draaien. Een rechtstreeks op Windows geïnstalleerde
-# SQL Server-service wordt niet meer ondersteund: dat pad werkt alleen op Windows en dwong overal
-# een tweede code- en documentatievariant af.
-#
-# postgres (onderaan dit bestand, achter een profile) is de tier-2-in-aanbouw uit epic #815 —
-# nog niet de tier die de applicatie in productie gebruikt, alleen lokale ontwikkelinfrastructuur
-# voor de Postgres-sub-issues.
+# Twee volledig gescheiden tiers, kies er één per fork (zie docs/ARCHITECTUUR-DATABASE-TIERS.md):
+# - sqlserver: het rollbackpad — was tot 2026-09-04 de productietier, blijft volledig ondersteund.
+# - postgres (onderaan dit bestand, achter een profile): sinds 2026-09-04 de productietier (#976).
+# Docker is voor beide de ENIGE ondersteunde manier om ze lokaal te draaien. Een rechtstreeks op
+# Windows geïnstalleerde SQL Server-service wordt niet ondersteund: dat pad werkt alleen op
+# Windows en dwong overal een tweede code- en documentatievariant af.
 #
 # Op Apple Silicon draait dit image onder Rosetta-emulatie (Microsoft levert geen native
 # ARM64-image van SQL Server); op Windows draait het native. Verder is alles gelijk:
@@ -63,10 +61,11 @@ services:
       retries: 10
       start_period: 30s
 
-  # Lokale Postgres-tier voor ontwikkeling (#822, epic #815) — naast sqlserver, niet ter vervanging.
+  # Lokale Postgres-tier voor ontwikkeling (#822, epic #815) — sinds 2026-09-04 de productietier
+  # (#976); sqlserver hierboven blijft het rollbackpad.
   #
-  # Bewust achter een profile: 'docker compose up -d' zonder argument start alléén de sqlserver-
-  # service (de tier die vandaag daadwerkelijk gebruikt wordt) — niet ongevraagd ook Postgres.
+  # Bewust achter een profile: 'docker compose up -d' zonder argument start alléén sqlserver — een
+  # bestaande fork op de SQL Server-tier moet niet ongevraagd ook Postgres erbij krijgen.
   # Expliciet opstarten: docker compose --profile postgres up -d
   #
   # Postgres' officiële image is multi-arch (linux/amd64 én linux/arm64) — in tegenstelling tot

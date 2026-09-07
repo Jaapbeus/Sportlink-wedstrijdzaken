@@ -1,4 +1,4 @@
-# Quick Reference — Sportlink Wedstrijdzaken (v2.7)
+# Quick Reference — Sportlink Wedstrijdzaken (v3.2)
 
 Categorie: **Developers** — snel overzicht van commando's, poorten en veelgebruikte queries.
 Geldt voor **Windows** en **macOS (Apple Silicon)** (#800); zie
@@ -22,8 +22,13 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800); zie
 ## Services stoppen
 
 ```powershell
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+.\scripts\dev\Stop-Debug.ps1          # stopt process-trees; Azurite blijft draaien
+.\scripts\dev\Stop-Debug.ps1 -Clean   # idem + verwijdert stale BlazorAdmin-fingerprints
 ```
+
+> **Nooit** `Stop-Process -Name "dotnet"` (of `"func","dotnet","node"`) gebruiken — dat sloopt élk
+> dotnet-proces op de machine, en `dotnet watch` start zijn kindproces meteen weer op (poort 5242
+> raakt dan meteen weer bezet in plaats van vrij). Zie CLAUDE.md Stap 2i.
 
 ## Verificatie
 
@@ -49,18 +54,22 @@ Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
 
 ```powershell
 Invoke-RestMethod http://localhost:7094/api/health
-# { "status": "ok", "version": "2.x.x", "timestamp": "..." }
+# { "status": "ok", "version": "3.x.x.x", "timestamp": "...", "tier": "SqlServer" | "Postgres" }
 ```
 
 ---
 
 ## Handmatige Sportlink-sync
 
+Route verschilt per tier: SQL Server gebruikt `/api/sync-matches`, Postgres gebruikt
+`/api/postgres/sync-matches`.
+
 ```powershell
 # Incrementeel (vorige week t/m seizoenseinde — zelfde bereik als de timer)
-Invoke-RestMethod http://localhost:7094/api/sync-matches
+Invoke-RestMethod http://localhost:7094/api/sync-matches            # SQL Server
+Invoke-RestMethod http://localhost:7094/api/postgres/sync-matches   # Postgres
 
-# Volledig seizoen opnieuw ophalen
+# Volledig seizoen opnieuw ophalen (zelfde patroon, beide routes)
 Invoke-RestMethod "http://localhost:7094/api/sync-matches?reset=true&season=2026"
 ```
 
@@ -69,8 +78,13 @@ Invoke-RestMethod "http://localhost:7094/api/sync-matches?reset=true&season=2026
 ## local.settings.json aanmaken
 
 ```powershell
+# SQL Server-tier
 cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 # Stel daarna SqlConnectionString in
+
+# Postgres-tier
+cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
+# Stel daarna PostgresConnectionString in
 ```
 
 ---
@@ -78,26 +92,32 @@ cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 ## Lokale database (Docker — identiek op Windows en macOS)
 
 ```bash
-docker compose up -d      # starten (vereist MSSQL_SA_PASSWORD, zie DEVELOPER-SETUP.md §4.1)
-docker compose ps         # status/gezondheid
-docker compose down       # stoppen, data blijft staan
+docker compose up -d                              # SQL Server starten (vereist MSSQL_SA_PASSWORD)
+docker compose --profile postgres up -d postgres  # Postgres starten (vereist POSTGRES_USER/PASSWORD/DB)
+docker compose ps                                 # status/gezondheid
+docker compose down                               # stoppen, data blijft staan
 ```
+
+Zie DEVELOPER-SETUP.md §4 voor beide paden.
 
 ## Database-verificatie
 
+**SQL Server:**
 ```sql
--- AppSettings controleren
 SELECT * FROM [dbo].[AppSettings];
-
--- Schema's aanwezig?
 SELECT name FROM sys.schemas WHERE name IN ('stg','his','mta','dbo','planner','avg','pub');
-
--- Stored procedures aanwezig?
 SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTargetTableFromSource');
-
--- Laatste sync-timestamp
 SELECT [LastSyncTimestamp] FROM [dbo].[AppSettings];
 ```
+
+**Postgres:**
+```sql
+SELECT * FROM public.appsettings;
+SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('stg','his','avg','planner','public');
+SELECT lastsynctimestamp FROM public.appsettings;
+```
+Migraties toepassen/verifiëren: `.\scripts\dev\Invoke-PostgresMigrations.ps1`,
+`.\scripts\dev\Test-PostgresConnection.ps1`.
 
 ---
 
@@ -106,8 +126,7 @@ SELECT [LastSyncTimestamp] FROM [dbo].[AppSettings];
 NOOIT `dotnet build BlazorAdmin` aanroepen terwijl de dev server draait. Na een build-check altijd:
 
 ```powershell
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
+.\scripts\dev\Stop-Debug.ps1 -Clean   # stopt process-trees + verwijdert stale fingerprints
 .\scripts\dev\Start-Debug.ps1
 ```
 
@@ -117,12 +136,16 @@ dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
 
 | Methode | URL | Beschrijving |
 |---------|-----|-------------|
-| GET | `http://localhost:7094/api/health` | Status en versie |
-| GET | `http://localhost:7094/api/sync-matches` | Handmatige sync |
+| GET | `http://localhost:7094/api/health` | Status, versie en actieve databasetier |
+| GET | `http://localhost:7094/api/sync-matches` | Handmatige sync (SQL Server-tier) |
+| GET | `http://localhost:7094/api/postgres/sync-matches` | Handmatige sync (Postgres-tier) |
 | GET | `http://localhost:7094/api/beheer/settings` | Club-instellingen |
 | GET | `http://localhost:7094/api/beheer/teams` | Teamlijst |
 | GET | `http://localhost:7094/api/beheer/sync/status` | Sync-status |
 | POST | `http://localhost:7094/api/planner/check-availability` | Beschikbaarheidscheck |
+| GET | `http://localhost:7094/api/sportlink/match/{wedstrijdcode}` | Sportlink-wedstrijdgegevens (Postgres-tier, epic #986) |
+
+Volledige, actuele endpoint-lijst: [docs/API.md](API.md).
 
 ---
 
@@ -165,4 +188,4 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 
 ---
 
-**Versie:** 2.7 — bijgewerkt 2026-08-29 (macOS/Apple Silicon-ondersteuning + Docker als enige lokale-database-optie, #800)
+**Versie:** 3.2 — bijgewerkt 2026-09-07 (productie-databasetier Postgres sinds #976; beide tiers lokaal ondersteund)

@@ -1,6 +1,6 @@
-# Lokaal Debuggen — Sportlink Wedstrijdzaken (v2.7)
+# Lokaal Debuggen — Sportlink Wedstrijdzaken (v3.2)
 
-Gids voor het lokaal draaien en debuggen van de v2.7-stack: FunctionApp (.NET 9) + BlazorAdmin (.NET 10 Blazor WASM).
+Gids voor het lokaal draaien en debuggen van de stack: FunctionApp (.NET 9) + BlazorAdmin (.NET 10 Blazor WASM).
 Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
 [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) voor de volledige installatie-instructies per platform.
 
@@ -26,14 +26,18 @@ Geldt voor zowel **Windows** als **macOS (Apple Silicon)** (#800) — zie
 
 ---
 
-## Overzicht v2.7-stack
+## Overzicht van de stack
 
 ```
 http://localhost:5242          BlazorAdmin (Blazor WASM, dotnet watch, hot reload)
 http://localhost:7094          FunctionApp (Azure Functions isolated .NET 9, func start)
 localhost:10000–10002          Azurite (Azure Storage Emulator)
-localhost:1433/SportlinkSqlDb  SQL Server (Docker — `docker compose up -d`, zie DEVELOPER-SETUP.md sectie 4.1)
+localhost:1433/SportlinkSqlDb  SQL Server (Docker — `docker compose up -d`)
+  — óf —
+localhost:5432/sportlink       Postgres (Docker — `docker compose --profile postgres up -d postgres`,
+                                productietier sinds #976)
 ```
+Zie DEVELOPER-SETUP.md §4 voor beide paden — kies er één.
 
 ### Poorten en services
 
@@ -72,7 +76,7 @@ if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteD
 Start-Process powershell -ArgumentList "-NoExit -Command azurite --location '$azuriteDir'"
 Start-Sleep -Seconds 3
 
-# 2. FunctionApp
+# 2. FunctionApp — vervang "FunctionApp" door "FunctionApp.Postgres" op de Postgres-tier
 Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
 
 # 3. BlazorAdmin met hot reload
@@ -87,7 +91,7 @@ drie Terminal-tabbladen en voer in elk tabblad één van deze commando's uit:
 mkdir -p /tmp/azurite-sportlink && azurite --location /tmp/azurite-sportlink
 ```
 ```bash
-# Tab 2 — FunctionApp
+# Tab 2 — FunctionApp (vervang FunctionApp door FunctionApp.Postgres op de Postgres-tier)
 cd FunctionApp && func start --port 7094
 ```
 ```bash
@@ -98,8 +102,13 @@ cd BlazorAdmin && dotnet watch run --launch-profile http
 ### Services stoppen
 
 ```powershell
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
+.\scripts\dev\Stop-Debug.ps1
 ```
+
+> **Nooit** `Stop-Process -Name "func","dotnet","node"` gebruiken — dat sloopt élk `dotnet`-proces
+> op de machine (ook onverwante projecten), en `dotnet watch` start zijn kindproces meteen weer op
+> zodra alleen de poort-eigenaar gekilld wordt, waardoor poort 5242 direct weer bezet raakt.
+> `Stop-Debug.ps1` stopt hele process-trees en wacht tot de poorten echt vrij zijn.
 
 ---
 
@@ -112,12 +121,8 @@ BlazorAdmin genereert content-hash fingerprints bij elke compilatie. Twee compil
 **Veilige werkwijze bij codewijzigingen:**
 
 ```powershell
-# Stap 1: services stoppen
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-
-# Stap 2: BlazorAdmin cleanen (verwijdert stale fingerprints)
-dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null
+# Stap 1+2: services stoppen + BlazorAdmin cleanen (verwijdert stale fingerprints) — één commando
+.\scripts\dev\Stop-Debug.ps1 -Clean
 
 # Stap 3: herstart
 .\scripts\dev\Start-Debug.ps1
@@ -153,7 +158,7 @@ Test-App.ps1 controleert:
 ```powershell
 # FunctionApp
 $health = Invoke-RestMethod http://localhost:7094/api/health
-Write-Host "Versie: $($health.version)"   # verwacht: 2.x.x
+Write-Host "Versie: $($health.version)"   # verwacht: 3.x.x.x
 
 # BlazorAdmin
 (Invoke-WebRequest http://localhost:5242/ -UseBasicParsing).StatusCode   # verwacht: 200

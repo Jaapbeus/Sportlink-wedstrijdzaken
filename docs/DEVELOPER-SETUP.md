@@ -196,22 +196,23 @@ git commit --allow-empty -m "test hooks"
 
 ## 4. Database opzetten
 
-> **Vandaag is SQL Server de enige bestaande tier.** Er is een vastgelegde multi-tier-strategie
-> (Postgres → SQLite → Cosmos DB voor het e-maillog) — zie
-> **[docs/ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md)** voor de bouwvolgorde en
-> het waarom. Zodra een andere tier daadwerkelijk gebouwd is, komt de bijbehorende lokale
-> setupinstructie in een eigen sectie hieronder — tot die tijd is de SQL Server-instructie in dit
-> hoofdstuk voor élke fork van toepassing.
+> **Sinds 2026-09-04 draait productie op Postgres (`FunctionApp.Postgres`), niet meer op SQL
+> Server.** SQL Server (`FunctionApp`) blijft bestaan als rollbackpad en is nog volledig
+> functioneel, maar is niet meer de tier die een nieuwe fork zou moeten kiezen tenzij je bewust
+> voor SQL Server kiest. Er is een vastgelegde multi-tier-strategie (Postgres → SQLite → Cosmos DB
+> voor het e-maillog) — zie **[docs/ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md)**
+> voor de bouwvolgorde en het waarom. §4.1/§4.2 hieronder beschrijven de SQL Server-opzet; §4.3
+> beschrijft de Postgres-opzet — kies er één, afhankelijk van je gekozen `DatabaseTier`.
 >
 > **Welke tier een fork daadwerkelijk deployt, is een CI/deploy-tijd-keuze, geen lokale keuze**
 > (#816): de GitHub repository-variabele `DatabaseTier` (Settings → Secrets and variables →
 > Actions → Variables) bepaalt welk `.csproj` `deploy.yml` bouwt en publiceert naar de Function
-> App — vandaag altijd `SqlServer`, de enige geïmplementeerde waarde. Ontbreekt de variabele of
-> staat hij op een onbekende waarde, dan faalt de deploy-workflow hard (zie
+> App — geldige waarden vandaag zijn `SqlServer` en `Postgres`. Ontbreekt de variabele of staat hij
+> op een onbekende waarde, dan faalt de deploy-workflow hard (zie
 > `scripts/ci/resolve-database-tier.sh`) — er is bewust geen stille default.
 >
-> **Sinds #976 moet daarnaast ook `DatabaseTierSwitchConfirmation` gezet worden, met exact
-> dezelfde waarde als `DatabaseTier`** (dus bij een nieuwe fork: beide op `SqlServer`) — het
+> **Daarnaast moet ook `DatabaseTierSwitchConfirmation` gezet worden, met exact dezelfde waarde
+> als `DatabaseTier`** (dus bij een nieuwe fork: beide op `SqlServer` óf beide op `Postgres`) — het
 > tier-switch-veiligheidsmechanisme dat voorkomt dat een latere, per ongeluk gewijzigde
 > `DatabaseTier` production stilzwijgend naar een andere database laat omschakelen (zie
 > `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2). Vergeet je deze tweede variabele bij een nieuwe fork,
@@ -398,13 +399,12 @@ SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTarg
 SELECT [SportlinkApiUrl], [SportlinkClientId] FROM [dbo].[AppSettings];
 ```
 
-### 4.3 Postgres-tier — lokale ontwikkelinfrastructuur (in aanbouw, epic #815)
+### 4.3 Postgres-tier — lokale ontwikkelinfrastructuur
 
-> **Dit is nog niet de tier die de applicatie in productie gebruikt** — vandaag is `SqlServer` de
-> enige geïmplementeerde `DatabaseTier`-waarde (zie boven). Deze sectie beschrijft alleen de lokale
-> Postgres-ontwikkelcontainer + verificatietooling voor de Postgres-sub-issues onder epic #815
-> (#822). Voor het migratiemechanisme zelf (genummerde `.sql`-bestanden,
-> `Database.Postgres/migrations/`), zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
+> **Dit is sinds 2026-09-04 de tier die productie daadwerkelijk gebruikt** (`DatabaseTier=Postgres`,
+> issue #976). Deze sectie beschrijft de lokale Postgres-ontwikkelcontainer + verificatietooling.
+> Voor het migratiemechanisme zelf (genummerde `.sql`-bestanden, `Database.Postgres/migrations/`,
+> toegepast via `scripts/dev/Invoke-PostgresMigrations.ps1`), zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
 
 De Postgres-service in `docker-compose.yml` staat bewust achter een **profile**: een gewone
 `docker compose up -d` start alléén `sqlserver`, niet ongevraagd ook Postgres.
@@ -448,6 +448,11 @@ Windows-only cmdlets in de scripts).
 ---
 
 ## 5. local.settings.json configureren
+
+> Werk je op de Postgres-tier (§4.3)? Kopieer in plaats daarvan
+> `FunctionApp.Postgres/local.settings.template.json` naar
+> `FunctionApp.Postgres/local.settings.json` en stel `PostgresConnectionString` in (zelfde
+> `.env`-credentials als hierboven). De rest van deze sectie beschrijft de SQL Server-variant.
 
 ```powershell
 cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
@@ -627,7 +632,7 @@ process-trees en wacht tot de poorten echt vrij zijn.
 ```powershell
 # FunctionApp
 Invoke-RestMethod http://localhost:7094/api/health
-# Verwacht: { "status": "ok", "version": "2.x.x" }
+# Verwacht: { "status": "ok", "version": "3.x.x.x" }
 
 # BlazorAdmin
 Invoke-WebRequest http://localhost:5242/ -UseBasicParsing

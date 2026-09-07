@@ -75,7 +75,14 @@ az functionapp config appsettings set \
 > **`AiModelName` is optioneel (#604).** Zonder deze instelling gebruikt het systeem `gpt-4o-mini`.
 > Zet hier een andere modelnaam om te upgraden zonder de software opnieuw te deployen.
 
-### 2b. Azure SQL Database (Free tier)
+### 2b. Database aanmaken — kies een tier
+
+> **Kies bewust één tier: SQL Server óf Postgres.** Sinds 2026-09-04 draait de referentie-productie
+> op Postgres (bijv. via [Supabase](https://supabase.com)'s gratis tier) — SQL Server blijft een
+> volwaardig, ondersteund alternatief. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de afweging.
+> Wat je hier kiest, moet overeenkomen met de `DatabaseTier`-variabele in §5c.
+
+**Optie A — Azure SQL Database (Free tier):**
 
 ```bash
 # Server aanmaken
@@ -96,6 +103,10 @@ az sql db create \
 
 > **Let op:** Controleer de actuele beschikbaarheid van de Free tier via de [Azure Portal](https://portal.azure.com) of via `mcp__claude_ai_Microsoft_Learn__microsoft_docs_search("Azure SQL Free tier pricing")` — Microsoft kan dit aanbod wijzigen zonder voorafgaande aankondiging.
 
+**Optie B — Postgres (bijv. Supabase free tier):** maak een nieuw project aan bij je gekozen
+Postgres-provider en noteer de connectiestring — die gaat in `PostgresConnectionString` (zie §5c).
+Zorg voor `sslmode=verify-full` in de connectiestring (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`).
+
 ### 2c. Azure Static Web Apps (Free tier)
 
 Aanmaken via de Azure Portal:
@@ -111,7 +122,15 @@ Na aanmaken: kopieer het **Deployment Token** (Settings → Deployment tokens). 
 
 ## 3. Database inrichten
 
-**Bekend aandachtspunt:** het PostDeployment-script wordt door deploy.yml momenteel niet automatisch uitgevoerd. Na de eerste deployment moeten nieuwe tabellen en kolommen handmatig worden aangemaakt via `Database/Script.PostDeployment1.sql` in SSMS of via de Azure Portal Query Editor. Volg de stappen in de [GitHub Actions configuratiegids](docs/SETUP.md#11-github-actions-productie-deployment-configureren) voor details over de migratiestap.
+**SQL Server:** `deploy.yml`'s `db-migrate`-job voert `Database/Script.PostDeployment1.sql`
+automatisch en idempotent uit bij elke deploy (mits `AZURE_SQL_SERVER_NAME` gezet is) — geen
+handmatige stap nodig.
+
+**Postgres:** hiervoor bestaat nog geen CI-automatisering. Voer de migraties in
+`Database.Postgres/migrations/` handmatig uit tegen je Postgres-database via
+`scripts/dev/Invoke-PostgresMigrations.ps1` (zet `POSTGRES_CONNECTION_STRING` als
+omgevingsvariabele, nooit als scriptparameter) — zowel bij de eerste opzet als na elke latere
+migratie-toevoeging. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor het migratiemechanisme.
 
 **Lokaal (voor development):**
 ```powershell
@@ -139,7 +158,7 @@ sqlcmd -S JOUW-SERVER -E -Q "SELECT @@VERSION"
 ```powershell
 az login  # log in met een admin-account van jouw tenant
 
-.\scripts\Configure-EntraApp.ps1 `
+.\scripts\azure\Configure-EntraApp.ps1 `
   -ClientId "<application-client-id>" `
   -ExpectedTenantId "<directory-tenant-id>" `
   -AdminUserPrincipalName "admin@voorbeeld.nl"
@@ -153,7 +172,7 @@ Het script configureert idempotent:
 
 **Verifiëren:**
 ```powershell
-.\scripts\Verify-AzureAuthSetup.ps1 `
+.\scripts\azure\Verify-AzureAuthSetup.ps1 `
   -ClientId "<application-client-id>" `
   -ExpectedTenantId "<directory-tenant-id>"
 ```
@@ -182,6 +201,7 @@ In jouw fork: Settings → Secrets and variables → Actions → **Secrets**:
 | `AZURE_CREDENTIALS` | Service Principal JSON (zie hieronder) |
 | `AZURE_FUNCTION_KEY` | Function key van jouw Function App |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Deployment token van de SWA |
+| `SQL_CONNECTION_STRING` | Alleen bij `DatabaseTier=SqlServer` — connectiestring voor de `db-migrate`-job |
 
 **Service Principal aanmaken voor `AZURE_CREDENTIALS`:**
 ```bash
@@ -205,6 +225,9 @@ In jouw fork: Settings → Secrets and variables → Actions → **Variables**:
 | `AZURE_AD_TENANT_ID` | Jouw Entra Directory (tenant) ID |
 | `AZURE_AD_CLIENT_ID` | Jouw Entra Application (client) ID |
 | `POST_LOGOUT_REDIRECT_URL` | URL van de website van jouw club |
+| `DatabaseTier` | `SqlServer` of `Postgres` — bepaalt welk `.csproj` gebouwd wordt (§2b) |
+| `DatabaseTierSwitchConfirmation` | **Exact dezelfde waarde als `DatabaseTier`** — veiligheidsmechanisme tegen een per-ongeluk-gewijzigde tier; ontbreekt deze of wijkt hij af, dan faalt de eerste deploy met exitcode 3 |
+| `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_RESOURCE_GROUP` | Alleen bij `DatabaseTier=SqlServer` — vereist voor de `db-migrate`-job |
 
 ---
 
@@ -303,11 +326,21 @@ Alles kan op Azure **Free Tier** draaien:
 | Resource | Tier | Geschatte kosten |
 |---|---|---|
 | Azure Functions | Consumption | €0 (eerste 1M requests/maand gratis) |
-| Azure SQL Database | Free (32GB) | €0 |
+| Database | Azure SQL Free tier (32GB) óf Postgres free tier (bijv. Supabase) | €0 |
 | Azure Static Web Apps | Free | €0 |
 | Azure Storage (Azurite-equivalent) | LRS, minimaal gebruik | < €0,05/maand |
 
 > Schakel de e-mailverwerking (`EmailProcessorEnabled=true`) pas in als je de volledige setup hebt getest. OpenAI-gebruik kost geld per API-aanroep.
+
+---
+
+## 10. Optioneel: Sportlink Web Extension
+
+Wil je vanuit de Admin GUI ook wijzigingen (kleedkamers, veld) terugschrijven naar Sportlink Club,
+in plaats van alleen lezen? Dat is een aparte, gedeeltelijk gebouwde feature (epic #986) met een
+eigen koppelingsproces per functionele rol. Zie **[docs/SPORTLINK-WEB-EXTENSION.md](docs/SPORTLINK-WEB-EXTENSION.md)**
+voor de huidige status en hoe je een rol koppelt — dit is geen verplichte stap voor een werkende
+basisinstallatie.
 
 ---
 

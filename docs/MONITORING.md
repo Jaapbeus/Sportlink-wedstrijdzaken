@@ -17,8 +17,12 @@ Azure Functions (func-[clubcode]-sportlink)
 Azure Static Web Apps (swa-[clubcode]-sportlink)
   → Geen eigen Application Insights; SWA logs via Azure Monitor (gratis Activity Log)
 
-Azure SQL ([database-naam] @ [sql-resource-group])
-  → Geen Application Insights; Resource Health via Azure Portal
+Database — één van twee, per fork gekozen via DatabaseTier (zie docs/ARCHITECTUUR-DATABASE-TIERS.md):
+  ├── Azure SQL ([database-naam] @ [sql-resource-group])
+  │     → Geen Application Insights; Resource Health via Azure Portal; zie "Azure SQL Free-tier
+  │       bescherming" hieronder voor het volledige vangnet (productie sinds #976: rollbackpad)
+  └── Postgres (bijv. Supabase, productietier sinds #976)
+        → Provider-eigen dashboard/monitoring; nog geen los uitvalmonitor-equivalent in deze repo
 ```
 
 ---
@@ -98,6 +102,14 @@ Bron: [Azure Monitor cost — alerts](https://learn.microsoft.com/azure/azure-mo
 ---
 
 ## Azure SQL Free-tier bescherming
+
+> **Geldt uitsluitend voor de SQL Server-tier.** Sinds 2026-09-04 draait productie op Postgres
+> (issue #976, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`) — deze hele sectie is dus vandaag het
+> vangnet voor het rollbackpad, niet voor de live database. Er bestaat **nog geen Postgres-
+> equivalent** van `DatabaseUitvalMonitorFunction` hieronder — een club die volledig op Postgres
+> draait heeft dus geen losstaande, e-mail-onafhankelijke uitvalmonitor. Dit is een bekend, open
+> punt, geen verkeerd begrepen architectuur; behandel het als zodanig totdat het is opgepakt.
+> Draai je (nog) op de SQL Server-tier, dan is deze sectie onverkort van toepassing.
 
 De gratis Azure SQL database heeft een maandlimiet van **100.000 vCore-seconden**. Bij uitputting
 wordt de database gepauzeerd tot het begin van de volgende kalendermaand. Dit heeft impact op drie lagen.
