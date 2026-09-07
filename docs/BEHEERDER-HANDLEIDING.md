@@ -1,7 +1,10 @@
 # v2 Admin GUI — handleiding
 
-Deze handleiding beschrijft het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API
-in `FunctionApp/Admin/`. Het portaal is **live** op (vul jouw clubspecifieke URLs in):
+Deze handleiding beschrijft het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API.
+**Sinds 2026-09-04 draait productie op de Postgres-tier** (`FunctionApp.Postgres/Admin/`) — SQL
+Server (`FunctionApp/Admin/`) blijft bestaan als rollbackpad. De admin-API-routes zijn op beide
+tiers identiek; welke tier jouw installatie gebruikt bepaalt alleen welk project daadwerkelijk
+gedeployed is. Het portaal is **live** op (vul jouw clubspecifieke URLs in):
 
 - **Admin GUI:** zie Azure Portal → Static Web App → URL
 - **Function App:** `https://func-<clubcode>-sportlink.azurewebsites.net`
@@ -16,11 +19,14 @@ valideert het token server-side.
 
 ### Voorbereiding (eenmalig)
 
-1. Start de lokale database (SQL Server 2022 in Docker — identiek op Windows en macOS):
+1. Start de lokale database (Docker — identiek op Windows en macOS). Kies één tier:
    ```powershell
-   docker compose up -d
+   docker compose up -d                              # SQL Server
+   docker compose --profile postgres up -d postgres  # Postgres (productietier sinds #976)
    ```
-2. Stel `FunctionApp/local.settings.json` correct in (zie `local.settings.template.json`)
+2. Stel `FunctionApp/local.settings.json` (SQL Server) of
+   `FunctionApp.Postgres/local.settings.json` (Postgres) correct in (zie de bijbehorende
+   `local.settings.template.json`) — zie `docs/DEVELOPER-SETUP.md` §4-5 voor beide paden
 3. Voer alle migraties uit op die database:
    ```powershell
    sqlcmd -S localhost,1433 -d SportlinkSqlDb -U sa -C -i Database/Script.PostDeployment1.sql
@@ -915,3 +921,59 @@ De regio geldt voor de hele club (één instelling, geen per-team-regio). Clubs 
 meerdere districten (bijv. een landelijk seniorenteam naast jeugd in een regionaal district)
 krijgen dus voor alle teams dezelfde kalender mee. Per-team-regio is een toekomstige uitbreiding
 zodra teamregio automatisch uit Sportlink-data kan worden afgeleid.
+
+---
+
+## 18. Wijzigingsverzoeken (`/wijzigingsverzoeken`)
+
+Toont wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor de datum, tijd
+of accommodatie van een wedstrijd. Alleen verzoeken met status `CONFIRM` wachten op een beslissing
+van uw club — overige statussen staan er alleen ter referentie bij.
+
+Per openstaand verzoek toont de pagina de huidige en gevraagde datum/tijd plus de opgegeven reden,
+met twee acties:
+- **Goedkeuren** — bevestigt de wijziging rechtstreeks in Sportlink Club.
+- **Afwijzen** — vereist een toelichting (vrij tekstveld naast de knop) die naar de tegenstander
+  teruggaat.
+
+Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
+is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
+
+---
+
+## 19. Sportlink Web Extension (`/instellingen`) — schrijfrechten naar Sportlink Club
+
+> Deze feature is **gedeeltelijk gebouwd** (epic #986) — zie
+> [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
+> deelfunctie vóór u hierop vertrouwt.
+
+Onderaan Instellingen staat de schakelaar **"Sportlink Web Extension inschakelen"** (standaard
+**uit**). Eenmaal aan verschijnt een tabel **"Sportlink-serviceaccounts per rol"**: elke functionele
+rol (bijv. "Wedstrijdzaken") gebruikt een eigen, smal-geschaald Sportlink-serviceaccount — nooit uw
+persoonlijke Sportlink-login — zodat Sportlinks eigen audit-log de rolnaam toont in plaats van een
+persoonsnaam.
+
+| Kolom | Betekenis |
+|---|---|
+| Gekoppeld | Of er een geldig, actief refresh-token voor deze rol is opgeslagen |
+| Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
+| Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
+
+**Koppeling (opnieuw) registreren** vraagt om een echt Sportlink-token — dit moet altijd door een
+mens gebeuren via een echte browserlogin (nooit door een geautomatiseerd script of AI-agent, zie
+`docs/SPORTLINK-WEB-EXTENSION.md` §4.4). Een gekoppelde rol behoudt de koppeling automatisch actief
+via een uur-timer, ook zonder dagelijks gebruik.
+
+Eenmaal gekoppeld verschijnt in **Dagplanning** per wedstrijd een Sportlink-paneel met de actuele
+Sportlink-status en (afhankelijk van wat Sportlink voor die wedstrijd toestaat) invoervelden om
+kleedkamers en veld rechtstreeks terug te schrijven, plus een "Open in Sportlink"-knop die de
+wedstrijd in een nieuw tabblad op club.sportlink.com opent.
+
+---
+
+## 20. E-mail tester (`/email-tester`)
+
+Voert de AI-classificatie van een binnenkomend bericht uit als **dry-run** — er wordt niets
+verzonden en niets in de e-maillog vastgelegd. Handig om te controleren hoe de AI een nieuw of
+grensgeval van een bericht zou classificeren vóórdat het echt binnenkomt, of om een
+classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.

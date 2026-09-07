@@ -56,8 +56,8 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 | Document | Inhoud |
 |----------|--------|
 | [Nieuwe club — Azure setup](../SETUP-NIEUWE-CLUB.md) | Fork, Azure aanmaken, Entra configureren, eerste deployment — voor club-beheerders |
-| [Developer setup](DEVELOPER-SETUP.md) | .NET, SQL, Azurite, GitHub Actions — lokale ontwikkelomgeving ⚠️ herschrijving gepland |
-| [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet ⚠️ herschrijving gepland |
+| [Developer setup](DEVELOPER-SETUP.md) | .NET, SQL Server/Postgres, Azurite, GitHub Actions — lokale ontwikkelomgeving, beide databasetiers |
+| [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [Entra auth & beheer](ENTRA-AUTH-BEHEER.md) | App Registration, Easy Auth, rollen, gebruikers toevoegen — via scripts |
 
 ---

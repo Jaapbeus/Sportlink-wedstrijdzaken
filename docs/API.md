@@ -2,6 +2,12 @@
 
 **Basis-URL:** `http://localhost:7094/api`
 
+> **Tier-opmerking:** de meeste endpoints bestaan identiek op beide tiers (`FunctionApp` = SQL
+> Server, `FunctionApp.Postgres` = Postgres, productie sinds #976). De `/sportlink/*`-endpoints
+> (Sportlink Web Extension, epic #986) en `/beheer/sportlink-extensie/*` bestaan **uitsluitend op
+> de Postgres-tier** — de SQL Server-tier is rollback-only en heeft deze nooit gekregen. Zie
+> `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de tier-strategie.
+
 ## Beveiliging
 
 Twee beveiligingsniveaus:
@@ -21,7 +27,19 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie (SQL Server-tier). Postgres-tier: `/api/postgres/sync-matches`, zelfde parameters |
+| `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
+| `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
+| `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie |
+| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie handmatig starten vanuit de Admin GUI |
+| `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
+| `GET/PUT/POST/DELETE` | `/beheer/templates` en `/{key}`, `/{key}/reset` | **Admin** | E-mailtemplates per berichttype beheren, met terugzetten naar standaard |
+| `GET/POST/DELETE` | `/beheer/uitgesloten-emails` en `/{id}` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden |
+| `GET/POST/PUT/DELETE` | `/beheer/voorkeurstijden` en `/{id}` | **Admin** | Gewenste speeltijden per team |
+| `GET/POST/PUT/DELETE` | `/beheer/teamregels` en `/{id}` | **Admin** | Planningsregels per team (bijv. buffertijd) |
+| `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
+| `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
+| `POST` | `/feedback/validate` / `/feedback/submit` | Anoniem | Feedback-widget: voorvalidatie resp. indienen als GitHub-issue |
 | `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
