@@ -9,5 +9,9 @@ CREATE TABLE [dbo].[SportlinkExtensieRollen] (
 	[LaatstGekoppeldOp]    DATETIME2      NULL,
 	[SportlinkAccountNaam] NVARCHAR(200)  NULL,
 	[ClubCode]             NVARCHAR(20)   NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
-	CONSTRAINT [PK_SportlinkExtensieRollen] PRIMARY KEY CLUSTERED ([RolNaam] ASC)
+	-- Samengestelde sleutel, niet alleen RolNaam: dit schema draait altijd met minstens twee clubs
+	-- (de echte club + AllStars FC-demo, zie CLAUDE.md "Deployment-model"), en elke club registreert
+	-- zijn eigen koppeling voor dezelfde rolnaam (bv. 'Wedstrijdzaken'). Zonder ClubCode in de sleutel
+	-- botst de tweede club op de eerste (of overschrijft die, zie public.sportlinkextensierollen).
+	CONSTRAINT [PK_SportlinkExtensieRollen] PRIMARY KEY CLUSTERED ([RolNaam] ASC, [ClubCode] ASC)
 	)

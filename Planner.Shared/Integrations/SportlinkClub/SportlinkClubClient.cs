@@ -302,18 +302,13 @@ public class SportlinkClubClient : ISportlinkClubClient
                 // Responsvorm (kale array vs. genest) niet live bevestigd (issue #996) — zelfde
                 // defensieve aanpak als FetchMatchProgramOverviewRawAsync.
                 using var doc = JsonDocument.Parse(json);
-                var element = doc.RootElement.ValueKind == JsonValueKind.Array
-                    ? doc.RootElement
-                    : doc.RootElement.TryGetProperty("ChangeRequests", out var cr) ? cr
-                    : doc.RootElement.TryGetProperty("changeRequests", out var crLower) ? crLower
-                    : doc.RootElement.TryGetProperty("Items", out var itemsProp) ? itemsProp
-                    : default;
+                var element = UnwrapArrayEnvelope(doc.RootElement, "ChangeRequests", "changeRequests", "Items");
 
-                if (element.ValueKind != JsonValueKind.Array)
+                if (element is not { ValueKind: JsonValueKind.Array } arrayElement)
                     return new SportlinkClubResponse<IReadOnlyList<SportlinkChangeRequest>>(
                         SportlinkClubCallStatus.SportlinkFout, null, "MatchChangeRequests-respons had onverwachte vorm", (int)response.StatusCode);
 
-                items = JsonSerializer.Deserialize<List<SportlinkChangeRequest>>(element.GetRawText(), JsonOptions);
+                items = JsonSerializer.Deserialize<List<SportlinkChangeRequest>>(arrayElement.GetRawText(), JsonOptions);
             }
             catch (JsonException ex)
             {
@@ -768,17 +763,13 @@ public class SportlinkClubClient : ISportlinkClubClient
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                var items = doc.RootElement.ValueKind == JsonValueKind.Array
-                    ? doc.RootElement
-                    : doc.RootElement.TryGetProperty("Matches", out var matches) ? matches
-                    : doc.RootElement.TryGetProperty("matches", out var matchesLower) ? matchesLower
-                    : default;
+                var items = UnwrapArrayEnvelope(doc.RootElement, "Matches", "matches");
 
-                if (items.ValueKind != JsonValueKind.Array)
+                if (items is not { ValueKind: JsonValueKind.Array } arrayItems)
                     return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(
                         SportlinkClubCallStatus.SportlinkFout, null, "MatchProgramOverview-respons had onverwachte vorm", (int)response.StatusCode);
 
-                entries = JsonSerializer.Deserialize<List<SportlinkMatchProgramEntry>>(items.GetRawText(), JsonOptions);
+                entries = JsonSerializer.Deserialize<List<SportlinkMatchProgramEntry>>(arrayItems.GetRawText(), JsonOptions);
             }
             catch (JsonException ex)
             {
@@ -805,6 +796,25 @@ public class SportlinkClubClient : ISportlinkClubClient
             _logger.LogWarning(ex, "Onverwachte fout bij MatchProgramOverview endpoint");
             return new SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>(SportlinkClubCallStatus.SportlinkFout, null, "Onverwachte fout bij MatchProgramOverview endpoint", null);
         }
+    }
+
+    /// <summary>
+    /// Sportlink-responsen zijn soms een kale JSON-array en soms genest onder een envelope-property
+    /// (naam en casing per endpoint verschillend, niet 100% live bevestigd) — deze helper zoekt de
+    /// array op één van beide manieren zodat elke fetch-methode niet zijn eigen kopie hoeft te houden.
+    /// </summary>
+    private static JsonElement? UnwrapArrayEnvelope(JsonElement root, params string[] propertyNames)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+            return root;
+
+        foreach (var name in propertyNames)
+        {
+            if (root.TryGetProperty(name, out var property))
+                return property;
+        }
+
+        return null;
     }
 
     private async Task<(SportlinkClubCallStatus Status, string? AccessToken, string? FoutmeldingVoorLog)> RefreshTokenIfNeededAsync(

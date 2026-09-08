@@ -78,7 +78,9 @@ public static class SportlinkTokenKeepAliveTimerFunction
             return;
         }
 
-        foreach (var rol in rollen)
+        // Onafhankelijke roltokens parallel verversen — geen gedeelde state tussen rollen buiten
+        // sportlinkClient's eigen per-rol-semafoor, en één mislukte rol mag de andere niet blokkeren.
+        await Task.WhenAll(rollen.Select(async rol =>
         {
             try
             {
@@ -87,10 +89,9 @@ public static class SportlinkTokenKeepAliveTimerFunction
             }
             catch (Exception ex)
             {
-                // Eén mislukte rol mag de andere rollen niet blokkeren.
                 log.LogError(ex, "Onverwachte fout bij keep-alive voor rol '{Rol}'", rol);
             }
-        }
+        }));
     }
 
     /// <summary>Alle rolnamen met een opgeslagen refresh-token voor de primaire club — geen

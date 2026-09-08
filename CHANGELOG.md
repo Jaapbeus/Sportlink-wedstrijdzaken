@@ -95,8 +95,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   #1048, dat verder openblijft voor #996). Bleek voor een eigen-veld-wijziging niet nodig —
   Sportlink accepteert een lege aanvrager-identiteit. Beheerders kunnen nu daadwerkelijk het veld
   van een wedstrijd wijzigen vanuit Dagplanning.
+- **Koppeling van een tweede club aan dezelfde Sportlink-rol (bijv. "Wedstrijdzaken") kon de
+  koppeling van de eerste club stuk maken of blokkeren (#1058).** De rollentabel had een sleutel op
+  alleen de rolnaam, niet op rolnaam + club — sinds elke installatie altijd minstens twee clubs
+  bevat (de echte club en de AllStars FC-demo), botste of overschreef de tweede registratie de
+  eerste stilzwijgend.
 
 ### Security
+- **Tokenregistratie voor de Sportlink Web Extension controleerde niet of uitgaande integraties
+  hier zijn toegestaan (#1058).** Deze aanroep naar Sportlink's inlogdienst liep, in tegenstelling
+  tot elke andere externe aanroep in deze applicatie, niet via dezelfde centrale controle —
+  gecorrigeerd zodat lokaal/CI-gebruik nooit onbedoeld verkeer naar Sportlink stuurt.
 - **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
   verholpen (#1010).** `Planner.Shared/PlannerHtmlGenerator.cs` interpoleerde deze en andere
   dynamische velden (locatie, footer, suggestieteksten) ongeëncodeerd als HTML — een script-tag in

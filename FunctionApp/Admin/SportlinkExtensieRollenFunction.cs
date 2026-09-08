@@ -77,7 +77,7 @@ public static class SportlinkExtensieRollenFunction
                     await new StreamReader(req.Body).ReadToEndAsync());
 
                 // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
-                var door = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
+                var door = EasyAuthHelper.GetAuditActor(req);
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();

@@ -10,10 +10,15 @@
 ALTER TABLE public.appsettings
     ADD COLUMN IF NOT EXISTS sportlinkextensionenabled boolean NOT NULL DEFAULT false;
 
+-- Samengestelde sleutel, niet alleen rolnaam: dit schema draait altijd met minstens twee clubs
+-- (de echte club + AllStars FC-demo, zie CLAUDE.md "Deployment-model"), en elke club registreert
+-- zijn eigen koppeling voor dezelfde rolnaam (bv. 'Wedstrijdzaken'). Zelfde patroon als
+-- public.sportlinkservicetokens hieronder (014).
 CREATE TABLE IF NOT EXISTS public.sportlinkextensierollen (
-    rolnaam              VARCHAR(50) PRIMARY KEY,
+    rolnaam              VARCHAR(50) NOT NULL,
     laatstgekoppelddoor  VARCHAR(200) NULL,
     laatstgekoppeldop    TIMESTAMPTZ NULL,
     sportlinkaccountnaam VARCHAR(200) NULL,
-    clubcode             VARCHAR(20) NOT NULL
+    clubcode             VARCHAR(20) NOT NULL,
+    PRIMARY KEY (rolnaam, clubcode)
 );

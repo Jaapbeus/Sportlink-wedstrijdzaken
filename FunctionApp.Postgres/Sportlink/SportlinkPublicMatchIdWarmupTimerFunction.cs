@@ -91,19 +91,24 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
             return;
         }
 
-        // Groeperen per datum: één MatchProgramOverview-aanroep per dag, niet per wedstrijd.
-        foreach (var groep in wedstrijden.GroupBy(w => w.Datum))
+        // Groeperen per datum: één MatchProgramOverview-aanroep per dag, niet per wedstrijd. De
+        // overview-aanroepen zijn onderling onafhankelijk (elk 12+ seconden) en lopen daarom parallel;
+        // het wegschrijven erna hergebruikt één connectie in plaats van één per datum.
+        var groepen = wedstrijden.GroupBy(w => w.Datum).ToList();
+        var overviews = await Task.WhenAll(groepen.Select(async groep =>
+            (Groep: groep, Overview: await sportlinkClient.GetMatchProgramOverviewAsync(RolNaam, groep.Key))));
+
+        await using var writeConnection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await writeConnection.OpenAsync();
+
+        foreach (var (groep, overview) in overviews)
         {
-            var overview = await sportlinkClient.GetMatchProgramOverviewAsync(RolNaam, groep.Key);
             if (overview.Status != SportlinkClubCallStatus.Ok || overview.Data == null)
             {
                 log.LogWarning("MatchProgramOverview voor {Datum} gaf status {Status} — {Aantal} wedstrijden overgeslagen deze run (proberen volgende run opnieuw).",
                     groep.Key, overview.Status, groep.Count());
                 continue;
             }
-
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
 
             var gevondenAantal = 0;
             foreach (var wedstrijd in groep)
@@ -113,7 +118,7 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
                     continue; // Nog niet bekend bij Sportlink voor deze datum — geen fout, volgende run opnieuw proberen.
 
                 await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(
-                    connection, wedstrijd.Wedstrijdcode, clubCode, match.PublicMatchId);
+                    writeConnection, wedstrijd.Wedstrijdcode, clubCode, match.PublicMatchId);
                 gevondenAantal++;
             }
 
