@@ -7,6 +7,18 @@ Dit document beschrijft wanneer de emailprocessor een antwoord verstuurt, welke 
 > issue. Een eerdere versie beweerde dat élke claim hier geverifieerd was; die garantie bleek zelf
 > onwaar en is daarom weggehaald: ze verkleinde juist de kans dat een lezer nog controleerde.
 
+> **Sinds #972 geldt dit stroomschema ook voor de Postgres-tier** (`FunctionApp.Postgres/Email/
+> EmailProcessorFunction.cs`) — de mailbox stond daar volledig stil sinds de productiecutover van
+> 2026-09-04 (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §52). Documenteerde afwijkingen op de
+> Postgres-tier: het "opponent kan ons team alsnog vinden"-pad ontbreekt, `TeamContactOpvragen`
+> geeft in het auto-reply-antwoord altijd `coachGevonden = false`, de KNVB-PDF-bijlage/"verzet zonder
+> datum"-flow ontbreekt, en de interne notificaties hieronder — "Interne notificatie naar de
+> teamleider (#66)" en "Template M — Auto-reply 'doorgestuurd'" (beide in §2) — zoeken de begeleider
+> op via een andere, wél bestaande route (`avg.teambegeleiding` rechtstreeks) en gebruiken daardoor
+> een generieke aanhef in plaats van de naam van de begeleider. Zie de klassekop van
+> `FunctionApp.Postgres/Processing/BerichtPipeline.cs` en `EmailProcessorFunction.cs` voor de
+> volledige onderbouwing.
+
 ---
 
 ## Verwerkingsstroom (overzicht)
