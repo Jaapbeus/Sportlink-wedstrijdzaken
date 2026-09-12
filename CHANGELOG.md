@@ -37,9 +37,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   werd aangezien voor een onbereikbare database. De instellingen laden nu ook zonder die kolom
   (de extensie geldt dan als uitgeschakeld, precies de standaardwaarde van de migratie), en
   `/api/health` toont voortaan `pendingMigrations` (welke migraties de database nog mist) en
-  `schemaWarning`. De smoke test na een productie-deploy faalt vanaf nu als de instellingen niet
-  geladen zijn, in plaats van alleen op een 200 te vertrouwen. Het toepassen van de openstaande
-  migraties blijft een actie van de beheerder — zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §54.
+  `schemaWarning`. Een vervolgwijziging laat de smoke test na een productie-deploy op diezelfde
+  velden controleren in plaats van alleen op een 200 (zie issue #1098). Het toepassen van de
+  openstaande migraties blijft een actie van de beheerder — zie
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §54.
 
 ### Security
 - **Volledige certificaatvalidatie op de databaseverbinding is nog een openstaande schuld.**

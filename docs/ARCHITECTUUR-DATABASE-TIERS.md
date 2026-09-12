@@ -2946,7 +2946,11 @@ gaven.
    instellingen, zodat `settingsLoaded` een feit is en geen aanname.
 3. **De smoke test faalt op `settingsLoaded=false`** en geeft een `::warning::` bij openstaande
    migraties. Dat laatste is bewust geen fout: de pipeline kán ze niet toepassen, en met laag 1
-   werkt de applicatie wel.
+   werkt de applicatie wel. *Stand bij de hotfix:* deze laag staat klaar op de lokale branch
+   `ci/#1098-smoke-test-settingsloaded`, maar kon niet mee in de hotfix-PR — GitHub eist de
+   `workflow`-scope voor elke wijziging onder `.github/workflows/`, en zowel het lokale
+   git-credential als de GitHub-connector van de sessie misten die. Afronden: `gh auth refresh -h
+   github.com -s workflow`, daarna die branch pushen en als PR naar `main` mergen.
 
 **Wat bewust níet is gedaan.** Migraties automatisch toepassen bij het opstarten van de Function
 App, of een productie-connectiestring als GitHub-secret voor een `db-migrate-postgres`-job. Het

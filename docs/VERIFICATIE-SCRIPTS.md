@@ -198,8 +198,9 @@ Twee controles die verder gaan dan "de poort antwoordt" (#1060):
 - **`pendingMigrations` / `schemaWarning` (#1098).** Meldt health migraties die de database nog
   mist, dan wijst het script naar `Database.Postgres.Cli` in plaats van naar het seed-script — een
   lege instellingencache door een ontbrekende kolom is een andere oorzaak dan een ontbrekende
-  primaire club. Dezelfde velden bewaakt de smoke test in `deploy.yml` na een productie-deploy:
-  `settingsLoaded=false` laat die job falen, openstaande migraties geven een waarschuwing.
+  primaire club. Dezelfde velden gaat de smoke test in `deploy.yml` na een productie-deploy bewaken
+  (vervolg op #1098: `settingsLoaded=false` laat die job falen, openstaande migraties geven een
+  waarschuwing) — zie MONITORING.md voor de stand daarvan.
 
 Readiness-detectie:
 
