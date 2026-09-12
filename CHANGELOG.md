@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Een mislukte synchronisatie is nu zichtbaar in plaats van stil (#1081).** De nachtelijke
+  synchronisatie rapporteerde tot nu toe "geslaagd" ook wanneer er niets was bijgewerkt — precies
+  waarom een storing acht dagen onopgemerkt bleef. Een run met mislukte onderdelen wordt nu als
+  mislukt gemeld, en `/api/health` toont wanneer er voor het laatst succesvol is gesynchroniseerd
+  en of dat te lang geleden is. Op een ontwikkelmachine, waar geen synchronisatie hoort te draaien,
+  verandert er niets.
+
 ### Changed
 - **De lokale ontwikkelomgeving draait voortaan standaard op dezelfde database als productie (#1060).**
   `docker compose up -d` start nu Postgres in plaats van SQL Server, en `Start-Debug.ps1` en

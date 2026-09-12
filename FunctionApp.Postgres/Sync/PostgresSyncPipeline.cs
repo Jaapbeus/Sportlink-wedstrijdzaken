@@ -32,7 +32,17 @@ internal static class PostgresSyncPipeline
 {
     private static readonly HttpClient HttpClient = new();
 
-    internal static async Task RunSyncAsync(
+    /// <summary>
+    /// Draait de volledige synchronisatie en geeft terug of er deelstappen zijn mislukt.
+    /// <para>
+    /// <b>#1081: de uitkomst wordt teruggegeven in plaats van alleen gelogd.</b> Tot dan eindigde
+    /// een run met mislukte deelstappen met een waarschuwing in het log en verder niets — de
+    /// aanroeper kon het verschil tussen "geslaagd" en "gedeeltelijk mislukt" niet zien, en de
+    /// timerinvocatie werd dus als Success gerapporteerd terwijl er acht dagen niets werd
+    /// bijgewerkt (#1077).
+    /// </para>
+    /// </summary>
+    internal static async Task<bool> RunSyncAsync(
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         string clubCode, string connectionString,
@@ -96,6 +106,8 @@ internal static class PostgresSyncPipeline
             await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
         else
             log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
+
+        return partialFailure;
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(
