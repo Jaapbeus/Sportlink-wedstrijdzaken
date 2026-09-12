@@ -1245,7 +1245,9 @@ BEGIN
         [LaatstGekoppeldOp]    DATETIME2      NULL,
         [SportlinkAccountNaam] NVARCHAR(200)  NULL,
         [ClubCode]             NVARCHAR(20)   NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
-        CONSTRAINT [PK_SportlinkExtensieRollen] PRIMARY KEY CLUSTERED ([RolNaam] ASC)
+        -- Samengestelde sleutel: dit schema draait altijd met minstens twee clubs (echte club +
+        -- AllStars FC-demo), en elke club registreert zijn eigen koppeling voor dezelfde rolnaam.
+        CONSTRAINT [PK_SportlinkExtensieRollen] PRIMARY KEY CLUSTERED ([RolNaam] ASC, [ClubCode] ASC)
     );
 END
 GO

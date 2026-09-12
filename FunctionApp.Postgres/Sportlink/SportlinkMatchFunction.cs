@@ -194,7 +194,7 @@ public static class SportlinkMatchFunction
         var guard = SportlinkMutationGuard.MagMuteren(matchResult.Data, soort);
 
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
-        var triggerdDoor = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
+        var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
         var auditEntry = new SportlinkMutationAuditEntry(
             clubCode, RolNaam, triggerdDoor, publicMatchId!, actie,
             WaardeVoor: JsonConvert.SerializeObject(matchResult.Data.TaskStatus),

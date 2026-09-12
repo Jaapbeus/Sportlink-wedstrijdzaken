@@ -79,7 +79,7 @@ public static class SportlinkChangeRequestFunction
                     return new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 };
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
-                var triggerdDoor = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
+                var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
                 var auditEntry = new SportlinkMutationAuditEntry(
                     clubCode, RolNaam, triggerdDoor, dto.PublicMatchId, $"MatchChangeRequestAction:{dto.Actie}",
                     WaardeVoor: null,
