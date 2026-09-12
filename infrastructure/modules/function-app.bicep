@@ -1,9 +1,12 @@
 // ── Function App module ──────────────────────────────────────────────────────
-// Beschrijft de bestaande Azure Function App (Consumption, Linux, .NET 9).
+// Beschrijft de bestaande Azure Function App (Linux Consumption, .NET 9).
 //
-// KRITIEKE CONSTRAINT: linuxFxVersion MOET 'DOTNET-ISOLATED|9.0' zijn.
-// Linux Consumption Plan ondersteunt .NET 10 NIET — wijziging leidt tot 503.
-// Upgradepad: pas mogelijk via Flex Consumption Plan (betaald).
+// KRITIEKE CONSTRAINT: linuxFxVersion MOET 'DOTNET-ISOLATED|9.0' zijn zolang dit een
+// Consumption-plan is. Linux Consumption ondersteunt .NET 10 NIET — wijziging leidt tot 503.
+//
+// Einddatum: .NET 9 verliest support op 10 november 2026 en is de laatste .NET-versie voor
+// Linux Consumption. Migratie naar Flex Consumption + .NET 10 loopt via epic #1063. Flex vraagt
+// een NIEUWE app met een eigen functionAppConfig-blok — deze module is daar niet op ingericht.
 
 @description('Azure-regio voor alle resources in dit module')
 param location string = resourceGroup().location

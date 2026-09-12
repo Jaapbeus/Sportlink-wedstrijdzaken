@@ -67,7 +67,7 @@ Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 | Application Insights (workspace-based) | Billing loopt via Log Analytics workspace | Idem; stel daily cap in (max 100 MB/dag) |
 | Metric Alert Rules | Betaald per gemonitord time series | Gebruik Activity Log Alerts als gratis alternatief |
 | Key Vault | Standaard betaald per operatie | Controleer [prijspagina](https://azure.microsoft.com/pricing/details/key-vault/) |
-| Flex Consumption Plan | Niet gratis — andere infra dan huidige Consumption Plan | Nooit upgraden zonder goedkeuring |
+| Flex Consumption Plan | Heeft wél een gratis tegoed, maar kleiner dan Consumption: 250.000 executies + 100.000 GB-s/mnd per subscription (Consumption: 1M + 400K). Bij **always-ready instances vervalt het tegoed volledig**. | Prijscheck via MS Docs vóór aanmaak; nooit een plan wijzigen zonder goedkeuring — migratie loopt via epic #1063 |
 | Premium/Standard-tier van bestaande resource | Directe kostenwijziging | Altijd vragen |
 
 ### Verificatiemoment — verplicht checklist bij elke deployment
@@ -517,26 +517,39 @@ Samenvatting van de drie harde regels:
 
 ---
 
-### .NET versie — net9.0 verplicht voor FunctionApp (NOOIT upgraden zonder infrastructuurwijziging)
+### .NET versie — FunctionApp staat op net9.0, met einddatum (migratie via epic #1063)
 
 **KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
 
-Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**.
-.NET 10 wordt pas ondersteund op het **Flex Consumption Plan** (niet gratis, andere infra).
+Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**. Zolang de
+FunctionApp op dat plan draait bestaat de stackwaarde `dotnet-isolated 10.0` daar niet — een
+`net10.0`-build geeft 503 "Function host is not running".
 
 | Component | Target | Reden |
 |---|---|---|
-| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — nooit wijzigen | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
+| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — niet wijzigen vóór de cutover | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
+| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net9.0`** — idem | Idem |
 | `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
 | Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
+
+> **Dit is een toestand met een einddatum, geen eindsituatie.** .NET 9 gaat op **10 november 2026**
+> uit support, en .NET 9 is de laatste .NET-versie die Linux Consumption krijgt — nieuwere versies
+> worden er niet meer aan toegevoegd. Linux Consumption zelf wordt op 30 september 2028
+> uitgefaseerd. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**, en stond al
+> als roadmap-punt in `CHANGELOG.md` bij v2.1.0 (#162).
 
 **Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — Windows: `winget install Microsoft.DotNet.Runtime.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
 Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
 
-**Upgradepad naar .NET 10 is alleen mogelijk als:**
-1. Azure Function App plan wordt omgezet naar Flex Consumption (`az functionapp update --plan <flex-plan>`)
-2. Azure Portal runtime wordt bijgewerkt naar `DOTNET-ISOLATED|10.0`
-3. Beide stappen tegelijk — anders 503 bij eerste deploy
+**Upgradepad naar .NET 10 — uitsluitend via epic #1063, in deze volgorde:**
+1. Een **nieuwe** Function App op een Flex Consumption-plan aanmaken. In-place migratie van een
+   bestaande app naar Flex bestaat niet, en terug ook niet — `az functionapp update --plan` werkt
+   hiervoor dus níet.
+2. Cutover naar die nieuwe app, nog op `net9.0`.
+3. Pas dáárna de csproj's en de stackconfiguratie naar `net10.0` / `DOTNET-ISOLATED|10.0`.
+
+Nooit alleen de csproj bumpen: zolang de app op Linux Consumption draait is elke `net10.0`-deploy
+een productie-breker.
 
 ### Cross-platform scripts — Windows én macOS, geen uitzonderingen (#800)
 
