@@ -620,7 +620,9 @@ oplevert **na** handmatige validatie (`status = 'pending'` → `null`, na `UPDAT
 disambiguatie + de bovenstaande repositories — een aanzienlijk grotere stap) en de volledige
 e-mail-AI-pijplijn (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProcessorFunction`,
 `EmailGraphService` — samen >2700 regels, bevatten geen directe SQL-toegang en vallen dus al
-buiten #889's eigen scope-omschrijving).
+buiten #889's eigen scope-omschrijving). **Bijgewerkt:** `EmailProcessorFunction`/`EmailGraphService`
+zijn sinds §52 (#972) alsnog vertaald — de mailbox stond zonder die functie sinds de §49-cutover
+volledig stil.
 
 **Nagekomen fix (#820):** deze paragraaf se `TeamCandidateRepository`/`TeamAliasLearningService`
 kregen een correctness-fix ná deze ronde — Postgres' case-sensitieve default-collatie liet
@@ -1534,7 +1536,9 @@ geteste code aanraakt — niet alleen voor de tabel die hij zelf vult. Voor `Ref
 - **De e-mail-AI-pijplijn** (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProcessorFunction`,
   `EmailGraphService` — samen >2700 regels). Die bevat geen directe SQL-toegang en valt daarmee al
   buiten #889's eigen scope-omschrijving; het is de eerstvolgende consument die `GetTemplateAsync`
-  daadwerkelijk zou aanroepen.
+  daadwerkelijk zou aanroepen. **Bijgewerkt:** `EmailProcessorFunction`/`EmailGraphService` zijn
+  sinds §52 (#972) alsnog vertaald en roepen `GetTemplateAsync` inmiddels ook echt aan (via
+  `BerichtPipeline.BouwTemplateAntwoord`).
 - **`TeamResolver`/`TeamDisambiguationAiService`/`TeamlijstGereedheid`** — zelfde reden, zie §28.
 
 ## 31. Demodata-sjablonen op beide tiers (#911) — en waarom dit géén aanvulling op migratie 006 werd
@@ -2218,11 +2222,13 @@ de Graph-DI-registratie in `Program.cs`, en de handler zelf. `Microsoft.Graph` 6
 package toegevoegd — dezelfde versie die de SQL Server-tier al gebruikt, dus geen nieuw
 afhankelijkheidsrisico.
 
-**Bewust een smaller contract dan het origineel.** `IEmailGraphService` heeft daar zes methoden;
-hier staat er één: `StuurTeamContactDoorAsync`. De andere vijf (`GetUnreadEmailsAsync`,
-`SetCategoriesAsync`, `EnsureMasterCategoryAsync`, `MarkAsReadAsync`, `SendReplyAsync`) horen bij de
-inkomende e-mailverwerkingspijplijn, die op deze tier niet bestaat. Meeporten zou onverifieerbare
-dode code opleveren — dezelfde afweging als §41/§42 bij ongebruikte repositorymethoden.
+**Bewust een smaller contract dan het origineel — bijgewerkt in §52.** `IEmailGraphService` had hier
+oorspronkelijk één methode (`StuurTeamContactDoorAsync`) van de zes op de SQL Server-tier; de andere
+vijf (`GetUnreadEmailsAsync`, `SetCategoriesAsync`, `EnsureMasterCategoryAsync`, `MarkAsReadAsync`,
+`SendReplyAsync`) hoorden bij de inkomende e-mailverwerkingspijplijn, die toen op deze tier niet
+bestond. Meeporten zou destijds onverifieerbare dode code hebben opgeleverd — dezelfde afweging als
+§41/§42 bij ongebruikte repositorymethoden. Sinds #972 (§52) is die pijplijn (`EmailProcessorFunction`)
+wél vertaald en heeft dit contract volledige pariteit met het SQL Server-origineel.
 
 **`EgressGuard` is de enige poort, ook hier.** `IEmailGraphService` wordt alleen geregistreerd als
 de Graph-secrets geconfigureerd zijn **én** `EgressGuard.ExternalIntegrationsAllowed()` true is
@@ -2696,7 +2702,7 @@ onverkort naar de SQL Server-tier: `Start-Debug.ps1` startte `FunctionApp/` hard
 `Test-App.ps1` las `SqlConnectionString` en sprak `sqlcmd`, en `docker compose up -d` startte alleen
 de SQL Server-container — de Postgres-service zat achter een profile.
 
-**Waarom dat meer is dan een ongemak.** §50 is er het bewijs van: `EmailProcessorFunction` ontbrak
+**Waarom dat meer is dan een ongemak.** §52 is er het bewijs van: `EmailProcessorFunction` ontbrak
 volledig op de Postgres-tier, de mailbox werd sinds 2026-09-04 niet meer gepolld, en geen enkele
 lokale verificatie sloeg aan — die mat een applicatie die niet gedeployd werd. Een verificatielus
 die de verkeerde tier meet, is geen halve verificatie maar een misleidende.
@@ -2773,6 +2779,67 @@ De SQL Server-tier wordt niet verwijderd of gedeprecieerd. Hij blijft `built: tr
 `database-tiers.json`, houdt zijn eigen compose-service, template en schemacontrole, en is het
 rollbackpad van §49 stap 7. Alleen de standaardkeuze is verschoven naar de tier die daadwerkelijk
 draait.
+## 52. `EmailProcessorFunction` alsnog vertaald — de mailbox werd sinds §49 nooit gepolld (#972, hotfix)
+
+**Het gat dat §49's "wat NIET gemigreerd hoeft te worden" niet zag aankomen.** Na de productiecutover
+naar Postgres draaide de mailbox-getriggerde e-mailverwerking helemaal niet meer: §29/§43 hadden
+`EmailProcessorFunction`/`EmailGraphService`'s vijf inkomende-mail-methoden bewust buiten scope
+gehouden (geen directe SQL-toegang, dus buiten #889's scope-omschrijving) — maar zodra Postgres de
+enige tier is die daadwerkelijk deployt, is "bewust nog niet vertaald" hetzelfde als "helemaal niet
+actief". Geen classificatie, geen auto-reply, sinds 2026-09-04. Aanleiding: een hotfix rechtstreeks
+naar `main` (goedgekeurd door de eigenaar, buiten de gewone `develop`-flow om), issue #972.
+
+**Wat is toegevoegd:** `EmailProcessorFunction.cs` (de timer-triggered `[Function("ProcessIncomingEmails")]`
+zelf, tweefasen-structuur licht/zwaar, idempotentie via `EmailIdempotentie`/`VerwerkingsBesluit`, de
+uitsluitingslijst-TTL-cache), `EmailReplyPolicyService`, `EmailBatchFilterService`,
+`EmailClassificationService`, `ReplyPolicy`, `EmailCategorieLabels`, `EmailBijlage`, en
+`Monitoring/INoodmailThrottleStore`/`TableStorageNoodmailThrottleStore` (Azure Table Storage is
+DB-tier-agnostisch, dus woordelijk over te nemen). `IEmailGraphService` groeide van het ene
+smalle contract uit §43 naar volledige pariteit: de vijf destijds weggelaten methoden
+(`GetUnreadEmailsAsync`, `SetCategoriesAsync`, `EnsureMasterCategoryAsync`, `MarkAsReadAsync`,
+`SendReplyAsync`) zijn er nu bij.
+
+**Structurele afwijking t.o.v. de SQL Server-tier: geen `IEmailPersistenceService`.** Die tier heeft
+een interface-laag bovenop de e-mailtabel; hier roepen `EmailReplyPolicyService` en
+`EmailProcessorFunction` de bestaande statische `SqlEmailPersistenceRepository`-methoden rechtstreeks
+aan met de connectiestring — zelfde stijl als `BerichtPipeline` al gebruikte. Een nieuwe
+interface/DI-abstractie alleen om de SQL Server-tier 1-op-1 te spiegelen is bewust niet toegevoegd
+voor een hotfix.
+
+**Drie al bestaande, gedocumenteerde afwijkingen op `BerichtPipeline`-niveau blijven ongewijzigd**
+(opponent-lookup, `TeamContactOpvragen` se `coachGevonden`, KNVB-PDF-bijlage/"verzet zonder datum") —
+dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf.
+
+**Twee nieuw ontdekte, hier voor het eerst gedocumenteerde afwijkingen:**
+- De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruiken
+  `AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync` (bestaande, geteste query tegen
+  `avg.teambegeleiding`) in plaats van `PlannerDataAccess.GetTeamleiderContactAsync` (bestaat hier
+  niet) — dat levert alleen een e-mailadres, geen naam, dus de notificatietekst gebruikt een
+  generieke aanhef.
+- De onafhankelijke, ARM-gebaseerde database-uitvalmonitor (`DatabaseUitvalMonitorFunction`/
+  `IDatabaseStatusReader`, #831 op de SQL Server-tier) is niet vertaald — die controleert
+  specifiek Azure SQL-status, wat hier niet van toepassing is. De noodmail-throttle zelf
+  (`INoodmailThrottleStore`) is wél vertaald, dus de e-mail-pipeline-afhankelijke noodmail werkt.
+
+**`BerichtAiService.DetecteerCorrectieAsync` alsnog toegevoegd** (#323-functionaliteit) — deze
+methode bestond nog niet op de Postgres-tier, terwijl `LearningMomentRepository` (het andere deel
+van dezelfde correctie-leerlus) al wél werkte sinds een eerdere sessie zonder dat iets hem aanriep.
+De klassekop van `BerichtAiService` beweerde tot deze fix nog dat de few-shot-`voorbeelden`-parameter
+"op deze tier altijd null" zou zijn — achterhaald, hier gecorrigeerd.
+
+**Testaanpak: integratietests in plaats van fakes voor de persistentielaag.** Zonder
+`IEmailPersistenceService` is er geen interface om te faken voor `EmailReplyPolicyService`/
+`BepaalVerwerkingIdAsync`/`RegistreerClassificatieFoutAsync`/`HandelBuitenScopeAsync` — die staan
+daarom als `[PostgresFact]`-integratietests tegen een echte database
+(`EmailProcessorFunctionIntegrationTests`, `EmailReplyPolicyServiceIntegrationTests`), zelfde patroon
+als `PostgresEmailPersistenceIntegrationTests`. Pure logica (`ReplyPolicy`, `EmailBatchFilterService`,
+`EmailClassificationService`, `UitsluitingslijstCache`, de noodmail-throttle-tests) blijft
+fake-gebaseerd en woordelijk gelijk aan de SQL Server-tier se testsuite.
+
+**Vereist handmatige verificatie na deploy:** `EMAIL_POLL_SCHEDULE` en `EmailProcessorEnabled` als
+Function App-instelling op de productie-resource — die stonden er vóór de tier-cutover al voor de
+SQL Server-tier, maar zijn niet geverifieerd voor deze deploy (agents mogen App Settings niet zelf
+lezen/zetten, zie CLAUDE.md's kostenbeleid-sectie).
 
 ## Gerelateerd
 

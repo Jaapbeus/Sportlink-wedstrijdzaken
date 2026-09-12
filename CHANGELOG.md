@@ -199,6 +199,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   request-body of een querystring-parameter gelezen — een beheerder kon dus zelf kiezen welke naam
   in het auditlog kwam te staan. De actor komt nu uitsluitend uit de gevalideerde Easy Auth-claim
   van de aanroeper, op beide database-tiers.
+## [3.2.0.3] — 2026-09-06
+
+### Fixed
+- Beheerders en coördinatoren krijgen weer automatisch antwoord op inkomende e-mail: de mailbox
+  werd sinds de overstap naar de Postgres-database (2026-09-04) nooit meer uitgelezen. Inkomende
+  verzoeken (beschikbaarheid, herplannen, teamcontact) worden weer automatisch geclassificeerd en
+  beantwoord, zie issue #972.
 
 ## [3.2.0.2] — 2026-09-04
 

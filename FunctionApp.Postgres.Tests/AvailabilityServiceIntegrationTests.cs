@@ -32,18 +32,18 @@ public class AvailabilityServiceIntegrationTests : IDisposable
 
     private const string Club = "testclub-availsvc";
 
-    // Altijd de eerstvolgende zaterdag t.o.v. de daadwerkelijke systeemdatum berekenen — een
-    // hardcoded datum ("ver genoeg in de toekomst") verloopt onvermijdelijk zodra de kalender die
-    // datum inhaalt (precies gebeurd: deze test brak op 2026-09-05 toen die dag aanbrak, want de
-    // beschikbaarheidscheck wijst een datum die niet meer in de toekomst ligt terecht af).
-    private static readonly DateOnly Zaterdag = EerstvolgendeZaterdag();
+    // Altijd relatief aan de systeemdatum berekenen — een hardcoded datum ("ver genoeg in de
+    // toekomst") verloopt onvermijdelijk zodra de kalender hem inhaalt. Dat is twee keer gebeurd:
+    // op 2026-09-05 (fix op develop) en op 2026-09-06 (hotfix op main). Deze merge houdt de vorm
+    // van de develop-fix aan en neemt de ruimere marge van de main-fix over: een zaterdag die
+    // alleen "morgen" is, kan alsnog binnen de buffer van de beschikbaarheidscheck vallen.
+    private static readonly DateOnly Zaterdag = ZaterdagMinstensTweeWekenVooruit();
 
-    private static DateOnly EerstvolgendeZaterdag()
+    private static DateOnly ZaterdagMinstensTweeWekenVooruit()
     {
-        var vandaag = DateOnly.FromDateTime(DateTime.UtcNow);
-        var dagenTotZaterdag = ((int)DayOfWeek.Saturday - (int)vandaag.DayOfWeek + 7) % 7;
-        if (dagenTotZaterdag == 0) dagenTotZaterdag = 7; // nooit vandaag — moet écht in de toekomst liggen
-        return vandaag.AddDays(dagenTotZaterdag);
+        var basis = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(14);
+        var dagenTotZaterdag = ((int)DayOfWeek.Saturday - (int)basis.DayOfWeek + 7) % 7;
+        return basis.AddDays(dagenTotZaterdag);
     }
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
