@@ -96,6 +96,29 @@ public class AdminApiClient
     public async Task<ApiResult<SportlinkExtensieHealthDto>> GetSportlinkExtensieHealthAsync(bool live = false)
         => await GetAsync<SportlinkExtensieHealthDto>($"api/beheer/sportlink-extensie/health?live={(live ? "true" : "false")}");
 
+    // #997: oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, altijd code-gelockt
+    // (forceDryRun) totdat een mens de body live bevestigt, zie SportlinkClubClient.CreateClubMatchAsync.
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PostSportlinkClubMatchAsync(
+        DateTime matchDateTime, int duration, string? ageClassCode, string? description,
+        string? publicHomeTeamId, string? publicAwayTeamId, string? facilityId, string? fieldId)
+        => await PostAsync<SportlinkMutatieResultaatDto>("api/sportlink/club-match",
+            new
+            {
+                MatchDateTime = matchDateTime,
+                Duration = duration,
+                AgeClassCode = ageClassCode,
+                Description = description,
+                PublicHomeTeamId = publicHomeTeamId,
+                PublicAwayTeamId = publicAwayTeamId,
+                FacilityId = facilityId,
+                FieldId = fieldId
+            });
+
+    // #997: de twee ondersteunende picklists (Teams + Location) — bewust NIET automatisch geladen
+    // bij het openen van de pagina, alleen op expliciete klik ("Picklists laden").
+    public async Task<ApiResult<SportlinkClubMatchPickListsDto>> GetSportlinkClubMatchPickListsAsync()
+        => await GetAsync<SportlinkClubMatchPickListsDto>("api/sportlink/club-match/picklists");
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()

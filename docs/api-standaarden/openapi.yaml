@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.3.2.0
+  version: 3.3.3.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -869,6 +869,41 @@ components:
             mutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —
             ONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat "DryRunLocked").
             Als dit true is, is IsDryRun ook altijd true.
+        PublicMatchId:
+          type: string
+          nullable: true
+          description: |
+            #997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd
+            (POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang
+            IsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de
+            ClubMatch-code-lock actief is).
+
+    SportlinkClubMatchPickListsResponse:
+      type: object
+      description: |
+        De twee ondersteunende picklists die in deze ronde bewust WEL zijn aangesloten (#997,
+        bewust beperkte scope): PickListsTeams + PickListsLocation. Read-only en
+        persoonsgegevensvrij (teams/locaties, geen personen). ONBEVESTIGD qua werkelijke
+        item-veldnamen — zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.
+      properties:
+        Teams:
+          type: array
+          items:
+            $ref: '#/components/schemas/SportlinkPickListItem'
+        Locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SportlinkPickListItem'
+
+    SportlinkPickListItem:
+      type: object
+      properties:
+        Id:
+          type: string
+          nullable: true
+        Naam:
+          type: string
+          nullable: true
 
     SportlinkExtensieHealthResponse:
       type: object
@@ -3295,6 +3330,110 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '502':
           description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/club-match:
+    post:
+      tags: [sportlink]
+      operationId: postSportlinkClubMatch
+      summary: Oefenwedstrijd ("clubwedstrijd") aanmaken (#997, epic #986) — scaffolding, altijd code-gelockt
+      description: |
+        **ONBEVESTIGD, altijd gesimuleerd:** endpoint (`POST
+        competition/match/clubmatch/ClubMatch`) en requestbody zijn gereverse-engineerd uit
+        Sportlinks eigen frontend-code, nooit met een netwerktrace gezien — van alle #986-sub-
+        issues heeft dit issue de MEESTE onbekenden (volledige body onbevestigd, meerdere
+        picklist-vormen onbekend, delete-methode onbekend). Deze aanroep loopt daarom altijd via
+        een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling
+        `sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan.
+        Structureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN
+        bestaande wedstrijd, dus geen `SportlinkMutationGuard`-check — in plaats daarvan alleen
+        onze eigen `sportlinkExtensionEnabled`-toggle + EgressGuard. Bewust NIET gebouwd in deze
+        ronde: verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [MatchDateTime]
+              properties:
+                MatchDateTime:
+                  type: string
+                  format: date-time
+                  description: ONBEVESTIGD — datum+tijd samengevoegd, Sportlink verwacht dit aangenomen als één MatchDate-veld.
+                Duration:
+                  type: integer
+                  default: 90
+                  description: ONBEVESTIGD — duur in minuten.
+                AgeClassCode:
+                  type: string
+                  nullable: true
+                  description: Vrije tekst in deze ronde — codetable/AgeClassList is bewust niet aangesloten.
+                Description: { type: string, nullable: true }
+                PublicHomeTeamId:
+                  type: string
+                  nullable: true
+                  description: ONBEVESTIGD — team-identifier uit GET .../club-match/picklists.
+                PublicAwayTeamId: { type: string, nullable: true }
+                FacilityId:
+                  type: string
+                  nullable: true
+                  description: ONBEVESTIGD — locatie-identifier uit GET .../club-match/picklists.
+                FieldId: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Mutatieresultaat (in de praktijk altijd IsForcedDryRun=true zolang de code-lock actief is)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkMutationResponse'
+        '400':
+          description: MatchDateTime ontbreekt
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/club-match/picklists:
+    get:
+      tags: [sportlink]
+      operationId: getSportlinkClubMatchPickLists
+      summary: Ondersteunende picklists voor het oefenwedstrijd-formulier (#997, bewust beperkte scope)
+      description: |
+        Alleen de twee picklists die de UI het hardst nodig heeft: PickListsTeams en
+        PickListsLocation — read-only en persoonsgegevensvrij (teams/locaties, geen personen).
+        Bewust NIET automatisch geladen bij het openen van de pagina, alleen op expliciet verzoek
+        vanuit de UI. De overige drie ondersteunende endpoints uit het issue
+        (ClubMatchDefaults, PickListsMatchInformation, codetable/AgeClassList) zijn in deze ronde
+        bewust niet aangesloten.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: De twee picklists (kunnen leeg zijn)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkClubMatchPickListsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen
+        '500':
+          $ref: '#/components/responses/InternalServerError'
         '503':
           description: Uitgaande integraties staan hier niet toe (EgressGuard)
 
