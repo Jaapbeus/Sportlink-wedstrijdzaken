@@ -133,7 +133,7 @@ public static class MigrationRunner
     /// Leeg = schema en code lopen gelijk. Bestaat de ledger-tabel niet (<c>42P01</c>), dan is er nog
     /// nooit gemigreerd en is álles nog toe te passen. Leest alleen; past nooit iets toe — een
     /// migratie tegen productie is en blijft een bewuste handeling van de eigenaar
-    /// (ARCHITECTUUR-DATABASE-TIERS.md §49, §54).
+    /// (ARCHITECTUUR-DATABASE-TIERS.md §49, §55).
     /// </summary>
     public static async Task<IReadOnlyList<string>> GetPendingMigrationsAsync(NpgsqlConnection connection, CancellationToken ct = default)
     {

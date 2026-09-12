@@ -15,9 +15,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.3.0.2</Version>
-    <AssemblyVersion>3.3.0.2</AssemblyVersion>
-    <FileVersion>3.3.0.2</FileVersion>
+    <Version>3.3.0.3</Version>
+    <AssemblyVersion>3.3.0.3</AssemblyVersion>
+    <FileVersion>3.3.0.3</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -68,6 +68,13 @@
     <None Update="local.settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+    <!-- #1096: CA-certificaat van de databaseprovider (Supabase) voor sslmode=verify-full.
+         Publiek certificaat, geen secret — mag in git en in het deploy-pakket. Ontbreekt dit
+         bestand (nog niet toegevoegd, of lokale ontwikkeling), dan is dit een no-op: geen
+         build- of publish-fout, alleen geen gekopieerd bestand. Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50. -->
+    <None Update="prod-ca-2021.crt" Condition="Exists('prod-ca-2021.crt')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
   <ItemGroup>

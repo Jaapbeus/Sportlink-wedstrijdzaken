@@ -267,8 +267,11 @@ jobs:
       # Zonder instellingencache is de applicatie onbruikbaar: dat is een mislukte deploy, geen
       # 'degraded'. Openstaande migraties (pendingMigrations) zijn een waarschuwing, geen fout:
       # de applicatie draait dan door op de migratie-defaults en de eigenaar moet ze zelf
-      # toepassen (ARCHITECTUUR-DATABASE-TIERS.md §54) — de pipeline heeft daar bewust geen
+      # toepassen (ARCHITECTUUR-DATABASE-TIERS.md §55) — de pipeline heeft daar bewust geen
       # connectiestring voor.
+      # #1096: tlsWarning (het #1004/#1095-beleid nog niet op VerifyFull-met-CA-cert) is
+      # dezelfde categorie — de applicatie draait door (fail-open sinds #1095), dus ook hier een
+      # waarschuwing, geen deploy-blokkade (ARCHITECTUUR-DATABASE-TIERS.md §50).
       - name: "Smoke test: function app bereikbaar (health → 200 én instellingen geladen)"
         run: |
           URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health?code=${{ secrets.AZURE_FUNCTION_KEY }}"
@@ -283,6 +286,7 @@ jobs:
               SETTINGS=$(printf '%s' "$BODY" | jq -r '.settingsLoaded // empty' 2>/dev/null || true)
               PENDING=$(printf '%s' "$BODY" | jq -r '(.pendingMigrations // []) | join(", ")' 2>/dev/null || true)
               SCHEMA=$(printf '%s' "$BODY" | jq -r '.schemaWarning // empty' 2>/dev/null || true)
+              TLS=$(printf '%s' "$BODY" | jq -r '.tlsWarning // empty' 2>/dev/null || true)
               if [ "$SETTINGS" = "false" ]; then
                 echo "FOUT: health geeft 200 maar settingsLoaded=false — de instellingencache is leeg, elk /api/beheer/*-endpoint antwoordt 500."
                 echo "Oorzaken: geen club met syncenabled=true, of de code verwacht een kolom die de database mist (zie schemaWarning/pendingMigrations hieronder)."
@@ -290,12 +294,15 @@ jobs:
                 exit 1
               fi
               if [ -n "$PENDING" ]; then
-                echo "::warning title=Openstaande databasemigraties::pendingMigrations: $PENDING — toepassen via Database.Postgres.Cli (docs/ARCHITECTUUR-DATABASE-TIERS.md §54)"
+                echo "::warning title=Openstaande databasemigraties::pendingMigrations: $PENDING — toepassen via Database.Postgres.Cli (docs/ARCHITECTUUR-DATABASE-TIERS.md §55)"
               fi
               if [ -n "$SCHEMA" ]; then
                 echo "::warning title=Schemawaarschuwing uit /api/health::$SCHEMA"
               fi
-              echo "health OK: settingsLoaded=${SETTINGS:-onbekend}, pendingMigrations=[${PENDING}]"
+              if [ -n "$TLS" ]; then
+                echo "::warning title=TLS-beleid nog niet volledig (#1096)::$TLS"
+              fi
+              echo "health OK: settingsLoaded=${SETTINGS:-onbekend}, pendingMigrations=[${PENDING}], tlsWarning=${TLS:-geen}"
               exit 0
             fi
             if [ "$i" -lt "$MAX" ]; then echo "Wacht ${WAIT}s (cold start)..."; sleep $WAIT; fi

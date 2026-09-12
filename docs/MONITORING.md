@@ -357,7 +357,7 @@ gh pr checks <pr-nr>
 ## Openstaande databasemigraties (#1098)
 
 Op de Postgres-tier past niets de migraties automatisch toe op productie — dat is een handmatige
-stap van de beheerder (`Database.Postgres.Cli`, zie `ARCHITECTUUR-DATABASE-TIERS.md` §49 en §54).
+stap van de beheerder (`Database.Postgres.Cli`, zie `ARCHITECTUUR-DATABASE-TIERS.md` §49 en §55).
 Loopt de code vooruit op het schema, dan is dat sinds 3.3.0.2 van buiten zichtbaar:
 
 | Veld in `GET /api/health` | Betekenis |
