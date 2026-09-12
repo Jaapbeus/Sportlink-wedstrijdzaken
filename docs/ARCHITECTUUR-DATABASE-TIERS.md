@@ -2868,6 +2868,64 @@ database stukloopt (bijvoorbeeld een `NOT NULL`-kolom zonder default op een tabe
 basisbranch-database bevat in CI alleen wat de migraties zelf aanmaken, geen productie-achtige
 data. Dat blijft een apart risico.
 
+## 54. Een vertaalfout die acht dagen stil bleef, met een foutmelding die de verkeerde kant op wees (#1077)
+
+De derde vertaalomissie in deze epic, na §45 en §52. Deze is het opschrijven waard om twee redenen
+die losstaan van de fout zelf: de foutmelding loog, en niets meldde de storing.
+
+### De fout
+
+`PostgresStagingRepository.MergeUitslagenAsync` noemde `@clubcode` in zijn INSERT maar bond die
+parameter nooit. De meegegeven `clubCode` werd nergens gebruikt. De drie andere merges in hetzelfde
+bestand binden hem wél, en het SQL Server-origineel ook — alleen het uitslagenpad is bij de
+vertaling overgeslagen.
+
+### Waarom de melding naar het schema wees en niet naar de code
+
+```
+Npgsql.PostgresException 42703: column "clubcode" does not exist
+```
+
+`stg.matches` heeft die kolom gewoon. Npgsql laat een placeholder waarvoor geen parameter bestaat
+letterlijk in de SQL staan, en in PostgreSQL is `@` een **geldige prefix-operator** (absolute
+waarde). De server leest `@clubcode` dus als "operator `@` toegepast op kolom `clubcode`" en
+rapporteert die kolom als ontbrekend.
+
+**Dit is een Postgres-specifieke valstrik zonder tegenhanger op SQL Server**, waar dezelfde fout een
+ondubbelzinnige *"must declare the scalar variable"* oplevert. Elke `42703` op een kolom waarvan je
+zeker weet dat hij bestaat, is daarom eerst een aanwijzing voor een ongebonden parameter — niet voor
+schemadrift. In deze epic waren de eerdere `42703`-gevallen (§29, §32) juist wél schemadrift; die
+gelijkenis maakte het zoeken langer dan nodig.
+
+### Waarom hij alleen op twee van de drie weekoffsets sloeg
+
+De INSERT draait uitsluitend wanneer de voorafgaande UPDATE nul rijen raakte. Voor de huidige week
+staan de wedstrijden al in staging uit de programma-fetch, dus daar slaagt de UPDATE en wordt het
+kapotte pad nooit bereikt. Voor de twee voorgaande weken valt hij door naar de INSERT. Vandaar
+precies `weekOffset=-2` en `-1`, acht nachten achter elkaar identiek.
+
+### Waarom de bestaande dekking het niet zag
+
+`PostgresSyncFixtureIntegrationTests` draait het volledige synchronisatiepad, maar zijn fixture
+levert uitslagen voor wedstrijden die de programma-fetch al had ingevoegd. De UPDATE raakt dan een
+rij, de methode doet `continue`, en het INSERT-pad wordt nooit uitgevoerd. In productie is dat pad
+juist de regel. Een test die het *pad* niet raakt, dekt de code niet af hoeveel regels hij ook
+aanroept.
+
+`UitslagenMergeIntegrationTests` dwingt dat pad nu af, met een tegenhanger op de UPDATE-tak zodat
+"welk pad liep hier eigenlijk" meetbaar blijft.
+
+### De duurdere les: acht dagen stilte
+
+De fout zelf was één ontbrekende regel. Dat hij acht dagen bleef liggen, kwam door drie dingen die
+niets met deze vertaling te maken hebben — de timer slokte zijn uitzondering op en rapporteerde
+`Success`, één mislukte deelstap onderdrukte het bijwerken van `lastsynctimestamp` zonder dat
+zichtbaar te maken, en niets bewaakte de leeftijd van die tijdstempel. Alle drie zijn gedicht in
+#1081; zie `docs/MONITORING.md`.
+
+Voor volgende tiervertalingen is dat het bruikbare deel: een vertaalfout is onvermijdelijk, maar de
+tijd tussen ontstaan en ontdekken is een ontwerpkeuze.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
