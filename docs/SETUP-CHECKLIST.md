@@ -1,4 +1,4 @@
-# Sportlink Wedstrijdzaken — Setup Checklist (v2.7)
+# Sportlink Wedstrijdzaken — Setup Checklist (v3.2)
 
 Gebruik deze checklist om je setup-voortgang bij te houden. Vink elk item af zodra het klaar is.
 Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
@@ -33,9 +33,9 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
 - [ ] Azure Functions Core Tools v4 geïnstalleerd (`func --version` toont `4.x.x`) — macOS: `brew tap azure/functions && brew install azure-functions-core-tools@4`
 - [ ] Node.js geïnstalleerd (`node --version`) — macOS: `brew install node`
 - [ ] Azurite geïnstalleerd (`azurite --version`) — cross-platform via npm, ongewijzigd
-- [ ] Lokale database gestart via `docker compose up -d` (identiek op Windows en macOS — de enige
-  ondersteunde manier sinds #800), of verbonden met een bestaande bereikbare SQL Server — zie
-  DEVELOPER-SETUP.md sectie 4.1
+- [ ] Lokale database gestart — kies één tier (identiek op Windows en macOS, Docker is de enige
+  ondersteunde manier sinds #800): `docker compose up -d` voor SQL Server, of
+  `docker compose --profile postgres up -d postgres` voor Postgres — zie DEVELOPER-SETUP.md §4
 
 ---
 
@@ -50,11 +50,19 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
 
 ## Database
 
+**SQL Server-tier** (rollback-tier, nog volledig ondersteund):
 - [ ] SQL Server bereikbaar
 - [ ] Database `SportlinkSqlDb` aangemaakt (via `scripts/db/setup-local-database.sql` of Database-project)
 - [ ] Schemas aanwezig: `stg`, `his`, `mta`, `dbo`, `planner`
 - [ ] Stored procedures aanwezig: `sp_MergeStgToHis`, `sp_CreateTargetTableFromSource`
 - [ ] Sportlink API-credentials ingesteld in `dbo.AppSettings`
+
+**Postgres-tier** (productietier sinds 2026-09-04):
+- [ ] Postgres bereikbaar (`docker compose --profile postgres up -d postgres`)
+- [ ] Migraties toegepast: `.\scripts\dev\Invoke-PostgresMigrations.ps1` (vereist
+  `POSTGRES_CONNECTION_STRING` als omgevingsvariabele)
+- [ ] Schemas aanwezig: `stg`, `his`, `avg`, `planner`, `public` (i.p.v. `dbo`/`mta`)
+- [ ] Sportlink API-credentials ingesteld in `public.appsettings`
 
 **Credentials gebruikt:**
 
@@ -67,6 +75,7 @@ SportlinkClientId:  _________________________________
 
 ## Lokale configuratie
 
+**SQL Server-tier:**
 - [ ] `FunctionApp/local.settings.json` aangemaakt vanuit template:
   ```powershell
   cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
@@ -80,6 +89,13 @@ SportlinkClientId:  _________________________________
 ```
 Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=____________;TrustServerCertificate=True;
 ```
+
+**Postgres-tier:**
+- [ ] `FunctionApp.Postgres/local.settings.json` aangemaakt vanuit template:
+  ```powershell
+  cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
+  ```
+- [ ] `PostgresConnectionString` verwijst naar jouw Postgres-container/instantie
 
 ---
 
@@ -95,7 +111,7 @@ Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=____________;T
 ## Verificatie
 
 - [ ] `.\scripts\dev\Test-App.ps1` geeft exit 0
-- [ ] `Invoke-RestMethod http://localhost:7094/api/health` geeft `{ "status": "ok", "version": "2.x.x" }`
+- [ ] `Invoke-RestMethod http://localhost:7094/api/health` geeft `{ "status": "ok", "version": "3.x.x.x" }`
 - [ ] `http://localhost:5242` laadt zonder "An unhandled error has occurred" banner
 - [ ] Versienummer zichtbaar in de BlazorAdmin header
 
@@ -109,16 +125,16 @@ Alleen nodig als je naar Azure wilt deployen.
 
 - [ ] `AZURE_CREDENTIALS` — service principal JSON
 - [ ] `AZURE_FUNCTION_KEY` — Function App host key
-- [ ] `SQL_CONNECTION_STRING` — productie SQL-verbindingsstring
+- [ ] `SQL_CONNECTION_STRING` — alleen bij `DatabaseTier=SqlServer`
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` — SWA deployment token
 
 **Variables:**
 
 - [ ] `AZURE_FUNCTIONAPP_NAME`
 - [ ] `AZURE_FUNCTIONAPP_URL`
-- [ ] `AZURE_SQL_SERVER_NAME`
-- [ ] `AZURE_SQL_DATABASE_NAME`
-- [ ] `AZURE_SQL_RESOURCE_GROUP`
+- [ ] `DatabaseTier` — `SqlServer` of `Postgres`
+- [ ] `DatabaseTierSwitchConfirmation` — **exact dezelfde waarde als `DatabaseTier`**, anders faalt de deploy met exitcode 3
+- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer`
 - [ ] `AZURE_STATIC_WEB_APP_HOSTNAME`
 - [ ] `AZURE_AD_TENANT_ID`
 - [ ] `AZURE_AD_CLIENT_ID`

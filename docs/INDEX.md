@@ -34,7 +34,8 @@ Voor bijdragers aan de codebase.
 
 | Document | Inhoud |
 |----------|--------|
-| [Architectuurprincipes](ARCHITECTURE.md) | Multi-club, ClubCode, kanaalstrategie, security-lagen |
+| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
+| [Architectuurprincipes (V2, gearchiveerd)](ARCHITECTURE-V2.md) | Historische snapshot vóór de Postgres-cutover — niet meer bijwerken |
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
 | [Planner architectuur](ARCHITECTURE-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
 | [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
@@ -56,8 +57,8 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 | Document | Inhoud |
 |----------|--------|
 | [Nieuwe club — Azure setup](../SETUP-NIEUWE-CLUB.md) | Fork, Azure aanmaken, Entra configureren, eerste deployment — voor club-beheerders |
-| [Developer setup](DEVELOPER-SETUP.md) | .NET, SQL, Azurite, GitHub Actions — lokale ontwikkelomgeving ⚠️ herschrijving gepland |
-| [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet ⚠️ herschrijving gepland |
+| [Developer setup](DEVELOPER-SETUP.md) | .NET, SQL Server/Postgres, Azurite, GitHub Actions — lokale ontwikkelomgeving, beide databasetiers |
+| [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [Entra auth & beheer](ENTRA-AUTH-BEHEER.md) | App Registration, Easy Auth, rollen, gebruikers toevoegen — via scripts |
 
 ---

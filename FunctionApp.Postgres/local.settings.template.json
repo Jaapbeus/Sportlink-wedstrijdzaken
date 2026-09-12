@@ -7,7 +7,26 @@
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-    "POSTGRES_CONNECTION_STRING": "Host=localhost;Port=5432;Username=postgres;Password=YOUR_PASSWORD;Database=sportlink_postgres",
-    "FETCH_SCHEDULE": "0 0 4 * * *"
+    "POSTGRES_CONNECTION_STRING": "Host=localhost;Port=5432;Username=YOUR_USER;Password=YOUR_PASSWORD;Database=sportlink",
+    "FETCH_SCHEDULE": "0 0 4 * * *",
+    "GraphTenantId": "",
+    "GraphClientId": "",
+    "GraphClientSecret": "",
+    "GraphMailbox": "",
+    "OpenAiApiKey": "",
+    "AiModelName": "gpt-4o-mini",
+    "EmailProcessorEnabled": "false",
+    "EmailReviewMode": "true",
+    "EmailReviewRecipient": "",
+    "EMAIL_POLL_SCHEDULE": "0 0 * * * *",
+    "SportlinkClubRefreshToken": "",
+    "AzureSubscriptionId": "",
+    "AzureResourceGroupName": "",
+    "AzureFunctionAppName": "",
+    "GitHubPat": "",
+    "GitHubOwner": "",
+    "GitHubRepo": "Sportlink-wedstrijdzaken",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+    "AllowExternalIntegrations": "false"
   }
 }

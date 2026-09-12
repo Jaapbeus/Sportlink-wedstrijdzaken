@@ -2,7 +2,6 @@
 
 > **Automatisering voor voetbalverenigingen die genoeg hebben van handmatig werk in Sportlink.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Security](https://img.shields.io/badge/AVG%2FGDPR-compliant-green.svg)](SECURITY.md)
 [![Platform](https://img.shields.io/badge/platform-Azure%20Functions%20%7C%20Blazor-0078d4.svg)](https://azure.microsoft.com)
 [![Changelog](https://img.shields.io/badge/changelog-CHANGELOG.md-informational)](CHANGELOG.md)
@@ -28,7 +27,7 @@ Dit project bouwt die automatiseringslaag zelf.
 Een serverless pipeline die Sportlink-data synchroniseert, verwerkt en omzet in acties:
 
 ### 1 — Wedstrijddata automatisch ophalen
-Elke nacht haalt een Azure Function alle wedstrijden, teams en details op via de Sportlink Club API. De data wordt opgeslagen in een lokale SQL Server — zodat je er zelf query's op kunt draaien, rapporten van kunt bouwen, of koppelen aan andere systemen.
+Elke nacht haalt een Azure Function alle wedstrijden, teams en details op via de Sportlink Club API. De data wordt opgeslagen in een database (Postgres in productie sinds september 2026, SQL Server als rollbackpad — zie de architectuursectie hieronder) — zodat je er zelf query's op kunt draaien, rapporten van kunt bouwen, of koppelen aan andere systemen.
 
 ### 2 — AI-gestuurde e-mailverwerking
 Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen) worden automatisch geclassificeerd via OpenAI (gpt-4o-mini, direct via OpenAI API). Op basis van de classificatie stuurt de planner een standaardantwoord terug — met de leider en trainer van het betrokken team automatisch in BCC.
@@ -48,6 +47,8 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 - **E-mail tester** — AI-classificatie dry-run zonder e-mail te versturen
 - **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
 - **Testmodus (ALLSTARS)** — fictieve wedstrijden invoeren om planner te testen zonder echte data
+- **Wijzigingsverzoeken** — inkomende Sportlink-wijzigingsverzoeken van tegenstanders goedkeuren of afwijzen
+- **Sportlink Web Extension** (in opbouw) — kleedkamers en veld van een wedstrijd rechtstreeks vanuit Dagplanning naar Sportlink Club terugschrijven, met een deep-link "Open in Sportlink" per wedstrijd
 
 ---
 
@@ -57,27 +58,30 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 Sportlink Club API
         │  (nachtelijke sync via timer trigger)
         ▼
-Azure Functions (.NET 9, isolated worker)
+Azure Functions (.NET 9, isolated worker) — één van twee volledig gescheiden tier-implementaties
   ├── FetchAndStoreApiData    — haalt teams, wedstrijden en details op
   ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
   ├── BerichtAiService        — classifieert binnenkomende e-mails met AI
+  ├── Sportlink Web Extension — schrijft wedstrijdwijzigingen terug naar Sportlink Club (in opbouw)
   └── Admin API               — REST endpoints voor de beheer-GUI
         │
         ▼
-Azure SQL Server
+Postgres (productie sinds 2026-09-04, via Supabase) — of Azure SQL Server (rollbackpad)
   ├── stg.*   — staging (tijdelijk, elke run geleegd)
   ├── his.*   — history (persistent, met audit-timestamps)
   ├── pub.*   — public views (alleen-lezen voor consumers)
-  ├── dbo.*   — configuratie (AppSettings, Speeltijden, Seizoen)
+  ├── public.* / dbo.* — configuratie (AppSettings, Speeltijden, Seizoen — naamgeving per tier)
   └── avg.*   — AVG-beschermde data (teambegeleiding — toegang beperkt)
         │
         ▼
 Azure Static Web Apps (gratis tier)
   └── Blazor WebAssembly Admin GUI
-        └── Entra ID authenticatie (admin / user rollen)
+        └── Entra ID authenticatie (admin / user / Wedstrijdzaken rollen)
 ```
 
-**Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Azure SQL · Microsoft Graph API · OpenAI (gpt-4o-mini, direct) · Azure Static Web Apps · Entra ID
+Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op build/deploytijd (repository-variabele `DatabaseTier`) — geen gedeelde runtime-abstractie. Zie [docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md).
+
+**Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · OpenAI (gpt-4o-mini, direct) · Azure Static Web Apps · Entra ID
 
 ---
 
@@ -104,7 +108,7 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 | Categorie | Documenten |
 |---|---|
 | **Beheerders** | [Beheerder handleiding](docs/BEHEERDER-HANDLEIDING.md) · [Testmodus ALLSTARS](docs/TESTMODUS-ALLSTARS.md) · [Teambegeleiding import](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) |
-| **Developers — opzet** | [Setup](docs/SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
+| **Developers — opzet** | [Nieuwe club opzetten](SETUP-NIEUWE-CLUB.md) · [Developer setup](docs/DEVELOPER-SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
 | **Developers — architectuur** | [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTURE-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
 | **Azure & auth** | [Entra auth & beheer](docs/ENTRA-AUTH-BEHEER.md) · [Versiebeheer](docs/VERSIONING.md) |
 | **Kwaliteit & security** | [Verificatie-scripts](docs/VERIFICATIE-SCRIPTS.md) · [Security](SECURITY.md) |
@@ -115,7 +119,7 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 ## Lokaal aan de slag
 
-**Vereisten:** .NET 10.0 SDK + .NET 9 Runtime · Azure Functions Core Tools v4 · Azurite · SQL Server met `SportlinkSqlDb`
+**Vereisten:** .NET 10.0 SDK + .NET 9 Runtime · Azure Functions Core Tools v4 · Azurite · een lokale database (SQL Server óf Postgres via Docker, zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) §4 voor beide paden)
 
 ```powershell
 # Settings-template kopiëren en verbindingsgegevens invullen
@@ -134,7 +138,7 @@ git config core.hooksPath .githooks
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
 
-Volledige lokale setupbeschrijving: [SETUP.md § Lokale ontwikkelomgeving](SETUP.md#8-lokale-ontwikkelomgeving)  
+Volledige lokale setupbeschrijving: [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md)  
 Beveiligingsprotocol: [SECURITY.md](SECURITY.md)
 
 ---
@@ -160,7 +164,7 @@ Zie [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) voor de architectuurprincipes: 
 Alle noemenswaardige wijzigingen staan in [CHANGELOG.md](CHANGELOG.md).  
 Releases zijn beschikbaar via [GitHub Releases](../../releases).
 
-Versienummering volgt een vier-delig schema: `MAJOR.MINOR.PATCH.REVISION` (huidig: v2.7.0.x).  
+Versienummering volgt een vier-delig schema: `MAJOR.MINOR.PATCH.REVISION` (huidig: v3.2.10.x).  
 Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ---
@@ -194,7 +198,7 @@ Bij een actief abonnement ontvang je een `clientId` waarmee de applicatie de API
 | Sportlink Club Dataservice | Betaald abonnement (zie hierboven) | Varieert |
 | Microsoft 365 / Entra ID tenant | Gratis (inbegrepen bij M365) | €0 |
 | Azure Functions | Consumption (1M requests/maand gratis) | €0 |
-| Azure SQL Database | Free tier (32 GB) | €0 |
+| Database | Postgres (bijv. Supabase free tier) of Azure SQL Database (free tier, 32 GB) — één bewuste keuze per fork | €0 |
 | Azure Static Web Apps | Free | €0 |
 
 ---
@@ -211,4 +215,5 @@ Heb je een club die baat zou hebben bij deze oplossing, of wil je meedenken over
 
 ## Licentie
 
-Zie [LICENSE](LICENSE) voor de licentievoorwaarden.
+⚠️ Er is nog geen `LICENSE`-bestand in de repository — de badge en link hiernaartoe zijn daarom
+verwijderd totdat dat is toegevoegd. Neem contact op met de eigenaar voor de beoogde licentie.

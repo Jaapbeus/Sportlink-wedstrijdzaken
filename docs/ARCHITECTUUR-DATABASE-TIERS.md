@@ -621,7 +621,7 @@ disambiguatie + de bovenstaande repositories — een aanzienlijk grotere stap) e
 e-mail-AI-pijplijn (`BerichtAiService`, `BerichtResponseGenerator`, `EmailProcessorFunction`,
 `EmailGraphService` — samen >2700 regels, bevatten geen directe SQL-toegang en vallen dus al
 buiten #889's eigen scope-omschrijving). **Bijgewerkt:** `EmailProcessorFunction`/`EmailGraphService`
-zijn sinds §50 (#972) alsnog vertaald — de mailbox stond zonder die functie sinds de §49-cutover
+zijn sinds §52 (#972) alsnog vertaald — de mailbox stond zonder die functie sinds de §49-cutover
 volledig stil.
 
 **Nagekomen fix (#820):** deze paragraaf se `TeamCandidateRepository`/`TeamAliasLearningService`
@@ -1537,7 +1537,7 @@ geteste code aanraakt — niet alleen voor de tabel die hij zelf vult. Voor `Ref
   `EmailGraphService` — samen >2700 regels). Die bevat geen directe SQL-toegang en valt daarmee al
   buiten #889's eigen scope-omschrijving; het is de eerstvolgende consument die `GetTemplateAsync`
   daadwerkelijk zou aanroepen. **Bijgewerkt:** `EmailProcessorFunction`/`EmailGraphService` zijn
-  sinds §50 (#972) alsnog vertaald en roepen `GetTemplateAsync` inmiddels ook echt aan (via
+  sinds §52 (#972) alsnog vertaald en roepen `GetTemplateAsync` inmiddels ook echt aan (via
   `BerichtPipeline.BouwTemplateAntwoord`).
 - **`TeamResolver`/`TeamDisambiguationAiService`/`TeamlijstGereedheid`** — zelfde reden, zie §28.
 
@@ -2222,12 +2222,12 @@ de Graph-DI-registratie in `Program.cs`, en de handler zelf. `Microsoft.Graph` 6
 package toegevoegd — dezelfde versie die de SQL Server-tier al gebruikt, dus geen nieuw
 afhankelijkheidsrisico.
 
-**Bewust een smaller contract dan het origineel — bijgewerkt in §50.** `IEmailGraphService` had hier
+**Bewust een smaller contract dan het origineel — bijgewerkt in §52.** `IEmailGraphService` had hier
 oorspronkelijk één methode (`StuurTeamContactDoorAsync`) van de zes op de SQL Server-tier; de andere
 vijf (`GetUnreadEmailsAsync`, `SetCategoriesAsync`, `EnsureMasterCategoryAsync`, `MarkAsReadAsync`,
 `SendReplyAsync`) hoorden bij de inkomende e-mailverwerkingspijplijn, die toen op deze tier niet
 bestond. Meeporten zou destijds onverifieerbare dode code hebben opgeleverd — dezelfde afweging als
-§41/§42 bij ongebruikte repositorymethoden. Sinds #972 (§50) is die pijplijn (`EmailProcessorFunction`)
+§41/§42 bij ongebruikte repositorymethoden. Sinds #972 (§52) is die pijplijn (`EmailProcessorFunction`)
 wél vertaald en heeft dit contract volledige pariteit met het SQL Server-origineel.
 
 **`EgressGuard` is de enige poort, ook hier.** `IEmailGraphService` wordt alleen geregistreerd als
@@ -2645,7 +2645,141 @@ volgorde:
    opnieuw deployen — de SQL Server-database zelf wordt door deze cutover niet aangeraakt of
    verwijderd, dus een terugval blijft mogelijk zolang die database blijft bestaan.
 
-## 50. `EmailProcessorFunction` alsnog vertaald — de mailbox werd sinds §49 nooit gepolld (#972, hotfix)
+## 50. Certificaatvalidatie in `PostgresConnectionStringNormalizer` verplicht gemaakt (#1004)
+
+**Kwetsbaarheid (HIGH/P1):** `PostgresConnectionStringNormalizer.Normalize` (Database.Postgres)
+negeerde elke `sslmode`-optie uit de URI-query van een `postgres://`/`postgresql://`-connectiestring
+en zette altijd `SslMode.Require`. Sinds Npgsql 8 valideert `Require` geen certificaatketen of
+hostnaam meer (zie [release notes](https://www.npgsql.org/doc/release-notes/8.0.html)) — een
+aanvaller die het netwerkpad of DNS naar de database kan beïnvloeden, kon zich zo als het
+database-endpoint voordoen (MITM), ook als de connectiestring zelf expliciet
+`?sslmode=verify-full&sslrootcert=...` opgaf. De keyword/value-vorm werd helemaal niet
+gevalideerd.
+
+**Fix:** `Normalize` parseert nu `sslmode` en `sslrootcert` uit de URI-query en vertaalt ze naar
+`NpgsqlConnectionStringBuilder.SslMode`/`RootCertificate`. Daarna geldt voor **beide** vormen
+(URI én keyword/value) hetzelfde beleid:
+
+- **Host is een lokale-ontwikkelhost** (`localhost`, `127.0.0.1`, `::1` — exact de hosts uit
+  `docker-compose.yml`'s `postgres`-service en `docs/DEVELOPER-SETUP.md` §7.2/de CI-job
+  `fresh-db-postgres`): geen TLS-eis. De officiële `postgres:16`-image draait zonder TLS-configuratie;
+  Npgsql's eigen default (`SslMode.Prefer`) valt terug op onversleuteld, precies zoals de
+  gedocumenteerde lokale workflow vandaag al werkt — er is dus geen aparte env-var of opt-in nodig
+  om lokaal te blijven werken.
+- **Elke andere host** (per definitie productie/staging): vereist expliciet `SslMode.VerifyFull`.
+  Ontbreekt dat — of staat er een zwakkere modus (`Disable`/`Allow`/`Prefer`/`Require`/`VerifyCA`) —
+  dan gooit `Normalize` een `InvalidOperationException` vóór er een verbinding wordt geopend. Een
+  `RootCertificate` zonder `VerifyCA`/`VerifyFull` wordt eveneens geweigerd (Npgsql zou het anders
+  stilzwijgend negeren, wat een beheerder ten onrechte kan doen geloven dat validatie actief is).
+  Een publiek vertrouwde CA (zoals Supabase gebruikt) heeft geen apart `sslrootcert` nodig —
+  `VerifyFull` alleen, steunend op de OS-truststore, is dan al voldoende.
+
+Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
+niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
+(§0/`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`) lokaal van productie onderscheidt
+(env-gebaseerd), maar toegepast op de vraag die hier telt: TLS-vertrouwen hoort af te hangen van
+de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
+`PostgresDatabaseConfig` (Function App), `Database.Postgres.Cli` (migratiepad) én
+`MigrationTools/SqlServerToPostgresCopy` (#976-cutoverkopie) — alle drie roepen dezelfde
+`Normalize`-methode aan, er is geen aparte, zwakkere check ergens anders.
+
+**Operationele consequentie — verplicht te verifiëren bij de eerste deploy na deze fix:** de
+Azure Function App-instelling `POSTGRES_CONNECTION_STRING` (zie stap 4 van het cutover-runbook
+hierboven) moet `?sslmode=verify-full` bevatten. Staat die er niet in, dan gooit
+`PostgresDatabaseConfig`'s statische constructor bij de eerstvolgende cold start een
+`InvalidOperationException` (gevangen door `/api/health` als `"unconfigured"` → HTTP 503, zie §10 —
+geen crash-loop van het hele proces, maar wel een niet-werkende database-tier totdat de instelling
+is aangevuld).
+
+**Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
+beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
+standaardpoort, lege pad → database `postgres`) blijven daarin behouden.
+
+## 51. De lokale ontwikkelomgeving volgt de gedeployde tier (#1060)
+
+Na de cutover van §49 draaide productie op Postgres, maar wees de dagelijkse ontwikkeltooling nog
+onverkort naar de SQL Server-tier: `Start-Debug.ps1` startte `FunctionApp/` hard-gecodeerd,
+`Test-App.ps1` las `SqlConnectionString` en sprak `sqlcmd`, en `docker compose up -d` startte alleen
+de SQL Server-container — de Postgres-service zat achter een profile.
+
+**Waarom dat meer is dan een ongemak.** §52 is er het bewijs van: `EmailProcessorFunction` ontbrak
+volledig op de Postgres-tier, de mailbox werd sinds 2026-09-04 niet meer gepolld, en geen enkele
+lokale verificatie sloeg aan — die mat een applicatie die niet gedeployd werd. Een verificatielus
+die de verkeerde tier meet, is geen halve verificatie maar een misleidende.
+
+### Wat er is omgedraaid
+
+| Plek | Voor | Na |
+|---|---|---|
+| `docker compose up -d` | alleen `sqlserver` | alleen `postgres`; `sqlserver` achter `--profile sqlserver` |
+| `Start-Debug.ps1` | `Set-Location FunctionApp` | `-Tier` (default `Postgres`), projectpad via `Get-DatabaseTierProject` |
+| `Test-App.ps1` | `SqlConnectionString` + `sqlcmd` | `-Tier` (default `Postgres`); per tier een eigen verbindings- en schemacontrole |
+| `postgres`-image | `postgres:16` | `postgres:17` — gelijk aan de gehoste hoofdversie, ook in de zelftest en de CI-job `fresh-db-postgres` |
+
+De tier-naam wordt nergens opnieuw vertaald: beide scripts lezen `scripts/ci/database-tiers.json`
+via `Get-DatabaseTierProject`, dezelfde tabel als `resolve-database-tier.sh` (#816/#865). De lokale
+tier en de gedeployde tier blijven volledig losgekoppeld — `-Tier` raakt `DatabaseTier` niet aan.
+
+### Wat de eerste echte uitvoering aan het licht bracht
+
+Dit deel is de reden om het op te schrijven: geen van de onderstaande punten was vooraf bedacht.
+
+**1. Een verse database levert een applicatie op waarin geen enkel beheerscherm werkt.** Na
+`docker compose up -d` + alle migraties bevat de database precies één club: AllStars FC, met
+`syncenabled = FALSE`. `PostgresAppSettings.LoadSettingsAsync` selecteert bewust alleen clubs met
+`syncenabled = true` (een democlub mag nooit stilzwijgend de primaire club worden), dus de
+instellingencache blijft leeg en `EasyAuthHelper.GetClubCodeFromRequest` gooit. Uitkomst: dertien
+van de dertien `/api/beheer/*`-endpoints antwoorden 500.
+
+Opgelost met `scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql` — een club-neutrale
+placeholder (`clubcode = 'CLUB'`, `syncenabled = TRUE`), bewust **buiten**
+`Database.Postgres/migrations/`: alles in die map wordt op elke database toegepast, productie
+inbegrepen.
+
+**2. `/api/health` wist het al, maar niemand keek.** De endpoint gaf keurig
+`status: degraded, settingsLoaded: false` (#859) — en `Start-Debug.ps1` meldde er "FunctionApp OK"
+overheen, omdat het alleen op een HTTP-antwoord controleerde. Dat is dezelfde klasse fout als §2a
+van CLAUDE.md beschrijft voor de live GUI: een 200 is geen bewijs. Het script leest die twee velden
+nu, en wijst bij `degraded` rechtstreeks naar het seed-script hierboven.
+
+**3. Tier-provenance als startvoorwaarde.** `/api/health` meldt zijn eigen tier uit de
+assembly-metadata (#863). `Start-Debug.ps1` vergelijkt dat nu met `-Tier`: een achtergebleven
+functiehost van de andere tier op poort 7094 zou anders als een geslaagde start doorgaan.
+
+**4. De demoteams bleken langs een derde, ongedocumenteerde weg te lopen.** De migraties zaaien
+voor AllStars alleen de AppSettings-rij, velden, veldbeschikbaarheid en speeltijden. De 28 teams en
+224 wedstrijden staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, dat
+`his.teams`/`his.matches` nodig heeft — tabellen die geen enkele migratie aanmaakt, omdat
+`PostgresSchemaGenerator` ze dynamisch maakt bij de eerste sync. Lokaal draait die sync niet
+(EgressGuard, en terecht), dus bleef de teamlijst leeg.
+
+De zelftest loste dat voor zichzelf op met de his-DDL als letterlijke heredoc, overgenomen uit de
+CI-job — twee met de hand bijgehouden kopieën van een schema dat de generator al produceert. Een
+derde kopie in een ontwikkelscript zou bij de eerstvolgende kolomwijziging stilzwijgend uit de pas
+gaan lopen. `Database.Postgres.Cli --ensure-his-tables` roept daarom
+`PostgresMergeOrchestrator.EnsureHisTableAsync` aan over `KnownEntities.All` — dezelfde weg als de
+ETL. `scripts/dev/Seed-AllStarsDemodata.ps1` ketent dat aan de seed en aan
+`POST /api/beheer/teams/herstel`, want `public.teams` is een afgeleide tabel: zonder die laatste
+stap blijft de GUI leeg terwijl `his.teams` vol staat.
+
+Eén detail dat pas bij uitvoeren bleek: het herstel-endpoint valt zonder `X-Club-Code` terug op de
+*primaire* club, en die heeft geen gesynchroniseerde teams — een 409 dus, een correct antwoord op
+de verkeerde vraag. Het script stuurt de clubcode nu expliciet mee.
+
+**5. De macOS-verificatie die tot nu toe openstond, is gedaan.** §4.3 van DEVELOPER-SETUP.md meldde
+"macOS-uitvoeringsverificatie niet mogelijk gebleken (geen Apple Silicon-hardware)". Die staat er
+niet meer: de volledige keten — container, migraties, seed, functiehost, `Test-App.ps1` — is
+uitgevoerd op Apple Silicon tegen `postgres:17.11`, native, zonder Rosetta. Uitkomst: 36 geslaagde
+controles, één openstaand punt (`GitHubPat`/`GitHubOwner` niet ingevuld), dat op beide tiers
+bestaat en losstaat van deze wijziging.
+
+### Wat bewust niet gebeurt
+
+De SQL Server-tier wordt niet verwijderd of gedeprecieerd. Hij blijft `built: true` in
+`database-tiers.json`, houdt zijn eigen compose-service, template en schemacontrole, en is het
+rollbackpad van §49 stap 7. Alleen de standaardkeuze is verschoven naar de tier die daadwerkelijk
+draait.
+## 52. `EmailProcessorFunction` alsnog vertaald — de mailbox werd sinds §49 nooit gepolld (#972, hotfix)
 
 **Het gat dat §49's "wat NIET gemigreerd hoeft te worden" niet zag aankomen.** Na de productiecutover
 naar Postgres draaide de mailbox-getriggerde e-mailverwerking helemaal niet meer: §29/§43 hadden

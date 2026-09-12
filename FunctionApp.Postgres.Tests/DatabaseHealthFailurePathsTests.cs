@@ -35,15 +35,38 @@ public class DatabaseHealthFailurePathsTests
     /// (<c>postgresql://gebruiker:wachtwoord@host:5432/database</c>) — die vorm liet
     /// <c>NpgsqlConnectionStringBuilder</c> vóór deze fix stuklopen bij het opstarten van de hele
     /// Function App (health gaf aanhoudend 503, geen cold-start-vertraging maar een echte crash).
+    /// <para>
+    /// Sinds #1004 vereist een niet-lokale host (elke echte Supabase-instantie, dus ook deze
+    /// synthetische testhost) daarnaast expliciet <c>sslmode=verify-full</c> — zonder die query-
+    /// parameter gooit <see cref="PostgresDatabaseConfig.BuildConnectionString"/> nu bewust een
+    /// <see cref="InvalidOperationException"/> (zie <see cref="BuildConnectionString_MetSupabaseUriVormZonderVerifyFull_GooitInvalidOperationException"/>
+    /// hieronder). Deze test bewijst dat de #976-parsingfix zelf nog steeds werkt zodra die
+    /// parameter wél aanwezig is.
+    /// </para>
     /// </summary>
     [Fact]
     public void BuildConnectionString_MetSupabaseUriVorm_WerktZonderTeGooien()
     {
         var result = PostgresDatabaseConfig.BuildConnectionString(
-            "postgresql://postgres.abcdefgh:wachtwoord123@aws-0-eu-central-1.pooler.supabase.com:5432/postgres");
+            "postgresql://postgres.abcdefgh:wachtwoord123@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=verify-full");
 
         result.Should().Contain("Host=aws-0-eu-central-1.pooler.supabase.com");
         result.Should().Contain("Username=postgres.abcdefgh");
+    }
+
+    /// <summary>
+    /// #1004: een niet-lokale host zonder expliciete <c>verify-full</c>-certificaatvalidatie moet
+    /// bij het opstarten worden geweigerd in plaats van een onbeveiligde (MITM-zwakke) verbinding
+    /// toe te staan — precies het scenario van de oorspronkelijke #976-productieconnectiestring,
+    /// vóór #1004 nog altijd zonder certificaatvalidatie geaccepteerd.
+    /// </summary>
+    [Fact]
+    public void BuildConnectionString_MetSupabaseUriVormZonderVerifyFull_GooitInvalidOperationException()
+    {
+        Action act = () => PostgresDatabaseConfig.BuildConnectionString(
+            "postgresql://postgres.abcdefgh:wachtwoord123@aws-0-eu-central-1.pooler.supabase.com:5432/postgres");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*VerifyFull*");
     }
 
     [Fact]

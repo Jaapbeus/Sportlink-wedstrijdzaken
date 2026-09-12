@@ -26,6 +26,17 @@ public class AppSettingsDto
     public bool UseRealtimeApi { get; set; } = true;
     public bool KnvbPdfBijlageIngeschakeld { get; set; } = true;
     public string? KnvbStandaardRegio { get; set; }
+    public bool SportlinkExtensionEnabled { get; set; }
+}
+
+/// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
+public class SportlinkExtensieRolDto
+{
+    public string RolNaam { get; set; } = "";
+    public bool Gekoppeld { get; set; }
+    public string? LaatstGekoppeldDoor { get; set; }
+    public DateTime? LaatstGekoppeldOp { get; set; }
+    public string? SportlinkAccountNaam { get; set; }
 }
 
 public class GeocodeResultDto
@@ -35,9 +46,70 @@ public class GeocodeResultDto
     public string DisplayName { get; set; } = "";
 }
 
+/// <summary>#991: read-only Sportlink-paneel per wedstrijd. Spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998) — houd deze
+/// twee synchroon bij een contractwijziging.</summary>
+public class SportlinkMatchInfoDto
+{
+    public string? PublicMatchId { get; set; }
+    public string? ExternalMatchId { get; set; }
+    public DateTimeOffset? MatchDate { get; set; }
+    public string? MatchStatus { get; set; }
+    public bool IsHomeMatch { get; set; }
+    public bool IsCanceledMatch { get; set; }
+    public bool IsConceptMatch { get; set; }
+    public string? TaskStatus { get; set; }
+    public bool IsEditFieldAllowed { get; set; }
+    public bool IsAssignDressingRoomsAllowed { get; set; }
+    public bool IsAssignOfficialsAllowed { get; set; }
+    public bool IsEditFieldSidePanelAllowed { get; set; }
+    public bool IsAddScoreAllowed { get; set; }
+}
+
+/// <summary>#989: respons van de lichtgewicht PublicMatchId-only endpoint (deep-link-knop).</summary>
+public class SportlinkPublicMatchIdDto
+{
+    public string? PublicMatchId { get; set; }
+}
+
+/// <summary>#992: respons van een schrijvende Sportlink-actie (kleedkamers e.v.). Bij een
+/// inhoudelijke weigering door Sportlink zelf (HTTP 422) staat <see cref="Violations"/> gevuld —
+/// <c>ApiResult.ErrorMessage</c> bevat dan de generieke foutmelding, dit veld de details.</summary>
+public class SportlinkMutatieResultaatDto
+{
+    public bool IsSuccess { get; set; }
+    public List<string>? Violations { get; set; }
+}
+
+/// <summary>#996: één inkomend wijzigingsverzoek — spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkChangeRequest (gedeelde DTO). Houd deze twee
+/// synchroon bij een contractwijziging.</summary>
+public class SportlinkChangeRequestDto
+{
+    public string? PublicMatchId { get; set; }
+    public string? PublicRequestId { get; set; }
+    public string? RequestStatus { get; set; }
+    public SportlinkChangeRequestDataDto? RequestData { get; set; }
+    public string? Reason { get; set; }
+    public string? Remarks { get; set; }
+}
+
+public class SportlinkChangeRequestDataDto
+{
+    public string? CurrentDate { get; set; }
+    public string? CurrentStartTime { get; set; }
+    public string? CurrentFacilityName { get; set; }
+    public string? CurrentSubFacilityName { get; set; }
+    public string? RequestedDate { get; set; }
+    public string? RequestedStartTime { get; set; }
+    public string? RequestedFacilityName { get; set; }
+    public string? RequestedSubFacilityName { get; set; }
+}
+
 public class SettingsUpdateDto
 {
-    public string? GewijzigdDoor { get; set; }
+    // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend
+    // server-side uit gevalideerde Easy Auth-claims, nooit uit client-input.
     public Dictionary<string, string?>? Velden { get; set; }
 }
 

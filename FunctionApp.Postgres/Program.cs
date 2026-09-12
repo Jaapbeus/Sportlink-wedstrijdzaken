@@ -1,7 +1,9 @@
 using Azure.Identity;
+using FunctionApp.Postgres;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Monitoring;
+using FunctionApp.Postgres.Sportlink;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using OpenAI.Chat;
+using Planner.Shared.Integrations.SportlinkClub;
 
 // #891: minimale host-bootstrap voor de Postgres-tier — bewust géén 1-op-1-kopie van
 // FunctionApp/Program.cs' DI-registraties (AI, monitoring): die horen bij functionaliteit die nog
@@ -59,6 +62,28 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
         new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
             .AsIChatClient());
 }
+
+// Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
+// EgressGuard (#857): eigen if-blok, losgekoppeld van de OpenAiApiKey-check hierboven — dit is een
+// onafhankelijke uitgaande integratie en hoort niet toevallig aan AI-configuratie vast te zitten.
+// Tokenopslag: PostgresSportlinkClubTokenStore (eigen DB-tabel) i.p.v. SportlinkClubAppSettingsTokenStore
+// (Function App-instelling via de Azure Management API, #998) — besloten voor de Postgres-tier
+// (enige live tier) omdat dat geen nieuwe Azure-resource of Managed Identity vereist. Zie
+// docs/SPORTLINK-WEB-EXTENSION.md §4.3.
+if (EgressGuard.ExternalIntegrationsAllowed())
+{
+    builder.Services.AddSingleton<ISportlinkClubTokenStore>(sp =>
+        new PostgresSportlinkClubTokenStore(
+            PostgresDatabaseConfig.ConnectionString,
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresSportlinkClubTokenStore>()));
+    builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(15);
+    });
+}
+
+// Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier
+builder.Services.AddSingleton<ISportlinkMutationAuditService, PostgresSportlinkMutationAuditService>();
 
 // Persistente noodmail-throttle (#972, port van FunctionApp/Program.cs' gelijknamige
 // registratie, #831 op de SQL Server-tier): Azure Table Storage via de bestaande

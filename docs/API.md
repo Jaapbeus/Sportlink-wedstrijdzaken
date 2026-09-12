@@ -2,6 +2,12 @@
 
 **Basis-URL:** `http://localhost:7094/api`
 
+> **Tier-opmerking:** de meeste endpoints bestaan identiek op beide tiers (`FunctionApp` = SQL
+> Server, `FunctionApp.Postgres` = Postgres, productie sinds #976). De `/sportlink/*`-endpoints
+> (Sportlink Web Extension, epic #986) en `/beheer/sportlink-extensie/*` bestaan **uitsluitend op
+> de Postgres-tier** — de SQL Server-tier is rollback-only en heeft deze nooit gekregen. Zie
+> `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de tier-strategie.
+
 ## Beveiliging
 
 Twee beveiligingsniveaus:
@@ -21,7 +27,19 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie (SQL Server-tier). Postgres-tier: `/api/postgres/sync-matches`, zelfde parameters |
+| `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
+| `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
+| `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie |
+| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie handmatig starten vanuit de Admin GUI |
+| `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
+| `GET/PUT/POST/DELETE` | `/beheer/templates` en `/{key}`, `/{key}/reset` | **Admin** | E-mailtemplates per berichttype beheren, met terugzetten naar standaard |
+| `GET/POST/DELETE` | `/beheer/uitgesloten-emails` en `/{id}` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden |
+| `GET/POST/PUT/DELETE` | `/beheer/voorkeurstijden` en `/{id}` | **Admin** | Gewenste speeltijden per team |
+| `GET/POST/PUT/DELETE` | `/beheer/teamregels` en `/{id}` | **Admin** | Planningsregels per team (bijv. buffertijd) |
+| `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
+| `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
+| `POST` | `/feedback/validate` / `/feedback/submit` | Anoniem | Feedback-widget: voorvalidatie resp. indienen als GitHub-issue |
 | `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
@@ -47,6 +65,15 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl }`) — gefilterd op `X-Club-Code` header |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
+| `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |
+| `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}` | **Admin** | Koppeling registreren/overschrijven voor een rol (`{ SportlinkAccountNaam }`) — `LaatstGekoppeldDoor` altijd server-bepaald |
+| `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}/token` | **Admin** | Refresh-token productie-persistent registreren (`{ RefreshToken }`) — write-only, geen GET-tegenhanger, valideert vóór opslag (#990/#991) |
+| `GET` | `/sportlink/match/{wedstrijdcode}` | **Wedstrijdzaken** | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991) |
+| `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Wedstrijdzaken** | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop in Dagplanning (#989) |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/dressingrooms` | **Wedstrijdzaken** | Kleedkamers toewijzen — eerste echte Sportlink-mutatie, guardrail + audit-log (#992) |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/field` | **Wedstrijdzaken** | Veld(deel) wijzigen — `IsForceUpdate` server-side altijd `false` (semantiek onbevestigd, #993) |
+| `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende wijzigingsverzoeken van tegenstanders ophalen (#996) |
+| `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
 | `GET/POST/PUT` | `/beheer/velden` en `/{veldNummer}` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren, optioneel gekoppeld aan een periode (`PeriodeId`, #581) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldtraining` en `/{id}` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679) |

@@ -29,6 +29,53 @@ public class AdminApiClient
     public async Task<ApiResult<SettingsUpdateResultDto>> UpdateSettingsAsync(SettingsUpdateDto dto)
         => await PutAsync<SettingsUpdateResultDto>("api/beheer/settings", dto);
 
+    // ── Sportlink Web Extension — rol↔serviceaccount-koppelingsstatus (#988) ──
+
+    public async Task<ApiResult<List<SportlinkExtensieRolDto>>> GetSportlinkExtensieRollenAsync()
+        => await GetAsync<List<SportlinkExtensieRolDto>>("api/beheer/sportlink-extensie/rollen");
+
+    public async Task<ApiResult<object>> RegistreerSportlinkKoppelingAsync(string rolNaam, string? sportlinkAccountNaam)
+        => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}",
+            new { SportlinkAccountNaam = sportlinkAccountNaam });
+
+    // #991: write-only bootstrap van het échte refresh-token — nooit een GET-tegenhanger.
+    public async Task<ApiResult<object>> RegistreerSportlinkTokenAsync(string rolNaam, string refreshToken)
+        => await PutAsync<object>($"api/beheer/sportlink-extensie/rollen/{Uri.EscapeDataString(rolNaam)}/token",
+            new { RefreshToken = refreshToken });
+
+    // #991: read-only Sportlink-paneel per wedstrijd in Dagplanning.
+    public async Task<ApiResult<SportlinkMatchInfoDto>> GetSportlinkMatchInfoAsync(string wedstrijdcode)
+        => await GetAsync<SportlinkMatchInfoDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}");
+
+    // #989: lichtgewicht variant voor de deep-link-knop — alleen PublicMatchId, geen volledige Match-aanroep.
+    public async Task<ApiResult<SportlinkPublicMatchIdDto>> GetSportlinkPublicMatchIdAsync(string wedstrijdcode)
+        => await GetAsync<SportlinkPublicMatchIdDto>($"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/public-match-id");
+
+    // #992: eerste echte Sportlink-mutatie — kleedkamers toewijzen.
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkDressingRoomsAsync(
+        string wedstrijdcode, string? homeDressingRoomId, string? awayDressingRoomId, string? officialDressingRoomId)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/dressingrooms",
+            new { HomeDressingRoomId = homeDressingRoomId, AwayDressingRoomId = awayDressingRoomId, OfficialDressingRoomId = officialDressingRoomId });
+
+    // #993: veld(deel) wijzigen. IsForceUpdate wordt server-side altijd op false gehouden
+    // (semantiek niet bevestigd) — hier dus bewust niet als parameter.
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkFieldAsync(
+        string wedstrijdcode, string? fieldId, string? fieldSize, int? fieldOffset)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/field",
+            new { FieldId = fieldId, FieldSize = fieldSize, FieldOffset = fieldOffset });
+
+    // #996: inkomende wijzigingsverzoeken van tegenstanders.
+    public async Task<ApiResult<List<SportlinkChangeRequestDto>>> GetSportlinkChangeRequestsAsync()
+        => await GetAsync<List<SportlinkChangeRequestDto>>("api/sportlink/change-requests");
+
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkChangeRequestActionAsync(
+        string publicRequestId, string publicMatchId, string actie, string? remarks)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/change-requests/{Uri.EscapeDataString(publicRequestId)}/action",
+            new { PublicMatchId = publicMatchId, Actie = actie, Remarks = remarks });
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Infrastructure;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -28,8 +29,10 @@ public static class AdminThemeFunction
 
     static AdminThemeFunction()
     {
-        _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "SportlinkAdmin/2.0");
+        // SSRF-beschermd (#1007): redirects staan uit en worden begrensd/opnieuw gevalideerd
+        // gevolgd; elke daadwerkelijke connectie (initieel én elke hop) resolvet zelf en weigert
+        // privé/loopback/link-local bestemmingen — zie SsrfProtection.
+        _httpClient = SsrfProtection.CreateHttpClient(TimeSpan.FromSeconds(10), "SportlinkAdmin/2.0");
     }
 
     [Function("AdminThemeGet")]
@@ -110,6 +113,21 @@ public static class AdminThemeFunction
             if (!IsValidHexColor(dto.TextOnPrimary))
                 return new BadRequestObjectResult(new { error = "Ongeldige textOnPrimary kleur." });
 
+            // SSRF-bescherming (#1007): weiger een club-website-URL die naar een privé/interne
+            // bestemming resolvet al bij het opslaan — niet pas bij extractie. Voorkomt dat
+            // dezelfde admin die de allowlist beheert, hem naar een intern adres kan zetten.
+            if (!string.IsNullOrWhiteSpace(dto.ClubWebsiteUrl))
+            {
+                if (!Uri.TryCreate(dto.ClubWebsiteUrl, UriKind.Absolute, out var websiteUri))
+                    return new BadRequestObjectResult(new { error = "Ongeldige club-website-URL." });
+                if (!SsrfProtection.TryValidateUriShape(websiteUri, out var shapeError))
+                    return new BadRequestObjectResult(new { error = shapeError });
+
+                var resolvedAddress = await SsrfProtection.ResolveAllowedAddressAsync(websiteUri.Host);
+                if (resolvedAddress == null)
+                    return new BadRequestObjectResult(new { error = "Club-website-URL resolveert niet naar een toegestaan publiek adres." });
+            }
+
             await SystemUtilities.WaitForDatabaseAsync(log);
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
@@ -170,13 +188,23 @@ public static class AdminThemeFunction
 
         try
         {
-            var html = await _httpClient.GetStringAsync(parsedUri);
+            // SSRF-bescherming (#1007): redirects worden begrensd en opnieuw gevalideerd gevolgd;
+            // de daadwerkelijke IP-validatie zit in de ConnectCallback van _httpClient en geldt
+            // dus voor elke hop, niet alleen deze initiële URL.
+            using var response = await SsrfProtection.GetWithBoundedRedirectsAsync(_httpClient, parsedUri);
+            response.EnsureSuccessStatusCode();
+            var html = await response.Content.ReadAsStringAsync();
             var colors = ExtractColors(html);
             var faviconUrl = ExtractFaviconUrl(html, parsedUri);
             var logoUrl = ExtractLogoUrl(html, parsedUri);
             log.LogInformation("Assets geëxtraheerd uit {Host}: {Count} kleuren, favicon={Fav}, logo={Logo}",
                 parsedUri.Host, colors.Count, faviconUrl != null, logoUrl != null);
             return new OkObjectResult(new { colors, faviconUrl, logoUrl });
+        }
+        catch (SsrfBlockedException ex)
+        {
+            log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", parsedUri.Host);
+            return new BadRequestObjectResult(new { error = "URL-bestemming is niet toegestaan." });
         }
         catch (Exception ex)
         {
