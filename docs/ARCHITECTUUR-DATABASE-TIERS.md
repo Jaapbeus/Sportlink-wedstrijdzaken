@@ -2899,6 +2899,75 @@ database stukloopt (bijvoorbeeld een `NOT NULL`-kolom zonder default op een tabe
 basisbranch-database bevat in CI alleen wat de migraties zelf aanmaken, geen productie-achtige
 data. Dat blijft een apart risico.
 
+## 54. Code die vooruitloopt op het schema is nu zichtbaar in `/api/health` (#1098, hotfix)
+
+Het tweede incident van release v3.3.0.0, direct na de hotfix voor #1095 (§50): `/api/health`
+gaf weer 200 met `database: online`, maar elk beheerscherm bleef ±15 seconden op "laden..." staan
+en eindigde in `500 {"error":"Ophalen mislukt"}`.
+
+**Wat er gebeurde.** v3.3.0.0 bevatte vier nieuwe migraties (012 t/m 015, epic #986).
+`PostgresAppSettings.LoadSettingsAsync` selecteerde sinds die release `sportlinkextensionenabled`
+uit `public.appsettings` (migratie 012). Op de Postgres-tier past niets de migraties automatisch
+toe op productie: `db-migrate` in `deploy.yml` draait uitsluitend het SQL Server-PostDeployment-
+script, en er staat bewust geen Supabase-connectiestring in CI (§49, stap 1). De migraties waren
+bij deze release niet handmatig toegepast, dus de kolom bestond niet:
+
+1. Postgres antwoordde `42703 undefined_column`;
+2. `PostgresSystemUtilities.WaitForDatabaseAsync` vangt élke exceptie uit de laadstap als
+   "database onbereikbaar" en herhaalt vijf keer met drie seconden wachttijd — de "laden..."-fase;
+3. daarna gooit hij door, en elke `Admin*Function` vertaalt dat in de generieke 500.
+
+Lokaal exact gereproduceerd door de kolom en de ledger-rij van 012 te verwijderen: 500 na 12,0 s,
+`42703` in het functielog, `settingsLoaded: false` in health. Dezelfde keten als §51 punt 1
+beschreef voor een verse database — alleen was de oorzaak nu geen ontbrekende club maar een
+ontbrekende kolom, en de documentatie boven `AdminSettingsFunction` beweerde nog dat "de kolom
+bestaat misschien nog niet" op deze tier geen realistische toestand was. Dat is gecorrigeerd.
+
+**Waarom health en de smoke test dit niet zagen.** Health deed alleen `SHOW server_version`, en
+`settingsLoaded` beschreef de *laatste* laadpoging — direct na een herstart was er nog geen
+poging geweest, dus meldde een verse host `true`. De smoke test in `deploy.yml` accepteerde een
+200 zonder naar de inhoud te kijken. Groen, terwijl dertien van de dertien beheerendpoints 500
+gaven.
+
+**De fix, drie lagen:**
+
+1. **`LoadSettingsAsync` overleeft precies deze ene ontbrekende kolom.** Bij `42703` op
+   `sportlinkextensionenabled` valt de lader terug op de kolomset van v3.2 en geldt
+   `sportlinkExtensionEnabled = "0"` — exact de `DEFAULT false` die migratie 012 zelf zou zetten.
+   Dit is bewust géén algemene fantoom-fallback (de regel uit de klassedocumentatie blijft staan):
+   elke andere ontbrekende kolom is een harde fout, want daar is geen migratie-default voor. En
+   het is niet stil: `schemaWarning` in health, één `LogWarning` per proces. Dezelfde "melden,
+   niet weigeren"-lijn als §50/#1095.
+2. **Health meldt `pendingMigrations`.** `Database.Postgres` sluit de bestandsnamen uit
+   `migrations/` in als `EmbeddedResource`; `MigrationRunner.GetPendingMigrationsAsync` vergelijkt
+   die met de ledger `schema_migrations`. De map blijft de enige bron van de migraties zelf
+   (`RunAsync` leest van schijf); een unit-test bewaakt dat de ingesloten lijst gelijk is aan de
+   mapinhoud. Niet-leeg zet `status` op `degraded`. Health doet nu ook zelf één laadpoging van de
+   instellingen, zodat `settingsLoaded` een feit is en geen aanname.
+3. **De smoke test faalt op `settingsLoaded=false`** en geeft een `::warning::` bij openstaande
+   migraties. Dat laatste is bewust geen fout: de pipeline kán ze niet toepassen, en met laag 1
+   werkt de applicatie wel. *Stand bij de hotfix:* deze laag staat klaar op de lokale branch
+   `ci/#1098-smoke-test-settingsloaded`, maar kon niet mee in de hotfix-PR — GitHub eist de
+   `workflow`-scope voor elke wijziging onder `.github/workflows/`, en zowel het lokale
+   git-credential als de GitHub-connector van de sessie misten die. Afronden: `gh auth refresh -h
+   github.com -s workflow`, daarna die branch pushen en als PR naar `main` mergen.
+
+**Wat bewust níet is gedaan.** Migraties automatisch toepassen bij het opstarten van de Function
+App, of een productie-connectiestring als GitHub-secret voor een `db-migrate-postgres`-job. Het
+eerste maakt van elke cold start een schemawijziging met de rechten van de applicatie; het tweede
+draait de keuze uit §49 terug. Beide zijn een aparte architectuurbeslissing, geen hotfix.
+
+**Handeling voor de eigenaar na deze hotfix:** de openstaande migraties toepassen met
+`Database.Postgres.Cli` (`POSTGRES_CONNECTION_STRING` als omgevingsvariabele, nooit als argument)
+en daarna controleren dat `/api/health` `"pendingMigrations": []` en `"schemaWarning": null` toont.
+Tot die tijd geldt de Sportlink Web Extension als uitgeschakeld; alle overige beheerschermen werken.
+
+**Wat deze laag niet afvangt.** Een release waarvan de code op een *andere* nieuwe kolom of tabel
+leunt dan `public.appsettings.sportlinkextensionenabled`. Die meldt zich wél via
+`pendingMigrations`, maar het betreffende endpoint faalt nog steeds. Structurele borging — een
+release-checklist-stap of een `pendingMigrations`-gate vóór de merge van `develop` naar `main` —
+staat als vervolg in het issue.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

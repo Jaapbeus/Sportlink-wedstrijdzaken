@@ -28,6 +28,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   en de onvolledige TLS-configuratie is voortaan zichtbaar in `/api/health` (`tlsMode`,
   `tlsWarning`) en in het functielog in plaats van dat de applicatie erop uitvalt. Een expliciete
   keuze voor onversleuteld verkeer naar een externe database blijft geweigerd.
+- **Beheerschermen werken weer; "laden..." eindigde in "Ophalen mislukt" (#1098).** Direct na de
+  hotfix voor #1095 bleef elk beheerscherm ±15 seconden op "laden..." staan en eindigde daarna in
+  `HTTP 500: Ophalen mislukt`. Oorzaak: release v3.3.0.0 verwacht een databasekolom uit
+  migratie `012_sportlink_extension.sql` (de schakelaar voor de Sportlink Web Extension), maar
+  Postgres-migraties worden op productie niet automatisch toegepast — dat is een handmatige stap
+  die bij deze release niet was gedaan. Het laden van de clubinstellingen struikelde daardoor en
+  werd aangezien voor een onbereikbare database. De instellingen laden nu ook zonder die kolom
+  (de extensie geldt dan als uitgeschakeld, precies de standaardwaarde van de migratie), en
+  `/api/health` toont voortaan `pendingMigrations` (welke migraties de database nog mist) en
+  `schemaWarning`. Een vervolgwijziging laat de smoke test na een productie-deploy op diezelfde
+  velden controleren in plaats van alleen op een 200 (zie issue #1098). Het toepassen van de
+  openstaande migraties blijft een actie van de beheerder — zie
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §54.
 
 ### Security
 - **Volledige certificaatvalidatie op de databaseverbinding is nog een openstaande schuld.**

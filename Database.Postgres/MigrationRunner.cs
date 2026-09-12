@@ -111,6 +111,52 @@ public static class MigrationRunner
         }
     }
 
+    /// <summary>
+    /// #1098: de namen van alle migratiebestanden die in deze assembly zijn ingesloten
+    /// (<c>Database.Postgres.csproj</c>, <c>EmbeddedResource</c>), in toepassingsvolgorde.
+    /// Bedoeld voor <c>/api/health</c>: de Function App heeft geen migratiemap op schijf, maar moet
+    /// wél kunnen melden welke migraties de database nog mist. De map blijft de enige bron van de
+    /// migraties zelf — <see cref="RunAsync"/> leest nog steeds van schijf.
+    /// </summary>
+    public static IReadOnlyList<string> BundledMigrationNames { get; } = typeof(MigrationRunner).Assembly
+        .GetManifestResourceNames()
+        .Where(n => n.StartsWith(BundledResourcePrefix, StringComparison.Ordinal) && n.EndsWith(".sql", StringComparison.Ordinal))
+        .Select(n => n[BundledResourcePrefix.Length..])
+        .OrderBy(ExtractSequenceNumber)
+        .ThenBy(n => n, StringComparer.Ordinal)
+        .ToList();
+
+    private const string BundledResourcePrefix = "migrations/";
+
+    /// <summary>
+    /// #1098: welke van de meegeleverde migraties staan nog niet in de ledger <c>schema_migrations</c>?
+    /// Leeg = schema en code lopen gelijk. Bestaat de ledger-tabel niet (<c>42P01</c>), dan is er nog
+    /// nooit gemigreerd en is álles nog toe te passen. Leest alleen; past nooit iets toe — een
+    /// migratie tegen productie is en blijft een bewuste handeling van de eigenaar
+    /// (ARCHITECTUUR-DATABASE-TIERS.md §49, §54).
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> GetPendingMigrationsAsync(NpgsqlConnection connection, CancellationToken ct = default)
+    {
+        var applied = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            await using var cmd = new NpgsqlCommand("SELECT filename FROM schema_migrations", connection);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+                applied.Add(reader.GetString(0));
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            // Geen ledger → geen enkele migratie toegepast.
+        }
+
+        return ComputePending(BundledMigrationNames, applied);
+    }
+
+    /// <summary>De beslisregel zelf, los van database en assembly zodat hij toetsbaar is.</summary>
+    public static IReadOnlyList<string> ComputePending(IEnumerable<string> bundled, IReadOnlySet<string> applied)
+        => bundled.Where(n => !applied.Contains(n)).ToList();
+
     public static int ExtractSequenceNumber(string fileName)
     {
         var digits = new string(fileName.TakeWhile(char.IsDigit).ToArray());

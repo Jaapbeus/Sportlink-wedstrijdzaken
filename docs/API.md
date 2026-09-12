@@ -116,7 +116,7 @@ ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `d
 
 | Veld | Type | Beschrijving |
 |---|---|---|
-| `status` | `string` | `"ok"` als `database` `"online"` is én `settingsLoaded` `true` is, anders `"degraded"` |
+| `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en (Postgres-tier) `pendingMigrations` leeg is, anders `"degraded"` |
 | `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
 | `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
 | `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
@@ -126,6 +126,13 @@ ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `d
 | `syncStale` | `boolean` | Postgres-tier (#1081): `true` als `lastSync` ouder is dan `SyncMaxAgeHours` (standaard 36) of ontbreekt; telt alleen mee in `status` waar een synchronisatie hoort te draaien |
 | `tlsMode` | `string \| null` | Postgres-tier (#1095): de TLS-modus die daadwerkelijk geldt op de databaseverbinding (bijv. `VerifyFull`, `Require`); `null` bij `unconfigured` |
 | `tlsWarning` | `string \| null` | Postgres-tier (#1095): `null` als het TLS-beleid (`VerifyFull`, #1004) gehaald is; anders een waarschuwing — zonder host of credentials — dat de verbinding wél versleuteld is maar certificaat/hostnaam niet volledig gevalideerd worden |
+| `schemaWarning` | `string \| null` | Postgres-tier (#1098): `null` als `public.appsettings` alle kolommen heeft die deze versie verwacht; anders een waarschuwing dat de code vooruitloopt op het schema en welke migratie ontbreekt. De applicatie draait dan door op de migratie-default |
+| `pendingMigrations` | `string[] \| null` | Postgres-tier (#1098): bestandsnamen uit `Database.Postgres/migrations/` die nog niet in de ledger `schema_migrations` staan. Leeg = code en schema lopen gelijk; `null` als de database niet bereikbaar is. Alleen lezen — toepassen blijft een handeling van de beheerder (`Database.Postgres.Cli`) |
+
+**Vanaf 3.3.0.2 doet de Postgres-tier bij elke aanroep zelf één poging de clubinstellingen te laden**
+zodra de database bereikbaar is, zodat `settingsLoaded` een feit is en geen aanname over een eerdere
+poging. Direct na een herstart meldde het veld anders `true` terwijl het eerste beheerscherm daarna
+op 500 zou lopen (#1098).
 
 ---
 
