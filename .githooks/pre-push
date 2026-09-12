@@ -71,7 +71,19 @@ while read local_ref local_sha remote_ref remote_sha; do
       [[ "$pattern" =~ ^# ]] && continue
       # -I slaat binaire bestanden over; -l geeft alleen de treffers, niet de regel zelf (die kan
       # de gevoelige waarde bevatten en hoort niet in de hook-output).
-      HITS=$(git grep -l -I -i -E -e "$pattern" "$local_sha" -- "${FILES_TO_SCAN[@]}" 2>/dev/null || true)
+      CANDIDATE_HITS=$(git grep -l -I -i -E -e "$pattern" "$local_sha" -- "${FILES_TO_SCAN[@]}" 2>/dev/null || true)
+      HITS=""
+      while IFS= read -r candidate; do
+        [ -z "$candidate" ] && continue
+        candidate_path="${candidate#*:}"
+        # Bekende, opzettelijk niet-geheime CI/test-waarden (wegwerpdatabase, alleen in CI-run
+        # bestaand, expliciet zo genoemd) mogen de scan niet blokkeren.
+        REAL_LINES=$(git grep -h -I -i -E -e "$pattern" "$local_sha" -- "$candidate_path" 2>/dev/null | grep -viE "wegwerpwachtwoord-niet-geheim" || true)
+        if [ -n "$REAL_LINES" ]; then
+          HITS="$HITS
+$candidate"
+        fi
+      done <<< "$CANDIDATE_HITS"
       if [ -n "$HITS" ]; then
         echo ""
         echo "BLOCKED: Sensitive pattern in commit"
