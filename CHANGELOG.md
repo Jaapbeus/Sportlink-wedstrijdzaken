@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **De testsuite draait weer na het opzetten van een lokale ontwikkeldatabase (#1080).** Het
+  seed-script voor de lokale placeholder-club claimde veldnummers die de testsuite zelf gebruikt,
+  waardoor zes tests faalden zodra iemand de setupinstructies had gevolgd. Veldnummers zijn in dit
+  schema globaal uniek over clubs heen; de seed en de betrokken test houden nu allebei een
+  gereserveerd bereik aan, net als alle andere clubs.
 - **Database-updates kunnen weer worden toegepast (#1062).** Een eerdere wijziging paste een al
   uitgevoerd migratiebestand achteraf aan. De migratielus bewaakt dat bewust en weigerde daarna
   élke volgende update, ook de nieuwe. Het bestand staat terug in zijn oorspronkelijke vorm en de

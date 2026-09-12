@@ -42,20 +42,30 @@ BEGIN
         RAISE NOTICE 'Placeholder-club % bestaat al — niets gedaan.', lokale_club;
     END IF;
 
-    -- Velden 1-3 voor de placeholder-club. AllStars houdt bewust 101+ aan, dus er is geen
-    -- PK-conflict (de PK staat op veldnummer alleen, zelfde als op de SQL Server-tier).
+    -- Veldnummers 201-203 — een GERESERVEERD bereik, geen willekeurige keuze.
+    --
+    -- De primaire sleutel van public.velden staat op veldnummer ALLEEN, niet op
+    -- (veldnummer, clubcode). Veldnummers zijn dus globaal uniek over alle clubs heen, en elke
+    -- club in dit schema houdt daarom een eigen bereik aan: AllStars 101-103, testclub-matchsearch
+    -- 301-302, testclub-planner 401, testclub-availsvc 501-502.
+    --
+    -- Deze seed nam aanvankelijk 1-3 (#1060) en botste daarmee op
+    -- PlannerAvailabilityRepositoryIntegrationTests, dat 1 en 2 gebruikt: wie de setupinstructies
+    -- volgde en daarna de testsuite draaide, kreeg zes keer
+    -- '23505: duplicate key value violates unique constraint "velden_pkey"' — een foutmelding die
+    -- op een kapotte testsuite lijkt in plaats van op een botsing met een seed (#1080).
     IF NOT EXISTS (SELECT 1 FROM public.velden WHERE clubcode = lokale_club) THEN
         INSERT INTO public.velden (veldnummer, veldnaam, veldtype, heeftkunstlicht, actief, clubcode)
-        VALUES (1, 'Veld 1', 'kunstgras',  TRUE,  TRUE, lokale_club),
-               (2, 'Veld 2', 'kunstgras',  TRUE,  TRUE, lokale_club),
-               (3, 'Veld 3', 'natuurgras', FALSE, TRUE, lokale_club);
+        VALUES (201, 'Veld 1', 'kunstgras',  TRUE,  TRUE, lokale_club),
+               (202, 'Veld 2', 'kunstgras',  TRUE,  TRUE, lokale_club),
+               (203, 'Veld 3', 'natuurgras', FALSE, TRUE, lokale_club);
     END IF;
 
     -- dagvanweek 1=maandag..7=zondag — nooit .NET-native DayOfWeek 0-6 (#812).
     INSERT INTO public.veldbeschikbaarheid
         (veldnummer, dagvanweek, beschikbaarvanaf, beschikbaartot, gebruikzonsondergang, clubcode)
     SELECT v.veldnummer, d.dag, '08:30', '22:00', FALSE, lokale_club
-    FROM (VALUES (1), (2), (3)) AS v(veldnummer)
+    FROM (VALUES (201), (202), (203)) AS v(veldnummer)
     CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7)) AS d(dag)
     WHERE NOT EXISTS (
         SELECT 1 FROM public.veldbeschikbaarheid vb
