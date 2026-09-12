@@ -199,6 +199,13 @@ internal static class PostgresStagingRepository
                 """, connection);
             AddMatchParams(insertCommand, match);
             AddUitslagenParams(insertCommand, match);
+            // #1077: deze binding ontbrak. De INSERT noemt @clubcode, maar geen van beide
+            // Add*Params-helpers vult hem — anders dan bij de programma-INSERT hierboven, die hem
+            // wél expliciet zet. Npgsql laat een ongebonden placeholder letterlijk in de SQL staan
+            // en in PostgreSQL is '@' een geldige prefix-operator, dus de server las dit als
+            // "operator @ op kolom clubcode" en meldde 42703: column "clubcode" does not exist —
+            // een melding die naar het schema wijst terwijl de kolom gewoon bestaat.
+            insertCommand.Parameters.AddWithValue("clubcode", clubCode);
             if (await insertCommand.ExecuteNonQueryAsync() > 0) updated++;
         }
         log.LogInformation("MATCHES/UITSLAGEN - {Updated} rows merged (updated or inserted) into staging.", updated);
