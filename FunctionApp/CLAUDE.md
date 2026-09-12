@@ -6,10 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an **Azure Functions application** (**`net9.0`**, isolated worker model) that integrates with the Sportlink API to fetch sports data and sync it to a SQL Server database. The application runs on a timer trigger (daily at 04:00) and provides manual sync via HTTP trigger.
 
-> **Never raise the target framework.** The Linux Consumption Plan does not support `net10.0` —
-> deploying it returns 503 "Function host is not running". `.NET 10` requires the Flex Consumption
-> Plan, which is not free and therefore conflicts with the project cost policy. See the root
-> CLAUDE.md for the full constraint (#579).
+> **Do not raise the target framework before the plan migration.** The Linux Consumption Plan does
+> not support `net10.0` — deploying it returns 503 "Function host is not running". `.NET 10` requires
+> the Flex Consumption Plan, which *does* have a free monthly grant (a smaller one than Consumption),
+> but is a different plan and needs explicit owner approval.
+>
+> This is a state with an expiry date: .NET 9 loses support on **10 November 2026** and is the last
+> .NET version Linux Consumption will receive. The migration runs through **epic #1063**. See the
+> root CLAUDE.md for the full constraint (#579).
 
 ## Solution Structure
 
@@ -114,8 +118,10 @@ Stored in `local.settings.json` (development) and Azure Key Vault (production):
   Integrated Security is **not** supported: it only works against a locally installed SQL Server
   service on Windows, which is exactly the platform-specific path removed in #800.
   `TrustServerCertificate=True` is required because the container has a self-signed certificate.
+  The SA password lives in a local, gitignored `.env` file (`MSSQL_SA_PASSWORD`, required by
+  `docker-compose.yml`) — never hard-coded here or anywhere else in the repository.
   ```
-  Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=<from .env>;TrustServerCertificate=True;
+  Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;
   ```
 
 - **PRDSqlConnectionString**: Azure SQL (production)
