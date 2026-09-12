@@ -18,6 +18,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Database-updates kunnen weer worden toegepast (#1062).** Een eerdere wijziging paste een al
+  uitgevoerd migratiebestand achteraf aan. De migratielus bewaakt dat bewust en weigerde daarna
+  élke volgende update, ook de nieuwe. Het bestand staat terug in zijn oorspronkelijke vorm en de
+  bedoelde wijziging is verplaatst naar een nieuwe migratie, die op beide uitgangssituaties werkt.
+
 ### Changed
 - **De lokale ontwikkelomgeving draait voortaan standaard op dezelfde database als productie (#1060).**
   `docker compose up -d` start nu Postgres in plaats van SQL Server, en `Start-Debug.ps1` en
