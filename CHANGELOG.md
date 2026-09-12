@@ -18,6 +18,28 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Sportlink Web Extension: dry-run-modus, standaard AAN (#998).** Elke kleedkamer-/veldwijziging
+  en elk goed-/afgekeurd wijzigingsverzoek wordt nu standaard alleen gesimuleerd: de aanroep naar
+  Sportlink wordt overgeslagen en het resultaat wordt gelogd in de audit als "DryRun". Een
+  beheerder zet dit bewust uit via een nieuwe schakelaar op Instellingen, pas nadat de rol-koppeling
+  en de nieuwe statussectie gecontroleerd zijn.
+- **Statussectie Sportlink Web Extension op Instellingen (#998).** Toont in één oogopslag of de
+  extension aan staat, of dry-run actief is, of uitgaande integraties zijn toegestaan, de
+  koppelingsstatus per rol, de laatste mutatiefout en de laatste contract-check. Een knop "Nu live
+  controleren" doet — uitsluitend op expliciete klik — één echte tokenverversing en één leesaanroep.
+- **Dagelijkse contract-check voor de Sportlink-koppeling (#998).** Een timer controleert elke
+  ochtend of de vorm van Sportlinks wedstrijdrespons nog klopt met wat deze app verwacht, zodat een
+  stille Sportlink-release vroeg opvalt in plaats van pas bij een mislukte mutatie. Bij een
+  afwijking gaat er — hooguit één keer per 24 uur — een noodmail uit via het bestaande
+  e-mailverzendpad.
+- **Guardrails uitgebreid: afgelaste en concept-wedstrijden worden altijd geblokkeerd (#998).** Naast
+  de bestaande "alleen thuiswedstrijden"-regel wijst de app nu ook elke kleedkamer-/veldwijziging af
+  op een wedstrijd die is afgelast of nog een concept is.
+- **Uitgebreide audit-logging voor Sportlink-mutaties (#998).** Naast de taakstatus legt de audit nu
+  ook de wedstrijdstatus, of de wedstrijd is afgelast/nog concept, en de accommodatiegegevens vast —
+  bedoeld om een seizoen aan echte gebruiksdata te verzamelen.
+
 ## [3.3.0.0] — 2026-09-12
 
 ### Fixed

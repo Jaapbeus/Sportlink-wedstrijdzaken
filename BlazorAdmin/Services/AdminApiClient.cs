@@ -76,6 +76,11 @@ public class AdminApiClient
             $"api/sportlink/change-requests/{Uri.EscapeDataString(publicRequestId)}/action",
             new { PublicMatchId = publicMatchId, Actie = actie, Remarks = remarks });
 
+    // #998: statussectie op Instellingen. live=true doet een echte tokenverversing + 1 read-call —
+    // alleen op expliciete gebruikersklik, nooit automatisch (zie SportlinkExtensieHealthFunction).
+    public async Task<ApiResult<SportlinkExtensieHealthDto>> GetSportlinkExtensieHealthAsync(bool live = false)
+        => await GetAsync<SportlinkExtensieHealthDto>($"api/beheer/sportlink-extensie/health?live={(live ? "true" : "false")}");
+
     // ── Sync ──
 
     public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()

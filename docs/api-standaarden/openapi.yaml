@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.2.10.5
+  version: 3.3.1.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -856,6 +856,81 @@ components:
           nullable: true
           items:
             type: string
+        IsDryRun:
+          type: boolean
+          description: |
+            #998: true als dry-run actief was — niets is echt naar Sportlink verstuurd, de
+            aanroep is alleen gesimuleerd en gelogd (audit-resultaat "DryRun"). IsSuccess is dan
+            altijd true.
+
+    SportlinkExtensieHealthResponse:
+      type: object
+      description: |
+        Statussectie Sportlink Web Extension (#998, epic #986). Zonder live=true uitsluitend uit
+        eigen database (geen Sportlink-aanroep); nooit een tokenwaarde of Match-data met
+        persoonsgegevens.
+      properties:
+        ExtensionEnabled:
+          type: boolean
+        DryRun:
+          type: boolean
+        EgressAllowed:
+          type: boolean
+        Rollen:
+          type: array
+          items:
+            type: object
+            properties:
+              RolNaam:
+                type: string
+              Gekoppeld:
+                type: boolean
+              LaatstVerverstOp:
+                type: string
+                format: date-time
+                nullable: true
+              RefreshTokenVervaltOp:
+                type: string
+                format: date-time
+                nullable: true
+        LaatsteMutatieFout:
+          type: string
+          nullable: true
+        LaatsteMutatieFoutOp:
+          type: string
+          format: date-time
+          nullable: true
+        LaatsteContractCheck:
+          type: object
+          nullable: true
+          properties:
+            UitgevoerdOp:
+              type: string
+              format: date-time
+            IsOk:
+              type: boolean
+            HttpStatus:
+              type: integer
+              nullable: true
+            AfwijkendeVelden:
+              type: string
+              nullable: true
+            FoutmeldingSamenvatting:
+              type: string
+              nullable: true
+        Live:
+          type: object
+          nullable: true
+          description: Alleen gevuld bij ?live=true.
+          properties:
+            TokenRefreshGelukt:
+              type: boolean
+            MatchCheckResultaat:
+              type: string
+              nullable: true
+            MatchCheckHttpStatus:
+              type: integer
+              nullable: true
 
     SportlinkChangeRequest:
       type: object
@@ -2823,6 +2898,48 @@ paths:
           description: Sportlink heeft het opgegeven refresh-token geweigerd
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /beheer/sportlink-extensie/health:
+    get:
+      tags: [beheer]
+      operationId: getSportlinkExtensieHealth
+      summary: Statussectie Sportlink Web Extension (#998, epic #986)
+      description: |
+        Zonder `live=true` (default) doet dit endpoint GEEN Sportlink-aanroep — alles komt uit
+        onze eigen database (extension/dry-run-instelling, EgressGuard-status, koppeling +
+        laatste tokenverversing per rol, laatste mutatiefout, laatste contract-check). Alleen bij
+        expliciete `?live=true` (gebruikersklik "Nu live controleren") doet het één
+        tokenverversing en één leesaanroep — en rapporteert dan uitsluitend HTTP-status/
+        resultaataard, nooit responsdata.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: live
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Statusoverzicht
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkExtensieHealthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: "live=true opgegeven terwijl de extension uitstaat"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: "live=true opgegeven terwijl uitgaande integraties niet zijn toegestaan (EgressGuard), of de Sportlink-client niet geconfigureerd is"
 
   /sportlink/match/{wedstrijdcode}:
     get:

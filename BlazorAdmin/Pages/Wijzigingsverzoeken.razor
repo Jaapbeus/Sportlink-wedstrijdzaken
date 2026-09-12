@@ -141,7 +141,13 @@ else
                 return;
             }
 
-            if (result.Data?.IsSuccess == true)
+            if (result.Data?.IsDryRun == true)
+            {
+                _meldingFout[verzoek.PublicRequestId] = false;
+                _melding[verzoek.PublicRequestId] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+                await LaadVerzoekenAsync();
+            }
+            else if (result.Data?.IsSuccess == true)
             {
                 _meldingFout[verzoek.PublicRequestId] = false;
                 _melding[verzoek.PublicRequestId] = actie == "APPROVE" ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.";

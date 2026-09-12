@@ -69,10 +69,18 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
 if (EgressGuard.ExternalIntegrationsAllowed())
 {
     builder.Services.AddSingleton<ISportlinkClubTokenStore, SportlinkClubAppSettingsTokenStore>();
+    // #998: deze tier heeft geen enkel mutatie-endpoint (alleen de nog niet vertaalde read-only
+    // paden) — isDryRun staat daarom hard op true, zodat een toekomstig mutatiepad hier nooit per
+    // ongeluk een echte PUT/POST naar Sportlink kan versturen.
     builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(15);
-    });
+    })
+    .AddTypedClient<ISportlinkClubClient>((httpClient, sp) => new SportlinkClubClient(
+        httpClient,
+        sp.GetRequiredService<ISportlinkClubTokenStore>(),
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubClient>(),
+        isDryRun: () => true));
 }
 
 builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();

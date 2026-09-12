@@ -1,5 +1,6 @@
 using FluentAssertions;
 using FunctionApp.Postgres.Sportlink;
+using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests;
@@ -45,5 +46,20 @@ public class SportlinkMatchFunctionTests
         var result = SportlinkMatchFunction.BouwKleedkamerId(null, "11");
 
         result.Should().Be("11");
+    }
+
+    [Theory]
+    [InlineData(true, false, "DryRun")]
+    [InlineData(false, true, "Success")]
+    [InlineData(false, false, "Failure")]
+    public void BepaalAuditResultaat_GeeftJuisteAuditwaarde(bool isDryRun, bool isSuccess, string verwacht)
+    {
+        // #998: DryRun gaat vóór IsSuccess — bij een dry-run-aanroep is IsSuccess altijd true
+        // (gesimuleerd succes), maar de audit moet expliciet tonen dat er niets echt is verzonden.
+        var result = new SportlinkMutationResult(isSuccess, Violations: null, IsDryRun: isDryRun);
+
+        var resultaat = SportlinkMatchFunction.BepaalAuditResultaat(result);
+
+        resultaat.Should().Be(verwacht);
     }
 }

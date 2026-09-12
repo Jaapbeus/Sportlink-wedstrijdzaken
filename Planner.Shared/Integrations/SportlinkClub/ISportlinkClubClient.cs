@@ -26,6 +26,20 @@ public interface ISportlinkClubClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Haalt dezelfde <c>Match</c>-respons op als <see cref="GetMatchAsync"/>, maar ongedeserialiseerd
+    /// — bedoeld voor <see cref="SportlinkMatchContract"/>'s rauwe vormcontrole (#998, dagelijkse
+    /// contract-check-timer). <c>System.Text.Json</c> laat een ontbrekend/hernoemd veld stilzwijgend
+    /// op de default vallen; alleen de rauwe JSON-tekst maakt een expliciete "bestaat dit veld nog,
+    /// met dit JSON-type" controle mogelijk.
+    /// </summary>
+    /// <returns>Bij <c>Status=Ok</c>: de rauwe JSON-responstekst. Deze methode logt de inhoud zelf
+    /// nooit — dat blijft aan de aanroeper (die alleen veldNAMEN mag loggen, nooit waarden).</returns>
+    Task<SportlinkClubResponse<string>> GetMatchRawJsonAsync(
+        string functioneleRol,
+        string publicMatchId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Zoekt het <c>PublicMatchId</c> van een wedstrijd via de #987/#1016-reverse-lookup
     /// (<c>MatchProgramOverview</c> met een 1-daags bereik, matchend op <c>ExternalMatchId</c>).
     /// `PublicMatchId` kan namelijk niet uit onze eigen `wedstrijdcode` berekend worden (#987).

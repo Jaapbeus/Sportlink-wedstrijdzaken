@@ -7,6 +7,12 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// kleedkamercombinatie) — dat is geen <c>SportlinkFout</c> (onze kant/verbinding), maar een
 /// inhoudelijke weigering die de aanroeper aan de gebruiker moet tonen.
 /// </summary>
+/// <param name="IsDryRun">
+/// #998: <c>true</c> als de dry-run-modus actief was — de PUT/POST is dan NIET naar Sportlink
+/// verstuurd, alleen gelogd. <see cref="IsSuccess"/> is in dat geval altijd <c>true</c>
+/// (gesimuleerd succes), <see cref="Violations"/> altijd <c>null</c>.
+/// </param>
 public sealed record SportlinkMutationResult(
     bool IsSuccess,
-    IReadOnlyList<string>? Violations);
+    IReadOnlyList<string>? Violations,
+    bool IsDryRun = false);
