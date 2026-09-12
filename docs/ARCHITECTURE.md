@@ -46,7 +46,8 @@ Browser (beheerder)
         │
         │ HTTPS + Bearer token (Entra ID)
         ▼
-  Azure Functions (Consumption plan) — net9.0, isolated worker
+  Azure Functions (Linux Consumption plan) — net9.0, isolated worker
+        Migratie naar Flex Consumption + .NET 10 loopt via epic #1063
         Easy Auth: valideert Bearer token, injecteert X-MS-CLIENT-PRINCIPAL
         EasyAuthHelper: checkt 'admin' rol op alle /api/beheer/*, /api/test/*, /api/feedback/*
         │
@@ -82,9 +83,15 @@ Azure Functions v4 · Blazor WebAssembly · Azure SQL / Postgres · Microsoft Gr
 > | `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net9.0`** | Zelfde beperking als hierboven |
 > | `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
 >
-> `.NET 10` voor Azure Functions vereist het **Flex Consumption Plan**. Dat plan valt buiten de
-> gratis tiers en is daarmee in strijd met het kostenbeleid — zie CLAUDE.md → Kostenbeleid.
-> Een upgrade vraagt dus eerst expliciete goedkeuring van de eigenaar, niet alleen een csproj-wijziging.
+> `.NET 10` voor Azure Functions vereist het **Flex Consumption Plan**. Dat plan heeft wél een
+> gratis tegoed — 250.000 executies + 100.000 GB-s per maand per subscription, tegenover 1M + 400K
+> op Consumption — maar het is een ander plan, en een planwijziging vraagt altijd expliciete
+> goedkeuring van de eigenaar. Zie CLAUDE.md → Kostenbeleid en **epic #1063** voor de migratie.
+>
+> **Dit is een toestand met een einddatum:** .NET 9 gaat op 10 november 2026 uit support en is de
+> laatste .NET-versie die Linux Consumption krijgt; dat plan wordt zelf op 30 september 2028
+> uitgefaseerd. In-place migratie naar Flex bestaat niet — er moet een nieuwe app komen.
+>
 > Bij elke documentatiewijziging: controleer of vermelde runtimeversies nog met de csproj's overeenkomen.
 
 **ETL-data flow (identiek patroon op beide tiers):**

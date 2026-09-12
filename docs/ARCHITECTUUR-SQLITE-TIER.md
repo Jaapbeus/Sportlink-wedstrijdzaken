@@ -59,9 +59,15 @@ case-sensitief voor tabelnamen op de meeste platforms maar niet gegarandeerd op 
 
 ## 6. Open architectuurbesluit: persistente opslag op Linux Consumption
 
-Dit project is hard-pinned aan het Linux Azure Functions Consumption-plan (net9.0 isolated worker)
-— zie CLAUDE.md, sectie ".NET versie". **Dit document stelt niet voor om die beperking te
-heroverwegen.**
+Dit project draait op het Linux Azure Functions Consumption-plan (net9.0 isolated worker) — zie
+CLAUDE.md, sectie ".NET versie". **Dit document stelt niet voor om die beperking te heroverwegen.**
+
+> **Let op — de aanname onder dit hoofdstuk verloopt.** Sinds epic #1063 ligt er een migratie naar
+> Flex Consumption op de rol, gedwongen door het einde van de support voor .NET 9 op 10 november
+> 2026. Flex Consumption ondersteunt Azure Files storage mounts wél. Zodra die migratie is
+> afgerond, vervalt de beperking die dit hoofdstuk beschrijft en wordt optie C hieronder de
+> feitelijke situatie in plaats van een hypothetische planwijziging. Het besluit zelf hoort bij
+> epic #815 en wordt hier niet genomen.
 
 **Microsoft Learn-geverifieerd (2026-08-30):** Azure Files storage mounts worden **niet
 ondersteund op het Consumption-plan** — alleen Flex Consumption, Elastic Premium en Dedicated
@@ -84,7 +90,7 @@ moment dat tier 3 daadwerkelijk wordt opgepakt.
 |---|---|---|---|
 | **A — alleen voor niet-Consumption-hosting** | SQLite-tier uitsluitend voor clubs die buiten Azure Functions Consumption zelf hosten (VM, Container App, App Service Plan) | Omzeilt de beperking volledig | Niet bruikbaar op het standaard gratis-Azure-stack-hostingmodel — moet expliciet in publieke documentatie staan |
 | **B — Azure Blob Storage als persistentielaag** | Lokaal SQLite als ephemere werkkopie per invocation/batch, gesynchroniseerd met Blob | Technisch mogelijk binnen Consumption | Cold-start-latency, concurrent-instance-schrijfraces tenzij geserialiseerd via een blob-lease — kan SQLite's eenvoud teniet doen |
-| **C — planwijziging naar Flex Consumption** | Overstap naar een plan dat wél storage mounts ondersteunt | Native persistente opslag | Heropent het apart vastgestelde net9.0/Linux-Consumption-kostenbesluit; vereist volledige Kostenbeleid-verificatie plus expliciete goedkeuring vóór adoptie |
+| **C — planwijziging naar Flex Consumption** | Overstap naar een plan dat wél storage mounts ondersteunt | Native persistente opslag | Loopt hoe dan ook al via epic #1063 (gedwongen door EOL .NET 9). Vereist volledige Kostenbeleid-verificatie plus expliciete goedkeuring; Flex heeft een kleiner gratis tegoed dan Consumption |
 
 ## 7. Randgevallen/risico's (voor de delen die wél zijn uitgewerkt)
 

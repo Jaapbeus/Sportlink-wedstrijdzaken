@@ -18,6 +18,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Documentatie over de .NET-versie en het Flex Consumption-plan gecorrigeerd (#1066).** De
+  projectdocumentatie stelde dat het Flex Consumption-plan geen gratis tier heeft. Dat klopt niet:
+  Flex heeft wél een maandelijks gratis tegoed, alleen een kleiner dan het huidige Consumption-plan
+  (250.000 executies + 100.000 GB-s per subscription, tegenover 1 miljoen + 400.000). Die onjuiste
+  regel stond de afweging over de aanstaande migratie in de weg. Daarnaast beschreef de
+  documentatie `net9.0` als een permanente eindsituatie, terwijl .NET 9 op 10 november 2026 uit
+  support gaat en de laatste .NET-versie is die het Linux Consumption-plan krijgt. Beide claims
+  staan nu correct beschreven, inclusief de einddatum en de verwijzing naar het migratie-epic; zie
+  issue #1063. Ook gecorrigeerd: het beschreven upgradepad suggereerde dat een bestaande app met
+  `az functionapp update --plan` naar Flex om te zetten is — dat kan niet, er moet een nieuwe app
+  komen. `AGENTS.md` is meegenomen omdat dat bestand dezelfde regels bevat als `CLAUDE.md`.
+
 ### Fixed
 - **Uitslagen van gespeelde wedstrijden worden weer verwerkt, en "Laatste sync" loopt weer bij (#1077).**
   Sinds de overgang naar de nieuwe database faalde elke nachtelijke synchronisatie op het onderdeel
@@ -223,6 +236,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Empirisch bevestigd: `Password=<testwaarde>` werd niet geblokkeerd. Op Linux/CI (GNU
   grep) werkte dezelfde regex al correct, dus de bug bleef tot nu toe onopgemerkt. Patronen
   gebruiken nu de POSIX-klasse `[:space:]`, die op alle drie de regex-engines identiek werkt.
+- **`.gitignore` blokkeert nu elk CSV/Excel-bestand, niet alleen `exports/*.csv` (#978).** Een CSV of
+  Excel-bestand met persoonsgegevens dat buiten `exports/` werd aangemaakt (bijv. in de repo-root of
+  in `data/`) kon voorheen zonder waarschuwing worden gestaged. `*.csv`/`*.xlsx`/`*.xls` zijn nu
+  overal geblokkeerd; alleen seed-bestanden onder `scripts/migrations/` en testfixtures onder een
+  `*.Tests/`-project zijn expliciet vrijgesteld — geen van beide bevat ledendata.
 ## [3.2.0.3] — 2026-09-06
 
 ### Fixed
