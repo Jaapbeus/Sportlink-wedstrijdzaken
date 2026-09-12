@@ -18,18 +18,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-### Changed
-- **Documentatie over de .NET-versie en het Flex Consumption-plan gecorrigeerd (#1066).** De
-  projectdocumentatie stelde dat het Flex Consumption-plan geen gratis tier heeft. Dat klopt niet:
-  Flex heeft wél een maandelijks gratis tegoed, alleen een kleiner dan het huidige Consumption-plan
-  (250.000 executies + 100.000 GB-s per subscription, tegenover 1 miljoen + 400.000). Die onjuiste
-  regel stond de afweging over de aanstaande migratie in de weg. Daarnaast beschreef de
-  documentatie `net9.0` als een permanente eindsituatie, terwijl .NET 9 op 10 november 2026 uit
-  support gaat en de laatste .NET-versie is die het Linux Consumption-plan krijgt. Beide claims
-  staan nu correct beschreven, inclusief de einddatum en de verwijzing naar het migratie-epic; zie
-  issue #1063. Ook gecorrigeerd: het beschreven upgradepad suggereerde dat een bestaande app met
-  `az functionapp update --plan` naar Flex om te zetten is — dat kan niet, er moet een nieuwe app
-  komen. `AGENTS.md` is meegenomen omdat dat bestand dezelfde regels bevat als `CLAUDE.md`.
 
 ### Fixed
 - **Uitslagen van gespeelde wedstrijden worden weer verwerkt, en "Laatste sync" loopt weer bij (#1077).**
@@ -48,6 +36,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bedoelde wijziging is verplaatst naar een nieuwe migratie, die op beide uitgangssituaties werkt.
 
 ### Changed
+- **Documentatie over de .NET-versie en het Flex Consumption-plan gecorrigeerd (#1066).** De
+  projectdocumentatie stelde dat het Flex Consumption-plan geen gratis tier heeft. Dat klopt niet:
+  Flex heeft wél een maandelijks gratis tegoed, alleen een kleiner dan het huidige Consumption-plan
+  (250.000 executies + 100.000 GB-s per subscription, tegenover 1 miljoen + 400.000). Die onjuiste
+  regel stond de afweging over de aanstaande migratie in de weg. Daarnaast beschreef de
+  documentatie `net9.0` als een permanente eindsituatie, terwijl .NET 9 op 10 november 2026 uit
+  support gaat en de laatste .NET-versie is die het Linux Consumption-plan krijgt. Beide claims
+  staan nu correct beschreven, inclusief de einddatum en de verwijzing naar het migratie-epic; zie
+  issue #1063. Ook gecorrigeerd: het beschreven upgradepad suggereerde dat een bestaande app met
+  `az functionapp update --plan` naar Flex om te zetten is — dat kan niet, er moet een nieuwe app
+  komen. `AGENTS.md` is meegenomen omdat dat bestand dezelfde regels bevat als `CLAUDE.md`.
 - **De lokale ontwikkelomgeving draait voortaan standaard op dezelfde database als productie (#1060).**
   `docker compose up -d` start nu Postgres in plaats van SQL Server, en `Start-Debug.ps1` en
   `Test-App.ps1` kiezen met een nieuwe `-Tier`-parameter (standaard `Postgres`) automatisch het
@@ -61,6 +60,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   hoofdversie slaagt, bewijst niets over de database die er werkelijk toe doet.
 
 ### Added
+- **Een mislukte synchronisatie is nu zichtbaar in plaats van stil (#1081).** De nachtelijke
+  synchronisatie rapporteerde tot nu toe "geslaagd" ook wanneer er niets was bijgewerkt — precies
+  waarom een storing acht dagen onopgemerkt bleef. Een run met mislukte onderdelen wordt nu als
+  mislukt gemeld, en `/api/health` toont wanneer er voor het laatst succesvol is gesynchroniseerd
+  en of dat te lang geleden is. Op een ontwikkelmachine, waar geen synchronisatie hoort te draaien,
+  verandert er niets.
 - **Startscript waarschuwt nu wanneer de applicatie draait maar onbruikbaar is (#1060).**
   `Start-Debug.ps1` leest `status` en `settingsLoaded` uit `/api/health` en controleert of de
   gestarte functiehost ook echt de gevraagde tier is. Een verse database zonder primaire club gaf

@@ -35,11 +35,25 @@ public static class SyncFunction
             // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
             await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
+            var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
+
+            // #1081: een run met mislukte deelstappen mag niet als Success eindigen. Het
+            // invocatie-overzicht in de portal toonde acht dagen 'Success 8 · Error 0' terwijl er
+            // niets werd bijgewerkt (#1077) — een meetinstrument dat de verkeerde waarde geeft is
+            // erger dan geen meetinstrument. Alle werk is op dit punt al gedaan; de uitzondering
+            // markeert alleen de invocatie. Er staat geen retry-policy op deze functie, dus dit
+            // leidt niet tot een herhaalde run van vijf minuten.
+            if (gedeeltelijkMislukt)
+                throw new InvalidOperationException(
+                    "Synchronisatie gedeeltelijk mislukt — zie de voorgaande logregels voor de " +
+                    "betrokken fase(s). lastsynctimestamp is bewust niet bijgewerkt.");
         }
         catch (Exception ex)
         {
+            // Loggen én opnieuw gooien: zonder de rethrow slikt deze catch de uitzondering op en
+            // rapporteert de host de invocatie als Success (#1081).
             log.LogError(ex, "PostgresFetchAndStoreApiData fout");
+            throw;
         }
     }
 
@@ -81,7 +95,22 @@ public static class SyncFunction
                 log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
             }
 
-            await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
+            var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
+            if (gedeeltelijkMislukt)
+            {
+                // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
+                // bijgewerkt. 207 maakt het verschil zichtbaar zonder de geslaagde deelstappen weg
+                // te gooien.
+                return new ObjectResult(new
+                {
+                    status = "gedeeltelijk mislukt",
+                    weekOffsetFrom = fromWeekOffset,
+                    weekOffsetTo = toWeekOffset,
+                    melding = "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. "
+                              + "Zie het functielog voor de betrokken fase(s)."
+                })
+                { StatusCode = StatusCodes.Status207MultiStatus };
+            }
             return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
         }
         catch (Exception ex)
@@ -91,7 +120,8 @@ public static class SyncFunction
         }
     }
 
-    internal static async Task RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
+    /// <summary>Geeft terug of er deelstappen zijn mislukt (#1081).</summary>
+    internal static async Task<bool> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
     {
         await PostgresAppSettings.LoadSettingsAsync(log);
         var clubCode = PostgresAppSettings.GetSetting("clubCode")
@@ -102,10 +132,10 @@ public static class SyncFunction
         if (string.IsNullOrEmpty(sportlinkApiUrl))
         {
             log.LogError("sportlinkapiurl is niet geconfigureerd.");
-            return;
+            return true;
         }
 
-        await PostgresSyncPipeline.RunSyncAsync(
+        return await PostgresSyncPipeline.RunSyncAsync(
             fromWeekOffset, toWeekOffset,
             sportlinkApiUrl, $"clientId={sportlinkClientId}",
             clubCode, connectionString, log);

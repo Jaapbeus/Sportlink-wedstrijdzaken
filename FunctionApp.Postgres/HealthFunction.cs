@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using FunctionApp.Postgres.Infrastructure;
 using Npgsql;
 
 namespace FunctionApp.Postgres;
@@ -28,9 +29,16 @@ public static class HealthFunction
         var version = typeof(HealthFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
         var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
         var settingsLoaded = !PostgresAppSettings.LastLoadFailed;
+        var (lastSync, syncStale) = await GetSyncStatusAsync(dbStatus);
         var body = new
         {
-            status = dbStatus == "online" && settingsLoaded ? "ok" : "degraded",
+            // #1081: een verouderde synchronisatie telt mee in de status, maar alleen waar een
+            // synchronisatie ook hoort te draaien. Lokaal en in CI blokkeert EgressGuard (#857)
+            // uitgaand verkeer, dus is een lege of oude lastsynctimestamp daar het verwachte
+            // gedrag en geen storing — die twee zouden anders permanent 'degraded' melden en het
+            // signaal waardeloos maken.
+            status = dbStatus == "online" && settingsLoaded && !(syncStale && SyncWordtVerwacht)
+                ? "ok" : "degraded",
             version,
             timestamp = DateTime.UtcNow,
             database = dbStatus,
@@ -38,6 +46,11 @@ public static class HealthFunction
             // instellingencache ook echt gevuld is. Bewust geen foutdetails hier: dit endpoint is
             // anoniem toegankelijk, de volledige exceptie staat al in het functielog.
             settingsLoaded,
+            // #1081: de synchronisatie draaide acht dagen elke nacht en werkte niets bij, zonder
+            // dat iets dat meldde. Deze twee velden maken dat zichtbaar zonder een betaalde
+            // metric-alert: lastSync is de waarheid uit de database, syncStale het oordeel.
+            lastSync,
+            syncStale,
             tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
             provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
             serverVersion
@@ -48,6 +61,63 @@ public static class HealthFunction
         return dbStatus == "unconfigured"
             ? new ObjectResult(body) { StatusCode = StatusCodes.Status503ServiceUnavailable }
             : new OkObjectResult(body);
+    }
+
+    /// <summary>
+    /// Draait er op deze omgeving überhaupt een synchronisatie? Zo niet, dan is een oude of
+    /// ontbrekende <c>lastsynctimestamp</c> het verwachte gedrag. Dezelfde poort als de timer zelf
+    /// gebruikt (<see cref="EgressGuard.ExternalIntegrationsAllowed"/>, #857) — anders zouden de
+    /// twee uit de pas kunnen lopen.
+    /// </summary>
+    /// <summary>
+    /// De beslisregel zelf, los van database en omgeving zodat hij toetsbaar is (#1081).
+    /// <c>null</c> betekent "nooit gesynchroniseerd" en telt als verouderd: waar een synchronisatie
+    /// hoort te draaien is dat geen neutrale begintoestand maar een storing. Of dat oordeel de
+    /// status beïnvloedt, beslist <see cref="SyncWordtVerwacht"/> — niet deze functie.
+    /// </summary>
+    internal static bool IsSyncVerouderd(DateTime? laatsteSync, DateTime nuUtc, int maxLeeftijdUren)
+        => laatsteSync is null || nuUtc - laatsteSync.Value > TimeSpan.FromHours(maxLeeftijdUren);
+
+    private static bool SyncWordtVerwacht => EgressGuard.ExternalIntegrationsAllowed();
+
+    /// <summary>
+    /// Standaard 36 uur: de timer draait dagelijks, dus één gemiste run valt op terwijl een run die
+    /// een paar uur uitloopt dat niet doet. Overschrijfbaar met <c>SyncMaxAgeHours</c> voor
+    /// installaties met een ander schema.
+    /// </summary>
+    private static int MaxSyncLeeftijdUren =>
+        int.TryParse(Environment.GetEnvironmentVariable("SyncMaxAgeHours"), out var uren) && uren > 0
+            ? uren : 36;
+
+    /// <summary>
+    /// Leest de laatste synchronisatietijd van de primaire club. Bewust dezelfde selectie als
+    /// <see cref="PostgresAppSettings"/>: alleen clubs met <c>syncenabled = true</c>, zodat de
+    /// democlub (die per ontwerp niet synchroniseert) dit oordeel nooit kan beïnvloeden.
+    /// </summary>
+    private static async Task<(DateTime? LastSync, bool Stale)> GetSyncStatusAsync(string dbStatus)
+    {
+        if (dbStatus != "online") return (null, false);
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT MAX(lastsynctimestamp) FROM public.appsettings WHERE syncenabled = true", connection);
+            var waarde = await cmd.ExecuteScalarAsync();
+
+            if (waarde is null || waarde == DBNull.Value)
+                return (null, IsSyncVerouderd(null, DateTime.UtcNow, MaxSyncLeeftijdUren));
+
+            var laatste = DateTime.SpecifyKind((DateTime)waarde, DateTimeKind.Utc);
+            return (laatste, IsSyncVerouderd(laatste, DateTime.UtcNow, MaxSyncLeeftijdUren));
+        }
+        catch
+        {
+            // Een mislukte leesactie mag dit endpoint niet laten vallen; 'database' dekt de
+            // verbinding al af en de volledige fout staat in het functielog.
+            return (null, false);
+        }
     }
 
     internal static string? GetAssemblyMetadata(string key) =>
