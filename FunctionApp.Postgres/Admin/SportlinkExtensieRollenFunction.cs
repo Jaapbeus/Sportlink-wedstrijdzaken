@@ -1,3 +1,4 @@
+using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -77,7 +78,7 @@ public static class SportlinkExtensieRollenFunction
                     await new StreamReader(req.Body).ReadToEndAsync());
 
                 // Server bepaalt WIE — nooit uit client-input, om spoofing te voorkomen.
-                var door = EasyAuthHelper.GetCallerName(req) ?? EasyAuthHelper.GetCallerEmail(req) ?? "onbekend";
+                var door = EasyAuthHelper.GetAuditActor(req);
 
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
@@ -86,7 +87,7 @@ public static class SportlinkExtensieRollenFunction
                     INSERT INTO public.sportlinkextensierollen
                         (rolnaam, laatstgekoppelddoor, laatstgekoppeldop, sportlinkaccountnaam, clubcode)
                     VALUES (@rolnaam, @door, now(), @account, @clubcode)
-                    ON CONFLICT (rolnaam) DO UPDATE SET
+                    ON CONFLICT (rolnaam, clubcode) DO UPDATE SET
                         laatstgekoppelddoor = @door, laatstgekoppeldop = now(), sportlinkaccountnaam = @account",
                     connection);
                 cmd.Parameters.AddWithValue("rolnaam", rolNaam);
@@ -117,6 +118,11 @@ public static class SportlinkExtensieRollenFunction
                     await new StreamReader(req.Body).ReadToEndAsync());
                 if (string.IsNullOrWhiteSpace(dto?.RefreshToken))
                     return new BadRequestObjectResult(new { error = "refreshToken ontbreekt." });
+
+                // #857: dit is een echte uitgaande aanroep naar idm.sportlink.com — zelfde poort als
+                // elke andere externe integratie in deze repo, nooit een eigen ad-hoc controle.
+                if (!EgressGuard.ExternalIntegrationsAllowed())
+                    return new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 };
 
                 if (!await ValideerRefreshTokenAsync(dto.RefreshToken))
                     return new ObjectResult(new { error = "Sportlink heeft dit refresh-token geweigerd — controleer of het recent en correct is." }) { StatusCode = 409 };
