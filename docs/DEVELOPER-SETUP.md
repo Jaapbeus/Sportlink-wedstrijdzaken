@@ -365,6 +365,31 @@ $env:PGPASSWORD = "<lokaal-wachtwoord>"
 De volledige end-to-end-zelftest van deze tier (containers, schema, demodata, API-poorten) is een
 apart script: `.\scripts\dev\Test-PostgresTier.ps1 -Tier Postgres -Mode Verify`.
 
+### 4.3b Acceptatietest met de echte productiedata (eenmalig, bevat persoonsgegevens)
+
+Voor een acceptatietest tegen de échte club-data (in plaats van de democlub `ALLSTARS` of de
+placeholder-club `CLUB`) haalt `.\scripts\dev\Restore-ProductionDump.ps1` eenmalig een volledige
+dump van de productie-Postgres (Supabase) op en zet die lokaal terug — inclusief het echte
+`SportlinkClientId` in `dbo.AppSettings`, zodat je daarna handmatig
+`GET /api/sync-matches?reset=true&season=<jaar>` kunt draaien om verse data bij de echte Sportlink
+API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7).
+
+```powershell
+docker compose up -d
+.\scripts\dev\Restore-ProductionDump.ps1
+```
+
+Het script vraagt de productie-connectiestring interactief op (`Read-Host -AsSecureString`, niets
+op het scherm of in de commandogeschiedenis) en vraagt een expliciete typebevestiging vóór het de
+lokale database overschrijft.
+
+> **DPO/CISO — bevat echte persoonsgegevens.** Een volledige productiedump bevat o.a.
+> `avg.Teambegeleiding` en `planner.EmailVerwerking`. Dit is bedoeld als eenmalige, tijdelijke
+> kopie voor een acceptatietest — geen permanente lokale spiegel van productie. Draai
+> `docker compose down -v` zodra de test klaar is. Het dumpbestand zelf komt nooit op de
+> hostschijf of in git terecht: het leeft alleen kort in `/tmp` van de container en wordt door het
+> script zelf altijd opgeruimd, ook bij een fout.
+
 ### 4.4 SQL Server-tier (alternatief) — lokale database starten
 
 Sinds #800 is Docker de **enige ondersteunde manier** om lokaal een database te draaien. Een
@@ -795,13 +820,13 @@ Vereist een lege SQL Server-database met het volledige schema (zelfde bron als d
 "PostDeployment op verse database"):
 
 ```powershell
-docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Devonly123! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Wegwerpwachtwoord-niet-geheim1! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
 # wacht tot de container klaar is, dan:
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -Q "CREATE DATABASE SportlinkFixture"
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -Q "CREATE DATABASE SportlinkFixture"
 docker cp Database/Script.PostDeployment1.sql sqlfixture:/tmp/postdeployment.sql
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
 
-$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Devonly123!;TrustServerCertificate=True;"
+$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Wegwerpwachtwoord-niet-geheim1!;TrustServerCertificate=True;"
 dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIntegrationTests
 
 docker rm -f sqlfixture
@@ -838,8 +863,8 @@ Drie verschillen met de SQL Server-suite hierboven, alle drie in het voordeel va
 Lokaal draaien tegen een wegwerpcontainer — dezelfde opzet als de CI-job:
 
 ```powershell
-docker run -d --name pgfixture -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
-$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=devonly"
+docker run -d --name pgfixture -e POSTGRES_PASSWORD=wegwerpwachtwoord-niet-geheim -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=wegwerpwachtwoord-niet-geheim"
 dotnet run --project Database.Postgres.Cli
 $env:POSTGRES_TEST_CONNECTION_STRING = $env:POSTGRES_CONNECTION_STRING
 dotnet test FunctionApp.Postgres.Tests
@@ -956,7 +981,7 @@ Kopieer de volledige JSON-output (inclusief accolades) als waarde voor het secre
 
 ```
 Server=tcp:[sql-servernaam].database.windows.net,1433;Initial Catalog=[database-naam];
-Persist Security Info=False;User ID=[username];Password=[password];
+Persist Security Info=False;User ID=[username];Password=<password>;
 Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 ```
 
