@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Uitslagen van gespeelde wedstrijden worden weer verwerkt, en "Laatste sync" loopt weer bij (#1077).**
+  Sinds de overgang naar de nieuwe database faalde elke nachtelijke synchronisatie op het onderdeel
+  dat uitslagen van de voorgaande twee weken ophaalt. Daardoor konden scores ontbreken en bleef de
+  datum bij "Laatste sync" op 4 september staan, terwijl de synchronisatie zelf wél elke nacht liep
+  en teams, programma en wedstrijddetails gewoon bijwerkte.
 - **De testsuite draait weer na het opzetten van een lokale ontwikkeldatabase (#1080).** Het
   seed-script voor de lokale placeholder-club claimde veldnummers die de testsuite zelf gebruikt,
   waardoor zes tests faalden zodra iemand de setupinstructies had gevolgd. Veldnummers zijn in dit
