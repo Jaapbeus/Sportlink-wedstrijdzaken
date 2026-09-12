@@ -24,6 +24,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   waardoor zes tests faalden zodra iemand de setupinstructies had gevolgd. Veldnummers zijn in dit
   schema globaal uniek over clubs heen; de seed en de betrokken test houden nu allebei een
   gereserveerd bereik aan, net als alle andere clubs.
+- **Database-updates kunnen weer worden toegepast (#1062).** Een eerdere wijziging paste een al
+  uitgevoerd migratiebestand achteraf aan. De migratielus bewaakt dat bewust en weigerde daarna
+  élke volgende update, ook de nieuwe. Het bestand staat terug in zijn oorspronkelijke vorm en de
+  bedoelde wijziging is verplaatst naar een nieuwe migratie, die op beide uitgangssituaties werkt.
 
 ### Changed
 - **De lokale ontwikkelomgeving draait voortaan standaard op dezelfde database als productie (#1060).**
