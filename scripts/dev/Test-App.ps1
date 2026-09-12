@@ -1,13 +1,27 @@
 # Test-App.ps1
 # Zelfherstellend verificatiescript voor Sportlink Wedstrijdzaken.
 # Controleert: database-schema vs. code, build, en alle API-endpoints.
-# Gebruik: .\Test-App.ps1 [-Fix] [-Verbose]
-#   -Fix     : pas automatisch fixbare problemen direct aan (ALTER TABLE etc.)
+# Gebruik: .\Test-App.ps1 [-Tier <naam>] [-Fix] [-Verbose]
+#   -Tier    : welke database-tier gecontroleerd wordt. Standaard Postgres — de tier die deze
+#              installatie in productie draait (docs/ARCHITECTUUR-DATABASE-TIERS.md §49). Een
+#              dagelijkse verificatie tegen een tier die niet gedeployd wordt, meet de verkeerde
+#              applicatie; dat is precies hoe #972 dagenlang onopgemerkt bleef (#1060).
+#   -Fix     : pas automatisch fixbare problemen direct aan (ALTER TABLE / migraties toepassen)
 #   -Verbose : toon ook succesvolle checks
+#
+# De schemacontrole verschilt per tier, en niet alleen in syntaxis:
+#   SqlServer : vergelijkt de verwachte kolomlijst met de live database (ALTER TABLE bij -Fix).
+#   Postgres  : vergelijkt Database.Postgres/migrations/*.sql met de schema_migrations-ledger en
+#               controleert daarna dat de kerntabellen er ook echt staan. Een ledger-regel is
+#               immers een bewering over het verleden, geen bewijs dat de tabel nu bestaat.
 #
 # Exit code: 0 = alles ok, 1 = fouten gevonden (of niet gefixed)
 
 param(
+    # Standaard Postgres: de tier die in productie draait. Zie de toelichting hierboven.
+    [ValidateSet('SqlServer', 'Postgres', 'Sqlite')]
+    [string]$Tier = 'Postgres',
+
     [switch]$Fix,
     [switch]$Verbose
 )
@@ -49,67 +63,161 @@ if ($hooksPath -ne ".githooks") {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Database verbinding"
 
-$settingsPath = Join-Path $root "FunctionApp/local.settings.json"
+# Welk functieproject en welke verbindingsreeks gelden, hangt af van de tier. De vertaling
+# tier -> projectpad komt uit scripts/ci/database-tiers.json via Get-DatabaseTierProject (#816,
+# #865) — nooit een tweede lijst hier; dat is precies wat #816 wilde voorkomen.
+$tierInfo = Get-DatabaseTierProject -Tier $Tier -RepoRoot $root
+if (-not $tierInfo.Found) {
+    Write-Issue "Onbekende tier '$Tier'. Geldige waarden: $($tierInfo.Valid -join ', ')"
+    exit 1
+}
+if (-not $tierInfo.Built) {
+    Write-Issue "Tier '$Tier' is geldig maar nog niet gebouwd (zie issue #$($tierInfo.EpicIssue))"
+    exit 1
+}
+if (-not $tierInfo.Exists) {
+    Write-Issue "Projectbestand van tier '$Tier' ontbreekt: $($tierInfo.Csproj)"
+    exit 1
+}
+
+$funcProj       = $tierInfo.FullPath
+$funcProjectDir = Split-Path -Parent $funcProj
+$funcProjectNaam = Split-Path -Leaf $funcProjectDir
+Write-Ok "Tier: $Tier ($($tierInfo.Csproj))"
+
+$settingsPath = Join-Path $funcProjectDir 'local.settings.json'
 if (-not (Test-Path $settingsPath)) {
-    Write-Issue "local.settings.json niet gevonden — kopieer van local.settings.template.json"
+    Write-Issue "local.settings.json niet gevonden in $funcProjectNaam/ — kopieer van local.settings.template.json"
     exit 1
 }
-
 $settings = Get-Content $settingsPath | ConvertFrom-Json
-$connStr  = $settings.Values.SqlConnectionString
-if (-not $connStr) {
-    Write-Issue "SqlConnectionString niet gevonden in local.settings.json"
-    exit 1
-}
 
-# Extraheer Server en Database uit connection string.
-# Beide schrijfwijzen accepteren: 'Data Source'/'Initial Catalog' én 'Server'/'Database'
-# (dat laatste is wat local.settings.template.json gebruikt).
-$server = if ($connStr -match '(?:Data Source|Server|Address|Addr|Network Address)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
-$db     = if ($connStr -match '(?:Initial Catalog|Database)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
-
-if (-not $server -or -not $db) {
-    Write-Issue "Kon server/database niet parsen uit connection string"
-    exit 1
-}
-Write-Ok "Connection: $server / $db"
-
-# ── sqlcmd-authenticatie (#800) ───────────────────────────────────────────────
-# De lokale database draait op Windows én macOS als SQL Server 2022 in Docker, en dus
-# altijd met een SQL-login. Windows Integrated Authentication ('-E') wordt bewust niet
-# meer ondersteund: dat werkt alleen tegen een lokaal geïnstalleerde SQL Server-service
-# op Windows en dwong overal een tweede variant af.
-#
-# Het wachtwoord gaat via de omgevingsvariabele SQLCMDPASSWORD en NIET via -P: argumenten
-# zijn op beide platforms zichtbaar in de processenlijst, een omgevingsvariabele van het
-# kindproces niet.
-$sqlUser    = if ($connStr -match '(?:User ID|User Id|UID)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
-$sqlPass    = if ($connStr -match '(?:Password|PWD)\s*=\s*([^;]+)')        { $Matches[1].Trim() } else { $null }
-$integrated = $connStr -match '(?:Integrated Security|Trusted_Connection)\s*=\s*(?:True|Yes|SSPI)'
-$trustCert  = $connStr -match 'TrustServerCertificate\s*=\s*(?:True|Yes)'
-
-if (-not ($sqlUser -and $sqlPass)) {
-    if ($integrated) {
-        Write-Issue "De verbindingsreeks gebruikt 'Integrated Security'. Dat pad is vervallen — de lokale database draait nu op beide platforms als SQL Server 2022 in Docker."
-    } else {
-        Write-Issue "Geen SQL-login gevonden in de verbindingsreeks."
+if ($Tier -eq 'Postgres') {
+    # ── Postgres-verbinding ──────────────────────────────────────────────────
+    # Twee vormen worden aangeboden: de keyword-vorm (lokale Docker) en de URI-vorm die de
+    # gehoste database uitdeelt (#976). Beide moeten hier werken, anders faalt dit script op
+    # precies de verbindingsreeks die in productie gebruikt wordt.
+    $connStr = $settings.Values.POSTGRES_CONNECTION_STRING
+    if (-not $connStr) {
+        Write-Issue "POSTGRES_CONNECTION_STRING niet gevonden in $funcProjectNaam/local.settings.json"
+        exit 1
     }
-    Write-Host "    Start de database met : docker compose up -d" -ForegroundColor Yellow
-    Write-Host "    Zet daarna in FunctionApp/local.settings.json:" -ForegroundColor Yellow
-    Write-Host "      Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=<jouw SA-wachtwoord>;TrustServerCertificate=True;" -ForegroundColor Yellow
-    Write-Host "    Zie docs/DEVELOPER-SETUP.md voor de volledige stappen." -ForegroundColor Yellow
-    exit 1
-}
 
-$env:SQLCMDPASSWORD = $sqlPass
-$sqlAuthArgs = @('-U', $sqlUser)
+    if ($connStr -match '^postgres(ql)?://') {
+        $uri      = [Uri]$connStr
+        $pgHost   = $uri.Host
+        $pgPort   = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+        $deel     = $uri.UserInfo -split ':', 2
+        $pgUser   = [Uri]::UnescapeDataString($deel[0])
+        $pgPass   = if ($deel.Count -gt 1) { [Uri]::UnescapeDataString($deel[1]) } else { $null }
+        $pgDb     = $uri.AbsolutePath.TrimStart('/')
+    } else {
+        $pgHost = if ($connStr -match '(?:Host|Server)\s*=\s*([^;]+)')     { $Matches[1].Trim() } else { $null }
+        $pgPort = if ($connStr -match 'Port\s*=\s*([^;]+)')                { $Matches[1].Trim() } else { 5432 }
+        $pgUser = if ($connStr -match '(?:Username|User ID|User Id)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
+        $pgPass = if ($connStr -match 'Password\s*=\s*([^;]+)')            { $Matches[1].Trim() } else { $null }
+        $pgDb   = if ($connStr -match 'Database\s*=\s*([^;]+)')            { $Matches[1].Trim() } else { $null }
+    }
 
-# ODBC Driver 18 zet standaard Encrypt=yes en valideert het certificaat. De container heeft
-# een self-signed certificaat, dus -C (TrustServerCertificate) is nodig.
-if ($trustCert) { $sqlAuthArgs += '-C' }
+    if (-not ($pgHost -and $pgUser -and $pgDb)) {
+        Write-Issue "Kon host/gebruiker/database niet parsen uit POSTGRES_CONNECTION_STRING"
+        exit 1
+    }
+    Write-Ok "Connection: ${pgHost}:${pgPort} / $pgDb"
 
-function Invoke-Sql($query) {
-    sqlcmd -S $server -d $db @sqlAuthArgs -Q $query -h -1 -W 2>&1
+    # psql draait bij voorkeur IN de container: dat scheelt een installatie op de eigen machine
+    # en houdt het wachtwoord in de omgeving van het kindproces in plaats van in de
+    # processenlijst (#800, zelfde afweging als SQLCMDPASSWORD hieronder).
+    $pgContainer   = 'sportlink-postgres'
+    $viaContainer  = $false
+    if (Get-Command docker -ErrorAction SilentlyContinue) {
+        $draait = (& docker ps --filter "name=^/$pgContainer$" --filter 'status=running' --format '{{.Names}}' 2>$null)
+        if ($draait -eq $pgContainer) { $viaContainer = $true }
+    }
+    if (-not $viaContainer -and -not (Get-Command psql -ErrorAction SilentlyContinue)) {
+        Write-Issue "Geen manier om SQL uit te voeren: container '$pgContainer' draait niet en psql ontbreekt."
+        Write-Host "    Start de database met : docker compose up -d" -ForegroundColor Yellow
+        Write-Host "    Of installeer psql    : brew install libpq && brew link --force libpq (macOS)" -ForegroundColor Yellow
+        exit 1
+    }
+
+    function Invoke-Pg([string]$query, [switch]$Tuples) {
+        if ($viaContainer) {
+            return Invoke-Psql -ContainerName $pgContainer -Sql $query -Password $pgPass `
+                               -User $pgUser -Database $pgDb -Tuples:$Tuples
+        }
+        $env:PGPASSWORD = $pgPass
+        $psqlArgs = @('-h', $pgHost, '-p', "$pgPort", '-U', $pgUser, '-d', $pgDb)
+        if ($Tuples) { $psqlArgs += @('-t', '-A') }
+        $psqlArgs += @('-c', $query)
+        $uit = & psql @psqlArgs 2>&1
+        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($uit -join "`n").Trim() }
+    }
+
+    $ping = Invoke-Pg 'SELECT 1' -Tuples
+    if ($ping.ExitCode -ne 0) {
+        Write-Issue "Geen verbinding met de Postgres-database: $($ping.Output)"
+        Write-Host "    Start de database met: docker compose up -d" -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Ok "Postgres bereikbaar ($(if ($viaContainer) { 'via container' } else { 'via psql' }))"
+
+} else {
+    $connStr = $settings.Values.SqlConnectionString
+    if (-not $connStr) {
+        Write-Issue "SqlConnectionString niet gevonden in local.settings.json"
+        exit 1
+    }
+
+    # Extraheer Server en Database uit connection string.
+    # Beide schrijfwijzen accepteren: 'Data Source'/'Initial Catalog' én 'Server'/'Database'
+    # (dat laatste is wat local.settings.template.json gebruikt).
+    $server = if ($connStr -match '(?:Data Source|Server|Address|Addr|Network Address)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
+    $db     = if ($connStr -match '(?:Initial Catalog|Database)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
+
+    if (-not $server -or -not $db) {
+        Write-Issue "Kon server/database niet parsen uit connection string"
+        exit 1
+    }
+    Write-Ok "Connection: $server / $db"
+
+    # ── sqlcmd-authenticatie (#800) ───────────────────────────────────────────────
+    # De lokale database draait op Windows én macOS als SQL Server 2022 in Docker, en dus
+    # altijd met een SQL-login. Windows Integrated Authentication ('-E') wordt bewust niet
+    # meer ondersteund: dat werkt alleen tegen een lokaal geïnstalleerde SQL Server-service
+    # op Windows en dwong overal een tweede variant af.
+    #
+    # Het wachtwoord gaat via de omgevingsvariabele SQLCMDPASSWORD en NIET via -P: argumenten
+    # zijn op beide platforms zichtbaar in de processenlijst, een omgevingsvariabele van het
+    # kindproces niet.
+    $sqlUser    = if ($connStr -match '(?:User ID|User Id|UID)\s*=\s*([^;]+)') { $Matches[1].Trim() } else { $null }
+    $sqlPass    = if ($connStr -match '(?:Password|PWD)\s*=\s*([^;]+)')        { $Matches[1].Trim() } else { $null }
+    $integrated = $connStr -match '(?:Integrated Security|Trusted_Connection)\s*=\s*(?:True|Yes|SSPI)'
+    $trustCert  = $connStr -match 'TrustServerCertificate\s*=\s*(?:True|Yes)'
+
+    if (-not ($sqlUser -and $sqlPass)) {
+        if ($integrated) {
+            Write-Issue "De verbindingsreeks gebruikt 'Integrated Security'. Dat pad is vervallen — de lokale database draait nu op beide platforms als SQL Server 2022 in Docker."
+        } else {
+            Write-Issue "Geen SQL-login gevonden in de verbindingsreeks."
+        }
+        Write-Host "    Start de database met : docker compose up -d" -ForegroundColor Yellow
+        Write-Host "    Zet daarna in FunctionApp/local.settings.json:" -ForegroundColor Yellow
+        Write-Host "      Server=localhost,1433;Database=SportlinkSqlDb;User Id=sa;Password=<jouw SA-wachtwoord>;TrustServerCertificate=True;" -ForegroundColor Yellow
+        Write-Host "    Zie docs/DEVELOPER-SETUP.md voor de volledige stappen." -ForegroundColor Yellow
+        exit 1
+    }
+
+    $env:SQLCMDPASSWORD = $sqlPass
+    $sqlAuthArgs = @('-U', $sqlUser)
+
+    # ODBC Driver 18 zet standaard Encrypt=yes en valideert het certificaat. De container heeft
+    # een self-signed certificaat, dus -C (TrustServerCertificate) is nodig.
+    if ($trustCert) { $sqlAuthArgs += '-C' }
+
+    function Invoke-Sql($query) {
+        sqlcmd -S $server -d $db @sqlAuthArgs -Q $query -h -1 -W 2>&1
+    }
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -117,200 +225,289 @@ function Invoke-Sql($query) {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Schema validatie"
 
-# Verwachte kolommen per tabel (afgeleid uit .sql schema-bestanden + API-code)
-$expectedColumns = @{
-    "dbo.AppSettings" = @(
-        "ClubName","ClubCode","SportlinkApiUrl","SportlinkClientId","SeasonStartMonth",
-        "Accommodatie","LastSyncTimestamp","FetchSchedule","PlannerAfzenderNaam",
-        "CoordinatorNaam","CoordinatorFunctie","PlannerEmailAdres",
-        "HerplanDeadlineDagen","BufferMinuten",
-        "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude",
-        "EmailVoetnoot","UseRealtimeApi","SyncEnabled",
-        "ThemeColorPrimary","ThemeColorSecondary","ThemeColorAccent",
-        "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl",
-        "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio",
-        "AppSettingsAuditBewaarDagen","SportlinkExtensionEnabled"
-    )
-    "dbo.SportlinkExtensieRollen" = @(
-        "RolNaam","LaatstGekoppeldDoor","LaatstGekoppeldOp","SportlinkAccountNaam","ClubCode"
-    )
-    "dbo.TeamVoorkeurTijden" = @(
-        "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",
-        "mta_inserted","mta_modified"
-    )
-    "dbo.VeldBeschikbaarheid" = @(
-        "Id","VeldNummer","DagVanWeek","BeschikbaarVanaf","BeschikbaarTot",
-        "GebruikZonsondergang","PeriodeId","ClubCode"
-    )
-    "dbo.VeldPeriode" = @(
-        "Id","Naam","DatumVan","DatumTot","Actief","ClubCode"
-    )
-    "dbo.UitgeslotenEmailAdressen" = @(
-        "Id","EmailAdres","Omschrijving","Actief","ClubCode","mta_inserted"
-    )
-    "dbo.EmailTemplateInstellingen" = @(
-        "Id","TemplateKey","Onderwerp","BodyTemplate","Actief","ClubCode",
-        "mta_inserted","mta_modified"
-    )
-    "dbo.AppSettingsAudit" = @(
-        "Id","GewijzigdDoor","Veld","OudeWaarde","NieuweWaarde","ClubCode","Tijdstip"
-    )
-    "dbo.TeamRegels" = @(
-        "Id","TeamNaam","RegelType","WaardeMinuten","WaardeVeldNummer","WaardeTijd",
-        "Prioriteit","Actief","ClubCode","Opmerking"
-    )
-    "dbo.Velden" = @(
-        "VeldNummer","VeldNaam","VeldType","HeeftKunstlicht","Actief","ClubCode"
-    )
-    "dbo.VeldTraining" = @(
-        "Id","VeldNummer","DagVanWeek","VanTijd","TotTijd","Omschrijving","Actief","ClubCode"
-    )
-}
-
-# SQL schema-bestand per tabel — afgeleid uit de tabelnaam (#684).
-# Elke tabel in Database\dbo\Tables\<Tabel>.sql is de bron van waarheid voor kolomdefinities.
-function Get-SchemaSqlPath($tableKey) {
-    $parts = $tableKey -split '\.'
-    Join-Path $root "Database/$($parts[0])/Tables/$($parts[1]).sql"
-}
-
-function Get-SchemaColumns($sqlPath) {
-    <#
-        Parseert een CREATE TABLE-bestand naar een ordered dict kolomnaam → definitie
-        (type + NULL/NOT NULL + eventuele inline CONSTRAINT ... DEFAULT).
-
-        Hiermee is het schema-bestand de enige bron van waarheid voor kolomtypen: de
-        -Fix-paden hoeven ze niet meer te dupliceren. Dat is precies de drift die ervoor
-        zorgde dat -Fix DEFAULT GETDATE() gebruikte terwijl het schema GETUTCDATE() zegt.
-    #>
-    $result = [ordered]@{}
-    if (-not (Test-Path $sqlPath)) { return $result }
-
-    foreach ($rawLine in (Get-Content $sqlPath)) {
-        # Verwijder regelcommentaar; dat bevat vaak komma's en haakjes.
-        $line = ($rawLine -replace '--.*$', '').Trim()
-        if (-not $line) { continue }
-        if ($line -match '^(CREATE|GO|\)|\();?$') { continue }
-        # Tabel-level constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE) zijn geen kolommen.
-        if ($line -match '^CONSTRAINT\b') { continue }
-
-        if ($line -match '^\[(?<name>[^\]]+)\]\s+(?<def>.+?),?\s*$') {
-            $result[$Matches['name']] = $Matches['def'].TrimEnd(',').Trim()
-        }
-    }
-    return $result
-}
-
-# --- Drift-detectie: schema-bestand vs. de $expectedColumns hierboven ---
-# Zonder deze check meldt Test-App.ps1 groen wanneer een nieuwe kolom in het .sql-bestand
-# staat maar niet in $expectedColumns is bijgewerkt — stille drift.
-foreach ($tableKey in @($expectedColumns.Keys)) {
-    $sqlPath = Get-SchemaSqlPath $tableKey
-    if (-not (Test-Path $sqlPath)) { continue }
-
-    $sqlCols  = (Get-SchemaColumns $sqlPath).Keys
-    if (-not $sqlCols) {
-        Write-Issue "Schema-bestand $([System.IO.Path]::GetFileName($sqlPath)) leverde geen kolommen op — parser controleren"
-        continue
-    }
-
-    $missingInScript = @($sqlCols | Where-Object { $_ -notin $expectedColumns[$tableKey] })
-    if ($missingInScript.Count -gt 0) {
-        Write-Issue ("DRIFT in Test-App.ps1: {0} declareert kolom(men) {1} die niet in `$expectedColumns staan — vul de lijst aan" -f `
-            [System.IO.Path]::GetFileName($sqlPath), ($missingInScript -join ', '))
+if ($Tier -eq 'Postgres') {
+    # ── Migratie-ledger: code vs. database ───────────────────────────────────
+    # Er is hier geen SSDT-equivalent en geen tweede kolomlijst: het schema IS de reeks
+    # migratiebestanden, en schema_migrations (Database.Postgres/MigrationRunner.cs) legt vast
+    # welke daarvan zijn toegepast. Een eigen kolomlijst zou een derde waarheid introduceren
+    # naast de migraties en de database zelf.
+    $migratieMap = Join-Path $root 'Database.Postgres/migrations'
+    if (-not (Test-Path $migratieMap)) {
+        Write-Issue "Migratiemap ontbreekt: Database.Postgres/migrations"
     } else {
-        Write-Ok "Drift-check $tableKey OK ($($sqlCols.Count) kolommen in schema-bestand)"
-    }
-}
+        $bestanden = @(Get-ChildItem -Path $migratieMap -Filter '*.sql' | Sort-Object Name | ForEach-Object { $_.Name })
+        if ($bestanden.Count -eq 0) {
+            Write-Issue "Geen migratiebestanden gevonden in Database.Postgres/migrations"
+        }
 
-foreach ($tableKey in $expectedColumns.Keys) {
-    $parts  = $tableKey -split '\.'
-    $schema = $parts[0]
-    $table  = $parts[1]
-
-    # Controleer of tabel bestaat
-    $existsQ = "SELECT COUNT(1) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.name='$table' AND s.name='$schema'"
-    $exists  = (Invoke-Sql $existsQ | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1).Trim()
-
-    if ($exists -ne "1") {
-        $sqlFile = Get-SchemaSqlPath $tableKey
-        if ($Fix) {
-            if (Test-Path $sqlFile) {
-                # -i <bestand> in plaats van -Q <inhoud> (#581): de complete bestandsinhoud
-                # inline als -Q-argument doorgeven breekt sqlcmd's argumentparser zodra het
-                # bestand een letterlijk aanhalingsteken of niet-ASCII-teken in commentaar bevat
-                # ("- of / does not have an associated argument") — precies zoals de productie-
-                # deploy het al doet (azure/sql-action met een file-path, geen inline query).
-                $result = sqlcmd -S $server -d $db @sqlAuthArgs -i $sqlFile 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Fixed "Tabel $tableKey aangemaakt"
-                } else {
-                    Write-Issue "Tabel $tableKey aanmaken mislukt: $result"
-                }
-            } else {
-                Write-Issue "Tabel $tableKey ontbreekt en schema-bestand niet gevonden: $sqlFile"
+        $ledger    = Invoke-Pg 'SELECT filename FROM schema_migrations ORDER BY filename' -Tuples
+        $toegepast = @()
+        if ($ledger.ExitCode -ne 0) {
+            # Een verse database heeft de tabel nog niet; dat is "nul toegepast", geen storing.
+            if ($ledger.Output -notmatch 'does not exist|bestaat niet') {
+                Write-Issue "Kon schema_migrations niet lezen: $($ledger.Output)"
             }
         } else {
-            Write-Issue "Tabel $tableKey ONTBREEKT in database (gebruik -Fix om te herstellen)"
+            $toegepast = @($ledger.Output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
         }
-        continue
-    }
 
-    # Controleer kolommen
-    $colQ   = "SELECT c.name FROM sys.columns c JOIN sys.tables t ON t.object_id=c.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.name='$table' AND s.name='$schema'"
-    $dbCols = (Invoke-Sql $colQ | Where-Object { $_ -match '\S' } | ForEach-Object { $_.Trim() })
+        $ontbreekt = @($bestanden | Where-Object { $toegepast -notcontains $_ })
+        $onbekend  = @($toegepast | Where-Object { $bestanden -notcontains $_ })
 
-    # Kolomdefinities uit het schema-bestand — dit is de bron van waarheid (#684).
-    $schemaCols = Get-SchemaColumns (Get-SchemaSqlPath $tableKey)
+        if ($ontbreekt.Count -gt 0) {
+            if ($Fix) {
+                Write-Host "  $($ontbreekt.Count) migratie(s) nog niet toegepast — uitvoeren..." -ForegroundColor Yellow
+                $vorigeConn = $env:POSTGRES_CONNECTION_STRING
+                $env:POSTGRES_CONNECTION_STRING = $connStr
+                & (Join-Path $PSScriptRoot 'Invoke-PostgresMigrations.ps1')
+                $migratieExit = $LASTEXITCODE
+                $env:POSTGRES_CONNECTION_STRING = $vorigeConn
 
-    foreach ($col in $expectedColumns[$tableKey]) {
-        if ($col -notin $dbCols) {
-            # Definitie bij voorkeur uit het .sql-bestand; alleen tabellen zonder
-            # schema-bestand vallen terug op de lijst hieronder.
-            $colDef = $null
-            if ($schemaCols.Contains($col)) {
-                $fromSchema = $schemaCols[$col]
-                # IDENTITY en PRIMARY KEY kunnen niet via ALTER TABLE ADD worden toegevoegd.
-                if ($fromSchema -match 'IDENTITY|PRIMARY\s+KEY') {
-                    Write-Issue "$tableKey.$col ONTBREEKT en is niet via ALTER toe te voegen ($fromSchema) — publiceer het DB-project"
-                    continue
-                }
-                # NOT NULL zonder DEFAULT faalt op een tabel met bestaande rijen.
-                if ($fromSchema -match 'NOT\s+NULL' -and $fromSchema -notmatch 'DEFAULT') {
-                    Write-Issue "$tableKey.$col ONTBREEKT: NOT NULL zonder DEFAULT, kan niet veilig worden toegevoegd — publiceer het DB-project"
-                    continue
-                }
-                $colDef = $fromSchema
-            } else {
-                $colDef = switch ($col) {
-                    "AccommodatiePlaats"   { "NVARCHAR(100) NULL" }
-                    "AccommodatieLatitude" { "FLOAT NULL" }
-                    "AccommodatieLongitude"{ "FLOAT NULL" }
-                    "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
-                    "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT ''" }
-                    # UTC, nooit GETDATE() — zie de UTC-regel in CLAUDE.md en PR #246.
-                    "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETUTCDATE()" }
-                    "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETUTCDATE()" }
-                    "Actief"               { "BIT NOT NULL CONSTRAINT [DF_${table}_Actief] DEFAULT 1" }
-                    default                { $null }
-                }
-            }
-
-            if ($Fix -and $colDef) {
-                $alterSql = "ALTER TABLE [$schema].[$table] ADD [$col] $colDef"
-                $result   = Invoke-Sql $alterSql
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Fixed "$tableKey.$col toegevoegd ($colDef)"
+                if ($migratieExit -ne 0) {
+                    Write-Issue "Migraties toepassen mislukt (exitcode $migratieExit)"
                 } else {
-                    Write-Issue "$tableKey.$col ontbreekt, ALTER mislukt: $result"
+                    $herlees   = Invoke-Pg 'SELECT filename FROM schema_migrations ORDER BY filename' -Tuples
+                    $toegepast = @($herlees.Output -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                    $restant   = @($bestanden | Where-Object { $toegepast -notcontains $_ })
+                    if ($restant.Count -gt 0) {
+                        Write-Issue "Na de migratieronde staan er nog $($restant.Count) open: $($restant -join ', ')"
+                    } else {
+                        Write-Fixed "$($ontbreekt.Count) migratie(s) toegepast"
+                    }
                 }
             } else {
-                Write-Issue "$tableKey.$col ONTBREEKT (gebruik -Fix om te herstellen)"
+                Write-Issue "$($ontbreekt.Count) migratie(s) niet toegepast (gebruik -Fix): $($ontbreekt -join ', ')"
             }
+        } else {
+            Write-Ok "Alle $($bestanden.Count) migraties toegepast"
+        }
+
+        # Andersom is géén -Fix-geval: de database loopt dan vóór op de code. Dat betekent een
+        # verkeerde branch of een handmatig toegepaste migratie, en terugdraaien raadt dit
+        # script niet zelf.
+        if ($onbekend.Count -gt 0) {
+            Write-Issue "Database kent $($onbekend.Count) migratie(s) die niet in de code staan: $($onbekend -join ', ')"
         }
     }
 
-    Write-Ok "Schema $tableKey OK"
+    # ── Kerntabellen echt aanwezig ───────────────────────────────────────────
+    # Een ledger-regel is een bewering over het verleden. Deze controle kijkt naar de database
+    # zoals hij nu is — anders is "migratie ooit gedraaid" niet te onderscheiden van "tabel
+    # bestaat", precies het verschil dat een handmatige DROP zichtbaar zou moeten maken.
+    $kernTabellen = @(
+        'public.appsettings', 'public.teams', 'public.teamaliassen', 'public.velden',
+        'public.veldbeschikbaarheid', 'public.emailtemplateinstellingen',
+        'planner.emailverwerking', 'avg.teambegeleiding'
+    )
+    foreach ($tabel in $kernTabellen) {
+        $schema, $naam = $tabel -split '\.', 2
+        $q = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$schema' AND table_name = '$naam'"
+        $r = Invoke-Pg $q -Tuples
+        if ($r.ExitCode -ne 0) {
+            Write-Issue "Kon bestaan van $tabel niet controleren: $($r.Output)"
+        } elseif ($r.Output.Trim() -eq '1') {
+            Write-Ok "Tabel $tabel aanwezig"
+        } else {
+            Write-Issue "Tabel $tabel ONTBREEKT"
+        }
+    }
+
+} else {
+    # Verwachte kolommen per tabel (afgeleid uit .sql schema-bestanden + API-code)
+    $expectedColumns = @{
+        "dbo.AppSettings" = @(
+            "ClubName","ClubCode","SportlinkApiUrl","SportlinkClientId","SeasonStartMonth",
+            "Accommodatie","LastSyncTimestamp","FetchSchedule","PlannerAfzenderNaam",
+            "CoordinatorNaam","CoordinatorFunctie","PlannerEmailAdres",
+            "HerplanDeadlineDagen","BufferMinuten",
+            "AccommodatiePlaats","AccommodatieLatitude","AccommodatieLongitude",
+            "EmailVoetnoot","UseRealtimeApi","SyncEnabled",
+            "ThemeColorPrimary","ThemeColorSecondary","ThemeColorAccent",
+            "ThemeColorTextOnPrimary","ThemeClubWebsiteUrl",
+            "KnvbPdfBijlageIngeschakeld","KnvbStandaardRegio",
+            "AppSettingsAuditBewaarDagen","SportlinkExtensionEnabled"
+        )
+        "dbo.SportlinkExtensieRollen" = @(
+            "RolNaam","LaatstGekoppeldDoor","LaatstGekoppeldOp","SportlinkAccountNaam","ClubCode"
+        )
+        "dbo.TeamVoorkeurTijden" = @(
+            "Id","TeamNaam","DagVanWeek","VoorkeurTijd","Prioriteit","Actief","ClubCode",
+            "mta_inserted","mta_modified"
+        )
+        "dbo.VeldBeschikbaarheid" = @(
+            "Id","VeldNummer","DagVanWeek","BeschikbaarVanaf","BeschikbaarTot",
+            "GebruikZonsondergang","PeriodeId","ClubCode"
+        )
+        "dbo.VeldPeriode" = @(
+            "Id","Naam","DatumVan","DatumTot","Actief","ClubCode"
+        )
+        "dbo.UitgeslotenEmailAdressen" = @(
+            "Id","EmailAdres","Omschrijving","Actief","ClubCode","mta_inserted"
+        )
+        "dbo.EmailTemplateInstellingen" = @(
+            "Id","TemplateKey","Onderwerp","BodyTemplate","Actief","ClubCode",
+            "mta_inserted","mta_modified"
+        )
+        "dbo.AppSettingsAudit" = @(
+            "Id","GewijzigdDoor","Veld","OudeWaarde","NieuweWaarde","ClubCode","Tijdstip"
+        )
+        "dbo.TeamRegels" = @(
+            "Id","TeamNaam","RegelType","WaardeMinuten","WaardeVeldNummer","WaardeTijd",
+            "Prioriteit","Actief","ClubCode","Opmerking"
+        )
+        "dbo.Velden" = @(
+            "VeldNummer","VeldNaam","VeldType","HeeftKunstlicht","Actief","ClubCode"
+        )
+        "dbo.VeldTraining" = @(
+            "Id","VeldNummer","DagVanWeek","VanTijd","TotTijd","Omschrijving","Actief","ClubCode"
+        )
+    }
+
+    # SQL schema-bestand per tabel — afgeleid uit de tabelnaam (#684).
+    # Elke tabel in Database\dbo\Tables\<Tabel>.sql is de bron van waarheid voor kolomdefinities.
+    function Get-SchemaSqlPath($tableKey) {
+        $parts = $tableKey -split '\.'
+        Join-Path $root "Database/$($parts[0])/Tables/$($parts[1]).sql"
+    }
+
+    function Get-SchemaColumns($sqlPath) {
+        <#
+            Parseert een CREATE TABLE-bestand naar een ordered dict kolomnaam → definitie
+            (type + NULL/NOT NULL + eventuele inline CONSTRAINT ... DEFAULT).
+
+            Hiermee is het schema-bestand de enige bron van waarheid voor kolomtypen: de
+            -Fix-paden hoeven ze niet meer te dupliceren. Dat is precies de drift die ervoor
+            zorgde dat -Fix DEFAULT GETDATE() gebruikte terwijl het schema GETUTCDATE() zegt.
+        #>
+        $result = [ordered]@{}
+        if (-not (Test-Path $sqlPath)) { return $result }
+
+        foreach ($rawLine in (Get-Content $sqlPath)) {
+            # Verwijder regelcommentaar; dat bevat vaak komma's en haakjes.
+            $line = ($rawLine -replace '--.*$', '').Trim()
+            if (-not $line) { continue }
+            if ($line -match '^(CREATE|GO|\)|\();?$') { continue }
+            # Tabel-level constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE) zijn geen kolommen.
+            if ($line -match '^CONSTRAINT\b') { continue }
+
+            if ($line -match '^\[(?<name>[^\]]+)\]\s+(?<def>.+?),?\s*$') {
+                $result[$Matches['name']] = $Matches['def'].TrimEnd(',').Trim()
+            }
+        }
+        return $result
+    }
+
+    # --- Drift-detectie: schema-bestand vs. de $expectedColumns hierboven ---
+    # Zonder deze check meldt Test-App.ps1 groen wanneer een nieuwe kolom in het .sql-bestand
+    # staat maar niet in $expectedColumns is bijgewerkt — stille drift.
+    foreach ($tableKey in @($expectedColumns.Keys)) {
+        $sqlPath = Get-SchemaSqlPath $tableKey
+        if (-not (Test-Path $sqlPath)) { continue }
+
+        $sqlCols  = (Get-SchemaColumns $sqlPath).Keys
+        if (-not $sqlCols) {
+            Write-Issue "Schema-bestand $([System.IO.Path]::GetFileName($sqlPath)) leverde geen kolommen op — parser controleren"
+            continue
+        }
+
+        $missingInScript = @($sqlCols | Where-Object { $_ -notin $expectedColumns[$tableKey] })
+        if ($missingInScript.Count -gt 0) {
+            Write-Issue ("DRIFT in Test-App.ps1: {0} declareert kolom(men) {1} die niet in `$expectedColumns staan — vul de lijst aan" -f `
+                [System.IO.Path]::GetFileName($sqlPath), ($missingInScript -join ', '))
+        } else {
+            Write-Ok "Drift-check $tableKey OK ($($sqlCols.Count) kolommen in schema-bestand)"
+        }
+    }
+
+    foreach ($tableKey in $expectedColumns.Keys) {
+        $parts  = $tableKey -split '\.'
+        $schema = $parts[0]
+        $table  = $parts[1]
+
+        # Controleer of tabel bestaat
+        $existsQ = "SELECT COUNT(1) FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.name='$table' AND s.name='$schema'"
+        $exists  = (Invoke-Sql $existsQ | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1).Trim()
+
+        if ($exists -ne "1") {
+            $sqlFile = Get-SchemaSqlPath $tableKey
+            if ($Fix) {
+                if (Test-Path $sqlFile) {
+                    # -i <bestand> in plaats van -Q <inhoud> (#581): de complete bestandsinhoud
+                    # inline als -Q-argument doorgeven breekt sqlcmd's argumentparser zodra het
+                    # bestand een letterlijk aanhalingsteken of niet-ASCII-teken in commentaar bevat
+                    # ("- of / does not have an associated argument") — precies zoals de productie-
+                    # deploy het al doet (azure/sql-action met een file-path, geen inline query).
+                    $result = sqlcmd -S $server -d $db @sqlAuthArgs -i $sqlFile 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Fixed "Tabel $tableKey aangemaakt"
+                    } else {
+                        Write-Issue "Tabel $tableKey aanmaken mislukt: $result"
+                    }
+                } else {
+                    Write-Issue "Tabel $tableKey ontbreekt en schema-bestand niet gevonden: $sqlFile"
+                }
+            } else {
+                Write-Issue "Tabel $tableKey ONTBREEKT in database (gebruik -Fix om te herstellen)"
+            }
+            continue
+        }
+
+        # Controleer kolommen
+        $colQ   = "SELECT c.name FROM sys.columns c JOIN sys.tables t ON t.object_id=c.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE t.name='$table' AND s.name='$schema'"
+        $dbCols = (Invoke-Sql $colQ | Where-Object { $_ -match '\S' } | ForEach-Object { $_.Trim() })
+
+        # Kolomdefinities uit het schema-bestand — dit is de bron van waarheid (#684).
+        $schemaCols = Get-SchemaColumns (Get-SchemaSqlPath $tableKey)
+
+        foreach ($col in $expectedColumns[$tableKey]) {
+            if ($col -notin $dbCols) {
+                # Definitie bij voorkeur uit het .sql-bestand; alleen tabellen zonder
+                # schema-bestand vallen terug op de lijst hieronder.
+                $colDef = $null
+                if ($schemaCols.Contains($col)) {
+                    $fromSchema = $schemaCols[$col]
+                    # IDENTITY en PRIMARY KEY kunnen niet via ALTER TABLE ADD worden toegevoegd.
+                    if ($fromSchema -match 'IDENTITY|PRIMARY\s+KEY') {
+                        Write-Issue "$tableKey.$col ONTBREEKT en is niet via ALTER toe te voegen ($fromSchema) — publiceer het DB-project"
+                        continue
+                    }
+                    # NOT NULL zonder DEFAULT faalt op een tabel met bestaande rijen.
+                    if ($fromSchema -match 'NOT\s+NULL' -and $fromSchema -notmatch 'DEFAULT') {
+                        Write-Issue "$tableKey.$col ONTBREEKT: NOT NULL zonder DEFAULT, kan niet veilig worden toegevoegd — publiceer het DB-project"
+                        continue
+                    }
+                    $colDef = $fromSchema
+                } else {
+                    $colDef = switch ($col) {
+                        "AccommodatiePlaats"   { "NVARCHAR(100) NULL" }
+                        "AccommodatieLatitude" { "FLOAT NULL" }
+                        "AccommodatieLongitude"{ "FLOAT NULL" }
+                        "EmailVoetnoot"        { "NVARCHAR(MAX) NULL" }
+                        "ClubCode"             { "NVARCHAR(20) NOT NULL CONSTRAINT [DF_${table}_ClubCode] DEFAULT ''" }
+                        # UTC, nooit GETDATE() — zie de UTC-regel in CLAUDE.md en PR #246.
+                        "mta_inserted"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Inserted] DEFAULT GETUTCDATE()" }
+                        "mta_modified"         { "DATETIME2 NOT NULL CONSTRAINT [DF_${table}_Modified] DEFAULT GETUTCDATE()" }
+                        "Actief"               { "BIT NOT NULL CONSTRAINT [DF_${table}_Actief] DEFAULT 1" }
+                        default                { $null }
+                    }
+                }
+
+                if ($Fix -and $colDef) {
+                    $alterSql = "ALTER TABLE [$schema].[$table] ADD [$col] $colDef"
+                    $result   = Invoke-Sql $alterSql
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Fixed "$tableKey.$col toegevoegd ($colDef)"
+                    } else {
+                        Write-Issue "$tableKey.$col ontbreekt, ALTER mislukt: $result"
+                    }
+                } else {
+                    Write-Issue "$tableKey.$col ONTBREEKT (gebruik -Fix om te herstellen)"
+                }
+            }
+        }
+
+        Write-Ok "Schema $tableKey OK"
+    }
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -318,7 +515,8 @@ foreach ($tableKey in $expectedColumns.Keys) {
 # ──────────────────────────────────────────────────────────────────────
 Write-Section "Build verificatie"
 
-$funcProj   = Join-Path $root "FunctionApp/fa-dev-sportlink-01.csproj"
+# $funcProj is in sectie 1 uit de tier-tabel gehaald — bouw altijd het project dat ook
+# daadwerkelijk gestart wordt, anders meldt dit script een groene build van een tier die niet draait.
 $blazorProj = Join-Path $root "BlazorAdmin/BlazorAdmin.csproj"
 
 # BlazorAdmin NIET bouwen terwijl de dev server draait (#684).

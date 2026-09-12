@@ -527,7 +527,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Major-versie volgt de gehoste productiedatabase (#1060) — zie de toelichting bij de
+        # image-tag in docker-compose.yml. Wijzigt de gehoste major, dan wijzigen deze drie mee:
+        # docker-compose.yml, docker-compose.selftest.yml en deze job.
+        image: postgres:17
         env:
           POSTGRES_USER: ci_postgres
           POSTGRES_PASSWORD: ci-wegwerpwachtwoord-niet-geheim

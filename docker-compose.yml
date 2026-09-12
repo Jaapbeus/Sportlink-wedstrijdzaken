@@ -1,51 +1,88 @@
 # Lokale database(s) voor ontwikkeling — identiek op Windows en macOS (#800).
 #
-# Twee volledig gescheiden tiers, kies er één per fork (zie docs/ARCHITECTUUR-DATABASE-TIERS.md):
-# - sqlserver: het rollbackpad — was tot 2026-09-04 de productietier, blijft volledig ondersteund.
-# - postgres (onderaan dit bestand, achter een profile): sinds 2026-09-04 de productietier (#976).
-# Docker is voor beide de ENIGE ondersteunde manier om ze lokaal te draaien. Een rechtstreeks op
-# Windows geïnstalleerde SQL Server-service wordt niet ondersteund: dat pad werkt alleen op
-# Windows en dwong overal een tweede code- en documentatievariant af.
+# postgres is de STANDAARD-service: dat is de tier die deze installatie in productie draait
+# (zie docs/ARCHITECTUUR-DATABASE-TIERS.md §49). 'docker compose up -d' start dus de database
+# die met productie overeenkomt — niet de andere.
 #
-# Op Apple Silicon draait dit image onder Rosetta-emulatie (Microsoft levert geen native
-# ARM64-image van SQL Server); op Windows draait het native. Verder is alles gelijk:
-# dezelfde image, dezelfde poort, dezelfde verbindingsreeks.
+# sqlserver staat sinds #1060 achter een profile. Die tier blijft volledig ondersteund voor forks
+# die hem kiezen (scripts/ci/database-tiers.json: built=true) en is het rollbackpad uit §49 stap 7,
+# maar hij is niet langer de lokale standaard. Expliciet opstarten:
+#   docker compose --profile sqlserver up -d sqlserver
 #
-# LET OP — bewust geaccepteerd risico op Apple Silicon. Microsoft schrijft in de release notes
-# van SQL Server 2022 letterlijk: "SQL Server container images are supported only on Linux hosts
-# running on Intel and AMD x86-64 CPUs. Emulation or translation environments (for example,
-# Rosetta 2, Prism, or QEMU) aren't tested or supported."
-# https://learn.microsoft.com/sql/linux/sql-server-linux-release-notes#supported-platforms
+# Starten : docker compose up -d                      (alleen postgres)
+#           docker compose --profile sqlserver up -d  (postgres + sqlserver)
+# Stoppen : docker compose down                       (data blijft in het volume staan)
+# Wissen  : docker compose down -v                    (LET OP: verwijdert de database definitief)
 #
-# Dat is geaccepteerd omdat: (a) er geen native ARM64-image bestaat, (b) Azure SQL Edge — de
-# vroegere ARM64-optie — per 30 september 2025 is uitgefaseerd, en (c) dit uitsluitend een
-# LOKALE ONTWIKKELdatabase is. Productie draait op Azure SQL en raakt dit niet. Op Windows
-# x86-64 draait dezelfde container wél volledig ondersteund.
-# Gedraagt de database zich op een Mac vreemd, sluit emulatie dan eerst uit door dezelfde
-# migratie tegen Azure SQL of tegen een Windows-machine te draaien.
+# Let op bij het stoppen: een service achter een profile wordt door een kaal 'docker compose down'
+# NIET gestopt. Gebruik daarvoor 'docker compose --profile sqlserver down'.
 #
-# Starten : docker compose up -d
-# Stoppen : docker compose down          (data blijft in het volume staan)
-# Wissen  : docker compose down -v       (LET OP: verwijdert de database definitief)
-#
-# Het SA-wachtwoord komt uit de omgevingsvariabele MSSQL_SA_PASSWORD en staat bewust NIET
-# in dit bestand — deze repository is openbaar. Zet het lokaal in een .env-bestand naast
-# deze compose-file (staat in .gitignore) of in je shell-profiel. Zonder die variabele
-# weigert docker compose te starten, met een expliciete melding.
-#
-# Eisen aan het wachtwoord (SQL Server weigert de container anders stilletjes): minimaal
-# 8 tekens, met hoofdletters, kleine letters en cijfers of leestekens.
+# Wachtwoorden komen uit een lokaal .env-bestand naast deze compose-file (staat in .gitignore) of
+# uit je shell-profiel — bewust NIET uit dit bestand: deze repository is openbaar. Zonder die
+# variabelen weigert docker compose te starten, met een expliciete melding.
 
 services:
+  # ── Postgres — de tier die in productie draait ────────────────────────────────
+  #
+  # De image-tag moet de HOOFDVERSIE van de gehoste database volgen (#1060). Een migratie die
+  # lokaal tegen een andere major slaagt, bewijst niets over de gehoste database — en dat is precies
+  # waarvoor de lokale container bestaat. Controleer bij een platform-upgrade van de gehoste
+  # database of deze tag meebeweegt, samen met docker-compose.selftest.yml en de
+  # 'fresh-db-postgres'-job in .github/workflows/build.yml.
+  #
+  # Postgres' officiële image is multi-arch (linux/amd64 én linux/arm64): op Apple Silicon draait
+  # deze container native, zonder Rosetta-emulatie.
+  postgres:
+    image: postgres:17
+    container_name: sportlink-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Zet POSTGRES_USER in een .env-bestand of je shell-profiel voordat je docker compose start}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Zet POSTGRES_PASSWORD in een .env-bestand of je shell-profiel voordat je docker compose start}
+      POSTGRES_DB: ${POSTGRES_DB:-sportlink}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sportlink-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── SQL Server — tweede tier, alleen op verzoek ───────────────────────────────
+  #
+  # Draai deze als je aan FunctionApp/ (de SQL Server-tier) werkt of het rollbackpad test.
+  #
+  # Op Apple Silicon draait dit image onder Rosetta-emulatie (Microsoft levert geen native
+  # ARM64-image van SQL Server); op Windows draait het native. Verder is alles gelijk:
+  # dezelfde image, dezelfde poort, dezelfde verbindingsreeks.
+  #
+  # LET OP — bewust geaccepteerd risico op Apple Silicon. Microsoft schrijft in de release notes
+  # van SQL Server 2022 letterlijk: "SQL Server container images are supported only on Linux hosts
+  # running on Intel and AMD x86-64 CPUs. Emulation or translation environments (for example,
+  # Rosetta 2, Prism, or QEMU) aren't tested or supported."
+  # https://learn.microsoft.com/sql/linux/sql-server-linux-release-notes#supported-platforms
+  #
+  # Dat is geaccepteerd omdat: (a) er geen native ARM64-image bestaat, (b) Azure SQL Edge — de
+  # vroegere ARM64-optie — per 30 september 2025 is uitgefaseerd, en (c) dit uitsluitend een
+  # LOKALE ONTWIKKELdatabase is. Op Windows x86-64 draait dezelfde container wél volledig
+  # ondersteund. Gedraagt de database zich op een Mac vreemd, sluit emulatie dan eerst uit door
+  # dezelfde migratie tegen een Windows-machine te draaien.
+  #
+  # Eisen aan het SA-wachtwoord (SQL Server weigert de container anders stilletjes): minimaal
+  # 8 tekens, met hoofdletters, kleine letters en cijfers of leestekens.
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: sportlink-sqlserver
+    profiles: ["sqlserver"]
     # Op Apple Silicon dwingt dit Docker om het x86-64-image via Rosetta te draaien.
     # Op Windows/Linux x86-64 is het de native architectuur en heeft het geen effect.
     platform: linux/amd64
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Zet MSSQL_SA_PASSWORD in een .env-bestand of je shell-profiel voordat je docker compose start}
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Zet MSSQL_SA_PASSWORD in een .env-bestand of je shell-profiel voordat je de sqlserver-service start}
       MSSQL_PID: Developer
     ports:
       - "1433:1433"
@@ -61,40 +98,6 @@ services:
       retries: 10
       start_period: 30s
 
-  # Lokale Postgres-tier voor ontwikkeling (#822, epic #815) — sinds 2026-09-04 de productietier
-  # (#976); sqlserver hierboven blijft het rollbackpad.
-  #
-  # Bewust achter een profile: 'docker compose up -d' zonder argument start alléén sqlserver — een
-  # bestaande fork op de SQL Server-tier moet niet ongevraagd ook Postgres erbij krijgen.
-  # Expliciet opstarten: docker compose --profile postgres up -d
-  #
-  # Postgres' officiële image is multi-arch (linux/amd64 én linux/arm64) — in tegenstelling tot
-  # het SQL Server-image hierboven is op Apple Silicon dus GEEN platform: linux/amd64 nodig en
-  # GEEN Rosetta-emulatie; de container draait daar native.
-  #
-  # Credentials komen uitsluitend uit POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB in een lokale
-  # .env-bestand (staat in .gitignore) — zelfde patroon als MSSQL_SA_PASSWORD hierboven. Zonder
-  # die variabelen weigert docker compose te starten, met een expliciete melding.
-  postgres:
-    image: postgres:16
-    container_name: sportlink-postgres
-    profiles: ["postgres"]
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Zet POSTGRES_USER in een .env-bestand of je shell-profiel voordat je de postgres-service start}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Zet POSTGRES_PASSWORD in een .env-bestand of je shell-profiel voordat je de postgres-service start}
-      POSTGRES_DB: ${POSTGRES_DB:-sportlink}
-    ports:
-      - "5432:5432"
-    volumes:
-      - sportlink-pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
 volumes:
-  sportlink-sqldata:
   sportlink-pgdata:
+  sportlink-sqldata:

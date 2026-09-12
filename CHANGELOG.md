@@ -18,7 +18,34 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **De lokale ontwikkelomgeving draait voortaan standaard op dezelfde database als productie (#1060).**
+  `docker compose up -d` start nu Postgres in plaats van SQL Server, en `Start-Debug.ps1` en
+  `Test-App.ps1` kiezen met een nieuwe `-Tier`-parameter (standaard `Postgres`) automatisch het
+  bijbehorende functieproject, de bijbehorende `local.settings.json` en de bijbehorende
+  schemacontrole. Tot nu toe verifieerde de dagelijkse ontwikkellus de tier die sinds de
+  productiecutover níet meer wordt uitgerold — precies hoe een niet-werkende e-mailverwerking
+  dagenlang onopgemerkt kon blijven. De SQL Server-tier blijft volledig ondersteund via
+  `docker compose --profile sqlserver up -d` en `-Tier SqlServer`.
+- **De lokale Postgres-versie volgt nu de gehoste hoofdversie (#1060).** Lokale container, zelftest
+  en CI draaien `postgres:17` in plaats van `postgres:16`; een migratie die tegen een andere
+  hoofdversie slaagt, bewijst niets over de database die er werkelijk toe doet.
+
 ### Added
+- **Startscript waarschuwt nu wanneer de applicatie draait maar onbruikbaar is (#1060).**
+  `Start-Debug.ps1` leest `status` en `settingsLoaded` uit `/api/health` en controleert of de
+  gestarte functiehost ook echt de gevraagde tier is. Een verse database zonder primaire club gaf
+  eerder "FunctionApp OK", terwijl elk beheerscherm een foutmelding gaf.
+- **Demoteams en -wedstrijden in één handeling op een lokale Postgres-database (#1060).**
+  `scripts/dev/Seed-AllStarsDemodata.ps1` maakt de his-tabellen aan, draait de AllStars-seed en
+  bouwt de canonieke teamlijst op — tot nu toe bleef de teamlijst leeg op een verse installatie,
+  omdat de demoteams een eerste synchronisatie nodig hadden die lokaal niet draait. Levert 28 teams
+  en 224 wedstrijden voor de democlub. `Database.Postgres.Cli` kreeg daarvoor de vlag
+  `--ensure-his-tables`, die dezelfde schema-generator gebruikt als de ETL zelf.
+- **Seed-script voor een lokale placeholder-club (#1060).**
+  `scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql` maakt een club-neutrale
+  primaire club aan, zodat een verse lokale database meteen bruikbaar is. Draait nooit automatisch
+  mee en raakt productie niet.
 - **Inkomende wijzigingsverzoeken goedkeuren/afwijzen vanuit de webapp (issue 996, epic 986).**
   Nieuwe pagina "Wijzigingsverzoeken" toont openstaande verzoeken van tegenstanders (datum/tijd/
   accommodatie) en laat een beheerder ze met één klik goedkeuren of, met verplichte toelichting,

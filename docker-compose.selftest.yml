@@ -30,7 +30,10 @@
 
 services:
   postgres:
-    image: postgres:16
+    # Major-versie volgt de gehoste productiedatabase (#1060), gelijk aan docker-compose.yml.
+    # Een zelftest tegen een andere major bewijst het migratiepad niet voor de database die
+    # er daadwerkelijk toe doet.
+    image: postgres:17
     container_name: sportlink-postgres-selftest
     environment:
       POSTGRES_PASSWORD: ${SELFTEST_PG_PASSWORD:?Test-PostgresTier.ps1 zet deze variabele; start deze compose-file niet los}
