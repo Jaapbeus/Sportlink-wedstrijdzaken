@@ -126,7 +126,9 @@ De **Security Gate** is de finale poortwachter. Zolang die rood is, is merge naa
 ### Laag 3 — .gitignore (passieve blokkade)
 
 Bepaalde bestandstypen worden nooit getrackt door git, ongeacht wat er gedaan wordt:
-- `exports/*.csv` en `exports/*.xlsx` — Sportlink ledenexports
+- `*.csv`, `*.xlsx`, `*.xls` — overal in de repo, niet alleen in `exports/` (#978). Enige
+  uitzonderingen: seed-bestanden onder `scripts/migrations/` en testfixtures onder een
+  `*.Tests/`-project — geen van beide bevat ledendata.
 - `FunctionApp/local.settings.json` — lokale verbindingsstrings
 - `*.env` — environment-bestanden
 

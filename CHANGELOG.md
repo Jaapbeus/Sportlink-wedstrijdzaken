@@ -215,6 +215,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   request-body of een querystring-parameter gelezen — een beheerder kon dus zelf kiezen welke naam
   in het auditlog kwam te staan. De actor komt nu uitsluitend uit de gevalideerde Easy Auth-claim
   van de aanroeper, op beide database-tiers.
+- **`.gitignore` blokkeert nu elk CSV/Excel-bestand, niet alleen `exports/*.csv` (#978).** Een CSV of
+  Excel-bestand met persoonsgegevens dat buiten `exports/` werd aangemaakt (bijv. in de repo-root of
+  in `data/`) kon voorheen zonder waarschuwing worden gestaged. `*.csv`/`*.xlsx`/`*.xls` zijn nu
+  overal geblokkeerd; alleen seed-bestanden onder `scripts/migrations/` en testfixtures onder een
+  `*.Tests/`-project zijn expliciet vrijgesteld — geen van beide bevat ledendata.
 ## [3.2.0.3] — 2026-09-06
 
 ### Fixed
