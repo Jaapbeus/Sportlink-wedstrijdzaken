@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.1.0",
+    "version": "3.3.2.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1104,6 +1104,10 @@
           "IsDryRun": {
             "type": "boolean",
             "description": "#998: true als dry-run actief was — niets is echt naar Sportlink verstuurd, de\naanroep is alleen gesimuleerd en gelogd (audit-resultaat \"DryRun\"). IsSuccess is dan\naltijd true.\n"
+          },
+          "IsForcedDryRun": {
+            "type": "boolean",
+            "description": "#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een\nmutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —\nONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat \"DryRunLocked\").\nAls dit true is, is IsDryRun ook altijd true.\n"
           }
         }
       },
@@ -4160,6 +4164,95 @@
         "responses": {
           "200": {
             "description": "Mutatieresultaat (IsSuccess kan alsnog false zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd of PublicMatchId niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}/officials": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkOfficials",
+        "summary": "Officials (scheidsrechter/assistenten) toewijzen (#994, epic",
+        "description": "**ONBEVESTIGD, altijd gesimuleerd:** endpoint (`PUT\ncompetition/match/official/MatchOfficialsAction`) en requestbody zijn gereverse-engineerd\nuit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Deze aanroep loopt\ndaarom altijd via een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling\n`sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan en de\nlock-constante in een aparte, reviewbare PR omzet. Zelfde volgorde als `.../dressingrooms`\n(resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een\ntaakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt\n`IsSuccess=false` gezet ook al is de HTTP-status 200 (\"opgeslagen met fouten\" in Sportlink\nzelf). AVG: uitsluitend positie + een door de beheerder ingevoerde relatiecode/persoons-ID\nper regel — geen zoekfunctie, geen namen.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "Officials": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "OfficialPosition": {
+                          "type": "string",
+                          "description": "ONBEVESTIGD — aangenomen waarden, bijv. \"Referee\"/\"AssistantReferee1\"/\"AssistantReferee2\""
+                        },
+                        "PersoonId": {
+                          "type": "string",
+                          "description": "Relatiecode/persoons-identifier zoals ingevoerd door de beheerder — geen naam."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (IsSuccess kan alsnog false zijn, ook bij een code-gelockte simulatie is dit altijd true)",
             "content": {
               "application/json": {
                 "schema": {

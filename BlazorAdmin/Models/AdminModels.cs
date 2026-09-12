@@ -84,6 +84,11 @@ public class SportlinkMutatieResultaatDto
     /// <summary>#998: true als dry-run actief was — niets is echt naar Sportlink verstuurd,
     /// de aanroep is alleen gesimuleerd en gelogd.</summary>
     public bool IsDryRun { get; set; }
+
+    /// <summary>#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock
+    /// (mutatie waarvan de requestbody nog niet live bevestigd is) — ONAFHANKELIJK van de
+    /// club-instelling sportlinkDryRun. Als dit true is, is IsDryRun ook altijd true.</summary>
+    public bool IsForcedDryRun { get; set; }
 }
 
 /// <summary>#998: status van de Sportlink Web Extension voor de Instellingen-pagina — nooit een

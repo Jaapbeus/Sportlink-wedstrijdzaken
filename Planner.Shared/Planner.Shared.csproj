@@ -12,4 +12,13 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- #994: SportlinkClubClient.BuildMatchOfficialsBody/VerrijkOfficialsResultaat zijn bewust
+         internal (geen publiek contract voor een nog niet live bevestigde requestbody/parser) maar
+         moeten wel direct testbaar zijn — zelfde precedent als FunctionApp.Postgres.csproj. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Planner.Shared.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

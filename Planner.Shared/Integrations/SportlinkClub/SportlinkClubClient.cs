@@ -24,9 +24,16 @@ public class SportlinkClubClient : ISportlinkClubClient
     private const string UpdateMatchDetailsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/UpdateMatchDetails";
     private const string MatchChangeRequestsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/changerequest/MatchChangeRequests";
     private const string MatchChangeRequestActionEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/changerequest/MatchChangeRequestAction";
+    private const string UpdateMatchOfficialsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/official/MatchOfficialsAction";
     private const string UserInfoEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/user/UserInfo";
     private const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
+
+    // #994: dit endpoint/deze body-vorm is NOOIT live bevestigd (reverse-engineered, geen
+    // netwerktrace) — daarom staat de mutatie hard op forceDryRun totdat een mens (nooit een
+    // agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en deze
+    // constante in een aparte, reviewbare PR op true zet. Grep-baar bij naam.
+    private const bool MatchOfficialsActionLiveBevestigd = false;
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
@@ -513,6 +520,98 @@ public class SportlinkClubClient : ISportlinkClubClient
             MatchChangeRequestActionEndpoint, "competition/match/changerequest/MatchChangeRequestAction", body, token, cancellationToken);
     }
 
+    /// <summary>
+    /// Wijst officials (scheidsrechter/assistenten) toe aan een wedstrijd (#994, epic #986) —
+    /// <c>PUT competition/match/official/MatchOfficialsAction</c>. <b>ONBEVESTIGD</b>: endpoint en
+    /// body-vorm komen uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien — deze
+    /// aanroep loopt daarom altijd via de code-lock (<see cref="MatchOfficialsActionLiveBevestigd"/>
+    /// <c>= false</c>), ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>. Zie
+    /// <see cref="SportlinkOfficialToewijzing"/> voor de aannames op elementniveau.
+    /// </summary>
+    public Task<SportlinkClubResponse<SportlinkMutationResult>> AssignOfficialsAsync(
+        string functioneleRol,
+        string publicMatchId,
+        IReadOnlyList<SportlinkOfficialToewijzing> officials,
+        CancellationToken cancellationToken = default)
+        => ExecuteMutationWithRetryAsync(
+            functioneleRol,
+            (token, ct) => PutMatchOfficialsAsync(publicMatchId, officials, token, ct),
+            cancellationToken);
+
+    private Task<SportlinkClubResponse<SportlinkMutationResult>> PutMatchOfficialsAsync(
+        string publicMatchId, IReadOnlyList<SportlinkOfficialToewijzing> officials, string token, CancellationToken cancellationToken)
+    {
+        return PutMutationAsync(
+            UpdateMatchOfficialsEndpoint,
+            "competition/match/official/MatchOfficialsAction",
+            BuildMatchOfficialsBody(publicMatchId, officials),
+            token,
+            cancellationToken,
+            forceDryRun: !MatchOfficialsActionLiveBevestigd,
+            verrijkResultaat: VerrijkOfficialsResultaat);
+    }
+
+    /// <summary>
+    /// Bouwt de <c>MatchOfficialsAction</c>-requestbody — losgetrokken van <see cref="PutMatchOfficialsAsync"/>
+    /// zodat de AANGENOMEN, NOG NIET LIVE BEVESTIGDE vorm (#994: "OfficialPosition"/"PersoonId" als
+    /// veldnamen binnen elk element van <c>OfficialsToBeAssigned</c> — zie
+    /// <see cref="SportlinkOfficialToewijzing"/>) direct getest kan worden, ook al gaat er door de
+    /// forceDryRun-lock nooit een echte PUT met deze body uit.
+    /// </summary>
+    internal static object BuildMatchOfficialsBody(string publicMatchId, IReadOnlyList<SportlinkOfficialToewijzing> officials) =>
+        new
+        {
+            PublicMatchId = publicMatchId,
+            OfficialsToBeAssigned = officials
+                .Select(o => new { OfficialPosition = o.OfficialPosition, PersoonId = o.PersoonId })
+                .ToList()
+        };
+
+    /// <summary>
+    /// Taakspecifieke uitbreiding op de generieke responsparser (#994): Sportlink toont "opgeslagen
+    /// met fouten" als één official een <c>ValidationDescription</c> heeft — ook al is de HTTP-status
+    /// 200 en <c>Error</c> niet gezet. De generieke <see cref="PutMutationAsync"/>-parsing (gericht op
+    /// het `{Error, ViolationCodes, Violations}`-afwijzingspatroon) ziet dit niet, dus wordt het
+    /// resultaat hier ná die generieke parsing alsnog gecorrigeerd. Nooit persoonsgegevens loggen —
+    /// deze methode logt niets, geeft alleen de omschrijvingstekst door als violation.
+    /// </summary>
+    internal static SportlinkMutationResult VerrijkOfficialsResultaat(string json, SportlinkMutationResult result)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("Officials", out var officialsElement) ||
+                officialsElement.ValueKind != JsonValueKind.Array)
+                return result;
+
+            var validatieMeldingen = new List<string>();
+            foreach (var official in officialsElement.EnumerateArray())
+            {
+                if (official.ValueKind == JsonValueKind.Object &&
+                    official.TryGetProperty("ValidationDescription", out var validationElement) &&
+                    validationElement.ValueKind == JsonValueKind.String)
+                {
+                    var melding = validationElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(melding))
+                        validatieMeldingen.Add(melding);
+                }
+            }
+
+            if (validatieMeldingen.Count == 0)
+                return result;
+
+            // Sportlink toont "opgeslagen met fouten" (IS_SAVED_WITH_ERRORS) — dat is inhoudelijk
+            // geen succes, ook al was de HTTP-status 200/Error niet gezet.
+            return result with { IsSuccess = false, Violations = validatieMeldingen };
+        }
+        catch (JsonException)
+        {
+            // Onherkenbare respons-vorm: geen extra fout hierboven op stapelen, laat het generieke
+            // resultaat (op basis van HTTP-status/Error) ongewijzigd.
+            return result;
+        }
+    }
+
     private sealed record SportlinkUserInfo(string? PublicPersonId);
 
     /// <summary>
@@ -748,7 +847,9 @@ public class SportlinkClubClient : ISportlinkClubClient
     /// <see cref="ExecuteMutationWithRetryAsync"/>.
     /// </summary>
     private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutMutationAsync(
-        string endpoint, string entityName, object body, string token, CancellationToken cancellationToken)
+        string endpoint, string entityName, object body, string token, CancellationToken cancellationToken,
+        bool forceDryRun = false,
+        Func<string, SportlinkMutationResult, SportlinkMutationResult>? verrijkResultaat = null)
     {
         try
         {
@@ -756,16 +857,29 @@ public class SportlinkClubClient : ISportlinkClubClient
             // versturen: dry-run slaat uitsluitend de daadwerkelijke PUT over. Token-refresh en de
             // voorbereidende GETs (snapshot, UserInfo) hebben al plaatsgevonden vóórdat deze methode
             // werd aangeroepen — dat maakt een dry-run realistisch (#998).
+            // #994: forceDryRun is een code-niveau lock voor een nog-onbevestigde mutatie (bijv.
+            // officials toewijzen) — ONAFHANKELIJK van _isDryRun() (de club-instelling
+            // sportlinkDryRun, voor bevestigde mutaties). Ongeacht wat de club instelt, blijft een
+            // forceDryRun-aanroep altijd gesimuleerd.
             var serializedBody = JsonSerializer.Serialize(body);
-            if (_isDryRun())
+            if (forceDryRun || _isDryRun())
             {
                 // NOOIT de body zelf loggen — kan teamnamen/persoonsgegevens bevatten (CISO-regel).
-                _logger.LogInformation(
-                    "DRY-RUN: {EntityName} niet verzonden naar Sportlink (endpoint {Endpoint})",
-                    entityName, endpoint);
+                if (forceDryRun)
+                {
+                    _logger.LogInformation(
+                        "DRY-RUN (code-lock, body niet live bevestigd): {EntityName} niet verzonden naar Sportlink (endpoint {Endpoint}).",
+                        entityName, endpoint);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "DRY-RUN: {EntityName} niet verzonden naar Sportlink (endpoint {Endpoint})",
+                        entityName, endpoint);
+                }
                 return new SportlinkClubResponse<SportlinkMutationResult>(
                     SportlinkClubCallStatus.Ok,
-                    new SportlinkMutationResult(IsSuccess: true, Violations: null, IsDryRun: true),
+                    new SportlinkMutationResult(IsSuccess: true, Violations: null, IsDryRun: true, IsForcedDryRun: forceDryRun),
                     null,
                     200);
             }
@@ -817,8 +931,11 @@ public class SportlinkClubClient : ISportlinkClubClient
                 ? raw.Violations.Select(kv => $"{kv.Key}: {kv.Value}").ToList()
                 : raw.ViolationCodes;
             var isSuccess = raw.Error != true && response.IsSuccessStatusCode;
+            var mutationResult = new SportlinkMutationResult(isSuccess, violations);
+            if (verrijkResultaat != null)
+                mutationResult = verrijkResultaat(json, mutationResult);
             return new SportlinkClubResponse<SportlinkMutationResult>(
-                SportlinkClubCallStatus.Ok, new SportlinkMutationResult(isSuccess, violations), null, (int)response.StatusCode);
+                SportlinkClubCallStatus.Ok, mutationResult, null, (int)response.StatusCode);
         }
         catch (TaskCanceledException ex)
         {

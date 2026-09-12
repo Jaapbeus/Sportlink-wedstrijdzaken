@@ -49,14 +49,18 @@ public class SportlinkMatchFunctionTests
     }
 
     [Theory]
-    [InlineData(true, false, "DryRun")]
-    [InlineData(false, true, "Success")]
-    [InlineData(false, false, "Failure")]
-    public void BepaalAuditResultaat_GeeftJuisteAuditwaarde(bool isDryRun, bool isSuccess, string verwacht)
+    [InlineData(true, false, false, "DryRun")]
+    [InlineData(false, true, false, "Success")]
+    [InlineData(false, false, false, "Failure")]
+    [InlineData(true, true, true, "DryRunLocked")]
+    public void BepaalAuditResultaat_GeeftJuisteAuditwaarde(bool isDryRun, bool isSuccess, bool isForcedDryRun, string verwacht)
     {
         // #998: DryRun gaat vóór IsSuccess — bij een dry-run-aanroep is IsSuccess altijd true
         // (gesimuleerd succes), maar de audit moet expliciet tonen dat er niets echt is verzonden.
-        var result = new SportlinkMutationResult(isSuccess, Violations: null, IsDryRun: isDryRun);
+        // #994: IsForcedDryRun (de code-lock voor een nog-onbevestigde mutatie, bijv. officials)
+        // gaat op zijn beurt vóór de gewone IsDryRun, zodat het audit-log onderscheidt tussen een
+        // club-instelling en een harde, niet-instelbare code-lock.
+        var result = new SportlinkMutationResult(isSuccess, Violations: null, IsDryRun: isDryRun, IsForcedDryRun: isForcedDryRun);
 
         var resultaat = SportlinkMatchFunction.BepaalAuditResultaat(result);
 

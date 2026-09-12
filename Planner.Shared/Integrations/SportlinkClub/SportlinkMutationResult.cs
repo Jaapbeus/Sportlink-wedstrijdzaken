@@ -12,7 +12,15 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// verstuurd, alleen gelogd. <see cref="IsSuccess"/> is in dat geval altijd <c>true</c>
 /// (gesimuleerd succes), <see cref="Violations"/> altijd <c>null</c>.
 /// </param>
+/// <param name="IsForcedDryRun">
+/// #994/#998: <c>true</c> als de PUT/POST werd overgeslagen door de code-niveau
+/// <c>forceDryRun</c>-lock (voor een mutatie waarvan de exacte requestbody nog niet live bevestigd
+/// is) — ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>. Als dit veld <c>true</c> is,
+/// is <see cref="IsDryRun"/> ook altijd <c>true</c>, maar niet omgekeerd: een club kan ook via de
+/// gewone instelling dry-run hebben staan zonder dat deze specifieke mutatie code-gelockt is.
+/// </param>
 public sealed record SportlinkMutationResult(
     bool IsSuccess,
     IReadOnlyList<string>? Violations,
-    bool IsDryRun = false);
+    bool IsDryRun = false,
+    bool IsForcedDryRun = false);

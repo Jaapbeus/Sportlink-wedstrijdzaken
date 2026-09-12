@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BlazorAdmin.Models;
@@ -65,6 +66,20 @@ public class AdminApiClient
         => await PutAsync<SportlinkMutatieResultaatDto>(
             $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/field",
             new { FieldId = fieldId, FieldSize = fieldSize, FieldOffset = fieldOffset });
+
+    // #994: officials (scheidsrechter/assistenten) toewijzen. ONBEVESTIGD/altijd code-gelockt
+    // (forceDryRun) — zie SportlinkClubClient.AssignOfficialsAsync. positie+persoonId per regel,
+    // nooit een naam of zoekfunctie (AVG).
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkOfficialsAsync(
+        string wedstrijdcode, IReadOnlyList<(string OfficialPosition, string PersoonId)> officials)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/officials",
+            new
+            {
+                Officials = officials
+                    .Select(o => new { OfficialPosition = o.OfficialPosition, PersoonId = o.PersoonId })
+                    .ToList()
+            });
 
     // #996: inkomende wijzigingsverzoeken van tegenstanders.
     public async Task<ApiResult<List<SportlinkChangeRequestDto>>> GetSportlinkChangeRequestsAsync()

@@ -39,6 +39,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Uitgebreide audit-logging voor Sportlink-mutaties (#998).** Naast de taakstatus legt de audit nu
   ook de wedstrijdstatus, of de wedstrijd is afgelast/nog concept, en de accommodatiegegevens vast —
   bedoeld om een seizoen aan echte gebruiksdata te verzamelen.
+- **Officials toewijzen vanuit Dagplanning (#994) — scaffolding, altijd gesimuleerd.** Een
+  beheerder kan voortaan per positie (scheidsrechter, AR1, AR2) een relatiecode/persoons-ID
+  invullen en toewijzen; validatiemeldingen van Sportlink worden per official getoond. Dit pad
+  stuurt bewust NOOIT een echte aanroep naar Sportlink — het endpoint en de requestbody zijn nog
+  niet met een netwerktrace bevestigd, dus de actie blijft een simulatie totdat dat wél gebeurd is,
+  ongeacht de dry-run-instelling van de club. Geen zoekfunctie op officials en geen namen in beeld
+  (alleen wat de beheerder zelf intikt).
+- **Nieuwe, harde code-lock voor nog-onbevestigde Sportlink-mutaties (`forceDryRun`, onderdeel van
+  #994).** Naast de bestaande dry-run-instelling (voor bevestigde mutaties, per club uit te zetten)
+  bestaat er nu een tweede vergrendeling die uitsluitend door een toekomstige codewijziging kan
+  worden opgeheven — nooit door een instelling. Gedeelde infrastructuur, ook gebruikt door de
+  volgende officials-gerelateerde issues.
 
 ## [3.3.0.0] — 2026-09-12
 

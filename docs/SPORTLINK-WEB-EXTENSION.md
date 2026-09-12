@@ -206,6 +206,15 @@ verplichte N-user-test.
   onderweg: `Field.FieldSize` komt als JSON-getal terug (niet string — zelfde
   `FlexibleStringJsonConverter`-patroon als #1036), en `ExternalMatchId` in deze snapshot idem
   (nieuwe `FlexibleLongJsonConverter`, spiegelbeeld van `FlexibleStringJsonConverter`).
+  **Sinds #994 ook `PUT .../officials` (scaffolding, altijd code-gelockt):** officials
+  (scheidsrechter/AR1/AR2) toewijzen via `AssignOfficialsAsync`/`PutMatchOfficialsAsync`
+  (`competition/match/official/MatchOfficialsAction`). Endpoint én requestbody
+  (`OfficialsToBeAssigned: [{OfficialPosition, PersoonId}]`) zijn NOOIT live gezien — zie
+  `SportlinkOfficialToewijzing.cs`. `VerrijkOfficialsResultaat` is de taakspecifieke uitbreiding op
+  de generieke responsparser: als één official in de respons een `ValidationDescription` heeft,
+  wordt `IsSuccess=false` gezet (Sportlinks "opgeslagen met fouten"), ook al is de HTTP-status 200.
+  De Blazor-UI biedt bewust alleen een losse tekstinvoer per positie (relatiecode/persoons-ID) —
+  géén zoekfunctie, geen namen (AVG, §5).
 - `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
   `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
@@ -240,6 +249,23 @@ verplichte N-user-test.
   `SportlinkMutationResult` kreeg er een derde veld `IsDryRun` bij; het audit-resultaat wordt bepaald
   door de gedeelde helper `SportlinkMatchFunction.BepaalAuditResultaat` (`DryRun` gaat vóór
   `IsSuccess`, want die is bij dry-run altijd `true`).
+- **Code-niveau `forceDryRun`-lock (#994), onafhankelijk van de instelling hierboven.** Naast
+  `sportlinkDryRun` (een bewuste, per-club instelling voor BEVESTIGDE mutaties) bestaat sinds #994
+  een tweede, harde vergrendeling voor een mutatie waarvan de requestbody nooit met een
+  netwerktrace bevestigd is (de eerste: officials toewijzen, #994; ook gebruikt door #995/#997).
+  `PutMutationAsync` kreeg een `forceDryRun`-parameter (`if (forceDryRun || _isDryRun())`) — de club
+  kan dit NIET uitzetten via Instellingen, ongeacht de stand van `sportlinkDryRun`. Elke
+  mutatiemethode voor zo'n onbevestigd endpoint geeft `forceDryRun: !XyzLiveBevestigd` mee, met een
+  bijbehorende `private const bool XyzLiveBevestigd = false;` bovenaan `SportlinkClubClient.cs` —
+  grep-baar en pas door een mens (nooit een agent, §4.4) op `true` te zetten in een aparte,
+  reviewbare PR ná een live trace. De log-regel bij deze tak vermeldt expliciet
+  "code-lock, body niet live bevestigd" (anders dan de generieke dry-run-logregel), en
+  `SportlinkMutationResult`/`SportlinkMutatieResultaatDto` kregen er een vierde veld
+  `IsForcedDryRun` bij — het audit-resultaat wordt dan `"DryRunLocked"` (gaat vóór `"DryRun"` in
+  `BepaalAuditResultaat`). `PutMutationAsync` kreeg ook een optionele `verrijkResultaat`-delegate
+  zodat een taakspecifieke responsparser (zie `AssignOfficialsAsync`/`VerrijkOfficialsResultaat`
+  hieronder) het generieke resultaat nog kan bijstellen zonder de gedeelde PUT-uitvoering te
+  dupliceren.
 - **Health-check-endpoint (#998).** `FunctionApp.Postgres/Admin/SportlinkExtensieHealthFunction.cs`
   — `GET /api/beheer/sportlink-extensie/health?live=false` (default). Zonder `?live=true` leest dit
   uitsluitend onze eigen database (extension/dry-run-instelling, `EgressGuard`-status, koppeling +
@@ -362,6 +388,11 @@ test getriggerd wordt:
   ook niet tijdelijk — gebruik `JsonDocument` om gericht alleen de raw text van het specifieke
   veld te loggen dat de fout veroorzaakt (zie het patroon in git-historie van #1038 voor een
   voorbeeldimplementatie die nooit in `MatchOfficials` afdaalt zonder dat expliciet te bedoelen).
+- **#994's officials-toewijzing is scaffolding, geen live-getest pad.** Endpoint en requestbody
+  zijn gereverse-engineerd, nooit met een netwerktrace gezien — vandaar de code-niveau
+  `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleert. Zolang die lock
+  aan staat kan dit pad niet per ongeluk een echte mutatie bij Sportlink veroorzaken, maar de
+  requestbody/positiecodes zijn dus ook nog niet gevalideerd tegen de werkelijkheid.
 - **#996's actie-pad (goedkeuren/afwijzen) kan niet veilig getest worden met de vaste testwedstrijd
   (2026-09-06 vastgesteld).** In tegenstelling tot #992/#993 is `MatchChangeRequests` niet per
   wedstrijd gescoped — het levert alle openstaande verzoeken van échte tegenstanders voor het hele
@@ -398,6 +429,7 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/MatchProgramOverview` (`?DateFrom=&DateTo=`) | GET | Niet-club-gescoped, 1-daags programma — voor de `PublicMatchId`-reverse-lookup en de dagelijkse warmup-timer | — |
 | `competition/match/UpdateMatchDressingRooms` | PUT | Kleedkamers toewijzen | `SportlinkMutationSoort.Kleedkamers` |
 | `competition/match/UpdateMatchDetails` | PUT | Veld(deel) wijzigen — verwacht het VOLLEDIGE wedstrijdrecord, niet een klein patch (zie §4.2) | `SportlinkMutationSoort.Veld` |
+| `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **ONBEVESTIGD, altijd code-gelockt (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
 | `competition/match/changerequest/MatchChangeRequests` | GET | Inkomende wijzigingsverzoeken van tegenstanders ophalen | — (geen `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/changerequest/MatchChangeRequestAction` | PUT | Verzoek goed-/afkeuren | — (idem) |
 | `user/UserInfo` | GET | `PublicPersonId` van het service-account, nodig voor `MatchChangeRequestAction` | — |
@@ -417,17 +449,29 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   overschreven (zie §4.2 voor waarom).
 - **`MatchChangeRequestAction`**: `{ Action ("APPROVE"|"DENY"), PublicMatchId, PublicPersonId,
   PublicRequestId, Remarks }`.
+- **`MatchOfficialsAction` (#994, ONBEVESTIGD)**: `{ PublicMatchId, OfficialsToBeAssigned: [
+  { OfficialPosition, PersoonId } ] }` — de elementstructuur is nooit met een netwerktrace gezien,
+  afgeleid uit `OfficialPosition` zoals dat terugkomt in `GET .../MatchOfficials`. Respons:
+  `{ Officials: [ { ..., ValidationDescription } ] }` — één niet-lege `ValidationDescription` zet
+  `IsSuccess=false`, ook bij HTTP 200 (zie `VerrijkOfficialsResultaat`).
 - **Afwijzingsvorm (HTTP 420, live bevestigd #1040)**: `{"Error":true,"Status":"420",
   "Message":"Validation exception : <code>","ViolationCodes":["<code>", ...],
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
   response.IsSuccessStatusCode`, niet door een afzonderlijk `isSuccess`-veld (de happy-path-vorm is
   nooit live bevestigd).
 
-### 6.4 Dry-run (#998)
+### 6.4 Dry-run (#998) en de code-niveau forceDryRun-lock (#994)
 In dry-run wordt de body nog wél geserialiseerd (zodat een serialisatiefout alsnog opduikt) maar
 niet verstuurd — `PutMutationAsync` retourneert direct `{IsSuccess: true, Violations: null,
 IsDryRun: true}` zonder een HTTP-aanroep te doen. De body zelf wordt nooit gelogd (kan
 teamnamen/persoonsgegevens bevatten); alleen `{EntityName}`/`{Endpoint}` verschijnen in de log.
+
+Sinds #994 kan dezelfde tak ook bereikt worden door een `forceDryRun: true`-parameter, ONAFHANKELIJK
+van de club-instelling `sportlinkDryRun` — voor een mutatie waarvan de requestbody nog niet live
+bevestigd is (het eerste voorbeeld: `AssignOfficialsAsync`). In dat geval krijgt het resultaat ook
+`IsForcedDryRun: true` mee (audit-resultaat `"DryRunLocked"`) en gebruikt de logregel expliciet de
+tekst "code-lock, body niet live bevestigd" — zo is in de Function-log meteen te zien of een
+gesimuleerde mutatie kwam door de club-instelling of door deze harde, niet-instelbare lock.
 
 ## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport
