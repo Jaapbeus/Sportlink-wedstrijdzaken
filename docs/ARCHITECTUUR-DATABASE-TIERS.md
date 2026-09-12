@@ -286,8 +286,8 @@ samen zowel de migratiegebaseerde als de entiteitsgebaseerde (ETL-)boom.
 ## 10. FunctionApp.Postgres — projectopzet (#891)
 
 **Besluit:** `FunctionApp.Postgres/` is een minimaal, zelfstandig Azure Functions
-isolated-worker-project (net9.0 — zelfde harde beperking als de bestaande `FunctionApp`, zie
-sectie ".NET versie" in CLAUDE.md), met een `ProjectReference` naar `Database.Postgres` (#818) en
+isolated-worker-project (net9.0 — zelfde beperking als de bestaande `FunctionApp`, zie sectie
+".NET versie" in CLAUDE.md; beide gaan naar net10.0 via epic #1063), met een `ProjectReference` naar `Database.Postgres` (#818) en
 verder bewust **geen** kopie van `FunctionApp/Program.cs`'s Graph-/AI-/e-mail-/monitoring-DI. Die
 registraties horen bij de functionaliteit die #887 (beheer), #888 (planner), #889 (e-mail/
 teamresolutie) en #890 (synchronisatie) vertalen — niet bij de projectopzet zelf.

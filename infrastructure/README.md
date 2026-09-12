@@ -74,14 +74,18 @@ workspaces** (vervallen 1 juli 2022). Kosten: pay-as-you-go op verbruik.
 Maatregel: `deployMonitoring` staat standaard op `false` in `main.parameters.json`.
 Vereist expliciete `--parameters deployMonitoring=true` bij deployment.
 
-## Kritieke constraint: .NET 9
+## Kritieke constraint: .NET 9 — met einddatum
 
 ```bicep
-linuxFxVersion: 'DOTNET-ISOLATED|9.0'  // NOOIT wijzigen naar net10.0
+linuxFxVersion: 'DOTNET-ISOLATED|9.0'  // niet wijzigen zolang dit een Consumption-plan is
 ```
 
-Het Linux Consumption Plan ondersteunt .NET 10 niet. Zie CLAUDE.md voor het
-upgradepad (vereist Flex Consumption Plan).
+Het Linux Consumption Plan ondersteunt .NET 10 niet — een `net10.0`-deploy geeft daar 503.
+
+.NET 9 gaat op **10 november 2026** uit support en is de laatste .NET-versie die Linux Consumption
+krijgt. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**. Let op: in-place
+migratie naar Flex bestaat niet — er moet een nieuwe Function App komen, met een nieuwe hostname.
+Flex heeft een eigen (kleiner) gratis tegoed; zie CLAUDE.md → Kostenbeleid.
 
 ## CI/CD — GitHub Actions
 

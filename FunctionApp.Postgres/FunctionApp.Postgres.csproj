@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- net9.0 is verplicht, niet een keuze: Azure Functions op een Linux Consumption Plan
-         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24). Nooit
-         verhogen zonder de infrastructuurwijziging (Flex Consumption Plan) die daarvoor nodig is. -->
+    <!-- net9.0 is verplicht zolang deze app op een Linux Consumption Plan draait: dat plan
+         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24).
+         Niet verhogen vóór de cutover naar Flex Consumption uit epic #1063 — een net10.0-deploy
+         naar Linux Consumption geeft 503 "Function host is not running". -->
     <TargetFramework>net9.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
