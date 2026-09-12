@@ -2841,6 +2841,33 @@ Function App-instelling op de productie-resource — die stonden er vóór de ti
 SQL Server-tier, maar zijn niet geverifieerd voor deze deploy (agents mogen App Settings niet zelf
 lezen/zetten, zie CLAUDE.md's kostenbeleid-sectie).
 
+## 53. Een gewijzigd migratiebestand faalt nu in CI in plaats van pas in productie (#1062)
+
+`MigrationRunner` legt per migratiebestand een SHA-256 vast en weigert een bestand dat al is
+toegepast maar sindsdien gewijzigd. Die bewaking werkt — maar ze sloeg pas aan op het moment dat
+iemand migraties uitvoerde, en niet in de CI.
+
+**Waarom de CI dit per definitie niet kon zien.** `fresh-db-postgres` begint altijd op een lege
+database. Daar bestaat geen eerdere checksum, dus een achteraf bewerkte migratie wordt gewoon
+toegepast en de job wordt groen. De enige situatie die faalt — een database die de oude versie al
+had — kwam in CI nergens voor. Bij #1058 leverde dat een groene PR op die elke bestaande database,
+productie inbegrepen, blokkeerde op de eerstvolgende migratieronde.
+
+**De guard.** Bij een pull request past de job eerst het migratiepad van de *basisbranch* toe, en
+daarna dat van de PR. Wie een bestaand migratiebestand wijzigt, laat die tweede stap hard falen met
+exact de checksumfout die anders pas in productie zou opduiken. Bij een push naar `main`/`develop`
+is er geen basis om tegen af te zetten en slaat de stap over.
+
+**Volgordeafhankelijkheid, expliciet.** Deze guard kon niet in dezelfde PR als de herstelcommit van
+#1062 zitten: die zet 012 terug naar de oorspronkelijke inhoud en is daarmee zelf "een gewijzigd
+migratiebestand" ten opzichte van de toenmalige `develop`. De guard zou zijn eigen reparatie hebben
+tegengehouden. Herstel eerst, guard daarna — in die volgorde gemerged.
+
+**Wat de guard niet afvangt.** Een migratie die op een lege database slaagt maar op een gevulde
+database stukloopt (bijvoorbeeld een `NOT NULL`-kolom zonder default op een tabel met rijen). De
+basisbranch-database bevat in CI alleen wat de migraties zelf aanmaken, geen productie-achtige
+data. Dat blijft een apart risico.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

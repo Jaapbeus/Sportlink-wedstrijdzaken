@@ -551,6 +551,34 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      # ──────────────────────────────────────────────────────────────────────
+      # #1062: het gat dat een verse database per definitie niet ziet.
+      #
+      # MigrationRunner legt per migratiebestand een SHA-256 vast en weigert een bestand dat al is
+      # toegepast maar sindsdien gewijzigd. Op een LEGE database bestaat die eerdere checksum niet,
+      # dus een achteraf bewerkte migratie wordt hier gewoon toegepast en de job wordt groen —
+      # terwijl elke database die de oude versie al had (productie inbegrepen) vastloopt en geen
+      # enkele volgende migratie meer kan toepassen. Precies wat er bij #1058 gebeurde.
+      #
+      # Daarom eerst het migratiepad van de BASISBRANCH toepassen, en pas daarna dat van deze PR:
+      # wie een bestaand migratiebestand wijzigt, laat stap 2 hard falen met de checksumfout.
+      # Alleen zinvol bij een pull request — bij een push naar main/develop is er geen basis om
+      # tegen af te zetten.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Migratiepad van de basisbranch toepassen (checksum-basis, #1062)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          rm -rf /tmp/basismigraties && mkdir -p /tmp/basismigraties
+          # git archive faalt als de map op de basisbranch niet bestaat — dat is geen fout maar
+          # een nieuwe map, en dan valt er ook niets te vergelijken.
+          if git archive FETCH_HEAD Database.Postgres/migrations 2>/dev/null | tar -x -C /tmp/basismigraties; then
+            dotnet run --project Database.Postgres.Cli --configuration Release -- /tmp/basismigraties/Database.Postgres/migrations
+          else
+            echo "::notice::Database.Postgres/migrations bestaat niet op ${{ github.base_ref }} — checksum-basis overgeslagen."
+          fi
+
       - name: Migratiepad toepassen (1e keer — verse database)
         run: dotnet run --project Database.Postgres.Cli --configuration Release -- Database.Postgres/migrations
 
