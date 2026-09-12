@@ -789,6 +789,17 @@ Aanvullend:
   nooit in de repository.
 - **In shell-scripts en git-hooks: geen `grep -P`.** De BSD-grep van macOS kent geen PCRE.
   Gebruik `grep -E`. Dit is extra riskant in de hooks, waar een `|| true` de fout stil maakt.
+- **`\s`, `\d` en andere PCRE-shorthands wérken bij BSD-grep `-E` buiten een bracket-expressie
+  (`[Pp]assword\s*=`), maar niet erbinnen (`[^;'"`\s<>{}]`) — vastgesteld tijdens de macOS-
+  hardwareverificatie van #843 (issue #1090).** POSIX-bracket-expressies interpreteren `\` niet
+  speciaal: `[^;'"`\s<>{}]` sluit dan letterlijk de tekens `\` en `s` uit in plaats van elk
+  whitespace-teken. Bij een veelvoorkomende letter als `s` breekt dat de bedoelde `{n,}`-herhaling
+  zonder foutmelding — precies wat `.githooks/sensitive-patterns.txt` deed bij o.a. de
+  Password/Secret/Pwd-patronen: de pre-commit/pre-push-hook liet een testwaarde als
+  `Password=<testwaarde>` stilzwijgend door op macOS, terwijl dezelfde regex op Linux/CI
+  (GNU grep, wél `\s`-bewust binnen brackets) prima blokkeerde. Gebruik binnen een
+  bracket-expressie altijd de POSIX-klasse `[:space:]` (`[^;'"`[:space:]<>{}]`) — die werkt
+  identiek op BSD-grep, GNU grep én `git grep`.
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`). Git slaat een
   niet-executable hook op macOS stilzwijgend over — de secrets- en AVG-scan draait dan niet.
 - **Bouw nooit `sportlink-wedstrijdzaken.sln` op macOS.** Die bevat het legacy SSDT-project
