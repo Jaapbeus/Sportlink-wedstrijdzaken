@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.3.0.0] — 2026-09-12
 
 ### Fixed
 - **Uitslagen van gespeelde wedstrijden worden weer verwerkt, en "Laatste sync" loopt weer bij (#1077).**
