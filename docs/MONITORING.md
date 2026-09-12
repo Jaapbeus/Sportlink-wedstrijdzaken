@@ -354,6 +354,30 @@ gh pr checks <pr-nr>
 
 ---
 
+## Openstaande databasemigraties (#1098)
+
+Op de Postgres-tier past niets de migraties automatisch toe op productie — dat is een handmatige
+stap van de beheerder (`Database.Postgres.Cli`, zie `ARCHITECTUUR-DATABASE-TIERS.md` §49 en §54).
+Loopt de code vooruit op het schema, dan is dat sinds 3.3.0.2 van buiten zichtbaar:
+
+| Veld in `GET /api/health` | Betekenis |
+|---|---|
+| `pendingMigrations` | Bestandsnamen uit `Database.Postgres/migrations/` die nog niet in de ledger `schema_migrations` staan. Leeg is de gezonde toestand; niet-leeg zet `status` op `degraded` |
+| `schemaWarning` | Niet `null` zodra `public.appsettings` een kolom mist die deze versie verwacht; de applicatie draait dan door op de standaardwaarde uit de migratie |
+| `settingsLoaded` | Sinds 3.3.0.2 het resultaat van een laadpoging die health zélf doet, niet meer een aanname over een eerdere poging |
+
+**Wat de smoke test in `deploy.yml` hiermee moet doen (vervolg op #1098, nog niet gemerged).**
+`settingsLoaded=false` laat de `test`-job falen: zonder instellingencache antwoordt elk
+`/api/beheer/*`-endpoint 500, dus dat is een mislukte deploy. Niet-lege `pendingMigrations` geeft
+een `::warning::` in de job-samenvatting — de pipeline kán ze niet toepassen (bewust geen
+productie-connectiestring in CI) en de applicatie werkt wel. De verscherpte stap staat klaar op de
+lokale branch `ci/#1098-smoke-test-settingsloaded`; hij kon niet met de hotfix mee omdat het
+push-token de `workflow`-scope miste die GitHub voor wijzigingen onder `.github/workflows/` eist.
+
+**Handeling bij een niet-lege lijst:** de beheerder draait de migraties lokaal met
+`POSTGRES_CONNECTION_STRING` als omgevingsvariabele (nooit als argument) en controleert daarna dat
+`/api/health` `"pendingMigrations": []` toont.
+
 ## Verouderde synchronisatie (#1081)
 
 `GET /api/health` bevat twee velden die hierop zien:

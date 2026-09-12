@@ -20,7 +20,13 @@ if (string.IsNullOrWhiteSpace(connectionString))
 var ensureHisTables = args.Contains("--ensure-his-tables", StringComparer.Ordinal);
 var positioneel = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
 
-var normalized = PostgresConnectionStringNormalizer.Normalize(connectionString);
+var normalization = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(connectionString);
+var normalized = normalization.ConnectionString;
+
+// #1095: het TLS-beleid van #1004 is niet meer fail-closed; wél zichtbaar. Naar stderr, zodat het
+// in CI en in een handmatige migratieronde opvalt zonder de uitvoer van de migraties zelf te storen.
+if (normalization.TlsWarning is not null)
+    Console.Error.WriteLine($"Waarschuwing: {normalization.TlsWarning}");
 
 if (ensureHisTables)
 {

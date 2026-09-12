@@ -273,7 +273,7 @@ Productie-configuratie wordt **nooit** in git opgeslagen. De CI-pipeline generee
 | `AZURE_FUNCTION_KEY` | Function App-sleutel voor smoke tests | beide tiers |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Deployment token voor Static Web App | beide tiers |
 | `SQL_CONNECTION_STRING` | Connectiestring naar Azure SQL | alleen `DatabaseTier=SqlServer` |
-| `POSTGRES_CONNECTION_STRING` | Connectiestring naar Postgres (`sslmode=verify-full`, #1004) | alleen `DatabaseTier=Postgres` |
+| `POSTGRES_CONNECTION_STRING` | Connectiestring naar Postgres. Norm: `sslmode=verify-full` mét het CA-certificaat van de provider (#1004); ontbreekt dat, dan draait de app op `Require` en meldt `/api/health` een `tlsWarning` (#1095) | alleen `DatabaseTier=Postgres` |
 
 **Sportlink refresh-token (epic #986)** is een apart, door de club-beheerder zelf via de
 Instellingen-UI gecaptured secret, niet via GitHub Secrets — zie §13 en `docs/SECRET-ROTATION.md`.
