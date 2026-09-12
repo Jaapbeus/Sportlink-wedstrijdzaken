@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.2.0",
+    "version": "3.3.3.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1108,6 +1108,35 @@
           "IsForcedDryRun": {
             "type": "boolean",
             "description": "#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een\nmutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —\nONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat \"DryRunLocked\").\nAls dit true is, is IsDryRun ook altijd true.\n"
+          }
+        }
+      },
+      "SportlinkMatchChangeRequestResponse": {
+        "type": "object",
+        "description": "Resultaat van het wijzigingsverzoek-endpoint — ALLEEN stap 1 (valideren) van Sportlinks\ntweestaps flow (#995, epic #986). Spiegelt\nPlanner.Shared.Integrations.SportlinkClub.SportlinkMatchChangeRequestResult. Er bestaat\nbewust geen endpoint voor stap 2 (bevestigen).\n",
+        "properties": {
+          "Mutatie": {
+            "$ref": "#/components/schemas/SportlinkMutationResponse"
+          },
+          "Validatie": {
+            "type": "object",
+            "nullable": true,
+            "description": "ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een\nnetwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,\nzie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).\n",
+            "properties": {
+              "ConfirmationNeeded": {
+                "type": "boolean"
+              },
+              "ValidationResultMessages": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "HasBlockingMessages": {
+                "type": "boolean"
+              }
+            }
           }
         }
       },
@@ -4263,6 +4292,101 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd of PublicMatchId niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}/change-request": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkMatchChangeRequest",
+        "summary": "Wijzigingsverzoek datum/tijd/accommodatie (#995, epic",
+        "description": "**ONBEVESTIGD, altijd gesimuleerd, en de enige mutatie die een ECHTE tegenstander raakt:**\nSportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de\nbevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt\nUITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.\nZelfde onderliggende Sportlink-endpoint als `.../field`\n(`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/\n`MatchChangeRequestRemarks` overschreven in plaats van het veld. Loopt altijd via een\ncode-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling `sportlinkDryRun` —\ntotdat een mens (nooit een agent) een live trace heeft gedaan: zelfs stap 1 kan in\nwerkelijkheid al het gevaarlijke moment zijn als Sportlinks eerste PUT geen \"dry validate\"\nblijkt te zijn. Guard: `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend\n`IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke\n`IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "Toelichting"
+                ],
+                "properties": {
+                  "NieuweDatum": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "yyyy-MM-dd — null laat de datum ongewijzigd (blijft uit de snapshot)."
+                  },
+                  "NieuweStartTijd": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "HH:mm — null laat de starttijd ongewijzigd."
+                  },
+                  "NieuweFacilityId": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "null laat de accommodatie ongewijzigd."
+                  },
+                  "Toelichting": {
+                    "type": "string",
+                    "description": "Verplicht — een wijzigingsverzoek zonder toelichting is voor de tegenstander niet te beoordelen."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validatieresultaat (Mutatie.IsSuccess kan alsnog false zijn; in de praktijk altijd een gesimuleerd resultaat door de code-lock)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMatchChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Toelichting ontbreekt, of NieuweDatum/NieuweStartTijd is geen geldige datum/tijd"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

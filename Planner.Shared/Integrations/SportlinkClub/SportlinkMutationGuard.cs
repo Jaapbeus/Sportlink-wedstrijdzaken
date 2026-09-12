@@ -9,7 +9,16 @@ public enum SportlinkMutationSoort
     Veld,
     VeldSidePanel,
     Officials,
-    Uitslag
+    Uitslag,
+
+    /// <summary>
+    /// Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — de enige mutatiesoort die een
+    /// ECHTE tegenstander raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de
+    /// tegenstander). Deze app bouwt uitsluitend stap 1 (valideren), nooit stap 2 (bevestigen) — zie
+    /// <see cref="SportlinkMatchChangeValidatie"/> en de forceDryRun-lock op
+    /// <c>SportlinkClubClient.RequestMatchChangeAsync</c>.
+    /// </summary>
+    DatumTijdAccommodatie
 }
 
 /// <summary>
@@ -46,6 +55,15 @@ public static class SportlinkMutationGuard
             return SportlinkMutationGuardResult.Geblokkeerd("Wedstrijd is afgelast (IsCanceledMatch=true).");
         if (match.IsConceptMatch)
             return SportlinkMutationGuardResult.Geblokkeerd("Wedstrijd is nog een concept (IsConceptMatch=true).");
+
+        // #995: er bestaat geen SportlinkMatch.IsXxxAllowed-vlag voor een datum/tijd/accommodatie-
+        // wijzigingsverzoek. TODO: exacte permissievlag voor datum/tijd-wijziging is niet
+        // vastgesteld — vertrouw voorlopig op IsHomeMatch (al gecontroleerd hierboven) + de
+        // generieke checks (niet afgelast, niet concept). Uitwedstrijden zijn al uitgesloten door
+        // de IsHomeMatch-check aan het begin van deze methode — het issue beschrijft alleen een
+        // verzoek vanuit de thuisclub.
+        if (soort == SportlinkMutationSoort.DatumTijdAccommodatie)
+            return SportlinkMutationGuardResult.Toegestaan();
 
         var toegestaan = soort switch
         {

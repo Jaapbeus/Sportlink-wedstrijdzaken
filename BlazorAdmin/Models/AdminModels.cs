@@ -156,6 +156,29 @@ public class SportlinkChangeRequestDataDto
     public string? RequestedSubFacilityName { get; set; }
 }
 
+// NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
+// beide PUT's en de bevestigingsvlag vastleggen). Deze DTO's horen uitsluitend bij stap 1
+// (valideren) — er bestaat bewust geen stap 2 (bevestigen): geen endpoint, geen UI-knop.
+
+/// <summary>#995: respons van het wijzigingsverzoek-endpoint (stap 1, valideren) — spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkMatchChangeRequestResult. Houd deze twee
+/// synchroon bij een contractwijziging.</summary>
+public class SportlinkMatchWijzigingsverzoekResultaatDto
+{
+    public SportlinkMutatieResultaatDto? Mutatie { get; set; }
+    public SportlinkMatchChangeValidatieDto? Validatie { get; set; }
+}
+
+/// <summary>#995: ONBEVESTIGD — geparsed uit Sportlinks <c>ConfirmationNeeded</c>-veld, nooit met
+/// een netwerktrace gezien. <c>null</c> zolang de code-lock actief is (zie
+/// SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd).</summary>
+public class SportlinkMatchChangeValidatieDto
+{
+    public bool ConfirmationNeeded { get; set; }
+    public List<string>? ValidationResultMessages { get; set; }
+    public bool HasBlockingMessages { get; set; }
+}
+
 public class SettingsUpdateDto
 {
     // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend

@@ -749,6 +749,81 @@
                                                     </div>
                                                 }
                                             }
+                                            @* #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren),
+                                               ONBEVESTIGD en altijd code-gelockt (forceDryRun): dit is de enige
+                                               Sportlink-mutatie die een ECHTE tegenstander raakt. Zichtbaarheid op
+                                               IsHomeMatch — er bestaat geen specifieke IsXxxAllowed-vlag hiervoor (zie
+                                               SportlinkMutationGuard). Bewust GEEN bevestigknop, ook geen disabled-
+                                               variant: dat zou een stap 2 suggereren die hier niet gebouwd is. *@
+                                            @if (_sportlinkData.IsHomeMatch)
+                                            {
+                                                <div class="mt-2 pt-2 border-top">
+                                                    <div class="fw-semibold" style="font-size:0.75rem;">Wijzigingsverzoek datum/tijd/accommodatie</div>
+                                                    <div class="text-muted" style="font-size:0.75rem;">
+                                                        Wijzigen van datum, tijd of accommodatie vereist goedkeuring door de
+                                                        tegenstander. Dit valideert alleen (stap 1) — er is bewust geen
+                                                        bevestigstap gebouwd.
+                                                    </div>
+                                                    <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+                                                        <div>
+                                                            <label class="form-label mb-0" style="font-size:0.75rem;">Nieuwe datum</label>
+                                                            <input class="form-control form-control-sm" style="width:9rem;" type="date"
+                                                                   value="@_sportlinkWijzigingDatum.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                                   @onchange="e => _sportlinkWijzigingDatum[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                        </div>
+                                                        <div>
+                                                            <label class="form-label mb-0" style="font-size:0.75rem;">Nieuwe starttijd</label>
+                                                            <TimeInput Value="@_sportlinkWijzigingTijd.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                                       ValueChanged="v => _sportlinkWijzigingTijd[item.WedstrijdCode.Value] = v"
+                                                                       Class="form-control-sm" style="width:6rem;" />
+                                                        </div>
+                                                        <div>
+                                                            <label class="form-label mb-0" style="font-size:0.75rem;">FacilityId</label>
+                                                            <input class="form-control form-control-sm" style="width:10rem;"
+                                                                   value="@_sportlinkWijzigingFacilityId.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                                   @onchange="e => _sportlinkWijzigingFacilityId[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                        </div>
+                                                    </div>
+                                                    <div class="mt-2">
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">Toelichting (verplicht)</label>
+                                                        <input class="form-control form-control-sm"
+                                                               value="@_sportlinkWijzigingToelichting.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkWijzigingToelichting[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <div class="mt-2">
+                                                        <button class="btn btn-sm btn-outline-primary" disabled="@_sportlinkWijzigingBezig.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                                @onclick="() => SaveMatchChangeRequestAsync(item.WedstrijdCode.Value)">
+                                                            Wijzigingsverzoek valideren
+                                                        </button>
+                                                        @if (_sportlinkWijzigingBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm"></span>
+                                                        }
+                                                    </div>
+                                                    <div class="text-muted" style="font-size:0.75rem;">
+                                                        Nog niet live bevestigd door Sportlink — deze actie is altijd een
+                                                        simulatie, ook als dry-run uit staat voor deze club.
+                                                    </div>
+                                                    @if (!string.IsNullOrEmpty(_sportlinkWijzigingMelding.GetValueOrDefault(item.WedstrijdCode.Value)))
+                                                    {
+                                                        <div class="mt-1 @SportlinkMeldingKlasse(_sportlinkWijzigingMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value), _sportlinkWijzigingMeldingDryRun.GetValueOrDefault(item.WedstrijdCode.Value))">
+                                                            @_sportlinkWijzigingMelding.GetValueOrDefault(item.WedstrijdCode.Value)
+                                                        </div>
+                                                    }
+                                                    @{
+                                                        var _sportlinkWijzigingMeldingenLijst = _sportlinkWijzigingValidatieMeldingen.GetValueOrDefault(item.WedstrijdCode.Value);
+                                                    }
+                                                    @if (_sportlinkWijzigingMeldingenLijst is { Count: > 0 })
+                                                    {
+                                                        <ul class="mt-1 mb-0" style="font-size:0.8rem;">
+                                                            @foreach (var _melding in _sportlinkWijzigingMeldingenLijst)
+                                                            {
+                                                                <li>@_melding</li>
+                                                            }
+                                                        </ul>
+                                                    }
+                                                </div>
+                                            }
                                         }
                                     </td>
                                 </tr>
@@ -1060,6 +1135,84 @@
         finally
         {
             _sportlinkOfficialBezig[wedstrijdCode] = false;
+        }
+    }
+
+    // #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren). ONBEVESTIGD,
+    // altijd code-gelockt (forceDryRun): dit is de enige Sportlink-mutatiesoort die een ECHTE
+    // tegenstander raakt (zie SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd).
+    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR — bewust géén bevestigknop.
+    private readonly Dictionary<long, string?> _sportlinkWijzigingDatum = new();
+    private readonly Dictionary<long, string?> _sportlinkWijzigingTijd = new();
+    private readonly Dictionary<long, string?> _sportlinkWijzigingFacilityId = new();
+    private readonly Dictionary<long, string?> _sportlinkWijzigingToelichting = new();
+    private readonly Dictionary<long, bool> _sportlinkWijzigingBezig = new();
+    private readonly Dictionary<long, string?> _sportlinkWijzigingMelding = new();
+    private readonly Dictionary<long, bool> _sportlinkWijzigingMeldingFout = new();
+    private readonly Dictionary<long, bool> _sportlinkWijzigingMeldingDryRun = new();
+    private readonly Dictionary<long, List<string>?> _sportlinkWijzigingValidatieMeldingen = new();
+
+    private async Task SaveMatchChangeRequestAsync(long wedstrijdCode)
+    {
+        _sportlinkWijzigingMelding[wedstrijdCode] = null;
+        _sportlinkWijzigingValidatieMeldingen[wedstrijdCode] = null;
+
+        var toelichting = _sportlinkWijzigingToelichting.GetValueOrDefault(wedstrijdCode);
+        if (string.IsNullOrWhiteSpace(toelichting))
+        {
+            _sportlinkWijzigingMeldingFout[wedstrijdCode] = true;
+            _sportlinkWijzigingMelding[wedstrijdCode] = "Toelichting is verplicht bij een wijzigingsverzoek.";
+            return;
+        }
+
+        _sportlinkWijzigingBezig[wedstrijdCode] = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.PutSportlinkMatchChangeRequestAsync(
+                wedstrijdCode.ToString(),
+                _sportlinkWijzigingDatum.GetValueOrDefault(wedstrijdCode),
+                _sportlinkWijzigingTijd.GetValueOrDefault(wedstrijdCode),
+                _sportlinkWijzigingFacilityId.GetValueOrDefault(wedstrijdCode),
+                toelichting);
+
+            if (!result.Success)
+            {
+                _sportlinkWijzigingMeldingFout[wedstrijdCode] = true;
+                _sportlinkWijzigingMelding[wedstrijdCode] = result.ErrorMessage ?? "Onbekende fout bij het wijzigingsverzoek.";
+                return;
+            }
+
+            var mutatie = result.Data?.Mutatie;
+            _sportlinkWijzigingValidatieMeldingen[wedstrijdCode] = result.Data?.Validatie?.ValidationResultMessages;
+            _sportlinkWijzigingMeldingDryRun[wedstrijdCode] = mutatie?.IsDryRun == true;
+            if (mutatie?.IsForcedDryRun == true)
+            {
+                _sportlinkWijzigingMeldingFout[wedstrijdCode] = false;
+                _sportlinkWijzigingMelding[wedstrijdCode] = "Nog niet live bevestigd door Sportlink — deze actie is altijd "
+                    + "een simulatie, ook als dry-run uit staat voor deze club.";
+            }
+            else if (mutatie?.IsDryRun == true)
+            {
+                _sportlinkWijzigingMeldingFout[wedstrijdCode] = false;
+                _sportlinkWijzigingMelding[wedstrijdCode] = "Dry-run: niets verzonden naar Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+            }
+            else if (mutatie?.IsSuccess == true)
+            {
+                _sportlinkWijzigingMeldingFout[wedstrijdCode] = false;
+                _sportlinkWijzigingMelding[wedstrijdCode] = "Validatie uitgevoerd door Sportlink Club.";
+            }
+            else
+            {
+                _sportlinkWijzigingMeldingFout[wedstrijdCode] = true;
+                var violations = mutatie?.Violations;
+                _sportlinkWijzigingMelding[wedstrijdCode] = "Sportlink heeft het wijzigingsverzoek afgewezen"
+                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
+            }
+        }
+        finally
+        {
+            _sportlinkWijzigingBezig[wedstrijdCode] = false;
         }
     }
 

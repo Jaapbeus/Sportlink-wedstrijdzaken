@@ -20,9 +20,15 @@
 > blijft open) en blokkeert alleen nog #996's actie-pad, dat wél een echte aanvrager-identiteit
 > nodig heeft. **Inkomende wijzigingsverzoeken ophalen (#996, GET) is 2026-09-06 live bevestigd te
 > werken** — toont echte, actuele verzoeken van tegenstanders. De actie (goedkeuren/afwijzen) is
-> bewust NIET live getest en blijft geblokkeerd op #1048's `UserInfo`-bug. #994/#995/#997 zijn
-> bewust nog niet gebouwd: de exacte requestvorm is niet live vastgesteld (zie de betreffende
-> issues). Epic
+> bewust NIET live getest en blijft geblokkeerd op #1048's `UserInfo`-bug. #994 (officials toewijzen)
+> en #995 (wijzigingsverzoek datum/tijd/accommodatie) zijn inmiddels gebouwd als **scaffolding**:
+> endpoint, guard en UI bestaan, maar lopen altijd via de code-niveau `forceDryRun`-lock omdat de
+> exacte requestvorm nooit met een netwerktrace bevestigd is. **#995 is bovendien uitsluitend stap 1
+> (valideren) van Sportlinks tweestaps flow** — stap 2 (bevestigen, die een goedkeuringsverzoek naar
+> de tegenstander stuurt) is bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop.
+> Dit is de enige mutatie in de hele extensie die een échte tegenstander raakt; zie §4.2/§5/§6 voor
+> details. #997 is nog steeds bewust niet gebouwd: de exacte requestvorm is niet live vastgesteld
+> (zie de betreffende issues). Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -215,6 +221,26 @@ verplichte N-user-test.
   wordt `IsSuccess=false` gezet (Sportlinks "opgeslagen met fouten"), ook al is de HTTP-status 200.
   De Blazor-UI biedt bewust alleen een losse tekstinvoer per positie (relatiecode/persoons-ID) —
   géén zoekfunctie, geen namen (AVG, §5).
+- **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
+  stap 1 (valideren), altijd code-gelockt:** dit is de enige mutatiesoort die een ECHTE tegenstander
+  raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
+  `NIET VERDER BOUWEN`-markeringscomment op `SportlinkClubClient.RequestMatchChangeAsync` en
+  `ISportlinkClubClient`. Zelfde onderliggende endpoint als `.../field`
+  (`competition/match/UpdateMatchDetails`), maar bewust GEEN parametrisering van
+  `PutMatchDetailsAsync` — een eigen `PutMatchDetailsChangeRequestAsync`/
+  `BuildMatchChangeRequestBody` kopieert de structuur (verse snapshot ophalen → envelope met
+  alléén `MatchDate`/`StartTime`/`FacilityId`/`MatchChangeRequestRemarks` overschreven), zodat een
+  wijziging aan dit nog-onbevestigde pad #993's live-bevestigde veld-wijziging nooit kan raken.
+  `ParseMatchChangeValidatie` leest Sportlinks (ONBEVESTIGDE) `ConfirmationNeeded`-veld defensief
+  uit (`ValidationResultMessages` kan kale strings of objecten met `Message`/`Description`
+  bevatten) — maar wordt in de praktijk nooit aangeroepen zolang de lock actief is: een dry-run
+  slaat de echte HTTP-aanroep over, dus is er nooit een respons om te parsen. `SportlinkMatchChangeValidatie`/
+  `SportlinkMatchChangeRequestResult` staan bewust LOS van het gedeelde `SportlinkMutationResult` —
+  dat generieke type blijft ongewijzigd voor alle andere mutaties. `SportlinkMutationGuard` kreeg
+  een nieuwe soort `DatumTijdAccommodatie` die uitsluitend op `IsHomeMatch` + de generieke niet-
+  afgelast/niet-concept-checks controleert (geen specifieke `IsXxxAllowed`-vlag bestaat hiervoor bij
+  Sportlink — TODO in de guard). De Blazor-UI toont het formulier alleen bij `IsHomeMatch` en biedt
+  bewust GEEN bevestigknop, ook geen disabled-variant (dat zou een niet-gebouwde stap 2 suggereren).
 - `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
   `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
@@ -393,6 +419,17 @@ test getriggerd wordt:
   `forceDryRun`-lock (§4.2/§6.4) die ongeacht `sportlinkDryRun` altijd simuleert. Zolang die lock
   aan staat kan dit pad niet per ongeluk een echte mutatie bij Sportlink veroorzaken, maar de
   requestbody/positiecodes zijn dus ook nog niet gevalideerd tegen de werkelijkheid.
+- **#995's wijzigingsverzoek is de enige mutatie die een ECHTE tegenstander raakt — en zelfs stap 1
+  (valideren) kan al het gevaarlijke moment zijn.** Sportlink werkt naar verluidt in twee stappen
+  (valideren → bevestigen), maar dat is niet met een netwerktrace geverifieerd. Als Sportlinks
+  eerste PUT in werkelijkheid geen "dry validate" blijkt te zijn maar al het verzoek verstuurt, is
+  deze scaffolding-stap zelf al de gevaarlijke actie. De code-niveau `forceDryRun`-lock
+  (`UpdateMatchDetailsChangeRequestLiveBevestigd = false`) vangt dit softwarematig af zolang die
+  aanstaat — dat maakt deze lock hier belangrijker dan bij #994's officials-toewijzing. Stap 2
+  (bevestigen) is bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop — zie de
+  `NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR`-marker in de code. Ontgrendelen mag
+  uitsluitend na Aanpak-stap 1 van issue #995 (handmatige proef door de wedstrijdsecretaris met
+  netwerk-meekijken, gevolgd door een intrekking van het testverzoek), nooit door een agent (§4.4).
 - **#996's actie-pad (goedkeuren/afwijzen) kan niet veilig getest worden met de vaste testwedstrijd
   (2026-09-06 vastgesteld).** In tegenstelling tot #992/#993 is `MatchChangeRequests` niet per
   wedstrijd gescoped — het levert alle openstaande verzoeken van échte tegenstanders voor het hele
@@ -429,6 +466,7 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/MatchProgramOverview` (`?DateFrom=&DateTo=`) | GET | Niet-club-gescoped, 1-daags programma — voor de `PublicMatchId`-reverse-lookup en de dagelijkse warmup-timer | — |
 | `competition/match/UpdateMatchDressingRooms` | PUT | Kleedkamers toewijzen | `SportlinkMutationSoort.Kleedkamers` |
 | `competition/match/UpdateMatchDetails` | PUT | Veld(deel) wijzigen — verwacht het VOLLEDIGE wedstrijdrecord, niet een klein patch (zie §4.2) | `SportlinkMutationSoort.Veld` |
+| `competition/match/UpdateMatchDetails` (idem, andere velden overschreven) | PUT | Wijzigingsverzoek datum/tijd/accommodatie — **ONBEVESTIGD, altijd code-gelockt, ALLEEN stap 1 (#995)**, zie §4.2/§5 | `SportlinkMutationSoort.DatumTijdAccommodatie` |
 | `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **ONBEVESTIGD, altijd code-gelockt (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
 | `competition/match/changerequest/MatchChangeRequests` | GET | Inkomende wijzigingsverzoeken van tegenstanders ophalen | — (geen `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/changerequest/MatchChangeRequestAction` | PUT | Verzoek goed-/afkeuren | — (idem) |
@@ -454,6 +492,18 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   afgeleid uit `OfficialPosition` zoals dat terugkomt in `GET .../MatchOfficials`. Respons:
   `{ Officials: [ { ..., ValidationDescription } ] }` — één niet-lege `ValidationDescription` zet
   `IsSuccess=false`, ook bij HTTP 200 (zie `VerrijkOfficialsResultaat`).
+- **`UpdateMatchDetails` voor het wijzigingsverzoek (#995, ONBEVESTIGD, ALLEEN stap 1)**: zelfde
+  envelope als de veld-wijziging hierboven, maar met `MatchDate`/`StartTime`/`FacilityId` (uit de
+  invoer, anders uit de snapshot) en `MatchChangeRequestRemarks` (de verplichte toelichting,
+  altijd uit de invoer) overschreven — `IsMatchChangeRequestMandatory: true` en een lege
+  `PublicApplicantId` zijn hier eigen, ONBEVESTIGDE aannames (#993's veld-wijziging gebruikt
+  `false` resp. een live-bevestigde lege string, maar voor een EIGEN-veld-wijziging, geen verzoek
+  aan een tegenstander). Respons: `{ ConfirmationNeeded: null | { ValidationResultMessages: [...],
+  HasBlockingMessages } }` — nooit met een netwerktrace gezien; elementen van
+  `ValidationResultMessages` kunnen kale strings of objecten met een `Message`-/`Description`-veld
+  zijn, en de positie van `HasBlockingMessages` (genest of toplevel) is evenmin bevestigd — zie
+  `SportlinkClubClient.ParseMatchChangeValidatie` voor de defensieve aanpak. Deze parser wordt in de
+  praktijk nooit aangeroepen zolang de code-lock actief is.
 - **Afwijzingsvorm (HTTP 420, live bevestigd #1040)**: `{"Error":true,"Status":"420",
   "Message":"Validation exception : <code>","ViolationCodes":["<code>", ...],
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
@@ -472,6 +522,15 @@ bevestigd is (het eerste voorbeeld: `AssignOfficialsAsync`). In dat geval krijgt
 `IsForcedDryRun: true` mee (audit-resultaat `"DryRunLocked"`) en gebruikt de logregel expliciet de
 tekst "code-lock, body niet live bevestigd" — zo is in de Function-log meteen te zien of een
 gesimuleerde mutatie kwam door de club-instelling of door deze harde, niet-instelbare lock.
+
+Sinds #995 geldt dezelfde lock voor `RequestMatchChangeAsync`
+(`UpdateMatchDetailsChangeRequestLiveBevestigd = false`) — met een extra reden om hem aan te
+houden: dit is de enige mutatie die een ECHTE tegenstander raakt, en zelfs de "valideer"-stap kan in
+werkelijkheid al de gevaarlijke actie zijn als Sportlinks eerste PUT geen dry validate blijkt te
+zijn (zie §5). Ontgrendelen (de constante op `true` zetten) mag uitsluitend na Aanpak-stap 1 van
+issue #995 — een handmatige proef door de wedstrijdsecretaris met netwerk-meekijken — en nooit door
+een agent (§4.4). Zelfs dan bouwt deze constante alleen stap 1 vrij: stap 2 (bevestigen) bestaat
+nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
 
 ## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport
