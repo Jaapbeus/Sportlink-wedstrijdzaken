@@ -44,7 +44,7 @@ public class PlannerAvailabilityRepositoryIntegrationTests
 
         bezetting.Should().ContainSingle(b => b.Bron == "Competitie")
             .Which.Should().Match<BestaandeWedstrijd>(b =>
-                b.VeldNummer == 1 && b.Wedstrijdcode == 9200001 && b.AanvangsTijd == new TimeOnly(10, 0));
+                b.VeldNummer == 601 && b.Wedstrijdcode == 9200001 && b.AanvangsTijd == new TimeOnly(10, 0));
     }
 
     [PostgresFact]
@@ -65,8 +65,8 @@ public class PlannerAvailabilityRepositoryIntegrationTests
     {
         await using var conn = await OpstellingAsync();
         await ZetCompetitieWedstrijdAsync(conn, wedstrijdcode: 9200003, veld: "veld 1", aanvang: "10:00");
-        await ZetGeplandeWedstrijdAsync(conn, veldnummer: 2, aanvang: "11:00");
-        await ZetTrainingAsync(conn, veldnummer: 1, van: "18:00", tot: "19:00");
+        await ZetGeplandeWedstrijdAsync(conn, veldnummer: 602, aanvang: "11:00");
+        await ZetTrainingAsync(conn, veldnummer: 601, van: "18:00", tot: "19:00");
 
         var bezetting = await PlannerAvailabilityRepository.GetFieldOccupationsAsync(ConnectionString, Zaterdag, Club);
 
@@ -99,13 +99,13 @@ public class PlannerAvailabilityRepositoryIntegrationTests
         var periodeId = (int)(await ScalarAsync(conn, "SELECT id FROM public.veldperiode WHERE clubcode = @club", ("club", Club)))!;
         await ExecAsync(conn, @"
             INSERT INTO public.veldbeschikbaarheid (veldnummer, dagvanweek, beschikbaarvanaf, beschikbaartot, gebruikzonsondergang, clubcode, periodeid)
-            VALUES (1, 6, '09:00', '12:00', false, @club, @periode)", ("club", Club), ("periode", periodeId));
+            VALUES (601, 6, '09:00', '12:00', false, @club, @periode)", ("club", Club), ("periode", periodeId));
 
         var beschikbaar = await PlannerAvailabilityRepository.GetAvailableFieldsAsync(ConnectionString, Zaterdag, Club);
 
         beschikbaar.Should().ContainSingle()
             .Which.Should().Match<VeldBeschikbaarheidInfo>(v =>
-                v.VeldNummer == 1 && v.BeschikbaarVanaf == new TimeOnly(9, 0) && v.BeschikbaarTot == new TimeOnly(12, 0));
+                v.VeldNummer == 601 && v.BeschikbaarVanaf == new TimeOnly(9, 0) && v.BeschikbaarTot == new TimeOnly(12, 0));
     }
 
     [PostgresFact]
@@ -119,14 +119,14 @@ public class PlannerAvailabilityRepositoryIntegrationTests
             ("team", team), ("club", Club));
         await ExecAsync(conn, @"
             INSERT INTO public.teamregels (teamnaam, regeltype, waardeveldnummer, prioriteit, actief, clubcode)
-            VALUES (@team, 'VoorkeurVeld', 1, 1, true, @club)", ("team", team), ("club", Club));
+            VALUES (@team, 'VoorkeurVeld', 601, 1, true, @club)", ("team", team), ("club", Club));
 
         var buffers = await TeamRulesRepository.GetAllTeamBuffersAsync(ConnectionString, Club);
         var voorkeur = await TeamRulesRepository.GetAllTeamVoorkeurVeldenAsync(ConnectionString, Club);
         var perTeam = await TeamRulesRepository.GetTeamRulesForTeamsAsync(ConnectionString, new[] { team, "Onbekend Team" }, Club);
 
         buffers[team].Should().Be((20, 25));
-        voorkeur[team].VeldNummer.Should().Be(1);
+        voorkeur[team].VeldNummer.Should().Be(601);
         perTeam[team].Should().HaveCount(3);
         perTeam["Onbekend Team"].Should().BeEmpty("een team zonder regels krijgt een lege lijst, geen KeyNotFoundException");
     }
@@ -167,11 +167,11 @@ public class PlannerAvailabilityRepositoryIntegrationTests
             ("club", Club));
         await ExecAsync(conn, @"
             INSERT INTO public.velden (veldnummer, veldnaam, actief, clubcode, veldtype, heeftkunstlicht)
-            VALUES (1, 'Veld 1', true, @club, 'kunstgras', true), (2, 'Veld 2', true, @club, 'natuurgras', false)",
+            VALUES (601, 'Veld 1', true, @club, 'kunstgras', true), (602, 'Veld 2', true, @club, 'natuurgras', false)",
             ("club", Club));
         await ExecAsync(conn, @"
             INSERT INTO public.veldbeschikbaarheid (veldnummer, dagvanweek, beschikbaarvanaf, beschikbaartot, gebruikzonsondergang, clubcode, periodeid)
-            VALUES (1, 6, '08:00', '20:00', false, @club, NULL), (2, 6, '08:00', '20:00', false, @club, NULL)",
+            VALUES (601, 6, '08:00', '20:00', false, @club, NULL), (602, 6, '08:00', '20:00', false, @club, NULL)",
             ("club", Club));
         await ExecAsync(conn,
             "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, clubcode) VALUES ('JO13', 1.00, 60, @club) ON CONFLICT DO NOTHING",
