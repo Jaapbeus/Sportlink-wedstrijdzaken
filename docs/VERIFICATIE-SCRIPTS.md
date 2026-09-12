@@ -195,6 +195,11 @@ Twee controles die verder gaan dan "de poort antwoordt" (#1060):
 - **`status` / `settingsLoaded`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
   met status `degraded`, terwijl élk `/api/beheer/*`-endpoint 500 antwoordt. Op een verse database
   is dat de normale toestand tot er een primaire club is geseed (DEVELOPER-SETUP.md §4.2).
+- **`pendingMigrations` / `schemaWarning` (#1098).** Meldt health migraties die de database nog
+  mist, dan wijst het script naar `Database.Postgres.Cli` in plaats van naar het seed-script — een
+  lege instellingencache door een ontbrekende kolom is een andere oorzaak dan een ontbrekende
+  primaire club. Dezelfde velden bewaakt de smoke test in `deploy.yml` na een productie-deploy:
+  `settingsLoaded=false` laat die job falen, openstaande migraties geven een waarschuwing.
 
 Readiness-detectie:
 

@@ -33,9 +33,13 @@ namespace FunctionApp.Postgres.Admin;
 /// <para>
 /// <b>Bewust vereenvoudigd t.o.v. de SQL Server-tier:</b> de <c>COL_LENGTH</c>/<c>sp_executesql</c>-
 /// omweg rond <c>UseRealtimeApi</c> bestond omdat die kolom pas ná een latere migratie bestond op
-/// bestaande installaties. Op de Postgres-tier wordt elke migratie in volgorde en idempotent
-/// toegepast door <c>MigrationRunner</c> vóórdat de applicatie start — "de kolom bestaat misschien
-/// nog niet" is hier geen realistische runtime-toestand, dus een gewone <c>SELECT</c> volstaat.
+/// bestaande installaties. Op de Postgres-tier past <c>MigrationRunner</c> elke migratie in
+/// volgorde en idempotent toe — maar <b>niet automatisch bij een deploy</b>: het is een handmatige
+/// stap van de eigenaar (ARCHITECTUUR-DATABASE-TIERS.md §49). "De kolom bestaat misschien nog
+/// niet" is dus wél een realistische toestand, zo bleek bij #1098 (release v3.3.0.0 met migratie
+/// 012 nog niet toegepast). Dit endpoint blijft een gewone <c>SELECT</c>; de instellingencache
+/// (<c>PostgresAppSettings</c>) vangt het ene bekende geval op en <c>/api/health</c> meldt
+/// openstaande migraties (<c>pendingMigrations</c>), zodat het niet opnieuw onzichtbaar blijft.
 /// </para>
 /// </summary>
 public static class AdminSettingsFunction
@@ -101,7 +105,13 @@ public static class AdminSettingsFunction
             await connection.OpenAsync();
 
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            await using var command = new NpgsqlCommand(@"
+            // #1098: ontbreekt de kolom uit migratie 012 (WaitForDatabaseAsync heeft zojuist
+            // geladen, dus dit oordeel is vers), selecteer dan de migratie-default in plaats van
+            // de kolom — anders geeft dit scherm 500 terwijl de rest van de applicatie al werkt.
+            var extensieKolom = PostgresAppSettings.ExtensionColumnAvailable
+                ? "sportlinkextensionenabled"
+                : "false";
+            await using var command = new NpgsqlCommand($@"
                 SELECT
                     clubname AS ""ClubName"", clubcode AS ""ClubCode"",
                     sportlinkapiurl AS ""SportlinkApiUrl"", seasonstartmonth AS ""SeasonStartMonth"",
@@ -116,7 +126,7 @@ public static class AdminSettingsFunction
                     knvbpdfbijlageingeschakeld AS ""KnvbPdfBijlageIngeschakeld"",
                     knvbstandaardregio AS ""KnvbStandaardRegio"",
                     userealtimeapi AS ""UseRealtimeApi"",
-                    sportlinkextensionenabled AS ""SportlinkExtensionEnabled""
+                    {extensieKolom} AS ""SportlinkExtensionEnabled""
                 FROM public.appsettings
                 WHERE clubcode = @clubcode
                 LIMIT 1", connection);
@@ -182,6 +192,15 @@ public static class AdminSettingsFunction
             changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
 
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+
+            // #1098: de schakelaar kan pas bestaan als migratie 012 is toegepast. Een 409 met
+            // uitleg in plaats van de generieke 500 "Opslaan mislukt" op een ontbrekende kolom.
+            if (changes.ContainsKey("SportlinkExtensionEnabled") && !PostgresAppSettings.ExtensionColumnAvailable)
+                return new ConflictObjectResult(new
+                {
+                    error = "De Sportlink Web Extension kan nog niet worden ingeschakeld: databasemigratie " +
+                            "012_sportlink_extension.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
+                });
 
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();

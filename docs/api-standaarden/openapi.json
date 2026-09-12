@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.0.1",
+    "version": "3.3.0.2",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -127,7 +127,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "description": "\"ok\" als database \"online\" is én settingsLoaded true is, anders \"degraded\".",
+            "description": "\"ok\" als database \"online\" is, settingsLoaded true is en (Postgres-tier) pendingMigrations leeg is, anders \"degraded\".",
             "example": "ok"
           },
           "version": {
@@ -193,6 +193,23 @@
             "nullable": true,
             "description": "Postgres-tier (#1095): null als het TLS-beleid (VerifyFull, #1004) gehaald is; anders een waarschuwing zonder host of credentials dat de verbinding versleuteld is maar het servercertificaat/de hostnaam niet volledig gevalideerd wordt.",
             "example": null
+          },
+          "schemaWarning": {
+            "type": "string",
+            "nullable": true,
+            "description": "Postgres-tier (#1098): null als public.appsettings alle kolommen heeft die deze versie verwacht; anders een waarschuwing dat de code vooruitloopt op het databaseschema en welke migratie ontbreekt. De applicatie draait dan door op de migratie-default.",
+            "example": null
+          },
+          "pendingMigrations": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "Postgres-tier (#1098): bestandsnamen uit Database.Postgres/migrations/ die nog niet in de ledger schema_migrations staan. Leeg = code en schema lopen gelijk; null als de database niet bereikbaar is. Alleen lezen — toepassen blijft een handeling van de beheerder (Database.Postgres.Cli).",
+            "example": [
+              "012_sportlink_extension.sql"
+            ]
           }
         }
       },

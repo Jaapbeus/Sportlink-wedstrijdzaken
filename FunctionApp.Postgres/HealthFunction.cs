@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using FunctionApp.Postgres.Infrastructure;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace FunctionApp.Postgres;
@@ -26,11 +27,13 @@ public static class HealthFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequest req,
         FunctionContext context)
     {
+        var log = context.GetLogger("Health");
         var version = typeof(HealthFunction).Assembly.GetName().Version?.ToString(4) ?? "?";
         var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
-        var settingsLoaded = !PostgresAppSettings.LastLoadFailed;
+        var settingsLoaded = await ProbeSettingsAsync(dbStatus, log);
         var (lastSync, syncStale) = await GetSyncStatusAsync(dbStatus);
         var (tlsMode, tlsWarning) = GetTlsStatus();
+        var pendingMigrations = await GetPendingMigrationsAsync(dbStatus);
         var body = new
         {
             // #1081: een verouderde synchronisatie telt mee in de status, maar alleen waar een
@@ -38,7 +41,10 @@ public static class HealthFunction
             // uitgaand verkeer, dus is een lege of oude lastsynctimestamp daar het verwachte
             // gedrag en geen storing — die twee zouden anders permanent 'degraded' melden en het
             // signaal waardeloos maken.
+            // #1098: openstaande migraties tellen ook mee — code die vooruitloopt op het schema is
+            // geen gezonde toestand, ook als de applicatie er (dankzij de fallback) op doordraait.
             status = dbStatus == "online" && settingsLoaded && !(syncStale && SyncWordtVerwacht)
+                     && pendingMigrations is { Count: 0 }
                 ? "ok" : "degraded",
             version,
             timestamp = DateTime.UtcNow,
@@ -60,7 +66,16 @@ public static class HealthFunction
             // dit endpoint is anoniem. Zo is een onvolledige TLS-configuratie zichtbaar zonder
             // dat de applicatie er eerst op uitvalt (dat was het v3.3.0.0-incident).
             tlsMode,
-            tlsWarning
+            tlsWarning,
+            // #1098: de code verwacht een kolom die de database (nog) niet heeft. De applicatie
+            // draait door op de migratie-default, maar dit hoort zichtbaar te zijn — dat was het
+            // tweede v3.3.0.0-incident: 500 op elk beheerscherm terwijl health 200 gaf.
+            schemaWarning = PostgresAppSettings.SchemaWarning,
+            // #1098: migraties uit Database.Postgres/migrations/ die niet in de ledger
+            // schema_migrations staan. null als de database niet bereikbaar is. Leeg = code en
+            // schema lopen gelijk. Alleen bestandsnamen — geen schema-details, dit endpoint is
+            // anoniem.
+            pendingMigrations
         };
         // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
         // draaiende maar onbereikbare database (timeout/unavailable) blijft wel 200 met status
@@ -124,6 +139,46 @@ public static class HealthFunction
             // Een mislukte leesactie mag dit endpoint niet laten vallen; 'database' dekt de
             // verbinding al af en de volledige fout staat in het functielog.
             return (null, false);
+        }
+    }
+
+    /// <summary>
+    /// #1098: <c>settingsLoaded</c> zei tot nu toe alleen iets over de <i>laatste</i> laadpoging.
+    /// Direct na een (her)start was er nog geen poging geweest, dus meldde een verse host
+    /// <c>true</c> terwijl het eerste beheerscherm daarna op 500 zou lopen — precies het gat
+    /// waardoor de smoke test in <c>deploy.yml</c> het v3.3.0.0-incident niet zag. Health doet nu
+    /// zelf één laadpoging zodra de database bereikbaar is: één kleine query, en het antwoord is
+    /// daarna een feit in plaats van een aanname. Een mislukking wordt hier gevangen — de reden
+    /// staat in het functielog, dit endpoint is anoniem.
+    /// </summary>
+    private static async Task<bool> ProbeSettingsAsync(string dbStatus, ILogger log)
+    {
+        if (dbStatus == "online")
+        {
+            try { await PostgresAppSettings.LoadSettingsAsync(log); }
+            catch (Exception ex) { log.LogWarning(ex, "Health: instellingen laden mislukt."); }
+        }
+        return !PostgresAppSettings.LastLoadFailed;
+    }
+
+    /// <summary>
+    /// #1098: vergelijkt de meegeleverde migratienamen met de ledger. Leest alleen — een migratie
+    /// tegen productie blijft een bewuste handeling van de eigenaar (ARCHITECTUUR-DATABASE-TIERS.md
+    /// §49). <c>null</c> als de database niet bereikbaar is of de vergelijking zelf faalt.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>?> GetPendingMigrationsAsync(string dbStatus)
+    {
+        if (dbStatus != "online") return null;
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            return await Database.Postgres.MigrationRunner.GetPendingMigrationsAsync(connection);
+        }
+        catch
+        {
+            return null;
         }
     }
 
