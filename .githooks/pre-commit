@@ -5,6 +5,17 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 
+# Bekende, opzettelijk niet-geheime waarden die de wachtwoordpatronen wél raken (#1095, na de
+# #1090-fix die het Password=-patroon werkend maakte en daarmee ook alle al aanwezige synthetische
+# waarden ging afvangen). Bewust geankerd op '=<waarde>' met woordgrens, zodat alleen exact deze
+# tokens vrijgesteld zijn — 'Password=wachtwoord123' blijft blokkeren:
+#   wegwerpwachtwoord-niet-geheim  CI-wegwerpdatabase (build.yml)
+#   password / userInfo.           C#-toewijzing 'Password = password,' resp. 'password = userInfo.…'
+#   wachtwoord                     synthetische testwaarde (Database.Postgres.Tests)
+#   devonly / Devonly123!          lokale wegwerpcontainer (docs/DEVELOPER-SETUP.md, VERIFICATIE-SCRIPTS.md)
+#   YOUR_PASSWORD / [password] / ____  placeholders in templates en checklists
+KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_PASSWORD\b|\[password\]|_{4,})'
+
 echo "Scanning staged files for secrets and PII..."
 
 FOUND_ISSUE=0
@@ -58,8 +69,9 @@ else
       [ -z "$MATCHES" ] && continue
       # Bekende, opzettelijk niet-geheime CI/test-waarden (wegwerpdatabase, alleen in CI-run
       # bestaand, expliciet zo genoemd) mogen de scan niet blokkeren — anders faalt elke
-      # toekomstige commit die build.yml raakt op zijn eigen wegwerpwachtwoord.
-      REAL_MATCHES=$(echo "$MATCHES" | grep -viE "wegwerpwachtwoord-niet-geheim" || true)
+      # toekomstige commit die build.yml raakt op zijn eigen wegwerpwachtwoord. Zie
+      # KNOWN_SYNTHETIC_VALUES bovenaan voor de volledige, geankerde lijst (#1095).
+      REAL_MATCHES=$(echo "$MATCHES" | grep -viE "$KNOWN_SYNTHETIC_VALUES" || true)
       if [ -n "$REAL_MATCHES" ]; then
         echo ""
         echo "BLOCKED: Sensitive pattern detected"

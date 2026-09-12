@@ -849,17 +849,19 @@ docker rm -f pgfixture
 Zonder `POSTGRES_TEST_CONNECTION_STRING` meldt dezelfde opdracht `Skipped` met de reden erbij —
 geen stilzwijgend groen resultaat.
 
-> **TLS-certificaatvalidatie (#1004).** `PostgresConnectionStringNormalizer.Normalize` — waar
-> `Database.Postgres.Cli`, `PostgresDatabaseConfig` (Function App) en
-> `MigrationTools/SqlServerToPostgresCopy` allemaal doorheen gaan — vereist voor elke host **behalve**
-> `localhost`/`127.0.0.1`/`::1` expliciet `sslmode=verify-full` (URI-vorm) of
-> `SSL Mode=VerifyFull` (keyword/value-vorm). Zonder dat gooit `Normalize` een
-> `InvalidOperationException` vóórdat er verbinding wordt gemaakt — dus ook al bij het opstarten
-> van de Function App. Tegen de lokale wegwerpcontainer hierboven (`localhost:55432`) is dit nooit
-> nodig: die draait zonder TLS, en de bovenstaande commando's blijven ongewijzigd werken. Verbindt
-> je in plaats daarvan met een echte (bijvoorbeeld Supabase-gehoste) Postgres-instantie, geef dan
-> `?sslmode=verify-full` mee in de connectiestring; een los root-CA-certificaat is alleen nodig als
-> die instantie geen publiek vertrouwde CA gebruikt (`&sslrootcert=/pad/naar/ca.pem`). Zie
+> **TLS-certificaatvalidatie (#1004, gecorrigeerd in #1095).** `PostgresConnectionStringNormalizer`
+> — waar `Database.Postgres.Cli`, `PostgresDatabaseConfig` (Function App) en
+> `MigrationTools/SqlServerToPostgresCopy` allemaal doorheen gaan — hanteert voor elke host
+> **behalve** `localhost`/`127.0.0.1`/`::1` als norm `sslmode=verify-full` (URI-vorm) of
+> `SSL Mode=VerifyFull` (keyword/value-vorm). Ontbreekt dat, dan valt hij terug op `Require`
+> (versleuteld, maar zonder certificaat-/hostnaamvalidatie) en geeft hij een waarschuwing terug:
+> de CLI print die naar stderr, de Function App toont hem in `/api/health` (`tlsWarning`) en
+> éénmalig in het functielog. Alleen expliciet `sslmode=disable`/`allow` naar een niet-lokale host
+> gooit nog een `InvalidOperationException`. Tegen de lokale wegwerpcontainer hierboven
+> (`localhost:55432`) speelt dit nooit: die draait zonder TLS, en de bovenstaande commando's blijven
+> ongewijzigd werken. Verbind je met een echte gehoste Postgres-instantie, geef dan
+> `?sslmode=verify-full&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
+> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. Zie
 > `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige onderbouwing.
 
 > **Let op bij het lokaal draaien van béide Postgres-testsuites tegen één container (#925).**
