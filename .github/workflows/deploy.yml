@@ -261,15 +261,43 @@ jobs:
     # Deploy wordt overgeslagen als server niet geconfigureerd — test mag altijd doorgaan als deploy slaagt
     if: always() && needs.deploy.result == 'success'
     steps:
-      - name: "Smoke test: function app bereikbaar (health → 200)"
+      # #1098: een 200 op /api/health is geen bewijs dat de applicatie werkt. Bij het tweede
+      # v3.3.0.0-incident gaf health 200 met settingsLoaded=false (migratie 012 niet toegepast op
+      # productie), terwijl élk beheerscherm 500 "Ophalen mislukt" gaf — en deze stap was groen.
+      # Zonder instellingencache is de applicatie onbruikbaar: dat is een mislukte deploy, geen
+      # 'degraded'. Openstaande migraties (pendingMigrations) zijn een waarschuwing, geen fout:
+      # de applicatie draait dan door op de migratie-defaults en de eigenaar moet ze zelf
+      # toepassen (ARCHITECTUUR-DATABASE-TIERS.md §54) — de pipeline heeft daar bewust geen
+      # connectiestring voor.
+      - name: "Smoke test: function app bereikbaar (health → 200 én instellingen geladen)"
         run: |
           URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health?code=${{ secrets.AZURE_FUNCTION_KEY }}"
           MAX=6
           WAIT=20
           for i in $(seq 1 $MAX); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
+            RESPONSE=$(curl -s --max-time 30 -w '\n%{http_code}' "$URL" || true)
+            STATUS=$(printf '%s' "$RESPONSE" | tail -n1)
+            BODY=$(printf '%s' "$RESPONSE" | sed '$d')
             echo "Poging $i/$MAX — health: $STATUS"
-            if [ "$STATUS" = "200" ]; then exit 0; fi
+            if [ "$STATUS" = "200" ]; then
+              SETTINGS=$(printf '%s' "$BODY" | jq -r '.settingsLoaded // empty' 2>/dev/null || true)
+              PENDING=$(printf '%s' "$BODY" | jq -r '(.pendingMigrations // []) | join(", ")' 2>/dev/null || true)
+              SCHEMA=$(printf '%s' "$BODY" | jq -r '.schemaWarning // empty' 2>/dev/null || true)
+              if [ "$SETTINGS" = "false" ]; then
+                echo "FOUT: health geeft 200 maar settingsLoaded=false — de instellingencache is leeg, elk /api/beheer/*-endpoint antwoordt 500."
+                echo "Oorzaken: geen club met syncenabled=true, of de code verwacht een kolom die de database mist (zie schemaWarning/pendingMigrations hieronder)."
+                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
+                exit 1
+              fi
+              if [ -n "$PENDING" ]; then
+                echo "::warning title=Openstaande databasemigraties::pendingMigrations: $PENDING — toepassen via Database.Postgres.Cli (docs/ARCHITECTUUR-DATABASE-TIERS.md §54)"
+              fi
+              if [ -n "$SCHEMA" ]; then
+                echo "::warning title=Schemawaarschuwing uit /api/health::$SCHEMA"
+              fi
+              echo "health OK: settingsLoaded=${SETTINGS:-onbekend}, pendingMigrations=[${PENDING}]"
+              exit 0
+            fi
             if [ "$i" -lt "$MAX" ]; then echo "Wacht ${WAIT}s (cold start)..."; sleep $WAIT; fi
           done
           echo "FOUT: health gaf $STATUS na $MAX pogingen (verwacht 200)"
