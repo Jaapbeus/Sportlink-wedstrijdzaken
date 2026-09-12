@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- net9.0 is verplicht, niet een keuze: Azure Functions op een Linux Consumption Plan
-         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24). Nooit
-         verhogen zonder de infrastructuurwijziging (Flex Consumption Plan) die daarvoor nodig is. -->
+    <!-- net9.0 is verplicht zolang deze app op een Linux Consumption Plan draait: dat plan
+         ondersteunt maximaal .NET 9 (zie CLAUDE.md ".NET versie" — #162, sessie 2026-05-24).
+         Niet verhogen vóór de cutover naar Flex Consumption uit epic #1063 — een net10.0-deploy
+         naar Linux Consumption geeft 503 "Function host is not running". -->
     <TargetFramework>net9.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
@@ -14,9 +15,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.2.0.3</Version>
-    <AssemblyVersion>3.2.0.3</AssemblyVersion>
-    <FileVersion>3.2.0.3</FileVersion>
+    <Version>3.3.0.0</Version>
+    <AssemblyVersion>3.3.0.0</AssemblyVersion>
+    <FileVersion>3.3.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -41,15 +42,15 @@
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- #972: INoodmailThrottleStore-port — zelfde versie als de SQL Server-tier, tegen de
+         bestaande AzureWebJobsStorage-opslagaccount, geen nieuwe Azure-resource. -->
+    <PackageReference Include="Azure.Data.Tables" Version="12.12.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <!-- #972: INoodmailThrottleStore-port — zelfde versie als de SQL Server-tier, tegen de
-         bestaande AzureWebJobsStorage-opslagaccount, geen nieuwe Azure-resource. -->
-    <PackageReference Include="Azure.Data.Tables" Version="12.12.0" />
     <PackageReference Include="Cronos" Version="0.13.0" />
     <!-- §43: uitsluitend voor het uitgaande e-mailpad van AdminTeambegeleidingDoorsturen.
          Zelfde versie als de SQL Server-tier, dus geen nieuw afhankelijkheidsrisico. -->

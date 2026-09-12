@@ -46,7 +46,7 @@ public static class PostgresAppSettings
             // ("Je bent een assistent voor de coördinator thuiswedstrijden van {clubNaam}") — zonder
             // deze kolom gooit die prompt-opbouw een InvalidOperationException.
             await using var cmd = new NpgsqlCommand(
-                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname FROM public.appsettings " +
+                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname, sportlinkextensionenabled FROM public.appsettings " +
                 "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
@@ -71,6 +71,8 @@ public static class PostgresAppSettings
                 // clubname (#889): zie de aanroep hierboven.
                 if (!reader.IsDBNull(6))
                     Settings["clubName"] = reader.GetString(6);
+                // sportlinkextensionenabled (#988): Sportlink Web Extension-schakelaar, standaard false.
+                Settings["sportlinkExtensionEnabled"] = (!reader.IsDBNull(7) && reader.GetBoolean(7)) ? "1" : "0";
             }
             LastLoadFailed = false;
         }

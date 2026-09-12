@@ -28,6 +28,7 @@ namespace SportlinkFunction
                         await LoadCoreAppSettingsAsync(connection);
                         await LoadUseRealtimeApiSettingAsync(connection);
                         await LoadKnvbSettingsAsync(connection);
+                        await LoadSportlinkExtensionSettingAsync(connection);
                     }
                     LastLoadFailed = false;
                     log.LogInformation("App settings loaded successfully.");
@@ -135,6 +136,24 @@ namespace SportlinkFunction
                         settings["knvbStandaardRegio"] = knvbReader.GetString(0);
                     settings["knvbPdfBijlageIngeschakeld"] = (!knvbReader.IsDBNull(1) && !knvbReader.GetBoolean(1)) ? "0" : "1";
                 }
+            }
+
+            private static async Task LoadSportlinkExtensionSettingAsync(SqlConnection connection)
+            {
+                // #988: SportlinkExtensionEnabled kolom bestaat pas na DB-migratie — dynamisch laden
+                // zodat de Function App ook opstart tegen een database die nog niet gemigreerd is
+                // (zelfde patroon als UseRealtimeApi hierboven).
+                using var sleCmd = new SqlCommand(@"
+                    DECLARE @v BIT = 0;
+                    DECLARE @sql NVARCHAR(200) = CASE
+                        WHEN COL_LENGTH('[dbo].[AppSettings]', 'SportlinkExtensionEnabled') IS NOT NULL
+                        THEN N'SELECT TOP 1 @v = [SportlinkExtensionEnabled] FROM [dbo].[AppSettings]'
+                        ELSE N'SELECT @v = CAST(0 AS BIT)'
+                    END;
+                    EXEC sp_executesql @sql, N'@v BIT OUTPUT', @v = @v OUTPUT;
+                    SELECT @v;", connection);
+                var sleResult = await sleCmd.ExecuteScalarAsync();
+                settings["sportlinkExtensionEnabled"] = (sleResult is bool b && b) ? "1" : "0";
             }
 
             public static string? GetSetting(string key)

@@ -11,11 +11,41 @@ if (string.IsNullOrWhiteSpace(connectionString))
     return 1;
 }
 
-var migrationsPath = args.Length > 0 ? args[0] : ResolveDefaultMigrationsPath();
+// #1060: tweede modus naast het toepassen van migraties. his.teams/his.matches/his.matchdetails
+// worden door geen enkel migratiebestand aangemaakt — PostgresSchemaGenerator doet dat dynamisch
+// zodra de ETL zijn eerste sync draait. Op een verse ontwikkeldatabase bestaan ze dus niet, en
+// scripts/migrations/003-seed-allstars-demo-matches-postgres.sql weigert daarop (terecht) te
+// draaien. Deze vlag maakt ze aan langs exact dezelfde weg als de ETL zelf, zodat er geen
+// handgeschreven DDL-kopie bijkomt naast die van de zelftest en de CI-job.
+var ensureHisTables = args.Contains("--ensure-his-tables", StringComparer.Ordinal);
+var positioneel = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
+
+var normalized = PostgresConnectionStringNormalizer.Normalize(connectionString);
+
+if (ensureHisTables)
+{
+    try
+    {
+        var orchestrator = new PostgresMergeOrchestrator(normalized);
+        foreach (var entity in KnownEntities.All)
+        {
+            await orchestrator.EnsureHisTableAsync(entity);
+            Console.WriteLine($"his.{entity.EntityName} gereed.");
+        }
+        return 0;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Aanmaken van de his-tabellen mislukt: {ex.Message}");
+        return 1;
+    }
+}
+
+var migrationsPath = positioneel.Length > 0 ? positioneel[0] : ResolveDefaultMigrationsPath();
 
 try
 {
-    await MigrationRunner.RunAsync(PostgresConnectionStringNormalizer.Normalize(connectionString), migrationsPath);
+    await MigrationRunner.RunAsync(normalized, migrationsPath);
     Console.WriteLine($"Migraties toegepast vanuit '{migrationsPath}'.");
     return 0;
 }

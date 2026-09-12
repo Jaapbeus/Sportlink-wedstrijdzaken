@@ -17,8 +17,12 @@ Azure Functions (func-[clubcode]-sportlink)
 Azure Static Web Apps (swa-[clubcode]-sportlink)
   → Geen eigen Application Insights; SWA logs via Azure Monitor (gratis Activity Log)
 
-Azure SQL ([database-naam] @ [sql-resource-group])
-  → Geen Application Insights; Resource Health via Azure Portal
+Database — één van twee, per fork gekozen via DatabaseTier (zie docs/ARCHITECTUUR-DATABASE-TIERS.md):
+  ├── Azure SQL ([database-naam] @ [sql-resource-group])
+  │     → Geen Application Insights; Resource Health via Azure Portal; zie "Azure SQL Free-tier
+  │       bescherming" hieronder voor het volledige vangnet (productie sinds #976: rollbackpad)
+  └── Postgres (bijv. Supabase, productietier sinds #976)
+        → Provider-eigen dashboard/monitoring; nog geen los uitvalmonitor-equivalent in deze repo
 ```
 
 ---
@@ -98,6 +102,14 @@ Bron: [Azure Monitor cost — alerts](https://learn.microsoft.com/azure/azure-mo
 ---
 
 ## Azure SQL Free-tier bescherming
+
+> **Geldt uitsluitend voor de SQL Server-tier.** Sinds 2026-09-04 draait productie op Postgres
+> (issue #976, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`) — deze hele sectie is dus vandaag het
+> vangnet voor het rollbackpad, niet voor de live database. Er bestaat **nog geen Postgres-
+> equivalent** van `DatabaseUitvalMonitorFunction` hieronder — een club die volledig op Postgres
+> draait heeft dus geen losstaande, e-mail-onafhankelijke uitvalmonitor. Dit is een bekend, open
+> punt, geen verkeerd begrepen architectuur; behandel het als zodanig totdat het is opgepakt.
+> Draai je (nog) op de SQL Server-tier, dan is deze sectie onverkort van toepassing.
 
 De gratis Azure SQL database heeft een maandlimiet van **100.000 vCore-seconden**. Bij uitputting
 wordt de database gepauzeerd tot het begin van de volgende kalendermaand. Dit heeft impact op drie lagen.
@@ -339,3 +351,32 @@ gh pr checks <pr-nr>
 | Geen Metric Alerts | Betaald; expliciete goedkeuring vereist | Activity Log Alerts als gratis alternatief |
 | Blazor WASM heeft geen eigen telemetrie | SWA bevat geen Application Insights SDK | Fouten zichtbaar via browser F12 / SWA-logs |
 | SQL monitoring beperkt | Free tier SQL heeft geen query-telemetrie | Gebruik `sys.dm_exec_query_stats` voor lokale diagnose |
+
+---
+
+## Verouderde synchronisatie (#1081)
+
+`GET /api/health` bevat twee velden die hierop zien:
+
+| Veld | Betekenis |
+|---|---|
+| `lastSync` | `MAX(lastsynctimestamp)` over de clubs met `syncenabled = true` — de waarheid uit de database |
+| `syncStale` | `true` zodra die waarde ouder is dan `SyncMaxAgeHours` (standaard 36 uur), of ontbreekt |
+
+**Waarom 36 uur.** De timer draait dagelijks. Eén gemiste run valt daarmee op, terwijl een run die
+een paar uur later begint of langer duurt geen vals alarm geeft. Installaties met een ander schema
+zetten `SyncMaxAgeHours` als Function App-instelling.
+
+**`syncStale` beïnvloedt `status` alleen waar een synchronisatie ook hoort te draaien** — dat wil
+zeggen: waar `EgressGuard` uitgaand verkeer toestaat. Lokaal en in CI staat die poort dicht, dus is
+een lege of oude `lastsynctimestamp` daar het verwachte gedrag. Zonder dat onderscheid zou elke
+ontwikkelmachine permanent `degraded` melden en was het signaal binnen een week waardeloos.
+
+**Aanleiding.** Bij #1077 draaide de synchronisatie acht dagen lang elke nacht, werkte niets bij en
+meldde niets: de timer rapporteerde `Success` (de uitzondering werd opgeslokt, zie #1081) en niets
+bewaakte de leeftijd van de laatste synchronisatie. Beide gaten zijn nu gedicht — de invocatie
+faalt zichtbaar én de leeftijd is opvraagbaar.
+
+**Bewust geen metric alert.** Een Azure metric alert rule wordt per gemonitorde tijdreeks berekend
+en valt daarmee buiten het kostenbeleid in CLAUDE.md. Deze velden zijn gratis op te vragen; wie er
+een melding op wil, kan `/api/health` periodiek pollen vanaf een bestaande gratis voorziening.

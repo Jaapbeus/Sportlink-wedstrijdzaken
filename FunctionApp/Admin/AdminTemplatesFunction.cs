@@ -117,7 +117,9 @@ public static class AdminTemplatesFunction
                 command.Parameters.AddWithValue("@ClubCode", clubCode);
                 await command.ExecuteNonQueryAsync();
 
-                var gewijzigdDoor = dto.GewijzigdDoor ?? "onbekend";
+                // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
+                // de request-body — zelfde fix als AdminSettingsFunction.Put.
+                var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
                 using var auditCmd = new SqlCommand(@"
                     INSERT INTO [dbo].[AppSettingsAudit]
                         ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
@@ -192,6 +194,6 @@ public static class AdminTemplatesFunction
         public string? Onderwerp { get; set; }
         public string? BodyTemplate { get; set; }
         public bool? Actief { get; set; }
-        public string? GewijzigdDoor { get; set; }
+        // #1003: GewijzigdDoor bewust verwijderd — zie AdminSettingsFunction.UpdateSettingsRequest.
     }
 }

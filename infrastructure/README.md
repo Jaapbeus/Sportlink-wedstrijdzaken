@@ -11,7 +11,7 @@ infrastructure/
 └── modules/
     ├── function-app.bicep  # Function App + Consumption Plan + Storage Account
     ├── static-web-app.bicep # Static Web App (Free tier, Blazor WASM)
-    └── monitoring.bicep    # Application Insights (klassiek, kosteloos)
+    └── monitoring.bicep    # Application Insights (workspace-based, gratis tot 5 GB/maand)
 ```
 
 ## Gebruik
@@ -62,26 +62,34 @@ az deployment group create \
 |---|---|---|
 | `function-app.bicep` | Beschrijft bestaande resources | Gratis (Consumption Plan) |
 | `static-web-app.bicep` | Beschrijft bestaande resources | Gratis (Free SKU) |
-| `monitoring.bicep` | Aanwezig, **niet auto-uitgerold** | Gratis (klassiek App Insights, < 5 GB/maand) |
+| `monitoring.bicep` | Aanwezig, **niet auto-uitgerold** | Gratis tot 5 GB/maand (gedeeld per billing account) |
 
 ### ⚠️ Kostenwaarschuwing: Log Analytics
 
-Als je `monitoring.bicep` aanpast naar workspace-based Application Insights
-(door een `workspaceResourceId` toe te voegen), wordt een Log Analytics workspace
-aangemaakt. **De Legacy Free Tier voor Log Analytics is niet beschikbaar voor nieuwe
-workspaces** (vervallen 1 juli 2022). Kosten: pay-as-you-go op verbruik.
+Klassieke (workspace-loze) Application Insights bestaat niet meer — Microsoft heeft dit
+per februari 2024 uitgefaseerd. `monitoring.bicep` maakt de resource aan zonder
+`workspaceResourceId`, maar Azure koppelt er zelf een automatisch beheerde Log
+Analytics-workspace aan; het al dan niet instellen van `workspaceResourceId` bepaalt dus
+niet meer of dit kostenvrij blijft. Ingestie en retentie lopen altijd via die workspace.
+**De Legacy Free Tier voor Log Analytics is niet beschikbaar voor nieuwe workspaces**
+(vervallen 1 juli 2022) — het gratis budget is de gedeelde 5 GB/maand data-allowance per
+billing account. Daarboven: pay-as-you-go op verbruik.
 
 Maatregel: `deployMonitoring` staat standaard op `false` in `main.parameters.json`.
 Vereist expliciete `--parameters deployMonitoring=true` bij deployment.
 
-## Kritieke constraint: .NET 9
+## Kritieke constraint: .NET 9 — met einddatum
 
 ```bicep
-linuxFxVersion: 'DOTNET-ISOLATED|9.0'  // NOOIT wijzigen naar net10.0
+linuxFxVersion: 'DOTNET-ISOLATED|9.0'  // niet wijzigen zolang dit een Consumption-plan is
 ```
 
-Het Linux Consumption Plan ondersteunt .NET 10 niet. Zie CLAUDE.md voor het
-upgradepad (vereist Flex Consumption Plan).
+Het Linux Consumption Plan ondersteunt .NET 10 niet — een `net10.0`-deploy geeft daar 503.
+
+.NET 9 gaat op **10 november 2026** uit support en is de laatste .NET-versie die Linux Consumption
+krijgt. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**. Let op: in-place
+migratie naar Flex bestaat niet — er moet een nieuwe Function App komen, met een nieuwe hostname.
+Flex heeft een eigen (kleiner) gratis tegoed; zie CLAUDE.md → Kostenbeleid.
 
 ## CI/CD — GitHub Actions
 

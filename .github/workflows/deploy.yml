@@ -30,10 +30,10 @@ jobs:
     steps:
       # Nodig voor scripts/ci/wake-database.sql in de login-poging hieronder (#624).
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Azure inloggen
-        uses: azure/login@v3
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -78,7 +78,7 @@ jobs:
       - name: "▶ Login-poging om auto-resume te triggeren"
         if: steps.status.outputs.paused == 'true'
         continue-on-error: true
-        uses: azure/sql-action@v2.4
+        uses: azure/sql-action@eb1f9a80487ca52b90f41a473f53da4943526994 # v2.4
         with:
           connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: scripts/ci/wake-database.sql
@@ -131,7 +131,7 @@ jobs:
     # wekenlang onopgemerkt konden blijven. Bouwen heeft geen database nodig; alleen deployen wel.
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # #816: canonieke tier-resolver — bepaalt welk .csproj hieronder gebouwd/gedeployed wordt.
       # Ontbrekende of onbekende DatabaseTier-waarde faalt hard, nooit een stille default.
@@ -143,7 +143,7 @@ jobs:
         run: bash scripts/ci/resolve-database-tier.sh
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -154,7 +154,7 @@ jobs:
             --output ./output
 
       - name: Artefact uploaden
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: functionapp
           path: ./output
@@ -172,18 +172,18 @@ jobs:
         && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
     steps:
       - name: Artefact downloaden
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: functionapp
           path: ./output
 
       - name: Azure inloggen
-        uses: azure/login@v3
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Function App deployen naar Azure
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1.5.7
         with:
           app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
           package: ./output
@@ -200,10 +200,10 @@ jobs:
         && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Azure inloggen
-        uses: azure/login@v3
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -239,7 +239,7 @@ jobs:
       # idempotent, dus opnieuw draaien is veilig zodra de oorzaak is verholpen.
       # ──────────────────────────────────────────────────────────────────────
       - name: Database-migratie uitvoeren (PostDeployment script — idempotent)
-        uses: azure/sql-action@v2.4
+        uses: azure/sql-action@eb1f9a80487ca52b90f41a473f53da4943526994 # v2.4
         with:
           connection-string: ${{ secrets.SQL_CONNECTION_STRING }}
           path: Database/Script.PostDeployment1.sql
@@ -358,11 +358,11 @@ jobs:
 
       - name: Checkout repository
         if: steps.check.outputs.skip == 'false'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: .NET SDK installeren
         if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -400,7 +400,7 @@ jobs:
 
       - name: Deploy naar Azure Static Web Apps
         if: steps.check.outputs.skip == 'false'
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}

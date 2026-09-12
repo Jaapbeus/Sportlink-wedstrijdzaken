@@ -67,7 +67,7 @@ Bij spanning tussen rollen (bijv. snelheid vs. security): altijd melden.
 | Application Insights (workspace-based) | Billing loopt via Log Analytics workspace | Idem; stel daily cap in (max 100 MB/dag) |
 | Metric Alert Rules | Betaald per gemonitord time series | Gebruik Activity Log Alerts als gratis alternatief |
 | Key Vault | Standaard betaald per operatie | Controleer [prijspagina](https://azure.microsoft.com/pricing/details/key-vault/) |
-| Flex Consumption Plan | Niet gratis — andere infra dan huidige Consumption Plan | Nooit upgraden zonder goedkeuring |
+| Flex Consumption Plan | Heeft wél een gratis tegoed, maar kleiner dan Consumption: 250.000 executies + 100.000 GB-s/mnd per subscription (Consumption: 1M + 400K). Bij **always-ready instances vervalt het tegoed volledig**. | Prijscheck via MS Docs vóór aanmaak; nooit een plan wijzigen zonder goedkeuring — migratie loopt via epic #1063 |
 | Premium/Standard-tier van bestaande resource | Directe kostenwijziging | Altijd vragen |
 
 ### Verificatiemoment — verplicht checklist bij elke deployment
@@ -180,8 +180,10 @@ if ($branch -eq 'main' -or $branch -eq 'develop' -or [string]::IsNullOrEmpty($br
 
 ```
 ITERATIE:
-  a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+  a. dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
      → fouten? Fix, ga terug naar a.
+     Dit is het project van de tier die in productie draait (#1060). Raak je ook de
+     SQL Server-tier aan, bouw dan óók FunctionApp/fa-dev-sportlink-01.csproj.
 
   b. dotnet build BlazorAdmin/BlazorAdmin.csproj  (build-fout-detectie — NIET terwijl server draait)
      → fouten? Fix, ga terug naar a.
@@ -219,7 +221,7 @@ ITERATIE:
            Start-Sleep -Seconds 3
        }
        # 2. FunctionApp (geen hot reload — herstart na codewijziging)
-       Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location FunctionApp; func start --port 7094'
+       Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location FunctionApp.Postgres; func start --port 7094'
        # 3. BlazorAdmin met hot reload
        if (Test-Path "BlazorAdmin/BlazorAdmin.csproj") {
            Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location BlazorAdmin; dotnet watch run --launch-profile http'
@@ -307,6 +309,7 @@ bewust worden bekeken.
 | `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
 | `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
 | `docs/ARCHITECTUUR-DATABASE-TIERS.md` | Tier-keuze, bouwvolgorde, casing-conventie of nieuwe tier-implementatie gewijzigd |
+| `docs/SPORTLINK-WEB-EXTENSION.md` | Sportlink Web Extension (epic #986): rol/serviceaccount-koppeling, auth-flow of de regel dat agents dit mechanisme nooit zelf mogen uitvoeren gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
@@ -726,7 +729,7 @@ e-mail-/berichtenkanaal, een nieuwe issue-/ticketrapportage) controleert eerst
 is.** Dit is de ene centrale poort die lokale ontwikkeling, CI en elke geautomatiseerde testrun
 beschermt tegen onbedoeld extern verkeer (de Sportlink-databron, GitHub-issue-rapportage, e-mail,
 AI-diensten), ook als het bijbehorende secret toevallig lokaal geconfigureerd staat. Zie
-`FunctionApp/Infrastructure/EgressGuard.cs` en `docs/DEVELOPER-SETUP.md` §5.1.
+`FunctionApp/Infrastructure/EgressGuard.cs` en `docs/DEVELOPER-SETUP.md` §5.3.
 
 Een nieuwe, losstaande "eigen is-dit-geconfigureerd-check" naast deze poort is een
 architectuurschending — dat is exact het probleem dat #857 oploste (vier losse, impliciete
@@ -734,26 +737,39 @@ controles in plaats van één expliciete).
 
 ---
 
-### .NET versie — net9.0 verplicht voor FunctionApp (NOOIT upgraden zonder infrastructuurwijziging)
+### .NET versie — FunctionApp staat op net9.0, met einddatum (migratie via epic #1063)
 
 **KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
 
-Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**.
-.NET 10 wordt pas ondersteund op het **Flex Consumption Plan** (niet gratis, andere infra).
+Azure Functions op een **Linux Consumption Plan** ondersteunt maximaal **.NET 9**. Zolang de
+FunctionApp op dat plan draait bestaat de stackwaarde `dotnet-isolated 10.0` daar niet — een
+`net10.0`-build geeft 503 "Function host is not running".
 
 | Component | Target | Reden |
 |---|---|---|
-| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — nooit wijzigen | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
+| `FunctionApp/fa-dev-sportlink-01.csproj` | **`net9.0`** — niet wijzigen vóór de cutover | Linux Consumption Plan: net10.0 → 503 "Function host is not running" |
+| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | **`net9.0`** — idem | Idem |
 | `BlazorAdmin/BlazorAdmin.csproj` | `net10.0` | Browser-runtime, geen Azure-beperking |
 | Azure Portal runtime | `DOTNET-ISOLATED\|9.0` | Moet overeenkomen met csproj |
+
+> **Dit is een toestand met een einddatum, geen eindsituatie.** .NET 9 gaat op **10 november 2026**
+> uit support, en .NET 9 is de laatste .NET-versie die Linux Consumption krijgt — nieuwere versies
+> worden er niet meer aan toegevoegd. Linux Consumption zelf wordt op 30 september 2028
+> uitgefaseerd. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**, en stond al
+> als roadmap-punt in `CHANGELOG.md` bij v2.1.0 (#162).
 
 **Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — Windows: `winget install Microsoft.DotNet.Runtime.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
 Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
 
-**Upgradepad naar .NET 10 is alleen mogelijk als:**
-1. Azure Function App plan wordt omgezet naar Flex Consumption (`az functionapp update --plan <flex-plan>`)
-2. Azure Portal runtime wordt bijgewerkt naar `DOTNET-ISOLATED|10.0`
-3. Beide stappen tegelijk — anders 503 bij eerste deploy
+**Upgradepad naar .NET 10 — uitsluitend via epic #1063, in deze volgorde:**
+1. Een **nieuwe** Function App op een Flex Consumption-plan aanmaken. In-place migratie van een
+   bestaande app naar Flex bestaat niet, en terug ook niet — `az functionapp update --plan` werkt
+   hiervoor dus níet.
+2. Cutover naar die nieuwe app, nog op `net9.0`.
+3. Pas dáárna de csproj's en de stackconfiguratie naar `net10.0` / `DOTNET-ISOLATED|10.0`.
+
+Nooit alleen de csproj bumpen: zolang de app op Linux Consumption draait is elke `net10.0`-deploy
+een productie-breker.
 
 ### Cross-platform scripts — Windows én macOS, geen uitzonderingen (#800)
 
@@ -773,8 +789,10 @@ Aanvullend:
   `$IsWindows`, nooit hardcoded.
 - **`Start-Process` opent op macOS nooit een venster** en `-WindowStyle` is er een no-op
   (gedocumenteerd gedrag). Output moet daar naar een logbestand, anders is hij weg.
-- **De lokale database is altijd SQL Server 2022 in Docker** — op Windows én macOS, via
-  `docker-compose.yml` in de repo-root (`docker compose up -d`). Een rechtstreeks
+- **De lokale database draait altijd in Docker** — op Windows én macOS, via `docker-compose.yml`
+  in de repo-root. `docker compose up -d` start Postgres: de tier die in productie draait (#1060).
+  De SQL Server-service staat achter een profile (`docker compose --profile sqlserver up -d`) en
+  blijft volledig ondersteund voor forks die die tier kiezen. Voor SQL Server geldt onverkort: een rechtstreeks
   geïnstalleerde SQL Server-service op Windows wordt **niet** ondersteund: dat werkt alleen
   daar en dwingt overal een tweede code- en documentatievariant af. Gevolg: altijd een
   SQL-login, nooit `Integrated Security` / `sqlcmd -E`, en altijd `TrustServerCertificate=True`
@@ -784,6 +802,17 @@ Aanvullend:
   nooit in de repository.
 - **In shell-scripts en git-hooks: geen `grep -P`.** De BSD-grep van macOS kent geen PCRE.
   Gebruik `grep -E`. Dit is extra riskant in de hooks, waar een `|| true` de fout stil maakt.
+- **`\s`, `\d` en andere PCRE-shorthands wérken bij BSD-grep `-E` buiten een bracket-expressie
+  (`[Pp]assword\s*=`), maar niet erbinnen (`[^;'"`\s<>{}]`) — vastgesteld tijdens de macOS-
+  hardwareverificatie van #843 (issue #1090).** POSIX-bracket-expressies interpreteren `\` niet
+  speciaal: `[^;'"`\s<>{}]` sluit dan letterlijk de tekens `\` en `s` uit in plaats van elk
+  whitespace-teken. Bij een veelvoorkomende letter als `s` breekt dat de bedoelde `{n,}`-herhaling
+  zonder foutmelding — precies wat `.githooks/sensitive-patterns.txt` deed bij o.a. de
+  Password/Secret/Pwd-patronen: de pre-commit/pre-push-hook liet een testwaarde als
+  `Password=<testwaarde>` stilzwijgend door op macOS, terwijl dezelfde regex op Linux/CI
+  (GNU grep, wél `\s`-bewust binnen brackets) prima blokkeerde. Gebruik binnen een
+  bracket-expressie altijd de POSIX-klasse `[:space:]` (`[^;'"`[:space:]<>{}]`) — die werkt
+  identiek op BSD-grep, GNU grep én `git grep`.
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`). Git slaat een
   niet-executable hook op macOS stilzwijgend over — de secrets- en AVG-scan draait dan niet.
 - **Bouw nooit `sportlink-wedstrijdzaken.sln` op macOS.** Die bevat het legacy SSDT-project
@@ -1006,7 +1035,7 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 **Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Claude-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
 
-**Stand van de spec (bijgewerkt bij #605):** `openapi.yaml`/`.json` dekken alle 51 productieroutes; `info.version` volgt de app-versie. De eerder hier genoemde ~22 ontbrekende routes waren al ingehaald — die notitie was zelf verouderd en misleidde. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
+**Stand van de spec (bijgewerkt 2026-09-07):** `openapi.yaml`/`.json` dekken 68 routes; `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
 ```powershell
 python -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
 ```
@@ -1118,11 +1147,15 @@ Gebruik dit bijv. in de health-endpoint response of in de Admin GUI footer.
 > **`dotnet build` slagen ≠ werkt.** De enige definitie van "werkt" is: build groen + func start zonder crashes + health endpoint 200 + Test-App.ps1 exit 0. Volg altijd de autonome verificatielus hierboven.
 
 ```powershell
+# Stap 0: Database van de actieve tier (standaard Postgres — de tier die in productie draait)
+docker compose up -d
+
 # Stap 1: Build
-dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
 
 # Stap 2: Start alle services tegelijk (of gebruik Start-Debug.ps1)
-.\scripts\dev\Start-Debug.ps1         # start Azurite + FunctionApp + BlazorAdmin in aparte vensters
+.\scripts\dev\Start-Debug.ps1                    # Postgres-tier (standaard)
+# .\scripts\dev\Start-Debug.ps1 -Tier SqlServer  # alleen als je aan FunctionApp/ werkt
 # Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 
 # Stap 3: Verificatie (wacht 15s na Start-Debug)
@@ -1135,9 +1168,9 @@ dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 # GET http://localhost:7094/api/sync-matches?reset=true&season=2026
 ```
 
-**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server met `SportlinkSqlDb` database.
+**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), en de database van de actieve tier — standaard Postgres via `docker compose up -d` (#1060).
 
-**Configuration:** Kopieer `FunctionApp/local.settings.template.json` naar `local.settings.json` en stel `SqlConnectionString` in op je SQL Server.
+**Configuration:** Kopieer het `local.settings.template.json` van de tier waarop je werkt naar `local.settings.json` ernaast — standaard `FunctionApp.Postgres/`, met `POSTGRES_CONNECTION_STRING`; voor de SQL Server-tier `FunctionApp/`, met `SqlConnectionString`.
 
 **Verificatiescripts:** `scripts/dev/Test-App.ps1` (schema + build + endpoints + Blazor), `scripts/dev/Start-Debug.ps1` (alle services).  
 Zie [docs/VERIFICATIE-SCRIPTS.md](docs/VERIFICATIE-SCRIPTS.md) voor volledig overzicht.

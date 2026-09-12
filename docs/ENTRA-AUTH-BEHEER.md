@@ -107,7 +107,7 @@ In code: gebruik `IsInRole("admin")` (kleine letters), niet `IsInRole("Admin")`.
 
 Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `admin@voorbeeld.nl`, kan Microsoft Account Switcher het verkeerde account suggereren. Gebruik altijd een Incognito-sessie voor admin-tests, of klik op "Use another account" in de Microsoft loginpagina.
 
-## Verificatie — 3-user-test (verplicht na elke auth-wijziging)
+## Verificatie — N-user-test (verplicht na elke auth-wijziging)
 
 | Test-user | Configuratie in Azure | Verwacht in browser |
 |---|---|---|
@@ -115,8 +115,16 @@ Als je dezelfde browser gebruikt voor een persoonlijk Microsoft-account én `adm
 | 2e club-user | Toegewezen, role `user` | UI laadt, GET-API werkt, mutaties (later) geblokkeerd |
 | 3e club-user | **Niet** toegewezen | Geen token van Entra → blijft op login → met directe URL alsnog `NoAccess` pagina |
 | Guest / andere tenant | n.v.t. | Entra weigert login vóór redirect |
+| 4e club-user (#988) | Toegewezen, **alléén** role `Wedstrijdzaken` (geen admin/user) | `App.razor`'s `hasAccessRole` blijft `false` → `NoAccess`-pagina. **Verwacht en gewenst** resultaat: `Wedstrijdzaken` is een aanvullende rol voor Sportlink-mutatie-endpoints (#991+), geen vervanging voor `admin`/`user` — er bestaat nog geen niet-Admin-GUI-oppervlak dat deze rol gebruikt. Niet als regressie lezen. |
 
-Documenteer de uitkomst per release. Geen 3-user-test → geen acceptatie.
+Documenteer de uitkomst per release. Geen N-user-test → geen acceptatie.
+
+**Kanttekening bij de 4e rij (#988):** de server-side handhaving (`EasyAuthHelper.RequireRole`) is
+lokaal niet te testen — die geeft altijd `null` (toegestaan) terug zolang `WEBSITE_SITE_NAME`
+ontbreekt (elke lokale dev-run). Voor #988 zelf volstaat bevestigen dat de rol in Entra bestaat en
+toewijsbaar is; de server-side handhaving wordt inhoudelijk pas getest zodra #991 het eerste
+`RequireRole(req, "Wedstrijdzaken")`-endpoint oplevert (via de SWA-CLI-emulator of een echte
+staging-deploy met deze testgebruiker).
 
 ## Tracking
 

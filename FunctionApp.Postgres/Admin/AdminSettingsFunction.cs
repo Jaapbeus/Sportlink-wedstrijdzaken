@@ -46,7 +46,8 @@ public static class AdminSettingsFunction
         "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
-        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio"
+        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
+        "SportlinkExtensionEnabled"
     };
 
     private static readonly string[] GeldigeKnvbRegios =
@@ -70,6 +71,7 @@ public static class AdminSettingsFunction
         ["AccommodatieLongitude"] = "::double precision",
         ["UseRealtimeApi"] = "::boolean",
         ["KnvbPdfBijlageIngeschakeld"] = "::boolean",
+        ["SportlinkExtensionEnabled"] = "::boolean",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -113,7 +115,8 @@ public static class AdminSettingsFunction
                     accommodatielongitude AS ""AccommodatieLongitude"",
                     knvbpdfbijlageingeschakeld AS ""KnvbPdfBijlageIngeschakeld"",
                     knvbstandaardregio AS ""KnvbStandaardRegio"",
-                    userealtimeapi AS ""UseRealtimeApi""
+                    userealtimeapi AS ""UseRealtimeApi"",
+                    sportlinkextensionenabled AS ""SportlinkExtensionEnabled""
                 FROM public.appsettings
                 WHERE clubcode = @clubcode
                 LIMIT 1", connection);
@@ -167,8 +170,10 @@ public static class AdminSettingsFunction
             if (updateRequest == null)
                 return new BadRequestObjectResult(new { error = "Ongeldige JSON" });
 
-            var gewijzigdDoor = updateRequest.GewijzigdDoor ?? req.Query["gewijzigdDoor"].ToString();
-            if (string.IsNullOrWhiteSpace(gewijzigdDoor)) gewijzigdDoor = "onbekend";
+            // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit de
+            // request-body of querystring — anders kan een beheerder de wijziging onder een
+            // zelfgekozen naam laten vastleggen.
+            var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
 
             var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
 
@@ -493,7 +498,9 @@ public static class AdminSettingsFunction
 
     public class UpdateSettingsRequest
     {
-        public string? GewijzigdDoor { get; set; }
+        // #1003: GewijzigdDoor bewust verwijderd uit dit publieke schrijfcontract — de audit-actor
+        // wordt uitsluitend server-side uit gevalideerde Easy Auth-claims bepaald
+        // (EasyAuthHelper.GetAuditActor), nooit uit client-input.
         public Dictionary<string, string?>? Velden { get; set; }
     }
 }

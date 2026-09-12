@@ -18,6 +18,235 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.3.0.0] — 2026-09-12
+
+### Fixed
+- **Uitslagen van gespeelde wedstrijden worden weer verwerkt, en "Laatste sync" loopt weer bij (#1077).**
+  Sinds de overgang naar de nieuwe database faalde elke nachtelijke synchronisatie op het onderdeel
+  dat uitslagen van de voorgaande twee weken ophaalt. Daardoor konden scores ontbreken en bleef de
+  datum bij "Laatste sync" op 4 september staan, terwijl de synchronisatie zelf wél elke nacht liep
+  en teams, programma en wedstrijddetails gewoon bijwerkte.
+- **De testsuite draait weer na het opzetten van een lokale ontwikkeldatabase (#1080).** Het
+  seed-script voor de lokale placeholder-club claimde veldnummers die de testsuite zelf gebruikt,
+  waardoor zes tests faalden zodra iemand de setupinstructies had gevolgd. Veldnummers zijn in dit
+  schema globaal uniek over clubs heen; de seed en de betrokken test houden nu allebei een
+  gereserveerd bereik aan, net als alle andere clubs.
+- **Database-updates kunnen weer worden toegepast (#1062).** Een eerdere wijziging paste een al
+  uitgevoerd migratiebestand achteraf aan. De migratielus bewaakt dat bewust en weigerde daarna
+  élke volgende update, ook de nieuwe. Het bestand staat terug in zijn oorspronkelijke vorm en de
+  bedoelde wijziging is verplaatst naar een nieuwe migratie, die op beide uitgangssituaties werkt.
+
+### Changed
+- **Documentatie over de .NET-versie en het Flex Consumption-plan gecorrigeerd (#1066).** De
+  projectdocumentatie stelde dat het Flex Consumption-plan geen gratis tier heeft. Dat klopt niet:
+  Flex heeft wél een maandelijks gratis tegoed, alleen een kleiner dan het huidige Consumption-plan
+  (250.000 executies + 100.000 GB-s per subscription, tegenover 1 miljoen + 400.000). Die onjuiste
+  regel stond de afweging over de aanstaande migratie in de weg. Daarnaast beschreef de
+  documentatie `net9.0` als een permanente eindsituatie, terwijl .NET 9 op 10 november 2026 uit
+  support gaat en de laatste .NET-versie is die het Linux Consumption-plan krijgt. Beide claims
+  staan nu correct beschreven, inclusief de einddatum en de verwijzing naar het migratie-epic; zie
+  issue #1063. Ook gecorrigeerd: het beschreven upgradepad suggereerde dat een bestaande app met
+  `az functionapp update --plan` naar Flex om te zetten is — dat kan niet, er moet een nieuwe app
+  komen. `AGENTS.md` is meegenomen omdat dat bestand dezelfde regels bevat als `CLAUDE.md`.
+- **De lokale ontwikkelomgeving draait voortaan standaard op dezelfde database als productie (#1060).**
+  `docker compose up -d` start nu Postgres in plaats van SQL Server, en `Start-Debug.ps1` en
+  `Test-App.ps1` kiezen met een nieuwe `-Tier`-parameter (standaard `Postgres`) automatisch het
+  bijbehorende functieproject, de bijbehorende `local.settings.json` en de bijbehorende
+  schemacontrole. Tot nu toe verifieerde de dagelijkse ontwikkellus de tier die sinds de
+  productiecutover níet meer wordt uitgerold — precies hoe een niet-werkende e-mailverwerking
+  dagenlang onopgemerkt kon blijven. De SQL Server-tier blijft volledig ondersteund via
+  `docker compose --profile sqlserver up -d` en `-Tier SqlServer`.
+- **De lokale Postgres-versie volgt nu de gehoste hoofdversie (#1060).** Lokale container, zelftest
+  en CI draaien `postgres:17` in plaats van `postgres:16`; een migratie die tegen een andere
+  hoofdversie slaagt, bewijst niets over de database die er werkelijk toe doet.
+
+### Added
+- **Een mislukte synchronisatie is nu zichtbaar in plaats van stil (#1081).** De nachtelijke
+  synchronisatie rapporteerde tot nu toe "geslaagd" ook wanneer er niets was bijgewerkt — precies
+  waarom een storing acht dagen onopgemerkt bleef. Een run met mislukte onderdelen wordt nu als
+  mislukt gemeld, en `/api/health` toont wanneer er voor het laatst succesvol is gesynchroniseerd
+  en of dat te lang geleden is. Op een ontwikkelmachine, waar geen synchronisatie hoort te draaien,
+  verandert er niets.
+- **Startscript waarschuwt nu wanneer de applicatie draait maar onbruikbaar is (#1060).**
+  `Start-Debug.ps1` leest `status` en `settingsLoaded` uit `/api/health` en controleert of de
+  gestarte functiehost ook echt de gevraagde tier is. Een verse database zonder primaire club gaf
+  eerder "FunctionApp OK", terwijl elk beheerscherm een foutmelding gaf.
+- **Demoteams en -wedstrijden in één handeling op een lokale Postgres-database (#1060).**
+  `scripts/dev/Seed-AllStarsDemodata.ps1` maakt de his-tabellen aan, draait de AllStars-seed en
+  bouwt de canonieke teamlijst op — tot nu toe bleef de teamlijst leeg op een verse installatie,
+  omdat de demoteams een eerste synchronisatie nodig hadden die lokaal niet draait. Levert 28 teams
+  en 224 wedstrijden voor de democlub. `Database.Postgres.Cli` kreeg daarvoor de vlag
+  `--ensure-his-tables`, die dezelfde schema-generator gebruikt als de ETL zelf.
+- **Seed-script voor een lokale placeholder-club (#1060).**
+  `scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql` maakt een club-neutrale
+  primaire club aan, zodat een verse lokale database meteen bruikbaar is. Draait nooit automatisch
+  mee en raakt productie niet.
+- **Inkomende wijzigingsverzoeken goedkeuren/afwijzen vanuit de webapp (issue 996, epic 986).**
+  Nieuwe pagina "Wijzigingsverzoeken" toont openstaande verzoeken van tegenstanders (datum/tijd/
+  accommodatie) en laat een beheerder ze met één klik goedkeuren of, met verplichte toelichting,
+  afwijzen — rechtstreeks in Sportlink Club, zonder dat u daar apart hoeft in te loggen.
+- **Veld(deel) wijzigen vanuit de webapp (issue 993, epic 986).** In het Sportlink-paneel kan een
+  beheerder nu ook het veld van een wedstrijd doorzetten naar Sportlink Club, met dezelfde
+  succes-/afwijzingsmelding als bij kleedkamers. Alleen mogelijk als Sportlink dit voor de
+  wedstrijd toestaat.
+- **Kleedkamers toewijzen vanuit de webapp (issue 992, epic 986) — eerste echte Sportlink-mutatie.**
+  In het Sportlink-paneel in Dagplanning kan een beheerder nu thuis-, uit- en officialkleedkamer
+  invullen en direct doorzetten naar Sportlink Club, met een duidelijke melding bij succes of
+  afwijzing. Alleen mogelijk als Sportlink dit voor de wedstrijd toestaat; elke poging wordt
+  gelogd.
+- **Achtergrond-warmup van Sportlink-wedstrijdgegevens (issue 1017, epic 986).** De koppeling tussen
+  onze database en Sportlink Club (nodig voor het "Open in Sportlink"-paneel en de deep-link-knop)
+  wordt voortaan dagelijks vooraf opgehaald voor de eerstkomende dagen, in plaats van pas op het
+  moment dat een beheerder er zelf naar klikt — dat scheelt een wachttijd van 10+ seconden bij de
+  eerste keer openen.
+- **Sportlink-koppeling blijft actief tijdens rustige periodes (epic 986, vervolg op 990/991).**
+  Een uur-timer ververst het Sportlink-token voortaan proactief op de achtergrond, ook als er geen
+  enkele Wedstrijdzaken-actie plaatsvindt. Zonder deze timer kon de koppeling na een avond, nacht of
+  weekend zonder gebruik onbedoeld inactief raken, waarna een beheerder hem handmatig opnieuw moest
+  leggen. Alleen actief als de Sportlink Web Extension aan staat.
+- **"Open in Sportlink"-knop per wedstrijd in Dagplanning (issue 989, epic 986).** Opent de
+  wedstrijd rechtstreeks op de detailpagina van Sportlink Club in een nieuw tabblad — scheelt het
+  trage overzichtsscherm en zelf zoeken. Alleen zichtbaar als de Sportlink Web Extension aan staat.
+- **Sportlink Club API client — read-only Match endpoint (epic #986, issues #991, #998).**
+  Twee components uit het Sportlink Web Extension-raamwerk, nog niet aangesloten op schrijvende acties:
+  - `SportlinkClubClient`: HTTP-client voor de read-only Match endpoint van Sportlink Club, met token-refresh 
+    per functionele rol, in-memory caching (60s marge) en automatische retry na 401.
+  - `SportlinkMutationAudit` tabel + service: centraal audit-log voor alle toekomstige Sportlink-wijzigingen 
+    (kleedkamers, velden, officials, uitslag). Beide tiers (SQL Server + Postgres) ondersteund.
+  - `SportlinkMutationGuard`: guardrail-logica — controleert thuiswedstrijd-beperking en per-soort permissies 
+    vóór elke mutatie-poging.
+- **Read-only Sportlink-paneel per wedstrijd in Dagplanning + PublicMatchId-reverse-lookup (issue
+  991/#1016, epic 986).** Toont wat Sportlink Club van een wedstrijd weet — status, kleedkamers/veld,
+  en welke wijzigingen daar toegestaan zouden zijn — zonder dat er ooit iets naar Sportlink wordt
+  teruggeschreven. `PublicMatchId` wordt automatisch gevonden via een reverse-lookup bij Sportlink
+  (gecachet, zodat de trage lookup maar één keer per wedstrijd nodig is) — dit sluit #1016.
+  Refresh-tokens worden op de Postgres-tier productie-persistent opgeslagen in een eigen
+  DB-tabel (niet Function App-instellingen via de Azure Management API). Werkt alleen als de
+  Sportlink Web Extension-schakelaar aan staat en vereist de aanvullende Wedstrijdzaken-rol.
+  Instellingen heeft een nieuw, write-only invoerveld om het echte Sportlink-token te registreren
+  (nooit teruggetoond).
+- **Feature-toggle "Sportlink Web Extension" in Instellingen, standaard uit (issue 988).**
+  Voorbereidende stap voor het terugschrijven van wedstrijdwijzigingen naar Sportlink Club (epic
+  986) — deze release doet zelf nog niets met Sportlink, alleen de schakelaar en een
+  rol↔serviceaccount-koppelingsstatus. Elke functionele rol (te beginnen met "Wedstrijdzaken")
+  krijgt een eigen, smal-geschaald Sportlink-serviceaccount in plaats van één gedeelde credential —
+  Instellingen toont per rol wie en wanneer laatst gekoppeld heeft, met een waarschuwing vóór het
+  overschrijven van een bestaande koppeling. Nieuwe Entra-approl `Wedstrijdzaken` (aanvullend op
+  admin/user, geen vervanging).
+
+### Fixed
+- **Sportlink-wedstrijdgegevens ophalen kon crashen als Sportlink het wedstrijdnummer als getal
+  in plaats van tekst terugstuurde (#1036).** Kwam boven water bij de eerste live-verificatie van
+  het Sportlink-paneel — geen enkele test had dit eerder gezien omdat de aanname over hoe
+  Sportlink dit veld aanlevert onjuist bleek.
+- **Sportlink-wedstrijdgegevens ophalen kon ook crashen op de wedstrijddatum zelf (#1038).**
+  Vervolgvondst bij dezelfde live-verificatieronde als #1036: Sportlink levert de datum/tijd van
+  een wedstrijd genest (`{Date, StartTime, DateTime}`) in plaats van als losse tekstwaarde.
+- **Foutmelding van een afgewezen Sportlink-mutatie (bijv. kleedkamers toewijzen) kwam niet aan
+  in het audit-log (#1040).** Live-verificatie van #992 tegen een echte testwedstrijd toonde dat
+  Sportlink een andere afwijzingsvorm gebruikt dan aangenomen — de mutatie werd al wel correct als
+  mislukt herkend, maar zonder bruikbare reden in `sportlinkmutationaudit`.
+- **Kleedkamers toewijzen aan een wedstrijd werd altijd door Sportlink afgewezen (#1045).** Een
+  losse kleedkamercode ("10") bleek geen geldige Sportlink-identifier — vereist is
+  `{FacilityId}-DRESSINGROOM-{n}`. Beheerders kunnen nu daadwerkelijk kleedkamers toewijzen vanuit
+  Dagplanning; dit is het eerste écht werkende schrijfpad naar Sportlink Club in deze applicatie.
+- **Veld wijzigen vanuit Dagplanning riep een endpoint aan dat niet bestaat (#1047).** Sportlink
+  gebruikt `UpdateMatchDetails` met het volledige wedstrijdrecord, niet het aangenomen
+  `UpdateMatchField` met een klein patch. Herontworpen naar het echte endpoint.
+- **Veld wijzigen faalde nog steeds door een onnodige, kapotte identiteitsopvraag** (zie issue
+  #1048, dat verder openblijft voor #996). Bleek voor een eigen-veld-wijziging niet nodig —
+  Sportlink accepteert een lege aanvrager-identiteit. Beheerders kunnen nu daadwerkelijk het veld
+  van een wedstrijd wijzigen vanuit Dagplanning.
+- **Koppeling van een tweede club aan dezelfde Sportlink-rol (bijv. "Wedstrijdzaken") kon de
+  koppeling van de eerste club stuk maken of blokkeren (#1058).** De rollentabel had een sleutel op
+  alleen de rolnaam, niet op rolnaam + club — sinds elke installatie altijd minstens twee clubs
+  bevat (de echte club en de AllStars FC-demo), botste of overschreef de tweede registratie de
+  eerste stilzwijgend.
+
+### Security
+- **Tokenregistratie voor de Sportlink Web Extension controleerde niet of uitgaande integraties
+  hier zijn toegestaan (#1058).** Deze aanroep naar Sportlink's inlogdienst liep, in tegenstelling
+  tot elke andere externe aanroep in deze applicatie, niet via dezelfde centrale controle —
+  gecorrigeerd zodat lokaal/CI-gebruik nooit onbedoeld verkeer naar Sportlink stuurt.
+- **HTML-injectie via wedstrijd-, team- en veldnamen in de gedownloade dagplanning-export
+  verholpen (#1010).** `Planner.Shared/PlannerHtmlGenerator.cs` interpoleerde deze en andere
+  dynamische velden (locatie, footer, suggestieteksten) ongeëncodeerd als HTML — een script-tag in
+  een wedstrijdnaam werd letterlijk een uitvoerbaar element in de gedownloade HTML. Alle dynamische
+  tekst wordt nu HTML-geëncodeerd (tekst- én attribuutcontext apart), en een ingevoegde URL wordt
+  gevalideerd op `http`/`https`-schema — een `javascript:`-link wordt genegeerd. Beide database-tiers
+  gebruiken deze gedeelde generator, dus de fix geldt voor SQL Server én Postgres zonder verdere
+  wijziging. Alleen de generator is aangepast; de bestaande iframe-sandbox in de preview blijft
+  ongewijzigd.
+- **Feedback-widget: PII-controle dekt nu de volledige melding, vóór elke AI- en GitHub-aanroep (#1006).**
+  De eerdere controle keek alleen naar de beschrijving en de antwoorden op aanvulvragen, en pas nadat
+  het taalmodel de melding al had verwerkt. Contextvelden, vragen en de AI-samenvatting konden zo
+  ongecontroleerd in een openbaar GitHub-issue terechtkomen. Er zijn nu twee controlemomenten: vóór
+  elke AI-aanroep (op alle velden die in de prompt kunnen belanden) en vlak vóór het aanmaken van het
+  GitHub-issue (op de uiteindelijke titel en tekst, inclusief AI-output). Bij een treffer wordt de
+  melding geblokkeerd met een duidelijke foutmelding. De ruwe AI-respons wordt niet langer gelogd —
+  alleen lengte en verwerkingstijd.
+- **Exception-reporter publiceert nu een allowlist van vaste technische velden i.p.v. vrije
+  foutteksten in publieke GitHub-issues/comments (#1008).** De eerdere denylist-sanitizer redigeerde
+  bijvoorbeeld `Database=...`-vormen, maar niet een databasenaam die in een natuurlijke SQL-foutzin
+  voorkomt. `GitHubIssueReporter` publiceert voortaan uitsluitend foutcategorie, exceptietype
+  (incl. inner-exceptietype), de Azure Function-naam, de veilige fingerprint/hash en het tijdstip
+  — nooit meer `ex.Message`, inner-exceptietekst of stacktrace/bronpaden. Volledige diagnostiek
+  blijft beschikbaar via de bestaande structured logging (Application Insights). Hetzelfde beleid
+  geldt nu voor alle drie de paden: nieuw issue, heropening en comment. Deduplicatie en de
+  EgressGuard-uitknop zijn ongewijzigd. (#1008)
+- **SSRF-allowlist thema-extractor blokkeert redirects en interne adressen (#1007).** De
+  thema-extractor (club-website → kleuren/favicon/logo) volgde eerder automatisch redirects
+  zonder de nieuwe bestemming opnieuw te controleren, en een opgeslagen club-website-URL werd niet
+  gevalideerd tegen privé/interne adressen. Beide tiers (SQL Server + Postgres) gebruiken nu een
+  centrale SSRF-beschermingslaag: redirects staan uit en worden begrensd/opnieuw gevalideerd
+  gevolgd, en elke daadwerkelijke verbinding resolvet zelf — vlak vóór het openen van de
+  TCP-verbinding — en weigert privé/loopback/link-local/CGNAT-bestemmingen en niet-standaardpoorten
+  (voorkomt DNS-rebinding). Het opslaan van de club-website-instelling weigert nu al een
+  privé/interne bestemming, niet pas bij extractie.
+- **Postgres-connectiestring dwingt nu certificaatvalidatie af in plaats van die stilzwijgend uit
+  te schakelen (#1004).** De normalisatiestap las voorheen elke `sslmode`-optie uit een
+  `postgres://`-URI, maar zette daarna altijd een modus die sinds Npgsql 8 geen certificaatketen of
+  hostnaam meer controleert — ook wanneer expliciet `?sslmode=verify-full` was opgegeven. Elke
+  connectiestring naar een niet-lokale host (dus elke productie-/stagingdatabase) moet voortaan
+  expliciet `sslmode=verify-full` gebruiken; ontbreekt dat, dan weigert de applicatie te starten in
+  plaats van een onbeveiligde verbinding te openen. Geldt identiek voor de Function App, de
+  database-CLI en het migratiehulpmiddel. Lokale ontwikkeling tegen de Docker-Postgres-container
+  blijft ongewijzigd werken.
+- **PR-validatie losgekoppeld van productiecredentials in de pre-release-check (issue #1009).**
+  De databasebeschikbaarheidscheck (`AZURE_CREDENTIALS` / `SQL_CONNECTION_STRING`) draaide
+  voorheen als onderdeel van de `pull_request`-workflow naar main, samen met de gewijzigde
+  PR-inhoud (inclusief `scripts/ci/wake-database.sql` en de workflow-YAML zelf) — een PR die
+  dat SQL-bestand of de workflow aanpaste, kon dus vóór review/merge SQL laten uitvoeren met
+  productiecredentials. De check staat nu in een eigen workflow
+  (`pre-release-db-check.yml`) die via `workflow_run` pas ná de secretloze buildcheck draait
+  en zijn eigen YAML én het uitgevoerde SQL-bestand altijd van de main-branch haalt — nooit
+  van de PR-branch die de run veroorzaakte. Geen functionele wijziging voor legitieme
+  develop→main-releases; alleen credentialtoegang is losgekoppeld van PR-inhoud.
+- **GitHub Actions gepind op commit-SHA i.p.v. wijzigbare tag/branch (supply-chain hardening, #1011).**
+  Alle `uses:`-verwijzingen in `.github/workflows/*.yml` (45 stuks, incl. `azure/login`,
+  `azure/sql-action`, `Azure/functions-action`, `Azure/static-web-apps-deploy`,
+  `gitleaks/gitleaks-action` en `aquasecurity/trivy-action`, die eerder op de wijzigbare `@master`
+  draaide) zijn nu vastgezet op een geverifieerde volledige upstream-commit-SHA, met de bedoelde
+  releaseversie als commentaar. Bestaande Dependabot-configuratie voor `github-actions` blijft
+  actief zodat toekomstige versie-updates via reviewbare PR's binnenkomen.
+- **Auditlog voor instellingen- en templatewijzigingen kon niet meer vervalst worden naar een
+  andere beheerder (issue 1003).** Wie een wijziging heeft doorgevoerd werd voorheen uit de
+  request-body of een querystring-parameter gelezen — een beheerder kon dus zelf kiezen welke naam
+  in het auditlog kwam te staan. De actor komt nu uitsluitend uit de gevalideerde Easy Auth-claim
+  van de aanroeper, op beide database-tiers.
+- **Secret-patroonscan in de git-hooks liet wachtwoorden stilzwijgend door op macOS (#1090).**
+  `.githooks/sensitive-patterns.txt` gebruikte `\s` binnen bracket-expressies
+  (`[^;'"`\s<>{}]`). POSIX-bracket-expressies interpreteren `\` niet speciaal, waardoor dat op
+  BSD-grep en `git grep` (macOS) letterlijk "geen `\` en geen `s`" betekende in plaats van "geen
+  whitespace" — met de letter `s` in bijvoorbeeld "Secret" brak dat de bedoelde `{4,}`-herhaling.
+  Empirisch bevestigd: `Password=<testwaarde>` werd niet geblokkeerd. Op Linux/CI (GNU
+  grep) werkte dezelfde regex al correct, dus de bug bleef tot nu toe onopgemerkt. Patronen
+  gebruiken nu de POSIX-klasse `[:space:]`, die op alle drie de regex-engines identiek werkt.
+- **`.gitignore` blokkeert nu elk CSV/Excel-bestand, niet alleen `exports/*.csv` (#978).** Een CSV of
+  Excel-bestand met persoonsgegevens dat buiten `exports/` werd aangemaakt (bijv. in de repo-root of
+  in `data/`) kon voorheen zonder waarschuwing worden gestaged. `*.csv`/`*.xlsx`/`*.xls` zijn nu
+  overal geblokkeerd; alleen seed-bestanden onder `scripts/migrations/` en testfixtures onder een
+  `*.Tests/`-project zijn expliciet vrijgesteld — geen van beide bevat ledendata.
 ## [3.2.0.3] — 2026-09-06
 
 ### Fixed

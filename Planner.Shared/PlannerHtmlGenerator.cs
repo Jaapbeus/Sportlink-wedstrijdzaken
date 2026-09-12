@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 
 namespace Planner.Shared
@@ -60,6 +61,38 @@ namespace Planner.Shared
         private const string BLK_NIEUW_RAND = "#2ea043";
         private const string HIGHLIGHT = "#58a6ff";
 
+        /// <summary>
+        /// Encodeert dynamische (uit de database afkomstige) tekst voor een HTML-tekstcontext
+        /// (tussen tags, bv. een <c>&lt;td&gt;</c>-inhoud). Voorkomt HTML-injectie via
+        /// wedstrijd-/team-/veldnamen (#1010) — <c>WebUtility.HtmlEncode</c> is dezelfde keuze als
+        /// <see cref="EmailSanitizer"/> elders in dit project.
+        /// </summary>
+        private static string EncodeText(string? waarde) => WebUtility.HtmlEncode(waarde ?? "");
+
+        /// <summary>
+        /// Encodeert dynamische tekst voor gebruik in een enkel-aangehaald (<c>'…'</c>) HTML-attribuut.
+        /// <c>WebUtility.HtmlEncode</c> laat een apostrof onaangeroerd — zonder de extra vervanging
+        /// zou ingevoerde tekst met een <c>'</c> het attribuut kunnen afsluiten (#1010).
+        /// </summary>
+        private static string EncodeAttribute(string? waarde) => EncodeText(waarde).Replace("'", "&#39;");
+
+        /// <summary>
+        /// Valideert en encodeert een URL voor gebruik in een <c>href</c>-attribuut. Staat uitsluitend
+        /// <c>http</c>/<c>https</c> toe — een <c>javascript:</c>- of ander uitvoerbaar schema wordt
+        /// vervangen door <c>#</c> (#1010).
+        /// </summary>
+        private static string SanitizeHref(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return "#";
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                return EncodeAttribute(url);
+            }
+            return "#";
+        }
+
         public static string GenereerHtml(
             DateOnly datum,
             List<BestaandeWedstrijd> alleWedstrijden,
@@ -102,7 +135,7 @@ namespace Planner.Shared
             // Titel
             sb.AppendLine($"<h2 style='margin:0 0 3px 0;'>Veldplanner — Optimalisatieadvies</h2>");
             var accommodatieNaam = instellingen.Accommodatie ?? "";
-            var locatieSuffix = string.IsNullOrWhiteSpace(accommodatieNaam) ? "" : $" — {accommodatieNaam}";
+            var locatieSuffix = string.IsNullOrWhiteSpace(accommodatieNaam) ? "" : $" — {EncodeText(accommodatieNaam)}";
             sb.AppendLine($"<p style='margin:0 0 10px 0;color:{TXT_DIM};font-size:12px;'>{datum.ToString("dddd d MMMM yyyy", nl)}{locatieSuffix} — {suggesties.Count} suggestie(s)</p>");
 
             // Legenda
@@ -142,7 +175,7 @@ namespace Planner.Shared
 
             // Samenvatting
             var plannerNaam = instellingen.PlannerAfzenderNaam;
-            sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van grasveld verplaatst: {suggesties.Count(s => grasveldNummers.Contains(s.HuidigVeldNummer))} | Gegenereerd door {plannerNaam}</p>");
+            sb.AppendLine($"<p style='margin:10px 0;color:{TXT_DIM};font-size:11px;'>Suggesties: {suggesties.Count} | Van grasveld verplaatst: {suggesties.Count(s => grasveldNummers.Contains(s.HuidigVeldNummer))} | Gegenereerd door {EncodeText(plannerNaam)}</p>");
 
             // JavaScript: klik-interactie
             sb.AppendLine("<script>");
@@ -255,7 +288,7 @@ document.addEventListener('click', () => {
             foreach (var veld in velden)
             {
                 sb.AppendLine($"<div style='display:flex;height:{VeldRijHoogte}px;border-bottom:1px solid #21262d;'>");
-                sb.AppendLine($"<div style='width:{VeldHeaderBreedte}px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;background:{BG_VELD};'>{veld.VeldNaam}</div>");
+                sb.AppendLine($"<div style='width:{VeldHeaderBreedte}px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;background:{BG_VELD};'>{EncodeText(veld.VeldNaam)}</div>");
                 sb.AppendLine($"<div style='flex:1;position:relative;background:{BG};'>");
 
                 // Uurlijnen
@@ -390,14 +423,14 @@ document.addEventListener('click', () => {
             string lookupKey = WedstrijdSleutel(w);
             string bg = BLK_NORMAAL, rand = BLK_RAND, randStijl = "solid";
             string extraAttr = "";
-            string wedstrijdNaam = (w.Wedstrijd?.Trim() ?? "").Replace("'", "&#39;");
+            string wedstrijdNaam = EncodeAttribute(w.Wedstrijd?.Trim());
 
             bool isVast = IsEersteElftalWedstrijd(w.Wedstrijd, instellingen);
             bool isVerplaatst = verplaatsVan != null && verplaatsVan.ContainsKey(lookupKey);
             bool isNieuw = isNieuwePlek != null && w.Bron == "Suggestie";
 
             if (isVast) { bg = BLK_VAST; rand = BLK_VAST_RAND; }
-            else if (isVerplaatst) { bg = BLK_OUD; rand = BLK_OUD_RAND; randStijl = "dashed"; var s = verplaatsVan![lookupKey]; extraAttr = $" data-naar='{s.NieuwVeld} {s.NieuweTijd}'"; }
+            else if (isVerplaatst) { bg = BLK_OUD; rand = BLK_OUD_RAND; randStijl = "dashed"; var s = verplaatsVan![lookupKey]; extraAttr = $" data-naar='{EncodeAttribute(s.NieuwVeld)} {EncodeAttribute(s.NieuweTijd)}'"; }
             else if (isNieuw) { bg = BLK_NIEUW; rand = BLK_NIEUW_RAND; }
 
             string naam = w.Wedstrijd?.Trim() ?? "";
@@ -407,7 +440,7 @@ document.addEventListener('click', () => {
             sb.AppendLine($"<div class='blok' data-paneel='{paneel}' data-wedstrijd='{wedstrijdNaam}'{extraAttr} " +
                 $"style='left:{x}px;top:{top}px;width:{breedte - 1}px;height:{hoogte}px;" +
                 $"background:{bg};border:1px {randStijl} {rand};font-size:{(hoogte < 18 ? 7 : 9)}px;'>" +
-                $"<b>{w.AanvangsTijd:HH:mm}</b> {naam}</div>");
+                $"<b>{w.AanvangsTijd:HH:mm}</b> {EncodeText(naam)}</div>");
         }
 
         private static string WedstrijdSleutel(BestaandeWedstrijd w) => $"{w.VeldNummer}_{w.AanvangsTijd:HH:mm}_{w.Wedstrijd?.Trim()}";
@@ -505,7 +538,7 @@ document.addEventListener('click', () => {
             foreach (var item in items.OrderBy(i => i.Tijd).ThenBy(i => i.Veld))
             {
                 string rijBg = item.Kleur == BLK_OUD_RAND ? "#1a0d00" : item.Kleur == BLK_NIEUW_RAND ? "#0d1a0d" : "transparent";
-                sb.AppendLine($"<tr style='background:{rijBg};border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Einde:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
+                sb.AppendLine($"<tr style='background:{rijBg};border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{EncodeText(item.Veld)}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Einde:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{EncodeText(item.Status)}</td><td style='padding:4px 8px;'>{EncodeText(item.Wedstrijd)}</td></tr>");
             }
             sb.AppendLine("</table>");
         }
@@ -580,7 +613,7 @@ document.addEventListener('click', () => {
                 string rijBg = item.Kleur == BLK_OUD_RAND ? "#1a0d00" : item.Kleur == BLK_NIEUW_RAND ? "#0d1a0d" : "transparent";
                 string borderTop = item.Leeftijd != vorigeLeeftijd && vorigeLeeftijd >= 0 ? $"border-top:2px solid {BG_TIJD};" : "";
                 vorigeLeeftijd = item.Leeftijd;
-                sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{item.Veld}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Einde:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{item.Status}</td><td style='padding:4px 8px;'>{item.Wedstrijd}</td></tr>");
+                sb.AppendLine($"<tr style='background:{rijBg};{borderTop}border-bottom:1px solid #21262d;'><td style='padding:4px 8px;'>{EncodeText(item.Veld)}</td><td style='padding:4px 8px;'>{item.Tijd:HH:mm}</td><td style='padding:4px 8px;'>{item.Einde:HH:mm}</td><td style='padding:4px 8px;color:{item.Kleur};'>{EncodeText(item.Status)}</td><td style='padding:4px 8px;'>{EncodeText(item.Wedstrijd)}</td></tr>");
             }
             sb.AppendLine("</table>");
         }
@@ -600,7 +633,7 @@ document.addEventListener('click', () => {
 
             sb.AppendLine("<!DOCTYPE html><html><head><meta charset='utf-8'></head>");
             sb.AppendLine($"<body style='margin:0;padding:20px;font-family:Arial,sans-serif;background:#ffffff;color:#333;'>");
-            sb.AppendLine($"<p style='margin:0 0 15px 0;'><a href='{browserUrl}' style='color:#0969da;font-size:13px;'>&#128279; Bekijk in browser (meer functies)</a></p>");
+            sb.AppendLine($"<p style='margin:0 0 15px 0;'><a href='{SanitizeHref(browserUrl)}' style='color:#0969da;font-size:13px;'>&#128279; Bekijk in browser (meer functies)</a></p>");
             sb.AppendLine($"<h2 style='margin:0 0 5px 0;'>Veldplanner — Optimalisatieadvies</h2>");
             sb.AppendLine($"<p style='margin:0 0 15px 0;color:#666;'>{datum.ToString("dddd d MMMM yyyy", nl)} — {suggesties.Count} suggestie(s)</p>");
 
@@ -629,11 +662,11 @@ document.addEventListener('click', () => {
             foreach (var s in suggesties) { TimeOnly.TryParse(s.NieuweTijd, out var t); rijen.Add((t, s.NieuwVeld, $"★ {s.Wedstrijd}", $"← {s.HuidigVeld} {s.HuidigeTijd}", "#fef3c7", "#92400e")); }
 
             foreach (var r in rijen.OrderBy(r => r.T).ThenBy(r => r.V))
-                sb.AppendLine($"<tr style='background:{r.Bg};border-bottom:1px solid #e5e7eb;'><td style='padding:5px 6px;'>{r.T:HH:mm}</td><td style='padding:5px 6px;'>{r.V}</td><td style='padding:5px 6px;'>{r.W}</td><td style='padding:5px 6px;color:{r.Fg};'>{r.S}</td></tr>");
+                sb.AppendLine($"<tr style='background:{r.Bg};border-bottom:1px solid #e5e7eb;'><td style='padding:5px 6px;'>{r.T:HH:mm}</td><td style='padding:5px 6px;'>{EncodeText(r.V)}</td><td style='padding:5px 6px;'>{EncodeText(r.W)}</td><td style='padding:5px 6px;color:{r.Fg};'>{EncodeText(r.S)}</td></tr>");
 
             sb.AppendLine("</table>");
             var plannerNaamFooter = instellingen.PlannerAfzenderNaam;
-            sb.AppendLine($"<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>{plannerNaamFooter}</p>");
+            sb.AppendLine($"<p style='margin:15px 0 0 0;font-size:11px;color:#999;'>{EncodeText(plannerNaamFooter)}</p>");
             sb.AppendLine("</body></html>");
             return sb.ToString();
         }

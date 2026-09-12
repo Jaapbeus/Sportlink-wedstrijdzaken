@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # #825: bewaakt dat elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact
       # (case-sensitief) overeenkomt met het daadwerkelijke getrackte bestand. Git's
@@ -87,7 +87,7 @@ jobs:
       # FunctionApp target net9.0, BlazorAdmin net10.0 — beide runtimes nodig.
       # LET OP: FunctionApp mag NOOIT naar net10.0 (Linux Consumption ondersteunt dat niet).
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             9.0.x
@@ -340,7 +340,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Wegwerpwachtwoord genereren
         run: |
@@ -527,7 +527,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # Major-versie volgt de gehoste productiedatabase (#1060) — zie de toelichting bij de
+        # image-tag in docker-compose.yml. Wijzigt de gehoste major, dan wijzigen deze drie mee:
+        # docker-compose.yml, docker-compose.selftest.yml en deze job.
+        image: postgres:17
         env:
           POSTGRES_USER: ci_postgres
           POSTGRES_PASSWORD: ci-wegwerpwachtwoord-niet-geheim
@@ -541,12 +544,40 @@ jobs:
       POSTGRES_CONNECTION_STRING: "Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci"
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: .NET SDK installeren
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 9.0.x
+
+      # ──────────────────────────────────────────────────────────────────────
+      # #1062: het gat dat een verse database per definitie niet ziet.
+      #
+      # MigrationRunner legt per migratiebestand een SHA-256 vast en weigert een bestand dat al is
+      # toegepast maar sindsdien gewijzigd. Op een LEGE database bestaat die eerdere checksum niet,
+      # dus een achteraf bewerkte migratie wordt hier gewoon toegepast en de job wordt groen —
+      # terwijl elke database die de oude versie al had (productie inbegrepen) vastloopt en geen
+      # enkele volgende migratie meer kan toepassen. Precies wat er bij #1058 gebeurde.
+      #
+      # Daarom eerst het migratiepad van de BASISBRANCH toepassen, en pas daarna dat van deze PR:
+      # wie een bestaand migratiebestand wijzigt, laat stap 2 hard falen met de checksumfout.
+      # Alleen zinvol bij een pull request — bij een push naar main/develop is er geen basis om
+      # tegen af te zetten.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Migratiepad van de basisbranch toepassen (checksum-basis, #1062)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          rm -rf /tmp/basismigraties && mkdir -p /tmp/basismigraties
+          # git archive faalt als de map op de basisbranch niet bestaat — dat is geen fout maar
+          # een nieuwe map, en dan valt er ook niets te vergelijken.
+          if git archive FETCH_HEAD Database.Postgres/migrations 2>/dev/null | tar -x -C /tmp/basismigraties; then
+            dotnet run --project Database.Postgres.Cli --configuration Release -- /tmp/basismigraties/Database.Postgres/migrations
+          else
+            echo "::notice::Database.Postgres/migrations bestaat niet op ${{ github.base_ref }} — checksum-basis overgeslagen."
+          fi
 
       - name: Migratiepad toepassen (1e keer — verse database)
         run: dotnet run --project Database.Postgres.Cli --configuration Release -- Database.Postgres/migrations

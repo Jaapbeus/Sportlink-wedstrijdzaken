@@ -55,6 +55,10 @@ internal static class EasyAuthHelper
 
     public static IActionResult? RequireAuthenticated(HttpRequest req) => RequireRole(req, "admin", "user");
 
+    // #988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web Extension-mutaties
+    // (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.
+    public static IActionResult? RequireWedstrijdzaken(HttpRequest req) => RequireRole(req, "Wedstrijdzaken");
+
     public static string? GetCallerName(HttpRequest req)
     {
         var principal = TryGetPrincipal(req);
@@ -72,6 +76,26 @@ internal static class EasyAuthHelper
                 string.Equals(c.Typ, "upn", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(c.Typ, "email", StringComparison.OrdinalIgnoreCase))
             ?.Val;
+    }
+
+    /// <summary>
+    /// Bepaalt de audit-actor (<c>public.appsettingsaudit.gewijzigddoor</c>) uitsluitend server-side —
+    /// nooit uit client-input (#1003, zelfde precedent als de SQL Server-tier). Zie
+    /// <c>FunctionApp/Admin/EasyAuthHelper.cs</c> voor de volledige toelichting.
+    /// </summary>
+    public static string GetAuditActor(HttpRequest req)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName))
+            return "lokale-ontwikkelaar";
+
+        var actor = GetCallerEmail(req) ?? GetCallerName(req);
+        if (string.IsNullOrWhiteSpace(actor))
+            throw new InvalidOperationException(
+                "Audit-actor kon niet worden bepaald: gevalideerde Easy Auth-claims " +
+                "(upn/preferred_username/email/name) ontbreken. Mutatie geweigerd om audit-integriteit te waarborgen.");
+
+        return actor;
     }
 
     public static string GetClubCodeFromRequest(HttpRequest req)

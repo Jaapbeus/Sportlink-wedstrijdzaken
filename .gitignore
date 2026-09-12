@@ -107,12 +107,15 @@ BlazorAdmin/wwwroot/appsettings.Production.json
 *.ldf
 
 # ── AVG/GDPR — persoonsgegevens mogen NOOIT in git ───────────────────────────
-# De exports/ map bevat persoonsgegevens (namen, e-mails, telefoons, geboortedatums).
-# Alleen de scripts mogen worden gecommit, NOOIT de databestanden zelf.
-exports/*.csv
-exports/*.xlsx
-exports/*.xls
-exports/teambegeleiding*.csv
+# Brede blokkade (#978): elk CSV/Excel-bestand is potentieel persoonsgegevens,
+# ongeacht waar het staat — niet alleen in exports/. Alleen expliciet vrijgestelde
+# paden (seed-scripts, testfixtures zonder echte namen) komen terug via een
+# !-uitzondering. Nieuwe uitzonderingen mogen nooit léden- of clubdata bevatten.
+*.csv
+*.xlsx
+*.xls
+!scripts/migrations/*.csv
+!**/*.Tests/**/*.csv
 
 # ── Playwright MCP — lokale browser-testoutput ────────────────────────────────
 # Console-logs en page-snapshots van MCP-browsersessies; puur lokaal debugmateriaal.

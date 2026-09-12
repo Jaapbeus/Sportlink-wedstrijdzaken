@@ -1,0 +1,163 @@
+@page "/wijzigingsverzoeken"
+@inject AdminApiClient Api
+@using BlazorAdmin.Services
+@using BlazorAdmin.Models
+
+<PageTitle>Wijzigingsverzoeken — Admin</PageTitle>
+
+<h1>Wijzigingsverzoeken</h1>
+
+<p class="text-muted">
+    Wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor datum, tijd of
+    accommodatie. Alleen verzoeken met status <code>CONFIRM</code> wachten op een beslissing van
+    ons — de overige staan hier alleen ter referentie.
+</p>
+
+@if (_laden)
+{
+    <p><span class="spinner-border spinner-border-sm"></span> Laden…</p>
+}
+else if (!string.IsNullOrEmpty(_fout))
+{
+    <div class="alert alert-danger">@_fout</div>
+}
+else if (_verzoeken == null || _verzoeken.Count == 0)
+{
+    <p class="text-muted">Geen wijzigingsverzoeken gevonden.</p>
+}
+else
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Huidig</th>
+                <th>Gevraagd</th>
+                <th>Reden</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var verzoek in _verzoeken)
+            {
+                <tr>
+                    <td>
+                        <span class="badge @(verzoek.RequestStatus == "CONFIRM" ? "bg-warning text-dark" : "bg-secondary")">
+                            @verzoek.RequestStatus
+                        </span>
+                    </td>
+                    <td>@verzoek.RequestData?.CurrentDate @verzoek.RequestData?.CurrentStartTime</td>
+                    <td>@verzoek.RequestData?.RequestedDate @verzoek.RequestData?.RequestedStartTime</td>
+                    <td>@verzoek.Reason</td>
+                    <td>
+                        @if (verzoek.RequestStatus == "CONFIRM" && verzoek.PublicRequestId != null && verzoek.PublicMatchId != null)
+                        {
+                            <button class="btn btn-sm btn-success me-1" disabled="@_bezig.GetValueOrDefault(verzoek.PublicRequestId)"
+                                    @onclick="() => HandelAfAsync(verzoek, isApprove: true)">
+                                Goedkeuren
+                            </button>
+                            <input class="form-control form-control-sm d-inline-block me-1" style="width:12rem;"
+                                   placeholder="Toelichting bij afwijzen"
+                                   value="@_toelichting.GetValueOrDefault(verzoek.PublicRequestId)"
+                                   @onchange="e => _toelichting[verzoek.PublicRequestId] = e.Value?.ToString()" />
+                            <button class="btn btn-sm btn-outline-danger" disabled="@_bezig.GetValueOrDefault(verzoek.PublicRequestId)"
+                                    @onclick="() => HandelAfAsync(verzoek, isApprove: false)">
+                                Afwijzen
+                            </button>
+                            @if (_bezig.GetValueOrDefault(verzoek.PublicRequestId))
+                            {
+                                <span class="spinner-border spinner-border-sm ms-1"></span>
+                            }
+                            @if (!string.IsNullOrEmpty(_melding.GetValueOrDefault(verzoek.PublicRequestId)))
+                            {
+                                <div class="mt-1 @(_meldingFout.GetValueOrDefault(verzoek.PublicRequestId) ? "text-danger" : "text-success")">
+                                    @_melding.GetValueOrDefault(verzoek.PublicRequestId)
+                                </div>
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _laden = true;
+    private string? _fout;
+    private List<SportlinkChangeRequestDto>? _verzoeken;
+    private readonly Dictionary<string, bool> _bezig = new();
+    private readonly Dictionary<string, string?> _toelichting = new();
+    private readonly Dictionary<string, string?> _melding = new();
+    private readonly Dictionary<string, bool> _meldingFout = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LaadVerzoekenAsync();
+    }
+
+    private async Task LaadVerzoekenAsync()
+    {
+        _laden = true;
+        _fout = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetSportlinkChangeRequestsAsync();
+            if (result.Success)
+                _verzoeken = result.Data;
+            else
+                _fout = result.ErrorMessage ?? "Onbekende fout bij ophalen wijzigingsverzoeken.";
+        }
+        finally
+        {
+            _laden = false;
+        }
+    }
+
+    private async Task HandelAfAsync(SportlinkChangeRequestDto verzoek, bool isApprove)
+    {
+        if (verzoek.PublicRequestId == null || verzoek.PublicMatchId == null) return;
+        var actie = isApprove ? "APPROVE" : "DENY";
+
+        var toelichting = _toelichting.GetValueOrDefault(verzoek.PublicRequestId);
+        if (!isApprove && string.IsNullOrWhiteSpace(toelichting))
+        {
+            _meldingFout[verzoek.PublicRequestId] = true;
+            _melding[verzoek.PublicRequestId] = "Toelichting is verplicht bij afwijzen.";
+            return;
+        }
+
+        _bezig[verzoek.PublicRequestId] = true;
+        _melding[verzoek.PublicRequestId] = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.PutSportlinkChangeRequestActionAsync(verzoek.PublicRequestId, verzoek.PublicMatchId, actie, toelichting);
+            if (!result.Success)
+            {
+                _meldingFout[verzoek.PublicRequestId] = true;
+                _melding[verzoek.PublicRequestId] = result.ErrorMessage ?? "Onbekende fout.";
+                return;
+            }
+
+            if (result.Data?.IsSuccess == true)
+            {
+                _meldingFout[verzoek.PublicRequestId] = false;
+                _melding[verzoek.PublicRequestId] = actie == "APPROVE" ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.";
+                await LaadVerzoekenAsync();
+            }
+            else
+            {
+                _meldingFout[verzoek.PublicRequestId] = true;
+                var violations = result.Data?.Violations;
+                _melding[verzoek.PublicRequestId] = "Sportlink heeft de actie afgewezen"
+                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
+            }
+        }
+        finally
+        {
+            _bezig[verzoek.PublicRequestId] = false;
+        }
+    }
+}
