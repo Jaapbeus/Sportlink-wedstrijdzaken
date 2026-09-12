@@ -54,7 +54,13 @@ else
       if echo "$file" | grep -qE "(sensitive-patterns\.template\.txt|\.gitleaks\.toml|pre-commit|pre-push|security-scan\.yml)$"; then
         continue
       fi
-      if git show ":$file" 2>/dev/null | grep -qiE "$pattern"; then
+      MATCHES=$(git show ":$file" 2>/dev/null | grep -oiE "$pattern")
+      [ -z "$MATCHES" ] && continue
+      # Bekende, opzettelijk niet-geheime CI/test-waarden (wegwerpdatabase, alleen in CI-run
+      # bestaand, expliciet zo genoemd) mogen de scan niet blokkeren — anders faalt elke
+      # toekomstige commit die build.yml raakt op zijn eigen wegwerpwachtwoord.
+      REAL_MATCHES=$(echo "$MATCHES" | grep -viE "wegwerpwachtwoord-niet-geheim" || true)
+      if [ -n "$REAL_MATCHES" ]; then
         echo ""
         echo "BLOCKED: Sensitive pattern detected"
         echo "  File   : $file"

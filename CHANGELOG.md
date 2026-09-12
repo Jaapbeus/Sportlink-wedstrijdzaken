@@ -228,6 +228,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   request-body of een querystring-parameter gelezen — een beheerder kon dus zelf kiezen welke naam
   in het auditlog kwam te staan. De actor komt nu uitsluitend uit de gevalideerde Easy Auth-claim
   van de aanroeper, op beide database-tiers.
+- **Secret-patroonscan in de git-hooks liet wachtwoorden stilzwijgend door op macOS (#1090).**
+  `.githooks/sensitive-patterns.txt` gebruikte `\s` binnen bracket-expressies
+  (`[^;'"`\s<>{}]`). POSIX-bracket-expressies interpreteren `\` niet speciaal, waardoor dat op
+  BSD-grep en `git grep` (macOS) letterlijk "geen `\` en geen `s`" betekende in plaats van "geen
+  whitespace" — met de letter `s` in bijvoorbeeld "Secret" brak dat de bedoelde `{4,}`-herhaling.
+  Empirisch bevestigd: `Password=<testwaarde>` werd niet geblokkeerd. Op Linux/CI (GNU
+  grep) werkte dezelfde regex al correct, dus de bug bleef tot nu toe onopgemerkt. Patronen
+  gebruiken nu de POSIX-klasse `[:space:]`, die op alle drie de regex-engines identiek werkt.
 - **`.gitignore` blokkeert nu elk CSV/Excel-bestand, niet alleen `exports/*.csv` (#978).** Een CSV of
   Excel-bestand met persoonsgegevens dat buiten `exports/` werd aangemaakt (bijv. in de repo-root of
   in `data/`) kon voorheen zonder waarschuwing worden gestaged. `*.csv`/`*.xlsx`/`*.xls` zijn nu
