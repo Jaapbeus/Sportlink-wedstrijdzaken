@@ -1,0 +1,35 @@
+info:
+  name: Periode verwijderen
+  type: http
+  seq: 52
+  tags:
+    - beheer
+    - destructive
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/beheer/veldperiodes/:id"
+  params:
+    - name: id
+      value: "1"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  DELETE /api/beheer/veldperiodes/{id}
+
+  Periode verwijderen
+
+  Weigert de verwijdering met 409 als er nog VeldBeschikbaarheid-vensters naar deze periode
+  verwijzen — koppel die eerst los of verwijder ze.
+
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

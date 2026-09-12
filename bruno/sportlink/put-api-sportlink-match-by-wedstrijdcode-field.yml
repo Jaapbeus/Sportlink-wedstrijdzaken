@@ -1,0 +1,50 @@
+info:
+  name: Veld(deel) wijzigen (#993, epic
+  type: http
+  seq: 6
+  tags:
+    - sportlink
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/sportlink/match/:wedstrijdcode/field"
+  params:
+    - name: wedstrijdcode
+      value: string
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "FieldId": "string",
+        "FieldSize": "string",
+        "FieldOffset": 1
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/sportlink/match/{wedstrijdcode}/field
+
+  Veld(deel) wijzigen (#993, epic
+
+  Zelfde volgorde als `.../dressingrooms`, maar met `SportlinkMutationSoort.Veld`
+  (IsEditFieldAllowed). `IsForceUpdate` staat server-side altijd hard op `false` — de
+  semantiek van die vlag is nooit live bevestigd (issue #993), dus geen client-parameter
+  hiervoor.
+
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

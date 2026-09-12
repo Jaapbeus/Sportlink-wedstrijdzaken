@@ -29,4 +29,14 @@ docs: |-
 
   Geeft de actuele status en assemblyversie terug. Geen authenticatie vereist.
 
+  `tier` en `provider` komen uit build-time metadata van het artefact (niet uit een
+  runtime-gok) en zijn daarom altijd gevuld, ook als `database` niet "online" is.
+  `serverVersion` komt aantoonbaar uit de database zelf en is alleen gevuld wanneer
+  `database` "online" is (#863).
+
+  `database: "unconfigured"` (geen bruikbare connectiereeks) geeft 503, niet 200 (#859).
+  Elke andere waarde (ook de tijdelijke toestanden paused/timeout/unavailable) blijft 200
+  met `status: "degraded"`.
+
+
   Spec declares security scheme "functionKey" (apiKey).

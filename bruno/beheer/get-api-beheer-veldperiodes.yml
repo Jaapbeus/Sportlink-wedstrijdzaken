@@ -1,0 +1,35 @@
+info:
+  name: Periodes ophalen
+  type: http
+  seq: 54
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/veldperiodes"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/veldperiodes
+
+  Periodes ophalen
+
+  Geeft alle periodes (herbruikbare regimes zoals "Zomerstop" of "Competitie") van de club.
+  Een veldbeschikbaarheid-venster kan naar een periode verwijzen via PeriodeId — geldt dan
+  uitsluitend terwijl die periode actief is (#581).
+
+
+  Spec declares security scheme "functionKey" (apiKey).

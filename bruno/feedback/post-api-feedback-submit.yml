@@ -20,7 +20,12 @@ http:
             "antwoord": "string"
           }
         ],
-        "context": {}
+        "context": {
+          "pagina": "string",
+          "versie": "string",
+          "rol": "string",
+          "browser": "string"
+        }
       }
   auth: inherit
 

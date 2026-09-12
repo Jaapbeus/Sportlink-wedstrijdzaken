@@ -19,8 +19,7 @@ http:
       {
         "onderwerp": "string",
         "bodyTemplate": "string",
-        "actief": true,
-        "gewijzigdDoor": "string"
+        "actief": true
       }
   auth: inherit
 

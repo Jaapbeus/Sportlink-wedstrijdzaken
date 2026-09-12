@@ -1,0 +1,47 @@
+info:
+  name: PublicMatchId opzoeken voor de deep-link-knop (#989, epic
+  type: http
+  seq: 3
+  tags:
+    - sportlink
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/sportlink/match/:wedstrijdcode/public-match-id"
+  params:
+    - name: wedstrijdcode
+      value: string
+      type: path
+      description: Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId.
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/sportlink/match/{wedstrijdcode}/public-match-id
+
+  PublicMatchId opzoeken voor de deep-link-knop (#989, epic
+
+  Lichtgewicht variant van `/sportlink/match/{wedstrijdcode}`: zoekt uitsluitend het
+  `PublicMatchId` op (gecached, zie `public.sportlinkpublicmatchidcache`; reverse-lookup bij
+  Sportlink zelf bij een cache-miss — #987/#1016) zonder de volledige `Match`-aanroep bij
+  Sportlink te doen. Gebruikt door de "Open in Sportlink"-knop in Dagplanning om
+  `https://club.sportlink.com/competition-affairs/match-details/{PublicMatchId}` te openen.
+
+
+  Parameters:
+    wedstrijdcode (path, required) - Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId.
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

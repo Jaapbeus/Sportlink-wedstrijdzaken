@@ -1,0 +1,48 @@
+info:
+  name: Sportlink-serviceaccount-koppeling registreren voor een rol
+  type: http
+  seq: 57
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/sportlink-extensie/rollen/:rolNaam"
+  params:
+    - name: rolNaam
+      value: Wedstrijdzaken
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "SportlinkAccountNaam": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/sportlink-extensie/rollen/{rolNaam}
+
+  Sportlink-serviceaccount-koppeling registreren voor een rol
+
+  Registreert (of overschrijft) dat een functionele rol een Sportlink-serviceaccount
+  gekoppeld heeft gekregen. `LaatstGekoppeldDoor` wordt altijd server-side bepaald uit de
+  ingelogde beheerder (X-MS-CLIENT-PRINCIPAL), nooit uit de request body.
+
+
+  Parameters:
+    rolNaam (path, required) [Wedstrijdzaken]
+
+  Spec declares security scheme "functionKey" (apiKey).

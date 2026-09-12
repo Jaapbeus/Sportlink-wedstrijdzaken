@@ -1,13 +1,13 @@
 info:
-  name: Veldbeschikbaarheid bijwerken
+  name: Periode bijwerken
   type: http
-  seq: 48
+  seq: 59
   tags:
     - beheer
 
 http:
   method: PUT
-  url: "{{baseUrl}}/api/beheer/veldbeschikbaarheid/:id"
+  url: "{{baseUrl}}/api/beheer/veldperiodes/:id"
   params:
     - name: id
       value: "1"
@@ -16,10 +16,10 @@ http:
     type: json
     data: |-
       {
-        "beschikbaarVanaf": "08:30",
-        "beschikbaarTot": "22:00",
-        "gebruikZonsondergang": false,
-        "periodeId": 1
+        "naam": "Zomerstop",
+        "datumVan": "1970-01-01",
+        "datumTot": "1970-01-01",
+        "actief": true
       }
   auth: inherit
 
@@ -36,9 +36,9 @@ settings:
   maxRedirects: 5
 
 docs: |-
-  PUT /api/beheer/veldbeschikbaarheid/{id}
+  PUT /api/beheer/veldperiodes/{id}
 
-  Veldbeschikbaarheid bijwerken
+  Periode bijwerken
 
   Spec declares security scheme "functionKey" (apiKey).
 

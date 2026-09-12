@@ -1,0 +1,50 @@
+info:
+  name: Wijzigingsverzoek goedkeuren of afwijzen (#996, epic
+  type: http
+  seq: 4
+  tags:
+    - sportlink
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/sportlink/change-requests/:publicRequestId/action"
+  params:
+    - name: publicRequestId
+      value: string
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "PublicMatchId": "string",
+        "Actie": "APPROVE",
+        "Remarks": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/sportlink/change-requests/{publicRequestId}/action
+
+  Wijzigingsverzoek goedkeuren of afwijzen (#996, epic
+
+  Haalt zelf `PublicPersonId` van het gekoppelde serviceaccount op via `user/UserInfo` vóór
+  de actie. Geen `SportlinkMutationGuard`-check (die bewaakt onze eigen wedstrijd-
+  mutatievlaggen, niet het afhandelen van andermans verzoek) — audit-logging blijft wel
+  verplicht. `Remarks` is verplicht bij `DENY`.
+
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

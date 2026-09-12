@@ -1,0 +1,51 @@
+info:
+  name: Kleedkamers toewijzen (#992, epic
+  type: http
+  seq: 5
+  tags:
+    - sportlink
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/sportlink/match/:wedstrijdcode/dressingrooms"
+  params:
+    - name: wedstrijdcode
+      value: string
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "HomeDressingRoomId": "string",
+        "AwayDressingRoomId": "string",
+        "OfficialDressingRoomId": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/sportlink/match/{wedstrijdcode}/dressingrooms
+
+  Kleedkamers toewijzen (#992, epic
+
+  Resolvet PublicMatchId, controleert `SportlinkMutationGuard` (IsHomeMatch +
+  IsAssignDressingRoomsAllowed), logt de poging vóór en na in
+  `public.sportlinkmutationaudit`, en voert dan `PUT UpdateMatchDressingRooms` uit bij
+  Sportlink Club. Retourneert HTTP 200 ook als Sportlink de mutatie inhoudelijk afwijst
+  (`IsSuccess=false` + `Violations`) — dat is geen transportfout.
+
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

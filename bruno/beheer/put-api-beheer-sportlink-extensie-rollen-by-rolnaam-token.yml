@@ -1,0 +1,48 @@
+info:
+  name: Refresh-token productie-persistent registreren (write-only)
+  type: http
+  seq: 58
+  tags:
+    - beheer
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/beheer/sportlink-extensie/rollen/:rolNaam/token"
+  params:
+    - name: rolNaam
+      value: Wedstrijdzaken
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "RefreshToken": "string"
+      }
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  PUT /api/beheer/sportlink-extensie/rollen/{rolNaam}/token
+
+  Refresh-token productie-persistent registreren (write-only)
+
+  Bootstrap van het échte Sportlink refresh_token voor een rol (#990/#991, epic #986).
+  Valideert het token met één refresh-poging vóór opslag in `public.sportlinkservicetokens`.
+  Er bestaat bewust géén GET-tegenhanger — het token wordt nooit teruggegeven.
+
+
+  Parameters:
+    rolNaam (path, required) [Wedstrijdzaken]
+
+  Spec declares security scheme "functionKey" (apiKey).

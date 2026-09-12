@@ -7,7 +7,7 @@ info:
 
 http:
   method: GET
-  url: "{{baseUrl}}/api/beheer/geocode?plaatsnaam=[Stad]"
+  url: "{{baseUrl}}/api/beheer/geocode?plaatsnaam=%5BStad%5D"
   params:
     - name: plaatsnaam
       value: "[Stad]"

@@ -1,0 +1,35 @@
+info:
+  name: Inkomende wijzigingsverzoeken ophalen (#996, epic
+  type: http
+  seq: 1
+  tags:
+    - sportlink
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/sportlink/change-requests"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/sportlink/change-requests
+
+  Inkomende wijzigingsverzoeken ophalen (#996, epic
+
+  Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor
+  het gekoppelde serviceaccount in één keer. Filter client-side op
+  `RequestStatus == "CONFIRM"` voor verzoeken die op ons wachten.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

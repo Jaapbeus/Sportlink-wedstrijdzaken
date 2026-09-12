@@ -7,7 +7,7 @@ info:
 
 http:
   method: GET
-  url: "{{baseUrl}}/api/planner/team-schedule?team=[ClubCode] JO13-1"
+  url: "{{baseUrl}}/api/planner/team-schedule?team=%5BClubCode%5D%20JO13-1"
   params:
     - name: team
       value: "[ClubCode] JO13-1"

@@ -1,0 +1,44 @@
+info:
+  name: Canonieke teamlijst opnieuw opbouwen
+  type: http
+  seq: 55
+  tags:
+    - beheer
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/beheer/teams/herstel"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  POST /api/beheer/teams/herstel
+
+  Canonieke teamlijst opnieuw opbouwen
+
+  Bouwt de canonieke teamlijst (`dbo.Teams`/`dbo.TeamAliassen`) opnieuw op uit de
+  gesynchroniseerde teams. Draait twee stappen, altijd allebei: de volledige
+  canonicalisatie en de sleutelmigratie die opgeslagen sleutels in lijn brengt met de
+  huidige normalisatieregels.
+
+  Bedoeld als handmatige hersteloptie wanneer de synchronisatie uit staat of sinds de
+  uitrol nog niet gelopen heeft — dan is de teamlijst leeg en werkt teamherkenning niet.
+
+  Idempotent: herhalen verandert niets en laat de team-id's ongemoeid.
+
+  Bewust een POST en geen neveneffect van een leesverzoek: herstel schrijft, en dat hoort
+  achter een expliciete handeling te zitten.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

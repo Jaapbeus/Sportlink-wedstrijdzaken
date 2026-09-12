@@ -12,7 +12,6 @@ http:
     type: json
     data: |-
       {
-        "gewijzigdDoor": "beheerder@voorbeeld.nl",
         "velden": {
           "BufferMinuten": "15",
           "FetchSchedule": "0 0 4 * * *"

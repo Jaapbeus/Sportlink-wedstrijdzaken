@@ -1,0 +1,47 @@
+info:
+  name: Read-only wedstrijdgegevens uit Sportlink Club (#991, epic
+  type: http
+  seq: 2
+  tags:
+    - sportlink
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/sportlink/match/:wedstrijdcode"
+  params:
+    - name: wedstrijdcode
+      value: string
+      type: path
+      description: Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId.
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/sportlink/match/{wedstrijdcode}
+
+  Read-only wedstrijdgegevens uit Sportlink Club (#991, epic
+
+  Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
+  `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
+  — #987) en haalt daarmee het niet-persoonsgebonden wedstrijdobject op bij Sportlink Club.
+  Uitsluitend lezen — geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of
+  in plaats van admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.
+
+
+  Parameters:
+    wedstrijdcode (path, required) - Onze eigen wedstrijdcode (his.matches), niet Sportlinks PublicMatchId.
+
+  Spec declares security scheme "functionKey" (apiKey).
+
+  Some values below were invented; check them before sending.

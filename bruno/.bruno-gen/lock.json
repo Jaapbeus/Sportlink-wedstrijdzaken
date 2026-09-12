@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 1,
   "generator": "bruno-gen-collection",
-  "generatorVersion": "2.0.0-alpha.7",
+  "generatorVersion": "2.0.0-alpha.10",
   "format": "yml",
   "outputDir": "bruno",
   "emittedWith": {
@@ -9,13 +9,13 @@
     "converters": "0.21.0",
     "filestore": "0.10.0",
     "lang": "0.37.0",
-    "node": "24.18.0",
+    "node": "24.21.0",
     "schema": "0.27.0",
     "yaml": "2.9.0"
   },
   "config": {
     "opencollection.yml": {
-      "hash": "2d04277364518f64cd6ddcee6333cd53463c8e099667a3d119329aadf247bdf2",
+      "hash": "c321be335a6cc6ed58779303ddadc7683767072ba4bbf53364f4ec3d06c0d330",
       "kind": "root"
     }
   },
@@ -29,15 +29,19 @@
       "kind": "folder"
     },
     "feedback/folder.yml": {
-      "hash": "dc27871381d62752b5adabbab466ef3a44eb704c1428b29410ea3e31077baf7e",
+      "hash": "de081dc8de2d1103ef500ea459e54dac5c31a500fa40ba218258a40eca8f17c1",
       "kind": "folder"
     },
     "planner/folder.yml": {
       "hash": "de06305127cdab7e25d395605ae42bd97e53fc0c8614c8ee312eb4a70c79530b",
       "kind": "folder"
     },
+    "sportlink/folder.yml": {
+      "hash": "57e09324ce6f4d42f5d5db2a0d7c85010b6e5dfeb1337c8e8a4960b79f190016",
+      "kind": "folder"
+    },
     "testdata/folder.yml": {
-      "hash": "1391007c0e050d0adc6abdfcee98b0e15c9df9bd6a4aeed5143f2d5511c2659f",
+      "hash": "9129ba45b324abf90cf5babdb4f2b823b1fe29d3a6c39744444a842b7b2a157a",
       "kind": "folder"
     }
   },
@@ -77,6 +81,13 @@
       "kind": "request",
       "seq": 5
     },
+    "beheer/delete-api-beheer-veldperiodes-by-id.yml": {
+      "endpointKey": "DELETE /api/beheer/veldperiodes/{1}",
+      "fileName": "delete-api-beheer-veldperiodes-by-id",
+      "hash": "0913f6bb149f370de1206302b9ff091a0b56e4e194ac72cdd92765822e9a4534",
+      "kind": "request",
+      "seq": 52
+    },
     "beheer/delete-api-beheer-veldtraining-by-id.yml": {
       "endpointKey": "DELETE /api/beheer/veldtraining/{1}",
       "fileName": "delete-api-beheer-veldtraining-by-id",
@@ -108,7 +119,7 @@
     "beheer/get-api-beheer-geocode.yml": {
       "endpointKey": "GET /api/beheer/geocode",
       "fileName": "get-api-beheer-geocode",
-      "hash": "beb84438552eba0411694340bd68f55e315ecca689d5c596bd5987da24b0403b",
+      "hash": "2297ce157cf486d219446e867731e3008755c23ffdcc0b31930842c3fbef486f",
       "kind": "request",
       "seq": 10
     },
@@ -139,6 +150,13 @@
       "hash": "d1c508f7963f6f0e48da8bc27884b8e394de4b2edff0b617820b1a95d26cfeb0",
       "kind": "request",
       "seq": 14
+    },
+    "beheer/get-api-beheer-sportlink-extensie-rollen.yml": {
+      "endpointKey": "GET /api/beheer/sportlink-extensie/rollen",
+      "fileName": "get-api-beheer-sportlink-extensie-rollen",
+      "hash": "7e15d0a94f7947758a6e148d546dd2fd6317906438a286a02f2066465f6ff399",
+      "kind": "request",
+      "seq": 53
     },
     "beheer/get-api-beheer-sync-status.yml": {
       "endpointKey": "GET /api/beheer/sync/status",
@@ -217,6 +235,13 @@
       "kind": "request",
       "seq": 25
     },
+    "beheer/get-api-beheer-veldperiodes.yml": {
+      "endpointKey": "GET /api/beheer/veldperiodes",
+      "fileName": "get-api-beheer-veldperiodes",
+      "hash": "85bee19ce77394126d42548ecba2e05bd2a045baa407679b905d2e4828fc2b0e",
+      "kind": "request",
+      "seq": 54
+    },
     "beheer/get-api-beheer-veldtraining.yml": {
       "endpointKey": "GET /api/beheer/veldtraining",
       "fileName": "get-api-beheer-veldtraining",
@@ -266,6 +291,13 @@
       "kind": "request",
       "seq": 32
     },
+    "beheer/post-api-beheer-teams-herstel.yml": {
+      "endpointKey": "POST /api/beheer/teams/herstel",
+      "fileName": "post-api-beheer-teams-herstel",
+      "hash": "1596364d5736255e88a5e997590d6946fdca778c565a3284e9a00d8aea10c2aa",
+      "kind": "request",
+      "seq": 55
+    },
     "beheer/post-api-beheer-templates-by-key-reset.yml": {
       "endpointKey": "POST /api/beheer/templates/{1}/reset",
       "fileName": "post-api-beheer-templates-by-key-reset",
@@ -276,7 +308,7 @@
     "beheer/post-api-beheer-theme-extract.yml": {
       "endpointKey": "POST /api/beheer/theme/extract",
       "fileName": "post-api-beheer-theme-extract",
-      "hash": "71bae867a39a2a009d2d3e78a64fa69bd59869f82c7c17f12d1454efc0f96da0",
+      "hash": "68ee421ea982d99c614be2726770c98f8396510ed74e5fa94834a9823f510a52",
       "kind": "request",
       "seq": 34
     },
@@ -290,7 +322,7 @@
     "beheer/post-api-beheer-veldbeschikbaarheid.yml": {
       "endpointKey": "POST /api/beheer/veldbeschikbaarheid",
       "fileName": "post-api-beheer-veldbeschikbaarheid",
-      "hash": "4a0e9e0a6a304a337adfbeea4d52d90928999cbe89412955bb08c5d965035a51",
+      "hash": "8dccb9e1195e173d0927688d70a4d0c833db584b3f07d90b065329b981471940",
       "kind": "request",
       "seq": 36
     },
@@ -300,6 +332,13 @@
       "hash": "2bc4740c20ed9c4495ebdcba3fd97289683bed3b04412bf94225b4533c3be14d",
       "kind": "request",
       "seq": 37
+    },
+    "beheer/post-api-beheer-veldperiodes.yml": {
+      "endpointKey": "POST /api/beheer/veldperiodes",
+      "fileName": "post-api-beheer-veldperiodes",
+      "hash": "f149c94ed59115e0518a76daa9ee05602303ecb7f148f33b2fc05f27a313bb07",
+      "kind": "request",
+      "seq": 56
     },
     "beheer/post-api-beheer-veldtraining.yml": {
       "endpointKey": "POST /api/beheer/veldtraining",
@@ -332,7 +371,7 @@
     "beheer/put-api-beheer-settings.yml": {
       "endpointKey": "PUT /api/beheer/settings",
       "fileName": "put-api-beheer-settings",
-      "hash": "7082c2276ac1c093366187652f91078070a712acb442077ed55800e058ad9a55",
+      "hash": "4cfcda2d4a58d848d44e6c45b709ef86020520b8e32f896d5dd57327358a27c3",
       "kind": "request",
       "seq": 42
     },
@@ -342,6 +381,20 @@
       "hash": "b370e0bab1b20295014a07cac2a842238403a47b8f6f791626ebdaef44f3ad3a",
       "kind": "request",
       "seq": 43
+    },
+    "beheer/put-api-beheer-sportlink-extensie-rollen-by-rolnaam-token.yml": {
+      "endpointKey": "PUT /api/beheer/sportlink-extensie/rollen/{1}/token",
+      "fileName": "put-api-beheer-sportlink-extensie-rollen-by-rolnaam-token",
+      "hash": "eb06b8483de251dd3634ce4a875e8a5ed0027935da601d65e679a639520b3b61",
+      "kind": "request",
+      "seq": 58
+    },
+    "beheer/put-api-beheer-sportlink-extensie-rollen-by-rolnaam.yml": {
+      "endpointKey": "PUT /api/beheer/sportlink-extensie/rollen/{1}",
+      "fileName": "put-api-beheer-sportlink-extensie-rollen-by-rolnaam",
+      "hash": "ccf78985674f0ccb671b894f6ff6e75a37447360c127f6b78fd17a4cf1aad724",
+      "kind": "request",
+      "seq": 57
     },
     "beheer/put-api-beheer-teamaliassen-by-id-valideer.yml": {
       "endpointKey": "PUT /api/beheer/teamaliassen/{1}/valideer",
@@ -360,7 +413,7 @@
     "beheer/put-api-beheer-templates-by-key.yml": {
       "endpointKey": "PUT /api/beheer/templates/{1}",
       "fileName": "put-api-beheer-templates-by-key",
-      "hash": "03a3b7cdda6c28c2f9f3f6d3e1959450b4926ec77c36981b3982825b4d254f94",
+      "hash": "282e474fb9c01b3012d399e650cb47d59adea2a5b2dc428cf0302abd17a96535",
       "kind": "request",
       "seq": 46
     },
@@ -374,7 +427,7 @@
     "beheer/put-api-beheer-veldbeschikbaarheid-by-id.yml": {
       "endpointKey": "PUT /api/beheer/veldbeschikbaarheid/{1}",
       "fileName": "put-api-beheer-veldbeschikbaarheid-by-id",
-      "hash": "40510d81056b8c4c67f7337ddaf99172bef02ecc617f4b90edfb4aac68ed3d0f",
+      "hash": "12c27aa15275e13dba30d10d4e86ea208270f20248e4242ecaf02527765742a9",
       "kind": "request",
       "seq": 48
     },
@@ -384,6 +437,13 @@
       "hash": "d3ee2e75eb8d11e7ca06dbaeadd31331d933ab33a6ab0697a84380e1b61067db",
       "kind": "request",
       "seq": 49
+    },
+    "beheer/put-api-beheer-veldperiodes-by-id.yml": {
+      "endpointKey": "PUT /api/beheer/veldperiodes/{1}",
+      "fileName": "put-api-beheer-veldperiodes-by-id",
+      "hash": "754b4999ab1e32a9e3020bd353bdbea70f98b24cd0bcf54faa57314aec2f431e",
+      "kind": "request",
+      "seq": 59
     },
     "beheer/put-api-beheer-veldtraining-by-id.yml": {
       "endpointKey": "PUT /api/beheer/veldtraining/{1}",
@@ -402,7 +462,7 @@
     "core/get-api-health.yml": {
       "endpointKey": "GET /api/health",
       "fileName": "get-api-health",
-      "hash": "f4fcf77cc2d4ec78c856cd44e62649b30463e9946f58b1b6a338600d7c07a333",
+      "hash": "bf93d6441f0cf32e84f3af46a23872e257e0c13f612e681bbb6fec643ecaed3c",
       "kind": "request",
       "seq": 1
     },
@@ -416,21 +476,21 @@
     "feedback/post-api-feedback-submit.yml": {
       "endpointKey": "POST /api/feedback/submit",
       "fileName": "post-api-feedback-submit",
-      "hash": "92b7ba4e5136dd69000f749a39f0eb9c6dc35a805d5d2db9f6d2dd5a9d22e257",
+      "hash": "841b4f77b9146e30483a654d9af3758c865b2f2746c28b66777f94b1b8129bb0",
       "kind": "request",
       "seq": 1
     },
     "feedback/post-api-feedback-validate.yml": {
       "endpointKey": "POST /api/feedback/validate",
       "fileName": "post-api-feedback-validate",
-      "hash": "8f48810d9690d67dc34d1add9506bf88db25c536e3448e4c4d5113707d43e689",
+      "hash": "9b22257dd14ec1aed9a90b0095dc56960d8d3cbb018dec0a0302c074f675b5d9",
       "kind": "request",
       "seq": 2
     },
     "planner/get-api-planner-team-schedule.yml": {
       "endpointKey": "GET /api/planner/team-schedule",
       "fileName": "get-api-planner-team-schedule",
-      "hash": "1f7242d01c5fd01d5f1db80d653e247b4023755efddffdb11809e9b3a9ce080b",
+      "hash": "9cf968ab179a7feb3465d2155d375558e96255f261dce7d7b5651e4eaf2fdad4",
       "kind": "request",
       "seq": 1
     },
@@ -503,6 +563,48 @@
       "hash": "bd098150e8ec18fc2f94095e919069420636889152a0e1b4913d6a02c9694564",
       "kind": "request",
       "seq": 11
+    },
+    "sportlink/get-api-sportlink-change-requests.yml": {
+      "endpointKey": "GET /api/sportlink/change-requests",
+      "fileName": "get-api-sportlink-change-requests",
+      "hash": "810da10bedcffb9f523a06e87ad6247a826d2a2c29dd0bb7dad24fdc71a1adc9",
+      "kind": "request",
+      "seq": 1
+    },
+    "sportlink/get-api-sportlink-match-by-wedstrijdcode-public-match-id.yml": {
+      "endpointKey": "GET /api/sportlink/match/{1}/public-match-id",
+      "fileName": "get-api-sportlink-match-by-wedstrijdcode-public-match-id",
+      "hash": "5c9faa7138f856f13588f5a75b6de75ae6bb662cdae0f28b86aa6cd0495bd367",
+      "kind": "request",
+      "seq": 3
+    },
+    "sportlink/get-api-sportlink-match-by-wedstrijdcode.yml": {
+      "endpointKey": "GET /api/sportlink/match/{1}",
+      "fileName": "get-api-sportlink-match-by-wedstrijdcode",
+      "hash": "26e36ac8ae52b5810299099f3fcd9764787d04810068a65110dad4d0621d8200",
+      "kind": "request",
+      "seq": 2
+    },
+    "sportlink/put-api-sportlink-change-requests-by-publicrequestid-action.yml": {
+      "endpointKey": "PUT /api/sportlink/change-requests/{1}/action",
+      "fileName": "put-api-sportlink-change-requests-by-publicrequestid-action",
+      "hash": "542c0a9de033ed5bc6063064e8bfcf37c4830c6ca1b42bcbc946d3f0837f6efe",
+      "kind": "request",
+      "seq": 4
+    },
+    "sportlink/put-api-sportlink-match-by-wedstrijdcode-dressingrooms.yml": {
+      "endpointKey": "PUT /api/sportlink/match/{1}/dressingrooms",
+      "fileName": "put-api-sportlink-match-by-wedstrijdcode-dressingrooms",
+      "hash": "1def2382220e0428d4750d8a875f676823f770a80df0897e46be7d8d85dfaa39",
+      "kind": "request",
+      "seq": 5
+    },
+    "sportlink/put-api-sportlink-match-by-wedstrijdcode-field.yml": {
+      "endpointKey": "PUT /api/sportlink/match/{1}/field",
+      "fileName": "put-api-sportlink-match-by-wedstrijdcode-field",
+      "hash": "f1e76f0b233100e67265bc78d535c5f257137855bf16817b4812c7dc951c7ca3",
+      "kind": "request",
+      "seq": 6
     },
     "testdata/delete-api-beheer-testdata-wedstrijden-by-bk.yml": {
       "endpointKey": "DELETE /api/beheer/testdata/wedstrijden/{1}",

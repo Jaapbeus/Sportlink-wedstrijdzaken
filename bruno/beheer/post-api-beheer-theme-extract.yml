@@ -7,7 +7,7 @@ info:
 
 http:
   method: POST
-  url: "{{baseUrl}}/api/beheer/theme/extract?url=https://www.[clubdomein].nl"
+  url: "{{baseUrl}}/api/beheer/theme/extract?url=https%3A%2F%2Fwww.%5Bclubdomein%5D.nl"
   params:
     - name: url
       value: https://www.[clubdomein].nl

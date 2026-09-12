@@ -16,7 +16,8 @@ http:
         "dagVanWeek": 1,
         "beschikbaarVanaf": "08:30",
         "beschikbaarTot": "22:00",
-        "gebruikZonsondergang": false
+        "gebruikZonsondergang": false,
+        "periodeId": 1
       }
   auth: inherit
 

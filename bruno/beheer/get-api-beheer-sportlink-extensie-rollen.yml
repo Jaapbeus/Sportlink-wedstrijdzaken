@@ -1,0 +1,35 @@
+info:
+  name: Rol↔serviceaccount-koppelingsstatus (Sportlink Web Extension)
+  type: http
+  seq: 53
+  tags:
+    - beheer
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/beheer/sportlink-extensie/rollen"
+  auth: inherit
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: lt
+      value: "400"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  GET /api/beheer/sportlink-extensie/rollen
+
+  Rol↔serviceaccount-koppelingsstatus (Sportlink Web Extension)
+
+  Toont per functionele rol (bv. "Wedstrijdzaken", epic #986/#988) of er een eigen,
+  smal-geschaald Sportlink-serviceaccount gekoppeld is, en wie/wanneer dat laatst
+  registreerde. Geen live Sportlink-verificatie.
+
+
+  Spec declares security scheme "functionKey" (apiKey).

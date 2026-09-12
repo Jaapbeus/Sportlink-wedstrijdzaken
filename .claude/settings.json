@@ -27,5 +27,8 @@
       "Bash(gh release*)",
       "Bash(gh api*)"
     ]
+  },
+  "enabledPlugins": {
+    "bruno-gen-collection@jaapbeus-plugins": true
   }
 }
