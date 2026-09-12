@@ -2636,6 +2636,16 @@ volgorde:
    wijziging aan `deploy.yml` (dat bevat nooit connectiestrings): net als `SqlConnectionString`
    vandaag is dit een eenmalige `az functionapp config appsettings set`/Portal-actie rechtstreeks
    op de Function App, buiten de CI-pipeline om.
+   **Sinds #1096, in deze volgorde — nooit omgekeerd:**
+   1. Zorg dat een release met `FunctionApp.Postgres/prod-ca-2021.crt` (gedownload uit het
+      Supabase-dashboard van déze deployment: Database → Settings → SSL Configuration — geen
+      publieke, statische URL, per project verschillend) al live staat, zodat het certificaat
+      op `/home/site/wwwroot/prod-ca-2021.crt` in het pakket zit.
+   2. Pas dáárna de instelling uitbreiden met `?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`.
+      Vóór stap 1 al `verify-full` zetten geeft een certificaatketen-fout (het #1095-incident,
+      tweede keer).
+   3. Verifiëren via `curl https://<function-app>.azurewebsites.net/api/health` —
+      `tlsMode: "VerifyFull"` en `tlsWarning: null`.
 5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
    allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
    dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
@@ -2725,6 +2735,38 @@ Twee lessen:
 **Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
 beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
 standaardpoort, lege pad → database `postgres`) blijven daarin behouden.
+
+### #1096 — CA-certificaat gebundeld, smoke test bewaakt `tlsWarning` (bouwstenen klaar, cutover nog handmatig)
+
+Vervolg op de twee lessen hierboven. Geen wijziging aan `Normalize`/`ApplyTlsPolicy` zelf — de
+`sslmode`/`sslrootcert`-parsing en de fail-open-met-waarschuwing-policy uit #1095 ondersteunden een
+CA-certificaat al. Wat ontbrak was het certificaat zelf en bewaking dat de norm ook echt gehaald
+wordt:
+
+1. **`FunctionApp.Postgres/FunctionApp.Postgres.csproj`** kopieert `prod-ca-2021.crt` naar de
+   output- én publish-directory, conditioneel op `Exists(...)` — zolang het bestand ontbreekt is
+   dit een no-op, geen build- of publish-fout. Het certificaat zelf staat inmiddels in de repo
+   (gedownload uit het Supabase-dashboard van déze deployment: Database → Settings → SSL
+   Configuration; subject/issuer "Supabase Root 2021 CA", geldig 2021-04-28 t/m 2031-04-26). Het is
+   publiek (Supabase's eigen root-CA, gelijk voor het project van deze deployment) en hoort dus in
+   git, niet in `.gitignore` — anders dan `local.settings.json`.
+2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarning` uit `/api/health` en meldt die
+   als `::warning::`, exact hetzelfde patroon als `pendingMigrations`/`schemaWarning` (§55): nooit
+   een deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095). Dit is de
+   "pre-deploy-check op de effectieve TLS-modus" uit het vervolgissue — als CI-zichtbaarheid na de
+   deploy, niet als harde gate, omdat de pipeline zelf `POSTGRES_CONNECTION_STRING` niet zet (§49
+   stap 4) en dus vóór de deploy niets over de productie-instelling kan weten.
+
+**Wat hiermee nog niet is opgelost.** `POSTGRES_CONNECTION_STRING` moet, ná release van dit
+certificaat naar productie (nooit ervoor — zie §49 stap 4), handmatig worden uitgebreid met
+`?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`. Tot die stap is gezet,
+blijft `tlsWarning` in `/api/health` non-null en is dat het juiste, verwachte signaal — geen
+regressie.
+
+**Bewust nog niet gedaan:** het beleid weer aanscherpen (`Require` zonder `verify-full` opnieuw
+weigeren). Dat is pas verantwoord zodra bovenstaande twee operationele stappen aantoonbaar zijn
+uitgevoerd en herhaalbaar zijn vastgelegd — met een pre-deploy-check die dat afdwingt, niet met een
+static initializer die de app platlegt (exact de fout uit #1004).
 
 ## 51. De lokale ontwikkelomgeving volgt de gedeployde tier (#1060)
 

@@ -861,8 +861,14 @@ geen stilzwijgend groen resultaat.
 > (`localhost:55432`) speelt dit nooit: die draait zonder TLS, en de bovenstaande commando's blijven
 > ongewijzigd werken. Verbind je met een echte gehoste Postgres-instantie, geef dan
 > `?sslmode=verify-full&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
-> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. Zie
-> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige onderbouwing.
+> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. **Sinds #1096:** dat certificaat
+> hoort, zodra het is toegevoegd, op `FunctionApp.Postgres/prod-ca-2021.crt` (meegekopieerd naar het
+> publish-pakket door de csproj, `Exists(...)`-conditioneel — ontbreekt het lokaal, dan is dat een
+> no-op). Download het uit het Supabase-dashboard van déze deployment (Database → Settings → SSL
+> Configuration — geen publieke, statische URL) en verwijs er lokaal naar met
+> `?sslmode=verify-full&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
+> gehoste instantie test. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige
+> onderbouwing.
 
 > **Let op bij het lokaal draaien van béide Postgres-testsuites tegen één container (#925).**
 > `Database.Postgres.Tests` sloopt met opzet een reeks tabellen om te controleren of ze correct

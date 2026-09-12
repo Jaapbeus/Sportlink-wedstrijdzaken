@@ -71,7 +71,7 @@ public static class PostgresAppSettings
         "Kolom '" + ExtensionColumn + "' ontbreekt in public.appsettings: migratie " +
         "012_sportlink_extension.sql is niet toegepast op deze database. De Sportlink Web Extension " +
         "geldt als uitgeschakeld tot de openstaande migraties zijn uitgevoerd (Database.Postgres.Cli) — " +
-        "zie 'pendingMigrations' in /api/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §54 (#1098).";
+        "zie 'pendingMigrations' in /api/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#1098).";
 
     public static async Task LoadSettingsAsync(ILogger log)
     {

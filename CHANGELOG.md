@@ -40,14 +40,26 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `schemaWarning`. Een vervolgwijziging laat de smoke test na een productie-deploy op diezelfde
   velden controleren in plaats van alleen op een 200 (zie issue #1098). Het toepassen van de
   openstaande migraties blijft een actie van de beheerder — zie
-  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §54.
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §55.
+
+### Added
+- **CA-certificaat van de databaseprovider zit nu in het deploy-pakket, en de smoke test bewaakt
+  de effectieve TLS-modus (#1096).** `FunctionApp.Postgres/prod-ca-2021.crt` (Supabase Root 2021
+  CA, geldig t/m 2031-04-26) wordt meegekopieerd naar het publish-pakket, zodat `sslrootcert` in
+  `POSTGRES_CONNECTION_STRING` naar een pad binnen het pakket kan wijzen — nodig omdat Supabase
+  een eigen CA gebruikt (zie Security-post hieronder en `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50).
+  De smoke test na een deploy leest voortaan ook `tlsWarning` uit `/api/health` en meldt die als
+  `::warning::`, dezelfde behandeling als `pendingMigrations`/`schemaWarning` — nooit een
+  deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
 
 ### Security
-- **Volledige certificaatvalidatie op de databaseverbinding is nog een openstaande schuld.**
-  Supabase blijkt een eigen CA te gebruiken, zodat `verify-full` alleen werkt met het meegeleverde
-  CA-certificaat (`sslrootcert`) — anders dan de documentatie bij #1004 aannam. De uitrol daarvan
-  (certificaat in het deploy-pakket + pre-deploy-check op de effectieve TLS-modus) volgt in een
-  apart issue; tot die tijd is `tlsWarning` in `/api/health` het signaal dat dit nog openstaat.
+- **Volledige certificaatvalidatie op de databaseverbinding: bouwstenen en certificaat klaar,
+  productie-cutover volgt apart (#1096, vervolg op #1004/#1095).** Supabase gebruikt een eigen CA,
+  zodat `verify-full` alleen werkt met het meegeleverde CA-certificaat (`sslrootcert`) — anders dan
+  de documentatie bij #1004 aannam. Deze release bundelt dat certificaat en voegt de CI-bewaking
+  toe; `POSTGRES_CONNECTION_STRING` in productie omzetten naar `verify-full` blijft een bewuste,
+  handmatige operatorstap ná deze release (zie cutover-runbook §49 stap 4) — tot die tijd blijft
+  `tlsWarning` in `/api/health` het signaal dat dit nog openstaat.
 
 ## [3.3.0.0] — 2026-09-12
 
