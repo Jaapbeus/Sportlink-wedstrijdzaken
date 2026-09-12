@@ -36,6 +36,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `Start-Debug.ps1` leest `status` en `settingsLoaded` uit `/api/health` en controleert of de
   gestarte functiehost ook echt de gevraagde tier is. Een verse database zonder primaire club gaf
   eerder "FunctionApp OK", terwijl elk beheerscherm een foutmelding gaf.
+- **Demoteams en -wedstrijden in één handeling op een lokale Postgres-database (#1060).**
+  `scripts/dev/Seed-AllStarsDemodata.ps1` maakt de his-tabellen aan, draait de AllStars-seed en
+  bouwt de canonieke teamlijst op — tot nu toe bleef de teamlijst leeg op een verse installatie,
+  omdat de demoteams een eerste synchronisatie nodig hadden die lokaal niet draait. Levert 28 teams
+  en 224 wedstrijden voor de democlub. `Database.Postgres.Cli` kreeg daarvoor de vlag
+  `--ensure-his-tables`, die dezelfde schema-generator gebruikt als de ETL zelf.
 - **Seed-script voor een lokale placeholder-club (#1060).**
   `scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql` maakt een club-neutrale
   primaire club aan, zodat een verse lokale database meteen bruikbaar is. Draait nooit automatisch

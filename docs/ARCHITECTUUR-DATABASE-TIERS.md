@@ -2740,7 +2740,27 @@ nu, en wijst bij `degraded` rechtstreeks naar het seed-script hierboven.
 assembly-metadata (#863). `Start-Debug.ps1` vergelijkt dat nu met `-Tier`: een achtergebleven
 functiehost van de andere tier op poort 7094 zou anders als een geslaagde start doorgaan.
 
-**4. De macOS-verificatie die tot nu toe openstond, is gedaan.** §4.3 van DEVELOPER-SETUP.md meldde
+**4. De demoteams bleken langs een derde, ongedocumenteerde weg te lopen.** De migraties zaaien
+voor AllStars alleen de AppSettings-rij, velden, veldbeschikbaarheid en speeltijden. De 28 teams en
+224 wedstrijden staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, dat
+`his.teams`/`his.matches` nodig heeft — tabellen die geen enkele migratie aanmaakt, omdat
+`PostgresSchemaGenerator` ze dynamisch maakt bij de eerste sync. Lokaal draait die sync niet
+(EgressGuard, en terecht), dus bleef de teamlijst leeg.
+
+De zelftest loste dat voor zichzelf op met de his-DDL als letterlijke heredoc, overgenomen uit de
+CI-job — twee met de hand bijgehouden kopieën van een schema dat de generator al produceert. Een
+derde kopie in een ontwikkelscript zou bij de eerstvolgende kolomwijziging stilzwijgend uit de pas
+gaan lopen. `Database.Postgres.Cli --ensure-his-tables` roept daarom
+`PostgresMergeOrchestrator.EnsureHisTableAsync` aan over `KnownEntities.All` — dezelfde weg als de
+ETL. `scripts/dev/Seed-AllStarsDemodata.ps1` ketent dat aan de seed en aan
+`POST /api/beheer/teams/herstel`, want `public.teams` is een afgeleide tabel: zonder die laatste
+stap blijft de GUI leeg terwijl `his.teams` vol staat.
+
+Eén detail dat pas bij uitvoeren bleek: het herstel-endpoint valt zonder `X-Club-Code` terug op de
+*primaire* club, en die heeft geen gesynchroniseerde teams — een 409 dus, een correct antwoord op
+de verkeerde vraag. Het script stuurt de clubcode nu expliciet mee.
+
+**5. De macOS-verificatie die tot nu toe openstond, is gedaan.** §4.3 van DEVELOPER-SETUP.md meldde
 "macOS-uitvoeringsverificatie niet mogelijk gebleken (geen Apple Silicon-hardware)". Die staat er
 niet meer: de volledige keten — container, migraties, seed, functiehost, `Test-App.ps1` — is
 uitgevoerd op Apple Silicon tegen `postgres:17.11`, native, zonder Rosetta. Uitkomst: 36 geslaagde

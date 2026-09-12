@@ -143,6 +143,36 @@ build-foutdetectie: eerst `Stop-Debug.ps1`, dan `Test-App.ps1`.
 
 ---
 
+## Seed-AllStarsDemodata.ps1 (#1060)
+
+Zet de AllStars-demoteams en -wedstrijden klaar op een lokale Postgres-ontwikkeldatabase. Drie
+stappen, alle idempotent:
+
+1. `his.teams`/`his.matches`/`his.matchdetails` aanmaken via
+   `Database.Postgres.Cli --ensure-his-tables` → `PostgresMergeOrchestrator.EnsureHisTableAsync`.
+   Geen handgeschreven DDL: die bestaat al in de zelftest en in de CI-job `fresh-db-postgres`, en
+   een derde kopie zou bij de eerstvolgende schemawijziging stilzwijgend uit de pas lopen.
+2. `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql` draaien — 28 teams,
+   224 wedstrijden.
+3. `POST /api/beheer/teams/herstel` met `X-Club-Code: ALLSTARS` — bouwt de canonieke
+   `public.teams`/`public.teamaliassen` op (#946).
+
+```powershell
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=5432;Username=<gebruiker>;Password=<wachtwoord>;Database=sportlink"
+.\scripts\dev\Seed-AllStarsDemodata.ps1
+.\scripts\dev\Seed-AllStarsDemodata.ps1 -SkipHerstel   # alleen stap 1 en 2
+```
+
+Stap 3 vereist een draaiende functiehost. Draait die niet, dan wordt de stap **niet** stilzwijgend
+overgeslagen: het script meldt hem als openstaand en geeft exitcode 1 — anders is "niet uitgevoerd"
+niet te onderscheiden van "uitgevoerd, niets te doen".
+
+Zonder `X-Club-Code` valt het herstel-endpoint terug op de primaire club, die geen
+gesynchroniseerde teams heeft; dat geeft een 409. Het script stuurt de header daarom altijd mee
+(`-ClubCode` om hem te overschrijven).
+
+---
+
 ## Start-Debug.ps1
 
 Start Azurite, FunctionApp en BlazorAdmin, en **wacht tot ze daadwerkelijk reageren** —

@@ -314,6 +314,35 @@ op elke database toegepast, productie inbegrepen.
 `Start-Debug.ps1` meldt het expliciet wanneer deze stap ontbreekt, in plaats van "FunctionApp OK"
 te rapporteren voor een applicatie waarvan geen enkel beheerscherm werkt.
 
+**Optioneel maar aanbevolen: AllStars-demoteams en -wedstrijden.** De migraties zaaien voor de
+democlub alleen de AppSettings-rij, velden, veldbeschikbaarheid en speeltijden — **geen teams en
+wedstrijden**. Die staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, en dat
+script kan geen migratie zijn: het seedt in `his.teams`/`his.matches`, en die tabellen worden door
+geen enkel migratiebestand aangemaakt. `PostgresSchemaGenerator` maakt ze dynamisch zodra de ETL
+zijn eerste sync draait — op een verse ontwikkeldatabase bestaan ze dus nog niet, en het seed-script
+weigert er (met een duidelijke melding) op te draaien.
+
+```powershell
+# Vereist een draaiende functiehost voor de laatste stap
+.\scripts\dev\Seed-AllStarsDemodata.ps1
+```
+
+Drie stappen, idempotent: de his-tabellen worden aangemaakt via
+`Database.Postgres.Cli --ensure-his-tables` (dat `PostgresMergeOrchestrator.EnsureHisTableAsync`
+aanroept — exact de weg die de ETL zelf neemt, dus geen handgeschreven DDL-kopie), daarna draait de
+seed, en tot slot bouwt `POST /api/beheer/teams/herstel` de canonieke teamlijst op. Levert 28 teams,
+28 aliassen en 224 wedstrijden onder clubcode `ALLSTARS`.
+
+> **`public.teams` is een afgeleide tabel.** Zonder die laatste stap blijft de GUI leeg ook al staat
+> `his.teams` vol — de canonieke lijst ontstaat normaal pas aan het eind van een synchronisatie. Het
+> script gebruikt daarom hetzelfde herstelpad dat een beheerder via de knop op de pagina
+> Teamaliassen neemt, en geen fixture die levert wat productie hoort te leveren (#946).
+
+> **De teams verschijnen onder de democlub, niet onder de primaire club.** Wissel in de GUI naar
+> AllStars FC om ze te zien; `GET /api/beheer/teams` zonder `X-Club-Code`-header geeft de teams van
+> de primaire club, en die heeft geen gesynchroniseerde teams. Een lege lijst daar is dus correct
+> gedrag, geen fout.
+
 ### 4.3 Postgres-tier — verificatie
 
 ```powershell
