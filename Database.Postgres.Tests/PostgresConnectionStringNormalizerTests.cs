@@ -6,36 +6,44 @@ using Xunit;
 namespace Database.Postgres.Tests;
 
 /// <summary>
-/// Regressietests voor #1004: <see cref="PostgresConnectionStringNormalizer"/> negeerde voorheen
-/// elke <c>sslmode</c>-optie uit de URI-query en zette altijd <see cref="SslMode.Require"/> — een
-/// modus die sinds Npgsql 8 geen certificaatketen of hostnaam meer valideert. Alle waarden hier
-/// zijn synthetisch (geen productie-hosts, -gebruikers of -wachtwoorden).
+/// Regressietests voor #1004 en #1095: <see cref="PostgresConnectionStringNormalizer"/> negeerde
+/// vóór #1004 elke <c>sslmode</c>-optie uit de URI-query en zette altijd <see cref="SslMode.Require"/>
+/// — een modus die sinds Npgsql 8 geen certificaatketen of hostnaam meer valideert. #1004 maakte
+/// dat fail-closed (exceptie zonder <c>verify-full</c>), wat bij release v3.3.0.0 de complete
+/// productie-Function App platlegde omdat de bestaande instelling geen <c>sslmode</c> had. Sinds
+/// #1095 is het beleid: versleuteld-maar-zwakker wordt <b>gemeld</b>, alleen expliciet onversleuteld
+/// wordt geweigerd. Alle waarden hier zijn synthetisch (geen productie-hosts, -gebruikers of
+/// -wachtwoorden).
 /// </summary>
 public class PostgresConnectionStringNormalizerTests
 {
-    // ---- Acceptatiecriterium: URI met verify-full behoudt VerifyFull + juiste CA-configuratie ----
+    // ---- #1004: URI met verify-full behoudt VerifyFull + juiste CA-configuratie, zonder waarschuwing ----
 
     [Fact]
     public void Normalize_UriMetVerifyFullEnSslRootCert_BehoudtBeideInstellingen()
     {
-        var result = PostgresConnectionStringNormalizer.Normalize(
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
             "postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink?sslmode=verify-full&sslrootcert=synthetic-ca.pem");
 
-        var builder = new NpgsqlConnectionStringBuilder(result);
+        var builder = new NpgsqlConnectionStringBuilder(result.ConnectionString);
         builder.SslMode.Should().Be(SslMode.VerifyFull);
         builder.RootCertificate.Should().Be("synthetic-ca.pem");
         builder.Host.Should().Be("db.voorbeeld.test");
+        result.EffectiveSslMode.Should().Be(SslMode.VerifyFull);
+        result.TlsWarning.Should().BeNull();
     }
 
     [Fact]
-    public void Normalize_UriMetVerifyFullZonderRootCert_BehoudtVerifyFull()
+    public void Normalize_UriMetVerifyFullZonderRootCert_BehoudtVerifyFullZonderWaarschuwing()
     {
-        // Publiek vertrouwde CA (bv. Supabase) heeft geen los root-certificaat nodig — VerifyFull
-        // alleen (steunend op de OS-truststore) is dan al voldoende en moet blijven werken.
-        var result = PostgresConnectionStringNormalizer.Normalize(
+        // VerifyFull steunend op de OS-truststore — voor een provider met publiek vertrouwde CA
+        // voldoende; voor een provider met eigen CA is daarnaast sslrootcert nodig, maar dat is
+        // een verbindingsfout op runtime, geen configuratiefout die de normalizer kan zien.
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
             "postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink?sslmode=verify-full");
 
-        new NpgsqlConnectionStringBuilder(result).SslMode.Should().Be(SslMode.VerifyFull);
+        new NpgsqlConnectionStringBuilder(result.ConnectionString).SslMode.Should().Be(SslMode.VerifyFull);
+        result.TlsWarning.Should().BeNull();
     }
 
     [Theory]
@@ -50,28 +58,57 @@ public class PostgresConnectionStringNormalizerTests
         new NpgsqlConnectionStringBuilder(result).SslMode.Should().Be(SslMode.VerifyFull);
     }
 
-    // ---- Acceptatiecriterium: productieconfiguratie met zwakkere modus wordt geweigerd vóór de eerste verbinding ----
+    // ---- #1095: niet-lokale host zonder verify-full → Require + waarschuwing, geen exceptie ----
 
     [Fact]
-    public void Normalize_UriNaarNietLokaleHostZonderSslMode_GooitException()
+    public void Normalize_UriNaarNietLokaleHostZonderSslMode_ValtTerugOpRequireMetWaarschuwing()
     {
-        var act = () => PostgresConnectionStringNormalizer.Normalize(
+        // Exact het v3.3.0.0-incident: de productie-instelling in URI-vorm zonder ?sslmode=.
+        // Vóór #1004 werd dit stilzwijgend Require; #1004 gooide; nu Require + zichtbare waarschuwing.
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
             "postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink");
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*VerifyFull*");
+        new NpgsqlConnectionStringBuilder(result.ConnectionString).SslMode.Should().Be(SslMode.Require);
+        result.EffectiveSslMode.Should().Be(SslMode.Require);
+        result.TlsWarning.Should().NotBeNullOrEmpty().And.Contain("verify-full");
+    }
+
+    [Fact]
+    public void Normalize_TlsWaarschuwing_BevatGeenHostOfCredentials()
+    {
+        // /api/health is anoniem toegankelijk en toont deze tekst letterlijk.
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
+            "postgresql://geheimegebruiker:geheimwachtwoord@db.voorbeeld.test:5432/sportlink");
+
+        result.TlsWarning.Should().NotBeNull();
+        result.TlsWarning.Should().NotContain("db.voorbeeld.test");
+        result.TlsWarning.Should().NotContain("geheimegebruiker");
+        result.TlsWarning.Should().NotContain("geheimwachtwoord");
+    }
+
+    [Theory]
+    [InlineData("prefer", SslMode.Require)]
+    [InlineData("require", SslMode.Require)]
+    [InlineData("verify-ca", SslMode.VerifyCA)]
+    public void Normalize_UriNaarNietLokaleHostMetVersleuteldeMaarZwakkereSslMode_BehoudtVersleutelingMetWaarschuwing(
+        string sslModeValue, SslMode verwacht)
+    {
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
+            $"postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink?sslmode={sslModeValue}");
+
+        result.EffectiveSslMode.Should().Be(verwacht);
+        new NpgsqlConnectionStringBuilder(result.ConnectionString).SslMode.Should().Be(verwacht);
+        result.TlsWarning.Should().NotBeNullOrEmpty();
     }
 
     [Theory]
     [InlineData("disable")]
     [InlineData("allow")]
-    [InlineData("prefer")]
-    [InlineData("require")]
-    [InlineData("verify-ca")]
-    public void Normalize_UriNaarNietLokaleHostMetZwakkereSslMode_GooitException(string zwakkeMode)
+    public void Normalize_UriNaarNietLokaleHostMetOnversleuteldeSslMode_GooitException(string onversleuteld)
     {
+        // Expliciet kiezen voor onversleuteld verkeer naar een productie-/stagingdatabase blijft een fout.
         var act = () => PostgresConnectionStringNormalizer.Normalize(
-            $"postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink?sslmode={zwakkeMode}");
+            $"postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink?sslmode={onversleuteld}");
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*VerifyFull*");
@@ -97,34 +134,46 @@ public class PostgresConnectionStringNormalizerTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    // ---- Acceptatiecriterium: URI- en keyword/value-vormen volgen hetzelfde beleid ----
+    // ---- URI- en keyword/value-vormen volgen hetzelfde beleid ----
 
     [Fact]
-    public void Normalize_KeywordValueNaarNietLokaleHostZonderSslMode_GooitException()
+    public void Normalize_KeywordValueNaarNietLokaleHostZonderSslMode_ValtTerugOpRequireMetWaarschuwing()
     {
-        var act = () => PostgresConnectionStringNormalizer.Normalize(
+        // Vóór #1004 ging deze vorm ongewijzigd door (Npgsql-default Prefer); Require is strikt sterker.
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
             "Host=db.voorbeeld.test;Port=5432;Database=sportlink;Username=gebruiker;Password=wachtwoord");
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*VerifyFull*");
+        result.EffectiveSslMode.Should().Be(SslMode.Require);
+        result.TlsWarning.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
     public void Normalize_KeywordValueNaarNietLokaleHostMetVerifyFull_SlaagtEnBehoudtModus()
     {
-        var result = PostgresConnectionStringNormalizer.Normalize(
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
             "Host=db.voorbeeld.test;Port=5432;Database=sportlink;Username=gebruiker;Password=wachtwoord;SSL Mode=VerifyFull;Root Certificate=synthetic-ca.pem");
 
-        var builder = new NpgsqlConnectionStringBuilder(result);
+        var builder = new NpgsqlConnectionStringBuilder(result.ConnectionString);
         builder.SslMode.Should().Be(SslMode.VerifyFull);
         builder.RootCertificate.Should().Be("synthetic-ca.pem");
+        result.TlsWarning.Should().BeNull();
     }
 
     [Fact]
-    public void Normalize_KeywordValueNaarNietLokaleHostMetZwakkereSslMode_GooitException()
+    public void Normalize_KeywordValueNaarNietLokaleHostMetRequire_BehoudtRequireMetWaarschuwing()
+    {
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
+            "Host=db.voorbeeld.test;Port=5432;Database=sportlink;Username=gebruiker;Password=wachtwoord;SSL Mode=Require");
+
+        result.EffectiveSslMode.Should().Be(SslMode.Require);
+        result.TlsWarning.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void Normalize_KeywordValueNaarNietLokaleHostMetDisable_GooitException()
     {
         var act = () => PostgresConnectionStringNormalizer.Normalize(
-            "Host=db.voorbeeld.test;Port=5432;Database=sportlink;Username=gebruiker;Password=wachtwoord;SSL Mode=Require");
+            "Host=db.voorbeeld.test;Port=5432;Database=sportlink;Username=gebruiker;Password=wachtwoord;SSL Mode=Disable");
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*VerifyFull*");
@@ -135,16 +184,18 @@ public class PostgresConnectionStringNormalizerTests
     [Theory]
     [InlineData("localhost")]
     [InlineData("127.0.0.1")]
-    public void Normalize_KeywordValueNaarLokaleHostZonderSslMode_SlaagtOnveranderd(string localHost)
+    public void Normalize_KeywordValueNaarLokaleHostZonderSslMode_SlaagtOnveranderdZonderWaarschuwing(string localHost)
     {
         // Exact de vorm die docs/DEVELOPER-SETUP.md §7.2 en de CI-job 'fresh-db-postgres'
         // gebruiken: geen sslmode opgegeven, moet blijven werken tegen de TLS-loze
         // docker-compose-container.
-        var result = PostgresConnectionStringNormalizer.Normalize(
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
             $"Host={localHost};Port=55432;Database=sportlink;Username=postgres;Password=devonly");
 
-        var builder = new NpgsqlConnectionStringBuilder(result);
+        var builder = new NpgsqlConnectionStringBuilder(result.ConnectionString);
         builder.Host.Should().Be(localHost);
+        builder.SslMode.Should().Be(SslMode.Prefer);
+        result.TlsWarning.Should().BeNull();
     }
 
     [Theory]
@@ -157,7 +208,7 @@ public class PostgresConnectionStringNormalizerTests
 
         var builder = new NpgsqlConnectionStringBuilder(result);
         // Vóór #1004 werd hier altijd SslMode.Require geforceerd, ook al ondersteunt de officiële
-        // postgres:16-image zonder extra configuratie geen TLS. Npgsql's eigen default (Prefer)
+        // postgres-image zonder extra configuratie geen TLS. Npgsql's eigen default (Prefer)
         // valt terug op onversleuteld, precies zoals de lokale workflow vandaag al werkt.
         builder.SslMode.Should().Be(SslMode.Prefer);
     }
