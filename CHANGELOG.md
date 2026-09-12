@@ -18,6 +18,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
+  productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
+  nachtelijke synchronisatie. Oorzaak was een beveiligingsaanscherping uit dezelfde release
+  (#1004) die de databaseverbinding weigerde zodra de connectiestring geen volledige
+  certificaatvalidatie (`sslmode=verify-full`) voorschreef — en de bestaande productie-instelling
+  deed dat niet. De verbinding wordt nu weer opgezet zoals vóór de release (versleuteld, `Require`),
+  en de onvolledige TLS-configuratie is voortaan zichtbaar in `/api/health` (`tlsMode`,
+  `tlsWarning`) en in het functielog in plaats van dat de applicatie erop uitvalt. Een expliciete
+  keuze voor onversleuteld verkeer naar een externe database blijft geweigerd.
+
+### Security
+- **Volledige certificaatvalidatie op de databaseverbinding is nog een openstaande schuld.**
+  Supabase blijkt een eigen CA te gebruiken, zodat `verify-full` alleen werkt met het meegeleverde
+  CA-certificaat (`sslrootcert`) — anders dan de documentatie bij #1004 aannam. De uitrol daarvan
+  (certificaat in het deploy-pakket + pre-deploy-check op de effectieve TLS-modus) volgt in een
+  apart issue; tot die tijd is `tlsWarning` in `/api/health` het signaal dat dit nog openstaat.
+
 ## [3.3.0.0] — 2026-09-12
 
 ### Fixed

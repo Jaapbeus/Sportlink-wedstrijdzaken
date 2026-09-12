@@ -30,6 +30,7 @@ public static class HealthFunction
         var (dbStatus, serverVersion) = await GetDatabaseStatusAsync();
         var settingsLoaded = !PostgresAppSettings.LastLoadFailed;
         var (lastSync, syncStale) = await GetSyncStatusAsync(dbStatus);
+        var (tlsMode, tlsWarning) = GetTlsStatus();
         var body = new
         {
             // #1081: een verouderde synchronisatie telt mee in de status, maar alleen waar een
@@ -53,7 +54,13 @@ public static class HealthFunction
             syncStale,
             tier = GetAssemblyMetadata("DatabaseTier") ?? "onbekend",
             provider = GetAssemblyMetadata("DatabaseProvider") ?? "onbekend",
-            serverVersion
+            serverVersion,
+            // #1095: de TLS-modus die daadwerkelijk geldt, plus een waarschuwing als het beleid
+            // van #1004 (VerifyFull) niet gehaald wordt. Bewust geen hostnaam of credentials —
+            // dit endpoint is anoniem. Zo is een onvolledige TLS-configuratie zichtbaar zonder
+            // dat de applicatie er eerst op uitvalt (dat was het v3.3.0.0-incident).
+            tlsMode,
+            tlsWarning
         };
         // #859: "niet geconfigureerd" (geen bruikbare connectiereeks) is geen 200 OK — een
         // draaiende maar onbereikbare database (timeout/unavailable) blijft wel 200 met status
@@ -118,6 +125,17 @@ public static class HealthFunction
             // verbinding al af en de volledige fout staat in het functielog.
             return (null, false);
         }
+    }
+
+    /// <summary>
+    /// #1095: leest de effectieve TLS-modus en -waarschuwing. Dezelfde static initializer als
+    /// <see cref="PostgresDatabaseConfig.ConnectionString"/>; is die niet te bouwen, dan is
+    /// <c>database</c> al "unconfigured" en blijven beide velden hier <c>null</c>.
+    /// </summary>
+    private static (string? Mode, string? Warning) GetTlsStatus()
+    {
+        try { return (PostgresDatabaseConfig.EffectiveSslMode, PostgresDatabaseConfig.TlsWarning); }
+        catch { return (null, null); }
     }
 
     internal static string? GetAssemblyMetadata(string key) =>

@@ -36,37 +36,41 @@ public class DatabaseHealthFailurePathsTests
     /// <c>NpgsqlConnectionStringBuilder</c> vóór deze fix stuklopen bij het opstarten van de hele
     /// Function App (health gaf aanhoudend 503, geen cold-start-vertraging maar een echte crash).
     /// <para>
-    /// Sinds #1004 vereist een niet-lokale host (elke echte Supabase-instantie, dus ook deze
-    /// synthetische testhost) daarnaast expliciet <c>sslmode=verify-full</c> — zonder die query-
-    /// parameter gooit <see cref="PostgresDatabaseConfig.BuildConnectionString"/> nu bewust een
-    /// <see cref="InvalidOperationException"/> (zie <see cref="BuildConnectionString_MetSupabaseUriVormZonderVerifyFull_GooitInvalidOperationException"/>
-    /// hieronder). Deze test bewijst dat de #976-parsingfix zelf nog steeds werkt zodra die
-    /// parameter wél aanwezig is.
+    /// Met <c>sslmode=verify-full</c> (het #1004-beleid) is er geen TLS-waarschuwing. Deze test
+    /// bewijst dat de #976-parsingfix zelf nog steeds werkt.
     /// </para>
     /// </summary>
     [Fact]
     public void BuildConnectionString_MetSupabaseUriVorm_WerktZonderTeGooien()
     {
-        var result = PostgresDatabaseConfig.BuildConnectionString(
+        var result = PostgresDatabaseConfig.BuildNormalization(
             "postgresql://postgres.abcdefgh:wachtwoord123@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=verify-full");
 
-        result.Should().Contain("Host=aws-0-eu-central-1.pooler.supabase.com");
-        result.Should().Contain("Username=postgres.abcdefgh");
+        result.ConnectionString.Should().Contain("Host=aws-0-eu-central-1.pooler.supabase.com");
+        result.ConnectionString.Should().Contain("Username=postgres.abcdefgh");
+        result.ConnectionString.Should().Contain("Application Name=SportlinkFunctionAppPostgres");
+        result.TlsWarning.Should().BeNull();
     }
 
     /// <summary>
-    /// #1004: een niet-lokale host zonder expliciete <c>verify-full</c>-certificaatvalidatie moet
-    /// bij het opstarten worden geweigerd in plaats van een onbeveiligde (MITM-zwakke) verbinding
-    /// toe te staan — precies het scenario van de oorspronkelijke #976-productieconnectiestring,
-    /// vóór #1004 nog altijd zonder certificaatvalidatie geaccepteerd.
+    /// #1095-incident (release v3.3.0.0): exact de oorspronkelijke #976-productieconnectiestring —
+    /// URI-vorm zonder <c>?sslmode=</c>. #1004 liet dit gooien vanuit de static initializer,
+    /// waardoor de complete Function App uitviel (health aanhoudend 503). Nu: de applicatie start,
+    /// draait versleuteld op <c>Require</c> (de stand van vóór v3.3.0.0) en meldt de onvolledige
+    /// TLS-configuratie via <see cref="PostgresDatabaseConfig.TlsWarning"/> — zonder host of
+    /// credentials, want <c>/api/health</c> toont die tekst anoniem.
     /// </summary>
     [Fact]
-    public void BuildConnectionString_MetSupabaseUriVormZonderVerifyFull_GooitInvalidOperationException()
+    public void BuildNormalization_MetSupabaseUriVormZonderVerifyFull_StartMetRequireEnWaarschuwing()
     {
-        Action act = () => PostgresDatabaseConfig.BuildConnectionString(
+        var result = PostgresDatabaseConfig.BuildNormalization(
             "postgresql://postgres.abcdefgh:wachtwoord123@aws-0-eu-central-1.pooler.supabase.com:5432/postgres");
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*VerifyFull*");
+        result.EffectiveSslMode.Should().Be(Npgsql.SslMode.Require);
+        result.ConnectionString.Should().Contain("SSL Mode=Require");
+        result.TlsWarning.Should().NotBeNullOrEmpty();
+        result.TlsWarning.Should().NotContain("supabase.com");
+        result.TlsWarning.Should().NotContain("wachtwoord123");
     }
 
     [Fact]
