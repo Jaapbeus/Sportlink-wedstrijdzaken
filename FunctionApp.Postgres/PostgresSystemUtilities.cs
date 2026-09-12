@@ -13,6 +13,10 @@ namespace FunctionApp.Postgres;
 /// </summary>
 public static class PostgresSystemUtilities
 {
+    // #1095: de TLS-waarschuwing één keer per proces in het functielog — niet bij elke aanroep,
+    // dat zou het log vervuilen en het signaal juist onzichtbaar maken. /api/health toont hem blijvend.
+    private static int _tlsWarningLogged;
+
     // #859: overschrijfbaar via omgevingsvariabelen (zelfde namen als de SQL Server-tier), zodat
     // deze waarden net als daar centraal instelbaar zijn i.p.v. een tweede hardcoded aanname.
     public static async Task WaitForDatabaseAsync(ILogger log)
@@ -27,6 +31,7 @@ public static class PostgresSystemUtilities
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
                 log.LogInformation("Database connection established.");
+                LogTlsWarningOnce(log);
                 await PostgresAppSettings.LoadSettingsAsync(log);
                 return;
             }
@@ -39,6 +44,16 @@ public static class PostgresSystemUtilities
         }
 
         throw new Exception("Unable to establish a database connection after multiple attempts.");
+    }
+
+    private static void LogTlsWarningOnce(ILogger log)
+    {
+        var warning = PostgresDatabaseConfig.TlsWarning;
+        if (warning is null || Interlocked.Exchange(ref _tlsWarningLogged, 1) == 1)
+            return;
+
+        // Geen hostnaam, geen connectiestring — de waarschuwing zelf is al host-vrij (#1095).
+        log.LogWarning("{TlsWarning}", warning);
     }
 
     private static int GetConfiguredInt(string envVarName, int fallback)

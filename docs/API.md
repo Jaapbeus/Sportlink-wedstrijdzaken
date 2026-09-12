@@ -122,6 +122,10 @@ ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `d
 | `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
 | `provider` | `string` | De gebruikte databasedriver |
 | `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |
+| `lastSync` | `string \| null` | Postgres-tier (#1081): laatste synchronisatietijd (UTC) van de primaire club; `null` als nooit gesynchroniseerd |
+| `syncStale` | `boolean` | Postgres-tier (#1081): `true` als `lastSync` ouder is dan `SyncMaxAgeHours` (standaard 36) of ontbreekt; telt alleen mee in `status` waar een synchronisatie hoort te draaien |
+| `tlsMode` | `string \| null` | Postgres-tier (#1095): de TLS-modus die daadwerkelijk geldt op de databaseverbinding (bijv. `VerifyFull`, `Require`); `null` bij `unconfigured` |
+| `tlsWarning` | `string \| null` | Postgres-tier (#1095): `null` als het TLS-beleid (`VerifyFull`, #1004) gehaald is; anders een waarschuwing — zonder host of credentials — dat de verbinding wél versleuteld is maar certificaat/hostnaam niet volledig gevalideerd worden |
 
 ---
 
