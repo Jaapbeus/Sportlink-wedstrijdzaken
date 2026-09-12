@@ -225,6 +225,18 @@ Zonder stap 1 (env vars leeg) logt de functie dit als informatiebericht en doet 
 club kan dus zonder deze configuratie blijven draaien, met alleen de bestaande, e-mail-pipeline-
 afhankelijke noodmail als vangnet.
 
+### Sportlink contract-check-noodmail (#998)
+
+`SportlinkContractCheckTimerFunction` (`FunctionApp.Postgres/Sportlink/`, dagelijks `0 30 6 * * *`)
+controleert of de vorm van Sportlinks `Match`-respons nog klopt met wat deze app verwacht — een
+vroege waarschuwing voor een stille Sportlink-release, ruim vóórdat dit een mutatie zou laten
+mislukken. Bewust géén nieuw alarmeringsmechanisme: bij een afwijking hergebruikt de timer hetzelfde
+`INoodmailThrottleStore`/`IEmailGraphService`-patroon als de e-mail- en database-noodmail hierboven,
+met een eigen throttle-sleutel **`sportlink-contract-noodmail`** en een interval van 24 uur — dus
+geen betaalde Log Analytics/App Insights-alert-regel en geen nieuw verzendpad. Het resultaat van
+elke run staat ook in `public.sportlinkcontractcheck` en op de statussectie van Instellingen (zie
+[docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) §4.2/§3.1b).
+
 ### Activity Log Alert aanmaken (gratis)
 
 Alert bij deploy-fout (Function App restart mislukt):
@@ -317,6 +329,7 @@ requests
 | P2 — Hoog | Deploy-fout in GitHub Actions | Bekijk workflow-log, hotfix aanmaken | < 4 uur |
 | P3 — Normaal | Dagelijkse sync mislukt | Controleer App Insights, handmatig herstarten | Volgende werkdag |
 | P3 — Normaal | Email-verwerking gestopt | Controleer EmailProcessor logs | Volgende werkdag |
+| P3 — Normaal | Sportlink contract-check meldt een afwijking (#998) | Controleer `public.sportlinkcontractcheck` en de statussectie op Instellingen — vermoedelijk een Sportlink-release die de responsvorm wijzigde | Volgende werkdag |
 
 ---
 

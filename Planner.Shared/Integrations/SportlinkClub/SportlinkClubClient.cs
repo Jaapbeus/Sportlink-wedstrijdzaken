@@ -31,6 +31,7 @@ public class SportlinkClubClient : ISportlinkClubClient
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
     private readonly ILogger<SportlinkClubClient> _logger;
+    private readonly Func<bool> _isDryRun;
 
     // Per-role in-memory cache met access token + expiry
     private record CachedRoleToken(string AccessToken, DateTimeOffset ExpiresAtUtc, string HuidigRefreshToken);
@@ -48,11 +49,27 @@ public class SportlinkClubClient : ISportlinkClubClient
         NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
     };
 
-    public SportlinkClubClient(HttpClient httpClient, ISportlinkClubTokenStore tokenStore, ILogger<SportlinkClubClient> logger)
+    /// <param name="httpClient">Onderliggende HTTP-client.</param>
+    /// <param name="tokenStore">Rol-gescoped refresh-tokenopslag.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="isDryRun">
+    /// #998: delegate (geen settings/DB-afhankelijkheid in <c>Planner.Shared</c>, zelfde
+    /// ontkoppelingspatroon als <see cref="ISportlinkClubTokenStore"/>) die bij elke mutatie-
+    /// aanroep opnieuw wordt gelezen — niet één keer bij opstarten. <c>true</c> betekent: token-
+    /// refresh, snapshot-GETs en de UserInfo-GET lopen echt, maar de daadwerkelijke PUT/POST naar
+    /// Sportlink wordt overgeslagen (zie <see cref="PutMutationAsync"/>). Standaard <c>() =&gt;
+    /// false</c> als niet meegegeven — backwards compatible met bestaande tests/callers.
+    /// </param>
+    public SportlinkClubClient(
+        HttpClient httpClient,
+        ISportlinkClubTokenStore tokenStore,
+        ILogger<SportlinkClubClient> logger,
+        Func<bool>? isDryRun = null)
     {
         _httpClient = httpClient;
         _tokenStore = tokenStore;
         _logger = logger;
+        _isDryRun = isDryRun ?? (() => false);
     }
 
     public async Task<SportlinkClubResponse<SportlinkMatch>> GetMatchAsync(
@@ -106,6 +123,90 @@ public class SportlinkClubClient : ISportlinkClubClient
                 401);
 
         return retryResponse;
+    }
+
+    /// <summary>Zelfde token-refresh/401-eenmalige-retry-patroon als <see cref="GetMatchAsync"/>,
+    /// maar zonder deserialisatie — zie <see cref="ISportlinkClubClient.GetMatchRawJsonAsync"/>.</summary>
+    public async Task<SportlinkClubResponse<string>> GetMatchRawJsonAsync(
+        string functioneleRol,
+        string publicMatchId,
+        CancellationToken cancellationToken = default)
+    {
+        var tokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken);
+        if (tokenResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<string>(tokenResult.Status, null, tokenResult.FoutmeldingVoorLog, null);
+
+        var token = tokenResult.AccessToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return new SportlinkClubResponse<string>(
+                SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na vernieuwing", null);
+
+        var response = await FetchMatchRawJsonAsync(publicMatchId, token, cancellationToken);
+
+        if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
+            return response;
+
+        InvalidateTokenCache(functioneleRol);
+        var retryTokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken, forceRefresh: true);
+        if (retryTokenResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<string>(retryTokenResult.Status, null, retryTokenResult.FoutmeldingVoorLog, null);
+
+        var retryToken = retryTokenResult.AccessToken;
+        if (string.IsNullOrWhiteSpace(retryToken))
+            return new SportlinkClubResponse<string>(
+                SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na hernieuwing", null);
+
+        var retryResponse = await FetchMatchRawJsonAsync(publicMatchId, retryToken, cancellationToken);
+        if (retryResponse.HttpStatusCode == 401)
+            return new SportlinkClubResponse<string>(
+                SportlinkClubCallStatus.HerkoppelingVereist,
+                null,
+                "Refresh token is ongeldig (401 blijft terugkomen). Rol moet opnieuw gekoppeld worden.",
+                401);
+
+        return retryResponse;
+    }
+
+    private async Task<SportlinkClubResponse<string>> FetchMatchRawJsonAsync(
+        string publicMatchId, string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var url = $"{MatchEndpoint}?PublicMatchId={Uri.EscapeDataString(publicMatchId)}";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Add("X-Navajo-Entity", "competition/match/Match");
+            request.Headers.Add("X-Navajo-Instance", "KNVB");
+            request.Headers.Add("X-Navajo-Locale", "nl");
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SportlinkClubResponse<string>(
+                    SportlinkClubCallStatus.SportlinkFout, null, "Unauthorized bij match endpoint", 401);
+
+            if (!response.IsSuccessStatusCode)
+                return new SportlinkClubResponse<string>(
+                    SportlinkClubCallStatus.SportlinkFout, null, $"Match endpoint gaf {response.StatusCode}", (int)response.StatusCode);
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            return new SportlinkClubResponse<string>(SportlinkClubCallStatus.Ok, json, null, (int)response.StatusCode);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(ex, "Match endpoint (raw) timeout voor publicMatchId '{PublicMatchId}'", publicMatchId);
+            return new SportlinkClubResponse<string>(SportlinkClubCallStatus.NetwerkFout, null, "Timeout bij match endpoint", null);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Match endpoint (raw) netwerk fout");
+            return new SportlinkClubResponse<string>(SportlinkClubCallStatus.NetwerkFout, null, "Netwerk fout bij match endpoint", null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Onverwachte fout bij match endpoint (raw)");
+            return new SportlinkClubResponse<string>(SportlinkClubCallStatus.SportlinkFout, null, "Onverwachte fout bij match endpoint", null);
+        }
     }
 
     public async Task<SportlinkClubResponse<SportlinkMatchProgramEntry>> ResolvePublicMatchIdAsync(
@@ -651,9 +752,27 @@ public class SportlinkClubClient : ISportlinkClubClient
     {
         try
         {
+            // Direct na serialisatie (zodat een serialisatiefout alsnog opduikt) en vóór het
+            // versturen: dry-run slaat uitsluitend de daadwerkelijke PUT over. Token-refresh en de
+            // voorbereidende GETs (snapshot, UserInfo) hebben al plaatsgevonden vóórdat deze methode
+            // werd aangeroepen — dat maakt een dry-run realistisch (#998).
+            var serializedBody = JsonSerializer.Serialize(body);
+            if (_isDryRun())
+            {
+                // NOOIT de body zelf loggen — kan teamnamen/persoonsgegevens bevatten (CISO-regel).
+                _logger.LogInformation(
+                    "DRY-RUN: {EntityName} niet verzonden naar Sportlink (endpoint {Endpoint})",
+                    entityName, endpoint);
+                return new SportlinkClubResponse<SportlinkMutationResult>(
+                    SportlinkClubCallStatus.Ok,
+                    new SportlinkMutationResult(IsSuccess: true, Violations: null, IsDryRun: true),
+                    null,
+                    200);
+            }
+
             var request = new HttpRequestMessage(HttpMethod.Put, endpoint)
             {
-                Content = new StringContent(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json")
+                Content = new StringContent(serializedBody, System.Text.Encoding.UTF8, "application/json")
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.Add("X-Navajo-Entity", entityName);

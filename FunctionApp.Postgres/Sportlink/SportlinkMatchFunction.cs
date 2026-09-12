@@ -151,6 +151,15 @@ public static class SportlinkMatchFunction
         return $"{facilityId}-DRESSINGROOM-{kleedkamerNummer}";
     }
 
+    /// <summary>
+    /// Bepaalt het audit-<c>resultaat</c> voor een mutatie-uitkomst (#998) — gedeeld met
+    /// <see cref="SportlinkChangeRequestFunction"/>. <c>DryRun</c> gaat vóór <c>IsSuccess</c>: bij een
+    /// dry-run-aanroep is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c>
+    /// (gesimuleerd succes), maar de audit moet expliciet tonen dat er niets echt is verzonden.
+    /// </summary>
+    internal static string BepaalAuditResultaat(SportlinkMutationResult r) =>
+        r.IsDryRun ? "DryRun" : r.IsSuccess ? "Success" : "Failure";
+
     private sealed class KleedkamersDto
     {
         public string? HomeDressingRoomId { get; set; }
@@ -195,9 +204,21 @@ public static class SportlinkMatchFunction
 
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
         var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
+        // #998: WaardeVoor breidt uit met MatchStatus/IsCanceledMatch/IsConceptMatch/FacilityId/
+        // FacilityName — allemaal niet-persoonsgebonden velden die al in SportlinkMatch zitten. Geen
+        // schema-wijziging: de kolom is TEXT. Doel: een seizoen aan auditdata verzamelen vóórdat
+        // MatchStatus eventueel een harde guard-blokkade wordt (zie SportlinkMutationGuard).
         var auditEntry = new SportlinkMutationAuditEntry(
             clubCode, RolNaam, triggerdDoor, publicMatchId!, actie,
-            WaardeVoor: JsonConvert.SerializeObject(matchResult.Data.TaskStatus),
+            WaardeVoor: JsonConvert.SerializeObject(new
+            {
+                matchResult.Data.TaskStatus,
+                matchResult.Data.MatchStatus,
+                matchResult.Data.IsCanceledMatch,
+                matchResult.Data.IsConceptMatch,
+                FacilityId = matchResult.Data.MatchField?.FacilityId,
+                FacilityName = matchResult.Data.MatchField?.Name
+            }),
             WaardeNa: JsonConvert.SerializeObject(waardeNaDto),
             CorrelationId: null);
         var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
@@ -227,7 +248,7 @@ public static class SportlinkMatchFunction
             ? string.Join(", ", mutationResult.Data.Violations)
             : null;
         if (auditId.HasValue)
-            await auditService!.VoltooiAsync(auditId.Value, mutationResult.Data.IsSuccess ? "Success" : "Failure", violationsSamenvatting);
+            await auditService!.VoltooiAsync(auditId.Value, BepaalAuditResultaat(mutationResult.Data), violationsSamenvatting);
 
         // Altijd HTTP 200: "Sportlink heeft de mutatie inhoudelijk afgewezen" is geen transportfout
         // maar een structureel resultaat — IsSuccess/Violations dragen de uitkomst, consistent met

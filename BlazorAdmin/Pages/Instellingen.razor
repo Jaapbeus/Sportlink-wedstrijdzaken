@@ -282,6 +282,20 @@ else
                     naam van een los, rol-gebonden Sportlink-serviceaccount. Staat standaard UIT.
                 </small>
             </div>
+            <div class="col-md-6 mb-3">
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" id="sportlinkDryRun"
+                           @bind="settings.SportlinkDryRun" />
+                    <label class="form-check-label" for="sportlinkDryRun">
+                        Dry-run: alles simuleren, niets naar Sportlink schrijven
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    Staat standaard AAN — kleedkamer-/veldwijzigingen en wijzigingsverzoeken worden dan
+                    alleen gelogd (audit-resultaat "DryRun"), nooit echt verzonden. Zet dit pas uit als
+                    de rol-koppeling en de statussectie hieronder gecontroleerd zijn.
+                </small>
+            </div>
         </div>
 
         <button type="submit" class="btn btn-primary" disabled="@saving">
@@ -384,6 +398,67 @@ else
     }
 
     <hr class="mt-4" />
+    <h5>Status Sportlink Web Extension</h5>
+    <p class="text-muted mb-2">
+        Komt uitsluitend uit onze eigen database (geen Sportlink-aanroep) tenzij je op
+        "Nu live controleren" klikt — dat doet één echte tokenverversing en één leesaanroep.
+    </p>
+    @if (sportlinkHealth != null)
+    {
+        <div class="mb-2">
+            <span class="badge @(sportlinkHealth.ExtensionEnabled ? "bg-success" : "bg-secondary") me-1">
+                Extension @(sportlinkHealth.ExtensionEnabled ? "AAN" : "UIT")
+            </span>
+            <span class="badge @(sportlinkHealth.DryRun ? "bg-info text-dark" : "bg-warning text-dark") me-1">
+                @(sportlinkHealth.DryRun ? "Dry-run actief" : "Dry-run UIT — schrijft écht")
+            </span>
+            <span class="badge @(sportlinkHealth.EgressAllowed ? "bg-success" : "bg-secondary")">
+                Uitgaande integraties @(sportlinkHealth.EgressAllowed ? "toegestaan" : "geblokkeerd")
+            </span>
+        </div>
+        @foreach (var rol in sportlinkHealth.Rollen)
+        {
+            <p class="mb-1">
+                Rol <strong>@rol.RolNaam</strong>:
+                <span class="badge @(rol.Gekoppeld ? "bg-success" : "bg-secondary")">@(rol.Gekoppeld ? "Gekoppeld" : "Niet gekoppeld")</span>
+                @if (rol.Gekoppeld)
+                {
+                    <text> — laatst ververst @(rol.LaatstVerverstOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm"))</text>
+                }
+            </p>
+        }
+        @if (!string.IsNullOrEmpty(sportlinkHealth.LaatsteMutatieFout))
+        {
+            <p class="mb-1 text-danger">
+                Laatste mutatiefout (@sportlinkHealth.LaatsteMutatieFoutOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm")):
+                @sportlinkHealth.LaatsteMutatieFout
+            </p>
+        }
+        @if (sportlinkHealth.LaatsteContractCheck != null)
+        {
+            <p class="mb-1 @(sportlinkHealth.LaatsteContractCheck.IsOk ? "text-success" : "text-danger")">
+                Laatste contract-check (@sportlinkHealth.LaatsteContractCheck.UitgevoerdOp.ToLocalTime().ToString("dd-MM-yyyy HH:mm")):
+                @(sportlinkHealth.LaatsteContractCheck.IsOk ? "OK" : $"Afwijking: {sportlinkHealth.LaatsteContractCheck.AfwijkendeVelden}")
+            </p>
+        }
+        @if (sportlinkHealth.Live != null)
+        {
+            <div class="alert alert-info mt-2">
+                Live controle: token-refresh @(sportlinkHealth.Live.TokenRefreshGelukt ? "gelukt" : "mislukt"),
+                match-check @sportlinkHealth.Live.MatchCheckResultaat
+                (HTTP @sportlinkHealth.Live.MatchCheckHttpStatus)
+            </div>
+        }
+    }
+    <button class="btn btn-sm btn-outline-secondary" disabled="@sportlinkHealthLoading" @onclick="() => LaadSportlinkHealthAsync(live: true)">
+        @(sportlinkHealthLoading ? "Bezig..." : "Nu live controleren")
+    </button>
+    @if (!string.IsNullOrEmpty(sportlinkHealthError))
+    {
+        <div class="alert alert-warning mt-2">@sportlinkHealthError</div>
+    }
+
+    <hr class="mt-4" />
     <div class="row mb-3">
         <div class="col">
             <h2 class="mb-0">Uitgesloten e-mailadressen</h2>
@@ -474,6 +549,10 @@ else
     private string? registreerRefreshToken;
     private string? sportlinkTokenMessage;
 
+    private SportlinkExtensieHealthDto? sportlinkHealth;
+    private bool sportlinkHealthLoading;
+    private string? sportlinkHealthError;
+
     // Sync + email log (verplaatst van Dashboard #344)
     private SyncStatusDto? _status;
     private EmailLogResponse? _emailLog;
@@ -537,6 +616,7 @@ else
         _syncLoading = false;
         await LaadUitgeslotenEmailsAsync();
         await LaadSportlinkExtensieRollenAsync();
+        await LaadSportlinkHealthAsync();
     }
 
     private async Task TriggerSyncAsync()
@@ -605,6 +685,23 @@ else
     {
         var r = await Api.GetSportlinkExtensieRollenAsync();
         sportlinkRollen = r.Success ? r.Data ?? new() : new();
+    }
+
+    private async Task LaadSportlinkHealthAsync(bool live = false)
+    {
+        sportlinkHealthLoading = true;
+        sportlinkHealthError = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.GetSportlinkExtensieHealthAsync(live);
+            if (r.Success) sportlinkHealth = r.Data;
+            else sportlinkHealthError = r.ErrorMessage ?? "Onbekende fout bij ophalen status.";
+        }
+        finally
+        {
+            sportlinkHealthLoading = false;
+        }
     }
 
     private void StartRegistreerKoppeling(SportlinkExtensieRolDto rol)
@@ -724,6 +821,7 @@ else
                 ["KnvbPdfBijlageIngeschakeld"] = settings.KnvbPdfBijlageIngeschakeld ? "1" : "0",
                 ["KnvbStandaardRegio"] = settings.KnvbStandaardRegio,
                 ["SportlinkExtensionEnabled"] = settings.SportlinkExtensionEnabled ? "1" : "0",
+                ["SportlinkDryRun"] = settings.SportlinkDryRun ? "1" : "0",
             }
         };
 

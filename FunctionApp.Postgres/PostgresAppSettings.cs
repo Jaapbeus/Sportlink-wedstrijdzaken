@@ -46,7 +46,7 @@ public static class PostgresAppSettings
             // ("Je bent een assistent voor de coördinator thuiswedstrijden van {clubNaam}") — zonder
             // deze kolom gooit die prompt-opbouw een InvalidOperationException.
             await using var cmd = new NpgsqlCommand(
-                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname, sportlinkextensionenabled FROM public.appsettings " +
+                "SELECT clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname, sportlinkextensionenabled, sportlinkdryrun FROM public.appsettings " +
                 "WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
@@ -73,6 +73,11 @@ public static class PostgresAppSettings
                     Settings["clubName"] = reader.GetString(6);
                 // sportlinkextensionenabled (#988): Sportlink Web Extension-schakelaar, standaard false.
                 Settings["sportlinkExtensionEnabled"] = (!reader.IsDBNull(7) && reader.GetBoolean(7)) ? "1" : "0";
+                // sportlinkdryrun (#998): dry-run-schakelaar voor SportlinkClubClient.PutMutationAsync
+                // — gelezen bij ELKE mutatie-aanroep via de Func<bool>-delegate in Program.cs, dus de
+                // Instellingen-toggle heeft direct effect zodra deze cache ververst is (LoadSettingsAsync
+                // wordt na elke AdminSettingsPut opnieuw aangeroepen).
+                Settings["sportlinkDryRun"] = (!reader.IsDBNull(8) && reader.GetBoolean(8)) ? "1" : "0";
             }
             LastLoadFailed = false;
         }

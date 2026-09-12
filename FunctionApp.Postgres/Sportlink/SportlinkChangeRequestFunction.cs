@@ -104,7 +104,7 @@ public static class SportlinkChangeRequestFunction
                 }
 
                 if (auditId.HasValue)
-                    await auditService!.VoltooiAsync(auditId.Value, mutationResult.Data.IsSuccess ? "Success" : "Failure",
+                    await auditService!.VoltooiAsync(auditId.Value, SportlinkMatchFunction.BepaalAuditResultaat(mutationResult.Data),
                         mutationResult.Data.Violations is { Count: > 0 } ? string.Join(", ", mutationResult.Data.Violations) : null);
 
                 return new OkObjectResult(mutationResult.Data);

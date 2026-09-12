@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.2.10.5",
+    "version": "3.3.1.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1099,6 +1099,101 @@
             "nullable": true,
             "items": {
               "type": "string"
+            }
+          },
+          "IsDryRun": {
+            "type": "boolean",
+            "description": "#998: true als dry-run actief was — niets is echt naar Sportlink verstuurd, de\naanroep is alleen gesimuleerd en gelogd (audit-resultaat \"DryRun\"). IsSuccess is dan\naltijd true.\n"
+          }
+        }
+      },
+      "SportlinkExtensieHealthResponse": {
+        "type": "object",
+        "description": "Statussectie Sportlink Web Extension (#998, epic #986). Zonder live=true uitsluitend uit\neigen database (geen Sportlink-aanroep); nooit een tokenwaarde of Match-data met\npersoonsgegevens.\n",
+        "properties": {
+          "ExtensionEnabled": {
+            "type": "boolean"
+          },
+          "DryRun": {
+            "type": "boolean"
+          },
+          "EgressAllowed": {
+            "type": "boolean"
+          },
+          "Rollen": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "RolNaam": {
+                  "type": "string"
+                },
+                "Gekoppeld": {
+                  "type": "boolean"
+                },
+                "LaatstVerverstOp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "RefreshTokenVervaltOp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "LaatsteMutatieFout": {
+            "type": "string",
+            "nullable": true
+          },
+          "LaatsteMutatieFoutOp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "LaatsteContractCheck": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "UitgevoerdOp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "IsOk": {
+                "type": "boolean"
+              },
+              "HttpStatus": {
+                "type": "integer",
+                "nullable": true
+              },
+              "AfwijkendeVelden": {
+                "type": "string",
+                "nullable": true
+              },
+              "FoutmeldingSamenvatting": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "Live": {
+            "type": "object",
+            "nullable": true,
+            "description": "Alleen gevuld bij ?live=true.",
+            "properties": {
+              "TokenRefreshGelukt": {
+                "type": "boolean"
+              },
+              "MatchCheckResultaat": {
+                "type": "string",
+                "nullable": true
+              },
+              "MatchCheckHttpStatus": {
+                "type": "integer",
+                "nullable": true
+              }
             }
           }
         }
@@ -3734,6 +3829,64 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
+    "/beheer/sportlink-extensie/health": {
+      "get": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "getSportlinkExtensieHealth",
+        "summary": "Statussectie Sportlink Web Extension (#998, epic",
+        "description": "Zonder `live=true` (default) doet dit endpoint GEEN Sportlink-aanroep — alles komt uit\nonze eigen database (extension/dry-run-instelling, EgressGuard-status, koppeling +\nlaatste tokenverversing per rol, laatste mutatiefout, laatste contract-check). Alleen bij\nexpliciete `?live=true` (gebruikersklik \"Nu live controleren\") doet het één\ntokenverversing en één leesaanroep — en rapporteert dan uitsluitend HTTP-status/\nresultaataard, nooit responsdata.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "live",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statusoverzicht",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkExtensieHealthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "live=true opgegeven terwijl de extension uitstaat"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "description": "live=true opgegeven terwijl uitgaande integraties niet zijn toegestaan (EgressGuard), of de Sportlink-client niet geconfigureerd is"
           }
         }
       }
