@@ -31,8 +31,11 @@ Ook de server/database-parsing accepteert nu zowel `Data Source=`/`Initial Catal
 ### Gebruik
 
 ```powershell
-# Alleen checken (geen wijzigingen)
+# Alleen checken (geen wijzigingen) — tier Postgres is de standaard
 .\scripts\dev\Test-App.ps1
+
+# De andere tier
+.\scripts\dev\Test-App.ps1 -Tier SqlServer
 
 # Automatisch herstellen waar mogelijk
 .\scripts\dev\Test-App.ps1 -Fix
@@ -42,13 +45,19 @@ Ook de server/database-parsing accepteert nu zowel `Data Source=`/`Initial Catal
 .\scripts\dev\Test-App.ps1 -Fix -Verbose
 ```
 
+**`-Tier` bepaalt álles wat tier-specifiek is** (#1060): welk functieproject gebouwd wordt, welk
+`local.settings.json` gelezen wordt, en welke schemacontrole draait. De vertaling tier → projectpad
+komt uit `scripts/ci/database-tiers.json` — hetzelfde bestand dat de CI gebruikt, zodat er één
+vertaalpunt blijft (#816/#865). Standaard `Postgres`: de tier die in productie draait.
+
 ### Wat wordt gecontroleerd
 
 | Sectie | Controle | -Fix |
 |--------|----------|------|
-| 1. DB-verbinding | `local.settings.json` aanwezig en geldig | nee |
-| 2. Schema | Alle 8 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
-| 3. Build | `dotnet build` FunctionApp + BlazorAdmin | nee |
+| 1. DB-verbinding | `local.settings.json` van de gekozen tier aanwezig en geldig | nee |
+| 2. Schema (SqlServer) | Alle 8 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
+| 2. Schema (Postgres) | `Database.Postgres/migrations/*.sql` vs. `schema_migrations` + kerntabellen aanwezig | ja — openstaande migraties toepassen |
+| 3. Build | `dotnet build` van het tier-project + BlazorAdmin | nee |
 | 4. API smoke | 11 endpoints op `:7094` | nee (2xx verwacht) |
 | 5. Blazor pagina's | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
 
@@ -140,12 +149,22 @@ Start Azurite, FunctionApp en BlazorAdmin, en **wacht tot ze daadwerkelijk reage
 geen vaste `Start-Sleep` meer (#684).
 
 ```powershell
-.\scripts\dev\Start-Debug.ps1            # losse vensters per service
+.\scripts\dev\Start-Debug.ps1            # Postgres-tier (standaard), losse vensters per service
+.\scripts\dev\Start-Debug.ps1 -Tier SqlServer   # de andere tier
 .\scripts\dev\Start-Debug.ps1 -Tail      # één samengevoegde logstroom
 .\scripts\dev\Start-Debug.ps1 -Swa       # inclusief SWA emulator op :4280
 .\scripts\dev\Start-Debug.ps1 -NoWatch   # BlazorAdmin zonder hot reload
 .\scripts\dev\Start-Debug.ps1 -Clean     # dotnet clean BlazorAdmin vóór het starten
 ```
+
+Twee controles die verder gaan dan "de poort antwoordt" (#1060):
+
+- **Tier-provenance.** `/api/health` meldt zijn eigen tier uit de assembly-metadata (#863).
+  Wijkt die af van `-Tier`, dan is de melding rood — anders zou een oude functiehost op dezelfde
+  poort stilzwijgend als "gestart" worden gerapporteerd.
+- **`status` / `settingsLoaded`.** Een functiehost zonder bruikbare instellingencache geeft HTTP 200
+  met status `degraded`, terwijl élk `/api/beheer/*`-endpoint 500 antwoordt. Op een verse database
+  is dat de normale toestand tot er een primaire club is geseed (DEVELOPER-SETUP.md §4.2).
 
 Readiness-detectie:
 

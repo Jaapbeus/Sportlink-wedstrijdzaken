@@ -3,10 +3,17 @@
 # klaar zijn (readiness-polling — geen vaste sleeps).
 #
 # Vereisten: .NET 9 runtime + .NET 10 SDK, Azure Functions Core Tools v4, Azurite,
-#            SQL Server met SportlinkSqlDb.
+#            en de database van de gekozen tier (docker compose up -d).
+#
+# TIER-KEUZE (#1060): standaard Postgres — de tier die deze installatie in productie draait
+# (docs/ARCHITECTUUR-DATABASE-TIERS.md §49). Lokaal ontwikkelen op de andere tier zou betekenen
+# dat de dagelijkse verificatie een tier meet die niet gedeployd wordt; dat is precies hoe #972
+# dagenlang onopgemerkt bleef. De vertaling tier -> projectpad komt uit
+# scripts/ci/database-tiers.json via Get-DatabaseTierProject — nooit een tweede lijst hier.
 #
 # Gebruik:
-#   .\Start-Debug.ps1            → Azurite + FunctionApp + BlazorAdmin (met hot reload)
+#   .\Start-Debug.ps1            → Azurite + FunctionApp (Postgres-tier) + BlazorAdmin
+#   .\Start-Debug.ps1 -Tier SqlServer → idem, maar op de SQL Server-tier
 #   .\Start-Debug.ps1 -Swa       → bovenstaande + SWA emulator op http://localhost:4280
 #   .\Start-Debug.ps1 -NoWatch   → BlazorAdmin zonder hot reload (dotnet run i.p.v. dotnet watch)
 #   .\Start-Debug.ps1 -Tail      → één samengevoegde logstroom i.p.v. losse vensters
@@ -28,6 +35,10 @@
 #   SWA emulator :4280  → http://localhost:4280  (met auth-emulatie en routeregels)
 
 param(
+    # Standaard Postgres: de tier die in productie draait. Zie de toelichting bovenaan.
+    [ValidateSet('SqlServer', 'Postgres', 'Sqlite')]
+    [string]$Tier = 'Postgres',
+
     [switch]$Swa,      # Start ook de Azure SWA emulator (vereist swa CLI)
     [switch]$NoWatch,  # Gebruik dotnet run i.p.v. dotnet watch voor BlazorAdmin
     [switch]$Tail,     # Voeg alle service-output samen in één venster
@@ -51,6 +62,34 @@ Import-Module (Join-Path $PSScriptRoot 'DevServices.psm1') -Force
 
 $ports   = Get-DebugPorts
 $pidFile = Get-DebugPidFile
+
+# --- Tier resolven (#1060) ---------------------------------------------------
+# Drie verschillende fouten, drie verschillende meldingen: een tikfout, een geldige-maar-nog-niet-
+# gebouwde tier, en een tier waarvan het project ontbreekt. Stilzwijgend terugvallen op een andere
+# tier is de ene uitkomst die we hier nooit willen.
+$tierInfo = Get-DatabaseTierProject -Tier $Tier -RepoRoot $root
+if (-not $tierInfo.Found) {
+    Write-Host "Onbekende tier '$Tier'. Geldige waarden: $($tierInfo.Valid -join ', ')" -ForegroundColor Red
+    exit 1
+}
+if (-not $tierInfo.Built) {
+    Write-Host "Tier '$Tier' is geldig maar nog niet gebouwd (zie issue #$($tierInfo.EpicIssue))." -ForegroundColor Red
+    exit 1
+}
+if (-not $tierInfo.Exists) {
+    Write-Host "Projectbestand van tier '$Tier' ontbreekt: $($tierInfo.Csproj)" -ForegroundColor Red
+    exit 1
+}
+
+$funcProjectDir = Split-Path -Parent $tierInfo.FullPath
+$funcSettings   = Join-Path $funcProjectDir 'local.settings.json'
+if (-not (Test-Path $funcSettings)) {
+    Write-Host ""
+    Write-Host "local.settings.json ontbreekt in $(Split-Path -Leaf $funcProjectDir)/ — de functiehost start niet." -ForegroundColor Red
+    Write-Host "  Kopieer local.settings.template.json ernaast en vul de verbindingsreeks in." -ForegroundColor Yellow
+    Write-Host "  Zie docs/DEVELOPER-SETUP.md sectie 5." -ForegroundColor Yellow
+    exit 1
+}
 
 # Controleer of de machine-lokale git-hook patronen aanwezig zijn (#514)
 $hooksPatterns = Join-Path $root ".githooks/sensitive-patterns.txt"
@@ -162,11 +201,11 @@ if (Test-PortListening -Port $ports.Azurite) {
 }
 
 # --- FunctionApp ---
-Write-Host "FunctionApp starten op http://localhost:$($ports.FunctionApp) ..." -ForegroundColor Cyan
+Write-Host "FunctionApp ($Tier-tier) starten op http://localhost:$($ports.FunctionApp) ..." -ForegroundColor Cyan
 Write-Host "  FunctionApp heeft GEEN hot reload. Na codewijzigingen: Stop-Debug.ps1 + Start-Debug.ps1." -ForegroundColor DarkYellow
 Start-Service -Name 'func' `
-    -Banner "FunctionApp - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
-    -Command "Set-Location '$root/FunctionApp'; func start --port $($ports.FunctionApp)" | Out-Null
+    -Banner "FunctionApp $Tier - poort $($ports.FunctionApp)  (geen hot reload - herstart vereist na codewijziging)" `
+    -Command "Set-Location '$funcProjectDir'; func start --port $($ports.FunctionApp)" | Out-Null
 
 # --- BlazorAdmin ---
 if ($NoWatch) {
@@ -215,7 +254,32 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $health = Wait-ForHealth -Url "http://localhost:$($ports.FunctionApp)/api/health" -TimeoutSeconds 120
 if ($health) {
     $versie = if ($health.version) { $health.version } else { 'onbekend' }
-    Write-Host "  FunctionApp OK - versie $versie" -ForegroundColor Green
+    # #863 legt de tier in de assembly-metadata vast en /api/health geeft hem terug. Dat is het
+    # enige bewijs dat de host die nu luistert ook echt de gevraagde tier is — een oude functiehost
+    # op dezelfde poort zou anders stilzwijgend als 'gestart' worden gerapporteerd.
+    $gemeten = if ($health.PSObject.Properties.Name -contains 'tier' -and $health.tier) { $health.tier } else { $null }
+    if ($gemeten -and $gemeten -ne $Tier) {
+        Write-Host "  FunctionApp antwoordt, maar meldt tier '$gemeten' terwijl '$Tier' gevraagd is." -ForegroundColor Red
+        Write-Host "    Draait er nog een oude functiehost op poort $($ports.FunctionApp)? Stop-Debug.ps1 en probeer opnieuw." -ForegroundColor Yellow
+        $failures.Add('FunctionApp (verkeerde tier)')
+    } else {
+        $tierLabel = if ($gemeten) { $gemeten } else { "$Tier (niet gemeld)" }
+        Write-Host "  FunctionApp OK - versie $versie, tier $tierLabel" -ForegroundColor Green
+    }
+
+    # #859: /api/health geeft 200 met status 'degraded' zodra de instellingencache leeg is. Dat is
+    # geen detail: zonder instellingen antwoordt élk /api/beheer/*-endpoint met 500, terwijl dit
+    # script tot #1060 gewoon 'FunctionApp OK' meldde. Een verse database heeft alleen de democlub
+    # (syncenabled = FALSE) en loopt daar altijd tegenaan.
+    $statusOk = -not ($health.PSObject.Properties.Name -contains 'status') -or $health.status -eq 'ok'
+    $settingsOk = -not ($health.PSObject.Properties.Name -contains 'settingsLoaded') -or $health.settingsLoaded
+    if (-not ($statusOk -and $settingsOk)) {
+        Write-Host "  Health meldt status '$($health.status)' (settingsLoaded=$($health.settingsLoaded))." -ForegroundColor Red
+        Write-Host "    Er is geen primaire club met syncenabled = TRUE in de database." -ForegroundColor Yellow
+        Write-Host "    Los op met: scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql" -ForegroundColor Yellow
+        Write-Host "    (zie docs/DEVELOPER-SETUP.md sectie 4.2) en herstart daarna de functiehost." -ForegroundColor Yellow
+        $failures.Add('FunctionApp (degraded)')
+    }
 } else {
     Write-Host "  FunctionApp reageerde niet binnen 120s op /api/health" -ForegroundColor Red
     $failures.Add('FunctionApp')
@@ -254,11 +318,11 @@ if ($failures.Count -gt 0) {
         Write-Host "  Controleer de foutmelding in het bijbehorende venster." -ForegroundColor Yellow
     }
     Write-Host "  Veelvoorkomend: .NET 9 runtime ontbreekt (503 'Function host is not running')" -ForegroundColor DarkGray
-    Write-Host "  of de SQL Server-database is niet bereikbaar." -ForegroundColor DarkGray
+    Write-Host "  of de database van de $Tier-tier is niet bereikbaar (docker compose up -d)." -ForegroundColor DarkGray
     exit 1
 }
 
-Write-Host "Alle services gereed in $duur seconden:" -ForegroundColor Green
+Write-Host "Alle services gereed in $duur seconden ($Tier-tier):" -ForegroundColor Green
 Write-Host "  FunctionApp   http://localhost:$($ports.FunctionApp)/api/health  (herstart vereist na C#-wijziging)" -ForegroundColor White
 if ($NoWatch) {
     Write-Host "  BlazorAdmin   http://localhost:$($ports.BlazorAdmin)  (geen hot reload)" -ForegroundColor White

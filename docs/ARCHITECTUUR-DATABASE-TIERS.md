@@ -2689,6 +2689,71 @@ is aangevuld).
 beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
 standaardpoort, lege pad → database `postgres`) blijven daarin behouden.
 
+## 51. De lokale ontwikkelomgeving volgt de gedeployde tier (#1060)
+
+Na de cutover van §49 draaide productie op Postgres, maar wees de dagelijkse ontwikkeltooling nog
+onverkort naar de SQL Server-tier: `Start-Debug.ps1` startte `FunctionApp/` hard-gecodeerd,
+`Test-App.ps1` las `SqlConnectionString` en sprak `sqlcmd`, en `docker compose up -d` startte alleen
+de SQL Server-container — de Postgres-service zat achter een profile.
+
+**Waarom dat meer is dan een ongemak.** §50 is er het bewijs van: `EmailProcessorFunction` ontbrak
+volledig op de Postgres-tier, de mailbox werd sinds 2026-09-04 niet meer gepolld, en geen enkele
+lokale verificatie sloeg aan — die mat een applicatie die niet gedeployd werd. Een verificatielus
+die de verkeerde tier meet, is geen halve verificatie maar een misleidende.
+
+### Wat er is omgedraaid
+
+| Plek | Voor | Na |
+|---|---|---|
+| `docker compose up -d` | alleen `sqlserver` | alleen `postgres`; `sqlserver` achter `--profile sqlserver` |
+| `Start-Debug.ps1` | `Set-Location FunctionApp` | `-Tier` (default `Postgres`), projectpad via `Get-DatabaseTierProject` |
+| `Test-App.ps1` | `SqlConnectionString` + `sqlcmd` | `-Tier` (default `Postgres`); per tier een eigen verbindings- en schemacontrole |
+| `postgres`-image | `postgres:16` | `postgres:17` — gelijk aan de gehoste hoofdversie, ook in de zelftest en de CI-job `fresh-db-postgres` |
+
+De tier-naam wordt nergens opnieuw vertaald: beide scripts lezen `scripts/ci/database-tiers.json`
+via `Get-DatabaseTierProject`, dezelfde tabel als `resolve-database-tier.sh` (#816/#865). De lokale
+tier en de gedeployde tier blijven volledig losgekoppeld — `-Tier` raakt `DatabaseTier` niet aan.
+
+### Wat de eerste echte uitvoering aan het licht bracht
+
+Dit deel is de reden om het op te schrijven: geen van de onderstaande punten was vooraf bedacht.
+
+**1. Een verse database levert een applicatie op waarin geen enkel beheerscherm werkt.** Na
+`docker compose up -d` + alle migraties bevat de database precies één club: AllStars FC, met
+`syncenabled = FALSE`. `PostgresAppSettings.LoadSettingsAsync` selecteert bewust alleen clubs met
+`syncenabled = true` (een democlub mag nooit stilzwijgend de primaire club worden), dus de
+instellingencache blijft leeg en `EasyAuthHelper.GetClubCodeFromRequest` gooit. Uitkomst: dertien
+van de dertien `/api/beheer/*`-endpoints antwoorden 500.
+
+Opgelost met `scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql` — een club-neutrale
+placeholder (`clubcode = 'CLUB'`, `syncenabled = TRUE`), bewust **buiten**
+`Database.Postgres/migrations/`: alles in die map wordt op elke database toegepast, productie
+inbegrepen.
+
+**2. `/api/health` wist het al, maar niemand keek.** De endpoint gaf keurig
+`status: degraded, settingsLoaded: false` (#859) — en `Start-Debug.ps1` meldde er "FunctionApp OK"
+overheen, omdat het alleen op een HTTP-antwoord controleerde. Dat is dezelfde klasse fout als §2a
+van CLAUDE.md beschrijft voor de live GUI: een 200 is geen bewijs. Het script leest die twee velden
+nu, en wijst bij `degraded` rechtstreeks naar het seed-script hierboven.
+
+**3. Tier-provenance als startvoorwaarde.** `/api/health` meldt zijn eigen tier uit de
+assembly-metadata (#863). `Start-Debug.ps1` vergelijkt dat nu met `-Tier`: een achtergebleven
+functiehost van de andere tier op poort 7094 zou anders als een geslaagde start doorgaan.
+
+**4. De macOS-verificatie die tot nu toe openstond, is gedaan.** §4.3 van DEVELOPER-SETUP.md meldde
+"macOS-uitvoeringsverificatie niet mogelijk gebleken (geen Apple Silicon-hardware)". Die staat er
+niet meer: de volledige keten — container, migraties, seed, functiehost, `Test-App.ps1` — is
+uitgevoerd op Apple Silicon tegen `postgres:17.11`, native, zonder Rosetta. Uitkomst: 36 geslaagde
+controles, één openstaand punt (`GitHubPat`/`GitHubOwner` niet ingevuld), dat op beide tiers
+bestaat en losstaat van deze wijziging.
+
+### Wat bewust niet gebeurt
+
+De SQL Server-tier wordt niet verwijderd of gedeprecieerd. Hij blijft `built: true` in
+`database-tiers.json`, houdt zijn eigen compose-service, template en schemacontrole, en is het
+rollbackpad van §49 stap 7. Alleen de standaardkeuze is verschoven naar de tier die daadwerkelijk
+draait.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

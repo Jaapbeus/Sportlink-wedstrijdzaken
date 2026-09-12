@@ -15,18 +15,22 @@ Windows- en de macOS-variant naast elkaar (#800).
 ## Snelstart (TL;DR)
 
 ```bash
-# 0. Start de lokale database (identiek op Windows en macOS, zie sectie 4.1)
-echo 'MSSQL_SA_PASSWORD=<jouw-sterke-wachtwoord>' > .env
+# 0. Start de lokale database — standaard Postgres, de tier die in productie draait (sectie 4.1)
+printf 'POSTGRES_USER=<gebruiker>\nPOSTGRES_PASSWORD=<wachtwoord>\nPOSTGRES_DB=sportlink\n' >> .env
 docker compose up -d
 ```
 ```powershell
 # 1. Kopieer en configureer local.settings.json
-cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
-# Stel SqlConnectionString in op jouw SQL Server (zie sectie 5)
+cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
+# Stel POSTGRES_CONNECTION_STRING in (zie sectie 5)
 
-# 2. Configureer Sportlink API-credentials in dbo.AppSettings (zie sectie 4)
+# 2. Schema + een primaire club (zie sectie 4.2 — zonder die club geeft elk beheerscherm 500)
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=5432;Username=<gebruiker>;Password=<wachtwoord>;Database=sportlink"
+.\scripts\dev\Invoke-PostgresMigrations.ps1
+docker cp scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql sportlink-postgres:/tmp/seed.sql
+docker exec -e PGPASSWORD="<wachtwoord>" sportlink-postgres psql -U "<gebruiker>" -d sportlink -v ON_ERROR_STOP=1 -f /tmp/seed.sql
 
-# 3. Start alle services
+# 3. Start alle services (Postgres-tier is de standaard; -Tier SqlServer voor de andere)
 .\scripts\dev\Start-Debug.ps1
 
 # 4. Verificeer (Start-Debug wacht zelf tot de services klaar zijn)
@@ -127,16 +131,16 @@ Dekt **Windows** en **macOS (Apple Silicon)**. Sla het platform over dat niet va
   ```
   npm install -g azurite
   ```
-- [ ] **Docker Desktop** — voor de lokale database. SQL Server draait op beide platforms in een
+- [ ] **Docker Desktop** — voor de lokale database. Beide tiers draaien op beide platforms in een
   container (`docker-compose.yml` in de repo-root); een rechtstreeks geïnstalleerde SQL
-  Server-service wordt niet meer ondersteund — zie sectie 4.1.
+  Server-service wordt niet meer ondersteund — zie sectie 4.1 (Postgres) en 4.4 (SQL Server).
 
 ### Toegang en credentials
 
 - [ ] Sportlink API URL en Client ID
-- [ ] Een SQL-login voor de lokale database: gebruikersnaam `sa` plus het wachtwoord dat je aan de
-  omgevingsvariabele `MSSQL_SA_PASSWORD` geeft (zie sectie 4.1) — of instantienaam/inloggegevens
-  als je in plaats daarvan een bestaande externe SQL Server gebruikt
+- [ ] Inloggegevens voor de lokale database: op de Postgres-tier `POSTGRES_USER`/`POSTGRES_PASSWORD`
+  uit je `.env` (sectie 4.1); op de SQL Server-tier gebruikersnaam `sa` plus `MSSQL_SA_PASSWORD`
+  (sectie 4.4) — of de gegevens van een bestaande externe server
 
 ---
 
@@ -196,30 +200,143 @@ git commit --allow-empty -m "test hooks"
 
 ## 4. Database opzetten
 
-> **Sinds 2026-09-04 draait productie op Postgres (`FunctionApp.Postgres`), niet meer op SQL
-> Server.** SQL Server (`FunctionApp`) blijft bestaan als rollbackpad en is nog volledig
-> functioneel, maar is niet meer de tier die een nieuwe fork zou moeten kiezen tenzij je bewust
-> voor SQL Server kiest. Er is een vastgelegde multi-tier-strategie (Postgres → SQLite → Cosmos DB
-> voor het e-maillog) — zie **[docs/ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md)**
-> voor de bouwvolgorde en het waarom. §4.1/§4.2 hieronder beschrijven de SQL Server-opzet; §4.3
-> beschrijft de Postgres-opzet — kies er één, afhankelijk van je gekozen `DatabaseTier`.
+> **De standaardtier is Postgres.** Dat is de tier die deze installatie in productie draait
+> (zie [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md) §49), en sinds #1060 ook
+> de tier waar `docker compose up -d`, `Start-Debug.ps1` en `Test-App.ps1` standaard op wijzen.
+> Lokaal op de andere tier ontwikkelen betekent dat je dagelijkse verificatie een applicatie meet
+> die niet gedeployd wordt — precies hoe #972 dagenlang onopgemerkt bleef.
+>
+> **De SQL Server-tier blijft volledig ondersteund** (§4.4–§4.7) voor forks die hem kiezen, en is
+> het rollbackpad van de cutover. Hij is alleen niet langer de standaard.
+>
+> | Tier | Lokale database | Functieproject | Start-Debug |
+> |---|---|---|---|
+> | **Postgres** (standaard) | `docker compose up -d` | `FunctionApp.Postgres/` | `.\scripts\dev\Start-Debug.ps1` |
+> | SQL Server | `docker compose --profile sqlserver up -d` | `FunctionApp/` | `.\scripts\dev\Start-Debug.ps1 -Tier SqlServer` |
 >
 > **Welke tier een fork daadwerkelijk deployt, is een CI/deploy-tijd-keuze, geen lokale keuze**
 > (#816): de GitHub repository-variabele `DatabaseTier` (Settings → Secrets and variables →
 > Actions → Variables) bepaalt welk `.csproj` `deploy.yml` bouwt en publiceert naar de Function
-> App — geldige waarden vandaag zijn `SqlServer` en `Postgres`. Ontbreekt de variabele of staat hij
-> op een onbekende waarde, dan faalt de deploy-workflow hard (zie
-> `scripts/ci/resolve-database-tier.sh`) — er is bewust geen stille default.
+> App. Ontbreekt de variabele of staat hij op een onbekende waarde, dan faalt de deploy-workflow
+> hard (zie `scripts/ci/resolve-database-tier.sh`) — er is bewust geen stille default.
 >
-> **Daarnaast moet ook `DatabaseTierSwitchConfirmation` gezet worden, met exact dezelfde waarde
-> als `DatabaseTier`** (dus bij een nieuwe fork: beide op `SqlServer` óf beide op `Postgres`) — het
-> tier-switch-veiligheidsmechanisme dat voorkomt dat een latere, per ongeluk gewijzigde
-> `DatabaseTier` production stilzwijgend naar een andere database laat omschakelen (zie
-> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2). Vergeet je deze tweede variabele bij een nieuwe fork,
-> dan faalt de eerste deploy met exitcode 3 en een duidelijke foutmelding die naar deze paragraaf
-> verwijst.
+> **Sinds #976 moet daarnaast ook `DatabaseTierSwitchConfirmation` gezet worden, met exact
+> dezelfde waarde als `DatabaseTier`** — het tier-switch-veiligheidsmechanisme dat voorkomt dat een
+> later per ongeluk gewijzigde `DatabaseTier` productie stilzwijgend naar een andere database laat
+> omschakelen (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §2). Staan ze niet gelijk, dan faalt de
+> eerstvolgende deploy met exitcode 3 en een foutmelding die naar deze paragraaf verwijst.
+>
+> De lokale tier en de gedeployde tier staan los van elkaar: `Start-Debug.ps1 -Tier` verandert
+> niets aan wat er gedeployd wordt, en `DatabaseTier` verandert niets aan je werkplek.
 
-### 4.1 Lokale database starten (Docker — identiek op Windows en macOS)
+### 4.1 Postgres-tier (standaard) — lokale database starten
+
+Vereist: Docker Desktop. De repository bevat `docker-compose.yml` in de root; `postgres` is daar de
+standaardservice.
+
+```bash
+docker compose up -d
+```
+
+Credentials komen uit `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` in een lokaal
+`.env`-bestand naast `docker-compose.yml` (staat in `.gitignore`) — nooit in de compose-file zelf,
+want deze repository is openbaar. Zonder die variabelen weigert `docker compose` te starten, met
+een expliciete melding.
+
+```bash
+echo 'POSTGRES_USER=<gebruikersnaam>'        >> .env
+echo 'POSTGRES_PASSWORD=<lokaal-wachtwoord>' >> .env
+echo 'POSTGRES_DB=sportlink'                 >> .env
+```
+
+Gebruik op Windows `Set-Content -Encoding ascii` in plaats van `echo ... > .env`: Windows
+PowerShell 5.1 schrijft anders een UTF-16-bestand, en `docker compose` leest dat niet als een
+geldig `.env`.
+
+> **De image-tag volgt de hoofdversie van de gehoste database** (`postgres:17`). Een migratie die
+> lokaal tegen een andere major slaagt, bewijst niets over de database die er werkelijk toe doet.
+> Wijzigt de gehoste major, pas dan drie plekken tegelijk aan: `docker-compose.yml`,
+> `docker-compose.selftest.yml` en de job `fresh-db-postgres` in `.github/workflows/build.yml`.
+>
+> **Let op bij het wisselen van major:** Postgres weigert te starten op een datadirectory van een
+> andere hoofdversie. Heb je al een volume van een oudere major, verwijder dat dan eenmalig met
+> `docker compose down -v` (dat wist uitsluitend je lokale ontwikkeldatabase).
+
+In tegenstelling tot het SQL Server-image is Postgres' officiële image echt multi-arch
+(linux/amd64 én linux/arm64). Op Apple Silicon draait de container dus **native**, zonder
+Rosetta-emulatie.
+
+`docker compose down` laat het volume (en dus je data) staan; `docker compose down -v` verwijdert
+de database definitief. `docker compose ps` toont of de container gezond is.
+
+De bijbehorende verbindingsreeks voor `FunctionApp.Postgres/local.settings.json` (sectie 5):
+
+```
+Host=localhost;Port=5432;Username=<gebruikersnaam>;Password=<lokaal-wachtwoord>;Database=sportlink
+```
+
+De gehoste database deelt een URI-vorm uit (`postgres://...`). Die wordt ook geaccepteerd —
+`PostgresConnectionStringNormalizer` vertaalt hem (#976).
+
+### 4.2 Postgres-tier — schema en demodata
+
+Het schema is hier geen dacpac en geen los postdeployment-script, maar de genummerde
+migratiebestanden in `Database.Postgres/migrations/`. `MigrationRunner` past ze één keer toe,
+binnen een advisory lock, en legt per bestand een SHA-256 vast in `schema_migrations` — een
+gewijzigd, al toegepast bestand wordt daardoor een harde fout in plaats van stille drift.
+
+```powershell
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=5432;Username=<gebruikersnaam>;Password=<lokaal-wachtwoord>;Database=sportlink"
+.\scripts\dev\Invoke-PostgresMigrations.ps1
+```
+
+Draai het gerust een tweede keer: dat hoort exitcode 0 te geven zonder iets toe te passen. Dat is
+meteen de idempotentiecheck. `Test-App.ps1 -Fix` doet dit ook automatisch als er migraties
+openstaan.
+
+**Daarna verplicht: een primaire club.** De migraties leveren alleen de democlub AllStars FC op, en
+die staat per ontwerp op `syncenabled = FALSE` — een democlub mag nooit stilzwijgend de primaire
+club worden. `PostgresAppSettings` selecteert echter uitsluitend clubs met `syncenabled = true`.
+Op een verse database blijft de instellingencache daardoor leeg, geeft `/api/health` status
+`degraded` en antwoordt **élk** `/api/beheer/*`-endpoint met 500. Seed daarom een club-neutrale
+placeholder:
+
+```bash
+docker cp scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql sportlink-postgres:/tmp/seed.sql
+docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" sportlink-postgres \
+    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/seed.sql
+```
+
+Idempotent. Levert clubcode `CLUB` met drie velden en een weekschema. Dit script staat bewust in
+`scripts/migrations/` en **niet** in `Database.Postgres/migrations/`: alles in die tweede map wordt
+op elke database toegepast, productie inbegrepen.
+
+`Start-Debug.ps1` meldt het expliciet wanneer deze stap ontbreekt, in plaats van "FunctionApp OK"
+te rapporteren voor een applicatie waarvan geen enkel beheerscherm werkt.
+
+### 4.3 Postgres-tier — verificatie
+
+```powershell
+.\scripts\dev\Test-App.ps1          # tier Postgres is de standaard
+.\scripts\dev\Test-App.ps1 -Fix     # past openstaande migraties toe
+```
+
+`Test-App.ps1` voert `psql` bij voorkeur ín de container uit; dan is een eigen installatie niet
+nodig. Heb je geen Docker maar wel een bereikbare Postgres, installeer dan `psql`
+(`winget install PostgreSQL.PostgreSQL.17` op Windows, `brew install libpq && brew link --force libpq`
+op macOS) — het script valt daar automatisch op terug.
+
+Een snelle losse verbindingscheck kan met:
+
+```powershell
+$env:PGPASSWORD = "<lokaal-wachtwoord>"
+.\scripts\dev\Test-PostgresConnection.ps1
+```
+
+De volledige end-to-end-zelftest van deze tier (containers, schema, demodata, API-poorten) is een
+apart script: `.\scripts\dev\Test-PostgresTier.ps1 -Tier Postgres -Mode Verify`.
+
+### 4.4 SQL Server-tier (alternatief) — lokale database starten
 
 Sinds #800 is Docker de **enige ondersteunde manier** om lokaal een database te draaien. Een
 rechtstreeks op Windows geïnstalleerde SQL Server-service (named instance, Windows-authenticatie)
@@ -283,7 +400,7 @@ gebruikt Apple's eigen crypto-library.
 is er geen lokale database nodig — vul die connection string gewoon in bij sectie 5. Dat werkt
 identiek op Windows en macOS, want het is altijd dezelfde TDS-verbindingsstring.
 
-### 4.2 Schema aanmaken
+### 4.5 SQL Server-tier — schema aanmaken
 
 Het volledige schema komt uit **één script**: `Database/Script.PostDeployment1.sql`. Dat is
 idempotent en bouwt een verse database in één keer compleet op — dezelfde weg die de
@@ -326,7 +443,7 @@ docker exec sportlink-sqlserver bash -c '/opt/mssql-tools18/bin/sqlcmd -S localh
 Op een verse database hoort daar ruwweg **23 tabellen en 8 procedures** uit te komen, met de
 schemas `dbo`, `stg`, `his`, `mta`, `pub`, `planner` en `avg`. `dbo.AppSettings` bevat dan twee
 rijen: een lege placeholder-club en de demoklub `ALLSTARS`. Vul je eigen clubgegevens in via
-sectie 4.3.
+sectie 4.6.
 
 Het Database-project (`.sqlproj`) bevat alle actuele schemadefinities, maar is een legacy
 SSDT-project dat **niet buiten Windows/Visual Studio gebouwd kan worden** — daarom staat het niet
@@ -356,7 +473,7 @@ zonder een `.dacpac` niets te publiceren.
 **AllStars-demoteams en -wedstrijden — apart, ná de eerste sync (#856):** `Script.PostDeployment1.sql`
 zaait de demo-velden, -veldbeschikbaarheid en -speeltijden, maar niet de demo-teams/-wedstrijden —
 die hangen af van `his.teams`/`his.matches`, die pas ontstaan bij de eerste Sportlink-sync (sectie
-4.3, of handmatig via `GET /api/sync-matches`). Draai daarna:
+4.6, of handmatig via `GET /api/sync-matches`). Draai daarna:
 
 ```powershell
 docker cp scripts/migrations/003-seed-allstars-demo-matches.sql sportlink-sqlserver:/tmp/003-seed.sql
@@ -367,7 +484,7 @@ Idempotent — gerust herhalen. Levert 28 teams, 28 begeleiders en 224 wedstrijd
 `ALLSTARS`. Draai je dit vóór de eerste sync, dan meldt het script duidelijk (RAISERROR) dat
 `his.teams`/`his.matches` nog niet bestaan, in plaats van stil niets te doen.
 
-### 4.3 Sportlink API-credentials instellen
+### 4.6 Sportlink API-credentials instellen (SQL Server-tier)
 
 ```sql
 USE SportlinkSqlDb;
@@ -383,7 +500,7 @@ SELECT * FROM [dbo].[AppSettings];   -- controleer resultaat
 GO
 ```
 
-### 4.4 Database verificatie
+### 4.7 Database verificatie (SQL Server-tier)
 
 ```sql
 USE SportlinkSqlDb;
@@ -399,67 +516,45 @@ SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTarg
 SELECT [SportlinkApiUrl], [SportlinkClientId] FROM [dbo].[AppSettings];
 ```
 
-### 4.3 Postgres-tier — lokale ontwikkelinfrastructuur
-
-> **Dit is sinds 2026-09-04 de tier die productie daadwerkelijk gebruikt** (`DatabaseTier=Postgres`,
-> issue #976). Deze sectie beschrijft de lokale Postgres-ontwikkelcontainer + verificatietooling.
-> Voor het migratiemechanisme zelf (genummerde `.sql`-bestanden, `Database.Postgres/migrations/`,
-> toegepast via `scripts/dev/Invoke-PostgresMigrations.ps1`), zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
-
-De Postgres-service in `docker-compose.yml` staat bewust achter een **profile**: een gewone
-`docker compose up -d` start alléén `sqlserver`, niet ongevraagd ook Postgres.
-
-```bash
-docker compose --profile postgres up -d postgres
-```
-
-Credentials komen uit `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`, zelfde `.env`-patroon als
-`MSSQL_SA_PASSWORD` hierboven — zet ze in hetzelfde lokale `.env`-bestand:
-
-```bash
-echo 'POSTGRES_USER=devuser' >> .env
-echo 'POSTGRES_PASSWORD=<jouw-lokale-wachtwoord>' >> .env
-echo 'POSTGRES_DB=sportlink' >> .env
-```
-
-In tegenstelling tot het SQL Server-image is Postgres' officiële image echt multi-arch (linux/amd64
-én linux/arm64) — empirisch bevestigd via `docker manifest inspect postgres:16`. Op Apple Silicon
-draait de container dus **native**, zonder Rosetta-emulatie.
-
-Verificatie via `psql` (Postgres' tegenhanger van `sqlcmd`):
-
-```powershell
-$env:PGPASSWORD = "<jouw-lokale-wachtwoord>"
-.\scripts\dev\Test-PostgresConnection.ps1
-```
-
-Vereist `psql` op je eigen machine (`winget install PostgreSQL.PostgreSQL.16` op Windows,
-`brew install libpq && brew link --force libpq` op macOS) — het script geeft die installatie-hint
-zelf ook als `psql` ontbreekt.
-
-`docker compose --profile postgres down -v` verwijdert de Postgres-container en het volume
-definitief; zonder `-v` blijft de data staan tussen restarts.
-
-**Bekend, nog niet gedaan:** macOS-uitvoeringsverificatie van deze container/scripts is in deze
-sessie niet mogelijk gebleken (geen Apple Silicon-hardware beschikbaar) — de configuratie volgt wel
-consequent de bestaande cross-platform-regels uit dit document (geen `platform: linux/amd64`, geen
-Windows-only cmdlets in de scripts).
-
 ---
 
 ## 5. local.settings.json configureren
 
-> Werk je op de Postgres-tier (§4.3)? Kopieer in plaats daarvan
-> `FunctionApp.Postgres/local.settings.template.json` naar
-> `FunctionApp.Postgres/local.settings.json` en stel `PostgresConnectionString` in (zelfde
-> `.env`-credentials als hierboven). De rest van deze sectie beschrijft de SQL Server-variant.
+Elke tier heeft zijn eigen template naast zijn eigen functieproject. Kopieer die van de tier
+waarop je werkt — `Start-Debug.ps1` en `Test-App.ps1` lezen het bestand dat bij de gekozen tier
+hoort, en melden het expliciet als het ontbreekt.
+
+### 5.1 Postgres-tier (standaard)
+
+```powershell
+cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
+```
+
+Stel `POSTGRES_CONNECTION_STRING` in op dezelfde credentials als in je `.env` (sectie 4.1):
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "POSTGRES_CONNECTION_STRING": "Host=localhost;Port=5432;Username=<gebruiker>;Password=<wachtwoord>;Database=sportlink"
+  }
+}
+```
+
+De URI-vorm die de gehoste database uitdeelt (`postgres://...`) wordt ook geaccepteerd (#976).
+De overige sleutels in de template (Graph, AI, GitHub, `AllowExternalIntegrations`) mogen leeg
+blijven; zie §5.3 voor wat dat betekent.
+
+### 5.2 SQL Server-tier
 
 ```powershell
 cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
 ```
 
 Stel de `SqlConnectionString` in — identiek op Windows en macOS, want de lokale database is in
-beide gevallen dezelfde Docker-container (sectie 4.1) met een SQL-login:
+beide gevallen dezelfde Docker-container (sectie 4.4) met een SQL-login:
 
 ```json
 {
@@ -480,7 +575,7 @@ gelijk. `Test-App.ps1` leidt de `sqlcmd`-authenticatie automatisch af uit deze c
 
 > `local.settings.json` staat in `.gitignore` en wordt nooit gecommit.
 
-### 5.1 Uitgaande integraties lokaal en in CI standaard geblokkeerd (#857)
+### 5.3 Uitgaande integraties lokaal en in CI standaard geblokkeerd (#857)
 
 Lokaal draaien (én CI) raakt standaard **geen enkele externe dienst** — ook niet als je toevallig
 een secret hebt ingevuld:
@@ -902,7 +997,7 @@ curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chm
 ### "Cannot connect to database"
 
 Identiek op Windows en macOS — de lokale database is in beide gevallen de Docker-container uit
-sectie 4.1. Controleer eerst of de container gezond is:
+sectie 4.4. Controleer eerst of de container gezond is:
 
 ```bash
 docker compose ps
@@ -922,7 +1017,7 @@ sqlcmd -S localhost,1433 -U sa -d SportlinkSqlDb -C -Q "SELECT @@VERSION"
 
 1. Controleer `SqlConnectionString` in `local.settings.json`
 2. Controleer of `MSSQL_SA_PASSWORD` gezet was vóór `docker compose up -d` (zonder die variabele weigert de container te starten)
-3. Controleer of `SportlinkSqlDb` bestaat (zie sectie 4.2 — is het schema al aangemaakt?)
+3. Controleer of `SportlinkSqlDb` bestaat (zie sectie 4.5 — is het schema al aangemaakt?)
 
 ### "401 Unauthorized" op Sportlink API
 
@@ -977,7 +1072,7 @@ Open daarna `http://localhost:5242` in een **nieuw Incognito-venster** (Ctrl+Shi
 SELECT name FROM sys.procedures WHERE name IN ('sp_MergeStgToHis','sp_CreateTargetTableFromSource');
 ```
 
-Publiceer het Database-project opnieuw (zie sectie 4.2).
+Publiceer het Database-project opnieuw (zie sectie 4.5).
 
 ---
 
