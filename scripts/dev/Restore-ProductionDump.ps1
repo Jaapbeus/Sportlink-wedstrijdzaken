@@ -55,9 +55,28 @@ if (-not $ReuseEnvironment) {
     Remove-Item Env:\PRODUCTIE_POSTGRES_CONNECTION_STRING -ErrorAction SilentlyContinue
 }
 
+# docker-compose.yml leest .env zelf voor het aanmaken van de container, maar dat vult NIET
+# automatisch de omgevingsvariabelen van je huidige shell-sessie (twee losse dingen). Dit script
+# laadt daarom ontbrekende POSTGRES_*-variabelen alsnog uit .env in de repo-root, zonder een al
+# expliciet gezette waarde in deze sessie te overschrijven.
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
+$envFile = Join-Path $repoRoot ".env"
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
+            $key = $matches[1]
+            if (-not (Get-Item "Env:\$key" -ErrorAction SilentlyContinue)) {
+                Set-Item "Env:\$key" $matches[2]
+            }
+        }
+    }
+}
+
 foreach ($required in @("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB")) {
     if (-not (Get-Item "Env:\$required" -ErrorAction SilentlyContinue)) {
-        Write-Host "Ontbrekende omgevingsvariabele: $required (staat normaal in je .env, zie docker-compose.yml)." -ForegroundColor Red
+        Write-Host "Ontbrekende omgevingsvariabele: $required — staat niet in je shell-sessie en ook niet" -ForegroundColor Red
+        Write-Host "in .env in de repo-root ($envFile). Zet 'm handmatig, bijvoorbeeld:" -ForegroundColor Red
+        Write-Host "  `$env:$required = `"...`"" -ForegroundColor Red
         exit 1
     }
 }
