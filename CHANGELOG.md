@@ -39,6 +39,26 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Uitgebreide audit-logging voor Sportlink-mutaties (#998).** Naast de taakstatus legt de audit nu
   ook de wedstrijdstatus, of de wedstrijd is afgelast/nog concept, en de accommodatiegegevens vast —
   bedoeld om een seizoen aan echte gebruiksdata te verzamelen.
+- **Officials toewijzen vanuit Dagplanning (#994) — scaffolding, altijd gesimuleerd.** Een
+  beheerder kan voortaan per positie (scheidsrechter, AR1, AR2) een relatiecode/persoons-ID
+  invullen en toewijzen; validatiemeldingen van Sportlink worden per official getoond. Dit pad
+  stuurt bewust NOOIT een echte aanroep naar Sportlink — het endpoint en de requestbody zijn nog
+  niet met een netwerktrace bevestigd, dus de actie blijft een simulatie totdat dat wél gebeurd is,
+  ongeacht de dry-run-instelling van de club. Geen zoekfunctie op officials en geen namen in beeld
+  (alleen wat de beheerder zelf intikt).
+- **Nieuwe, harde code-lock voor nog-onbevestigde Sportlink-mutaties (`forceDryRun`, onderdeel van
+  #994).** Naast de bestaande dry-run-instelling (voor bevestigde mutaties, per club uit te zetten)
+  bestaat er nu een tweede vergrendeling die uitsluitend door een toekomstige codewijziging kan
+  worden opgeheven — nooit door een instelling. Gedeelde infrastructuur, ook gebruikt door de
+  volgende officials-gerelateerde issues.
+- **CA-certificaat van de databaseprovider zit nu in het deploy-pakket, en de smoke test bewaakt
+  de effectieve TLS-modus (#1096).** `FunctionApp.Postgres/prod-ca-2021.crt` (Supabase Root 2021
+  CA, geldig t/m 2031-04-26) wordt meegekopieerd naar het publish-pakket, zodat `sslrootcert` in
+  `POSTGRES_CONNECTION_STRING` naar een pad binnen het pakket kan wijzen — nodig omdat Supabase
+  een eigen CA gebruikt (zie Security-post hieronder en `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50).
+  De smoke test na een deploy leest voortaan ook `tlsWarning` uit `/api/health` en meldt die als
+  `::warning::`, dezelfde behandeling als `pendingMigrations`/`schemaWarning` — nooit een
+  deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
 
 ### Fixed
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
@@ -63,16 +83,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   velden controleren in plaats van alleen op een 200 (zie issue #1098). Het toepassen van de
   openstaande migraties blijft een actie van de beheerder — zie
   `docs/ARCHITECTUUR-DATABASE-TIERS.md` §55.
-
-### Added
-- **CA-certificaat van de databaseprovider zit nu in het deploy-pakket, en de smoke test bewaakt
-  de effectieve TLS-modus (#1096).** `FunctionApp.Postgres/prod-ca-2021.crt` (Supabase Root 2021
-  CA, geldig t/m 2031-04-26) wordt meegekopieerd naar het publish-pakket, zodat `sslrootcert` in
-  `POSTGRES_CONNECTION_STRING` naar een pad binnen het pakket kan wijzen — nodig omdat Supabase
-  een eigen CA gebruikt (zie Security-post hieronder en `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50).
-  De smoke test na een deploy leest voortaan ook `tlsWarning` uit `/api/health` en meldt die als
-  `::warning::`, dezelfde behandeling als `pendingMigrations`/`schemaWarning` — nooit een
-  deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
 
 ### Security
 - **Volledige certificaatvalidatie op de databaseverbinding: bouwstenen en certificaat klaar,

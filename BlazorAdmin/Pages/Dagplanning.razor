@@ -704,6 +704,51 @@
                                                     </div>
                                                 }
                                             }
+                                            @* #994: scaffolding, altijd code-gelockt (forceDryRun) — nooit een echte
+                                               Sportlink-aanroep totdat een mens de body live heeft bevestigd. Bewust
+                                               géén zoekfunctie op officials (AVG): alleen een losse relatiecode/
+                                               persoons-ID per positie, geen namen. *@
+                                            @if (_sportlinkData.IsAssignOfficialsAllowed)
+                                            {
+                                                <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">Scheidsrechter (relatiecode)</label>
+                                                        <input class="form-control form-control-sm" style="width:8rem;"
+                                                               value="@_sportlinkOfficialScheidsrechter.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkOfficialScheidsrechter[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">AR1 (relatiecode)</label>
+                                                        <input class="form-control form-control-sm" style="width:8rem;"
+                                                               value="@_sportlinkOfficialAr1.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkOfficialAr1[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <div>
+                                                        <label class="form-label mb-0" style="font-size:0.75rem;">AR2 (relatiecode)</label>
+                                                        <input class="form-control form-control-sm" style="width:8rem;"
+                                                               value="@_sportlinkOfficialAr2.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                               @onchange="e => _sportlinkOfficialAr2[item.WedstrijdCode.Value] = e.Value?.ToString()" />
+                                                    </div>
+                                                    <button class="btn btn-sm btn-outline-primary" disabled="@_sportlinkOfficialBezig.GetValueOrDefault(item.WedstrijdCode.Value)"
+                                                            @onclick="() => SaveOfficialsAsync(item.WedstrijdCode.Value)">
+                                                        Scheidsrechters toewijzen
+                                                    </button>
+                                                    @if (_sportlinkOfficialBezig.GetValueOrDefault(item.WedstrijdCode.Value))
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                    }
+                                                </div>
+                                                <div class="text-muted" style="font-size:0.75rem;">
+                                                    Nog niet live bevestigd door Sportlink — deze actie is altijd een
+                                                    simulatie, ook als dry-run uit staat voor deze club.
+                                                </div>
+                                                if (!string.IsNullOrEmpty(_sportlinkOfficialMelding.GetValueOrDefault(item.WedstrijdCode.Value)))
+                                                {
+                                                    <div class="mt-1 @SportlinkMeldingKlasse(_sportlinkOfficialMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value), _sportlinkOfficialMeldingDryRun.GetValueOrDefault(item.WedstrijdCode.Value))">
+                                                        @_sportlinkOfficialMelding.GetValueOrDefault(item.WedstrijdCode.Value)
+                                                    </div>
+                                                }
+                                            }
                                         }
                                     </td>
                                 </tr>
@@ -945,6 +990,76 @@
         finally
         {
             _sportlinkVeldBezig[wedstrijdCode] = false;
+        }
+    }
+
+    // #994: officials (scheidsrechter/AR1/AR2) toewijzen — scaffolding, altijd code-gelockt
+    // (forceDryRun): ongeacht de club-instelling sportlinkDryRun simuleert de server deze actie
+    // altijd, totdat een mens de requestbody live heeft bevestigd (zie
+    // SportlinkClubClient.MatchOfficialsActionLiveBevestigd). Bewust geen zoekfunctie — alleen een
+    // losse relatiecode/persoons-ID per positie (AVG, #994).
+    private readonly Dictionary<long, string?> _sportlinkOfficialScheidsrechter = new();
+    private readonly Dictionary<long, string?> _sportlinkOfficialAr1 = new();
+    private readonly Dictionary<long, string?> _sportlinkOfficialAr2 = new();
+    private readonly Dictionary<long, bool> _sportlinkOfficialBezig = new();
+    private readonly Dictionary<long, string?> _sportlinkOfficialMelding = new();
+    private readonly Dictionary<long, bool> _sportlinkOfficialMeldingFout = new();
+    private readonly Dictionary<long, bool> _sportlinkOfficialMeldingDryRun = new();
+
+    private async Task SaveOfficialsAsync(long wedstrijdCode)
+    {
+        _sportlinkOfficialMelding[wedstrijdCode] = null;
+        _sportlinkOfficialBezig[wedstrijdCode] = true;
+        StateHasChanged();
+        try
+        {
+            var officials = new List<(string OfficialPosition, string PersoonId)>();
+            void VoegToe(string positie, string? persoonId)
+            {
+                if (!string.IsNullOrWhiteSpace(persoonId))
+                    officials.Add((positie, persoonId));
+            }
+            VoegToe("Referee", _sportlinkOfficialScheidsrechter.GetValueOrDefault(wedstrijdCode));
+            VoegToe("AssistantReferee1", _sportlinkOfficialAr1.GetValueOrDefault(wedstrijdCode));
+            VoegToe("AssistantReferee2", _sportlinkOfficialAr2.GetValueOrDefault(wedstrijdCode));
+
+            var result = await Api.PutSportlinkOfficialsAsync(wedstrijdCode.ToString(), officials);
+
+            if (!result.Success)
+            {
+                _sportlinkOfficialMeldingFout[wedstrijdCode] = true;
+                _sportlinkOfficialMelding[wedstrijdCode] = result.ErrorMessage ?? "Onbekende fout bij toewijzen officials.";
+                return;
+            }
+
+            _sportlinkOfficialMeldingDryRun[wedstrijdCode] = result.Data?.IsDryRun == true;
+            if (result.Data?.IsForcedDryRun == true)
+            {
+                _sportlinkOfficialMeldingFout[wedstrijdCode] = false;
+                _sportlinkOfficialMelding[wedstrijdCode] = "Nog niet live bevestigd door Sportlink — deze actie is altijd "
+                    + "een simulatie, ook als dry-run uit staat voor deze club.";
+            }
+            else if (result.Data?.IsDryRun == true)
+            {
+                _sportlinkOfficialMeldingFout[wedstrijdCode] = false;
+                _sportlinkOfficialMelding[wedstrijdCode] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+            }
+            else if (result.Data?.IsSuccess == true)
+            {
+                _sportlinkOfficialMeldingFout[wedstrijdCode] = false;
+                _sportlinkOfficialMelding[wedstrijdCode] = "Officials toegewezen in Sportlink Club.";
+            }
+            else
+            {
+                _sportlinkOfficialMeldingFout[wedstrijdCode] = true;
+                var violations = result.Data?.Violations;
+                _sportlinkOfficialMelding[wedstrijdCode] = "Sportlink heeft de toewijzing afgewezen"
+                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
+            }
+        }
+        finally
+        {
+            _sportlinkOfficialBezig[wedstrijdCode] = false;
         }
     }
 

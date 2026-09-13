@@ -176,4 +176,36 @@ public interface ISportlinkClubClient
         string publicRequestId,
         string? remarks,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Wijst officials (scheidsrechter, assistenten) toe aan een wedstrijd (#994, epic #986) —
+    /// <c>PUT competition/match/official/MatchOfficialsAction</c>.
+    /// <b>ONBEVESTIGD:</b> dit endpoint en de body-vorm zijn nooit met een netwerktrace gezien
+    /// (gereverse-engineerd uit Sportlinks eigen frontend-code) — deze methode roept daarom altijd
+    /// intern <c>forceDryRun: true</c> aan totdat een mens (nooit een agent, zie
+    /// docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en de lock-constante in een
+    /// aparte PR omzet. Dit is ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>.
+    /// <b>De aanroeper controleert VOORAF</b> <c>SportlinkMutationGuard.MagMuteren(match,
+    /// SportlinkMutationSoort.Officials)</c>.
+    /// <para>
+    /// <b>AVG:</b> roept nooit een Sportlink-zoek-/personendetail-endpoint aan — de aanroeper geeft
+    /// uitsluitend een door de beheerder ingevoerde relatiecode/persoons-ID per positie mee, nooit
+    /// een naam.
+    /// </para>
+    /// </summary>
+    /// <param name="functioneleRol">Functionele rol voor token-lookup.</param>
+    /// <param name="publicMatchId">Zie de TODO(#987)-waarschuwing op <see cref="GetMatchAsync"/>.</param>
+    /// <param name="officials">Eén regel per te (her)bezetten positie — zie <see cref="SportlinkOfficialToewijzing"/>.</param>
+    /// <returns>
+    /// Bij <c>Status=Ok</c>: <c>Data.IsForcedDryRun</c> is in de praktijk altijd <c>true</c> zolang
+    /// de code-lock actief is. <c>Data.IsSuccess=false</c> betekent ofwel een transport-afwijzing
+    /// (HTTP 420-vorm) ofwel — taakspecifiek voor dit endpoint — dat minstens één official een
+    /// <c>ValidationDescription</c> had (Sportlinks "opgeslagen met fouten"); zie
+    /// <c>Data.Violations</c> voor de/detail(s).
+    /// </returns>
+    Task<SportlinkClubResponse<SportlinkMutationResult>> AssignOfficialsAsync(
+        string functioneleRol,
+        string publicMatchId,
+        IReadOnlyList<SportlinkOfficialToewijzing> officials,
+        CancellationToken cancellationToken = default);
 }

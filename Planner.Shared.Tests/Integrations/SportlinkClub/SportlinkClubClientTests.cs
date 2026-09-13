@@ -4,6 +4,7 @@ using Moq;
 using Moq.Protected;
 using Planner.Shared.Integrations.SportlinkClub;
 using System.Net;
+using System.Text.Json;
 using Xunit;
 
 namespace Planner.Shared.Tests.Integrations.SportlinkClub;
@@ -1601,6 +1602,107 @@ public class SportlinkClubClientTests
             log.Should().NotContain(FictieveRefreshToken);
             log.Should().NotContain(NewFictieveRefreshToken);
         }
+    }
+
+    // ── forceDryRun code-lock (#994/§1, epic #986) ──
+    // Kern-eis: een mutatie met forceDryRun:true blijft ALTIJD gesimuleerd, ook als de globale
+    // instelling (isDryRun-delegate) NIET op dry-run staat. Dit bewijst dat de lock niet via de
+    // bestaande sportlinkDryRun-instelling omzeilbaar is.
+
+    [Fact]
+    public async Task AssignOfficialsAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    {
+        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
+        // echte PUT/POST naar het MatchOfficialsAction-endpoint gaan, want AssignOfficialsAsync
+        // geeft altijd forceDryRun: true mee (endpoint/body nog niet live bevestigd, #994).
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
+                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.AssignOfficialsAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("MatchOfficialsAction"));
+    }
+
+    [Fact]
+    public void BuildMatchOfficialsBody_AanNameNietLiveBevestigd_ZetPublicMatchIdEnOfficialsToBeAssigned()
+    {
+        // Vastlegging van de AANGENOMEN, NOG NIET LIVE BEVESTIGDE body-vorm (#994) — de
+        // elementstructuur ("OfficialPosition"/"PersoonId") is nooit met een netwerktrace gezien,
+        // zie SportlinkOfficialToewijzing.cs. Deze test houdt de aanname grijpbaar/regressie-vast,
+        // niet een bevestigd contract.
+        var body = SportlinkClubClient.BuildMatchOfficialsBody(
+            TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456"), new("AssistantReferee1", "654321") });
+
+        var json = JsonSerializer.Serialize(body);
+
+        json.Should().Contain($"\"PublicMatchId\":\"{TestPublicMatchId}\"");
+        json.Should().Contain("\"OfficialsToBeAssigned\"");
+        json.Should().Contain("\"OfficialPosition\":\"Referee\"").And.Contain("\"PersoonId\":\"123456\"");
+        json.Should().Contain("\"OfficialPosition\":\"AssistantReferee1\"").And.Contain("\"PersoonId\":\"654321\"");
+    }
+
+    [Fact]
+    public void VerrijkOfficialsResultaat_MinstensEenValidationDescription_ZetIsSuccessFalseMetViolations()
+    {
+        // #994: Sportlink toont "opgeslagen met fouten" (IS_SAVED_WITH_ERRORS) zodra één official
+        // een ValidationDescription heeft — ook al is de HTTP-status 200/Error niet gezet. De
+        // generieke PutMutationAsync-parsing ziet dit niet; VerrijkOfficialsResultaat is de
+        // taakspecifieke uitbreiding die dat corrigeert.
+        var json = """
+            {"Officials": [
+                {"OfficialPosition": "Referee", "ValidationDescription": null},
+                {"OfficialPosition": "AssistantReferee1", "ValidationDescription": "Persoon heeft al een aanstelling voor deze wedstrijd"}
+            ]}
+            """;
+        var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
+
+        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat(json, basisResultaat);
+
+        verrijkt.IsSuccess.Should().BeFalse("minstens één official had een ValidationDescription — Sportlink toont dit als 'opgeslagen met fouten'");
+        verrijkt.Violations.Should().ContainSingle().Which.Should().Be("Persoon heeft al een aanstelling voor deze wedstrijd");
+    }
+
+    [Fact]
+    public void VerrijkOfficialsResultaat_GeenValidationDescriptions_LaatResultaatOngewijzigd()
+    {
+        var json = """{"Officials": [{"OfficialPosition": "Referee", "ValidationDescription": null}]}""";
+        var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
+
+        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat(json, basisResultaat);
+
+        verrijkt.IsSuccess.Should().BeTrue();
+        verrijkt.Violations.Should().BeNullOrEmpty();
+    }
+
+    [Fact]
+    public void VerrijkOfficialsResultaat_OnherkenbareVorm_LaatResultaatOngewijzigd()
+    {
+        // Defensief pad: als de respons onverwacht geen "Officials"-array bevat (of onherkenbare
+        // JSON is), mag dit geen extra fout stapelen bovenop het generieke resultaat.
+        var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
+
+        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat("""{"Error": true}""", basisResultaat);
+
+        verrijkt.Should().Be(basisResultaat);
     }
 }
 

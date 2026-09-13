@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
+using System.Linq;
 
 namespace FunctionApp.Postgres.Sportlink;
 
@@ -140,6 +141,43 @@ public static class SportlinkMatchFunction
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
+    /// <summary>
+    /// <c>PUT /api/sportlink/match/{wedstrijdcode}/officials</c> (#994, epic #986) — officials
+    /// (scheidsrechter/assistenten) toewijzen. <b>ONBEVESTIGD, altijd code-gelockt:</b> deze
+    /// mutatie loopt via <see cref="ISportlinkClubClient.AssignOfficialsAsync"/>, dat intern
+    /// <c>forceDryRun: true</c> gebruikt totdat een mens een live trace heeft gedaan (zie
+    /// <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §4.2/§4.4) — ONAFHANKELIJK van de club-instelling
+    /// <c>sportlinkDryRun</c>. AVG: de DTO bevat uitsluitend positie + een door de beheerder
+    /// ingevoerde relatiecode/persoons-ID, nooit een naam — er wordt geen enkel Sportlink-zoek-
+    /// /personendetail-endpoint aangeroepen (zie issue #994).
+    /// </summary>
+    [Function("SportlinkMatchOfficialsPut")]
+    public static Task<IActionResult> PutOfficials(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/officials")] HttpRequest req,
+        string wedstrijdcode,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
+            async clubCode =>
+            {
+                if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
+                    return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
+
+                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
+                var dto = JsonConvert.DeserializeObject<OfficialsDto>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
+
+                var toewijzingen = (dto?.Officials ?? new List<OfficialToewijzingDto>())
+                    .Where(o => !string.IsNullOrWhiteSpace(o.OfficialPosition) && !string.IsNullOrWhiteSpace(o.PersoonId))
+                    .Select(o => new SportlinkOfficialToewijzing(o.OfficialPosition!, o.PersoonId!))
+                    .ToList();
+
+                return await ExecuteMutationAsync(
+                    req, sportlinkClient, wedstrijdcodeValue, clubCode, "MatchOfficialsAction",
+                    SportlinkMutationSoort.Officials, dto, context,
+                    (publicMatchId, _) => sportlinkClient!.AssignOfficialsAsync(RolNaam, publicMatchId, toewijzingen));
+            },
+            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
     // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): Sportlink verwacht
     // "{FacilityId}-DRESSINGROOM-{n}" (bijv. "BBCF989-DRESSINGROOM-11"), geen los kleedkamernummer.
     // De DTO-veldnamen blijven ...DressingRoomId (wire-compatibel met BlazorAdmin), maar de waarde
@@ -152,13 +190,15 @@ public static class SportlinkMatchFunction
     }
 
     /// <summary>
-    /// Bepaalt het audit-<c>resultaat</c> voor een mutatie-uitkomst (#998) — gedeeld met
-    /// <see cref="SportlinkChangeRequestFunction"/>. <c>DryRun</c> gaat vóór <c>IsSuccess</c>: bij een
-    /// dry-run-aanroep is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c>
-    /// (gesimuleerd succes), maar de audit moet expliciet tonen dat er niets echt is verzonden.
+    /// Bepaalt het audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994) — gedeeld
+    /// met <see cref="SportlinkChangeRequestFunction"/>. <c>IsForcedDryRun</c> gaat vóór
+    /// <c>IsDryRun</c>, dat op zijn beurt vóór <c>IsSuccess</c> gaat: een code-gelockte, nog niet
+    /// live bevestigde mutatie (#994, bijv. officials) moet in de audit apart herkenbaar zijn van
+    /// een dry-run die uitsluitend door de club-instelling <c>sportlinkDryRun</c> komt — bij beide
+    /// is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c> (gesimuleerd succes).
     /// </summary>
     internal static string BepaalAuditResultaat(SportlinkMutationResult r) =>
-        r.IsDryRun ? "DryRun" : r.IsSuccess ? "Success" : "Failure";
+        r.IsForcedDryRun ? "DryRunLocked" : r.IsDryRun ? "DryRun" : r.IsSuccess ? "Success" : "Failure";
 
     private sealed class KleedkamersDto
     {
@@ -172,6 +212,20 @@ public static class SportlinkMatchFunction
         public string? FieldId { get; set; }
         public string? FieldSize { get; set; }
         public int? FieldOffset { get; set; }
+    }
+
+    /// <summary>#994: per positie een losse tekstinvoer (relatiecode/persoons-ID) — geen zoekfunctie,
+    /// geen namen (AVG). <see cref="OfficialToewijzingDto.OfficialPosition"/>-waarden zijn ONBEVESTIGD,
+    /// zie <see cref="SportlinkOfficialToewijzing"/>.</summary>
+    private sealed class OfficialsDto
+    {
+        public List<OfficialToewijzingDto>? Officials { get; set; }
+    }
+
+    private sealed class OfficialToewijzingDto
+    {
+        public string? OfficialPosition { get; set; }
+        public string? PersoonId { get; set; }
     }
 
     /// <summary>Gedeelde stappen voor elke mutatie-actie op een bestaande wedstrijd: PublicMatchId
