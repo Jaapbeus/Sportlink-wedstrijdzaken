@@ -3,8 +3,19 @@ using Npgsql;
 namespace Database.Postgres;
 
 /// <summary>
+/// Resultaat van <see cref="PostgresConnectionStringNormalizer.NormalizeWithDiagnostics"/>:
+/// de genormaliseerde connectiestring, de TLS-modus die daadwerkelijk gaat gelden, en — als het
+/// TLS-beleid niet volledig gehaald wordt — een waarschuwing die veilig te tonen is (bevat nooit
+/// host, gebruiker of wachtwoord; <c>/api/health</c> is anoniem toegankelijk).
+/// </summary>
+public sealed record PostgresConnectionNormalization(
+    string ConnectionString,
+    SslMode EffectiveSslMode,
+    string? TlsWarning);
+
+/// <summary>
 /// Normaliseert een Postgres-connectiestring naar de vorm die <see cref="NpgsqlConnection"/>
-/// rechtstreeks accepteert, en dwingt daarbij het TLS-beleid van #1004 af. Supabase's dashboard
+/// rechtstreeks accepteert, en past daarbij het TLS-beleid van #1004/#1095 toe. Supabase's dashboard
 /// toont de URI-vorm (<c>postgresql://gebruiker:wachtwoord@host:5432/database</c>) prominenter dan
 /// de keyword=value-vorm die Npgsql verwacht — beide zijn een voor de hand liggende keuze om te
 /// kopiëren, en Npgsql accepteert alleen de tweede rechtstreeks. Ontdekt tijdens de eerste
@@ -16,38 +27,60 @@ namespace Database.Postgres;
 /// uit de URI-query en zette altijd <see cref="SslMode.Require"/> — een modus die sinds Npgsql 8
 /// geen certificaatketen of hostnaam meer valideert (zie
 /// <see href="https://www.npgsql.org/doc/release-notes/8.0.html"/>), en dus geen bescherming biedt
-/// tegen een aanvaller die zich als het database-endpoint voordoet (MITM). Dit type maakt nu
-/// onderscheid tussen twee gevallen, consistent met hoe <c>EgressGuard</c> lokaal van productie
-/// onderscheidt (env-gebaseerd) maar toegepast op de vraag die hier daadwerkelijk telt — welke
-/// server wordt benaderd, niet welk proces het aanroept:
+/// tegen een aanvaller die zich als het database-endpoint voordoet (MITM). Sinds #1004 worden
+/// <c>sslmode</c>/<c>sslrootcert</c> uit de URI-query wél vertaald, en geldt voor beide vormen
+/// hetzelfde beleid, op basis van de daadwerkelijk benaderde host — niet van het aanroepende proces:
 /// <list type="bullet">
 /// <item>Host is een van de lokale-ontwikkelhosts (<see cref="LocalDevelopmentHosts"/>) — exact de
 /// hosts uit <c>docker-compose.yml</c>, <c>docs/DEVELOPER-SETUP.md</c> §7.2 en de CI-job
-/// <c>fresh-db-postgres</c>. Geen TLS-eis: de officiële <c>postgres:16</c>-image draait zonder TLS,
+/// <c>fresh-db-postgres</c>. Geen TLS-eis: de officiële <c>postgres</c>-image draait zonder TLS,
 /// dus Npgsql's default (<see cref="SslMode.Prefer"/>) valt terug op een onversleutelde verbinding
 /// zoals vandaag al het geval is.</item>
-/// <item>Elke andere host — dit is per definitie een productie- of stagingdatabase — vereist
-/// expliciet <see cref="SslMode.VerifyFull"/>. Ontbreekt dat, dan gooit <see cref="Normalize"/> een
-/// <see cref="InvalidOperationException"/> vóór er ook maar een verbinding wordt geopend. Er wordt
-/// nergens een callback toegevoegd die elk certificaat accepteert.</item>
+/// <item>Elke andere host — per definitie een productie- of stagingdatabase — hoort op
+/// <see cref="SslMode.VerifyFull"/> te staan. Er wordt nergens een callback toegevoegd die elk
+/// certificaat accepteert.</item>
 /// </list>
-/// Dit beleid geldt identiek voor de URI-vorm én de keyword/value-vorm — beide gaan door
-/// <see cref="EnforceTlsPolicy"/>. De ruwe connectiestring wordt hier nooit gelogd (bevat
-/// wachtwoorden).
+/// </para>
+/// <para>
+/// <b>#1095 — fail-open met waarschuwing in plaats van fail-closed.</b> #1004 gooide voor een
+/// niet-lokale host zonder <c>verify-full</c> een <see cref="InvalidOperationException"/> vóór de
+/// eerste verbinding. Omdat <c>PostgresDatabaseConfig.ConnectionString</c> een static initializer
+/// is, legde dat bij release v3.3.0.0 de complete productie-Function App plat (elke databasetoegang
+/// faalde; <c>/api/health</c> gaf aanhoudend 503) — de bestaande productie-instelling had geen
+/// <c>?sslmode=</c>, en vóór #1004 werd daar stilzwijgend <c>Require</c> van gemaakt. Bovendien
+/// vereist <c>verify-full</c> bij de gebruikte hostingprovider het eigen CA-certificaat van die
+/// provider (<c>sslrootcert</c>), zodat alleen de modus omzetten een certificaatketen-fout geeft.
+/// Daarom nu:
+/// <list type="bullet">
+/// <item><see cref="SslMode.Prefer"/> (Npgsql's default, dus "niet opgegeven") wordt voor een
+/// niet-lokale host opgewaardeerd naar <see cref="SslMode.Require"/> — de productiestand van vóór
+/// v3.3.0.0, nooit zwakker dan voorheen — met een <see cref="PostgresConnectionNormalization.TlsWarning"/>.</item>
+/// <item><see cref="SslMode.Require"/> en <see cref="SslMode.VerifyCA"/> blijven staan, met dezelfde
+/// waarschuwing (versleuteld, maar certificaat resp. hostnaam niet gevalideerd).</item>
+/// <item><see cref="SslMode.Disable"/> en <see cref="SslMode.Allow"/> op een niet-lokale host blijven
+/// geweigerd: dat is een expliciete keuze voor onversleuteld verkeer naar een productiedatabase en is
+/// nooit een geldige configuratie geweest.</item>
+/// </list>
+/// De waarschuwing wordt door <c>/api/health</c> (<c>tlsWarning</c>) en het functielog zichtbaar
+/// gemaakt, zodat de beheerder de instelling kan aanvullen zonder dat de applicatie eerst uitvalt.
+/// De ruwe connectiestring wordt hier nooit gelogd (bevat wachtwoorden), en de waarschuwing bevat
+/// bewust ook geen hostnaam.
 /// </para>
 /// </summary>
 public static class PostgresConnectionStringNormalizer
 {
     private static readonly string[] LocalDevelopmentHosts = { "localhost", "127.0.0.1", "::1" };
 
-    public static string Normalize(string raw)
+    public static string Normalize(string raw) => NormalizeWithDiagnostics(raw).ConnectionString;
+
+    public static PostgresConnectionNormalization NormalizeWithDiagnostics(string raw)
     {
         var builder = IsUriForm(raw) ? BuildFromUri(raw) : new NpgsqlConnectionStringBuilder(raw);
 
         ValidateNoContradictorySslOptions(builder);
-        EnforceTlsPolicy(builder);
+        var tlsWarning = ApplyTlsPolicy(builder);
 
-        return builder.ConnectionString;
+        return new PostgresConnectionNormalization(builder.ConnectionString, builder.SslMode, tlsWarning);
     }
 
     private static bool IsUriForm(string raw) =>
@@ -146,24 +179,55 @@ public static class PostgresConnectionStringNormalizer
     }
 
     /// <summary>
-    /// Kernbeleid van #1004: certificaatvalidatie is verplicht zodra de host niet de lokale
-    /// ontwikkelomgeving is. Geldt identiek voor URI- en keyword/value-vorm, en dus ook voor elke
-    /// aanroeper (Function App-configuratielaag, <c>Database.Postgres.Cli</c>,
-    /// <c>MigrationTools/SqlServerToPostgresCopy</c>).
+    /// Kernbeleid van #1004, met de #1095-correctie: voor een niet-lokale host is
+    /// <see cref="SslMode.VerifyFull"/> de norm, maar een zwakkere-maar-versleutelde modus wordt
+    /// gemeld in plaats van geweigerd. Alleen een expliciete keuze voor onversleuteld verkeer
+    /// (<see cref="SslMode.Disable"/>/<see cref="SslMode.Allow"/>) blijft een fout. Geldt identiek
+    /// voor URI- en keyword/value-vorm, en dus voor elke aanroeper (Function App-configuratielaag,
+    /// <c>Database.Postgres.Cli</c>, <c>MigrationTools/SqlServerToPostgresCopy</c>).
     /// </summary>
-    private static void EnforceTlsPolicy(NpgsqlConnectionStringBuilder builder)
+    /// <returns>De waarschuwing (zonder host of credentials), of <c>null</c> als het beleid volledig gehaald is.</returns>
+    private static string? ApplyTlsPolicy(NpgsqlConnectionStringBuilder builder)
     {
         if (IsLocalDevelopmentHost(builder.Host))
-            return;
+            return null;
 
-        if (builder.SslMode != SslMode.VerifyFull)
-            throw new InvalidOperationException(
-                $"Postgres-verbinding naar host '{builder.Host}' vereist SslMode=VerifyFull " +
-                $"(huidige waarde: '{builder.SslMode}'). Certificaatvalidatie mag voor een " +
-                "niet-lokale host nooit worden verzwakt (#1004) — geef ?sslmode=verify-full mee in " +
-                "de URI, of 'SSL Mode=VerifyFull' in de keyword/value-connectiestring. Alleen " +
-                $"{string.Join(", ", LocalDevelopmentHosts)} gelden als lokale ontwikkelomgeving.");
+        switch (builder.SslMode)
+        {
+            case SslMode.VerifyFull:
+                return null;
+
+            case SslMode.Disable:
+            case SslMode.Allow:
+                throw new InvalidOperationException(
+                    $"Postgres-verbinding naar een niet-lokale host met SslMode='{builder.SslMode}' is niet " +
+                    "toegestaan: dat kiest expliciet voor onversleuteld verkeer naar een productie- of " +
+                    "stagingdatabase (#1004). Geef ?sslmode=verify-full mee in de URI, of 'SSL Mode=VerifyFull' " +
+                    $"in de keyword/value-connectiestring. Alleen {string.Join(", ", LocalDevelopmentHosts)} " +
+                    "gelden als lokale ontwikkelomgeving.");
+
+            case SslMode.Prefer:
+                // Npgsql's default — de modus is niet opgegeven. Opwaarderen naar Require: dat was
+                // vóór #1004 al het gedrag voor de URI-vorm (productiestand tot v3.3.0.0), en voor
+                // de keyword/value-vorm is het strikt sterker dan wat er stond.
+                builder.SslMode = SslMode.Require;
+                return BuildWarning(builder.SslMode, "de sslmode is niet opgegeven en is opgewaardeerd naar Require");
+
+            case SslMode.Require:
+                return BuildWarning(builder.SslMode, "het servercertificaat en de hostnaam worden niet gevalideerd");
+
+            case SslMode.VerifyCA:
+                return BuildWarning(builder.SslMode, "de certificaatketen wordt gevalideerd, maar de hostnaam niet");
+
+            default:
+                return BuildWarning(builder.SslMode, "onbekende TLS-modus");
+        }
     }
+
+    private static string BuildWarning(SslMode effective, string reden) =>
+        $"TLS-beleid niet volledig gehaald: verbinding is versleuteld (SslMode={effective}), maar {reden}. " +
+        "Zet sslmode=verify-full met het CA-certificaat van de databaseprovider (sslrootcert) — zie " +
+        "docs/ARCHITECTUUR-DATABASE-TIERS.md §50 en issue #1095.";
 
     private static bool IsLocalDevelopmentHost(string? host) =>
         !string.IsNullOrEmpty(host) &&
