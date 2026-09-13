@@ -111,6 +111,92 @@ public class MigrationRunnerIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// #1112: een ledger-rij die vanaf een CRLF-checkout is gevuld (rauwe SHA-256 over CRLF-bytes)
+    /// mag een latere run vanaf een LF-checkout niet blokkeren. De runner herkent het artefact,
+    /// schrijft de rij om naar de genormaliseerde waarde en rapporteert dat — zonder de migratie
+    /// opnieuw uit te voeren.
+    /// </summary>
+    [PostgresFact]
+    public async Task RunAsync_LedgerMetRauweCrlfChecksum_WordtGenormaliseerdNietGeblokkeerd()
+    {
+        await ResetDatabaseAsync();
+        var lf = "CREATE TABLE mrt_proef (\n    id INT\n);\n";
+        SchrijfMigratie("001_baseline.sql", lf);
+        await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+
+        // Simuleer de oude ledger-waarde van vóór #1112, geschreven vanaf een Windows-werkmap.
+        var crlfRauw = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(lf.Replace("\n", "\r\n")))).ToLowerInvariant();
+        await ZetLedgerChecksumAsync("001_baseline.sql", crlfRauw);
+
+        var result = await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+
+        result.ChecksumNormalized.Should().Equal("001_baseline.sql");
+        result.Applied.Should().BeEmpty("de migratie mag niet opnieuw uitgevoerd worden");
+        (await LeesLedgerChecksumAsync("001_baseline.sql")).Should().Be(MigrationRunner.ComputeChecksum(lf));
+        (await TelToegepasteMigratiesAsync()).Should().Be(1);
+
+        // Derde run: nu klopt de ledger en is er niets meer te normaliseren.
+        var tweede = await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+        tweede.ChecksumNormalized.Should().BeEmpty();
+        tweede.AlreadyApplied.Should().Equal("001_baseline.sql");
+    }
+
+    /// <summary>#1112: het bestand zelf als CRLF op schijf (Windows-werkmap) tegen een ledger die
+    /// vanaf LF is gevuld — de normalisatie moet ook die richting stil goed laten gaan, zonder
+    /// reparatie (de ledger klopt al).</summary>
+    [PostgresFact]
+    public async Task RunAsync_BestandAlsCrlfOpSchijf_TegenLfLedger_IsGewoonAlToegepast()
+    {
+        await ResetDatabaseAsync();
+        var lf = "CREATE TABLE mrt_proef (\n    id INT\n);\n";
+        SchrijfMigratie("001_baseline.sql", lf);
+        await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+
+        SchrijfMigratie("001_baseline.sql", lf.Replace("\n", "\r\n"));
+        var result = await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+
+        result.AlreadyApplied.Should().Equal("001_baseline.sql");
+        result.ChecksumNormalized.Should().BeEmpty();
+        result.Applied.Should().BeEmpty();
+    }
+
+    [PostgresFact]
+    public async Task RunAsync_RapporteertNieuwEnAlToegepastAfzonderlijk()
+    {
+        await ResetDatabaseAsync();
+        SchrijfMigratie("001_baseline.sql", "CREATE TABLE mrt_proef (id INT);");
+        var eerste = await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+        eerste.Applied.Should().Equal("001_baseline.sql");
+
+        SchrijfMigratie("002_kolom.sql", "ALTER TABLE mrt_proef ADD COLUMN naam TEXT;");
+        var tweede = await MigrationRunner.RunAsync(ConnectionString, _migrationsDir);
+        tweede.AlreadyApplied.Should().Equal("001_baseline.sql");
+        tweede.Applied.Should().Equal("002_kolom.sql");
+    }
+
+    private async Task ZetLedgerChecksumAsync(string bestandsnaam, string checksum)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "UPDATE schema_migrations SET checksum = @c WHERE filename = @f", connection);
+        cmd.Parameters.AddWithValue("c", checksum);
+        cmd.Parameters.AddWithValue("f", bestandsnaam);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<string?> LeesLedgerChecksumAsync(string bestandsnaam)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT checksum FROM schema_migrations WHERE filename = @f", connection);
+        cmd.Parameters.AddWithValue("f", bestandsnaam);
+        return (await cmd.ExecuteScalarAsync()) as string;
+    }
+
+    /// <summary>
     /// Simuleert twee gelijktijdige runners tegen dezelfde database (expliciet vereist door de
     /// #821-review-fact-check-addendum). De advisory lock moet de tweede run laten wachten tot de
     /// eerste klaar is, zodat er nooit twee transacties tegelijk dezelfde migratie proberen toe te

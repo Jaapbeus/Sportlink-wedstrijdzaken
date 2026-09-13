@@ -30,6 +30,7 @@ FOUT=0
 # woordgrenzen matchte de oude regex een dergelijke hernoeming stilzwijgend.
 MAPPING=(
   "dbo.sp_CleanupAppSettingsAudit|Database.Postgres/PostgresCleanupProcedures.cs|CleanupAppSettingsAuditAsync"
+  "dbo.sp_CleanupSportlinkMutationAudit|Database.Postgres/PostgresCleanupProcedures.cs|CleanupSportlinkMutationAuditAsync"
   "planner.sp_CleanupEmailVerwerking|Database.Postgres/PostgresCleanupProcedures.cs|CleanupEmailVerwerkingAsync"
   "planner.sp_CleanupClassificatieCorrectie|Database.Postgres/PostgresCleanupProcedures.cs|CleanupClassificatieCorrectieAsync"
   "avg.sp_CleanupTeambegeleiding|Database.Postgres/PostgresCleanupProcedures.cs|CleanupTeambegeleidingAsync"
