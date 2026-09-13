@@ -1,10 +1,13 @@
 using FunctionApp.Postgres.Admin;
 using FunctionApp.Postgres.Infrastructure;
+using FunctionApp.Postgres.Integrations.SportlinkClub;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
@@ -21,6 +24,13 @@ namespace FunctionApp.Postgres.Sportlink;
 /// verplicht (zelfde reden als #992/#993: Sportlink's eigen log toont alleen de servicenaam, niet
 /// de individuele webapp-gebruiker).
 /// </para>
+/// <para>
+/// <b>Sinds #1111 verrijkt de GET elk verzoek met onze eigen wedstrijdcontext</b>
+/// (<see cref="SportlinkWedstrijdContext"/>) via de PublicMatchId-cache → <c>his.matches</c>. Bewust
+/// niet via extra Sportlink-velden: die zijn nooit live bevestigd. Faalt de verrijking (database
+/// weg, tabel ontbreekt), dan komt de lijst zonder context terug — de verzoeken zelf mogen daar
+/// nooit door verdwijnen.
+/// </para>
 /// </summary>
 public static class SportlinkChangeRequestFunction
 {
@@ -29,9 +39,11 @@ public static class SportlinkChangeRequestFunction
     [Function("SportlinkChangeRequestsGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/change-requests")] HttpRequest req,
-        FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkChangeRequestsGet"), "sportlink-wijzigingsverzoeken ophalen",
-            async _ =>
+        FunctionContext context)
+    {
+        var log = context.GetLogger("SportlinkChangeRequestsGet");
+        return AdminEndpoint.ExecuteAsync(req, log, "sportlink-wijzigingsverzoeken ophalen",
+            async clubCode =>
             {
                 var toggleFout = ControleerToggleEnEgress();
                 if (toggleFout != null) return toggleFout;
@@ -44,9 +56,36 @@ public static class SportlinkChangeRequestFunction
                 var fout = VertaalStatusNaarFout(result.Status);
                 if (fout != null) return fout;
 
-                return new OkObjectResult(result.Data ?? new List<SportlinkChangeRequest>());
+                var verzoeken = result.Data ?? new List<SportlinkChangeRequest>();
+                var wedstrijdContext = await ZoekWedstrijdContextAsync(verzoeken, clubCode, log);
+                return new OkObjectResult(SportlinkChangeRequestOverzichtItem.Verrijk(verzoeken, wedstrijdContext));
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+    }
+
+    /// <summary>#1111: één query voor alle PublicMatchIds; elke fout hier is een waarschuwing, geen 500.</summary>
+    private static async Task<IReadOnlyDictionary<string, SportlinkWedstrijdContext>> ZoekWedstrijdContextAsync(
+        IReadOnlyCollection<SportlinkChangeRequest> verzoeken, string clubCode, ILogger log)
+    {
+        var ids = verzoeken
+            .Select(v => v.PublicMatchId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (ids.Count == 0) return new Dictionary<string, SportlinkWedstrijdContext>();
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            return await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(connection, ids, clubCode);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Wedstrijdcontext voor {Aantal} wijzigingsverzoek(en) kon niet worden opgehaald — lijst zonder context geleverd", ids.Count);
+            return new Dictionary<string, SportlinkWedstrijdContext>();
+        }
+    }
 
     /// <summary>
     /// <c>PUT /api/sportlink/change-requests/{publicRequestId}/action</c> — goedkeuren of afwijzen.

@@ -19,6 +19,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Wijzigingsverzoeken-scherm toont nu de wedstrijd, een duidelijke status en een filter (#1111).**
+  Bij elk verzoek van een tegenstander staan wedstrijdnummer, thuis- en uitteam, datum, tijd en
+  accommodatie uit de eigen wedstrijdgegevens, met een statusicoon (openstaand, goedgekeurd,
+  afgewezen, ingetrokken) in plaats van een ruwe code. Een statusfilter toont standaard alleen
+  openstaande verzoeken, en goed-/afkeuren gaat via compacte icoonknoppen — de toelichting bij
+  afwijzen blijft verplicht. Ontbreekt de wedstrijdcontext bij een verzoek, dan is die wedstrijd nog
+  niet gekoppeld; het verzoek blijft gewoon zichtbaar.
 - **Sportlink Web Extension: dry-run-modus, standaard AAN (#998).** Elke kleedkamer-/veldwijziging
   en elk goed-/afgekeurd wijzigingsverzoek wordt nu standaard alleen gesimuleerd: de aanroep naar
   Sportlink wordt overgeslagen en het resultaat wordt gelogd in de audit als "DryRun". Een

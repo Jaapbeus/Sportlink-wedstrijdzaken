@@ -164,6 +164,22 @@ public class SportlinkChangeRequestDto
     public SportlinkChangeRequestDataDto? RequestData { get; set; }
     public string? Reason { get; set; }
     public string? Remarks { get; set; }
+
+    /// <summary>#1111: onze eigen wedstrijdcontext (uit his.matches via de PublicMatchId-cache),
+    /// null als de wedstrijd (nog) niet gecachet is. Spiegelt
+    /// FunctionApp.Postgres.Sportlink.SportlinkWedstrijdContext.</summary>
+    public SportlinkWedstrijdContextDto? Wedstrijd { get; set; }
+}
+
+public class SportlinkWedstrijdContextDto
+{
+    public long Wedstrijdcode { get; set; }
+    public long? Wedstrijdnummer { get; set; }
+    public string? Thuisteam { get; set; }
+    public string? Uitteam { get; set; }
+    public string? Datum { get; set; }
+    public string? Tijd { get; set; }
+    public string? Accommodatie { get; set; }
 }
 
 public class SportlinkChangeRequestDataDto

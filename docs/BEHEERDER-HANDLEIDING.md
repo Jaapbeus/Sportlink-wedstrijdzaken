@@ -927,14 +927,24 @@ zodra teamregio automatisch uit Sportlink-data kan worden afgeleid.
 ## 18. Wijzigingsverzoeken (`/wijzigingsverzoeken`)
 
 Toont wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor de datum, tijd
-of accommodatie van een wedstrijd. Alleen verzoeken met status `CONFIRM` wachten op een beslissing
-van uw club — overige statussen staan er alleen ter referentie bij.
+of accommodatie van een wedstrijd, ingedeeld naar het voorbeeld van Sportlinks eigen scherm.
 
-Per openstaand verzoek toont de pagina de huidige en gevraagde datum/tijd plus de opgegeven reden,
-met twee acties:
-- **Goedkeuren** — bevestigt de wijziging rechtstreeks in Sportlink Club.
-- **Afwijzen** — vereist een toelichting (vrij tekstveld naast de knop) die naar de tegenstander
-  teruggaat.
+**Statusfilter** bovenaan (knoppenrij, met aantallen): **Openstaand** (standaard), Goedgekeurd,
+Afgewezen, Ingetrokken, Alle. Alleen openstaande verzoeken wachten op een beslissing van uw club.
+
+**Kolommen:** statusicoon (oranje uitroepteken = openstaand, groen vinkje = goedgekeurd, rood kruis
+= afgewezen, grijs = ingetrokken), Wedstrijdnr., Thuis, Uit, Datum, Tijd, Accommodatie, Gevraagd
+(alleen wat afwijkt van de huidige planning), Reden. Wedstrijdnummer en teamnamen komen uit de
+eigen wedstrijdgegevens van de app; staat er een streepje, dan is die wedstrijd nog niet aan het
+Sportlink-kenmerk gekoppeld (dat gebeurt automatisch door de dagelijkse voorbereidingstaak, of zodra
+u de wedstrijd in Dagplanning opent).
+
+Per openstaand verzoek staan twee compacte knoppen:
+- **✓ (groen)** — keurt de wijziging rechtstreeks goed in Sportlink Club.
+- **✗ (rood)** — opent een toelichtingsveld; de toelichting is verplicht en gaat naar de
+  tegenstander. Pas na **Afwijzen** in dat veld wordt het verzoek daadwerkelijk afgewezen.
+
+Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
 Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
