@@ -1,0 +1,370 @@
+@page "/sportlink-extension-settings"
+@inject AdminApiClient Api
+@inject ClubSelectorService ClubSelector
+@using BlazorAdmin.Services
+@implements IDisposable
+
+<PageTitle>Sportlink Web Extension — Beheer</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Sportlink Web Extension</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="instellingen">← Terug naar Instellingen</a>
+</div>
+
+<p class="text-muted">
+    Onofficiële koppeling met club.sportlink.com: wedstrijdwijzigingen (kleedkamers, veld, officials,
+    wijzigingsverzoeken) rechtstreeks vanuit deze webapp terugschrijven, op naam van een los,
+    rol-gebonden Sportlink-serviceaccount — nooit uw persoonlijke account. Staat standaard uit en
+    verandert niets aan hoe de app werkt totdat u dit bewust inschakelt. Volledige achtergrond:
+    <code>docs/SPORTLINK-WEB-EXTENSION.md</code>.
+</p>
+
+@if (_isTestmodus)
+{
+    <p class="text-muted">Niet beschikbaar in testmodus (demo-club).</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (settings == null)
+{
+    <p class="text-muted">Laden...</p>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Aan/uit</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="sportlinkExtensionEnabled"
+                               @bind="settings.SportlinkExtensionEnabled" />
+                        <label class="form-check-label" for="sportlinkExtensionEnabled">
+                            Sportlink Web Extension inschakelen
+                        </label>
+                    </div>
+                    <small class="form-text text-muted">
+                        Onofficiële koppeling met club.sportlink.com — schrijft wedstrijdwijzigingen terug op
+                        naam van een los, rol-gebonden Sportlink-serviceaccount. Staat standaard UIT.
+                    </small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="sportlinkDryRun"
+                               @bind="settings.SportlinkDryRun" />
+                        <label class="form-check-label" for="sportlinkDryRun">
+                            Dry-run: alles simuleren, niets naar Sportlink schrijven
+                        </label>
+                    </div>
+                    <small class="form-text text-muted">
+                        Staat standaard AAN — kleedkamer-/veldwijzigingen en wijzigingsverzoeken worden dan
+                        alleen gelogd (audit-resultaat "DryRun"), nooit echt verzonden. Zet dit pas uit als
+                        de rol-koppeling en de statussectie hieronder gecontroleerd zijn.
+                    </small>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" disabled="@saving" @onclick="OpslaanAsync">
+                @(saving ? "Opslaan..." : "Opslaan")
+            </button>
+
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success mt-3">@successMessage</div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Sportlink-serviceaccounts per rol</h5>
+            <p class="text-muted mb-2">
+                Elke functionele rol gebruikt een eigen, smal-geschaald Sportlink-account — nooit uw
+                persoonlijke account — zodat Sportlink's eigen audit-log de rolnaam toont en een rol nooit
+                meer Sportlink-rechten krijgt dan zijn eigen account daar heeft.
+            </p>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Rol</th>
+                        <th>Gekoppeld</th>
+                        <th>Laatst gekoppeld door</th>
+                        <th>Laatst gekoppeld op</th>
+                        <th>Sportlink-account</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rol in sportlinkRollen)
+                    {
+                        <tr>
+                            <td>@rol.RolNaam</td>
+                            <td>
+                                <span class="badge @(rol.Gekoppeld ? "bg-success" : "bg-secondary")">
+                                    @(rol.Gekoppeld ? "Ja" : "Nee")
+                                </span>
+                            </td>
+                            <td>@(rol.LaatstGekoppeldDoor ?? "—")</td>
+                            <td>@(rol.LaatstGekoppeldOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm") ?? "—")</td>
+                            <td>@(rol.SportlinkAccountNaam ?? "—")</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartRegistreerKoppeling(rol)">
+                                    Koppeling (opnieuw) registreren
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (registreerRol != null)
+            {
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Koppeling registreren voor rol '@registreerRol.RolNaam'</h5>
+                        @if (registreerRol.Gekoppeld)
+                        {
+                            <div class="alert alert-warning">
+                                Dit overschrijft alleen de weergavenaam en de "laatst gekoppeld door/op"-gegevens
+                                voor deze rol — het bestaande, werkende refresh-token blijft ongewijzigd. Huidige
+                                registratie: <strong>@registreerRol.LaatstGekoppeldDoor</strong> op
+                                <strong>@registreerRol.LaatstGekoppeldOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm")</strong>.
+                                <br /><br />
+                                Moet de koppeling zelf vernieuwd worden (bijvoorbeeld omdat Sportlink hem heeft
+                                ingetrokken)? Dat kan niet vanuit deze pagina alleen — Sportlink staat geen inlog
+                                via onze eigen webapp toe. Een <strong>technisch beheerder</strong> van deze
+                                installatie moet dan eenmalig, op zijn eigen computer, inloggen als het
+                                Sportlink-serviceaccount en het resulterende token hieronder invullen bij
+                                "Refresh-token registreren". Weet je niet wie dat is? Neem contact op met wie deze
+                                applicatie technisch beheert.
+                            </div>
+                        }
+                        <div class="mb-3">
+                            <label class="form-label">Sportlink-accountnaam (ter herkenning, geen live verificatie)</label>
+                            <input class="form-control" @bind="registreerSportlinkAccountNaam" placeholder="bijv. webapp-wedstrijdzaken" />
+                        </div>
+                        <button class="btn btn-primary" @onclick="BevestigRegistreerKoppelingAsync">Registreren</button>
+                        <button class="btn btn-secondary ms-2" @onclick="() => registreerRol = null">Annuleren</button>
+                        @if (!string.IsNullOrEmpty(sportlinkKoppelMessage))
+                        {
+                            <div class="alert alert-info mt-2">@sportlinkKoppelMessage</div>
+                        }
+
+                        <hr class="mt-3" />
+                        <h6>Refresh-token registreren</h6>
+                        <p class="text-muted" style="font-size:0.85rem;">
+                            Dit veld is voor een <strong>technisch beheerder</strong> — niet voor de dagelijkse
+                            gebruiker. Vul hier de <code>refresh_token</code>-waarde in die je zojuist zelf hebt
+                            opgehaald door, op je eigen computer met de broncode van deze applicatie, in te loggen
+                            als het Sportlink-serviceaccount (via het lokale hulpprogramma
+                            <code>Tools/SportlinkTokenCapture</code> — zie
+                            <code>docs/SPORTLINK-WEB-EXTENSION.md</code> §3.3 voor de volledige stappen). Dit veld
+                            schrijft alleen weg — het token wordt hierna nergens teruggetoond, ook niet in deze
+                            pagina.
+                        </p>
+                        <div class="input-group mb-2">
+                            <input type="password" class="form-control" @bind="registreerRefreshToken" placeholder="refresh_token" autocomplete="off" />
+                            <button class="btn btn-outline-primary" @onclick="BevestigRegistreerTokenAsync">Token registreren</button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(sportlinkTokenMessage))
+                        {
+                            <div class="alert alert-info mt-2">@sportlinkTokenMessage</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Status Sportlink Web Extension</h5>
+            <p class="text-muted mb-2">
+                Komt uitsluitend uit onze eigen database (geen Sportlink-aanroep) tenzij je op
+                "Nu live controleren" klikt — dat doet één echte tokenverversing en één leesaanroep.
+            </p>
+            @if (sportlinkHealth != null)
+            {
+                <div class="mb-2">
+                    <span class="badge @(sportlinkHealth.ExtensionEnabled ? "bg-success" : "bg-secondary") me-1">
+                        Extension @(sportlinkHealth.ExtensionEnabled ? "AAN" : "UIT")
+                    </span>
+                    <span class="badge @(sportlinkHealth.DryRun ? "bg-info text-dark" : "bg-warning text-dark") me-1">
+                        @(sportlinkHealth.DryRun ? "Dry-run actief" : "Dry-run UIT — schrijft écht")
+                    </span>
+                    <span class="badge @(sportlinkHealth.EgressAllowed ? "bg-success" : "bg-secondary")">
+                        Uitgaande integraties @(sportlinkHealth.EgressAllowed ? "toegestaan" : "geblokkeerd")
+                    </span>
+                </div>
+                @foreach (var rol in sportlinkHealth.Rollen)
+                {
+                    <p class="mb-1">
+                        Rol <strong>@rol.RolNaam</strong>:
+                        <span class="badge @(rol.Gekoppeld ? "bg-success" : "bg-secondary")">@(rol.Gekoppeld ? "Gekoppeld" : "Niet gekoppeld")</span>
+                        @if (rol.Gekoppeld)
+                        {
+                            <text> — laatst ververst @(rol.LaatstVerverstOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm"))</text>
+                        }
+                    </p>
+                }
+                @if (!string.IsNullOrEmpty(sportlinkHealth.LaatsteMutatieFout))
+                {
+                    <p class="mb-1 text-danger">
+                        Laatste mutatiefout (@sportlinkHealth.LaatsteMutatieFoutOp?.ToLocalTime().ToString("dd-MM-yyyy HH:mm")):
+                        @sportlinkHealth.LaatsteMutatieFout
+                    </p>
+                }
+                @if (sportlinkHealth.LaatsteContractCheck != null)
+                {
+                    <p class="mb-1 @(sportlinkHealth.LaatsteContractCheck.IsOk ? "text-success" : "text-danger")">
+                        Laatste contract-check (@sportlinkHealth.LaatsteContractCheck.UitgevoerdOp.ToLocalTime().ToString("dd-MM-yyyy HH:mm")):
+                        @(sportlinkHealth.LaatsteContractCheck.IsOk ? "OK" : $"Afwijking: {sportlinkHealth.LaatsteContractCheck.AfwijkendeVelden}")
+                    </p>
+                }
+                @if (sportlinkHealth.Live != null)
+                {
+                    <div class="alert alert-info mt-2">
+                        Live controle: token-refresh @(sportlinkHealth.Live.TokenRefreshGelukt ? "gelukt" : "mislukt"),
+                        match-check @sportlinkHealth.Live.MatchCheckResultaat
+                        (HTTP @sportlinkHealth.Live.MatchCheckHttpStatus)
+                    </div>
+                }
+            }
+            <button class="btn btn-sm btn-outline-secondary" disabled="@sportlinkHealthLoading" @onclick="() => LaadSportlinkHealthAsync(live: true)">
+                @(sportlinkHealthLoading ? "Bezig..." : "Nu live controleren")
+            </button>
+            @if (!string.IsNullOrEmpty(sportlinkHealthError))
+            {
+                <div class="alert alert-warning mt-2">@sportlinkHealthError</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private AppSettingsDto? settings;
+    private bool saving;
+    private string? successMessage;
+    private string? errorMessage;
+
+    private List<SportlinkExtensieRolDto> sportlinkRollen = new();
+    private SportlinkExtensieRolDto? registreerRol;
+    private string? registreerSportlinkAccountNaam;
+    private string? sportlinkKoppelMessage;
+    private string? registreerRefreshToken;
+    private string? sportlinkTokenMessage;
+
+    private SportlinkExtensieHealthDto? sportlinkHealth;
+    private bool sportlinkHealthLoading;
+    private string? sportlinkHealthError;
+
+    private bool _isTestmodus => ClubSelector.SelectedClubCode == "ALLSTARS";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ClubSelector.OnChange += OnClubChanged;
+        await LoadAsync();
+    }
+
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    private async Task LoadAsync()
+    {
+        errorMessage = null;
+        settings = null;
+        if (_isTestmodus) return;
+
+        var r = await Api.GetSettingsAsync();
+        if (r.Success) settings = r.Data;
+        else errorMessage = r.ErrorMessage;
+
+        await LaadSportlinkExtensieRollenAsync();
+        await LaadSportlinkHealthAsync();
+    }
+
+    private async Task LaadSportlinkExtensieRollenAsync()
+    {
+        var r = await Api.GetSportlinkExtensieRollenAsync();
+        sportlinkRollen = r.Success ? r.Data ?? new() : new();
+    }
+
+    private async Task LaadSportlinkHealthAsync(bool live = false)
+    {
+        sportlinkHealthLoading = true;
+        sportlinkHealthError = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.GetSportlinkExtensieHealthAsync(live);
+            if (r.Success) sportlinkHealth = r.Data;
+            else sportlinkHealthError = r.ErrorMessage ?? "Onbekende fout bij ophalen status.";
+        }
+        finally
+        {
+            sportlinkHealthLoading = false;
+        }
+    }
+
+    // Alleen deze twee velden — een bewust kleine, aparte "Velden"-update (partial update, raakt
+    // geen andere instellingen op de hoofd-Instellingen-pagina).
+    private async Task OpslaanAsync()
+    {
+        if (settings == null) return;
+        saving = true;
+        successMessage = null;
+        errorMessage = null;
+
+        var update = new SettingsUpdateDto
+        {
+            Velden = new()
+            {
+                ["SportlinkExtensionEnabled"] = settings.SportlinkExtensionEnabled ? "1" : "0",
+                ["SportlinkDryRun"] = settings.SportlinkDryRun ? "1" : "0",
+            }
+        };
+
+        var r = await Api.UpdateSettingsAsync(update);
+        if (r.Success) successMessage = "Instellingen opgeslagen.";
+        else errorMessage = r.ErrorMessage;
+        saving = false;
+    }
+
+    private void StartRegistreerKoppeling(SportlinkExtensieRolDto rol)
+    {
+        registreerRol = rol;
+        registreerSportlinkAccountNaam = rol.SportlinkAccountNaam;
+        sportlinkKoppelMessage = null;
+        registreerRefreshToken = null;
+        sportlinkTokenMessage = null;
+    }
+
+    // #991: schrijft het échte refresh-token weg — write-only, nooit teruggetoond.
+    private async Task BevestigRegistreerTokenAsync()
+    {
+        if (registreerRol == null || string.IsNullOrWhiteSpace(registreerRefreshToken)) return;
+        var r = await Api.RegistreerSportlinkTokenAsync(registreerRol.RolNaam, registreerRefreshToken);
+        registreerRefreshToken = null;
+        sportlinkTokenMessage = r.Success
+            ? "Token geregistreerd en gevalideerd."
+            : "Fout: " + r.ErrorMessage;
+    }
+
+    private async Task BevestigRegistreerKoppelingAsync()
+    {
+        if (registreerRol == null) return;
+        var r = await Api.RegistreerSportlinkKoppelingAsync(registreerRol.RolNaam, registreerSportlinkAccountNaam);
+        if (r.Success)
+        {
+            registreerRol = null;
+            sportlinkKoppelMessage = null;
+            await LaadSportlinkExtensieRollenAsync();
+        }
+        else
+        {
+            sportlinkKoppelMessage = "Fout: " + r.ErrorMessage;
+        }
+    }
+}
