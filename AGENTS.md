@@ -859,6 +859,14 @@ git push origin v2.0.1  # triggert release.yml workflow automatisch
 
 Of via GitHub Actions UI (workflow_dispatch in release.yml) zonder lokale tag.
 
+**Databasemigraties bij een release (#1093):** `deploy.yml` past ze zelf toe, vóór de code live
+gaat — `db-migrate` (SQL Server-PostDeployment) bij `DatabaseTier=SqlServer`, `db-migrate-postgres`
+(`Database.Postgres.Cli`, secret `POSTGRES_CONNECTION_STRING`) bij `DatabaseTier=Postgres`. Er is
+geen handmatige migratieronde meer na een release. Gevolg als ontwerpregel: een migratie die de
+*vorige* code breekt (kolom weg, type gewijzigd, constraint aangescherpt) mag niet in dezelfde
+release als de code die hem nodig heeft — zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57. De smoke
+test faalt op een niet-lege `pendingMigrations`.
+
 ### Versienummer ophalen in code
 
 ```csharp

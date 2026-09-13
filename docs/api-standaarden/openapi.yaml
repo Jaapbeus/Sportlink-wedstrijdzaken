@@ -1093,6 +1093,34 @@ components:
           type: string
           nullable: true
 
+    SportlinkWedstrijdContext:
+      type: object
+      description: |
+        Eigen wedstrijdcontext bij een wijzigingsverzoek (#1111): uit `his.matches` via
+        `public.sportlinkpublicmatchidcache`, niet uit extra Sportlink-velden (die zijn niet live
+        bevestigd). Spiegelt FunctionApp.Postgres.Sportlink.SportlinkWedstrijdContext.
+      properties:
+        Wedstrijdcode: { type: integer, format: int64 }
+        Wedstrijdnummer: { type: integer, format: int64, nullable: true }
+        Thuisteam: { type: string, nullable: true }
+        Uitteam: { type: string, nullable: true }
+        Datum: { type: string, nullable: true, description: "YYYY-MM-DD (uit kaledatum)" }
+        Tijd: { type: string, nullable: true, description: "Aanvangstijd zoals gesynchroniseerd, bijv. 14:30" }
+        Accommodatie: { type: string, nullable: true }
+
+    SportlinkChangeRequestOverzichtItem:
+      description: |
+        Eén rij van GET /sportlink/change-requests sinds #1111: het Sportlink-verzoek plus onze
+        eigen wedstrijdcontext. Spiegelt FunctionApp.Postgres.Sportlink.SportlinkChangeRequestOverzichtItem.
+      allOf:
+        - $ref: '#/components/schemas/SportlinkChangeRequest'
+        - type: object
+          properties:
+            Wedstrijd:
+              nullable: true
+              allOf:
+                - $ref: '#/components/schemas/SportlinkWedstrijdContext'
+
     UpdateSettingsRequest:
       type: object
       description: |
@@ -3415,17 +3443,21 @@ paths:
         Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor
         het gekoppelde serviceaccount in één keer. Filter client-side op
         `RequestStatus == "CONFIRM"` voor verzoeken die op ons wachten.
+
+        Sinds #1111 draagt elk item ook `Wedstrijd`: onze eigen wedstrijdcontext (wedstrijdnummer,
+        teams, datum, tijd, accommodatie) uit `his.matches` via de PublicMatchId-cache. `null` als
+        de wedstrijd nog niet gecachet is. Openstaande verzoeken (`CONFIRM`) staan vooraan.
       security:
         - easyAuth: []
       responses:
         '200':
-          description: Lijst met wijzigingsverzoeken (kan leeg zijn)
+          description: Lijst met wijzigingsverzoeken (kan leeg zijn), openstaande eerst
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/SportlinkChangeRequest'
+                  $ref: '#/components/schemas/SportlinkChangeRequestOverzichtItem'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

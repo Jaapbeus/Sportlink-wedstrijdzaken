@@ -133,11 +133,15 @@ zonder SQL-configuratie). De variabele is naast de al bestaande `AZURE_SQL_SERVE
 
 **Pipeline-volgorde:**
 ```
-db-check → build → db-migrate
-                 → test
-                 → blazor-deploy
+db-check ─┐
+build ────┼→ db-migrate (SqlServer)  ─┐
+          └→ db-migrate-postgres (Postgres) ─┴→ deploy → test
+build ─────→ blazor-deploy
 ```
-Als `db-check` faalt → `build` wordt overgeslagen → alle downstream jobs worden overgeslagen.
+`db-check` en `db-migrate` draaien alleen bij `DatabaseTier=SqlServer`; `db-migrate-postgres` alleen
+bij `DatabaseTier=Postgres` (#1093). `deploy` wacht op de migratiejob van de actieve tier — de
+migraties gaan dus altijd vóór de code live. Faalt `db-check` of een migratiejob, dan wordt `deploy`
+overgeslagen.
 
 ### Laag 2 — In-app overlay (Blazor)
 
@@ -367,11 +371,12 @@ gh pr checks <pr-nr>
 
 ---
 
-## Openstaande databasemigraties (#1098)
+## Openstaande databasemigraties (#1098, #1093)
 
-Op de Postgres-tier past niets de migraties automatisch toe op productie — dat is een handmatige
-stap van de beheerder (`Database.Postgres.Cli`, zie `ARCHITECTUUR-DATABASE-TIERS.md` §49 en §55).
-Loopt de code vooruit op het schema, dan is dat sinds 3.3.0.2 van buiten zichtbaar:
+Sinds #1093 past de deploy-pipeline de Postgres-migraties zelf toe, vóór de code live gaat
+(`db-migrate-postgres`, zie `ARCHITECTUUR-DATABASE-TIERS.md` §57). Een handmatige ronde met
+`Database.Postgres.Cli` blijft mogelijk voor herstel, maar is geen release-stap meer. Loopt de code
+toch vooruit op het schema, dan is dat sinds 3.3.0.2 van buiten zichtbaar:
 
 | Veld in `GET /api/health` | Betekenis |
 |---|---|
@@ -379,17 +384,18 @@ Loopt de code vooruit op het schema, dan is dat sinds 3.3.0.2 van buiten zichtba
 | `schemaWarning` | Niet `null` zodra `public.appsettings` een kolom mist die deze versie verwacht; de applicatie draait dan door op de standaardwaarde uit de migratie |
 | `settingsLoaded` | Sinds 3.3.0.2 het resultaat van een laadpoging die health zélf doet, niet meer een aanname over een eerdere poging |
 
-**Wat de smoke test in `deploy.yml` hiermee moet doen (vervolg op #1098, nog niet gemerged).**
-`settingsLoaded=false` laat de `test`-job falen: zonder instellingencache antwoordt elk
-`/api/beheer/*`-endpoint 500, dus dat is een mislukte deploy. Niet-lege `pendingMigrations` geeft
-een `::warning::` in de job-samenvatting — de pipeline kán ze niet toepassen (bewust geen
-productie-connectiestring in CI) en de applicatie werkt wel. De verscherpte stap staat klaar op de
-lokale branch `ci/#1098-smoke-test-settingsloaded`; hij kon niet met de hotfix mee omdat het
-push-token de `workflow`-scope miste die GitHub voor wijzigingen onder `.github/workflows/` eist.
+**Wat de smoke test in `deploy.yml` hiermee doet.** `settingsLoaded=false` laat de `test`-job
+falen: zonder instellingencache antwoordt elk `/api/beheer/*`-endpoint 500, dus dat is een mislukte
+deploy. Niet-lege `pendingMigrations` is sinds #1093 óók een fout (was een `::warning::` toen de
+pipeline ze nog niet kon toepassen): `db-migrate-postgres` was groen en toch mist de database iets
+dat deze versie meelevert. Dat wijst op een secret `POSTGRES_CONNECTION_STRING` dat naar een andere
+database wijst dan de gelijknamige Function App-instelling.
 
-**Handeling bij een niet-lege lijst:** de beheerder draait de migraties lokaal met
-`POSTGRES_CONNECTION_STRING` als omgevingsvariabele (nooit als argument) en controleert daarna dat
-`/api/health` `"pendingMigrations": []` toont.
+**Handeling bij een niet-lege lijst:** controleer eerst of secret en Function App-instelling
+dezelfde database benoemen. Daarna eventueel een handmatige ronde met `Database.Postgres.Cli`
+(`POSTGRES_CONNECTION_STRING` als omgevingsvariabele, nooit als argument) en controleren dat
+`/api/health` `"pendingMigrations": []` toont. Een "ledger-checksum genormaliseerd"-waarschuwing in
+het log van de migratiejob is geen fout: dat is de eenmalige CRLF→LF-reparatie uit #1112.
 
 ## Verouderde synchronisatie (#1081)
 

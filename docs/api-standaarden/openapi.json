@@ -1412,6 +1412,64 @@
           }
         }
       },
+      "SportlinkWedstrijdContext": {
+        "type": "object",
+        "description": "Eigen wedstrijdcontext bij een wijzigingsverzoek (#1111): uit `his.matches` via\n`public.sportlinkpublicmatchidcache`, niet uit extra Sportlink-velden (die zijn niet live\nbevestigd). Spiegelt FunctionApp.Postgres.Sportlink.SportlinkWedstrijdContext.\n",
+        "properties": {
+          "Wedstrijdcode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "Wedstrijdnummer": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "Thuisteam": {
+            "type": "string",
+            "nullable": true
+          },
+          "Uitteam": {
+            "type": "string",
+            "nullable": true
+          },
+          "Datum": {
+            "type": "string",
+            "nullable": true,
+            "description": "YYYY-MM-DD (uit kaledatum)"
+          },
+          "Tijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Aanvangstijd zoals gesynchroniseerd, bijv. 14:30"
+          },
+          "Accommodatie": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SportlinkChangeRequestOverzichtItem": {
+        "description": "Eén rij van GET /sportlink/change-requests sinds #1111: het Sportlink-verzoek plus onze\neigen wedstrijdcontext. Spiegelt FunctionApp.Postgres.Sportlink.SportlinkChangeRequestOverzichtItem.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SportlinkChangeRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "Wedstrijd": {
+                "nullable": true,
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SportlinkWedstrijdContext"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
       "UpdateSettingsRequest": {
         "type": "object",
         "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
@@ -4535,7 +4593,7 @@
         ],
         "operationId": "getSportlinkChangeRequests",
         "summary": "Inkomende wijzigingsverzoeken ophalen (#996, epic",
-        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`RequestStatus == \"CONFIRM\"` voor verzoeken die op ons wachten.\n",
+        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`RequestStatus == \"CONFIRM\"` voor verzoeken die op ons wachten.\n\nSinds #1111 draagt elk item ook `Wedstrijd`: onze eigen wedstrijdcontext (wedstrijdnummer,\nteams, datum, tijd, accommodatie) uit `his.matches` via de PublicMatchId-cache. `null` als\nde wedstrijd nog niet gecachet is. Openstaande verzoeken (`CONFIRM`) staan vooraan.\n",
         "security": [
           {
             "easyAuth": []
@@ -4543,13 +4601,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Lijst met wijzigingsverzoeken (kan leeg zijn)",
+            "description": "Lijst met wijzigingsverzoeken (kan leeg zijn), openstaande eerst",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/SportlinkChangeRequest"
+                    "$ref": "#/components/schemas/SportlinkChangeRequestOverzichtItem"
                   }
                 }
               }

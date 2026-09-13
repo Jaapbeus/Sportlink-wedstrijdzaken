@@ -126,6 +126,7 @@ Alleen nodig als je naar Azure wilt deployen.
 - [ ] `AZURE_CREDENTIALS` — service principal JSON
 - [ ] `AZURE_FUNCTION_KEY` — Function App host key
 - [ ] `SQL_CONNECTION_STRING` — alleen bij `DatabaseTier=SqlServer`
+- [ ] `POSTGRES_CONNECTION_STRING` — alleen bij `DatabaseTier=Postgres`; de pipeline past hiermee de migraties toe vóór elke deploy (#1093). Zelfde waarde als de Function App-instelling
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` — SWA deployment token
 
 **Variables:**

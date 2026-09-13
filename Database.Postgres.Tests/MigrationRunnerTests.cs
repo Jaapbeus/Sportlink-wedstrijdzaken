@@ -37,6 +37,58 @@ public class MigrationRunnerTests
     }
 
     /// <summary>
+    /// #1112: dezelfde migratie uit een Windows-werkmap (CRLF, <c>core.autocrlf=true</c> onder
+    /// <c>* text=auto</c>) en uit een macOS/Linux/CI-werkmap (LF) moet één en dezelfde checksum
+    /// opleveren — anders blokkeert de ledger de hele keten zodra een tweede platform migreert.
+    /// </summary>
+    [Fact]
+    public void ComputeChecksum_CrlfEnLf_GevenDezelfdeChecksum()
+    {
+        var lf = "CREATE TABLE x (\n    y INT\n);\n";
+        var crlf = "CREATE TABLE x (\r\n    y INT\r\n);\r\n";
+
+        MigrationRunner.ComputeChecksum(crlf).Should().Be(MigrationRunner.ComputeChecksum(lf));
+    }
+
+    /// <summary>Een puur-LF-bestand (zoals git ze bewaart) hasht na #1112 exact zoals ervoor, dus
+    /// bestaande ledgers die vanaf LF gevuld zijn blijven zonder reparatie kloppen.</summary>
+    [Fact]
+    public void ComputeChecksum_LfInhoud_IsOngewijzigdTenOpzichteVanRauweSha256()
+    {
+        var lf = "CREATE TABLE x (\n    y INT\n);\n";
+        var rauw = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(lf))).ToLowerInvariant();
+
+        MigrationRunner.ComputeChecksum(lf).Should().Be(rauw);
+    }
+
+    [Fact]
+    public void IsLineEndingVariant_RauweCrlfChecksumVanHetzelfdeBestand_IsTrue()
+    {
+        var lf = "CREATE TABLE x (\n    y INT\n);\n";
+        var crlf = lf.Replace("\n", "\r\n");
+        var oudeLedgerWaarde = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(crlf))).ToLowerInvariant();
+
+        MigrationRunner.IsLineEndingVariant(oudeLedgerWaarde, lf).Should().BeTrue(
+            "een ledger die vanaf een CRLF-checkout is gevuld, herkent hetzelfde LF-bestand");
+        MigrationRunner.IsLineEndingVariant(oudeLedgerWaarde, crlf).Should().BeTrue(
+            "en andersom: het bestand staat nu zelf als CRLF op schijf");
+    }
+
+    [Fact]
+    public void IsLineEndingVariant_InhoudelijkGewijzigdBestand_IsFalse()
+    {
+        var origineel = "CREATE TABLE x (\n    y INT\n);\n";
+        var gewijzigd = "CREATE TABLE x (\n    y TEXT\n);\n";
+        var ledger = MigrationRunner.ComputeChecksum(origineel);
+
+        MigrationRunner.IsLineEndingVariant(ledger, gewijzigd).Should().BeFalse(
+            "een echte inhoudswijziging mag nooit als regeleinde-artefact doorgaan");
+        MigrationRunner.IsLineEndingVariant(ledger, gewijzigd.Replace("\n", "\r\n")).Should().BeFalse();
+    }
+
+    /// <summary>
     /// #1098: de ingesloten lijst is een afgeleide van <c>Database.Postgres/migrations/</c>. Loopt
     /// die uit de pas (nieuw bestand niet ingesloten, of andersom), dan meldt <c>/api/health</c>
     /// een verkeerd beeld van openstaande migraties — dat is precies het signaal dat bij het

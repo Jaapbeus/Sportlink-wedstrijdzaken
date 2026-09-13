@@ -1,3 +1,4 @@
+using FunctionApp.Postgres.Sportlink;
 using Npgsql;
 
 namespace FunctionApp.Postgres.Integrations.SportlinkClub;
@@ -75,6 +76,55 @@ internal static class SportlinkPublicMatchIdRepository
                 reader.GetInt64(0),
                 reader.GetInt64(1),
                 DateOnly.FromDateTime(reader.GetDateTime(2))));
+        }
+        return resultaat;
+    }
+
+    /// <summary>
+    /// #1111: de omgekeerde richting van de cache — van Sportlinks <c>PublicMatchId</c> naar onze
+    /// eigen wedstrijd in <c>his.matches</c>, in één query voor alle verzoeken van
+    /// <c>/wijzigingsverzoeken</c>. Alleen wedstrijden die al in de cache staan (warmup-timer #1017
+    /// of een eerdere paneel-lookup) worden gevonden; de rest ontbreekt gewoon in het resultaat.
+    /// <c>kaledatum</c> i.p.v. <c>wedstrijddatum</c> om dezelfde reden als
+    /// <see cref="ZoekWedstrijdAsync"/>. Bestaat <c>his.matches</c> nog niet (verse database, nog
+    /// nooit gesynchroniseerd — de tabel is dynamisch, #818), dan is het antwoord leeg, geen fout.
+    /// </summary>
+    internal static async Task<Dictionary<string, SportlinkWedstrijdContext>> ZoekWedstrijdenBijPublicMatchIdsAsync(
+        NpgsqlConnection connection, IReadOnlyCollection<string> publicMatchIds, string clubCode)
+    {
+        var resultaat = new Dictionary<string, SportlinkWedstrijdContext>(StringComparer.Ordinal);
+        if (publicMatchIds.Count == 0) return resultaat;
+
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT c.publicmatchid, m.wedstrijdcode, m.wedstrijdnummer, m.thuisteam, m.uitteam,
+                   to_char(m.kaledatum::date, 'YYYY-MM-DD'), m.aanvangstijd, m.accommodatie
+            FROM public.sportlinkpublicmatchidcache c
+            JOIN his.matches m ON m.wedstrijdcode = c.wedstrijdcode AND m.clubcode = c.clubcode
+            WHERE c.clubcode = @clubcode
+              AND c.publicmatchid = ANY(@ids)",
+            connection);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        cmd.Parameters.AddWithValue("ids", publicMatchIds.ToArray());
+
+        try
+        {
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var publicMatchId = reader.GetString(0);
+                resultaat[publicMatchId] = new SportlinkWedstrijdContext(
+                    Wedstrijdcode: reader.GetInt64(1),
+                    Wedstrijdnummer: reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                    Thuisteam: reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Uitteam: reader.IsDBNull(4) ? null : reader.GetString(4),
+                    Datum: reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Tijd: reader.IsDBNull(6) ? null : reader.GetString(6),
+                    Accommodatie: reader.IsDBNull(7) ? null : reader.GetString(7));
+            }
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            // his.matches bestaat pas na de eerste sync — geen context, geen fout.
         }
         return resultaat;
     }
