@@ -19,8 +19,16 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// is <see cref="IsDryRun"/> ook altijd <c>true</c>, maar niet omgekeerd: een club kan ook via de
 /// gewone instelling dry-run hebben staan zonder dat deze specifieke mutatie code-gelockt is.
 /// </param>
+/// <param name="PublicMatchId">
+/// #997: door Sportlink teruggegeven <c>PublicMatchId</c> van een NIEUW aangemaakte wedstrijd
+/// (<c>POST competition/match/clubmatch/ClubMatch</c>) — <c>null</c> voor elke andere mutatie (die
+/// werkt altijd op een AL BESTAANDE <c>publicMatchId</c>, die de aanroeper al kent) en ook
+/// <c>null</c> zolang <see cref="IsForcedDryRun"/>/<see cref="IsDryRun"/> de aanroep simuleerde.
+/// Optioneel/niet-invasief toegevoegd: bestaande aanroepers negeren dit veld gewoon.
+/// </param>
 public sealed record SportlinkMutationResult(
     bool IsSuccess,
     IReadOnlyList<string>? Violations,
     bool IsDryRun = false,
-    bool IsForcedDryRun = false);
+    bool IsForcedDryRun = false,
+    string? PublicMatchId = null);

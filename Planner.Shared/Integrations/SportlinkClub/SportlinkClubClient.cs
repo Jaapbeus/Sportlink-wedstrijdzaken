@@ -26,6 +26,12 @@ public class SportlinkClubClient : ISportlinkClubClient
     private const string MatchChangeRequestActionEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/changerequest/MatchChangeRequestAction";
     private const string UpdateMatchOfficialsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/official/MatchOfficialsAction";
     private const string UserInfoEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/user/UserInfo";
+    // #997: aanmaken van een nieuwe oefenwedstrijd ("clubwedstrijd") — zie CreateClubMatchAsync.
+    private const string ClubMatchEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/ClubMatch";
+    // #997: de twee ondersteunende picklist-GETs die in deze ronde bewust WEL zijn aangesloten
+    // (bewust beperkte scope, zie PR-beschrijving) — read-only, persoonsgegevensvrij.
+    private const string PickListsTeamsEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsTeams";
+    private const string PickListsLocationEndpoint = "https://club.sportlink.com/navajo/entity/common/clubweb/competition/match/clubmatch/PickListsLocation";
     private const string ClientId = "sportlink-club-web";
     private const int TokenExpiryMarginSeconds = 60;
 
@@ -44,6 +50,11 @@ public class SportlinkClubClient : ISportlinkClubClient
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
     // beide PUT's en de bevestigingsvlag vastleggen).
     private const bool UpdateMatchDetailsChangeRequestLiveBevestigd = false;
+
+    // #997: idem voor het aanmaken van een oefenwedstrijd — dit issue heeft van alle #986-sub-
+    // issues de MEESTE onbekenden (volledige body onbevestigd, meerdere picklist-vormen onbekend,
+    // delete-methode onbekend). Grep-baar bij naam, zelfde patroon als MatchOfficialsActionLiveBevestigd.
+    private const bool ClubMatchLiveBevestigd = false;
 
     private readonly HttpClient _httpClient;
     private readonly ISportlinkClubTokenStore _tokenStore;
@@ -681,6 +692,219 @@ public class SportlinkClubClient : ISportlinkClubClient
     private sealed record SportlinkUserInfo(string? PublicPersonId);
 
     /// <summary>
+    /// Maakt een nieuwe oefenwedstrijd aan (#997) — zie <see cref="ISportlinkClubClient.CreateClubMatchAsync"/>.
+    /// </summary>
+    public Task<SportlinkClubResponse<SportlinkMutationResult>> CreateClubMatchAsync(
+        string functioneleRol,
+        SportlinkClubMatchAanvraag aanvraag,
+        CancellationToken cancellationToken = default)
+        => ExecuteMutationWithRetryAsync(
+            functioneleRol,
+            (token, ct) => PostClubMatchAsync(aanvraag, token, ct),
+            cancellationToken);
+
+    private Task<SportlinkClubResponse<SportlinkMutationResult>> PostClubMatchAsync(
+        SportlinkClubMatchAanvraag aanvraag, string token, CancellationToken cancellationToken)
+    {
+        return PutMutationAsync(
+            ClubMatchEndpoint,
+            "competition/match/clubmatch/ClubMatch",
+            BuildClubMatchBody(aanvraag),
+            token,
+            cancellationToken,
+            forceDryRun: !ClubMatchLiveBevestigd,
+            method: HttpMethod.Post);
+    }
+
+    /// <summary>
+    /// Bouwt de <c>ClubMatch</c>-requestbody — losgetrokken van <see cref="PostClubMatchAsync"/>
+    /// zodat de AANGENOMEN, NOG NIET LIVE BEVESTIGDE vorm (#997) direct getest kan worden, ook al
+    /// gaat er door de forceDryRun-lock nooit een echte POST met deze body uit. ELK veld is
+    /// ONBEVESTIGD — zie <see cref="SportlinkClubMatchAanvraag"/> voor de aannames per veld.
+    /// </summary>
+    internal static object BuildClubMatchBody(SportlinkClubMatchAanvraag aanvraag) =>
+        new
+        {
+            // ONBEVESTIGD: aangenomen ISO 8601 zonder tijdzone — "datum+tijd samengevoegd" volgens
+            // het issue, geen aparte Date/StartTime-velden zoals bij UpdateMatchDetails.
+            MatchDate = aanvraag.MatchDateTime.ToString("yyyy-MM-ddTHH:mm:ss"),
+            Duration = aanvraag.Duration,
+            ExternalMatchId = aanvraag.ExternalMatchId,
+            // ONBEVESTIGD: -1 betekent "nog geen uitslag" volgens het issue — bij het aanmaken is
+            // er per definitie nog geen uitslag.
+            HomeResult = -1,
+            AwayResult = -1,
+            AgeClassCode = aanvraag.AgeClassCode,
+            Description = aanvraag.Description,
+            PublicHomeTeamId = aanvraag.PublicHomeTeamId,
+            PublicAwayTeamId = aanvraag.PublicAwayTeamId,
+            FacilityId = aanvraag.FacilityId,
+            FieldId = aanvraag.FieldId
+        };
+
+    /// <summary>
+    /// Haalt de twee ondersteunende picklists op (#997) — zie
+    /// <see cref="ISportlinkClubClient.GetClubMatchPickListsAsync"/>. Zelfde token-refresh/
+    /// 401-eenmalige-retry-patroon als de overige read-only methodes in deze klasse.
+    /// </summary>
+    public async Task<SportlinkClubResponse<SportlinkClubMatchPickLists>> GetClubMatchPickListsAsync(
+        string functioneleRol,
+        CancellationToken cancellationToken = default)
+    {
+        var tokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken);
+        if (tokenResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(tokenResult.Status, null, tokenResult.FoutmeldingVoorLog, null);
+
+        var token = tokenResult.AccessToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
+                SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na vernieuwing", null);
+
+        var response = await FetchClubMatchPickListsAsync(token, cancellationToken);
+
+        if (response.Status == SportlinkClubCallStatus.Ok || response.HttpStatusCode != 401)
+            return response;
+
+        InvalidateTokenCache(functioneleRol);
+        var retryTokenResult = await RefreshTokenIfNeededAsync(functioneleRol, cancellationToken, forceRefresh: true);
+        if (retryTokenResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(retryTokenResult.Status, null, retryTokenResult.FoutmeldingVoorLog, null);
+
+        var retryToken = retryTokenResult.AccessToken;
+        if (string.IsNullOrWhiteSpace(retryToken))
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
+                SportlinkClubCallStatus.SportlinkFout, null, "Access token is leeg na hernieuwing", null);
+
+        var retryResponse = await FetchClubMatchPickListsAsync(retryToken, cancellationToken);
+        if (retryResponse.HttpStatusCode == 401)
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
+                SportlinkClubCallStatus.HerkoppelingVereist,
+                null,
+                "Refresh token is ongeldig (401 blijft terugkomen). Rol moet opnieuw gekoppeld worden.",
+                401);
+
+        return retryResponse;
+    }
+
+    private async Task<SportlinkClubResponse<SportlinkClubMatchPickLists>> FetchClubMatchPickListsAsync(
+        string token, CancellationToken cancellationToken)
+    {
+        var teamsResult = await FetchPickListAsync(
+            PickListsTeamsEndpoint, "competition/match/clubmatch/PickListsTeams", token, cancellationToken);
+        if (teamsResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
+                teamsResult.Status, null, teamsResult.FoutmeldingVoorLog, teamsResult.HttpStatusCode);
+
+        var locationsResult = await FetchPickListAsync(
+            PickListsLocationEndpoint, "competition/match/clubmatch/PickListsLocation", token, cancellationToken);
+        if (locationsResult.Status != SportlinkClubCallStatus.Ok)
+            return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
+                locationsResult.Status, null, locationsResult.FoutmeldingVoorLog, locationsResult.HttpStatusCode);
+
+        return new SportlinkClubResponse<SportlinkClubMatchPickLists>(
+            SportlinkClubCallStatus.Ok,
+            new SportlinkClubMatchPickLists(
+                teamsResult.Data ?? new List<SportlinkPickListItem>(),
+                locationsResult.Data ?? new List<SportlinkPickListItem>()),
+            null,
+            200);
+    }
+
+    /// <summary>
+    /// Rauwe fetch voor één picklist-endpoint — ONBEVESTIGD qua respons-vorm (kale array, of genest
+    /// onder een envelope-property), zelfde defensieve aanpak als
+    /// <see cref="FetchMatchProgramOverviewRawAsync"/>/<see cref="FetchChangeRequestsAsync"/>.
+    /// </summary>
+    private async Task<SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>> FetchPickListAsync(
+        string endpoint, string entityName, string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Add("X-Navajo-Entity", entityName);
+            request.Headers.Add("X-Navajo-Instance", "KNVB");
+            request.Headers.Add("X-Navajo-Locale", "nl");
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
+                    SportlinkClubCallStatus.SportlinkFout, null, $"Unauthorized bij {entityName} endpoint", 401);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("{Entity} endpoint gaf {StatusCode}", entityName, response.StatusCode);
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
+                    SportlinkClubCallStatus.SportlinkFout, null, $"{entityName} endpoint gaf {response.StatusCode}", (int)response.StatusCode);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var element = UnwrapArrayEnvelope(doc.RootElement, "Items", "Teams", "Locations", "Data");
+
+                if (element is not { ValueKind: JsonValueKind.Array } arrayElement)
+                    return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
+                        SportlinkClubCallStatus.SportlinkFout, null, $"{entityName}-respons had onverwachte vorm", (int)response.StatusCode);
+
+                var items = arrayElement.EnumerateArray().Select(ParsePickListItem).ToList();
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
+                    SportlinkClubCallStatus.Ok, items, null, (int)response.StatusCode);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
+                return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
+                    SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", (int)response.StatusCode);
+            }
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.NetwerkFout, null, $"Timeout bij {entityName} endpoint", null);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.NetwerkFout, null, $"Netwerk fout bij {entityName} endpoint", null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Onverwachte fout bij {Entity} endpoint", entityName);
+            return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.SportlinkFout, null, $"Onverwachte fout bij {entityName} endpoint", null);
+        }
+    }
+
+    /// <summary>
+    /// ONBEVESTIGD: welke JSON-veldnamen een picklist-item daadwerkelijk gebruikt is nooit met een
+    /// netwerktrace gezien — probeert daarom een paar aannemelijke namen per waarde, in volgorde
+    /// van waarschijnlijkheid, in plaats van een strikt contract af te dwingen dat mogelijk meteen
+    /// breekt op de eerste live respons.
+    /// </summary>
+    internal static SportlinkPickListItem ParsePickListItem(JsonElement item)
+    {
+        var id = FirstStringProperty(item, "Id", "PublicTeamId", "PublicLocationId", "FacilityId", "Value", "Code");
+        var naam = FirstStringProperty(item, "Name", "TeamName", "LocationName", "FacilityName", "Text", "Description", "Naam");
+        return new SportlinkPickListItem(id, naam);
+    }
+
+    private static string? FirstStringProperty(JsonElement element, params string[] propertyNames)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var name in propertyNames)
+        {
+            if (element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String)
+                return property.GetString();
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Gedeelde token-refresh/401-eenmalige-retry-wrapper voor alle schrijvende Sportlink-aanroepen
     /// (#992 kleedkamers, #993 veld, en toekomstige mutaties) — derde bijna-identieke kopie van
     /// dit patroon (na #992/#993) was de trigger om het hier te consolideren, zelfde overweging als
@@ -1066,15 +1290,23 @@ public class SportlinkClubClient : ISportlinkClubClient
         string? StartTime);
 
     /// <summary>
-    /// Gedeelde PUT-uitvoering + responsparsing voor alle mutatie-endpoints — derde bijna-identieke
-    /// kopie (na #992/#993) was de trigger om ook dit deel te consolideren, zie de doc-comment op
-    /// <see cref="ExecuteMutationWithRetryAsync"/>.
+    /// Gedeelde verzenduitvoering + responsparsing voor alle mutatie-endpoints — derde bijna-
+    /// identieke kopie (na #992/#993) was de trigger om ook dit deel te consolideren, zie de
+    /// doc-comment op <see cref="ExecuteMutationWithRetryAsync"/>. Sinds #997 ook voor POST (zie
+    /// <paramref name="method"/>) — de drie bestaande PUT-aanroepen (#992/#993/#996) en de PUT van
+    /// #994 geven <paramref name="method"/> niet mee en blijven dus ongewijzigd <c>HttpMethod.Put</c>
+    /// gebruiken (default), alleen #997's <c>CreateClubMatchAsync</c> geeft expliciet
+    /// <c>HttpMethod.Post</c> mee. De naam <c>PutMutationAsync</c> is bewust NIET hernoemd — dat zou
+    /// alle bestaande call sites moeten aanraken voor een verandering die zuiver optioneel is, meer
+    /// regressierisico op de drie bevestigde PUT-paden dan een simpele parameter-toevoeging.
     /// </summary>
     private async Task<SportlinkClubResponse<SportlinkMutationResult>> PutMutationAsync(
         string endpoint, string entityName, object body, string token, CancellationToken cancellationToken,
         bool forceDryRun = false,
-        Func<string, SportlinkMutationResult, SportlinkMutationResult>? verrijkResultaat = null)
+        Func<string, SportlinkMutationResult, SportlinkMutationResult>? verrijkResultaat = null,
+        HttpMethod? method = null)
     {
+        var httpMethod = method ?? HttpMethod.Put;
         try
         {
             // Direct na serialisatie (zodat een serialisatiefout alsnog opduikt) en vóór het
@@ -1108,7 +1340,7 @@ public class SportlinkClubClient : ISportlinkClubClient
                     200);
             }
 
-            var request = new HttpRequestMessage(HttpMethod.Put, endpoint)
+            var request = new HttpRequestMessage(httpMethod, endpoint)
             {
                 Content = new StringContent(serializedBody, System.Text.Encoding.UTF8, "application/json")
             };
@@ -1155,7 +1387,10 @@ public class SportlinkClubClient : ISportlinkClubClient
                 ? raw.Violations.Select(kv => $"{kv.Key}: {kv.Value}").ToList()
                 : raw.ViolationCodes;
             var isSuccess = raw.Error != true && response.IsSuccessStatusCode;
-            var mutationResult = new SportlinkMutationResult(isSuccess, violations);
+            // #997: PublicMatchId komt alleen terug op de ClubMatch-aanmaak-respons — voor elke
+            // andere mutatie-respons (dressing rooms, veld, officials, change-request-actie) staat
+            // dit veld hier niet in en blijft raw.PublicMatchId dus null (bestaand gedrag ongewijzigd).
+            var mutationResult = new SportlinkMutationResult(isSuccess, violations, PublicMatchId: raw.PublicMatchId);
             if (verrijkResultaat != null)
                 mutationResult = verrijkResultaat(json, mutationResult);
             return new SportlinkClubResponse<SportlinkMutationResult>(
@@ -1187,7 +1422,10 @@ public class SportlinkClubClient : ISportlinkClubClient
         string? Status,
         string? Message,
         List<string>? ViolationCodes,
-        Dictionary<string, string>? Violations);
+        Dictionary<string, string>? Violations,
+        // #997: alleen aanwezig op de ClubMatch-aanmaak-respons ({"PublicMatchId":"M...","IsSuccess":true})
+        // — optioneel, dus geen effect op de bestaande #992/#993/#994/#996-mutatieresponsen.
+        string? PublicMatchId);
 
     private async Task<SportlinkClubResponse<IReadOnlyList<SportlinkMatchProgramEntry>>> FetchMatchProgramOverviewRawAsync(
         DateOnly datum, string token, CancellationToken cancellationToken)

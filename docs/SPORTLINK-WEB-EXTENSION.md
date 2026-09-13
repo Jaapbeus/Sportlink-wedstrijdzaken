@@ -20,15 +20,17 @@
 > blijft open) en blokkeert alleen nog #996's actie-pad, dat wél een echte aanvrager-identiteit
 > nodig heeft. **Inkomende wijzigingsverzoeken ophalen (#996, GET) is 2026-09-06 live bevestigd te
 > werken** — toont echte, actuele verzoeken van tegenstanders. De actie (goedkeuren/afwijzen) is
-> bewust NIET live getest en blijft geblokkeerd op #1048's `UserInfo`-bug. #994 (officials toewijzen)
-> en #995 (wijzigingsverzoek datum/tijd/accommodatie) zijn inmiddels gebouwd als **scaffolding**:
-> endpoint, guard en UI bestaan, maar lopen altijd via de code-niveau `forceDryRun`-lock omdat de
-> exacte requestvorm nooit met een netwerktrace bevestigd is. **#995 is bovendien uitsluitend stap 1
-> (valideren) van Sportlinks tweestaps flow** — stap 2 (bevestigen, die een goedkeuringsverzoek naar
-> de tegenstander stuurt) is bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop.
-> Dit is de enige mutatie in de hele extensie die een échte tegenstander raakt; zie §4.2/§5/§6 voor
-> details. #997 is nog steeds bewust niet gebouwd: de exacte requestvorm is niet live vastgesteld
-> (zie de betreffende issues). Epic
+> bewust NIET live getest en blijft geblokkeerd op #1048's `UserInfo`-bug. **#994 (officials
+> toewijzen), #995 (wijzigingsverzoek datum/tijd/accommodatie) en #997 (oefenwedstrijd aanmaken)
+> zijn inmiddels gebouwd als scaffolding**: endpoint, guard en UI bestaan, maar lopen altijd via de
+> code-niveau `forceDryRun`-lock omdat de exacte requestvorm nooit met een netwerktrace bevestigd is
+> (zie §4.2/§5/§6.2 hieronder). **#995 is bovendien uitsluitend stap 1 (valideren) van Sportlinks
+> tweestaps flow** — stap 2 (bevestigen, die een goedkeuringsverzoek naar de tegenstander stuurt) is
+> bewust NIET gebouwd: geen endpoint, geen client-methode, geen UI-knop. Dit is de enige mutatie in
+> de hele extensie die een échte tegenstander raakt. #997 heeft van alle #986-sub-issues de meeste
+> onbekenden: volledige body onbevestigd, meerdere picklist-vormen onbekend, delete-methode
+> onbekend — alleen de aanmaak-POST en de twee picklist-GETs (Teams + Location) zijn aangesloten,
+> verwijderen/uitslag bewust niet. Epic
 > [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986). Dit document is de
 > canonieke, levende beschrijving — bij twijfel of tegenspraak met een ouder issue-comment geldt
 > dit document. Het bronrapport met alle live-geteste technische details staat in
@@ -260,6 +262,26 @@ verplichte N-user-test.
   onze eigen wedstrijd-mutatie-vlaggen, niet het afhandelen van een verzoek van een tegenstander.
   Audit-logging blijft wel verplicht. `ActOnChangeRequestAsync` haalt `PublicPersonId` van het
   service-account zelf op via `user/UserInfo` — de aanroeper hoeft dat niet te kennen.
+- `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
+  /api/sportlink/club-match` (aanmaken, altijd code-gelockt) + `GET .../club-match/picklists`
+  (Teams + Location, read-only, echt aangeroepen). **POST — ONBEVESTIGD — code-lock — geen guard
+  mogelijk vóór aanmaak (eigen-DB-checks i.p.v. Sportlink-permissievlag):** structureel anders dan
+  `SportlinkMatchFunction`/`SportlinkChangeRequestFunction` — er is vooraf GEEN bestaande wedstrijd,
+  dus geen `PublicMatchId`, geen `wedstrijdcode`, geen `SportlinkMatch` om te guarden. In plaats van
+  `SportlinkMutationGuard` gelden alleen ONZE EIGEN regels: de `sportlinkExtensionEnabled`-toggle +
+  `EgressGuard.ExternalIntegrationsAllowed()` (zelfde patroon als
+  `SportlinkChangeRequestFunction`'s eigen toggle/egress-check, om een vergelijkbare reden — geen
+  mutatie op onze eigen wedstrijdgegevens). Audit-model past niet 1-op-1: `SportlinkMutationAuditEntry`
+  vereist een verplicht, niet-leeg `PublicMatchId`-veld dat bij het aanmaken nog niet bestaat — de
+  Pending-rij gebruikt daarom de placeholder `"NIEUW"`, met een gegenereerde GUID in `CorrelationId`
+  om Pending- en Voltooid-rij te koppelen. Het écht opslaan van het teruggekregen `PublicMatchId`
+  vereist een uitbreiding van `ISportlinkMutationAuditService.VoltooiAsync` (een extra optionele
+  parameter, raakt beide tiers) — bewust NIET gebouwd in deze ronde (`// TODO` in de broncode),
+  niet nodig zolang dit pad toch altijd `"DryRunLocked"` teruggeeft. **Bewust NIET gebouwd (toekomstig
+  werk):** verwijderen (`ClubMatchDelete`), uitslag vastleggen (`ClubMatchScore`), de drie overige
+  ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,
+  `codetable/AgeClassList`), en een "vrij tijdslot"-concept in de Dagplanning-Gantt — het formulier
+  (`BlazorAdmin/Pages/OefenwedstrijdAanmaken.razor`) staat los van de Gantt.
 - **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
   punt waar alle drie de PUT-paden (kleedkamers, veld, change-request-actie) doorheen lopen — niet
   per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-
@@ -278,7 +300,9 @@ verplichte N-user-test.
 - **Code-niveau `forceDryRun`-lock (#994), onafhankelijk van de instelling hierboven.** Naast
   `sportlinkDryRun` (een bewuste, per-club instelling voor BEVESTIGDE mutaties) bestaat sinds #994
   een tweede, harde vergrendeling voor een mutatie waarvan de requestbody nooit met een
-  netwerktrace bevestigd is (de eerste: officials toewijzen, #994; ook gebruikt door #995/#997).
+  netwerktrace bevestigd is (de eerste: officials toewijzen, #994; ook gebruikt door #995's
+  wijzigingsverzoek — `UpdateMatchDetailsChangeRequestLiveBevestigd` — en #997's
+  oefenwedstrijd-aanmaak — `ClubMatchLiveBevestigd`).
   `PutMutationAsync` kreeg een `forceDryRun`-parameter (`if (forceDryRun || _isDryRun())`) — de club
   kan dit NIET uitzetten via Instellingen, ongeacht de stand van `sportlinkDryRun`. Elke
   mutatiemethode voor zo'n onbevestigd endpoint geeft `forceDryRun: !XyzLiveBevestigd` mee, met een
@@ -437,6 +461,16 @@ test getriggerd wordt:
   binnen Sportlink zelf. Een test van de actie zou dus een echte beslissing forceren op een echt
   verzoek van een echte tegenstander — alleen te doen met expliciete instemming van de eigenaar
   over een specifiek, door hem aangewezen verzoek.
+- **#997's oefenwedstrijd-aanmaak is scaffolding, geen live-getest pad — en heeft van alle
+  #986-sub-issues de meeste onbekenden.** Endpoint, volledige requestbody, en de exacte
+  respons-veldnamen van de twee aangesloten picklists zijn allemaal gereverse-engineerd, nooit met
+  een netwerktrace gezien. Verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`)
+  zijn bewust niet aangesloten — het is dus (nog) niet mogelijk om een per ongeluk aangemaakte
+  testwedstrijd via deze app weer te verwijderen, ook niet zodra de code-lock ooit wordt opgeheven.
+  Een toekomstige koppeling tussen een zelf-geplande oefenwedstrijd in
+  `planner.geplandewedstrijden` (kolom `sportlinkwedstrijdcode`, momenteel ongebruikt voor dit doel)
+  en het door Sportlink teruggegeven `PublicMatchId` is bewust niet gebouwd in deze ronde — zie de
+  PR-beschrijving van #997 voor een eerste verkenning van dat aanknopingspunt.
 - Volledige, actuele lijst met openstaande vragen en risico's: onderzoeksrapport §5/§7.
 
 ## 6. Technische bijlage — endpoints, bodies, token-flow (#998)
@@ -465,12 +499,17 @@ de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht b
 | `competition/match/Match` (`?PublicMatchId=`) | GET | Wedstrijddetails ophalen (ook: snapshot vóór een veldwijziging, ook: rauwe vormcontrole voor de contract-check) | — |
 | `competition/match/MatchProgramOverview` (`?DateFrom=&DateTo=`) | GET | Niet-club-gescoped, 1-daags programma — voor de `PublicMatchId`-reverse-lookup en de dagelijkse warmup-timer | — |
 | `competition/match/UpdateMatchDressingRooms` | PUT | Kleedkamers toewijzen | `SportlinkMutationSoort.Kleedkamers` |
-| `competition/match/UpdateMatchDetails` | PUT | Veld(deel) wijzigen — verwacht het VOLLEDIGE wedstrijdrecord, niet een klein patch (zie §4.2) | `SportlinkMutationSoort.Veld` |
 | `competition/match/UpdateMatchDetails` (idem, andere velden overschreven) | PUT | Wijzigingsverzoek datum/tijd/accommodatie — **ONBEVESTIGD, altijd code-gelockt, ALLEEN stap 1 (#995)**, zie §4.2/§5 | `SportlinkMutationSoort.DatumTijdAccommodatie` |
 | `competition/match/official/MatchOfficialsAction` | PUT | Officials toewijzen — **ONBEVESTIGD, altijd code-gelockt (#994)**, zie §4.2 | `SportlinkMutationSoort.Officials` |
 | `competition/match/changerequest/MatchChangeRequests` | GET | Inkomende wijzigingsverzoeken van tegenstanders ophalen | — (geen `SportlinkMutationGuard`, zie §4.2) |
 | `competition/match/changerequest/MatchChangeRequestAction` | PUT | Verzoek goed-/afkeuren | — (idem) |
 | `user/UserInfo` | GET | `PublicPersonId` van het service-account, nodig voor `MatchChangeRequestAction` | — |
+| `competition/match/clubmatch/ClubMatch` | **POST** | Oefenwedstrijd aanmaken — **ONBEVESTIGD, altijd code-gelockt (#997)**, zie §4.2. Geen guard mogelijk vóór aanmaak (er is nog geen wedstrijd) — alleen eigen-DB-checks i.p.v. een Sportlink-permissievlag | — (eigen toggle/EgressGuard i.p.v. `SportlinkMutationGuard`, zie §4.2) |
+| `competition/match/clubmatch/PickListsTeams` | GET | Picklist teams voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
+| `competition/match/clubmatch/PickListsLocation` | GET | Picklist locaties voor het aanmaak-formulier (#997) — read-only, echt aangeroepen | — |
+| `competition/match/clubmatch/ClubMatchDelete` | — | **Bewust NIET aangesloten (#997)** — verwijdermethode onbekend | — |
+| `competition/match/clubmatch/ClubMatchScore` | — | **Bewust NIET aangesloten (#997)** — uitslag vastleggen, buiten scope | — |
+| `competition/match/clubmatch/ClubMatchDefaults`, `PickListsMatchInformation`, `codetable/AgeClassList` | — | **Bewust NIET aangesloten (#997)** — drie extra onbevestigde endpoints tegelijk is te veel gok in één ronde | — |
 
 Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vaste appnaam),
 `X-Navajo-Instance: KNVB`, `X-Navajo-Locale: nl`.
@@ -509,6 +548,15 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
   response.IsSuccessStatusCode`, niet door een afzonderlijk `isSuccess`-veld (de happy-path-vorm is
   nooit live bevestigd).
+- **`ClubMatch` (#997, ONBEVESTIGD, altijd code-gelockt)**: `{ MatchDate (datum+tijd samengevoegd,
+  ISO 8601 zonder tijdzone aangenomen), Duration (default 90), ExternalMatchId, HomeResult: -1,
+  AwayResult: -1, AgeClassCode, Description, PublicHomeTeamId, PublicAwayTeamId, FacilityId,
+  FieldId }` — komt uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Respons:
+  `{ PublicMatchId: "M...", IsSuccess: true }` — `PublicMatchId` is een optioneel vijfde veld op
+  `SportlinkMutationResult`/`SportlinkMutatieResultaatDto`, blijft `null` zolang de code-lock actief
+  is. `PutMutationAsync` is sinds #997 gegeneraliseerd met een optionele `HttpMethod`-parameter
+  (default `Put`) zodat dit endpoint als POST kan versturen zonder de drie bestaande PUT-paden te
+  raken.
 
 ### 6.4 Dry-run (#998) en de code-niveau forceDryRun-lock (#994)
 In dry-run wordt de body nog wél geserialiseerd (zodat een serialisatiefout alsnog opduikt) maar

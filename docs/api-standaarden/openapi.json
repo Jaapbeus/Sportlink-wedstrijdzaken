@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.3.0",
+    "version": "3.3.4.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -127,7 +127,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "description": "\"ok\" als database \"online\" is én settingsLoaded true is, anders \"degraded\".",
+            "description": "\"ok\" als database \"online\" is, settingsLoaded true is en (Postgres-tier) pendingMigrations leeg is, anders \"degraded\".",
             "example": "ok"
           },
           "version": {
@@ -170,6 +170,46 @@
             "nullable": true,
             "description": "Het versienummer dat de databaseserver zelf teruggeeft; null als de database niet bereikbaar is.",
             "example": "16.0.4265.3"
+          },
+          "lastSync": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Postgres-tier (#1081): laatste synchronisatietijd van de primaire club; null als er nooit gesynchroniseerd is."
+          },
+          "syncStale": {
+            "type": "boolean",
+            "description": "Postgres-tier (#1081): true als lastSync ouder is dan SyncMaxAgeHours (standaard 36) of ontbreekt. Telt alleen mee in status waar een synchronisatie ook hoort te draaien.",
+            "example": false
+          },
+          "tlsMode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Postgres-tier (#1095): de TLS-modus die daadwerkelijk op de databaseverbinding geldt (bijv. VerifyFull, Require); null als database \"unconfigured\" is.",
+            "example": "VerifyFull"
+          },
+          "tlsWarning": {
+            "type": "string",
+            "nullable": true,
+            "description": "Postgres-tier (#1095): null als het TLS-beleid (VerifyFull, #1004) gehaald is; anders een waarschuwing zonder host of credentials dat de verbinding versleuteld is maar het servercertificaat/de hostnaam niet volledig gevalideerd wordt.",
+            "example": null
+          },
+          "schemaWarning": {
+            "type": "string",
+            "nullable": true,
+            "description": "Postgres-tier (#1098): null als public.appsettings alle kolommen heeft die deze versie verwacht; anders een waarschuwing dat de code vooruitloopt op het databaseschema en welke migratie ontbreekt. De applicatie draait dan door op de migratie-default.",
+            "example": null
+          },
+          "pendingMigrations": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "Postgres-tier (#1098): bestandsnamen uit Database.Postgres/migrations/ die nog niet in de ledger schema_migrations staan. Leeg = code en schema lopen gelijk; null als de database niet bereikbaar is. Alleen lezen — toepassen blijft een handeling van de beheerder (Database.Postgres.Cli).",
+            "example": [
+              "012_sportlink_extension.sql"
+            ]
           }
         }
       },
@@ -1108,6 +1148,11 @@
           "IsForcedDryRun": {
             "type": "boolean",
             "description": "#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een\nmutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —\nONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat \"DryRunLocked\").\nAls dit true is, is IsDryRun ook altijd true.\n"
+          },
+          "PublicMatchId": {
+            "type": "string",
+            "nullable": true,
+            "description": "#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd\n(POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang\nIsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de\nClubMatch-code-lock actief is).\n"
           }
         }
       },
@@ -1137,6 +1182,37 @@
                 "type": "boolean"
               }
             }
+          }
+        }
+      },
+      "SportlinkClubMatchPickListsResponse": {
+        "type": "object",
+        "description": "De twee ondersteunende picklists die in deze ronde bewust WEL zijn aangesloten (#997,\nbewust beperkte scope): PickListsTeams + PickListsLocation. Read-only en\npersoonsgegevensvrij (teams/locaties, geen personen). ONBEVESTIGD qua werkelijke\nitem-veldnamen — zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.\n",
+        "properties": {
+          "Teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SportlinkPickListItem"
+            }
+          },
+          "Locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SportlinkPickListItem"
+            }
+          }
+        }
+      },
+      "SportlinkPickListItem": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "string",
+            "nullable": true
+          },
+          "Naam": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -4538,6 +4614,148 @@
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/club-match": {
+      "post": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "postSportlinkClubMatch",
+        "summary": "Oefenwedstrijd (\"clubwedstrijd\") aanmaken (#997, epic",
+        "description": "**ONBEVESTIGD, altijd gesimuleerd:** endpoint (`POST\ncompetition/match/clubmatch/ClubMatch`) en requestbody zijn gereverse-engineerd uit\nSportlinks eigen frontend-code, nooit met een netwerktrace gezien — van alle #986-sub-\nissues heeft dit issue de MEESTE onbekenden (volledige body onbevestigd, meerdere\npicklist-vormen onbekend, delete-methode onbekend). Deze aanroep loopt daarom altijd via\neen code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling\n`sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan.\nStructureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN\nbestaande wedstrijd, dus geen `SportlinkMutationGuard`-check — in plaats daarvan alleen\nonze eigen `sportlinkExtensionEnabled`-toggle + EgressGuard. Bewust NIET gebouwd in deze\nronde: verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "MatchDateTime"
+                ],
+                "properties": {
+                  "MatchDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ONBEVESTIGD — datum+tijd samengevoegd, Sportlink verwacht dit aangenomen als één MatchDate-veld."
+                  },
+                  "Duration": {
+                    "type": "integer",
+                    "default": 90,
+                    "description": "ONBEVESTIGD — duur in minuten."
+                  },
+                  "AgeClassCode": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Vrije tekst in deze ronde — codetable/AgeClassList is bewust niet aangesloten."
+                  },
+                  "Description": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "PublicHomeTeamId": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "ONBEVESTIGD — team-identifier uit GET .../club-match/picklists."
+                  },
+                  "PublicAwayTeamId": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "FacilityId": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "ONBEVESTIGD — locatie-identifier uit GET .../club-match/picklists."
+                  },
+                  "FieldId": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (in de praktijk altijd IsForcedDryRun=true zolang de code-lock actief is)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "MatchDateTime ontbreekt"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/club-match/picklists": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkClubMatchPickLists",
+        "summary": "Ondersteunende picklists voor het oefenwedstrijd-formulier (#997, bewust beperkte scope)",
+        "description": "Alleen de twee picklists die de UI het hardst nodig heeft: PickListsTeams en\nPickListsLocation — read-only en persoonsgegevensvrij (teams/locaties, geen personen).\nBewust NIET automatisch geladen bij het openen van de pagina, alleen op expliciet verzoek\nvanuit de UI. De overige drie ondersteunende endpoints uit het issue\n(ClubMatchDefaults, PickListsMatchInformation, codetable/AgeClassList) zijn in deze ronde\nbewust niet aangesloten.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "De twee picklists (kunnen leeg zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkClubMatchPickListsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           },
           "503": {
             "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"

@@ -77,6 +77,8 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `PUT` | `/sportlink/match/{wedstrijdcode}/change-request` | **Wedstrijdzaken** | Wijzigingsverzoek datum/tijd/accommodatie — **ALLEEN stap 1 (valideren)** van Sportlinks tweestaps flow, `Toelichting` verplicht; ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); enige mutatie die een echte tegenstander raakt — stap 2 (bevestigen) is bewust niet gebouwd (#995) |
 | `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende wijzigingsverzoeken van tegenstanders ophalen (#996) |
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
+| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); geen `SportlinkMutationGuard` (er is vooraf geen bestaande wedstrijd), alleen eigen toggle/EgressGuard-check. Verwijderen/uitslag bewust niet gebouwd (#997) |
+| `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee ondersteunende picklists (Teams + Location) voor het aanmaak-formulier — read-only, persoonsgegevensvrij, niet automatisch geladen (#997) |
 | `GET/POST/PUT` | `/beheer/velden` en `/{veldNummer}` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren, optioneel gekoppeld aan een periode (`PeriodeId`, #581) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldtraining` en `/{id}` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679) |
@@ -119,12 +121,23 @@ ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `d
 
 | Veld | Type | Beschrijving |
 |---|---|---|
-| `status` | `string` | `"ok"` als `database` `"online"` is én `settingsLoaded` `true` is, anders `"degraded"` |
+| `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en (Postgres-tier) `pendingMigrations` leeg is, anders `"degraded"` |
 | `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
 | `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
 | `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
 | `provider` | `string` | De gebruikte databasedriver |
 | `serverVersion` | `string \| null` | Versienummer van de databaseserver zelf; `null` als niet bereikbaar |
+| `lastSync` | `string \| null` | Postgres-tier (#1081): laatste synchronisatietijd (UTC) van de primaire club; `null` als nooit gesynchroniseerd |
+| `syncStale` | `boolean` | Postgres-tier (#1081): `true` als `lastSync` ouder is dan `SyncMaxAgeHours` (standaard 36) of ontbreekt; telt alleen mee in `status` waar een synchronisatie hoort te draaien |
+| `tlsMode` | `string \| null` | Postgres-tier (#1095): de TLS-modus die daadwerkelijk geldt op de databaseverbinding (bijv. `VerifyFull`, `Require`); `null` bij `unconfigured` |
+| `tlsWarning` | `string \| null` | Postgres-tier (#1095): `null` als het TLS-beleid (`VerifyFull`, #1004) gehaald is; anders een waarschuwing — zonder host of credentials — dat de verbinding wél versleuteld is maar certificaat/hostnaam niet volledig gevalideerd worden |
+| `schemaWarning` | `string \| null` | Postgres-tier (#1098): `null` als `public.appsettings` alle kolommen heeft die deze versie verwacht; anders een waarschuwing dat de code vooruitloopt op het schema en welke migratie ontbreekt. De applicatie draait dan door op de migratie-default |
+| `pendingMigrations` | `string[] \| null` | Postgres-tier (#1098): bestandsnamen uit `Database.Postgres/migrations/` die nog niet in de ledger `schema_migrations` staan. Leeg = code en schema lopen gelijk; `null` als de database niet bereikbaar is. Alleen lezen — toepassen blijft een handeling van de beheerder (`Database.Postgres.Cli`) |
+
+**Vanaf 3.3.0.2 doet de Postgres-tier bij elke aanroep zelf één poging de clubinstellingen te laden**
+zodra de database bereikbaar is, zodat `settingsLoaded` een feit is en geen aanname over een eerdere
+poging. Direct na een herstart meldde het veld anders `true` terwijl het eerste beheerscherm daarna
+op 500 zou lopen (#1098).
 
 ---
 

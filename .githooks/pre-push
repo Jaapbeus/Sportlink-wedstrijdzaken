@@ -6,6 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 REMOTE_URL="$2"
 
+# Zelfde geankerde vrijstellingslijst als in pre-commit (#1095) — daar staat de toelichting per
+# token. Beide hooks moeten dezelfde lijst hanteren, anders slaagt een commit die de push weigert.
+KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_PASSWORD\b|\[password\]|_{4,})'
+
 echo "Scanning repository before push to: $REMOTE_URL"
 
 FOUND_ISSUE=0
@@ -78,7 +82,7 @@ while read local_ref local_sha remote_ref remote_sha; do
         candidate_path="${candidate#*:}"
         # Bekende, opzettelijk niet-geheime CI/test-waarden (wegwerpdatabase, alleen in CI-run
         # bestaand, expliciet zo genoemd) mogen de scan niet blokkeren.
-        REAL_LINES=$(git grep -h -I -i -E -e "$pattern" "$local_sha" -- "$candidate_path" 2>/dev/null | grep -viE "wegwerpwachtwoord-niet-geheim" || true)
+        REAL_LINES=$(git grep -h -I -i -E -e "$pattern" "$local_sha" -- "$candidate_path" 2>/dev/null | grep -viE "$KNOWN_SYNTHETIC_VALUES" || true)
         if [ -n "$REAL_LINES" ]; then
           HITS="$HITS
 $candidate"

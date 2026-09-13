@@ -245,4 +245,43 @@ public interface ISportlinkClubClient
         string? nieuweFacilityId,
         string toelichting,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Maakt een nieuwe oefenwedstrijd ("clubwedstrijd") aan bij Sportlink (#997, epic #986) —
+    /// <c>POST competition/match/clubmatch/ClubMatch</c>. Structureel anders dan de andere
+    /// mutatiemethodes in deze interface: er is vooraf GEEN bestaande wedstrijd, dus geen
+    /// <c>publicMatchId</c> en geen <see cref="SportlinkMutationGuard"/>-check mogelijk (die guard
+    /// leest vlaggen van een al bestaande <c>SportlinkMatch</c>). De aanroeper controleert in plaats
+    /// daarvan alleen onze EIGEN regels (de <c>sportlinkExtensionEnabled</c>-toggle en
+    /// <c>EgressGuard.ExternalIntegrationsAllowed()</c>) — zie <c>SportlinkClubMatchFunction</c>.
+    /// <b>ONBEVESTIGD:</b> endpoint en body-vorm zijn nooit met een netwerktrace gezien
+    /// (gereverse-engineerd uit Sportlinks eigen frontend-code) — deze methode roept daarom altijd
+    /// intern <c>forceDryRun: true</c> aan totdat een mens (nooit een agent, zie
+    /// docs/SPORTLINK-WEB-EXTENSION.md §4.4) een live trace heeft gedaan en de lock-constante in een
+    /// aparte PR omzet. Dit is ONAFHANKELIJK van de club-instelling <c>sportlinkDryRun</c>.
+    /// </summary>
+    /// <param name="functioneleRol">Functionele rol voor token-lookup.</param>
+    /// <param name="aanvraag">Zie <see cref="SportlinkClubMatchAanvraag"/> — elk veld ONBEVESTIGD.</param>
+    /// <returns>
+    /// Bij <c>Status=Ok</c>: <c>Data.IsForcedDryRun</c> is in de praktijk altijd <c>true</c> zolang
+    /// de code-lock actief is, en <c>Data.PublicMatchId</c> blijft dan <c>null</c> (Sportlink is
+    /// niet daadwerkelijk aangeroepen). Zodra de lock ooit wordt opgeheven: <c>Data.PublicMatchId</c>
+    /// bevat de nieuw aangemaakte wedstrijd-ID uit Sportlinks respons.
+    /// </returns>
+    Task<SportlinkClubResponse<SportlinkMutationResult>> CreateClubMatchAsync(
+        string functioneleRol,
+        SportlinkClubMatchAanvraag aanvraag,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Haalt de twee ondersteunende picklists op die een oefenwedstrijd-formulier nodig heeft
+    /// (#997, bewust beperkte scope): <c>clubmatch/PickListsTeams</c> en
+    /// <c>clubmatch/PickListsLocation</c>. Read-only en persoonsgegevensvrij (teams/locaties, geen
+    /// personen) — anders dan <see cref="CreateClubMatchAsync"/> dus GEEN forceDryRun-lock nodig,
+    /// deze aanroep gaat echt naar Sportlink. Wel ONBEVESTIGD qua exacte respons-veldnamen per item
+    /// — zie <see cref="SportlinkPickListItem"/>.
+    /// </summary>
+    Task<SportlinkClubResponse<SportlinkClubMatchPickLists>> GetClubMatchPickListsAsync(
+        string functioneleRol,
+        CancellationToken cancellationToken = default);
 }
