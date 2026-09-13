@@ -9,8 +9,9 @@
 
 <p class="text-muted">
     Wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor datum, tijd of
-    accommodatie. Alleen verzoeken met status <code>CONFIRM</code> wachten op een beslissing van
-    ons — de overige staan hier alleen ter referentie.
+    accommodatie. Alleen <strong>openstaande</strong> verzoeken wachten op een beslissing van ons;
+    de overige staan er ter referentie bij. Wedstrijdnummer en teams komen uit onze eigen
+    wedstrijdgegevens — ontbreken ze bij een verzoek, dan is die wedstrijd nog niet gekoppeld.
 </p>
 
 @if (_laden)
@@ -27,69 +28,194 @@ else if (_verzoeken == null || _verzoeken.Count == 0)
 }
 else
 {
-    <table class="table table-sm">
-        <thead>
-            <tr>
-                <th>Status</th>
-                <th>Huidig</th>
-                <th>Gevraagd</th>
-                <th>Reden</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var verzoek in _verzoeken)
+    @* #1111: statusfilter als knoppenrij, standaard alleen "Openstaand" — naar het voorbeeld van
+       Sportlinks eigen scherm. Elke knop toont het aantal in die categorie. *@
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Statusfilter">
+            @foreach (var f in Filters)
             {
-                <tr>
-                    <td>
-                        <span class="badge @(verzoek.RequestStatus == "CONFIRM" ? "bg-warning text-dark" : "bg-secondary")">
-                            @verzoek.RequestStatus
-                        </span>
-                    </td>
-                    <td>@verzoek.RequestData?.CurrentDate @verzoek.RequestData?.CurrentStartTime</td>
-                    <td>@verzoek.RequestData?.RequestedDate @verzoek.RequestData?.RequestedStartTime</td>
-                    <td>@verzoek.Reason</td>
-                    <td>
-                        @if (verzoek.RequestStatus == "CONFIRM" && verzoek.PublicRequestId != null && verzoek.PublicMatchId != null)
-                        {
-                            <button class="btn btn-sm btn-success me-1" disabled="@_bezig.GetValueOrDefault(verzoek.PublicRequestId)"
-                                    @onclick="() => HandelAfAsync(verzoek, isApprove: true)">
-                                Goedkeuren
-                            </button>
-                            <input class="form-control form-control-sm d-inline-block me-1" style="width:12rem;"
-                                   placeholder="Toelichting bij afwijzen"
-                                   value="@_toelichting.GetValueOrDefault(verzoek.PublicRequestId)"
-                                   @onchange="e => _toelichting[verzoek.PublicRequestId] = e.Value?.ToString()" />
-                            <button class="btn btn-sm btn-outline-danger" disabled="@_bezig.GetValueOrDefault(verzoek.PublicRequestId)"
-                                    @onclick="() => HandelAfAsync(verzoek, isApprove: false)">
-                                Afwijzen
-                            </button>
-                            @if (_bezig.GetValueOrDefault(verzoek.PublicRequestId))
-                            {
-                                <span class="spinner-border spinner-border-sm ms-1"></span>
-                            }
-                            @if (!string.IsNullOrEmpty(_melding.GetValueOrDefault(verzoek.PublicRequestId)))
-                            {
-                                <div class="mt-1 @(_meldingFout.GetValueOrDefault(verzoek.PublicRequestId) ? "text-danger" : "text-success")">
-                                    @_melding.GetValueOrDefault(verzoek.PublicRequestId)
-                                </div>
-                            }
-                        }
-                    </td>
-                </tr>
+                var aantal = _verzoeken.Count(v => f.Match(v.RequestStatus));
+                <button type="button"
+                        class="btn @(_filter == f.Key ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => _filter = f.Key">
+                    @f.Label <span class="badge bg-light text-dark ms-1">@aantal</span>
+                </button>
             }
-        </tbody>
-    </table>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LaadVerzoekenAsync" title="Opnieuw laden">
+            <i class="bi bi-arrow-clockwise"></i> Vernieuwen
+        </button>
+    </div>
+
+    var zichtbaar = _verzoeken.Where(v => HuidigFilter.Match(v.RequestStatus)).ToList();
+
+    @if (zichtbaar.Count == 0)
+    {
+        <p class="text-muted">Geen verzoeken met status "@HuidigFilter.Label".</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:2.5rem;" title="Status"></th>
+                        <th>Wedstrijdnr.</th>
+                        <th>Thuis</th>
+                        <th>Uit</th>
+                        <th>Datum</th>
+                        <th>Tijd</th>
+                        <th>Accommodatie</th>
+                        <th>Gevraagd</th>
+                        <th>Reden</th>
+                        <th style="width:11rem;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var verzoek in zichtbaar)
+                    {
+                        var isOpen = IsOpenstaand(verzoek.RequestStatus);
+                        var id = verzoek.PublicRequestId ?? "";
+                        var w = verzoek.Wedstrijd;
+                        <tr>
+                            <td>
+                                <i class="bi @StatusIcoon(verzoek.RequestStatus)" title="@StatusLabel(verzoek.RequestStatus)"
+                                   aria-label="@StatusLabel(verzoek.RequestStatus)"></i>
+                            </td>
+                            <td>@(w?.Wedstrijdnummer?.ToString() ?? "–")</td>
+                            <td>@(w?.Thuisteam ?? "–")</td>
+                            <td>@(w?.Uitteam ?? "–")</td>
+                            <td>@(w?.Datum ?? verzoek.RequestData?.CurrentDate ?? "–")</td>
+                            <td>@(w?.Tijd ?? verzoek.RequestData?.CurrentStartTime ?? "–")</td>
+                            <td>@(w?.Accommodatie ?? verzoek.RequestData?.CurrentFacilityName ?? "–")</td>
+                            <td>
+                                @Gevraagd(verzoek.RequestData)
+                            </td>
+                            <td>
+                                @verzoek.Reason
+                                @if (!string.IsNullOrWhiteSpace(verzoek.Remarks))
+                                {
+                                    <div class="text-muted small">@verzoek.Remarks</div>
+                                }
+                            </td>
+                            <td>
+                                @if (isOpen && verzoek.PublicRequestId != null && verzoek.PublicMatchId != null)
+                                {
+                                    var bezig = _bezig.GetValueOrDefault(id);
+                                    @if (!_afwijzenOpen.GetValueOrDefault(id))
+                                    {
+                                        <button class="btn btn-sm btn-success me-1" disabled="@bezig" title="Goedkeuren" aria-label="Goedkeuren"
+                                                @onclick="() => HandelAfAsync(verzoek, isApprove: true)">
+                                            <i class="bi bi-check-lg"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" disabled="@bezig" title="Afwijzen (toelichting verplicht)" aria-label="Afwijzen"
+                                                @onclick="() => _afwijzenOpen[id] = true">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex flex-column gap-1">
+                                            <input class="form-control form-control-sm" placeholder="Toelichting bij afwijzen (verplicht)"
+                                                   value="@_toelichting.GetValueOrDefault(id)"
+                                                   @onchange="e => _toelichting[id] = e.Value?.ToString()" />
+                                            <div>
+                                                <button class="btn btn-sm btn-danger me-1" disabled="@bezig" title="Afwijzen bevestigen"
+                                                        @onclick="() => HandelAfAsync(verzoek, isApprove: false)">
+                                                    <i class="bi bi-x-lg"></i> Afwijzen
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-secondary" disabled="@bezig" title="Annuleren"
+                                                        @onclick="() => _afwijzenOpen[id] = false">
+                                                    Annuleren
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (bezig)
+                                    {
+                                        <span class="spinner-border spinner-border-sm ms-1"></span>
+                                    }
+                                }
+                                @if (!string.IsNullOrEmpty(_melding.GetValueOrDefault(id)))
+                                {
+                                    <div class="mt-1 small @(_meldingFout.GetValueOrDefault(id) ? "text-danger" : "text-success")">
+                                        @_melding.GetValueOrDefault(id)
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @code {
     private bool _laden = true;
     private string? _fout;
     private List<SportlinkChangeRequestDto>? _verzoeken;
+    private string _filter = "open";
     private readonly Dictionary<string, bool> _bezig = new();
+    private readonly Dictionary<string, bool> _afwijzenOpen = new();
     private readonly Dictionary<string, string?> _toelichting = new();
     private readonly Dictionary<string, string?> _melding = new();
     private readonly Dictionary<string, bool> _meldingFout = new();
+
+    // Sportlinks statuscodes (SportlinkChangeRequest.RequestStatus): CONFIRM wacht op ons,
+    // APPROVED/DENIED zijn afgehandeld, REVOKED is door de indiener ingetrokken.
+    private sealed record StatusFilter(string Key, string Label, Func<string?, bool> Match);
+
+    private static readonly StatusFilter[] Filters =
+    {
+        new("open",  "Openstaand",   s => IsOpenstaand(s)),
+        new("appr",  "Goedgekeurd",  s => Is(s, "APPROVED")),
+        new("deny",  "Afgewezen",    s => Is(s, "DENIED")),
+        new("revk",  "Ingetrokken",  s => Is(s, "REVOKED")),
+        new("all",   "Alle",         _ => true),
+    };
+
+    private StatusFilter HuidigFilter => Filters.FirstOrDefault(f => f.Key == _filter) ?? Filters[0];
+
+    private static bool Is(string? status, string code) => string.Equals(status, code, StringComparison.OrdinalIgnoreCase);
+    private static bool IsOpenstaand(string? status) => Is(status, "CONFIRM");
+
+    private static string StatusIcoon(string? status) => status?.ToUpperInvariant() switch
+    {
+        "CONFIRM"  => "bi-exclamation-circle-fill text-warning",
+        "APPROVED" => "bi-check-circle-fill text-success",
+        "DENIED"   => "bi-x-circle-fill text-danger",
+        "REVOKED"  => "bi-slash-circle text-secondary",
+        _          => "bi-question-circle text-secondary",
+    };
+
+    private static string StatusLabel(string? status) => status?.ToUpperInvariant() switch
+    {
+        "CONFIRM"  => "Openstaand — wacht op onze beslissing",
+        "APPROVED" => "Goedgekeurd",
+        "DENIED"   => "Afgewezen",
+        "REVOKED"  => "Ingetrokken door de indiener",
+        _          => $"Onbekende status ({status})",
+    };
+
+    /// <summary>Compacte weergave van wat de tegenstander vraagt; alleen de velden die afwijken van huidig.</summary>
+    private static string Gevraagd(SportlinkChangeRequestDataDto? d)
+    {
+        if (d == null) return "–";
+        var delen = new List<string>();
+        if (!string.IsNullOrWhiteSpace(d.RequestedDate) && d.RequestedDate != d.CurrentDate) delen.Add(d.RequestedDate!);
+        if (!string.IsNullOrWhiteSpace(d.RequestedStartTime) && d.RequestedStartTime != d.CurrentStartTime) delen.Add(d.RequestedStartTime!);
+        var acc = string.Join(" ", new[] { d.RequestedFacilityName, d.RequestedSubFacilityName }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        var huidigAcc = string.Join(" ", new[] { d.CurrentFacilityName, d.CurrentSubFacilityName }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        if (acc.Length > 0 && acc != huidigAcc) delen.Add(acc);
+        if (delen.Count == 0)
+        {
+            // Niets afwijkend herkend — toon dan het volledige gevraagde tijdstip zodat er nooit een leeg vak staat.
+            var alles = string.Join(" ", new[] { d.RequestedDate, d.RequestedStartTime, acc }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            return alles.Length > 0 ? alles : "–";
+        }
+        return string.Join(" · ", delen);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -118,52 +244,55 @@ else
     private async Task HandelAfAsync(SportlinkChangeRequestDto verzoek, bool isApprove)
     {
         if (verzoek.PublicRequestId == null || verzoek.PublicMatchId == null) return;
+        var id = verzoek.PublicRequestId;
         var actie = isApprove ? "APPROVE" : "DENY";
 
-        var toelichting = _toelichting.GetValueOrDefault(verzoek.PublicRequestId);
+        var toelichting = _toelichting.GetValueOrDefault(id);
         if (!isApprove && string.IsNullOrWhiteSpace(toelichting))
         {
-            _meldingFout[verzoek.PublicRequestId] = true;
-            _melding[verzoek.PublicRequestId] = "Toelichting is verplicht bij afwijzen.";
+            _meldingFout[id] = true;
+            _melding[id] = "Toelichting is verplicht bij afwijzen.";
             return;
         }
 
-        _bezig[verzoek.PublicRequestId] = true;
-        _melding[verzoek.PublicRequestId] = null;
+        _bezig[id] = true;
+        _melding[id] = null;
         StateHasChanged();
         try
         {
-            var result = await Api.PutSportlinkChangeRequestActionAsync(verzoek.PublicRequestId, verzoek.PublicMatchId, actie, toelichting);
+            var result = await Api.PutSportlinkChangeRequestActionAsync(id, verzoek.PublicMatchId, actie, toelichting);
             if (!result.Success)
             {
-                _meldingFout[verzoek.PublicRequestId] = true;
-                _melding[verzoek.PublicRequestId] = result.ErrorMessage ?? "Onbekende fout.";
+                _meldingFout[id] = true;
+                _melding[id] = result.ErrorMessage ?? "Onbekende fout.";
                 return;
             }
 
             if (result.Data?.IsDryRun == true)
             {
-                _meldingFout[verzoek.PublicRequestId] = false;
-                _melding[verzoek.PublicRequestId] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+                _meldingFout[id] = false;
+                _melding[id] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+                _afwijzenOpen[id] = false;
                 await LaadVerzoekenAsync();
             }
             else if (result.Data?.IsSuccess == true)
             {
-                _meldingFout[verzoek.PublicRequestId] = false;
-                _melding[verzoek.PublicRequestId] = actie == "APPROVE" ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.";
+                _meldingFout[id] = false;
+                _melding[id] = actie == "APPROVE" ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.";
+                _afwijzenOpen[id] = false;
                 await LaadVerzoekenAsync();
             }
             else
             {
-                _meldingFout[verzoek.PublicRequestId] = true;
+                _meldingFout[id] = true;
                 var violations = result.Data?.Violations;
-                _melding[verzoek.PublicRequestId] = "Sportlink heeft de actie afgewezen"
+                _melding[id] = "Sportlink heeft de actie afgewezen"
                     + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
             }
         }
         finally
         {
-            _bezig[verzoek.PublicRequestId] = false;
+            _bezig[id] = false;
         }
     }
 }

@@ -20,7 +20,7 @@ public class SportlinkPublicMatchIdRepositoryIntegrationTests
     // getal moet uniek zijn over ALLE testklassen in deze suite, niet alleen binnen deze klasse.
     // 9100001/9200001-9200004/9300001-9300004/9400001-9400009/9500001-9500006/9999999 zijn al in
     // gebruik door andere testklassen; 9600002-9600005 gereserveerd voor de #1017-warmuptests
-    // hieronder.
+    // hieronder, 9600006-9600007 voor de #1111-reverse-lookuptests.
     private const long Wedstrijdcode = 9600001;
 
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull
@@ -74,7 +74,7 @@ public class SportlinkPublicMatchIdRepositoryIntegrationTests
     {
         await using var conn = await OpstellingAsync();
 
-        var result = await SportlinkPublicMatchIdRepository.ZoekWedstrijdAsync(conn, 999999999, Club);
+        var result = await SportlinkPublicMatchIdRepository.ZoekWedstrijdAsync(conn, 99999999, Club);
 
         result.Should().BeNull();
     }
@@ -168,6 +168,66 @@ public class SportlinkPublicMatchIdRepositoryIntegrationTests
             conn, new DateOnly(2026, 9, 10), new DateOnly(2026, 9, 12), Club);
 
         resultaat.Should().BeEmpty("deze wedstrijd heeft al een PublicMatchId gecachet");
+    }
+
+    // ── ZoekWedstrijdenBijPublicMatchIdsAsync (#1111: wedstrijdcontext bij wijzigingsverzoeken) ──
+
+    private static async Task InsertVolledigeMatchAsync(NpgsqlConnection conn, long wedstrijdcode, long wedstrijdnummer)
+    {
+        await using var cmd = new NpgsqlCommand(
+            @"INSERT INTO his.matches (wedstrijdcode, wedstrijdnummer, kaledatum, aanvangstijd, thuisteam, uitteam, accommodatie,
+                                       clubcode, mta_inserted, mta_modified)
+              VALUES (@code, @nummer, '2026-09-05', '14:30', 'TEST1', 'TEST2', 'Sportpark Test', @club, NOW(), NOW())", conn);
+        cmd.Parameters.AddWithValue("code", wedstrijdcode);
+        cmd.Parameters.AddWithValue("nummer", wedstrijdnummer);
+        cmd.Parameters.AddWithValue("club", Club);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    [PostgresFact]
+    public async Task ZoekWedstrijdenBijPublicMatchIdsAsync_VindtContextViaCache_EnLaatOnbekendeIdsWeg()
+    {
+        await using var conn = await WarmupOpstellingAsync();
+        await InsertVolledigeMatchAsync(conn, 9600006, 6001);
+        await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(conn, 9600006, Club, "M-test-6006");
+
+        var resultaat = await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(
+            conn, new[] { "M-test-6006", "M-nooit-gecachet" }, Club);
+
+        resultaat.Should().ContainKey("M-test-6006");
+        resultaat.Should().NotContainKey("M-nooit-gecachet", "zonder cache-rij is er geen koppeling — geen fout, gewoon afwezig");
+        var ctx = resultaat["M-test-6006"];
+        ctx.Wedstrijdcode.Should().Be(9600006);
+        ctx.Wedstrijdnummer.Should().Be(6001);
+        ctx.Thuisteam.Should().Be("TEST1");
+        ctx.Uitteam.Should().Be("TEST2");
+        ctx.Datum.Should().Be("2026-09-05");
+        ctx.Tijd.Should().Be("14:30");
+        ctx.Accommodatie.Should().Be("Sportpark Test");
+    }
+
+    [PostgresFact]
+    public async Task ZoekWedstrijdenBijPublicMatchIdsAsync_AndereClub_GeeftGeenContext()
+    {
+        await using var conn = await WarmupOpstellingAsync();
+        await InsertVolledigeMatchAsync(conn, 9600007, 6002);
+        await SportlinkPublicMatchIdRepository.SchrijfInCacheAsync(conn, 9600007, Club, "M-test-6007");
+
+        var resultaat = await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(
+            conn, new[] { "M-test-6007" }, "andere-club");
+
+        resultaat.Should().BeEmpty("de ClubCode-discriminator geldt ook voor de reverse-lookup");
+    }
+
+    [PostgresFact]
+    public async Task ZoekWedstrijdenBijPublicMatchIdsAsync_LegeInvoer_DoetGeenQuery()
+    {
+        await using var conn = await WarmupOpstellingAsync();
+
+        var resultaat = await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(
+            conn, Array.Empty<string>(), Club);
+
+        resultaat.Should().BeEmpty();
     }
 
     [PostgresFact]

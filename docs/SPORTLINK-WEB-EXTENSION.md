@@ -262,6 +262,14 @@ verplichte N-user-test.
   onze eigen wedstrijd-mutatie-vlaggen, niet het afhandelen van een verzoek van een tegenstander.
   Audit-logging blijft wel verplicht. `ActOnChangeRequestAsync` haalt `PublicPersonId` van het
   service-account zelf op via `user/UserInfo` — de aanroeper hoeft dat niet te kennen.
+  **#1111:** de GET verrijkt elk verzoek met `Wedstrijd` (`SportlinkWedstrijdContext`: nummer,
+  teams, datum, tijd, accommodatie) via `public.sportlinkpublicmatchidcache` → `his.matches`
+  (`SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync`) — bewust NIET via
+  extra velden uit `MatchChangeRequests`: die zijn nooit met een netwerktrace bevestigd, en zo'n
+  trace maakt een agent nooit (§4.4). Geen cache-treffer = `null`, het verzoek blijft staan. De
+  Blazor-pagina filtert standaard op `CONFIRM` en toont statusiconen + icoonknoppen. Sportlinks
+  "Inkomend/Uitgaand"-groepen zijn niet gebouwd: de respons bevat geen veld dat die richting
+  aangeeft (of het is niet bevestigd) — pas na een menselijke netwerktrace.
 - `FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs` (#997) — `POST
   /api/sportlink/club-match` (aanmaken, altijd code-gelockt) + `GET .../club-match/picklists`
   (Teams + Location, read-only, echt aangeroepen). **POST — ONBEVESTIGD — code-lock — geen guard
