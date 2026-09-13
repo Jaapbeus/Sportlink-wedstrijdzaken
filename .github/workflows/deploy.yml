@@ -26,7 +26,12 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   db-check:
     runs-on: ubuntu-latest
-    if: vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
+    # #1093: alleen op de SQL Server-tier. Sinds de cutover (ARCHITECTUUR-DATABASE-TIERS.md §49)
+    # deployt deze installatie de Postgres-tier, maar de SQL-vars stonden er nog — waardoor deze
+    # job én db-migrate bij elke release nog tegen de oude Azure SQL-database draaiden, terwijl
+    # de database die er wél toe deed nooit gemigreerd werd. Tier-gating hoort bij de tier, niet
+    # bij de toevallige aanwezigheid van resourcenamen.
+    if: vars.DatabaseTier == 'SqlServer' && vars.AZURE_SQL_SERVER_NAME != '' && vars.AZURE_SQL_DATABASE_NAME != ''
     steps:
       # Nodig voor scripts/ci/wake-database.sql in de login-poging hieronder (#624).
       - name: Checkout repository
@@ -162,14 +167,18 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, db-check, db-migrate]
+    needs: [build, db-check, db-migrate, db-migrate-postgres]
     # Deploy pas na succesvolle migratie — als db-migrate overgeslagen is (geen SQL-vars) mag deploy
     # doorgaan (#430). db-check staat hier expliciet bij sinds #599: build is er niet meer van
     # afhankelijk, dus de database-gate moet hier alsnog gelden — nooit code deployen naar een
     # database die niet Online is.
+    # #1093: op de Postgres-tier geldt hetzelfde voor db-migrate-postgres — de migraties gaan
+    # vóór de code live (besluit eigenaar, issue #1093): de nieuwe code vindt het schema dan al.
+    # Precies één van de twee migratiejobs draait (tier-gating); de andere is 'skipped'.
     if: always() && needs.build.result == 'success'
         && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
         && (needs.db-migrate.result == 'success' || needs.db-migrate.result == 'skipped')
+        && (needs.db-migrate-postgres.result == 'success' || needs.db-migrate-postgres.result == 'skipped')
     steps:
       - name: Artefact downloaden
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -194,8 +203,9 @@ jobs:
     # het compileren. Wordt overgeslagen als AZURE_SQL_SERVER_NAME niet geconfigureerd is
     # (fork / nieuw project). Vereist: secret SQL_CONNECTION_STRING, vars AZURE_SQL_RESOURCE_GROUP
     # + AZURE_SQL_SERVER_NAME.
+    # #1093: tier-gating, zie db-check.
     needs: [build, db-check]
-    if: always() && vars.AZURE_SQL_SERVER_NAME != ''
+    if: always() && vars.DatabaseTier == 'SqlServer' && vars.AZURE_SQL_SERVER_NAME != ''
         && needs.build.result == 'success'
         && (needs.db-check.result == 'success' || needs.db-check.result == 'skipped')
     steps:
@@ -255,6 +265,66 @@ jobs:
             --name "${{ steps.firewall.outputs.rule_name }}" \
             || echo "::warning::Firewall-regel ${{ steps.firewall.outputs.rule_name }} niet verwijderd — handmatig opruimen"
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # db-migrate-postgres (#1093): de Postgres-tegenhanger van db-migrate.
+  #
+  # Tot deze job bestond, paste NIETS in de pipeline de bestanden in Database.Postgres/migrations/
+  # toe op productie: db-migrate hierboven is volledig SQL Server-specifiek. Elke release met een
+  # nieuwe migratie hing daardoor af van een handmatige ronde met Database.Postgres.Cli — en
+  # precies zo kon #1062 acht dagen blijven liggen en gaf v3.3.0.0 twee incidenten
+  # (ARCHITECTUUR-DATABASE-TIERS.md §55): er was geen moment waarop een migratie automatisch
+  # geprobeerd werd, dus ook geen moment waarop hij zichtbaar faalde.
+  #
+  # Besluit eigenaar (issue #1093): (1) ja, een eigen migratiestap; (2) VÓÓR het publiceren van de
+  # code — de migraties in dit project zijn additief, dus de oude code draait door op het nieuwe
+  # schema en de nieuwe code vindt bij de eerste request het schema al. `deploy` wacht daarom op
+  # deze job (needs + result-check).
+  #
+  # MigrationRunner is idempotent (ledger schema_migrations), neemt een advisory lock (twee
+  # gelijktijdige runs zijn veilig) en faalt hard op een gewijzigd, al-toegepast bestand.
+  # Sinds #1112 is de checksum regeleinde-onafhankelijk: een ledger die ooit vanaf een
+  # Windows-checkout (CRLF) is gevuld, wordt hier éénmalig genormaliseerd en gelogd — niet
+  # geblokkeerd. Zonder #1112 had deze job op zo'n database bij de eerste run vastgelopen.
+  #
+  # Secret POSTGRES_CONNECTION_STRING: de productie-connectiestring, uitsluitend via de
+  # omgevingsvariabele (nooit als argument — argumenten staan in de processenlijst en in het
+  # joblog). De CLI logt de string nooit; de TLS-normalizer meldt alleen de MODUS (sslmode),
+  # nooit host/credentials. Ontbreekt het secret, dan faalt deze job hard met een duidelijke
+  # melding in plaats van stil over te slaan — stil overslaan is precies het gat dat dit dichtte.
+  # ──────────────────────────────────────────────────────────────────────────
+  db-migrate-postgres:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: always() && vars.DatabaseTier == 'Postgres' && needs.build.result == 'success'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Secret POSTGRES_CONNECTION_STRING aanwezig?
+        env:
+          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+        run: |
+          if [ -z "$POSTGRES_CONNECTION_STRING" ]; then
+            echo "::error::Secret POSTGRES_CONNECTION_STRING ontbreekt, terwijl DatabaseTier=Postgres."
+            echo "::error::Zonder dit secret kan de pipeline de Postgres-migraties niet toepassen en zou de nieuwe code tegen een verouderd schema draaien (#1093, #1098)."
+            echo "::error::Zet het secret in GitHub Settings -> Secrets and variables -> Actions -> Secrets (zelfde connectiestring als de Function App-instelling; norm: sslmode=verify-full met sslrootcert, zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50) en start de deploy opnieuw."
+            exit 1
+          fi
+          echo "Secret aanwezig (waarde niet gelogd)."
+
+      # Database.Postgres.Cli is net9.0 (zelfde beperking als de Function App, zie CLAUDE.md) —
+      # dezelfde SDK-keuze als de CI-job fresh-db-postgres in build.yml.
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 9.0.x
+
+      - name: "Postgres-migraties toepassen (Database.Postgres.Cli — idempotent, advisory lock, checksum-bewaakt)"
+        env:
+          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+        run: |
+          dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- Database.Postgres/migrations
+
   test:
     runs-on: ubuntu-latest
     needs: [deploy]
@@ -265,10 +335,9 @@ jobs:
       # v3.3.0.0-incident gaf health 200 met settingsLoaded=false (migratie 012 niet toegepast op
       # productie), terwijl élk beheerscherm 500 "Ophalen mislukt" gaf — en deze stap was groen.
       # Zonder instellingencache is de applicatie onbruikbaar: dat is een mislukte deploy, geen
-      # 'degraded'. Openstaande migraties (pendingMigrations) zijn een waarschuwing, geen fout:
-      # de applicatie draait dan door op de migratie-defaults en de eigenaar moet ze zelf
-      # toepassen (ARCHITECTUUR-DATABASE-TIERS.md §55) — de pipeline heeft daar bewust geen
-      # connectiestring voor.
+      # 'degraded'. Openstaande migraties (pendingMigrations) waren tot #1093 een waarschuwing
+      # omdat de pipeline ze niet kón toepassen; sinds db-migrate-postgres ze vóór de deploy
+      # toepast zijn ze een fout — zie de toelichting bij de check zelf.
       # #1096: tlsWarning (het #1004/#1095-beleid nog niet op VerifyFull-met-CA-cert) is
       # dezelfde categorie — de applicatie draait door (fail-open sinds #1095), dus ook hier een
       # waarschuwing, geen deploy-blokkade (ARCHITECTUUR-DATABASE-TIERS.md §50).
@@ -293,8 +362,16 @@ jobs:
                 printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
                 exit 1
               fi
+              # #1093: sinds db-migrate-postgres de migraties vóór de deploy toepast, is een
+              # niet-lege lijst hier geen "beheerder moet nog iets doen" meer maar een mislukte
+              # deploy: de migratiejob was groen, en toch mist de database iets dat deze versie
+              # meelevert. Oorzaken: een andere database achter het secret dan achter de Function
+              # App-instelling, of een migratiebestand dat wél is ingesloten maar niet toegepast.
               if [ -n "$PENDING" ]; then
-                echo "::warning title=Openstaande databasemigraties::pendingMigrations: $PENDING — toepassen via Database.Postgres.Cli (docs/ARCHITECTUUR-DATABASE-TIERS.md §55)"
+                echo "FOUT: health meldt openstaande migraties na een groene db-migrate-postgres: $PENDING"
+                echo "Controleer of secret POSTGRES_CONNECTION_STRING en de Function App-instelling POSTGRES_CONNECTION_STRING naar dezelfde database wijzen (docs/ARCHITECTUUR-DATABASE-TIERS.md §57)."
+                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
+                exit 1
               fi
               if [ -n "$SCHEMA" ]; then
                 echo "::warning title=Schemawaarschuwing uit /api/health::$SCHEMA"

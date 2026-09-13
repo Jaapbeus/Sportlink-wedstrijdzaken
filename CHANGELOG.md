@@ -76,6 +76,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `::warning::`, dezelfde behandeling als `pendingMigrations`/`schemaWarning` — nooit een
   deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
 
+### Changed
+- **Databasemigraties gaan nu automatisch mee bij elke release, vóór de nieuwe code live gaat
+  (#1093).** Op de Postgres-tier moest een beheerder na elke release met een nieuw migratiebestand
+  zelf de migraties toepassen; werd dat vergeten, dan draaide de nieuwe versie tegen een verouderd
+  schema — de oorzaak van beide storingen direct na de release van 12 september. De deploy-pipeline
+  heeft nu een eigen migratiestap voor Postgres die vóór het publiceren van de code draait; de code
+  gaat pas live als het schema klopt. De controle na de deploy behandelt openstaande migraties
+  voortaan als fout in plaats van als waarschuwing. De migratiestappen voor SQL Server draaien
+  alleen nog als die tier daadwerkelijk in gebruik is. Eenmalige actie voor de beheerder: het
+  GitHub-secret `POSTGRES_CONNECTION_STRING` instellen — zonder dat secret weigert de deploy
+  bewust.
+
 ### Fixed
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
   productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
@@ -99,6 +111,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   velden controleren in plaats van alleen op een 200 (zie issue #1098). Het toepassen van de
   openstaande migraties blijft een actie van de beheerder — zie
   `docs/ARCHITECTUUR-DATABASE-TIERS.md` §55.
+- **Databasemigraties blokkeren niet meer op een verschil in regeleindes tussen Windows en
+  macOS/Linux (#1112).** De controle die bewaakt dat een al toegepast migratiebestand niet achteraf
+  is gewijzigd, sloeg ook aan als hetzelfde bestand op een ander platform met andere regeleindes
+  was uitgelezen — en blokkeerde dan alle volgende migraties. De controle kijkt nu door regeleindes
+  heen. Een database die eerder vanaf Windows is gemigreerd wordt bij de eerstvolgende
+  migratieronde éénmalig gecorrigeerd, met een melding in het log; een écht gewijzigd bestand wordt
+  nog steeds geweigerd.
 
 ### Security
 - **Volledige certificaatvalidatie op de databaseverbinding: bouwstenen en certificaat klaar,
