@@ -51,8 +51,16 @@ var migrationsPath = positioneel.Length > 0 ? positioneel[0] : ResolveDefaultMig
 
 try
 {
-    await MigrationRunner.RunAsync(normalized, migrationsPath);
-    Console.WriteLine($"Migraties toegepast vanuit '{migrationsPath}'.");
+    var result = await MigrationRunner.RunAsync(normalized, migrationsPath);
+    Console.WriteLine(
+        $"Migraties toegepast vanuit '{migrationsPath}': {result.Applied.Count} nieuw, " +
+        $"{result.AlreadyApplied.Count} al toegepast, {result.ChecksumNormalized.Count} ledger-checksum(s) genormaliseerd.");
+    foreach (var naam in result.Applied)
+        Console.WriteLine($"  + {naam}");
+    // #1112: een omgeschreven ledger-checksum is geen fout, maar moet wél opvallen in een deploy-log
+    // of handmatige ronde — het bewijst dat die database ooit vanaf een CRLF-checkout is gemigreerd.
+    foreach (var naam in result.ChecksumNormalized)
+        Console.Error.WriteLine($"Waarschuwing: ledger-checksum van '{naam}' was een rauwe CRLF-waarde en is genormaliseerd naar LF (#1112) — inhoud ongewijzigd.");
     return 0;
 }
 catch (Exception ex)
