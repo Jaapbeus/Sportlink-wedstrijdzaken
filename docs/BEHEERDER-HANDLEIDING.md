@@ -959,10 +959,17 @@ persoonsnaam.
 | Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
 | Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
 
-**Koppeling (opnieuw) registreren** vraagt om een echt Sportlink-token — dit moet altijd door een
-mens gebeuren via een echte browserlogin (nooit door een geautomatiseerd script of AI-agent, zie
-`docs/SPORTLINK-WEB-EXTENSION.md` §4.4). Een gekoppelde rol behoudt de koppeling automatisch actief
-via een uur-timer, ook zonder dagelijks gebruik.
+**Koppeling (opnieuw) registreren** in de Admin GUI zelf overschrijft alleen een weergavenaam — het
+werkende refresh-token blijft daarbij ongewijzigd. Het daadwerkelijk *verkrijgen* van een nieuw
+refresh-token kan niet vanuit de webapp: Sportlink staat geen inlog via onze eigen applicatie toe
+(de redirect terug naar een eigen URL is aan hun kant dichtgezet). Dit is dus altijd een aparte,
+eenmalige technische stap die een **technisch beheerder** van deze installatie zelf uitvoert, op zijn
+eigen computer, met een lokaal hulpprogramma (`Tools/SportlinkTokenCapture`, met een echte
+browserlogin — nooit door een geautomatiseerd script of AI-agent, zie
+`docs/SPORTLINK-WEB-EXTENSION.md` §3.3/§4.4 voor de volledige stappen). Het resultaat plakt die
+beheerder daarna in het veld "Refresh-token registreren". Een gekoppelde rol behoudt de koppeling
+automatisch actief via een uur-timer, ook zonder dagelijks gebruik — dit hoeft dus niet routinematig
+herhaald te worden.
 
 **Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
 tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/
