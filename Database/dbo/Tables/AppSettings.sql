@@ -35,6 +35,10 @@
 	-- definitief beleid — zie de toelichting in sp_CleanupAppSettingsAudit.sql. Beheerder kan de
 	-- waarde aanpassen via een directe UPDATE op deze tabel (nog geen GUI-veld).
 	[AppSettingsAuditBewaarDagen] INT NOT NULL DEFAULT 730,
+	-- #1114 (AVG art. 5 lid 1 sub e): bewaartermijn voor dbo.SportlinkMutationAudit in dagen. 365 is een
+	-- gedocumenteerd UITGANGSPUNT (één seizoen plus marge), geen definitief beleid — zie de toelichting
+	-- in sp_CleanupSportlinkMutationAudit.sql. Aanpassen via een directe UPDATE (nog geen GUI-veld).
+	[SportlinkMutationAuditBewaarDagen] INT NOT NULL DEFAULT 365,
 	-- #988: schakelaar voor de Sportlink Web Extension (epic #986) — standaard UIT, club kiest zelf
 	[SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0
 	)

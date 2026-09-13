@@ -1824,6 +1824,16 @@ procedures uit sectie 15. `tijdstip` is `TIMESTAMPTZ` en de grens een UTC-`DateT
 vergelijking is absoluut: een databaseserver in een andere tijdzone (de zelftest draait bewust op
 Europe/Amsterdam, #854) verschuift het venster niet.
 
+**Zesde procedure, zelfde mal (#1114).** `public.sportlinkmutationaudit` (migratie 013, epic #986)
+had hetzelfde gat: een `triggerddoor`-kolom met de UPN van de beheerder en geen enkele opschoning.
+`CleanupSportlinkMutationAuditAsync` is een letterlijke afgeleide van de vijfde — dezelfde
+drietraps-terugval, dezelfde enkele DELETE, eigen kolom `sportlinkmutationauditbewaardagen`
+(migratie 017, default 365 dagen: één seizoen plus marge, korter dan de 730 van appsettingsaudit
+omdat dit log per mutatie groeit en Sportlink de mutatie zelf ook logt). Timer `0 45 4 1 * *`, een
+kwartier na deze. Op de SQL Server-tier is `dbo.sp_CleanupSportlinkMutationAudit` de tegenhanger,
+en `check-postgres-procedure-view-coverage.sh` kent de mapping. Zes integratietests naar het model
+hieronder, plus één die bewijst dat een verse `Pending`-rij blijft staan.
+
 **Empirisch geverifieerd, met aantoonbaar onderscheidend vermogen.** Zes blijvende integratietests
 in `FunctionApp.Postgres.Tests` (niet langer een wegwerpharnas, zie sectie 30) dekken alle drie de
 terugvaltrappen, de lege-`appsettings`-rand, en idempotentie. Elke test controleert niet alleen wát

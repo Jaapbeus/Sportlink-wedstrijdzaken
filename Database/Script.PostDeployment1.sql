@@ -1515,6 +1515,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0;
 GO
 
+-- #1114: SportlinkMutationAuditBewaarDagen kolom in dbo.AppSettings (AVG art. 5 lid 1 sub e).
+-- Bewaartermijn (dagen) voor dbo.SportlinkMutationAudit, gelezen door dbo.sp_CleanupSportlinkMutationAudit
+-- verderop in dit script. Default 365 is een gedocumenteerd uitgangspunt — zie
+-- Database/dbo/System Stored Procedures/sp_CleanupSportlinkMutationAudit.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkMutationAuditBewaarDagen')
+    ALTER TABLE [dbo].[AppSettings] ADD [SportlinkMutationAuditBewaarDagen] INT NOT NULL DEFAULT 365;
+GO
+
 -- UNIQUE constraint op ClubCode in dbo.AppSettings (slechts één rij per club)
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'UQ_AppSettings_ClubCode')
     ALTER TABLE [dbo].[AppSettings] ADD CONSTRAINT [UQ_AppSettings_ClubCode] UNIQUE ([ClubCode]);
@@ -2880,6 +2888,43 @@ BEGIN
         SET @BewaarDagen = 730;
 
     DELETE FROM [dbo].[AppSettingsAudit]
+    WHERE [Tijdstip] < DATEADD(DAY, -@BewaarDagen, GETUTCDATE());
+END;
+GO
+
+-- Bron: Database/dbo/System Stored Procedures/sp_CleanupSportlinkMutationAudit.sql  (#1114)
+--
+-- AVG art. 5 lid 1 sub e: dbo.SportlinkMutationAudit had geen bewaartermijn. [TriggerdDoor] is een
+-- Entra-gebruikersnaam/UPN — een persoonsgegeven. Bewaartermijn is UITGANGSPUNT (365 dagen), geen
+-- definitief beleid — zie het bronbestand. Configureerbaar via
+-- dbo.AppSettings.SportlinkMutationAuditBewaarDagen. Enkele fase, zelfde redenering als
+-- sp_CleanupAppSettingsAudit hierboven.
+CREATE OR ALTER PROCEDURE [dbo].[sp_CleanupSportlinkMutationAudit]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BewaarDagen INT;
+
+    -- Primaire club (niet de ALLSTARS-democlub) is leidend voor deployment-brede instellingen,
+    -- zelfde patroon als sp_CleanupAppSettingsAudit (#598/#740).
+    SELECT TOP 1 @BewaarDagen = [SportlinkMutationAuditBewaarDagen]
+    FROM [dbo].[AppSettings]
+    WHERE [ClubCode] <> 'ALLSTARS'
+    ORDER BY [ClubCode];
+
+    -- Vangnet: alleen de democlub aanwezig, of de kolom bevat NULL door een pre-migratie rij.
+    IF @BewaarDagen IS NULL
+        SELECT TOP 1 @BewaarDagen = [SportlinkMutationAuditBewaarDagen]
+        FROM [dbo].[AppSettings]
+        ORDER BY [ClubCode];
+
+    -- Ontbrekende of onzinnige waarde: val terug op de gedocumenteerde default in plaats van nooit
+    -- op te ruimen — een configuratiefout mag niet stilzwijgend in een AVG-overtreding ontaarden.
+    IF @BewaarDagen IS NULL OR @BewaarDagen <= 0
+        SET @BewaarDagen = 365;
+
+    DELETE FROM [dbo].[SportlinkMutationAudit]
     WHERE [Tijdstip] < DATEADD(DAY, -@BewaarDagen, GETUTCDATE());
 END;
 GO

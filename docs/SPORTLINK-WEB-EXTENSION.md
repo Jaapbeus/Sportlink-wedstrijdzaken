@@ -184,7 +184,9 @@ verplichte N-user-test.
   vóórdat die eventueel een harde blokkade wordt.
 - `FunctionApp/Sportlink/` + `FunctionApp.Postgres/Sportlink/` (#998) — per-tier, niet-gedeelde
   `ISportlinkMutationAuditService`-implementatie; logt vóór én na elke toekomstige mutatie in
-  `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`.
+  `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`. Bewaartermijn sinds #1114: default
+  365 dagen, instelbaar via `AppSettings.SportlinkMutationAuditBewaarDagen`, maandelijks opgeruimd
+  door `CleanupSportlinkMutationAuditFunction` op beide tiers (zie `SECURITY.md`).
 - `FunctionApp.Postgres/Integrations/SportlinkClub/SportlinkPublicMatchIdRepository.cs` (#991) —
   de #987-reverse-lookup-cache (`public.sportlinkpublicmatchidcache`, migratie
   `014_sportlink_club_postgres_tokenstore.sql`) en de `his.matches`-opzoeking (wedstrijdcode →
