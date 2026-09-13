@@ -365,6 +365,31 @@ $env:PGPASSWORD = "<lokaal-wachtwoord>"
 De volledige end-to-end-zelftest van deze tier (containers, schema, demodata, API-poorten) is een
 apart script: `.\scripts\dev\Test-PostgresTier.ps1 -Tier Postgres -Mode Verify`.
 
+### 4.3b Acceptatietest met de echte productiedata (eenmalig, bevat persoonsgegevens)
+
+Voor een acceptatietest tegen de échte club-data (in plaats van de democlub `ALLSTARS` of de
+placeholder-club `CLUB`) haalt `.\scripts\dev\Restore-ProductionDump.ps1` eenmalig een volledige
+dump van de productie-Postgres (Supabase) op en zet die lokaal terug — inclusief het echte
+`SportlinkClientId` in `dbo.AppSettings`, zodat je daarna handmatig
+`GET /api/sync-matches?reset=true&season=<jaar>` kunt draaien om verse data bij de echte Sportlink
+API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7).
+
+```powershell
+docker compose up -d
+.\scripts\dev\Restore-ProductionDump.ps1
+```
+
+Het script vraagt de productie-connectiestring interactief op (`Read-Host -AsSecureString`, niets
+op het scherm of in de commandogeschiedenis) en vraagt een expliciete typebevestiging vóór het de
+lokale database overschrijft.
+
+> **DPO/CISO — bevat echte persoonsgegevens.** Een volledige productiedump bevat o.a.
+> `avg.Teambegeleiding` en `planner.EmailVerwerking`. Dit is bedoeld als eenmalige, tijdelijke
+> kopie voor een acceptatietest — geen permanente lokale spiegel van productie. Draai
+> `docker compose down -v` zodra de test klaar is. Het dumpbestand zelf komt nooit op de
+> hostschijf of in git terecht: het leeft alleen kort in `/tmp` van de container en wordt door het
+> script zelf altijd opgeruimd, ook bij een fout.
+
 ### 4.4 SQL Server-tier (alternatief) — lokale database starten
 
 Sinds #800 is Docker de **enige ondersteunde manier** om lokaal een database te draaien. Een
@@ -795,13 +820,13 @@ Vereist een lege SQL Server-database met het volledige schema (zelfde bron als d
 "PostDeployment op verse database"):
 
 ```powershell
-docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Devonly123! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Wegwerpwachtwoord-niet-geheim1! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
 # wacht tot de container klaar is, dan:
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -Q "CREATE DATABASE SportlinkFixture"
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -Q "CREATE DATABASE SportlinkFixture"
 docker cp Database/Script.PostDeployment1.sql sqlfixture:/tmp/postdeployment.sql
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
 
-$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Devonly123!;TrustServerCertificate=True;"
+$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Wegwerpwachtwoord-niet-geheim1!;TrustServerCertificate=True;"
 dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIntegrationTests
 
 docker rm -f sqlfixture
@@ -838,8 +863,8 @@ Drie verschillen met de SQL Server-suite hierboven, alle drie in het voordeel va
 Lokaal draaien tegen een wegwerpcontainer — dezelfde opzet als de CI-job:
 
 ```powershell
-docker run -d --name pgfixture -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
-$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=devonly"
+docker run -d --name pgfixture -e POSTGRES_PASSWORD=wegwerpwachtwoord-niet-geheim -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=wegwerpwachtwoord-niet-geheim"
 dotnet run --project Database.Postgres.Cli
 $env:POSTGRES_TEST_CONNECTION_STRING = $env:POSTGRES_CONNECTION_STRING
 dotnet test FunctionApp.Postgres.Tests
@@ -849,18 +874,26 @@ docker rm -f pgfixture
 Zonder `POSTGRES_TEST_CONNECTION_STRING` meldt dezelfde opdracht `Skipped` met de reden erbij —
 geen stilzwijgend groen resultaat.
 
-> **TLS-certificaatvalidatie (#1004).** `PostgresConnectionStringNormalizer.Normalize` — waar
-> `Database.Postgres.Cli`, `PostgresDatabaseConfig` (Function App) en
-> `MigrationTools/SqlServerToPostgresCopy` allemaal doorheen gaan — vereist voor elke host **behalve**
-> `localhost`/`127.0.0.1`/`::1` expliciet `sslmode=verify-full` (URI-vorm) of
-> `SSL Mode=VerifyFull` (keyword/value-vorm). Zonder dat gooit `Normalize` een
-> `InvalidOperationException` vóórdat er verbinding wordt gemaakt — dus ook al bij het opstarten
-> van de Function App. Tegen de lokale wegwerpcontainer hierboven (`localhost:55432`) is dit nooit
-> nodig: die draait zonder TLS, en de bovenstaande commando's blijven ongewijzigd werken. Verbindt
-> je in plaats daarvan met een echte (bijvoorbeeld Supabase-gehoste) Postgres-instantie, geef dan
-> `?sslmode=verify-full` mee in de connectiestring; een los root-CA-certificaat is alleen nodig als
-> die instantie geen publiek vertrouwde CA gebruikt (`&sslrootcert=/pad/naar/ca.pem`). Zie
-> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige onderbouwing.
+> **TLS-certificaatvalidatie (#1004, gecorrigeerd in #1095).** `PostgresConnectionStringNormalizer`
+> — waar `Database.Postgres.Cli`, `PostgresDatabaseConfig` (Function App) en
+> `MigrationTools/SqlServerToPostgresCopy` allemaal doorheen gaan — hanteert voor elke host
+> **behalve** `localhost`/`127.0.0.1`/`::1` als norm `sslmode=verify-full` (URI-vorm) of
+> `SSL Mode=VerifyFull` (keyword/value-vorm). Ontbreekt dat, dan valt hij terug op `Require`
+> (versleuteld, maar zonder certificaat-/hostnaamvalidatie) en geeft hij een waarschuwing terug:
+> de CLI print die naar stderr, de Function App toont hem in `/api/health` (`tlsWarning`) en
+> éénmalig in het functielog. Alleen expliciet `sslmode=disable`/`allow` naar een niet-lokale host
+> gooit nog een `InvalidOperationException`. Tegen de lokale wegwerpcontainer hierboven
+> (`localhost:55432`) speelt dit nooit: die draait zonder TLS, en de bovenstaande commando's blijven
+> ongewijzigd werken. Verbind je met een echte gehoste Postgres-instantie, geef dan
+> `?sslmode=verify-full&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
+> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. **Sinds #1096:** dat certificaat
+> hoort, zodra het is toegevoegd, op `FunctionApp.Postgres/prod-ca-2021.crt` (meegekopieerd naar het
+> publish-pakket door de csproj, `Exists(...)`-conditioneel — ontbreekt het lokaal, dan is dat een
+> no-op). Download het uit het Supabase-dashboard van déze deployment (Database → Settings → SSL
+> Configuration — geen publieke, statische URL) en verwijs er lokaal naar met
+> `?sslmode=verify-full&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
+> gehoste instantie test. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige
+> onderbouwing.
 
 > **Let op bij het lokaal draaien van béide Postgres-testsuites tegen één container (#925).**
 > `Database.Postgres.Tests` sloopt met opzet een reeks tabellen om te controleren of ze correct
@@ -956,7 +989,7 @@ Kopieer de volledige JSON-output (inclusief accolades) als waarde voor het secre
 
 ```
 Server=tcp:[sql-servernaam].database.windows.net,1433;Initial Catalog=[database-naam];
-Persist Security Info=False;User ID=[username];Password=[password];
+Persist Security Info=False;User ID=[username];Password=<password>;
 Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 ```
 

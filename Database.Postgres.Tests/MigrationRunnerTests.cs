@@ -35,4 +35,54 @@ public class MigrationRunnerTests
         var b = MigrationRunner.ComputeChecksum("CREATE TABLE x (y TEXT);");
         a.Should().NotBe(b);
     }
+
+    /// <summary>
+    /// #1098: de ingesloten lijst is een afgeleide van <c>Database.Postgres/migrations/</c>. Loopt
+    /// die uit de pas (nieuw bestand niet ingesloten, of andersom), dan meldt <c>/api/health</c>
+    /// een verkeerd beeld van openstaande migraties — dat is precies het signaal dat bij het
+    /// v3.3.0.0-incident ontbrak, dus dat mag niet stil wegzakken.
+    /// </summary>
+    [Fact]
+    public void BundledMigrationNames_IsGelijkAanDeMigratiemap()
+    {
+        var map = Path.Combine(ZoekRepositoryRoot(), "Database.Postgres", "migrations");
+        var opSchijf = Directory.GetFiles(map, "*.sql")
+            .Select(Path.GetFileName)
+            .OrderBy(n => MigrationRunner.ExtractSequenceNumber(n!))
+            .ThenBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        MigrationRunner.BundledMigrationNames.Should().Equal(opSchijf);
+        MigrationRunner.BundledMigrationNames.Should().Contain("001_baseline.sql")
+            .And.Contain("012_sportlink_extension.sql");
+    }
+
+    [Fact]
+    public void ComputePending_GeeftAlleenNietToegepasteMigraties_InVolgorde()
+    {
+        var bundled = new[] { "001_baseline.sql", "002_iets.sql", "012_sportlink_extension.sql", "013_audit.sql" };
+        var applied = new HashSet<string>(StringComparer.Ordinal) { "001_baseline.sql", "002_iets.sql" };
+
+        MigrationRunner.ComputePending(bundled, applied)
+            .Should().Equal("012_sportlink_extension.sql", "013_audit.sql");
+    }
+
+    [Fact]
+    public void ComputePending_AllesToegepast_IsLeeg()
+    {
+        var bundled = new[] { "001_baseline.sql", "002_iets.sql" };
+        var applied = new HashSet<string>(StringComparer.Ordinal) { "001_baseline.sql", "002_iets.sql" };
+
+        MigrationRunner.ComputePending(bundled, applied).Should().BeEmpty();
+    }
+
+    // Zelfde "loop omhoog tot .sln gevonden"-patroon als Database.Postgres.Cli en
+    // VeldResolutieDriftTests — werkt ongeacht vanuit welke build-output de test draait.
+    private static string ZoekRepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "sportlink-wedstrijdzaken.sln")))
+            dir = dir.Parent;
+        return dir?.FullName ?? throw new InvalidOperationException("Repository-root niet gevonden.");
+    }
 }
