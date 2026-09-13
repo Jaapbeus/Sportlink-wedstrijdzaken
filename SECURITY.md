@@ -186,6 +186,25 @@ zonder redeploy. De cleanup wordt maandelijks (1e van de maand, 04:30 UTC) uitge
 `CleanupAppSettingsAuditFunction`. De stored procedure `dbo.sp_CleanupAppSettingsAudit` is
 idempotent.
 
+### Sportlink-mutatie-audit (`SportlinkMutationAudit`, #1114)
+
+`dbo.SportlinkMutationAudit` / `public.sportlinkmutationaudit` legt bij elke Sportlink-mutatiepoging
+vanuit deze app (kleedkamers, veld, wijzigingsverzoek goed-/afkeuren, epic #986) een rij vast.
+`TriggerdDoor` is het e-mailadres/UPN van de beheerder die de actie triggerde — server-side bepaald
+uit de Easy Auth-claim, nooit uit client-input — en daarmee een persoonsgegeven.
+
+| Fase | Wanneer | Actie |
+|---|---|---|
+| Verwijderen | > bewaartermijn (default 365 dagen / één seizoen plus marge) na de poging | Hele rij verwijderd |
+
+Zelfde enkele-fase-aanpak en dezelfde redenering als `AppSettingsAudit` hierboven. De default van
+365 dagen is een **gedocumenteerd uitgangspunt, geen definitief beleid** — korter dan de 730 van
+`AppSettingsAudit` omdat dit log per mutatie groeit en Sportlinks eigen log de mutatie óók bewaart.
+De eigenaar (DPO-rol) stelt de termijn vast via `AppSettings.SportlinkMutationAuditBewaarDagen`
+(Postgres: `appsettings.sportlinkmutationauditbewaardagen`, migratie 017) zonder redeploy. De
+cleanup draait maandelijks (1e van de maand, 04:45 UTC) via `CleanupSportlinkMutationAuditFunction`
+op beide tiers; `dbo.sp_CleanupSportlinkMutationAudit` is idempotent.
+
 ---
 
 ## Wat te doen bij een gefaalde check

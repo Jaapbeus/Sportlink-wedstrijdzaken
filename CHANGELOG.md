@@ -127,6 +127,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   toe; `POSTGRES_CONNECTION_STRING` in productie omzetten naar `verify-full` blijft een bewuste,
   handmatige operatorstap ná deze release (zie cutover-runbook §49 stap 4) — tot die tijd blijft
   `tlsWarning` in `/api/health` het signaal dat dit nog openstaat.
+- **Bewaartermijn voor het Sportlink-mutatielog (#1114).** Het log dat elke wijziging vastlegt die
+  deze app in Sportlink Club doorvoert (inclusief wie de actie startte) bleef tot nu onbeperkt
+  staan. Een maandelijkse opschoning verwijdert voortaan rijen ouder dan de ingestelde bewaartermijn
+  (standaard 365 dagen — een uitgangspunt dat de beheerder als verantwoordelijke voor
+  persoonsgegevens zelf vaststelt en zonder nieuwe versie kan aanpassen). Werkt op beide
+  database-tiers.
 
 ## [3.3.0.0] — 2026-09-12
 
