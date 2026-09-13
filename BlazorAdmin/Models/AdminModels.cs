@@ -27,6 +27,7 @@ public class AppSettingsDto
     public bool KnvbPdfBijlageIngeschakeld { get; set; } = true;
     public string? KnvbStandaardRegio { get; set; }
     public bool SportlinkExtensionEnabled { get; set; }
+    public bool SportlinkDryRun { get; set; } = true;
 }
 
 /// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
@@ -79,6 +80,50 @@ public class SportlinkMutatieResultaatDto
 {
     public bool IsSuccess { get; set; }
     public List<string>? Violations { get; set; }
+
+    /// <summary>#998: true als dry-run actief was — niets is echt naar Sportlink verstuurd,
+    /// de aanroep is alleen gesimuleerd en gelogd.</summary>
+    public bool IsDryRun { get; set; }
+}
+
+/// <summary>#998: status van de Sportlink Web Extension voor de Instellingen-pagina — nooit een
+/// tokenwaarde of Match-data met persoonsgegevens.</summary>
+public class SportlinkExtensieHealthDto
+{
+    public bool ExtensionEnabled { get; set; }
+    public bool DryRun { get; set; }
+    public bool EgressAllowed { get; set; }
+    public List<SportlinkExtensieHealthRolDto> Rollen { get; set; } = new();
+    public string? LaatsteMutatieFout { get; set; }
+    public DateTime? LaatsteMutatieFoutOp { get; set; }
+    public SportlinkContractCheckDto? LaatsteContractCheck { get; set; }
+    public SportlinkExtensieHealthLiveDto? Live { get; set; }
+}
+
+public class SportlinkExtensieHealthRolDto
+{
+    public string RolNaam { get; set; } = "";
+    public bool Gekoppeld { get; set; }
+    public DateTime? LaatstVerverstOp { get; set; }
+    public DateTime? RefreshTokenVervaltOp { get; set; }
+}
+
+public class SportlinkContractCheckDto
+{
+    public DateTime UitgevoerdOp { get; set; }
+    public bool IsOk { get; set; }
+    public int? HttpStatus { get; set; }
+    public string? AfwijkendeVelden { get; set; }
+    public string? FoutmeldingSamenvatting { get; set; }
+}
+
+/// <summary>Alleen gevuld als de gebruiker expliciet op "Nu live controleren" heeft geklikt
+/// (<c>?live=true</c>) — bevat uitsluitend een HTTP-status, nooit responsdata.</summary>
+public class SportlinkExtensieHealthLiveDto
+{
+    public bool TokenRefreshGelukt { get; set; }
+    public string? MatchCheckResultaat { get; set; }
+    public int? MatchCheckHttpStatus { get; set; }
 }
 
 /// <summary>#996: één inkomend wijzigingsverzoek — spiegelt

@@ -918,6 +918,73 @@ public class SportlinkClubClientTests
             .Which.Should().Be("INVALID_COMBINATION_FACILITY_DRESSINGROOM: Een of meer gekozen kleedkamers, horen niet bij de gekozen accommodatie");
     }
 
+    // ── Dry-run-modus (#998, epic #986) ──
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_DryRun_SlaatPutOverEnGeeftIsDryRunTrue()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            // Als de PUT toch zou worden verstuurd (dry-run-bug), faalt de test hierop expliciet.
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDressingRooms"))
+                throw new InvalidOperationException("Dry-run mag de echte PUT niet versturen.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsSuccess.Should().BeTrue("dry-run simuleert een geslaagde mutatie");
+        result.Data.Violations.Should().BeNullOrEmpty();
+        // Token-refresh moet wél echt gebeurd zijn — alleen de PUT zelf wordt overgeslagen.
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"));
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDressingRooms"));
+    }
+
+    [Fact]
+    public async Task UpdateFieldAsync_DryRun_SnapshotGetGebeurtWelMaarPutNiet()
+    {
+        // #998: de dry-run-vertakking zit in PutMutationAsync (achter de snapshot-GET), zodat een
+        // dry-run realistisch blijft — token-refresh en de voorbereidende Match-snapshot-GET lopen
+        // dus echt, alleen de PUT UpdateMatchDetails wordt overgeslagen.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
+                throw new InvalidOperationException("Dry-run mag de echte PUT niet versturen.");
+            // Match GET (snapshot-ophaal) — zelfde fixture als de bestaande UpdateFieldAsync-tests
+            // hieronder (MatchDetailsSnapshotResponse), niet de lichtere SportlinkMatch-fixture
+            // (MatchResponse): de snapshot deserialiseert naar een ander intern model met een
+            // genest MatchDate-object, geen kale ISO-string.
+            if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "F1", "1.0", null, isForceUpdate: false);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsSuccess.Should().BeTrue();
+        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com") && !url.Contains("UpdateMatchDetails"),
+            "de voorbereidende snapshot-GET moet ook in dry-run echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+    }
+
     [Fact]
     public async Task UpdateDressingRoomsAsync_ZetJuisteBodyEnHeaders()
     {

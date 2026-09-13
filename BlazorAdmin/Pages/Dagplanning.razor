@@ -668,7 +668,7 @@
                                                 </div>
                                                 if (!string.IsNullOrEmpty(_sportlinkKleedkamerMelding.GetValueOrDefault(item.WedstrijdCode.Value)))
                                                 {
-                                                    <div class="mt-1 @(_sportlinkKleedkamerMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value) ? "text-danger" : "text-success")">
+                                                    <div class="mt-1 @SportlinkMeldingKlasse(_sportlinkKleedkamerMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value), _sportlinkKleedkamerMeldingDryRun.GetValueOrDefault(item.WedstrijdCode.Value))">
                                                         @_sportlinkKleedkamerMelding.GetValueOrDefault(item.WedstrijdCode.Value)
                                                     </div>
                                                 }
@@ -699,7 +699,7 @@
                                                 </div>
                                                 if (!string.IsNullOrEmpty(_sportlinkVeldMelding.GetValueOrDefault(item.WedstrijdCode.Value)))
                                                 {
-                                                    <div class="mt-1 @(_sportlinkVeldMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value) ? "text-danger" : "text-success")">
+                                                    <div class="mt-1 @SportlinkMeldingKlasse(_sportlinkVeldMeldingFout.GetValueOrDefault(item.WedstrijdCode.Value), _sportlinkVeldMeldingDryRun.GetValueOrDefault(item.WedstrijdCode.Value))">
                                                         @_sportlinkVeldMelding.GetValueOrDefault(item.WedstrijdCode.Value)
                                                     </div>
                                                 }
@@ -843,6 +843,11 @@
     private readonly Dictionary<long, bool> _sportlinkKleedkamerBezig = new();
     private readonly Dictionary<long, string?> _sportlinkKleedkamerMelding = new();
     private readonly Dictionary<long, bool> _sportlinkKleedkamerMeldingFout = new();
+    private readonly Dictionary<long, bool> _sportlinkKleedkamerMeldingDryRun = new();
+
+    // #998: dry-run-melding is geen fout, maar ook geen echt succes — eigen info-stijl.
+    private static string SportlinkMeldingKlasse(bool fout, bool dryRun)
+        => fout ? "text-danger" : dryRun ? "text-info" : "text-success";
 
     private async Task SaveDressingRoomsAsync(long wedstrijdCode)
     {
@@ -864,7 +869,13 @@
                 return;
             }
 
-            if (result.Data?.IsSuccess == true)
+            _sportlinkKleedkamerMeldingDryRun[wedstrijdCode] = result.Data?.IsDryRun == true;
+            if (result.Data?.IsDryRun == true)
+            {
+                _sportlinkKleedkamerMeldingFout[wedstrijdCode] = false;
+                _sportlinkKleedkamerMelding[wedstrijdCode] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+            }
+            else if (result.Data?.IsSuccess == true)
             {
                 _sportlinkKleedkamerMeldingFout[wedstrijdCode] = false;
                 _sportlinkKleedkamerMelding[wedstrijdCode] = "Kleedkamers toegewezen in Sportlink Club.";
@@ -890,6 +901,7 @@
     private readonly Dictionary<long, bool> _sportlinkVeldBezig = new();
     private readonly Dictionary<long, string?> _sportlinkVeldMelding = new();
     private readonly Dictionary<long, bool> _sportlinkVeldMeldingFout = new();
+    private readonly Dictionary<long, bool> _sportlinkVeldMeldingDryRun = new();
 
     private async Task SaveFieldAsync(long wedstrijdCode)
     {
@@ -911,7 +923,13 @@
                 return;
             }
 
-            if (result.Data?.IsSuccess == true)
+            _sportlinkVeldMeldingDryRun[wedstrijdCode] = result.Data?.IsDryRun == true;
+            if (result.Data?.IsDryRun == true)
+            {
+                _sportlinkVeldMeldingFout[wedstrijdCode] = false;
+                _sportlinkVeldMelding[wedstrijdCode] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
+            }
+            else if (result.Data?.IsSuccess == true)
             {
                 _sportlinkVeldMeldingFout[wedstrijdCode] = false;
                 _sportlinkVeldMelding[wedstrijdCode] = "Veld gewijzigd in Sportlink Club.";

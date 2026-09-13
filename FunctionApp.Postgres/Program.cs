@@ -76,10 +76,20 @@ if (EgressGuard.ExternalIntegrationsAllowed())
         new PostgresSportlinkClubTokenStore(
             PostgresDatabaseConfig.ConnectionString,
             sp.GetRequiredService<ILoggerFactory>().CreateLogger<PostgresSportlinkClubTokenStore>()));
+    // #998: .AddTypedClient overschrijft bewust de standaard-constructiewijze van AddHttpClient<T,I>
+    // (die zelf géén onbekende ctor-parameters zoals Func<bool> kan invullen) zodat de dry-run-
+    // delegate hier expliciet meegegeven kan worden — PostgresAppSettings.GetSetting wordt bij ELKE
+    // mutatie-aanroep opnieuw gelezen (niet één keer bij opstarten), zodat de Instellingen-toggle
+    // direct effect heeft zonder herstart.
     builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(15);
-    });
+    })
+    .AddTypedClient<ISportlinkClubClient>((httpClient, sp) => new SportlinkClubClient(
+        httpClient,
+        sp.GetRequiredService<ISportlinkClubTokenStore>(),
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubClient>(),
+        isDryRun: () => PostgresAppSettings.GetSetting("sportlinkDryRun") == "1"));
 }
 
 // Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier

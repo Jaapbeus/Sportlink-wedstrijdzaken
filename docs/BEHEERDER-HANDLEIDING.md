@@ -964,6 +964,21 @@ mens gebeuren via een echte browserlogin (nooit door een geautomatiseerd script 
 `docs/SPORTLINK-WEB-EXTENSION.md` §4.4). Een gekoppelde rol behoudt de koppeling automatisch actief
 via een uur-timer, ook zonder dagelijks gebruik.
 
+**Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
+tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/
+veldwijziging en elk goed-/afgekeurd wijzigingsverzoek de volledige controle (rol-koppeling,
+guardrails, audit-logging), maar de daadwerkelijke aanroep naar Sportlink Club wordt overgeslagen —
+u ziet in de Admin GUI een informatieve melding ("Dry-run: niets gewijzigd in Sportlink Club — de
+aanroep is gesimuleerd en gelogd") in plaats van een succes- of foutmelding. Zet dit pas uit nadat u
+de rol-koppeling en de statussectie hieronder heeft gecontroleerd.
+
+**Status Sportlink Web Extension** — een sectie onder de rollen-tabel die in één oogopslag toont of
+de extension/dry-run aan staan, of uitgaande verbindingen zijn toegestaan, de koppelingsstatus en
+laatste tokenverversing per rol, de laatste mutatiefout, en de uitkomst van de dagelijkse
+contract-check (een geautomatiseerde controle die vroegtijdig waarschuwt als Sportlink zijn eigen
+website heeft gewijzigd). Dit alles komt uit onze eigen gegevens — er gaat geen aanroep naar
+Sportlink uit, tenzij u zelf op **"Nu live controleren"** klikt.
+
 Eenmaal gekoppeld verschijnt in **Dagplanning** per wedstrijd een Sportlink-paneel met de actuele
 Sportlink-status en (afhankelijk van wat Sportlink voor die wedstrijd toestaat) invoervelden om
 kleedkamers en veld rechtstreeks terug te schrijven, plus een "Open in Sportlink"-knop die de

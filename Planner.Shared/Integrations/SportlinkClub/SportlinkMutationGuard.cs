@@ -37,6 +37,16 @@ public static class SportlinkMutationGuard
             return SportlinkMutationGuardResult.Geblokkeerd(
                 "Alleen thuiswedstrijden mogen via de extension gewijzigd worden (IsHomeMatch=false).");
 
+        // #998: hard blokkeren op IsCanceledMatch/IsConceptMatch — onomstreden gevallen waarin een
+        // mutatie nooit zinvol is. MatchStatus wordt BEWUST niet hard afgedwongen (bijv. op
+        // "SCHEDULED"): de eigenaar koos ervoor eerst een seizoen auditdata te verzamelen (zie de
+        // uitgebreide WaardeVoor-logging in SportlinkMatchFunction) voordat die waarde een
+        // blokkade wordt.
+        if (match.IsCanceledMatch)
+            return SportlinkMutationGuardResult.Geblokkeerd("Wedstrijd is afgelast (IsCanceledMatch=true).");
+        if (match.IsConceptMatch)
+            return SportlinkMutationGuardResult.Geblokkeerd("Wedstrijd is nog een concept (IsConceptMatch=true).");
+
         var toegestaan = soort switch
         {
             SportlinkMutationSoort.Kleedkamers => match.IsAssignDressingRoomsAllowed,

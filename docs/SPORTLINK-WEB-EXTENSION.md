@@ -58,6 +58,32 @@ Instellingen → sectie "Sportlink Web Extension" → schakelaar aan. Direct daa
 met alle functionele rollen (nu: "Wedstrijdzaken") en of daar al een Sportlink-serviceaccount aan
 gekoppeld is.
 
+### 3.1a Dry-run — standaard AAN, bewust een tweede schakelaar (#998)
+Naast de aan/uit-schakelaar staat een tweede schakelaar: "Dry-run: alles simuleren, niets naar
+Sportlink schrijven". Deze staat **standaard AAN**, ook voor een club die de extension zelf al
+aanzet — een kleedkamer-/veldwijziging of wijzigingsverzoek-actie wordt dan wél volledig doorlopen
+(token-refresh, guard-check, audit-logging), maar de daadwerkelijke aanroep naar Sportlink wordt
+overgeslagen. Het audit-resultaat toont in dat geval `DryRun` in plaats van `Success`/`Failure`, en
+de Admin GUI toont een informatieve melding ("Dry-run: niets gewijzigd in Sportlink Club — de
+aanroep is gesimuleerd en gelogd") in plaats van een succes-/foutmelding.
+
+Zet dry-run pas uit nadat je:
+1. de rol-koppeling (§3.3) hebt gecontroleerd,
+2. de statussectie (§3.1b) groen ziet staan,
+3. een paar dry-run-pogingen in het audit-log hebt teruggezien met de verwachte `WaardeVoor`/`WaardeNa`.
+
+**Uitzondering, geen keuze:** op de SQL Server-tier (rollback-only sinds de Postgres-cutover, zie
+§4.3) staat dry-run onvoorwaardelijk hard aan in code — die tier heeft nooit een mutatie-endpoint
+gehad en mag dat ook nooit stilzwijgend krijgen via een instelling.
+
+### 3.1b Statussectie — wat er te zien is
+Onder de rollen-tabel op Instellingen staat sinds #998 een statussectie die in één oogopslag toont:
+of de extension/dry-run aan staat, of uitgaande integraties zijn toegestaan (EgressGuard, #857), de
+koppelingsstatus + laatste tokenverversing per rol, de laatste mutatiefout uit het audit-log, en de
+uitkomst van de laatste dagelijkse contract-check (§4.2). Dit komt allemaal uit onze eigen database
+— er gaat geen Sportlink-aanroep uit tenzij je zelf op "Nu live controleren" klikt, wat één echte
+tokenverversing en één leesaanroep doet (nooit automatisch, nooit door een agent — zie §4.4).
+
 ### 3.2 Waarom een apart account per rol, niet het account van de wedstrijdsecretaris zelf
 Als alle rollen via één, breed Sportlink-account zouden lopen, zou een toekomstige, beperktere
 webapp-rol (bijvoorbeeld een sectiehoofd dat alleen ledengegevens mag zien) via de extension alsnog
@@ -143,7 +169,11 @@ verplichte N-user-test.
   #998) herschrijft een Function App-instelling via de Azure Management API. **De DB-tabel is de
   bewust gekozen aanpak voor de enige live tier** — zie §4.3.
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkMutationGuard.cs` (#998) — pure guardrail:
-  staat een mutatie alleen toe bij `IsHomeMatch=true` én de bijbehorende Sportlink-permissievlag.
+  staat een mutatie alleen toe bij `IsHomeMatch=true`, de bijbehorende Sportlink-permissievlag, én
+  blokkeert altijd bij `IsCanceledMatch=true` of `IsConceptMatch=true`. `MatchStatus` wordt bewust
+  NIET hard afgedwongen (bijv. op `SCHEDULED`) — die waarde wordt sinds #998 wel uitgebreid
+  meegelogd in de audit (zie hieronder), zodat er eerst een seizoen aan echte data verzameld wordt
+  vóórdat die eventueel een harde blokkade wordt.
 - `FunctionApp/Sportlink/` + `FunctionApp.Postgres/Sportlink/` (#998) — per-tier, niet-gedeelde
   `ISportlinkMutationAuditService`-implementatie; logt vóór én na elke toekomstige mutatie in
   `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`.
@@ -195,6 +225,44 @@ verplichte N-user-test.
   onze eigen wedstrijd-mutatie-vlaggen, niet het afhandelen van een verzoek van een tegenstander.
   Audit-logging blijft wel verplicht. `ActOnChangeRequestAsync` haalt `PublicPersonId` van het
   service-account zelf op via `user/UserInfo` — de aanroeper hoeft dat niet te kennen.
+- **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
+  punt waar alle drie de PUT-paden (kleedkamers, veld, change-request-actie) doorheen lopen — niet
+  per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-
+  GETs ook in dry-run écht gebeuren (realistische simulatie); alleen de daadwerkelijke PUT/POST
+  wordt overgeslagen. `SportlinkClubClient` krijgt hiervoor een `Func<bool> isDryRun`-delegate in de
+  constructor (zelfde ontkoppelingspatroon als `ISportlinkClubTokenStore` — geen settings-/DB-
+  afhankelijkheid in `Planner.Shared`). `FunctionApp.Postgres/Program.cs` geeft een delegate mee die
+  bij **elke** aanroep opnieuw `PostgresAppSettings.GetSetting("sportlinkDryRun")` leest (niet één
+  keer bij opstarten) — de toggle op Instellingen heeft dus direct effect, zonder herstart, omdat
+  `AdminSettingsPut` na elke wijziging `PostgresAppSettings.LoadSettingsAsync` opnieuw aanroept.
+  `FunctionApp/Program.cs` (SQL Server-tier) geeft hard `isDryRun: () => true` mee — die tier heeft
+  geen enkel mutatie-endpoint en mag dus per definitie nooit een echte PUT versturen.
+  `SportlinkMutationResult` kreeg er een derde veld `IsDryRun` bij; het audit-resultaat wordt bepaald
+  door de gedeelde helper `SportlinkMatchFunction.BepaalAuditResultaat` (`DryRun` gaat vóór
+  `IsSuccess`, want die is bij dry-run altijd `true`).
+- **Health-check-endpoint (#998).** `FunctionApp.Postgres/Admin/SportlinkExtensieHealthFunction.cs`
+  — `GET /api/beheer/sportlink-extensie/health?live=false` (default). Zonder `?live=true` leest dit
+  uitsluitend onze eigen database (extension/dry-run-instelling, `EgressGuard`-status, koppeling +
+  laatste tokenverversing per rol uit `public.sportlinkservicetokens`, laatste `Failure`-rij uit
+  `public.sportlinkmutationaudit`, laatste rij uit `public.sportlinkcontractcheck`) — geen enkele
+  Sportlink-aanroep. Alleen bij expliciete `?live=true` (een gebruikersklik op "Nu live
+  controleren") doet het één `VerversTokenAsync` + één `GetMatchAsync` op de meest recent gecachte
+  `PublicMatchId` — en rapporteert dan uitsluitend HTTP-status/resultaataard, nooit responsdata.
+- **Dagelijkse contract-check (#998).** `FunctionApp.Postgres/Sportlink/SportlinkContractCheckTimerFunction.cs`
+  (`0 30 6 * * *`) haalt één keer per dag de rauwe JSON op van de meest recent gecachte
+  `PublicMatchId` (`ISportlinkClubClient.GetMatchRawJsonAsync`, niet `MatchProgramOverview` — te
+  traag en hier niet nodig) en controleert die met het nieuwe, pure
+  `Planner.Shared/Integrations/SportlinkClub/SportlinkMatchContract.cs` op JSON-root-niveau: bestaat
+  elk veld waarop `SportlinkMatch` vertrouwt nog, met het verwachte JSON-type? Daalt bewust nooit af
+  in `matchOfficials` (persoonsgegevens) en rapporteert uitsluitend veldNAMEN, nooit waarden. Het
+  resultaat gaat naar de nieuwe tabel `public.sportlinkcontractcheck` (migratie
+  `016_sportlink_dryrun_en_contractcheck.sql`) — bewust géén hergebruik van
+  `sportlinkmutationaudit` (dat is "één rij per mutatiepoging", dit is geen mutatie). Bij een
+  afwijking hergebruikt de timer het BESTAANDE noodmail-pad
+  (`EmailProcessorFunction`'s `INoodmailThrottleStore`/`IEmailGraphService`-patroon, eigen
+  throttle-sleutel `sportlink-contract-noodmail`, 24-uurs-interval) — bewust geen nieuw
+  alarmeringsmechanisme (kostenbeleid: geen betaalde Log Analytics/App Insights-alert-regel, geen
+  GitHub-issue-reporter).
 
 ### 4.3 Kostenbeleid-implicatie / tokenopslag (besloten, #990/#991)
 Op de Postgres-tier (de enige tier die live draait) wordt het rotarende refresh_token opgeslagen in
@@ -303,7 +371,65 @@ test getriggerd wordt:
   over een specifiek, door hem aangewezen verzoek.
 - Volledige, actuele lijst met openstaande vragen en risico's: onderzoeksrapport §5/§7.
 
-## 6. Bronnen
+## 6. Technische bijlage — endpoints, bodies, token-flow (#998)
+
+Overgenomen uit de code (`Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs`) zodat
+dit document zelfstandig leesbaar is, zonder het losse onderzoeksrapport erbij nodig te hebben voor
+de kernfeiten. Bij een discrepantie is de code leidend; werk dan dit overzicht bij.
+
+### 6.1 Token-flow
+- Token-endpoint: `POST https://idm.sportlink.com/realms/sportlink/protocol/openid-connect/token`
+  — `grant_type=refresh_token`, `client_id=sportlink-club-web`, `refresh_token=<opgeslagen waarde>`.
+- Respons bevat `access_token`, `expires_in` (default 3600 als afwezig), en een geroteerd
+  `refresh_token` — dat nieuwe token wordt teruggeschreven via `ISportlinkClubTokenStore`
+  (asynchroon, niet-blokkerend) vóórdat het oude ongeldig kan worden.
+- In-memory cache per functionele rol (`ConcurrentDictionary`), met een marge van 60 seconden vóór
+  de werkelijke `expires_in` — een aanroep binnen die marge ververst proactief in plaats van een
+  401 af te wachten. Bij een écht onverwachte 401 (token toch al ongeldig): cache invalideren, één
+  keer geforceerd verversen, één keer opnieuw proberen; blijft het 401 → `HerkoppelingVereist`.
+- `400` met `invalid_grant` op het token-endpoint → `HerkoppelingVereist` (refresh-token zelf dood,
+  handmatige herkoppeling nodig via §3.3).
+
+### 6.2 Endpoints (alle onder `https://club.sportlink.com/navajo/entity/common/clubweb/`)
+
+| Endpoint | Methode | Doel | Guard vooraf |
+|---|---|---|---|
+| `competition/match/Match` (`?PublicMatchId=`) | GET | Wedstrijddetails ophalen (ook: snapshot vóór een veldwijziging, ook: rauwe vormcontrole voor de contract-check) | — |
+| `competition/match/MatchProgramOverview` (`?DateFrom=&DateTo=`) | GET | Niet-club-gescoped, 1-daags programma — voor de `PublicMatchId`-reverse-lookup en de dagelijkse warmup-timer | — |
+| `competition/match/UpdateMatchDressingRooms` | PUT | Kleedkamers toewijzen | `SportlinkMutationSoort.Kleedkamers` |
+| `competition/match/UpdateMatchDetails` | PUT | Veld(deel) wijzigen — verwacht het VOLLEDIGE wedstrijdrecord, niet een klein patch (zie §4.2) | `SportlinkMutationSoort.Veld` |
+| `competition/match/changerequest/MatchChangeRequests` | GET | Inkomende wijzigingsverzoeken van tegenstanders ophalen | — (geen `SportlinkMutationGuard`, zie §4.2) |
+| `competition/match/changerequest/MatchChangeRequestAction` | PUT | Verzoek goed-/afkeuren | — (idem) |
+| `user/UserInfo` | GET | `PublicPersonId` van het service-account, nodig voor `MatchChangeRequestAction` | — |
+
+Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vaste appnaam),
+`X-Navajo-Instance: KNVB`, `X-Navajo-Locale: nl`.
+
+### 6.3 Bodies (PascalCase — de wire-vorm, geen `JsonPropertyName` nodig)
+
+- **`UpdateMatchDressingRooms`**: `{ PublicMatchId, HomeDressingRoomId, AwayDressingRoomId,
+  OfficialDressingRoomId }` — elk kleedkamer-ID heeft de vorm `{FacilityId}-DRESSINGROOM-{n}`
+  (live vastgesteld, #1045), niet een los nummer.
+- **`UpdateMatchDetails`**: `{ ConfirmationNeeded, IsForceUpdate (altijd false), IsMatchChangeRequestMandatory: false,
+  IsOwnFacility: true, IsPlannableByClub: false, IsSuccess: false, PublicApplicantId ("" voor een
+  eigen-veld-wijziging, live bevestigd geaccepteerd, #1048), PublicMatchId, MatchData }` waarbij
+  `MatchData` het volledige, net opgehaalde wedstrijdrecord is met alleen het gewijzigde veld
+  overschreven (zie §4.2 voor waarom).
+- **`MatchChangeRequestAction`**: `{ Action ("APPROVE"|"DENY"), PublicMatchId, PublicPersonId,
+  PublicRequestId, Remarks }`.
+- **Afwijzingsvorm (HTTP 420, live bevestigd #1040)**: `{"Error":true,"Status":"420",
+  "Message":"Validation exception : <code>","ViolationCodes":["<code>", ...],
+  "Violations":{"<code>":"Nederlandse omschrijving"}}`. Succes wordt bepaald door `Error != true &&
+  response.IsSuccessStatusCode`, niet door een afzonderlijk `isSuccess`-veld (de happy-path-vorm is
+  nooit live bevestigd).
+
+### 6.4 Dry-run (#998)
+In dry-run wordt de body nog wél geserialiseerd (zodat een serialisatiefout alsnog opduikt) maar
+niet verstuurd — `PutMutationAsync` retourneert direct `{IsSuccess: true, Violations: null,
+IsDryRun: true}` zonder een HTTP-aanroep te doen. De body zelf wordt nooit gelogd (kan
+teamnamen/persoonsgegevens bevatten); alleen `{EntityName}`/`{Endpoint}` verschijnen in de log.
+
+## 7. Bronnen
 - [`docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) — volledig technisch bronrapport
 - Epic [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986) en sub-issues #987-#998
 - [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — rolbeheer en N-user-test

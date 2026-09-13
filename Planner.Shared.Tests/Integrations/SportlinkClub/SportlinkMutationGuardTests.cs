@@ -153,4 +153,44 @@ public class SportlinkMutationGuardTests
         result.IsToegstaan.Should().BeFalse();
         result.Reden.Should().Contain("Uitslag");
     }
+
+    [Fact]
+    public void MagMuteren_AfgelasteWedstrijd_GeeftGeblokkeerd()
+    {
+        // Arrange
+        var match = new SportlinkMatch
+        {
+            PublicMatchId = "M000000001",
+            IsHomeMatch = true,
+            IsCanceledMatch = true,
+            IsAssignDressingRoomsAllowed = true
+        };
+
+        // Act
+        var result = SportlinkMutationGuard.MagMuteren(match, SportlinkMutationSoort.Kleedkamers);
+
+        // Assert
+        result.IsToegstaan.Should().BeFalse();
+        result.Reden.Should().Contain("IsCanceledMatch");
+    }
+
+    [Fact]
+    public void MagMuteren_ConceptWedstrijd_GeeftGeblokkeerd()
+    {
+        // Arrange
+        var match = new SportlinkMatch
+        {
+            PublicMatchId = "M000000001",
+            IsHomeMatch = true,
+            IsConceptMatch = true,
+            IsEditFieldAllowed = true
+        };
+
+        // Act
+        var result = SportlinkMutationGuard.MagMuteren(match, SportlinkMutationSoort.Veld);
+
+        // Assert
+        result.IsToegstaan.Should().BeFalse();
+        result.Reden.Should().Contain("IsConceptMatch");
+    }
 }

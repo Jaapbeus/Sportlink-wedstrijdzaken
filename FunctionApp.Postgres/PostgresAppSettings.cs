@@ -18,16 +18,22 @@ namespace FunctionApp.Postgres;
 /// dit uit zodra de bijbehorende Postgres-migratie de kolom toevoegt.
 /// </para>
 /// <para>
-/// <b>Eén bewuste uitzondering op die regel (#1098):</b> <c>sportlinkextensionenabled</c> (migratie
-/// 012). Op de Postgres-tier past niets de migraties automatisch toe op productie — dat is een
-/// handmatige stap van de eigenaar (ARCHITECTUUR-DATABASE-TIERS.md §49). Release v3.3.0.0 leverde
-/// deze query met die kolom, terwijl migratie 012 in productie nog niet gedraaid had: <c>42703
-/// undefined_column</c> → <c>WaitForDatabaseAsync</c> zag "database onbereikbaar" → elk
-/// <c>/api/beheer/*</c>-endpoint 500 "Ophalen mislukt". Ontbreekt die kolom, dan valt de lader nu
-/// terug op de kolomset van v3.2 en geldt <c>sportlinkExtensionEnabled = "0"</c> — exact de
-/// <c>DEFAULT false</c> die migratie 012 zelf zou zetten. Niet stil: <see cref="SchemaWarning"/>
-/// staat in <c>/api/health</c> en het functielog meldt het één keer per proces. Zelfde
-/// "melden, niet weigeren"-lijn als #1095.
+/// <b>Twee bewuste uitzonderingen op die regel — telkens een optionele, losstaande kolom
+/// (#1098, #998):</b> <c>sportlinkextensionenabled</c> (migratie 012) en <c>sportlinkdryrun</c>
+/// (migratie 016). Op de Postgres-tier past niets de migraties automatisch toe op productie — dat
+/// is een handmatige stap van de eigenaar (ARCHITECTUUR-DATABASE-TIERS.md §49). Release v3.3.0.0
+/// leverde de query met de eerste kolom terwijl migratie 012 in productie nog niet gedraaid had:
+/// <c>42703 undefined_column</c> → <c>WaitForDatabaseAsync</c> zag "database onbereikbaar" → elk
+/// <c>/api/beheer/*</c>-endpoint 500 "Ophalen mislukt". Beide kolommen worden daarom onafhankelijk
+/// van elkaar geprobeerd; ontbreekt er één, dan valt <see cref="ReadAsync"/> voor precies die kolom
+/// terug op de migratie-default:
+/// <list type="bullet">
+/// <item><c>sportlinkExtensionEnabled = "0"</c> — <c>DEFAULT false</c> uit migratie 012.</item>
+/// <item><c>sportlinkDryRun = "1"</c> — <c>DEFAULT true</c> uit migratie 016. Bewust fail-safe:
+/// een ontbrekende kolom mag nooit stilzwijgend live Sportlink-mutaties toestaan.</item>
+/// </list>
+/// Niet stil: <see cref="SchemaWarning"/> staat in <c>/api/health</c> en het functielog meldt het
+/// één keer per proces. Zelfde "melden, niet weigeren"-lijn als #1095.
 /// </para>
 /// <para>
 /// Filtert op <c>syncenabled = true</c> — zelfde precedent als
@@ -60,9 +66,16 @@ public static class PostgresAppSettings
     /// niet zelf opnieuw te selecteren (GET) en een poging de extensie in te schakelen vóór de
     /// migratie met een duidelijke 409 te beantwoorden (PUT) in plaats van een generieke 500.
     /// </summary>
-    public static bool ExtensionColumnAvailable => SchemaWarning is null;
+    public static bool ExtensionColumnAvailable { get; private set; } = true;
+
+    /// <summary>
+    /// #998: zelfde precedent als <see cref="ExtensionColumnAvailable"/>, maar voor
+    /// <see cref="DryRunColumn"/> (migratie 016).
+    /// </summary>
+    public static bool DryRunColumnAvailable { get; private set; } = true;
 
     internal const string ExtensionColumn = "sportlinkextensionenabled";
+    internal const string DryRunColumn = "sportlinkdryrun";
 
     private const string BaseColumns =
         "clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname";
@@ -73,6 +86,13 @@ public static class PostgresAppSettings
         "geldt als uitgeschakeld tot de openstaande migraties zijn uitgevoerd (Database.Postgres.Cli) — " +
         "zie 'pendingMigrations' in /api/health en docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#1098).";
 
+    private const string DryRunColumnMissingWarning =
+        "Kolom '" + DryRunColumn + "' ontbreekt in public.appsettings: migratie " +
+        "016_sportlink_dryrun_en_contractcheck.sql is niet toegepast op deze database. De dry-run-modus " +
+        "geldt als AAN (fail-safe, geen live Sportlink-mutaties) tot de openstaande migraties zijn " +
+        "uitgevoerd (Database.Postgres.Cli) — zie 'pendingMigrations' in /api/health en " +
+        "docs/ARCHITECTUUR-DATABASE-TIERS.md §55 (#998).";
+
     public static async Task LoadSettingsAsync(ILogger log)
     {
         try
@@ -80,21 +100,33 @@ public static class PostgresAppSettings
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 
+            // #1098/#998: beide optionele kolommen worden onafhankelijk van elkaar geprobeerd —
+            // migratie 012 en 016 kunnen elk apart nog niet zijn toegepast. Alleen dít specifieke
+            // 42703-geval per kolom triggert een retry; elke andere ontbrekende kolom blijft een
+            // harde fout, want daar is geen migratie-default voor.
+            var includeExtensionColumn = true;
+            var includeDryRunColumn = true;
             bool gevonden;
-            try
+            while (true)
             {
-                gevonden = await ReadAsync(connection, includeExtensionColumn: true);
-                SchemaWarning = null;
+                try
+                {
+                    gevonden = await ReadAsync(connection, includeExtensionColumn, includeDryRunColumn);
+                    break;
+                }
+                catch (PostgresException ex) when (includeExtensionColumn && IsOntbrekendeKolom(ex, ExtensionColumn))
+                {
+                    includeExtensionColumn = false;
+                }
+                catch (PostgresException ex) when (includeDryRunColumn && IsOntbrekendeKolom(ex, DryRunColumn))
+                {
+                    includeDryRunColumn = false;
+                }
             }
-            catch (PostgresException ex) when (IsOntbrekendeKolom(ex, ExtensionColumn))
-            {
-                // #1098: zie de klassedocumentatie. Alleen dít specifieke 42703-geval — elke andere
-                // ontbrekende kolom blijft een harde fout, want daar is geen migratie-default voor.
-                SchemaWarning = ExtensionColumnMissingWarning;
-                if (Interlocked.Exchange(ref _schemaWarningLogged, 1) == 0)
-                    log.LogWarning("{SchemaWarning}", ExtensionColumnMissingWarning);
-                gevonden = await ReadAsync(connection, includeExtensionColumn: false);
-            }
+
+            ExtensionColumnAvailable = includeExtensionColumn;
+            DryRunColumnAvailable = includeDryRunColumn;
+            UpdateSchemaWarning(log, includeExtensionColumn, includeDryRunColumn);
 
             if (!gevonden)
             {
@@ -112,12 +144,25 @@ public static class PostgresAppSettings
         }
     }
 
+    private static void UpdateSchemaWarning(ILogger log, bool extensionColumnAvailable, bool dryRunColumnAvailable)
+    {
+        var warnings = new List<string>();
+        if (!extensionColumnAvailable) warnings.Add(ExtensionColumnMissingWarning);
+        if (!dryRunColumnAvailable) warnings.Add(DryRunColumnMissingWarning);
+
+        SchemaWarning = warnings.Count == 0 ? null : string.Join(" ", warnings);
+        if (warnings.Count > 0 && Interlocked.Exchange(ref _schemaWarningLogged, 1) == 0)
+            log.LogWarning("{SchemaWarning}", SchemaWarning);
+    }
+
     /// <summary>
     /// Leest de primaire club en vult de cache. <c>false</c> als er geen rij met
     /// <c>syncenabled = true</c> is. Bij <paramref name="includeExtensionColumn"/> = false wordt
-    /// <c>sportlinkExtensionEnabled</c> op "0" gezet — de default van migratie 012.
+    /// <c>sportlinkExtensionEnabled</c> op "0" gezet — de default van migratie 012. Bij
+    /// <paramref name="includeDryRunColumn"/> = false wordt <c>sportlinkDryRun</c> op "1" gezet —
+    /// de default van migratie 016 (fail-safe: dry-run AAN).
     /// </summary>
-    private static async Task<bool> ReadAsync(NpgsqlConnection connection, bool includeExtensionColumn)
+    private static async Task<bool> ReadAsync(NpgsqlConnection connection, bool includeExtensionColumn, bool includeDryRunColumn)
     {
         // accommodatielatitude/-longitude erbij (issue 888 vervolg, §41): PostgresSunsetCalculator
         // heeft dezelfde clubinstellingen nodig als SunsetCalculator op de SQL Server-tier.
@@ -125,7 +170,15 @@ public static class PostgresAppSettings
         // ("Je bent een assistent voor de coördinator thuiswedstrijden van {clubNaam}") — zonder
         // deze kolom gooit die prompt-opbouw een InvalidOperationException.
         // sportlinkextensionenabled erbij (#988): Sportlink Web Extension-schakelaar, standaard false.
-        var kolommen = includeExtensionColumn ? BaseColumns + ", " + ExtensionColumn : BaseColumns;
+        // sportlinkdryrun erbij (#998): dry-run-schakelaar voor SportlinkClubClient.PutMutationAsync
+        // — gelezen bij ELKE mutatie-aanroep via de Func<bool>-delegate in Program.cs, dus de
+        // Instellingen-toggle heeft direct effect zodra deze cache ververst is (LoadSettingsAsync
+        // wordt na elke AdminSettingsPut opnieuw aangeroepen). Kolomnamen worden via GetOrdinal
+        // opgezocht in plaats van vaste posities: welke van de twee optionele kolommen aanwezig is
+        // varieert onafhankelijk van elkaar.
+        var kolommen = BaseColumns;
+        if (includeExtensionColumn) kolommen += ", " + ExtensionColumn;
+        if (includeDryRunColumn) kolommen += ", " + DryRunColumn;
         await using var cmd = new NpgsqlCommand(
             $"SELECT {kolommen} FROM public.appsettings WHERE syncenabled = true ORDER BY clubcode LIMIT 1", connection);
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -147,8 +200,26 @@ public static class PostgresAppSettings
             // clubname (#889): zie de aanroep hierboven.
             if (!reader.IsDBNull(6))
                 Settings["clubName"] = reader.GetString(6);
-            Settings["sportlinkExtensionEnabled"] =
-                includeExtensionColumn && !reader.IsDBNull(7) && reader.GetBoolean(7) ? "1" : "0";
+
+            if (includeExtensionColumn)
+            {
+                var ordinal = reader.GetOrdinal(ExtensionColumn);
+                Settings["sportlinkExtensionEnabled"] = !reader.IsDBNull(ordinal) && reader.GetBoolean(ordinal) ? "1" : "0";
+            }
+            else
+            {
+                Settings["sportlinkExtensionEnabled"] = "0";
+            }
+
+            if (includeDryRunColumn)
+            {
+                var ordinal = reader.GetOrdinal(DryRunColumn);
+                Settings["sportlinkDryRun"] = !reader.IsDBNull(ordinal) && reader.GetBoolean(ordinal) ? "1" : "0";
+            }
+            else
+            {
+                Settings["sportlinkDryRun"] = "1";
+            }
         }
         return true;
     }
@@ -182,5 +253,7 @@ public static class PostgresAppSettings
         LastLoadFailed = false;
         SchemaWarning = null;
         _schemaWarningLogged = 0;
+        ExtensionColumnAvailable = true;
+        DryRunColumnAvailable = true;
     }
 }

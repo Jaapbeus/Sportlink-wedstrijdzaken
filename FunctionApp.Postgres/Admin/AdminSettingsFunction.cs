@@ -51,7 +51,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled"
+        "SportlinkExtensionEnabled", "SportlinkDryRun"
     };
 
     private static readonly string[] GeldigeKnvbRegios =
@@ -76,6 +76,7 @@ public static class AdminSettingsFunction
         ["UseRealtimeApi"] = "::boolean",
         ["KnvbPdfBijlageIngeschakeld"] = "::boolean",
         ["SportlinkExtensionEnabled"] = "::boolean",
+        ["SportlinkDryRun"] = "::boolean",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -111,6 +112,12 @@ public static class AdminSettingsFunction
             var extensieKolom = PostgresAppSettings.ExtensionColumnAvailable
                 ? "sportlinkextensionenabled"
                 : "false";
+            // #998, zelfde precedent als hierboven: ontbreekt migratie 016 nog, val dan terug op
+            // de migratie-default (DEFAULT true — dry-run AAN). Fail-safe: een ontbrekende kolom
+            // mag nooit stilzwijgend als "dry-run uit" gelezen worden.
+            var dryRunKolom = PostgresAppSettings.DryRunColumnAvailable
+                ? "sportlinkdryrun"
+                : "true";
             await using var command = new NpgsqlCommand($@"
                 SELECT
                     clubname AS ""ClubName"", clubcode AS ""ClubCode"",
@@ -126,7 +133,8 @@ public static class AdminSettingsFunction
                     knvbpdfbijlageingeschakeld AS ""KnvbPdfBijlageIngeschakeld"",
                     knvbstandaardregio AS ""KnvbStandaardRegio"",
                     userealtimeapi AS ""UseRealtimeApi"",
-                    {extensieKolom} AS ""SportlinkExtensionEnabled""
+                    {extensieKolom} AS ""SportlinkExtensionEnabled"",
+                    {dryRunKolom} AS ""SportlinkDryRun""
                 FROM public.appsettings
                 WHERE clubcode = @clubcode
                 LIMIT 1", connection);
@@ -200,6 +208,15 @@ public static class AdminSettingsFunction
                 {
                     error = "De Sportlink Web Extension kan nog niet worden ingeschakeld: databasemigratie " +
                             "012_sportlink_extension.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
+                });
+
+            // #998, zelfde precedent als hierboven (#1098): de dry-run-schakelaar kan pas bestaan
+            // als migratie 016 is toegepast.
+            if (changes.ContainsKey("SportlinkDryRun") && !PostgresAppSettings.DryRunColumnAvailable)
+                return new ConflictObjectResult(new
+                {
+                    error = "Dry-run-modus kan nog niet worden aangepast: databasemigratie " +
+                            "016_sportlink_dryrun_en_contractcheck.sql is niet toegepast. Zie 'pendingMigrations' in /api/health."
                 });
 
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
