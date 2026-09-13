@@ -282,6 +282,28 @@ verplichte N-user-test.
   ondersteunende endpoints (`ClubMatchDefaults`, `PickListsMatchInformation`,
   `codetable/AgeClassList`), en een "vrij tijdslot"-concept in de Dagplanning-Gantt — het formulier
   (`BlazorAdmin/Pages/OefenwedstrijdAanmaken.razor`) staat los van de Gantt.
+  **Herzien in #1116 — de server vertaalt, de gebruiker kiest alleen.** Het formulier stuurt nog
+  slechts `TeamNaam` (keuzelijst uit `public.teams`), `Tegenstander` (vrije tekst), `VeldNummer`
+  (keuzelijst uit `public.velden`), datum/tijd/duur en een optionele omschrijving; de picklist-knop
+  en de vrije ID-velden zijn weg. `SportlinkClubMatchRepository` koppelt de teamnaam via de
+  **gevalideerde aliassen** (`public.teamaliassen` → `his.teams.teamcode`, gevuld door
+  `TeamCanonicalisatieService` na elke sync) aan het team-ID dat de Sportlink-dataservice zelf
+  hanteert — bewust géén eigen naamlogica (docs/ARCHITECTUUR-TEAMRESOLUTIE.md, regel 1 en 4).
+  Lokale data: `thuisteamid` in `his.matches` is voor 103 van de 108 eigen thuisteams exact die
+  `teamcode`; 98 van de 104 actieve teams krijgen zo precies één ID, geen enkel team een
+  dubbelzinnig ID; de 6 zonder ID zijn teams waarvan alleen de lokale schrijfwijze bekend is
+  (bijv. `JO13-2` naast het aparte canonieke team `O13-2JM`). Bij 0 of >1 verschillende ID's
+  blijft `PublicHomeTeamId` leeg met een waarschuwing. De leeftijdscategorie van het team gaat mee
+  als `AgeClassCode`. `FacilityId` komt uit de club-instelling `accommodatie`,
+  op naam opgezocht in `PickListsLocation` (read-only GET, per club één uur in-memory gecachet;
+  eerst exact, anders één unieke gedeeltelijke match — meerdere treffers → leeg). Elke mislukte
+  vertaling wordt een `Waarschuwing` in de respons, geen fout: het pad is toch code-gelockt en de
+  beheerder moet zien wat er (gesimuleerd) mee zou gaan. **Open vraag, pas te beantwoorden met de
+  netwerktrace:** hanteert Sportlink Club voor `PublicHomeTeamId` hetzelfde numerieke team-ID als
+  de dataservice, of een publiek string-ID zoals `PublicMatchId` (`M...`)? Het diagnostische
+  `GET .../club-match/picklists` blijft daarvoor bestaan. Blijkt het een ander ID, dan is het
+  alternatief een eenmalige koppel-sync die `teams` een kolom `sportlinkpublicteamid` geeft — bewust
+  níet vooruit gebouwd (migratie + handmatige productie-ronde voor kolommen die niemand kan vullen).
 - **Dry-run-modus (#998).** De vertakking zit in `SportlinkClubClient.PutMutationAsync` — het ÉNE
   punt waar alle drie de PUT-paden (kleedkamers, veld, change-request-actie) doorheen lopen — niet
   per tier/endpoint apart. Dat garandeert dat token-refresh en de voorbereidende snapshot-/UserInfo-
@@ -557,6 +579,11 @@ Elke aanroep zet drie headers: `X-Navajo-Entity` (het aangeroepen pad, geen vast
   is. `PutMutationAsync` is sinds #997 gegeneraliseerd met een optionele `HttpMethod`-parameter
   (default `Put`) zodat dit endpoint als POST kan versturen zonder de drie bestaande PUT-paden te
   raken.
+  Sinds #1116 vult de server deze body vanuit onze eigen data: `PublicHomeTeamId` =
+  `his.teams.teamcode` van de gevalideerde KNVB-alias van het team (numeriek, als string), `PublicAwayTeamId` = de vrije tekst van de
+  tegenstander, `AgeClassCode` = `public.teams.leeftijdscategorie` (bijv. `JO10`), `FacilityId` =
+  op naam gevonden in `PickListsLocation`, `FieldId` = altijd `null` (veld gaat ná aanmaken via
+  `UpdateMatchField`), `Description` = eigen tekst of `Oefenwedstrijd [team] - [tegenstander] ([veld])`.
 
 ### 6.4 Dry-run (#998) en de code-niveau forceDryRun-lock (#994)
 In dry-run wordt de body nog wél geserialiseerd (zodat een serialisatiefout alsnog opduikt) maar

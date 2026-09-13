@@ -941,6 +941,36 @@ is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 ---
 
+## 18a. Oefenwedstrijd aanmaken (`/oefenwedstrijd-aanmaken`)
+
+> **Scaffolding (#997/#1116):** de aanroep naar Sportlink Club wordt altijd gesimuleerd totdat een
+> mens de exacte aanmaak-body met een netwerktrace heeft bevestigd. U ziet na het aanmaken wél wat
+> er zou zijn meegestuurd, maar er verandert niets in Sportlink.
+
+Bedoeld voor snelle invoer: één scherm met **datum**, **aanvangstijd**, **duur** (standaard 90
+minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), **tegenstander**
+(vrije tekst), **veld** (keuzelijst met de actieve velden) en een optionele **omschrijving**. Enter
+in een veld verstuurt het formulier.
+
+Wat u níet hoeft in te vullen, doet de server:
+
+| Sportlink-veld | Waar het vandaan komt |
+|---|---|
+| Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team), dan blijft het leeg en ziet u dat als waarschuwing |
+| Leeftijdscategorie | Van het gekozen team (bijv. `JO10`) |
+| Locatie | Altijd de eigen accommodatie: de instelling **Accommodatie** (§2) wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
+| Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander] ([veld])` |
+
+Het gekozen veld wordt nog **niet** als Sportlink-veld meegestuurd: dat gebeurt in het plan van
+#997 pas ná het aanmaken via de bestaande veldwijziging. Het staat wel in de standaard-omschrijving
+en in het auditlog.
+
+Na het aanmaken toont een blauw (gesimuleerd/geslaagd) of rood (afgewezen) blok de melding plus de
+afgeleide gegevens en eventuele waarschuwingen. Deze pagina is onderdeel van de Sportlink Web
+Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wedstrijdzaken.
+
+---
+
 ## 19. Sportlink Web Extension (`/instellingen`) — schrijfrechten naar Sportlink Club
 
 > Deze feature is **gedeeltelijk gebouwd** (epic #986) — zie

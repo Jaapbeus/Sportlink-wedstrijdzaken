@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Oefenwedstrijd aanmaken: snelle invoer zonder Sportlink-picklists (#1116).** Het formulier
+  vraagt nu alleen nog datum, aanvangstijd, duur, eigen team, tegenstander en veld. Team en veld zijn
+  keuzelijsten uit de eigen database (dezelfde bron als de andere schermen); de knop "Picklists
+  laden", het locatieveld en de vrije ID-velden zijn weg. De locatie is altijd de eigen accommodatie
+  uit de instellingen, en de leeftijdscategorie volgt uit het gekozen team. Na het (gesimuleerde)
+  aanmaken toont het scherm precies welke Sportlink-gegevens de server heeft afgeleid en wat er
+  niet gevonden is. De aanroep naar Sportlink blijft gesimuleerd totdat een mens die live heeft
+  bevestigd (zie #997).
 - **Sportlink Web Extension: dry-run-modus, standaard AAN (#998).** Elke kleedkamer-/veldwijziging
   en elk goed-/afgekeurd wijzigingsverzoek wordt nu standaard alleen gesimuleerd: de aanroep naar
   Sportlink wordt overgeslagen en het resultaat wordt gelogd in de audit als "DryRun". Een
