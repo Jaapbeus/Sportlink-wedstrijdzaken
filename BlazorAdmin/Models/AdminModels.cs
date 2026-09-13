@@ -89,6 +89,28 @@ public class SportlinkMutatieResultaatDto
     /// (mutatie waarvan de requestbody nog niet live bevestigd is) — ONAFHANKELIJK van de
     /// club-instelling sportlinkDryRun. Als dit true is, is IsDryRun ook altijd true.</summary>
     public bool IsForcedDryRun { get; set; }
+
+    /// <summary>#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte
+    /// oefenwedstrijd — null voor elke andere mutatie en ook null zolang IsForcedDryRun/IsDryRun
+    /// de aanroep simuleerde (in de praktijk dus altijd null zolang de ClubMatch-code-lock actief
+    /// is).</summary>
+    public string? PublicMatchId { get; set; }
+}
+
+/// <summary>#997: één item uit een Sportlink-picklist (team of locatie) — id + weergavenaam.
+/// ONBEVESTIGD qua werkelijke JSON-veldnamen, zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.</summary>
+public class SportlinkPickListItemDto
+{
+    public string? Id { get; set; }
+    public string? Naam { get; set; }
+}
+
+/// <summary>#997: gecombineerd resultaat van de twee ondersteunende picklist-GETs die in deze
+/// ronde bewust WEL zijn aangesloten (Teams + Location) — bewust beperkte scope, zie PR.</summary>
+public class SportlinkClubMatchPickListsDto
+{
+    public List<SportlinkPickListItemDto> Teams { get; set; } = new();
+    public List<SportlinkPickListItemDto> Locations { get; set; } = new();
 }
 
 /// <summary>#998: status van de Sportlink Web Extension voor de Instellingen-pagina — nooit een

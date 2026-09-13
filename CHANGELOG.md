@@ -51,6 +51,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bestaat er nu een tweede vergrendeling die uitsluitend door een toekomstige codewijziging kan
   worden opgeheven — nooit door een instelling. Gedeelde infrastructuur, ook gebruikt door de
   volgende officials-gerelateerde issues.
+- **Oefenwedstrijd aanmaken vanuit de webapp (#997) — scaffolding, altijd gesimuleerd.** Een nieuwe
+  pagina "Oefenwedstrijd aanmaken" laat een beheerder datum/tijd, duur, leeftijdscategorie,
+  omschrijving, team en locatie invullen; teams en locaties komen — op expliciete klik ("Picklists
+  laden") — rechtstreeks uit Sportlink. Dit pad stuurt bewust NOOIT een echte aanroep naar
+  Sportlink: net als bij #994 zijn het endpoint en de volledige requestbody nog niet met een
+  netwerktrace bevestigd, dus de aanmaak blijft een simulatie totdat dat wél gebeurd is. Verwijderen
+  en het vastleggen van een uitslag zijn in deze ronde bewust niet gebouwd.
 - **CA-certificaat van de databaseprovider zit nu in het deploy-pakket, en de smoke test bewaakt
   de effectieve TLS-modus (#1096).** `FunctionApp.Postgres/prod-ca-2021.crt` (Supabase Root 2021
   CA, geldig t/m 2031-04-26) wordt meegekopieerd naar het publish-pakket, zodat `sslrootcert` in
