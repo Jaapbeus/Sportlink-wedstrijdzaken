@@ -11,6 +11,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- #1098: de migratienamen reizen mee in de assembly, zodat de Function App in /api/health kan
+         melden welke migraties de database nog mist (MigrationRunner.BundledMigrationNames). De
+         map zelf blijft de enige bron: MigrationRunner.RunAsync leest nog steeds van schijf, en
+         een unit-test bewaakt dat de ingesloten lijst gelijk is aan de mapinhoud. Alleen de
+         naam wordt gebruikt, nooit de inhoud — die is al publiek in deze repository. -->
+    <EmbeddedResource Include="migrations/*.sql" LogicalName="migrations/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Tier-agnostische veldresolutie-logica (#819) — gedeeld met FunctionApp, geen gedeelde
          DB-provider-abstractie (zie Planner.Shared/VeldResolver.cs). -->
     <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />

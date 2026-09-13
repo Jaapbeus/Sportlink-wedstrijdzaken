@@ -273,11 +273,27 @@ if ($health) {
     # (syncenabled = FALSE) en loopt daar altijd tegenaan.
     $statusOk = -not ($health.PSObject.Properties.Name -contains 'status') -or $health.status -eq 'ok'
     $settingsOk = -not ($health.PSObject.Properties.Name -contains 'settingsLoaded') -or $health.settingsLoaded
+    # #1098: health meldt ook welke migraties de database nog mist (pendingMigrations) en of de
+    # code een kolom verwacht die er niet is (schemaWarning). Dat was het tweede v3.3.0.0-incident:
+    # code vooruit op het schema, elk beheerscherm 500. Hier wijzen we dan naar de migratie, niet
+    # naar het seed-script — dat is een andere oorzaak.
+    $pending = if (($health.PSObject.Properties.Name -contains 'pendingMigrations') -and $health.pendingMigrations) { @($health.pendingMigrations) } else { @() }
+    $schemaWarning = if ($health.PSObject.Properties.Name -contains 'schemaWarning') { $health.schemaWarning } else { $null }
     if (-not ($statusOk -and $settingsOk)) {
         Write-Host "  Health meldt status '$($health.status)' (settingsLoaded=$($health.settingsLoaded))." -ForegroundColor Red
-        Write-Host "    Er is geen primaire club met syncenabled = TRUE in de database." -ForegroundColor Yellow
-        Write-Host "    Los op met: scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql" -ForegroundColor Yellow
-        Write-Host "    (zie docs/DEVELOPER-SETUP.md sectie 4.2) en herstart daarna de functiehost." -ForegroundColor Yellow
+        if ($pending.Count -gt 0) {
+            Write-Host "    Openstaande migraties: $($pending -join ', ')" -ForegroundColor Yellow
+            Write-Host "    Pas ze toe met: dotnet run --project Database.Postgres.Cli" -ForegroundColor Yellow
+            Write-Host "    (POSTGRES_CONNECTION_STRING als omgevingsvariabele) en herstart daarna de functiehost." -ForegroundColor Yellow
+        }
+        if ($schemaWarning) {
+            Write-Host "    $schemaWarning" -ForegroundColor Yellow
+        }
+        if (-not $settingsOk -and $pending.Count -eq 0 -and -not $schemaWarning) {
+            Write-Host "    Er is geen primaire club met syncenabled = TRUE in de database." -ForegroundColor Yellow
+            Write-Host "    Los op met: scripts/migrations/004-seed-lokale-placeholderclub-postgres.sql" -ForegroundColor Yellow
+            Write-Host "    (zie docs/DEVELOPER-SETUP.md sectie 4.2) en herstart daarna de functiehost." -ForegroundColor Yellow
+        }
         $failures.Add('FunctionApp (degraded)')
     }
 } else {
