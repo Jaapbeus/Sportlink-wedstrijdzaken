@@ -81,6 +81,16 @@ public class AdminApiClient
                     .ToList()
             });
 
+    // #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren). ONBEVESTIGD en
+    // altijd code-gelockt (forceDryRun) — zie SportlinkClubClient.RequestMatchChangeAsync. Bewust
+    // GEEN methode voor een bevestigstap: die bestaat hier niet.
+    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995).
+    public async Task<ApiResult<SportlinkMatchWijzigingsverzoekResultaatDto>> PutSportlinkMatchChangeRequestAsync(
+        string wedstrijdcode, string? nieuweDatum, string? nieuweStartTijd, string? nieuweFacilityId, string toelichting)
+        => await PutAsync<SportlinkMatchWijzigingsverzoekResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/change-request",
+            new { NieuweDatum = nieuweDatum, NieuweStartTijd = nieuweStartTijd, NieuweFacilityId = nieuweFacilityId, Toelichting = toelichting });
+
     // #996: inkomende wijzigingsverzoeken van tegenstanders.
     public async Task<ApiResult<List<SportlinkChangeRequestDto>>> GetSportlinkChangeRequestsAsync()
         => await GetAsync<List<SportlinkChangeRequestDto>>("api/sportlink/change-requests");

@@ -108,7 +108,8 @@ public static class SportlinkMatchFunction
                         RolNaam, publicMatchId,
                         BouwKleedkamerId(match.MatchField?.FacilityId, dto?.HomeDressingRoomId),
                         BouwKleedkamerId(match.MatchField?.FacilityId, dto?.AwayDressingRoomId),
-                        BouwKleedkamerId(match.MatchField?.FacilityId, dto?.OfficialDressingRoomId)));
+                        BouwKleedkamerId(match.MatchField?.FacilityId, dto?.OfficialDressingRoomId)),
+                    naarMutatieResultaat: r => r);
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
@@ -137,7 +138,8 @@ public static class SportlinkMatchFunction
                     req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchField",
                     SportlinkMutationSoort.Veld, dto, context,
                     (publicMatchId, _) => sportlinkClient!.UpdateFieldAsync(
-                        RolNaam, publicMatchId, dto?.FieldId, dto?.FieldSize, dto?.FieldOffset, isForceUpdate: false));
+                        RolNaam, publicMatchId, dto?.FieldId, dto?.FieldSize, dto?.FieldOffset, isForceUpdate: false),
+                    naarMutatieResultaat: r => r);
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
@@ -174,7 +176,69 @@ public static class SportlinkMatchFunction
                 return await ExecuteMutationAsync(
                     req, sportlinkClient, wedstrijdcodeValue, clubCode, "MatchOfficialsAction",
                     SportlinkMutationSoort.Officials, dto, context,
-                    (publicMatchId, _) => sportlinkClient!.AssignOfficialsAsync(RolNaam, publicMatchId, toewijzingen));
+                    (publicMatchId, _) => sportlinkClient!.AssignOfficialsAsync(RolNaam, publicMatchId, toewijzingen),
+                    naarMutatieResultaat: r => r);
+            },
+            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+
+    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
+    // beide PUT's en de bevestigingsvlag vastleggen). Dit endpoint is uitsluitend stap 1
+    // (valideren) van Sportlinks tweestaps flow — er bestaat bewust geen stap 2 (bevestigen): geen
+    // endpoint, geen client-methode, geen UI-knop daarvoor.
+    /// <summary>
+    /// <c>PUT /api/sportlink/match/{wedstrijdcode}/change-request</c> (#995, epic #986) —
+    /// wijzigingsverzoek datum/tijd/accommodatie. <b>ONBEVESTIGD, altijd code-gelockt:</b> deze
+    /// mutatie loopt via <see cref="ISportlinkClubClient.RequestMatchChangeAsync"/>, dat intern
+    /// <c>forceDryRun: true</c> gebruikt totdat een mens een live trace heeft gedaan (zie
+    /// <c>docs/SPORTLINK-WEB-EXTENSION.md</c> §4.4) — ONAFHANKELIJK van de club-instelling
+    /// <c>sportlinkDryRun</c>. Dit is de enige mutatiesoort die een ECHTE tegenstander raakt
+    /// (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zelfs stap
+    /// 1 (deze) kan in werkelijkheid al het gevaarlijke moment zijn, vandaar dat de code-lock hier
+    /// extra belangrijk is.
+    /// </summary>
+    [Function("SportlinkMatchChangeRequestPut")]
+    public static Task<IActionResult> PutChangeRequest(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/change-request")] HttpRequest req,
+        string wedstrijdcode,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
+            async clubCode =>
+            {
+                if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
+                    return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
+
+                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
+                var dto = JsonConvert.DeserializeObject<ChangeRequestDto>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
+
+                // Zelfde verplicht-veld-patroon als SportlinkChangeRequestFunction.PutAction
+                // (Remarks bij DENY): een wijzigingsverzoek zonder toelichting is voor de
+                // tegenstander niet te beoordelen.
+                if (string.IsNullOrWhiteSpace(dto?.Toelichting))
+                    return new BadRequestObjectResult(new { error = "Toelichting is verplicht bij een wijzigingsverzoek." });
+
+                DateOnly? nieuweDatum = null;
+                if (!string.IsNullOrWhiteSpace(dto.NieuweDatum))
+                {
+                    if (!DateOnly.TryParse(dto.NieuweDatum, out var datumWaarde))
+                        return new BadRequestObjectResult(new { error = "NieuweDatum moet een geldige datum zijn (yyyy-MM-dd)." });
+                    nieuweDatum = datumWaarde;
+                }
+
+                TimeOnly? nieuweStartTijd = null;
+                if (!string.IsNullOrWhiteSpace(dto.NieuweStartTijd))
+                {
+                    if (!TimeOnly.TryParse(dto.NieuweStartTijd, out var tijdWaarde))
+                        return new BadRequestObjectResult(new { error = "NieuweStartTijd moet een geldige tijd zijn (HH:mm)." });
+                    nieuweStartTijd = tijdWaarde;
+                }
+
+                return await ExecuteMutationAsync(
+                    req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchDetails:ChangeRequest",
+                    SportlinkMutationSoort.DatumTijdAccommodatie, dto, context,
+                    (publicMatchId, _) => sportlinkClient!.RequestMatchChangeAsync(
+                        RolNaam, publicMatchId, nieuweDatum, nieuweStartTijd, dto.NieuweFacilityId, dto.Toelichting!),
+                    naarMutatieResultaat: r => r.Mutatie);
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
@@ -228,13 +292,34 @@ public static class SportlinkMatchFunction
         public string? PersoonId { get; set; }
     }
 
+    /// <summary>#995: datum/tijd als losse strings (niet <c>DateOnly</c>/<c>TimeOnly</c> op de DTO
+    /// zelf) — consistent met de andere DTO's in dit bestand, en vermijdt een afhankelijkheid van
+    /// Newtonsoft.Json's (on)ondersteuning van die typen. De handler hierboven parseert en
+    /// valideert ze expliciet.</summary>
+    private sealed class ChangeRequestDto
+    {
+        public string? NieuweDatum { get; set; }
+        public string? NieuweStartTijd { get; set; }
+        public string? NieuweFacilityId { get; set; }
+        public string? Toelichting { get; set; }
+    }
+
     /// <summary>Gedeelde stappen voor elke mutatie-actie op een bestaande wedstrijd: PublicMatchId
     /// resolven, huidige match ophalen (voor de guardrail), <see cref="SportlinkMutationGuard"/>,
     /// audit "Pending" loggen, <paramref name="mutationCall"/> uitvoeren, audit voltooien met het
     /// echte resultaat. Eén vertaalpunt voor #992/#993 en toekomstige match-mutaties — een losse
     /// kopie per endpoint zou het risico geven dat een nieuw endpoint de guard of de audit-log
-    /// vergeet.</summary>
-    private static async Task<IActionResult> ExecuteMutationAsync(
+    /// vergeet.
+    /// <para>
+    /// Generiek gemaakt bij #995: <see cref="SportlinkClubClient.RequestMatchChangeAsync"/>
+    /// retourneert <c>SportlinkMatchChangeRequestResult</c> (mutatie + validatie), niet kaal
+    /// <see cref="SportlinkMutationResult"/> zoals de bestaande mutaties — <paramref name="naarMutatieResultaat"/>
+    /// haalt daaruit de gedeelde <see cref="SportlinkMutationResult"/> voor de audit-bepaling
+    /// (<see cref="BepaalAuditResultaat"/>), zonder dat generieke type zelf te vervuilen met een
+    /// taakspecifiek veld.
+    /// </para>
+    /// </summary>
+    private static async Task<IActionResult> ExecuteMutationAsync<T>(
         HttpRequest req,
         ISportlinkClubClient? sportlinkClient,
         long wedstrijdcodeValue,
@@ -243,7 +328,9 @@ public static class SportlinkMatchFunction
         SportlinkMutationSoort soort,
         object? waardeNaDto,
         FunctionContext context,
-        Func<string, SportlinkMatch, Task<SportlinkClubResponse<SportlinkMutationResult>>> mutationCall)
+        Func<string, SportlinkMatch, Task<SportlinkClubResponse<T>>> mutationCall,
+        Func<T, SportlinkMutationResult> naarMutatieResultaat)
+        where T : class
     {
         var (voorbereidFout, publicMatchId) = await BereidPublicMatchIdVoorAsync(sportlinkClient, wedstrijdcodeValue, clubCode);
         if (voorbereidFout != null) return voorbereidFout;
@@ -298,11 +385,12 @@ public static class SportlinkMatchFunction
             return new ObjectResult(new { error = "Sportlink gaf geen bruikbare respons." }) { StatusCode = 502 };
         }
 
-        var violationsSamenvatting = mutationResult.Data.Violations is { Count: > 0 }
-            ? string.Join(", ", mutationResult.Data.Violations)
+        var mutatieResultaat = naarMutatieResultaat(mutationResult.Data);
+        var violationsSamenvatting = mutatieResultaat.Violations is { Count: > 0 }
+            ? string.Join(", ", mutatieResultaat.Violations)
             : null;
         if (auditId.HasValue)
-            await auditService!.VoltooiAsync(auditId.Value, BepaalAuditResultaat(mutationResult.Data), violationsSamenvatting);
+            await auditService!.VoltooiAsync(auditId.Value, BepaalAuditResultaat(mutatieResultaat), violationsSamenvatting);
 
         // Altijd HTTP 200: "Sportlink heeft de mutatie inhoudelijk afgewezen" is geen transportfout
         // maar een structureel resultaat — IsSuccess/Violations dragen de uitkomst, consistent met

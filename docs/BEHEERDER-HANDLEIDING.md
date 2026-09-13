@@ -981,8 +981,15 @@ Sportlink uit, tenzij u zelf op **"Nu live controleren"** klikt.
 
 Eenmaal gekoppeld verschijnt in **Dagplanning** per wedstrijd een Sportlink-paneel met de actuele
 Sportlink-status en (afhankelijk van wat Sportlink voor die wedstrijd toestaat) invoervelden om
-kleedkamers en veld rechtstreeks terug te schrijven, plus een "Open in Sportlink"-knop die de
-wedstrijd in een nieuw tabblad op club.sportlink.com opent.
+kleedkamers, veld en officials (scheidsrechter/AR1/AR2) rechtstreeks terug te schrijven, plus een
+"Open in Sportlink"-knop die de wedstrijd in een nieuw tabblad op club.sportlink.com opent.
+
+Bij een thuiswedstrijd staat onderaan het paneel ook **"Wijzigingsverzoek datum/tijd/accommodatie"**:
+een nieuwe datum, starttijd en/of accommodatie invullen met een verplichte toelichting, en op
+**"Wijzigingsverzoek valideren"** klikken. Dit valideert alleen — Sportlinks meldingen (indien
+aanwezig) verschijnen letterlijk onder het formulier. Er is bewust **geen bevestigknop**: het
+daadwerkelijk versturen van een wijzigingsverzoek naar de tegenstander is nog niet gebouwd, dus deze
+actie blijft altijd een simulatie, ook als dry-run voor uw club uit staat.
 
 ---
 

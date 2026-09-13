@@ -51,6 +51,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bestaat er nu een tweede vergrendeling die uitsluitend door een toekomstige codewijziging kan
   worden opgeheven — nooit door een instelling. Gedeelde infrastructuur, ook gebruikt door de
   volgende officials-gerelateerde issues.
+- **Wijzigingsverzoek datum/tijd/accommodatie vanuit Dagplanning (#995) — scaffolding, alleen
+  validatiestap, altijd gesimuleerd.** Een beheerder kan voortaan bij een thuiswedstrijd een nieuwe
+  datum, starttijd en/of accommodatie invullen met een verplichte toelichting; Sportlinks
+  validatiemeldingen worden letterlijk getoond. Dit is bewust **uitsluitend stap 1** (valideren) van
+  Sportlinks tweestaps flow — de bevestigingsstap (die de tegenstander een goedkeuringsverzoek
+  stuurt) is niet gebouwd: geen endpoint, geen knop. De aanroep naar Sportlink blijft daarom altijd
+  een simulatie, ongeacht de dry-run-instelling van de club, totdat een mens de requestbody en de
+  bevestigingsvlag live heeft vastgesteld — dit is de enige mutatie in de Sportlink Web Extension
+  die een echte tegenstander raakt.
 - **Oefenwedstrijd aanmaken vanuit de webapp (#997) — scaffolding, altijd gesimuleerd.** Een nieuwe
   pagina "Oefenwedstrijd aanmaken" laat een beheerder datum/tijd, duur, leeftijdscategorie,
   omschrijving, team en locatie invullen; teams en locaties komen — op expliciete klik ("Picklists

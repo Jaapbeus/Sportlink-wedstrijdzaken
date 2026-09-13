@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.3.3.0
+  version: 3.3.4.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -908,6 +908,34 @@ components:
             (POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang
             IsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de
             ClubMatch-code-lock actief is).
+
+    SportlinkMatchChangeRequestResponse:
+      type: object
+      description: |
+        Resultaat van het wijzigingsverzoek-endpoint — ALLEEN stap 1 (valideren) van Sportlinks
+        tweestaps flow (#995, epic #986). Spiegelt
+        Planner.Shared.Integrations.SportlinkClub.SportlinkMatchChangeRequestResult. Er bestaat
+        bewust geen endpoint voor stap 2 (bevestigen).
+      properties:
+        Mutatie:
+          $ref: '#/components/schemas/SportlinkMutationResponse'
+        Validatie:
+          type: object
+          nullable: true
+          description: |
+            ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een
+            netwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,
+            zie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).
+          properties:
+            ConfirmationNeeded:
+              type: boolean
+            ValidationResultMessages:
+              type: array
+              nullable: true
+              items:
+                type: string
+            HasBlockingMessages:
+              type: boolean
 
     SportlinkClubMatchPickListsResponse:
       type: object
@@ -3265,6 +3293,80 @@ paths:
                 $ref: '#/components/schemas/SportlinkMutationResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Wedstrijd of PublicMatchId niet gevonden
+        '409':
+          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Sportlink gaf geen bruikbare respons
+        '503':
+          description: Uitgaande integraties staan hier niet toe (EgressGuard)
+
+  /sportlink/match/{wedstrijdcode}/change-request:
+    put:
+      tags: [sportlink]
+      operationId: putSportlinkMatchChangeRequest
+      summary: Wijzigingsverzoek datum/tijd/accommodatie (#995, epic #986) — ALLEEN stap 1 (valideren), altijd code-gelockt
+      description: |
+        **ONBEVESTIGD, altijd gesimuleerd, en de enige mutatie die een ECHTE tegenstander raakt:**
+        Sportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de
+        bevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt
+        UITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.
+        Zelfde onderliggende Sportlink-endpoint als `.../field`
+        (`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/
+        `MatchChangeRequestRemarks` overschreven in plaats van het veld. Loopt altijd via een
+        code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling `sportlinkDryRun` —
+        totdat een mens (nooit een agent) een live trace heeft gedaan: zelfs stap 1 kan in
+        werkelijkheid al het gevaarlijke moment zijn als Sportlinks eerste PUT geen "dry validate"
+        blijkt te zijn. Guard: `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend
+        `IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke
+        `IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.
+      security:
+        - easyAuth: []
+      parameters:
+        - name: wedstrijdcode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [Toelichting]
+              properties:
+                NieuweDatum:
+                  type: string
+                  nullable: true
+                  description: "yyyy-MM-dd — null laat de datum ongewijzigd (blijft uit de snapshot)."
+                NieuweStartTijd:
+                  type: string
+                  nullable: true
+                  description: "HH:mm — null laat de starttijd ongewijzigd."
+                NieuweFacilityId:
+                  type: string
+                  nullable: true
+                  description: null laat de accommodatie ongewijzigd.
+                Toelichting:
+                  type: string
+                  description: Verplicht — een wijzigingsverzoek zonder toelichting is voor de tegenstander niet te beoordelen.
+      responses:
+        '200':
+          description: Validatieresultaat (Mutatie.IsSuccess kan alsnog false zijn; in de praktijk altijd een gesimuleerd resultaat door de code-lock)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SportlinkMatchChangeRequestResponse'
+        '400':
+          description: Toelichting ontbreekt, of NieuweDatum/NieuweStartTijd is geen geldige datum/tijd
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
