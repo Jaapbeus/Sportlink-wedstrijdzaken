@@ -2636,6 +2636,16 @@ volgorde:
    wijziging aan `deploy.yml` (dat bevat nooit connectiestrings): net als `SqlConnectionString`
    vandaag is dit een eenmalige `az functionapp config appsettings set`/Portal-actie rechtstreeks
    op de Function App, buiten de CI-pipeline om.
+   **Sinds #1096, in deze volgorde — nooit omgekeerd:**
+   1. Zorg dat een release met `FunctionApp.Postgres/prod-ca-2021.crt` (gedownload uit het
+      Supabase-dashboard van déze deployment: Database → Settings → SSL Configuration — geen
+      publieke, statische URL, per project verschillend) al live staat, zodat het certificaat
+      op `/home/site/wwwroot/prod-ca-2021.crt` in het pakket zit.
+   2. Pas dáárna de instelling uitbreiden met `?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`.
+      Vóór stap 1 al `verify-full` zetten geeft een certificaatketen-fout (het #1095-incident,
+      tweede keer).
+   3. Verifiëren via `curl https://<function-app>.azurewebsites.net/api/health` —
+      `tlsMode: "VerifyFull"` en `tlsWarning: null`.
 5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
    allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
    dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
@@ -2666,13 +2676,17 @@ gevalideerd.
   Npgsql's eigen default (`SslMode.Prefer`) valt terug op onversleuteld, precies zoals de
   gedocumenteerde lokale workflow vandaag al werkt — er is dus geen aparte env-var of opt-in nodig
   om lokaal te blijven werken.
-- **Elke andere host** (per definitie productie/staging): vereist expliciet `SslMode.VerifyFull`.
-  Ontbreekt dat — of staat er een zwakkere modus (`Disable`/`Allow`/`Prefer`/`Require`/`VerifyCA`) —
-  dan gooit `Normalize` een `InvalidOperationException` vóór er een verbinding wordt geopend. Een
-  `RootCertificate` zonder `VerifyCA`/`VerifyFull` wordt eveneens geweigerd (Npgsql zou het anders
+- **Elke andere host** (per definitie productie/staging): norm is `SslMode.VerifyFull`. Een
+  `RootCertificate` zonder `VerifyCA`/`VerifyFull` wordt geweigerd (Npgsql zou het anders
   stilzwijgend negeren, wat een beheerder ten onrechte kan doen geloven dat validatie actief is).
-  Een publiek vertrouwde CA (zoals Supabase gebruikt) heeft geen apart `sslrootcert` nodig —
-  `VerifyFull` alleen, steunend op de OS-truststore, is dan al voldoende.
+  **Gecorrigeerd in #1095 (zie hieronder):** een ontbrekende of zwakkere-maar-versleutelde modus
+  (`Prefer` → opgewaardeerd naar `Require`; `Require`/`VerifyCA` blijven staan) gooit níet meer,
+  maar levert een `TlsWarning` op die `/api/health` en het functielog tonen. Alleen expliciet
+  onversleuteld (`Disable`/`Allow`) naar een niet-lokale host blijft een `InvalidOperationException`.
+  **Let op — de oorspronkelijke aanname hier was onjuist:** Supabase gebruikt géén publiek vertrouwde
+  CA voor de databaseverbinding; volgens de providerdocumentatie moet voor `verify-full` het eigen
+  CA-certificaat (`prod-ca-2021.crt`) worden gedownload en via `sslrootcert` worden meegegeven.
+  `VerifyFull` zonder dat certificaat faalt dus op de ketenvalidatie.
 
 Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
 niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
@@ -2683,17 +2697,76 @@ de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
 `MigrationTools/SqlServerToPostgresCopy` (#976-cutoverkopie) — alle drie roepen dezelfde
 `Normalize`-methode aan, er is geen aparte, zwakkere check ergens anders.
 
-**Operationele consequentie — verplicht te verifiëren bij de eerste deploy na deze fix:** de
-Azure Function App-instelling `POSTGRES_CONNECTION_STRING` (zie stap 4 van het cutover-runbook
-hierboven) moet `?sslmode=verify-full` bevatten. Staat die er niet in, dan gooit
-`PostgresDatabaseConfig`'s statische constructor bij de eerstvolgende cold start een
-`InvalidOperationException` (gevangen door `/api/health` als `"unconfigured"` → HTTP 503, zie §10 —
-geen crash-loop van het hele proces, maar wel een niet-werkende database-tier totdat de instelling
-is aangevuld).
+**Operationele consequentie (oorspronkelijke tekst, #1004):** de Azure Function App-instelling
+`POSTGRES_CONNECTION_STRING` (zie stap 4 van het cutover-runbook hierboven) moest
+`?sslmode=verify-full` bevatten; anders gooide `PostgresDatabaseConfig`'s statische initializer bij
+de eerstvolgende cold start een `InvalidOperationException` (gevangen door `/api/health` als
+`"unconfigured"` → HTTP 503, zie §10).
+
+### #1095 — incident bij release v3.3.0.0 en de correctie
+
+Precies dat gebeurde. De release v3.3.0.0 (PR #1094) was de eerste deploy met #1004 aan boord; de
+productie-instelling had geen `?sslmode=` (de #976-cutover had de URI-vorm gezet zoals het
+Supabase-dashboard die toont, en vóór #1004 werd daar stilzwijgend `Require` van gemaakt). De
+operationele stap hierboven was niet uitgevoerd, er was geen pre-deploy-check die dat afving, en
+omdat `PostgresDatabaseConfig.ConnectionString` een static initializer is, faalde daarna **elke**
+databasetoegang in de hele app — planner, admin-endpoints, nachtelijke synchronisatie — niet alleen
+`/api/health`. Alle deploy-jobs waren groen; de smoke test (`test`) was de enige die het zag.
+
+Twee lessen:
+
+1. **Fail-closed in een static initializer is een productie-breker, geen beveiligingswinst.** Een
+   TLS-modus die zwakker is dan de norm maar wél versleutelt, is een configuratieschuld die
+   zichtbaar moet zijn — niet een reden om de applicatie te laten uitvallen. De normalizer geeft
+   daarom nu `NormalizeWithDiagnostics(raw)` → `(ConnectionString, EffectiveSslMode, TlsWarning)`.
+   `Prefer` (Npgsql-default = niet opgegeven) wordt voor een niet-lokale host opgewaardeerd naar
+   `Require` — de productiestand van vóór v3.3.0.0, nooit zwakker dan voorheen; `Require`/`VerifyCA`
+   blijven staan; in alle drie gevallen met een `TlsWarning` zonder host of credentials.
+   `/api/health` toont `tlsMode` + `tlsWarning`, `PostgresSystemUtilities.WaitForDatabaseAsync` logt
+   de waarschuwing éénmalig per proces, `Database.Postgres.Cli` print hem naar stderr. Alleen
+   expliciet `Disable`/`Allow` naar een niet-lokale host blijft geweigerd.
+2. **De aanname over de CA was onjuist.** Supabase vereist voor `verify-full` het eigen
+   CA-certificaat (`sslrootcert`). Alleen `?sslmode=verify-full` aan de instelling toevoegen had
+   dus een tweede storing gegeven (certificaatketen-fout). De echte `verify-full`-uitrol — CA-cert
+   meeleveren in het deploy-pakket, `sslrootcert` ernaar laten wijzen, en een pre-deploy-check die
+   de effectieve TLS-modus toetst vóór de code live gaat — is een apart vervolgissue; tot die tijd
+   is `tlsWarning` in `/api/health` het signaal dat die schuld nog openstaat.
 
 **Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
 beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
 standaardpoort, lege pad → database `postgres`) blijven daarin behouden.
+
+### #1096 — CA-certificaat gebundeld, smoke test bewaakt `tlsWarning` (bouwstenen klaar, cutover nog handmatig)
+
+Vervolg op de twee lessen hierboven. Geen wijziging aan `Normalize`/`ApplyTlsPolicy` zelf — de
+`sslmode`/`sslrootcert`-parsing en de fail-open-met-waarschuwing-policy uit #1095 ondersteunden een
+CA-certificaat al. Wat ontbrak was het certificaat zelf en bewaking dat de norm ook echt gehaald
+wordt:
+
+1. **`FunctionApp.Postgres/FunctionApp.Postgres.csproj`** kopieert `prod-ca-2021.crt` naar de
+   output- én publish-directory, conditioneel op `Exists(...)` — zolang het bestand ontbreekt is
+   dit een no-op, geen build- of publish-fout. Het certificaat zelf staat inmiddels in de repo
+   (gedownload uit het Supabase-dashboard van déze deployment: Database → Settings → SSL
+   Configuration; subject/issuer "Supabase Root 2021 CA", geldig 2021-04-28 t/m 2031-04-26). Het is
+   publiek (Supabase's eigen root-CA, gelijk voor het project van deze deployment) en hoort dus in
+   git, niet in `.gitignore` — anders dan `local.settings.json`.
+2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarning` uit `/api/health` en meldt die
+   als `::warning::`, exact hetzelfde patroon als `pendingMigrations`/`schemaWarning` (§55): nooit
+   een deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095). Dit is de
+   "pre-deploy-check op de effectieve TLS-modus" uit het vervolgissue — als CI-zichtbaarheid na de
+   deploy, niet als harde gate, omdat de pipeline zelf `POSTGRES_CONNECTION_STRING` niet zet (§49
+   stap 4) en dus vóór de deploy niets over de productie-instelling kan weten.
+
+**Wat hiermee nog niet is opgelost.** `POSTGRES_CONNECTION_STRING` moet, ná release van dit
+certificaat naar productie (nooit ervoor — zie §49 stap 4), handmatig worden uitgebreid met
+`?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`. Tot die stap is gezet,
+blijft `tlsWarning` in `/api/health` non-null en is dat het juiste, verwachte signaal — geen
+regressie.
+
+**Bewust nog niet gedaan:** het beleid weer aanscherpen (`Require` zonder `verify-full` opnieuw
+weigeren). Dat is pas verantwoord zodra bovenstaande twee operationele stappen aantoonbaar zijn
+uitgevoerd en herhaalbaar zijn vastgelegd — met een pre-deploy-check die dat afdwingt, niet met een
+static initializer die de app platlegt (exact de fout uit #1004).
 
 ## 51. De lokale ontwikkelomgeving volgt de gedeployde tier (#1060)
 
@@ -2867,6 +2940,133 @@ tegengehouden. Herstel eerst, guard daarna — in die volgorde gemerged.
 database stukloopt (bijvoorbeeld een `NOT NULL`-kolom zonder default op een tabel met rijen). De
 basisbranch-database bevat in CI alleen wat de migraties zelf aanmaken, geen productie-achtige
 data. Dat blijft een apart risico.
+
+## 54. Een vertaalfout die acht dagen stil bleef, met een foutmelding die de verkeerde kant op wees (#1077)
+
+De derde vertaalomissie in deze epic, na §45 en §52. Deze is het opschrijven waard om twee redenen
+die losstaan van de fout zelf: de foutmelding loog, en niets meldde de storing.
+
+### De fout
+
+`PostgresStagingRepository.MergeUitslagenAsync` noemde `@clubcode` in zijn INSERT maar bond die
+parameter nooit. De meegegeven `clubCode` werd nergens gebruikt. De drie andere merges in hetzelfde
+bestand binden hem wél, en het SQL Server-origineel ook — alleen het uitslagenpad is bij de
+vertaling overgeslagen.
+
+### Waarom de melding naar het schema wees en niet naar de code
+
+```
+Npgsql.PostgresException 42703: column "clubcode" does not exist
+```
+
+`stg.matches` heeft die kolom gewoon. Npgsql laat een placeholder waarvoor geen parameter bestaat
+letterlijk in de SQL staan, en in PostgreSQL is `@` een **geldige prefix-operator** (absolute
+waarde). De server leest `@clubcode` dus als "operator `@` toegepast op kolom `clubcode`" en
+rapporteert die kolom als ontbrekend.
+
+**Dit is een Postgres-specifieke valstrik zonder tegenhanger op SQL Server**, waar dezelfde fout een
+ondubbelzinnige *"must declare the scalar variable"* oplevert. Elke `42703` op een kolom waarvan je
+zeker weet dat hij bestaat, is daarom eerst een aanwijzing voor een ongebonden parameter — niet voor
+schemadrift. In deze epic waren de eerdere `42703`-gevallen (§29, §32) juist wél schemadrift; die
+gelijkenis maakte het zoeken langer dan nodig.
+
+### Waarom hij alleen op twee van de drie weekoffsets sloeg
+
+De INSERT draait uitsluitend wanneer de voorafgaande UPDATE nul rijen raakte. Voor de huidige week
+staan de wedstrijden al in staging uit de programma-fetch, dus daar slaagt de UPDATE en wordt het
+kapotte pad nooit bereikt. Voor de twee voorgaande weken valt hij door naar de INSERT. Vandaar
+precies `weekOffset=-2` en `-1`, acht nachten achter elkaar identiek.
+
+### Waarom de bestaande dekking het niet zag
+
+`PostgresSyncFixtureIntegrationTests` draait het volledige synchronisatiepad, maar zijn fixture
+levert uitslagen voor wedstrijden die de programma-fetch al had ingevoegd. De UPDATE raakt dan een
+rij, de methode doet `continue`, en het INSERT-pad wordt nooit uitgevoerd. In productie is dat pad
+juist de regel. Een test die het *pad* niet raakt, dekt de code niet af hoeveel regels hij ook
+aanroept.
+
+`UitslagenMergeIntegrationTests` dwingt dat pad nu af, met een tegenhanger op de UPDATE-tak zodat
+"welk pad liep hier eigenlijk" meetbaar blijft.
+
+### De duurdere les: acht dagen stilte
+
+De fout zelf was één ontbrekende regel. Dat hij acht dagen bleef liggen, kwam door drie dingen die
+niets met deze vertaling te maken hebben — de timer slokte zijn uitzondering op en rapporteerde
+`Success`, één mislukte deelstap onderdrukte het bijwerken van `lastsynctimestamp` zonder dat
+zichtbaar te maken, en niets bewaakte de leeftijd van die tijdstempel. Alle drie zijn gedicht in
+#1081; zie `docs/MONITORING.md`.
+
+Voor volgende tiervertalingen is dat het bruikbare deel: een vertaalfout is onvermijdelijk, maar de
+tijd tussen ontstaan en ontdekken is een ontwerpkeuze.
+
+## 55. Code die vooruitloopt op het schema is nu zichtbaar in `/api/health` (#1098, hotfix)
+
+Het tweede incident van release v3.3.0.0, direct na de hotfix voor #1095 (§50): `/api/health`
+gaf weer 200 met `database: online`, maar elk beheerscherm bleef ±15 seconden op "laden..." staan
+en eindigde in `500 {"error":"Ophalen mislukt"}`.
+
+**Wat er gebeurde.** v3.3.0.0 bevatte vier nieuwe migraties (012 t/m 015, epic #986).
+`PostgresAppSettings.LoadSettingsAsync` selecteerde sinds die release `sportlinkextensionenabled`
+uit `public.appsettings` (migratie 012). Op de Postgres-tier past niets de migraties automatisch
+toe op productie: `db-migrate` in `deploy.yml` draait uitsluitend het SQL Server-PostDeployment-
+script, en er staat bewust geen Supabase-connectiestring in CI (§49, stap 1). De migraties waren
+bij deze release niet handmatig toegepast, dus de kolom bestond niet:
+
+1. Postgres antwoordde `42703 undefined_column`;
+2. `PostgresSystemUtilities.WaitForDatabaseAsync` vangt élke exceptie uit de laadstap als
+   "database onbereikbaar" en herhaalt vijf keer met drie seconden wachttijd — de "laden..."-fase;
+3. daarna gooit hij door, en elke `Admin*Function` vertaalt dat in de generieke 500.
+
+Lokaal exact gereproduceerd door de kolom en de ledger-rij van 012 te verwijderen: 500 na 12,0 s,
+`42703` in het functielog, `settingsLoaded: false` in health. Dezelfde keten als §51 punt 1
+beschreef voor een verse database — alleen was de oorzaak nu geen ontbrekende club maar een
+ontbrekende kolom, en de documentatie boven `AdminSettingsFunction` beweerde nog dat "de kolom
+bestaat misschien nog niet" op deze tier geen realistische toestand was. Dat is gecorrigeerd.
+
+**Waarom health en de smoke test dit niet zagen.** Health deed alleen `SHOW server_version`, en
+`settingsLoaded` beschreef de *laatste* laadpoging — direct na een herstart was er nog geen
+poging geweest, dus meldde een verse host `true`. De smoke test in `deploy.yml` accepteerde een
+200 zonder naar de inhoud te kijken. Groen, terwijl dertien van de dertien beheerendpoints 500
+gaven.
+
+**De fix, drie lagen:**
+
+1. **`LoadSettingsAsync` overleeft precies deze ene ontbrekende kolom.** Bij `42703` op
+   `sportlinkextensionenabled` valt de lader terug op de kolomset van v3.2 en geldt
+   `sportlinkExtensionEnabled = "0"` — exact de `DEFAULT false` die migratie 012 zelf zou zetten.
+   Dit is bewust géén algemene fantoom-fallback (de regel uit de klassedocumentatie blijft staan):
+   elke andere ontbrekende kolom is een harde fout, want daar is geen migratie-default voor. En
+   het is niet stil: `schemaWarning` in health, één `LogWarning` per proces. Dezelfde "melden,
+   niet weigeren"-lijn als §50/#1095.
+2. **Health meldt `pendingMigrations`.** `Database.Postgres` sluit de bestandsnamen uit
+   `migrations/` in als `EmbeddedResource`; `MigrationRunner.GetPendingMigrationsAsync` vergelijkt
+   die met de ledger `schema_migrations`. De map blijft de enige bron van de migraties zelf
+   (`RunAsync` leest van schijf); een unit-test bewaakt dat de ingesloten lijst gelijk is aan de
+   mapinhoud. Niet-leeg zet `status` op `degraded`. Health doet nu ook zelf één laadpoging van de
+   instellingen, zodat `settingsLoaded` een feit is en geen aanname.
+3. **De smoke test faalt op `settingsLoaded=false`** en geeft een `::warning::` bij openstaande
+   migraties. Dat laatste is bewust geen fout: de pipeline kán ze niet toepassen, en met laag 1
+   werkt de applicatie wel. *Stand bij de hotfix:* deze laag staat klaar op de lokale branch
+   `ci/#1098-smoke-test-settingsloaded`, maar kon niet mee in de hotfix-PR — GitHub eist de
+   `workflow`-scope voor elke wijziging onder `.github/workflows/`, en zowel het lokale
+   git-credential als de GitHub-connector van de sessie misten die. Afronden: `gh auth refresh -h
+   github.com -s workflow`, daarna die branch pushen en als PR naar `main` mergen.
+
+**Wat bewust níet is gedaan.** Migraties automatisch toepassen bij het opstarten van de Function
+App, of een productie-connectiestring als GitHub-secret voor een `db-migrate-postgres`-job. Het
+eerste maakt van elke cold start een schemawijziging met de rechten van de applicatie; het tweede
+draait de keuze uit §49 terug. Beide zijn een aparte architectuurbeslissing, geen hotfix.
+
+**Handeling voor de eigenaar na deze hotfix:** de openstaande migraties toepassen met
+`Database.Postgres.Cli` (`POSTGRES_CONNECTION_STRING` als omgevingsvariabele, nooit als argument)
+en daarna controleren dat `/api/health` `"pendingMigrations": []` en `"schemaWarning": null` toont.
+Tot die tijd geldt de Sportlink Web Extension als uitgeschakeld; alle overige beheerschermen werken.
+
+**Wat deze laag niet afvangt.** Een release waarvan de code op een *andere* nieuwe kolom of tabel
+leunt dan `public.appsettings.sportlinkextensionenabled`. Die meldt zich wél via
+`pendingMigrations`, maar het betreffende endpoint faalt nog steeds. Structurele borging — een
+release-checklist-stap of een `pendingMigrations`-gate vóór de merge van `develop` naar `main` —
+staat als vervolg in het issue.
 
 ## Gerelateerd
 
