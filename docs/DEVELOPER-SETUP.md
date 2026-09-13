@@ -974,7 +974,8 @@ Klik op **New repository secret** voor elk van de volgende:
 |------|-------------|----------------|
 | `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 9.2 hieronder |
 | `AZURE_FUNCTION_KEY` | Host key van de Function App | Azure Portal → Function App → App keys → Host keys → `default` |
-| `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring | Azure Portal → SQL Database → Connection strings → ADO.NET |
+| `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring — alleen bij `DatabaseTier=SqlServer` | Azure Portal → SQL Database → Connection strings → ADO.NET |
+| `POSTGRES_CONNECTION_STRING` | Productie Postgres-connectiestring — alleen bij `DatabaseTier=Postgres`; gebruikt door `db-migrate-postgres` om de migraties vóór de deploy toe te passen (#1093). Zelfde waarde als de Function App-instelling; norm `sslmode=verify-full` mét `sslrootcert` (#1096) | Dashboard van de databaseprovider → Connection string |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
 
 **`AZURE_CREDENTIALS` aanmaken via Azure CLI:**
@@ -1013,7 +1014,8 @@ Klik op het tabblad **Variables** → **New repository variable** voor elk van d
 
 | Jobs | Vereiste configuratie | Gedrag zonder configuratie |
 |------|-----------------------|---------------------------|
-| `db-check` + `db-migrate` | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
+| `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
+| `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | `POSTGRES_CONNECTION_STRING` | **Job faalt hard** — stil overslaan zou de nieuwe code tegen een verouderd schema laten draaien (#1093) |
 | `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
 | `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — mislukken bij ontbreken |
 

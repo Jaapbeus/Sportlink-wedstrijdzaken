@@ -3062,10 +3062,12 @@ gaven.
    git-credential als de GitHub-connector van de sessie misten die. Afronden: `gh auth refresh -h
    github.com -s workflow`, daarna die branch pushen en als PR naar `main` mergen.
 
-**Wat bewust níet is gedaan.** Migraties automatisch toepassen bij het opstarten van de Function
-App, of een productie-connectiestring als GitHub-secret voor een `db-migrate-postgres`-job. Het
-eerste maakt van elke cold start een schemawijziging met de rechten van de applicatie; het tweede
-draait de keuze uit §49 terug. Beide zijn een aparte architectuurbeslissing, geen hotfix.
+**Wat bewust níet is gedaan — in de hotfix.** Migraties automatisch toepassen bij het opstarten
+van de Function App, of een productie-connectiestring als GitHub-secret voor een
+`db-migrate-postgres`-job. Het eerste maakt van elke cold start een schemawijziging met de rechten
+van de applicatie; het tweede draaide de keuze uit §49 terug. Beide waren een aparte
+architectuurbeslissing, geen hotfix. *Het tweede is inmiddels genomen* — door de eigenaar, in issue
+#1093, en uitgewerkt in §57. Het eerste blijft afgewezen.
 
 **Handeling voor de eigenaar na deze hotfix:** de openstaande migraties toepassen met
 `Database.Postgres.Cli` (`POSTGRES_CONNECTION_STRING` als omgevingsvariabele, nooit als argument)
@@ -3074,9 +3076,107 @@ Tot die tijd geldt de Sportlink Web Extension als uitgeschakeld; alle overige be
 
 **Wat deze laag niet afvangt.** Een release waarvan de code op een *andere* nieuwe kolom of tabel
 leunt dan `public.appsettings.sportlinkextensionenabled`. Die meldt zich wél via
-`pendingMigrations`, maar het betreffende endpoint faalt nog steeds. Structurele borging — een
-release-checklist-stap of een `pendingMigrations`-gate vóór de merge van `develop` naar `main` —
-staat als vervolg in het issue.
+`pendingMigrations`, maar het betreffende endpoint faalt nog steeds. De structurele borging is
+§57: de pipeline past de migraties zelf toe, vóór de code.
+
+## 56. De migratie-checksum was platformafhankelijk — en blokkeerde daarmee de hele keten (#1112)
+
+`MigrationRunner` hashte een migratiebestand over de rauwe bytes. Dat is precies genoeg om "is dit
+bestand achteraf gewijzigd" te bewaken (§53), en precies te veel zodra hetzelfde bestand op twee
+platforms verschillende bytes heeft.
+
+**Hoe dat gebeurt zonder dat iemand iets wijzigt.** `.gitattributes` zet `* text=auto`. Op een
+Windows-machine met `core.autocrlf=true` — de Windows-default — checkt git elk tekstbestand met
+CRLF uit, ook `Database.Postgres/migrations/*.sql`; op macOS, Linux en de CI-runner staat er LF. De
+blob in git is in beide gevallen identiek. Wie vanaf Windows migreert legt dus een CRLF-checksum in
+`schema_migrations` vast; de eerstvolgende run vanaf LF ziet "andere checksum" en gooit de fout die
+voor een *gewijzigd* bestand bedoeld is. En omdat de runner elk bestand op volgorde afhandelt en bij
+de eerste fout stopt, blokkeert één zo'n rij niet alleen dat bestand maar elke migratie erna.
+
+**Waar het gevonden is.** Niet op een verse ontwikkeldatabase, maar op de lokale container met de
+herstelde productiedump (#1103/#1108): `001_baseline.sql` had daar een checksum die niet met het
+bestand in `main` overeenkwam. Een eerdere sessie liet die mismatch bewust staan met de open vraag
+of *productie zelf* dezelfde afwijking heeft. Een latere sessie, onwetend van die vraag, herschreef
+alle elf ledger-rijen 001–011 lokaal naar de LF-waarde (per bestand geverifieerd dat de CRLF-variant
+exact de oude waarde gaf — puur een regeleinde-artefact, geen inhoud) en wiste daarmee het lokale
+bewijs. De vraag over productie bleef daardoor open.
+
+**De fix, in de runner zelf.**
+
+1. `ComputeChecksum` normaliseert `\r\n` → `\n` vóór het hashen. Een puur-LF-bestand — zoals git
+   het bewaart en zoals elke LF-checkout het leest — hasht exact zoals vóór #1112, dus een ledger die
+   vanaf LF is gevuld blijft zonder enige reparatie kloppen.
+2. Klopt de ledger-waarde niet, dan toetst `IsLineEndingVariant` of de oude waarde de rauwe checksum
+   is van *ditzelfde bestand* met andere regeleindes (de CRLF-variant van de genormaliseerde inhoud,
+   óf de inhoud zoals hij nu op schijf staat). Zo ja: bewezen geen inhoudelijke wijziging, de rij
+   wordt naar de genormaliseerde waarde omgeschreven en de run meldt dat als
+   `ChecksumNormalized`. Zo nee: dezelfde harde fout als altijd.
+3. `RunAsync` geeft nu een `MigrationRunResult` terug (nieuw toegepast / al toegepast /
+   genormaliseerd). De CLI drukt dat af en zet elke normalisatie als waarschuwing op stderr, zodat
+   een reparatie in een deploy-log of handmatige ronde opvalt en niet stil gebeurt.
+
+**Wat dit voor de open productievraag betekent.** Die hoeft niet meer met de hand beantwoord te
+worden. Draagt productie een CRLF-rij, dan normaliseert de eerstvolgende run (§57, of een handmatige
+ronde) hem éénmalig en logt dat. Draagt productie een échte afwijking — wat niets in de historie
+doet vermoeden — dan faalt die run precies zoals bedoeld, met de bestandsnaam erbij. In beide
+gevallen is het antwoord zichtbaar in het log van de eerste run.
+
+**Wat bewust níet is gedaan.** Een BOM-, whitespace- of encoding-normalisatie erbij. Alleen het
+regeleinde heeft een aantoonbare, platformgebonden oorzaak (`text=auto` + `autocrlf`); elke verdere
+"tolerantie" verzwakt de bewaking van §53 zonder een gevonden probleem op te lossen.
+
+## 57. Postgres-migraties draaien nu in `deploy.yml`, vóór de code (#1093)
+
+§55 beschreef het gat en liet de beslissing bewust open. De eigenaar heeft hem genomen: **ja, een
+eigen migratiestap; en vóór het publiceren van de code.** Dit is een omkering van één onderdeel van
+§49 (geen productie-connectiestring in CI) — bewust, en om deze reden: zonder een moment waarop een
+migratie *automatisch geprobeerd* wordt, is er ook geen moment waarop hij *zichtbaar faalt*. Zo bleef
+#1062 acht dagen liggen en gaf v3.3.0.0 twee incidenten die allebei neerkwamen op "de migraties
+zijn niet gedraaid".
+
+**De job.** `db-migrate-postgres` in `deploy.yml`, gegate op `vars.DatabaseTier == 'Postgres'`,
+draait `Database.Postgres.Cli` tegen het nieuwe GitHub-secret `POSTGRES_CONNECTION_STRING` (via de
+omgevingsvariabele, nooit als argument — dezelfde regel als overal in dit project). `deploy` wacht
+erop (`needs` + result-check), zodat de code pas live gaat als het schema er is. De job hangt aan
+`build`, niet omgekeerd: een build die niet compileert mag geen schema wijzigen voor code die nooit
+gedeployed wordt. `MigrationRunner` is idempotent en neemt een advisory lock, dus een herstart van
+de run is veilig.
+
+**Waarom vóór de code, en wat dat vraagt.** Alle migraties in `Database.Postgres/migrations/` zijn
+additief (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, seeds); de vorige versie van de
+code draait daar ongestoord op door, en de nieuwe vindt bij haar eerste request het schema al — geen
+`42703`-venster zoals in §55. Dit is vanaf nu een **ontwerpregel**: een migratie die de oude code
+breekt (kolom verwijderen, type wijzigen, constraint aanscherpen) mag niet in één release met de
+code die hem nodig heeft. Eerst een release die de code loskoppelt, dan een release met de
+destructieve migratie.
+
+**Ontbrekend secret is een harde fout, geen skip.** Anders dan `db-migrate` (SQL Server), die stil
+overslaat als de SQL-vars ontbreken, faalt deze job met een `::error::` als het secret leeg is
+terwijl de tier Postgres is. Stil overslaan is exact het gedrag dat dit issue opheft. Gevolg voor
+deze installatie: de eerste deploy na deze wijziging faalt totdat de eigenaar het secret heeft
+gezet — dat is de bedoeling.
+
+**Tier-gating van de SQL Server-jobs, als bijvangst.** `db-check` en `db-migrate` waren gegate op
+de aanwezigheid van de SQL-vars, niet op de tier. Die vars staan er nog, dus bij elke release sinds
+de cutover draaiden beide jobs nog netjes — tegen de oude Azure SQL-database, terwijl de database
+die er wél toe deed nooit gemigreerd werd. Beide hangen nu aan `vars.DatabaseTier == 'SqlServer'`.
+Precies één van de twee migratiejobs draait per deploy; de andere is `skipped`.
+
+**De smoke test is aangescherpt.** Een niet-lege `pendingMigrations` na een groene
+`db-migrate-postgres` is geen waarschuwing meer maar een mislukte deploy: de job zegt dat alles is
+toegepast en health zegt dat er iets mist. Dat kan maar twee dingen betekenen — het secret en de
+Function App-instelling wijzen naar verschillende databases, of een bestand is wél ingesloten maar
+niet toegepast — en beide verdienen een rode job.
+
+**Afhankelijkheid van §56.** Zonder de regeleinde-normalisatie had deze job op een database met
+een CRLF-ledger bij de allereerste run vastgelopen, midden in een release. De twee wijzigingen
+zitten daarom in dezelfde PR, in deze volgorde.
+
+**Voor de eigenaar, eenmalig:** secret `POSTGRES_CONNECTION_STRING` aanmaken in GitHub → Settings →
+Secrets and variables → Actions, met dezelfde connectiestring als de Function App-instelling
+(norm sinds #1096: `sslmode=verify-full` mét `sslrootcert`, zie §50). Supabase accepteert
+verbindingen van elk IP tenzij netwerkrestricties zijn ingesteld — in dat geval de GitHub
+Actions-runner-ranges toestaan of de restrictie heroverwegen.
 
 ## Gerelateerd
 
