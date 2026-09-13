@@ -1185,6 +1185,46 @@
           }
         }
       },
+      "OefenwedstrijdAanmaakResponse": {
+        "description": "#1116: het generieke mutatieresultaat (zelfde velden als SportlinkMutationResponse) plus wat\nde server uit teamnaam en instellingen heeft afgeleid, zodat de beheerder ziet wat er\n(gesimuleerd) naar Sportlink zou gaan. Waarschuwingen zijn geen fouten: het pad blijft\ncode-gelockt en een lege koppeling mag de simulatie niet blokkeren.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SportlinkMutationResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "Omschrijving": {
+                "type": "string"
+              },
+              "SportlinkTeamId": {
+                "type": "string",
+                "nullable": true,
+                "description": "his.teams.teamcode van de gevalideerde KNVB-alias van het team, of null als er geen of meerdere verschillende ID's aan hangen."
+              },
+              "AgeClassCode": {
+                "type": "string",
+                "nullable": true
+              },
+              "FacilityId": {
+                "type": "string",
+                "nullable": true,
+                "description": "Sportlink-locatie-ID van de eigen accommodatie, of null als die niet (eenduidig) gevonden is."
+              },
+              "VeldNaam": {
+                "type": "string",
+                "nullable": true
+              },
+              "Waarschuwingen": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
       "SportlinkClubMatchPickListsResponse": {
         "type": "object",
         "description": "De twee ondersteunende picklists die in deze ronde bewust WEL zijn aangesloten (#997,\nbewust beperkte scope): PickListsTeams + PickListsLocation. Read-only en\npersoonsgegevensvrij (teams/locaties, geen personen). ONBEVESTIGD qua werkelijke\nitem-veldnamen — zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.\n",
@@ -4699,45 +4739,41 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "MatchDateTime"
+                  "MatchDateTime",
+                  "TeamNaam",
+                  "Tegenstander"
                 ],
+                "description": "Sinds #1116 stuurt het formulier alleen wat een wedstrijdsecretaris snel intikt; de\nserver leidt de Sportlink-velden af. Teamnaam → `PublicHomeTeamId` via de\ngevalideerde aliassen (`public.teamaliassen` → `his.teams.teamcode`, het team-ID dat\nde Sportlink-dataservice zelf hanteert; of Sportlink Club hetzelfde ID verwacht is\nONBEVESTIGD; bij 0 of meerdere verschillende ID's blijft het leeg met waarschuwing) en\n`AgeClassCode` via de leeftijdscategorie van het team. Locatie → `FacilityId` door de\nclub-instelling `accommodatie` op naam op te zoeken in de Sportlink-locatielijst\n(read-only GET, per uur gecachet). `FieldId` wordt bewust niet meegestuurd (het veld\ngaat volgens het plan van #997 pas ná aanmaken via het veld-mutatiepad); het gekozen\nveld staat wel in de standaard-omschrijving en in de audit.\n",
                 "properties": {
                   "MatchDateTime": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "ONBEVESTIGD — datum+tijd samengevoegd, Sportlink verwacht dit aangenomen als één MatchDate-veld."
+                    "description": "Datum + aanvangstijd (lokale tijd van de club, zonder tijdzone)."
                   },
                   "Duration": {
                     "type": "integer",
                     "default": 90,
-                    "description": "ONBEVESTIGD — duur in minuten."
+                    "minimum": 1,
+                    "maximum": 240,
+                    "description": "Duur in minuten."
                   },
-                  "AgeClassCode": {
+                  "TeamNaam": {
                     "type": "string",
+                    "description": "Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig)."
+                  },
+                  "Tegenstander": {
+                    "type": "string",
+                    "description": "Vrije tekst — gaat als `PublicAwayTeamId` mee (ONBEVESTIGD of Sportlink hier vrije tekst accepteert)."
+                  },
+                  "VeldNummer": {
+                    "type": "integer",
                     "nullable": true,
-                    "description": "Vrije tekst in deze ronde — codetable/AgeClassList is bewust niet aangesloten."
+                    "description": "Veldnummer van een actief veld uit `GET /beheer/velden`; onbekend/inactief veld → 400."
                   },
                   "Description": {
                     "type": "string",
-                    "nullable": true
-                  },
-                  "PublicHomeTeamId": {
-                    "type": "string",
                     "nullable": true,
-                    "description": "ONBEVESTIGD — team-identifier uit GET .../club-match/picklists."
-                  },
-                  "PublicAwayTeamId": {
-                    "type": "string",
-                    "nullable": true
-                  },
-                  "FacilityId": {
-                    "type": "string",
-                    "nullable": true,
-                    "description": "ONBEVESTIGD — locatie-identifier uit GET .../club-match/picklists."
-                  },
-                  "FieldId": {
-                    "type": "string",
-                    "nullable": true
+                    "description": "Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander] ([veld])`."
                   }
                 }
               }
@@ -4750,13 +4786,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                  "$ref": "#/components/schemas/OefenwedstrijdAanmaakResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "MatchDateTime ontbreekt"
+            "description": "MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, of team/veld niet bekend als actief"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

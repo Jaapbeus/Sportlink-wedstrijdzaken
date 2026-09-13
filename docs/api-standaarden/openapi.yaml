@@ -937,6 +937,30 @@ components:
             HasBlockingMessages:
               type: boolean
 
+    OefenwedstrijdAanmaakResponse:
+      description: |
+        #1116: het generieke mutatieresultaat (zelfde velden als SportlinkMutationResponse) plus wat
+        de server uit teamnaam en instellingen heeft afgeleid, zodat de beheerder ziet wat er
+        (gesimuleerd) naar Sportlink zou gaan. Waarschuwingen zijn geen fouten: het pad blijft
+        code-gelockt en een lege koppeling mag de simulatie niet blokkeren.
+      allOf:
+        - $ref: '#/components/schemas/SportlinkMutationResponse'
+        - type: object
+          properties:
+            Omschrijving: { type: string }
+            SportlinkTeamId:
+              type: string
+              nullable: true
+              description: his.teams.teamcode van de gevalideerde KNVB-alias van het team, of null als er geen of meerdere verschillende ID's aan hangen.
+            AgeClassCode: { type: string, nullable: true }
+            FacilityId:
+              type: string
+              nullable: true
+              description: Sportlink-locatie-ID van de eigen accommodatie, of null als die niet (eenduidig) gevonden is.
+            VeldNaam: { type: string, nullable: true }
+            Waarschuwingen:
+              type: array
+              items: { type: string }
     SportlinkClubMatchPickListsResponse:
       type: object
       description: |
@@ -3523,40 +3547,52 @@ paths:
           application/json:
             schema:
               type: object
-              required: [MatchDateTime]
+              required: [MatchDateTime, TeamNaam, Tegenstander]
+              description: |
+                Sinds #1116 stuurt het formulier alleen wat een wedstrijdsecretaris snel intikt; de
+                server leidt de Sportlink-velden af. Teamnaam → `PublicHomeTeamId` via de
+                gevalideerde aliassen (`public.teamaliassen` → `his.teams.teamcode`, het team-ID dat
+                de Sportlink-dataservice zelf hanteert; of Sportlink Club hetzelfde ID verwacht is
+                ONBEVESTIGD; bij 0 of meerdere verschillende ID's blijft het leeg met waarschuwing) en
+                `AgeClassCode` via de leeftijdscategorie van het team. Locatie → `FacilityId` door de
+                club-instelling `accommodatie` op naam op te zoeken in de Sportlink-locatielijst
+                (read-only GET, per uur gecachet). `FieldId` wordt bewust niet meegestuurd (het veld
+                gaat volgens het plan van #997 pas ná aanmaken via het veld-mutatiepad); het gekozen
+                veld staat wel in de standaard-omschrijving en in de audit.
               properties:
                 MatchDateTime:
                   type: string
                   format: date-time
-                  description: ONBEVESTIGD — datum+tijd samengevoegd, Sportlink verwacht dit aangenomen als één MatchDate-veld.
+                  description: Datum + aanvangstijd (lokale tijd van de club, zonder tijdzone).
                 Duration:
                   type: integer
                   default: 90
-                  description: ONBEVESTIGD — duur in minuten.
-                AgeClassCode:
+                  minimum: 1
+                  maximum: 240
+                  description: Duur in minuten.
+                TeamNaam:
+                  type: string
+                  description: Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig).
+                Tegenstander:
+                  type: string
+                  description: Vrije tekst — gaat als `PublicAwayTeamId` mee (ONBEVESTIGD of Sportlink hier vrije tekst accepteert).
+                VeldNummer:
+                  type: integer
+                  nullable: true
+                  description: Veldnummer van een actief veld uit `GET /beheer/velden`; onbekend/inactief veld → 400.
+                Description:
                   type: string
                   nullable: true
-                  description: Vrije tekst in deze ronde — codetable/AgeClassList is bewust niet aangesloten.
-                Description: { type: string, nullable: true }
-                PublicHomeTeamId:
-                  type: string
-                  nullable: true
-                  description: ONBEVESTIGD — team-identifier uit GET .../club-match/picklists.
-                PublicAwayTeamId: { type: string, nullable: true }
-                FacilityId:
-                  type: string
-                  nullable: true
-                  description: ONBEVESTIGD — locatie-identifier uit GET .../club-match/picklists.
-                FieldId: { type: string, nullable: true }
+                  description: Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander] ([veld])`.
       responses:
         '200':
           description: Mutatieresultaat (in de praktijk altijd IsForcedDryRun=true zolang de code-lock actief is)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SportlinkMutationResponse'
+                $ref: '#/components/schemas/OefenwedstrijdAanmaakResponse'
         '400':
-          description: MatchDateTime ontbreekt
+          description: MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, of team/veld niet bekend als actief
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

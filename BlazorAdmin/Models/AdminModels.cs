@@ -97,20 +97,18 @@ public class SportlinkMutatieResultaatDto
     public string? PublicMatchId { get; set; }
 }
 
-/// <summary>#997: één item uit een Sportlink-picklist (team of locatie) — id + weergavenaam.
-/// ONBEVESTIGD qua werkelijke JSON-veldnamen, zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.</summary>
-public class SportlinkPickListItemDto
+/// <summary>#1116: respons van POST /api/sportlink/club-match — het generieke mutatieresultaat plus
+/// wat de server uit teamnaam en instellingen heeft afgeleid (Sportlink-team-ID, leeftijdscategorie,
+/// locatie-ID, veld), zodat de beheerder ziet wat er (gesimuleerd) naar Sportlink zou gaan. Spiegelt
+/// FunctionApp.Postgres.Sportlink.SportlinkClubMatchFunction.OefenwedstrijdAanmaakResultaat.</summary>
+public class OefenwedstrijdResultaatDto : SportlinkMutatieResultaatDto
 {
-    public string? Id { get; set; }
-    public string? Naam { get; set; }
-}
-
-/// <summary>#997: gecombineerd resultaat van de twee ondersteunende picklist-GETs die in deze
-/// ronde bewust WEL zijn aangesloten (Teams + Location) — bewust beperkte scope, zie PR.</summary>
-public class SportlinkClubMatchPickListsDto
-{
-    public List<SportlinkPickListItemDto> Teams { get; set; } = new();
-    public List<SportlinkPickListItemDto> Locations { get; set; } = new();
+    public string? Omschrijving { get; set; }
+    public string? SportlinkTeamId { get; set; }
+    public string? AgeClassCode { get; set; }
+    public string? FacilityId { get; set; }
+    public string? VeldNaam { get; set; }
+    public List<string> Waarschuwingen { get; set; } = new();
 }
 
 /// <summary>#998: status van de Sportlink Web Extension voor de Instellingen-pagina — nooit een

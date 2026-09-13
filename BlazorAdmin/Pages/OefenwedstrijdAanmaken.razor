@@ -7,154 +7,171 @@
 
 <h1>Oefenwedstrijd aanmaken</h1>
 
-<div class="alert alert-warning">
-    <strong>Scaffolding, geen volledige implementatie (#997).</strong> De exacte Sportlink-requestbody
-    is niet live bevestigd — elke aanmaak-aanroep is daarom altijd gesimuleerd (dry-run) totdat een
-    mens dit met een echte netwerktrace heeft bevestigd. Verwijderen van een oefenwedstrijd en het
-    vastleggen van een uitslag zijn in deze ronde bewust niet gebouwd.
+<div class="alert alert-warning py-2">
+    <strong>Scaffolding (#997/#1116):</strong> de Sportlink-aanroep is nog niet live bevestigd en wordt
+    daarom altijd gesimuleerd. Er gaat niets naar Sportlink totdat een mens dit met een netwerktrace
+    heeft bevestigd.
 </div>
 
 <p class="text-muted">
-    Maakt een nieuwe oefenwedstrijd ("clubwedstrijd") aan bij Sportlink Club. Vul de picklists
-    hieronder pas in als je ze hebt geladen — teams en locaties komen rechtstreeks uit Sportlink.
+    Oefenwedstrijd op de eigen accommodatie. Team en veld komen uit de eigen database; de locatie
+    wordt automatisch uit de instellingen gevuld.
 </p>
 
-<div class="mb-3">
-    <button class="btn btn-outline-secondary btn-sm" disabled="@_picklistsLaden" @onclick="LaadPicklistsAsync">
-        @if (_picklistsLaden)
-        {
-            <span class="spinner-border spinner-border-sm me-1"></span>
-        }
-        Picklists laden
-    </button>
-    @if (!string.IsNullOrEmpty(_picklistsFout))
+@if (_laden)
+{
+    <div class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span> Teams en velden laden…</div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_laadFout))
     {
-        <div class="text-danger mt-1">@_picklistsFout</div>
+        <div class="alert alert-danger">@_laadFout</div>
     }
-</div>
 
-<div class="row g-3" style="max-width: 40rem;">
-    <div class="col-6">
-        <label class="form-label">Datum</label>
-        <input type="date" class="form-control" @bind="_datum" />
-    </div>
-    <div class="col-6">
-        <label class="form-label">Aanvangstijd</label>
-        <TimeInput @bind-Value="_tijd" />
-    </div>
-    <div class="col-6">
-        <label class="form-label">Duur (minuten)</label>
-        <input type="number" class="form-control" @bind="_duur" />
-    </div>
-    <div class="col-6">
-        <label class="form-label">Leeftijdscategorie</label>
-        <input type="text" class="form-control" placeholder="bijv. JO10" @bind="_ageClassCode" />
-    </div>
-    <div class="col-12">
-        <label class="form-label">Omschrijving</label>
-        <input type="text" class="form-control" @bind="_omschrijving" />
-    </div>
-    <div class="col-6">
-        <label class="form-label">Team</label>
-        @if (_pickLists?.Teams is { Count: > 0 })
-        {
-            <select class="form-select" @bind="_publicHomeTeamId">
-                <option value="">— kies een team —</option>
-                @foreach (var team in _pickLists.Teams)
-                {
-                    <option value="@team.Id">@team.Naam</option>
-                }
-            </select>
-        }
-        else
-        {
-            <input type="text" class="form-control" placeholder="Team-ID (laad picklists voor een keuzelijst)" @bind="_publicHomeTeamId" />
-        }
-    </div>
-    <div class="col-6">
-        <label class="form-label">Tegenstander</label>
-        <input type="text" class="form-control" placeholder="Vrije tekst of team-ID" @bind="_publicAwayTeamId" />
-    </div>
-    <div class="col-12">
-        <label class="form-label">Locatie</label>
-        @if (_pickLists?.Locations is { Count: > 0 })
-        {
-            <select class="form-select" @bind="_facilityId">
-                <option value="">— kies een locatie —</option>
-                @foreach (var locatie in _pickLists.Locations)
-                {
-                    <option value="@locatie.Id">@locatie.Naam</option>
-                }
-            </select>
-        }
-        else
-        {
-            <input type="text" class="form-control" placeholder="Locatie-ID (laad picklists voor een keuzelijst)" @bind="_facilityId" />
-        }
-    </div>
-</div>
+    <form @onsubmit="MaakAanAsync" @onsubmit:preventDefault style="max-width: 48rem;">
+        <div class="row g-3">
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-datum">Datum</label>
+                <input id="oef-datum" type="date" class="form-control" @bind="_datum" required />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label">Aanvangstijd</label>
+                <TimeInput @bind-Value="_tijd" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-duur">Duur (minuten)</label>
+                <input id="oef-duur" type="number" class="form-control" min="1" max="240" @bind="_duur" />
+            </div>
 
-<div class="mt-3">
-    <button class="btn btn-primary" disabled="@_bezig" @onclick="MaakAanAsync">
-        @if (_bezig)
-        {
-            <span class="spinner-border spinner-border-sm me-1"></span>
-        }
-        Oefenwedstrijd aanmaken
-    </button>
-</div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-team">Team</label>
+                <select id="oef-team" class="form-select" @bind="_teamNaam" required>
+                    <option value="">— kies een team —</option>
+                    @foreach (var team in _teams)
+                    {
+                        <option value="@team">@team</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-tegenstander">Tegenstander</label>
+                <input id="oef-tegenstander" type="text" class="form-control" placeholder="bijv. SV Voorbeeld JO10-2"
+                       @bind="_tegenstander" required />
+            </div>
+
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-veld">Veld</label>
+                <select id="oef-veld" class="form-select" @bind="_veldNummer">
+                    <option value="">— geen veld —</option>
+                    @foreach (var veld in _velden)
+                    {
+                        <option value="@veld.VeldNummer">@veld.VeldNaam</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-omschrijving">Omschrijving <span class="text-muted">(optioneel)</span></label>
+                <input id="oef-omschrijving" type="text" class="form-control" placeholder="@StandaardOmschrijving" @bind="_omschrijving" />
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary" disabled="@(_bezig || _teams.Count == 0)">
+                @if (_bezig)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Oefenwedstrijd aanmaken
+            </button>
+        </div>
+    </form>
+}
 
 @if (!string.IsNullOrEmpty(_melding))
 {
-    <div class="mt-3 alert @(_meldingFout ? "alert-danger" : "alert-info")">
-        @_melding
-        @if (!string.IsNullOrEmpty(_publicMatchIdResultaat))
+    <div class="mt-3 alert @(_meldingFout ? "alert-danger" : "alert-info")" style="max-width: 48rem;">
+        <div>@_melding</div>
+        @if (_resultaat != null)
         {
-            <div>PublicMatchId: <code>@_publicMatchIdResultaat</code></div>
+            <dl class="row mb-0 mt-2 small">
+                <dt class="col-sm-4">Omschrijving</dt><dd class="col-sm-8">@_resultaat.Omschrijving</dd>
+                <dt class="col-sm-4">Sportlink-team-ID</dt><dd class="col-sm-8">@(_resultaat.SportlinkTeamId ?? "—")</dd>
+                <dt class="col-sm-4">Leeftijdscategorie</dt><dd class="col-sm-8">@(_resultaat.AgeClassCode ?? "—")</dd>
+                <dt class="col-sm-4">Locatie-ID (Sportlink)</dt><dd class="col-sm-8">@(_resultaat.FacilityId ?? "—")</dd>
+                <dt class="col-sm-4">Veld</dt><dd class="col-sm-8">@(_resultaat.VeldNaam ?? "—")</dd>
+                @if (!string.IsNullOrEmpty(_resultaat.PublicMatchId))
+                {
+                    <dt class="col-sm-4">PublicMatchId</dt><dd class="col-sm-8"><code>@_resultaat.PublicMatchId</code></dd>
+                }
+            </dl>
+            @if (_resultaat.Waarschuwingen.Count > 0)
+            {
+                <ul class="mb-0 mt-2 small">
+                    @foreach (var w in _resultaat.Waarschuwingen)
+                    {
+                        <li>@w</li>
+                    }
+                </ul>
+            }
         }
     </div>
 }
 
 @code {
+    private bool _laden = true;
+    private string? _laadFout;
+    private List<string> _teams = new();
+    private List<VeldDto> _velden = new();
+
     private DateTime _datum = DateTime.Today;
     private string? _tijd = "19:00";
     private int _duur = 90;
-    private string? _ageClassCode;
+    private string? _teamNaam;
+    private string? _tegenstander;
+    private int? _veldNummer;
     private string? _omschrijving;
-    private string? _publicHomeTeamId;
-    private string? _publicAwayTeamId;
-    private string? _facilityId;
-
-    private bool _picklistsLaden;
-    private string? _picklistsFout;
-    private SportlinkClubMatchPickListsDto? _pickLists;
 
     private bool _bezig;
     private string? _melding;
     private bool _meldingFout;
-    private string? _publicMatchIdResultaat;
+    private OefenwedstrijdResultaatDto? _resultaat;
 
-    private async Task LaadPicklistsAsync()
+    private string StandaardOmschrijving =>
+        string.IsNullOrWhiteSpace(_teamNaam) || string.IsNullOrWhiteSpace(_tegenstander)
+            ? "standaard: Oefenwedstrijd [team] - [tegenstander]"
+            : $"Oefenwedstrijd {_teamNaam} - {_tegenstander}";
+
+    protected override async Task OnInitializedAsync()
     {
-        _picklistsLaden = true;
-        _picklistsFout = null;
-        StateHasChanged();
-        try
-        {
-            var result = await Api.GetSportlinkClubMatchPickListsAsync();
-            if (result.Success)
-                _pickLists = result.Data;
-            else
-                _picklistsFout = result.ErrorMessage ?? "Onbekende fout bij ophalen picklists.";
-        }
-        finally
-        {
-            _picklistsLaden = false;
-        }
+        var teamsTaak = Api.GetTeamsAsync();
+        var veldenTaak = Api.GetVeldenAsync();
+        await Task.WhenAll(teamsTaak, veldenTaak);
+
+        var teams = teamsTaak.Result;
+        var velden = veldenTaak.Result;
+        _teams = teams.Success ? teams.Data ?? new() : new();
+        _velden = velden.Success ? (velden.Data ?? new()).Where(v => v.Actief).ToList() : new();
+
+        if (!teams.Success || !velden.Success)
+            _laadFout = "Teams of velden konden niet worden geladen: " + (teams.ErrorMessage ?? velden.ErrorMessage ?? "onbekende fout.");
+        else if (_teams.Count == 0)
+            _laadFout = "Er zijn geen actieve teams bekend — voer eerst een synchronisatie uit.";
+
+        _laden = false;
     }
 
     private async Task MaakAanAsync()
     {
+        _melding = null;
+        _resultaat = null;
+
+        if (string.IsNullOrWhiteSpace(_teamNaam) || string.IsNullOrWhiteSpace(_tegenstander))
+        {
+            _meldingFout = true;
+            _melding = "Kies een team en vul een tegenstander in.";
+            return;
+        }
         if (!TimeSpan.TryParse(_tijd, out var tijdSpan))
         {
             _meldingFout = true;
@@ -162,17 +179,12 @@
             return;
         }
 
-        var matchDateTime = _datum.Date + tijdSpan;
-
         _bezig = true;
-        _melding = null;
-        _publicMatchIdResultaat = null;
         StateHasChanged();
         try
         {
-            var result = await Api.PostSportlinkClubMatchAsync(
-                matchDateTime, _duur, _ageClassCode, _omschrijving,
-                _publicHomeTeamId, _publicAwayTeamId, _facilityId, fieldId: null);
+            var result = await Api.PostOefenwedstrijdAsync(
+                _datum.Date + tijdSpan, _duur, _teamNaam, _tegenstander, _veldNummer, _omschrijving);
 
             if (!result.Success)
             {
@@ -181,30 +193,31 @@
                 return;
             }
 
-            if (result.Data?.IsForcedDryRun == true)
+            _resultaat = result.Data;
+            if (_resultaat?.IsForcedDryRun == true)
             {
                 _meldingFout = false;
-                _melding = "Code-lock actief (#997): de aanmaak-body is nog niet live bevestigd bij Sportlink — " +
-                            "deze aanroep is uitsluitend gesimuleerd en gelogd, er is niets naar Sportlink verstuurd.";
+                _melding = "Gesimuleerd (code-lock #997): de aanmaak is gelogd maar niet naar Sportlink verstuurd. " +
+                           "Hieronder staat wat er zou zijn meegestuurd.";
             }
-            else if (result.Data?.IsDryRun == true)
+            else if (_resultaat?.IsDryRun == true)
             {
                 _meldingFout = false;
                 _melding = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
             }
-            else if (result.Data?.IsSuccess == true)
+            else if (_resultaat?.IsSuccess == true)
             {
                 _meldingFout = false;
                 _melding = "Oefenwedstrijd aangemaakt in Sportlink Club.";
+                _tegenstander = null;
+                _omschrijving = null;
             }
             else
             {
                 _meldingFout = true;
-                var violations = result.Data?.Violations;
+                var violations = _resultaat?.Violations;
                 _melding = "Sportlink heeft de aanmaak afgewezen" + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
             }
-
-            _publicMatchIdResultaat = result.Data?.PublicMatchId;
         }
         finally
         {
