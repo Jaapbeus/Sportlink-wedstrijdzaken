@@ -10,8 +10,8 @@ namespace FunctionApp.Postgres.Planner;
 /// <c>clubcode</c>-uitvoerkolom van <c>planner.alle_wedstrijden_op_veld_ruw</c>) — de
 /// beschikbaarheids- en bezettingsrepository heeft dit nodig, in tegenstelling tot de eerdere,
 /// minimalere versie van deze klasse die alleen <c>his.*</c>-tabellen via <c>HisFilter</c>/
-/// <c>AddHisParams</c> raakte. <c>LegacyFilter</c> (voor <c>avg.Teambegeleiding</c>) blijft nog
-/// buiten scope — geen huidige aanroeper heeft hem nodig.
+/// <c>AddHisParams</c> raakte. <c>LegacyFilter</c> (voor <c>avg.teambegeleiding</c>) is sinds #1140
+/// toegevoegd — zie die methode.
 /// </para>
 /// <para>
 /// Twee predicaten, om dezelfde reden als het origineel: <c>planner.*</c>/<c>public.*</c> heeft
@@ -29,6 +29,20 @@ internal static class PostgresClubScope
     /// parameters — zet ze via <see cref="AddHisParams"/>.</summary>
     internal static string HisFilter(string alias)
         => $"COALESCE({alias}.clubcode, {PrimaryClubCodeParam}) = {ClubCodeParam}";
+
+    /// <summary>
+    /// SQL-predicaat voor een tabel met <c>clubcode NOT NULL DEFAULT ''</c> waarin nog rijen zonder
+    /// clubstempel kunnen staan (een lege string, achtergelaten door een import van vóór de
+    /// clubcode-kolom) — Postgres-tegenhanger van <c>ClubScope.LegacyFilter</c> op de SQL Server-
+    /// tier. Eerste aanroeper: <c>avg.teambegeleiding</c> (<c>002_avg_teambegeleiding.sql</c>'s
+    /// <c>clubcode VARCHAR(20) NOT NULL DEFAULT ''</c>), via
+    /// <c>AllstarsTestDataRepository.GetTeamleiderContactAsync</c> (#1140). Strikt filteren zou die
+    /// rijen onzichtbaar maken: geen begeleider gevonden waar er wél één is. Demodata is altijd
+    /// expliciet gestempeld en lekt dus nooit mee. Vereist beide parameters — zet ze via
+    /// <see cref="AddHisParams"/>.
+    /// </summary>
+    internal static string LegacyFilter(string alias)
+        => $"COALESCE(NULLIF(TRIM(BOTH FROM {alias}.clubcode), ''), {PrimaryClubCodeParam}) = {ClubCodeParam}";
 
     /// <summary>De primaire (syncenabled) club van deze deployment.</summary>
     internal static string Primary

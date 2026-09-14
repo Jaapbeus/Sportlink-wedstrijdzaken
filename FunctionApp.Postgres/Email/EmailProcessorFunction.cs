@@ -3,7 +3,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using FunctionApp.Postgres.Admin;
 using FunctionApp.Postgres.Monitoring;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Processing;
@@ -181,23 +180,16 @@ internal sealed class UitsluitingslijstCache
 /// functie werd de mailbox nooit gepolld — geen classificatie, geen auto-reply.
 ///
 /// <para>
-/// <b>Structurele afwijkingen t.o.v. het SQL Server-origineel — beide al gedocumenteerd op
-/// <c>BerichtPipeline</c>-niveau (item 1-2, buiten scope van deze hotfix) plus twee nieuw
-/// ontdekte, hier expliciet vastgelegde afwijkingen (item 3-4). Opponent-lookup
-/// (<c>FindMatchByOpponentAsync</c>) is sinds #1139 wél vertaald — zie <c>BerichtPipeline</c>.</b>
+/// <b>Resterende afwijkingen t.o.v. het SQL Server-origineel.</b> Opponent-lookup
+/// (<c>FindMatchByOpponentAsync</c>) is sinds #1139 vertaald en <c>TeamContactOpvragen</c>/
+/// <c>coachGevonden</c> plus de teamleider-/teamcontact-vervolgnotificaties hieronder (#66/#168)
+/// zijn sinds #1140 vertaald — beide gebruiken nu
+/// <see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>, woordelijk gelijk aan het
+/// SQL Server-origineel (zie <c>BerichtPipeline</c>).
 /// </para>
 /// <list type="number">
-/// <item><c>TeamContactOpvragen</c> geeft in het auto-reply-antwoord altijd <c>coachGevonden = false</c>
-/// — zie <c>BerichtPipeline</c>. De vervolgnotificatie hieronder (<see cref="StuurTeamContactBerichtDoorAsync"/>)
-/// gebruikt een ANDERE, wél bestaande databron (<c>avg.teambegeleiding</c> via
-/// <c>AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync</c>) en werkt dus wél.</item>
 /// <item>KNVB-PDF-bijlage/"verzet zonder datum" niet vertaald — zie <c>BerichtPipeline</c> en
 /// <c>EmailReplyPolicyService</c>.</item>
-/// <item><b>Nieuw bij #972:</b> de teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruiken
-/// hier <see cref="AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync"/> in plaats van
-/// <c>PlannerDataAccess.GetTeamleiderContactAsync</c> (bestaat hier niet) — dat levert alleen een
-/// e-mailadres, geen naam, dus de notificatietekst gebruikt een generieke aanhef in plaats van
-/// "Hoi {naam},".</item>
 /// <item><b>Nieuw bij #972:</b> <see cref="INoodmailThrottleStore"/> is wél vertaald (Azure Table
 /// Storage is DB-tier-agnostisch), maar de onafhankelijke, ARM-gebaseerde database-uitvalmonitor
 /// (<c>DatabaseUitvalMonitorFunction</c>/<c>IDatabaseStatusReader</c>, #831) is dat niet — die
@@ -852,20 +844,19 @@ public class EmailProcessorFunction
     }
 
     /// <summary>
-    /// Teamleider-notificatie bij een herplanverzoek (#66). <b>Vereenvoudigd t.o.v. het SQL
-    /// Server-origineel (zie klassekop, item 4):</b> daar komt naam+email uit
-    /// <c>PlannerDataAccess.GetTeamleiderContactAsync</c>, dat op deze tier niet bestaat. In plaats
-    /// daarvan wordt het e-mailadres opgezocht via de al bestaande, geteste
-    /// <see cref="AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync"/> — dat levert alleen een
-    /// adres, geen naam, dus de aanhef is hier generiek.
+    /// Teamleider-notificatie bij een herplanverzoek (#66). Sinds #1140 gelijk aan het SQL Server-
+    /// origineel: naam+e-mail komen uit <see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>
+    /// (zie klassekop) — vóór #1140 gebruikte deze methode i.p.v. daarvan
+    /// <c>AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync</c>, dat alleen een e-mailadres
+    /// levert en geen naam, dus een generieke aanhef gaf.
     /// </summary>
     private static async Task StuurTeamleiderNotificatieAsync(
         string cs, string clubCode, IEmailGraphService graphService, string teamNaam, string datum, ILogger log)
     {
         try
         {
-            var teamleiderEmail = await AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync(cs, teamNaam, clubCode);
-            if (string.IsNullOrWhiteSpace(teamleiderEmail))
+            var teamleider = await AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode);
+            if (teamleider == null)
             {
                 log.LogInformation("Geen teamleider gevonden voor {Team} in avg.teambegeleiding — notificatie overgeslagen", teamNaam);
                 return;
@@ -879,7 +870,7 @@ public class EmailProcessorFunction
                 ? datumDate.ToString("dddd d MMMM yyyy", new System.Globalization.CultureInfo("nl-NL"))
                 : datum;
 
-            var notificatieBody = "Hoi,\n\n"
+            var notificatieBody = $"Hoi {teamleider.Naam},\n\n"
                 + $"Er is een herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}.\n\n"
                 + "De coördinator heeft automatisch gereageerd op dit verzoek. "
                 + "Je hoeft zelf geen actie te ondernemen, maar we willen je op de hoogte houden.\n\n"
@@ -887,7 +878,7 @@ public class EmailProcessorFunction
                 + $"Met vriendelijke groet,\n{plannerNaam}";
 
             await graphService.SendReplyAsync(
-                teamleiderEmail,
+                teamleider.Emailadres,
                 $"Herplanverzoek ontvangen voor {teamNaam} op {datumDisplay}",
                 notificatieBody,
                 null);
@@ -902,15 +893,15 @@ public class EmailProcessorFunction
 
     /// <summary>
     /// Stuurt een teambegeleiding-vraag door naar de begeleider (#168). Zie
-    /// <see cref="StuurTeamleiderNotificatieAsync"/> voor dezelfde e-mailadres-lookup-afwijking.
+    /// <see cref="StuurTeamleiderNotificatieAsync"/> voor dezelfde #1140-lookup.
     /// </summary>
     private static async Task StuurTeamContactBerichtDoorAsync(
         string cs, string clubCode, IEmailGraphService graphService, string teamNaam, InkomendBericht email, ILogger log)
     {
         try
         {
-            var begeleiderEmail = await AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync(cs, teamNaam, clubCode);
-            if (string.IsNullOrWhiteSpace(begeleiderEmail))
+            var coach = await AllstarsTestDataRepository.GetTeamleiderContactAsync(cs, teamNaam, clubCode);
+            if (coach == null)
             {
                 log.LogInformation("Geen begeleider gevonden voor {Team} — doorsturen overgeslagen", teamNaam);
                 return;
@@ -940,7 +931,7 @@ public class EmailProcessorFunction
             // AVG: Reply-To = email.Afzender zodat begeleider rechtstreeks kan antwoorden;
             // BCC veldplanner voor audit; begeleider-email nooit in logs.
             await graphService.StuurTeamContactDoorAsync(
-                [begeleiderEmail], subject, body, email.Afzender, auditKopieAdres);
+                [coach.Emailadres], subject, body, email.Afzender, auditKopieAdres);
 
             log.LogInformation("Teambegeleiding-vraag doorgestuurd voor {Team}", teamNaam);
         }
@@ -1009,7 +1000,10 @@ public class EmailProcessorFunction
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: Database niet bereikbaar — email-processor gepauzeerd", body, null);
             await throttleStore.RegistreerVerstuurdAsync(DatabaseNoodmailSleutel, DateTime.UtcNow);
-            log.LogWarning("Noodmail verstuurd naar {Mailbox} — processor gepauzeerd tot database weer bereikbaar", mailbox);
+            // #1143: geen mailbox-/ontvangeradres in logs — SECURITY.md §Laag 5 sluit
+            // afzender-/ontvangeradressen expliciet uit, alleen een niet-persoonlijke
+            // uitkomst-identifier (DatabaseNoodmailSleutel) blijft over.
+            log.LogWarning("Noodmail verstuurd ({Sleutel}) — processor gepauzeerd tot database weer bereikbaar", DatabaseNoodmailSleutel);
         }
         catch (Exception ex)
         {
@@ -1078,7 +1072,8 @@ public class EmailProcessorFunction
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: OpenAI quota overschreden — email-processor gepauzeerd", body, null);
             await throttleStore.RegistreerVerstuurdAsync(OpenAiQuotaNoodmailSleutel, DateTime.UtcNow);
-            log.LogWarning("OpenAI quota-noodmail verstuurd naar {Mailbox}", mailbox);
+            // #1143: geen mailbox-/ontvangeradres in logs — zie de toelichting bij StuurDatabaseNoodmailAsync.
+            log.LogWarning("OpenAI quota-noodmail verstuurd ({Sleutel})", OpenAiQuotaNoodmailSleutel);
         }
         catch (Exception ex)
         {

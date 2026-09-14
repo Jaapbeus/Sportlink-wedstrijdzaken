@@ -2891,14 +2891,18 @@ voor een hotfix.
 
 **Drie al bestaande, gedocumenteerde afwijkingen op `BerichtPipeline`-niveau blijven ongewijzigd**
 (opponent-lookup, `TeamContactOpvragen` se `coachGevonden`, KNVB-PDF-bijlage/"verzet zonder datum") —
-dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf.
+dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf. *(Bijgewerkt: opponent-lookup
+is sinds #1139 vertaald — zie §58 — en `TeamContactOpvragen`/`coachGevonden` sinds #1140 — zie §59.
+Alleen de KNVB-PDF-bijlage/"verzet zonder datum"-flow staat nog open.)*
 
-**Twee nieuw ontdekte, hier voor het eerst gedocumenteerde afwijkingen:**
-- De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruiken
+**Eén nieuw ontdekte, hier voor het eerst gedocumenteerde afwijking:**
+- De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruikten
   `AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync` (bestaande, geteste query tegen
-  `avg.teambegeleiding`) in plaats van `PlannerDataAccess.GetTeamleiderContactAsync` (bestaat hier
-  niet) — dat levert alleen een e-mailadres, geen naam, dus de notificatietekst gebruikt een
-  generieke aanhef.
+  `avg.teambegeleiding`) in plaats van `PlannerDataAccess.GetTeamleiderContactAsync` (bestond hier
+  niet) — dat levert alleen een e-mailadres, geen naam, dus de notificatietekst gebruikte een
+  generieke aanhef. *(Bijgewerkt: sinds #1140 gebruiken beide notificaties
+  `AllstarsTestDataRepository.GetTeamleiderContactAsync` — zie §59 — inclusief de naam van de
+  begeleider in de aanhef.)*
 - De onafhankelijke, ARM-gebaseerde database-uitvalmonitor (`DatabaseUitvalMonitorFunction`/
   `IDatabaseStatusReader`, #831 op de SQL Server-tier) is niet vertaald — die controleert
   specifiek Azure SQL-status, wat hier niet van toepassing is. De noodmail-throttle zelf
@@ -3266,6 +3270,42 @@ valt buiten de scope van dit issue en loopt vooruit op de al geplande, bredere e
 in `docs/ARCHITECTUUR-EMAIL-MODULE.md` (epic #777, nog niet gestart). `ReplyPolicy.cs` blijft dus
 op beide tiers staan zoals het was, inclusief de eigen tests
 (`FunctionApp.Tests/Email/ReplyPolicyTests.cs` en de Postgres-tegenhanger) — geen gedragswijziging.
+
+## 61. Teamcontact opvragen vertaald — tweede van #972's vier resterende deelstukken (#1140)
+
+§58 hief de eerste van drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen op; dit issue
+(#1140, deelstuk 2 van #972) heft de tweede op: `AllstarsTestDataRepository.GetTeamleiderContactAsync`
+is vertaald naar de Postgres-tier, en `BerichtPipeline`'s `TeamContactOpvragen`-tak geeft nu een echte
+`coachGevonden` terug in plaats van altijd `false`.
+
+**Matching-sleutel bewust anders dan het SQL Server-origineel.** Het origineel vergelijkt met een
+eigen `REPLACE(...,' ','')REPLACE(...,'-','')`-sleutel rechtstreeks in T-SQL. De Postgres-vertaling
+gebruikt in plaats daarvan `TeamNaamNormalisatie.NormaliseerVoorVergelijking` — de enige toegestane
+teamnaam-normalisatielaag (zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) — toegepast in C# op elke
+kandidaatrij uit `avg.teambegeleiding`, in plaats van een tweede ad-hoc regex/REPLACE-implementatie
+in SQL te bouwen. Zelfde precedent als `PlannerMatchRepository.TeamSchrijfwijzenAsync`/
+`FindMatchByOpponentAsync` (§58). Functioneel gelijk gedrag: zowel de lokale notatie ("JO13-1") als
+de KNVB-notatie ("O13-1") normaliseren naar dezelfde sleutel, dus is er geen aparte
+"knvbSleutel"-tweede parameter nodig zoals op de SQL Server-tier.
+
+**`PostgresClubScope.LegacyFilter` toegevoegd.** `avg.teambegeleiding.clubcode` is `NOT NULL DEFAULT
+''` (migratie 002) — dezelfde "kan leeg zijn, hoort dan bij de primaire club"-situatie als
+`avg.Teambegeleiding` op de SQL Server-tier. `PostgresClubScope` had tot dit issue alleen `HisFilter` (voor
+`his.*`) en `AddClubParam` (voor tabellen met een strikt `NOT NULL`-ClubCode); `LegacyFilter` is de
+Postgres-tegenhanger van `ClubScope.LegacyFilter` op de SQL Server-tier.
+
+**`EmailProcessorFunction`'s teamleider-/teamcontact-vervolgnotificaties (#66/#168) hersteld naar
+volledige pariteit** — zie §52's "Eén nieuw ontdekte afwijking": beide gebruikten
+`AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync` (alleen een e-mailadres, geen naam, dus een
+generieke aanhef). Nu gebruiken ze `AllstarsTestDataRepository.GetTeamleiderContactAsync`, woordelijk
+gelijk aan het SQL Server-origineel — inclusief "Hoi {naam}," in de herplanverzoek-notificatie.
+`EmailReplyPolicyService` blijft ongewijzigd: die roept `GetTeamleiderContactAsync` op de SQL
+Server-tier uitsluitend aan binnen de KNVB-PDF-bijlage/"verzet zonder datum"-tak (§52's derde
+afwijking, nog open) — geen consument op de Postgres-tier vandaag, dus geen wijziging nodig.
+
+De overige twee deelstukken van #972 ("verzet zonder datum", `EmailProcessorFunction`'s resterende
+gaten — dat laatste al opgelost via de #972-hotfix, zie §52) blijven open voor het deel dat nog
+niet is vertaald — zie #972 voor de volledige scope.
 
 ## Gerelateerd
 
