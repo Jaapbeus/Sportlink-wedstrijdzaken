@@ -946,7 +946,9 @@ Per openstaand verzoek staan twee compacte knoppen:
 
 Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
-Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
+Deze pagina en "Oefenwedstrijd aanmaken" staan alleen in het menu als de Sportlink Web Extension
+aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en toont de Dagplanning geen
+Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 ---

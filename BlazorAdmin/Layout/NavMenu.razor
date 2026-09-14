@@ -62,16 +62,22 @@
                 <i class="bi bi-envelope-check me-1" aria-hidden="true"></i> Email-tester
             </NavLink>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="wijzigingsverzoeken">
-                <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Wijzigingsverzoeken
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="oefenwedstrijd-aanmaken">
-                <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Oefenwedstrijd aanmaken
-            </NavLink>
-        </div>
+        @* #1122: de twee extensie-schermen alleen tonen als de Sportlink Web Extension aan staat —
+           zelfde regel als de Sportlink-kolom in Dagplanning (#989). Inschakelen gebeurt via het
+           submenu Instellingen → Sportlink Web Extension, dat altijd zichtbaar blijft. *@
+        @if (ClubSelector.SportlinkExtensionEnabled)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="wijzigingsverzoeken">
+                    <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Wijzigingsverzoeken
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="oefenwedstrijd-aanmaken">
+                    <i class="bi bi-calendar-plus me-1" aria-hidden="true"></i> Oefenwedstrijd aanmaken
+                </NavLink>
+            </div>
+        }
 
         @* Collapsible Instellingen submenu *@
         <div class="nav-item px-3">
@@ -166,6 +172,19 @@
         // Club-naam via ClubSelector.SelectedClubName (gevuld door MainLayout) — geen eigen API-call
     }
 
+    protected override Task OnInitializedAsync() => LaadExtensieVlagAsync();
+
+    // #1122: één instellingen-GET bij laden en bij clubwissel; de extensie-instellingenpagina
+    // werkt de vlag na opslaan zelf bij via ClubSelector.ZetSportlinkExtensionEnabled.
+    private string? _extensieVlagVoorClub;
+    private async Task LaadExtensieVlagAsync()
+    {
+        if (_extensieVlagVoorClub == ClubSelector.SelectedClubCode) return;
+        _extensieVlagVoorClub = ClubSelector.SelectedClubCode;
+        var r = await Api.GetSettingsAsync();
+        ClubSelector.ZetSportlinkExtensionEnabled(r.Success && r.Data?.SportlinkExtensionEnabled == true);
+    }
+
     public void Dispose()
     {
         Navigation.LocationChanged -= OnLocationChanged;
@@ -174,7 +193,7 @@
     }
 
     private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
-    private void OnClubChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnClubChanged() => _ = InvokeAsync(async () => { await LaadExtensieVlagAsync(); StateHasChanged(); });
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {

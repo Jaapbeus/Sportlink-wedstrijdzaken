@@ -150,6 +150,20 @@ verplichte N-user-test.
   `FunctionApp.Postgres/local.settings.json`).
 
 ### 4.2 Waar de code (gaat) zitten
+
+> **Sinds de review van #1122 gelden twee vaste plekken** (zie ook CLAUDE.md, "Sportlink Web
+> Extension — één helper op de server, geen code in de Razor-pagina's"):
+> - `FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs` — toggle+EgressGuard-controle,
+>   statusvertaling, rolnaam, audit-afronding (`RondMutatieAfAsync`), timer-preamble
+>   (`ClientVoorTimer`). Alle Sportlink-Functions en -timers gebruiken hem.
+> - `BlazorAdmin/Shared/SportlinkMatchPanel.razor(.cs)` — het paneel per wedstrijd in Dagplanning;
+>   `BlazorAdmin/Models/SportlinkActieStatus.cs` — status van één actie plus de ene vertaling van
+>   mutatieresultaat naar melding (`Verwerk`); `BlazorAdmin/Shared/Melding.razor` toont hem. De
+>   vier extensie-pagina's hebben een code-behind en geen `@code`.
+> - In `Planner.Shared`: `SportlinkClubClient.ExecuteWithTokenRetryAsync` is het ene
+>   token-refresh/401-retry-pad voor lezen én schrijven; `ZetSportlinkHeaders` de ene plek voor de
+>   Navajo-headers; `TokenEndpoint`/`ClientId` zijn publiek en `ValideerRefreshTokenAsync` valideert
+>   een aangeleverd token vóór opslag (gebruikt door de tokenregistratie).
 - `Tools/SportlinkTokenCapture` — lokaal hulpmiddel, vangt het refresh_token op via een echte
   browserlogin (Playwright, netwerk-response-event — nooit localStorage, die is versleuteld door
   Sportlink zelf).
@@ -450,6 +464,11 @@ test getriggerd wordt:
   voor mutatietests, nooit een willekeurige, tenzij opnieuw afgestemd met de eigenaar.
 
 ## 5. Risico's en beperkingen
+
+- **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Oefenwedstrijd aanmaken" staan alleen in
+  het menu als de extensie aan staat (`ClubSelectorService.SportlinkExtensionEnabled`, gevuld door
+  NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan). Een directe
+  URL werkt nog wel; de API antwoordt dan 409 "Sportlink Web Extension staat uit."
 
 - Onofficiële integratie: kan bij een Sportlink-release breken (bundle-hashes wijzigen al vaker dan
   endpoints). Gebruiksvoorwaarden van Sportlink zijn niet beoordeeld op dit gebruik.

@@ -517,6 +517,30 @@ Samenvatting van de drie harde regels:
 
 ---
 
+### Sportlink Web Extension — één helper op de server, geen code in de Razor-pagina's (#1122)
+
+Vastgelegd na de review van epic #986. Twee harde regels:
+
+1. **Server (`FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs`) is de enige plek** voor de
+   toggle+EgressGuard-controle, de vertaling van `SportlinkClubCallStatus` naar een HTTP-fout, de
+   rolnaam en de audit-afronding (`RondMutatieAfAsync`). Een nieuw Sportlink-endpoint of een nieuwe
+   timer roept die helper aan; een eigen kopie van één van deze stappen is een architectuurschending
+   — dat was precies de toestand vóór #1122 (zes kopieën van de toggle-check, drie van de
+   statusvertaling). Zelfde geldt in `Planner.Shared`: elke Sportlink-aanroep loopt via
+   `SportlinkClubClient.ExecuteWithTokenRetryAsync` en `ZetSportlinkHeaders`, nooit een eigen
+   token-refresh/401-retry of eigen Navajo-headers.
+2. **Blazor: de extensie-pagina's (`Dagplanning`, `Wijzigingsverzoeken`, `OefenwedstrijdAanmaken`,
+   `SportlinkExtensieInstellingen`) hebben géén `@code`-blok.** Logica staat in een code-behind
+   (`<Pagina>.razor.cs`, `public partial class`, `[Inject]` i.p.v. `@inject`). Het Sportlink-paneel
+   per wedstrijd is het component `BlazorAdmin/Shared/SportlinkMatchPanel.razor` (+ `.razor.cs`);
+   de status van een actie (bezig/melding/fout/dry-run) is altijd een `SportlinkActieStatus`, met
+   `Verwerk(...)` als de ene plek die een mutatieresultaat naar een melding vertaalt, en het
+   component `<Melding Status="..." />` toont hem. Een nieuw scherm van de extensie volgt dit
+   patroon; een nieuwe `Dictionary<long, bool> _xBezig` of een `@code`-blok in zo'n pagina is een
+   architectuurschending.
+
+---
+
 ### .NET versie — FunctionApp staat op net9.0, met einddatum (migratie via epic #1063)
 
 **KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**

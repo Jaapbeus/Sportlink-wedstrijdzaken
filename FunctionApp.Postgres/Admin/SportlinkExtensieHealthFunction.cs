@@ -1,4 +1,5 @@
 using FunctionApp.Postgres.Infrastructure;
+using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -17,7 +18,7 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class SportlinkExtensieHealthFunction
 {
-    private const string RolNaam = "Wedstrijdzaken";
+    private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
     // Ouder dan dit: de uur-keep-alive-timer hoort elk uur te verversen — als het langer geleden is,
     // is de koppeling vermoedelijk niet meer geldig (informatief, geen harde blokkade).
@@ -49,16 +50,12 @@ public static class SportlinkExtensieHealthFunction
                     // #998 harde grens: geen enkele "even snel testen"-uitzondering — dit pad raakt
                     // écht club.sportlink.com/idm.sportlink.com aan, en gebeurt uitsluitend op een
                     // expliciete gebruikersklik (nooit automatisch getriggerd door dit endpoint zelf).
-                    if (!extensionEnabled)
-                        return new ObjectResult(new { error = "Sportlink Web Extension staat uit." }) { StatusCode = 409 };
-                    if (!egressAllowed)
-                        return new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 };
+                    var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
+                    if (toggleFout != null) return toggleFout;
+                    var (sportlinkClient, clientFout) = SportlinkEndpointSupport.ClientOfFout(context);
+                    if (clientFout != null) return clientFout;
 
-                    var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                    if (sportlinkClient == null)
-                        return new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 };
-
-                    liveResultaat = await VoerLiveControleUitAsync(connection, sportlinkClient, clubCode);
+                    liveResultaat = await VoerLiveControleUitAsync(connection, sportlinkClient!, clubCode);
                 }
 
                 return new OkObjectResult(new

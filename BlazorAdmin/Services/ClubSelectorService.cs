@@ -24,6 +24,19 @@ public class ClubSelectorService
     public string? SelectedClubCode => _clubCode;
     public string? SelectedClubName => _clubName;
 
+    /// <summary>#1122: staat de Sportlink Web Extension aan voor de geselecteerde club? Gevuld door
+    /// NavMenu (bij laden en clubwissel) en bijgewerkt door de extensie-instellingenpagina na
+    /// opslaan, zodat de menu-items Wijzigingsverzoeken/Oefenwedstrijd direct meebewegen zonder
+    /// dat elke pagina zelf de instellingen ophaalt.</summary>
+    public bool SportlinkExtensionEnabled { get; private set; }
+
+    public void ZetSportlinkExtensionEnabled(bool enabled)
+    {
+        if (SportlinkExtensionEnabled == enabled) return;
+        SportlinkExtensionEnabled = enabled;
+        OnChange?.Invoke();
+    }
+
     public async Task InitializeAsync()
     {
         try

@@ -3178,6 +3178,30 @@ Secrets and variables → Actions, met dezelfde connectiestring als de Function 
 verbindingen van elk IP tenzij netwerkrestricties zijn ingesteld — in dat geval de GitHub
 Actions-runner-ranges toestaan of de restrictie heroverwegen.
 
+## 58. Review epic #986 — wat de database-kant opleverde (#1122)
+
+Een review vanuit vier rollen (architect, developer, CISO, DPO) van de Sportlink Web Extension,
+feitelijk getoetst tegen een verse Postgres 17-wegwerpinstantie met alle migraties en de
+AllStars-demodata. De code-bevindingen staan in `docs/SPORTLINK-WEB-EXTENSION.md` §4.2 en
+CLAUDE.md; hier alleen wat de database raakte.
+
+**Geen schema-afwijking.** Elke SQL-string in de extensie is vergeleken met `\d` van de vijf
+extensietabellen plus `appsettings`/`teams`/`teamaliassen`/`velden`: kolomnamen, casing, types en
+NOT NULL-vulling kloppen; elke `@parameter` is gebonden (de §54-valkuil deed zich niet voor); elke
+tabel heeft een `clubcode` en elke query filtert erop; alle tijdkolommen zijn `TIMESTAMPTZ` met
+`now()`/`UtcNow`.
+
+**Migratie 018 — indexen op `sportlinkpublicmatchidcache`.** De tabel had alleen de primaire
+sleutel `(wedstrijdcode, clubcode)`; twee queries filteren op `clubcode` zonder `wedstrijdcode`
+(laatst-opgehaalde rij voor de contract-check en de health; `publicmatchid = ANY(@ids)` voor
+#1111). Additief, `IF NOT EXISTS`.
+
+**Bewust niet gedaan.** Een bewaartermijn op `sportlinkextensierollen` (actuele-toestand-record,
+zie SECURITY.md) en op `sportlinkpublicmatchidcache`/`sportlinkcontractcheck` (geen
+persoonsgegevens; groei in de orde van honderden rijen per seizoen). `his.matches.kaledatum` blijft
+`varchar(50)` met een `::date`-cast — die kolom hoort bij de generieke schemagenerator (#818), niet
+bij deze epic; de cast is op de huidige data bewezen veilig.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

@@ -98,10 +98,18 @@ internal static class EasyAuthHelper
         return actor;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex GeldigeClubCode =
+        new("^[A-Za-z0-9_-]{1,20}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public static string GetClubCodeFromRequest(HttpRequest req)
     {
+        // #1122 (CISO): de header is een UX-schakelaar (productie ↔ AllStars-demodata), geen
+        // autorisatiegrens (CLAUDE.md, deployment-model). Wel een vormcontrole: een ClubCode is
+        // max 20 tekens [A-Za-z0-9_-] (kolomdefinitie). Iets anders gaat niet als clubcode de
+        // database in — dan geldt de primaire club.
         if (req.Headers.TryGetValue("X-Club-Code", out var headerVal) &&
-            !string.IsNullOrWhiteSpace(headerVal))
+            !string.IsNullOrWhiteSpace(headerVal) &&
+            GeldigeClubCode.IsMatch(headerVal.ToString()))
             return headerVal.ToString();
 
         return PostgresAppSettings.GetSetting("clubCode")

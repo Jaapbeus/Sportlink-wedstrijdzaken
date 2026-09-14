@@ -205,6 +205,24 @@ De eigenaar (DPO-rol) stelt de termijn vast via `AppSettings.SportlinkMutationAu
 cleanup draait maandelijks (1e van de maand, 04:45 UTC) via `CleanupSportlinkMutationAuditFunction`
 op beide tiers; `dbo.sp_CleanupSportlinkMutationAudit` is idempotent.
 
+
+### Sportlink-extensierollen (`SportlinkExtensieRollen`) — bewust geen bewaartermijn (#1122)
+
+`laatstgekoppelddoor` (UPN van de beheerder) en `sportlinkaccountnaam` in deze tabel zijn
+persoonsgegevens, maar de tabel is een **actuele-toestand-record** (één rij per rol per club, bij
+elke registratie overschreven), geen groeiend log. Het gegeven "wie heeft deze koppeling voor het
+laatst gelegd" is nodig zolang de koppeling bestaat — een bewaartermijn zou het precies dan
+verwijderen. Dataminimalisatie is gewaarborgd door de vorm (geen historie); geen opschoning nodig.
+Herzien zodra er een "koppeling verwijderen"-functie komt: dan hoort de rij mee te verdwijnen.
+
+### Dry-run van de Sportlink Web Extension is fail-safe (#1122)
+
+De club-instelling `sportlinkDryRun` wordt op alle plekken gelezen als "alles behalve een expliciete
+`0` is dry-run". Tot #1122 gebruikte de mutatieclient `== "1"`, waardoor een nog niet geladen
+instellingencache (`null`) een bevestigde mutatie écht liet versturen terwijl het statuspaneel
+"dry-run aan" toonde. Beide polariteiten zijn nu gelijk; de bewaking hiervan zit in de
+statussectie (`SportlinkExtensieHealthFunction`) en de client-registratie in `Program.cs`.
+
 ---
 
 ## Wat te doen bij een gefaalde check

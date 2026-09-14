@@ -92,6 +92,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
 
 ### Changed
+- **Sportlink Web Extension: schermen en server-code opgeschoond na een volledige review (#1122).**
+  Het Sportlink-paneel in Dagplanning is een eigen, herbruikbaar onderdeel geworden; de logica van
+  de vier extensie-schermen staat los van de opmaak (code-behind), zodat schermen en gedrag apart
+  te onderhouden zijn. Op de server delen alle Sportlink-endpoints en -timers nu één set
+  controles (extensie aan? uitgaand verkeer toegestaan? koppeling geldig?) en één audit-afronding,
+  in plaats van zes kopieën. De menu-items "Wijzigingsverzoeken" en "Oefenwedstrijd aanmaken" zijn
+  alleen zichtbaar als de extensie aan staat, net als de Sportlink-kolom in Dagplanning. Nieuwe
+  migratie 018 voegt twee indexen toe op de PublicMatchId-cache. Geen functionele wijziging voor
+  de gebruiker buiten het menu.
 - **Databasemigraties gaan nu automatisch mee bij elke release, vóór de nieuwe code live gaat
   (#1093).** Op de Postgres-tier moest een beheerder na elke release met een nieuw migratiebestand
   zelf de migraties toepassen; werd dat vergeten, dan draaide de nieuwe versie tegen een verouderd
@@ -104,6 +113,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bewust.
 
 ### Fixed
+- **Dagplanning crashte bij een wedstrijd die na 23:00 eindigt (#1128).** De tijd-as van de
+  planningsbalk liep dan tot 24:00, en die waarde bestond niet als tijdstip — de pagina gaf een
+  foutmelding. Het uur-label wordt nu rechtstreeks als tekst opgebouwd.
+- **Ontvangeradres van de contract-check-noodmail wordt niet meer gelogd (#1137).** Het functielog
+  meldt alleen nog dát de mail is verstuurd, conform het beleid om nooit e-mailadressen te loggen.
+- **Dry-run stond in één codepad "uit" zolang de instellingen nog niet geladen waren (#1122).** Het
+  statuspaneel toonde "dry-run actief" terwijl een bevestigde Sportlink-mutatie (kleedkamers, veld,
+  goed-/afkeuren van een wijzigingsverzoek) in die toestand écht verstuurd zou worden. Beide plekken
+  hanteren nu dezelfde regel: alles behalve een expliciet uitgezette dry-run is dry-run.
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
   productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
   nachtelijke synchronisatie. Oorzaak was een beveiligingsaanscherping uit dezelfde release
@@ -135,6 +153,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   nog steeds geweigerd.
 
 ### Security
+- **Sportlink-foutmeldingen worden niet meer letterlijk gelogd (#1122).** Bij een mislukte
+  Sportlink-aanroep kwam in twee gevallen de volledige antwoordtekst in het functielog; die kan
+  wedstrijd- en teamgegevens bevatten. Nu wordt alleen de HTTP-status gelogd, zoals elders al gold.
+- **De club-schakelaar in de aanroep (`X-Club-Code`) wordt op vorm gecontroleerd (#1122).** Alleen
+  een waarde van maximaal 20 tekens uit letters, cijfers, `-` en `_` wordt als clubcode gebruikt;
+  anders geldt de primaire club. Dit was al geen autorisatiegrens (zie deployment-model), maar
+  voorkomt vervuiling van metadata met willekeurige tekst.
 - **Volledige certificaatvalidatie op de databaseverbinding: bouwstenen en certificaat klaar,
   productie-cutover volgt apart (#1096, vervolg op #1004/#1095).** Supabase gebruikt een eigen CA,
   zodat `verify-full` alleen werkt met het meegeleverde CA-certificaat (`sslrootcert`) — anders dan

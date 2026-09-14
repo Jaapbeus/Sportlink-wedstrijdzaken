@@ -1,5 +1,4 @@
 using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Integrations.SportlinkClub;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -34,7 +33,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// </summary>
 public static class SportlinkChangeRequestFunction
 {
-    private const string RolNaam = "Wedstrijdzaken";
+    private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
     [Function("SportlinkChangeRequestsGet")]
     public static Task<IActionResult> Get(
@@ -45,12 +44,10 @@ public static class SportlinkChangeRequestFunction
         return AdminEndpoint.ExecuteAsync(req, log, "sportlink-wijzigingsverzoeken ophalen",
             async clubCode =>
             {
-                var toggleFout = ControleerToggleEnEgress();
+                var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
                 if (toggleFout != null) return toggleFout;
-
-                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                if (sportlinkClient == null)
-                    return new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 };
+                var (sportlinkClient, clientFout) = SportlinkEndpointSupport.ClientOfFout(context);
+                if (clientFout != null) return clientFout;
 
                 var result = await sportlinkClient.GetChangeRequestsAsync(RolNaam);
                 var fout = VertaalStatusNaarFout(result.Status);
@@ -101,11 +98,10 @@ public static class SportlinkChangeRequestFunction
         AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkChangeRequestActionPut"), "sportlink-wijzigingsverzoek afhandelen",
             async clubCode =>
             {
-                var toggleFout = ControleerToggleEnEgress();
+                var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
                 if (toggleFout != null) return toggleFout;
 
-                var dto = JsonConvert.DeserializeObject<ChangeRequestActieDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var dto = await SportlinkEndpointSupport.LeesBodyAsync<ChangeRequestActieDto>(req);
                 if (string.IsNullOrWhiteSpace(dto?.PublicMatchId))
                     return new BadRequestObjectResult(new { error = "PublicMatchId ontbreekt." });
                 if (dto.Actie != "APPROVE" && dto.Actie != "DENY")
@@ -113,9 +109,8 @@ public static class SportlinkChangeRequestFunction
                 if (dto.Actie == "DENY" && string.IsNullOrWhiteSpace(dto.Remarks))
                     return new BadRequestObjectResult(new { error = "Toelichting (Remarks) is verplicht bij afwijzen." });
 
-                var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                if (sportlinkClient == null)
-                    return new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 };
+                var (sportlinkClient, clientFout) = SportlinkEndpointSupport.ClientOfFout(context);
+                if (clientFout != null) return clientFout;
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
                 var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
@@ -126,27 +121,10 @@ public static class SportlinkChangeRequestFunction
                     CorrelationId: publicRequestId);
                 var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
 
-                var mutationResult = await sportlinkClient.ActOnChangeRequestAsync(
+                var mutationResult = await sportlinkClient!.ActOnChangeRequestAsync(
                     RolNaam, dto.Actie, dto.PublicMatchId, publicRequestId, dto.Remarks);
-
-                var mutationFout = VertaalStatusNaarFout(mutationResult.Status);
-                if (mutationFout != null)
-                {
-                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", mutationResult.FoutmeldingVoorLog);
-                    return mutationFout;
-                }
-
-                if (mutationResult.Data == null)
-                {
-                    if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", "Geen respons-data van Sportlink");
-                    return new ObjectResult(new { error = "Sportlink gaf geen bruikbare respons." }) { StatusCode = 502 };
-                }
-
-                if (auditId.HasValue)
-                    await auditService!.VoltooiAsync(auditId.Value, SportlinkMatchFunction.BepaalAuditResultaat(mutationResult.Data),
-                        mutationResult.Data.Violations is { Count: > 0 } ? string.Join(", ", mutationResult.Data.Violations) : null);
-
-                return new OkObjectResult(mutationResult.Data);
+                return await SportlinkEndpointSupport.RondMutatieAfAsync(
+                    mutationResult, auditService, auditId, r => r, data => new OkObjectResult(data));
             },
             requireRole: EasyAuthHelper.RequireWedstrijdzaken);
 
@@ -157,28 +135,6 @@ public static class SportlinkChangeRequestFunction
         public string? Remarks { get; set; }
     }
 
-    private static IActionResult? ControleerToggleEnEgress()
-    {
-        if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
-            return new ObjectResult(new { error = "Sportlink Web Extension staat uit." }) { StatusCode = 409 };
-        if (!EgressGuard.ExternalIntegrationsAllowed())
-            return new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 };
-        return null;
-    }
-
-    private static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status) => status switch
-    {
-        SportlinkClubCallStatus.Ok => null,
-        SportlinkClubCallStatus.RolNietGekoppeld => new ObjectResult(new
-        {
-            error = $"Geen Sportlink-koppeling gevonden voor rol '{RolNaam}' — registreer eerst een refresh-token via Instellingen."
-        })
-        { StatusCode = 409 },
-        SportlinkClubCallStatus.HerkoppelingVereist => new ObjectResult(new
-        {
-            error = $"De Sportlink-koppeling voor rol '{RolNaam}' is verlopen — registreer een nieuw refresh-token via Instellingen."
-        })
-        { StatusCode = 409 },
-        _ => new ObjectResult(new { error = "Sportlink is momenteel niet bereikbaar." }) { StatusCode = 502 },
-    };
+    private static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status)
+        => SportlinkEndpointSupport.VertaalStatusNaarFout(status);
 }

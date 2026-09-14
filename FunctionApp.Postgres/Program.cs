@@ -89,7 +89,11 @@ if (EgressGuard.ExternalIntegrationsAllowed())
         httpClient,
         sp.GetRequiredService<ISportlinkClubTokenStore>(),
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubClient>(),
-        isDryRun: () => PostgresAppSettings.GetSetting("sportlinkDryRun") == "1"));
+        // #1122 (CISO): fail-safe. Alles behalve een expliciet geladen "0" is dry-run — dezelfde
+        // polariteit als SportlinkExtensieHealthFunction. Met "== \"1\"" was een nog niet geladen
+        // instellingencache (null) fail-OPEN: het statuspaneel toonde "dry-run aan" terwijl een
+        // bevestigde mutatie écht naar Sportlink zou gaan.
+        isDryRun: () => PostgresAppSettings.GetSetting("sportlinkDryRun") != "0"));
 }
 
 // Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier
@@ -103,11 +107,11 @@ builder.Services.AddSingleton<ISportlinkMutationAuditService, PostgresSportlinkM
 // valt het niet onder EgressGuard (#857).
 builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 {
-    var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+    var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
         ?? throw new InvalidOperationException(
             "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
     return new TableStorageNoodmailThrottleStore(
-        storageConnectionString,
+        storageVerbinding,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
 
