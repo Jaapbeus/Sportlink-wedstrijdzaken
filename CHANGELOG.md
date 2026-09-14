@@ -135,6 +135,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bewust.
 
 ### Fixed
+- **Commits aan `FunctionApp/Program.cs` werden op macOS geblokkeerd door de pre-commit
+  PII-scan (#1156).** Een lokale variabelenaam voor de opslagverbinding matchte het
+  secret-patroon in de hook, ook al ging het om een identifier en geen echte waarde. Hernoemd
+  naar `storageVerbinding`, net als eerder al gebeurde in de Postgres-tier.
 - **CI-shellscripts draaien nu ook lokaal op macOS (#1155).** De drie guards voor padcasing,
   Postgres-tabeldekking en -kolomdekking gebruikten bash-4-constructies en PCRE-grep en faalden op
   de standaard macOS-bash; ze zijn herschreven naar bash-3.2- en POSIX-constructies en geven op
