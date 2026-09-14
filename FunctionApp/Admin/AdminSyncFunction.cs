@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -9,8 +11,17 @@ namespace SportlinkFunction.Admin;
 /// <summary>
 /// Admin API voor synchronisatie. v2 — #89.
 ///
-/// GET  /api/beheer/sync/status   → laatste sync timestamp + huidige FetchSchedule
-/// POST /api/beheer/sync/trigger  → start synchronisatie (intern aanroep van FetchAndStoreApiData.RunSyncAsync)
+/// GET  /api/beheer/sync/status   → laatste sync timestamp + huidige FetchSchedule + status van de
+///                                   meest recente (of opgevraagde) sync-job
+/// POST /api/beheer/sync/trigger  → zet een sync-job op de queue (#1138, #415)
+///
+/// <b>Trigger</b> is niet langer fire-and-forget via <c>Task.Run</c>: de HTTP-call schrijft een
+/// <c>dbo.SyncJobs</c>-rij (status <c>pending</c>) en zet een bericht op de
+/// <see cref="SyncJobsQueue.QueueName"/>-queue in de bestaande <c>AzureWebJobsStorage</c>-opslag —
+/// geen nieuwe Azure-resource. <see cref="SyncJobProcessor"/> verwerkt het bericht en werkt de
+/// status bij. Zo verdwijnt het stille-deelsucces-risico: een crash van de host tussen enqueue en
+/// verwerking laat het bericht gewoon opnieuw zichtbaar worden op de queue in plaats van spoorloos
+/// te verdwijnen zoals bij <c>Task.Run</c>.
 /// </summary>
 public static class AdminSyncFunction
 {
@@ -45,11 +56,25 @@ public static class AdminSyncFunction
                 : null;
             var fetchSchedule = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
 
+            Guid? jobId = Guid.TryParse(req.Query["jobId"], out var parsedJobId) ? parsedJobId : null;
+            var job = await SyncJobsRepository.GetLatestOrByIdAsync(clubCode, jobId);
+
             return new OkObjectResult(new
             {
                 lastSyncTimestamp = lastSync,
                 fetchSchedule,
-                status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd"
+                status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd",
+                job = job is null ? null : new
+                {
+                    id = job.Id,
+                    status = job.Status,
+                    weekOffsetFrom = job.WeekOffsetFrom,
+                    weekOffsetTo = job.WeekOffsetTo,
+                    createdAt = job.CreatedAt,
+                    startedAt = job.StartedAt,
+                    completedAt = job.CompletedAt,
+                    errorMessage = job.ErrorMessage
+                }
             });
         }
         catch (Exception ex)
@@ -72,39 +97,37 @@ public static class AdminSyncFunction
         try
         {
             await SystemUtilities.WaitForDatabaseAsync(log);
-            await SystemUtilities.AppSettings.LoadSettingsAsync(log);
-
-            var sportlinkApiUrl = SystemUtilities.AppSettings.GetSetting("sportlinkApiUrl");
-            if (string.IsNullOrEmpty(sportlinkApiUrl))
-                return new ObjectResult(new { error = "sportlinkApiUrl niet geconfigureerd" }) { StatusCode = 500 };
-
-            var sportlinkClientId = $"clientId={SystemUtilities.AppSettings.GetSetting("sportlinkClientId")}";
 
             int toWeekOffset = await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            log.LogInformation("AdminSyncTrigger: range -1 .. {To} — fire-and-forget gestart", toWeekOffset);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            var jobId = Guid.NewGuid();
 
-            // Fire-and-forget: sync draait op achtergrond (~5 min), client pollt /status op wijziging LastSyncTimestamp
-            _ = Task.Run(async () =>
+            await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: -1, weekOffsetTo: toWeekOffset);
+
+            var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+                ?? throw new InvalidOperationException(
+                    "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+            var queueClient = SyncJobsQueue.CreateClient(storageVerbinding);
+            await queueClient.CreateIfNotExistsAsync();
+            var message = new SyncJobMessage
             {
-                try
-                {
-                    await FetchAndStoreApiData.RunSyncAsync(-1, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-                }
-                catch (Exception ex)
-                {
-                    log.LogError(ex, "Achtergrond sync mislukt");
-                }
-            });
+                JobId = jobId,
+                ClubCode = clubCode,
+                WeekOffsetFrom = -1,
+                WeekOffsetTo = toWeekOffset
+            };
+            await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+
+            log.LogInformation("AdminSyncTrigger: job {JobId}, range -1 .. {To} — op de queue gezet", jobId, toWeekOffset);
 
             return new ObjectResult(new
             {
                 status = "gestart",
+                jobId,
                 weekOffsetFrom = -1,
                 weekOffsetTo = toWeekOffset,
                 tijdstip = DateTime.UtcNow,
-                // Sync draait op de achtergrond (~3-5 min). LastSyncTimestamp in /status
-                // wordt bijgewerkt zodra de sync volledig geslaagd is. (#438)
-                melding = "Sync gestart op achtergrond. Controleer LastSyncTimestamp via /beheer/sync/status voor resultaat."
+                melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
             }) { StatusCode = 202 };
         }
         catch (Exception ex)

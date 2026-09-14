@@ -124,11 +124,13 @@ public class AdminApiClient
 
     // ── Sync ──
 
-    public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()
-        => await GetAsync<SyncStatusDto>("api/beheer/sync/status");
+    public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync(Guid? jobId = null)
+        => await GetAsync<SyncStatusDto>(jobId.HasValue
+            ? $"api/beheer/sync/status?jobId={jobId}"
+            : "api/beheer/sync/status");
 
-    public async Task<ApiResult<object>> TriggerSyncAsync()
-        => await PostAsync<object>("api/beheer/sync/trigger", new { });
+    public async Task<ApiResult<TriggerSyncResultDto>> TriggerSyncAsync()
+        => await PostAsync<TriggerSyncResultDto>("api/beheer/sync/trigger", new { });
 
     // ── Templates ──
 

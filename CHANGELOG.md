@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Handmatige Sportlink-synchronisatie is nu een echte achtergrondjob in plaats van
+  fire-and-forget (#1138, #415).** `POST /beheer/sync/trigger` schrijft een jobstatus weg en zet
+  een bericht op een Storage Queue (dezelfde `AzureWebJobsStorage`-opslag die de Functions-host al
+  vereist — geen nieuwe Azure-resource) in plaats van de sync op de achtergrond te starten zonder
+  enige garantie dat hij ook echt loopt. Een crash van de host tussen starten en verwerken liet de
+  sync voorheen spoorloos verdwijnen; nu blijft het bericht op de queue staan totdat het is
+  verwerkt. De Instellingen-pagina toont nu een echte melding bij een mislukte sync in plaats van
+  na 10 minuten stilzwijgend te stoppen.
 - **Op de Postgres-tier stuurt de e-mailverwerking nu ook de KNVB-speeldagenkalender mee bij een
   herplanverzoek van de tegenstander zonder concrete nieuwe datum (#1141).** De AI zegt in dat geval
   geen nieuwe datum toe — dat stemt de begeleiding van het eigen team eerst af — maar het antwoord

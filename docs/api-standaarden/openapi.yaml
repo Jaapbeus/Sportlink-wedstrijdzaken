@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.3.8.1
+  version: 3.3.9.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1231,6 +1231,41 @@ components:
         status:
           type: string
           enum: [ok, geen-sync-uitgevoerd]
+        job:
+          allOf:
+            - $ref: '#/components/schemas/SyncJob'
+          nullable: true
+          description: >-
+            Status van de meest recente sync-job, of van de job opgegeven via de query-param
+            `jobId` (#1138). `null` zolang er nog nooit een sync is getriggerd.
+
+    SyncJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        weekOffsetFrom:
+          type: integer
+        weekOffsetTo:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
 
     SyncTriggerResponse:
       type: object
@@ -1238,6 +1273,12 @@ components:
         status:
           type: string
           example: "gestart"
+        jobId:
+          type: string
+          format: uuid
+          description: >-
+            Id van de aangemaakte sync-job (#1138) — geef door aan
+            `GET /beheer/sync/status?jobId=` om de voortgang te pollen.
         weekOffsetFrom:
           type: integer
         weekOffsetTo:

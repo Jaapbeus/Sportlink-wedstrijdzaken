@@ -446,9 +446,8 @@ else
     {
         _syncing = true;
         _syncResult = null;
-        var timestampVoor = _status?.LastSyncTimestamp;
         var r = await Api.TriggerSyncAsync();
-        if (!r.Success)
+        if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
             _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
             _syncing = false;
@@ -456,15 +455,26 @@ else
         }
         _syncResult = "Synchronisatie gestart, even geduld…";
         StateHasChanged();
+        // #1138: pollt de job-status i.p.v. te gissen naar een wijziging in LastSyncTimestamp —
+        // zo is ook een mislukte job direct zichtbaar in plaats van na 10 minuten stilzwijgend te stoppen.
         var deadline = DateTime.UtcNow.AddMinutes(10);
         while (DateTime.UtcNow < deadline)
         {
-            await Task.Delay(5000);
-            var statusResult = await Api.GetSyncStatusAsync();
-            if (statusResult.Success && statusResult.Data?.LastSyncTimestamp != timestampVoor)
+            await Task.Delay(3000);
+            var statusResult = await Api.GetSyncStatusAsync(jobId);
+            var job = statusResult.Success ? statusResult.Data?.Job : null;
+            if (job?.Status == "succeeded")
             {
-                _status = statusResult.Data;
+                _status = statusResult!.Data;
                 _syncResult = "Synchronisatie voltooid.";
+                _syncing = false;
+                StateHasChanged();
+                return;
+            }
+            if (job?.Status == "failed")
+            {
+                _status = statusResult!.Data;
+                _syncResult = $"Synchronisatie mislukt: {job.ErrorMessage}";
                 _syncing = false;
                 StateHasChanged();
                 return;
