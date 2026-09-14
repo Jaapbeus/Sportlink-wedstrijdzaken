@@ -544,10 +544,12 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 5. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
    en een voorbeeldweergave vóór bevestiging. De CSV wordt in de browser verwerkt en nooit op de server
    opgeslagen.
-   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — alle bestaande rijen
-     van de club worden eerst verwijderd (`DELETE WHERE ClubCode`), daarna volgt de nieuwe lijst. Er
-     wordt niets samengevoegd, dus een onvolledige export herstel je door een complete export opnieuw
-     te importeren.
+   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — het verwijderen van
+     de bestaande rijen (`DELETE WHERE ClubCode`), het invoegen van de nieuwe lijst en de audit-regel
+     lopen in één geheel (#1131/#1132): een ongeldige rij (bijv. een te lange teamnaam) of een
+     tweede, gelijktijdige import verandert nooit een deel van de vorige lijst — óf de hele nieuwe
+     lijst komt erin, óf er verandert niets. Er wordt niets samengevoegd, dus een onvolledige export
+     herstel je door een complete export opnieuw te importeren.
    - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
 
 > **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel

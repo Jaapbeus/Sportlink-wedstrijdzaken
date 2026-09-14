@@ -122,6 +122,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   statuspaneel toonde "dry-run actief" terwijl een bevestigde Sportlink-mutatie (kleedkamers, veld,
   goed-/afkeuren van een wijzigingsverzoek) in die toestand écht verstuurd zou worden. Beide plekken
   hanteren nu dezelfde regel: alles behalve een expliciet uitgezette dry-run is dry-run.
+- **Een mislukte teambegeleiding-import wiste voorheen de vorige, geldige lijst (#1131).** Op de
+  SQL Server-tier verwijderde de import eerst de bestaande begeleiders van de club en probeerde
+  daarna pas de nieuwe rijen in te voegen; faalde die insert (bijvoorbeeld door een teamnaam die
+  te lang is voor de databasekolom), dan bleef de tabel leeg — de vorige import was onherstelbaar
+  weg. Elke rij wordt nu eerst tegen de kolomlengtes gecontroleerd; bij een overtreding meldt de
+  import direct welke rij en kolom het probleem is en verandert er niets aan de database. Is de
+  CSV wel geldig, dan lopen het verwijderen van de oude rijen, het invoegen van de nieuwe en de
+  audit-regel voortaan in één geheel: bij een onverwachte fout gaat alles terug, nooit een halve
+  vervanging.
+- **Twee gelijktijdige teambegeleiding-imports voor dezelfde club konden op de Postgres-tier
+  allebei blijven staan in plaats van dat de laatste de vorige volledig vervangt (#1132).** Een
+  import wacht nu op een eventuele andere, nog lopende import voor diezelfde club voordat hij de
+  oude rijen verwijdert, zodat het eindresultaat altijd precies één complete, samenhangende lijst
+  is.
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
   productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
   nachtelijke synchronisatie. Oorzaak was een beveiligingsaanscherping uit dezelfde release

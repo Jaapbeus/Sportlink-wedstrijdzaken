@@ -175,7 +175,7 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 
 De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
 
-`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de tabel wordt bij elke import volledig vervangen (TRUNCATE + bulk insert). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
+`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de rijen van de club worden bij elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier, geserialiseerd per club). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
 
 `dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
 een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij
