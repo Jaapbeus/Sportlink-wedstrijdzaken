@@ -3335,3 +3335,24 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_VeldBeschikbaarhe
     ALTER TABLE [dbo].[VeldBeschikbaarheid]
         ADD CONSTRAINT [FK_VeldBeschikbaarheid_VeldPeriode] FOREIGN KEY ([PeriodeId]) REFERENCES [dbo].[VeldPeriode]([Id]);
 GO
+
+-- #1138: SyncJobs — status van een sync-job op de "sync-jobs" Storage Queue. Vervangt de
+-- fire-and-forget Task.Run in AdminSyncFunction.Trigger; SyncJobProcessor (QueueTrigger) werkt de
+-- status bij naar running/succeeded/failed.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SyncJobs'))
+BEGIN
+    CREATE TABLE [dbo].[SyncJobs] (
+        [Id]             UNIQUEIDENTIFIER NOT NULL,
+        [ClubCode]       NVARCHAR(20)     NOT NULL,
+        [Status]         NVARCHAR(20)     NOT NULL CONSTRAINT [DF_SyncJobs_Status] DEFAULT ('pending'),
+        [WeekOffsetFrom] INT              NOT NULL,
+        [WeekOffsetTo]   INT              NOT NULL,
+        [CreatedAt]      DATETIME2        NOT NULL CONSTRAINT [DF_SyncJobs_CreatedAt] DEFAULT (GETUTCDATE()),
+        [StartedAt]      DATETIME2        NULL,
+        [CompletedAt]    DATETIME2        NULL,
+        [ErrorMessage]   NVARCHAR(1000)   NULL,
+        CONSTRAINT [PK_SyncJobs] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_SyncJobs_ClubCode_CreatedAt] ON [dbo].[SyncJobs] ([ClubCode], [CreatedAt] DESC);
+END
+GO
