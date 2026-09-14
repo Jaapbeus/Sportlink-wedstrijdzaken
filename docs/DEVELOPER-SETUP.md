@@ -365,6 +365,31 @@ $env:PGPASSWORD = "<lokaal-wachtwoord>"
 De volledige end-to-end-zelftest van deze tier (containers, schema, demodata, API-poorten) is een
 apart script: `.\scripts\dev\Test-PostgresTier.ps1 -Tier Postgres -Mode Verify`.
 
+### 4.3b Acceptatietest met de echte productiedata (eenmalig, bevat persoonsgegevens)
+
+Voor een acceptatietest tegen de échte club-data (in plaats van de democlub `ALLSTARS` of de
+placeholder-club `CLUB`) haalt `.\scripts\dev\Restore-ProductionDump.ps1` eenmalig een volledige
+dump van de productie-Postgres (Supabase) op en zet die lokaal terug — inclusief het echte
+`SportlinkClientId` in `dbo.AppSettings`, zodat je daarna handmatig
+`GET /api/sync-matches?reset=true&season=<jaar>` kunt draaien om verse data bij de echte Sportlink
+API op te halen (hetzelfde synchronisatiepad als productie, zie sectie 7).
+
+```powershell
+docker compose up -d
+.\scripts\dev\Restore-ProductionDump.ps1
+```
+
+Het script vraagt de productie-connectiestring interactief op (`Read-Host -AsSecureString`, niets
+op het scherm of in de commandogeschiedenis) en vraagt een expliciete typebevestiging vóór het de
+lokale database overschrijft.
+
+> **DPO/CISO — bevat echte persoonsgegevens.** Een volledige productiedump bevat o.a.
+> `avg.Teambegeleiding` en `planner.EmailVerwerking`. Dit is bedoeld als eenmalige, tijdelijke
+> kopie voor een acceptatietest — geen permanente lokale spiegel van productie. Draai
+> `docker compose down -v` zodra de test klaar is. Het dumpbestand zelf komt nooit op de
+> hostschijf of in git terecht: het leeft alleen kort in `/tmp` van de container en wordt door het
+> script zelf altijd opgeruimd, ook bij een fout.
+
 ### 4.4 SQL Server-tier (alternatief) — lokale database starten
 
 Sinds #800 is Docker de **enige ondersteunde manier** om lokaal een database te draaien. Een
@@ -795,13 +820,13 @@ Vereist een lege SQL Server-database met het volledige schema (zelfde bron als d
 "PostDeployment op verse database"):
 
 ```powershell
-docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Devonly123! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+docker run -d --name sqlfixture -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Wegwerpwachtwoord-niet-geheim1! -e MSSQL_PID=Developer -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
 # wacht tot de container klaar is, dan:
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -Q "CREATE DATABASE SportlinkFixture"
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -Q "CREATE DATABASE SportlinkFixture"
 docker cp Database/Script.PostDeployment1.sql sqlfixture:/tmp/postdeployment.sql
-docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Devonly123! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
+docker exec sqlfixture /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Wegwerpwachtwoord-niet-geheim1! -C -d SportlinkFixture -b -V 11 -i /tmp/postdeployment.sql
 
-$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Devonly123!;TrustServerCertificate=True;"
+$env:SqlConnectionString = "Server=localhost,1434;Database=SportlinkFixture;User Id=sa;Password=Wegwerpwachtwoord-niet-geheim1!;TrustServerCertificate=True;"
 dotnet test FunctionApp.Tests --filter FullyQualifiedName~SportlinkFixtureSyncIntegrationTests
 
 docker rm -f sqlfixture
@@ -838,8 +863,8 @@ Drie verschillen met de SQL Server-suite hierboven, alle drie in het voordeel va
 Lokaal draaien tegen een wegwerpcontainer — dezelfde opzet als de CI-job:
 
 ```powershell
-docker run -d --name pgfixture -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
-$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=devonly"
+docker run -d --name pgfixture -e POSTGRES_PASSWORD=wegwerpwachtwoord-niet-geheim -e POSTGRES_DB=sportlink -p 55432:5432 postgres:16
+$env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=55432;Database=sportlink;Username=postgres;Password=wegwerpwachtwoord-niet-geheim"
 dotnet run --project Database.Postgres.Cli
 $env:POSTGRES_TEST_CONNECTION_STRING = $env:POSTGRES_CONNECTION_STRING
 dotnet test FunctionApp.Postgres.Tests
@@ -861,8 +886,14 @@ geen stilzwijgend groen resultaat.
 > (`localhost:55432`) speelt dit nooit: die draait zonder TLS, en de bovenstaande commando's blijven
 > ongewijzigd werken. Verbind je met een echte gehoste Postgres-instantie, geef dan
 > `?sslmode=verify-full&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
-> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. Zie
-> `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige onderbouwing.
+> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. **Sinds #1096:** dat certificaat
+> hoort, zodra het is toegevoegd, op `FunctionApp.Postgres/prod-ca-2021.crt` (meegekopieerd naar het
+> publish-pakket door de csproj, `Exists(...)`-conditioneel — ontbreekt het lokaal, dan is dat een
+> no-op). Download het uit het Supabase-dashboard van déze deployment (Database → Settings → SSL
+> Configuration — geen publieke, statische URL) en verwijs er lokaal naar met
+> `?sslmode=verify-full&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
+> gehoste instantie test. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige
+> onderbouwing.
 
 > **Let op bij het lokaal draaien van béide Postgres-testsuites tegen één container (#925).**
 > `Database.Postgres.Tests` sloopt met opzet een reeks tabellen om te controleren of ze correct
@@ -888,6 +919,7 @@ issue 889) en de teamcanonicalisatie (`TeamCanonicalisatieIntegrationTests`, §2
 sportlink-wedstrijdzaken/
 ├── sportlink-wedstrijdzaken.sln       # Volledige solution (incl. Database/SportlinkSqlDb.sqlproj — alleen op Windows te bouwen)
 ├── sportlink-wedstrijdzaken.slnf      # Solution filter zonder het .sqlproj — gebruik dit op macOS (#800)
+├── Directory.Packages.props           # NuGet Central Package Management — één versiedefinitie per pakket (#1129, zie §8.1)
 ├── .gitattributes                     # Regeleindes vastgelegd (LF voor .sh/.githooks) zodat git-hooks op macOS werken (#800)
 ├── docker-compose.yml                 # Lokale SQL Server 2022 — enige ondersteunde manier, identiek op Windows/macOS (#800)
 ├── FunctionApp/
@@ -924,6 +956,44 @@ sportlink-wedstrijdzaken/
 └── docs/                              # Documentatie
 ```
 
+### 8.1 NuGet-pakketten centraal beheerd (Directory.Packages.props, #1129)
+
+Alle `.csproj`-bestanden in deze repository (behalve `Database/SportlinkSqlDb.sqlproj` — dat is
+geen `PackageReference`-project en wordt door Central Package Management niet aangeraakt) gebruiken
+[NuGet Central Package Management](https://learn.microsoft.com/nuget/consume-packages/central-package-management).
+Eén bestand, `Directory.Packages.props` in de repository-root, bevat de versie van elk pakket:
+
+```xml
+<PackageVersion Include="Npgsql" Version="9.0.3" />
+```
+
+Elk project-bestand refereert een pakket zonder versie:
+
+```xml
+<PackageReference Include="Npgsql" />
+```
+
+**Een pakket toevoegen of de versie bumpen:**
+1. Wijzig (of voeg toe) de bijbehorende `<PackageVersion>`-regel in `Directory.Packages.props` —
+   nooit een `Version=`-attribuut op een `<PackageReference>` in een individueel `.csproj`.
+2. Metadata die niet over versie gaat (`PrivateAssets`, `IncludeAssets`, etc.) blijft wél op de
+   `<PackageReference>` in het project staan.
+3. Eén uitzondering: `VersionOverride` op een individuele `<PackageReference>` mag gebruikt worden
+   als één specifiek project bewust van de centrale versie moet afwijken — gebruik dit spaarzaam en
+   leg de reden uit in een commentaar.
+4. `dotnet restore` op het gewijzigde project(en) om te verifiëren dat er geen `NU1608`
+   (versie buiten het door een ander pakket gedeclareerde bereik) of `NU1605`
+   (downgrade-conflict) ontstaat.
+
+**Waarom:** vóór #1129 bepaalde elk project zijn eigen pakketversie, en Dependabot bumpte alleen
+`/FunctionApp` en `/BlazorAdmin` (`.github/dependabot.yml`) — `FunctionApp.Postgres` en de
+testprojecten liepen daardoor stilzwijgend uit de pas. Dat leidde tot `Microsoft.Extensions.AI.OpenAI`
+10.9.0 op de Postgres-tier tegenover 10.10.0 op de SQL Server-tier, met een `NU1608`-waarschuwing
+op elke restore van de Postgres-tier (10.9.0 declareert `OpenAI [2.12.0, 2.13.0)`, terwijl beide
+tiers al op `OpenAI 2.13.0` stonden). Met één versiedefinitie kan dat niet meer gebeuren, en
+Dependabot (`.github/dependabot.yml`, `directory: "/"`) werkt nu tegen dat ene bestand voor alle
+projecten tegelijk.
+
 ---
 
 ## 9. GitHub Actions — Productie-deployment configureren
@@ -943,7 +1013,8 @@ Klik op **New repository secret** voor elk van de volgende:
 |------|-------------|----------------|
 | `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 9.2 hieronder |
 | `AZURE_FUNCTION_KEY` | Host key van de Function App | Azure Portal → Function App → App keys → Host keys → `default` |
-| `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring | Azure Portal → SQL Database → Connection strings → ADO.NET |
+| `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring — alleen bij `DatabaseTier=SqlServer` | Azure Portal → SQL Database → Connection strings → ADO.NET |
+| `POSTGRES_CONNECTION_STRING` | Productie Postgres-connectiestring — alleen bij `DatabaseTier=Postgres`; gebruikt door `db-migrate-postgres` om de migraties vóór de deploy toe te passen (#1093). Zelfde waarde als de Function App-instelling; norm `sslmode=verify-full` mét `sslrootcert` (#1096) | Dashboard van de databaseprovider → Connection string |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
 
 **`AZURE_CREDENTIALS` aanmaken via Azure CLI:**
@@ -958,7 +1029,7 @@ Kopieer de volledige JSON-output (inclusief accolades) als waarde voor het secre
 
 ```
 Server=tcp:[sql-servernaam].database.windows.net,1433;Initial Catalog=[database-naam];
-Persist Security Info=False;User ID=[username];Password=[password];
+Persist Security Info=False;User ID=[username];Password=<password>;
 Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 ```
 
@@ -982,7 +1053,8 @@ Klik op het tabblad **Variables** → **New repository variable** voor elk van d
 
 | Jobs | Vereiste configuratie | Gedrag zonder configuratie |
 |------|-----------------------|---------------------------|
-| `db-check` + `db-migrate` | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
+| `db-check` + `db-migrate` (alleen `DatabaseTier=SqlServer`) | `AZURE_SQL_SERVER_NAME`, `AZURE_SQL_DATABASE_NAME`, `AZURE_SQL_RESOURCE_GROUP`, `SQL_CONNECTION_STRING` | Jobs worden overgeslagen |
+| `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | `POSTGRES_CONNECTION_STRING` | **Job faalt hard** — stil overslaan zou de nieuwe code tegen een verouderd schema laten draaien (#1093) |
 | `blazor-deploy` + SWA smoke test | `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_STATIC_WEB_APP_HOSTNAME` | Job wordt overgeslagen |
 | `build` + `test` | `AZURE_CREDENTIALS`, `AZURE_FUNCTIONAPP_NAME`, `AZURE_FUNCTION_KEY` | Verplicht — mislukken bij ontbreken |
 

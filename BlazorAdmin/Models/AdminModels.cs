@@ -27,6 +27,7 @@ public class AppSettingsDto
     public bool KnvbPdfBijlageIngeschakeld { get; set; } = true;
     public string? KnvbStandaardRegio { get; set; }
     public bool SportlinkExtensionEnabled { get; set; }
+    public bool SportlinkDryRun { get; set; } = true;
 }
 
 /// <summary>#988: rol↔serviceaccount-koppelingsstatus, zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.</summary>
@@ -79,6 +80,75 @@ public class SportlinkMutatieResultaatDto
 {
     public bool IsSuccess { get; set; }
     public List<string>? Violations { get; set; }
+
+    /// <summary>#998: true als dry-run actief was — niets is echt naar Sportlink verstuurd,
+    /// de aanroep is alleen gesimuleerd en gelogd.</summary>
+    public bool IsDryRun { get; set; }
+
+    /// <summary>#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock
+    /// (mutatie waarvan de requestbody nog niet live bevestigd is) — ONAFHANKELIJK van de
+    /// club-instelling sportlinkDryRun. Als dit true is, is IsDryRun ook altijd true.</summary>
+    public bool IsForcedDryRun { get; set; }
+
+    /// <summary>#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte
+    /// oefenwedstrijd — null voor elke andere mutatie en ook null zolang IsForcedDryRun/IsDryRun
+    /// de aanroep simuleerde (in de praktijk dus altijd null zolang de ClubMatch-code-lock actief
+    /// is).</summary>
+    public string? PublicMatchId { get; set; }
+}
+
+/// <summary>#1116: respons van POST /api/sportlink/club-match — het generieke mutatieresultaat plus
+/// wat de server uit teamnaam en instellingen heeft afgeleid (Sportlink-team-ID, leeftijdscategorie,
+/// locatie-ID, veld), zodat de beheerder ziet wat er (gesimuleerd) naar Sportlink zou gaan. Spiegelt
+/// FunctionApp.Postgres.Sportlink.SportlinkClubMatchFunction.OefenwedstrijdAanmaakResultaat.</summary>
+public class OefenwedstrijdResultaatDto : SportlinkMutatieResultaatDto
+{
+    public string? Omschrijving { get; set; }
+    public string? SportlinkTeamId { get; set; }
+    public string? AgeClassCode { get; set; }
+    public string? FacilityId { get; set; }
+    public string? VeldNaam { get; set; }
+    public List<string> Waarschuwingen { get; set; } = new();
+}
+
+/// <summary>#998: status van de Sportlink Web Extension voor de Instellingen-pagina — nooit een
+/// tokenwaarde of Match-data met persoonsgegevens.</summary>
+public class SportlinkExtensieHealthDto
+{
+    public bool ExtensionEnabled { get; set; }
+    public bool DryRun { get; set; }
+    public bool EgressAllowed { get; set; }
+    public List<SportlinkExtensieHealthRolDto> Rollen { get; set; } = new();
+    public string? LaatsteMutatieFout { get; set; }
+    public DateTime? LaatsteMutatieFoutOp { get; set; }
+    public SportlinkContractCheckDto? LaatsteContractCheck { get; set; }
+    public SportlinkExtensieHealthLiveDto? Live { get; set; }
+}
+
+public class SportlinkExtensieHealthRolDto
+{
+    public string RolNaam { get; set; } = "";
+    public bool Gekoppeld { get; set; }
+    public DateTime? LaatstVerverstOp { get; set; }
+    public DateTime? RefreshTokenVervaltOp { get; set; }
+}
+
+public class SportlinkContractCheckDto
+{
+    public DateTime UitgevoerdOp { get; set; }
+    public bool IsOk { get; set; }
+    public int? HttpStatus { get; set; }
+    public string? AfwijkendeVelden { get; set; }
+    public string? FoutmeldingSamenvatting { get; set; }
+}
+
+/// <summary>Alleen gevuld als de gebruiker expliciet op "Nu live controleren" heeft geklikt
+/// (<c>?live=true</c>) — bevat uitsluitend een HTTP-status, nooit responsdata.</summary>
+public class SportlinkExtensieHealthLiveDto
+{
+    public bool TokenRefreshGelukt { get; set; }
+    public string? MatchCheckResultaat { get; set; }
+    public int? MatchCheckHttpStatus { get; set; }
 }
 
 /// <summary>#996: één inkomend wijzigingsverzoek — spiegelt
@@ -92,6 +162,22 @@ public class SportlinkChangeRequestDto
     public SportlinkChangeRequestDataDto? RequestData { get; set; }
     public string? Reason { get; set; }
     public string? Remarks { get; set; }
+
+    /// <summary>#1111: onze eigen wedstrijdcontext (uit his.matches via de PublicMatchId-cache),
+    /// null als de wedstrijd (nog) niet gecachet is. Spiegelt
+    /// FunctionApp.Postgres.Sportlink.SportlinkWedstrijdContext.</summary>
+    public SportlinkWedstrijdContextDto? Wedstrijd { get; set; }
+}
+
+public class SportlinkWedstrijdContextDto
+{
+    public long Wedstrijdcode { get; set; }
+    public long? Wedstrijdnummer { get; set; }
+    public string? Thuisteam { get; set; }
+    public string? Uitteam { get; set; }
+    public string? Datum { get; set; }
+    public string? Tijd { get; set; }
+    public string? Accommodatie { get; set; }
 }
 
 public class SportlinkChangeRequestDataDto
@@ -104,6 +190,29 @@ public class SportlinkChangeRequestDataDto
     public string? RequestedStartTime { get; set; }
     public string? RequestedFacilityName { get; set; }
     public string? RequestedSubFacilityName { get; set; }
+}
+
+// NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
+// beide PUT's en de bevestigingsvlag vastleggen). Deze DTO's horen uitsluitend bij stap 1
+// (valideren) — er bestaat bewust geen stap 2 (bevestigen): geen endpoint, geen UI-knop.
+
+/// <summary>#995: respons van het wijzigingsverzoek-endpoint (stap 1, valideren) — spiegelt
+/// Planner.Shared.Integrations.SportlinkClub.SportlinkMatchChangeRequestResult. Houd deze twee
+/// synchroon bij een contractwijziging.</summary>
+public class SportlinkMatchWijzigingsverzoekResultaatDto
+{
+    public SportlinkMutatieResultaatDto? Mutatie { get; set; }
+    public SportlinkMatchChangeValidatieDto? Validatie { get; set; }
+}
+
+/// <summary>#995: ONBEVESTIGD — geparsed uit Sportlinks <c>ConfirmationNeeded</c>-veld, nooit met
+/// een netwerktrace gezien. <c>null</c> zolang de code-lock actief is (zie
+/// SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd).</summary>
+public class SportlinkMatchChangeValidatieDto
+{
+    public bool ConfirmationNeeded { get; set; }
+    public List<string>? ValidationResultMessages { get; set; }
+    public bool HasBlockingMessages { get; set; }
 }
 
 public class SettingsUpdateDto
@@ -128,6 +237,32 @@ public class SyncStatusDto
     public DateTime? LastSyncTimestamp { get; set; }
     public string? FetchSchedule { get; set; }
     public string? Status { get; set; }
+
+    /// <summary>Meest recente (of opgevraagde) sync-job — null zolang er nog nooit een job is gestart (#1138).</summary>
+    public SyncJobDto? Job { get; set; }
+}
+
+/// <summary>Status van een sync-job op de "sync-jobs"-queue (#1138). Status: pending/running/succeeded/failed.</summary>
+public class SyncJobDto
+{
+    public Guid Id { get; set; }
+    public string? Status { get; set; }
+    public int WeekOffsetFrom { get; set; }
+    public int WeekOffsetTo { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public class TriggerSyncResultDto
+{
+    public string? Status { get; set; }
+    public Guid? JobId { get; set; }
+    public int WeekOffsetFrom { get; set; }
+    public int WeekOffsetTo { get; set; }
+    public DateTime Tijdstip { get; set; }
+    public string? Melding { get; set; }
 }
 
 public class TemplateDto

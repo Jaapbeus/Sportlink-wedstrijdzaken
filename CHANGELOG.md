@@ -18,7 +18,178 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.0.0] — 2026-09-14
+
+### Added
+- **Handmatige Sportlink-synchronisatie is nu een echte achtergrondjob in plaats van
+  fire-and-forget (#1138, #415).** `POST /beheer/sync/trigger` schrijft een jobstatus weg en zet
+  een bericht op een Storage Queue (dezelfde `AzureWebJobsStorage`-opslag die de Functions-host al
+  vereist — geen nieuwe Azure-resource) in plaats van de sync op de achtergrond te starten zonder
+  enige garantie dat hij ook echt loopt. Een crash van de host tussen starten en verwerken liet de
+  sync voorheen spoorloos verdwijnen; nu blijft het bericht op de queue staan totdat het is
+  verwerkt. De Instellingen-pagina toont nu een echte melding bij een mislukte sync in plaats van
+  na 10 minuten stilzwijgend te stoppen.
+- **Op de Postgres-tier stuurt de e-mailverwerking nu ook de KNVB-speeldagenkalender mee bij een
+  herplanverzoek van de tegenstander zonder concrete nieuwe datum (#1141).** De AI zegt in dat geval
+  geen nieuwe datum toe — dat stemt de begeleiding van het eigen team eerst af — maar het antwoord
+  noemt nu wel een paar zaterdagen waarop het team volgens het huidige programma nog vrij is, met
+  de begeleiding in BCC en de KNVB-speeldagenkalender-PDF als bijlage, precies zoals op de
+  SQL Server-tier. Ontbreekt de ingestelde KNVB-regio, of staat de bijlage-optie uit, dan blijft het
+  bestaande herplan-antwoord gewoon werken.
+- **Op de Postgres-tier herkent de e-mailverwerking nu ook het eigen team via de genoemde
+  tegenstander (#1139).** Kent een binnenkomend beschikbaarheidsverzoek het eigen team niet, maar
+  wordt er wel een tegenstander genoemd, dan zoekt de e-mailverwerking eerst de wedstrijd via die
+  tegenstander op (op de genoemde datum, en anders zonder datumfilter) om alsnog het eigen team af
+  te leiden — hetzelfde gedrag dat op de SQL Server-tier al bestond.
+- **Oefenwedstrijd aanmaken: snelle invoer zonder Sportlink-picklists (#1116).** Het formulier
+  vraagt nu alleen nog datum, aanvangstijd, duur, eigen team, tegenstander en veld. Team en veld zijn
+  keuzelijsten uit de eigen database (dezelfde bron als de andere schermen); de knop "Picklists
+  laden", het locatieveld en de vrije ID-velden zijn weg. De locatie is altijd de eigen accommodatie
+  uit de instellingen, en de leeftijdscategorie volgt uit het gekozen team. Na het (gesimuleerde)
+  aanmaken toont het scherm precies welke Sportlink-gegevens de server heeft afgeleid en wat er
+  niet gevonden is. De aanroep naar Sportlink blijft gesimuleerd totdat een mens die live heeft
+  bevestigd (zie #997).
+- **Wijzigingsverzoeken-scherm toont nu de wedstrijd, een duidelijke status en een filter (#1111).**
+  Bij elk verzoek van een tegenstander staan wedstrijdnummer, thuis- en uitteam, datum, tijd en
+  accommodatie uit de eigen wedstrijdgegevens, met een statusicoon (openstaand, goedgekeurd,
+  afgewezen, ingetrokken) in plaats van een ruwe code. Een statusfilter toont standaard alleen
+  openstaande verzoeken, en goed-/afkeuren gaat via compacte icoonknoppen — de toelichting bij
+  afwijzen blijft verplicht. Ontbreekt de wedstrijdcontext bij een verzoek, dan is die wedstrijd nog
+  niet gekoppeld; het verzoek blijft gewoon zichtbaar.
+- **Sportlink Web Extension: dry-run-modus, standaard AAN (#998).** Elke kleedkamer-/veldwijziging
+  en elk goed-/afgekeurd wijzigingsverzoek wordt nu standaard alleen gesimuleerd: de aanroep naar
+  Sportlink wordt overgeslagen en het resultaat wordt gelogd in de audit als "DryRun". Een
+  beheerder zet dit bewust uit via een nieuwe schakelaar op Instellingen, pas nadat de rol-koppeling
+  en de nieuwe statussectie gecontroleerd zijn.
+- **Statussectie Sportlink Web Extension op Instellingen (#998).** Toont in één oogopslag of de
+  extension aan staat, of dry-run actief is, of uitgaande integraties zijn toegestaan, de
+  koppelingsstatus per rol, de laatste mutatiefout en de laatste contract-check. Een knop "Nu live
+  controleren" doet — uitsluitend op expliciete klik — één echte tokenverversing en één leesaanroep.
+- **Dagelijkse contract-check voor de Sportlink-koppeling (#998).** Een timer controleert elke
+  ochtend of de vorm van Sportlinks wedstrijdrespons nog klopt met wat deze app verwacht, zodat een
+  stille Sportlink-release vroeg opvalt in plaats van pas bij een mislukte mutatie. Bij een
+  afwijking gaat er — hooguit één keer per 24 uur — een noodmail uit via het bestaande
+  e-mailverzendpad.
+- **Guardrails uitgebreid: afgelaste en concept-wedstrijden worden altijd geblokkeerd (#998).** Naast
+  de bestaande "alleen thuiswedstrijden"-regel wijst de app nu ook elke kleedkamer-/veldwijziging af
+  op een wedstrijd die is afgelast of nog een concept is.
+- **Uitgebreide audit-logging voor Sportlink-mutaties (#998).** Naast de taakstatus legt de audit nu
+  ook de wedstrijdstatus, of de wedstrijd is afgelast/nog concept, en de accommodatiegegevens vast —
+  bedoeld om een seizoen aan echte gebruiksdata te verzamelen.
+- **Officials toewijzen vanuit Dagplanning (#994) — scaffolding, altijd gesimuleerd.** Een
+  beheerder kan voortaan per positie (scheidsrechter, AR1, AR2) een relatiecode/persoons-ID
+  invullen en toewijzen; validatiemeldingen van Sportlink worden per official getoond. Dit pad
+  stuurt bewust NOOIT een echte aanroep naar Sportlink — het endpoint en de requestbody zijn nog
+  niet met een netwerktrace bevestigd, dus de actie blijft een simulatie totdat dat wél gebeurd is,
+  ongeacht de dry-run-instelling van de club. Geen zoekfunctie op officials en geen namen in beeld
+  (alleen wat de beheerder zelf intikt).
+- **Nieuwe, harde code-lock voor nog-onbevestigde Sportlink-mutaties (`forceDryRun`, onderdeel van
+  #994).** Naast de bestaande dry-run-instelling (voor bevestigde mutaties, per club uit te zetten)
+  bestaat er nu een tweede vergrendeling die uitsluitend door een toekomstige codewijziging kan
+  worden opgeheven — nooit door een instelling. Gedeelde infrastructuur, ook gebruikt door de
+  volgende officials-gerelateerde issues.
+- **Wijzigingsverzoek datum/tijd/accommodatie vanuit Dagplanning (#995) — scaffolding, alleen
+  validatiestap, altijd gesimuleerd.** Een beheerder kan voortaan bij een thuiswedstrijd een nieuwe
+  datum, starttijd en/of accommodatie invullen met een verplichte toelichting; Sportlinks
+  validatiemeldingen worden letterlijk getoond. Dit is bewust **uitsluitend stap 1** (valideren) van
+  Sportlinks tweestaps flow — de bevestigingsstap (die de tegenstander een goedkeuringsverzoek
+  stuurt) is niet gebouwd: geen endpoint, geen knop. De aanroep naar Sportlink blijft daarom altijd
+  een simulatie, ongeacht de dry-run-instelling van de club, totdat een mens de requestbody en de
+  bevestigingsvlag live heeft vastgesteld — dit is de enige mutatie in de Sportlink Web Extension
+  die een echte tegenstander raakt.
+- **Oefenwedstrijd aanmaken vanuit de webapp (#997) — scaffolding, altijd gesimuleerd.** Een nieuwe
+  pagina "Oefenwedstrijd aanmaken" laat een beheerder datum/tijd, duur, leeftijdscategorie,
+  omschrijving, team en locatie invullen; teams en locaties komen — op expliciete klik ("Picklists
+  laden") — rechtstreeks uit Sportlink. Dit pad stuurt bewust NOOIT een echte aanroep naar
+  Sportlink: net als bij #994 zijn het endpoint en de volledige requestbody nog niet met een
+  netwerktrace bevestigd, dus de aanmaak blijft een simulatie totdat dat wél gebeurd is. Verwijderen
+  en het vastleggen van een uitslag zijn in deze ronde bewust niet gebouwd.
+- **CA-certificaat van de databaseprovider zit nu in het deploy-pakket, en de smoke test bewaakt
+  de effectieve TLS-modus (#1096).** `FunctionApp.Postgres/prod-ca-2021.crt` (Supabase Root 2021
+  CA, geldig t/m 2031-04-26) wordt meegekopieerd naar het publish-pakket, zodat `sslrootcert` in
+  `POSTGRES_CONNECTION_STRING` naar een pad binnen het pakket kan wijzen — nodig omdat Supabase
+  een eigen CA gebruikt (zie Security-post hieronder en `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50).
+  De smoke test na een deploy leest voortaan ook `tlsWarning` uit `/api/health` en meldt die als
+  `::warning::`, dezelfde behandeling als `pendingMigrations`/`schemaWarning` — nooit een
+  deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
+
+### Changed
+- **Pakketversies (NuGet) voor alle projecten nu centraal beheerd, geen restore-waarschuwing meer
+  op de AI-koppeling (#1129).** Beide Function App-tiers gebruikten net iets andere versies van de
+  AI-adapter en het onderliggende OpenAI-pakket, wat bij elke build een NuGet-waarschuwing gaf
+  (`NU1608`, verder onschadelijk maar wel ruis in de build-log). Alle pakketversies staan nu op één
+  plek (`Directory.Packages.props`), zodat de twee tiers en de testprojecten niet meer uit de pas
+  kunnen lopen. Geen zichtbare wijziging voor de beheerder.
+- **Sportlink Web Extension: schermen en server-code opgeschoond na een volledige review (#1122).**
+  Het Sportlink-paneel in Dagplanning is een eigen, herbruikbaar onderdeel geworden; de logica van
+  de vier extensie-schermen staat los van de opmaak (code-behind), zodat schermen en gedrag apart
+  te onderhouden zijn. Op de server delen alle Sportlink-endpoints en -timers nu één set
+  controles (extensie aan? uitgaand verkeer toegestaan? koppeling geldig?) en één audit-afronding,
+  in plaats van zes kopieën. De menu-items "Wijzigingsverzoeken" en "Oefenwedstrijd aanmaken" zijn
+  alleen zichtbaar als de extensie aan staat, net als de Sportlink-kolom in Dagplanning. Nieuwe
+  migratie 018 voegt twee indexen toe op de PublicMatchId-cache. Geen functionele wijziging voor
+  de gebruiker buiten het menu.
+- **Onderhoud: de feedbackwidget en de SSRF-bescherming van de thema-extractor delen nu één
+  implementatie tussen beide database-tiers in plaats van twee bijna-identieke kopieën (#1130).**
+  Geen zichtbaar effect voor beheerders — zelfde gedrag, dezelfde foutmeldingen, dezelfde
+  rate-limiting.
+- **Databasemigraties gaan nu automatisch mee bij elke release, vóór de nieuwe code live gaat
+  (#1093).** Op de Postgres-tier moest een beheerder na elke release met een nieuw migratiebestand
+  zelf de migraties toepassen; werd dat vergeten, dan draaide de nieuwe versie tegen een verouderd
+  schema — de oorzaak van beide storingen direct na de release van 12 september. De deploy-pipeline
+  heeft nu een eigen migratiestap voor Postgres die vóór het publiceren van de code draait; de code
+  gaat pas live als het schema klopt. De controle na de deploy behandelt openstaande migraties
+  voortaan als fout in plaats van als waarschuwing. De migratiestappen voor SQL Server draaien
+  alleen nog als die tier daadwerkelijk in gebruik is. Eenmalige actie voor de beheerder: het
+  GitHub-secret `POSTGRES_CONNECTION_STRING` instellen — zonder dat secret weigert de deploy
+  bewust.
+
 ### Fixed
+- **Commits aan `FunctionApp/Program.cs` werden op macOS geblokkeerd door de pre-commit
+  PII-scan (#1156).** Een lokale variabelenaam voor de opslagverbinding matchte het
+  secret-patroon in de hook, ook al ging het om een identifier en geen echte waarde. Hernoemd
+  naar `storageVerbinding`, net als eerder al gebeurde in de Postgres-tier.
+- **CI-shellscripts draaien nu ook lokaal op macOS (#1155).** De drie guards voor padcasing,
+  Postgres-tabeldekking en -kolomdekking gebruikten bash-4-constructies en PCRE-grep en faalden op
+  de standaard macOS-bash; ze zijn herschreven naar bash-3.2- en POSIX-constructies en geven op
+  macOS en de Linux-CI-runner aantoonbaar hetzelfde resultaat, ook bij een opzettelijke fout.
+- **Dagplanning crashte bij een wedstrijd die na 23:00 eindigt (#1128).** De tijd-as van de
+  planningsbalk liep dan tot 24:00, en die waarde bestond niet als tijdstip — de pagina gaf een
+  foutmelding. Het uur-label wordt nu rechtstreeks als tekst opgebouwd.
+- **Ontvangeradres van de contract-check-noodmail wordt niet meer gelogd (#1137).** Het functielog
+  meldt alleen nog dát de mail is verstuurd, conform het beleid om nooit e-mailadressen te loggen.
+- **Dry-run stond in één codepad "uit" zolang de instellingen nog niet geladen waren (#1122).** Het
+  statuspaneel toonde "dry-run actief" terwijl een bevestigde Sportlink-mutatie (kleedkamers, veld,
+  goed-/afkeuren van een wijzigingsverzoek) in die toestand écht verstuurd zou worden. Beide plekken
+  hanteren nu dezelfde regel: alles behalve een expliciet uitgezette dry-run is dry-run.
+- **Een mislukte teambegeleiding-import wiste voorheen de vorige, geldige lijst (#1131).** Op de
+  SQL Server-tier verwijderde de import eerst de bestaande begeleiders van de club en probeerde
+  daarna pas de nieuwe rijen in te voegen; faalde die insert (bijvoorbeeld door een teamnaam die
+  te lang is voor de databasekolom), dan bleef de tabel leeg — de vorige import was onherstelbaar
+  weg. Elke rij wordt nu eerst tegen de kolomlengtes gecontroleerd; bij een overtreding meldt de
+  import direct welke rij en kolom het probleem is en verandert er niets aan de database. Is de
+  CSV wel geldig, dan lopen het verwijderen van de oude rijen, het invoegen van de nieuwe en de
+  audit-regel voortaan in één geheel: bij een onverwachte fout gaat alles terug, nooit een halve
+  vervanging.
+- **Twee gelijktijdige teambegeleiding-imports voor dezelfde club konden op de Postgres-tier
+  allebei blijven staan in plaats van dat de laatste de vorige volledig vervangt (#1132).** Een
+  import wacht nu op een eventuele andere, nog lopende import voor diezelfde club voordat hij de
+  oude rijen verwijdert, zodat het eindresultaat altijd precies één complete, samenhangende lijst
+  is.
+- **Een instelling die naar "leeg" wordt gezet, geldt nu ook direct als leeg (#1135).** Op de
+  Postgres-tier bleef een instelling (bijvoorbeeld de accommodatienaam) na het wissen ervan tot de
+  eerstvolgende herstart nog de oude waarde tonen, omdat een geslaagde herlaad een gewiste waarde
+  niet meenam. Een herlaad ververst de instellingen nu altijd volledig, inclusief gewiste velden.
+- **Wedstrijdslot bevestigen accepteerde overlappende reserveringen en een duur van 0 minuten
+  (#1134).** `POST /api/planner/bevestig` sloeg de gekozen datum/tijd voorheen op zonder enige
+  controle: twee volledige-veldreserveringen die elkaar overlapten (bijv. 10:00–12:00 en
+  10:30–12:30 op hetzelfde veld) kregen allebei een bevestiging, en een duur van 0 minuten gaf
+  stilzwijgend een lege reservering. Het endpoint controleert nu vóór opslag of de duur positief
+  en zinnig is, en toetst de aanvraag atomair tegen de bestaande bezetting — met dezelfde
+  volledig-vs-gedeeld-veld-regel als de beschikbaarheidscheck. Een overlappend interval geeft nu
+  een duidelijke foutmelding met de botsende reservering; twee reserveringen die elkaar precies
+  aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00) blijven gewoon mogelijk. Gefixt op beide
+  databasetiers.
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
   productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
   nachtelijke synchronisatie. Oorzaak was een beveiligingsaanscherping uit dezelfde release
@@ -40,14 +211,74 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   `schemaWarning`. Een vervolgwijziging laat de smoke test na een productie-deploy op diezelfde
   velden controleren in plaats van alleen op een 200 (zie issue #1098). Het toepassen van de
   openstaande migraties blijft een actie van de beheerder — zie
-  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §54.
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §55.
+- **Databasemigraties blokkeren niet meer op een verschil in regeleindes tussen Windows en
+  macOS/Linux (#1112).** De controle die bewaakt dat een al toegepast migratiebestand niet achteraf
+  is gewijzigd, sloeg ook aan als hetzelfde bestand op een ander platform met andere regeleindes
+  was uitgelezen — en blokkeerde dan alle volgende migraties. De controle kijkt nu door regeleindes
+  heen. Een database die eerder vanaf Windows is gemigreerd wordt bij de eerstvolgende
+  migratieronde éénmalig gecorrigeerd, met een melding in het log; een écht gewijzigd bestand wordt
+  nog steeds geweigerd.
+- **Een time-out bij het versturen van een automatisch antwoord kon een tweede antwoord op
+  dezelfde e-mail opleveren (#1133).** Bij elke fout tijdens het versturen — ook een time-out,
+  onderbreking of verbindingsverlies waarbij het antwoord mogelijk al wél is aangekomen — werd de
+  bescherming tegen een dubbel antwoord ten onrechte opgeheven, waarna de eerstvolgende controle
+  het bericht opnieuw beantwoordde. Alleen een duidelijke afwijzing door de mailserver (bijv. een
+  ongeldig adres) telt voortaan als "er is niets verstuurd" en mag een nieuwe poging toestaan; bij
+  elke andere fout blijft de bescherming staan en wordt het bericht direct klaargezet voor
+  handmatige beoordeling in het e-mail-log, zodat er nooit een tweede antwoord de deur uit gaat.
+  Werkt op beide database-tiers.
+- **Op de Postgres-tier vindt "wie is de begeleider van dit team?" nu ook echt een begeleider
+  (#1140).** Een vraag naar het teamcontact via e-mail meldde op deze tier altijd "geen begeleider
+  gevonden", ook als die er wel was. De opzoeking in de begeleidingsgegevens werkt nu hetzelfde als
+  op de SQL Server-tier, inclusief het herkennen van een team in zowel de lokale schrijfwijze
+  ("JO13-1") als de KNVB-schrijfwijze. De interne herplanverzoek- en teamcontact-notificaties
+  spreken de begeleider daardoor ook weer bij naam aan in plaats van met een algemene aanhef.
 
 ### Security
-- **Volledige certificaatvalidatie op de databaseverbinding is nog een openstaande schuld.**
-  Supabase blijkt een eigen CA te gebruiken, zodat `verify-full` alleen werkt met het meegeleverde
-  CA-certificaat (`sslrootcert`) — anders dan de documentatie bij #1004 aannam. De uitrol daarvan
-  (certificaat in het deploy-pakket + pre-deploy-check op de effectieve TLS-modus) volgt in een
-  apart issue; tot die tijd is `tlsWarning` in `/api/health` het signaal dat dit nog openstaat.
+- **Sportlink-foutmeldingen worden niet meer letterlijk gelogd (#1122).** Bij een mislukte
+  Sportlink-aanroep kwam in twee gevallen de volledige antwoordtekst in het functielog; die kan
+  wedstrijd- en teamgegevens bevatten. Nu wordt alleen de HTTP-status gelogd, zoals elders al gold.
+- **De club-schakelaar in de aanroep (`X-Club-Code`) wordt op vorm gecontroleerd (#1122).** Alleen
+  een waarde van maximaal 20 tekens uit letters, cijfers, `-` en `_` wordt als clubcode gebruikt;
+  anders geldt de primaire club. Dit was al geen autorisatiegrens (zie deployment-model), maar
+  voorkomt vervuiling van metadata met willekeurige tekst.
+- **Het type in het feedbackformulier kan geen persoonsgegevens meer stiekem naar de AI-provider
+  sturen (#1127).** Het "Wat wil je melden?"-veld accepteerde server-side elke tekst, terwijl die
+  tekst ongefilterd in de AI-prompt terechtkwam vóórdat de bestaande privacy-controle ernaar keek.
+  Het veld wordt nu eerst tegen de vaste keuzes van het formulier gevalideerd; een afwijkende waarde
+  wordt meteen afgewezen, zonder dat er een AI- of GitHub-aanroep plaatsvindt. Geldt voor beide
+  database-tiers.
+- **Volledige certificaatvalidatie op de databaseverbinding: bouwstenen en certificaat klaar,
+  productie-cutover volgt apart (#1096, vervolg op #1004/#1095).** Supabase gebruikt een eigen CA,
+  zodat `verify-full` alleen werkt met het meegeleverde CA-certificaat (`sslrootcert`) — anders dan
+  de documentatie bij #1004 aannam. Deze release bundelt dat certificaat en voegt de CI-bewaking
+  toe; `POSTGRES_CONNECTION_STRING` in productie omzetten naar `verify-full` blijft een bewuste,
+  handmatige operatorstap ná deze release (zie cutover-runbook §49 stap 4) — tot die tijd blijft
+  `tlsWarning` in `/api/health` het signaal dat dit nog openstaat.
+- **Bewaartermijn voor het Sportlink-mutatielog (#1114).** Het log dat elke wijziging vastlegt die
+  deze app in Sportlink Club doorvoert (inclusief wie de actie startte) bleef tot nu onbeperkt
+  staan. Een maandelijkse opschoning verwijdert voortaan rijen ouder dan de ingestelde bewaartermijn
+  (standaard 365 dagen — een uitgangspunt dat de beheerder als verantwoordelijke voor
+  persoonsgegevens zelf vaststelt en zonder nieuwe versie kan aanpassen). Werkt op beide
+  database-tiers.
+- **Teambegeleiding: een trage teamwissel kon de contactgegevens van het verkeerde team tonen
+  en versturen (#1136).** Wie snel na elkaar twee teams selecteerde in het scherm
+  Teambegeleiding, kon in bepaalde gevallen zien dat het tweede team geselecteerd stond, terwijl de
+  getoonde contacten en ontvangers nog van het eerste team waren — met als risico dat een
+  doorgestuurde vraag bij de begeleiding van het verkeerde team terechtkwam. Een teamwissel
+  overschrijft de getoonde contacten nu direct, en het resultaat van een oudere, nog lopende
+  opzoeking wordt genegeerd zodra een nieuwere teamselectie is gestart.
+- **De dependency-scan controleert nu daadwerkelijk NuGet-pakketten, inclusief transitieve
+  afhankelijkheden (#1126).** De scan draaide eerder op de kale broncode zonder herstel, waardoor
+  Trivy structureel niets kon lezen (0 gescande manifesten) en de beveiligingspoort groen bleef
+  zonder ooit een pakket te controleren. De job herstelt nu eerst elk project met een lock-bestand
+  (niet gecommit) en faalt voortaan expliciet als dat herstel onvolledig is, of als de scan
+  achteraf alsnog 0 manifesten blijkt te hebben gecontroleerd.
+- **Het mailboxadres verschijnt niet langer in de logs bij een noodmail (#1143).** Op beide
+  database-tiers logde een geslaagde noodmail (bij een database-uitval of een OpenAI-quotalimiet)
+  het volledige e-mailadres van de mailbox. De logregel bevat voortaan alleen een niet-persoonlijke
+  gebeurtenis-identifier; het adres zelf komt nergens meer in een logregel terecht.
 
 ## [3.3.0.0] — 2026-09-12
 

@@ -1515,6 +1515,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0;
 GO
 
+-- #1114: SportlinkMutationAuditBewaarDagen kolom in dbo.AppSettings (AVG art. 5 lid 1 sub e).
+-- Bewaartermijn (dagen) voor dbo.SportlinkMutationAudit, gelezen door dbo.sp_CleanupSportlinkMutationAudit
+-- verderop in dit script. Default 365 is een gedocumenteerd uitgangspunt — zie
+-- Database/dbo/System Stored Procedures/sp_CleanupSportlinkMutationAudit.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkMutationAuditBewaarDagen')
+    ALTER TABLE [dbo].[AppSettings] ADD [SportlinkMutationAuditBewaarDagen] INT NOT NULL DEFAULT 365;
+GO
+
 -- UNIQUE constraint op ClubCode in dbo.AppSettings (slechts één rij per club)
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'UQ_AppSettings_ClubCode')
     ALTER TABLE [dbo].[AppSettings] ADD CONSTRAINT [UQ_AppSettings_ClubCode] UNIQUE ([ClubCode]);
@@ -2884,6 +2892,43 @@ BEGIN
 END;
 GO
 
+-- Bron: Database/dbo/System Stored Procedures/sp_CleanupSportlinkMutationAudit.sql  (#1114)
+--
+-- AVG art. 5 lid 1 sub e: dbo.SportlinkMutationAudit had geen bewaartermijn. [TriggerdDoor] is een
+-- Entra-gebruikersnaam/UPN — een persoonsgegeven. Bewaartermijn is UITGANGSPUNT (365 dagen), geen
+-- definitief beleid — zie het bronbestand. Configureerbaar via
+-- dbo.AppSettings.SportlinkMutationAuditBewaarDagen. Enkele fase, zelfde redenering als
+-- sp_CleanupAppSettingsAudit hierboven.
+CREATE OR ALTER PROCEDURE [dbo].[sp_CleanupSportlinkMutationAudit]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BewaarDagen INT;
+
+    -- Primaire club (niet de ALLSTARS-democlub) is leidend voor deployment-brede instellingen,
+    -- zelfde patroon als sp_CleanupAppSettingsAudit (#598/#740).
+    SELECT TOP 1 @BewaarDagen = [SportlinkMutationAuditBewaarDagen]
+    FROM [dbo].[AppSettings]
+    WHERE [ClubCode] <> 'ALLSTARS'
+    ORDER BY [ClubCode];
+
+    -- Vangnet: alleen de democlub aanwezig, of de kolom bevat NULL door een pre-migratie rij.
+    IF @BewaarDagen IS NULL
+        SELECT TOP 1 @BewaarDagen = [SportlinkMutationAuditBewaarDagen]
+        FROM [dbo].[AppSettings]
+        ORDER BY [ClubCode];
+
+    -- Ontbrekende of onzinnige waarde: val terug op de gedocumenteerde default in plaats van nooit
+    -- op te ruimen — een configuratiefout mag niet stilzwijgend in een AVG-overtreding ontaarden.
+    IF @BewaarDagen IS NULL OR @BewaarDagen <= 0
+        SET @BewaarDagen = 365;
+
+    DELETE FROM [dbo].[SportlinkMutationAudit]
+    WHERE [Tijdstip] < DATEADD(DAY, -@BewaarDagen, GETUTCDATE());
+END;
+GO
+
 -- ============================================================
 -- #635: AllStars FC demodata (idempotent)
 --
@@ -3289,4 +3334,25 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_VeldBeschikbaarheid_VeldPeriode')
     ALTER TABLE [dbo].[VeldBeschikbaarheid]
         ADD CONSTRAINT [FK_VeldBeschikbaarheid_VeldPeriode] FOREIGN KEY ([PeriodeId]) REFERENCES [dbo].[VeldPeriode]([Id]);
+GO
+
+-- #1138: SyncJobs — status van een sync-job op de "sync-jobs" Storage Queue. Vervangt de
+-- fire-and-forget Task.Run in AdminSyncFunction.Trigger; SyncJobProcessor (QueueTrigger) werkt de
+-- status bij naar running/succeeded/failed.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SyncJobs'))
+BEGIN
+    CREATE TABLE [dbo].[SyncJobs] (
+        [Id]             UNIQUEIDENTIFIER NOT NULL,
+        [ClubCode]       NVARCHAR(20)     NOT NULL,
+        [Status]         NVARCHAR(20)     NOT NULL CONSTRAINT [DF_SyncJobs_Status] DEFAULT ('pending'),
+        [WeekOffsetFrom] INT              NOT NULL,
+        [WeekOffsetTo]   INT              NOT NULL,
+        [CreatedAt]      DATETIME2        NOT NULL CONSTRAINT [DF_SyncJobs_CreatedAt] DEFAULT (GETUTCDATE()),
+        [StartedAt]      DATETIME2        NULL,
+        [CompletedAt]    DATETIME2        NULL,
+        [ErrorMessage]   NVARCHAR(1000)   NULL,
+        CONSTRAINT [PK_SyncJobs] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_SyncJobs_ClubCode_CreatedAt] ON [dbo].[SyncJobs] ([ClubCode], [CreatedAt] DESC);
+END
 GO

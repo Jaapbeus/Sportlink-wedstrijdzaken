@@ -39,9 +39,8 @@ public class BerichtClassificatie
     // Heel veld gevraagd — overschrijft de standaard veldafmeting uit Speeltijden
     public bool? HeelVeld { get; set; }
 
-    // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is (#561).
-    // Niet vertaald op deze tier — zie BerichtPipeline: het "verzet zonder datum"-pad valt hier
-    // altijd terug op het standaard herplan-pad (geen knvbStandaardRegio-instelling op deze tier).
+    // Door de pipeline gezet (niet door AI) wanneer een KNVB-bijlage + BCC van toepassing is
+    // (#561/#1141) — zie BerichtPipeline.BouwVerzetZonderDatumResponseAsync.
     public bool VoegKnvbPdfBijlageToe { get; set; }
     public string? KnvbBijlageRegio { get; set; }
 

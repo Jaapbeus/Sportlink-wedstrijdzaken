@@ -1,0 +1,117 @@
+@page "/oefenwedstrijd-aanmaken"
+@* Alle logica staat in OefenwedstrijdAanmaken.razor.cs (#1122). *@
+
+<PageTitle>Oefenwedstrijd aanmaken — Admin</PageTitle>
+
+<h1>Oefenwedstrijd aanmaken</h1>
+
+<div class="alert alert-warning py-2">
+    <strong>Scaffolding (#997/#1116):</strong> de Sportlink-aanroep is nog niet live bevestigd en wordt
+    daarom altijd gesimuleerd. Er gaat niets naar Sportlink totdat een mens dit met een netwerktrace
+    heeft bevestigd.
+</div>
+
+<p class="text-muted">
+    Oefenwedstrijd op de eigen accommodatie. Team en veld komen uit de eigen database; de locatie
+    wordt automatisch uit de instellingen gevuld.
+</p>
+
+@if (_laden)
+{
+    <div class="text-muted"><span class="spinner-border spinner-border-sm me-1"></span> Teams en velden laden…</div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_laadFout))
+    {
+        <div class="alert alert-danger">@_laadFout</div>
+    }
+
+    <form @onsubmit="MaakAanAsync" @onsubmit:preventDefault style="max-width: 48rem;">
+        <div class="row g-3">
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-datum">Datum</label>
+                <input id="oef-datum" type="date" class="form-control" @bind="_datum" required />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label">Aanvangstijd</label>
+                <TimeInput @bind-Value="_tijd" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label" for="oef-duur">Duur (minuten)</label>
+                <input id="oef-duur" type="number" class="form-control" min="1" max="240" @bind="_duur" />
+            </div>
+
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-team">Team</label>
+                <select id="oef-team" class="form-select" @bind="_teamNaam" required>
+                    <option value="">— kies een team —</option>
+                    @foreach (var team in _teams)
+                    {
+                        <option value="@team">@team</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-tegenstander">Tegenstander</label>
+                <input id="oef-tegenstander" type="text" class="form-control" placeholder="bijv. SV Voorbeeld JO10-2"
+                       @bind="_tegenstander" required />
+            </div>
+
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-veld">Veld</label>
+                <select id="oef-veld" class="form-select" @bind="_veldNummer">
+                    <option value="">— geen veld —</option>
+                    @foreach (var veld in _velden)
+                    {
+                        <option value="@veld.VeldNummer">@veld.VeldNaam</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="oef-omschrijving">Omschrijving <span class="text-muted">(optioneel)</span></label>
+                <input id="oef-omschrijving" type="text" class="form-control" placeholder="@StandaardOmschrijving" @bind="_omschrijving" />
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary" disabled="@(_status.Bezig || _teams.Count == 0)">
+                @if (_status.Bezig)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Oefenwedstrijd aanmaken
+            </button>
+        </div>
+    </form>
+}
+
+@if (!string.IsNullOrEmpty(_status.Melding))
+{
+    <div class="mt-3 alert @(_status.IsFout ? "alert-danger" : "alert-info")" style="max-width: 48rem;">
+        <div>@_status.Melding</div>
+        @if (_resultaat != null)
+        {
+            <dl class="row mb-0 mt-2 small">
+                <dt class="col-sm-4">Omschrijving</dt><dd class="col-sm-8">@_resultaat.Omschrijving</dd>
+                <dt class="col-sm-4">Sportlink-team-ID</dt><dd class="col-sm-8">@(_resultaat.SportlinkTeamId ?? "—")</dd>
+                <dt class="col-sm-4">Leeftijdscategorie</dt><dd class="col-sm-8">@(_resultaat.AgeClassCode ?? "—")</dd>
+                <dt class="col-sm-4">Locatie-ID (Sportlink)</dt><dd class="col-sm-8">@(_resultaat.FacilityId ?? "—")</dd>
+                <dt class="col-sm-4">Veld</dt><dd class="col-sm-8">@(_resultaat.VeldNaam ?? "—")</dd>
+                @if (!string.IsNullOrEmpty(_resultaat.PublicMatchId))
+                {
+                    <dt class="col-sm-4">PublicMatchId</dt><dd class="col-sm-8"><code>@_resultaat.PublicMatchId</code></dd>
+                }
+            </dl>
+            @if (_resultaat.Waarschuwingen.Count > 0)
+            {
+                <ul class="mb-0 mt-2 small">
+                    @foreach (var w in _resultaat.Waarschuwingen)
+                    {
+                        <li>@w</li>
+                    }
+                </ul>
+            }
+        }
+    </div>
+}

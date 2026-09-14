@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.0.2",
+    "version": "3.4.0.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -493,6 +493,48 @@
           "status": {
             "type": "string",
             "example": "Te bevestigen"
+          }
+        }
+      },
+      "BevestigConflictResponse": {
+        "description": "Antwoord bij een bezettingsconflict (#1134) — dezelfde notie van conflict als\n`POST /planner/check-availability`: volledige-veldreserveringen die overlappen, of\ngedeelde-veldreserveringen waarvan de veldfracties samen boven 1.00 uitkomen.\n",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "Veld 3 is op 2026-04-25 tussen 12:00 en 13:15 al bezet."
+          },
+          "conflicterendeWedstrijd": {
+            "type": "object",
+            "properties": {
+              "wedstrijd": {
+                "type": "string",
+                "nullable": true,
+                "example": "[ClubCode] JO13-1 - Tegenstander"
+              },
+              "aanvangsTijd": {
+                "type": "string",
+                "example": "12:30"
+              },
+              "eindTijd": {
+                "type": "string",
+                "example": "13:45"
+              },
+              "veldNummer": {
+                "type": "integer",
+                "example": 3
+              },
+              "veldDeelGebruik": {
+                "type": "number",
+                "format": "decimal",
+                "example": 1.0
+              },
+              "bron": {
+                "type": "string",
+                "description": "Herkomst van de conflicterende bezetting: Competitie, Planner of Training",
+                "example": "Planner"
+              }
+            }
           }
         }
       },
@@ -1140,6 +1182,210 @@
             "items": {
               "type": "string"
             }
+          },
+          "IsDryRun": {
+            "type": "boolean",
+            "description": "#998: true als dry-run actief was — niets is echt naar Sportlink verstuurd, de\naanroep is alleen gesimuleerd en gelogd (audit-resultaat \"DryRun\"). IsSuccess is dan\naltijd true.\n"
+          },
+          "IsForcedDryRun": {
+            "type": "boolean",
+            "description": "#994: true als de PUT/POST werd overgeslagen door de code-niveau forceDryRun-lock (een\nmutatie waarvan de requestbody nog niet live bevestigd is, bijv. officials toewijzen) —\nONAFHANKELIJK van de club-instelling sportlinkDryRun (audit-resultaat \"DryRunLocked\").\nAls dit true is, is IsDryRun ook altijd true.\n"
+          },
+          "PublicMatchId": {
+            "type": "string",
+            "nullable": true,
+            "description": "#997: door Sportlink teruggegeven PublicMatchId van een NIEUW aangemaakte oefenwedstrijd\n(POST .../clubmatch/ClubMatch) — null voor elke andere mutatie, en ook null zolang\nIsForcedDryRun/IsDryRun de aanroep simuleerde (in de praktijk dus altijd null zolang de\nClubMatch-code-lock actief is).\n"
+          }
+        }
+      },
+      "SportlinkMatchChangeRequestResponse": {
+        "type": "object",
+        "description": "Resultaat van het wijzigingsverzoek-endpoint — ALLEEN stap 1 (valideren) van Sportlinks\ntweestaps flow (#995, epic #986). Spiegelt\nPlanner.Shared.Integrations.SportlinkClub.SportlinkMatchChangeRequestResult. Er bestaat\nbewust geen endpoint voor stap 2 (bevestigen).\n",
+        "properties": {
+          "Mutatie": {
+            "$ref": "#/components/schemas/SportlinkMutationResponse"
+          },
+          "Validatie": {
+            "type": "object",
+            "nullable": true,
+            "description": "ONBEVESTIGD — geparsed uit Sportlinks `ConfirmationNeeded`-veld, nooit met een\nnetwerktrace gezien. `null` zolang de code-lock actief is (in de praktijk altijd,\nzie `SportlinkClubClient.UpdateMatchDetailsChangeRequestLiveBevestigd`).\n",
+            "properties": {
+              "ConfirmationNeeded": {
+                "type": "boolean"
+              },
+              "ValidationResultMessages": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "HasBlockingMessages": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "OefenwedstrijdAanmaakResponse": {
+        "description": "#1116: het generieke mutatieresultaat (zelfde velden als SportlinkMutationResponse) plus wat\nde server uit teamnaam en instellingen heeft afgeleid, zodat de beheerder ziet wat er\n(gesimuleerd) naar Sportlink zou gaan. Waarschuwingen zijn geen fouten: het pad blijft\ncode-gelockt en een lege koppeling mag de simulatie niet blokkeren.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SportlinkMutationResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "Omschrijving": {
+                "type": "string"
+              },
+              "SportlinkTeamId": {
+                "type": "string",
+                "nullable": true,
+                "description": "his.teams.teamcode van de gevalideerde KNVB-alias van het team, of null als er geen of meerdere verschillende ID's aan hangen."
+              },
+              "AgeClassCode": {
+                "type": "string",
+                "nullable": true
+              },
+              "FacilityId": {
+                "type": "string",
+                "nullable": true,
+                "description": "Sportlink-locatie-ID van de eigen accommodatie, of null als die niet (eenduidig) gevonden is."
+              },
+              "VeldNaam": {
+                "type": "string",
+                "nullable": true
+              },
+              "Waarschuwingen": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SportlinkClubMatchPickListsResponse": {
+        "type": "object",
+        "description": "De twee ondersteunende picklists die in deze ronde bewust WEL zijn aangesloten (#997,\nbewust beperkte scope): PickListsTeams + PickListsLocation. Read-only en\npersoonsgegevensvrij (teams/locaties, geen personen). ONBEVESTIGD qua werkelijke\nitem-veldnamen — zie Planner.Shared.Integrations.SportlinkClub.SportlinkPickListItem.\n",
+        "properties": {
+          "Teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SportlinkPickListItem"
+            }
+          },
+          "Locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SportlinkPickListItem"
+            }
+          }
+        }
+      },
+      "SportlinkPickListItem": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "string",
+            "nullable": true
+          },
+          "Naam": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SportlinkExtensieHealthResponse": {
+        "type": "object",
+        "description": "Statussectie Sportlink Web Extension (#998, epic #986). Zonder live=true uitsluitend uit\neigen database (geen Sportlink-aanroep); nooit een tokenwaarde of Match-data met\npersoonsgegevens.\n",
+        "properties": {
+          "ExtensionEnabled": {
+            "type": "boolean"
+          },
+          "DryRun": {
+            "type": "boolean"
+          },
+          "EgressAllowed": {
+            "type": "boolean"
+          },
+          "Rollen": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "RolNaam": {
+                  "type": "string"
+                },
+                "Gekoppeld": {
+                  "type": "boolean"
+                },
+                "LaatstVerverstOp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "RefreshTokenVervaltOp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "LaatsteMutatieFout": {
+            "type": "string",
+            "nullable": true
+          },
+          "LaatsteMutatieFoutOp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "LaatsteContractCheck": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "UitgevoerdOp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "IsOk": {
+                "type": "boolean"
+              },
+              "HttpStatus": {
+                "type": "integer",
+                "nullable": true
+              },
+              "AfwijkendeVelden": {
+                "type": "string",
+                "nullable": true
+              },
+              "FoutmeldingSamenvatting": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "Live": {
+            "type": "object",
+            "nullable": true,
+            "description": "Alleen gevuld bij ?live=true.",
+            "properties": {
+              "TokenRefreshGelukt": {
+                "type": "boolean"
+              },
+              "MatchCheckResultaat": {
+                "type": "string",
+                "nullable": true
+              },
+              "MatchCheckHttpStatus": {
+                "type": "integer",
+                "nullable": true
+              }
+            }
           }
         }
       },
@@ -1207,6 +1453,64 @@
             "nullable": true
           }
         }
+      },
+      "SportlinkWedstrijdContext": {
+        "type": "object",
+        "description": "Eigen wedstrijdcontext bij een wijzigingsverzoek (#1111): uit `his.matches` via\n`public.sportlinkpublicmatchidcache`, niet uit extra Sportlink-velden (die zijn niet live\nbevestigd). Spiegelt FunctionApp.Postgres.Sportlink.SportlinkWedstrijdContext.\n",
+        "properties": {
+          "Wedstrijdcode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "Wedstrijdnummer": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "Thuisteam": {
+            "type": "string",
+            "nullable": true
+          },
+          "Uitteam": {
+            "type": "string",
+            "nullable": true
+          },
+          "Datum": {
+            "type": "string",
+            "nullable": true,
+            "description": "YYYY-MM-DD (uit kaledatum)"
+          },
+          "Tijd": {
+            "type": "string",
+            "nullable": true,
+            "description": "Aanvangstijd zoals gesynchroniseerd, bijv. 14:30"
+          },
+          "Accommodatie": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SportlinkChangeRequestOverzichtItem": {
+        "description": "Eén rij van GET /sportlink/change-requests sinds #1111: het Sportlink-verzoek plus onze\neigen wedstrijdcontext. Spiegelt FunctionApp.Postgres.Sportlink.SportlinkChangeRequestOverzichtItem.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SportlinkChangeRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "Wedstrijd": {
+                "nullable": true,
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SportlinkWedstrijdContext"
+                  }
+                ]
+              }
+            }
+          }
+        ]
       },
       "UpdateSettingsRequest": {
         "type": "object",
@@ -1295,6 +1599,57 @@
               "ok",
               "geen-sync-uitgevoerd"
             ]
+          },
+          "job": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SyncJob"
+              }
+            ],
+            "nullable": true,
+            "description": "Status van de meest recente sync-job, of van de job opgegeven via de query-param `jobId` (#1138). `null` zolang er nog nooit een sync is getriggerd."
+          }
+        }
+      },
+      "SyncJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "weekOffsetFrom": {
+            "type": "integer"
+          },
+          "weekOffsetTo": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -1304,6 +1659,11 @@
           "status": {
             "type": "string",
             "example": "gestart"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Id van de aangemaakte sync-job (#1138) — geef door aan `GET /beheer/sync/status?jobId=` om de voortgang te pollen."
           },
           "weekOffsetFrom": {
             "type": "integer"
@@ -3113,7 +3473,7 @@
         ],
         "operationId": "bevestigWedstrijd",
         "summary": "Wedstrijdslot boeken",
-        "description": "Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.\nStatus wordt altijd als `\"Te bevestigen\"` aangemaakt.\n",
+        "description": "Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.\nStatus wordt altijd als `\"Te bevestigen\"` aangemaakt.\n\nServer-side gevalideerd (#1134): de wedstrijdduur moet positief zijn en binnen de dag\nblijven (400 anders), en de aanvraag wordt atomair tegen de bestaande bezetting getoetst\nvóór opslag — een overlappend interval geeft 409 in plaats van een stille dubbele boeking.\nTwee reserveringen die elkaar precies aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00)\nzijn GEEN conflict.\n",
         "security": [
           {
             "functionKey": []
@@ -3145,6 +3505,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BevestigConflictResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -3778,6 +4148,64 @@
         }
       }
     },
+    "/beheer/sportlink-extensie/health": {
+      "get": {
+        "tags": [
+          "beheer"
+        ],
+        "operationId": "getSportlinkExtensieHealth",
+        "summary": "Statussectie Sportlink Web Extension (#998, epic",
+        "description": "Zonder `live=true` (default) doet dit endpoint GEEN Sportlink-aanroep — alles komt uit\nonze eigen database (extension/dry-run-instelling, EgressGuard-status, koppeling +\nlaatste tokenverversing per rol, laatste mutatiefout, laatste contract-check). Alleen bij\nexpliciete `?live=true` (gebruikersklik \"Nu live controleren\") doet het één\ntokenverversing en één leesaanroep — en rapporteert dan uitsluitend HTTP-status/\nresultaataard, nooit responsdata.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "live",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statusoverzicht",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkExtensieHealthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "live=true opgegeven terwijl de extension uitstaat"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "description": "live=true opgegeven terwijl uitgaande integraties niet zijn toegestaan (EgressGuard), of de Sportlink-client niet geconfigureerd is"
+          }
+        }
+      }
+    },
     "/sportlink/match/{wedstrijdcode}": {
       "get": {
         "tags": [
@@ -4082,6 +4510,190 @@
         }
       }
     },
+    "/sportlink/match/{wedstrijdcode}/officials": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkOfficials",
+        "summary": "Officials (scheidsrechter/assistenten) toewijzen (#994, epic",
+        "description": "**ONBEVESTIGD, altijd gesimuleerd:** endpoint (`PUT\ncompetition/match/official/MatchOfficialsAction`) en requestbody zijn gereverse-engineerd\nuit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Deze aanroep loopt\ndaarom altijd via een code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling\n`sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan en de\nlock-constante in een aparte, reviewbare PR omzet. Zelfde volgorde als `.../dressingrooms`\n(resolve → guard `SportlinkMutationSoort.Officials` → audit → mutatie), met een\ntaakspecifieke responsparser: als één official een `ValidationDescription` heeft, wordt\n`IsSuccess=false` gezet ook al is de HTTP-status 200 (\"opgeslagen met fouten\" in Sportlink\nzelf). AVG: uitsluitend positie + een door de beheerder ingevoerde relatiecode/persoons-ID\nper regel — geen zoekfunctie, geen namen.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "Officials": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "OfficialPosition": {
+                          "type": "string",
+                          "description": "ONBEVESTIGD — aangenomen waarden, bijv. \"Referee\"/\"AssistantReferee1\"/\"AssistantReferee2\""
+                        },
+                        "PersoonId": {
+                          "type": "string",
+                          "description": "Relatiecode/persoons-identifier zoals ingevoerd door de beheerder — geen naam."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (IsSuccess kan alsnog false zijn, ook bij een code-gelockte simulatie is dit altijd true)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd of PublicMatchId niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/match/{wedstrijdcode}/change-request": {
+      "put": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "putSportlinkMatchChangeRequest",
+        "summary": "Wijzigingsverzoek datum/tijd/accommodatie (#995, epic",
+        "description": "**ONBEVESTIGD, altijd gesimuleerd, en de enige mutatie die een ECHTE tegenstander raakt:**\nSportlink werkt voor datum/tijd/accommodatie in twee stappen (valideren → bevestigen) — de\nbevestigingsstap stuurt een goedkeuringsverzoek naar de tegenstander. Dit endpoint bouwt\nUITSLUITEND stap 1: er bestaat bewust geen endpoint, client-methode of UI-knop voor stap 2.\nZelfde onderliggende Sportlink-endpoint als `.../field`\n(`PUT competition/match/UpdateMatchDetails`), maar met `MatchDate`/`StartTime`/`FacilityId`/\n`MatchChangeRequestRemarks` overschreven in plaats van het veld. Loopt altijd via een\ncode-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling `sportlinkDryRun` —\ntotdat een mens (nooit een agent) een live trace heeft gedaan: zelfs stap 1 kan in\nwerkelijkheid al het gevaarlijke moment zijn als Sportlinks eerste PUT geen \"dry validate\"\nblijkt te zijn. Guard: `SportlinkMutationSoort.DatumTijdAccommodatie` (uitsluitend\n`IsHomeMatch` + de generieke niet-afgelast/niet-concept-checks — geen specifieke\n`IsXxxAllowed`-vlag bestaat hiervoor bij Sportlink). `Toelichting` is verplicht.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wedstrijdcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "Toelichting"
+                ],
+                "properties": {
+                  "NieuweDatum": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "yyyy-MM-dd — null laat de datum ongewijzigd (blijft uit de snapshot)."
+                  },
+                  "NieuweStartTijd": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "HH:mm — null laat de starttijd ongewijzigd."
+                  },
+                  "NieuweFacilityId": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "null laat de accommodatie ongewijzigd."
+                  },
+                  "Toelichting": {
+                    "type": "string",
+                    "description": "Verplicht — een wijzigingsverzoek zonder toelichting is voor de tegenstander niet te beoordelen."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validatieresultaat (Mutatie.IsSuccess kan alsnog false zijn; in de praktijk altijd een gesimuleerd resultaat door de code-lock)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkMatchChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Toelichting ontbreekt, of NieuweDatum/NieuweStartTijd is geen geldige datum/tijd"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Wedstrijd of PublicMatchId niet gevonden"
+          },
+          "409": {
+            "description": "Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
     "/sportlink/change-requests": {
       "get": {
         "tags": [
@@ -4089,7 +4701,7 @@
         ],
         "operationId": "getSportlinkChangeRequests",
         "summary": "Inkomende wijzigingsverzoeken ophalen (#996, epic",
-        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`RequestStatus == \"CONFIRM\"` voor verzoeken die op ons wachten.\n",
+        "description": "Niet wedstrijdcode-gescoped: `MatchChangeRequests` levert alle openstaande verzoeken voor\nhet gekoppelde serviceaccount in één keer. Filter client-side op\n`RequestStatus == \"CONFIRM\"` voor verzoeken die op ons wachten.\n\nSinds #1111 draagt elk item ook `Wedstrijd`: onze eigen wedstrijdcontext (wedstrijdnummer,\nteams, datum, tijd, accommodatie) uit `his.matches` via de PublicMatchId-cache. `null` als\nde wedstrijd nog niet gecachet is. Openstaande verzoeken (`CONFIRM`) staan vooraan.\n",
         "security": [
           {
             "easyAuth": []
@@ -4097,13 +4709,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Lijst met wijzigingsverzoeken (kan leeg zijn)",
+            "description": "Lijst met wijzigingsverzoeken (kan leeg zijn), openstaande eerst",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/SportlinkChangeRequest"
+                    "$ref": "#/components/schemas/SportlinkChangeRequestOverzichtItem"
                   }
                 }
               }
@@ -4208,6 +4820,144 @@
           },
           "502": {
             "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/club-match": {
+      "post": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "postSportlinkClubMatch",
+        "summary": "Oefenwedstrijd (\"clubwedstrijd\") aanmaken (#997, epic",
+        "description": "**ONBEVESTIGD, altijd gesimuleerd:** endpoint (`POST\ncompetition/match/clubmatch/ClubMatch`) en requestbody zijn gereverse-engineerd uit\nSportlinks eigen frontend-code, nooit met een netwerktrace gezien — van alle #986-sub-\nissues heeft dit issue de MEESTE onbekenden (volledige body onbevestigd, meerdere\npicklist-vormen onbekend, delete-methode onbekend). Deze aanroep loopt daarom altijd via\neen code-niveau `forceDryRun`-lock — ONAFHANKELIJK van de club-instelling\n`sportlinkDryRun` — totdat een mens (nooit een agent) een live trace heeft gedaan.\nStructureel anders dan de andere `/sportlink/match/...`-endpoints: er is vooraf GEEN\nbestaande wedstrijd, dus geen `SportlinkMutationGuard`-check — in plaats daarvan alleen\nonze eigen `sportlinkExtensionEnabled`-toggle + EgressGuard. Bewust NIET gebouwd in deze\nronde: verwijderen (`ClubMatchDelete`) en uitslag vastleggen (`ClubMatchScore`).\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "MatchDateTime",
+                  "TeamNaam",
+                  "Tegenstander"
+                ],
+                "description": "Sinds #1116 stuurt het formulier alleen wat een wedstrijdsecretaris snel intikt; de\nserver leidt de Sportlink-velden af. Teamnaam → `PublicHomeTeamId` via de\ngevalideerde aliassen (`public.teamaliassen` → `his.teams.teamcode`, het team-ID dat\nde Sportlink-dataservice zelf hanteert; of Sportlink Club hetzelfde ID verwacht is\nONBEVESTIGD; bij 0 of meerdere verschillende ID's blijft het leeg met waarschuwing) en\n`AgeClassCode` via de leeftijdscategorie van het team. Locatie → `FacilityId` door de\nclub-instelling `accommodatie` op naam op te zoeken in de Sportlink-locatielijst\n(read-only GET, per uur gecachet). `FieldId` wordt bewust niet meegestuurd (het veld\ngaat volgens het plan van #997 pas ná aanmaken via het veld-mutatiepad); het gekozen\nveld staat wel in de standaard-omschrijving en in de audit.\n",
+                "properties": {
+                  "MatchDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Datum + aanvangstijd (lokale tijd van de club, zonder tijdzone)."
+                  },
+                  "Duration": {
+                    "type": "integer",
+                    "default": 90,
+                    "minimum": 1,
+                    "maximum": 240,
+                    "description": "Duur in minuten."
+                  },
+                  "TeamNaam": {
+                    "type": "string",
+                    "description": "Naam van een actief clubteam zoals `GET /beheer/teams` die teruggeeft (hoofdletterongevoelig)."
+                  },
+                  "Tegenstander": {
+                    "type": "string",
+                    "description": "Vrije tekst — gaat als `PublicAwayTeamId` mee (ONBEVESTIGD of Sportlink hier vrije tekst accepteert)."
+                  },
+                  "VeldNummer": {
+                    "type": "integer",
+                    "nullable": true,
+                    "description": "Veldnummer van een actief veld uit `GET /beheer/velden`; onbekend/inactief veld → 400."
+                  },
+                  "Description": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Eigen omschrijving; leeg → `Oefenwedstrijd [team] - [tegenstander] ([veld])`."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutatieresultaat (in de praktijk altijd IsForcedDryRun=true zolang de code-lock actief is)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OefenwedstrijdAanmaakResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "MatchDateTime/TeamNaam/Tegenstander ontbreekt, Duration buiten 1–240, of team/veld niet bekend als actief"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "description": "Sportlink gaf geen bruikbare respons"
+          },
+          "503": {
+            "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
+          }
+        }
+      }
+    },
+    "/sportlink/club-match/picklists": {
+      "get": {
+        "tags": [
+          "sportlink"
+        ],
+        "operationId": "getSportlinkClubMatchPickLists",
+        "summary": "Ondersteunende picklists voor het oefenwedstrijd-formulier (#997, bewust beperkte scope)",
+        "description": "Alleen de twee picklists die de UI het hardst nodig heeft: PickListsTeams en\nPickListsLocation — read-only en persoonsgegevensvrij (teams/locaties, geen personen).\nBewust NIET automatisch geladen bij het openen van de pagina, alleen op expliciet verzoek\nvanuit de UI. De overige drie ondersteunende endpoints uit het issue\n(ClubMatchDefaults, PickListsMatchInformation, codetable/AgeClassList) zijn in deze ronde\nbewust niet aangesloten.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "De twee picklists (kunnen leeg zijn)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SportlinkClubMatchPickListsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Extension staat uit, of de Sportlink-koppeling ontbreekt/is verlopen"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           },
           "503": {
             "description": "Uitgaande integraties staan hier niet toe (EgressGuard)"
@@ -7603,7 +8353,7 @@
         ],
         "operationId": "importTeambegeleiding",
         "summary": "Teambegeleiding importeren uit CSV",
-        "description": "Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar\n`avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden eerst verwijderd\n(TRUNCATE-en-vervang per `ClubCode`).\n\n**AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel\nin `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen\npersoonsgegevens.\n",
+        "description": "Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar\n`avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden vervangen: een\nclub-scoped DELETE (nooit een TRUNCATE, dat zou andere clubs' rijen ook wissen), gevolgd\ndoor de nieuwe rijen en de audit-regel in `avg.ImportLog` — allemaal in één transactie met\nrollback bij elke fout (#1131/#1132). Kolomlengtes worden vóórdat er iets destructiefs\ngebeurt gevalideerd; een overtreding levert een `400` op en laat de vorige import ongemoeid.\nDe Postgres-tier serialiseert bovendien vervangingen per club (`pg_advisory_xact_lock`), zodat\ntwee gelijktijdige imports voor dezelfde club nooit tot een vereniging van beide batches\nkunnen leiden.\n\n**AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel\nin `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen\npersoonsgegevens.\n",
         "security": [
           {
             "easyAuth": []
@@ -7636,7 +8386,7 @@
             }
           },
           "400": {
-            "description": "CSV ontbreekt of mist verplichte kolommen",
+            "description": "CSV ontbreekt, mist verplichte kolommen, of één of meer rijen overschrijden de maximale kolomlengte (#1131) — in dat laatste geval is de vorige import niet gewijzigd.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7648,6 +8398,13 @@
                     "ontbreekt": {
                       "type": "array",
                       "description": "Namen van de ontbrekende verplichte kolommen",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fouten": {
+                      "type": "array",
+                      "description": "Bij een kolomlengte-overtreding: één omschrijving per rij/kolom, bijv. \"Rij 3, kolom 'Team': 101 tekens (maximaal 100).\"",
                       "items": {
                         "type": "string"
                       }

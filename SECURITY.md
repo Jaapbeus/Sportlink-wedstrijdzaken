@@ -118,10 +118,20 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 | **Secret Detection (gitleaks)** | Wachtwoorden, tokens, API-sleutels in code én volledige git-geschiedenis | ✅ Ja |
 | **PII File Detection** | CSV- en Excel-bestanden met mogelijke persoonsgegevens | ✅ Ja |
 | **PII Pattern Scan** | Nederlandse telefoonnummers, persoonlijke e-mailadressen, ledencodesn | ✅ Ja |
-| **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in packages (HIGH/CRITICAL) | Waarschuwing |
+| **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in NuGet-pakketten (HIGH/CRITICAL), inclusief transitieve dependencies | ✅ Ja |
 | **Security Gate** | Faalt als één van de bovenstaande verplichte checks faalt | ✅ Ja |
 
 De **Security Gate** is de finale poortwachter. Zolang die rood is, is merge naar `main` geblokkeerd.
+
+**Dependency Vulnerability Scan — dekking (#1126):** een kale `.csproj` is voor Trivy geen
+ondersteund NuGet-manifest. De job genereert daarom zelf per project een `packages.lock.json`
+(`dotnet restore -p:RestorePackagesWithLockFile=true`, inclusief transitieve pakketten) vóórdat
+Trivy scant — dit bestand wordt **nooit gecommit** (zie `.gitignore`; Dependabot onderhoudt hier
+geen lock-bestanden en een gecommit exemplaar zou stilzwijgend uit de pas lopen met de echte
+restore). Twee harde guards bewaken dat de scan nooit meer stilzwijgend leeg draait: vóór Trivy
+(alle verwachte lock-bestanden aanwezig en gevuld met `dependencies`) en ná Trivy (de JSON-output
+bevat minstens één daadwerkelijk gescand `nuget`-manifest). Zonder deze guards vond de job eerder
+`Number of language-specific files num=0` en was de gate groen zonder ooit een pakket te scannen.
 
 ### Laag 3 — .gitignore (passieve blokkade)
 
@@ -165,7 +175,7 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 
 De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
 
-`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de tabel wordt bij elke import volledig vervangen (TRUNCATE + bulk insert). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
+`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de rijen van de club worden bij elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier, geserialiseerd per club). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
 
 `dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
 een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij
@@ -185,6 +195,43 @@ beleid** — de repo-eigenaar kan dit aanpassen via `dbo.AppSettings.AppSettings
 zonder redeploy. De cleanup wordt maandelijks (1e van de maand, 04:30 UTC) uitgevoerd door
 `CleanupAppSettingsAuditFunction`. De stored procedure `dbo.sp_CleanupAppSettingsAudit` is
 idempotent.
+
+### Sportlink-mutatie-audit (`SportlinkMutationAudit`, #1114)
+
+`dbo.SportlinkMutationAudit` / `public.sportlinkmutationaudit` legt bij elke Sportlink-mutatiepoging
+vanuit deze app (kleedkamers, veld, wijzigingsverzoek goed-/afkeuren, epic #986) een rij vast.
+`TriggerdDoor` is het e-mailadres/UPN van de beheerder die de actie triggerde — server-side bepaald
+uit de Easy Auth-claim, nooit uit client-input — en daarmee een persoonsgegeven.
+
+| Fase | Wanneer | Actie |
+|---|---|---|
+| Verwijderen | > bewaartermijn (default 365 dagen / één seizoen plus marge) na de poging | Hele rij verwijderd |
+
+Zelfde enkele-fase-aanpak en dezelfde redenering als `AppSettingsAudit` hierboven. De default van
+365 dagen is een **gedocumenteerd uitgangspunt, geen definitief beleid** — korter dan de 730 van
+`AppSettingsAudit` omdat dit log per mutatie groeit en Sportlinks eigen log de mutatie óók bewaart.
+De eigenaar (DPO-rol) stelt de termijn vast via `AppSettings.SportlinkMutationAuditBewaarDagen`
+(Postgres: `appsettings.sportlinkmutationauditbewaardagen`, migratie 017) zonder redeploy. De
+cleanup draait maandelijks (1e van de maand, 04:45 UTC) via `CleanupSportlinkMutationAuditFunction`
+op beide tiers; `dbo.sp_CleanupSportlinkMutationAudit` is idempotent.
+
+
+### Sportlink-extensierollen (`SportlinkExtensieRollen`) — bewust geen bewaartermijn (#1122)
+
+`laatstgekoppelddoor` (UPN van de beheerder) en `sportlinkaccountnaam` in deze tabel zijn
+persoonsgegevens, maar de tabel is een **actuele-toestand-record** (één rij per rol per club, bij
+elke registratie overschreven), geen groeiend log. Het gegeven "wie heeft deze koppeling voor het
+laatst gelegd" is nodig zolang de koppeling bestaat — een bewaartermijn zou het precies dan
+verwijderen. Dataminimalisatie is gewaarborgd door de vorm (geen historie); geen opschoning nodig.
+Herzien zodra er een "koppeling verwijderen"-functie komt: dan hoort de rij mee te verdwijnen.
+
+### Dry-run van de Sportlink Web Extension is fail-safe (#1122)
+
+De club-instelling `sportlinkDryRun` wordt op alle plekken gelezen als "alles behalve een expliciete
+`0` is dry-run". Tot #1122 gebruikte de mutatieclient `== "1"`, waardoor een nog niet geladen
+instellingencache (`null`) een bevestigde mutatie écht liet versturen terwijl het statuspaneel
+"dry-run aan" toonde. Beide polariteiten zijn nu gelijk; de bewaking hiervan zit in de
+statussectie (`SportlinkExtensieHealthFunction`) en de client-registratie in `Program.cs`.
 
 ---
 

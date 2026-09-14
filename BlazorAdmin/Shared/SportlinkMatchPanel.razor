@@ -1,0 +1,141 @@
+@* Sportlink-paneel voor één wedstrijd in Dagplanning (#991/#992/#993/#994/#995), sinds #1122 een
+   eigen component met code-behind: één instantie per uitgeklapte rij, dus gewone velden i.p.v.
+   dictionaries per wedstrijdcode. Alle logica staat in SportlinkMatchPanel.razor.cs. *@
+
+@if (!string.IsNullOrEmpty(_laadFout))
+{
+    <span class="text-danger">@_laadFout</span>
+}
+else if (_info == null)
+{
+    <span class="text-muted">Bezig met laden…</span>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-3">
+        <div><strong>PublicMatchId:</strong> @(_info.PublicMatchId ?? "—")</div>
+        <div><strong>Status:</strong> @(_info.MatchStatus ?? "—")</div>
+        @if (_info.IsCanceledMatch) { <span class="badge bg-danger">Geannuleerd</span> }
+        @if (_info.IsConceptMatch) { <span class="badge bg-warning text-dark">Concept</span> }
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-1">
+        @if (_info.IsEditFieldAllowed) { <span class="badge bg-light text-dark border">Veld wijzigen toegestaan</span> }
+        @if (_info.IsAssignDressingRoomsAllowed) { <span class="badge bg-light text-dark border">Kleedkamers toewijzen toegestaan</span> }
+        @if (_info.IsAssignOfficialsAllowed) { <span class="badge bg-light text-dark border">Scheidsrechters toewijzen toegestaan</span> }
+        @if (_info.IsAddScoreAllowed) { <span class="badge bg-light text-dark border">Uitslag invoeren toegestaan</span> }
+    </div>
+    @if (!string.IsNullOrWhiteSpace(_info.TaskStatus))
+    {
+        <div class="mt-1 text-muted">Openstaand: @_info.TaskStatus</div>
+    }
+
+    @if (_info.IsAssignDressingRoomsAllowed)
+    {
+        @* #992: eerste echte Sportlink-mutatie — de server valideert IsAssignDressingRoomsAllowed opnieuw (SportlinkMutationGuard). *@
+        <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+            <div>
+                <label class="form-label mb-0 small">Thuis</label>
+                <input class="form-control form-control-sm" style="width:6rem;" @bind="_kleedkamerThuis" />
+            </div>
+            <div>
+                <label class="form-label mb-0 small">Uit</label>
+                <input class="form-control form-control-sm" style="width:6rem;" @bind="_kleedkamerUit" />
+            </div>
+            <div>
+                <label class="form-label mb-0 small">Official</label>
+                <input class="form-control form-control-sm" style="width:6rem;" @bind="_kleedkamerOfficial" />
+            </div>
+            <button class="btn btn-sm btn-outline-primary" disabled="@_kleedkamers.Bezig" @onclick="SaveDressingRoomsAsync">Kleedkamers toewijzen</button>
+            @if (_kleedkamers.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+        </div>
+        <Melding Status="_kleedkamers" />
+    }
+
+    @if (_info.IsEditFieldAllowed)
+    {
+        @* #993: IsForceUpdate blijft server-side hard false (semantiek niet bevestigd) — geen UI-optie. *@
+        <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+            <div>
+                <label class="form-label mb-0 small">FieldId</label>
+                <input class="form-control form-control-sm" style="width:10rem;" @bind="_veldFieldId" />
+            </div>
+            <div>
+                <label class="form-label mb-0 small">FieldSize</label>
+                <input class="form-control form-control-sm" style="width:6rem;" @bind="_veldFieldSize" />
+            </div>
+            <button class="btn btn-sm btn-outline-primary" disabled="@_veld.Bezig" @onclick="SaveFieldAsync">Veld wijzigen</button>
+            @if (_veld.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+        </div>
+        <Melding Status="_veld" />
+    }
+
+    @if (_info.IsAssignOfficialsAllowed)
+    {
+        @* #994: scaffolding, altijd code-gelockt (forceDryRun). Bewust geen zoekfunctie (AVG):
+           alleen een relatiecode/persoons-ID per positie, geen namen. *@
+        <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+            <div>
+                <label class="form-label mb-0 small">Scheidsrechter (relatiecode)</label>
+                <input class="form-control form-control-sm" style="width:8rem;" @bind="_officialScheidsrechter" />
+            </div>
+            <div>
+                <label class="form-label mb-0 small">AR1 (relatiecode)</label>
+                <input class="form-control form-control-sm" style="width:8rem;" @bind="_officialAr1" />
+            </div>
+            <div>
+                <label class="form-label mb-0 small">AR2 (relatiecode)</label>
+                <input class="form-control form-control-sm" style="width:8rem;" @bind="_officialAr2" />
+            </div>
+            <button class="btn btn-sm btn-outline-primary" disabled="@_officials.Bezig" @onclick="SaveOfficialsAsync">Scheidsrechters toewijzen</button>
+            @if (_officials.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+        </div>
+        <div class="text-muted small">@SportlinkActieStatus.CodeLockTekst</div>
+        <Melding Status="_officials" />
+    }
+
+    @if (_info.IsHomeMatch)
+    {
+        @* #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren), ONBEVESTIGD en
+           altijd code-gelockt: de enige mutatie die een ECHTE tegenstander raakt. Bewust GEEN
+           bevestigknop — dat zou een stap 2 suggereren die niet gebouwd is. *@
+        <div class="mt-2 pt-2 border-top">
+            <div class="fw-semibold small">Wijzigingsverzoek datum/tijd/accommodatie</div>
+            <div class="text-muted small">
+                Wijzigen van datum, tijd of accommodatie vereist goedkeuring door de tegenstander.
+                Dit valideert alleen (stap 1) — er is bewust geen bevestigstap gebouwd.
+            </div>
+            <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+                <div>
+                    <label class="form-label mb-0 small">Nieuwe datum</label>
+                    @* type="date" met een string-veld: Blazor's @bind verwacht daar DateTime — expliciet binden. *@
+                    <input class="form-control form-control-sm" style="width:9rem;" type="date"
+                           value="@_wijzigingDatum" @onchange="e => _wijzigingDatum = e.Value?.ToString()" />
+                </div>
+                <div>
+                    <label class="form-label mb-0 small">Nieuwe starttijd</label>
+                    <TimeInput @bind-Value="_wijzigingTijd" Class="form-control-sm" />
+                </div>
+                <div>
+                    <label class="form-label mb-0 small">FacilityId</label>
+                    <input class="form-control form-control-sm" style="width:10rem;" @bind="_wijzigingFacilityId" />
+                </div>
+            </div>
+            <div class="mt-2">
+                <label class="form-label mb-0 small">Toelichting (verplicht)</label>
+                <input class="form-control form-control-sm" @bind="_wijzigingToelichting" />
+            </div>
+            <div class="mt-2">
+                <button class="btn btn-sm btn-outline-primary" disabled="@_wijziging.Bezig" @onclick="SaveMatchChangeRequestAsync">Wijzigingsverzoek valideren</button>
+                @if (_wijziging.Bezig) { <span class="spinner-border spinner-border-sm"></span> }
+            </div>
+            <div class="text-muted small">@SportlinkActieStatus.CodeLockTekst</div>
+            <Melding Status="_wijziging" />
+            @if (_wijzigingValidatieMeldingen is { Count: > 0 })
+            {
+                <ul class="mt-1 mb-0 small">
+                    @foreach (var melding in _wijzigingValidatieMeldingen) { <li>@melding</li> }
+                </ul>
+            }
+        </div>
+    }
+}

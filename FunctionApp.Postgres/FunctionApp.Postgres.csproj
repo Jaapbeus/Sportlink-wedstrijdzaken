@@ -15,9 +15,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.3.0.2</Version>
-    <AssemblyVersion>3.3.0.2</AssemblyVersion>
-    <FileVersion>3.3.0.2</FileVersion>
+    <Version>3.4.0.0</Version>
+    <AssemblyVersion>3.4.0.0</AssemblyVersion>
+    <FileVersion>3.4.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -44,22 +44,25 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <!-- #972: INoodmailThrottleStore-port — zelfde versie als de SQL Server-tier, tegen de
          bestaande AzureWebJobsStorage-opslagaccount, geen nieuwe Azure-resource. -->
-    <PackageReference Include="Azure.Data.Tables" Version="12.12.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <PackageReference Include="Cronos" Version="0.13.0" />
+    <PackageReference Include="Azure.Data.Tables" />
+    <!-- #1138: durable sync-job — zelfde AzureWebJobsStorage-opslagaccount, geen nieuwe resource. -->
+    <PackageReference Include="Azure.Storage.Queues" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Storage.Queues" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Cronos" />
     <!-- §43: uitsluitend voor het uitgaande e-mailpad van AdminTeambegeleidingDoorsturen.
-         Zelfde versie als de SQL Server-tier, dus geen nieuw afhankelijkheidsrisico. -->
-    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+         Zelfde versie als de SQL Server-tier (centraal beheerd, zie Directory.Packages.props). -->
+    <PackageReference Include="Microsoft.Graph" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" />
     <!-- #966: uitsluitend voor FeedbackFunction (IChatClient — provider-agnostisch,
-         CLAUDE.md-architectuurregel). Zelfde versies als de SQL Server-tier. -->
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
-    <PackageReference Include="OpenAI" Version="2.13.0" />
+         CLAUDE.md-architectuurregel). Zelfde versies als de SQL Server-tier (centraal beheerd). -->
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
@@ -69,6 +72,23 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+    <!-- #1096: CA-certificaat van de databaseprovider (Supabase) voor sslmode=verify-full.
+         Publiek certificaat, geen secret — mag in git en in het deploy-pakket. Ontbreekt dit
+         bestand (nog niet toegevoegd, of lokale ontwikkeling), dan is dit een no-op: geen
+         build- of publish-fout, alleen geen gekopieerd bestand. Zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50. -->
+    <None Update="prod-ca-2021.crt" Condition="Exists('prod-ca-2021.crt')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- #561/#1141: KNVB-speeldagenkalender-PDF's — reizen mee in het deploymentpakket, geen
+         nieuwe Azure-resource. Verwijst naar dezelfde bestanden als
+         FunctionApp/fa-dev-sportlink-01.csproj (Include buiten deze projectmap, Link zet ze op de
+         verwachte relatieve plek in de output) in plaats van een tweede 1,3 MB-kopie in git te
+         zetten — één bronbestand per regio/seizoen, twee build-outputs. -->
+    <Content Include="../FunctionApp/Content/KnvbKalenders/2026-2027/*.pdf" Link="Content/KnvbKalenders/2026-2027/%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <!-- #818: PostgresIdentifier/schema-generatie-bouwstenen — dit project bouwt de applicatie-

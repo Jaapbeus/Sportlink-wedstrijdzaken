@@ -63,6 +63,13 @@ UpgradeLog*.htm
 **/packages/*
 !**/packages/build/
 
+# packages.lock.json wordt per project gegenereerd door de dependency-scan job in
+# security-scan.yml (RestorePackagesWithLockFile=true) zodat Trivy transitieve NuGet-
+# pakketten kan scannen (#1126). Niet committen: Dependabot onderhoudt hier geen lock
+# files, dus een gecommit bestand zou stilzwijgend uit de pas gaan lopen met de echte
+# restore en toekomstige restores kunnen breken.
+packages.lock.json
+
 # ── Log and debug output ──────────────────────────────────────────────────────
 *.log
 function-log.txt

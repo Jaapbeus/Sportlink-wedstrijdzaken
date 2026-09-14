@@ -8,11 +8,13 @@ namespace FunctionApp.Postgres.Sync;
 /// Postgres-tier-tegenhanger van <c>SystemUtilities.SeasonHelper</c> (#890) — leest
 /// seizoensgrenzen uit <c>public.season</c> (migratie 008, #890).
 /// <para>
-/// <b>Bewust niet geport:</b> <c>GetCurrentKnvbSeizoenAsync</c>. De enige twee consumenten op de
-/// SQL Server-tier (<c>EmailReplyPolicyService</c>/<c>BerichtPipeline</c>, het #561
-/// KNVB-verzet-zonder-datum-pad) horen bij de volledige e-mail-AI-pijplijn, die al buiten #889's
-/// eigen scope-omschrijving valt (zie docs/ARCHITECTUUR-DATABASE-TIERS.md §17) — een fantoom-
-/// vertaling zonder consument zou onnodige onderhoudslast zijn.
+/// <b><c>GetCurrentKnvbSeizoenAsync</c> (#1141):</b> tegenhanger van de gelijknamige methode op de
+/// SQL Server-tier, nodig voor het "verzet zonder datum"-pad (#561) —
+/// <see cref="FunctionApp.Postgres.Processing.BerichtPipeline"/>/<see cref="FunctionApp.Postgres.Email.EmailReplyPolicyService"/>.
+/// Zelfde semantiek: het eerste seizoen in <c>public.season</c> waarvan <c>dateuntil</c> nog niet
+/// verstreken is, geformatteerd als "startjaar/eindjaar". Retourneert <c>null</c> als er geen
+/// (toekomstig) seizoen in de tabel staat — de aanroeper valt dan terug op het bestaande gedrag
+/// zonder KNVB-bijlage.
 /// </para>
 /// </summary>
 internal static class PostgresSeasonHelper
@@ -97,5 +99,37 @@ internal static class PostgresSeasonHelper
             log.LogError(ex, "Fout bij ophalen seizoensstart voor jaar {StartYear}", startYear);
         }
         return DefaultFromWeekOffset;
+    }
+
+    /// <summary>
+    /// Bepaalt het huidige KNVB-seizoen ("{startjaar}/{eindjaar}", bijv. "2026/2027") uit
+    /// public.season (#1141) — nooit hardcoded, want een hardcoded jaartal in de
+    /// KNVB-kalenderlogica (#561) zou na elk seizoen stilzwijgend verkeerde data opleveren.
+    /// Retourneert <c>null</c> als er geen (toekomstig) seizoen in public.season staat — de
+    /// aanroeper valt dan terug op het bestaande gedrag zonder KNVB-bijlage.
+    /// </summary>
+    internal static async Task<string?> GetCurrentKnvbSeizoenAsync(ILogger log)
+    {
+        try
+        {
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(
+                "SELECT datefrom, dateuntil FROM public.season WHERE dateuntil >= @vandaag ORDER BY datefrom ASC LIMIT 1",
+                connection);
+            command.Parameters.AddWithValue("vandaag", DateTime.UtcNow.Date);
+            await using var reader = await command.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var dateFrom = reader.GetDateTime(0);
+                var dateUntil = reader.GetDateTime(1);
+                return $"{dateFrom.Year}/{dateUntil.Year}";
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij ophalen huidig KNVB-seizoen uit public.season");
+        }
+        return null;
     }
 }

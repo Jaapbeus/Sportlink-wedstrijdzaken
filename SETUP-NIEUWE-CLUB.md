@@ -342,6 +342,10 @@ eigen koppelingsproces per functionele rol. Zie **[docs/SPORTLINK-WEB-EXTENSION.
 voor de huidige status en hoe je een rol koppelt — dit is geen verplichte stap voor een werkende
 basisinstallatie.
 
+De extension start altijd in **dry-run**: elke mutatie wordt gesimuleerd en gelogd, er wordt niets
+echt naar Sportlink geschreven, ook niet als je de extension zelf al aanzet. Controleer eerst de
+statussectie op Instellingen (rol-koppeling, contract-check) vóórdat je dry-run uitzet.
+
 ---
 
 ## Vragen of problemen?

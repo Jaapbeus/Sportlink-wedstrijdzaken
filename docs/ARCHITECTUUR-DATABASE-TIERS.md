@@ -1824,6 +1824,16 @@ procedures uit sectie 15. `tijdstip` is `TIMESTAMPTZ` en de grens een UTC-`DateT
 vergelijking is absoluut: een databaseserver in een andere tijdzone (de zelftest draait bewust op
 Europe/Amsterdam, #854) verschuift het venster niet.
 
+**Zesde procedure, zelfde mal (#1114).** `public.sportlinkmutationaudit` (migratie 013, epic #986)
+had hetzelfde gat: een `triggerddoor`-kolom met de UPN van de beheerder en geen enkele opschoning.
+`CleanupSportlinkMutationAuditAsync` is een letterlijke afgeleide van de vijfde — dezelfde
+drietraps-terugval, dezelfde enkele DELETE, eigen kolom `sportlinkmutationauditbewaardagen`
+(migratie 017, default 365 dagen: één seizoen plus marge, korter dan de 730 van appsettingsaudit
+omdat dit log per mutatie groeit en Sportlink de mutatie zelf ook logt). Timer `0 45 4 1 * *`, een
+kwartier na deze. Op de SQL Server-tier is `dbo.sp_CleanupSportlinkMutationAudit` de tegenhanger,
+en `check-postgres-procedure-view-coverage.sh` kent de mapping. Zes integratietests naar het model
+hieronder, plus één die bewijst dat een verse `Pending`-rij blijft staan.
+
 **Empirisch geverifieerd, met aantoonbaar onderscheidend vermogen.** Zes blijvende integratietests
 in `FunctionApp.Postgres.Tests` (niet langer een wegwerpharnas, zie sectie 30) dekken alle drie de
 terugvaltrappen, de lege-`appsettings`-rand, en idempotentie. Elke test controleert niet alleen wát
@@ -2636,6 +2646,16 @@ volgorde:
    wijziging aan `deploy.yml` (dat bevat nooit connectiestrings): net als `SqlConnectionString`
    vandaag is dit een eenmalige `az functionapp config appsettings set`/Portal-actie rechtstreeks
    op de Function App, buiten de CI-pipeline om.
+   **Sinds #1096, in deze volgorde — nooit omgekeerd:**
+   1. Zorg dat een release met `FunctionApp.Postgres/prod-ca-2021.crt` (gedownload uit het
+      Supabase-dashboard van déze deployment: Database → Settings → SSL Configuration — geen
+      publieke, statische URL, per project verschillend) al live staat, zodat het certificaat
+      op `/home/site/wwwroot/prod-ca-2021.crt` in het pakket zit.
+   2. Pas dáárna de instelling uitbreiden met `?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`.
+      Vóór stap 1 al `verify-full` zetten geeft een certificaatketen-fout (het #1095-incident,
+      tweede keer).
+   3. Verifiëren via `curl https://<function-app>.azurewebsites.net/api/health` —
+      `tlsMode: "VerifyFull"` en `tlsWarning: null`.
 5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
    allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
    dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
@@ -2725,6 +2745,38 @@ Twee lessen:
 **Tests:** `Database.Postgres.Tests/PostgresConnectionStringNormalizerTests.cs` — dekt beide vormen,
 beide omgevingen, de contradictiecheck, en de bestaande parsingtests (percent-encoded loginvelden,
 standaardpoort, lege pad → database `postgres`) blijven daarin behouden.
+
+### #1096 — CA-certificaat gebundeld, smoke test bewaakt `tlsWarning` (bouwstenen klaar, cutover nog handmatig)
+
+Vervolg op de twee lessen hierboven. Geen wijziging aan `Normalize`/`ApplyTlsPolicy` zelf — de
+`sslmode`/`sslrootcert`-parsing en de fail-open-met-waarschuwing-policy uit #1095 ondersteunden een
+CA-certificaat al. Wat ontbrak was het certificaat zelf en bewaking dat de norm ook echt gehaald
+wordt:
+
+1. **`FunctionApp.Postgres/FunctionApp.Postgres.csproj`** kopieert `prod-ca-2021.crt` naar de
+   output- én publish-directory, conditioneel op `Exists(...)` — zolang het bestand ontbreekt is
+   dit een no-op, geen build- of publish-fout. Het certificaat zelf staat inmiddels in de repo
+   (gedownload uit het Supabase-dashboard van déze deployment: Database → Settings → SSL
+   Configuration; subject/issuer "Supabase Root 2021 CA", geldig 2021-04-28 t/m 2031-04-26). Het is
+   publiek (Supabase's eigen root-CA, gelijk voor het project van deze deployment) en hoort dus in
+   git, niet in `.gitignore` — anders dan `local.settings.json`.
+2. **De smoke test in `deploy.yml`** leest voortaan ook `tlsWarning` uit `/api/health` en meldt die
+   als `::warning::`, exact hetzelfde patroon als `pendingMigrations`/`schemaWarning` (§55): nooit
+   een deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095). Dit is de
+   "pre-deploy-check op de effectieve TLS-modus" uit het vervolgissue — als CI-zichtbaarheid na de
+   deploy, niet als harde gate, omdat de pipeline zelf `POSTGRES_CONNECTION_STRING` niet zet (§49
+   stap 4) en dus vóór de deploy niets over de productie-instelling kan weten.
+
+**Wat hiermee nog niet is opgelost.** `POSTGRES_CONNECTION_STRING` moet, ná release van dit
+certificaat naar productie (nooit ervoor — zie §49 stap 4), handmatig worden uitgebreid met
+`?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`. Tot die stap is gezet,
+blijft `tlsWarning` in `/api/health` non-null en is dat het juiste, verwachte signaal — geen
+regressie.
+
+**Bewust nog niet gedaan:** het beleid weer aanscherpen (`Require` zonder `verify-full` opnieuw
+weigeren). Dat is pas verantwoord zodra bovenstaande twee operationele stappen aantoonbaar zijn
+uitgevoerd en herhaalbaar zijn vastgelegd — met een pre-deploy-check die dat afdwingt, niet met een
+static initializer die de app platlegt (exact de fout uit #1004).
 
 ## 51. De lokale ontwikkelomgeving volgt de gedeployde tier (#1060)
 
@@ -2839,14 +2891,18 @@ voor een hotfix.
 
 **Drie al bestaande, gedocumenteerde afwijkingen op `BerichtPipeline`-niveau blijven ongewijzigd**
 (opponent-lookup, `TeamContactOpvragen` se `coachGevonden`, KNVB-PDF-bijlage/"verzet zonder datum") —
-dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf.
+dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf. *(Bijgewerkt: opponent-lookup
+is sinds #1139 vertaald — zie §58 — `TeamContactOpvragen`/`coachGevonden` sinds #1140 — zie §61 —
+en de KNVB-PDF-bijlage/"verzet zonder datum"-flow sinds #1141 — zie §62. Alle drie zijn nu vertaald.)*
 
-**Twee nieuw ontdekte, hier voor het eerst gedocumenteerde afwijkingen:**
-- De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruiken
+**Eén nieuw ontdekte, hier voor het eerst gedocumenteerde afwijking:**
+- De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruikten
   `AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync` (bestaande, geteste query tegen
-  `avg.teambegeleiding`) in plaats van `PlannerDataAccess.GetTeamleiderContactAsync` (bestaat hier
-  niet) — dat levert alleen een e-mailadres, geen naam, dus de notificatietekst gebruikt een
-  generieke aanhef.
+  `avg.teambegeleiding`) in plaats van `PlannerDataAccess.GetTeamleiderContactAsync` (bestond hier
+  niet) — dat levert alleen een e-mailadres, geen naam, dus de notificatietekst gebruikte een
+  generieke aanhef. *(Bijgewerkt: sinds #1140 gebruiken beide notificaties
+  `AllstarsTestDataRepository.GetTeamleiderContactAsync` — zie §59 — inclusief de naam van de
+  begeleider in de aanhef.)*
 - De onafhankelijke, ARM-gebaseerde database-uitvalmonitor (`DatabaseUitvalMonitorFunction`/
   `IDatabaseStatusReader`, #831 op de SQL Server-tier) is niet vertaald — die controleert
   specifiek Azure SQL-status, wat hier niet van toepassing is. De noodmail-throttle zelf
@@ -2899,7 +2955,65 @@ database stukloopt (bijvoorbeeld een `NOT NULL`-kolom zonder default op een tabe
 basisbranch-database bevat in CI alleen wat de migraties zelf aanmaken, geen productie-achtige
 data. Dat blijft een apart risico.
 
-## 54. Code die vooruitloopt op het schema is nu zichtbaar in `/api/health` (#1098, hotfix)
+## 54. Een vertaalfout die acht dagen stil bleef, met een foutmelding die de verkeerde kant op wees (#1077)
+
+De derde vertaalomissie in deze epic, na §45 en §52. Deze is het opschrijven waard om twee redenen
+die losstaan van de fout zelf: de foutmelding loog, en niets meldde de storing.
+
+### De fout
+
+`PostgresStagingRepository.MergeUitslagenAsync` noemde `@clubcode` in zijn INSERT maar bond die
+parameter nooit. De meegegeven `clubCode` werd nergens gebruikt. De drie andere merges in hetzelfde
+bestand binden hem wél, en het SQL Server-origineel ook — alleen het uitslagenpad is bij de
+vertaling overgeslagen.
+
+### Waarom de melding naar het schema wees en niet naar de code
+
+```
+Npgsql.PostgresException 42703: column "clubcode" does not exist
+```
+
+`stg.matches` heeft die kolom gewoon. Npgsql laat een placeholder waarvoor geen parameter bestaat
+letterlijk in de SQL staan, en in PostgreSQL is `@` een **geldige prefix-operator** (absolute
+waarde). De server leest `@clubcode` dus als "operator `@` toegepast op kolom `clubcode`" en
+rapporteert die kolom als ontbrekend.
+
+**Dit is een Postgres-specifieke valstrik zonder tegenhanger op SQL Server**, waar dezelfde fout een
+ondubbelzinnige *"must declare the scalar variable"* oplevert. Elke `42703` op een kolom waarvan je
+zeker weet dat hij bestaat, is daarom eerst een aanwijzing voor een ongebonden parameter — niet voor
+schemadrift. In deze epic waren de eerdere `42703`-gevallen (§29, §32) juist wél schemadrift; die
+gelijkenis maakte het zoeken langer dan nodig.
+
+### Waarom hij alleen op twee van de drie weekoffsets sloeg
+
+De INSERT draait uitsluitend wanneer de voorafgaande UPDATE nul rijen raakte. Voor de huidige week
+staan de wedstrijden al in staging uit de programma-fetch, dus daar slaagt de UPDATE en wordt het
+kapotte pad nooit bereikt. Voor de twee voorgaande weken valt hij door naar de INSERT. Vandaar
+precies `weekOffset=-2` en `-1`, acht nachten achter elkaar identiek.
+
+### Waarom de bestaande dekking het niet zag
+
+`PostgresSyncFixtureIntegrationTests` draait het volledige synchronisatiepad, maar zijn fixture
+levert uitslagen voor wedstrijden die de programma-fetch al had ingevoegd. De UPDATE raakt dan een
+rij, de methode doet `continue`, en het INSERT-pad wordt nooit uitgevoerd. In productie is dat pad
+juist de regel. Een test die het *pad* niet raakt, dekt de code niet af hoeveel regels hij ook
+aanroept.
+
+`UitslagenMergeIntegrationTests` dwingt dat pad nu af, met een tegenhanger op de UPDATE-tak zodat
+"welk pad liep hier eigenlijk" meetbaar blijft.
+
+### De duurdere les: acht dagen stilte
+
+De fout zelf was één ontbrekende regel. Dat hij acht dagen bleef liggen, kwam door drie dingen die
+niets met deze vertaling te maken hebben — de timer slokte zijn uitzondering op en rapporteerde
+`Success`, één mislukte deelstap onderdrukte het bijwerken van `lastsynctimestamp` zonder dat
+zichtbaar te maken, en niets bewaakte de leeftijd van die tijdstempel. Alle drie zijn gedicht in
+#1081; zie `docs/MONITORING.md`.
+
+Voor volgende tiervertalingen is dat het bruikbare deel: een vertaalfout is onvermijdelijk, maar de
+tijd tussen ontstaan en ontdekken is een ontwerpkeuze.
+
+## 55. Code die vooruitloopt op het schema is nu zichtbaar in `/api/health` (#1098, hotfix)
 
 Het tweede incident van release v3.3.0.0, direct na de hotfix voor #1095 (§50): `/api/health`
 gaf weer 200 met `database: online`, maar elk beheerscherm bleef ±15 seconden op "laden..." staan
@@ -2952,10 +3066,12 @@ gaven.
    git-credential als de GitHub-connector van de sessie misten die. Afronden: `gh auth refresh -h
    github.com -s workflow`, daarna die branch pushen en als PR naar `main` mergen.
 
-**Wat bewust níet is gedaan.** Migraties automatisch toepassen bij het opstarten van de Function
-App, of een productie-connectiestring als GitHub-secret voor een `db-migrate-postgres`-job. Het
-eerste maakt van elke cold start een schemawijziging met de rechten van de applicatie; het tweede
-draait de keuze uit §49 terug. Beide zijn een aparte architectuurbeslissing, geen hotfix.
+**Wat bewust níet is gedaan — in de hotfix.** Migraties automatisch toepassen bij het opstarten
+van de Function App, of een productie-connectiestring als GitHub-secret voor een
+`db-migrate-postgres`-job. Het eerste maakt van elke cold start een schemawijziging met de rechten
+van de applicatie; het tweede draaide de keuze uit §49 terug. Beide waren een aparte
+architectuurbeslissing, geen hotfix. *Het tweede is inmiddels genomen* — door de eigenaar, in issue
+#1093, en uitgewerkt in §57. Het eerste blijft afgewezen.
 
 **Handeling voor de eigenaar na deze hotfix:** de openstaande migraties toepassen met
 `Database.Postgres.Cli` (`POSTGRES_CONNECTION_STRING` als omgevingsvariabele, nooit als argument)
@@ -2964,9 +3080,295 @@ Tot die tijd geldt de Sportlink Web Extension als uitgeschakeld; alle overige be
 
 **Wat deze laag niet afvangt.** Een release waarvan de code op een *andere* nieuwe kolom of tabel
 leunt dan `public.appsettings.sportlinkextensionenabled`. Die meldt zich wél via
-`pendingMigrations`, maar het betreffende endpoint faalt nog steeds. Structurele borging — een
-release-checklist-stap of een `pendingMigrations`-gate vóór de merge van `develop` naar `main` —
-staat als vervolg in het issue.
+`pendingMigrations`, maar het betreffende endpoint faalt nog steeds. De structurele borging is
+§57: de pipeline past de migraties zelf toe, vóór de code.
+
+## 56. De migratie-checksum was platformafhankelijk — en blokkeerde daarmee de hele keten (#1112)
+
+`MigrationRunner` hashte een migratiebestand over de rauwe bytes. Dat is precies genoeg om "is dit
+bestand achteraf gewijzigd" te bewaken (§53), en precies te veel zodra hetzelfde bestand op twee
+platforms verschillende bytes heeft.
+
+**Hoe dat gebeurt zonder dat iemand iets wijzigt.** `.gitattributes` zet `* text=auto`. Op een
+Windows-machine met `core.autocrlf=true` — de Windows-default — checkt git elk tekstbestand met
+CRLF uit, ook `Database.Postgres/migrations/*.sql`; op macOS, Linux en de CI-runner staat er LF. De
+blob in git is in beide gevallen identiek. Wie vanaf Windows migreert legt dus een CRLF-checksum in
+`schema_migrations` vast; de eerstvolgende run vanaf LF ziet "andere checksum" en gooit de fout die
+voor een *gewijzigd* bestand bedoeld is. En omdat de runner elk bestand op volgorde afhandelt en bij
+de eerste fout stopt, blokkeert één zo'n rij niet alleen dat bestand maar elke migratie erna.
+
+**Waar het gevonden is.** Niet op een verse ontwikkeldatabase, maar op de lokale container met de
+herstelde productiedump (#1103/#1108): `001_baseline.sql` had daar een checksum die niet met het
+bestand in `main` overeenkwam. Een eerdere sessie liet die mismatch bewust staan met de open vraag
+of *productie zelf* dezelfde afwijking heeft. Een latere sessie, onwetend van die vraag, herschreef
+alle elf ledger-rijen 001–011 lokaal naar de LF-waarde (per bestand geverifieerd dat de CRLF-variant
+exact de oude waarde gaf — puur een regeleinde-artefact, geen inhoud) en wiste daarmee het lokale
+bewijs. De vraag over productie bleef daardoor open.
+
+**De fix, in de runner zelf.**
+
+1. `ComputeChecksum` normaliseert `\r\n` → `\n` vóór het hashen. Een puur-LF-bestand — zoals git
+   het bewaart en zoals elke LF-checkout het leest — hasht exact zoals vóór #1112, dus een ledger die
+   vanaf LF is gevuld blijft zonder enige reparatie kloppen.
+2. Klopt de ledger-waarde niet, dan toetst `IsLineEndingVariant` of de oude waarde de rauwe checksum
+   is van *ditzelfde bestand* met andere regeleindes (de CRLF-variant van de genormaliseerde inhoud,
+   óf de inhoud zoals hij nu op schijf staat). Zo ja: bewezen geen inhoudelijke wijziging, de rij
+   wordt naar de genormaliseerde waarde omgeschreven en de run meldt dat als
+   `ChecksumNormalized`. Zo nee: dezelfde harde fout als altijd.
+3. `RunAsync` geeft nu een `MigrationRunResult` terug (nieuw toegepast / al toegepast /
+   genormaliseerd). De CLI drukt dat af en zet elke normalisatie als waarschuwing op stderr, zodat
+   een reparatie in een deploy-log of handmatige ronde opvalt en niet stil gebeurt.
+
+**Wat dit voor de open productievraag betekent.** Die hoeft niet meer met de hand beantwoord te
+worden. Draagt productie een CRLF-rij, dan normaliseert de eerstvolgende run (§57, of een handmatige
+ronde) hem éénmalig en logt dat. Draagt productie een échte afwijking — wat niets in de historie
+doet vermoeden — dan faalt die run precies zoals bedoeld, met de bestandsnaam erbij. In beide
+gevallen is het antwoord zichtbaar in het log van de eerste run.
+
+**Wat bewust níet is gedaan.** Een BOM-, whitespace- of encoding-normalisatie erbij. Alleen het
+regeleinde heeft een aantoonbare, platformgebonden oorzaak (`text=auto` + `autocrlf`); elke verdere
+"tolerantie" verzwakt de bewaking van §53 zonder een gevonden probleem op te lossen.
+
+## 57. Postgres-migraties draaien nu in `deploy.yml`, vóór de code (#1093)
+
+§55 beschreef het gat en liet de beslissing bewust open. De eigenaar heeft hem genomen: **ja, een
+eigen migratiestap; en vóór het publiceren van de code.** Dit is een omkering van één onderdeel van
+§49 (geen productie-connectiestring in CI) — bewust, en om deze reden: zonder een moment waarop een
+migratie *automatisch geprobeerd* wordt, is er ook geen moment waarop hij *zichtbaar faalt*. Zo bleef
+#1062 acht dagen liggen en gaf v3.3.0.0 twee incidenten die allebei neerkwamen op "de migraties
+zijn niet gedraaid".
+
+**De job.** `db-migrate-postgres` in `deploy.yml`, gegate op `vars.DatabaseTier == 'Postgres'`,
+draait `Database.Postgres.Cli` tegen het nieuwe GitHub-secret `POSTGRES_CONNECTION_STRING` (via de
+omgevingsvariabele, nooit als argument — dezelfde regel als overal in dit project). `deploy` wacht
+erop (`needs` + result-check), zodat de code pas live gaat als het schema er is. De job hangt aan
+`build`, niet omgekeerd: een build die niet compileert mag geen schema wijzigen voor code die nooit
+gedeployed wordt. `MigrationRunner` is idempotent en neemt een advisory lock, dus een herstart van
+de run is veilig.
+
+**Waarom vóór de code, en wat dat vraagt.** Alle migraties in `Database.Postgres/migrations/` zijn
+additief (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, seeds); de vorige versie van de
+code draait daar ongestoord op door, en de nieuwe vindt bij haar eerste request het schema al — geen
+`42703`-venster zoals in §55. Dit is vanaf nu een **ontwerpregel**: een migratie die de oude code
+breekt (kolom verwijderen, type wijzigen, constraint aanscherpen) mag niet in één release met de
+code die hem nodig heeft. Eerst een release die de code loskoppelt, dan een release met de
+destructieve migratie.
+
+**Ontbrekend secret is een harde fout, geen skip.** Anders dan `db-migrate` (SQL Server), die stil
+overslaat als de SQL-vars ontbreken, faalt deze job met een `::error::` als het secret leeg is
+terwijl de tier Postgres is. Stil overslaan is exact het gedrag dat dit issue opheft. Gevolg voor
+deze installatie: de eerste deploy na deze wijziging faalt totdat de eigenaar het secret heeft
+gezet — dat is de bedoeling.
+
+**Tier-gating van de SQL Server-jobs, als bijvangst.** `db-check` en `db-migrate` waren gegate op
+de aanwezigheid van de SQL-vars, niet op de tier. Die vars staan er nog, dus bij elke release sinds
+de cutover draaiden beide jobs nog netjes — tegen de oude Azure SQL-database, terwijl de database
+die er wél toe deed nooit gemigreerd werd. Beide hangen nu aan `vars.DatabaseTier == 'SqlServer'`.
+Precies één van de twee migratiejobs draait per deploy; de andere is `skipped`.
+
+**De smoke test is aangescherpt.** Een niet-lege `pendingMigrations` na een groene
+`db-migrate-postgres` is geen waarschuwing meer maar een mislukte deploy: de job zegt dat alles is
+toegepast en health zegt dat er iets mist. Dat kan maar twee dingen betekenen — het secret en de
+Function App-instelling wijzen naar verschillende databases, of een bestand is wél ingesloten maar
+niet toegepast — en beide verdienen een rode job.
+
+**Afhankelijkheid van §56.** Zonder de regeleinde-normalisatie had deze job op een database met
+een CRLF-ledger bij de allereerste run vastgelopen, midden in een release. De twee wijzigingen
+zitten daarom in dezelfde PR, in deze volgorde.
+
+**Voor de eigenaar, eenmalig:** secret `POSTGRES_CONNECTION_STRING` aanmaken in GitHub → Settings →
+Secrets and variables → Actions, met dezelfde connectiestring als de Function App-instelling
+(norm sinds #1096: `sslmode=verify-full` mét `sslrootcert`, zie §50). Supabase accepteert
+verbindingen van elk IP tenzij netwerkrestricties zijn ingesteld — in dat geval de GitHub
+Actions-runner-ranges toestaan of de restrictie heroverwegen.
+
+## 58. Review epic #986 — wat de database-kant opleverde (#1122)
+
+Een review vanuit vier rollen (architect, developer, CISO, DPO) van de Sportlink Web Extension,
+feitelijk getoetst tegen een verse Postgres 17-wegwerpinstantie met alle migraties en de
+AllStars-demodata. De code-bevindingen staan in `docs/SPORTLINK-WEB-EXTENSION.md` §4.2 en
+CLAUDE.md; hier alleen wat de database raakte.
+
+**Geen schema-afwijking.** Elke SQL-string in de extensie is vergeleken met `\d` van de vijf
+extensietabellen plus `appsettings`/`teams`/`teamaliassen`/`velden`: kolomnamen, casing, types en
+NOT NULL-vulling kloppen; elke `@parameter` is gebonden (de §54-valkuil deed zich niet voor); elke
+tabel heeft een `clubcode` en elke query filtert erop; alle tijdkolommen zijn `TIMESTAMPTZ` met
+`now()`/`UtcNow`.
+
+**Migratie 018 — indexen op `sportlinkpublicmatchidcache`.** De tabel had alleen de primaire
+sleutel `(wedstrijdcode, clubcode)`; twee queries filteren op `clubcode` zonder `wedstrijdcode`
+(laatst-opgehaalde rij voor de contract-check en de health; `publicmatchid = ANY(@ids)` voor
+#1111). Additief, `IF NOT EXISTS`.
+
+**Bewust niet gedaan.** Een bewaartermijn op `sportlinkextensierollen` (actuele-toestand-record,
+zie SECURITY.md) en op `sportlinkpublicmatchidcache`/`sportlinkcontractcheck` (geen
+persoonsgegevens; groei in de orde van honderden rijen per seizoen). `his.matches.kaledatum` blijft
+`varchar(50)` met een `::date`-cast — die kolom hoort bij de generieke schemagenerator (#818), niet
+bij deze epic; de cast is op de huidige data bewezen veilig.
+
+## 59. Opponent-lookup vertaald — eerste van #972's vier resterende deelstukken (#1139)
+
+§52 documenteerde drie resterende afwijkingen tussen `BerichtPipeline`'s Postgres- en SQL
+Server-tier; dit issue (#1139, deelstuk 1 van #972) heft de eerste op: `PlannerMatchRepository`
+(Postgres) heeft nu een `FindMatchByOpponentAsync`, en `BerichtPipeline` roept hem aan op exact
+dezelfde plek en in dezelfde tweestaps-volgorde (eerst met datum, dan zonder) als het SQL
+Server-origineel.
+
+**Geen normalisatie van de tegenstandernaam nodig.** Het origineel doet hier geen
+`TeamNaamNormalisatie`-opzoeking — het is een vrije-tekst `LIKE '%...%'`-zoekopdracht op
+`m.wedstrijd`/`gw.Tegenstander`, geen teamresolutie. De Postgres-vertaling volgt exact hetzelfde
+patroon (`ILIKE`), dus er is geen nieuwe regex of vertaalpunt bijgekomen — de bestaande regel dat
+teamnaam-normalisatie uitsluitend in `Planner.Shared/TeamNaamNormalisatie.cs` hoort, blijft
+onaangeroerd.
+
+**Eén bewuste afwijking in de oefenwedstrijd-fallback.** Het SQL Server-origineel geeft in het
+`planner.GeplandeWedstrijden`-fallbackpad `AanvangsTijd` terug als `"HH:mm:ss"` (`CONVERT(...,
+108)`), terwijl het `his.matches`-pad daar `"HH:mm"` teruggeeft — een asymmetrie in het origineel
+zelf. De Postgres-vertaling formatteert in beide paden consistent `"HH:mm"`, zoals de rest van
+`PlannerMatchRepository` (Postgres) dat al deed: `planner.geplandewedstrijden.aanvangstijd` is hier
+een `TIME`-kolom, geen brontekst om 1-op-1 door te geven, dus consistentie binnen de klasse weegt
+zwaarder dan het letterlijk overnemen van een SQL Server-eigenaardigheid.
+
+De overige twee deelstukken van #972 (teamcontact-opvragen, "verzet zonder datum") en het vierde
+(`EmailProcessorFunction`'s resterende gaten) blijven open — zie #972 voor de volledige scope.
+
+## 60. Drie stukken provider-onafhankelijke logica gedeeld (SsrfProtection, feedbackkern) — ReplyPolicy bewust niet (#1130)
+
+Een Codex-review (#1107, bevinding 5) trof `Infrastructure/SsrfProtection.cs` op beide tiers
+byte-voor-byte identiek aan (na normalisatie van namespace/commentaar), `Email/ReplyPolicy.cs`
+functioneel identiek, en `Feedback/FeedbackFunction.cs` ~99% gelijk. §2 hierboven staat het delen
+van precies zulke pure, provider-agnostische logica al toe — dit issue voerde het door voor de
+drie concrete gevallen.
+
+**Gedeeld, zoals §2 bedoelt:**
+- `SsrfProtection`/`SsrfBlockedException` → `Planner.Shared/Infrastructure/SsrfProtection.cs`. Geen
+  DB/providerafhankelijkheid; beide tiers hadden alleen een andere namespace. Tests verhuisd (niet
+  gedupliceerd) naar `Planner.Shared.Tests/Infrastructure/SsrfProtectionTests.cs`.
+- De feedbackwidget-kern (Type-allowlist #1127, de twee PII-gates #1006, AI-promptopbouw,
+  GitHub-issue-payload/-aanroep, rate limiter) → `Planner.Shared/Feedback/FeedbackCore.cs` +
+  `FeedbackRateLimiter`. Elke tier houdt alleen een dunne `FeedbackFunction.cs` over: de
+  `[Function(...)]`-HTTP-trigger, `EasyAuthHelper.RequireAdmin`, env-var-configuratie (GitHub PAT/
+  owner/repo) en de vertaling van het resultaat naar `IActionResult`. Bewust **geen**
+  `IActionResult`/ASP.NET Core-afhankelijkheid in `FeedbackCore` — dat zou dit project net als
+  §2's vuistregel wil vermijden aan een HTTP-framework binden dat niet elke consument van
+  `Planner.Shared` nodig heeft; `FeedbackValidatieResultaat`/`FeedbackSubmitResultaat` zijn platte
+  records met een status-enum, en elke tier-`FeedbackFunction` vertaalt die zelf naar de eigen
+  HTTP-respons. Nieuwe tests in `Planner.Shared.Tests/Feedback/FeedbackCoreTests.cs`; de bestaande
+  `FeedbackFunctionPiiGateTests.cs` op beide tiers blijven ongewijzigd van gedrag (ze testen nu de
+  dunne wrapper, die intern naar `FeedbackCore` delegeert) en dus groen zonder aanpassing van de
+  assertions.
+
+**Bewust niet gedeeld: `ReplyPolicy`.** De klasse zelf is functioneel identiek, maar de types die ze
+aanneemt (`BerichtClassificatie`, `VerzoekType`) zijn dat niet: ze staan in elke tier se eigen
+`Email/BerichtModels.cs`, dat op zijn beurt ándere tier-specifieke types bundelt
+(`InkomendBericht`, `EmailStatus`, `ClassificatieCorrectieVoorbeeld` — zie ook §52's opmerking dat
+de Postgres-tier die laatste drie al vóór de e-mailportering elders had staan). `VerzoekType`/
+`BerichtClassificatie` zelf verhuizen zou geen probleem zijn omdat ze identiek zijn, maar wordt in
+13 bestanden per tier (`BerichtPipeline`, `EmailClassificationService`, `BerichtAiService`,
+`EmailProcessorFunction`, twee Admin-repositories, ...) gebruikt — een refactor van die omvang
+valt buiten de scope van dit issue en loopt vooruit op de al geplande, bredere e-mailmodule-migratie
+in `docs/ARCHITECTUUR-EMAIL-MODULE.md` (epic #777, nog niet gestart). `ReplyPolicy.cs` blijft dus
+op beide tiers staan zoals het was, inclusief de eigen tests
+(`FunctionApp.Tests/Email/ReplyPolicyTests.cs` en de Postgres-tegenhanger) — geen gedragswijziging.
+
+## 61. Teamcontact opvragen vertaald — tweede van #972's vier resterende deelstukken (#1140)
+
+§58 hief de eerste van drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen op; dit issue
+(#1140, deelstuk 2 van #972) heft de tweede op: `AllstarsTestDataRepository.GetTeamleiderContactAsync`
+is vertaald naar de Postgres-tier, en `BerichtPipeline`'s `TeamContactOpvragen`-tak geeft nu een echte
+`coachGevonden` terug in plaats van altijd `false`.
+
+**Matching-sleutel bewust anders dan het SQL Server-origineel.** Het origineel vergelijkt met een
+eigen `REPLACE(...,' ','')REPLACE(...,'-','')`-sleutel rechtstreeks in T-SQL. De Postgres-vertaling
+gebruikt in plaats daarvan `TeamNaamNormalisatie.NormaliseerVoorVergelijking` — de enige toegestane
+teamnaam-normalisatielaag (zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) — toegepast in C# op elke
+kandidaatrij uit `avg.teambegeleiding`, in plaats van een tweede ad-hoc regex/REPLACE-implementatie
+in SQL te bouwen. Zelfde precedent als `PlannerMatchRepository.TeamSchrijfwijzenAsync`/
+`FindMatchByOpponentAsync` (§58). Functioneel gelijk gedrag: zowel de lokale notatie ("JO13-1") als
+de KNVB-notatie ("O13-1") normaliseren naar dezelfde sleutel, dus is er geen aparte
+"knvbSleutel"-tweede parameter nodig zoals op de SQL Server-tier.
+
+**`PostgresClubScope.LegacyFilter` toegevoegd.** `avg.teambegeleiding.clubcode` is `NOT NULL DEFAULT
+''` (migratie 002) — dezelfde "kan leeg zijn, hoort dan bij de primaire club"-situatie als
+`avg.Teambegeleiding` op de SQL Server-tier. `PostgresClubScope` had tot dit issue alleen `HisFilter` (voor
+`his.*`) en `AddClubParam` (voor tabellen met een strikt `NOT NULL`-ClubCode); `LegacyFilter` is de
+Postgres-tegenhanger van `ClubScope.LegacyFilter` op de SQL Server-tier.
+
+**`EmailProcessorFunction`'s teamleider-/teamcontact-vervolgnotificaties (#66/#168) hersteld naar
+volledige pariteit** — zie §52's "Eén nieuw ontdekte afwijking": beide gebruikten
+`AdminTeambegeleidingFunction.ZoekBegeleiderEmailAsync` (alleen een e-mailadres, geen naam, dus een
+generieke aanhef). Nu gebruiken ze `AllstarsTestDataRepository.GetTeamleiderContactAsync`, woordelijk
+gelijk aan het SQL Server-origineel — inclusief "Hoi {naam}," in de herplanverzoek-notificatie.
+`EmailReplyPolicyService` blijft ongewijzigd: die roept `GetTeamleiderContactAsync` op de SQL
+Server-tier uitsluitend aan binnen de KNVB-PDF-bijlage/"verzet zonder datum"-tak (§52's derde
+afwijking, nog open) — geen consument op de Postgres-tier vandaag, dus geen wijziging nodig.
+
+De overige twee deelstukken van #972 ("verzet zonder datum", `EmailProcessorFunction`'s resterende
+gaten — dat laatste al opgelost via de #972-hotfix, zie §52) blijven open voor het deel dat nog
+niet is vertaald — zie #972 voor de volledige scope.
+
+## 62. "Verzet zonder datum" vertaald — derde en laatste van #972's vier resterende deelstukken (#1141/#561)
+
+§58 en §61 hieven de eerste twee van de drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen
+op; dit issue (#1141, deelstuk 3 van #972) heft de derde en laatste op: de KNVB-PDF-bijlage +
+vrije-zaterdagen-voorzet voor een herplanverzoek van de tegenstander zonder concrete nieuwe datum
+(#561) werkt nu ook op de Postgres-tier, in plaats van altijd terug te vallen op het standaard
+herplanpad.
+
+**Nieuwe tabel `public.knvbkalenderdag` (migratie 019).** Postgres-tegenhanger van
+`dbo.KnvbKalenderDag` — landelijke KNVB-speeldagenkalender per regio/seizoen, geen ClubCode-kolom
+(zelfde reden als het SQL Server-origineel). De seed is mechanisch overgenomen uit
+`Database/Script.PostDeployment1.sql` (seizoenen 2025/2026 en 2026/2027, alle 8 seizoen/regio-
+blokken, 423 rijen) — `BIT` 1/0 → `BOOLEAN`, `N'...'` → `'...'`, `[Kolom]` → kolom, en de
+`IF NOT EXISTS`-per-blok-guard van het origineel vervangen door één `INSERT … ON CONFLICT
+(seizoen, regio, datum) DO NOTHING` op de primaire sleutel — functioneel gelijkwaardig, want de
+PK-kolommen zijn identiek aan de guard-kolommen. Geregistreerd in de CI-dekkingsscripts
+(`check-postgres-table-coverage.sh`/`check-postgres-column-coverage.sh`); de eerdere
+`dbo.KnvbKalenderDag`-uitzonderingsregels in beide scripts zijn verwijderd.
+
+**`PostgresAppSettings` laadt nu `knvbpdfbijlageingeschakeld`/`knvbstandaardregio`.** Beide kolommen
+bestaan onvoorwaardelijk sinds migratie 003 — geen optionele-kolom-dans zoals bij
+`sportlinkextensionenabled`/`sportlinkdryrun` (zie de klassekop van `PostgresAppSettings.cs`) nodig.
+`AdminSettingsFunction` (Postgres) had deze twee instellingen al in de GET/PUT-whitelist en
+-validatie staan (uit een eerdere sessie) — alleen de procesbrede cache miste ze nog.
+
+**Drie nieuwe klassen, telkens een tegenhanger van het SQL Server-origineel:**
+- `FunctionApp.Postgres/Planner/Repositories/KnvbKalenderRepository.cs` —
+  `GetVrijeZaterdagenAsync`, leest `public.knvbkalenderdag` met dezelfde filters (dagtype
+  Competitie/Beker/Inhaal, alleen zaterdagen, `maxAantal`, uitsluiting van al bezette data).
+- `FunctionApp.Postgres/Sync/PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync` — leest
+  `public.season`, zelfde "eerste seizoen met `dateuntil >= vandaag`"-semantiek als het
+  SQL Server-origineel.
+- `FunctionApp.Postgres/Email/KnvbPdfService.cs` — leest de KNVB-kalender-PDF's als Content-bestand.
+  **Geen gedeelde `Planner.Shared`-service**: hoewel de leeslogica zelf provider-onafhankelijk is
+  (alleen `EmailBijlage` + `ILogger` nodig), heeft elke tier al zijn eigen `EmailBijlage`-record in
+  een eigen namespace (`SportlinkFunction.Email`/`FunctionApp.Postgres.Email`) — een gedeelde
+  `KnvbPdfService` zou een gedeeld `EmailBijlage`-type vereisen, en dat is een grotere refactor dan
+  dit issue rechtvaardigt. Een twin, net als `EmailBijlage` zelf, is hier het consistente patroon.
+
+**PDF-bestanden: één bron, twee build-outputs.** `FunctionApp.Postgres.csproj` verwijst met een
+MSBuild `Content Include`+`Link` naar dezelfde bronbestanden als
+`FunctionApp/fa-dev-sportlink-01.csproj` (`../FunctionApp/Content/KnvbKalenders/2026-2027/*.pdf`)
+in plaats van een tweede 1,3 MB-kopie in git te zetten. Beide tiers krijgen zo bij het builden hun
+eigen kopie in de output-directory (nodig voor twee losse deployments), zonder dat het bronbestand
+twee keer in de repository staat.
+
+**`BerichtPipeline` (Postgres): `BouwVerzetZonderDatumResponseAsync` toegevoegd**, woordelijk gelijk
+aan het SQL Server-origineel — regio/bijlage-instelling uit `ClubAppSettingsSnapshot` (dry-run pad)
+of `PostgresAppSettings` (echte mailbox-verwerking), seizoen via `PostgresSeasonHelper`, vrije
+zaterdagen via `KnvbKalenderRepository`, reeds bezette data via
+`PlannerMatchRepository.GetFutureMatchesForTeamAsync` (bestond al). Ontbreekt de regio of staat de
+bijlage-instelling uit, dan blijft het bestaande fallbackgedrag gelden — expliciet gelogd
+("VERZET-ZONDER-DATUM - geen knvbStandaardRegio ingesteld; val terug op het standaard herplan-pad"),
+niet stilzwijgend. `BerichtResponseGenerator.BouwVerzetZonderDatumAntwoord` (het antwoord-sjabloon)
+en `EmailReplyPolicyService`'s BCC/bijlage-tak (via
+`AllstarsTestDataRepository.GetTeamleiderContactAsync`, §61, en `KnvbPdfService`) zijn eveneens
+vertaald — beide fail-safe: een mislukte contact- of PDF-lookup verstuurt de mail gewoon zonder BCC
+of bijlage, nooit een crash.
+
+Met dit issue is #972 volledig afgerond: alle vier de resterende deelstukken (opponent-lookup §58,
+teamcontact §61, verzet-zonder-datum hier, `EmailProcessorFunction` al via de #972-hotfix, zie §52)
+zijn nu vertaald.
 
 ## Gerelateerd
 

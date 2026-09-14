@@ -218,11 +218,17 @@ public class EmailReplyPolicyServiceTests
             u.VerwerkingId == 200 && u.VerstuurdNaar == "afzender@voorbeeld.test" && u.AntwoordEmail == "antwoord-body");
     }
 
+    /// <summary>
+    /// Expliciete afwijzing (#1133): een Graph-<c>ODataError</c> met een 4xx-statuscode bewijst dat er
+    /// niets verstuurd is. Dat is het enige geval waarin de verzendintentie gewist mag worden zodat de
+    /// volgende poll opnieuw probeert.
+    /// </summary>
     [Fact]
-    public async Task SendFout_UpdateFout_EnGeeftVerzendFoutTerug()
+    public async Task SendFout_ExpliciteteAfwijzing_WistIntentie_EnGeeftVerzendFoutTerug()
     {
         var service = new EmailReplyPolicyService();
-        var graph = new FakeEmailGraphService { ThrowOnSendReply = true };
+        var odataError = new Microsoft.Graph.Models.ODataErrors.ODataError { ResponseStatusCode = 400 };
+        var graph = new FakeEmailGraphService { ExceptionToThrowOnSendReply = odataError };
         var persistence = new RecordingEmailPersistenceService();
 
         var result = await service.HandelReplyFlowAfAsync(
@@ -243,8 +249,9 @@ public class EmailReplyPolicyServiceTests
             u.VerwerkingId == 300 && u.FoutMelding == "sanitized");
 
         // De verzendintentie is gezet vóór de poging en weer gewist omdat het versturen aantoonbaar
-        // mislukte — anders zou de volgende poll dit als "uitkomst onbekend" zien en niet opnieuw
-        // proberen, terwijl dat hier juist de bedoeling is. (#716)
+        // mislukte (een 4xx bewijst dat Graph niets verstuurd heeft) — anders zou de volgende poll
+        // dit als "uitkomst onbekend" zien en niet opnieuw proberen, terwijl dat hier juist de
+        // bedoeling is. (#716, #1133)
         persistence.VerzendPogingMarkeringen.Should().ContainSingle(id => id == 300);
         persistence.VerzendPogingWissingen.Should().ContainSingle(id => id == 300);
 
@@ -252,6 +259,104 @@ public class EmailReplyPolicyServiceTests
         // omdat de idempotentie-guard naar de eindstatus kijkt — zie EmailIdempotentieTests.
         graph.MarkedAsReadIds.Should().BeEmpty();
         persistence.AntwoordUpdates.Should().BeEmpty();
+        persistence.StatusUpdates.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Kern van #1133: Graph accepteert het bericht (het staat al in <c>SentReplies</c>) maar de
+    /// respons gaat verloren door een time-out. De verzendintentie MOET blijven staan — wissen zou
+    /// een volgende poll een tweede antwoord laten sturen. Het bericht gaat direct op Review in
+    /// plaats van te wachten op de volgende poll.
+    /// </summary>
+    [Fact]
+    public async Task SendFout_OnbekendeUitkomstDoorTimeOut_LaatIntentieStaan_EnZetReview()
+    {
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService { ExceptionToThrowOnSendReply = new TaskCanceledException() };
+        var persistence = new RecordingEmailPersistenceService();
+
+        var result = await service.HandelReplyFlowAfAsync(
+            verwerkingId: 301,
+            email: new InkomendBericht { MessageId = "m4b", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: false,
+            reviewRecipient: null,
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
+            sanitizeFoutMelding: _ => "sanitized",
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.OnbekendeVerzendUitkomst);
+
+        // Graph "accepteerde" het bericht — het staat in SentReplies — vóórdat de time-out optrad.
+        graph.SentReplies.Should().ContainSingle(r => r.To == "afzender@voorbeeld.test");
+
+        // De harde eis: NIET wissen. Dit is de bug die #1133 dichtte — vóór de fix werd hier
+        // onvoorwaardelijk WisVerzendPogingAsync aangeroepen.
+        persistence.VerzendPogingMarkeringen.Should().ContainSingle(id => id == 301);
+        persistence.VerzendPogingWissingen.Should().BeEmpty();
+
+        // Status direct op Review — niet pas bij de volgende poll.
+        persistence.StatusUpdates.Should().ContainSingle(u =>
+            u.VerwerkingId == 301 && u.Status == EmailStatus.Review && u.GeextraheerdeData == null);
+        persistence.FoutUpdates.Should().BeEmpty();
+
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m4b");
+    }
+
+    /// <summary>
+    /// Een 5xx bewijst niets: Graph zelf had een probleem, mogelijk ná het (deels) verwerken van het
+    /// verzoek. Moet dus ook als onbekende uitkomst gelden, niet als expliciete afwijzing.
+    /// </summary>
+    [Fact]
+    public async Task SendFout_OnbekendeUitkomstDoor5xx_LaatIntentieStaan()
+    {
+        var service = new EmailReplyPolicyService();
+        var odataError = new Microsoft.Graph.Models.ODataErrors.ODataError { ResponseStatusCode = 503 };
+        var graph = new FakeEmailGraphService { ExceptionToThrowOnSendReply = odataError };
+        var persistence = new RecordingEmailPersistenceService();
+
+        var result = await service.HandelReplyFlowAfAsync(
+            verwerkingId: 302,
+            email: new InkomendBericht { MessageId = "m4c", Afzender = "afzender@voorbeeld.test", Onderwerp = "Test" },
+            classificatie: new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            plannerResponseJson: "{}",
+            reviewMode: false,
+            reviewRecipient: null,
+            graphService: graph,
+            persistenceService: persistence,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
+            sanitizeFoutMelding: _ => "sanitized",
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.OnbekendeVerzendUitkomst);
+        persistence.VerzendPogingWissingen.Should().BeEmpty();
+        persistence.StatusUpdates.Should().ContainSingle(u =>
+            u.VerwerkingId == 302 && u.Status == EmailStatus.Review);
+    }
+
+    /// <summary>
+    /// Een tweede poll ná een onbekende uitkomst mag géén tweede antwoord versturen. Dit bewijst de
+    /// end-to-end-garantie van #1133 door de precieze database-stand na te bootsen die
+    /// <see cref="SendFout_OnbekendeUitkomstDoorTimeOut_LaatIntentieStaan_EnZetReview"/> achterlaat en
+    /// die door <c>EmailIdempotentie.Bepaal</c> (aangeroepen door <c>EmailProcessorFunction</c> vóór
+    /// elke verwerking) te laten beoordelen — zie EmailIdempotentieTests voor de volledige matrix.
+    /// </summary>
+    [Fact]
+    public void NaOnbekendeUitkomst_ZietDeVolgendePollEenOnbesliteVerzendPoging_EnStuurtNietOpnieuw()
+    {
+        var standNaOnbekendeUitkomst = new EmailVerwerkingStand(
+            VerwerkingId: 301,
+            Status: nameof(EmailStatus.Review),
+            Pogingen: 1,
+            AntwoordVerstuurd: false,
+            VerzendPogingOnbeslist: true);
+
+        EmailIdempotentie.Bepaal(standNaOnbekendeUitkomst)
+            .Should().Be(VerwerkingsBesluit.OnbeslistNaVerzendPoging);
     }
 
     /// <summary>

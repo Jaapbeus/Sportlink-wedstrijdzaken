@@ -367,6 +367,29 @@ Bevestigt een slot en schrijft naar `planner.GeplandeWedstrijden`.
 }
 ```
 
+**Server-side validatie en atomaire bezettingscontrole (#1134).** Dit endpoint parseert niet
+alleen datum/tijd en slaat het interval op — vóór elke schrijfactie:
+
+1. **Duur- en grenscontrole** (`Planner.Shared.PlannerShared.ValidateBevestigInterval`, gedeeld
+   tussen beide databasetiers): duur moet positief zijn, mag niet onwaarschijnlijk groot zijn
+   (max 480 minuten), en de eindtijd mag niet over middernacht heen wrappen. Faalt dit → 400.
+2. **Atomaire bezettingscontrole vóór insert**, binnen één transactie met een
+   transactiegebonden lock op (club, veld, datum) — `pg_advisory_xact_lock` op de Postgres-tier,
+   `sp_getapplock` op de SQL Server-tier. Dit serialiseert gelijktijdige bevestigingen voor
+   hetzelfde veld/dezelfde datum, zodat de bezettingscheck en de insert atomair zijn ten opzichte
+   van een tweede, gelijktijdige aanvraag. De check zelf (`PlannerShared.FindBezettingsConflict`)
+   gebruikt dezelfde volledig-vs-gedeeld-veld-semantiek als `check-availability`: twee gedeelde
+   velden mogen naast elkaar zolang de som van hun veldfracties binnen 1.00 blijft, maar een
+   overlappende volledige-veldbezetting is altijd een conflict. Twee reserveringen die elkaar
+   precies aanraken (10:00–11:00 gevolgd door 11:00–12:00) zijn GEEN conflict — dat is bewust
+   een ander (losser) regime dan de buffer die de planner-suggesties (`CanFitMatch`) hanteren voor
+   nieuw voor te stellen sloten. Bij een conflict: 409 met een samenvatting van de botsende
+   reservering, en er wordt niets opgeslagen.
+
+Vóór deze fix ontbrak zowel de duurcontrole als de bezettingscontrole: twee overlappende
+volledige-veldreserveringen kregen allebei HTTP 200 en werden allebei opgeslagen, en een duur
+van 0 minuten gaf stilzwijgend een lege reservering.
+
 ---
 
 ## Beveiliging

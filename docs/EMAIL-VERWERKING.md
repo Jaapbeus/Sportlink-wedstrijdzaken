@@ -9,13 +9,15 @@ Dit document beschrijft wanneer de emailprocessor een antwoord verstuurt, welke 
 
 > **Sinds #972 geldt dit stroomschema ook voor de Postgres-tier** (`FunctionApp.Postgres/Email/
 > EmailProcessorFunction.cs`) — de mailbox stond daar volledig stil sinds de productiecutover van
-> 2026-09-04 (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §52). Documenteerde afwijkingen op de
-> Postgres-tier: het "opponent kan ons team alsnog vinden"-pad ontbreekt, `TeamContactOpvragen`
-> geeft in het auto-reply-antwoord altijd `coachGevonden = false`, de KNVB-PDF-bijlage/"verzet zonder
-> datum"-flow ontbreekt, en de interne notificaties hieronder — "Interne notificatie naar de
-> teamleider (#66)" en "Template M — Auto-reply 'doorgestuurd'" (beide in §2) — zoeken de begeleider
-> op via een andere, wél bestaande route (`avg.teambegeleiding` rechtstreeks) en gebruiken daardoor
-> een generieke aanhef in plaats van de naam van de begeleider. Zie de klassekop van
+> 2026-09-04 (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §52). De drie destijds resterende,
+> gedocumenteerde `BerichtPipeline`-afwijkingen zijn nu alle drie vertaald: het "opponent kan ons
+> team alsnog vinden"-pad (Template H hieronder) sinds #1139, `TeamContactOpvragen`/`coachGevonden`
+> plus de interne notificaties hieronder — "Interne notificatie naar de teamleider (#66)" en
+> "Template M — Auto-reply 'doorgestuurd'" (beide in §2) — sinds #1140, en de KNVB-PDF-
+> bijlage/"verzet zonder datum"-flow (Verzet-zonder-datum hieronder) sinds #1141. De teamcontact-
+> en verzet-zonder-datum-paden gebruiken beide `AllstarsTestDataRepository.GetTeamleiderContactAsync`,
+> woordelijk gelijk aan het SQL Server-origineel, inclusief de naam van de begeleider in de aanhef.
+> Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §61/§62 en de klassekop van
 > `FunctionApp.Postgres/Processing/BerichtPipeline.cs` en `EmailProcessorFunction.cs` voor de
 > volledige onderbouwing.
 
@@ -293,8 +295,8 @@ werd geschreven nádat de mail al weg was. Bij een harde afbreking precies daart
 van tien minuten, host-recycle, scale-in) was het antwoord verstuurd terwijl er in de database niets
 van te zien was — en stuurde de volgende poll een tweede antwoord.
 
-Daarom wordt vlak vóór de verzendpoging `VerzendPogingOpUtc` gezet, en meteen weer gewist zodra het
-versturen aantoonbaar mislukt. Wat overblijft is een ondubbelzinnig signaal:
+Daarom wordt vlak vóór de verzendpoging `VerzendPogingOpUtc` gezet, en alleen weer gewist als het
+versturen **aantoonbaar** mislukt is. Wat overblijft is een ondubbelzinnig signaal:
 
 | `VerzendPogingOpUtc` | `IsBeantwoord` | Betekenis | Volgende poll |
 |---|---|---|---|
@@ -307,6 +309,23 @@ De onbekende uitkomst weegt zwaarder dan de pogingenteller: het is geen mislukte
 eens mag proberen. Het bericht wordt als gelezen gemarkeerd zodat het de wachtrij niet bezet houdt, en
 de coördinator ziet het met status `Review` terug in het email-log. Kan de intentie zelf niet worden
 vastgelegd, dan wordt er niet verstuurd — een poging uitstellen is lichter dan een dubbel antwoord.
+
+**Welke fouten mogen de intentie wissen? (#1133)** Tot deze fix wiste `EmailReplyPolicyService` de
+intentie bij **élke** exception van de Graph-verzendaanroep — ook een time-out, annulering of
+verbindingsverlies, waarbij Graph het bericht mogelijk al had geaccepteerd vóórdat de fout ontstond.
+De volgende poll zag dan geen onbesliste intentie meer, en verstuurde een tweede antwoord op hetzelfde
+inkomende bericht. Sinds #1133 classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (puur, op
+beide tiers identiek getest) elke verzendfout in twee categorieën:
+
+| Uitkomst | Voorbeeld | Gedrag |
+|---|---|---|
+| **Expliciete afwijzing** | Graph-`ODataError` met status 400/401/403/404/413/422/429 — het verzoek zelf is afgewezen, er kan niets verstuurd zijn | Intentie wordt gewist, status `Fout`, volgende poll probeert opnieuw (ongewijzigd t.o.v. #712) |
+| **Onbekende uitkomst** | time-out, annulering, verbindingsverlies, 5xx, 408, of een ontbrekende statuscode | Intentie blijft staan, status direct op `Review` — niet pas bij de volgende poll |
+
+Bij een onbekende uitkomst wordt het bericht dus **meteen** (in dezelfde invocatie) op `Review` gezet
+en als gelezen gemarkeerd, in plaats van te wachten tot een volgende poll de onbesliste intentie
+tegenkomt via de tabel hierboven — dat mechanisme blijft als extra vangnet bestaan voor het geval de
+invocatie zelf hard wordt afgebroken vóórdat deze afhandeling draait.
 
 #### Eén leermoment per correctie (#715)
 
@@ -892,7 +911,7 @@ Dit zijn ze alle acht:
 | `Geclassificeerd` | AI-classificatie vastgelegd | Nee |
 | `Verwerkt` | Plannerlogica gedraaid, nog geen antwoordbesluit | Nee |
 | `AntwoordVerstuurd` | Antwoord de deur uit; `IsBeantwoord` = 1 | **Ja** |
-| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode of onbekende verzenduitkomst (#716) | Nee |
+| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode, of onbekende verzenduitkomst (#716, #1133) | Nee |
 | `Fout` | Verwerking mislukt of opgegeven na 3 pogingen | Nee |
 | `BuitenScope` | Buiten scope bevonden ná herclassificatie | **Ja** |
 | `GeenAntwoordNodig` | Bewust geen antwoord: planning is mogelijk (#572) | **Ja** |

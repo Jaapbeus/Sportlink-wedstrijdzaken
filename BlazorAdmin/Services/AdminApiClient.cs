@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BlazorAdmin.Models;
@@ -66,6 +67,30 @@ public class AdminApiClient
             $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/field",
             new { FieldId = fieldId, FieldSize = fieldSize, FieldOffset = fieldOffset });
 
+    // #994: officials (scheidsrechter/assistenten) toewijzen. ONBEVESTIGD/altijd code-gelockt
+    // (forceDryRun) — zie SportlinkClubClient.AssignOfficialsAsync. positie+persoonId per regel,
+    // nooit een naam of zoekfunctie (AVG).
+    public async Task<ApiResult<SportlinkMutatieResultaatDto>> PutSportlinkOfficialsAsync(
+        string wedstrijdcode, IReadOnlyList<(string OfficialPosition, string PersoonId)> officials)
+        => await PutAsync<SportlinkMutatieResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/officials",
+            new
+            {
+                Officials = officials
+                    .Select(o => new { OfficialPosition = o.OfficialPosition, PersoonId = o.PersoonId })
+                    .ToList()
+            });
+
+    // #995: wijzigingsverzoek datum/tijd/accommodatie — ALLEEN stap 1 (valideren). ONBEVESTIGD en
+    // altijd code-gelockt (forceDryRun) — zie SportlinkClubClient.RequestMatchChangeAsync. Bewust
+    // GEEN methode voor een bevestigstap: die bestaat hier niet.
+    // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995).
+    public async Task<ApiResult<SportlinkMatchWijzigingsverzoekResultaatDto>> PutSportlinkMatchChangeRequestAsync(
+        string wedstrijdcode, string? nieuweDatum, string? nieuweStartTijd, string? nieuweFacilityId, string toelichting)
+        => await PutAsync<SportlinkMatchWijzigingsverzoekResultaatDto>(
+            $"api/sportlink/match/{Uri.EscapeDataString(wedstrijdcode)}/change-request",
+            new { NieuweDatum = nieuweDatum, NieuweStartTijd = nieuweStartTijd, NieuweFacilityId = nieuweFacilityId, Toelichting = toelichting });
+
     // #996: inkomende wijzigingsverzoeken van tegenstanders.
     public async Task<ApiResult<List<SportlinkChangeRequestDto>>> GetSportlinkChangeRequestsAsync()
         => await GetAsync<List<SportlinkChangeRequestDto>>("api/sportlink/change-requests");
@@ -76,13 +101,36 @@ public class AdminApiClient
             $"api/sportlink/change-requests/{Uri.EscapeDataString(publicRequestId)}/action",
             new { PublicMatchId = publicMatchId, Actie = actie, Remarks = remarks });
 
+    // #998: statussectie op Instellingen. live=true doet een echte tokenverversing + 1 read-call —
+    // alleen op expliciete gebruikersklik, nooit automatisch (zie SportlinkExtensieHealthFunction).
+    public async Task<ApiResult<SportlinkExtensieHealthDto>> GetSportlinkExtensieHealthAsync(bool live = false)
+        => await GetAsync<SportlinkExtensieHealthDto>($"api/beheer/sportlink-extensie/health?live={(live ? "true" : "false")}");
+
+    // #997/#1116: oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, altijd code-gelockt
+    // (forceDryRun) totdat een mens de body live bevestigt, zie SportlinkClubClient.CreateClubMatchAsync.
+    // Het formulier stuurt alleen teamnaam/tegenstander/veld; de server leidt de Sportlink-ID's af.
+    public async Task<ApiResult<OefenwedstrijdResultaatDto>> PostOefenwedstrijdAsync(
+        DateTime matchDateTime, int duration, string teamNaam, string tegenstander, int? veldNummer, string? description)
+        => await PostAsync<OefenwedstrijdResultaatDto>("api/sportlink/club-match",
+            new
+            {
+                MatchDateTime = matchDateTime,
+                Duration = duration,
+                TeamNaam = teamNaam,
+                Tegenstander = tegenstander,
+                VeldNummer = veldNummer,
+                Description = description
+            });
+
     // ── Sync ──
 
-    public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync()
-        => await GetAsync<SyncStatusDto>("api/beheer/sync/status");
+    public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync(Guid? jobId = null)
+        => await GetAsync<SyncStatusDto>(jobId.HasValue
+            ? $"api/beheer/sync/status?jobId={jobId}"
+            : "api/beheer/sync/status");
 
-    public async Task<ApiResult<object>> TriggerSyncAsync()
-        => await PostAsync<object>("api/beheer/sync/trigger", new { });
+    public async Task<ApiResult<TriggerSyncResultDto>> TriggerSyncAsync()
+        => await PostAsync<TriggerSyncResultDto>("api/beheer/sync/trigger", new { });
 
     // ── Templates ──
 
@@ -189,8 +237,14 @@ public class AdminApiClient
     public async Task<ApiResult<List<string>>> GetTeambegeleidingTeamsAsync()
         => await GetAsync<List<string>>("api/beheer/teambegeleiding");
 
-    public async Task<ApiResult<List<TeambegeleidingItem>>> GetTeambegeleidingAsync(string team)
-        => await GetAsync<List<TeambegeleidingItem>>($"api/beheer/teambegeleiding/{Uri.EscapeDataString(team)}");
+    // cancellationToken (#1136): laat de aanroeper een verouderde lookup (team-selectie
+    // inmiddels gewijzigd) daadwerkelijk annuleren in plaats van het resultaat alleen weg te
+    // gooien — de generatie-guard in Teambegeleiding.razor blijft de correctheidsgarantie,
+    // dit is puur een netwerk-optimalisatie.
+    public async Task<ApiResult<List<TeambegeleidingItem>>> GetTeambegeleidingAsync(
+        string team, CancellationToken cancellationToken = default)
+        => await GetAsync<List<TeambegeleidingItem>>(
+            $"api/beheer/teambegeleiding/{Uri.EscapeDataString(team)}", cancellationToken);
 
     public async Task<ApiResult<object>> StuurTeambegeleidingBerichtAsync(DoorsturenRequest request)
         => await PostAsync<object>("api/beheer/teambegeleiding/doorsturen", request);
@@ -277,10 +331,14 @@ public class AdminApiClient
         {
             return await HandleAsync<T>(await send());
         }
+        // #1136: een bewust geannuleerde aanroep (aanroeper heeft een nieuwere lookup gestart)
+        // hoort geen foutmelding op te leveren — de aanroeper gooit dit resultaat toch weg.
+        catch (OperationCanceledException) { return ApiResult<T>.Fail("Geannuleerd"); }
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
     }
 
-    private Task<ApiResult<T>> GetAsync<T>(string path) => SendAsync<T>(() => _http.GetAsync(path));
+    private Task<ApiResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default)
+        => SendAsync<T>(() => _http.GetAsync(path, cancellationToken));
     private Task<ApiResult<T>> PostAsync<T>(string path, object body) => SendAsync<T>(() => _http.PostAsJsonAsync(path, body));
     private Task<ApiResult<T>> PutAsync<T>(string path, object body) => SendAsync<T>(() => _http.PutAsJsonAsync(path, body));
     private Task<ApiResult<T>> DeleteAsync<T>(string path) => SendAsync<T>(() => _http.DeleteAsync(path));

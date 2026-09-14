@@ -1,7 +1,5 @@
 @page "/wijzigingsverzoeken"
-@inject AdminApiClient Api
-@using BlazorAdmin.Services
-@using BlazorAdmin.Models
+@* Alle logica staat in Wijzigingsverzoeken.razor.cs (#1122). *@
 
 <PageTitle>Wijzigingsverzoeken — Admin</PageTitle>
 
@@ -9,8 +7,9 @@
 
 <p class="text-muted">
     Wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor datum, tijd of
-    accommodatie. Alleen verzoeken met status <code>CONFIRM</code> wachten op een beslissing van
-    ons — de overige staan hier alleen ter referentie.
+    accommodatie. Alleen <strong>openstaande</strong> verzoeken wachten op een beslissing van ons;
+    de overige staan er ter referentie bij. Wedstrijdnummer en teams komen uit onze eigen
+    wedstrijdgegevens — ontbreken ze bij een verzoek, dan is die wedstrijd nog niet gekoppeld.
 </p>
 
 @if (_laden)
@@ -27,137 +26,121 @@ else if (_verzoeken == null || _verzoeken.Count == 0)
 }
 else
 {
-    <table class="table table-sm">
-        <thead>
-            <tr>
-                <th>Status</th>
-                <th>Huidig</th>
-                <th>Gevraagd</th>
-                <th>Reden</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var verzoek in _verzoeken)
+    @* #1111: statusfilter als knoppenrij, standaard alleen "Openstaand" — naar het voorbeeld van
+       Sportlinks eigen scherm. Elke knop toont het aantal in die categorie. *@
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Statusfilter">
+            @foreach (var f in Filters)
             {
-                <tr>
-                    <td>
-                        <span class="badge @(verzoek.RequestStatus == "CONFIRM" ? "bg-warning text-dark" : "bg-secondary")">
-                            @verzoek.RequestStatus
-                        </span>
-                    </td>
-                    <td>@verzoek.RequestData?.CurrentDate @verzoek.RequestData?.CurrentStartTime</td>
-                    <td>@verzoek.RequestData?.RequestedDate @verzoek.RequestData?.RequestedStartTime</td>
-                    <td>@verzoek.Reason</td>
-                    <td>
-                        @if (verzoek.RequestStatus == "CONFIRM" && verzoek.PublicRequestId != null && verzoek.PublicMatchId != null)
-                        {
-                            <button class="btn btn-sm btn-success me-1" disabled="@_bezig.GetValueOrDefault(verzoek.PublicRequestId)"
-                                    @onclick="() => HandelAfAsync(verzoek, isApprove: true)">
-                                Goedkeuren
-                            </button>
-                            <input class="form-control form-control-sm d-inline-block me-1" style="width:12rem;"
-                                   placeholder="Toelichting bij afwijzen"
-                                   value="@_toelichting.GetValueOrDefault(verzoek.PublicRequestId)"
-                                   @onchange="e => _toelichting[verzoek.PublicRequestId] = e.Value?.ToString()" />
-                            <button class="btn btn-sm btn-outline-danger" disabled="@_bezig.GetValueOrDefault(verzoek.PublicRequestId)"
-                                    @onclick="() => HandelAfAsync(verzoek, isApprove: false)">
-                                Afwijzen
-                            </button>
-                            @if (_bezig.GetValueOrDefault(verzoek.PublicRequestId))
-                            {
-                                <span class="spinner-border spinner-border-sm ms-1"></span>
-                            }
-                            @if (!string.IsNullOrEmpty(_melding.GetValueOrDefault(verzoek.PublicRequestId)))
-                            {
-                                <div class="mt-1 @(_meldingFout.GetValueOrDefault(verzoek.PublicRequestId) ? "text-danger" : "text-success")">
-                                    @_melding.GetValueOrDefault(verzoek.PublicRequestId)
-                                </div>
-                            }
-                        }
-                    </td>
-                </tr>
+                var aantal = _verzoeken.Count(v => f.Match(v.RequestStatus));
+                <button type="button"
+                        class="btn @(_filter == f.Key ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => _filter = f.Key">
+                    @f.Label <span class="badge bg-light text-dark ms-1">@aantal</span>
+                </button>
             }
-        </tbody>
-    </table>
-}
+        </div>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LaadVerzoekenAsync" title="Opnieuw laden">
+            <i class="bi bi-arrow-clockwise"></i> Vernieuwen
+        </button>
+    </div>
 
-@code {
-    private bool _laden = true;
-    private string? _fout;
-    private List<SportlinkChangeRequestDto>? _verzoeken;
-    private readonly Dictionary<string, bool> _bezig = new();
-    private readonly Dictionary<string, string?> _toelichting = new();
-    private readonly Dictionary<string, string?> _melding = new();
-    private readonly Dictionary<string, bool> _meldingFout = new();
+    var zichtbaar = _verzoeken.Where(v => HuidigFilter.Match(v.RequestStatus)).ToList();
 
-    protected override async Task OnInitializedAsync()
+    @if (zichtbaar.Count == 0)
     {
-        await LaadVerzoekenAsync();
+        <p class="text-muted">Geen verzoeken met status "@HuidigFilter.Label".</p>
     }
-
-    private async Task LaadVerzoekenAsync()
+    else
     {
-        _laden = true;
-        _fout = null;
-        StateHasChanged();
-        try
-        {
-            var result = await Api.GetSportlinkChangeRequestsAsync();
-            if (result.Success)
-                _verzoeken = result.Data;
-            else
-                _fout = result.ErrorMessage ?? "Onbekende fout bij ophalen wijzigingsverzoeken.";
-        }
-        finally
-        {
-            _laden = false;
-        }
-    }
-
-    private async Task HandelAfAsync(SportlinkChangeRequestDto verzoek, bool isApprove)
-    {
-        if (verzoek.PublicRequestId == null || verzoek.PublicMatchId == null) return;
-        var actie = isApprove ? "APPROVE" : "DENY";
-
-        var toelichting = _toelichting.GetValueOrDefault(verzoek.PublicRequestId);
-        if (!isApprove && string.IsNullOrWhiteSpace(toelichting))
-        {
-            _meldingFout[verzoek.PublicRequestId] = true;
-            _melding[verzoek.PublicRequestId] = "Toelichting is verplicht bij afwijzen.";
-            return;
-        }
-
-        _bezig[verzoek.PublicRequestId] = true;
-        _melding[verzoek.PublicRequestId] = null;
-        StateHasChanged();
-        try
-        {
-            var result = await Api.PutSportlinkChangeRequestActionAsync(verzoek.PublicRequestId, verzoek.PublicMatchId, actie, toelichting);
-            if (!result.Success)
-            {
-                _meldingFout[verzoek.PublicRequestId] = true;
-                _melding[verzoek.PublicRequestId] = result.ErrorMessage ?? "Onbekende fout.";
-                return;
-            }
-
-            if (result.Data?.IsSuccess == true)
-            {
-                _meldingFout[verzoek.PublicRequestId] = false;
-                _melding[verzoek.PublicRequestId] = actie == "APPROVE" ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.";
-                await LaadVerzoekenAsync();
-            }
-            else
-            {
-                _meldingFout[verzoek.PublicRequestId] = true;
-                var violations = result.Data?.Violations;
-                _melding[verzoek.PublicRequestId] = "Sportlink heeft de actie afgewezen"
-                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
-            }
-        }
-        finally
-        {
-            _bezig[verzoek.PublicRequestId] = false;
-        }
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:2.5rem;" title="Status"></th>
+                        <th>Wedstrijdnr.</th>
+                        <th>Thuis</th>
+                        <th>Uit</th>
+                        <th>Datum</th>
+                        <th>Tijd</th>
+                        <th>Accommodatie</th>
+                        <th>Gevraagd</th>
+                        <th>Reden</th>
+                        <th style="width:11rem;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var verzoek in zichtbaar)
+                    {
+                        var isOpen = IsOpenstaand(verzoek.RequestStatus);
+                        var id = verzoek.PublicRequestId ?? "";
+                        var w = verzoek.Wedstrijd;
+                        <tr>
+                            <td>
+                                <i class="bi @StatusIcoon(verzoek.RequestStatus)" title="@StatusLabel(verzoek.RequestStatus)"
+                                   aria-label="@StatusLabel(verzoek.RequestStatus)"></i>
+                            </td>
+                            <td>@(w?.Wedstrijdnummer?.ToString() ?? "–")</td>
+                            <td>@(w?.Thuisteam ?? "–")</td>
+                            <td>@(w?.Uitteam ?? "–")</td>
+                            <td>@(w?.Datum ?? verzoek.RequestData?.CurrentDate ?? "–")</td>
+                            <td>@(w?.Tijd ?? verzoek.RequestData?.CurrentStartTime ?? "–")</td>
+                            <td>@(w?.Accommodatie ?? verzoek.RequestData?.CurrentFacilityName ?? "–")</td>
+                            <td>
+                                @Gevraagd(verzoek.RequestData)
+                            </td>
+                            <td>
+                                @verzoek.Reason
+                                @if (!string.IsNullOrWhiteSpace(verzoek.Remarks))
+                                {
+                                    <div class="text-muted small">@verzoek.Remarks</div>
+                                }
+                            </td>
+                            <td>
+                                @if (isOpen && verzoek.PublicRequestId != null && verzoek.PublicMatchId != null)
+                                {
+                                    var status = Status(id);
+                                    var bezig = status.Bezig;
+                                    @if (!_afwijzenOpen.GetValueOrDefault(id))
+                                    {
+                                        <button class="btn btn-sm btn-success me-1" disabled="@bezig" title="Goedkeuren" aria-label="Goedkeuren"
+                                                @onclick="() => HandelAfAsync(verzoek, isApprove: true)">
+                                            <i class="bi bi-check-lg"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" disabled="@bezig" title="Afwijzen (toelichting verplicht)" aria-label="Afwijzen"
+                                                @onclick="() => _afwijzenOpen[id] = true">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex flex-column gap-1">
+                                            <input class="form-control form-control-sm" placeholder="Toelichting bij afwijzen (verplicht)"
+                                                   value="@_toelichting.GetValueOrDefault(id)"
+                                                   @onchange="e => _toelichting[id] = e.Value?.ToString()" />
+                                            <div>
+                                                <button class="btn btn-sm btn-danger me-1" disabled="@bezig" title="Afwijzen bevestigen"
+                                                        @onclick="() => HandelAfAsync(verzoek, isApprove: false)">
+                                                    <i class="bi bi-x-lg"></i> Afwijzen
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-secondary" disabled="@bezig" title="Annuleren"
+                                                        @onclick="() => _afwijzenOpen[id] = false">
+                                                    Annuleren
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (bezig)
+                                    {
+                                        <span class="spinner-border spinner-border-sm ms-1"></span>
+                                    }
+                                }
+                                <Melding Status="Status(id)" Klasse="small" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 }

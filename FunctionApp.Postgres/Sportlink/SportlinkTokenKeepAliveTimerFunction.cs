@@ -1,5 +1,4 @@
 using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Planner;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,24 +41,8 @@ public static class SportlinkTokenKeepAliveTimerFunction
     {
         var log = context.GetLogger("SportlinkTokenKeepAlive");
 
-        if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
-        {
-            log.LogInformation("Sportlink Web Extension staat uit — keep-alive overgeslagen.");
-            return;
-        }
-
-        if (!EgressGuard.ExternalIntegrationsAllowed())
-        {
-            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — keep-alive overgeslagen (#857).");
-            return;
-        }
-
-        var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-        if (sportlinkClient == null)
-        {
-            log.LogWarning("ISportlinkClubClient niet geregistreerd — keep-alive kan niet draaien.");
-            return;
-        }
+        var sportlinkClient = SportlinkEndpointSupport.ClientVoorTimer(context, log, "keep-alive");
+        if (sportlinkClient == null) return;
 
         List<string> rollen;
         try

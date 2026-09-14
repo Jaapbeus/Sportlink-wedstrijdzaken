@@ -1,14 +1,14 @@
 using System.Net;
 using System.Net.Sockets;
 using FluentAssertions;
-using FunctionApp.Postgres.Infrastructure;
+using Planner.Shared.Infrastructure;
 using Xunit;
 
-namespace FunctionApp.Postgres.Tests;
+namespace Planner.Shared.Tests.Infrastructure;
 
 /// <summary>
 /// Regressietests voor #1007 — SSRF-bescherming van de thema-extractor
-/// (<c>FunctionApp.Postgres.Admin.AdminThemeFunction.Extract</c>). Twee aanvalspaden zijn
+/// (<c>SportlinkFunction.Admin.AdminThemeFunction.Extract</c>). Twee aanvalspaden zijn
 /// afgedekt: (1) een redirect naar een niet-toegestane bestemming, (2) een directe verbinding met
 /// een privé/loopback/link-local adres. Beide worden hier getest op het niveau van
 /// <see cref="SsrfProtection"/> zelf, zonder een echte externe host aan te roepen — voor de

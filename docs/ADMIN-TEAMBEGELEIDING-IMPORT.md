@@ -11,6 +11,16 @@ Deze handleiding legt stap voor stap uit hoe je de lijst met teambegeleiders (tr
 > `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-import,
 > ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie). Getest tegen een
 > lokale Postgres-devcontainer, uitsluitend met fictieve testdata.
+>
+> **#1131/#1132 (beide tiers atomisch en per-club geserialiseerd).** De SQL Server-import
+> (`FunctionApp/Admin/AdminTeambegeleidingFunction.cs`) valideert nu de kolomlengtes van élke rij
+> vóórdat de club-scoped DELETE draait, en voert DELETE + inserts + de audit-rij in `avg.ImportLog`
+> uit in één transactie met rollback bij elke fout — een te lange waarde (bijv. een teamnaam van
+> meer dan 100 tekens) levert nu een 400 met een foutmelding per rij/kolom op, en laat de vorige
+> geldige import ongemoeid. De Postgres-import serialiseert vervangingen per club met een
+> `pg_advisory_xact_lock` vóór de DELETE, zodat twee overlappende imports voor dezelfde club nooit
+> allebei kunnen committen (de tweede wacht en vervangt daarna de eerste volledig, in plaats van de
+> twee batches samen te voegen).
 
 ---
 
@@ -148,3 +158,4 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 | Script geeft een fout | Geen bestand gevonden | Controleer of de download in stap 3 geslaagd is en het bestand in de Downloadmap staat |
 | Verificatiecode werkt niet | Code verlopen | Wacht tot de authenticator-app een nieuwe code toont en probeer opnieuw |
 | Waarschuwing "exacte duplicaat-rij(en) overgeslagen" | Sportlink-export bevat dezelfde persoon met exact dezelfde rol twee keer | Geen actie nodig — de import slaat deze duplicaten automatisch over, de rest van de lijst is correct geïmporteerd |
+| Foutmelding "Een of meer rijen overschrijden de maximale kolomlengte" met een rij/kolom-lijst | Een veld in de CSV (bijv. een teamnaam of e-mailadres) is langer dan de databasekolom toestaat | Kort de genoemde velden in en importeer opnieuw — de vorige geldige import is niet gewijzigd |

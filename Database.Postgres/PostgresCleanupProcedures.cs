@@ -207,4 +207,56 @@ public static class PostgresCleanupProcedures
         delete.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
         await delete.ExecuteNonQueryAsync(ct);
     }
+
+    /// <summary>
+    /// Postgres-tegenhanger van <c>dbo.sp_CleanupSportlinkMutationAudit</c> (#1114, epic #986) —
+    /// de zesde opschoonprocedure, gebouwd naar het model van
+    /// <see cref="CleanupAppSettingsAuditAsync"/>.
+    /// <para>
+    /// <b>Waarom.</b> <c>public.sportlinkmutationaudit</c> (migratie 013) legt bij elke
+    /// Sportlink-mutatiepoging een rij vast, inclusief het e-mailadres/UPN van de beheerder die de
+    /// actie triggerde (<c>triggerddoor</c>, via <c>EasyAuthHelper.GetAuditActor</c>). Dat is een
+    /// legitieme operator-audit, maar zonder bewaartermijn bleven de rijen voor altijd staan — AVG
+    /// art. 5 lid 1 sub e. Tijdens #998 expliciet als apart issue geparkeerd.
+    /// </para>
+    /// <para>
+    /// <b>Dezelfde drietraps-terugval</b> (primaire club → willekeurige club → default) en dezelfde
+    /// enkele-fase-aanpak (één DELETE, geen tussentijdse anonimisering) als het appsettingsaudit-
+    /// origineel — het doel van dit log ís "wie heeft wat in Sportlink gewijzigd", en het
+    /// <c>Pending</c>-resultaat van een nog lopende mutatie is nooit ouder dan seconden, dus een
+    /// leeftijdsgrens raakt geen actieve rij. De kolom <c>sportlinkmutationauditbewaardagen</c> komt
+    /// uit migratie 017; de default van 365 dagen is een gedocumenteerd uitgangspunt, geen
+    /// definitief beleid (zie de toelichting in dat migratiebestand).
+    /// </para>
+    /// </summary>
+    public static async Task CleanupSportlinkMutationAuditAsync(NpgsqlConnection connection, CancellationToken ct = default)
+    {
+        const int standaardBewaarDagen = 365;
+
+        int bewaarDagen;
+        await using (var lees = new NpgsqlCommand(@"
+            SELECT COALESCE(
+                (SELECT NULLIF(GREATEST(sportlinkmutationauditbewaardagen, 0), 0)
+                 FROM public.appsettings
+                 WHERE clubcode <> 'ALLSTARS'
+                 ORDER BY clubcode
+                 LIMIT 1),
+                (SELECT NULLIF(GREATEST(sportlinkmutationauditbewaardagen, 0), 0)
+                 FROM public.appsettings
+                 ORDER BY clubcode
+                 LIMIT 1),
+                @standaard)", connection))
+        {
+            lees.Parameters.AddWithValue("standaard", standaardBewaarDagen);
+            var waarde = await lees.ExecuteScalarAsync(ct);
+            bewaarDagen = waarde is null or DBNull ? standaardBewaarDagen : Convert.ToInt32(waarde);
+        }
+
+        var verwijderVoor = DateTime.UtcNow.AddDays(-bewaarDagen);
+
+        await using var delete = new NpgsqlCommand(
+            "DELETE FROM public.sportlinkmutationaudit WHERE tijdstip < @verwijderVoor", connection);
+        delete.Parameters.AddWithValue("verwijderVoor", verwijderVoor);
+        await delete.ExecuteNonQueryAsync(ct);
+    }
 }

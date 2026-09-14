@@ -1,0 +1,11 @@
+@* Eén melding onder een Sportlink-actie: kleur volgt fout/dry-run/succes (#1122). *@
+@if (!string.IsNullOrEmpty(Status.Melding))
+{
+    <div class="mt-1 @Klasse @Status.CssKlasse">@Status.Melding</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public SportlinkActieStatus Status { get; set; } = default!;
+    /// <summary>Extra CSS-klassen, bijv. <c>small</c>.</summary>
+    [Parameter] public string Klasse { get; set; } = "";
+}

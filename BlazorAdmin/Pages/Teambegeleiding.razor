@@ -275,6 +275,12 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     private bool _gekopieerd;
     private string _ontvangers = "";
 
+    // #1136: bewaakt dat een trage, verouderde teamlookup het resultaat van een snellere,
+    // latere lookup niet meer kan overschrijven — zie LookupGeneratieGuard voor de volledige
+    // uitleg van de race die hiermee wordt voorkomen.
+    private readonly LookupGeneratieGuard _lookupGuard = new();
+    private CancellationTokenSource? _lookupCts;
+
     // Import
     private CsvPreviewModel? _csvPreview;
     private string? _csvContent;
@@ -306,7 +312,13 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     }
 
     private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
-    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+
+    public void Dispose()
+    {
+        ClubSelector.OnChange -= OnClubChanged;
+        _lookupCts?.Cancel();
+        _lookupCts?.Dispose();
+    }
 
     private async Task LoadAsync()
     {
@@ -326,15 +338,39 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
     {
         _selectedTeam = e.Value?.ToString();
         _begeleiders.Clear();
+        _ontvangers = ""; // reset direct — anders blijven de ontvangers van het vorige team
+                           // zichtbaar totdat de nieuwe lookup is voltooid (#1136)
         _vraagFormulierZichtbaar = false;
         _doorsturenSuccess = null;
         _doorsturenError = null;
         _gekopieerd = false;
 
-        if (string.IsNullOrEmpty(_selectedTeam)) return;
+        var team = _selectedTeam;
+
+        // #1136: elke selectie krijgt een eigen generatie-token. Voltooit een oudere lookup
+        // (van een team dat inmiddels niet meer geselecteerd is) later dan een nieuwere, dan
+        // wordt dat resultaat hieronder genegeerd in plaats van de huidige staat te overschrijven.
+        var token = _lookupGuard.Start(team);
+
+        _lookupCts?.Cancel();
+        _lookupCts?.Dispose();
+        _lookupCts = null;
+
+        if (string.IsNullOrEmpty(team))
+        {
+            _loadingBegeleiders = false;
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _lookupCts = cts;
 
         _loadingBegeleiders = true;
-        var result = await Api.GetTeambegeleidingAsync(_selectedTeam);
+        var result = await Api.GetTeambegeleidingAsync(team, cts.Token);
+
+        if (!_lookupGuard.IsActueel(token))
+            return; // Verouderde lookup — een nieuwere selectie is inmiddels gestart.
+
         if (result.Success)
             _begeleiders = result.Data ?? new();
         _loadingBegeleiders = false;
@@ -400,17 +436,24 @@ else if (_selectedTeam != null && !_loadingBegeleiders)
             return;
         }
 
+        // #1136: team + ontvangers atomisch vastleggen vóór de await. De teamkiezer blijft
+        // tijdens het versturen bruikbaar; zonder deze snapshot zou een teamwissel tijdens de
+        // openstaande aanroep de payload (of in elk geval de succesmelding) alsnog kunnen laten
+        // verwijzen naar het nieuw geselecteerde team in plaats van het team waarvoor is verstuurd.
+        var teamNaamSnapshot = _selectedTeam ?? "";
+        var ontvangersSnapshot = _ontvangers;
+
         _doorsturenBezig = true;
         _doorsturenError = null;
-        _doorsturen.TeamNaam = _selectedTeam ?? "";
-        _doorsturen.Ontvangers = _ontvangers;
+        _doorsturen.TeamNaam = teamNaamSnapshot;
+        _doorsturen.Ontvangers = ontvangersSnapshot;
 
         var result = await Api.StuurTeambegeleidingBerichtAsync(_doorsturen);
         _doorsturenBezig = false;
 
         if (result.Success)
         {
-            _doorsturenSuccess = $"Uw vraag over de begeleiding van {_selectedTeam} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op.";
+            _doorsturenSuccess = $"Uw vraag over de begeleiding van {teamNaamSnapshot} is doorgestuurd. De begeleider neemt rechtstreeks contact met u op.";
             _vraagFormulierZichtbaar = false;
         }
         else

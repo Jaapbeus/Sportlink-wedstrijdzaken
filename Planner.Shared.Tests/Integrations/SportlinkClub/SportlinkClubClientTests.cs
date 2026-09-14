@@ -4,6 +4,7 @@ using Moq;
 using Moq.Protected;
 using Planner.Shared.Integrations.SportlinkClub;
 using System.Net;
+using System.Text.Json;
 using Xunit;
 
 namespace Planner.Shared.Tests.Integrations.SportlinkClub;
@@ -918,6 +919,73 @@ public class SportlinkClubClientTests
             .Which.Should().Be("INVALID_COMBINATION_FACILITY_DRESSINGROOM: Een of meer gekozen kleedkamers, horen niet bij de gekozen accommodatie");
     }
 
+    // ── Dry-run-modus (#998, epic #986) ──
+
+    [Fact]
+    public async Task UpdateDressingRoomsAsync_DryRun_SlaatPutOverEnGeeftIsDryRunTrue()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            // Als de PUT toch zou worden verstuurd (dry-run-bug), faalt de test hierop expliciet.
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDressingRooms"))
+                throw new InvalidOperationException("Dry-run mag de echte PUT niet versturen.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsSuccess.Should().BeTrue("dry-run simuleert een geslaagde mutatie");
+        result.Data.Violations.Should().BeNullOrEmpty();
+        // Token-refresh moet wél echt gebeurd zijn — alleen de PUT zelf wordt overgeslagen.
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"));
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDressingRooms"));
+    }
+
+    [Fact]
+    public async Task UpdateFieldAsync_DryRun_SnapshotGetGebeurtWelMaarPutNiet()
+    {
+        // #998: de dry-run-vertakking zit in PutMutationAsync (achter de snapshot-GET), zodat een
+        // dry-run realistisch blijft — token-refresh en de voorbereidende Match-snapshot-GET lopen
+        // dus echt, alleen de PUT UpdateMatchDetails wordt overgeslagen.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
+                throw new InvalidOperationException("Dry-run mag de echte PUT niet versturen.");
+            // Match GET (snapshot-ophaal) — zelfde fixture als de bestaande UpdateFieldAsync-tests
+            // hieronder (MatchDetailsSnapshotResponse), niet de lichtere SportlinkMatch-fixture
+            // (MatchResponse): de snapshot deserialiseert naar een ander intern model met een
+            // genest MatchDate-object, geen kale ISO-string.
+            if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => true);
+
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "F1", "1.0", null, isForceUpdate: false);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsSuccess.Should().BeTrue();
+        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com") && !url.Contains("UpdateMatchDetails"),
+            "de voorbereidende snapshot-GET moet ook in dry-run echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+    }
+
     [Fact]
     public async Task UpdateDressingRoomsAsync_ZetJuisteBodyEnHeaders()
     {
@@ -1534,6 +1602,514 @@ public class SportlinkClubClientTests
             log.Should().NotContain(FictieveRefreshToken);
             log.Should().NotContain(NewFictieveRefreshToken);
         }
+    }
+
+    // ── forceDryRun code-lock (#994/§1, epic #986) ──
+    // Kern-eis: een mutatie met forceDryRun:true blijft ALTIJD gesimuleerd, ook als de globale
+    // instelling (isDryRun-delegate) NIET op dry-run staat. Dit bewijst dat de lock niet via de
+    // bestaande sportlinkDryRun-instelling omzeilbaar is.
+
+    [Fact]
+    public async Task AssignOfficialsAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    {
+        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
+        // echte PUT/POST naar het MatchOfficialsAction-endpoint gaan, want AssignOfficialsAsync
+        // geeft altijd forceDryRun: true mee (endpoint/body nog niet live bevestigd, #994).
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("MatchOfficialsAction"))
+                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.AssignOfficialsAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456") });
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("MatchOfficialsAction"));
+    }
+
+    [Fact]
+    public void BuildMatchOfficialsBody_AanNameNietLiveBevestigd_ZetPublicMatchIdEnOfficialsToBeAssigned()
+    {
+        // Vastlegging van de AANGENOMEN, NOG NIET LIVE BEVESTIGDE body-vorm (#994) — de
+        // elementstructuur ("OfficialPosition"/"PersoonId") is nooit met een netwerktrace gezien,
+        // zie SportlinkOfficialToewijzing.cs. Deze test houdt de aanname grijpbaar/regressie-vast,
+        // niet een bevestigd contract.
+        var body = SportlinkClubClient.BuildMatchOfficialsBody(
+            TestPublicMatchId,
+            new List<SportlinkOfficialToewijzing> { new("Referee", "123456"), new("AssistantReferee1", "654321") });
+
+        var json = JsonSerializer.Serialize(body);
+
+        json.Should().Contain($"\"PublicMatchId\":\"{TestPublicMatchId}\"");
+        json.Should().Contain("\"OfficialsToBeAssigned\"");
+        json.Should().Contain("\"OfficialPosition\":\"Referee\"").And.Contain("\"PersoonId\":\"123456\"");
+        json.Should().Contain("\"OfficialPosition\":\"AssistantReferee1\"").And.Contain("\"PersoonId\":\"654321\"");
+    }
+
+    [Fact]
+    public void VerrijkOfficialsResultaat_MinstensEenValidationDescription_ZetIsSuccessFalseMetViolations()
+    {
+        // #994: Sportlink toont "opgeslagen met fouten" (IS_SAVED_WITH_ERRORS) zodra één official
+        // een ValidationDescription heeft — ook al is de HTTP-status 200/Error niet gezet. De
+        // generieke PutMutationAsync-parsing ziet dit niet; VerrijkOfficialsResultaat is de
+        // taakspecifieke uitbreiding die dat corrigeert.
+        var json = """
+            {"Officials": [
+                {"OfficialPosition": "Referee", "ValidationDescription": null},
+                {"OfficialPosition": "AssistantReferee1", "ValidationDescription": "Persoon heeft al een aanstelling voor deze wedstrijd"}
+            ]}
+            """;
+        var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
+
+        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat(json, basisResultaat);
+
+        verrijkt.IsSuccess.Should().BeFalse("minstens één official had een ValidationDescription — Sportlink toont dit als 'opgeslagen met fouten'");
+        verrijkt.Violations.Should().ContainSingle().Which.Should().Be("Persoon heeft al een aanstelling voor deze wedstrijd");
+    }
+
+    [Fact]
+    public void VerrijkOfficialsResultaat_GeenValidationDescriptions_LaatResultaatOngewijzigd()
+    {
+        var json = """{"Officials": [{"OfficialPosition": "Referee", "ValidationDescription": null}]}""";
+        var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
+
+        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat(json, basisResultaat);
+
+        verrijkt.IsSuccess.Should().BeTrue();
+        verrijkt.Violations.Should().BeNullOrEmpty();
+    }
+
+    [Fact]
+    public void VerrijkOfficialsResultaat_OnherkenbareVorm_LaatResultaatOngewijzigd()
+    {
+        // Defensief pad: als de respons onverwacht geen "Officials"-array bevat (of onherkenbare
+        // JSON is), mag dit geen extra fout stapelen bovenop het generieke resultaat.
+        var basisResultaat = new SportlinkMutationResult(IsSuccess: true, Violations: null);
+
+        var verrijkt = SportlinkClubClient.VerrijkOfficialsResultaat("""{"Error": true}""", basisResultaat);
+
+        verrijkt.Should().Be(basisResultaat);
+    }
+
+    // ── UpdateFieldAsync regressie na #995 ──
+    // #995 genericeerde ExecuteMutationWithRetryAsync en voegde RequestMatchChangeAsync toe met een
+    // ALTIJD-actieve forceDryRun-lock. Deze test bewijst dat #993's live-bevestigde veld-wijziging
+    // daar niets van meekrijgt: met isDryRun: () => false gaat er nog steeds een ECHTE PUT uit.
+
+    [Fact]
+    public async Task UpdateFieldAsync_IsDryRunFalseEnGeenForceDryRunLock_StuurtEenEchtePut()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var inner = MakeUpdateFieldClient(DressingRoomsSuccessResponse);
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            return inner(req);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "BBCF989-OUTDOOR_FIELD-6", "1.0", 0, isForceUpdate: false);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeFalse();
+        result.Data.IsForcedDryRun.Should().BeFalse();
+        aangeroepenUrls.Should().Contain(url => url.Contains("UpdateMatchDetails"),
+            "de veld-wijziging (#993) blijft een ECHTE PUT versturen, ongeacht de #995-uitbreiding van ExecuteMutationWithRetryAsync");
+    }
+
+    // ── forceDryRun code-lock voor RequestMatchChangeAsync (#995, epic #986) ──
+    // Kern-eis: net als AssignOfficialsAsync (#994) blijft deze mutatie ALTIJD gesimuleerd, ook als
+    // de globale instelling (isDryRun-delegate) NIET op dry-run staat — dit is bovendien de enige
+    // mutatiesoort die een ECHTE tegenstander raakt, dus de lock is hier extra belangrijk.
+
+    [Fact]
+    public async Task RequestMatchChangeAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    {
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri!.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("UpdateMatchDetails"))
+                throw new InvalidOperationException("De code-lock mag deze PUT nooit versturen, ongeacht de globale dry-run-instelling.");
+            if (req.RequestUri.AbsoluteUri.Contains("club.sportlink.com"))
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var result = await sut.RequestMatchChangeAsync(
+            TestFunctioneleRol, TestPublicMatchId,
+            new DateOnly(2026, 10, 4), new TimeOnly(11, 0), "BBCF990", "Veld is niet beschikbaar door onderhoud");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.Mutatie.IsDryRun.Should().BeTrue();
+        result.Data.Mutatie.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
+        result.Data.Mutatie.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        result.Data.Validatie.Should().BeNull("zonder een echte HTTP-respons is er niets te parsen — de lock voorkomt de PUT volledig");
+        aangeroepenUrls.Should().Contain(url => url.Contains("club.sportlink.com"), "de snapshot-GET moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("UpdateMatchDetails"));
+    }
+
+    // ── BuildMatchChangeRequestBody (#995, epic #986) ──
+    // ONBEVESTIGD: IsMatchChangeRequestMandatory/PublicApplicantId zijn aannames, zie de
+    // doc-comment op BuildMatchChangeRequestBody zelf. Deze tests leggen vast wélke velden
+    // overschreven worden en welke uit de snapshot komen — geen bevestigd Sportlink-contract.
+
+    private static SportlinkClubClient.SportlinkMatchDetailsSnapshot MaakTestSnapshot() => new(
+        AgeClassCode: "001",
+        Duration: 105,
+        MatchStatus: "SCHEDULED",
+        ExternalMatchId: 69,
+        MatchDate: new SportlinkClubClient.SportlinkMatchDateRaw("2026-09-27", "10:30:00"),
+        Field: new SportlinkClubClient.SportlinkFieldRaw("BBCF989-OUTDOOR_FIELD-6", "1.0", 0),
+        MatchField: new SportlinkMatchField { FacilityId = "BBCF989" },
+        Sport: new SportlinkClubClient.SportlinkSportRaw("SOCCER-VE-AL/SUNDAY"),
+        Teams: new SportlinkClubClient.SportlinkTeamsRaw(
+            new SportlinkClubClient.SportlinkTeamRaw("TEST 1", "T2010269033"),
+            new SportlinkClubClient.SportlinkTeamRaw("TEST 2", "T2010269034")),
+        Result: new SportlinkClubClient.SportlinkResultRaw(null, null),
+        MatchDetails: new SportlinkClubClient.SportlinkMatchDetailsFieldsRaw(
+            new SportlinkClubClient.SportlinkEditableFieldRaw("Oefenwedstrijd"),
+            new SportlinkClubClient.SportlinkMatchDetailsHomeRaw(new SportlinkClubClient.SportlinkEditableFieldRaw(null))));
+
+    [Fact]
+    public void BuildMatchChangeRequestBody_OverschrijftAlleenDatumTijdFacilityEnToelichting_RestKomtUitSnapshot()
+    {
+        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+            TestPublicMatchId, MaakTestSnapshot(),
+            nieuweDatum: new DateOnly(2026, 10, 4), nieuweStartTijd: new TimeOnly(11, 0), nieuweFacilityId: "BBCF990",
+            toelichting: "Veld is niet beschikbaar door onderhoud");
+
+        var json = JsonSerializer.Serialize(body);
+
+        // Gewijzigde velden...
+        json.Should().Contain("\"MatchDate\":\"2026-10-04\"")
+            .And.Contain("\"StartTime\":\"11:00:00\"")
+            .And.Contain("\"FacilityId\":\"BBCF990\"")
+            .And.Contain("\"MatchChangeRequestRemarks\":\"Veld is niet beschikbaar door onderhoud\"");
+        // ...de rest komt ongewijzigd van de snapshot, niet van een lokale aanname — bewijst dat
+        // teamnamen/omschrijving/veld-id niet verloren gaan.
+        json.Should().Contain("TEST 1").And.Contain("TEST 2").And.Contain("Oefenwedstrijd")
+            .And.Contain("SOCCER-VE-AL/SUNDAY")
+            .And.Contain("\"FieldId\":\"BBCF989-OUTDOOR_FIELD-6\"");
+        json.Should().Contain($"\"PublicMatchId\":\"{TestPublicMatchId}\"");
+    }
+
+    [Fact]
+    public void BuildMatchChangeRequestBody_GeenNieuweWaarden_ValtVolledigTerugOpSnapshot()
+    {
+        var body = SportlinkClubClient.BuildMatchChangeRequestBody(
+            TestPublicMatchId, MaakTestSnapshot(),
+            nieuweDatum: null, nieuweStartTijd: null, nieuweFacilityId: null,
+            toelichting: "Toelichting");
+
+        var json = JsonSerializer.Serialize(body);
+
+        json.Should().Contain("\"MatchDate\":\"2026-09-27\"")
+            .And.Contain("\"StartTime\":\"10:30:00\"")
+            .And.Contain("\"FacilityId\":\"BBCF989\"");
+    }
+
+    // ── ParseMatchChangeValidatie (#995, epic #986) — ONBEVESTIGDE responsvorm, zie issue #995 ──
+
+    [Fact]
+    public void ParseMatchChangeValidatie_ConfirmationNeededNull_GeeftFalseEnLegeLijst()
+    {
+        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"ConfirmationNeeded": null}""");
+
+        result.Should().NotBeNull();
+        result!.ConfirmationNeeded.Should().BeFalse();
+        result.ValidationResultMessages.Should().BeEmpty();
+        result.HasBlockingMessages.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_ConfirmationNeededOntbreekt_GeeftFalseEnLegeLijst()
+    {
+        var result = SportlinkClubClient.ParseMatchChangeValidatie("""{"IsSuccess": true}""");
+
+        result.Should().NotBeNull();
+        result!.ConfirmationNeeded.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_MetKaleStringMeldingen_ParsedZeAllemaal()
+    {
+        var json = """
+            {"ConfirmationNeeded": {
+                "ValidationResultMessages": ["Datum ligt buiten de deadline", "Tegenstander moet akkoord gaan"],
+                "HasBlockingMessages": true
+            }}
+            """;
+
+        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+
+        result.Should().NotBeNull();
+        result!.ConfirmationNeeded.Should().BeTrue();
+        result.ValidationResultMessages.Should().BeEquivalentTo(
+            "Datum ligt buiten de deadline", "Tegenstander moet akkoord gaan");
+        result.HasBlockingMessages.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_MetObjectMeldingenViaMessageOfDescription_ParsedZeAllemaal()
+    {
+        // Elementvorm onbekend (issue #995) — deze test legt de defensieve aanname vast: een
+        // object-element met "Message" of "Description" wordt ook herkend, niet alleen een kale string.
+        var json = """
+            {"ConfirmationNeeded": {
+                "ValidationResultMessages": [
+                    {"Message": "Melding via Message-veld"},
+                    {"Description": "Melding via Description-veld"}
+                ],
+                "HasBlockingMessages": false
+            }}
+            """;
+
+        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+
+        result.Should().NotBeNull();
+        result!.ConfirmationNeeded.Should().BeTrue();
+        result.ValidationResultMessages.Should().BeEquivalentTo(
+            "Melding via Message-veld", "Melding via Description-veld");
+        result.HasBlockingMessages.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_HasBlockingMessagesOpToplevel_WordtOokHerkend()
+    {
+        // Positie van HasBlockingMessages niet bevestigd — deze test legt de fallback naar
+        // toplevel vast (naast de primaire, geneste locatie onder ConfirmationNeeded).
+        var json = """{"ConfirmationNeeded": {"ValidationResultMessages": []}, "HasBlockingMessages": true}""";
+
+        var result = SportlinkClubClient.ParseMatchChangeValidatie(json);
+
+        result.Should().NotBeNull();
+        result!.HasBlockingMessages.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ParseMatchChangeValidatie_OnherkenbareJson_GeeftNull()
+    {
+        var result = SportlinkClubClient.ParseMatchChangeValidatie("dit is geen json");
+
+        result.Should().BeNull();
+    }
+
+    // ── #997: oefenwedstrijd aanmaken (ClubMatch) — scaffolding, bewust beperkte scope ──
+
+    [Fact]
+    public async Task BestaandeMutatiePaden_GebruikenNogSteedsHttpMethodPut_RegressietestVoorGeneriekeHttpMethodParameter()
+    {
+        // #997 generaliseerde de gedeelde verzendmethode (voorheen uitsluitend PUT) met een
+        // optionele HttpMethod-parameter (default Put) om ook CreateClubMatchAsync (POST) te kunnen
+        // versturen. Deze test bewijst dat de drie bestaande mutatiepaden (#992 kleedkamers, #993
+        // veld, #996 change-request-actie) ongewijzigd HttpMethod.Put blijven gebruiken.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var capturedMethods = new List<(string Endpoint, HttpMethod Method)>();
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDressingRooms") == true)
+            {
+                capturedMethods.Add(("UpdateMatchDressingRooms", req.Method));
+                return JsonResponse(DressingRoomsSuccessResponse());
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDetails") == true)
+            {
+                capturedMethods.Add(("UpdateMatchDetails", req.Method));
+                return JsonResponse(DressingRoomsSuccessResponse());
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("MatchChangeRequestAction") == true)
+            {
+                capturedMethods.Add(("MatchChangeRequestAction", req.Method));
+                return JsonResponse(DressingRoomsSuccessResponse());
+            }
+            if (req.RequestUri?.AbsoluteUri.Contains("user/UserInfo") == true)
+                return JsonResponse("""{"PublicPersonId": "P1"}""");
+            // Snapshot-GET (UpdateFieldAsync haalt eerst het volledige record op) — moet ná de
+            // specifiekere checks hierboven staan, anders vangt deze catch-all ze allemaal af.
+            if (req.RequestUri?.AbsoluteUri.Contains("club.sportlink.com") == true)
+                return JsonResponse(MatchDetailsSnapshotResponse());
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+        await sut.UpdateFieldAsync(TestFunctioneleRol, TestPublicMatchId, "F1", "1.0", null, isForceUpdate: false);
+        await sut.ActOnChangeRequestAsync(TestFunctioneleRol, "APPROVE", TestPublicMatchId, "REQ1", null);
+
+        capturedMethods.Should().HaveCount(3);
+        capturedMethods.Should().OnlyContain(x => x.Method == HttpMethod.Put);
+    }
+
+    [Fact]
+    public async Task CreateClubMatchAsync_GlobaleInstellingStaatUit_BlijftTochGesimuleerdDoorCodeLock()
+    {
+        // isDryRun: () => false — de club-instelling staat NIET op dry-run. Toch mag er nooit een
+        // echte POST naar het ClubMatch-endpoint gaan, want CreateClubMatchAsync geeft altijd
+        // forceDryRun: true mee (#997 — van alle #986-sub-issues de meeste onbekenden: volledige
+        // body onbevestigd, meerdere picklist-vormen onbekend, delete-methode onbekend).
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var aangeroepenUrls = new List<string>();
+        var client = MakeClient(req =>
+        {
+            aangeroepenUrls.Add(req.RequestUri!.AbsoluteUri);
+            if (req.RequestUri.AbsoluteUri.Contains("idm.sportlink.com"))
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri.AbsoluteUri.Contains("clubmatch/ClubMatch"))
+                throw new InvalidOperationException("De code-lock mag deze POST nooit versturen, ongeacht de globale dry-run-instelling.");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance, isDryRun: () => false);
+
+        var aanvraag = new SportlinkClubMatchAanvraag(
+            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
+            Duration: 90,
+            AgeClassCode: "JO10",
+            Description: "Oefenwedstrijd tegen buurtclub",
+            PublicHomeTeamId: "T2010269033",
+            PublicAwayTeamId: "T2010269099",
+            FacilityId: "BBCF989",
+            FieldId: "BBCF989-OUTDOOR_FIELD-6",
+            ExternalMatchId: 12345);
+
+        var result = await sut.CreateClubMatchAsync(TestFunctioneleRol, aanvraag);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.IsDryRun.Should().BeTrue();
+        result.Data.IsForcedDryRun.Should().BeTrue("de code-lock is onafhankelijk van de club-instelling sportlinkDryRun");
+        result.Data.IsSuccess.Should().BeTrue("een dry-run simuleert een geslaagde mutatie");
+        result.Data.PublicMatchId.Should().BeNull("Sportlink is niet echt aangeroepen tijdens een (forced) dry-run");
+        aangeroepenUrls.Should().Contain(url => url.Contains("idm.sportlink.com"), "token-refresh moet wél echt gebeuren");
+        aangeroepenUrls.Should().NotContain(url => url.Contains("clubmatch/ClubMatch"));
+    }
+
+    [Fact]
+    public void BuildClubMatchBody_AanNameNietLiveBevestigd_ZetVerwachteVelden()
+    {
+        // Vastlegging van de AANGENOMEN, NOG NIET LIVE BEVESTIGDE body-vorm (#997) — elk veld komt
+        // uit Sportlinks eigen frontend-code, nooit met een netwerktrace gezien. Deze test houdt de
+        // aanname grijpbaar/regressie-vast, niet een bevestigd contract.
+        var aanvraag = new SportlinkClubMatchAanvraag(
+            MatchDateTime: new DateTime(2026, 9, 20, 19, 30, 0),
+            Duration: 90,
+            AgeClassCode: "JO10",
+            Description: "Oefenwedstrijd tegen buurtclub",
+            PublicHomeTeamId: "T2010269033",
+            PublicAwayTeamId: "T2010269099",
+            FacilityId: "BBCF989",
+            FieldId: "BBCF989-OUTDOOR_FIELD-6",
+            ExternalMatchId: 12345);
+
+        var json = JsonSerializer.Serialize(SportlinkClubClient.BuildClubMatchBody(aanvraag));
+
+        json.Should().Contain("\"MatchDate\":\"2026-09-20T19:30:00\"", "ONBEVESTIGD: datum+tijd samengevoegd, ISO 8601 zonder tijdzone aangenomen");
+        json.Should().Contain("\"Duration\":90");
+        json.Should().Contain("\"ExternalMatchId\":12345");
+        json.Should().Contain("\"HomeResult\":-1").And.Contain("\"AwayResult\":-1", "ONBEVESTIGD: -1 betekent 'nog geen uitslag' volgens het issue");
+        json.Should().Contain("\"AgeClassCode\":\"JO10\"");
+        json.Should().Contain("\"Description\":\"Oefenwedstrijd tegen buurtclub\"");
+        json.Should().Contain("\"PublicHomeTeamId\":\"T2010269033\"").And.Contain("\"PublicAwayTeamId\":\"T2010269099\"");
+        json.Should().Contain("\"FacilityId\":\"BBCF989\"").And.Contain("\"FieldId\":\"BBCF989-OUTDOOR_FIELD-6\"");
+    }
+
+    [Fact]
+    public async Task PutMutationAsync_ResponseBevatPublicMatchId_WordtGemaptNaarMutationResult()
+    {
+        // Parserfixture voor de ClubMatch-aanmaak-respons {"PublicMatchId":"M123","IsSuccess":true}
+        // (#997). Getest via een bestaand, NIET-gelockt mutatiepad (UpdateDressingRoomsAsync) omdat
+        // de generieke responsparsing endpoint-onafhankelijk is — CreateClubMatchAsync zelf kan dit
+        // pad niet live oefenen zolang de forceDryRun-code-lock actief is (zie de lock-test hierboven).
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("UpdateMatchDressingRooms") == true)
+                return JsonResponse("""{"PublicMatchId": "M123", "IsSuccess": true}""");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.UpdateDressingRoomsAsync(TestFunctioneleRol, TestPublicMatchId, "10", "6", "9");
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.PublicMatchId.Should().Be("M123");
+    }
+
+    [Fact]
+    public async Task GetClubMatchPickListsAsync_RedelijkeFixture_ParseertTeamsEnLocations()
+    {
+        // Read-only en persoonsgegevensvrij (teams/locaties, geen personen) — anders dan
+        // CreateClubMatchAsync dus GEEN forceDryRun-lock, deze aanroep gaat "echt" (tegen de fake
+        // HttpClient) naar Sportlink. Fixture-vorm is ONBEVESTIGD (#997) — kale array voor Teams,
+        // genest onder "Items" voor Locations, om beide envelope-vormen te dekken.
+        var tokenStore = new FakeSportlinkClubTokenStore(FictieveRefreshToken);
+        var client = MakeClient(req =>
+        {
+            if (req.RequestUri?.AbsoluteUri.Contains("idm.sportlink.com") == true)
+                return JsonResponse(TokenResponse(FictieveAccessToken));
+            if (req.RequestUri?.AbsoluteUri.Contains("PickListsTeams") == true)
+                return JsonResponse("""
+                    [
+                        {"Id": "T1", "Name": "JO10-1"},
+                        {"Id": "T2", "Name": "JO10-2"}
+                    ]
+                    """);
+            if (req.RequestUri?.AbsoluteUri.Contains("PickListsLocation") == true)
+                return JsonResponse("""
+                    {"Items": [
+                        {"FacilityId": "F1", "FacilityName": "Sportpark Oost"}
+                    ]}
+                    """);
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var sut = new SportlinkClubClient(client, tokenStore, NullLogger<SportlinkClubClient>.Instance);
+
+        var result = await sut.GetClubMatchPickListsAsync(TestFunctioneleRol);
+
+        result.Status.Should().Be(SportlinkClubCallStatus.Ok);
+        result.Data!.Teams.Should().HaveCount(2);
+        result.Data.Teams.Should().ContainEquivalentOf(new SportlinkPickListItem("T1", "JO10-1"));
+        result.Data.Locations.Should().ContainSingle().Which.Should().BeEquivalentTo(new SportlinkPickListItem("F1", "Sportpark Oost"));
+    }
+
+    [Fact]
+    public void ParsePickListItem_OnbekendeVeldnamen_GeeftNullTerug()
+    {
+        // Defensief pad: onherkenbare/onbekende veldnamen mogen geen exception geven, alleen null.
+        var element = JsonDocument.Parse("""{"SomeOtherField": "x"}""").RootElement;
+
+        var item = SportlinkClubClient.ParsePickListItem(element);
+
+        item.Id.Should().BeNull();
+        item.Naam.Should().BeNull();
     }
 }
 

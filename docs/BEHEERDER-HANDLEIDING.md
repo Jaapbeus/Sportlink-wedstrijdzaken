@@ -544,10 +544,12 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 5. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
    en een voorbeeldweergave vóór bevestiging. De CSV wordt in de browser verwerkt en nooit op de server
    opgeslagen.
-   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — alle bestaande rijen
-     van de club worden eerst verwijderd (`DELETE WHERE ClubCode`), daarna volgt de nieuwe lijst. Er
-     wordt niets samengevoegd, dus een onvolledige export herstel je door een complete export opnieuw
-     te importeren.
+   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — het verwijderen van
+     de bestaande rijen (`DELETE WHERE ClubCode`), het invoegen van de nieuwe lijst en de audit-regel
+     lopen in één geheel (#1131/#1132): een ongeldige rij (bijv. een te lange teamnaam) of een
+     tweede, gelijktijdige import verandert nooit een deel van de vorige lijst — óf de hele nieuwe
+     lijst komt erin, óf er verandert niets. Er wordt niets samengevoegd, dus een onvolledige export
+     herstel je door een complete export opnieuw te importeren.
    - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
 
 > **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel
@@ -927,17 +929,59 @@ zodra teamregio automatisch uit Sportlink-data kan worden afgeleid.
 ## 18. Wijzigingsverzoeken (`/wijzigingsverzoeken`)
 
 Toont wijzigingsverzoeken die tegenstanders in Sportlink Club hebben ingediend voor de datum, tijd
-of accommodatie van een wedstrijd. Alleen verzoeken met status `CONFIRM` wachten op een beslissing
-van uw club — overige statussen staan er alleen ter referentie bij.
+of accommodatie van een wedstrijd, ingedeeld naar het voorbeeld van Sportlinks eigen scherm.
 
-Per openstaand verzoek toont de pagina de huidige en gevraagde datum/tijd plus de opgegeven reden,
-met twee acties:
-- **Goedkeuren** — bevestigt de wijziging rechtstreeks in Sportlink Club.
-- **Afwijzen** — vereist een toelichting (vrij tekstveld naast de knop) die naar de tegenstander
-  teruggaat.
+**Statusfilter** bovenaan (knoppenrij, met aantallen): **Openstaand** (standaard), Goedgekeurd,
+Afgewezen, Ingetrokken, Alle. Alleen openstaande verzoeken wachten op een beslissing van uw club.
 
-Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
+**Kolommen:** statusicoon (oranje uitroepteken = openstaand, groen vinkje = goedgekeurd, rood kruis
+= afgewezen, grijs = ingetrokken), Wedstrijdnr., Thuis, Uit, Datum, Tijd, Accommodatie, Gevraagd
+(alleen wat afwijkt van de huidige planning), Reden. Wedstrijdnummer en teamnamen komen uit de
+eigen wedstrijdgegevens van de app; staat er een streepje, dan is die wedstrijd nog niet aan het
+Sportlink-kenmerk gekoppeld (dat gebeurt automatisch door de dagelijkse voorbereidingstaak, of zodra
+u de wedstrijd in Dagplanning opent).
+
+Per openstaand verzoek staan twee compacte knoppen:
+- **✓ (groen)** — keurt de wijziging rechtstreeks goed in Sportlink Club.
+- **✗ (rood)** — opent een toelichtingsveld; de toelichting is verplicht en gaat naar de
+  tegenstander. Pas na **Afwijzen** in dat veld wordt het verzoek daadwerkelijk afgewezen.
+
+Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
+
+Deze pagina en "Oefenwedstrijd aanmaken" staan alleen in het menu als de Sportlink Web Extension
+aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en toont de Dagplanning geen
+Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
+
+---
+
+## 18a. Oefenwedstrijd aanmaken (`/oefenwedstrijd-aanmaken`)
+
+> **Scaffolding (#997/#1116):** de aanroep naar Sportlink Club wordt altijd gesimuleerd totdat een
+> mens de exacte aanmaak-body met een netwerktrace heeft bevestigd. U ziet na het aanmaken wél wat
+> er zou zijn meegestuurd, maar er verandert niets in Sportlink.
+
+Bedoeld voor snelle invoer: één scherm met **datum**, **aanvangstijd**, **duur** (standaard 90
+minuten), **team** (keuzelijst met de actieve clubteams uit de eigen database), **tegenstander**
+(vrije tekst), **veld** (keuzelijst met de actieve velden) en een optionele **omschrijving**. Enter
+in een veld verstuurt het formulier.
+
+Wat u níet hoeft in te vullen, doet de server:
+
+| Sportlink-veld | Waar het vandaan komt |
+|---|---|
+| Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team), dan blijft het leeg en ziet u dat als waarschuwing |
+| Leeftijdscategorie | Van het gekozen team (bijv. `JO10`) |
+| Locatie | Altijd de eigen accommodatie: de instelling **Accommodatie** (§2) wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
+| Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander] ([veld])` |
+
+Het gekozen veld wordt nog **niet** als Sportlink-veld meegestuurd: dat gebeurt in het plan van
+#997 pas ná het aanmaken via de bestaande veldwijziging. Het staat wel in de standaard-omschrijving
+en in het auditlog.
+
+Na het aanmaken toont een blauw (gesimuleerd/geslaagd) of rood (afgewezen) blok de melding plus de
+afgeleide gegevens en eventuele waarschuwingen. Deze pagina is onderdeel van de Sportlink Web
+Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wedstrijdzaken.
 
 ---
 
@@ -959,15 +1003,44 @@ persoonsnaam.
 | Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
 | Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
 
-**Koppeling (opnieuw) registreren** vraagt om een echt Sportlink-token — dit moet altijd door een
-mens gebeuren via een echte browserlogin (nooit door een geautomatiseerd script of AI-agent, zie
-`docs/SPORTLINK-WEB-EXTENSION.md` §4.4). Een gekoppelde rol behoudt de koppeling automatisch actief
-via een uur-timer, ook zonder dagelijks gebruik.
+**Koppeling (opnieuw) registreren** in de Admin GUI zelf overschrijft alleen een weergavenaam — het
+werkende refresh-token blijft daarbij ongewijzigd. Het daadwerkelijk *verkrijgen* van een nieuw
+refresh-token kan niet vanuit de webapp: Sportlink staat geen inlog via onze eigen applicatie toe
+(de redirect terug naar een eigen URL is aan hun kant dichtgezet). Dit is dus altijd een aparte,
+eenmalige technische stap die een **technisch beheerder** van deze installatie zelf uitvoert, op zijn
+eigen computer, met een lokaal hulpprogramma (`Tools/SportlinkTokenCapture`, met een echte
+browserlogin — nooit door een geautomatiseerd script of AI-agent, zie
+`docs/SPORTLINK-WEB-EXTENSION.md` §3.3/§4.4 voor de volledige stappen). Het resultaat plakt die
+beheerder daarna in het veld "Refresh-token registreren". Een gekoppelde rol behoudt de koppeling
+automatisch actief via een uur-timer, ook zonder dagelijks gebruik — dit hoeft dus niet routinematig
+herhaald te worden.
+
+**Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
+tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/
+veldwijziging en elk goed-/afgekeurd wijzigingsverzoek de volledige controle (rol-koppeling,
+guardrails, audit-logging), maar de daadwerkelijke aanroep naar Sportlink Club wordt overgeslagen —
+u ziet in de Admin GUI een informatieve melding ("Dry-run: niets gewijzigd in Sportlink Club — de
+aanroep is gesimuleerd en gelogd") in plaats van een succes- of foutmelding. Zet dit pas uit nadat u
+de rol-koppeling en de statussectie hieronder heeft gecontroleerd.
+
+**Status Sportlink Web Extension** — een sectie onder de rollen-tabel die in één oogopslag toont of
+de extension/dry-run aan staan, of uitgaande verbindingen zijn toegestaan, de koppelingsstatus en
+laatste tokenverversing per rol, de laatste mutatiefout, en de uitkomst van de dagelijkse
+contract-check (een geautomatiseerde controle die vroegtijdig waarschuwt als Sportlink zijn eigen
+website heeft gewijzigd). Dit alles komt uit onze eigen gegevens — er gaat geen aanroep naar
+Sportlink uit, tenzij u zelf op **"Nu live controleren"** klikt.
 
 Eenmaal gekoppeld verschijnt in **Dagplanning** per wedstrijd een Sportlink-paneel met de actuele
 Sportlink-status en (afhankelijk van wat Sportlink voor die wedstrijd toestaat) invoervelden om
-kleedkamers en veld rechtstreeks terug te schrijven, plus een "Open in Sportlink"-knop die de
-wedstrijd in een nieuw tabblad op club.sportlink.com opent.
+kleedkamers, veld en officials (scheidsrechter/AR1/AR2) rechtstreeks terug te schrijven, plus een
+"Open in Sportlink"-knop die de wedstrijd in een nieuw tabblad op club.sportlink.com opent.
+
+Bij een thuiswedstrijd staat onderaan het paneel ook **"Wijzigingsverzoek datum/tijd/accommodatie"**:
+een nieuwe datum, starttijd en/of accommodatie invullen met een verplichte toelichting, en op
+**"Wijzigingsverzoek valideren"** klikken. Dit valideert alleen — Sportlinks meldingen (indien
+aanwezig) verschijnen letterlijk onder het formulier. Er is bewust **geen bevestigknop**: het
+daadwerkelijk versturen van een wijzigingsverzoek naar de tegenstander is nog niet gebouwd, dus deze
+actie blijft altijd een simulatie, ook als dry-run voor uw club uit staat.
 
 ---
 

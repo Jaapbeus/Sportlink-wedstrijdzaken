@@ -7,9 +7,23 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Azure.Identity" />
+    <!-- #1130: alleen de provider-agnostische abstractions (IChatClient, ChatMessage, ...) — geen
+         OpenAI/Anthropic-specifiek pakket hier, conform de AI-services-architectuurregel in
+         CLAUDE.md. Versie centraal in Directory.Packages.props (#1129), gelijk aan wat beide tiers
+         transitief via Microsoft.Extensions.AI.OpenAI resolven. -->
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- #994: SportlinkClubClient.BuildMatchOfficialsBody/VerrijkOfficialsResultaat zijn bewust
+         internal (geen publiek contract voor een nog niet live bevestigde requestbody/parser) maar
+         moeten wel direct testbaar zijn — zelfde precedent als FunctionApp.Postgres.csproj. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Planner.Shared.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

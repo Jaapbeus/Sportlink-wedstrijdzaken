@@ -6,14 +6,23 @@ namespace FunctionApp.Postgres.Planner;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van
-/// <c>FunctionApp/Planner/Repositories/AllstarsTestDataRepository.cs</c> (#888). Alleen
-/// <see cref="GetAllMatchesForDatumAsync"/> is vertaald — nodig voor het
-/// <c>GET /api/planner/veldbezetting</c>-endpoint. <c>GetAllstarsVeldenAsync</c> en
-/// <c>UpdateAllstarsMatchAsync</c> horen bij de auto-plan-/testdata-schrijfpaden die buiten deze
-/// eerste #888-ronde vallen en zijn nog niet vertaald. <c>GetTeamleiderContactAsync</c> heeft
-/// sinds #889 wél een consument (<c>BerichtPipeline</c>'s <c>TeamContactOpvragen</c>-tak, die hier
-/// altijd <c>coachGevonden = false</c> teruggeeft zolang dit ontbreekt) — expliciet vastgelegd als
-/// vervolgwerk in #972, niet stilzwijgend overgeslagen.
+/// <c>FunctionApp/Planner/Repositories/AllstarsTestDataRepository.cs</c> (#888).
+/// <c>GetAllstarsVeldenAsync</c> en <c>UpdateAllstarsMatchAsync</c> horen bij de auto-plan-/
+/// testdata-schrijfpaden die buiten de eerste #888-ronde vielen en zijn nog niet vertaald.
+/// <para>
+/// <b><see cref="GetTeamleiderContactAsync"/> is sinds #1140 vertaald</b> (deelstuk 2 van #972) —
+/// tot dan gaf <c>BerichtPipeline</c>'s <c>TeamContactOpvragen</c>-tak hier altijd
+/// <c>coachGevonden = false</c> terug. De matching-sleutel is bewust anders dan het SQL Server-
+/// origineel: dat vergelijkt met een eigen <c>REPLACE(...,' ','')REPLACE(...,'-','')</c>-sleutel
+/// rechtstreeks in T-SQL; hier wordt in plaats daarvan
+/// <see cref="TeamNaamNormalisatie.NormaliseerVoorVergelijking"/> gebruikt — de enige toegestane
+/// teamnaam-normalisatielaag (CLAUDE.md, #692/#889) — toegepast in C# op elke kandidaatrij, in
+/// plaats van een tweede ad-hoc regex/REPLACE-implementatie in SQL te bouwen. Zelfde precedent als
+/// <c>PlannerMatchRepository.TeamSchrijfwijzenAsync</c>/<c>FindMatchByOpponentAsync</c> (#1139).
+/// Functioneel gelijk gedrag: zowel de lokale notatie ("JO13-1") als de KNVB-notatie ("O13-1")
+/// normaliseren naar dezelfde sleutel, dus geen aparte "knvbSleutel"-tweede parameter nodig zoals
+/// op de SQL Server-tier.
+/// </para>
 /// <para>
 /// <b>OUTER APPLY → LATERAL JOIN</b> (#888's genoemde valkuil): de niet-ALLSTARS-tak gebruikte
 /// <c>OUTER APPLY (SELECT TOP 1 …) t</c> om per wedstrijd het team op te zoeken. Postgres-
@@ -136,8 +145,84 @@ internal static class AllstarsTestDataRepository
         cmd.Parameters.AddWithValue("code", wedstrijdCode);
         return await cmd.ExecuteNonQueryAsync();
     }
+
+    /// <summary>
+    /// AVG: levert persoonsgegevens — uitsluitend voor interne notificaties. Selecteert daarom
+    /// alleen <c>naam</c>/<c>emailadres</c>, nooit team, teamrol of telefoonnummer.
+    ///
+    /// <para>
+    /// Postgres-vertaling van het gelijknamige SQL Server-origineel (#1140, deelstuk 2 van #972) —
+    /// zie de klassekop voor de bewuste afwijking in de matching-sleutel
+    /// (<see cref="TeamNaamNormalisatie.NormaliseerVoorVergelijking"/> in plaats van een tweede
+    /// REPLACE-gebaseerde sleutel in SQL). De rolvoorkeur-volgorde (trainer &gt; coach &gt;
+    /// teamleider &gt; technische &gt; overig) en de uitsluiting van de "Medische"-rol zijn
+    /// woordelijk gelijk aan het origineel.
+    /// </para>
+    /// </summary>
+    internal static async Task<TeamleiderContact?> GetTeamleiderContactAsync(
+        string connectionString, string teamNaam, string? clubCode = null)
+    {
+        var sleutel = TeamNaamNormalisatie.NormaliseerVoorVergelijking(teamNaam, PostgresClubScope.Primary);
+        if (sleutel.Length == 0) return null;
+
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT tb.team, tb.teamrol, tb.naam, tb.emailadres
+            FROM avg.teambegeleiding tb
+            WHERE tb.emailadres IS NOT NULL AND tb.emailadres <> ''
+              AND tb.teamrol NOT ILIKE '%medische%'
+              AND {PostgresClubScope.LegacyFilter("tb")}
+        ", conn);
+        PostgresClubScope.AddHisParams(cmd, clubCode);
+
+        var kandidaten = new List<(string Teamrol, string Naam, string Emailadres)>();
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                var team = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                if (TeamNaamNormalisatie.NormaliseerVoorVergelijking(team) != sleutel) continue;
+
+                kandidaten.Add((
+                    reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    reader.IsDBNull(3) ? "" : reader.GetString(3)));
+            }
+        }
+        if (kandidaten.Count == 0) return null;
+
+        var beste = kandidaten
+            .OrderBy(k => RolPrioriteit(k.Teamrol))
+            .ThenBy(k => k.Naam, StringComparer.OrdinalIgnoreCase)
+            .First();
+
+        return new TeamleiderContact { Naam = beste.Naam, Emailadres = beste.Emailadres };
+    }
+
+    /// <summary>Zelfde rolvoorkeur-volgorde als de CASE-expressie van het SQL Server-origineel.</summary>
+    private static int RolPrioriteit(string teamrol) => teamrol switch
+    {
+        _ when teamrol.Contains("Trainer", StringComparison.OrdinalIgnoreCase) => 1,
+        _ when teamrol.Contains("Coach", StringComparison.OrdinalIgnoreCase) => 2,
+        _ when teamrol.Contains("leider", StringComparison.OrdinalIgnoreCase) => 3,
+        _ when teamrol.Contains("Technische", StringComparison.OrdinalIgnoreCase) => 4,
+        _ => 5
+    };
 }
 
 internal sealed record WedstrijdRaw(
     long? WedstrijdCode, string Wedstrijd, string TeamNaam, string? Uitteam,
     string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie);
+
+/// <summary>
+/// AVG: bevat persoonsgegevens — uitsluitend voor interne notificaties. Postgres-tier-tegenhanger
+/// van <c>SportlinkFunction.Planner.TeamleiderContact</c> (#1140); geen gedeeld model, want dat is
+/// per <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> een bewuste keuze — elke tier krijgt een eigen,
+/// volledig gescheiden implementatieboom.
+/// </summary>
+internal sealed class TeamleiderContact
+{
+    public string Naam { get; set; } = string.Empty;
+    public string Emailadres { get; set; } = string.Empty;
+}

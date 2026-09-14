@@ -14,7 +14,9 @@ internal static class SportlinkSyncPipeline
     private const string AllstarsClubCode = "ALLSTARS";
 
     // partialFailure: als één stap faalt, slaan we LastSyncTimestamp NIET op. (#438, #464)
-    internal static async Task RunSyncAsync(
+    // Retourneert partialFailure (#1138) zodat SyncJobProcessor de job-status correct kan zetten
+    // — voorheen kreeg de aanroeper (AdminSyncFunction's fire-and-forget Task.Run) dit nooit te zien.
+    internal static async Task<bool> RunSyncAsync(
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         ILogger log)
@@ -38,6 +40,8 @@ internal static class SportlinkSyncPipeline
             await AppSettings.SaveLastSyncTimestampAsync(log);
         else
             log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
+
+        return partialFailure;
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, ILogger log)

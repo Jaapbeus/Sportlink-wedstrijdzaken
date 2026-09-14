@@ -3,36 +3,27 @@ using Newtonsoft.Json;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Planner.Repositories;
+using FunctionApp.Postgres.Sync;
 using FunctionApp.Postgres.TeamResolution;
 
 namespace FunctionApp.Postgres.Processing;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Processing/BerichtPipeline.cs</c> (#889). Kanaal-
-/// agnostische verwerkingspipeline voor inkomende berichten — hier uitsluitend geoefend door het
-/// dry-run pad (<c>EmailTestFunction</c>); <c>EmailProcessorFunction</c> (de echte, mailbox-
-/// getriggerde pipeline) is op deze tier niet vertaald.
+/// agnostische verwerkingspipeline voor inkomende berichten — geoefend door zowel het dry-run pad
+/// (<c>EmailTestFunction</c>) als, sinds de #972-hotfix (#1044), de echte mailbox-getriggerde
+/// <c>EmailProcessorFunction</c>.
 ///
 /// <para>
-/// <b>Drie bewuste, gedocumenteerde afwijkingen ten opzichte van het SQL Server-origineel</b> —
-/// geen stille functionaliteitsreductie, maar dezelfde eerlijke terugval die het origineel zelf al
-/// gebruikt zodra de bijbehorende instelling/repository ontbreekt:
+/// Drie eerder gedocumenteerde afwijkingen ten opzichte van het SQL Server-origineel zijn
+/// inmiddels vertaald: het "opponent kan ons team alsnog vinden"-pad sinds #1139
+/// (<see cref="PlannerMatchRepository.FindMatchByOpponentAsync"/>, zie de
+/// <c>BeschikbaarheidCheck</c>-tak hieronder), <c>TeamContactOpvragen</c>/<c>coachGevonden</c>
+/// sinds #1140 (<see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>, zie die tak
+/// hieronder), en het "verzet zonder datum"-pad (#561, KNVB-bijlage + vrije-zaterdagen-voorzet)
+/// sinds #1141 — zie <see cref="BouwVerzetZonderDatumResponseAsync"/>, <see cref="KnvbKalenderRepository"/>
+/// en <see cref="PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync"/>.
 /// </para>
-/// <list type="number">
-/// <item>Het "opponent kan ons team alsnog vinden"-pad (<c>PlannerDataAccess.FindMatchByOpponentAsync</c>)
-/// is niet vertaald. Onze eigen team niet herkend + wel een tegenstander genoemd geeft hier direct
-/// "team onbekend" — het origineel probeert eerst via de tegenstander te resolven. Aparte,
-/// afgebakende vervolgklus.</item>
-/// <item><c>TeamContactOpvragen</c> geeft hier altijd <c>coachGevonden = false</c>:
-/// <c>PlannerDataAccess.GetTeamleiderContactAsync</c>/<c>AllstarsTestDataRepository.GetTeamleiderContactAsync</c>
-/// zijn niet vertaald (al expliciet zo gedocumenteerd in <c>AllstarsTestDataRepository.cs</c> op
-/// deze tier). Nooit gegokt of stilzwijgend "gevonden" gemeld.</item>
-/// <item>Het "verzet zonder datum"-pad (#561, KNVB-bijlage + vrije-zaterdagen-voorzet) valt hier
-/// altijd terug op het standaard herplanpad — exact het bestaande fallbackgedrag van het origineel
-/// zodra <c>knvbStandaardRegio</c> ontbreekt. Op deze tier ontbreekt die instelling altijd (niet in
-/// <see cref="PostgresAppSettings"/> geladen), dus <c>KnvbKalenderRepository</c> en een
-/// <c>SeasonHelper</c>-tegenhanger zijn (nog) niet nodig.</item>
-/// </list>
 /// </summary>
 internal static class BerichtPipeline
 {
@@ -118,9 +109,33 @@ internal static class BerichtPipeline
                 var alleDatums = ExpandDoordeweeksDatums(
                     classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body ?? "");
 
-                // #889: het "opponent kan ons team alsnog vinden"-pad (FindMatchByOpponentAsync) is
-                // hier niet vertaald — zie de klassekop. Eigen team niet herkend + wel een
-                // tegenstander genoemd valt hier direct door naar de gewone beschikbaarheidscheck.
+                // #1139: "opponent kan ons team alsnog vinden"-pad. Is ons eigen team niet
+                // herkend maar wel een tegenstander genoemd, dan kan de wedstrijd nog via die
+                // tegenstander gevonden worden — daar staat ons team in. Zelfde tweestaps-
+                // zoekvolgorde als het SQL Server-origineel: eerst op datum, dan zonder datum.
+                bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander);
+
+                if (heeftExterneTegenstander && !eigenTeamHerkend && alleDatums.Count == 1
+                    && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
+                {
+                    var wedstrijdOpDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
+                        cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
+                    if (wedstrijdOpDatum != null)
+                        return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
+
+                    var wedstrijdAndereDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
+                        cs, classificatie.Tegenstander!, null, clubCode);
+                    if (wedstrijdAndereDatum == null)
+                        return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
+
+                    var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
+                        wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log);
+                    if (eigenTeam != null)
+                    {
+                        classificatie.TeamNaam = eigenTeam;
+                        eigenTeamHerkend = true;
+                    }
+                }
 
                 if (alleDatums.Count > 1)
                 {
@@ -185,8 +200,18 @@ internal static class BerichtPipeline
                                 }
                             }
 
-                            // #561/#889: "verzet zonder datum"-pad — zie de klassekop, altijd null
-                            // op deze tier, dus rechtstreeks door naar het standaard herplanpad.
+                            // #561/#1141: een tegenstander die om herplannen vraagt zonder concrete
+                            // nieuwe datum krijgt géén toegezegde datum van de AI — dat moet eerst
+                            // met de begeleiding van ons eigen team worden afgestemd. Val terug op
+                            // het bestaande gedrag als deze flow niet (volledig) geconfigureerd is.
+                            if (classificatie.NamensWie == NamensWie.Tegenstander
+                                && string.IsNullOrWhiteSpace(classificatie.GewensteDatum))
+                            {
+                                var verzetZonderDatumJson = await BouwVerzetZonderDatumResponseAsync(
+                                    cs, classificatie, wedstrijd, deadlineDagen, clubSettings, cc, log);
+                                if (verzetZonderDatumJson != null)
+                                    return verzetZonderDatumJson;
+                            }
 
                             if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
                             {
@@ -215,13 +240,21 @@ internal static class BerichtPipeline
                 return JsonConvert.SerializeObject(new { error = "Onvoldoende gegevens voor herplanverzoek (team en datum nodig)" });
 
             case VerzoekType.TeamContactOpvragen:
-                // #889: GetTeamleiderContactAsync is op deze tier niet vertaald — zie de klassekop.
-                return JsonConvert.SerializeObject(new
+                if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
                 {
-                    teamContactOpgevraagd = true,
-                    teamNaam = classificatie.TeamNaam,
-                    coachGevonden = false
-                });
+                    // clubCode meegeven zodat een dry-run met de demoklub geselecteerd niet de
+                    // begeleidingscontacten van de productieclub raadpleegt (#677/#706), zelfde
+                    // reden als het SQL Server-origineel.
+                    var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
+                        cs, classificatie.TeamNaam, clubCode);
+                    return JsonConvert.SerializeObject(new
+                    {
+                        teamContactOpgevraagd = true,
+                        teamNaam = classificatie.TeamNaam,
+                        coachGevonden = contact != null
+                    });
+                }
+                return JsonConvert.SerializeObject(new { teamContactOpgevraagd = true, teamNaam = (string?)null, coachGevonden = false });
 
             case VerzoekType.Bevestiging:
                 return JsonConvert.SerializeObject(new { status = "Bevestiging ontvangen", opmerking = "Bevestigingen vereisen handmatige afhandeling door de coördinator" });
@@ -229,6 +262,93 @@ internal static class BerichtPipeline
             default:
                 return JsonConvert.SerializeObject(new { status = "Niet verwerkt" });
         }
+    }
+
+    /// <summary>
+    /// Postgres-tier-tegenhanger van <c>FunctionApp/Processing/BerichtPipeline.cs</c>'s gelijknamige
+    /// methode (#561/#1141). Bouwt het "verzet zonder datum"-pad voor een
+    /// <see cref="VerzoekType.HerplanVerzoek"/> van de tegenstander zonder concrete
+    /// <c>GewensteDatum</c>. Een tegenstander mag geen nieuwe datum toegezegd krijgen — die
+    /// afstemming hoort bij de begeleiding van ons eigen team. In plaats daarvan geeft het antwoord
+    /// een paar concrete "vrije zaterdagen" als voorzet, en de pipeline markeert de classificatie
+    /// zodat de KNVB-kalender-PDF als bijlage meegaat en de begeleiding van ons team in BCC komt
+    /// (zie <see cref="Email.EmailReplyPolicyService"/>).
+    ///
+    /// Retourneert <c>null</c> als <c>knvbStandaardRegio</c> ontbreekt, de PDF-bijlage-instelling
+    /// uit staat, of er geen (toekomstig) seizoen in <c>public.season</c> staat — de aanroepende tak
+    /// valt dan terug op het bestaande gedrag (<see cref="RescheduleService.CheckRescheduleAvailabilityAsync"/>).
+    /// Nooit een regio gokken of hardcoden: ontbreekt de instelling, dan is er geen bijlage/flow.
+    /// </summary>
+    private static async Task<string?> BouwVerzetZonderDatumResponseAsync(
+        string connectionString, BerichtClassificatie classificatie, ZoekWedstrijdResponse wedstrijd,
+        int deadlineDagen, ClubAppSettingsSnapshot? clubSettings, string clubCode, ILogger log)
+    {
+        var regio = clubSettings != null
+            ? clubSettings.KnvbStandaardRegio
+            : PostgresAppSettings.GetSetting("knvbStandaardRegio");
+        if (string.IsNullOrWhiteSpace(regio))
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - geen knvbStandaardRegio ingesteld; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        bool bijlageAan;
+        if (clubSettings != null)
+        {
+            bijlageAan = clubSettings.KnvbPdfBijlageIngeschakeld ?? false;
+        }
+        else
+        {
+            var raw = PostgresAppSettings.GetSetting("knvbPdfBijlageIngeschakeld");
+            bijlageAan = !(string.IsNullOrWhiteSpace(raw)
+                || raw == "0"
+                || string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase));
+        }
+        if (!bijlageAan)
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - KNVB-PDF-bijlage staat uit; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        if (string.IsNullOrWhiteSpace(seizoen))
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.season; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var van = vandaag.AddDays(deadlineDagen);
+        // 8 weken venster — een algoritmische constante (geen club-specifieke waarde), geeft
+        // voldoende keuze zonder een half seizoen aan zaterdagen op te sommen.
+        var tot = van.AddDays(56);
+
+        var reedsBezetteData = new HashSet<DateOnly>();
+        if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
+        {
+            var toekomstigeWedstrijden = await PlannerMatchRepository.GetFutureMatchesForTeamAsync(
+                connectionString, classificatie.TeamNaam, van, tot, clubCode);
+            foreach (var m in toekomstigeWedstrijden)
+            {
+                if (DateOnly.TryParse(m.Datum, out var bezetteDatum))
+                    reedsBezetteData.Add(bezetteDatum);
+            }
+        }
+
+        var vrijeZaterdagen = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
+            connectionString, regio, seizoen, van, tot, reedsBezetteData, maxAantal: 5, clubCode);
+
+        classificatie.VoegKnvbPdfBijlageToe = true;
+        classificatie.KnvbBijlageRegio = regio;
+
+        return JsonConvert.SerializeObject(new
+        {
+            verzetZonderDatum = true,
+            wedstrijd,
+            vrijeZaterdagen = vrijeZaterdagen.Select(d => d.ToString("yyyy-MM-dd")).ToList(),
+            regio,
+            seizoen
+        });
     }
 
     /// <summary>
@@ -301,6 +421,13 @@ internal static class BerichtPipeline
                     var deadlineDagen = herplanData["deadlineDagen"]?.ToObject<int>() ?? 8;
                     var dagenTot = herplanData["dagenTotWedstrijd"]?.ToObject<int>() ?? 0;
                     return BerichtResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, bericht, clubSettings);
+                }
+
+                if (herplanData["verzetZonderDatum"]?.ToObject<bool>() == true)
+                {
+                    var vrijeZaterdagen = herplanData["vrijeZaterdagen"]?.ToObject<List<string>>() ?? new List<string>();
+                    return BerichtResponseGenerator.BouwVerzetZonderDatumAntwoord(
+                        wedstrijd, vrijeZaterdagen, classificatie, bericht, clubSettings);
                 }
 
                 if (herplanData["gewensteDatum"] != null && herplanData["beschikbaarheid"] != null)
@@ -532,6 +659,28 @@ internal static class BerichtPipeline
             "TEAMRESOLUTIE - geen eigen team herkend (bron={Bron}, kandidaten={Kandidaten})",
             teamUitkomst?.Bron ?? ResolutionBron.Onopgelost, kandidaten);
         return false;
+    }
+
+    /// <summary>
+    /// Leidt het eigen team af uit de wedstrijdnaam ("TeamA - TeamB") die de opponent-lookup
+    /// (#1139) opleverde — Postgres-tegenhanger van het gelijknamige SQL Server-origineel.
+    /// Probeert beide kanten van het streepje tegen de teamresolver; de eerste kant die
+    /// oplosbaar is naar een bekend team levert de canonieke naam. Geen van beide oplosbaar?
+    /// Dan blijft de classificatie ongewijzigd en handelt de aanroepende tak dat af als "team
+    /// onbekend". Er wordt nooit een naam gegokt.
+    /// </summary>
+    private static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
+        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log)
+    {
+        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
+
+        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
+        {
+            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log);
+            if (uitkomst is not null && uitkomst.IsOpgelost)
+                return uitkomst.CanoniekeTeamnaam;
+        }
+        return null;
     }
 
     private static async Task<TeamResolutionResult?> ProbeerResolveAsync(

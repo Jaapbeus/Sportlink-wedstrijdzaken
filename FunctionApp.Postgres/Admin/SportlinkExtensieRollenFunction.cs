@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Newtonsoft.Json;
 using Npgsql;
+using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Admin;
 
@@ -124,7 +125,7 @@ public static class SportlinkExtensieRollenFunction
                 if (!EgressGuard.ExternalIntegrationsAllowed())
                     return new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 };
 
-                if (!await ValideerRefreshTokenAsync(dto.RefreshToken))
+                if (!await SportlinkClubClient.ValideerRefreshTokenAsync(TokenHttp, dto.RefreshToken))
                     return new ObjectResult(new { error = "Sportlink heeft dit refresh-token geweigerd — controleer of het recent en correct is." }) { StatusCode = 409 };
 
                 var tokenStore = new PostgresSportlinkClubTokenStore(
@@ -133,22 +134,6 @@ public static class SportlinkExtensieRollenFunction
 
                 return new OkObjectResult(new { RolNaam = rolNaam });
             });
-
-    // Minimale, eenmalige validatiepoging — bewust niet via SportlinkClubClient (die roept dit pas
-    // impliciet aan bij een echte matchaanroep, en heeft geen "valideer dit token nu"-methode).
-    private static async Task<bool> ValideerRefreshTokenAsync(string refreshToken)
-    {
-        const string tokenEndpoint = "https://idm.sportlink.com/realms/sportlink/protocol/openid-connect/token";
-        const string clientId = "sportlink-club-web";
-        var body = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "refresh_token",
-            ["client_id"] = clientId,
-            ["refresh_token"] = refreshToken,
-        });
-        using var response = await TokenHttp.PostAsync(tokenEndpoint, body);
-        return response.IsSuccessStatusCode;
-    }
 
     private class RegistreerKoppelingDto
     {

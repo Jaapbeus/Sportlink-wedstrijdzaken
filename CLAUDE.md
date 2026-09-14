@@ -737,6 +737,30 @@ controles in plaats van één expliciete).
 
 ---
 
+### Sportlink Web Extension — één helper op de server, geen code in de Razor-pagina's (#1122)
+
+Vastgelegd na de review van epic #986. Twee harde regels:
+
+1. **Server (`FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs`) is de enige plek** voor de
+   toggle+EgressGuard-controle, de vertaling van `SportlinkClubCallStatus` naar een HTTP-fout, de
+   rolnaam en de audit-afronding (`RondMutatieAfAsync`). Een nieuw Sportlink-endpoint of een nieuwe
+   timer roept die helper aan; een eigen kopie van één van deze stappen is een architectuurschending
+   — dat was precies de toestand vóór #1122 (zes kopieën van de toggle-check, drie van de
+   statusvertaling). Zelfde geldt in `Planner.Shared`: elke Sportlink-aanroep loopt via
+   `SportlinkClubClient.ExecuteWithTokenRetryAsync` en `ZetSportlinkHeaders`, nooit een eigen
+   token-refresh/401-retry of eigen Navajo-headers.
+2. **Blazor: de extensie-pagina's (`Dagplanning`, `Wijzigingsverzoeken`, `OefenwedstrijdAanmaken`,
+   `SportlinkExtensieInstellingen`) hebben géén `@code`-blok.** Logica staat in een code-behind
+   (`<Pagina>.razor.cs`, `public partial class`, `[Inject]` i.p.v. `@inject`). Het Sportlink-paneel
+   per wedstrijd is het component `BlazorAdmin/Shared/SportlinkMatchPanel.razor` (+ `.razor.cs`);
+   de status van een actie (bezig/melding/fout/dry-run) is altijd een `SportlinkActieStatus`, met
+   `Verwerk(...)` als de ene plek die een mutatieresultaat naar een melding vertaalt, en het
+   component `<Melding Status="..." />` toont hem. Een nieuw scherm van de extensie volgt dit
+   patroon; een nieuwe `Dictionary<long, bool> _xBezig` of een `@code`-blok in zo'n pagina is een
+   architectuurschending.
+
+---
+
 ### .NET versie — FunctionApp staat op net9.0, met einddatum (migratie via epic #1063)
 
 **KRITIEKE BEPERKING — twee keer eerder misgegaan (issue #162, sessie 2026-05-24):**
@@ -813,6 +837,14 @@ Aanvullend:
   (GNU grep, wél `\s`-bewust binnen brackets) prima blokkeerde. Gebruik binnen een
   bracket-expressie altijd de POSIX-klasse `[:space:]` (`[^;'"`[:space:]<>{}]`) — die werkt
   identiek op BSD-grep, GNU grep én `git grep`.
+- **CI-shellscripts (`scripts/ci/*.sh`) moeten draaien op bash 3.2 — de standaard `/bin/bash`
+  van macOS (#1155).** Dus geen `declare -A` (associatieve arrays), geen `mapfile`/`readarray`,
+  geen `${var,,}`/`${var^^}`, en geen GNU-only `sed`-vlag `I`. Gebruik een newline-gescheiden
+  string met `grep -qxF` als set, een POSIX-awk-array voor lookups, een `while read`-lus in
+  plaats van `mapfile`, en `tr '[:upper:]' '[:lower:]'` voor lowercase. Let op: een **lege**
+  array uitlezen onder `set -u` (`"${arr[@]}"`) is in bash 3.2 een "unbound variable"-fout —
+  schrijf `${arr[@]+"${arr[@]}"}`. Test lokaal met `/bin/bash scripts/ci/<script>.sh`; het
+  resultaat moet identiek zijn aan de Linux-CI-runner (zie docs/VERIFICATIE-SCRIPTS.md).
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`). Git slaat een
   niet-executable hook op macOS stilzwijgend over — de secrets- en AVG-scan draait dan niet.
 - **Bouw nooit `sportlink-wedstrijdzaken.sln` op macOS.** Die bevat het legacy SSDT-project
@@ -1131,6 +1163,14 @@ git push origin v2.0.1  # triggert release.yml workflow automatisch
 ```
 
 Of via GitHub Actions UI (workflow_dispatch in release.yml) zonder lokale tag.
+
+**Databasemigraties bij een release (#1093):** `deploy.yml` past ze zelf toe, vóór de code live
+gaat — `db-migrate` (SQL Server-PostDeployment) bij `DatabaseTier=SqlServer`, `db-migrate-postgres`
+(`Database.Postgres.Cli`, secret `POSTGRES_CONNECTION_STRING`) bij `DatabaseTier=Postgres`. Er is
+geen handmatige migratieronde meer na een release. Gevolg als ontwerpregel: een migratie die de
+*vorige* code breekt (kolom weg, type gewijzigd, constraint aangescherpt) mag niet in dezelfde
+release als de code die hem nodig heeft — zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57. De smoke
+test faalt op een niet-lege `pendingMigrations`.
 
 ### Versienummer ophalen in code
 

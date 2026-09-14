@@ -30,8 +30,8 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie (SQL Server-tier). Postgres-tier: `/api/postgres/sync-matches`, zelfde parameters |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
-| `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie |
-| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie handmatig starten vanuit de Admin GUI |
+| `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
+| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer |
 | `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
 | `GET/PUT/POST/DELETE` | `/beheer/templates` en `/{key}`, `/{key}/reset` | **Admin** | E-mailtemplates per berichttype beheren, met terugzetten naar standaard |
 | `GET/POST/DELETE` | `/beheer/uitgesloten-emails` en `/{id}` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden |
@@ -52,7 +52,7 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/teambegeleiding` | **Admin+User** | Alle teams met begeleiding in database |
 | `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
 | `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) |
-| `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders (vervangt de rijen van de club). CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
+| `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
 | `GET/POST/PUT/DELETE` | `/beheer/speeltijden` en `/{leeftijd}` | **Admin** | Speeltijden per leeftijdscategorie beheren |
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
@@ -68,12 +68,17 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |
 | `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}` | **Admin** | Koppeling registreren/overschrijven voor een rol (`{ SportlinkAccountNaam }`) — `LaatstGekoppeldDoor` altijd server-bepaald |
 | `PUT` | `/beheer/sportlink-extensie/rollen/{rolNaam}/token` | **Admin** | Refresh-token productie-persistent registreren (`{ RefreshToken }`) — write-only, geen GET-tegenhanger, valideert vóór opslag (#990/#991) |
+| `GET` | `/beheer/sportlink-extensie/health?live=false` | **Admin** | Statussectie: extension/dry-run-instelling, koppeling + laatste tokenverversing per rol, laatste mutatiefout, laatste contract-check. Zonder `live=true` geen Sportlink-aanroep; `live=true` doet één tokenverversing + één leesaanroep (#998) |
 | `GET` | `/sportlink/match/{wedstrijdcode}` | **Wedstrijdzaken** | Read-only wedstrijdgegevens uit Sportlink Club: PublicMatchId-cache/reverse-lookup + permissievlaggen (#987/#991) |
 | `GET` | `/sportlink/match/{wedstrijdcode}/public-match-id` | **Wedstrijdzaken** | Lichtgewicht variant — alleen `PublicMatchId` (cache/reverse-lookup, geen volledige Match-aanroep), voor de deep-link-knop in Dagplanning (#989) |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/dressingrooms` | **Wedstrijdzaken** | Kleedkamers toewijzen — eerste echte Sportlink-mutatie, guardrail + audit-log (#992) |
 | `PUT` | `/sportlink/match/{wedstrijdcode}/field` | **Wedstrijdzaken** | Veld(deel) wijzigen — `IsForceUpdate` server-side altijd `false` (semantiek onbevestigd, #993) |
-| `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende wijzigingsverzoeken van tegenstanders ophalen (#996) |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/officials` | **Wedstrijdzaken** | Officials (scheidsrechter/AR1/AR2) toewijzen — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); alleen relatiecode/persoons-ID, geen namen (AVG, #994) |
+| `PUT` | `/sportlink/match/{wedstrijdcode}/change-request` | **Wedstrijdzaken** | Wijzigingsverzoek datum/tijd/accommodatie — **ALLEEN stap 1 (valideren)** van Sportlinks tweestaps flow, `Toelichting` verplicht; ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); enige mutatie die een echte tegenstander raakt — stap 2 (bevestigen) is bewust niet gebouwd (#995) |
+| `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende wijzigingsverzoeken van tegenstanders ophalen (#996), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet) en met openstaande (`CONFIRM`) verzoeken vooraan |
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
+| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); geen `SportlinkMutationGuard` (er is vooraf geen bestaande wedstrijd), alleen eigen toggle/EgressGuard-check. Body sinds #1116: `MatchDateTime`, `Duration`, `TeamNaam` (actief clubteam uit eigen database), `Tegenstander` (vrije tekst), `VeldNummer`, `Description` — de server leidt `PublicHomeTeamId` (`his.teams.teamcode` via de gevalideerde teamaliassen), `AgeClassCode` (leeftijdscategorie van het team) en `FacilityId` (club-instelling `accommodatie`, opgezocht in de Sportlink-locatielijst) zelf af en meldt wat niet lukte als `Waarschuwingen`. Verwijderen/uitslag bewust niet gebouwd (#997) |
+| `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee Sportlink-picklists (Teams + Location) — read-only, persoonsgegevensvrij. Sinds #1116 niet meer door het formulier gebruikt; diagnostisch endpoint voor de mens die de ClubMatch-body live bevestigt (welke ID-vorm hanteert Sportlink Club?) (#997) |
 | `GET/POST/PUT` | `/beheer/velden` en `/{veldNummer}` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren, optioneel gekoppeld aan een periode (`PeriodeId`, #581) |
 | `GET/POST/PUT/DELETE` | `/beheer/veldtraining` en `/{id}` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679) |
@@ -389,7 +394,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
   "aanvangsTijd": "12:00",
   "eindTijd": "13:15",
   "veldNummer": 3,
-  "status": "Gepland"
+  "status": "Te bevestigen"
 }
 ```
 
@@ -402,13 +407,39 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
 | `aanvangsTijd` | `string` | Bevestigde aftrapttijd |
 | `eindTijd` | `string` | Berekende eindtijd |
 | `veldNummer` | `integer` | Toegewezen veld |
-| `status` | `string` | Altijd `"Gepland"` bij aanmaak |
+| `status` | `string` | Altijd `"Te bevestigen"` bij aanmaak |
 
 ### Foutantwoord (400)
 
 ```json
 {
   "error": "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht."
+}
+```
+
+Ook 400 bij een ongeldige duur (#1134): `"Wedstrijdduur moet groter zijn dan 0 minuten."`,
+`"Wedstrijdduur van ... minuten is onwaarschijnlijk groot (max 480 minuten)."` of
+`"Aanvangstijd plus wedstrijdduur overschrijdt het einde van de dag."`.
+
+### Foutantwoord (409) — bezettingsconflict
+
+Server-side controleert de aanvraag atomair tegen de bestaande bezetting (dezelfde notie van
+conflict als `POST /api/planner/check-availability`): volledige-veldreserveringen die elkaar
+overlappen, of gedeelde-veldreserveringen waarvan de veldfracties samen boven 1.00 uitkomen,
+geven 409 in plaats van een stille dubbele boeking. Twee reserveringen die elkaar precies
+aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00) zijn GEEN conflict.
+
+```json
+{
+  "error": "Veld 3 is op 2026-04-25 tussen 12:00 en 13:15 al bezet.",
+  "conflicterendeWedstrijd": {
+    "wedstrijd": "[ClubCode] JO13-1 - Tegenstander",
+    "aanvangsTijd": "12:30",
+    "eindTijd": "13:45",
+    "veldNummer": 3,
+    "veldDeelGebruik": 1.00,
+    "bron": "Planner"
+  }
 }
 ```
 
@@ -899,3 +930,23 @@ De response bevat per wedstrijd het optimale veld en tijdslot, plus `voorkeurTij
 curl http://localhost:7094/api/sync-matches
 curl "http://localhost:7094/api/sync-matches?reset=true&season=2025"
 ```
+
+### Sync-job starten en pollen (Admin GUI, #1138)
+
+`POST /beheer/sync/trigger` zet niet meer fire-and-forget een `Task.Run` op, maar schrijft een
+job-rij en een bericht op de bestaande `AzureWebJobsStorage`-queue `sync-jobs`. Een aparte
+QueueTrigger-functie (`SyncJobProcessor`) verwerkt het bericht en werkt de status bij.
+
+```bash
+curl -X POST http://localhost:7094/api/beheer/sync/trigger
+# {"status":"gestart","jobId":"…","weekOffsetFrom":-1,"weekOffsetTo":15,"tijdstip":"…"}
+
+curl "http://localhost:7094/api/beheer/sync/status?jobId=<jobId>"
+# {"lastSyncTimestamp":"…","fetchSchedule":"…","status":"ok",
+#  "job":{"id":"…","status":"running|succeeded|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
+#         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null}}
+```
+
+Zonder `?jobId=` geeft `/beheer/sync/status` de meest recente job terug. `job` is `null` zolang er
+nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,
+`failed` — bij `failed` bevat `errorMessage` de reden.

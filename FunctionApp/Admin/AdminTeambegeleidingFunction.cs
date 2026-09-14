@@ -308,51 +308,77 @@ public static class AdminTeambegeleidingFunction
                     ontbreekt = parseResult.Ontbreekt
                 });
 
+            // #1131: kolomgrenzen valideren VOORDAT er iets destructiefs gebeurt (DELETE/INSERT).
+            // Zonder deze stap kon een te lange waarde (bijv. Team > 100 tekens) de insert-lus
+            // pas na de club-scoped DELETE laten falen — met een lege tabel als resultaat.
+            var lengteFouten = ValideerKolomLengtes(parseResult.Rows);
+            if (lengteFouten.Count > 0)
+                return new BadRequestObjectResult(new
+                {
+                    error = "Een of meer rijen overschrijden de maximale kolomlengte. De vorige import is niet gewijzigd.",
+                    fouten = lengteFouten
+                });
+
+            var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
+
             using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
 
-            using (var deleteCmd = new SqlCommand(
-                "DELETE FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @ClubCode", connection))
-            {
-                deleteCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                await deleteCmd.ExecuteNonQueryAsync();
-            }
-
+            // #1131: DELETE, inserts en de import-audit-rij lopen nu in ÉÉN transactie met
+            // rollback bij elke fout — vóór deze fix draaide de club-scoped DELETE in autocommit
+            // vóór de insert-transactie begon, waardoor een falende insert de vorige geldige
+            // import onherstelbaar wiste (zie Postgres-equivalent Database.Postgres/TeambegeleidingImporter.cs,
+            // dat al transactioneel was).
             using (var tx = connection.BeginTransaction())
             {
-                foreach (var row in parseResult.Rows)
+                try
                 {
-                    using var ins = new SqlCommand(@"
-                        INSERT INTO [avg].[Teambegeleiding]
-                            (Team, LeeftijdscategorieTeam, Teamrol, Naam, Emailadres, Telefoonnummer, ClubCode)
-                        VALUES
-                            (@Team, @Leeftijd, @Teamrol, @Naam, @Email, @Telefoon, @ClubCode)",
-                        connection, tx);
-                    ins.Parameters.AddWithValue("@Team",     (object?)row.Team ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("@Leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("@Teamrol",  (object?)row.Teamrol ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("@Naam",     (object?)row.Naam ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("@Email",    (object?)row.Emailadres ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("@Telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
-                    ins.Parameters.AddWithValue("@ClubCode", clubCode);
-                    await ins.ExecuteNonQueryAsync();
+                    using (var deleteCmd = new SqlCommand(
+                        "DELETE FROM [avg].[Teambegeleiding] WHERE [ClubCode] = @ClubCode", connection, tx))
+                    {
+                        deleteCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                        await deleteCmd.ExecuteNonQueryAsync();
+                    }
+
+                    foreach (var row in parseResult.Rows)
+                    {
+                        using var ins = new SqlCommand(@"
+                            INSERT INTO [avg].[Teambegeleiding]
+                                (Team, LeeftijdscategorieTeam, Teamrol, Naam, Emailadres, Telefoonnummer, ClubCode)
+                            VALUES
+                                (@Team, @Leeftijd, @Teamrol, @Naam, @Email, @Telefoon, @ClubCode)",
+                            connection, tx);
+                        ins.Parameters.AddWithValue("@Team",     (object?)row.Team ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@Leeftijd", (object?)row.LeeftijdscategorieTeam ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@Teamrol",  (object?)row.Teamrol ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@Naam",     (object?)row.Naam ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@Email",    (object?)row.Emailadres ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@Telefoon", (object?)row.Telefoonnummer ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@ClubCode", clubCode);
+                        await ins.ExecuteNonQueryAsync();
+                    }
+
+                    sw.Stop();
+
+                    using (var logCmd = new SqlCommand(@"
+                        INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms, ClubCode)
+                        VALUES (@rijen, @csv, @door, @duur, @club)", connection, tx))
+                    {
+                        logCmd.Parameters.AddWithValue("@rijen", parseResult.Rows.Count);
+                        logCmd.Parameters.AddWithValue("@csv",   (object?)dto.Bestandsnaam ?? DBNull.Value);
+                        logCmd.Parameters.AddWithValue("@door",  importeerder);
+                        logCmd.Parameters.AddWithValue("@duur",  (int)sw.ElapsedMilliseconds);
+                        logCmd.Parameters.AddWithValue("@club",  clubCode);
+                        await logCmd.ExecuteNonQueryAsync();
+                    }
+
+                    tx.Commit();
                 }
-                tx.Commit();
-            }
-
-            sw.Stop();
-
-            var importeerder = EasyAuthHelper.GetCallerName(req) ?? "admin";
-            using (var logCmd = new SqlCommand(@"
-                INSERT INTO [avg].[ImportLog] (AantalRijen, CsvBestand, ImporterendeDoor, Duur_ms, ClubCode)
-                VALUES (@rijen, @csv, @door, @duur, @club)", connection))
-            {
-                logCmd.Parameters.AddWithValue("@rijen", parseResult.Rows.Count);
-                logCmd.Parameters.AddWithValue("@csv",   (object?)dto.Bestandsnaam ?? DBNull.Value);
-                logCmd.Parameters.AddWithValue("@door",  importeerder);
-                logCmd.Parameters.AddWithValue("@duur",  (int)sw.ElapsedMilliseconds);
-                logCmd.Parameters.AddWithValue("@club",  clubCode);
-                await logCmd.ExecuteNonQueryAsync();
+                catch
+                {
+                    tx.Rollback();
+                    throw;
+                }
             }
 
             log.LogInformation("Teambegeleiding import geslaagd: {Rijen} rijen (geen PII gelogd — AVG)", parseResult.Rows.Count);
@@ -388,6 +414,45 @@ public static class AdminTeambegeleidingFunction
     };
 
     private static readonly string[] _vereistKolommen = ["Team", "Teamrol", "Roepnaam", "Achternaam", "Emailadres"];
+
+    // #1131: kolomgrenzen zoals gedefinieerd in Database/avg/Tables/Teambegeleiding.sql —
+    // hier hardcoded overnemen omdat de handler geen schema-introspectie doet. Bij een
+    // schemawijziging aan die tabel dit synchroon houden.
+    private const int TeamMaxLength = 100;
+    private const int LeeftijdscategorieTeamMaxLength = 50;
+    private const int TeamrolMaxLength = 100;
+    private const int NaamMaxLength = 300;
+    private const int EmailadresMaxLength = 200;
+    private const int TelefoonnummerMaxLength = 50;
+
+    /// <summary>
+    /// Valideert elke rij tegen de kolomgrenzen van <c>avg.Teambegeleiding</c> vóórdat er iets
+    /// destructiefs (DELETE/INSERT) gebeurt (#1131). Rijnummers zijn 1-based en tellen de
+    /// header mee (rij 1 = header, rij 2 = eerste datarij), zodat ze overeenkomen met wat een
+    /// beheerder in een spreadsheet/CSV-editor ziet.
+    /// </summary>
+    internal static List<string> ValideerKolomLengtes(List<ImportRij> rows)
+    {
+        var fouten = new List<string>();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var rijNummer = i + 2;
+            var row = rows[i];
+            VoegLengteFoutToe(fouten, rijNummer, "Team", row.Team, TeamMaxLength);
+            VoegLengteFoutToe(fouten, rijNummer, "Leeftijdscategorie team", row.LeeftijdscategorieTeam, LeeftijdscategorieTeamMaxLength);
+            VoegLengteFoutToe(fouten, rijNummer, "Teamrol", row.Teamrol, TeamrolMaxLength);
+            VoegLengteFoutToe(fouten, rijNummer, "Naam", row.Naam, NaamMaxLength);
+            VoegLengteFoutToe(fouten, rijNummer, "Emailadres", row.Emailadres, EmailadresMaxLength);
+            VoegLengteFoutToe(fouten, rijNummer, "Telefoonnummer", row.Telefoonnummer, TelefoonnummerMaxLength);
+        }
+        return fouten;
+    }
+
+    private static void VoegLengteFoutToe(List<string> fouten, int rijNummer, string kolomNaam, string? waarde, int maxLength)
+    {
+        if (waarde != null && waarde.Length > maxLength)
+            fouten.Add($"Rij {rijNummer}, kolom '{kolomNaam}': {waarde.Length} tekens (maximaal {maxLength}).");
+    }
 
     internal record ImportRij(
         string? Team, string? LeeftijdscategorieTeam, string? Teamrol,

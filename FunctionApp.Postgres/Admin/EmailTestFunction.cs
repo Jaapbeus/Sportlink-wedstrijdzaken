@@ -136,11 +136,10 @@ public static class EmailTestFunction
 
     /// <summary>
     /// Haalt de dbo.AppSettings-rij op van de opgegeven club (#677/#889). Zelfde queryvorm als
-    /// <c>AdminSettingsFunction.Get</c>, beperkt tot de velden die de auto-reply handtekening en de
-    /// herplan-deadline bepalen. <c>KnvbPdfBijlageIngeschakeld</c>/<c>KnvbStandaardRegio</c> staan
-    /// hier bewust NIET bij (in tegenstelling tot het SQL Server-origineel): die kolommen bestaan
-    /// niet in <c>public.appsettings</c> op deze tier, en het "verzet zonder datum"-pad dat ze nodig
-    /// heeft is hier niet vertaald (zie <see cref="BerichtPipeline"/>).
+    /// <c>AdminSettingsFunction.Get</c>, beperkt tot de velden die de auto-reply handtekening, de
+    /// herplan-deadline en het "verzet zonder datum"-pad (#561/#1141) bepalen —
+    /// <c>knvbpdfbijlageingeschakeld</c>/<c>knvbstandaardregio</c> bestaan onvoorwaardelijk sinds
+    /// migratie 003, dus geen optionele-kolom-dans nodig.
     /// </summary>
     private static async Task<ClubAppSettingsSnapshot> LoadClubSettingsSnapshotAsync(string clubCode)
     {
@@ -149,7 +148,8 @@ public static class EmailTestFunction
 
         await using var command = new NpgsqlCommand(@"
             SELECT plannerafzendernaam, coordinatornaam, coordinatorfunctie,
-                   emailvoetnoot, herplandeadlinedagen
+                   emailvoetnoot, herplandeadlinedagen,
+                   knvbpdfbijlageingeschakeld, knvbstandaardregio
             FROM public.appsettings
             WHERE clubcode = @clubcode", connection);
         command.Parameters.AddWithValue("clubcode", clubCode);
@@ -163,7 +163,9 @@ public static class EmailTestFunction
             CoordinatorNaam: reader.IsDBNull(1) ? null : reader.GetString(1),
             CoordinatorFunctie: reader.IsDBNull(2) ? null : reader.GetString(2),
             EmailVoetnoot: reader.IsDBNull(3) ? null : reader.GetString(3),
-            HerplanDeadlineDagen: reader.IsDBNull(4) ? null : reader.GetInt32(4));
+            HerplanDeadlineDagen: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            KnvbPdfBijlageIngeschakeld: reader.IsDBNull(5) ? null : reader.GetBoolean(5),
+            KnvbStandaardRegio: reader.IsDBNull(6) ? null : reader.GetString(6));
     }
 
     private static bool TryAcquireSlot()

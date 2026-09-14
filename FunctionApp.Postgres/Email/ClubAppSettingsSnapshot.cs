@@ -17,8 +17,8 @@ public sealed record ClubAppSettingsSnapshot(
     string? CoordinatorFunctie,
     string? EmailVoetnoot,
     int? HerplanDeadlineDagen,
-    // #561: verzet-zonder-datum flow (KNVB-bijlage + vrije-zaterdagen-voorzet) — niet vertaald op
-    // deze tier (geen knvbStandaardRegio-instelling, geen KnvbKalenderRepository). De velden staan
-    // hier alleen voor signatuurgelijkheid; blijven altijd null/false.
+    // #561/#1141: verzet-zonder-datum flow (KNVB-bijlage + vrije-zaterdagen-voorzet) — gevuld door
+    // EmailTestFunction.LoadClubSettingsSnapshotAsync vanuit public.appsettings
+    // (knvbpdfbijlageingeschakeld/knvbstandaardregio, aanwezig sinds migratie 003).
     bool? KnvbPdfBijlageIngeschakeld = null,
     string? KnvbStandaardRegio = null);

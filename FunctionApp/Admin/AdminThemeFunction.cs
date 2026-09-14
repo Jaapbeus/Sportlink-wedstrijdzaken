@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using SportlinkFunction.Infrastructure;
+using Planner.Shared.Infrastructure;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 

@@ -101,6 +101,66 @@ public class TeambegeleidingImporterIntegrationTests : IAsyncLifetime
         aantalVrc.Should().Be(2);
     }
 
+    /// <summary>
+    /// Regressietest voor #1132 (bevinding 7 uit #1107): zonder een club-scoped serialisatie kon
+    /// Read Committed twee overlappende imports voor dezelfde club allebei laten committen, met
+    /// de vereniging van beide batches als resultaat (in plaats van één complete vervanging).
+    /// <see cref="TeambegeleidingImporter.ImportAsync"/> neemt nu vóór de DELETE een
+    /// <c>pg_advisory_xact_lock</c> op een per-club sleutel, zodat de tweede aanroep wacht tot de
+    /// eerste commit of rollbackt en daarna diens rijen ziet.
+    /// <para>
+    /// Geen deterministische barrière (zoals de #1107-reviewer met een test-only trigger deed) —
+    /// in plaats daarvan vijf herhalingen binnen dezelfde testrun, elk met een asserptie die het
+    /// eindresultaat exact gelijk eist aan één van de twee ingediende batches. Dat dekt zowel
+    /// "geen vereniging" als "geen gedeeltelijke mix" af, en een vlakke race zou bij minstens één
+    /// van de vijf pogingen zichtbaar worden.
+    /// </para>
+    /// </summary>
+    [PostgresFact]
+    public async Task ImportAsync_TweeGelijktijdigeImportsZelfdeClub_EindresultaatIsPreciesÉénBatchNooitDeVereniging()
+    {
+        for (int poging = 0; poging < 5; poging++)
+        {
+            var batchA = new[]
+            {
+                new TeambegeleidingRow("Testclub JO13-1", "Onder 13", "Trainer", $"Batch A Trainer {poging}", $"batch-a-{poging}@voorbeeld.nl", null),
+            };
+            var batchB = new[]
+            {
+                new TeambegeleidingRow("Testclub JO15-1", "Onder 15", "Trainer", $"Batch B Trainer {poging}", $"batch-b-1-{poging}@voorbeeld.nl", null),
+                new TeambegeleidingRow("Testclub JO15-2", "Onder 15", "Leider",  $"Batch B Leider {poging}",  $"batch-b-2-{poging}@voorbeeld.nl", null),
+            };
+
+            await using var connectionA = new NpgsqlConnection(ConnectionString);
+            await connectionA.OpenAsync();
+            await using var connectionB = new NpgsqlConnection(ConnectionString);
+            await connectionB.OpenAsync();
+
+            var importA = TeambegeleidingImporter.ImportAsync(connectionA, "testclub", batchA, null, "import-a", CancellationToken.None);
+            var importB = TeambegeleidingImporter.ImportAsync(connectionB, "testclub", batchB, null, "import-b", CancellationToken.None);
+            await Task.WhenAll(importA, importB);
+
+            await using var verifyConnection = new NpgsqlConnection(ConnectionString);
+            await verifyConnection.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT naam FROM avg.teambegeleiding WHERE clubcode = 'testclub' ORDER BY naam", verifyConnection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var namen = new List<string>();
+            while (await reader.ReadAsync())
+                namen.Add(reader.GetString(0));
+
+            var verwachtA = batchA.Select(r => r.Naam!).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            var verwachtB = batchB.Select(r => r.Naam!).OrderBy(n => n, StringComparer.Ordinal).ToList();
+
+            var isExactBatchA = namen.SequenceEqual(verwachtA);
+            var isExactBatchB = namen.SequenceEqual(verwachtB);
+
+            (isExactBatchA || isExactBatchB).Should().BeTrue(
+                $"poging {poging}: resultaat moet exact batch A [{string.Join(", ", verwachtA)}] " +
+                $"of batch B [{string.Join(", ", verwachtB)}] zijn, nooit een mix — was [{string.Join(", ", namen)}]");
+        }
+    }
+
     [PostgresFact]
     public async Task ImportAsync_TweedeImportZelfdeClub_VervangtOudeRijenVolledig()
     {

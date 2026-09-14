@@ -421,6 +421,25 @@ Bewijsmateriaal komt in `artifacts/selftest/<tijdstempel>/` en staat in `.gitign
 
 ---
 
+## BlazorAdmin.Tests — pure unit tests, geen bUnit (#1136)
+
+`BlazorAdmin.Tests` is het enige testproject voor de Admin GUI. Het draait zonder database,
+zonder browser en zonder bUnit — het test uitsluitend pure C#-klassen die naast de `.razor`-pagina's
+staan, zoals `BlazorAdmin/Services/LookupGeneratieGuard.cs` (bewaakt dat een verouderde,
+trage teamlookup in `Teambegeleiding.razor` het resultaat van een snellere, latere lookup niet meer
+kan overschrijven).
+
+```powershell
+dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release
+```
+
+Draait ook als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin"),
+direct na de BlazorAdmin-build. Een component-level test (bUnit) is bewust niet gekozen voor dit
+issue — de logica die de race daadwerkelijk voorkomt zit in een pure klasse, en die is zonder
+component-rendering volledig te bewijzen.
+
+---
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,
@@ -464,6 +483,40 @@ Lokaal wordt de live database **niet automatisch geüpdatet** bij een git pull.
 - Ontbrekende kolommen toevoegen via `ALTER TABLE`
 
 Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescript.
+
+---
+
+## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
+
+De vier guards die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook lokaal —
+zonder database, zonder secrets — en horen op macOS met de standaard `/bin/bash` 3.2 en BSD
+grep/sed/awk **hetzelfde resultaat** te geven als op de Linux-CI-runner (bash 5, GNU tools):
+
+| Script | Bewaakt |
+|---|---|
+| `check-path-casing.sh` | Padverwijzingen in ps1/psm1/md/yml/yaml/csproj matchen exact de casing van het getrackte bestand (#825) |
+| `check-postgres-table-coverage.sh` | Elke SQL Server-tabel heeft een Postgres-tegenhanger of een gemotiveerde uitzondering (#864) |
+| `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
+| `check-postgres-procedure-view-coverage.sh` | Elke procedure/view heeft een aanwijsbare C#-tegenhanger of uitzondering (#864) |
+
+```bash
+# Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
+/bin/bash scripts/ci/check-path-casing.sh
+/bin/bash scripts/ci/check-postgres-table-coverage.sh
+/bin/bash scripts/ci/check-postgres-column-coverage.sh
+/bin/bash scripts/ci/check-postgres-procedure-view-coverage.sh
+```
+
+Tot #1155 faalden drie van de vier lokaal (`declare: -A: invalid option`, `mapfile: command not
+found`), zodat de CLAUDE.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
+Homebrew-bash én GNU grep vooraan in `PATH` haalbaar was. De scripts gebruiken nu uitsluitend
+bash-3.2- en POSIX-constructies; de regels daarvoor staan in CLAUDE.md onder "Cross-platform
+scripts". Wil je de CI-runner exact nabootsen, dan kan dat in een container:
+
+```bash
+docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/dotnet/sdk:9.0 \
+  bash -c 'git config --global --add safe.directory /w && bash scripts/ci/check-path-casing.sh'
+```
 
 ---
 
