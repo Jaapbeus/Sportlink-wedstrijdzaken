@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.5.1",
+    "version": "3.3.5.3",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -8245,7 +8245,7 @@
         ],
         "operationId": "importTeambegeleiding",
         "summary": "Teambegeleiding importeren uit CSV",
-        "description": "Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar\n`avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden eerst verwijderd\n(TRUNCATE-en-vervang per `ClubCode`).\n\n**AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel\nin `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen\npersoonsgegevens.\n",
+        "description": "Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar\n`avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden vervangen: een\nclub-scoped DELETE (nooit een TRUNCATE, dat zou andere clubs' rijen ook wissen), gevolgd\ndoor de nieuwe rijen en de audit-regel in `avg.ImportLog` — allemaal in één transactie met\nrollback bij elke fout (#1131/#1132). Kolomlengtes worden vóórdat er iets destructiefs\ngebeurt gevalideerd; een overtreding levert een `400` op en laat de vorige import ongemoeid.\nDe Postgres-tier serialiseert bovendien vervangingen per club (`pg_advisory_xact_lock`), zodat\ntwee gelijktijdige imports voor dezelfde club nooit tot een vereniging van beide batches\nkunnen leiden.\n\n**AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel\nin `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen\npersoonsgegevens.\n",
         "security": [
           {
             "easyAuth": []
@@ -8278,7 +8278,7 @@
             }
           },
           "400": {
-            "description": "CSV ontbreekt of mist verplichte kolommen",
+            "description": "CSV ontbreekt, mist verplichte kolommen, of één of meer rijen overschrijden de maximale kolomlengte (#1131) — in dat laatste geval is de vorige import niet gewijzigd.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8290,6 +8290,13 @@
                     "ontbreekt": {
                       "type": "array",
                       "description": "Namen van de ontbrekende verplichte kolommen",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fouten": {
+                      "type": "array",
+                      "description": "Bij een kolomlengte-overtreding: één omschrijving per rij/kolom, bijv. \"Rij 3, kolom 'Team': 101 tekens (maximaal 100).\"",
                       "items": {
                         "type": "string"
                       }

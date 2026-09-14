@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.3.5.1
+  version: 3.3.5.3
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -5857,8 +5857,14 @@ paths:
       summary: Teambegeleiding importeren uit CSV
       description: |
         Importeert begeleidersgegevens uit een CSV-export van club.sportlink.com naar
-        `avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden eerst verwijderd
-        (TRUNCATE-en-vervang per `ClubCode`).
+        `avg.Teambegeleiding`. De bestaande rijen van de betrokken club worden vervangen: een
+        club-scoped DELETE (nooit een TRUNCATE, dat zou andere clubs' rijen ook wissen), gevolgd
+        door de nieuwe rijen en de audit-regel in `avg.ImportLog` — allemaal in één transactie met
+        rollback bij elke fout (#1131/#1132). Kolomlengtes worden vóórdat er iets destructiefs
+        gebeurt gevalideerd; een overtreding levert een `400` op en laat de vorige import ongemoeid.
+        De Postgres-tier serialiseert bovendien vervangingen per club (`pg_advisory_xact_lock`), zodat
+        twee gelijktijdige imports voor dezelfde club nooit tot een vereniging van beide batches
+        kunnen leiden.
 
         **AVG:** de CSV-inhoud wordt in-memory verwerkt en nooit op schijf opgeslagen. De audit-regel
         in `avg.ImportLog` bevat alleen metadata (aantal rijen, bestandsnaam, duur) — geen
@@ -5882,7 +5888,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/TeambegeleidingImportResultaat'
         '400':
-          description: CSV ontbreekt of mist verplichte kolommen
+          description: >-
+            CSV ontbreekt, mist verplichte kolommen, of één of meer rijen overschrijden de
+            maximale kolomlengte (#1131) — in dat laatste geval is de vorige import niet gewijzigd.
           content:
             application/json:
               schema:
@@ -5893,6 +5901,13 @@ paths:
                   ontbreekt:
                     type: array
                     description: Namen van de ontbrekende verplichte kolommen
+                    items:
+                      type: string
+                  fouten:
+                    type: array
+                    description: >-
+                      Bij een kolomlengte-overtreding: één omschrijving per rij/kolom, bijv.
+                      "Rij 3, kolom 'Team': 101 tekens (maximaal 100)."
                     items:
                       type: string
         '401':

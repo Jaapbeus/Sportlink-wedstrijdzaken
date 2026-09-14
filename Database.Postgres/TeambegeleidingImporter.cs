@@ -66,6 +66,15 @@ public static class TeambegeleidingImporter
     /// Verwijdert bestaande rijen voor <paramref name="clubCode"/>, laadt de nieuwe rijen via
     /// Postgres' native binaire COPY-protocol, en schrijft de auditrij — alles in één transactie.
     /// Nooit een Postgres-equivalent van <c>TRUNCATE</c>: dat zou andere clubs' rijen ook wissen.
+    /// <para>
+    /// <b>#1132:</b> vóór de DELETE wordt een <c>pg_advisory_xact_lock</c> op een per-club sleutel
+    /// genomen. Zonder die serialisatie kunnen twee overlappende imports voor dezelfde club onder
+    /// Read Committed allebei committen: import B's DELETE ziet de rijen van import A (die na B's
+    /// DELETE-snapshot zijn ingevoegd) niet, en de tabel houdt de vereniging van beide batches over
+    /// in plaats van precies één complete vervanging. De lock is transactie-gebonden (niet
+    /// sessie-gebonden zoals in <see cref="MigrationRunner"/>) en geeft zichzelf dus automatisch
+    /// vrij bij commit of rollback — geen aparte release-aanroep nodig.
+    /// </para>
     /// </summary>
     public static async Task<TeambegeleidingImportResult> ImportAsync(
         NpgsqlConnection connection, string clubCode, IReadOnlyList<TeambegeleidingRow> rows,
@@ -76,6 +85,7 @@ public static class TeambegeleidingImporter
         await using var tx = await connection.BeginTransactionAsync(ct);
         try
         {
+            await AcquireClubLockAsync(connection, tx, clubCode, ct);
             await DeleteBestaandeRijenAsync(connection, tx, clubCode, ct);
             await KopieerRijenAsync(connection, clubCode, rows, ct);
             var duurMs = (int)stopwatch.ElapsedMilliseconds;
@@ -91,6 +101,21 @@ public static class TeambegeleidingImporter
 
         stopwatch.Stop();
         return new TeambegeleidingImportResult(rows.Count, stopwatch.ElapsedMilliseconds);
+    }
+
+    /// <summary>
+    /// Serialiseert vervangingen per club (#1132): een tweede <see cref="ImportAsync"/>-aanroep
+    /// voor dezelfde club wacht hier tot de eerste transactie commit of rollbackt, en ziet
+    /// daarna diens rijen — ook als de tabel voor die club leeg was. <c>hashtext</c> zet de
+    /// sleutel om naar een stabiele <c>int</c>; <c>pg_advisory_xact_lock</c> vereist een
+    /// <c>bigint</c>, vandaar de cast.
+    /// </summary>
+    private static async Task AcquireClubLockAsync(NpgsqlConnection connection, NpgsqlTransaction tx, string clubCode, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtext('teambegeleiding:' || @cc)::bigint)", connection, tx);
+        cmd.Parameters.AddWithValue("cc", clubCode);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task DeleteBestaandeRijenAsync(NpgsqlConnection connection, NpgsqlTransaction tx, string clubCode, CancellationToken ct)
