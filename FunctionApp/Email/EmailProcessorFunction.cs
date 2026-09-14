@@ -1056,7 +1056,10 @@ public class EmailProcessorFunction
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: Database niet bereikbaar — email-processor gepauzeerd", body, null);
             await throttleStore.RegistreerVerstuurdAsync(DatabaseNoodmailSleutel, DateTime.UtcNow);
-            log.LogWarning("Noodmail verstuurd naar {Mailbox} — processor gepauzeerd tot database weer bereikbaar", mailbox);
+            // #1143: geen mailbox-/ontvangeradres in logs — SECURITY.md §Laag 5 sluit
+            // afzender-/ontvangeradressen expliciet uit, alleen een niet-persoonlijke
+            // uitkomst-identifier (DatabaseNoodmailSleutel) blijft over.
+            log.LogWarning("Noodmail verstuurd ({Sleutel}) — processor gepauzeerd tot database weer bereikbaar", DatabaseNoodmailSleutel);
         }
         catch (Exception ex)
         {
@@ -1125,7 +1128,8 @@ public class EmailProcessorFunction
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: OpenAI quota overschreden — email-processor gepauzeerd", body, null);
             await throttleStore.RegistreerVerstuurdAsync(OpenAiQuotaNoodmailSleutel, DateTime.UtcNow);
-            log.LogWarning("OpenAI quota-noodmail verstuurd naar {Mailbox}", mailbox);
+            // #1143: geen mailbox-/ontvangeradres in logs — zie de toelichting bij StuurDatabaseNoodmailAsync.
+            log.LogWarning("OpenAI quota-noodmail verstuurd ({Sleutel})", OpenAiQuotaNoodmailSleutel);
         }
         catch (Exception ex)
         {

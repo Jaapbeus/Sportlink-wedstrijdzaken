@@ -9,22 +9,21 @@ namespace FunctionApp.Postgres.Processing;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Processing/BerichtPipeline.cs</c> (#889). Kanaal-
-/// agnostische verwerkingspipeline voor inkomende berichten — hier uitsluitend geoefend door het
-/// dry-run pad (<c>EmailTestFunction</c>); <c>EmailProcessorFunction</c> (de echte, mailbox-
-/// getriggerde pipeline) is op deze tier niet vertaald.
+/// agnostische verwerkingspipeline voor inkomende berichten — geoefend door zowel het dry-run pad
+/// (<c>EmailTestFunction</c>) als, sinds de #972-hotfix (#1044), de echte mailbox-getriggerde
+/// <c>EmailProcessorFunction</c>.
 ///
 /// <para>
-/// <b>Twee resterende, gedocumenteerde afwijkingen ten opzichte van het SQL Server-origineel</b> —
+/// <b>Eén resterende, gedocumenteerde afwijking ten opzichte van het SQL Server-origineel</b> —
 /// geen stille functionaliteitsreductie, maar dezelfde eerlijke terugval die het origineel zelf al
-/// gebruikt zodra de bijbehorende instelling/repository ontbreekt. Een derde, het "opponent kan ons
-/// team alsnog vinden"-pad, is sinds #1139 vertaald (<see cref="PlannerMatchRepository.FindMatchByOpponentAsync"/>) —
-/// zie de <c>BeschikbaarheidCheck</c>-tak hieronder.
+/// gebruikt zodra de bijbehorende instelling/repository ontbreekt. Twee eerdere afwijkingen zijn
+/// inmiddels vertaald: het "opponent kan ons team alsnog vinden"-pad sinds #1139
+/// (<see cref="PlannerMatchRepository.FindMatchByOpponentAsync"/>, zie de
+/// <c>BeschikbaarheidCheck</c>-tak hieronder) en <c>TeamContactOpvragen</c>/<c>coachGevonden</c>
+/// sinds #1140 (<see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>, zie die tak
+/// hieronder).
 /// </para>
 /// <list type="number">
-/// <item><c>TeamContactOpvragen</c> geeft hier altijd <c>coachGevonden = false</c>:
-/// <c>PlannerDataAccess.GetTeamleiderContactAsync</c>/<c>AllstarsTestDataRepository.GetTeamleiderContactAsync</c>
-/// zijn niet vertaald (al expliciet zo gedocumenteerd in <c>AllstarsTestDataRepository.cs</c> op
-/// deze tier). Nooit gegokt of stilzwijgend "gevonden" gemeld.</item>
 /// <item>Het "verzet zonder datum"-pad (#561, KNVB-bijlage + vrije-zaterdagen-voorzet) valt hier
 /// altijd terug op het standaard herplanpad — exact het bestaande fallbackgedrag van het origineel
 /// zodra <c>knvbStandaardRegio</c> ontbreekt. Op deze tier ontbreekt die instelling altijd (niet in
@@ -237,13 +236,21 @@ internal static class BerichtPipeline
                 return JsonConvert.SerializeObject(new { error = "Onvoldoende gegevens voor herplanverzoek (team en datum nodig)" });
 
             case VerzoekType.TeamContactOpvragen:
-                // #889: GetTeamleiderContactAsync is op deze tier niet vertaald — zie de klassekop.
-                return JsonConvert.SerializeObject(new
+                if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
                 {
-                    teamContactOpgevraagd = true,
-                    teamNaam = classificatie.TeamNaam,
-                    coachGevonden = false
-                });
+                    // clubCode meegeven zodat een dry-run met de demoklub geselecteerd niet de
+                    // begeleidingscontacten van de productieclub raadpleegt (#677/#706), zelfde
+                    // reden als het SQL Server-origineel.
+                    var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
+                        cs, classificatie.TeamNaam, clubCode);
+                    return JsonConvert.SerializeObject(new
+                    {
+                        teamContactOpgevraagd = true,
+                        teamNaam = classificatie.TeamNaam,
+                        coachGevonden = contact != null
+                    });
+                }
+                return JsonConvert.SerializeObject(new { teamContactOpgevraagd = true, teamNaam = (string?)null, coachGevonden = false });
 
             case VerzoekType.Bevestiging:
                 return JsonConvert.SerializeObject(new { status = "Bevestiging ontvangen", opmerking = "Bevestigingen vereisen handmatige afhandeling door de coördinator" });

@@ -145,4 +145,62 @@ public class EmailProcessorFunctionNoodmailTests
         (await store.LaatsteKeerVerstuurdAsync(EmailProcessorFunction.OpenAiQuotaNoodmailSleutel))
             .Should().NotBeNull();
     }
+
+    // ── #1143: mailboxadres nooit in logs ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Regressietest voor #1143: SECURITY.md sluit afzender-/ontvangeradressen expliciet uit van
+    /// logs. <c>StuurDatabaseNoodmailAsync</c> logde eerder "Noodmail verstuurd naar {Mailbox}" met
+    /// het echte adres — deze test bewijst dat het adres wél gebruikt wordt om de mail te versturen
+    /// (anders bewijst een lege logregel niets), maar nergens in een logregel verschijnt.
+    /// </summary>
+    [Fact]
+    public async Task StuurDatabaseNoodmailAsync_Geslaagd_LogtMailboxadresNooit()
+    {
+        const string mailboxAdres = "noodmail@allstars-fc.test";
+        Environment.SetEnvironmentVariable("GraphMailbox", mailboxAdres);
+        try
+        {
+            var graph = new FakeEmailGraphService();
+            var store = new FakeNoodmailThrottleStore();
+            var logger = new RecordingLogger();
+
+            await EmailProcessorFunction.StuurDatabaseNoodmailAsync(
+                graph, aantalEmails: 1, foutmelding: "test", store, logger);
+
+            graph.SentReplies.Should().Contain(r => r.To == mailboxAdres,
+                "de test bewijst pas iets als het adres daadwerkelijk gebruikt is om te versturen");
+            logger.Messages.Should().NotContain(m => m.Contains(mailboxAdres),
+                "SECURITY.md sluit afzender-/ontvangeradressen expliciet uit van logs (#1143)");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GraphMailbox", null);
+        }
+    }
+
+    /// <summary>Zelfde regressie als hierboven, voor de OpenAI-quota-noodmail (#1143).</summary>
+    [Fact]
+    public async Task StuurOpenAiNoodmailAsync_Geslaagd_LogtMailboxadresNooit()
+    {
+        const string mailboxAdres = "noodmail@allstars-fc.test";
+        Environment.SetEnvironmentVariable("GraphMailbox", mailboxAdres);
+        try
+        {
+            var graph = new FakeEmailGraphService();
+            var store = new FakeNoodmailThrottleStore();
+            var logger = new RecordingLogger();
+
+            await EmailProcessorFunction.StuurOpenAiNoodmailAsync(graph, "quota overschreden", store, logger);
+
+            graph.SentReplies.Should().Contain(r => r.To == mailboxAdres,
+                "de test bewijst pas iets als het adres daadwerkelijk gebruikt is om te versturen");
+            logger.Messages.Should().NotContain(m => m.Contains(mailboxAdres),
+                "SECURITY.md sluit afzender-/ontvangeradressen expliciet uit van logs (#1143)");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GraphMailbox", null);
+        }
+    }
 }

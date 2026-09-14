@@ -203,6 +203,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   elke andere fout blijft de bescherming staan en wordt het bericht direct klaargezet voor
   handmatige beoordeling in het e-mail-log, zodat er nooit een tweede antwoord de deur uit gaat.
   Werkt op beide database-tiers.
+- **Op de Postgres-tier vindt "wie is de begeleider van dit team?" nu ook echt een begeleider
+  (#1140).** Een vraag naar het teamcontact via e-mail meldde op deze tier altijd "geen begeleider
+  gevonden", ook als die er wel was. De opzoeking in de begeleidingsgegevens werkt nu hetzelfde als
+  op de SQL Server-tier, inclusief het herkennen van een team in zowel de lokale schrijfwijze
+  ("JO13-1") als de KNVB-schrijfwijze. De interne herplanverzoek- en teamcontact-notificaties
+  spreken de begeleider daardoor ook weer bij naam aan in plaats van met een algemene aanhef.
 
 ### Security
 - **Sportlink-foutmeldingen worden niet meer letterlijk gelogd (#1122).** Bij een mislukte
@@ -244,6 +250,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   zonder ooit een pakket te controleren. De job herstelt nu eerst elk project met een lock-bestand
   (niet gecommit) en faalt voortaan expliciet als dat herstel onvolledig is, of als de scan
   achteraf alsnog 0 manifesten blijkt te hebben gecontroleerd.
+- **Het mailboxadres verschijnt niet langer in de logs bij een noodmail (#1143).** Op beide
+  database-tiers logde een geslaagde noodmail (bij een database-uitval of een OpenAI-quotalimiet)
+  het volledige e-mailadres van de mailbox. De logregel bevat voortaan alleen een niet-persoonlijke
+  gebeurtenis-identifier; het adres zelf komt nergens meer in een logregel terecht.
 
 ## [3.3.0.0] — 2026-09-12
 
