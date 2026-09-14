@@ -181,12 +181,12 @@ internal sealed class UitsluitingslijstCache
 /// functie werd de mailbox nooit gepolld — geen classificatie, geen auto-reply.
 ///
 /// <para>
-/// <b>Structurele afwijkingen t.o.v. het SQL Server-origineel — alle drie al gedocumenteerd op
-/// <c>BerichtPipeline</c>-niveau (item 1-3, buiten scope van deze hotfix) plus twee nieuw
-/// ontdekte, hier expliciet vastgelegde afwijkingen (item 4-5):</b>
+/// <b>Structurele afwijkingen t.o.v. het SQL Server-origineel — beide al gedocumenteerd op
+/// <c>BerichtPipeline</c>-niveau (item 1-2, buiten scope van deze hotfix) plus twee nieuw
+/// ontdekte, hier expliciet vastgelegde afwijkingen (item 3-4). Opponent-lookup
+/// (<c>FindMatchByOpponentAsync</c>) is sinds #1139 wél vertaald — zie <c>BerichtPipeline</c>.</b>
 /// </para>
 /// <list type="number">
-/// <item>Opponent-lookup (<c>FindMatchByOpponentAsync</c>) niet vertaald — zie <c>BerichtPipeline</c>.</item>
 /// <item><c>TeamContactOpvragen</c> geeft in het auto-reply-antwoord altijd <c>coachGevonden = false</c>
 /// — zie <c>BerichtPipeline</c>. De vervolgnotificatie hieronder (<see cref="StuurTeamContactBerichtDoorAsync"/>)
 /// gebruikt een ANDERE, wél bestaande databron (<c>avg.teambegeleiding</c> via

@@ -3202,6 +3202,32 @@ persoonsgegevens; groei in de orde van honderden rijen per seizoen). `his.matche
 `varchar(50)` met een `::date`-cast — die kolom hoort bij de generieke schemagenerator (#818), niet
 bij deze epic; de cast is op de huidige data bewezen veilig.
 
+## 59. Opponent-lookup vertaald — eerste van #972's vier resterende deelstukken (#1139)
+
+§52 documenteerde drie resterende afwijkingen tussen `BerichtPipeline`'s Postgres- en SQL
+Server-tier; dit issue (#1139, deelstuk 1 van #972) heft de eerste op: `PlannerMatchRepository`
+(Postgres) heeft nu een `FindMatchByOpponentAsync`, en `BerichtPipeline` roept hem aan op exact
+dezelfde plek en in dezelfde tweestaps-volgorde (eerst met datum, dan zonder) als het SQL
+Server-origineel.
+
+**Geen normalisatie van de tegenstandernaam nodig.** Het origineel doet hier geen
+`TeamNaamNormalisatie`-opzoeking — het is een vrije-tekst `LIKE '%...%'`-zoekopdracht op
+`m.wedstrijd`/`gw.Tegenstander`, geen teamresolutie. De Postgres-vertaling volgt exact hetzelfde
+patroon (`ILIKE`), dus er is geen nieuwe regex of vertaalpunt bijgekomen — de bestaande regel dat
+teamnaam-normalisatie uitsluitend in `Planner.Shared/TeamNaamNormalisatie.cs` hoort, blijft
+onaangeroerd.
+
+**Eén bewuste afwijking in de oefenwedstrijd-fallback.** Het SQL Server-origineel geeft in het
+`planner.GeplandeWedstrijden`-fallbackpad `AanvangsTijd` terug als `"HH:mm:ss"` (`CONVERT(...,
+108)`), terwijl het `his.matches`-pad daar `"HH:mm"` teruggeeft — een asymmetrie in het origineel
+zelf. De Postgres-vertaling formatteert in beide paden consistent `"HH:mm"`, zoals de rest van
+`PlannerMatchRepository` (Postgres) dat al deed: `planner.geplandewedstrijden.aanvangstijd` is hier
+een `TIME`-kolom, geen brontekst om 1-op-1 door te geven, dus consistentie binnen de klasse weegt
+zwaarder dan het letterlijk overnemen van een SQL Server-eigenaardigheid.
+
+De overige twee deelstukken van #972 (teamcontact-opvragen, "verzet zonder datum") en het vierde
+(`EmailProcessorFunction`'s resterende gaten) blijven open — zie #972 voor de volledige scope.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
