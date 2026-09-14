@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.0.0] — 2026-09-14
+
 ### Added
 - **Handmatige Sportlink-synchronisatie is nu een echte achtergrondjob in plaats van
   fire-and-forget (#1138, #415).** `POST /beheer/sync/trigger` schrijft een jobstatus weg en zet
