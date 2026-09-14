@@ -293,8 +293,8 @@ werd geschreven nádat de mail al weg was. Bij een harde afbreking precies daart
 van tien minuten, host-recycle, scale-in) was het antwoord verstuurd terwijl er in de database niets
 van te zien was — en stuurde de volgende poll een tweede antwoord.
 
-Daarom wordt vlak vóór de verzendpoging `VerzendPogingOpUtc` gezet, en meteen weer gewist zodra het
-versturen aantoonbaar mislukt. Wat overblijft is een ondubbelzinnig signaal:
+Daarom wordt vlak vóór de verzendpoging `VerzendPogingOpUtc` gezet, en alleen weer gewist als het
+versturen **aantoonbaar** mislukt is. Wat overblijft is een ondubbelzinnig signaal:
 
 | `VerzendPogingOpUtc` | `IsBeantwoord` | Betekenis | Volgende poll |
 |---|---|---|---|
@@ -307,6 +307,23 @@ De onbekende uitkomst weegt zwaarder dan de pogingenteller: het is geen mislukte
 eens mag proberen. Het bericht wordt als gelezen gemarkeerd zodat het de wachtrij niet bezet houdt, en
 de coördinator ziet het met status `Review` terug in het email-log. Kan de intentie zelf niet worden
 vastgelegd, dan wordt er niet verstuurd — een poging uitstellen is lichter dan een dubbel antwoord.
+
+**Welke fouten mogen de intentie wissen? (#1133)** Tot deze fix wiste `EmailReplyPolicyService` de
+intentie bij **élke** exception van de Graph-verzendaanroep — ook een time-out, annulering of
+verbindingsverlies, waarbij Graph het bericht mogelijk al had geaccepteerd vóórdat de fout ontstond.
+De volgende poll zag dan geen onbesliste intentie meer, en verstuurde een tweede antwoord op hetzelfde
+inkomende bericht. Sinds #1133 classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (puur, op
+beide tiers identiek getest) elke verzendfout in twee categorieën:
+
+| Uitkomst | Voorbeeld | Gedrag |
+|---|---|---|
+| **Expliciete afwijzing** | Graph-`ODataError` met status 400/401/403/404/413/422/429 — het verzoek zelf is afgewezen, er kan niets verstuurd zijn | Intentie wordt gewist, status `Fout`, volgende poll probeert opnieuw (ongewijzigd t.o.v. #712) |
+| **Onbekende uitkomst** | time-out, annulering, verbindingsverlies, 5xx, 408, of een ontbrekende statuscode | Intentie blijft staan, status direct op `Review` — niet pas bij de volgende poll |
+
+Bij een onbekende uitkomst wordt het bericht dus **meteen** (in dezelfde invocatie) op `Review` gezet
+en als gelezen gemarkeerd, in plaats van te wachten tot een volgende poll de onbesliste intentie
+tegenkomt via de tabel hierboven — dat mechanisme blijft als extra vangnet bestaan voor het geval de
+invocatie zelf hard wordt afgebroken vóórdat deze afhandeling draait.
 
 #### Eén leermoment per correctie (#715)
 
@@ -892,7 +909,7 @@ Dit zijn ze alle acht:
 | `Geclassificeerd` | AI-classificatie vastgelegd | Nee |
 | `Verwerkt` | Plannerlogica gedraaid, nog geen antwoordbesluit | Nee |
 | `AntwoordVerstuurd` | Antwoord de deur uit; `IsBeantwoord` = 1 | **Ja** |
-| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode of onbekende verzenduitkomst (#716) | Nee |
+| `Review` | Voorstel opgeslagen in `AntwoordEmail`, niets verstuurd — review-mode, of onbekende verzenduitkomst (#716, #1133) | Nee |
 | `Fout` | Verwerking mislukt of opgegeven na 3 pogingen | Nee |
 | `BuitenScope` | Buiten scope bevonden ná herclassificatie | **Ja** |
 | `GeenAntwoordNodig` | Bewust geen antwoord: planning is mogelijk (#572) | **Ja** |

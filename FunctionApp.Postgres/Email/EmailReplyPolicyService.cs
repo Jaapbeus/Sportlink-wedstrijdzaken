@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Planner.Shared;
 
 namespace FunctionApp.Postgres.Email;
 
@@ -23,7 +24,15 @@ internal enum ReplyVerwerkingUitkomst
 {
     AfgerondZonderAntwoord,
     AntwoordVerstuurd,
-    VerzendFout
+    VerzendFout,
+
+    /// <summary>
+    /// De verzendpoging leverde een onbekende uitkomst op (#1133): Graph kan het bericht al hebben
+    /// geaccepteerd vóór een time-out, annulering, verbindingsverlies of 5xx-fout. De verzendintentie
+    /// blijft staan en het bericht is direct op <see cref="EmailStatus.Review"/> gezet — er is NIET
+    /// opnieuw verstuurd.
+    /// </summary>
+    OnbekendeVerzendUitkomst
 }
 
 internal sealed class EmailReplyPolicyService
@@ -174,7 +183,52 @@ internal sealed class EmailReplyPolicyService
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "Graph-send mislukt voor verwerking {Id} — VerzendFout, mail blijft ongelezen", verwerkingId);
+            // #1133: niet elke exception van SendReplyAsync bewijst dat er niets verstuurd is. Een
+            // time-out, annulering, verbindingsverlies of 5xx kan optreden ná acceptatie door Graph —
+            // alleen een HTTP-statuscode die een expliciete afwijzing bewijst mag de verzendintentie
+            // laten wissen. Zie Planner.Shared.EmailVerzendFoutClassificatie voor de volledige
+            // motivatie en de losstaande, pure tests.
+            var graphStatusCode = ExtraheerGraphStatusCode(ex);
+            var uitkomst = EmailVerzendFoutClassificatie.Classificeer(ex, graphStatusCode);
+
+            if (uitkomst == EmailVerzendUitkomst.OnbekendeUitkomst)
+            {
+                log.LogError(ex,
+                    "Graph-send onbekende uitkomst (status {StatusCode}) voor verwerking {Id} — Graph kan het "
+                    + "bericht al hebben geaccepteerd. Verzendintentie blijft staan, NIET opnieuw versturen — "
+                    + "bericht direct op Review gezet (#1133)", graphStatusCode, verwerkingId);
+
+                try
+                {
+                    await SqlEmailPersistenceRepository.UpdateStatusAsync(connectionString, verwerkingId, EmailStatus.Review, null);
+                }
+                catch (Exception statusEx)
+                {
+                    log.LogWarning(statusEx,
+                        "Kon Review-status niet vastleggen voor verwerking {Id} — de onbesliste verzendintentie "
+                        + "blijft staan, dus een volgende poll legt het bericht alsnog ter beoordeling neer",
+                        verwerkingId);
+                }
+
+                try
+                {
+                    await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+                    await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
+                }
+                catch (Exception labelEx)
+                {
+                    log.LogWarning(labelEx, "Outlook-labeling mislukt voor verwerking {Id}", verwerkingId);
+                }
+
+                // Wél als gelezen markeren: dit is een terminale beoordelingsstatus, geen fout die de
+                // volgende poll opnieuw moet oppakken via de wachtrij van ongelezen berichten.
+                await graphService.MarkAsReadAsync(email.MessageId);
+                return ReplyVerwerkingUitkomst.OnbekendeVerzendUitkomst;
+            }
+
+            log.LogError(ex,
+                "Graph-send expliciet afgewezen (status {StatusCode}) voor verwerking {Id} — VerzendFout, mail blijft ongelezen",
+                graphStatusCode, verwerkingId);
             // Het versturen is aantoonbaar mislukt, dus de intentie moet weg: anders is dit scenario —
             // waarin juist wél opnieuw geprobeerd moet worden — niet te onderscheiden van een
             // onbekende uitkomst en belandt het bericht onnodig op Review.
@@ -211,4 +265,16 @@ internal sealed class EmailReplyPolicyService
 
         return ReplyVerwerkingUitkomst.AntwoordVerstuurd;
     }
+
+    /// <summary>
+    /// Haalt de HTTP-statuscode uit een Graph-foutrespons (#1133), of <c>null</c> als de exception
+    /// geen respons van Graph vertegenwoordigt — bijv. een time-out of verbindingsfout vóórdat er
+    /// ooit een respons was. Alleen deze statuscode bepaalt, via
+    /// <see cref="EmailVerzendFoutClassificatie.Classificeer"/>, of een verzendfout als expliciete
+    /// afwijzing mag gelden.
+    /// </summary>
+    private static int? ExtraheerGraphStatusCode(Exception ex)
+        => ex is Microsoft.Graph.Models.ODataErrors.ODataError odataError && odataError.ResponseStatusCode > 0
+            ? odataError.ResponseStatusCode
+            : null;
 }
