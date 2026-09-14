@@ -242,12 +242,83 @@ jobs:
           echo "✅ Geen club-specifieke infrastructuuridentifiers gevonden."
 
   # ── 4. Dependency vulnerability scan (Trivy) ───────────────────────────────
+  #
+  # #1126: een kale `.csproj` is voor Trivy geen ondersteund NuGet-manifest — zonder
+  # restore vond deze job structureel "Number of language-specific files num=0" en de
+  # gate was groen zonder ooit een pakket te scannen (zie run 34708758622, sub-issue van
+  # de codereview #1107). Trivy leest wél packages.lock.json (met transitieve pakketten,
+  # https://trivy.dev/latest/docs/coverage/language/dotnet/), dus deze job genereert
+  # er zelf één per project via `dotnet restore -p:RestorePackagesWithLockFile=true` —
+  # NIET gecommit (Dependabot onderhoudt hier geen lock-bestanden; commit zou stilzwijgend
+  # uit de pas lopen met de echte restore, zie .gitignore). Twee harde guards bewaken dat
+  # deze job zelf nooit meer stilzwijgend leeg scant: vóór Trivy (lock-bestanden aanwezig
+  # en gevuld) en ná Trivy (daadwerkelijk ≥1 nuget-manifest gescand).
   dependency-scan:
     name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # FunctionApp/FunctionApp.Postgres/Database.Postgres(.*) mikken op net9.0,
+      # BlazorAdmin op net10.0 (zie CLAUDE.md ".NET versie") — beide SDK's nodig om elk
+      # project te kunnen restoren.
+      - name: .NET SDK installeren
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      # Geen hardcoded projectlijst: een glob zodat een nieuw project automatisch
+      # meegenomen wordt zonder deze workflow te hoeven aanpassen.
+      - name: NuGet lock-bestanden genereren (packages.lock.json per project)
+        id: restore
+        run: |
+          set -euo pipefail
+          mapfile -t PROJECTS < <(git ls-files '*.csproj' | sort)
+          echo "Gevonden .csproj-projecten (${#PROJECTS[@]}):"
+          printf '  %s\n' "${PROJECTS[@]}"
+          for proj in "${PROJECTS[@]}"; do
+            echo "::group::dotnet restore $proj -p:RestorePackagesWithLockFile=true"
+            dotnet restore "$proj" -p:RestorePackagesWithLockFile=true
+            echo "::endgroup::"
+          done
+          echo "expected_count=${#PROJECTS[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard — lock-bestanden aanwezig en gevuld
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ steps.restore.outputs.expected_count }}"
+          mapfile -t LOCKFILES < <(find . -name 'packages.lock.json' -not -path './.git/*' | sort)
+          FOUND="${#LOCKFILES[@]}"
+          echo "Verwacht (op basis van .csproj-glob): $EXPECTED lock-bestand(en); gevonden: $FOUND"
+
+          if [ "$FOUND" -lt "$EXPECTED" ]; then
+            echo "::error::Te weinig packages.lock.json-bestanden gegenereerd ($FOUND van $EXPECTED verwacht) — restore is stilzwijgend onvolledig."
+            exit 1
+          fi
+
+          FAILED=0
+          for f in "${LOCKFILES[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f is leeg."
+              FAILED=1
+              continue
+            fi
+            if ! python3 -c "import json,sys; d=json.load(open('$f',encoding='utf-8')); deps=d.get('dependencies') or {}; sys.exit(0 if any(deps.values()) else 1)"; then
+              echo "::error::$f bevat geen 'dependencies'-sectie met pakketten."
+              FAILED=1
+            else
+              echo "OK: $f"
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::Eén of meer lock-bestanden zijn leeg of onvolledig — zie SECURITY.md."
+            exit 1
+          fi
+          echo "✅ Alle $FOUND lock-bestanden aanwezig en gevuld met dependencies."
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -266,6 +337,36 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
         continue-on-error: true
+
+      # Guard ná Trivy: bewijst dat de scan hierboven daadwerkelijk NuGet-manifesten
+      # gescand heeft, in plaats van te vertrouwen op de afwezigheid van een findings-lijst
+      # (die ook betekent "niets gescand"). `aquasecurity/setup-trivy` (binnen de trivy-action
+      # hierboven) zet de trivy-CLI op $GITHUB_PATH voor de rest van de job — geen aparte
+      # installatiestap nodig. `--exit-code 0` hier: dit is geen tweede kwetsbaarheidspoort
+      # (die staat al hierboven), uitsluitend een dekkingscontrole op de JSON-output.
+      - name: Trivy JSON-output genereren voor dekkingscontrole
+        if: always()
+        run: |
+          set -euo pipefail
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --ignore-unfixed \
+            --format json --output trivy-results.json .
+
+      - name: Guard — Trivy heeft daadwerkelijk NuGet-manifesten gescand
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -s trivy-results.json ]; then
+            echo "::error::trivy-results.json ontbreekt of is leeg — kan dekking niet verifiëren."
+            exit 1
+          fi
+          SCANNED=$(python3 -c "import json; d=json.load(open('trivy-results.json',encoding='utf-8')); r=d.get('Results') or []; print(len([x for x in r if x.get('Class')=='lang-pkgs' and x.get('Type')=='nuget']))")
+          echo "Aantal gescande NuGet-manifesten (lang-pkgs/nuget): $SCANNED"
+          if [ "$SCANNED" -lt 1 ]; then
+            echo "::error::Trivy heeft 0 NuGet-manifesten gescand — de dependency-scan dekt niets."
+            echo "::error::Zie CLAUDE.md/SECURITY.md § Dependency Vulnerability Scan (#1126)."
+            exit 1
+          fi
+          echo "✅ Trivy heeft $SCANNED NuGet-manifest(en) daadwerkelijk gescand."
 
   # ── 5. Security gate — blokkeert merge als bovenstaande checks falen ────────
   security-gate:

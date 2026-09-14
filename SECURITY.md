@@ -118,10 +118,20 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 | **Secret Detection (gitleaks)** | Wachtwoorden, tokens, API-sleutels in code én volledige git-geschiedenis | ✅ Ja |
 | **PII File Detection** | CSV- en Excel-bestanden met mogelijke persoonsgegevens | ✅ Ja |
 | **PII Pattern Scan** | Nederlandse telefoonnummers, persoonlijke e-mailadressen, ledencodesn | ✅ Ja |
-| **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in packages (HIGH/CRITICAL) | Waarschuwing |
+| **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in NuGet-pakketten (HIGH/CRITICAL), inclusief transitieve dependencies | ✅ Ja |
 | **Security Gate** | Faalt als één van de bovenstaande verplichte checks faalt | ✅ Ja |
 
 De **Security Gate** is de finale poortwachter. Zolang die rood is, is merge naar `main` geblokkeerd.
+
+**Dependency Vulnerability Scan — dekking (#1126):** een kale `.csproj` is voor Trivy geen
+ondersteund NuGet-manifest. De job genereert daarom zelf per project een `packages.lock.json`
+(`dotnet restore -p:RestorePackagesWithLockFile=true`, inclusief transitieve pakketten) vóórdat
+Trivy scant — dit bestand wordt **nooit gecommit** (zie `.gitignore`; Dependabot onderhoudt hier
+geen lock-bestanden en een gecommit exemplaar zou stilzwijgend uit de pas lopen met de echte
+restore). Twee harde guards bewaken dat de scan nooit meer stilzwijgend leeg draait: vóór Trivy
+(alle verwachte lock-bestanden aanwezig en gevuld met `dependencies`) en ná Trivy (de JSON-output
+bevat minstens één daadwerkelijk gescand `nuget`-manifest). Zonder deze guards vond de job eerder
+`Number of language-specific files num=0` en was de gate groen zonder ooit een pakket te scannen.
 
 ### Laag 3 — .gitignore (passieve blokkade)
 
