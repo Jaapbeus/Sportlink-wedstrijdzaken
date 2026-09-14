@@ -180,6 +180,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   doorgestuurde vraag bij de begeleiding van het verkeerde team terechtkwam. Een teamwissel
   overschrijft de getoonde contacten nu direct, en het resultaat van een oudere, nog lopende
   opzoeking wordt genegeerd zodra een nieuwere teamselectie is gestart.
+- **De dependency-scan controleert nu daadwerkelijk NuGet-pakketten, inclusief transitieve
+  afhankelijkheden (#1126).** De scan draaide eerder op de kale broncode zonder herstel, waardoor
+  Trivy structureel niets kon lezen (0 gescande manifesten) en de beveiligingspoort groen bleef
+  zonder ooit een pakket te controleren. De job herstelt nu eerst elk project met een lock-bestand
+  (niet gecommit) en faalt voortaan expliciet als dat herstel onvolledig is, of als de scan
+  achteraf alsnog 0 manifesten blijkt te hebben gecontroleerd.
 
 ## [3.3.0.0] — 2026-09-12
 
