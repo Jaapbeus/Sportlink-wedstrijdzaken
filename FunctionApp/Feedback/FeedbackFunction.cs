@@ -31,6 +31,15 @@ public static class FeedbackFunction
     private static readonly ConcurrentQueue<DateTime> _submits = new();
     private static readonly object _rateLock = new();
 
+    // Toegestane waarden voor Type — moet exact overeenkomen met de vaste keuzes in de Blazor-widget
+    // (BlazorAdmin/Shared/FeedbackWidget.razor, de radiogroep "Fout"/"Verzoek"/"Vraag"). Vóór #1127
+    // accepteerde de server elke string in dit veld, terwijl Type ongefilterd in de AI-prompt wordt
+    // geïnterpoleerd (ValideerVolledigheid, StructureerIssue) én VerzamelTeCheckenTekst het niet
+    // meenam — een e-mailadres in Type ging zo naar de AI-provider vóór afwijzing.
+    private static readonly string[] ToegestaneTypes = ["Fout", "Verzoek", "Vraag"];
+
+    private static bool IsOngeldigType(string? type) => !ToegestaneTypes.Contains(type);
+
     // ── Validate ──────────────────────────────────────────────────────────────
 
     [Function("FeedbackValidate")]
@@ -63,11 +72,21 @@ public static class FeedbackFunction
 
     /// <summary>
     /// Testbare kern van <see cref="Validate"/>, los van <see cref="HttpRequest"/>/<see cref="FunctionContext"/>
-    /// zodat regressietests een <see cref="IChatClient"/>-fake kunnen injecteren (#1006). PII-gate draait
-    /// vóór de AI-aanroep en dekt alle velden die de prompt in kan gaan — niet alleen Beschrijving/Antwoord.
+    /// zodat regressietests een <see cref="IChatClient"/>-fake kunnen injecteren (#1006). Type wordt
+    /// als allereerste stap tegen de vaste keuzes gevalideerd — vóór de PII-gate en vóór elke AI-
+    /// aanroep (#1127). De PII-gate draait daarna en dekt alle velden die de prompt in kan gaan —
+    /// niet alleen Beschrijving/Antwoord.
     /// </summary>
     internal static async Task<IActionResult> ValidateCoreAsync(FeedbackRequest dto, IChatClient chatClient, ILogger log)
     {
+        if (IsOngeldigType(dto.Type))
+        {
+            log.LogWarning("Feedback-validatie geblokkeerd: onbekend Type-veld (vóór enige verwerking)");
+            return new BadRequestObjectResult(new {
+                error = $"Ongeldig type. Toegestane waarden: {string.Join(", ", ToegestaneTypes)}."
+            });
+        }
+
         if (BevatPii(VerzamelTeCheckenTekst(dto)))
         {
             log.LogWarning("Feedback-validatie geblokkeerd: PII gedetecteerd in invoer (vóór AI-aanroep)");
@@ -136,9 +155,13 @@ public static class FeedbackFunction
     /// en de echte GitHub-<see cref="HttpClient"/> zodat regressietests een <see cref="IChatClient"/>-fake en
     /// een GitHub-fake kunnen injecteren (#1006).
     ///
-    /// Twee PII-gates, niet één:
-    /// 1. Vóór de AI-aanroep — over alle velden die de prompt in kunnen gaan (Context.Pagina/Versie/Browser,
-    ///    elke Vraag én Antwoord), niet alleen Beschrijving/Antwoord zoals de oorspronkelijke #427-gate.
+    /// Vóór alles: Type wordt tegen de vaste keuzes gevalideerd (#1127) — vóór enige verwerking of
+    /// externe aanroep, dus ook vóór de eerste PII-gate.
+    ///
+    /// Daarna twee PII-gates, niet één:
+    /// 1. Vóór de AI-aanroep — over alle velden die de prompt in kunnen gaan (Type, Context.Pagina/Versie/
+    ///    Browser, elke Vraag én Antwoord), niet alleen Beschrijving/Antwoord zoals de oorspronkelijke
+    ///    #427-gate.
     /// 2. Vlak vóór de GitHub-write — over de daadwerkelijke, uiteindelijke titel + body, dus inclusief
     ///    AI-gegenereerde Samenvatting/acceptatiecriteria. AI-output wordt nooit impliciet vertrouwd als
     ///    publiceerbare tekst.
@@ -150,6 +173,14 @@ public static class FeedbackFunction
         Func<string, string, string[], Task<(int nummer, string url)>> maakGitHubIssueAsync,
         ILogger log)
     {
+        if (IsOngeldigType(dto.Type))
+        {
+            log.LogWarning("Feedback geblokkeerd: onbekend Type-veld (vóór enige verwerking)");
+            return new BadRequestObjectResult(new {
+                error = $"Ongeldig type. Toegestane waarden: {string.Join(", ", ToegestaneTypes)}."
+            });
+        }
+
         if (BevatPii(VerzamelTeCheckenTekst(dto)))
         {
             log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in invoer (vóór AI-aanroep)");
@@ -434,11 +465,14 @@ public static class FeedbackFunction
     /// Verzamelt alle velden van een <see cref="FeedbackRequest"/> die ooit in een AI-prompt of in de
     /// gepubliceerde GitHub-body terechtkomen, zodat de PII-gate de volledige invoer controleert in
     /// plaats van alleen Beschrijving + Antwoord (#1006 — de oorspronkelijke #427-gate miste
-    /// Context.Pagina/Versie/Browser en elke Vraag).
+    /// Context.Pagina/Versie/Browser en elke Vraag). Type is sinds #1127 ook opgenomen: de
+    /// <see cref="IsOngeldigType"/>-check hierboven maakt PII in Type al structureel onmogelijk, maar
+    /// deze verzameling blijft Type meenemen als extra, onafhankelijke laag — mocht die allowlist ooit
+    /// verdwijnen, dan blokkeert deze gate nog steeds.
     /// </summary>
     private static string VerzamelTeCheckenTekst(FeedbackRequest dto)
     {
-        var delen = new List<string?> { dto.Beschrijving, dto.Context?.Pagina, dto.Context?.Versie, dto.Context?.Browser };
+        var delen = new List<string?> { dto.Type, dto.Beschrijving, dto.Context?.Pagina, dto.Context?.Versie, dto.Context?.Browser };
         if (dto.VragenAntwoorden != null)
         {
             foreach (var qa in dto.VragenAntwoorden)

@@ -8,7 +8,7 @@ using Xunit;
 namespace FunctionApp.Tests.Feedback;
 
 /// <summary>
-/// Regressietests voor de PII-gate-hardening (#1006).
+/// Regressietests voor de PII-gate-hardening (#1006) en de Type-allowlist-gate (#1127).
 ///
 /// De oorspronkelijke #427-gate controleerde alleen <c>dto.Beschrijving</c> + <c>qa.Antwoord</c>, en
 /// pas ná de AI-aanroep. Deze tests bewijzen dat de nieuwe gates:
@@ -17,6 +17,11 @@ namespace FunctionApp.Tests.Feedback;
 /// - vóór elke AI-aanroep draaien (geblokkeerde invoer doet nooit een AI-call);
 /// - vlak vóór de GitHub-write nogmaals draaien op de daadwerkelijke titel+body (geblokkeerde
 ///   AI-output doet nooit een GitHub-call).
+///
+/// #1127 voegt daar de Type-allowlist-gate aan toe: <c>dto.Type</c> werd vóór #1127 ongefilterd in de
+/// AI-prompt geïnterpoleerd zonder dat de PII-gate ernaar keek. Een synthetische PII-marker in Type
+/// moet daarom, net als in elk ander veld, tot 0 AI-aanroepen leiden en een afwijzing in zowel
+/// Validate als Submit.
 /// </summary>
 public class FeedbackFunctionPiiGateTests
 {
@@ -39,6 +44,68 @@ public class FeedbackFunctionPiiGateTests
     private static string GeldigeAiStructuurJson() => """
         {"title": "Veldenpagina laadt niet na opslaan", "samenvatting": "Gebruiker meldt dat de pagina blijft hangen na het opslaan van een wijziging.", "acceptatiecriteria": ["Pagina laadt binnen 2s na opslaan"]}
         """;
+
+    // ── Type-allowlist: blokkeert vóór alle verwerking, ook vóór de PII-gate (#1127) ───────────
+
+    [Fact]
+    public async Task ValidateCoreAsync_OngeldigType_WordtGeblokkeerdZonderAiAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        dto.Type = "Onbekend";
+        var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
+
+        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+
+        AssertOngeldigType(result);
+        fake.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ValidateCoreAsync_PiiInType_WordtGeblokkeerdZonderAiAanroep()
+    {
+        // Reproductie van bevinding 2 in #1107: vóór de fix accepteerde de server elke string in
+        // Type en interpoleerde die ongefilterd in de AI-prompt, zonder dat de PII-gate ernaar keek.
+        // De PII-marker is geen toegestane Type-waarde, dus de allowlist-gate blokkeert dit al vóór
+        // de AI-aanroep — precies de fix die #1127 vereist.
+        var dto = MaakSchoonRequest();
+        dto.Type = PiiMarker;
+        var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
+
+        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+
+        AssertOngeldigType(result);
+        fake.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SubmitCoreAsync_OngeldigType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        dto.Type = "Onbekend";
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+        var github = new FakeGitHubIssueCreator();
+
+        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+
+        AssertOngeldigType(result);
+        fake.AantalAanroepen.Should().Be(0);
+        github.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SubmitCoreAsync_PiiInType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        dto.Type = PiiMarker;
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+        var github = new FakeGitHubIssueCreator();
+
+        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+
+        AssertOngeldigType(result);
+        fake.AantalAanroepen.Should().Be(0);
+        github.AantalAanroepen.Should().Be(0);
+    }
 
     // ── Validate: blokkeert vóór de AI-aanroep ─────────────────────────────────
 
@@ -170,6 +237,9 @@ public class FeedbackFunctionPiiGateTests
         var obj = result.Should().BeOfType<ObjectResult>().Subject;
         obj.StatusCode.Should().Be(422);
     }
+
+    private static void AssertOngeldigType(IActionResult result) =>
+        result.Should().BeOfType<BadRequestObjectResult>();
 
     private sealed class FakeChatClient(string antwoord) : IChatClient
     {
