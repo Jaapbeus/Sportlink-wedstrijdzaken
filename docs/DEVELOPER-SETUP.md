@@ -919,6 +919,7 @@ issue 889) en de teamcanonicalisatie (`TeamCanonicalisatieIntegrationTests`, §2
 sportlink-wedstrijdzaken/
 ├── sportlink-wedstrijdzaken.sln       # Volledige solution (incl. Database/SportlinkSqlDb.sqlproj — alleen op Windows te bouwen)
 ├── sportlink-wedstrijdzaken.slnf      # Solution filter zonder het .sqlproj — gebruik dit op macOS (#800)
+├── Directory.Packages.props           # NuGet Central Package Management — één versiedefinitie per pakket (#1129, zie §8.1)
 ├── .gitattributes                     # Regeleindes vastgelegd (LF voor .sh/.githooks) zodat git-hooks op macOS werken (#800)
 ├── docker-compose.yml                 # Lokale SQL Server 2022 — enige ondersteunde manier, identiek op Windows/macOS (#800)
 ├── FunctionApp/
@@ -954,6 +955,44 @@ sportlink-wedstrijdzaken/
 │       └── setup-local-database.sql   # Database-initialisatie
 └── docs/                              # Documentatie
 ```
+
+### 8.1 NuGet-pakketten centraal beheerd (Directory.Packages.props, #1129)
+
+Alle `.csproj`-bestanden in deze repository (behalve `Database/SportlinkSqlDb.sqlproj` — dat is
+geen `PackageReference`-project en wordt door Central Package Management niet aangeraakt) gebruiken
+[NuGet Central Package Management](https://learn.microsoft.com/nuget/consume-packages/central-package-management).
+Eén bestand, `Directory.Packages.props` in de repository-root, bevat de versie van elk pakket:
+
+```xml
+<PackageVersion Include="Npgsql" Version="9.0.3" />
+```
+
+Elk project-bestand refereert een pakket zonder versie:
+
+```xml
+<PackageReference Include="Npgsql" />
+```
+
+**Een pakket toevoegen of de versie bumpen:**
+1. Wijzig (of voeg toe) de bijbehorende `<PackageVersion>`-regel in `Directory.Packages.props` —
+   nooit een `Version=`-attribuut op een `<PackageReference>` in een individueel `.csproj`.
+2. Metadata die niet over versie gaat (`PrivateAssets`, `IncludeAssets`, etc.) blijft wél op de
+   `<PackageReference>` in het project staan.
+3. Eén uitzondering: `VersionOverride` op een individuele `<PackageReference>` mag gebruikt worden
+   als één specifiek project bewust van de centrale versie moet afwijken — gebruik dit spaarzaam en
+   leg de reden uit in een commentaar.
+4. `dotnet restore` op het gewijzigde project(en) om te verifiëren dat er geen `NU1608`
+   (versie buiten het door een ander pakket gedeclareerde bereik) of `NU1605`
+   (downgrade-conflict) ontstaat.
+
+**Waarom:** vóór #1129 bepaalde elk project zijn eigen pakketversie, en Dependabot bumpte alleen
+`/FunctionApp` en `/BlazorAdmin` (`.github/dependabot.yml`) — `FunctionApp.Postgres` en de
+testprojecten liepen daardoor stilzwijgend uit de pas. Dat leidde tot `Microsoft.Extensions.AI.OpenAI`
+10.9.0 op de Postgres-tier tegenover 10.10.0 op de SQL Server-tier, met een `NU1608`-waarschuwing
+op elke restore van de Postgres-tier (10.9.0 declareert `OpenAI [2.12.0, 2.13.0)`, terwijl beide
+tiers al op `OpenAI 2.13.0` stonden). Met één versiedefinitie kan dat niet meer gebeuren, en
+Dependabot (`.github/dependabot.yml`, `directory: "/"`) werkt nu tegen dat ene bestand voor alle
+projecten tegelijk.
 
 ---
 

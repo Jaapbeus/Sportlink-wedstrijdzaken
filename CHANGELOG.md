@@ -97,6 +97,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   deploy-blokkade, want de verbinding blijft functioneren (fail-open sinds #1095).
 
 ### Changed
+- **Pakketversies (NuGet) voor alle projecten nu centraal beheerd, geen restore-waarschuwing meer
+  op de AI-koppeling (#1129).** Beide Function App-tiers gebruikten net iets andere versies van de
+  AI-adapter en het onderliggende OpenAI-pakket, wat bij elke build een NuGet-waarschuwing gaf
+  (`NU1608`, verder onschadelijk maar wel ruis in de build-log). Alle pakketversies staan nu op één
+  plek (`Directory.Packages.props`), zodat de twee tiers en de testprojecten niet meer uit de pas
+  kunnen lopen. Geen zichtbare wijziging voor de beheerder.
 - **Sportlink Web Extension: schermen en server-code opgeschoond na een volledige review (#1122).**
   Het Sportlink-paneel in Dagplanning is een eigen, herbruikbaar onderdeel geworden; de logica van
   de vier extensie-schermen staat los van de opmaak (code-behind), zodat schermen en gedrag apart

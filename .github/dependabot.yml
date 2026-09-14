@@ -1,7 +1,12 @@
 version: 2
 updates:
+  # #1129: Central Package Management (Directory.Packages.props) verving de per-project
+  # <PackageReference Version="..."> — één nuget-entry op de repo-root dekt nu alle projecten
+  # (FunctionApp, FunctionApp.Postgres, BlazorAdmin, Planner.Shared, Database.Postgres* en de
+  # testprojecten). Vóór CPM bumpte Dependabot alleen /FunctionApp en /BlazorAdmin, waardoor de
+  # andere projecten uit de pas liepen (zie CHANGELOG en docs/DEVELOPER-SETUP.md §8.1).
   - package-ecosystem: "nuget"
-    directory: "/FunctionApp"
+    directory: "/"
     target-branch: "develop"
     schedule:
       interval: "weekly"
@@ -11,23 +16,7 @@ updates:
     commit-message:
       prefix: "NuGet"
     groups:
-      functionapp-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
-
-  - package-ecosystem: "nuget"
-    directory: "/BlazorAdmin"
-    target-branch: "develop"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    labels:
-      - "dependencies"
-    commit-message:
-      prefix: "NuGet"
-    groups:
-      blazoradmin-minor-patch:
+      nuget-minor-patch:
         update-types:
           - "minor"
           - "patch"

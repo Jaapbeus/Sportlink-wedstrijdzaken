@@ -15,9 +15,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.3.6.0</Version>
-    <AssemblyVersion>3.3.6.0</AssemblyVersion>
-    <FileVersion>3.3.6.0</FileVersion>
+    <Version>3.3.6.1</Version>
+    <AssemblyVersion>3.3.6.1</AssemblyVersion>
+    <FileVersion>3.3.6.1</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier
@@ -44,22 +44,22 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <!-- #972: INoodmailThrottleStore-port — zelfde versie als de SQL Server-tier, tegen de
          bestaande AzureWebJobsStorage-opslagaccount, geen nieuwe Azure-resource. -->
-    <PackageReference Include="Azure.Data.Tables" Version="12.12.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <PackageReference Include="Cronos" Version="0.13.0" />
+    <PackageReference Include="Azure.Data.Tables" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Cronos" />
     <!-- §43: uitsluitend voor het uitgaande e-mailpad van AdminTeambegeleidingDoorsturen.
-         Zelfde versie als de SQL Server-tier, dus geen nieuw afhankelijkheidsrisico. -->
-    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+         Zelfde versie als de SQL Server-tier (centraal beheerd, zie Directory.Packages.props). -->
+    <PackageReference Include="Microsoft.Graph" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" />
     <!-- #966: uitsluitend voor FeedbackFunction (IChatClient — provider-agnostisch,
-         CLAUDE.md-architectuurregel). Zelfde versies als de SQL Server-tier. -->
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
-    <PackageReference Include="OpenAI" Version="2.13.0" />
+         CLAUDE.md-architectuurregel). Zelfde versies als de SQL Server-tier (centraal beheerd). -->
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
