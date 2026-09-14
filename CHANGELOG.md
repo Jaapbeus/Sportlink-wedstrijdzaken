@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Op de Postgres-tier herkent de e-mailverwerking nu ook het eigen team via de genoemde
+  tegenstander (#1139).** Kent een binnenkomend beschikbaarheidsverzoek het eigen team niet, maar
+  wordt er wel een tegenstander genoemd, dan zoekt de e-mailverwerking eerst de wedstrijd via die
+  tegenstander op (op de genoemde datum, en anders zonder datumfilter) om alsnog het eigen team af
+  te leiden — hetzelfde gedrag dat op de SQL Server-tier al bestond.
 - **Oefenwedstrijd aanmaken: snelle invoer zonder Sportlink-picklists (#1116).** Het formulier
   vraagt nu alleen nog datum, aanvangstijd, duur, eigen team, tegenstander en veld. Team en veld zijn
   keuzelijsten uit de eigen database (dezelfde bron als de andere schermen); de knop "Picklists

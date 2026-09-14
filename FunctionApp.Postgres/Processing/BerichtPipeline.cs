@@ -14,15 +14,13 @@ namespace FunctionApp.Postgres.Processing;
 /// getriggerde pipeline) is op deze tier niet vertaald.
 ///
 /// <para>
-/// <b>Drie bewuste, gedocumenteerde afwijkingen ten opzichte van het SQL Server-origineel</b> —
+/// <b>Twee resterende, gedocumenteerde afwijkingen ten opzichte van het SQL Server-origineel</b> —
 /// geen stille functionaliteitsreductie, maar dezelfde eerlijke terugval die het origineel zelf al
-/// gebruikt zodra de bijbehorende instelling/repository ontbreekt:
+/// gebruikt zodra de bijbehorende instelling/repository ontbreekt. Een derde, het "opponent kan ons
+/// team alsnog vinden"-pad, is sinds #1139 vertaald (<see cref="PlannerMatchRepository.FindMatchByOpponentAsync"/>) —
+/// zie de <c>BeschikbaarheidCheck</c>-tak hieronder.
 /// </para>
 /// <list type="number">
-/// <item>Het "opponent kan ons team alsnog vinden"-pad (<c>PlannerDataAccess.FindMatchByOpponentAsync</c>)
-/// is niet vertaald. Onze eigen team niet herkend + wel een tegenstander genoemd geeft hier direct
-/// "team onbekend" — het origineel probeert eerst via de tegenstander te resolven. Aparte,
-/// afgebakende vervolgklus.</item>
 /// <item><c>TeamContactOpvragen</c> geeft hier altijd <c>coachGevonden = false</c>:
 /// <c>PlannerDataAccess.GetTeamleiderContactAsync</c>/<c>AllstarsTestDataRepository.GetTeamleiderContactAsync</c>
 /// zijn niet vertaald (al expliciet zo gedocumenteerd in <c>AllstarsTestDataRepository.cs</c> op
@@ -118,9 +116,33 @@ internal static class BerichtPipeline
                 var alleDatums = ExpandDoordeweeksDatums(
                     classificatie.GetAlleDatums(), bericht.Onderwerp, bericht.Body ?? "");
 
-                // #889: het "opponent kan ons team alsnog vinden"-pad (FindMatchByOpponentAsync) is
-                // hier niet vertaald — zie de klassekop. Eigen team niet herkend + wel een
-                // tegenstander genoemd valt hier direct door naar de gewone beschikbaarheidscheck.
+                // #1139: "opponent kan ons team alsnog vinden"-pad. Is ons eigen team niet
+                // herkend maar wel een tegenstander genoemd, dan kan de wedstrijd nog via die
+                // tegenstander gevonden worden — daar staat ons team in. Zelfde tweestaps-
+                // zoekvolgorde als het SQL Server-origineel: eerst op datum, dan zonder datum.
+                bool heeftExterneTegenstander = !string.IsNullOrWhiteSpace(classificatie.Tegenstander);
+
+                if (heeftExterneTegenstander && !eigenTeamHerkend && alleDatums.Count == 1
+                    && DateOnly.TryParse(alleDatums[0], out var opponentCheckDatum))
+                {
+                    var wedstrijdOpDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
+                        cs, classificatie.Tegenstander!, opponentCheckDatum, clubCode);
+                    if (wedstrijdOpDatum != null)
+                        return JsonConvert.SerializeObject(new { wedstrijdAlIngepland = true, wedstrijd = wedstrijdOpDatum });
+
+                    var wedstrijdAndereDatum = await PlannerMatchRepository.FindMatchByOpponentAsync(
+                        cs, classificatie.Tegenstander!, null, clubCode);
+                    if (wedstrijdAndereDatum == null)
+                        return JsonConvert.SerializeObject(new { teamOnbekend = true, tegenstander = classificatie.Tegenstander });
+
+                    var eigenTeam = await BepaalEigenTeamUitWedstrijdAsync(
+                        wedstrijdAndereDatum.Wedstrijd, teamResolver, cc, log);
+                    if (eigenTeam != null)
+                    {
+                        classificatie.TeamNaam = eigenTeam;
+                        eigenTeamHerkend = true;
+                    }
+                }
 
                 if (alleDatums.Count > 1)
                 {
@@ -532,6 +554,28 @@ internal static class BerichtPipeline
             "TEAMRESOLUTIE - geen eigen team herkend (bron={Bron}, kandidaten={Kandidaten})",
             teamUitkomst?.Bron ?? ResolutionBron.Onopgelost, kandidaten);
         return false;
+    }
+
+    /// <summary>
+    /// Leidt het eigen team af uit de wedstrijdnaam ("TeamA - TeamB") die de opponent-lookup
+    /// (#1139) opleverde — Postgres-tegenhanger van het gelijknamige SQL Server-origineel.
+    /// Probeert beide kanten van het streepje tegen de teamresolver; de eerste kant die
+    /// oplosbaar is naar een bekend team levert de canonieke naam. Geen van beide oplosbaar?
+    /// Dan blijft de classificatie ongewijzigd en handelt de aanroepende tak dat af als "team
+    /// onbekend". Er wordt nooit een naam gegokt.
+    /// </summary>
+    private static async Task<string?> BepaalEigenTeamUitWedstrijdAsync(
+        string? wedstrijd, ITeamResolver resolver, string clubCode, ILogger log)
+    {
+        if (string.IsNullOrWhiteSpace(wedstrijd)) return null;
+
+        foreach (var kant in wedstrijd.Split(" - ", 2, StringSplitOptions.TrimEntries))
+        {
+            var uitkomst = await ProbeerResolveAsync(resolver, kant, clubCode, log);
+            if (uitkomst is not null && uitkomst.IsOpgelost)
+                return uitkomst.CanoniekeTeamnaam;
+        }
+        return null;
     }
 
     private static async Task<TeamResolutionResult?> ProbeerResolveAsync(
