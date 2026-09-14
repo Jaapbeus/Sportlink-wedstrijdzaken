@@ -11,7 +11,7 @@ namespace FunctionApp.Postgres.Planner.Repositories;
 /// <see cref="GetFutureMatchesForTeamAsync"/>), en — sinds #888 vervolg — de drie kleinste van de
 /// vier resterende gaten die de klasse-doc-comment van <c>PlannerFunction.cs</c> ooit noemde:
 /// <see cref="FindMatchAsync"/>, <see cref="FindMatchByCodeAsync"/>,
-/// <see cref="SavePlannedMatchAsync"/>, <see cref="SaveHerplanVerzoekAsync"/> — genoeg om
+/// <see cref="TryConfirmPlannedMatchAsync"/>, <see cref="SaveHerplanVerzoekAsync"/> — genoeg om
 /// <c>ZoekWedstrijd</c>, <c>BevestigWedstrijd</c> en <c>HerplanBevestig</c> echt te wireren — en,
 /// sinds #888 vervolg/§41, <see cref="GetTeamMatchesOnDateAsync"/> (nodig voor
 /// <c>AvailabilityService</c>'s team-conflictcontrole).
@@ -449,12 +449,34 @@ internal static class PlannerMatchRepository
     }
 
     /// <summary>
-    /// Slaat een handmatig ingeplande wedstrijd op — Postgres-vertaling van het SQL Server-origineel
-    /// (#888 vervolg, ontsluit <c>POST /api/planner/bevestig</c>). <c>RETURNING id</c> i.p.v.
-    /// <c>OUTPUT INSERTED.Id</c>, verder één-op-één dezelfde kolommen en dezelfde harde
-    /// <c>'Te bevestigen'</c>-startstatus.
+    /// Legt een handmatig ingeplande wedstrijd vast, atomair getoetst tegen de bestaande bezetting
+    /// (#1134, Codex-review #1107 bevinding 9). Postgres-vertaling van het SQL Server-origineel
+    /// (#888 vervolg, ontsluit <c>POST /api/planner/bevestig</c>) — vervangt de vroegere
+    /// <c>SavePlannedMatchAsync</c>, die zonder enige bezettingscontrole insertte: twee volledige-
+    /// veldreserveringen die elkaar overlappen (bijv. 10:00–12:00 en 10:30–12:30) kregen allebei
+    /// HTTP 200 en werden allebei opgeslagen.
+    /// <para>
+    /// <b>Atomiciteit via <c>pg_advisory_xact_lock</c>, niet via een exclusion constraint.</b> Een
+    /// exclusion constraint (<c>EXCLUDE USING gist</c>) zou de volledig-vs-gedeeld-veld-semantiek
+    /// (twee halve-veldreserveringen mogen wél naast elkaar, som van de fracties ≤ 1.00 — zie
+    /// <see cref="Planner.Shared.PlannerShared.FindBezettingsConflict"/>) in een check-constraint
+    /// moeten herformuleren, wat de conflictregel op een tweede plek zou laten bestaan naast de
+    /// C#-implementatie die <c>AvailabilityService</c> ook gebruikt. Een transactiegebonden
+    /// advisory lock op (club, veld, datum) serialiseert in plaats daarvan alle bevestigingen voor
+    /// dezelfde veld/datum-combinatie: de tweede aanvraag wacht tot de eerste commit of rollback
+    /// heeft gedaan, en leest daarna de bijgewerkte bezetting via exact dezelfde
+    /// <see cref="PlannerAvailabilityRepository.GetFieldOccupationsAsync"/> die
+    /// <c>AvailabilityService</c> gebruikt — dezelfde notie van conflict, niet een nieuwe.
+    /// <c>hashtextextended</c> geeft een 64-bit sleutel (in plaats van <c>hashtext</c>'s 32-bit) —
+    /// ruim voldoende spreiding voor het aantal club/veld/datum-combinaties dat hier ooit gelijktijdig
+    /// zou kunnen conflicteren.
+    /// </para>
     /// </summary>
-    internal static async Task<int> SavePlannedMatchAsync(
+    /// <returns>
+    /// <c>(Id, null)</c> bij een geslaagde reservering, of <c>(null, Conflict)</c> met de eerste
+    /// conflicterende bezetting als het interval niet past.
+    /// </returns>
+    internal static async Task<(int? Id, BestaandeWedstrijd? Conflict)> TryConfirmPlannedMatchAsync(
         string connectionString,
         DateOnly datum, TimeOnly aanvangsTijd, TimeOnly eindTijd, int veldNummer,
         decimal veldDeelGebruik, string? leeftijdsCategorie, string? teamNaam,
@@ -464,6 +486,27 @@ internal static class PlannerMatchRepository
         var cc = PostgresClubScope.Resolve(clubCode);
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        await using (var lockCmd = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))", conn, tx))
+        {
+            lockCmd.Parameters.AddWithValue("key", $"planner-confirm:{cc}:{veldNummer}:{datum:yyyy-MM-dd}");
+            await lockCmd.ExecuteNonQueryAsync();
+        }
+
+        // Bezetting ophalen NA het verkrijgen van de lock: op het moment dat deze aanroep terugkomt
+        // van pg_advisory_xact_lock is elke eerdere, gelijktijdige bevestiging voor dit veld/deze
+        // datum al gecommit of teruggedraaid — een verse query hier ziet dus altijd de actuele stand.
+        var occupations = await PlannerAvailabilityRepository.GetFieldOccupationsAsync(connectionString, datum, cc);
+        var conflict = PlannerShared.FindBezettingsConflict(
+            aanvangsTijd, eindTijd, veldDeelGebruik, veldNummer, occupations);
+        if (conflict != null)
+        {
+            await tx.RollbackAsync();
+            return (null, conflict);
+        }
+
         await using var cmd = new NpgsqlCommand(@"
             INSERT INTO planner.geplandewedstrijden
                 (datum, aanvangstijd, eindtijd, veldnummer, velddeelgebruik,
@@ -471,7 +514,7 @@ internal static class PlannerMatchRepository
                  status, aangevraagddoor, clubcode)
             VALUES (@datum, @aanvang, @eind, @veld, @deel, @cat, @team, @tegen, @duur, 'Te bevestigen', @door, @cc)
             RETURNING id
-        ", conn);
+        ", conn, tx);
         cmd.Parameters.AddWithValue("datum", datum.ToDateTime(TimeOnly.MinValue).Date);
         cmd.Parameters.AddWithValue("aanvang", aanvangsTijd.ToTimeSpan());
         cmd.Parameters.AddWithValue("eind", eindTijd.ToTimeSpan());
@@ -483,7 +526,9 @@ internal static class PlannerMatchRepository
         cmd.Parameters.AddWithValue("duur", wedstrijdDuurMinuten);
         cmd.Parameters.AddWithValue("door", (object?)aangevraagdDoor ?? DBNull.Value);
         cmd.Parameters.AddWithValue("cc", cc);
-        return (int)(await cmd.ExecuteScalarAsync())!;
+        var id = (int)(await cmd.ExecuteScalarAsync())!;
+        await tx.CommitAsync();
+        return (id, null);
     }
 
     /// <summary>

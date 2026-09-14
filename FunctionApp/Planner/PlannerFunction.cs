@@ -11,6 +11,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Planner.Shared;
 using SportlinkFunction.Admin;
 
 namespace SportlinkFunction.Planner
@@ -125,12 +126,37 @@ namespace SportlinkFunction.Planner
                 if (request.HeelVeld == true && veldFractie < VolledigVeldFractie)
                     veldFractie = VolledigVeldFractie;
 
+                // Server-side duur-/grenscontrole (#1134, Codex-review #1107 bevinding 9) — vóór
+                // elke DB-toegang: duur 0 (of negatief) gaf voorheen stilzwijgend een lege
+                // reservering en HTTP 200.
+                var validatieFout = PlannerShared.ValidateBevestigInterval(tijd, duurMinuten);
+                if (validatieFout != null)
+                    return new BadRequestObjectResult(new { error = validatieFout });
+
                 var eindTijd = tijd.AddMinutes(duurMinuten);
 
-                var id = await PlannerDataAccess.SavePlannedMatchAsync(
+                var (id, conflict) = await PlannerDataAccess.TryConfirmPlannedMatchAsync(
                     date, tijd, eindTijd, request.VeldNummer, veldFractie,
                     request.LeeftijdsCategorie, request.TeamNaam, request.Tegenstander,
                     duurMinuten, request.AangevraagdDoor, clubCode);
+
+                if (conflict != null)
+                {
+                    log.LogInformation("BevestigWedstrijd: conflict met bestaande bezetting op veld {Veld}", request.VeldNummer);
+                    return new ConflictObjectResult(new
+                    {
+                        error = $"Veld {request.VeldNummer} is op {date:yyyy-MM-dd} tussen {tijd:HH:mm} en {eindTijd:HH:mm} al bezet.",
+                        conflicterendeWedstrijd = new
+                        {
+                            wedstrijd = conflict.Wedstrijd,
+                            aanvangsTijd = conflict.AanvangsTijd.ToString("HH:mm"),
+                            eindTijd = conflict.EindTijd.ToString("HH:mm"),
+                            veldNummer = conflict.VeldNummer,
+                            veldDeelGebruik = conflict.VeldDeelGebruik,
+                            bron = conflict.Bron
+                        }
+                    });
+                }
 
                 log.LogInformation("BevestigWedstrijd: saved with id={Id}", id);
 

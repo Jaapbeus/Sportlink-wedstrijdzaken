@@ -20,6 +20,88 @@ public static class PlannerShared
     public const int SunsetWarningMarginMinutes = 20;
     public static readonly System.Globalization.CultureInfo NL = new("nl-NL");
 
+    /// <summary>
+    /// Bovengrens voor een handmatig bevestigde wedstrijdduur (#1134, Codex-review #1107 bevinding 9).
+    /// Geen bestaande waarde elders in de codebase leverde al zo'n grens — dit is een nieuwe,
+    /// bewust ruime sanity-check (8 uur) tegen evidente invoerfouten, geen functioneel plafond.
+    /// </summary>
+    public const int MaxWedstrijdDuurMinuten = 480;
+
+    /// <summary>
+    /// Valideert een door de beheerder bevestigde aanvangstijd/duur — puur, geen DB-toegang.
+    /// Retourneert een Nederlandse foutmelding bij een ongeldig interval, of <c>null</c> als het
+    /// interval geldig is. Gedeeld tussen beide databasetiers (#1134): <c>BevestigWedstrijd</c> op
+    /// zowel <c>FunctionApp.Postgres</c> als <c>FunctionApp</c> parseerde datum/tijd en sloeg het
+    /// interval op zonder enige duur- of grenscontrole — 0 minuten gaf stilzwijgend een lege
+    /// reservering, en een absurd grote duur kon <see cref="TimeOnly.AddMinutes"/> stilzwijgend naar
+    /// de volgende kalenderdag laten wrappen (23:00 + 90 min → 00:30), wat een eindtijd vóór de
+    /// aanvangstijd oplevert en elke latere bezettingsvergelijking breekt.
+    /// </summary>
+    public static string? ValidateBevestigInterval(TimeOnly aanvangsTijd, int duurMinuten)
+    {
+        if (duurMinuten <= 0)
+            return "Wedstrijdduur moet groter zijn dan 0 minuten.";
+        if (duurMinuten > MaxWedstrijdDuurMinuten)
+            return $"Wedstrijdduur van {duurMinuten} minuten is onwaarschijnlijk groot (max {MaxWedstrijdDuurMinuten} minuten).";
+        if (aanvangsTijd.ToTimeSpan().TotalMinutes + duurMinuten > 24 * 60)
+            return "Aanvangstijd plus wedstrijdduur overschrijdt het einde van de dag.";
+        return null;
+    }
+
+    /// <summary>
+    /// Overlap-en-capaciteitscheck voor het BEVESTIGEN van een door de beheerder gekozen tijd
+    /// (#1134, Codex-review #1107 bevinding 9) — bewust een ander regime dan
+    /// <see cref="CanFitMatch"/>. Die laatste voegt een buffer toe tussen niet-overlappende
+    /// wedstrijden omdat hij nieuwe sloten VOORSTELT (planner-suggesties mogen niet knel-op-knel
+    /// volgen). Het bevestigen van een expliciet gekozen tijd mag twee aansluitende reserveringen
+    /// (10:00–11:00 gevolgd door 11:00–12:00) niet blokkeren — dat is geen conflict, alleen een
+    /// overlappend interval is dat.
+    /// <para>
+    /// De capaciteitsregel blijft wél gelijk aan <see cref="CanFitMatch"/>: twee gedeelde-veld-
+    /// reserveringen mogen naast elkaar zolang de som van hun veldfracties binnen 1.00 blijft; een
+    /// overlappende volledige-veld-bezetting is altijd een conflict, ongeacht de fractie van de
+    /// nieuwe aanvraag. Dat is dezelfde volledig-vs-gedeeld-veld-semantiek die
+    /// <c>AvailabilityService</c> en <c>PostgresPlannerViewGenerator</c> elders al gebruiken — de
+    /// bevestiging gebruikt bewust dezelfde notie van conflict, geen nieuwe.
+    /// </para>
+    /// </summary>
+    /// <returns>De eerste (of ergste) conflicterende bezetting, of <c>null</c> als het interval past.</returns>
+    public static BestaandeWedstrijd? FindBezettingsConflict(
+        TimeOnly start, TimeOnly end, decimal veldFractie, int veldNummer,
+        IEnumerable<BestaandeWedstrijd> fieldOccupations)
+    {
+        var overlappend = fieldOccupations
+            .Where(o => o.VeldNummer == veldNummer && o.AanvangsTijd < end && o.EindTijd > start)
+            .ToList();
+        if (overlappend.Count == 0) return null;
+
+        // Volledig veld gevraagd: elke overlap is per definitie een conflict.
+        if (veldFractie >= 1.0m) return overlappend[0];
+
+        // Gedeeld veld gevraagd, maar een overlappende bezetting gebruikt het hele veld: altijd
+        // een conflict, ongeacht de eigen fractie.
+        var volledigeOverlap = overlappend.FirstOrDefault(o => o.VeldDeelGebruik >= 1.0m);
+        if (volledigeOverlap != null) return volledigeOverlap;
+
+        // Beide kanten gedeeld: som van de fracties mag op geen enkel moment binnen het interval
+        // boven 1.00 komen — zelfde sliding-window-berekening als CanFitMatch's gelijktijdig-tak.
+        decimal maxCap = 0;
+        BestaandeWedstrijd? ergste = null;
+        for (var t = start; t < end; t = t.AddMinutes(5))
+        {
+            var te = t.AddMinutes(5);
+            var actief = overlappend.Where(o => o.AanvangsTijd < te && o.EindTijd > t).ToList();
+            if (actief.Count == 0) continue;
+            var cap = actief.Sum(o => o.VeldDeelGebruik);
+            if (cap > maxCap)
+            {
+                maxCap = cap;
+                ergste = actief.OrderByDescending(o => o.VeldDeelGebruik).First();
+            }
+        }
+        return maxCap + veldFractie > 1.0m ? ergste : null;
+    }
+
     /// <summary>Rond aanvangstijd naar boven af op 5 minuten.</summary>
     public static TimeOnly RondAfOp5Min(TimeOnly tijd)
     {

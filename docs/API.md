@@ -394,7 +394,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
   "aanvangsTijd": "12:00",
   "eindTijd": "13:15",
   "veldNummer": 3,
-  "status": "Gepland"
+  "status": "Te bevestigen"
 }
 ```
 
@@ -407,13 +407,39 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
 | `aanvangsTijd` | `string` | Bevestigde aftrapttijd |
 | `eindTijd` | `string` | Berekende eindtijd |
 | `veldNummer` | `integer` | Toegewezen veld |
-| `status` | `string` | Altijd `"Gepland"` bij aanmaak |
+| `status` | `string` | Altijd `"Te bevestigen"` bij aanmaak |
 
 ### Foutantwoord (400)
 
 ```json
 {
   "error": "Request body met 'datum', 'aanvangsTijd' en 'veldNummer' is verplicht."
+}
+```
+
+Ook 400 bij een ongeldige duur (#1134): `"Wedstrijdduur moet groter zijn dan 0 minuten."`,
+`"Wedstrijdduur van ... minuten is onwaarschijnlijk groot (max 480 minuten)."` of
+`"Aanvangstijd plus wedstrijdduur overschrijdt het einde van de dag."`.
+
+### Foutantwoord (409) — bezettingsconflict
+
+Server-side controleert de aanvraag atomair tegen de bestaande bezetting (dezelfde notie van
+conflict als `POST /api/planner/check-availability`): volledige-veldreserveringen die elkaar
+overlappen, of gedeelde-veldreserveringen waarvan de veldfracties samen boven 1.00 uitkomen,
+geven 409 in plaats van een stille dubbele boeking. Twee reserveringen die elkaar precies
+aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00) zijn GEEN conflict.
+
+```json
+{
+  "error": "Veld 3 is op 2026-04-25 tussen 12:00 en 13:15 al bezet.",
+  "conflicterendeWedstrijd": {
+    "wedstrijd": "[ClubCode] JO13-1 - Tegenstander",
+    "aanvangsTijd": "12:30",
+    "eindTijd": "13:45",
+    "veldNummer": 3,
+    "veldDeelGebruik": 1.00,
+    "bron": "Planner"
+  }
 }
 ```
 
