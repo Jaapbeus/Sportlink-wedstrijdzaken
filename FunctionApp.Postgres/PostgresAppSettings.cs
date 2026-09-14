@@ -38,6 +38,18 @@ namespace FunctionApp.Postgres;
 /// één keer per proces. Zelfde "melden, niet weigeren"-lijn als #1095.
 /// </para>
 /// <para>
+/// <b>Eén bewuste uitzondering op die regel (#1098):</b> <c>sportlinkextensionenabled</c> (migratie
+/// 012). Op de Postgres-tier past niets de migraties automatisch toe op productie — dat is een
+/// handmatige stap van de eigenaar (ARCHITECTUUR-DATABASE-TIERS.md §49). Release v3.3.0.0 leverde
+/// deze query met die kolom, terwijl migratie 012 in productie nog niet gedraaid had: <c>42703
+/// undefined_column</c> → <c>WaitForDatabaseAsync</c> zag "database onbereikbaar" → elk
+/// <c>/api/beheer/*</c>-endpoint 500 "Ophalen mislukt". Ontbreekt die kolom, dan valt de lader nu
+/// terug op de kolomset van v3.2 en geldt <c>sportlinkExtensionEnabled = "0"</c> — exact de
+/// <c>DEFAULT false</c> die migratie 012 zelf zou zetten. Niet stil: <see cref="SchemaWarning"/>
+/// staat in <c>/api/health</c> en het functielog meldt het één keer per proces. Zelfde
+/// "melden, niet weigeren"-lijn als #1095.
+/// </para>
+/// <para>
 /// Filtert op <c>syncenabled = true</c> — zelfde precedent als
 /// <see cref="Database.Postgres.PostgresPlannerViewGenerator"/>'s CROSS JOIN LATERAL: de
 /// democlub (<c>syncenabled = false</c>) mag nooit stilzwijgend als primaire club gekozen worden.
