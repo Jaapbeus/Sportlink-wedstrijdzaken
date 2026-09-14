@@ -24,9 +24,20 @@
 #     zou moeten. Alleen "SQL Server heeft een tabel die Postgres mist" is een reëel risico.
 #
 # Geen database, geen secrets — draait ook op een fork.
+#
+# Draagbaarheid (#1155): dit script moet identiek werken op de Linux-CI-runner (bash 5, GNU grep)
+# én lokaal op macOS met de standaard /bin/bash 3.2 en BSD grep/sed. Daarom géén `grep -P`,
+# géén associatieve arrays (`declare -A`), geen `mapfile` en geen `${var,,}` — zie CLAUDE.md
+# "Cross-platform scripts". Sets zijn newline-gescheiden strings met een exacte-regel-lookup.
 set -euo pipefail
 
 FOUT=0
+
+# Lowercase zonder bash-4-syntax (`${var,,}` bestaat niet in bash 3.2).
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Exacte-regel-lookup in een newline-gescheiden set: in_set <element> <set>.
+in_set() { printf '%s\n' "$2" | grep -qxF -- "$1"; }
 
 # ── EXCEPTIONS: SQL Server-tabellen die bewust (nog) geen Postgres-tegenhanger hebben ──────
 # Formaat: "schema.tabel|reden". Elke rij hier is een bewuste beslissing, geen omissie — zie de
@@ -57,35 +68,42 @@ is_uitzondering() {
 
 # ── Postgres-tabellenset opbouwen: elke CREATE TABLE [IF NOT EXISTS] <schema>.<naam> in elke
 #    migratie, ongeacht volgorde — een tabel telt mee zodra hij ooit is aangemaakt. ──────────
-declare -A PG_TABLES
-while IFS= read -r regel; do
-  naam=$(echo "$regel" | grep -ioP 'CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?\K\S+')
-  [ -z "$naam" ] && continue
-  PG_TABLES["${naam,,}"]=1
-done < <(grep -rhinP 'CREATE\s+TABLE' Database.Postgres/migrations/*.sql)
+# Eerst alles lowercase, dan pas de naam eruit knippen — zo is de sed-expressie hoofdletter-
+# ongevoelig zonder de GNU-only `I`-vlag. De naam eindigt bij whitespace of een '(' (een
+# `CREATE TABLE public.x(` zonder spatie zou anders het haakje meenemen en nooit matchen).
+PG_TABLES="$(grep -rhiE 'CREATE[[:space:]]+TABLE' Database.Postgres/migrations/*.sql \
+  | tr '[:upper:]' '[:lower:]' \
+  | sed -nE 's/.*create[[:space:]]+table[[:space:]]+(if[[:space:]]+not[[:space:]]+exists[[:space:]]+)?([^[:space:](]+).*/\2/p')"
+
+if [ -z "$PG_TABLES" ]; then
+  echo "::error::Geen enkele CREATE TABLE geparseerd uit Database.Postgres/migrations/ — de parser in dit script is stuk, niet het schema. Een lege verzameling zou elke vergelijking hieronder ten onrechte laten slagen."
+  exit 1
+fi
 
 # ── SQL Server-tabellen doorlopen, elke naam vertalen en tegen de Postgres-set + de
 #    uitzonderingenlijst afzetten. ─────────────────────────────────────────────────────────
 while IFS= read -r f; do
-  obj=$(grep -ioP 'CREATE\s+TABLE\s+\[?\K\w+\]?\.\[?\w+' "$f" | head -1 | tr -d '[]')
+  # Laatste veld van de match is de objectnaam ("CREATE TABLE [dbo].[X]" -> "[dbo].[X]").
+  obj=$(grep -ioE 'CREATE[[:space:]]+TABLE[[:space:]]+\[?[A-Za-z0-9_]+\]?\.\[?[A-Za-z0-9_]+' "$f" \
+        | head -1 | awk '{print $NF}' | tr -d '[]')
   [ -z "$obj" ] && continue
 
   schema_naam="${obj%%.*}"
   tabel_naam="${obj##*.}"
   # Vertaalregel: dbo -> public, tabelnaam altijd lowercase.
-  if [[ "${schema_naam,,}" == "dbo" ]]; then
+  if [[ "$(lc "$schema_naam")" == "dbo" ]]; then
     verwacht_schema="public"
   else
-    verwacht_schema="${schema_naam,,}"
+    verwacht_schema="$(lc "$schema_naam")"
   fi
-  verwacht="${verwacht_schema}.${tabel_naam,,}"
+  verwacht="${verwacht_schema}.$(lc "$tabel_naam")"
   sqlserver_obj="${schema_naam}.${tabel_naam}"
 
   if is_uitzondering "$sqlserver_obj"; then
     continue
   fi
 
-  if [ -z "${PG_TABLES[$verwacht]+x}" ]; then
+  if ! in_set "$verwacht" "$PG_TABLES"; then
     echo "::error file=$f::Tabel ${sqlserver_obj} (SQL Server-tier) heeft geen Postgres-tegenhanger ${verwacht} in Database.Postgres/migrations/, en staat niet in de EXCEPTIONS-lijst van dit script (#864)."
     FOUT=1
   fi

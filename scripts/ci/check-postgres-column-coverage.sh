@@ -35,9 +35,20 @@
 #     script kan, want dat zou de C#-lijst opnieuw moeten parseren.
 #
 # Geen database, geen secrets — draait ook op een fork.
+#
+# Draagbaarheid (#1155): identiek gedrag op de Linux-CI-runner (bash 5, GNU grep/sed) én op macOS
+# met /bin/bash 3.2 en BSD grep/sed. Daarom geen `declare -A`, `mapfile`, `${var,,}` of de
+# GNU-only sed-vlag `I` — zie CLAUDE.md "Cross-platform scripts". Sets zijn newline-gescheiden
+# strings met een exacte-regel-lookup; de awk-parsers hieronder zijn al POSIX.
 set -euo pipefail
 
 FOUT=0
+
+# Lowercase zonder bash-4-syntax (`${var,,}` bestaat niet in bash 3.2).
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Exacte-regel-lookup in een newline-gescheiden set: in_set <element> <set>.
+in_set() { printf '%s\n' "$2" | grep -qxF -- "$1"; }
 
 # ── Tabellen die dit script overslaat, met de reden en waar ze wél gedekt worden ────────────
 # Formaat: "schema.tabel|reden". Twee categorieën:
@@ -67,19 +78,23 @@ KOLOM_UITZONDERINGEN=(
 # MatchDetails.sql declareert bijvoorbeeld [his].[matchdetails] (lowercase) terwijl het bestand
 # PascalCase heet. Een casing-gevoelige vergelijking zou zo'n rij stil laten missen.
 is_overgeslagen_tabel() {
-  local obj="${1,,}" e
+  local obj e sleutel
+  obj="$(lc "$1")"
   for e in "${OVERGESLAGEN_TABELLEN[@]}"; do
-    local sleutel="${e%%|*}"
-    [[ "${sleutel,,}" == "$obj" ]] && return 0
+    sleutel="${e%%|*}"
+    [[ "$(lc "$sleutel")" == "$obj" ]] && return 0
   done
   return 1
 }
 
 is_kolom_uitzondering() {
-  local obj="${1,,}" e
-  for e in "${KOLOM_UITZONDERINGEN[@]}"; do
-    local sleutel="${e%%|*}"
-    [[ "${sleutel,,}" == "$obj" ]] && return 0
+  local obj e sleutel
+  obj="$(lc "$1")"
+  # `${arr[@]+"${arr[@]}"}`: een LEGE array uitlezen onder `set -u` is in bash 3.2 (en 4.0–4.3)
+  # een "unbound variable"-fout; deze idioom levert dan nul argumenten op in plaats van een crash.
+  for e in ${KOLOM_UITZONDERINGEN[@]+"${KOLOM_UITZONDERINGEN[@]}"}; do
+    sleutel="${e%%|*}"
+    [[ "$(lc "$sleutel")" == "$obj" ]] && return 0
   done
   return 1
 }
@@ -164,16 +179,11 @@ sqlserver_kolommen() {
 }
 
 # ── Postgres-kolomverzameling opbouwen ─────────────────────────────────────────────────────
-# Eerst tellen, dan pas vullen: onder `set -u` is ${#ARR[@]} op een nog lege associatieve array
-# in oudere bash-versies zelf een fout, en een fout die "unbound variable" heet verbergt precies
-# de bevinding die deze guard moet melden.
-declare -A PG_KOLOMMEN
-PG_AANTAL=0
-while read -r tabel kolom; do
-  [ -z "${tabel:-}" ] && continue
-  PG_KOLOMMEN["${tabel}.${kolom}"]=1
-  PG_AANTAL=$((PG_AANTAL + 1))
-done < <(pg_kolommen)
+# Newline-gescheiden set van "schema.tabel.kolom". Het aantal wordt apart geteld (`|| true`: een
+# lege set geeft grep -c exitcode 1, en onder `set -e` zou dat de guard hieronder verhullen die
+# juist die lege set moet melden).
+PG_KOLOMMEN="$(pg_kolommen | awk 'NF == 2 { print $1 "." $2 }')"
+PG_AANTAL=$(printf '%s\n' "$PG_KOLOMMEN" | grep -c . || true)
 
 if [ "$PG_AANTAL" -eq 0 ]; then
   echo "::error::Geen enkele Postgres-kolom geparseerd uit Database.Postgres/migrations/ — de parser in dit script is stuk, niet het schema. Een lege verzameling zou elke vergelijking hieronder ten onrechte laten slagen."
@@ -184,8 +194,9 @@ fi
 GECONTROLEERD=0
 KOLOMMEN_VERGELEKEN=0
 while IFS= read -r f; do
+  # Laatste veld van de match is de objectnaam — geen sed met de GNU-only `I`-vlag nodig.
   obj=$(grep -ioE 'CREATE[ ]+TABLE[ ]+\[?[A-Za-z_]+\]?\.\[?[A-Za-z_]+\]?' "$f" | head -1 \
-        | sed -E 's/CREATE[ ]+TABLE[ ]+//I' | tr -d '[]')
+        | awk '{print $NF}' | tr -d '[]')
   if [ -z "$obj" ]; then
     echo "::error file=$f::Geen CREATE TABLE <schema>.<tabel> herkend in dit bestand — de parser in dit script is stuk, of het bestand wijkt af van de conventie."
     FOUT=1
@@ -199,17 +210,20 @@ while IFS= read -r f; do
     continue
   fi
 
-  if [[ "${schema_naam,,}" == "dbo" ]]; then
+  if [[ "$(lc "$schema_naam")" == "dbo" ]]; then
     pg_schema="public"
   else
-    pg_schema="${schema_naam,,}"
+    pg_schema="$(lc "$schema_naam")"
   fi
-  pg_tabel="${pg_schema}.${tabel_naam,,}"
+  pg_tabel="${pg_schema}.$(lc "$tabel_naam")"
 
   # Elke SQL Server-tabel die hier langskomt MOET kolommen opleveren; nul kolommen betekent een
   # kapotte parser, niet een lege tabel. Zonder deze controle zou zo'n bestand stilzwijgend
   # slagen — de klassieke "nul asserties = groen"-val.
-  mapfile -t kolommen < <(sqlserver_kolommen "$f")
+  kolommen=()
+  while IFS= read -r k; do
+    kolommen+=("$k")
+  done < <(sqlserver_kolommen "$f")
   if [ "${#kolommen[@]}" -eq 0 ]; then
     echo "::error file=$f::Nul kolommen geparseerd uit ${schema_naam}.${tabel_naam} — de parser in dit script is stuk. Een tabel zonder kolommen bestaat niet."
     FOUT=1
@@ -222,8 +236,9 @@ while IFS= read -r f; do
       continue
     fi
     KOLOMMEN_VERGELEKEN=$((KOLOMMEN_VERGELEKEN + 1))
-    if [ -z "${PG_KOLOMMEN["${pg_tabel}.${kolom,,}"]+x}" ]; then
-      echo "::error file=$f::Kolom ${schema_naam}.${tabel_naam}.${kolom} (SQL Server-tier) heeft geen tegenhanger ${pg_tabel}.${kolom,,} in Database.Postgres/migrations/, en staat niet in de KOLOM_UITZONDERINGEN-lijst van dit script (#864)."
+    pg_kolom="${pg_tabel}.$(lc "$kolom")"
+    if ! in_set "$pg_kolom" "$PG_KOLOMMEN"; then
+      echo "::error file=$f::Kolom ${schema_naam}.${tabel_naam}.${kolom} (SQL Server-tier) heeft geen tegenhanger ${pg_kolom} in Database.Postgres/migrations/, en staat niet in de KOLOM_UITZONDERINGEN-lijst van dit script (#864)."
       FOUT=1
     fi
   done

@@ -837,6 +837,14 @@ Aanvullend:
   (GNU grep, wél `\s`-bewust binnen brackets) prima blokkeerde. Gebruik binnen een
   bracket-expressie altijd de POSIX-klasse `[:space:]` (`[^;'"`[:space:]<>{}]`) — die werkt
   identiek op BSD-grep, GNU grep én `git grep`.
+- **CI-shellscripts (`scripts/ci/*.sh`) moeten draaien op bash 3.2 — de standaard `/bin/bash`
+  van macOS (#1155).** Dus geen `declare -A` (associatieve arrays), geen `mapfile`/`readarray`,
+  geen `${var,,}`/`${var^^}`, en geen GNU-only `sed`-vlag `I`. Gebruik een newline-gescheiden
+  string met `grep -qxF` als set, een POSIX-awk-array voor lookups, een `while read`-lus in
+  plaats van `mapfile`, en `tr '[:upper:]' '[:lower:]'` voor lowercase. Let op: een **lege**
+  array uitlezen onder `set -u` (`"${arr[@]}"`) is in bash 3.2 een "unbound variable"-fout —
+  schrijf `${arr[@]+"${arr[@]}"}`. Test lokaal met `/bin/bash scripts/ci/<script>.sh`; het
+  resultaat moet identiek zijn aan de Linux-CI-runner (zie docs/VERIFICATIE-SCRIPTS.md).
 - **Git-hooks moeten de executable-bit hebben** (`git update-index --chmod=+x`). Git slaat een
   niet-executable hook op macOS stilzwijgend over — de secrets- en AVG-scan draait dan niet.
 - **Bouw nooit `sportlink-wedstrijdzaken.sln` op macOS.** Die bevat het legacy SSDT-project
