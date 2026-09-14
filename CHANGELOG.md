@@ -19,6 +19,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Op de Postgres-tier stuurt de e-mailverwerking nu ook de KNVB-speeldagenkalender mee bij een
+  herplanverzoek van de tegenstander zonder concrete nieuwe datum (#1141).** De AI zegt in dat geval
+  geen nieuwe datum toe — dat stemt de begeleiding van het eigen team eerst af — maar het antwoord
+  noemt nu wel een paar zaterdagen waarop het team volgens het huidige programma nog vrij is, met
+  de begeleiding in BCC en de KNVB-speeldagenkalender-PDF als bijlage, precies zoals op de
+  SQL Server-tier. Ontbreekt de ingestelde KNVB-regio, of staat de bijlage-optie uit, dan blijft het
+  bestaande herplan-antwoord gewoon werken.
 - **Op de Postgres-tier herkent de e-mailverwerking nu ook het eigen team via de genoemde
   tegenstander (#1139).** Kent een binnenkomend beschikbaarheidsverzoek het eigen team niet, maar
   wordt er wel een tegenstander genoemd, dan zoekt de e-mailverwerking eerst de wedstrijd via die

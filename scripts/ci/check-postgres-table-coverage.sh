@@ -33,7 +33,6 @@ FOUT=0
 # reden en (waar van toepassing) het issue dat de rij ooit moet laten vervallen.
 EXCEPTIONS=(
   "dbo.DateTable|zero consumenten binnen de applicatie (alleen de al vervallen pub.DateTable-view, issue 861); zie docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 21"
-  "dbo.KnvbKalenderDag|hoort bij de KNVB-PDF-bijlage van de e-mail-AI-pijplijn, nog niet geport (issue 889's eigen scope-afbakening)"
   "mta.source_target_mapping|architecturaal vervangen door Database.Postgres/KnownEntities.cs (#818) — geen stuurtabel nodig, de entiteitenlijst staat in C#"
 )
 
