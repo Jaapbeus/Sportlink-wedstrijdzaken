@@ -3,6 +3,7 @@ using FunctionApp.Postgres.Feedback;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
+using Planner.Shared.Feedback;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests.Feedback;
@@ -30,11 +31,11 @@ public class FeedbackFunctionPiiGateTests
     // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (CLAUDE.md), geen bestaand persoon.
     private const string PiiMarker = "trainer@voorbeeld.nl";
 
-    private static FeedbackFunction.FeedbackRequest MaakSchoonRequest() => new()
+    private static FeedbackRequest MaakSchoonRequest() => new()
     {
         Type = "Fout",
         Beschrijving = "De veldenpagina laadt niet meer na het opslaan van een wijziging.",
-        Context = new FeedbackFunction.FeedbackContext
+        Context = new FeedbackContext
         {
             Pagina = "/velden",
             Versie = "3.2.2.0",
@@ -128,7 +129,7 @@ public class FeedbackFunctionPiiGateTests
     public async Task ValidateCoreAsync_PiiInVraag_WordtGeblokkeerdZonderAiAanroep()
     {
         var dto = MaakSchoonRequest();
-        dto.VragenAntwoorden = [new FeedbackFunction.VraagAntwoord { Vraag = $"Kun je dit mailen naar {PiiMarker}?", Antwoord = "ja" }];
+        dto.VragenAntwoorden = [new VraagAntwoord { Vraag = $"Kun je dit mailen naar {PiiMarker}?", Antwoord = "ja" }];
         var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
 
         var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
@@ -170,7 +171,7 @@ public class FeedbackFunctionPiiGateTests
     public async Task SubmitCoreAsync_PiiInVraag_WordtGeblokkeerdZonderAiEnGitHubAanroep()
     {
         var dto = MaakSchoonRequest();
-        dto.VragenAntwoorden = [new FeedbackFunction.VraagAntwoord { Vraag = $"Mail dit naar {PiiMarker}", Antwoord = "ok" }];
+        dto.VragenAntwoorden = [new VraagAntwoord { Vraag = $"Mail dit naar {PiiMarker}", Antwoord = "ok" }];
         var fake = new FakeChatClient(GeldigeAiStructuurJson());
         var github = new FakeGitHubIssueCreator();
 

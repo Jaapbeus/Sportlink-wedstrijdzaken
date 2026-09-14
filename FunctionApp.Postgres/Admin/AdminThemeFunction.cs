@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using FunctionApp.Postgres.Infrastructure;
+using Planner.Shared.Infrastructure;
 using Npgsql;
 using System.Text.Json;
 using System.Text.RegularExpressions;
