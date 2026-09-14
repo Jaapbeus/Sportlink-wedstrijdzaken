@@ -1,5 +1,4 @@
 using FunctionApp.Postgres.Email;
-using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Monitoring;
 using FunctionApp.Postgres.Planner;
 using Microsoft.Azure.Functions.Worker;
@@ -29,7 +28,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// </summary>
 public static class SportlinkContractCheckTimerFunction
 {
-    private const string RolNaam = "Wedstrijdzaken";
+    private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
     internal const string NoodmailSleutel = "sportlink-contract-noodmail";
     private static readonly TimeSpan NoodmailInterval = TimeSpan.FromHours(24);
 
@@ -40,24 +39,8 @@ public static class SportlinkContractCheckTimerFunction
     {
         var log = context.GetLogger("SportlinkContractCheck");
 
-        if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
-        {
-            log.LogInformation("Sportlink Web Extension staat uit — contract-check overgeslagen.");
-            return;
-        }
-
-        if (!EgressGuard.ExternalIntegrationsAllowed())
-        {
-            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — contract-check overgeslagen (#857).");
-            return;
-        }
-
-        var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-        if (sportlinkClient == null)
-        {
-            log.LogWarning("ISportlinkClubClient niet geregistreerd — contract-check kan niet draaien.");
-            return;
-        }
+        var sportlinkClient = SportlinkEndpointSupport.ClientVoorTimer(context, log, "contract-check");
+        if (sportlinkClient == null) return;
 
         var clubCode = PostgresClubScope.Primary;
 
@@ -172,7 +155,8 @@ public static class SportlinkContractCheckTimerFunction
             await graphService.SendReplyAsync(mailbox,
                 "Sportlink contract-check: afwijking gedetecteerd", body, null);
             await throttleStore.RegistreerVerstuurdAsync(NoodmailSleutel, DateTime.UtcNow);
-            log.LogWarning("Contract-check-noodmail verstuurd naar {Mailbox}", mailbox);
+            // Geen ontvangeradres in het log (SECURITY.md: e-mailadressen nooit loggen) — #1107 bevinding 12.
+            log.LogWarning("Contract-check-noodmail verstuurd.");
         }
         catch (Exception ex)
         {

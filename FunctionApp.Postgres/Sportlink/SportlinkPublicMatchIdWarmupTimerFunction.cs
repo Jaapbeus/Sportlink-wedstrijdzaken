@@ -1,5 +1,4 @@
 using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Integrations.SportlinkClub;
 using FunctionApp.Postgres.Planner;
 using Microsoft.Azure.Functions.Worker;
@@ -34,7 +33,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// </summary>
 public static class SportlinkPublicMatchIdWarmupTimerFunction
 {
-    private const string RolNaam = "Wedstrijdzaken";
+    private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
     // 3 dagen (vandaag + 2) — dekt een doordeweekse wedstrijd morgen én het aankomende weekend als
     // de timer op een donderdag/vrijdag draait, zonder een dagen-lange horizon vol nog-niet-
@@ -48,24 +47,8 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
     {
         var log = context.GetLogger("SportlinkPublicMatchIdWarmup");
 
-        if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
-        {
-            log.LogInformation("Sportlink Web Extension staat uit — warmup overgeslagen.");
-            return;
-        }
-
-        if (!EgressGuard.ExternalIntegrationsAllowed())
-        {
-            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — warmup overgeslagen (#857).");
-            return;
-        }
-
-        var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-        if (sportlinkClient == null)
-        {
-            log.LogWarning("ISportlinkClubClient niet geregistreerd — warmup kan niet draaien.");
-            return;
-        }
+        var sportlinkClient = SportlinkEndpointSupport.ClientVoorTimer(context, log, "warmup");
+        if (sportlinkClient == null) return;
 
         var clubCode = PostgresClubScope.Primary;
         var vandaag = DateOnly.FromDateTime(DateTime.UtcNow);

@@ -1,5 +1,4 @@
 using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Infrastructure;
 using FunctionApp.Postgres.Integrations.SportlinkClub;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +25,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// </summary>
 public static class SportlinkMatchFunction
 {
-    private const string RolNaam = "Wedstrijdzaken";
+    private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
     [Function("SportlinkMatchGet")]
     public static Task<IActionResult> Get(
@@ -98,8 +97,7 @@ public static class SportlinkMatchFunction
                     return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
                 var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                var dto = JsonConvert.DeserializeObject<KleedkamersDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var dto = await SportlinkEndpointSupport.LeesBodyAsync<KleedkamersDto>(req);
 
                 return await ExecuteMutationAsync(
                     req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchDressingRooms",
@@ -131,8 +129,7 @@ public static class SportlinkMatchFunction
                     return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
                 var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                var dto = JsonConvert.DeserializeObject<VeldDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var dto = await SportlinkEndpointSupport.LeesBodyAsync<VeldDto>(req);
 
                 return await ExecuteMutationAsync(
                     req, sportlinkClient, wedstrijdcodeValue, clubCode, "UpdateMatchField",
@@ -165,8 +162,7 @@ public static class SportlinkMatchFunction
                     return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
                 var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                var dto = JsonConvert.DeserializeObject<OfficialsDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var dto = await SportlinkEndpointSupport.LeesBodyAsync<OfficialsDto>(req);
 
                 var toewijzingen = (dto?.Officials ?? new List<OfficialToewijzingDto>())
                     .Where(o => !string.IsNullOrWhiteSpace(o.OfficialPosition) && !string.IsNullOrWhiteSpace(o.PersoonId))
@@ -208,8 +204,7 @@ public static class SportlinkMatchFunction
                     return new BadRequestObjectResult(new { error = "wedstrijdcode moet numeriek zijn." });
 
                 var sportlinkClient = context.InstanceServices.GetService<ISportlinkClubClient>();
-                var dto = JsonConvert.DeserializeObject<ChangeRequestDto>(
-                    await new StreamReader(req.Body).ReadToEndAsync());
+                var dto = await SportlinkEndpointSupport.LeesBodyAsync<ChangeRequestDto>(req);
 
                 // Zelfde verplicht-veld-patroon als SportlinkChangeRequestFunction.PutAction
                 // (Remarks bij DENY): een wijzigingsverzoek zonder toelichting is voor de
@@ -261,8 +256,7 @@ public static class SportlinkMatchFunction
     /// een dry-run die uitsluitend door de club-instelling <c>sportlinkDryRun</c> komt — bij beide
     /// is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c> (gesimuleerd succes).
     /// </summary>
-    internal static string BepaalAuditResultaat(SportlinkMutationResult r) =>
-        r.IsForcedDryRun ? "DryRunLocked" : r.IsDryRun ? "DryRun" : r.IsSuccess ? "Success" : "Failure";
+    internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupport.BepaalAuditResultaat(r);
 
     private sealed class KleedkamersDto
     {
@@ -371,32 +365,8 @@ public static class SportlinkMatchFunction
         }
 
         var mutationResult = await mutationCall(publicMatchId!, matchResult.Data);
-
-        var mutationFout = VertaalStatusNaarFout(mutationResult.Status);
-        if (mutationFout != null)
-        {
-            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", mutationResult.FoutmeldingVoorLog);
-            return mutationFout;
-        }
-
-        if (mutationResult.Data == null)
-        {
-            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Failure", "Geen respons-data van Sportlink");
-            return new ObjectResult(new { error = "Sportlink gaf geen bruikbare respons." }) { StatusCode = 502 };
-        }
-
-        var mutatieResultaat = naarMutatieResultaat(mutationResult.Data);
-        var violationsSamenvatting = mutatieResultaat.Violations is { Count: > 0 }
-            ? string.Join(", ", mutatieResultaat.Violations)
-            : null;
-        if (auditId.HasValue)
-            await auditService!.VoltooiAsync(auditId.Value, BepaalAuditResultaat(mutatieResultaat), violationsSamenvatting);
-
-        // Altijd HTTP 200: "Sportlink heeft de mutatie inhoudelijk afgewezen" is geen transportfout
-        // maar een structureel resultaat — IsSuccess/Violations dragen de uitkomst, consistent met
-        // hoe BlazorAdmin/Services/AdminApiClient.cs elk non-2xx-antwoord behandelt (ruwe tekst in
-        // ErrorMessage, niet gedeserialiseerd).
-        return new OkObjectResult(mutationResult.Data);
+        return await SportlinkEndpointSupport.RondMutatieAfAsync(
+            mutationResult, auditService, auditId, naarMutatieResultaat, data => new OkObjectResult(data));
     }
 
     /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,
@@ -406,12 +376,8 @@ public static class SportlinkMatchFunction
     private static async Task<(IActionResult? Fout, string? PublicMatchId)>
         BereidPublicMatchIdVoorAsync(ISportlinkClubClient? sportlinkClient, long wedstrijdcodeValue, string clubCode)
     {
-        if (PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") != "1")
-            return (new ObjectResult(new { error = "Sportlink Web Extension staat uit." }) { StatusCode = 409 }, null);
-
-        if (!EgressGuard.ExternalIntegrationsAllowed())
-            return (new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 }, null);
-
+        var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
+        if (toggleFout != null) return (toggleFout, null);
         if (sportlinkClient == null)
             return (new ObjectResult(new { error = "Sportlink-client niet geconfigureerd." }) { StatusCode = 503 }, null);
 
@@ -438,22 +404,6 @@ public static class SportlinkMatchFunction
         return (null, publicMatchId);
     }
 
-    /// <summary>Vertaalt <see cref="SportlinkClubCallStatus"/> naar een HTTP-foutrespons — nooit de
-    /// onderliggende Sportlink-foutdetails 1-op-1 doorzetten (CISO-regel). Retourneert <c>null</c>
-    /// bij <c>Ok</c> (aanroeper gaat verder met de data).</summary>
-    private static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status) => status switch
-    {
-        SportlinkClubCallStatus.Ok => null,
-        SportlinkClubCallStatus.RolNietGekoppeld => new ObjectResult(new
-        {
-            error = $"Geen Sportlink-koppeling gevonden voor rol '{RolNaam}' — registreer eerst een refresh-token via Instellingen."
-        })
-        { StatusCode = 409 },
-        SportlinkClubCallStatus.HerkoppelingVereist => new ObjectResult(new
-        {
-            error = $"De Sportlink-koppeling voor rol '{RolNaam}' is verlopen — registreer een nieuw refresh-token via Instellingen."
-        })
-        { StatusCode = 409 },
-        _ => new ObjectResult(new { error = "Sportlink is momenteel niet bereikbaar." }) { StatusCode = 502 },
-    };
+    private static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status)
+        => SportlinkEndpointSupport.VertaalStatusNaarFout(status);
 }

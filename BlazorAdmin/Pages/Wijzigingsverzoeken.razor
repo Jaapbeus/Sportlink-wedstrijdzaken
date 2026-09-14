@@ -1,7 +1,5 @@
 @page "/wijzigingsverzoeken"
-@inject AdminApiClient Api
-@using BlazorAdmin.Services
-@using BlazorAdmin.Models
+@* Alle logica staat in Wijzigingsverzoeken.razor.cs (#1122). *@
 
 <PageTitle>Wijzigingsverzoeken — Admin</PageTitle>
 
@@ -101,7 +99,8 @@ else
                             <td>
                                 @if (isOpen && verzoek.PublicRequestId != null && verzoek.PublicMatchId != null)
                                 {
-                                    var bezig = _bezig.GetValueOrDefault(id);
+                                    var status = Status(id);
+                                    var bezig = status.Bezig;
                                     @if (!_afwijzenOpen.GetValueOrDefault(id))
                                     {
                                         <button class="btn btn-sm btn-success me-1" disabled="@bezig" title="Goedkeuren" aria-label="Goedkeuren"
@@ -136,163 +135,12 @@ else
                                         <span class="spinner-border spinner-border-sm ms-1"></span>
                                     }
                                 }
-                                @if (!string.IsNullOrEmpty(_melding.GetValueOrDefault(id)))
-                                {
-                                    <div class="mt-1 small @(_meldingFout.GetValueOrDefault(id) ? "text-danger" : "text-success")">
-                                        @_melding.GetValueOrDefault(id)
-                                    </div>
-                                }
+                                <Melding Status="Status(id)" Klasse="small" />
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
-    }
-}
-
-@code {
-    private bool _laden = true;
-    private string? _fout;
-    private List<SportlinkChangeRequestDto>? _verzoeken;
-    private string _filter = "open";
-    private readonly Dictionary<string, bool> _bezig = new();
-    private readonly Dictionary<string, bool> _afwijzenOpen = new();
-    private readonly Dictionary<string, string?> _toelichting = new();
-    private readonly Dictionary<string, string?> _melding = new();
-    private readonly Dictionary<string, bool> _meldingFout = new();
-
-    // Sportlinks statuscodes (SportlinkChangeRequest.RequestStatus): CONFIRM wacht op ons,
-    // APPROVED/DENIED zijn afgehandeld, REVOKED is door de indiener ingetrokken.
-    private sealed record StatusFilter(string Key, string Label, Func<string?, bool> Match);
-
-    private static readonly StatusFilter[] Filters =
-    {
-        new("open",  "Openstaand",   s => IsOpenstaand(s)),
-        new("appr",  "Goedgekeurd",  s => Is(s, "APPROVED")),
-        new("deny",  "Afgewezen",    s => Is(s, "DENIED")),
-        new("revk",  "Ingetrokken",  s => Is(s, "REVOKED")),
-        new("all",   "Alle",         _ => true),
-    };
-
-    private StatusFilter HuidigFilter => Filters.FirstOrDefault(f => f.Key == _filter) ?? Filters[0];
-
-    private static bool Is(string? status, string code) => string.Equals(status, code, StringComparison.OrdinalIgnoreCase);
-    private static bool IsOpenstaand(string? status) => Is(status, "CONFIRM");
-
-    private static string StatusIcoon(string? status) => status?.ToUpperInvariant() switch
-    {
-        "CONFIRM"  => "bi-exclamation-circle-fill text-warning",
-        "APPROVED" => "bi-check-circle-fill text-success",
-        "DENIED"   => "bi-x-circle-fill text-danger",
-        "REVOKED"  => "bi-slash-circle text-secondary",
-        _          => "bi-question-circle text-secondary",
-    };
-
-    private static string StatusLabel(string? status) => status?.ToUpperInvariant() switch
-    {
-        "CONFIRM"  => "Openstaand — wacht op onze beslissing",
-        "APPROVED" => "Goedgekeurd",
-        "DENIED"   => "Afgewezen",
-        "REVOKED"  => "Ingetrokken door de indiener",
-        _          => $"Onbekende status ({status})",
-    };
-
-    /// <summary>Compacte weergave van wat de tegenstander vraagt; alleen de velden die afwijken van huidig.</summary>
-    private static string Gevraagd(SportlinkChangeRequestDataDto? d)
-    {
-        if (d == null) return "–";
-        var delen = new List<string>();
-        if (!string.IsNullOrWhiteSpace(d.RequestedDate) && d.RequestedDate != d.CurrentDate) delen.Add(d.RequestedDate!);
-        if (!string.IsNullOrWhiteSpace(d.RequestedStartTime) && d.RequestedStartTime != d.CurrentStartTime) delen.Add(d.RequestedStartTime!);
-        var acc = string.Join(" ", new[] { d.RequestedFacilityName, d.RequestedSubFacilityName }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        var huidigAcc = string.Join(" ", new[] { d.CurrentFacilityName, d.CurrentSubFacilityName }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        if (acc.Length > 0 && acc != huidigAcc) delen.Add(acc);
-        if (delen.Count == 0)
-        {
-            // Niets afwijkend herkend — toon dan het volledige gevraagde tijdstip zodat er nooit een leeg vak staat.
-            var alles = string.Join(" ", new[] { d.RequestedDate, d.RequestedStartTime, acc }.Where(x => !string.IsNullOrWhiteSpace(x)));
-            return alles.Length > 0 ? alles : "–";
-        }
-        return string.Join(" · ", delen);
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LaadVerzoekenAsync();
-    }
-
-    private async Task LaadVerzoekenAsync()
-    {
-        _laden = true;
-        _fout = null;
-        StateHasChanged();
-        try
-        {
-            var result = await Api.GetSportlinkChangeRequestsAsync();
-            if (result.Success)
-                _verzoeken = result.Data;
-            else
-                _fout = result.ErrorMessage ?? "Onbekende fout bij ophalen wijzigingsverzoeken.";
-        }
-        finally
-        {
-            _laden = false;
-        }
-    }
-
-    private async Task HandelAfAsync(SportlinkChangeRequestDto verzoek, bool isApprove)
-    {
-        if (verzoek.PublicRequestId == null || verzoek.PublicMatchId == null) return;
-        var id = verzoek.PublicRequestId;
-        var actie = isApprove ? "APPROVE" : "DENY";
-
-        var toelichting = _toelichting.GetValueOrDefault(id);
-        if (!isApprove && string.IsNullOrWhiteSpace(toelichting))
-        {
-            _meldingFout[id] = true;
-            _melding[id] = "Toelichting is verplicht bij afwijzen.";
-            return;
-        }
-
-        _bezig[id] = true;
-        _melding[id] = null;
-        StateHasChanged();
-        try
-        {
-            var result = await Api.PutSportlinkChangeRequestActionAsync(id, verzoek.PublicMatchId, actie, toelichting);
-            if (!result.Success)
-            {
-                _meldingFout[id] = true;
-                _melding[id] = result.ErrorMessage ?? "Onbekende fout.";
-                return;
-            }
-
-            if (result.Data?.IsDryRun == true)
-            {
-                _meldingFout[id] = false;
-                _melding[id] = "Dry-run: niets gewijzigd in Sportlink Club — de aanroep is gesimuleerd en gelogd.";
-                _afwijzenOpen[id] = false;
-                await LaadVerzoekenAsync();
-            }
-            else if (result.Data?.IsSuccess == true)
-            {
-                _meldingFout[id] = false;
-                _melding[id] = actie == "APPROVE" ? "Goedgekeurd in Sportlink Club." : "Afgewezen in Sportlink Club.";
-                _afwijzenOpen[id] = false;
-                await LaadVerzoekenAsync();
-            }
-            else
-            {
-                _meldingFout[id] = true;
-                var violations = result.Data?.Violations;
-                _melding[id] = "Sportlink heeft de actie afgewezen"
-                    + (violations is { Count: > 0 } ? $": {string.Join(", ", violations)}" : ".");
-            }
-        }
-        finally
-        {
-            _bezig[id] = false;
-        }
     }
 }
