@@ -135,6 +135,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bewust.
 
 ### Fixed
+- **CI-shellscripts draaien nu ook lokaal op macOS (#1155).** De drie guards voor padcasing,
+  Postgres-tabeldekking en -kolomdekking gebruikten bash-4-constructies en PCRE-grep en faalden op
+  de standaard macOS-bash; ze zijn herschreven naar bash-3.2- en POSIX-constructies en geven op
+  macOS en de Linux-CI-runner aantoonbaar hetzelfde resultaat, ook bij een opzettelijke fout.
 - **Dagplanning crashte bij een wedstrijd die na 23:00 eindigt (#1128).** De tijd-as van de
   planningsbalk liep dan tot 24:00, en die waarde bestond niet als tijdstip — de pagina gaf een
   foutmelding. Het uur-label wordt nu rechtstreeks als tekst opgebouwd.
