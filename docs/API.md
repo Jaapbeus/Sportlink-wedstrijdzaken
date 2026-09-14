@@ -30,8 +30,8 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie (SQL Server-tier). Postgres-tier: `/api/postgres/sync-matches`, zelfde parameters |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
-| `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie |
-| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie handmatig starten vanuit de Admin GUI |
+| `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
+| `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer |
 | `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
 | `GET/PUT/POST/DELETE` | `/beheer/templates` en `/{key}`, `/{key}/reset` | **Admin** | E-mailtemplates per berichttype beheren, met terugzetten naar standaard |
 | `GET/POST/DELETE` | `/beheer/uitgesloten-emails` en `/{id}` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden |
@@ -930,3 +930,23 @@ De response bevat per wedstrijd het optimale veld en tijdslot, plus `voorkeurTij
 curl http://localhost:7094/api/sync-matches
 curl "http://localhost:7094/api/sync-matches?reset=true&season=2025"
 ```
+
+### Sync-job starten en pollen (Admin GUI, #1138)
+
+`POST /beheer/sync/trigger` zet niet meer fire-and-forget een `Task.Run` op, maar schrijft een
+job-rij en een bericht op de bestaande `AzureWebJobsStorage`-queue `sync-jobs`. Een aparte
+QueueTrigger-functie (`SyncJobProcessor`) verwerkt het bericht en werkt de status bij.
+
+```bash
+curl -X POST http://localhost:7094/api/beheer/sync/trigger
+# {"status":"gestart","jobId":"…","weekOffsetFrom":-1,"weekOffsetTo":15,"tijdstip":"…"}
+
+curl "http://localhost:7094/api/beheer/sync/status?jobId=<jobId>"
+# {"lastSyncTimestamp":"…","fetchSchedule":"…","status":"ok",
+#  "job":{"id":"…","status":"running|succeeded|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
+#         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null}}
+```
+
+Zonder `?jobId=` geeft `/beheer/sync/status` de meest recente job terug. `job` is `null` zolang er
+nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,
+`failed` — bij `failed` bevat `errorMessage` de reden.

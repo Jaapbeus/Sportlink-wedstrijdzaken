@@ -237,6 +237,32 @@ public class SyncStatusDto
     public DateTime? LastSyncTimestamp { get; set; }
     public string? FetchSchedule { get; set; }
     public string? Status { get; set; }
+
+    /// <summary>Meest recente (of opgevraagde) sync-job — null zolang er nog nooit een job is gestart (#1138).</summary>
+    public SyncJobDto? Job { get; set; }
+}
+
+/// <summary>Status van een sync-job op de "sync-jobs"-queue (#1138). Status: pending/running/succeeded/failed.</summary>
+public class SyncJobDto
+{
+    public Guid Id { get; set; }
+    public string? Status { get; set; }
+    public int WeekOffsetFrom { get; set; }
+    public int WeekOffsetTo { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public class TriggerSyncResultDto
+{
+    public string? Status { get; set; }
+    public Guid? JobId { get; set; }
+    public int WeekOffsetFrom { get; set; }
+    public int WeekOffsetTo { get; set; }
+    public DateTime Tijdstip { get; set; }
+    public string? Melding { get; set; }
 }
 
 public class TemplateDto

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -12,11 +14,17 @@ namespace FunctionApp.Postgres.Admin;
 /// <para>
 /// <b>Status</b> is volledig vertaald: <c>SELECT TOP 1</c> → <c>LIMIT 1</c>, geen
 /// <c>DateTime.SpecifyKind</c> nodig (Npgsql geeft <c>TIMESTAMPTZ</c> al terug met <c>Kind=Utc</c>).
+/// Retourneert nu ook de meest recente <c>syncjobs</c>-rij (optioneel gefilterd op <c>jobId</c>
+/// query-param), zodat de GUI een specifieke job kan pollen (#1138).
 /// </para>
 /// <para>
-/// <b>Trigger</b> roept nu <see cref="PostgresSyncPipeline.RunSyncAsync"/> aan (#890) — dezelfde
-/// fire-and-forget-vorm als de SQL Server-tier. <c>toWeekOffset</c> komt sinds #890's
-/// seizoensvertaling uit <see cref="PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync"/>.
+/// <b>Trigger</b> is niet langer fire-and-forget via <c>Task.Run</c> (#1138, #415): de HTTP-call
+/// schrijft een <c>syncjobs</c>-rij (status <c>pending</c>) en zet een bericht op de
+/// <see cref="SyncJobsQueue.QueueName"/>-queue in de bestaande <c>AzureWebJobsStorage</c>-opslag —
+/// geen nieuwe Azure-resource. <see cref="SyncJobProcessor"/> verwerkt het bericht en werkt de
+/// status bij. Zo verdwijnt het stille-deelsucces-risico: een crash van de host tussen enqueue en
+/// verwerking laat het bericht gewoon opnieuw zichtbaar worden op de queue in plaats van spoorloos
+/// te verdwijnen zoals bij <c>Task.Run</c>.
 /// </para>
 /// </summary>
 public static class AdminSyncFunction
@@ -52,11 +60,25 @@ public static class AdminSyncFunction
                 : null;
             var fetchSchedule = reader["fetchschedule"].ToString() ?? "0 0 4 * * *";
 
+            Guid? jobId = Guid.TryParse(req.Query["jobId"], out var parsedJobId) ? parsedJobId : null;
+            var job = await SyncJobsRepository.GetLatestOrByIdAsync(clubCode, jobId);
+
             return new OkObjectResult(new
             {
                 lastSyncTimestamp = lastSync,
                 fetchSchedule,
-                status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd"
+                status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd",
+                job = job is null ? null : new
+                {
+                    id = job.Id,
+                    status = job.Status,
+                    weekOffsetFrom = job.WeekOffsetFrom,
+                    weekOffsetTo = job.WeekOffsetTo,
+                    createdAt = job.CreatedAt,
+                    startedAt = job.StartedAt,
+                    completedAt = job.CompletedAt,
+                    errorMessage = job.ErrorMessage
+                }
             });
         }
         catch (Exception ex)
@@ -77,32 +99,47 @@ public static class AdminSyncFunction
         if (authResult != null) return authResult;
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
 
-        // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
-        await PostgresSeasonHelper.EnsureSeasonsAsync(log);
-        var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-        log.LogInformation("AdminSyncTrigger: range -1 .. {To} — fire-and-forget gestart", toWeekOffset);
-
-        // Fire-and-forget: zelfde vorm als de SQL Server-tier — client pollt /status op wijziging lastsynctimestamp.
-        _ = Task.Run(async () =>
+        try
         {
-            try
-            {
-                await SyncFunction.RunConfiguredSyncAsync(-1, toWeekOffset, log);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Achtergrond sync mislukt");
-            }
-        });
+            // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+            await PostgresSeasonHelper.EnsureSeasonsAsync(log);
+            var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            var jobId = Guid.NewGuid();
 
-        return new ObjectResult(new
+            await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: -1, weekOffsetTo: toWeekOffset);
+
+            var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+                ?? throw new InvalidOperationException(
+                    "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
+            var queueClient = SyncJobsQueue.CreateClient(storageVerbinding);
+            await queueClient.CreateIfNotExistsAsync();
+            var message = new SyncJobMessage
+            {
+                JobId = jobId,
+                ClubCode = clubCode,
+                WeekOffsetFrom = -1,
+                WeekOffsetTo = toWeekOffset
+            };
+            await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
+
+            log.LogInformation("AdminSyncTrigger: job {JobId}, range -1 .. {To} — op de queue gezet", jobId, toWeekOffset);
+
+            return new ObjectResult(new
+            {
+                status = "gestart",
+                jobId,
+                weekOffsetFrom = -1,
+                weekOffsetTo = toWeekOffset,
+                tijdstip = DateTime.UtcNow,
+                melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
+            })
+            { StatusCode = 202 };
+        }
+        catch (Exception ex)
         {
-            status = "gestart",
-            weekOffsetFrom = -1,
-            weekOffsetTo = toWeekOffset,
-            tijdstip = DateTime.UtcNow,
-            melding = "Sync gestart op achtergrond. Controleer lastSyncTimestamp via /beheer/sync/status voor resultaat."
-        })
-        { StatusCode = 202 };
+            log.LogError(ex, "Fout bij triggeren van sync");
+            return new ObjectResult(new { error = "Sync starten mislukt" }) { StatusCode = 500 };
+        }
     }
 }
