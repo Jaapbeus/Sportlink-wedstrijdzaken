@@ -2892,8 +2892,8 @@ voor een hotfix.
 **Drie al bestaande, gedocumenteerde afwijkingen op `BerichtPipeline`-niveau blijven ongewijzigd**
 (opponent-lookup, `TeamContactOpvragen` se `coachGevonden`, KNVB-PDF-bijlage/"verzet zonder datum") —
 dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf. *(Bijgewerkt: opponent-lookup
-is sinds #1139 vertaald — zie §58 — en `TeamContactOpvragen`/`coachGevonden` sinds #1140 — zie §59.
-Alleen de KNVB-PDF-bijlage/"verzet zonder datum"-flow staat nog open.)*
+is sinds #1139 vertaald — zie §58 — `TeamContactOpvragen`/`coachGevonden` sinds #1140 — zie §61 —
+en de KNVB-PDF-bijlage/"verzet zonder datum"-flow sinds #1141 — zie §62. Alle drie zijn nu vertaald.)*
 
 **Eén nieuw ontdekte, hier voor het eerst gedocumenteerde afwijking:**
 - De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruikten
@@ -3306,6 +3306,69 @@ afwijking, nog open) — geen consument op de Postgres-tier vandaag, dus geen wi
 De overige twee deelstukken van #972 ("verzet zonder datum", `EmailProcessorFunction`'s resterende
 gaten — dat laatste al opgelost via de #972-hotfix, zie §52) blijven open voor het deel dat nog
 niet is vertaald — zie #972 voor de volledige scope.
+
+## 62. "Verzet zonder datum" vertaald — derde en laatste van #972's vier resterende deelstukken (#1141/#561)
+
+§58 en §61 hieven de eerste twee van de drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen
+op; dit issue (#1141, deelstuk 3 van #972) heft de derde en laatste op: de KNVB-PDF-bijlage +
+vrije-zaterdagen-voorzet voor een herplanverzoek van de tegenstander zonder concrete nieuwe datum
+(#561) werkt nu ook op de Postgres-tier, in plaats van altijd terug te vallen op het standaard
+herplanpad.
+
+**Nieuwe tabel `public.knvbkalenderdag` (migratie 019).** Postgres-tegenhanger van
+`dbo.KnvbKalenderDag` — landelijke KNVB-speeldagenkalender per regio/seizoen, geen ClubCode-kolom
+(zelfde reden als het SQL Server-origineel). De seed is mechanisch overgenomen uit
+`Database/Script.PostDeployment1.sql` (seizoenen 2025/2026 en 2026/2027, alle 8 seizoen/regio-
+blokken, 423 rijen) — `BIT` 1/0 → `BOOLEAN`, `N'...'` → `'...'`, `[Kolom]` → kolom, en de
+`IF NOT EXISTS`-per-blok-guard van het origineel vervangen door één `INSERT … ON CONFLICT
+(seizoen, regio, datum) DO NOTHING` op de primaire sleutel — functioneel gelijkwaardig, want de
+PK-kolommen zijn identiek aan de guard-kolommen. Geregistreerd in de CI-dekkingsscripts
+(`check-postgres-table-coverage.sh`/`check-postgres-column-coverage.sh`); de eerdere
+`dbo.KnvbKalenderDag`-uitzonderingsregels in beide scripts zijn verwijderd.
+
+**`PostgresAppSettings` laadt nu `knvbpdfbijlageingeschakeld`/`knvbstandaardregio`.** Beide kolommen
+bestaan onvoorwaardelijk sinds migratie 003 — geen optionele-kolom-dans zoals bij
+`sportlinkextensionenabled`/`sportlinkdryrun` (zie de klassekop van `PostgresAppSettings.cs`) nodig.
+`AdminSettingsFunction` (Postgres) had deze twee instellingen al in de GET/PUT-whitelist en
+-validatie staan (uit een eerdere sessie) — alleen de procesbrede cache miste ze nog.
+
+**Drie nieuwe klassen, telkens een tegenhanger van het SQL Server-origineel:**
+- `FunctionApp.Postgres/Planner/Repositories/KnvbKalenderRepository.cs` —
+  `GetVrijeZaterdagenAsync`, leest `public.knvbkalenderdag` met dezelfde filters (dagtype
+  Competitie/Beker/Inhaal, alleen zaterdagen, `maxAantal`, uitsluiting van al bezette data).
+- `FunctionApp.Postgres/Sync/PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync` — leest
+  `public.season`, zelfde "eerste seizoen met `dateuntil >= vandaag`"-semantiek als het
+  SQL Server-origineel.
+- `FunctionApp.Postgres/Email/KnvbPdfService.cs` — leest de KNVB-kalender-PDF's als Content-bestand.
+  **Geen gedeelde `Planner.Shared`-service**: hoewel de leeslogica zelf provider-onafhankelijk is
+  (alleen `EmailBijlage` + `ILogger` nodig), heeft elke tier al zijn eigen `EmailBijlage`-record in
+  een eigen namespace (`SportlinkFunction.Email`/`FunctionApp.Postgres.Email`) — een gedeelde
+  `KnvbPdfService` zou een gedeeld `EmailBijlage`-type vereisen, en dat is een grotere refactor dan
+  dit issue rechtvaardigt. Een twin, net als `EmailBijlage` zelf, is hier het consistente patroon.
+
+**PDF-bestanden: één bron, twee build-outputs.** `FunctionApp.Postgres.csproj` verwijst met een
+MSBuild `Content Include`+`Link` naar dezelfde bronbestanden als
+`FunctionApp/fa-dev-sportlink-01.csproj` (`../FunctionApp/Content/KnvbKalenders/2026-2027/*.pdf`)
+in plaats van een tweede 1,3 MB-kopie in git te zetten. Beide tiers krijgen zo bij het builden hun
+eigen kopie in de output-directory (nodig voor twee losse deployments), zonder dat het bronbestand
+twee keer in de repository staat.
+
+**`BerichtPipeline` (Postgres): `BouwVerzetZonderDatumResponseAsync` toegevoegd**, woordelijk gelijk
+aan het SQL Server-origineel — regio/bijlage-instelling uit `ClubAppSettingsSnapshot` (dry-run pad)
+of `PostgresAppSettings` (echte mailbox-verwerking), seizoen via `PostgresSeasonHelper`, vrije
+zaterdagen via `KnvbKalenderRepository`, reeds bezette data via
+`PlannerMatchRepository.GetFutureMatchesForTeamAsync` (bestond al). Ontbreekt de regio of staat de
+bijlage-instelling uit, dan blijft het bestaande fallbackgedrag gelden — expliciet gelogd
+("VERZET-ZONDER-DATUM - geen knvbStandaardRegio ingesteld; val terug op het standaard herplan-pad"),
+niet stilzwijgend. `BerichtResponseGenerator.BouwVerzetZonderDatumAntwoord` (het antwoord-sjabloon)
+en `EmailReplyPolicyService`'s BCC/bijlage-tak (via
+`AllstarsTestDataRepository.GetTeamleiderContactAsync`, §61, en `KnvbPdfService`) zijn eveneens
+vertaald — beide fail-safe: een mislukte contact- of PDF-lookup verstuurt de mail gewoon zonder BCC
+of bijlage, nooit een crash.
+
+Met dit issue is #972 volledig afgerond: alle vier de resterende deelstukken (opponent-lookup §58,
+teamcontact §61, verzet-zonder-datum hier, `EmailProcessorFunction` al via de #972-hotfix, zie §52)
+zijn nu vertaald.
 
 ## Gerelateerd
 

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using FunctionApp.Postgres.Planner;
+using FunctionApp.Postgres.Sync;
 using Planner.Shared;
 
 namespace FunctionApp.Postgres.Email;
@@ -15,9 +17,11 @@ namespace FunctionApp.Postgres.Email;
 /// architectuur toevoegen voor een hotfix.
 /// </para>
 /// <para>
-/// <b>Tweede afwijking:</b> de KNVB-PDF-bijlage/BCC-tak (#561, "verzet zonder datum") is hier niet
-/// vertaald — zie de klassekop van <c>BerichtPipeline</c> (item 3). <c>bcc</c>/<c>bijlage</c>
-/// blijven daarom altijd <c>null</c>.
+/// <b>KNVB-PDF-bijlage/BCC-tak (#561, "verzet zonder datum") sinds #1141 vertaald:</b> begeleiding
+/// van ons eigen team in BCC (<see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>,
+/// #1140) en de KNVB-kalender-PDF als bijlage (<see cref="KnvbPdfService"/>). Beide zijn fail-safe:
+/// ontbreekt het contact of het bestand, dan verstuurt de mail gewoon zonder (nooit een crash op
+/// deze verrijking) — zelfde gedrag als het SQL Server-origineel.
 /// </para>
 /// </summary>
 internal enum ReplyVerwerkingUitkomst
@@ -171,11 +175,38 @@ internal sealed class EmailReplyPolicyService
         // niet verstuurd: zonder die grens is een dubbel antwoord mogelijk.
         await SqlEmailPersistenceRepository.MarkeerVerzendPogingAsync(connectionString, verwerkingId);
 
-        // #561/#889 (item 3, zie BerichtPipeline-klassekop): VoegKnvbPdfBijlageToe wordt op deze
-        // tier nooit true — de "verzet zonder datum"-KNVB-bijlage-flow is hier niet vertaald.
-        // Bcc/bijlage blijven daarom altijd null; geen KnvbPdfService/PlannerDataAccess nodig.
         IReadOnlyList<string>? bcc = null;
         EmailBijlage? bijlage = null;
+        if (classificatie.VoegKnvbPdfBijlageToe)
+        {
+            // #561/#1141: verzet-zonder-datum — begeleiding van ons eigen team in BCC, KNVB-
+            // kalender als bijlage. Beide zijn fail-safe: ontbreekt het contact of het bestand, dan
+            // verstuurt de mail gewoon zonder (nooit een crash op deze verrijking).
+            try
+            {
+                var contact = await AllstarsTestDataRepository.GetTeamleiderContactAsync(
+                    connectionString, classificatie.TeamNaam ?? "");
+                if (contact != null && !string.IsNullOrWhiteSpace(contact.Emailadres))
+                {
+                    bcc = new[] { contact.Emailadres };
+                }
+                else
+                {
+                    log.LogInformation("VERZET-ZONDER-DATUM - geen begeleidingscontact gevonden voor BCC, verzonden zonder BCC");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "VERZET-ZONDER-DATUM - ophalen begeleidingscontact mislukt, verzonden zonder BCC");
+            }
+
+            if (!string.IsNullOrWhiteSpace(classificatie.KnvbBijlageRegio))
+            {
+                var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+                if (!string.IsNullOrWhiteSpace(seizoen))
+                    bijlage = await KnvbPdfService.GetKalenderPdfAsync(classificatie.KnvbBijlageRegio, seizoen, log);
+            }
+        }
 
         try
         {

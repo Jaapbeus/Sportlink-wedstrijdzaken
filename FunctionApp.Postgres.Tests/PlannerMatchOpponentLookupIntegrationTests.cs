@@ -31,9 +31,42 @@ namespace FunctionApp.Postgres.Tests;
 ///
 /// <para>Zie <see cref="PostgresSyncFixtureIntegrationTests"/> voor de lokale containeropzet.</para>
 /// </summary>
-public class PlannerMatchOpponentLookupIntegrationTests : IDisposable
+public class PlannerMatchOpponentLookupIntegrationTests : IAsyncLifetime
 {
-    public void Dispose() => PostgresAppSettings.ResetForTests();
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    /// <summary>
+    /// Ruimt de eigen rijen op én reset de instellingencache. De appsettings-rij met
+    /// <c>syncenabled = true</c> mag niet blijven staan: de planner-view (<c>PostgresPlannerViewGenerator</c>)
+    /// kiest de accommodatie via <c>WHERE syncenabled = true ORDER BY clubcode LIMIT 1</c>, en
+    /// "opponentlookup" sorteert vóór o.a. "testclub-avail". Bleef de rij staan, dan vond
+    /// <c>PlannerAvailabilityRepositoryIntegrationTests</c> zijn Competitie-rijen niet meer — een
+    /// orde-afhankelijke fout die pas zichtbaar werd toen #1141 de testvolgorde verschoof.
+    /// </summary>
+    public async Task DisposeAsync()
+    {
+        try
+        {
+            await using var conn = new NpgsqlConnection(ConnectionString);
+            await conn.OpenAsync();
+            foreach (var sql in OpruimStatements)
+                await ExecAsync(conn, sql, ("club", Club), ("andereclub", AndereClub));
+        }
+        finally
+        {
+            PostgresAppSettings.ResetForTests();
+        }
+    }
+
+    private static readonly string[] OpruimStatements =
+    {
+        "DELETE FROM planner.geplandewedstrijden WHERE clubcode = @club OR clubcode = @andereclub",
+        "DELETE FROM his.matches WHERE clubcode = @club OR clubcode = @andereclub",
+        "DELETE FROM his.teams WHERE clubcode = @club OR clubcode = @andereclub",
+        "DELETE FROM public.velden WHERE clubcode = @club OR clubcode = @andereclub",
+        "DELETE FROM public.speeltijden WHERE clubcode = @club OR clubcode = @andereclub",
+        "DELETE FROM public.appsettings WHERE clubcode = @club OR clubcode = @andereclub",
+    };
 
     private const string Club = "opponentlookup";
     private const string AndereClub = "opponentlookup-2";
@@ -137,15 +170,7 @@ public class PlannerMatchOpponentLookupIntegrationTests : IDisposable
         var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
 
-        foreach (var sql in new[]
-        {
-            "DELETE FROM planner.geplandewedstrijden WHERE clubcode = @club OR clubcode = @andereclub",
-            "DELETE FROM his.matches WHERE clubcode = @club OR clubcode = @andereclub",
-            "DELETE FROM his.teams WHERE clubcode = @club OR clubcode = @andereclub",
-            "DELETE FROM public.velden WHERE clubcode = @club OR clubcode = @andereclub",
-            "DELETE FROM public.speeltijden WHERE clubcode = @club OR clubcode = @andereclub",
-            "DELETE FROM public.appsettings WHERE clubcode = @club OR clubcode = @andereclub",
-        })
+        foreach (var sql in OpruimStatements)
             await ExecAsync(conn, sql, ("club", Club), ("andereclub", AndereClub));
 
         await ExecAsync(conn,

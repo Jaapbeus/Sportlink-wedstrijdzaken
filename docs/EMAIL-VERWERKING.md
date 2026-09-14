@@ -9,16 +9,17 @@ Dit document beschrijft wanneer de emailprocessor een antwoord verstuurt, welke 
 
 > **Sinds #972 geldt dit stroomschema ook voor de Postgres-tier** (`FunctionApp.Postgres/Email/
 > EmailProcessorFunction.cs`) — de mailbox stond daar volledig stil sinds de productiecutover van
-> 2026-09-04 (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §52). Resterende gedocumenteerde afwijking
-> op de Postgres-tier: de KNVB-PDF-bijlage/"verzet zonder datum"-flow ontbreekt nog. Twee eerdere
-> afwijkingen zijn inmiddels vertaald: het "opponent kan ons team alsnog vinden"-pad (Template H
-> hieronder) sinds #1139, en `TeamContactOpvragen`/`coachGevonden` plus de interne notificaties
-> hieronder — "Interne notificatie naar de teamleider (#66)" en "Template M — Auto-reply
-> 'doorgestuurd'" (beide in §2) — sinds #1140: die gebruiken nu allemaal
-> `AllstarsTestDataRepository.GetTeamleiderContactAsync`, woordelijk gelijk aan het SQL Server-
-> origineel, inclusief de naam van de begeleider in de aanhef. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`
-> §61 en de klassekop van `FunctionApp.Postgres/Processing/BerichtPipeline.cs` en
-> `EmailProcessorFunction.cs` voor de volledige onderbouwing.
+> 2026-09-04 (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §52). De drie destijds resterende,
+> gedocumenteerde `BerichtPipeline`-afwijkingen zijn nu alle drie vertaald: het "opponent kan ons
+> team alsnog vinden"-pad (Template H hieronder) sinds #1139, `TeamContactOpvragen`/`coachGevonden`
+> plus de interne notificaties hieronder — "Interne notificatie naar de teamleider (#66)" en
+> "Template M — Auto-reply 'doorgestuurd'" (beide in §2) — sinds #1140, en de KNVB-PDF-
+> bijlage/"verzet zonder datum"-flow (Verzet-zonder-datum hieronder) sinds #1141. De teamcontact-
+> en verzet-zonder-datum-paden gebruiken beide `AllstarsTestDataRepository.GetTeamleiderContactAsync`,
+> woordelijk gelijk aan het SQL Server-origineel, inclusief de naam van de begeleider in de aanhef.
+> Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §61/§62 en de klassekop van
+> `FunctionApp.Postgres/Processing/BerichtPipeline.cs` en `EmailProcessorFunction.cs` voor de
+> volledige onderbouwing.
 
 ---
 

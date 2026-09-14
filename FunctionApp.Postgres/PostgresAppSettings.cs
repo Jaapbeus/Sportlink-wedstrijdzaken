@@ -11,11 +11,13 @@ namespace FunctionApp.Postgres;
 /// (<c>clubcode</c>, <c>accommodatie</c>, <c>syncenabled</c> — zie
 /// <c>Database.Postgres/migrations/001_baseline.sql</c> — en sinds issue 888 vervolg/§41 ook
 /// <c>accommodatielatitude</c>/<c>accommodatielongitude</c>, nodig voor
-/// <c>PostgresSunsetCalculator</c>, uit <c>003_admin_tables.sql</c>). De SQL Server-tier se
-/// <c>dbo.AppSettings</c> heeft ~18 kolommen (sportlinkApiUrl, KNVB-instellingen, e-mailvoetnoot,
-/// ...) — die horen bij functionaliteit die nog niet is vertaald (#889/#890 e.a.). Een fantoom-
-/// fallback voor kolommen die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues breiden
-/// dit uit zodra de bijbehorende Postgres-migratie de kolom toevoegt.
+/// <c>PostgresSunsetCalculator</c>, uit <c>003_admin_tables.sql</c>; sinds #1141 ook
+/// <c>knvbpdfbijlageingeschakeld</c>/<c>knvbstandaardregio</c>, nodig voor het "verzet zonder
+/// datum"-pad, eveneens uit <c>003_admin_tables.sql</c>). De SQL Server-tier se
+/// <c>dbo.AppSettings</c> heeft ~18 kolommen (sportlinkApiUrl, e-mailvoetnoot, ...) — die horen bij
+/// functionaliteit die nog niet is vertaald (#889/#890 e.a.). Een fantoom-fallback voor kolommen
+/// die niet bestaan zou misconfiguratie maskeren; nieuwe sub-issues breiden dit uit zodra de
+/// bijbehorende Postgres-migratie de kolom toevoegt.
 /// </para>
 /// <para>
 /// <b>Twee bewuste uitzonderingen op die regel — telkens een optionele, losstaande kolom
@@ -83,7 +85,8 @@ public static class PostgresAppSettings
     internal const string DryRunColumn = "sportlinkdryrun";
 
     private const string BaseColumns =
-        "clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname";
+        "clubcode, accommodatie, syncenabled, accommodatielatitude, accommodatielongitude, plannerafzendernaam, clubname, " +
+        "knvbpdfbijlageingeschakeld, knvbstandaardregio";
 
     private const string ExtensionColumnMissingWarning =
         "Kolom '" + ExtensionColumn + "' ontbreekt in public.appsettings: migratie " +
@@ -221,6 +224,14 @@ public static class PostgresAppSettings
         // clubname (#889): zie de aanroep hierboven.
         if (!reader.IsDBNull(6))
             nieuw["clubName"] = reader.GetString(6);
+        // knvbpdfbijlageingeschakeld/knvbstandaardregio (#1141): het "verzet zonder datum"-pad
+        // (BerichtPipeline) leest deze via GetSetting zodra er geen ClubAppSettingsSnapshot is
+        // (de echte, mailbox-getriggerde verwerking — niet het dry-run pad). Beide kolommen
+        // bestaan onvoorwaardelijk sinds migratie 003, dus geen optionele-kolom-dans zoals bij
+        // ExtensionColumn/DryRunColumn hierboven nodig.
+        nieuw["knvbPdfBijlageIngeschakeld"] = !reader.IsDBNull(7) && reader.GetBoolean(7) ? "1" : "0";
+        if (!reader.IsDBNull(8))
+            nieuw["knvbStandaardRegio"] = reader.GetString(8);
 
         if (includeExtensionColumn)
         {

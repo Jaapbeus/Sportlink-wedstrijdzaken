@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Planner.Repositories;
+using FunctionApp.Postgres.Sync;
 using FunctionApp.Postgres.TeamResolution;
 
 namespace FunctionApp.Postgres.Processing;
@@ -14,22 +15,15 @@ namespace FunctionApp.Postgres.Processing;
 /// <c>EmailProcessorFunction</c>.
 ///
 /// <para>
-/// <b>Eén resterende, gedocumenteerde afwijking ten opzichte van het SQL Server-origineel</b> —
-/// geen stille functionaliteitsreductie, maar dezelfde eerlijke terugval die het origineel zelf al
-/// gebruikt zodra de bijbehorende instelling/repository ontbreekt. Twee eerdere afwijkingen zijn
+/// Drie eerder gedocumenteerde afwijkingen ten opzichte van het SQL Server-origineel zijn
 /// inmiddels vertaald: het "opponent kan ons team alsnog vinden"-pad sinds #1139
 /// (<see cref="PlannerMatchRepository.FindMatchByOpponentAsync"/>, zie de
-/// <c>BeschikbaarheidCheck</c>-tak hieronder) en <c>TeamContactOpvragen</c>/<c>coachGevonden</c>
+/// <c>BeschikbaarheidCheck</c>-tak hieronder), <c>TeamContactOpvragen</c>/<c>coachGevonden</c>
 /// sinds #1140 (<see cref="AllstarsTestDataRepository.GetTeamleiderContactAsync"/>, zie die tak
-/// hieronder).
+/// hieronder), en het "verzet zonder datum"-pad (#561, KNVB-bijlage + vrije-zaterdagen-voorzet)
+/// sinds #1141 — zie <see cref="BouwVerzetZonderDatumResponseAsync"/>, <see cref="KnvbKalenderRepository"/>
+/// en <see cref="PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync"/>.
 /// </para>
-/// <list type="number">
-/// <item>Het "verzet zonder datum"-pad (#561, KNVB-bijlage + vrije-zaterdagen-voorzet) valt hier
-/// altijd terug op het standaard herplanpad — exact het bestaande fallbackgedrag van het origineel
-/// zodra <c>knvbStandaardRegio</c> ontbreekt. Op deze tier ontbreekt die instelling altijd (niet in
-/// <see cref="PostgresAppSettings"/> geladen), dus <c>KnvbKalenderRepository</c> en een
-/// <c>SeasonHelper</c>-tegenhanger zijn (nog) niet nodig.</item>
-/// </list>
 /// </summary>
 internal static class BerichtPipeline
 {
@@ -206,8 +200,18 @@ internal static class BerichtPipeline
                                 }
                             }
 
-                            // #561/#889: "verzet zonder datum"-pad — zie de klassekop, altijd null
-                            // op deze tier, dus rechtstreeks door naar het standaard herplanpad.
+                            // #561/#1141: een tegenstander die om herplannen vraagt zonder concrete
+                            // nieuwe datum krijgt géén toegezegde datum van de AI — dat moet eerst
+                            // met de begeleiding van ons eigen team worden afgestemd. Val terug op
+                            // het bestaande gedrag als deze flow niet (volledig) geconfigureerd is.
+                            if (classificatie.NamensWie == NamensWie.Tegenstander
+                                && string.IsNullOrWhiteSpace(classificatie.GewensteDatum))
+                            {
+                                var verzetZonderDatumJson = await BouwVerzetZonderDatumResponseAsync(
+                                    cs, classificatie, wedstrijd, deadlineDagen, clubSettings, cc, log);
+                                if (verzetZonderDatumJson != null)
+                                    return verzetZonderDatumJson;
+                            }
 
                             if (!string.IsNullOrEmpty(classificatie.GewensteDatum))
                             {
@@ -258,6 +262,93 @@ internal static class BerichtPipeline
             default:
                 return JsonConvert.SerializeObject(new { status = "Niet verwerkt" });
         }
+    }
+
+    /// <summary>
+    /// Postgres-tier-tegenhanger van <c>FunctionApp/Processing/BerichtPipeline.cs</c>'s gelijknamige
+    /// methode (#561/#1141). Bouwt het "verzet zonder datum"-pad voor een
+    /// <see cref="VerzoekType.HerplanVerzoek"/> van de tegenstander zonder concrete
+    /// <c>GewensteDatum</c>. Een tegenstander mag geen nieuwe datum toegezegd krijgen — die
+    /// afstemming hoort bij de begeleiding van ons eigen team. In plaats daarvan geeft het antwoord
+    /// een paar concrete "vrije zaterdagen" als voorzet, en de pipeline markeert de classificatie
+    /// zodat de KNVB-kalender-PDF als bijlage meegaat en de begeleiding van ons team in BCC komt
+    /// (zie <see cref="Email.EmailReplyPolicyService"/>).
+    ///
+    /// Retourneert <c>null</c> als <c>knvbStandaardRegio</c> ontbreekt, de PDF-bijlage-instelling
+    /// uit staat, of er geen (toekomstig) seizoen in <c>public.season</c> staat — de aanroepende tak
+    /// valt dan terug op het bestaande gedrag (<see cref="RescheduleService.CheckRescheduleAvailabilityAsync"/>).
+    /// Nooit een regio gokken of hardcoden: ontbreekt de instelling, dan is er geen bijlage/flow.
+    /// </summary>
+    private static async Task<string?> BouwVerzetZonderDatumResponseAsync(
+        string connectionString, BerichtClassificatie classificatie, ZoekWedstrijdResponse wedstrijd,
+        int deadlineDagen, ClubAppSettingsSnapshot? clubSettings, string clubCode, ILogger log)
+    {
+        var regio = clubSettings != null
+            ? clubSettings.KnvbStandaardRegio
+            : PostgresAppSettings.GetSetting("knvbStandaardRegio");
+        if (string.IsNullOrWhiteSpace(regio))
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - geen knvbStandaardRegio ingesteld; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        bool bijlageAan;
+        if (clubSettings != null)
+        {
+            bijlageAan = clubSettings.KnvbPdfBijlageIngeschakeld ?? false;
+        }
+        else
+        {
+            var raw = PostgresAppSettings.GetSetting("knvbPdfBijlageIngeschakeld");
+            bijlageAan = !(string.IsNullOrWhiteSpace(raw)
+                || raw == "0"
+                || string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase));
+        }
+        if (!bijlageAan)
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - KNVB-PDF-bijlage staat uit; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        var seizoen = await PostgresSeasonHelper.GetCurrentKnvbSeizoenAsync(log);
+        if (string.IsNullOrWhiteSpace(seizoen))
+        {
+            log.LogInformation("VERZET-ZONDER-DATUM - geen (toekomstig) seizoen gevonden in public.season; val terug op het standaard herplan-pad");
+            return null;
+        }
+
+        var vandaag = DateOnly.FromDateTime(DateTime.Today);
+        var van = vandaag.AddDays(deadlineDagen);
+        // 8 weken venster — een algoritmische constante (geen club-specifieke waarde), geeft
+        // voldoende keuze zonder een half seizoen aan zaterdagen op te sommen.
+        var tot = van.AddDays(56);
+
+        var reedsBezetteData = new HashSet<DateOnly>();
+        if (!string.IsNullOrWhiteSpace(classificatie.TeamNaam))
+        {
+            var toekomstigeWedstrijden = await PlannerMatchRepository.GetFutureMatchesForTeamAsync(
+                connectionString, classificatie.TeamNaam, van, tot, clubCode);
+            foreach (var m in toekomstigeWedstrijden)
+            {
+                if (DateOnly.TryParse(m.Datum, out var bezetteDatum))
+                    reedsBezetteData.Add(bezetteDatum);
+            }
+        }
+
+        var vrijeZaterdagen = await KnvbKalenderRepository.GetVrijeZaterdagenAsync(
+            connectionString, regio, seizoen, van, tot, reedsBezetteData, maxAantal: 5, clubCode);
+
+        classificatie.VoegKnvbPdfBijlageToe = true;
+        classificatie.KnvbBijlageRegio = regio;
+
+        return JsonConvert.SerializeObject(new
+        {
+            verzetZonderDatum = true,
+            wedstrijd,
+            vrijeZaterdagen = vrijeZaterdagen.Select(d => d.ToString("yyyy-MM-dd")).ToList(),
+            regio,
+            seizoen
+        });
     }
 
     /// <summary>
@@ -330,6 +421,13 @@ internal static class BerichtPipeline
                     var deadlineDagen = herplanData["deadlineDagen"]?.ToObject<int>() ?? 8;
                     var dagenTot = herplanData["dagenTotWedstrijd"]?.ToObject<int>() ?? 0;
                     return BerichtResponseGenerator.BouwHerplanTeLaatAntwoord(teLaatWedstrijd, deadlineDagen, dagenTot, classificatie, bericht, clubSettings);
+                }
+
+                if (herplanData["verzetZonderDatum"]?.ToObject<bool>() == true)
+                {
+                    var vrijeZaterdagen = herplanData["vrijeZaterdagen"]?.ToObject<List<string>>() ?? new List<string>();
+                    return BerichtResponseGenerator.BouwVerzetZonderDatumAntwoord(
+                        wedstrijd, vrijeZaterdagen, classificatie, bericht, clubSettings);
                 }
 
                 if (herplanData["gewensteDatum"] != null && herplanData["beschikbaarheid"] != null)
