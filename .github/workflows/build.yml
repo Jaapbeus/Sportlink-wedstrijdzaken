@@ -99,6 +99,11 @@ jobs:
       - name: BlazorAdmin bouwen (net10.0)
         run: dotnet build BlazorAdmin/BlazorAdmin.csproj --configuration Release
 
+      # #1136: regressietests voor de teambegeleiding-lookup-race (LookupGeneratieGuard) —
+      # pure C#-logica, geen bUnit/component-rendering, dus geen browser/JS-runtime nodig.
+      - name: BlazorAdmin.Tests draaien
+        run: dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release --verbosity minimal
+
       # #818: Database.Postgres bouwt de C#-schemadefinitie/DDL-generator voor de Postgres-tier.
       # Deze build/test is onafhankelijk van welke DatabaseTier déze fork daadwerkelijk deployt
       # (#816) — PR-build verifieert dat elke gecommitte boom compileert, niet alleen de
