@@ -173,6 +173,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   (standaard 365 dagen — een uitgangspunt dat de beheerder als verantwoordelijke voor
   persoonsgegevens zelf vaststelt en zonder nieuwe versie kan aanpassen). Werkt op beide
   database-tiers.
+- **Teambegeleiding: een trage teamwissel kon de contactgegevens van het verkeerde team tonen
+  en versturen (#1136).** Wie snel na elkaar twee teams selecteerde in het scherm
+  Teambegeleiding, kon in bepaalde gevallen zien dat het tweede team geselecteerd stond, terwijl de
+  getoonde contacten en ontvangers nog van het eerste team waren — met als risico dat een
+  doorgestuurde vraag bij de begeleiding van het verkeerde team terechtkwam. Een teamwissel
+  overschrijft de getoonde contacten nu direct, en het resultaat van een oudere, nog lopende
+  opzoeking wordt genegeerd zodra een nieuwere teamselectie is gestart.
 
 ## [3.3.0.0] — 2026-09-12
 

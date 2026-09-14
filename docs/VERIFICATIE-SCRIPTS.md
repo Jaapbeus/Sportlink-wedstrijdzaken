@@ -421,6 +421,25 @@ Bewijsmateriaal komt in `artifacts/selftest/<tijdstempel>/` en staat in `.gitign
 
 ---
 
+## BlazorAdmin.Tests — pure unit tests, geen bUnit (#1136)
+
+`BlazorAdmin.Tests` is het enige testproject voor de Admin GUI. Het draait zonder database,
+zonder browser en zonder bUnit — het test uitsluitend pure C#-klassen die naast de `.razor`-pagina's
+staan, zoals `BlazorAdmin/Services/LookupGeneratieGuard.cs` (bewaakt dat een verouderde,
+trage teamlookup in `Teambegeleiding.razor` het resultaat van een snellere, latere lookup niet meer
+kan overschrijven).
+
+```powershell
+dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release
+```
+
+Draait ook als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin"),
+direct na de BlazorAdmin-build. Een component-level test (bUnit) is bewust niet gekozen voor dit
+issue — de logica die de race daadwerkelijk voorkomt zit in een pure klasse, en die is zonder
+component-rendering volledig te bewijzen.
+
+---
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,

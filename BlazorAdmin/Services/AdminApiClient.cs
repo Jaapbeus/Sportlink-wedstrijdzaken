@@ -235,8 +235,14 @@ public class AdminApiClient
     public async Task<ApiResult<List<string>>> GetTeambegeleidingTeamsAsync()
         => await GetAsync<List<string>>("api/beheer/teambegeleiding");
 
-    public async Task<ApiResult<List<TeambegeleidingItem>>> GetTeambegeleidingAsync(string team)
-        => await GetAsync<List<TeambegeleidingItem>>($"api/beheer/teambegeleiding/{Uri.EscapeDataString(team)}");
+    // cancellationToken (#1136): laat de aanroeper een verouderde lookup (team-selectie
+    // inmiddels gewijzigd) daadwerkelijk annuleren in plaats van het resultaat alleen weg te
+    // gooien — de generatie-guard in Teambegeleiding.razor blijft de correctheidsgarantie,
+    // dit is puur een netwerk-optimalisatie.
+    public async Task<ApiResult<List<TeambegeleidingItem>>> GetTeambegeleidingAsync(
+        string team, CancellationToken cancellationToken = default)
+        => await GetAsync<List<TeambegeleidingItem>>(
+            $"api/beheer/teambegeleiding/{Uri.EscapeDataString(team)}", cancellationToken);
 
     public async Task<ApiResult<object>> StuurTeambegeleidingBerichtAsync(DoorsturenRequest request)
         => await PostAsync<object>("api/beheer/teambegeleiding/doorsturen", request);
@@ -323,10 +329,14 @@ public class AdminApiClient
         {
             return await HandleAsync<T>(await send());
         }
+        // #1136: een bewust geannuleerde aanroep (aanroeper heeft een nieuwere lookup gestart)
+        // hoort geen foutmelding op te leveren — de aanroeper gooit dit resultaat toch weg.
+        catch (OperationCanceledException) { return ApiResult<T>.Fail("Geannuleerd"); }
         catch (Exception ex) { return ApiResult<T>.Fail(ex.Message); }
     }
 
-    private Task<ApiResult<T>> GetAsync<T>(string path) => SendAsync<T>(() => _http.GetAsync(path));
+    private Task<ApiResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default)
+        => SendAsync<T>(() => _http.GetAsync(path, cancellationToken));
     private Task<ApiResult<T>> PostAsync<T>(string path, object body) => SendAsync<T>(() => _http.PostAsJsonAsync(path, body));
     private Task<ApiResult<T>> PutAsync<T>(string path, object body) => SendAsync<T>(() => _http.PutAsJsonAsync(path, body));
     private Task<ApiResult<T>> DeleteAsync<T>(string path) => SendAsync<T>(() => _http.DeleteAsync(path));
