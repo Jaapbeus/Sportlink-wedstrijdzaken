@@ -105,11 +105,11 @@ builder.Services.AddSingleton<IEmailPersistenceService>(sp =>
 // Functions-host zelf, dus onvoorwaardelijk registreren.
 builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
 {
-    var storageConnectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
+    var storageVerbinding = Environment.GetEnvironmentVariable("AzureWebJobsStorage")
         ?? throw new InvalidOperationException(
             "AzureWebJobsStorage ontbreekt — vereist voor de Azure Functions-host zelf.");
     return new TableStorageNoodmailThrottleStore(
-        storageConnectionString,
+        storageVerbinding,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
 
