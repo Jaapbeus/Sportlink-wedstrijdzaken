@@ -3228,6 +3228,45 @@ zwaarder dan het letterlijk overnemen van een SQL Server-eigenaardigheid.
 De overige twee deelstukken van #972 (teamcontact-opvragen, "verzet zonder datum") en het vierde
 (`EmailProcessorFunction`'s resterende gaten) blijven open — zie #972 voor de volledige scope.
 
+## 60. Drie stukken provider-onafhankelijke logica gedeeld (SsrfProtection, feedbackkern) — ReplyPolicy bewust niet (#1130)
+
+Een Codex-review (#1107, bevinding 5) trof `Infrastructure/SsrfProtection.cs` op beide tiers
+byte-voor-byte identiek aan (na normalisatie van namespace/commentaar), `Email/ReplyPolicy.cs`
+functioneel identiek, en `Feedback/FeedbackFunction.cs` ~99% gelijk. §2 hierboven staat het delen
+van precies zulke pure, provider-agnostische logica al toe — dit issue voerde het door voor de
+drie concrete gevallen.
+
+**Gedeeld, zoals §2 bedoelt:**
+- `SsrfProtection`/`SsrfBlockedException` → `Planner.Shared/Infrastructure/SsrfProtection.cs`. Geen
+  DB/providerafhankelijkheid; beide tiers hadden alleen een andere namespace. Tests verhuisd (niet
+  gedupliceerd) naar `Planner.Shared.Tests/Infrastructure/SsrfProtectionTests.cs`.
+- De feedbackwidget-kern (Type-allowlist #1127, de twee PII-gates #1006, AI-promptopbouw,
+  GitHub-issue-payload/-aanroep, rate limiter) → `Planner.Shared/Feedback/FeedbackCore.cs` +
+  `FeedbackRateLimiter`. Elke tier houdt alleen een dunne `FeedbackFunction.cs` over: de
+  `[Function(...)]`-HTTP-trigger, `EasyAuthHelper.RequireAdmin`, env-var-configuratie (GitHub PAT/
+  owner/repo) en de vertaling van het resultaat naar `IActionResult`. Bewust **geen**
+  `IActionResult`/ASP.NET Core-afhankelijkheid in `FeedbackCore` — dat zou dit project net als
+  §2's vuistregel wil vermijden aan een HTTP-framework binden dat niet elke consument van
+  `Planner.Shared` nodig heeft; `FeedbackValidatieResultaat`/`FeedbackSubmitResultaat` zijn platte
+  records met een status-enum, en elke tier-`FeedbackFunction` vertaalt die zelf naar de eigen
+  HTTP-respons. Nieuwe tests in `Planner.Shared.Tests/Feedback/FeedbackCoreTests.cs`; de bestaande
+  `FeedbackFunctionPiiGateTests.cs` op beide tiers blijven ongewijzigd van gedrag (ze testen nu de
+  dunne wrapper, die intern naar `FeedbackCore` delegeert) en dus groen zonder aanpassing van de
+  assertions.
+
+**Bewust niet gedeeld: `ReplyPolicy`.** De klasse zelf is functioneel identiek, maar de types die ze
+aanneemt (`BerichtClassificatie`, `VerzoekType`) zijn dat niet: ze staan in elke tier se eigen
+`Email/BerichtModels.cs`, dat op zijn beurt ándere tier-specifieke types bundelt
+(`InkomendBericht`, `EmailStatus`, `ClassificatieCorrectieVoorbeeld` — zie ook §52's opmerking dat
+de Postgres-tier die laatste drie al vóór de e-mailportering elders had staan). `VerzoekType`/
+`BerichtClassificatie` zelf verhuizen zou geen probleem zijn omdat ze identiek zijn, maar wordt in
+13 bestanden per tier (`BerichtPipeline`, `EmailClassificationService`, `BerichtAiService`,
+`EmailProcessorFunction`, twee Admin-repositories, ...) gebruikt — een refactor van die omvang
+valt buiten de scope van dit issue en loopt vooruit op de al geplande, bredere e-mailmodule-migratie
+in `docs/ARCHITECTUUR-EMAIL-MODULE.md` (epic #777, nog niet gestart). `ReplyPolicy.cs` blijft dus
+op beide tiers staan zoals het was, inclusief de eigen tests
+(`FunctionApp.Tests/Email/ReplyPolicyTests.cs` en de Postgres-tegenhanger) — geen gedragswijziging.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

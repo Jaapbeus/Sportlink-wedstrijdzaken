@@ -112,6 +112,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   alleen zichtbaar als de extensie aan staat, net als de Sportlink-kolom in Dagplanning. Nieuwe
   migratie 018 voegt twee indexen toe op de PublicMatchId-cache. Geen functionele wijziging voor
   de gebruiker buiten het menu.
+- **Onderhoud: de feedbackwidget en de SSRF-bescherming van de thema-extractor delen nu één
+  implementatie tussen beide database-tiers in plaats van twee bijna-identieke kopieën (#1130).**
+  Geen zichtbaar effect voor beheerders — zelfde gedrag, dezelfde foutmeldingen, dezelfde
+  rate-limiting.
 - **Databasemigraties gaan nu automatisch mee bij elke release, vóór de nieuwe code live gaat
   (#1093).** Op de Postgres-tier moest een beheerder na elke release met een nieuw migratiebestand
   zelf de migraties toepassen; werd dat vergeten, dan draaide de nieuwe versie tegen een verouderd

@@ -2,7 +2,14 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 
-namespace FunctionApp.Postgres.Infrastructure;
+namespace Planner.Shared.Infrastructure;
+
+// Provider-onafhankelijke SSRF-bescherming, gedeeld tussen beide database-tiers (#1130). Was tot
+// deze verhuizing een byte-voor-byte identieke kopie in FunctionApp/Infrastructure/SsrfProtection.cs
+// en FunctionApp.Postgres/Infrastructure/SsrfProtection.cs (alleen de namespace verschilde) — precies
+// het patroon dat docs/ARCHITECTUUR-DATABASE-TIERS.md §2 als gedeelde, pure logica toestaat. Zelfde
+// precedent als TeamNaamNormalisatie/VeldResolver/LeeftijdNormalisatie: geen DB, geen tier-specifieke
+// afhankelijkheid, dus één implementatie in plaats van twee.
 
 /// <summary>
 /// Gooit deze uitzondering als een uitgaande HTTP-bestemming door <see cref="SsrfProtection"/>

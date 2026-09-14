@@ -1,30 +1,20 @@
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Feedback;
-using SportlinkFunction.Feedback;
 using Xunit;
 
-namespace FunctionApp.Tests.Feedback;
+namespace Planner.Shared.Tests.Feedback;
 
 /// <summary>
-/// Regressietests voor de PII-gate-hardening (#1006) en de Type-allowlist-gate (#1127).
-///
-/// De oorspronkelijke #427-gate controleerde alleen <c>dto.Beschrijving</c> + <c>qa.Antwoord</c>, en
-/// pas ná de AI-aanroep. Deze tests bewijzen dat de nieuwe gates:
-/// - PII in <c>Context.Browser</c>, <c>VragenAntwoorden.Vraag</c> én AI-gegenereerde
-///   samenvatting/acceptatiecriteria blokkeren;
-/// - vóór elke AI-aanroep draaien (geblokkeerde invoer doet nooit een AI-call);
-/// - vlak vóór de GitHub-write nogmaals draaien op de daadwerkelijke titel+body (geblokkeerde
-///   AI-output doet nooit een GitHub-call).
-///
-/// #1127 voegt daar de Type-allowlist-gate aan toe: <c>dto.Type</c> werd vóór #1127 ongefilterd in de
-/// AI-prompt geïnterpoleerd zonder dat de PII-gate ernaar keek. Een synthetische PII-marker in Type
-/// moet daarom, net als in elk ander veld, tot 0 AI-aanroepen leiden en een afwijzing in zowel
-/// Validate als Submit.
+/// Regressietests voor de provider-onafhankelijke feedbackkern (#129, #1006, #1127), verhuisd uit
+/// <c>FunctionApp/Feedback/FeedbackFunction.cs</c>/<c>FunctionApp.Postgres/Feedback/FeedbackFunction.cs</c>
+/// naar <see cref="FeedbackCore"/> (#1130). Beide tiers behouden hun eigen
+/// <c>FeedbackFunctionPiiGateTests</c> die de dunne <c>ValidateCoreAsync</c>/<c>SubmitCoreAsync</c>-
+/// wrappers (en dus ook de vertaling naar <c>IActionResult</c>) testen; deze tests dekken de kern
+/// zelf, los van enige tier.
 /// </summary>
-public class FeedbackFunctionPiiGateTests
+public class FeedbackCoreTests
 {
     // Synthetisch testadres — goedgekeurde AVG-veilige placeholder (CLAUDE.md), geen bestaand persoon.
     private const string PiiMarker = "trainer@voorbeeld.nl";
@@ -49,61 +39,44 @@ public class FeedbackFunctionPiiGateTests
     // ── Type-allowlist: blokkeert vóór alle verwerking, ook vóór de PII-gate (#1127) ───────────
 
     [Fact]
-    public async Task ValidateCoreAsync_OngeldigType_WordtGeblokkeerdZonderAiAanroep()
+    public async Task ValidateAsync_OngeldigType_WordtGeblokkeerdZonderAiAanroep()
     {
         var dto = MaakSchoonRequest();
         dto.Type = "Onbekend";
         var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
 
-        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+        var result = await FeedbackCore.ValidateAsync(dto, fake, NullLogger.Instance);
 
-        AssertOngeldigType(result);
+        result.Status.Should().Be(FeedbackStatus.OngeldigType);
         fake.AantalAanroepen.Should().Be(0);
     }
 
     [Fact]
-    public async Task ValidateCoreAsync_PiiInType_WordtGeblokkeerdZonderAiAanroep()
+    public async Task ValidateAsync_PiiInType_WordtGeblokkeerdZonderAiAanroep()
     {
         // Reproductie van bevinding 2 in #1107: vóór de fix accepteerde de server elke string in
         // Type en interpoleerde die ongefilterd in de AI-prompt, zonder dat de PII-gate ernaar keek.
-        // De PII-marker is geen toegestane Type-waarde, dus de allowlist-gate blokkeert dit al vóór
-        // de AI-aanroep — precies de fix die #1127 vereist.
         var dto = MaakSchoonRequest();
         dto.Type = PiiMarker;
         var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
 
-        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+        var result = await FeedbackCore.ValidateAsync(dto, fake, NullLogger.Instance);
 
-        AssertOngeldigType(result);
+        result.Status.Should().Be(FeedbackStatus.OngeldigType);
         fake.AantalAanroepen.Should().Be(0);
     }
 
     [Fact]
-    public async Task SubmitCoreAsync_OngeldigType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
+    public async Task SubmitAsync_OngeldigType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
     {
         var dto = MaakSchoonRequest();
         dto.Type = "Onbekend";
         var fake = new FakeChatClient(GeldigeAiStructuurJson());
         var github = new FakeGitHubIssueCreator();
 
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
 
-        AssertOngeldigType(result);
-        fake.AantalAanroepen.Should().Be(0);
-        github.AantalAanroepen.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task SubmitCoreAsync_PiiInType_WordtGeblokkeerdZonderAiEnGitHubAanroep()
-    {
-        var dto = MaakSchoonRequest();
-        dto.Type = PiiMarker;
-        var fake = new FakeChatClient(GeldigeAiStructuurJson());
-        var github = new FakeGitHubIssueCreator();
-
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
-
-        AssertOngeldigType(result);
+        result.Status.Should().Be(FeedbackStatus.OngeldigType);
         fake.AantalAanroepen.Should().Be(0);
         github.AantalAanroepen.Should().Be(0);
     }
@@ -111,71 +84,72 @@ public class FeedbackFunctionPiiGateTests
     // ── Validate: blokkeert vóór de AI-aanroep ─────────────────────────────────
 
     [Fact]
-    public async Task ValidateCoreAsync_PiiInContextBrowser_WordtGeblokkeerdZonderAiAanroep()
+    public async Task ValidateAsync_PiiInContextBrowser_WordtGeblokkeerdZonderAiAanroep()
     {
         var dto = MaakSchoonRequest();
         dto.Context!.Browser = $"Mozilla/5.0 (stuur naar {PiiMarker})";
         var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
 
-        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+        var result = await FeedbackCore.ValidateAsync(dto, fake, NullLogger.Instance);
 
-        AssertGeblokkeerd(result);
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
         fake.AantalAanroepen.Should().Be(0);
     }
 
     [Fact]
-    public async Task ValidateCoreAsync_PiiInVraag_WordtGeblokkeerdZonderAiAanroep()
+    public async Task ValidateAsync_PiiInVraag_WordtGeblokkeerdZonderAiAanroep()
     {
         var dto = MaakSchoonRequest();
         dto.VragenAntwoorden = [new VraagAntwoord { Vraag = $"Kun je dit mailen naar {PiiMarker}?", Antwoord = "ja" }];
         var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
 
-        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+        var result = await FeedbackCore.ValidateAsync(dto, fake, NullLogger.Instance);
 
-        AssertGeblokkeerd(result);
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
         fake.AantalAanroepen.Should().Be(0);
     }
 
     [Fact]
-    public async Task ValidateCoreAsync_SchoneInvoer_RoeptAiAanEnGeeftResultaatTerug()
+    public async Task ValidateAsync_SchoneInvoer_RoeptAiAanEnGeeftResultaatTerug()
     {
         var dto = MaakSchoonRequest();
         var fake = new FakeChatClient("""{"volledig": true, "vragen": []}""");
 
-        var result = await FeedbackFunction.ValidateCoreAsync(dto, fake, NullLogger.Instance);
+        var result = await FeedbackCore.ValidateAsync(dto, fake, NullLogger.Instance);
 
-        result.Should().BeOfType<OkObjectResult>();
+        result.Status.Should().Be(FeedbackStatus.Ok);
+        result.Volledig.Should().BeTrue();
         fake.AantalAanroepen.Should().Be(1);
     }
 
     // ── Submit: eerste gate blokkeert vóór de AI-aanroep ───────────────────────
 
     [Fact]
-    public async Task SubmitCoreAsync_PiiInContextBrowser_WordtGeblokkeerdZonderAiEnGitHubAanroep()
+    public async Task SubmitAsync_PiiInContextBrowser_WordtGeblokkeerdZonderAiEnGitHubAanroep()
     {
         var dto = MaakSchoonRequest();
         dto.Context!.Browser = $"Mozilla/5.0 (stuur naar {PiiMarker})";
         var fake = new FakeChatClient(GeldigeAiStructuurJson());
         var github = new FakeGitHubIssueCreator();
 
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
 
-        AssertGeblokkeerd(result);
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
         fake.AantalAanroepen.Should().Be(0);
         github.AantalAanroepen.Should().Be(0);
     }
 
     [Fact]
-    public async Task SubmitCoreAsync_PiiInVraag_WordtGeblokkeerdZonderAiEnGitHubAanroep()
+    public async Task SubmitAsync_PiiInVraag_WordtGeblokkeerdZonderAiEnGitHubAanroep()
     {
         var dto = MaakSchoonRequest();
         dto.VragenAntwoorden = [new VraagAntwoord { Vraag = $"Mail dit naar {PiiMarker}", Antwoord = "ok" }];
         var fake = new FakeChatClient(GeldigeAiStructuurJson());
         var github = new FakeGitHubIssueCreator();
 
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
 
-        AssertGeblokkeerd(result);
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
         fake.AantalAanroepen.Should().Be(0);
         github.AantalAanroepen.Should().Be(0);
     }
@@ -184,26 +158,23 @@ public class FeedbackFunctionPiiGateTests
     //    AI-output ontstaat — de eerste gate kan dit per definitie niet zien. ─────────────────
 
     [Fact]
-    public async Task SubmitCoreAsync_PiiInAiSamenvatting_WordtGeblokkeerdVoorGitHubMaarAiIsWelAangeroepen()
+    public async Task SubmitAsync_PiiInAiSamenvatting_WordtGeblokkeerdVoorGitHubMaarAiIsWelAangeroepen()
     {
-        // Schone invoer — de eerste gate laat dit door. Het taalmodel genereert (hier gesimuleerd
-        // via een fake) een samenvatting die de PII-marker bevat. De tweede gate, vlak vóór de
-        // GitHub-write, moet dit alsnog blokkeren.
         var dto = MaakSchoonRequest();
         var fake = new FakeChatClient($$"""
             {"title": "Veldenpagina laadt niet", "samenvatting": "Neem voor details contact op via {{PiiMarker}}.", "acceptatiecriteria": []}
             """);
         var github = new FakeGitHubIssueCreator();
 
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
 
-        AssertGeblokkeerd(result);
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
         fake.AantalAanroepen.Should().Be(1, "de AI is al aangeroepen — de blokkade zit ná de AI-call, niet ervoor");
         github.AantalAanroepen.Should().Be(0, "een geblokkeerde AI-output mag nooit tot een GitHub-aanroep leiden");
     }
 
     [Fact]
-    public async Task SubmitCoreAsync_PiiInAiAcceptatiecriterium_WordtGeblokkeerdVoorGitHub()
+    public async Task SubmitAsync_PiiInAiAcceptatiecriterium_WordtGeblokkeerdVoorGitHub()
     {
         var dto = MaakSchoonRequest();
         var fake = new FakeChatClient($$"""
@@ -211,36 +182,45 @@ public class FeedbackFunctionPiiGateTests
             """);
         var github = new FakeGitHubIssueCreator();
 
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
 
-        AssertGeblokkeerd(result);
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
         github.AantalAanroepen.Should().Be(0);
     }
 
     [Fact]
-    public async Task SubmitCoreAsync_SchoneInvoerEnSchoneAiOutput_MaaktGitHubIssueAan()
+    public async Task SubmitAsync_SchoneInvoerEnSchoneAiOutput_MaaktGitHubIssueAan()
     {
         var dto = MaakSchoonRequest();
         var fake = new FakeChatClient(GeldigeAiStructuurJson());
         var github = new FakeGitHubIssueCreator();
 
-        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
 
-        result.Should().BeOfType<OkObjectResult>();
+        result.Status.Should().Be(FeedbackStatus.Ok);
+        result.IssueNummer.Should().Be(123);
         fake.AantalAanroepen.Should().Be(1);
         github.AantalAanroepen.Should().Be(1);
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    // ── Rate limiter ────────────────────────────────────────────────────────────
 
-    private static void AssertGeblokkeerd(IActionResult result)
+    [Fact]
+    public void TryAcquireSubmitSlot_TotDeLimiet_GeeftTrueDaarnaFalse()
     {
-        var obj = result.Should().BeOfType<ObjectResult>().Subject;
-        obj.StatusCode.Should().Be(422);
+        // Eigen limiet-venster: dit isoleert de test niet volledig van andere tests die de gedeelde
+        // static state gebruiken, maar er is in dit project verder geen andere aanroeper van
+        // FeedbackRateLimiter — dezelfde aanname als de oorspronkelijke per-tier tests, die de
+        // rate limiter nooit rechtstreeks testten.
+        var resultaten = new List<bool>();
+        for (var i = 0; i < FeedbackRateLimiter.MaxSubmissiesPerVenster + 2; i++)
+            resultaten.Add(FeedbackRateLimiter.TryAcquireSubmitSlot());
+
+        resultaten.Take(FeedbackRateLimiter.MaxSubmissiesPerVenster).Should().OnlyContain(x => x);
+        resultaten.Skip(FeedbackRateLimiter.MaxSubmissiesPerVenster).Should().OnlyContain(x => !x);
     }
 
-    private static void AssertOngeldigType(IActionResult result) =>
-        result.Should().BeOfType<BadRequestObjectResult>();
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     private sealed class FakeChatClient(string antwoord) : IChatClient
     {
