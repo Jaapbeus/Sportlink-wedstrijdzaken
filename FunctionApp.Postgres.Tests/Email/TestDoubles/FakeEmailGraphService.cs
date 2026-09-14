@@ -17,6 +17,15 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
 
     public bool ThrowOnSendReply { get; set; }
 
+    /// <summary>
+    /// Optionele specifieke exception voor <c>SendReplyAsync</c> (#1133). Als gezet, wordt het
+    /// bericht eerst aan <see cref="SentReplies"/> toegevoegd ("Graph heeft het geaccepteerd") en
+    /// wordt daarna deze exception gegooid — zodat tests het "geaccepteerd, maar antwoord onderweg
+    /// verloren"-scenario kunnen simuleren (bijv. een <see cref="TaskCanceledException"/> ná
+    /// acceptatie). Heeft voorrang op <see cref="ThrowOnSendReply"/>.
+    /// </summary>
+    public Exception? ExceptionToThrowOnSendReply { get; set; }
+
     public Task<List<InkomendBericht>> GetUnreadEmailsAsync()
         => Task.FromResult(UnreadEmails.ToList());
 
@@ -49,6 +58,12 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
         IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null)
     {
         OnSendReply?.Invoke();
+
+        if (ExceptionToThrowOnSendReply != null)
+        {
+            SentReplies.Add((to, subject, body, conversationId, bcc, bijlage));
+            throw ExceptionToThrowOnSendReply;
+        }
 
         if (ThrowOnSendReply)
             throw new InvalidOperationException("SendReply simulated failure");

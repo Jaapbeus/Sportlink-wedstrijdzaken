@@ -174,12 +174,18 @@ public class EmailReplyPolicyServiceIntegrationTests
         stand.Status.Should().Be("AntwoordVerstuurd");
     }
 
+    /// <summary>
+    /// Expliciete afwijzing (#1133): een Graph-<c>ODataError</c> met een 4xx-statuscode bewijst dat
+    /// er niets verstuurd is — de verzendintentie mag gewist worden zodat de volgende poll opnieuw
+    /// probeert.
+    /// </summary>
     [PostgresFact]
-    public async Task SendFout_UpdateFout_EnGeeftVerzendFoutTerug()
+    public async Task SendFout_ExplicieteAfwijzing_WistIntentie_EnGeeftVerzendFoutTerug()
     {
         await SchoonAsync();
         var service = new EmailReplyPolicyService();
-        var graph = new FakeEmailGraphService { ThrowOnSendReply = true };
+        var odataError = new Microsoft.Graph.Models.ODataErrors.ODataError { ResponseStatusCode = 400 };
+        var graph = new FakeEmailGraphService { ExceptionToThrowOnSendReply = odataError };
         var messageId = $"msg-sendfout-{Guid.NewGuid():N}";
         var id = await NieuweRijAsync(messageId);
 
@@ -204,6 +210,52 @@ public class EmailReplyPolicyServiceIntegrationTests
         stand.VerzendPogingOnbeslist.Should().BeFalse(
             "de verzendintentie moet gewist zijn na een aantoonbaar mislukte verzending — anders zou de "
             + "volgende poll dit als 'uitkomst onbekend' zien en niet opnieuw proberen");
+    }
+
+    /// <summary>
+    /// Kern van #1133: Graph accepteert het bericht (het staat al in <c>SentReplies</c>) maar de
+    /// respons gaat verloren door een time-out. De verzendintentie MOET blijven staan en het bericht
+    /// gaat direct op Review — een tweede invocatie (volgende poll) mag dan niet opnieuw versturen.
+    /// </summary>
+    [PostgresFact]
+    public async Task SendFout_OnbekendeUitkomstDoorTimeOut_LaatIntentieStaan_EnZetReview()
+    {
+        await SchoonAsync();
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService { ExceptionToThrowOnSendReply = new TaskCanceledException() };
+        var messageId = $"msg-onbeslist-{Guid.NewGuid():N}";
+        var id = await NieuweRijAsync(messageId);
+
+        var result = await service.HandelReplyFlowAfAsync(
+            ConnectionString,
+            id,
+            Bericht(messageId),
+            new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek },
+            "{}",
+            reviewMode: false,
+            reviewRecipient: null,
+            graphService: graph,
+            bouwTemplateAntwoordAsync: () => Task.FromResult(("antwoord-subject", "antwoord-body")),
+            sanitizeFoutMelding: _ => "sanitized",
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.OnbekendeVerzendUitkomst);
+
+        // Graph "accepteerde" het bericht vóór de time-out.
+        graph.SentReplies.Should().ContainSingle(r => r.To == "afzender@voorbeeld.test");
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.MarkedAsReadIds.Should().ContainSingle(mid => mid == messageId);
+
+        var stand = await SqlEmailPersistenceRepository.HaalVerwerkingStandOpAsync(ConnectionString, messageId);
+        stand!.Status.Should().Be("Review");
+        stand.AntwoordVerstuurd.Should().BeFalse();
+        stand.VerzendPogingOnbeslist.Should().BeTrue(
+            "de verzendintentie moet blijven staan — wissen zou een volgende poll een tweede antwoord "
+            + "laten versturen, precies de bug die #1133 dichtte");
+
+        // Een tweede "poll" (EmailIdempotentie.Bepaal, aangeroepen door EmailProcessorFunction vóór
+        // elke verwerking) mag dit bericht nooit opnieuw versturen.
+        EmailIdempotentie.Bepaal(stand).Should().Be(VerwerkingsBesluit.OnbeslistNaVerzendPoging);
     }
 
     /// <summary>

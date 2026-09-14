@@ -169,6 +169,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   heen. Een database die eerder vanaf Windows is gemigreerd wordt bij de eerstvolgende
   migratieronde éénmalig gecorrigeerd, met een melding in het log; een écht gewijzigd bestand wordt
   nog steeds geweigerd.
+- **Een time-out bij het versturen van een automatisch antwoord kon een tweede antwoord op
+  dezelfde e-mail opleveren (#1133).** Bij elke fout tijdens het versturen — ook een time-out,
+  onderbreking of verbindingsverlies waarbij het antwoord mogelijk al wél is aangekomen — werd de
+  bescherming tegen een dubbel antwoord ten onrechte opgeheven, waarna de eerstvolgende controle
+  het bericht opnieuw beantwoordde. Alleen een duidelijke afwijzing door de mailserver (bijv. een
+  ongeldig adres) telt voortaan als "er is niets verstuurd" en mag een nieuwe poging toestaan; bij
+  elke andere fout blijft de bescherming staan en wordt het bericht direct klaargezet voor
+  handmatige beoordeling in het e-mail-log, zodat er nooit een tweede antwoord de deur uit gaat.
+  Werkt op beide database-tiers.
 
 ### Security
 - **Sportlink-foutmeldingen worden niet meer letterlijk gelogd (#1122).** Bij een mislukte
