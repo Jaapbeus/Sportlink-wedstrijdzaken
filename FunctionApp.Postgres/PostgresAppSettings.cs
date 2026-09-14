@@ -43,7 +43,12 @@ namespace FunctionApp.Postgres;
 /// </summary>
 public static class PostgresAppSettings
 {
-    private static readonly Dictionary<string, string> Settings = new();
+    // #1135: NIET readonly — een geslaagde herlaad bouwt een volledig verse snapshot op in ReadAsync
+    // en wisselt daarna deze referentie in één keer om (onder Lock). Vóór #1135 was dit een readonly
+    // dictionary dat ReadAsync in-place muteerde en alleen niet-NULL kolommen toewees: een instelling
+    // die in de database naar NULL werd gezet, bleef daardoor de oude waarde teruggeven totdat het
+    // proces herstartte, want er was niets dat de oude sleutel ooit verwijderde.
+    private static Dictionary<string, string> Settings = new();
     private static readonly object Lock = new();
     private static int _schemaWarningLogged;
 
@@ -130,7 +135,16 @@ public static class PostgresAppSettings
 
             if (!gevonden)
             {
-                log.LogWarning("public.appsettings heeft geen rij met syncenabled=true — instellingencache blijft leeg.");
+                // #1135: bewuste, expliciete keuze — "geen enkele club met syncenabled=true" is een
+                // aparte toestand van "een geslaagde load die velden heeft gewist" (het geval dat de
+                // rest van deze methode fixt). Het is geen signaal om de bestaande cache leeg te
+                // vegen: bestaande callers (AdminSettingsFunction, PostgresSunsetCalculator, de
+                // Sportlink-mutatiepijplijn) verwachten dat GetSetting tijdens zo'n overgangs- of
+                // configuratiefout niet ineens overal null teruggeeft. LastLoadFailed=true blijft
+                // het signaal dat de laatste laadpoging niet vertrouwd kan worden (zie
+                // WaitForDatabaseAsync/HealthFunction) — een load-fout wordt dus nooit stilzwijgend
+                // behandeld als een geslaagde wis-actie.
+                log.LogWarning("public.appsettings heeft geen rij met syncenabled=true — instellingencache blijft ongewijzigd (mogelijk verouderd).");
                 LastLoadFailed = true;
                 return;
             }
@@ -185,42 +199,54 @@ public static class PostgresAppSettings
         if (!await reader.ReadAsync())
             return false;
 
-        lock (Lock)
+        // #1135: een complete, verse snapshot opbouwen in een lokale dictionary — niet het bestaande,
+        // gedeelde dictionary in-place muteren. De oude aanpak wees alleen niet-NULL kolommen toe,
+        // waardoor een instelling die in de database naar NULL werd gezet (bijv. accommodatie) haar
+        // vorige waarde bleef teruggeven: er was geen enkele stap die de oude sleutel ooit verwijderde.
+        // Nu ontbreekt een NULL-kolom in `nieuw` gewoon volledig, en GetSetting geeft er null voor
+        // terug zodra de referentie hieronder is omgewisseld.
+        var nieuw = new Dictionary<string, string>
         {
-            Settings["clubCode"] = reader.GetString(0);
-            if (!reader.IsDBNull(1))
-                Settings["accommodatie"] = reader.GetString(1);
-            if (!reader.IsDBNull(3))
-                Settings["accommodatieLatitude"] = reader.GetDouble(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (!reader.IsDBNull(4))
-                Settings["accommodatieLongitude"] = reader.GetDouble(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            // plannerafzendernaam (§42): AutoPlan zet deze naam onder de gegenereerde HTML-planning.
-            if (!reader.IsDBNull(5))
-                Settings["plannerAfzenderNaam"] = reader.GetString(5);
-            // clubname (#889): zie de aanroep hierboven.
-            if (!reader.IsDBNull(6))
-                Settings["clubName"] = reader.GetString(6);
+            ["clubCode"] = reader.GetString(0)
+        };
+        if (!reader.IsDBNull(1))
+            nieuw["accommodatie"] = reader.GetString(1);
+        if (!reader.IsDBNull(3))
+            nieuw["accommodatieLatitude"] = reader.GetDouble(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!reader.IsDBNull(4))
+            nieuw["accommodatieLongitude"] = reader.GetDouble(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        // plannerafzendernaam (§42): AutoPlan zet deze naam onder de gegenereerde HTML-planning.
+        if (!reader.IsDBNull(5))
+            nieuw["plannerAfzenderNaam"] = reader.GetString(5);
+        // clubname (#889): zie de aanroep hierboven.
+        if (!reader.IsDBNull(6))
+            nieuw["clubName"] = reader.GetString(6);
 
-            if (includeExtensionColumn)
-            {
-                var ordinal = reader.GetOrdinal(ExtensionColumn);
-                Settings["sportlinkExtensionEnabled"] = !reader.IsDBNull(ordinal) && reader.GetBoolean(ordinal) ? "1" : "0";
-            }
-            else
-            {
-                Settings["sportlinkExtensionEnabled"] = "0";
-            }
-
-            if (includeDryRunColumn)
-            {
-                var ordinal = reader.GetOrdinal(DryRunColumn);
-                Settings["sportlinkDryRun"] = !reader.IsDBNull(ordinal) && reader.GetBoolean(ordinal) ? "1" : "0";
-            }
-            else
-            {
-                Settings["sportlinkDryRun"] = "1";
-            }
+        if (includeExtensionColumn)
+        {
+            var ordinal = reader.GetOrdinal(ExtensionColumn);
+            nieuw["sportlinkExtensionEnabled"] = !reader.IsDBNull(ordinal) && reader.GetBoolean(ordinal) ? "1" : "0";
         }
+        else
+        {
+            nieuw["sportlinkExtensionEnabled"] = "0";
+        }
+
+        if (includeDryRunColumn)
+        {
+            var ordinal = reader.GetOrdinal(DryRunColumn);
+            nieuw["sportlinkDryRun"] = !reader.IsDBNull(ordinal) && reader.GetBoolean(ordinal) ? "1" : "0";
+        }
+        else
+        {
+            nieuw["sportlinkDryRun"] = "1";
+        }
+
+        // Atomaire wissel: elke lezer via GetSetting ziet óf de volledig oude, óf de volledig nieuwe
+        // snapshot — nooit een tussentoestand met een deel oude en een deel nieuwe waarden.
+        lock (Lock)
+            Settings = nieuw;
+
         return true;
     }
 

@@ -136,6 +136,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   import wacht nu op een eventuele andere, nog lopende import voor diezelfde club voordat hij de
   oude rijen verwijdert, zodat het eindresultaat altijd precies één complete, samenhangende lijst
   is.
+- **Een instelling die naar "leeg" wordt gezet, geldt nu ook direct als leeg (#1135).** Op de
+  Postgres-tier bleef een instelling (bijvoorbeeld de accommodatienaam) na het wissen ervan tot de
+  eerstvolgende herstart nog de oude waarde tonen, omdat een geslaagde herlaad een gewiste waarde
+  niet meenam. Een herlaad ververst de instellingen nu altijd volledig, inclusief gewiste velden.
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
   productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
   nachtelijke synchronisatie. Oorzaak was een beveiligingsaanscherping uit dezelfde release
@@ -174,6 +178,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   een waarde van maximaal 20 tekens uit letters, cijfers, `-` en `_` wordt als clubcode gebruikt;
   anders geldt de primaire club. Dit was al geen autorisatiegrens (zie deployment-model), maar
   voorkomt vervuiling van metadata met willekeurige tekst.
+- **Het type in het feedbackformulier kan geen persoonsgegevens meer stiekem naar de AI-provider
+  sturen (#1127).** Het "Wat wil je melden?"-veld accepteerde server-side elke tekst, terwijl die
+  tekst ongefilterd in de AI-prompt terechtkwam vóórdat de bestaande privacy-controle ernaar keek.
+  Het veld wordt nu eerst tegen de vaste keuzes van het formulier gevalideerd; een afwijkende waarde
+  wordt meteen afgewezen, zonder dat er een AI- of GitHub-aanroep plaatsvindt. Geldt voor beide
+  database-tiers.
 - **Volledige certificaatvalidatie op de databaseverbinding: bouwstenen en certificaat klaar,
   productie-cutover volgt apart (#1096, vervolg op #1004/#1095).** Supabase gebruikt een eigen CA,
   zodat `verify-full` alleen werkt met het meegeleverde CA-certificaat (`sslrootcert`) — anders dan
