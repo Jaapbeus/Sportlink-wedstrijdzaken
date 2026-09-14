@@ -140,6 +140,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Postgres-tier bleef een instelling (bijvoorbeeld de accommodatienaam) na het wissen ervan tot de
   eerstvolgende herstart nog de oude waarde tonen, omdat een geslaagde herlaad een gewiste waarde
   niet meenam. Een herlaad ververst de instellingen nu altijd volledig, inclusief gewiste velden.
+- **Wedstrijdslot bevestigen accepteerde overlappende reserveringen en een duur van 0 minuten
+  (#1134).** `POST /api/planner/bevestig` sloeg de gekozen datum/tijd voorheen op zonder enige
+  controle: twee volledige-veldreserveringen die elkaar overlapten (bijv. 10:00–12:00 en
+  10:30–12:30 op hetzelfde veld) kregen allebei een bevestiging, en een duur van 0 minuten gaf
+  stilzwijgend een lege reservering. Het endpoint controleert nu vóór opslag of de duur positief
+  en zinnig is, en toetst de aanvraag atomair tegen de bestaande bezetting — met dezelfde
+  volledig-vs-gedeeld-veld-regel als de beschikbaarheidscheck. Een overlappend interval geeft nu
+  een duidelijke foutmelding met de botsende reservering; twee reserveringen die elkaar precies
+  aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00) blijven gewoon mogelijk. Gefixt op beide
+  databasetiers.
 - **De applicatie werkt weer na de release van 12 september (#1095).** Direct na v3.3.0.0 gaf de
   productie-omgeving aanhoudend "service unavailable": geen planner, geen beheerschermen, geen
   nachtelijke synchronisatie. Oorzaak was een beveiligingsaanscherping uit dezelfde release

@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.3.5.3
+  version: 3.3.5.6
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -406,6 +406,41 @@ components:
         status:
           type: string
           example: "Te bevestigen"
+
+    BevestigConflictResponse:
+      description: |
+        Antwoord bij een bezettingsconflict (#1134) — dezelfde notie van conflict als
+        `POST /planner/check-availability`: volledige-veldreserveringen die overlappen, of
+        gedeelde-veldreserveringen waarvan de veldfracties samen boven 1.00 uitkomen.
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Veld 3 is op 2026-04-25 tussen 12:00 en 13:15 al bezet."
+        conflicterendeWedstrijd:
+          type: object
+          properties:
+            wedstrijd:
+              type: string
+              nullable: true
+              example: "[ClubCode] JO13-1 - Tegenstander"
+            aanvangsTijd:
+              type: string
+              example: "12:30"
+            eindTijd:
+              type: string
+              example: "13:45"
+            veldNummer:
+              type: integer
+              example: 3
+            veldDeelGebruik:
+              type: number
+              format: decimal
+              example: 1.00
+            bron:
+              type: string
+              description: "Herkomst van de conflicterende bezetting: Competitie, Planner of Training"
+              example: "Planner"
 
     ZoekWedstrijdRequest:
       type: object
@@ -2619,6 +2654,12 @@ paths:
       description: |
         Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.
         Status wordt altijd als `"Te bevestigen"` aangemaakt.
+
+        Server-side gevalideerd (#1134): de wedstrijdduur moet positief zijn en binnen de dag
+        blijven (400 anders), en de aanvraag wordt atomair tegen de bestaande bezetting getoetst
+        vóór opslag — een overlappend interval geeft 409 in plaats van een stille dubbele boeking.
+        Twee reserveringen die elkaar precies aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00)
+        zijn GEEN conflict.
       security:
         - functionKey: []
       requestBody:
@@ -2638,6 +2679,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BevestigConflictResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

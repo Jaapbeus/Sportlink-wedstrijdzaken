@@ -294,4 +294,116 @@ public class PlannerSharedTests
         PlannerShared.RondAfOp5Min(TimeOnly.Parse(invoer))
             .Should().Be(TimeOnly.Parse(verwacht));
     }
+
+    // ── ValidateBevestigInterval (#1134, Codex-review #1107 bevinding 9) ──
+
+    [Fact]
+    public void ValidateBevestigInterval_PositieveDuurBinnenGrenzen_GeeftNull()
+    {
+        PlannerShared.ValidateBevestigInterval(TimeOnly.Parse("10:00"), 105).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-15)]
+    public void ValidateBevestigInterval_NulOfNegatieveDuur_GeeftFoutmelding(int duurMinuten)
+    {
+        PlannerShared.ValidateBevestigInterval(TimeOnly.Parse("10:00"), duurMinuten)
+            .Should().Be("Wedstrijdduur moet groter zijn dan 0 minuten.");
+    }
+
+    [Fact]
+    public void ValidateBevestigInterval_DuurBovenMaximum_GeeftFoutmelding()
+    {
+        PlannerShared.ValidateBevestigInterval(TimeOnly.Parse("10:00"), PlannerShared.MaxWedstrijdDuurMinuten + 1)
+            .Should().Contain("onwaarschijnlijk groot");
+    }
+
+    [Fact]
+    public void ValidateBevestigInterval_EindtijdOverschrijdtDeDag_GeeftFoutmelding()
+    {
+        // 23:00 + 90 min zou zonder deze check stilzwijgend naar 00:30 de volgende dag wrappen
+        // (TimeOnly.AddMinutes kent geen dag-grens) — een eindtijd vóór de aanvangstijd.
+        PlannerShared.ValidateBevestigInterval(TimeOnly.Parse("23:00"), 90)
+            .Should().Be("Aanvangstijd plus wedstrijdduur overschrijdt het einde van de dag.");
+    }
+
+    [Fact]
+    public void ValidateBevestigInterval_EindtijdPreciesMiddernacht_IsNogGeldig()
+    {
+        PlannerShared.ValidateBevestigInterval(TimeOnly.Parse("22:00"), 120).Should().BeNull();
+    }
+
+    // ── FindBezettingsConflict (#1134, Codex-review #1107 bevinding 9) ──
+
+    [Fact]
+    public void FindBezettingsConflict_LeegVeld_GeenConflict()
+    {
+        PlannerShared.FindBezettingsConflict(
+                TimeOnly.Parse("10:00"), TimeOnly.Parse("11:00"), 1.00m, 1, new List<BestaandeWedstrijd>())
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void FindBezettingsConflict_OverlappendeVolledigeVeldreserveringen_GeeftConflict()
+    {
+        // Reproductie van Codex-review #1107 bevinding 9: 10:00–12:00 en 10:30–12:30 op hetzelfde
+        // veld overlappen en mogen dus niet allebei mogen slagen.
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "12:00") };
+
+        PlannerShared.FindBezettingsConflict(TimeOnly.Parse("10:30"), TimeOnly.Parse("12:30"), 1.00m, 1, occs)
+            .Should().NotBeNull();
+    }
+
+    [Fact]
+    public void FindBezettingsConflict_AansluitendeReserveringen_GeenConflict()
+    {
+        // Acceptatiecriterium #1134: 10:00–11:00 gevolgd door 11:00–12:00 raakt elkaar precies aan
+        // — dat is GEEN conflict. Bewust een ander regime dan CanFitMatch, die hier wél een buffer
+        // zou eisen omdat die methode nieuwe sloten voorstelt in plaats van een gekozen tijd bevestigt.
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00") };
+
+        PlannerShared.FindBezettingsConflict(TimeOnly.Parse("11:00"), TimeOnly.Parse("12:00"), 1.00m, 1, occs)
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void FindBezettingsConflict_AnderVeld_GeenConflict()
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(2, "10:00", "12:00") };
+
+        PlannerShared.FindBezettingsConflict(TimeOnly.Parse("10:30"), TimeOnly.Parse("12:30"), 1.00m, 1, occs)
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void FindBezettingsConflict_TweeHalveVeldenBinnenCapaciteit_GeenConflict()
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00", deel: 0.50m) };
+
+        PlannerShared.FindBezettingsConflict(TimeOnly.Parse("10:00"), TimeOnly.Parse("11:00"), 0.50m, 1, occs)
+            .Should().BeNull("twee halve velden mogen naast elkaar zolang de som binnen 1.00 blijft");
+    }
+
+    [Fact]
+    public void FindBezettingsConflict_DrieHalveVeldenBovenCapaciteit_GeeftConflict()
+    {
+        var occs = new List<BestaandeWedstrijd>
+        {
+            Bezetting(1, "10:00", "11:00", deel: 0.50m),
+            Bezetting(1, "10:00", "11:00", deel: 0.50m)
+        };
+
+        PlannerShared.FindBezettingsConflict(TimeOnly.Parse("10:00"), TimeOnly.Parse("11:00"), 0.50m, 1, occs)
+            .Should().NotBeNull("het veld is al volledig gedeeld door twee bestaande halve-veldreserveringen");
+    }
+
+    [Fact]
+    public void FindBezettingsConflict_GedeeldVeldOverlaptVolledigeVeldbezetting_GeeftConflict()
+    {
+        var occs = new List<BestaandeWedstrijd> { Bezetting(1, "10:00", "11:00", deel: 1.00m) };
+
+        PlannerShared.FindBezettingsConflict(TimeOnly.Parse("10:00"), TimeOnly.Parse("11:00"), 0.50m, 1, occs)
+            .Should().NotBeNull("een volledige-veldbezetting laat geen ruimte voor een gedeeld verzoek, ongeacht de eigen fractie");
+    }
 }

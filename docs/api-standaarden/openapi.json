@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.3.5.3",
+    "version": "3.3.5.6",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -493,6 +493,48 @@
           "status": {
             "type": "string",
             "example": "Te bevestigen"
+          }
+        }
+      },
+      "BevestigConflictResponse": {
+        "description": "Antwoord bij een bezettingsconflict (#1134) — dezelfde notie van conflict als\n`POST /planner/check-availability`: volledige-veldreserveringen die overlappen, of\ngedeelde-veldreserveringen waarvan de veldfracties samen boven 1.00 uitkomen.\n",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "Veld 3 is op 2026-04-25 tussen 12:00 en 13:15 al bezet."
+          },
+          "conflicterendeWedstrijd": {
+            "type": "object",
+            "properties": {
+              "wedstrijd": {
+                "type": "string",
+                "nullable": true,
+                "example": "[ClubCode] JO13-1 - Tegenstander"
+              },
+              "aanvangsTijd": {
+                "type": "string",
+                "example": "12:30"
+              },
+              "eindTijd": {
+                "type": "string",
+                "example": "13:45"
+              },
+              "veldNummer": {
+                "type": "integer",
+                "example": 3
+              },
+              "veldDeelGebruik": {
+                "type": "number",
+                "format": "decimal",
+                "example": 1.0
+              },
+              "bron": {
+                "type": "string",
+                "description": "Herkomst van de conflicterende bezetting: Competitie, Planner of Training",
+                "example": "Planner"
+              }
+            }
           }
         }
       },
@@ -3375,7 +3417,7 @@
         ],
         "operationId": "bevestigWedstrijd",
         "summary": "Wedstrijdslot boeken",
-        "description": "Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.\nStatus wordt altijd als `\"Te bevestigen\"` aangemaakt.\n",
+        "description": "Bevestigt en boekt een wedstrijdslot. Schrijft naar `planner.GeplandeWedstrijden`.\nStatus wordt altijd als `\"Te bevestigen\"` aangemaakt.\n\nServer-side gevalideerd (#1134): de wedstrijdduur moet positief zijn en binnen de dag\nblijven (400 anders), en de aanvraag wordt atomair tegen de bestaande bezetting getoetst\nvóór opslag — een overlappend interval geeft 409 in plaats van een stille dubbele boeking.\nTwee reserveringen die elkaar precies aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00)\nzijn GEEN conflict.\n",
         "security": [
           {
             "functionKey": []
@@ -3407,6 +3449,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "Bezettingsconflict — het veld is op dit tijdstip al (gedeeltelijk) bezet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BevestigConflictResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

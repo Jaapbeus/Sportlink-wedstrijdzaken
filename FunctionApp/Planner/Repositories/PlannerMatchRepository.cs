@@ -377,7 +377,27 @@ internal static class PlannerMatchRepository
         return await reader.ReadAsync() ? MapZoekWedstrijdResponse(reader) : null;
     }
 
-    internal static async Task<int> SavePlannedMatchAsync(
+    /// <summary>
+    /// Legt een handmatig ingeplande wedstrijd vast, atomair getoetst tegen de bestaande bezetting
+    /// (#1134, Codex-review #1107 bevinding 9) — SQL Server-tegenhanger van
+    /// <c>FunctionApp.Postgres/Planner/Repositories/PlannerMatchRepository.TryConfirmPlannedMatchAsync</c>.
+    /// Vervangt de vroegere <c>SavePlannedMatchAsync</c>, die zonder enige bezettingscontrole
+    /// insertte: twee volledige-veldreserveringen die elkaar overlappen kregen allebei HTTP 200.
+    /// <para>
+    /// <b>Atomiciteit via <c>sp_getapplock</c>, dezelfde reden als de Postgres-tegenhanger's
+    /// <c>pg_advisory_xact_lock</c>.</b> Een transactiegebonden applicatielock op
+    /// (club, veld, datum) serialiseert alle bevestigingen voor dezelfde veld/datum-combinatie: de
+    /// tweede aanvraag wacht (standaard <c>@LockTimeout = -1</c>, oneindig) tot de eerste commit of
+    /// rollback heeft gedaan, en leest daarna de bijgewerkte bezetting via exact dezelfde
+    /// <see cref="PlannerAvailabilityRepository.GetFieldOccupationsAsync"/> die
+    /// <c>PlannerService</c>'s beschikbaarheidscheck ook gebruikt — dezelfde notie van conflict.
+    /// </para>
+    /// </summary>
+    /// <returns>
+    /// <c>(Id, null)</c> bij een geslaagde reservering, of <c>(null, Conflict)</c> met de eerste
+    /// conflicterende bezetting als het interval niet past.
+    /// </returns>
+    internal static async Task<(int? Id, BestaandeWedstrijd? Conflict)> TryConfirmPlannedMatchAsync(
         DateOnly datum, TimeOnly aanvangsTijd, TimeOnly eindTijd, int veldNummer,
         decimal veldDeelGebruik, string? leeftijdsCategorie, string? teamNaam,
         string? tegenstander, int wedstrijdDuurMinuten, string? aangevraagdDoor,
@@ -386,6 +406,28 @@ internal static class PlannerMatchRepository
         var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
         using var conn = new SqlConnection(Cs);
         await conn.OpenAsync();
+        using var tx = (SqlTransaction)await conn.BeginTransactionAsync();
+
+        using (var lockCmd = new SqlCommand(
+            "DECLARE @result INT; " +
+            "EXEC @result = sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction'; " +
+            "SELECT @result;", conn, tx))
+        {
+            lockCmd.Parameters.AddWithValue("@resource", $"planner-confirm:{cc}:{veldNummer}:{datum:yyyy-MM-dd}");
+            var result = (int)(await lockCmd.ExecuteScalarAsync())!;
+            if (result < 0)
+                throw new InvalidOperationException($"sp_getapplock kon de bevestigingslock niet verkrijgen (resultaat {result}).");
+        }
+
+        // Bezetting ophalen NA het verkrijgen van de lock: zie klasse-doc-comment.
+        var occupations = await PlannerAvailabilityRepository.GetFieldOccupationsAsync(datum, cc);
+        var conflict = PlannerShared.FindBezettingsConflict(aanvangsTijd, eindTijd, veldDeelGebruik, veldNummer, occupations);
+        if (conflict != null)
+        {
+            await tx.RollbackAsync();
+            return (null, conflict);
+        }
+
         using var cmd = new SqlCommand(@"
             INSERT INTO [planner].[GeplandeWedstrijden]
                 ([Datum], [AanvangsTijd], [EindTijd], [VeldNummer], [VeldDeelGebruik],
@@ -393,7 +435,7 @@ internal static class PlannerMatchRepository
                  [Status], [AangevraagdDoor], [ClubCode])
             OUTPUT INSERTED.[Id]
             VALUES (@datum, @aanvang, @eind, @veld, @deel, @cat, @team, @tegen, @duur, 'Te bevestigen', @door, @cc)
-        ", conn);
+        ", conn, tx);
         cmd.Parameters.AddWithValue("@datum", datum.ToDateTime(TimeOnly.MinValue));
         cmd.Parameters.AddWithValue("@aanvang", aanvangsTijd.ToTimeSpan());
         cmd.Parameters.AddWithValue("@eind", eindTijd.ToTimeSpan());
@@ -405,7 +447,9 @@ internal static class PlannerMatchRepository
         cmd.Parameters.AddWithValue("@duur", wedstrijdDuurMinuten);
         cmd.Parameters.AddWithValue("@door", (object?)aangevraagdDoor ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@cc", cc);
-        return (int)(await cmd.ExecuteScalarAsync())!;
+        var id = (int)(await cmd.ExecuteScalarAsync())!;
+        await tx.CommitAsync();
+        return (id, null);
     }
 
     /// <remarks>

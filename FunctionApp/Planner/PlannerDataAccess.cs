@@ -76,12 +76,12 @@ namespace SportlinkFunction.Planner
         public static Task<ZoekWedstrijdResponse?> FindMatchByCodeAsync(long wedstrijdcode, string? clubCode = null)
             => PlannerMatchRepository.FindMatchByCodeAsync(wedstrijdcode, clubCode);
 
-        public static Task<int> SavePlannedMatchAsync(
+        public static Task<(int? Id, BestaandeWedstrijd? Conflict)> TryConfirmPlannedMatchAsync(
             DateOnly datum, TimeOnly aanvangsTijd, TimeOnly eindTijd, int veldNummer,
             decimal veldDeelGebruik, string? leeftijdsCategorie, string? teamNaam,
             string? tegenstander, int wedstrijdDuurMinuten, string? aangevraagdDoor,
             string? clubCode = null)
-            => PlannerMatchRepository.SavePlannedMatchAsync(datum, aanvangsTijd, eindTijd, veldNummer,
+            => PlannerMatchRepository.TryConfirmPlannedMatchAsync(datum, aanvangsTijd, eindTijd, veldNummer,
                    veldDeelGebruik, leeftijdsCategorie, teamNaam, tegenstander,
                    wedstrijdDuurMinuten, aangevraagdDoor, clubCode);
 

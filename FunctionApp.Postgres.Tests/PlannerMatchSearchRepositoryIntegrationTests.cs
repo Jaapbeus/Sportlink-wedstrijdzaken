@@ -119,24 +119,25 @@ public class PlannerMatchSearchRepositoryIntegrationTests
     }
 
     [PostgresFact]
-    public async Task SavePlannedMatchAsync_SlaatAlleKolommenOp()
+    public async Task TryConfirmPlannedMatchAsync_SlaatAlleKolommenOp()
     {
         await using var conn = await OpstellingAsync();
 
-        var id = await PlannerMatchRepository.SavePlannedMatchAsync(
+        var (id, conflict) = await PlannerMatchRepository.TryConfirmPlannedMatchAsync(
             ConnectionString,
             Zaterdag, new TimeOnly(15, 0), new TimeOnly(16, 45), veldNummer: 301,
             veldDeelGebruik: 1.00m, leeftijdsCategorie: "JO13", teamNaam: Team,
             tegenstander: "Oefenteam", wedstrijdDuurMinuten: 105, aangevraagdDoor: "Jan de Vries",
             clubCode: Club);
 
-        id.Should().BeGreaterThan(0);
+        conflict.Should().BeNull("het veld is op dit tijdstip nog helemaal vrij");
+        id.Should().NotBeNull().And.BeGreaterThan(0);
 
         await using var cmd = new NpgsqlCommand(@"
             SELECT aanvangstijd, eindtijd, veldnummer, velddeelgebruik, leeftijdscategorie,
                    teamnaam, tegenstander, wedstrijdduurminuten, status, aangevraagddoor, clubcode
             FROM planner.geplandewedstrijden WHERE id = @id", conn);
-        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("id", id!.Value);
         await using var reader = await cmd.ExecuteReaderAsync();
         (await reader.ReadAsync()).Should().BeTrue();
         reader.GetTimeSpan(0).Should().Be(new TimeSpan(15, 0, 0));
@@ -150,6 +151,91 @@ public class PlannerMatchSearchRepositoryIntegrationTests
         reader.GetString(8).Should().Be("Te bevestigen", "elke nieuwe geplande wedstrijd start met deze status");
         reader.GetString(9).Should().Be("Jan de Vries");
         reader.GetString(10).Should().Be(Club);
+    }
+
+    [PostgresFact]
+    public async Task TryConfirmPlannedMatchAsync_OverlappendeVolledigeVeldreservering_GeeftConflict()
+    {
+        // Reproductie van Codex-review #1107 bevinding 9 (#1134): twee volledige-veldreserveringen
+        // die elkaar overlappen (10:00–12:00 en 10:30–12:30) mochten voorheen allebei doorgaan.
+        await using var conn = await OpstellingAsync();
+        var (eersteId, eersteConflict) = await PlannerMatchRepository.TryConfirmPlannedMatchAsync(
+            ConnectionString, Zaterdag, new TimeOnly(10, 0), new TimeOnly(12, 0), veldNummer: 301,
+            veldDeelGebruik: 1.00m, leeftijdsCategorie: "JO13", teamNaam: Team,
+            tegenstander: "Oefenteam", wedstrijdDuurMinuten: 120, aangevraagdDoor: "Jan de Vries",
+            clubCode: Club);
+        eersteConflict.Should().BeNull();
+        eersteId.Should().NotBeNull();
+
+        var (tweedeId, tweedeConflict) = await PlannerMatchRepository.TryConfirmPlannedMatchAsync(
+            ConnectionString, Zaterdag, new TimeOnly(10, 30), new TimeOnly(12, 30), veldNummer: 301,
+            veldDeelGebruik: 1.00m, leeftijdsCategorie: "JO13", teamNaam: Team,
+            tegenstander: "Tweede tegenstander", wedstrijdDuurMinuten: 120, aangevraagdDoor: "Jan de Vries",
+            clubCode: Club);
+
+        tweedeId.Should().BeNull("het veld is tussen 10:30 en 12:00 al bezet door de eerste reservering");
+        tweedeConflict.Should().NotBeNull();
+        tweedeConflict!.VeldNummer.Should().Be(301);
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM planner.geplandewedstrijden WHERE clubcode = @club", conn);
+        cmd.Parameters.AddWithValue("club", Club);
+        (await cmd.ExecuteScalarAsync()).Should().Be(1L, "de conflicterende aanvraag mag niet zijn opgeslagen");
+    }
+
+    [PostgresFact]
+    public async Task TryConfirmPlannedMatchAsync_AansluitendeReservering_SlaagtZonderConflict()
+    {
+        // Acceptatiecriterium #1134: twee reserveringen die elkaar precies raken (10:00–11:00 gevolgd
+        // door 11:00–12:00) zijn GEEN conflict — alleen een overlappend interval is dat. Dit is
+        // bewust een ander regime dan de planner-suggesties (CanFitMatch), die wél een buffer tussen
+        // niet-overlappende wedstrijden eisen.
+        await using var conn = await OpstellingAsync();
+        await PlannerMatchRepository.TryConfirmPlannedMatchAsync(
+            ConnectionString, Zaterdag, new TimeOnly(10, 0), new TimeOnly(11, 0), veldNummer: 301,
+            veldDeelGebruik: 1.00m, leeftijdsCategorie: "JO13", teamNaam: Team,
+            tegenstander: "Oefenteam", wedstrijdDuurMinuten: 60, aangevraagdDoor: "Jan de Vries",
+            clubCode: Club);
+
+        var (id, conflict) = await PlannerMatchRepository.TryConfirmPlannedMatchAsync(
+            ConnectionString, Zaterdag, new TimeOnly(11, 0), new TimeOnly(12, 0), veldNummer: 301,
+            veldDeelGebruik: 1.00m, leeftijdsCategorie: "JO13", teamNaam: Team,
+            tegenstander: "Tweede tegenstander", wedstrijdDuurMinuten: 60, aangevraagdDoor: "Jan de Vries",
+            clubCode: Club);
+
+        conflict.Should().BeNull("11:00–12:00 raakt 10:00–11:00 alleen aan, zonder te overlappen");
+        id.Should().NotBeNull();
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM planner.geplandewedstrijden WHERE clubcode = @club", conn);
+        cmd.Parameters.AddWithValue("club", Club);
+        (await cmd.ExecuteScalarAsync()).Should().Be(2L, "beide aansluitende reserveringen horen te zijn opgeslagen");
+    }
+
+    [PostgresFact]
+    public async Task TryConfirmPlannedMatchAsync_GelijktijdigeBevestigingenVanZelfdeSlot_ExactEenSlaagt()
+    {
+        // Concurrency-acceptatiecriterium #1134: twee gelijktijdige bevestigingsverzoeken voor
+        // precies hetzelfde veld/dezelfde datum/dezelfde tijd — de advisory lock in
+        // TryConfirmPlannedMatchAsync moet ze serialiseren zodat er precies één wint.
+        await using var conn = await OpstellingAsync();
+
+        Task<(int? Id, BestaandeWedstrijd? Conflict)> Confirm(string tegenstander) =>
+            PlannerMatchRepository.TryConfirmPlannedMatchAsync(
+                ConnectionString, Zaterdag, new TimeOnly(14, 0), new TimeOnly(15, 0), veldNummer: 301,
+                veldDeelGebruik: 1.00m, leeftijdsCategorie: "JO13", teamNaam: Team,
+                tegenstander: tegenstander, wedstrijdDuurMinuten: 60, aangevraagdDoor: "Jan de Vries",
+                clubCode: Club);
+
+        var resultaten = await Task.WhenAll(Confirm("Team A"), Confirm("Team B"));
+
+        resultaten.Count(r => r.Id != null).Should().Be(1, "precies één van de twee gelijktijdige aanvragen mag slagen");
+        resultaten.Count(r => r.Conflict != null).Should().Be(1, "de andere aanvraag hoort het conflict terug te krijgen");
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM planner.geplandewedstrijden WHERE clubcode = @club", conn);
+        cmd.Parameters.AddWithValue("club", Club);
+        (await cmd.ExecuteScalarAsync()).Should().Be(1L, "er mag maar één rij zijn opgeslagen, geen dubbele boeking");
     }
 
     [PostgresFact]
@@ -192,6 +278,17 @@ public class PlannerMatchSearchRepositoryIntegrationTests
     private static async Task<NpgsqlConnection> OpstellingAsync()
     {
         await HisTabelVorm.ZorgVoorProductievormAsync(ConnectionString, KnownEntities.Teams, KnownEntities.Matches);
+
+        // TryConfirmPlannedMatchAsync (#1134) leest de bestaande bezetting via
+        // PlannerAvailabilityRepository.GetFieldOccupationsAsync, die op deze view steunt. Buiten een
+        // echte sync (PostgresSyncPipeline) bestaat de view niet vanzelf — zelfde aanpak als
+        // PlannerAvailabilityRepositoryIntegrationTests.OpstellingAsync.
+        await using (var setupConn = new NpgsqlConnection(ConnectionString))
+        {
+            await setupConn.OpenAsync();
+            await using var view = new NpgsqlCommand(PostgresPlannerViewGenerator.CreateView, setupConn);
+            await view.ExecuteNonQueryAsync();
+        }
 
         // PostgresClubScope.AddHisParams (his.*-NULL-tolerantie) leest de primaire club uit de
         // procesbrede PostgresAppSettings-cache, niet uit deze test se eigen public.appsettings-rij
