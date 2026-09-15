@@ -19,6 +19,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **De git-hooks blokkeerden commits en pushes op ongevaarlijke code, waardoor `--no-verify` de
+  enige uitweg was (#1172).** De secrets-scan keek naar elk gestaged bestand in zijn geheel in
+  plaats van naar de wijziging, en sloeg daardoor aan op bestaande, onschuldige regels in bestanden
+  die je alleen maar aanraakte. Twee vormen kwamen structureel voor: een wachtwoord dat via een
+  variabele wordt doorgegeven (`PGPASSWORD=$Password` — juist het veilige patroon dat dit project
+  voorschrijft, want zo staat het wachtwoord niet in de processenlijst), en een synthetische
+  wedstrijdcode van negen cijfers die het BSN-patroon raakte. Beide zijn nu vrijgesteld. Dat is
+  géén verzwakking van de scan maar een versterking: `--no-verify` schakelt de controle uit voor
+  álle bestanden in een commit, en dat was precies waar dit toe dwong. Een letterlijk wachtwoord
+  blijft blokkeren, en van het testdata-bereik is alleen die ene bestaande waarde vrijgesteld, niet
+  het bereik.
+
+### Fixed
 - **Issues bleven na een release onterecht op 'wacht op release' staan als de commit-message of de
   CHANGELOG-vermelding het issuenummer niet in het verwachte format bevatte (#1168).** Twee gaten:
   een commit-titel met meerdere issues (`feat(#990, #1017): ...`) werd niet herkend, en een
