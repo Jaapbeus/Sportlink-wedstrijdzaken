@@ -13,8 +13,28 @@ PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 #   password / userInfo.           C#-toewijzing 'Password = password,' resp. 'password = userInfo.…'
 #   wachtwoord                     synthetische testwaarde (Database.Postgres.Tests)
 #   devonly / Devonly123!          lokale wegwerpcontainer (docs/DEVELOPER-SETUP.md, VERIFICATIE-SCRIPTS.md)
-#   YOUR_PASSWORD / [password] / ____  placeholders in templates en checklists
-KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_PASSWORD\b|\[password\]|_{4,})'
+#   YOUR_*_PASSWORD / [password] / ____  placeholders in templates en checklists
+#
+# #1172 voegde twee categorieën toe. Beide zijn géén afzonderlijke waarden maar een vorm:
+#
+#   =$...        Toewijzing aan een VARIABELE, niet aan een letterlijke waarde:
+#                "PGPASSWORD=$Password", '$env:SQLCMDPASSWORD = $sqlPass',
+#                'Password=$pgPassword'. Het echte wachtwoord staat per definitie ergens
+#                anders; wat hier staat is een naam. Dit is bovendien precies het patroon dat
+#                CLAUDE.md voorschrijft (wachtwoord via omgevingsvariabele van het kindproces,
+#                nooit als argument) — de hook strafte dus het gewenste gedrag af.
+#                Afweging: hierdoor glipt een letterlijk wachtwoord dat mét een '$' begint
+#                erdoor. Dat is bewust geaccepteerd. Zonder deze vrijstelling raakte élke
+#                commit die scripts/dev/ of de selftest-harness aanraakt geblokkeerd, en was
+#                '--no-verify' de enige uitweg — dat schakelt de scan uit voor ALLE bestanden
+#                in die commit en is een veel groter gat dan dit.
+#
+#   900012345    Synthetische wedstrijdcode in FunctionApp.Postgres.Tests/
+#                AdminTestDataFunctionTests.cs, uit het testdata-bereik dat diezelfde klasse
+#                asserteert (900_000_000–990_000_000). Negen cijfers, dus het BSN-patroon
+#                \b[0-9]{9}\b matcht erop. Bewust deze ENE waarde en niet het hele bereik:
+#                dat zou tien miljoen nummers vrijstellen en de BSN-detectie echt verzwakken.
+KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_[A-Z_]*PASSWORD\b|\[password\]|_{4,}|\$)|900012345'
 
 echo "Scanning staged files for secrets and PII..."
 

@@ -8,7 +8,11 @@ REMOTE_URL="$2"
 
 # Zelfde geankerde vrijstellingslijst als in pre-commit (#1095) — daar staat de toelichting per
 # token. Beide hooks moeten dezelfde lijst hanteren, anders slaagt een commit die de push weigert.
-KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_PASSWORD\b|\[password\]|_{4,})'
+#
+# Let op bij het uitbreiden (#1172): deze hook filtert hele REGELS (git grep -h levert de regel),
+# pre-commit filtert alleen de MATCH (grep -oiE levert het token). Een vrijstelling moet dus in
+# beide vormen aanslaan — een op '^' of '$' geankerde variant werkt hier niet.
+KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_[A-Z_]*PASSWORD\b|\[password\]|_{4,}|\$)|900012345'
 
 echo "Scanning repository before push to: $REMOTE_URL"
 
