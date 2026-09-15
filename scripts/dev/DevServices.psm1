@@ -8,9 +8,9 @@
 # Regels bij het uitbreiden ervan:
 #   1. Poortdetectie is OS-specifiek en loopt uitsluitend via Test-PortListening /
 #      Get-PortOwnerId — nooit rechtstreeks via een van beide onderliggende mechanismen.
-#      Op Windows via de .NET BCL (IPGlobalProperties), niet via Get-NetTCPConnection: die
-#      zit in de module NetTCPIP en bestaat alleen op Windows. Op macOS via lsof, want daar
-#      geeft de BCL-aanroep een lege lijst terug terwijl er wél listeners zijn (#1171).
+#      Op Windows en Linux via de .NET BCL (IPGlobalProperties), niet via Get-NetTCPConnection:
+#      die zit in de module NetTCPIP en bestaat alleen op Windows. Alleen op macOS via lsof,
+#      want daar geeft de BCL-aanroep een lege lijst terug terwijl er wél listeners zijn (#1171).
 #   2. Alles wat een PID bij een poort of een procesboom nodig heeft is per definitie
 #      OS-specifiek — Windows via NetTCPIP/CIM, macOS via lsof/ps. Kapsel dat in achter
 #      een functie in deze module, nooit inline in een script.
@@ -27,8 +27,12 @@ $script:DebugPorts = @{
     Swa         = 4280
 }
 
-# $IsWindows bestaat vanaf PowerShell 6 op alle platforms; deze module vereist PowerShell 7.
+# $IsWindows/$IsMacOS bestaan vanaf PowerShell 6 op alle platforms; deze module vereist PowerShell 7.
 $script:OnWindows = [bool]$IsWindows
+# Apart van OnWindows, want de poortdetectie-bug uit #1171 is specifiek macOS: Windows én
+# Linux leveren met GetActiveTcpListeners() wél een correcte lijst. Een schakelaar op
+# "niet-Windows" zou Linux onnodig een lsof-afhankelijkheid opleggen.
+$script:OnMacOS = [bool]$IsMacOS
 
 # Het pad naar de NATIVE ps, expliciet.
 #
@@ -66,15 +70,21 @@ function Test-PortListening {
 
         OS-specifiek, en dat was het vóór #1171 ten onrechte niet.
 
-        Windows → de .NET BCL (GetActiveTcpListeners). Bewust niet Get-NetTCPConnection:
-                  dat zit in de module NetTCPIP, die alleen op Windows bestaat.
-        macOS   → lsof, via Get-PortOwnerId.
+        Windows/Linux → de .NET BCL (GetActiveTcpListeners). Bewust niet Get-NetTCPConnection:
+                        dat zit in de module NetTCPIP, die alleen op Windows bestaat.
+        macOS         → lsof, via Get-PortOwnerId.
 
-        Waarom niet overal de BCL: op macOS geeft
-        IPGlobalProperties().GetActiveTcpListeners() een LEGE lijst terug, ook wanneer er
-        aantoonbaar processen luisteren (geverifieerd op Darwin 27 / Apple Silicon: lsof
-        toont de listener, de BCL-aanroep telt er nul). Deze functie gaf daar dus altijd
-        $false. Dat faalde stil en verkeerd: Start-Debug.ps1 concludeerde dat Azurite niet
+        Alleen macOS wijkt af, niet "alles wat geen Windows is": op Linux levert de BCL wél een
+        correcte lijst, en een lsof-pad zou daar een onnodige externe afhankelijkheid zijn in
+        bijvoorbeeld een kale container.
+
+        Waarom macOS afwijkt: daar geeft IPGlobalProperties().GetActiveTcpListeners() alleen
+        de listeners van het EIGEN proces terug. Alles wat een ander proces opent is er
+        onzichtbaar — en dat is precies wat hier gedetecteerd moet worden: Azurite, func en
+        dotnet watch draaien allemaal apart. Geverifieerd op Darwin 27 / Apple Silicon: een
+        TcpListener in hetzelfde proces wordt wél gezien, Postgres op :5432 in een ander proces
+        niet, en zonder eigen listener telt de aanroep nul. Deze functie gaf daar dus altijd
+        $false voor de services die ertoe doen. Dat faalde stil en verkeerd: Start-Debug.ps1 concludeerde dat Azurite niet
         draaide, startte een tweede die niet kon binden, wachtte 30s op een listener die het
         per definitie nooit zou zien, en startte FunctionApp en BlazorAdmin daarna helemaal
         niet meer. Test-App.ps1 sloeg zijn API- en Blazor-secties over terwijl beide services
@@ -89,7 +99,7 @@ function Test-PortListening {
     #>
     param([Parameter(Mandatory)][int]$Port)
 
-    if ($script:OnWindows) {
+    if (-not $script:OnMacOS) {
         $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
         return [bool]($listeners | Where-Object { $_.Port -eq $Port })
     }
@@ -101,7 +111,7 @@ function Test-PortListening {
             $script:WarnedMissingLsof = $true
             Write-Warning ("lsof niet gevonden — poortdetectie werkt niet op dit platform. " +
                            "Start-Debug.ps1 en Test-App.ps1 zien draaiende services dan niet en " +
-                           "slaan controles over. lsof hoort standaard op macOS te staan.")
+                           "slaan controles over. lsof hoort standaard op macOS aanwezig te zijn.")
         }
         return $false
     }

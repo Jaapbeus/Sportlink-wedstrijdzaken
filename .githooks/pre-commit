@@ -17,15 +17,24 @@ PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 #
 # #1172 voegde twee categorieën toe. Beide zijn géén afzonderlijke waarden maar een vorm:
 #
-#   =$...        Toewijzing aan een VARIABELE, niet aan een letterlijke waarde:
+#   password=$…  Toewijzing aan een VARIABELE, niet aan een letterlijke waarde:
 #                "PGPASSWORD=$Password", '$env:SQLCMDPASSWORD = $sqlPass',
 #                'Password=$pgPassword'. Het echte wachtwoord staat per definitie ergens
 #                anders; wat hier staat is een naam. Dit is bovendien precies het patroon dat
 #                CLAUDE.md voorschrijft (wachtwoord via omgevingsvariabele van het kindproces,
 #                nooit als argument) — de hook strafte dus het gewenste gedrag af.
-#                Afweging: hierdoor glipt een letterlijk wachtwoord dat mét een '$' begint
-#                erdoor. Dat is bewust geaccepteerd. Zonder deze vrijstelling raakte élke
-#                commit die scripts/dev/ of de selftest-harness aanraakt geblokkeerd, en was
+#                LET OP de vorm: het sleutelwoord moet ER DIRECT VOOR staan. Een kale
+#                '=\$' volstaat NIET. pre-push filtert namelijk hele REGELS, en '=\$' komt
+#                op vrijwel elke regel voor: 'Password=Zomer2026!' op een regel die ergens
+#                ook 'Host=$server' bevat — een doodgewone connectiestring — zou dan in zijn
+#                geheel worden vrijgesteld. Dat gat zat er kort in en is bij de review van de
+#                release gevonden; zie de test-tabel in de PR bij dit issue.
+#                Afweging die blijft: hierdoor glipt een letterlijk wachtwoord dat mét een '$'
+#                begint erdoor, en op een regel die zowel een variabele- als een letterlijke
+#                wachtwoordtoewijzing bevat wint de vrijstelling. Dat is inherent aan het
+#                regelgebaseerde filter van pre-push en geldt voor elke vrijstelling in deze
+#                lijst. Bewust geaccepteerd: zonder deze vrijstelling raakte élke commit die
+#                scripts/dev/ of de selftest-harness aanraakt geblokkeerd, en was
 #                '--no-verify' de enige uitweg — dat schakelt de scan uit voor ALLE bestanden
 #                in die commit en is een veel groter gat dan dit.
 #
@@ -34,7 +43,7 @@ PATTERN_FILE="$SCRIPT_DIR/sensitive-patterns.txt"
 #                asserteert (900_000_000–990_000_000). Negen cijfers, dus het BSN-patroon
 #                \b[0-9]{9}\b matcht erop. Bewust deze ENE waarde en niet het hele bereik:
 #                dat zou tien miljoen nummers vrijstellen en de BSN-detectie echt verzwakken.
-KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_[A-Z_]*PASSWORD\b|\[password\]|_{4,}|\$)|900012345'
+KNOWN_SYNTHETIC_VALUES='wegwerpwachtwoord-niet-geheim|(password|pwd)[[:space:]]*=[[:space:]]*\$|=[[:space:]]*(password\b|userInfo\.|wachtwoord\b|devonly\b|devonly123!|YOUR_[A-Z_]*PASSWORD\b|\[password\]|_{4,})|900012345'
 
 echo "Scanning staged files for secrets and PII..."
 
