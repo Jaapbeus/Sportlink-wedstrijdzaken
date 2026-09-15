@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Issues bleven na een release onterecht op 'wacht op release' staan als de commit-message of de
+  CHANGELOG-vermelding het issuenummer niet in het verwachte format bevatte (#1168).** Twee gaten:
+  een commit-titel met meerdere issues (`feat(#990, #1017): ...`) werd niet herkend, en een
+  handmatig herschreven squash-commit-message kon de issue-referentie helemaal verliezen (zoals bij
+  #1013, waar `fix(#1013): ...` bij het mergen `fix: ... (#1014)` werd — het PR-nummer, niet het
+  issuenummer). `close-released-issues.yml` leest nu ook de titel/body van elke gemergede PR
+  rechtstreeks, die informatie verandert niet mee met een herschreven commit-message. Daarnaast
+  bleek epic #986 het label `epic` te missen, waardoor de bestaande epic-uitzondering niet gold en
+  het issue permanent op 'wacht op release' bleef staan; #986/#1013/#1017 zijn handmatig
+  gecorrigeerd.
+
 ## [3.4.0.0] — 2026-09-14
 
 ### Added
