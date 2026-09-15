@@ -15,6 +15,7 @@ on:
 permissions:
   issues: write
   contents: read
+  pull-requests: read
 
 jobs:
   close-released-issues:
@@ -40,7 +41,8 @@ jobs:
           fi
 
           # Bron 1 — commit-subjects in de range. Dekt UITSLUITEND de conventie 'type(#NNN): ...'
-          # aan het begin van het subject — niet elke #NNN die toevallig ergens in de regel staat.
+          # (of 'type(#NNN, #MMM): ...') aan het begin van het subject — niet elke #NNN die
+          # toevallig ergens in de regel staat.
           #
           # #838-vervolg: de oude, losse 'grep -oE #[0-9]+' pakte ELK nummer in de hele subject-
           # regel, inclusief een losse '(#NNN)'-kruisverwijzing die een sessie bewust MIDDEN in een
@@ -51,8 +53,12 @@ jobs:
           # #838 al voor label-awaiting-release.yml vaststelde, nu in een workflow die niet labelt
           # maar daadwerkelijk sluit. De titel-conventie 'type(#NNN): ...' (het issue dat déze commit
           # aantoonbaar afrondt) staat altijd vooraan; alles daarna is kruisverwijzing.
+          #
+          # #1168: de groep na 'type(' mag meerdere comma-gescheiden nummers bevatten —
+          # 'feat(#990, #1017): ...' — dat is dezelfde 'strong'-conventie, maar de oorspronkelijke
+          # regex eiste precies één nummer direct gevolgd door '):' en miste zo #1017 bij v3.3.0.0.
           COMMIT_NUMBERS=$(git log $RANGE --oneline \
-            | grep -oE '^[0-9a-f]+ [a-z]+\(#[0-9]+\):' \
+            | grep -oE '^[0-9a-f]+ [a-z]+\(#[0-9]+(, *#[0-9]+)*\):' \
             | grep -oE '#[0-9]+' | tr -d '#' | sort -un)
           echo "Uit commit-subjects: $(echo $COMMIT_NUMBERS | tr '\n' ' ')"
 
@@ -78,13 +84,69 @@ jobs:
             | grep -E '^[0-9]+$' | sort -un | tr '\n' ',' | sed 's/,$//')
           echo "numbers=${NUMBERS}" >> "$GITHUB_OUTPUT"
           echo "tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "range=${RANGE}" >> "$GITHUB_OUTPUT"
           echo "Samengevoegd: ${NUMBERS:-geen}"
 
-      - name: Issues sluiten en label verwijderen
-        if: steps.issues.outputs.numbers != ''
+      - name: Issue-nummers via gemergede PR's verzamelen (bron 3, #1168)
+        id: pr-issues
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          ISSUE_NUMBERS: ${{ steps.issues.outputs.numbers }}
+          COMMIT_RANGE: ${{ steps.issues.outputs.range }}
+        with:
+          script: |
+            // Bron 1 en 2 lezen de commit-subject/CHANGELOG-tekst. Beide missen een issue zodra
+            // iemand bij het mergen de (squash-)commit-message handmatig herschrijft en daarbij de
+            // 'fix(#NNN):'-referentie verliest — precies wat er bij #1013 gebeurde: PR #1014 heette
+            // 'fix(#1013): ...', maar de commit op main werd 'fix: ... (#1014)' (GitHub's eigen
+            // PR-nummer-suffix, geen issuenummer). Die informatie bestaat dan alleen nog in de
+            // ONGEWIJZIGDE PR-titel/body. listPullRequestsAssociatedWithCommit koppelt elke commit
+            // in de release-range terug aan zijn PR; extractIssueRefs(...).strong past dezelfde
+            // 'titel of sluitend keyword'-regel toe als label-awaiting-release.yml.
+            const { extractIssueRefs } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
+
+            const range = process.env.COMMIT_RANGE;
+            const { stdout } = await exec.getExecOutput('git', ['log', range, '--format=%H']);
+            const shas = stdout.split('\n').map(s => s.trim()).filter(Boolean);
+
+            const numbers = new Set();
+            for (const sha of shas) {
+              let prs;
+              try {
+                prs = (await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: sha,
+                })).data;
+              } catch (e) {
+                core.warning(`${sha}: kon geassocieerde PR's niet ophalen (${e.message}) — overgeslagen`);
+                continue;
+              }
+              for (const pr of prs) {
+                const { strong } = extractIssueRefs(pr.title, pr.body);
+                for (const n of strong) numbers.add(n);
+              }
+            }
+
+            const list = [...numbers].sort((a, b) => a - b);
+            core.notice(`Uit gemergede PR's (bron 3): ${list.join(' ') || 'geen'}`);
+            core.setOutput('numbers', list.join(','));
+
+      - name: Bronnen samenvoegen
+        id: combined
+        run: |
+          NUMBERS=$(printf '%s\n%s\n' \
+              "$(echo '${{ steps.issues.outputs.numbers }}' | tr ',' '\n')" \
+              "$(echo '${{ steps.pr-issues.outputs.numbers }}' | tr ',' '\n')" \
+            | grep -E '^[0-9]+$' | sort -un | tr '\n' ',' | sed 's/,$//')
+          echo "numbers=${NUMBERS}" >> "$GITHUB_OUTPUT"
+          echo "Totaal (bron 1+2+3): ${NUMBERS:-geen}"
+
+      - name: Issues sluiten en label verwijderen
+        if: steps.combined.outputs.numbers != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMBERS: ${{ steps.combined.outputs.numbers }}
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
         with:
           script: |
@@ -143,7 +205,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
-          AFGEHANDELD: ${{ steps.issues.outputs.numbers }}
+          AFGEHANDELD: ${{ steps.combined.outputs.numbers }}
         with:
           script: |
             const label = 'status: awaiting-release';
@@ -180,8 +242,8 @@ jobs:
             const lijst = issues.map(i => `#${i.number} — ${i.title}`).join('\n');
             core.warning(
               `${issues.length} issue(s) staan na release ${process.env.RELEASE_TAG} nog op '${label}'.\n` +
-              `Als de fix wél in deze release zat, ontbreekt het nummer in zowel de commit-subjects ` +
-              `als de CHANGELOG-attributie — controleer handmatig:\n${lijst}`
+              `Als de fix wél in deze release zat, ontbreekt het nummer in de commit-subjects, de ` +
+              `CHANGELOG-attributie én de titel/body van elke gemergede PR — controleer handmatig:\n${lijst}`
             );
             await core.summary
               .addHeading(`Nog op '${label}' na ${process.env.RELEASE_TAG}`, 3)
