@@ -964,7 +964,7 @@ geen `PackageReference`-project en wordt door Central Package Management niet aa
 Eén bestand, `Directory.Packages.props` in de repository-root, bevat de versie van elk pakket:
 
 ```xml
-<PackageVersion Include="Npgsql" Version="9.0.3" />
+<PackageVersion Include="Npgsql" Version="10.0.3" />
 ```
 
 Elk project-bestand refereert een pakket zonder versie:

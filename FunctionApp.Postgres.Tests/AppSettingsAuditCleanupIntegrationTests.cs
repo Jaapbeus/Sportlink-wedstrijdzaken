@@ -1,6 +1,6 @@
 using Database.Postgres;
 using Database.Postgres.Tests;
-using FluentAssertions;
+using AwesomeAssertions;
 using Npgsql;
 using Xunit;
 

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Tests.Email.TestDoubles;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction.Email;

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using SportlinkFunction;
 using Xunit;
 using Planner.Shared;
@@ -39,7 +39,7 @@ public class EmailSanitizerTests
     {
         var lang = new string('x', 300);
         var result = EmailSanitizer.SanitizeFoutMelding(lang);
-        result.Length.Should().BeLessOrEqualTo(203); // 200 tekens + "…"
+        result.Length.Should().BeLessThanOrEqualTo(203); // 200 tekens + "…"
         result.Should().EndWith("…");
     }
 

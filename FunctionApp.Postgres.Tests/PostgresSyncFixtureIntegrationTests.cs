@@ -1,6 +1,6 @@
 using Database.Postgres;
 using Database.Postgres.Tests;
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Postgres.Sync;
 using FunctionApp.Tests.Sync;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -187,7 +187,7 @@ public class PostgresSyncFixtureIntegrationTests
         // helpt de plannerlaag niets.
         (await CountAsync(
                 $"SELECT count(*) FROM {PostgresPlannerViewGenerator.ViewName} WHERE clubcode = @club"))
-            .Should().BeGreaterOrEqualTo(0);
+            .Should().BeGreaterThanOrEqualTo(0);
     }
 
     private static async Task RunAsync(SportlinkFixtureServer fixtureServer) =>

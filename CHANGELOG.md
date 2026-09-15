@@ -29,6 +29,29 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bleek epic #986 het label `epic` te missen, waardoor de bestaande epic-uitzondering niet gold en
   het issue permanent op 'wacht op release' bleef staan; #986/#1013/#1017 zijn handmatig
   gecorrigeerd.
+- **Seizoensgrenzen en zonsondergangstijden werden niet meer uit de database gelezen na de
+  Npgsql-upgrade (#1170).** Npgsql 10 geeft een `DATE`- en een `TIME`-kolom voortaan als `DateOnly`
+  respectievelijk `TimeOnly` terug in plaats van als `DateTime`/`TimeSpan`. Vier plekken in de
+  Postgres-tier tastten het resultaat nog op het oude type af en vielen daardoor stilzwijgend terug
+  op "niets gevonden": de einddatum van het seizoen, de begin- en einddatum die het
+  synchronisatievenster bepalen, en de zonsondergangstijd waarop de veldplanning de laatste
+  wedstrijd van de dag afknijpt. Zichtbaar gevolg zou zijn geweest: de synchronisatie haalt een
+  vast venster van 30 weken op in plaats van het echte seizoen, en de planner rekent met de
+  berekende zonsondergang in plaats van de opgeslagen waarde. Alle vier zijn hersteld en er staan nu
+  regressietests op, want drie ervan hadden geen enkele testdekking en faalden zonder foutmelding.
+
+### Changed
+- **Assertiebibliotheek in de testprojecten van FluentAssertions naar AwesomeAssertions
+  (#1170).** FluentAssertions 8 is van Apache-2.0 overgestapt op de Xceed Community License, die
+  alleen niet-commercieel gebruik toestaat en gebruik "by or for an organisation ... that charges
+  fees or earns revenues" expliciet uitsluit. Omdat deze repository publiek is en bedoeld om door
+  verenigingen te worden geforkt, zou die licentie ook voor elke forkende club gaan gelden.
+  AwesomeAssertions is de Apache-2.0 community-fork met dezelfde assertie-API. Alleen testcode
+  raakt hierdoor gewijzigd; niets aan de applicatie zelf verandert.
+- **Afhankelijkheden bijgewerkt (#1170)** — Npgsql 9.0.3 → 10.0.3, Microsoft.NET.Test.Sdk
+  17.12.0 → 18.10.0, coverlet.collector 6.0.3 → 10.0.1 en Microsoft.Playwright 1.49.0 → 1.62.0.
+  Dit consolideert de Dependabot-PR's #1163 tot en met #1167, die alle vijf hetzelfde bestand
+  wijzigden en daardoor niet los van elkaar te mergen waren.
 
 ## [3.4.0.0] — 2026-09-14
 

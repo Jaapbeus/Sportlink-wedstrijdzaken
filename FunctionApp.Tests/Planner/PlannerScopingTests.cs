@@ -1,6 +1,6 @@
 using Planner.Shared;
 using System.Reflection;
-using FluentAssertions;
+using AwesomeAssertions;
 using SportlinkFunction.Planner;
 using Xunit;
 

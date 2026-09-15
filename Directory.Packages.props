@@ -33,7 +33,7 @@
 
     <!-- Database-clients -->
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.3" />
-    <PackageVersion Include="Npgsql" Version="9.0.3" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
 
     <!-- AI-adapter/provider — #1129: 10.10.0 vereist exact OpenAI 2.13.0, geen NU1608 meer -->
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.10.0" />
@@ -51,14 +51,25 @@
     <PackageVersion Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.0.12" />
 
     <!-- Hulpmiddelen buiten de tier-implementatiebomen (MigrationTools/, Tools/) -->
-    <PackageVersion Include="Microsoft.Playwright" Version="1.49.0" />
+    <PackageVersion Include="Microsoft.Playwright" Version="1.62.0" />
 
     <!-- Testprojecten -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageVersion Include="FluentAssertions" Version="6.12.2" />
+    <!--
+      AwesomeAssertions, niet FluentAssertions (#1170). FluentAssertions 8 is overgegaan van
+      Apache-2.0 naar de Xceed Community License, die uitsluitend niet-commercieel gebruik
+      toestaat en expliciet gebruik uitsluit "by or for an organisation ... that charges fees or
+      earns revenues, with or without the intention to make profit". Een vereniging die contributie
+      int valt daar pleitbaar onder, en deze repository is publiek en bedoeld om te forken: de
+      licentiekeuze geldt dan voor elke club die dat doet. AwesomeAssertions is de Apache-2.0
+      community-fork met dezelfde assertie-API; alleen de naamruimte verschilt, dus in de
+      testprojecten staat `using AwesomeAssertions;` in plaats van `using FluentAssertions;`.
+      Zie CHANGELOG bij deze versie.
+    -->
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.3" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
   </ItemGroup>
 </Project>

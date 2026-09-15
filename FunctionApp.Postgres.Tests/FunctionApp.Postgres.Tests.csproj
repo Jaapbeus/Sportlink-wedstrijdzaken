@@ -15,7 +15,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="AwesomeAssertions" />
     <!-- Microsoft.Extensions.Logging.Abstractions (NullLogger) komt transitief mee via
          FunctionApp.Postgres; een eigen versie hier geeft NU1605 zodra die keten opschuift. -->
     <PackageReference Include="Npgsql" />

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Postgres.Feedback;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.AI;
