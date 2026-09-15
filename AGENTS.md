@@ -569,7 +569,7 @@ FunctionApp op dat plan draait bestaat de stackwaarde `dotnet-isolated 10.0` daa
 > uitgefaseerd. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**, en stond al
 > als roadmap-punt in `CHANGELOG.md` bij v2.1.0 (#162).
 
-**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — Windows: `winget install Microsoft.DotNet.Runtime.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
+**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — **beide frameworks**, `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App`; zonder de tweede breekt `dotnet test` op de twee FunctionApp-testprojecten af (#1174). Windows: `winget install Microsoft.DotNet.Runtime.9` plus `Microsoft.DotNet.AspNetCore.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
 Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
 
 **Upgradepad naar .NET 10 — uitsluitend via epic #1063, in deze volgorde:**
