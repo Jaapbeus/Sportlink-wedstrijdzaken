@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **De setup-instructies installeerden maar de helft van wat .NET 9 nodig heeft, waardoor twee
+  testprojecten niet konden draaien (#1174).** `dotnet-install.sh --runtime dotnet` levert alleen
+  `Microsoft.NETCore.App`, maar `FunctionApp.Tests` en `FunctionApp.Postgres.Tests` hebben ook
+  `Microsoft.AspNetCore.App` op 9.x nodig. Zonder die tweede bouwen ze wel, maar breekt
+  `dotnet test` af met "You must install or update .NET to run this application" — een melding die
+  naar een ontbrekende SDK wijst in plaats van naar een ontbrekend gedeeld framework. De
+  verificatiestap in dezelfde handleiding controleerde bovendien alleen op het eerste framework en
+  gaf dus groen licht terwijl het niet werkte. Alle zes de plekken waar deze installatie wordt
+  beschreven noemen nu beide frameworks, en de controlestap vraagt om beide. In CI was dit
+  onzichtbaar omdat `actions/setup-dotnet` ze allebei installeert.
 - **De git-hooks blokkeerden commits en pushes op ongevaarlijke code, waardoor `--no-verify` de
   enige uitweg was (#1172).** De secrets-scan keek naar elk gestaged bestand in zijn geheel in
   plaats van naar de wijziging, en sloeg daardoor aan op bestaande, onschuldige regels in bestanden

@@ -153,7 +153,7 @@ Volledige, actuele endpoint-lijst: [docs/API.md](API.md).
 
 | Probleem | Oplossing |
 |---------|-----------|
-| FunctionApp start niet (503) | `dotnet --list-runtimes` — .NET 9 aanwezig? Windows: `winget install Microsoft.DotNet.Runtime.9` · macOS: `/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet` (zie DEVELOPER-SETUP.md §1) |
+| FunctionApp start niet (503) | `dotnet --list-runtimes` — staan **beide** 9.x-frameworks er (`NETCore.App` én `AspNetCore.App`)? Windows: `winget install Microsoft.DotNet.Runtime.9` + `Microsoft.DotNet.AspNetCore.9` · macOS: `/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet` én `--runtime aspnetcore` (zie DEVELOPER-SETUP.md §1) |
 | Database verbinding mislukt | Draait de container? `docker compose ps` — anders `SqlConnectionString` in `local.settings.json` controleren (zie §4.1) |
 | Sportlink API 401 | `UPDATE [dbo].[AppSettings] SET SportlinkClientId = '...'` |
 | Azurite niet actief | Windows: `Get-NetTCPConnection -LocalPort 10000` · macOS: `lsof -nP -iTCP:10000 -sTCP:LISTEN` — start via `Start-Debug.ps1` |
