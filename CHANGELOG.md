@@ -30,8 +30,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   álle bestanden in een commit, en dat was precies waar dit toe dwong. Een letterlijk wachtwoord
   blijft blokkeren, en van het testdata-bereik is alleen die ene bestaande waarde vrijgesteld, niet
   het bereik.
-
-### Fixed
+- **De dev-scripts zagen op macOS nooit een draaiende service, en `Test-App.ps1` meldde daardoor
+  ten onrechte dat alles goed was (#1171).** `Test-PortListening` gebruikte
+  `GetActiveTcpListeners()` uit de .NET BCL, en die geeft op macOS een lege lijst terug ook als er
+  aantoonbaar processen luisteren. Gevolg: `Start-Debug.ps1` dacht dat Azurite niet draaide, startte
+  een tweede die niet kon binden, wachtte 30 seconden op een listener die het nooit zou zien en
+  startte FunctionApp en BlazorAdmin daarna helemaal niet meer. Kwalijker nog: `Test-App.ps1` sloeg
+  zijn API- en Blazor-controles stilzwijgend over terwijl beide services gewoon draaiden, en sloot
+  daarna af met "Geslaagd" — een groene run bewees op macOS dus niets over de endpoints of de GUI.
+  De functie gebruikt op macOS nu `lsof`, net als `Get-PortOwnerId` al deed; Windows-gedrag is
+  ongewijzigd. Ontbreekt `lsof`, dan volgt er nu een expliciete waarschuwing in plaats van een stil
+  verkeerd antwoord. Dit corrigeert de claim bij #800 dat poortdetectie via een cross-platform
+  .NET-API zou lopen.
 - **Issues bleven na een release onterecht op 'wacht op release' staan als de commit-message of de
   CHANGELOG-vermelding het issuenummer niet in het verwachte format bevatte (#1168).** Twee gaten:
   een commit-titel met meerdere issues (`feat(#990, #1017): ...`) werd niet herkend, en een

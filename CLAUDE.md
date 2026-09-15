@@ -207,14 +207,21 @@ ITERATIE:
 
        # Alternatief (handmatig, als Start-Debug.ps1 niet beschikbaar) — Windows én macOS (#800):
        #   - 'powershell' bestaat niet op macOS; daar heet de executable 'pwsh'.
-       #   - Get-NetTCPConnection zit in de Windows-only module NetTCPIP; gebruik de .NET BCL.
+       #   - Get-NetTCPConnection zit in de Windows-only module NetTCPIP. De .NET BCL is
+       #     hier ook geen optie: op macOS geeft GetActiveTcpListeners() een lege lijst
+       #     terug terwijl er wel listeners zijn (#1171). Gebruik lsof.
        #   - $env:TEMP bestaat niet op macOS; gebruik [System.IO.Path]::GetTempPath().
        #   - Start-Process opent op macOS nooit een venster, dus daar is een logbestand nodig.
        $shell   = if ($IsWindows) { 'powershell' } else { 'pwsh' }
        $tempDir = [System.IO.Path]::GetTempPath()
        # 1. Azurite
-       $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
-       if (-not ($listeners | Where-Object { $_.Port -eq 10000 })) {
+       $luistert = if ($IsWindows) {
+           $l = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+           [bool]($l | Where-Object { $_.Port -eq 10000 })
+       } else {
+           [bool](& lsof '-nP' '-iTCP:10000' '-sTCP:LISTEN' '-t' 2>$null)
+       }
+       if (-not $luistert) {
            $azuriteDir = Join-Path $tempDir 'azurite'
            if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
            Start-Process $shell -ArgumentList '-NoProfile','-Command',"azurite --location '$azuriteDir'"
