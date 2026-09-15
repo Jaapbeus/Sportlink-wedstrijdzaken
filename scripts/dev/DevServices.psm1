@@ -6,8 +6,11 @@
 #
 # CROSS-PLATFORM (#800): deze module draait op Windows én macOS onder PowerShell 7.
 # Regels bij het uitbreiden ervan:
-#   1. Poortdetectie loopt via de .NET BCL (IPGlobalProperties), niet via Get-NetTCPConnection:
-#      die zit in de module NetTCPIP en bestaat alleen op Windows.
+#   1. Poortdetectie is OS-specifiek en loopt uitsluitend via Test-PortListening /
+#      Get-PortOwnerId — nooit rechtstreeks via een van beide onderliggende mechanismen.
+#      Op Windows via de .NET BCL (IPGlobalProperties), niet via Get-NetTCPConnection: die
+#      zit in de module NetTCPIP en bestaat alleen op Windows. Op macOS via lsof, want daar
+#      geeft de BCL-aanroep een lege lijst terug terwijl er wél listeners zijn (#1171).
 #   2. Alles wat een PID bij een poort of een procesboom nodig heeft is per definitie
 #      OS-specifiek — Windows via NetTCPIP/CIM, macOS via lsof/ps. Kapsel dat in achter
 #      een functie in deze module, nooit inline in een script.
@@ -61,17 +64,51 @@ function Test-PortListening {
     <#
         Luistert er een proces op $Port?
 
-        Gebruikt de .NET BCL in plaats van Get-NetTCPConnection: dat laatste zit in de
-        module NetTCPIP, die alleen op Windows bestaat. GetActiveTcpListeners() somt de
-        daadwerkelijke listeners op (IPv4 én IPv6) en werkt op alle platforms.
+        OS-specifiek, en dat was het vóór #1171 ten onrechte niet.
 
-        Bewust géén TcpClient-connectiepoging: die maakt een echte verbinding (socket,
-        TIME_WAIT) en bewijst minder precies dát er een listener is.
+        Windows → de .NET BCL (GetActiveTcpListeners). Bewust niet Get-NetTCPConnection:
+                  dat zit in de module NetTCPIP, die alleen op Windows bestaat.
+        macOS   → lsof, via Get-PortOwnerId.
+
+        Waarom niet overal de BCL: op macOS geeft
+        IPGlobalProperties().GetActiveTcpListeners() een LEGE lijst terug, ook wanneer er
+        aantoonbaar processen luisteren (geverifieerd op Darwin 27 / Apple Silicon: lsof
+        toont de listener, de BCL-aanroep telt er nul). Deze functie gaf daar dus altijd
+        $false. Dat faalde stil en verkeerd: Start-Debug.ps1 concludeerde dat Azurite niet
+        draaide, startte een tweede die niet kon binden, wachtte 30s op een listener die het
+        per definitie nooit zou zien, en startte FunctionApp en BlazorAdmin daarna helemaal
+        niet meer. Test-App.ps1 sloeg zijn API- en Blazor-secties over terwijl beide services
+        gewoon draaiden, en meldde daarna alsnog "Geslaagd" — een groene run bewees op macOS
+        dus niets over de endpoints of de GUI.
+
+        Bewust géén TcpClient-connectiepoging als terugval: die maakt een echte verbinding
+        (socket, TIME_WAIT) en bewijst minder precies dát er een listener is.
+
+        Let op de semantiek op macOS: lsof toont zonder root alleen processen van de huidige
+        gebruiker. Voor de dev-services is dat precies de bedoelde scope.
     #>
     param([Parameter(Mandatory)][int]$Port)
 
-    $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
-    [bool]($listeners | Where-Object { $_.Port -eq $Port })
+    if ($script:OnWindows) {
+        $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+        return [bool]($listeners | Where-Object { $_.Port -eq $Port })
+    }
+
+    # Ontbreekt lsof, dan zou deze functie weer altijd $false teruggeven — precies de stille
+    # faalvorm die #1171 was. Eén keer per sessie luid melden in plaats van dat te herhalen.
+    if (-not (Get-Command lsof -ErrorAction SilentlyContinue)) {
+        if (-not $script:WarnedMissingLsof) {
+            $script:WarnedMissingLsof = $true
+            Write-Warning ("lsof niet gevonden — poortdetectie werkt niet op dit platform. " +
+                           "Start-Debug.ps1 en Test-App.ps1 zien draaiende services dan niet en " +
+                           "slaan controles over. lsof hoort standaard op macOS te staan.")
+        }
+        return $false
+    }
+
+    # Geen tweede lsof-aanroep naast die in Get-PortOwnerId: "luistert er iets?" is op deze
+    # platforms exact "is er een eigenaar-PID?". Eén plek waar de lsof-argumenten staan.
+    return $null -ne (Get-PortOwnerId -Port $Port)
 }
 
 function Get-PortOwnerId {
