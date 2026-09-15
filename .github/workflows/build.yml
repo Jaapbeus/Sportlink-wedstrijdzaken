@@ -76,6 +76,17 @@ jobs:
       - name: Tier-mapping consistentie (shell vs. PowerShell)
         run: pwsh scripts/ci/Test-TierMappingConsistency.ps1
 
+      # #1171: Test-PortListening zag op macOS geen enkele listener van een ANDER proces, waardoor
+      # Start-Debug.ps1 de services niet startte en Test-App.ps1 zijn API- en Blazor-secties
+      # stilzwijgend oversloeg en tóch "Geslaagd" meldde. Die bug bestond jarenlang zonder dat iets
+      # hem opmerkte, om één reden: er was geen test die de functie tegen een echte socket hield.
+      # Deze job draait op ubuntu-latest en dekt daarmee de Linux-tak, die op een macOS- of
+      # Windows-werkplek per definitie nooit langskomt — precies waar bij het repareren van #1171
+      # de spiegelbeeldige fout ontstond (schakelaar op "niet-Windows" i.p.v. op macOS).
+      # Geen database, geen secrets, alleen een loopback-socket — draait ook op forks.
+      - name: Poortdetectie (Test-PortListening tegen een echte socket)
+        run: pwsh scripts/ci/Test-PortDetection.ps1
+
       # #976: bewijst dat het tier-switch-veiligheidsmechanisme (DatabaseTierSwitchConfirmation)
       # daadwerkelijk blokkeert bij een ontbrekende/niet-matchende bevestiging, en niets blokkeert
       # bij een matchende. Zonder deze test zou een toekomstige refactor van
