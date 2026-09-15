@@ -1,5 +1,5 @@
 using Planner.Shared;
-using FluentAssertions;
+using AwesomeAssertions;
 using SportlinkFunction.Planner;
 using Xunit;
 

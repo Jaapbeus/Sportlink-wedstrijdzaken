@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Tests.Email.TestDoubles;
 using FunctionApp.Tests.Monitoring.TestDoubles;
 using Microsoft.Extensions.Logging.Abstractions;

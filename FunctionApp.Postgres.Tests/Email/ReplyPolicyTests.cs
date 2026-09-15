@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Newtonsoft.Json;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Planner;

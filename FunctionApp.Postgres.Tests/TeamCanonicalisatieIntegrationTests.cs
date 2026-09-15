@@ -1,6 +1,6 @@
 using Database.Postgres;
 using Database.Postgres.Tests;
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Postgres.TeamResolution;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;

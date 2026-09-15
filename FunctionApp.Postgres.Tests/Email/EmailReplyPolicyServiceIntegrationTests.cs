@@ -1,5 +1,5 @@
 using Database.Postgres.Tests;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using Npgsql;

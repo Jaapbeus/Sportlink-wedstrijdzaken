@@ -3370,6 +3370,60 @@ Met dit issue is #972 volledig afgerond: alle vier de resterende deelstukken (op
 teamcontact §61, verzet-zonder-datum hier, `EmailProcessorFunction` al via de #972-hotfix, zie §52)
 zijn nu vertaald.
 
+## 63. Npgsql 10: `DATE` en `TIME` komen als `DateOnly`/`TimeOnly` uit de niet-generieke leespaden (#1170)
+
+Npgsql 10.0 wijzigde de standaard-CLR-mapping van twee kolomsoorten:
+
+| PostgreSQL-type | Npgsql 9 gaf | Npgsql 10 geeft |
+|---|---|---|
+| `date` | `DateTime` | **`DateOnly`** |
+| `time without time zone` | `TimeSpan` | **`TimeOnly`** |
+| `timestamp` / `timestamptz` | `DateTime` | `DateTime` (ongewijzigd) |
+| `interval` | `TimeSpan` | `TimeSpan` (ongewijzigd) |
+
+Dit geldt uitsluitend voor de **niet-generieke** leespaden: `ExecuteScalar()` en
+`NpgsqlDataReader.GetValue(i)`. De sterk getypeerde lezers (`reader.GetDateTime(i)`,
+`reader.GetTimeSpan(i)`, `GetFieldValue<T>()`) blijven gewoon converteren en zijn niet geraakt. Het
+schrijfpad is evenmin geraakt: een `DateTime`-parameter naar een `date`-kolom en een
+`TimeSpan`-parameter naar een `time`-kolom werken onveranderd.
+
+**Waarom dit gevaarlijker is dan het lijkt.** De gangbare vorm in deze codebase was
+
+```csharp
+var result = await cmd.ExecuteScalarAsync();
+return result is DateTime einde ? DateOnly.FromDateTime(einde) : null;
+```
+
+Een niet-passend patroon geeft hier **geen fout**. De `is`-test faalt gewoon en de methode neemt
+haar "niets gevonden"-tak. Bij de upgrade bestonden vier zulke plekken; precies één had
+testdekking en viel meteen om, de andere drie waren volledig stil:
+
+| Plek | Kolom | Stil gevolg |
+|---|---|---|
+| `PlannerSettingsRepository.GetSunsetAsync` | `zonsondergang` (TIME) | planner gebruikt de berekende i.p.v. de opgeslagen zonsondergang |
+| `PlannerSettingsRepository.GetSeasonEndDateAsync` | `season.dateuntil` (DATE) | "geen seizoen bekend" terwijl de rij bestaat |
+| `PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync` | `season.dateuntil` (DATE) | synchronisatievenster valt terug op de vaste 30 weken |
+| `PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync` | `season.datefrom` (DATE) | idem, −40 weken |
+
+**Regel.** Tast een `ExecuteScalar`-resultaat van een `date`- of `time`-kolom af op `DateOnly`
+respectievelijk `TimeOnly` — nooit op `DateTime`/`TimeSpan`. Staat er een `is`-patroon op een
+scalar zonder dat er een test op zit, dan is dat per definitie een stille-faalkandidaat: de test
+hoort erbij. `FunctionApp.Postgres.Tests/PostgresTemporeleScalarMappingIntegrationTests.cs` dekt
+de drie die dekking misten, zodat de volgende Npgsql-major hier luidruchtig faalt.
+
+**Wat hier níet door geraakt werd, en waarom.** De `LeesRij`-mapper
+(`Admin/Repositories/RepositoryRijMapper.cs`) gebruikt wél `GetValue` en voedt daarmee de JSON van
+de beheer-endpoints. Elke betrokken query selecteert date- en time-kolommen echter al via
+`to_char(...)`, dus die komen als tekst terug en het API-contract verandert niet. Zou een nieuwe
+query een `date`-kolom rechtstreeks selecteren, dan wijzigt de JSON van `"2026-09-15T00:00:00"`
+naar `"2026-09-15"` — een contractwijziging die de Admin GUI raakt. Houd `to_char` aan.
+
+**TLS.** Npgsql 10 valideert servercertificaten alleen nog tegen root-CA's (gelijk aan libpq). Dat
+raakt uitsluitend `VerifyCA`/`VerifyFull`; productie draait op `Require` (zie §57) en is dus
+ongewijzigd. Bij het uitvoeren van de nog openstaande stap naar
+`?sslmode=verify-full&sslrootcert=...` is dit wél relevant: het opgegeven bestand moet de **root**-CA
+bevatten, niet alleen een tussenliggend certificaat.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

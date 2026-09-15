@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using FunctionApp.Postgres.Email;
 using FunctionApp.Postgres.Tests.Email.TestDoubles;

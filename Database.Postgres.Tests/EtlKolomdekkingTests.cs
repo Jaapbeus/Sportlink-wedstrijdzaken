@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Database.Postgres;
-using FluentAssertions;
+using AwesomeAssertions;
 using Xunit;
 
 namespace Database.Postgres.Tests;

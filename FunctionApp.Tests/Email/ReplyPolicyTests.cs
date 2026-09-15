@@ -1,5 +1,5 @@
 using Planner.Shared;
-using FluentAssertions;
+using AwesomeAssertions;
 using Newtonsoft.Json;
 using SportlinkFunction.Email;
 using SportlinkFunction.Planner;

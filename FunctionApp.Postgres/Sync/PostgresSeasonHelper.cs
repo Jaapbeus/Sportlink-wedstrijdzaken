@@ -67,8 +67,11 @@ internal static class PostgresSeasonHelper
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season", connection);
             var result = await command.ExecuteScalarAsync();
-            if (result is DateTime endDate)
-                return (int)Math.Ceiling((endDate - DateTime.UtcNow.Date).TotalDays / 7.0);
+            // DateOnly, niet DateTime: Npgsql 10 leest een DATE-kolom via ExecuteScalar als
+            // DateOnly. Een niet-passend patroon valt hier stil terug op DefaultToWeekOffset —
+            // zie de toelichting bij PlannerSettingsRepository.GetSeasonEndDateAsync.
+            if (result is DateOnly endDate)
+                return (int)Math.Ceiling((endDate.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
         }
         catch (Exception ex)
         {
@@ -91,8 +94,9 @@ internal static class PostgresSeasonHelper
                 "SELECT MIN(datefrom) FROM public.season WHERE EXTRACT(YEAR FROM datefrom) = @jaar", connection);
             command.Parameters.AddWithValue("jaar", startYear);
             var result = await command.ExecuteScalarAsync();
-            if (result is DateTime startDate)
-                return (int)Math.Floor((startDate - DateTime.UtcNow.Date).TotalDays / 7.0);
+            // DateOnly, niet DateTime — zie GetSeasonEndWeekOffsetAsync hierboven.
+            if (result is DateOnly startDate)
+                return (int)Math.Floor((startDate.ToDateTime(TimeOnly.MinValue) - DateTime.UtcNow.Date).TotalDays / 7.0);
         }
         catch (Exception ex)
         {
