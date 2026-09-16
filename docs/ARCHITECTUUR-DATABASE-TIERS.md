@@ -3454,6 +3454,60 @@ ongewijzigd. Bij het uitvoeren van de nog openstaande stap naar
 `?sslmode=verify-full&sslrootcert=...` is dit wél relevant: het opgegeven bestand moet de **root**-CA
 bevatten, niet alleen een tussenliggend certificaat.
 
+## 64. `his.matches`/`his.teams` reconciliëren nu na elke sync — Sportlink is de waarheid (#1193)
+
+**Probleem.** De `stg → his`-upsert (`PostgresUpsertGenerator`) voegde rijen toe en werkte ze bij,
+maar verwijderde nooit iets. Een wedstrijd die de club in Sportlink annuleerde of verwijderde bleef
+daardoor voor altijd in `his.matches` staan — met alle gevolgen van dien voor elke lezende query
+(Dagplanning, auto-plan, veldbezetting). `mta_deleted` bestond al in het schema (nullable
+`TIMESTAMPTZ` op alle drie de entiteiten, zie §8) maar werd nergens gezet.
+
+**Besluit — soft-delete, geen hard delete.** Na de `stg → his`-merge markeert een nieuwe
+reconciliatiestap elke `his`-rij die niet meer in de zojuist geladen `stg`-snapshot voorkomt als
+verwijderd (`mta_deleted = NOW()`). De rij blijft bestaan — `his` is een audit-trail — maar elke
+lezende query sluit hem voortaan uit. Zelfde principe als `TeamCanonicalisatieService.DeactiveerOntbrekendeTeamsAsync`
+voor `public.teams` (§ elders in dit document): "verdwenen bij de bron" wordt een status, geen
+verwijdering.
+
+**Scope, de kern van de ontwerpvraag.** Een sync-run bevraagt nooit de hele kalender — `/programma`
+bevraagt een weekoffset-venster, `/uitslagen` altijd minstens de laatste twee weken. Zonder venster
+zou reconciliatie legitieme wedstrijden buiten het bevraagde bereik ten onrechte als verdwenen
+markeren. Twee entiteiten, twee scopes:
+
+- **`teams`** (`PostgresMergeOrchestrator.ReconcileFullScopeAsync`) — `/teams` kent geen
+  weekoffset-parameter, dus `stg.teams` is bij elke run een complete club-snapshot. Reconciliatie
+  hoeft dan alleen op `clubcode` te scopen.
+- **`matches`** (`ReconcileWindowedAsync`) — het venster wordt **niet** uit de weekoffset-parameters
+  teruggerekend naar kalenderdata: hoe Sportlink een weekoffset precies naar een kalenderweek
+  vertaalt (welke dag een "week" begint) staat nergens gedocumenteerd, dus is dat niet hard na te
+  bouwen aan de app-kant — een wal-klok-gebaseerde gok zou het risico lopen legitieme data buiten
+  het echte venster te raken. In plaats daarvan wordt het venster afgeleid uit de MIN/MAX van
+  `kaledatum` die déze sync-run daadwerkelijk in `stg.matches` laadde voor de club: gegarandeerd
+  nooit breder dan wat er echt bevraagd is. Levert `stg` voor de club geen enkele rij op (mislukte
+  fetch, of een sync-venster dat toevallig nul wedstrijden opleverde), dan gebeurt er niets — dat is
+  zelfhelend zodra een latere sync wél minstens één wedstrijd in een venster teruggeeft dat de
+  betrokken datum omvat.
+- **`matchdetails` reconcilieert bewust NIET mee.** `/wedstrijd-informatie` wordt per wedstrijdcode
+  los opgehaald; een individuele fetch-fout voor één wedstrijd zou anders een detailrij van een wél
+  nog bestaande wedstrijd onterecht als verdwenen kunnen markeren.
+
+**Best-effort, net als teamcanonicalisatie.** De reconciliatiestap draait ná een succesvolle merge
+en is per entiteit in een eigen try/catch — een fout hierin mag een al geslaagde ETL-run niet alsnog
+laten falen, en alleen wanneer de bijbehorende fetch-fase zonder fouten verliep (anders zou een
+onvolledige `stg`-snapshot legitieme rijen als verdwenen kunnen aanmerken).
+
+**Alle lezers aangepast.** `PostgresClubScope.HisFilter` — het predicaat achter vrijwel elke
+`PlannerMatchRepository`-query — sluit nu ook `mta_deleted IS NULL` in, en
+`planner.alle_wedstrijden_op_veld_ruw` (`PostgresPlannerViewGenerator`) filtert `m.mta_deleted`/
+`t.mta_deleted` in respectievelijk de `WHERE`- en de team-`JOIN`. Een nieuwe lezer van `his.matches`
+of `his.teams` filtert dit voortaan zelf mee — het is geen automatisme via een view of trigger.
+
+**Nooit een tweede reconciliatie-implementatie.** `Database.Postgres/PostgresReconciliationGenerator.cs`
+is de ene plek die het `UPDATE ... SET mta_deleted = NOW() WHERE NOT EXISTS (...)`-statement bouwt,
+gedreven door dezelfde `EntityDefinition`/business-key-expressie als de upsert. Een nieuwe
+`his.*`-entiteit die ooit hetzelfde soort reconciliatie nodig heeft roept
+`ReconcileFullScopeAsync`/`ReconcileWindowedAsync` aan — geen eigen `NOT EXISTS`-query ernaast.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
