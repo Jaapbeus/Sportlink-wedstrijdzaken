@@ -681,6 +681,44 @@ jobs:
           fi
           echo "public.speeltijden-kolomdekking bevestigd (#893)."
 
+      # ──────────────────────────────────────────────────────────────────────
+      # #1220 (epic #1219): de twee databaseguards die tegen een levende database moeten draaien.
+      #
+      # Waarom hier en niet in een apart script zonder database: allebei deze controles stellen een
+      # vraag over de TOESTAND van de database na migratie, niet over de inhoud van bestanden. Een
+      # grep over de migratiemap zou ze niet kunnen beantwoorden — een tabel kan in migratie 012
+      # zijn aangemaakt en pas in 021 RLS hebben gekregen.
+      #
+      # Beide stappen gebruiken de standaard libpq-variabelen. POSTGRES_CONNECTION_STRING hierboven
+      # is de Npgsql-keyword-vorm (Host=...;Username=...), die psql niet begrijpt.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: RLS-invariant afdwingen (#1220)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: ci_postgres
+          PGPASSWORD: ci-wegwerpwachtwoord-niet-geheim
+          PGDATABASE: sportlink_ci
+        run: ./scripts/ci/check-rls-enabled.sh
+
+      # Draait Supabase's eigen linter tegen dezelfde verse database. Vangt bij de PR af wat anders
+      # pas door de dagelijkse advisorcontrole tegen productie (#1221) zou worden gezien — een dag
+      # later, en dan al gemerged. Faalt alleen op de bewaakte deelverzameling; de rest wordt
+      # informatief geteld. Zie de kop van het script voor de motivatie per lint.
+      #
+      # Deze stap maakt de rollen anon/authenticated aan. Dat is geen testopstelling maar de les uit
+      # §67 van docs/ARCHITECTUUR-DATABASE-TIERS.md: die rollen bestaan alleen in Supabase, waardoor
+      # grant-gebaseerde controles lokaal en in CI stille no-ops waren. Migratie 023 was daardoor
+      # nodig. Vanaf nu worden ze hier gesimuleerd.
+      - name: Splinter-lints afdwingen (#1220)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: ci_postgres
+          PGPASSWORD: ci-wegwerpwachtwoord-niet-geheim
+          PGDATABASE: sportlink_ci
+        run: ./scripts/ci/check-splinter-lints.sh
+
       # Open beslispunt uit het issue, bewust niet stilzwijgend overgeslagen: een aparte
       # drift-diff-stap (SSDT-projectstructuur vs. uitgerold script, zoals de SQL Server-tier heeft)
       # is voor de Postgres-tier nog niet aan de orde. Database.Postgres/migrations/ gebruikt losse,

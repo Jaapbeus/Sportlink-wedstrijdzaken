@@ -54,7 +54,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
   extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
   applicatie die ooit gebruikt — inclusief de tabel met Sportlink-servicetokens en de tabel met
-  uitgesloten e-mailadressen. RLS staat nu aan op alle 27 toepassingstabellen, zonder policies:
+  uitgesloten e-mailadressen. RLS staat nu aan op alle 29 toepassingstabellen, zonder policies:
   de applicatie verbindt via de tabeleigenaar-rol en merkt hier niets van.
 - **Een Supabase-eigen functie (`public.rls_auto_enable()`, het vangnet dat RLS automatisch aanzet
   op elke nieuwe tabel) was voor iedereen aanroepbaar via de publieke API, ook zonder in te loggen
@@ -79,6 +79,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   melding zelf en de ontvanger ervan veranderen niet. Dezelfde soort lek is eerder bij de
   e-mailverwerking gedicht, zie issue #1143. Beheerders met Application Insights: het adres kan nog
   in reeds opgeslagen logregels staan tot die buiten de bewaartermijn vallen.
+- **De beveiligingsregel dat elke databasetabel afgeschermd moet zijn, wordt nu automatisch
+  gecontroleerd bij elke wijziging (#1220).** Die regel bestond al sinds #1198, maar leunde tot nu
+  toe volledig op iemand die eraan dacht. Een nieuwe tabel die de afscherming miste, kwam door alle
+  bestaande controles heen en werd pas ontdekt wanneer Supabase het in productie meldde — bij #1198
+  duurde dat twaalf dagen. Twee controles draaien nu bij elke wijziging mee tegen een echte
+  database: één die bevestigt dat elke tabel afgeschermd is, en één die Supabase's eigen
+  databasecontroleur draait op de punten die vóór livegang te beoordelen zijn. Beide zijn
+  aantoonbaar falend getest, niet alleen groen gezien.
 
 ## [3.4.3.0] — 2026-09-16
 

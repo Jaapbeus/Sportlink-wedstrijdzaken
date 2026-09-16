@@ -488,9 +488,11 @@ Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescr
 
 ## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
 
-De vier guards die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook lokaal —
-zonder database, zonder secrets — en horen op macOS met de standaard `/bin/bash` 3.2 en BSD
-grep/sed/awk **hetzelfde resultaat** te geven als op de Linux-CI-runner (bash 5, GNU tools):
+De vier **bestandsguards** die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook
+lokaal — zonder database, zonder secrets — en horen op macOS met de standaard `/bin/bash` 3.2 en
+BSD grep/sed/awk **hetzelfde resultaat** te geven als op de Linux-CI-runner (bash 5, GNU tools).
+De twee **databaseguards** uit #1220 staan in een eigen sectie hieronder: die hebben wél een
+draaiende database nodig.
 
 | Script | Bewaakt |
 |---|---|
@@ -517,6 +519,70 @@ scripts". Wil je de CI-runner exact nabootsen, dan kan dat in een container:
 docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/dotnet/sdk:9.0 \
   bash -c 'git config --global --add safe.directory /w && bash scripts/ci/check-path-casing.sh'
 ```
+
+---
+
+## CI-databaseguards (`scripts/ci/check-rls-enabled.sh`, `check-splinter-lints.sh`, #1220)
+
+Deze twee draaien in de job `fresh-db-postgres` van `build.yml`, ná het toepassen van de migraties.
+Anders dan de vier guards hierboven stellen ze een vraag over de **toestand van de database**, niet
+over de inhoud van bestanden — een tabel kan in migratie 012 zijn aangemaakt en pas in 021 RLS
+hebben gekregen, dus een grep over de migratiemap kan dit niet beantwoorden.
+
+| Script | Bewaakt | Faalt op |
+|---|---|---|
+| `check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` (CLAUDE.md, Supabase-RLS-regel 1) | Eén of meer tabellen zonder RLS, met de exacte `ALTER TABLE`-regel als oplossing in de uitvoer |
+| `check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256 | `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
+
+Verbinding via de standaard libpq-variabelen — **niet** via `POSTGRES_CONNECTION_STRING`, want dat
+is de Npgsql-keyword-vorm die `psql` niet begrijpt:
+
+```bash
+# Tegen de lokale docker-compose-database:
+PGHOST=localhost PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" PGDATABASE=sportlink \
+  /bin/bash scripts/ci/check-rls-enabled.sh
+
+PGHOST=localhost PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" PGDATABASE=sportlink \
+  /bin/bash scripts/ci/check-splinter-lints.sh
+```
+
+### Twee dingen die je lokaal zult zien en die géén fout zijn
+
+**1. De RLS-guard kan lokaal niet falen als je database uit een productiedump komt.** Zo'n dump
+bevat Supabase's event-trigger `ensure_rls` (→ `public.rls_auto_enable()`, §66), die op élke
+`CREATE TABLE` automatisch RLS aanzet. Een negatieve test is daar dus zinloos — de tabel krijgt RLS
+voordat de guard kijkt. Controleren:
+
+```sql
+SELECT evtname, evtfoid::regproc FROM pg_event_trigger ORDER BY 1;
+```
+
+Staat `ensure_rls` in die lijst, gebruik dan een **verse** container om te bewijzen dat de guard
+werkt — exact wat CI doet:
+
+```bash
+docker run -d --name rlsguardtest -e POSTGRES_USER=citest \
+  -e POSTGRES_PASSWORD=ci-wegwerpwachtwoord-niet-geheim -e POSTGRES_DB=citest -p 55432:5432 postgres:17
+POSTGRES_CONNECTION_STRING="Host=localhost;Port=55432;Username=citest;Password=ci-wegwerpwachtwoord-niet-geheim;Database=citest" \
+  dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj -c Release -- Database.Postgres/migrations
+# ... guards draaien ...
+docker rm -f rlsguardtest
+```
+
+**2. `check-splinter-lints.sh` maakt de rollen `anon` en `authenticated` aan.** Dat is geen
+testopstelling maar de les van §67 in code: die rollen bestaan alleen in Supabase, waardoor
+grant-gebaseerde controles lokaal en in CI stille no-ops waren — precies waardoor migratie 022
+lokaal slaagde zonder het productiegat te dichten. Splinter weigert zonder die rollen zelfs te
+starten (`role "anon" does not exist`).
+
+### Wat de splinter-gate bewust NIET laat falen
+
+`unindexed_foreign_keys`, `unused_index`, `table_bloat`, `no_primary_key` en
+`rls_enabled_no_policy` worden alleen informatief geteld. De eerste vier hangen af van
+gebruikspatronen of statistieken die een verse database niet heeft; `rls_enabled_no_policy` gaat op
+alle 29 tabellen af omdat RLS-zonder-policies onze architectuur ís (#1198). De volledige motivatie
+per lint staat in de kop van het script. Deze lints horen bij de dagelijkse advisorcontrole tegen
+productie (#1221).
 
 ---
 
