@@ -61,6 +61,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   gemaskeerd worden als `***`. Laat je ze als Variable staan, dan blijft alles gewoon werken —
   ze blijven dan alleen leesbaar. Zie `docs/DEVELOPER-SETUP.md` §9.2 voor de stappen. Let op:
   logs van eerdere deploys veranderen hier niet door.
+- **Het e-mailadres waar een database-uitvalmelding naartoe gaat, staat niet langer in het
+  Function-log (#1201).** De dagelijkse database-uitvalmonitor schreef bij elke verstuurde melding
+  het geconfigureerde postbusadres letterlijk in het log, en daarmee in Application Insights — terwijl
+  het beveiligingsbeleid van dit project e-mailadressen daar expliciet van uitsluit. Het log vermeldt
+  nu alleen nog dát er een melding is verstuurd en hoe lang de database al gepauzeerd stond; de
+  melding zelf en de ontvanger ervan veranderen niet. Dezelfde soort lek is eerder bij de
+  e-mailverwerking gedicht, zie issue #1143. Beheerders met Application Insights: het adres kan nog
+  in reeds opgeslagen logregels staan tot die buiten de bewaartermijn vallen.
 
 ## [3.4.3.0] — 2026-09-16
 

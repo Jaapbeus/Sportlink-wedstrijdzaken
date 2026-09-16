@@ -178,7 +178,12 @@ public class DatabaseUitvalMonitorFunction
         {
             await graphService.SendReplyAsync(mailbox,
                 "URGENT: Database staat langdurig gepauzeerd", body, null);
-            log.LogWarning("Onafhankelijke database-uitvalmelding verstuurd naar {Mailbox}", mailbox);
+            // Geen ontvangeradres in het log (SECURITY.md Laag 5: e-mailadressen nooit loggen) — #1201.
+            // De uitvalduur is veilige, technische metadata en blijft wél zichtbaar: zonder die waarde
+            // is uit het log niet af te leiden hoe ernstig de gemelde uitval was.
+            log.LogWarning(
+                "Onafhankelijke database-uitvalmelding verstuurd naar de geconfigureerde GraphMailbox " +
+                "(uitvalduur {Uren:F0} uur)", uitvalDuur.TotalHours);
             return true;
         }
         catch (Exception ex)

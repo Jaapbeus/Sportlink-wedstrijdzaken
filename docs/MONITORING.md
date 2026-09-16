@@ -200,6 +200,12 @@ langdurige uitval herhaalt dit maximaal 1x per dag (de throttle-registratie is d
 `INoodmailThrottleStore` als de e-mail-noodmail, dus welke van de twee het eerst meldt onderdrukt de
 ander voor diezelfde uitval).
 
+**Het ontvangeradres staat niet in het log (#1201).** De functie logt uitsluitend dát er een melding
+is verstuurd, plus de uitvalduur — nooit de waarde van `GraphMailbox`. Dit volgt Laag 5 van
+[SECURITY.md](../SECURITY.md), die e-mailadressen (afzender én ontvanger) expliciet uitsluit van
+Function-logs en Application Insights. Wie wil controleren wáár de melding heen ging, leest de
+app-setting `GraphMailbox` — niet het log.
+
 **Kosten: €0.** Eén Function-executie per dag valt ruim binnen de Consumption-plan-limiet
 (1M executies/maand), en een ARM-managementaanroep wordt niet gefactureerd als database-compute.
 
