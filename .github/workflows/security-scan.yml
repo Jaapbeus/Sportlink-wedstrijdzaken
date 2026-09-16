@@ -1,10 +1,18 @@
 name: Security Scan
 
+# #1202: de pull_request-trigger stond nog op de oude integratiebranch-namen. Sinds
+# 2026-07-25 is `develop` de integratiebranch (build.yml en de branch protection zijn toen
+# wél meegegaan, deze workflow niet) en bestaat er geen `v2/*`-branch meer. Gevolg: een PR
+# uit een fork kreeg hier nooit een run — geen push-event in deze repo, geen pull_request-run
+# — terwijl de branch protection van `develop` en `main` de check
+# "Security Gate — blokkeert merge bij fout" verplicht stelt. Zo'n PR bleef dus eeuwig
+# hangen én de merge-context werd nooit upstream gescand. Bij een PR binnen deze repo viel
+# het niet op: de push-run rapporteert de check op dezelfde commit-SHA.
 on:
   push:
     branches: ['**']
   pull_request:
-    branches: [main, 'v2/**']
+    branches: [main, develop]
 
 permissions:
   contents: read

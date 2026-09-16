@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Security
+- **De Security Scan draaide niet op pull requests naar `develop`, waardoor een bijdrage vanuit
+  een fork nooit gescand werd én nooit kon worden gemerged (#1202).** De scan luisterde nog naar
+  de branchnamen van vóór de overstap op `develop` als integratiebranch. Binnen deze repository
+  viel dat niet op — daar leverde de push naar de branch toevallig dezelfde controle op — maar een
+  fork heeft die push niet, dus de verplichte controle "Security Gate" verscheen daar simpelweg
+  nooit. De scan luistert nu op pull requests naar zowel `main` als `develop`. Voor de beheerder
+  betekent dit: bijdragen van buiten worden weer volledig op secrets, persoonsgegevens en
+  kwetsbare pakketten gecontroleerd vóórdat ze gemerged kunnen worden.
 - **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
   Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
   extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
