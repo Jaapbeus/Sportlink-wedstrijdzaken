@@ -144,6 +144,57 @@ public class AutoPlanServiceIntegrationTests : IDisposable
         reader.GetString(0).Should().NotBe("18:00", "de planner plant de vroegste vrije tijd, niet 18:00");
     }
 
+    /// <summary>
+    /// #1194: Sportlink geeft een halve-veld-boeking door als suffix in de bestaande veld-tekst
+    /// zelf ("Kunstgras 1 A"), niet als een apart veld. Vóór de fix kwam <c>Veldafmeting</c>
+    /// uitsluitend uit <c>public.speeltijden</c> (hier 1.00 — heel veld voor JO13), ongeacht wat
+    /// Sportlink voor déze specifieke wedstrijd meegaf. Dat blokkeerde het hele veld onterecht in de
+    /// auto-plan-scheduler voor een team dat maar een half veld nodig had.
+    /// </summary>
+    [PostgresFact]
+    public async Task AutoPlanAsync_HalveVeldSuffixInBron_OverschrijftDeTeaminstelling()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500007, "ALLSTARS JO13-1", aanvang: "10:00", veld: "Kunstgras 1 A");
+
+        var response = await AutoPlanService.AutoPlanAsync(
+            ConnectionString, new AutoPlanRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") }, Club, NullLogger.Instance);
+
+        response.Wedstrijden.Should().ContainSingle()
+            .Which.Veldafmeting.Should().Be(0.5m,
+                "de \"A\"-suffix in de veld-tekst is een halve-veld-boeking, ongeacht dat " +
+                "public.speeltijden voor JO13 een volledig veld (1.00) als standaard heeft");
+    }
+
+    /// <summary>Zonder subpositie-suffix blijft de teaminstelling gewoon de bron — geen regressie
+    /// op het bestaande gedrag voor de overgrote meerderheid van de wedstrijden.</summary>
+    [PostgresFact]
+    public async Task AutoPlanAsync_GeenSubpositieInBron_GebruiktNogSteedsDeTeaminstelling()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500008, "ALLSTARS JO13-1", aanvang: "10:00", veld: "Kunstgras 1");
+
+        var response = await AutoPlanService.AutoPlanAsync(
+            ConnectionString, new AutoPlanRequest { Datum = Zaterdag.ToString("yyyy-MM-dd") }, Club, NullLogger.Instance);
+
+        response.Wedstrijden.Should().ContainSingle().Which.Veldafmeting.Should().Be(1.00m);
+    }
+
+    /// <summary>Zelfde bron-voorrang als <see cref="AutoPlanAsync_HalveVeldSuffixInBron_OverschrijftDeTeaminstelling"/>,
+    /// maar voor de "Huidige situatie"-Gantt (#566) die rechtstreeks uit Sportlink-data leest zonder
+    /// de FieldScheduler — dat is de weergave waar het gerapporteerde symptoom (balk te hoog getekend,
+    /// overlapt de volgende veldrij) zichtbaar was.</summary>
+    [PostgresFact]
+    public async Task VeldbezettingAsync_HalveVeldSuffixInBron_OverschrijftDeTeaminstelling()
+    {
+        await using var conn = await OpstellingAsync();
+        await ZetWedstrijdAsync(conn, 9500009, "ALLSTARS JO13-1", aanvang: "10:00", veld: "Kunstgras 1 B");
+
+        var items = await AutoPlanService.VeldbezettingAsync(ConnectionString, Zaterdag, Club);
+
+        items.Should().ContainSingle().Which.Veldafmeting.Should().Be(0.5m);
+    }
+
     [PostgresFact]
     public async Task AutoPlanToepassenAsync_NietDemoclub_Weigert()
     {
