@@ -34,14 +34,6 @@ on:
           no_primary_key. Leeg laten voor een normale run.
         required: false
         default: ''
-  # TIJDELIJK (#1221) — wordt vóór de merge weer verwijderd.
-  # GitHub staat workflow_dispatch alleen toe voor workflows die op de DEFAULT branch staan, dus
-  # een nieuwe workflow is per definitie niet te testen vóór hij gemerged is. Dat botst met de regel
-  # uit CLAUDE.md dat er niets wordt opgeleverd zonder verificatie. Deze branch-specifieke
-  # push-trigger maakt één echte run mogelijk tegen productie; daarna gaat hij eruit.
-  push:
-    branches:
-      - 'feature/#1221-supabase-advisor-workflow'
 
 # De workflow maakt en becommentarieert issues; verder niets.
 permissions:
@@ -84,10 +76,9 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          # TIJDELIJK (#1221): op de push-trigger vast op no_primary_key, om het issue-aanmaakpad
-          # één keer echt te doorlopen. Gaat er samen met de push-trigger weer uit; daarna komt
-          # deze waarde uitsluitend uit de workflow_dispatch-input (normaal: leeg).
-          ADVISOR_TESTLINT: ${{ github.event_name == 'push' && 'no_primary_key' || inputs.testlint }}
+          # Normaal leeg. Alleen gevuld via de workflow_dispatch-input, om de meldketen te
+          # verifiëren wanneer het project schoon is — zie de kop van het script.
+          ADVISOR_TESTLINT: ${{ inputs.testlint }}
         run: ./scripts/ci/fetch-supabase-advisors.sh "${RUNNER_TEMP}/advisors.json"
 
       - name: Vergelijken met de baseline

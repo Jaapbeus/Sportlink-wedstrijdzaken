@@ -575,6 +575,54 @@ grant-gebaseerde controles lokaal en in CI stille no-ops waren — precies waard
 lokaal slaagde zonder het productiegat te dichten. Splinter weigert zonder die rollen zelfs te
 starten (`role "anon" does not exist`).
 
+## Supabase-advisorscripts (`fetch-supabase-advisors.sh`, `supabase-advisors-report.sh`, #1221)
+
+Deze twee draaien niet tegen een database maar tegen de **Supabase Management API**, en worden
+aangeroepen door `.github/workflows/supabase-advisors.yml`. Ze staan los van elkaar zodat elk één
+ding doet: ophalen en filteren, dan vergelijken en rapporteren. Geen van beide praat met GitHub —
+dat doet de workflow.
+
+| Script | Doet | Faalt op |
+|---|---|---|
+| `fetch-supabase-advisors.sh <uit.json>` | Haalt Security- en Performance Advisor op, filtert op ERROR/WARN + EXTERNAL, redactie-gate over de ruwe data | Ontbrekend secret, niet-200, onverwachte responsevorm, bevinding zonder `cache_key`, identificerende waarde in de uitvoer |
+| `supabase-advisors-report.sh <adv.json> <baseline.json> <body.md>` | Vergelijkt met de baseline op `cache_key`, schrijft de issue-tekst en `<body.md>.count` | Baseline zonder `.geaccepteerd`-array, een regel zonder `reden`, identificerende waarde in de issue-tekst |
+
+### Lokaal draaien
+
+`supabase-advisors-report.sh` heeft geen netwerk en geen secrets nodig — voer hem uit op een
+zelfgemaakt JSON-bestand om de rapportagelogica te testen:
+
+```bash
+cat > /tmp/adv.json <<'EOF'
+[{"categorie":"security","name":"rls_disabled_in_public","level":"ERROR",
+  "title":"RLS Disabled","detail":"Table x is public","remediation":"https://x",
+  "cache_key":"testsleutel"}]
+EOF
+/bin/bash scripts/ci/supabase-advisors-report.sh /tmp/adv.json \
+  .github/supabase-advisors-baseline.json /tmp/body.md
+cat /tmp/body.md
+```
+
+`fetch-supabase-advisors.sh` heeft wél `SUPABASE_ACCESS_TOKEN` en `SUPABASE_PROJECT_REF` nodig. Zet
+die alleen in je shell-omgeving, nooit in een bestand in de repository.
+
+### De meldketen verifiëren terwijl er niets mis is
+
+Dit is het lastige deel van elke meldketen: zolang er niets te melden valt, blijft het meldpad
+ongetest — en een meldketen die nooit heeft gemeld is geen geverifieerde meldketen. Daarvoor bestaat
+`ADVISOR_TESTLINT` (in de workflow: de `testlint`-input). Die vervangt het ERROR/WARN-filter door
+precies één lint, zodat er gegarandeerd bevindingen zijn:
+
+```bash
+gh workflow run supabase-advisors.yml -f testlint=no_primary_key
+```
+
+De run maakt dan een echt issue aan. Sluit dat daarna, met een korte toelichting dat het een
+verificatie was. De redactie-gates draaien bij zo'n run onverkort door — alleen de selectie
+verandert, nooit de veiligheidscontroles.
+
+---
+
 ### Wat de splinter-gate bewust NIET laat falen
 
 `unindexed_foreign_keys`, `unused_index`, `table_bloat`, `no_primary_key` en

@@ -603,6 +603,37 @@ Harde regels, vanaf nu:
    wat CI gebruikt, en de enige omgeving waar de negatieve test iets betekent. Dit is dezelfde
    valkuil als §67, maar omgekeerd: daar miste lokaal iets dat productie wél heeft, hier heeft
    lokaal iets dat CI juist niet heeft.
+7. **Wat alleen de levende productiedatabase weet, wordt dagelijks opgehaald (#1221).**
+   `.github/workflows/supabase-advisors.yml` draait elke dag om 05:00 UTC en haalt de Security- en
+   Performance Advisor op via de Management API. Nieuwe bevindingen op **ERROR/WARN**-niveau met
+   `facing = EXTERNAL` komen in één issue met het label `supabase-advisor`; bestaat dat issue al,
+   dan wordt het een reactie erop. Niets gevonden ⇒ geen issue, geen ruis.
+
+   - **Dagelijks, niet wekelijks, en dat is geen smaak.** Logretentie op het Free plan is **één
+     dag**. Een wekelijkse cadans mist het logvenster structureel — precies het venster dat de
+     agentische laag (#1222) nodig heeft. De dagelijkse run houdt het project bovendien actief,
+     wat automatisch pauzeren na zeven dagen inactiviteit voorkomt.
+   - **INFO-bevindingen komen er bewust niet door.** Daar zitten `rls_enabled_no_policy` (29x, onze
+     architectuur) en `unindexed_foreign_keys` (#1211 heeft die getoetst) in. Zonder die filter is
+     de melding binnen een week ruis en kijkt niemand er nog naar — het failure-mode van elke
+     periodieke scan.
+   - **Een risico accepteren is een PR-diff, geen vinkje.** `.github/supabase-advisors-baseline.json`
+     onderdrukt een bevinding op Supabase's eigen `cache_key`, met een **verplichte** `reden` en een
+     issuenummer; de workflow faalt op een regel zonder reden. Dit is hetzelfde principe als regel 3:
+     wat geen diff achterlaat, is onzichtbaar voor codereview.
+   - **De workflow wordt niet rood van bevindingen.** Die staan in het issue. Rood betekent hier
+     uitsluitend: de controle zelf is kapot — ontbrekend secret, API-fout, gewijzigd
+     responseformaat, of een redactie-gate die afgaat. Een advisorcontrole die stilletjes nul meldt
+     is gevaarlijker dan geen controle, want hij wekt vertrouwen.
+   - **Verifiëren terwijl het project schoon is:** draai de workflow met de `testlint`-input (bijv.
+     `no_primary_key`). Die vervangt het niveaufilter door dat ene lint, zodat het issue-pad
+     daadwerkelijk doorlopen wordt. Zonder zo'n mogelijkheid blijft de meldketen ongetest zolang er
+     niets mis is — en een meldketen die nooit heeft gemeld is geen geverifieerde meldketen.
+   - **Twee secrets, allebei als Secret en niet als Variable:** `SUPABASE_ACCESS_TOKEN` en
+     `SUPABASE_PROJECT_REF`. De project-ref identificeert de club, deze repository is publiek en
+     Actions-logs zijn dat ook — exact het lek dat #1204 voor zes andere waarden dichtte.
+     Aanbevolen is een **scoped** token (Advisors=Read, Logs=Read, Database Security=Read); een
+     classic token draagt volledige accounttoegang op elke organisatie en elk project.
 
 ---
 
