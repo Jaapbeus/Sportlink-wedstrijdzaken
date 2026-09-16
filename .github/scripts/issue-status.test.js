@@ -213,6 +213,42 @@ async function run() {
         ]),
         [100]);
 
+  // #1179-vervolg: het vangnet-rapport filtert op wat de sluitstap ECHT afhandelde, niet op de
+  // ruwe kandidatenlijst. Zou het op die kandidatenlijst filteren, dan verdwijnt een overgeslagen
+  // epic stilzwijgend uit het rapport terwijl hij nog op 'awaiting-release' staat — precies de
+  // blinde vlek waarvoor #1168 is aangemaakt.
+  console.log('\nclose-released-issues.yml vangnet-rapport:');
+
+  // Sluitloop + rapport, samen gesimuleerd.
+  function simulateRapport(kandidaten, nogGelabeld) {
+    const afgehandeld = [];
+    for (const issue of kandidaten) {
+      if (issue.pull_request) continue;
+      if (isEpic(issue)) continue;
+      afgehandeld.push(issue.number);
+    }
+    const afgevinkt = new Set(afgehandeld);
+    return nogGelabeld.filter(n => !afgevinkt.has(n)).sort((a, b) => a - b);
+  }
+
+  check(
+    'overgeslagen epic blijft in het vangnet-rapport staan',
+    simulateRapport(
+      [{ number: 100, state: 'open', labels: [{ name: 'type: bug' }] },
+       { number: 986, state: 'open', labels: [{ name: 'epic' }] }],
+      [100, 986],
+    ),
+    [986],
+  );
+  check(
+    'regressie: een echt afgehandeld issue verdwijnt wel uit het rapport',
+    simulateRapport(
+      [{ number: 100, state: 'open', labels: [{ name: 'type: bug' }] }],
+      [100],
+    ),
+    [],
+  );
+
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);
   process.exit(failures === 0 ? 0 : 1);
 }

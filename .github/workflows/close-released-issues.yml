@@ -114,6 +114,20 @@ jobs:
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const range = process.env.COMMIT_RANGE;
+
+            // #1179: deze bron doet één API-aanroep per commit. Is er geen vorige release-tag,
+            // dan is RANGE een kale tagnaam en levert 'git log <tag>' de VOLLEDIGE geschiedenis —
+            // hier ruim 900 commits, tegen een GITHUB_TOKEN-limiet van 1000 verzoeken per uur.
+            // De run zou dan halverwege op zijn limiet stuiten en maar een deel van de issues
+            // sluiten. Dat pad is geen theorie: een club die deze repository forkt en zijn eerste
+            // release tagt, zit er per definitie in. Bron 1 en 2 dekken die situatie zonder enige
+            // API-aanroep, dus bron 3 mag hier zonder verlies afhaken.
+            if (!range.includes('..')) {
+              core.notice(`Bron 3 overgeslagen: '${range}' is geen commit-range maar de volledige geschiedenis (geen vorige release-tag). Bron 1 en 2 dekken dit.`);
+              core.setOutput('numbers', '');
+              return;
+            }
+
             const { stdout } = await exec.getExecOutput('git', ['log', range, '--format=%H']);
             const shas = stdout.split('\n').map(s => s.trim()).filter(Boolean);
 
@@ -160,6 +174,7 @@ jobs:
           echo "Totaal (bron 1+2+3): ${NUMBERS:-geen}"
 
       - name: Issues sluiten en label verwijderen
+        id: close
         if: steps.combined.outputs.numbers != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -176,6 +191,7 @@ jobs:
 
             const tag = process.env.RELEASE_TAG;
             const numbers = process.env.ISSUE_NUMBERS.split(',').map(n => parseInt(n, 10)).filter(Boolean);
+            const afgehandeld = [];
 
             for (const number of numbers) {
               let issue;
@@ -207,6 +223,13 @@ jobs:
                 continue;
               }
 
+              // Vanaf hier is het issue aantoonbaar afgehandeld door déze run. Het vangnet-rapport
+              // hieronder filtert hierop, niet op de ruwe kandidatenlijst — anders zou een issue
+              // dat we net hebben OVERGESLAGEN (epic, of een PR-nummer) stilzwijgend uit dat
+              // rapport verdwijnen terwijl het nog op 'awaiting-release' staat. Dat is precies de
+              // blinde vlek waarvoor #1168 is aangemaakt (#1179).
+              afgehandeld.push(number);
+
               await clearIssueStatus({ github, context, core, issueNumber: number });
 
               if (issue.state === 'open') {
@@ -226,6 +249,8 @@ jobs:
               }
             }
 
+            core.setOutput('handled', afgehandeld.join(','));
+
       # Vangnet (#630): meld wat na deze run nog op 'awaiting-release' staat. Zonder dit rapport
       # blijft een gemist issue stil openstaan met een label dat suggereert dat het nog wacht —
       # precies de verwarring die #615 wilde wegnemen.
@@ -234,7 +259,12 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RELEASE_TAG: ${{ steps.issues.outputs.tag }}
-          AFGEHANDELD: ${{ steps.combined.outputs.numbers }}
+          # Bewust steps.close.outputs.handled en NIET steps.combined.outputs.numbers (#1179):
+          # alleen wat de sluitstap echt heeft afgehandeld telt als afgevinkt. Een overgeslagen
+          # epic blijft zo zichtbaar in het rapport in plaats van stil te verdwijnen. Is de
+          # sluitstap overgeslagen (geen kandidaten), dan is dit leeg en rapporteert het vangnet
+          # alles wat nog op het label staat — wat dan ook precies klopt.
+          AFGEHANDELD: ${{ steps.close.outputs.handled }}
         with:
           script: |
             const label = 'status: awaiting-release';

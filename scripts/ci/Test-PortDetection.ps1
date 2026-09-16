@@ -103,11 +103,17 @@ try {
     Start-Sleep -Milliseconds 300
     Assert-Detectie 'vrijgegeven poort wordt niet gezien' (Test-PortListening -Port $vrijePoort) $false
 
-    # Get-PortOwnerId hoort hetzelfde beeld te geven. Op Windows kan het PID zonder verhoogde
-    # rechten ontbreken, dus daar alleen controleren dat de aanroep niet klapt.
+    # Get-PortOwnerId hoort hetzelfde beeld te geven. Twee platformnuances:
+    #  - Windows: het PID kan zonder verhoogde rechten ontbreken, dus daar alleen melden.
+    #  - niet-Windows: deze functie leunt op lsof. Dat zit standaard op macOS en op de
+    #    GitHub-runner, maar niet per se in een kale container. Ontbreekt het, dan is dat geen
+    #    falende assertie — Test-PortListening werkt op Linux immers zonder — maar wel het
+    #    vermelden waard, want de teardown valt dan terug op het PID-bestand.
     $ownerId = Get-PortOwnerId -Port $poort
     if ($IsWindows) {
         Write-Host ("  INFO Get-PortOwnerId gaf '{0}' (op Windows niet geasserteerd)" -f $ownerId)
+    } elseif (-not (Get-Command lsof -ErrorAction SilentlyContinue)) {
+        Write-Host "  INFO lsof ontbreekt — Get-PortOwnerId niet geasserteerd (teardown valt terug op het PID-bestand)"
     } else {
         Assert-Detectie 'eigenaar-PID is het kindproces' ($ownerId -eq $kind.Id) $true
     }
