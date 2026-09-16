@@ -730,7 +730,7 @@ Harde regels, vanaf nu:
 1. **Elke nieuwe tabel in een Postgres-migratie krijgt in dezelfde migratie een
    `ALTER TABLE <schema>.<tabel> ENABLE ROW LEVEL SECURITY;`.** Zie
    `Database.Postgres/migrations/021_enable_row_level_security.sql` als precedent voor alle
-   tabellen die vóór #1198 al bestonden.
+   tabellen die vóór #1198 al bestonden. **Sinds #1220 dwingt CI dit af** — zie regel 5.
 2. **Geen policies nodig — en dat is bewust.** De FunctionApp verbindt via één
    `POSTGRES_CONNECTION_STRING`-rol die tabeleigenaar is (of Supabase-superuser via de pooler);
    die rol omzeilt RLS altijd, met of zonder policies. RLS is hier uitsluitend een schakelaar die
@@ -744,7 +744,9 @@ Harde regels, vanaf nu:
    los daarvan**, het Supabase-dashboard onder **Advisors → Security** — niet alleen de
    repository. Dit is precies waarom #985 twaalf dagen ongemerkt bleef: het besluit stond correct
    gedocumenteerd, maar de vraag "wat stelt het hostingplatform zelf standaard open, los van onze
-   eigen architectuur?" ontbrak in die analyse.
+   eigen architectuur?" ontbrak in die analyse. **Sinds #1221 doet de dagelijkse workflow
+   `supabase-advisors.yml` deze controle automatisch**; de handmatige dashboardcontrole blijft de
+   achtervang, niet het enige mechanisme.
 4. **Een database-object dat in geen enkele migratie of C#-bestand voorkomt, is niet automatisch
    overbodig — het kan platforminfrastructuur van Supabase zelf zijn.** §66 van
    `docs/ARCHITECTUUR-DATABASE-TIERS.md`: een `DROP FUNCTION` op een onbekende functie faalde
@@ -753,6 +755,38 @@ Harde regels, vanaf nu:
    regressie geïntroduceerd. Controleer bij een onbekend Supabase-object altijd
    `pg_get_functiondef`/`pg_event_trigger` vóór een `DROP`, en laat een faalende `DROP` eerst de
    vraag "waarom bestaat dit" beantwoorden — nooit omzeilen met `CASCADE`.
+5. **Twee CI-guards bewaken dit, en ze draaien tegen een levende database — niet tegen bestanden
+   (#1220).** In de job `fresh-db-postgres` van `.github/workflows/build.yml`:
+
+   | Script | Wat het afdwingt |
+   |---|---|
+   | `scripts/ci/check-rls-enabled.sh` | Elke tabel in `public`/`avg`/`planner` heeft `relrowsecurity` — regel 1 hierboven, nu niet meer afhankelijk van een mens die eraan denkt |
+   | `scripts/ci/check-splinter-lints.sh` | Supabase's eigen linter (splinter), vastgepind op commit-SHA + SHA-256, faalt op `rls_disabled_in_public`, `policy_exists_rls_disabled`, `security_definer_view`, `function_search_path_mutable`, `duplicate_index` |
+
+   Drie dingen die je moet weten voordat je hieraan sleutelt:
+
+   - **`unindexed_foreign_keys` laat de build bewust NIET falen.** "Heeft deze foreign key een index
+     nodig?" is een gebruiksvraag, geen structuurvraag: #1211 toetste 22 Performance
+     Advisor-bevindingen tegen productie en gaf er 3 een index (migratie 024). Een gate op een verse
+     CI-database zou die afweging afdwingen zonder de gegevens die ervoor nodig zijn. Het lint wordt
+     wél informatief geteld; de echte beoordeling hoort bij de dagelijkse productierun (#1221).
+   - **`rls_enabled_no_policy` mag nooit gaten worden.** Dat lint gaat op alle 29 tabellen af, want
+     RLS-zonder-policies ís onze architectuur (regel 2). Hem "oplossen" betekent #985/#1198
+     terugdraaien.
+   - **Splinter maakt de rollen `anon` en `authenticated` aan vóór het draaien.** Zonder die rollen
+     weigert splinter te starten, en — belangrijker — zijn alle grant-gebaseerde controles stille
+     no-ops. Dat was exact de blinde vlek van §67, waardoor migratie 022 lokaal slaagde zonder het
+     productiegat te dichten. Dit is de les van §67 in code gegoten, geen testtruc.
+
+6. **Een lokale database die uit een productiedump is hersteld, kan deze guard niet laten falen —
+   en dat is geen defect (#1220).** Zo'n dump bevat Supabase's eigen event-trigger `ensure_rls`
+   (→ `public.rls_auto_enable()`, de functie uit §66), die op élke `CREATE TABLE` automatisch RLS
+   aanzet. Een negatieve test daar is dus zinloos: de tabel krijgt RLS voordat de guard kijkt.
+   Controleer met `SELECT evtname FROM pg_event_trigger;` of die trigger aanwezig is. Wil je
+   bewijzen dat een databaseguard werkt, doe dat op een **verse** `postgres:17`-container — exact
+   wat CI gebruikt, en de enige omgeving waar de negatieve test iets betekent. Dit is dezelfde
+   valkuil als §67, maar omgekeerd: daar miste lokaal iets dat productie wél heeft, hier heeft
+   lokaal iets dat CI juist niet heeft.
 
 ---
 

@@ -3553,7 +3553,7 @@ database, niet tegen de repository — dat is precies waarom hij dit wél zag en
 
 ### De oplossing
 
-`Database.Postgres/migrations/021_enable_row_level_security.sql` zet RLS aan op alle 27
+`Database.Postgres/migrations/021_enable_row_level_security.sql` zet RLS aan op alle 29
 toepassingstabellen (`public`, `avg`, `planner`) — inclusief de migratie-ledger `public.schema_migrations`
 zelf, want Supabase's advisor onderscheidt niet naar gevoeligheid. **Zonder policies, bewust:** de
 `POSTGRES_CONNECTION_STRING`-rol is eigenaar van elke tabel (zij heeft ze aangemaakt) of is de
@@ -3646,6 +3646,96 @@ grants verdwenen waren, en de testrollen daarna weer opgeruimd.
 wanneer de omgeving waartegen je test de rollen die het probleem veroorzaken niet eens kent. Bij
 een Supabase-specifieke rol/grant-fix: simuleer de rol lokaal (`CREATE ROLE ... NOLOGIN`) en
 herhaal het exacte scenario, in plaats van te vertrouwen op "de migratie gaf geen foutmelding".
+
+## 68. De RLS-regel afgedwongen in plaats van opgeschreven — en waarom een lokale test hem niet kan bewijzen (#1220)
+
+§65 tot §67 losten het RLS-gat op en legden de regel vast: elke nieuwe tabel krijgt in dezelfde
+migratie een `ENABLE ROW LEVEL SECURITY`. Die regel stond daarna correct in `CLAUDE.md` en
+`AGENTS.md` — en werd door niets gecontroleerd.
+
+Dat is dezelfde vorm als het oorspronkelijke probleem. §65 verwoordde het al:
+
+> Dit is geen codefout die aan een reviewer voorbij is gegaan — het is een *afwezigheid* die nooit
+> in de vorm van code heeft bestaan.
+
+Een migratie 025 die de `ALTER TABLE` vergeet komt door élke bestaande controle heen: er ontbreekt
+geen bestand, er mist geen kolom, er is geen diff om op te reageren. Het zou opnieuw pas blijken
+wanneer Supabase's Security Advisor het in productie meldt. Bij #1198 duurde dat twaalf dagen.
+
+### Wat er is toegevoegd
+
+Twee guards in de job `fresh-db-postgres` van `build.yml`, beide tegen de **levende** database ná
+het toepassen van de migraties — niet tegen bestanden, want een tabel kan in migratie 012 zijn
+aangemaakt en pas in 021 RLS hebben gekregen:
+
+| Script | Vraag die het beantwoordt |
+|---|---|
+| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` `relrowsecurity = true`? |
+| `scripts/ci/check-splinter-lints.sh` | Meldt Supabase's eigen linter iets op de punten die vóór livegang te beoordelen zijn? |
+
+Splinter (`supabase/splinter`) is de motor onder de Security- en Performance Advisor in het
+dashboard. Het wordt **niet** in dit repo opgenomen: upstream levert geen LICENSE-bestand (GitHub
+rapporteert de licentie als `null`), en code zonder expliciete licentie herdistribueren in een
+publieke repository is een onnodig risico. In plaats daarvan wordt het tijdens de CI-run opgehaald,
+vastgepind op een commit-SHA én geverifieerd op SHA-256 — reproduceerbaar en manipulatiebestendig,
+zonder herdistributie.
+
+### Wat bewust níet faalt, en waarom dat geen compromis is
+
+Van de 29 splinter-lints laten er vijf de build falen. De rest wordt geteld en getoond, maar
+blokkeert niets. Twee van die keuzes zijn principieel:
+
+- **`rls_enabled_no_policy` gaat op alle 29 tabellen af — dat ís de architectuur.** §65 koos bewust
+  voor RLS zonder policies. Dit lint gaten zou betekenen dat #985/#1198 wordt teruggedraaid.
+- **`unindexed_foreign_keys` is schema-statisch, maar de vraag is dat niet.** Of een foreign key een
+  index nodig heeft, hangt af van hoe er gequeryd wordt, niet van hoe het schema eruitziet. #1211
+  liet dat precies zien: 22 Performance Advisor-bevindingen, getoetst tegen productie, waarvan er
+  drie een index kregen (migratie 024) en de rest bewust bleef staan. Een gate op een verse
+  CI-database zou die afweging afdwingen zónder de gegevens die ervoor nodig zijn — en zou vandaag
+  meteen op zes bestaande, al beoordeelde bevindingen falen. Dit hoort bij de dagelijkse run tegen
+  productie (#1221), die wél statistieken heeft.
+
+### De blinde vlek van §67, nu omgekeerd
+
+§67 legde vast dat de rollen `anon` en `authenticated` lokaal en in CI niet bestaan, waardoor
+grant-gebaseerde controles er stille no-ops zijn. `check-splinter-lints.sh` maakt die rollen nu aan
+voordat het draait — splinter weigert zonder hen zelfs te starten (`role "anon" does not exist`).
+Daarmee is de les van §67 van een instructie in een architectuurdocument een uitgevoerde stap in de
+pipeline geworden.
+
+Tijdens het bouwen kwam de spiegelbeeldige variant aan het licht, en die is minstens zo belangrijk:
+
+> **Een lokale database die uit een productiedump is hersteld, kan deze guard niet laten falen.**
+
+De negatieve test — een tabel zonder RLS aanmaken en controleren dat de guard rood wordt — slaagde
+niet lokaal. De guard bleef groen en telde de nieuwe tabel zelfs mee als *wél* beveiligd. Oorzaak:
+een herstelde productiedump bevat Supabase's event-trigger `ensure_rls` (→ `public.rls_auto_enable()`,
+de functie uit §66), die op élke `CREATE TABLE` automatisch RLS aanzet. De tabel kreeg RLS voordat
+de guard ernaar keek.
+
+```
+ensure_rls -> rls_auto_enable (ddl_command_end)
+pgrst_ddl_watch -> extensions.pgrst_ddl_watch (ddl_command_end)
+issue_pg_cron_access, issue_pg_graphql_access, issue_pg_net_access, ...
+```
+
+Het bewijs is daarom geleverd op een **verse** `postgres:17`-container met alleen de migraties
+erop — exact de CI-situatie, en de enige omgeving waar de negatieve test iets betekent. Daar
+gedroegen beide guards zich zoals bedoeld: exit 1 met een bruikbare foutmelding op een overtreding,
+exit 0 zodra die verholpen is.
+
+**Les, aanvullend op §67:** §67 waarschuwde dat lokaal iets kan *ontbreken* dat productie wél heeft.
+Het omgekeerde geldt net zo goed: lokaal kan iets *aanwezig* zijn dat CI en een verse installatie
+niet hebben, en dat een test stilzwijgend laat slagen. Bij elke guard die een databasetoestand
+bewaakt: stel vast in welke omgeving de negatieve test betekenis heeft, en draai hem dáár. Een guard
+die nooit heeft gefaald, is geen geverifieerde guard.
+
+### Bijvangst
+
+Zowel `CHANGELOG.md` als §65 spraken van "alle 27 toepassingstabellen". Migratie 021 bevat 29
+`ALTER TABLE`-regels, en zowel een verse CI-database als de lokale productiekopie tellen er 29.
+Beide plekken zijn gecorrigeerd naar 29 — het is precies het getal dat de nieuwe guard rapporteert,
+dus een afwijking hier zou toekomstige sessies op het verkeerde been zetten.
 
 ## Gerelateerd
 
