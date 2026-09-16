@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.2.0] — 2026-09-16
+
 ### Security
 - **De databaseverbinding controleert nu of het certificaat van de database echt van de provider
   komt (#1187).** Tot nu toe was het verkeer wel versleuteld, maar werd het certificaat niet
