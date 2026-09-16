@@ -3508,6 +3508,75 @@ gedreven door dezelfde `EntityDefinition`/business-key-expressie als de upsert. 
 `his.*`-entiteit die ooit hetzelfde soort reconciliatie nodig heeft roept
 `ReconcileFullScopeAsync`/`ReconcileWindowedAsync` aan — geen eigen `NOT EXISTS`-query ernaast.
 
+## 65. Row-Level Security alsnog ingeschakeld — #985 had een onvolledig dreigingsmodel (#1198)
+
+**Supabase's eigen Security Advisor meldde op 13 september 2026 een CRITICAL-bevinding**
+(`rls_disabled_in_public`) op de productietier: elke tabel in `public` was extern
+leesbaar/schrijfbaar/verwijderbaar. Dit issue reconstrueert waarom, en waarom geen enkele
+codereview — Claude Code, Codex, of een mens — dit ooit gemeld heeft.
+
+### Wat #985 goed deed, en wat het miste
+
+§985 (2026-09-04) beoordeelde RLS vanuit drie rollen (CISO, DPO, Architect) tegen de architectuur
+van dit project en kwam tot een bewust, gedocumenteerd besluit om RLS niet te implementeren. De
+redenering zelf klopte, voor de vraag die ze stelde:
+
+- Er is precies één vertrouwde databaseclient (de FunctionApp, via één
+  `POSTGRES_CONNECTION_STRING`-rol) — geen per-eindgebruiker databaserollen, geen client-side
+  gebruik van Supabase's PostgREST/JWT-auth-flow.
+- Autorisatie zit volledig in de applicatielaag (Entra ID/Easy Auth, vijf lagen defense-in-depth).
+- `ClubCode` wordt gefilterd in C#, niet via databasepolicies — en dat is prima, want er is
+  precies één (productie)club per deployment (zie "Deployment-model" in CLAUDE.md).
+
+**De vraag die #985 niet stelde:** wat stelt Supabase als *platform* zelf standaard open, los van
+of onze applicatie dat gebruikt? Supabase genereert voor élke tabel in het `public`-schema
+automatisch een PostgREST-REST-endpoint. Dat endpoint is bereikbaar met de anon-key — een sleutel
+die *bewust* niet geheim is (Supabase's eigen documentatie noemt hem veilig om in een browser te
+plaatsen), **omdat RLS wordt verondersteld die toegang te begrenzen.** Zonder RLS is die
+veronderstelling vals: de anon-key wordt dan een universele sleutel tot elke `public`-tabel, voor
+wie dan ook met de project-URL — ongeacht of déze applicatie ooit een regel PostgREST-code
+uitvoert. #985's conclusie "er is maar één vertrouwde client" ging over clients die *wij* bouwen;
+Supabase's eigen infrastructuur is zelf ook een client, en die stond na het besluit van #985
+onbedoeld wagenwijd open.
+
+### Waarom geen review dit ooit meldde
+
+Dit is geen codefout die aan een reviewer voorbij is gegaan — het is een *afwezigheid* die nooit
+in de vorm van code heeft bestaan. Geen enkele van de 20 migraties tot #1198 bevatte ooit een
+regel over RLS, in beide richtingen: geen `ENABLE ROW LEVEL SECURITY`, maar ook geen `DISABLE`. Er
+was dus geen diff, geen bestand, geen PR-regel om op te reageren. Een codereview — of die nu door
+Claude Code, Codex, of een collega wordt gedaan — beoordeelt wat er verandert in de repository.
+Databaseplatform-configuratie die uitsluitend via een externe dashboard-toggle bestaat (of, zoals
+hier, door een bewust besluit om iets *niet* te doen) laat structureel geen spoor na dat
+git-gebaseerde review kan zien. Supabase's eigen Security Advisor draait tegen de levende
+database, niet tegen de repository — dat is precies waarom hij dit wél zag en wij niet.
+
+### De oplossing
+
+`Database.Postgres/migrations/021_enable_row_level_security.sql` zet RLS aan op alle 27
+toepassingstabellen (`public`, `avg`, `planner`) — inclusief de migratie-ledger `public.schema_migrations`
+zelf, want Supabase's advisor onderscheidt niet naar gevoeligheid. **Zonder policies, bewust:** de
+`POSTGRES_CONNECTION_STRING`-rol is eigenaar van elke tabel (zij heeft ze aangemaakt) of is de
+Supabase-superuser via de pooler — Postgres omzeilt RLS onvoorwaardelijk voor zo'n rol, met of
+zonder policies. Lokaal empirisch bevestigd tijdens #1198: na het inschakelen van RLS op alle
+tabellen bleef `SELECT`/`INSERT` via de gewone ontwikkelrol (ook lokaal een superuser-equivalent)
+ongewijzigd werken; `pg_roles.rolbypassrls` bevestigt dit. Dit sluit dus uitsluitend Supabase's
+eigen `anon`/`authenticated`-PostgREST-toegang — precies het gat dat de advisor meldde — zonder de
+rest van #985's conclusie (geen per-rij-autorisatielogica nodig) te herzien.
+
+### Wanneer dit ánders zou moeten
+
+Dezelfde twee triggers als in #985 al genoemd, plus een derde:
+
+1. Het deployment-model verandert naar *shared multi-tenant hosting* (meerdere echte clubs met
+   eigen admins in één database) → dan zijn per-tabel policies wél nodig, niet alleen "RLS aan".
+2. Supabase's eigen PostgREST/JWT-auth wordt ooit rechtstreeks gebruikt in plaats van de
+   FunctionApp als enige gatekeeper → dan moeten er policies komen die op `auth.uid()` filteren.
+3. **Nieuw, uit dit issue:** bij elke toekomstige architectuurbeoordeling van een hostingplatform
+   (Supabase of anders) hoort expliciet de vraag "wat ontsluit dit platform zelf standaard, los
+   van onze eigen code?" — zie de nieuwe harde regel in CLAUDE.md/AGENTS.md onder "Supabase
+   Postgres — Row-Level Security verplicht op elke tabel".
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
