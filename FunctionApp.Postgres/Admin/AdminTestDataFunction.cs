@@ -68,6 +68,7 @@ public static class AdminTestDataFunction
                     SELECT bk_matches, datum, aanvangstijd, thuisteam, uitteam, veld, competitiesoort, veld_subpositie
                     FROM his.matches
                     WHERE clubcode = @clubcode
+                      AND mta_deleted IS NULL
                     ORDER BY datum, aanvangstijd, thuisteam
                     """, connection);
                 command.Parameters.AddWithValue("clubcode", AllstarsClubCode);
