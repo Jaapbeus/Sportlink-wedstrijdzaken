@@ -6,12 +6,13 @@ Declaratieve beschrijving van alle Azure-resources voor Sportlink Wedstrijdzaken
 
 ```
 infrastructure/
-├── main.bicep              # Top-level deployment, referenceert modules
-├── main.parameters.json    # Resource-namen en parameters (geen secrets)
+├── main.bicep                    # Top-level deployment, referenceert modules
+├── main.parameters.json          # Resource-namen en parameters (geen secrets)
 └── modules/
-    ├── function-app.bicep  # Function App + Consumption Plan + Storage Account
-    ├── static-web-app.bicep # Static Web App (Free tier, Blazor WASM)
-    └── monitoring.bicep    # Application Insights (workspace-based, gratis tot 5 GB/maand)
+    ├── function-app.bicep        # BESTAANDE Function App + Consumption Plan + Storage Account
+    ├── function-app-flex.bicep   # NIEUWE Function App op Flex Consumption (epic #1063)
+    ├── static-web-app.bicep      # Static Web App (Free tier, Blazor WASM)
+    └── monitoring.bicep          # Application Insights (workspace-based, gratis tot 5 GB/maand)
 ```
 
 ## Gebruik
@@ -61,8 +62,33 @@ az deployment group create \
 | Module | Status | Kosten |
 |---|---|---|
 | `function-app.bicep` | Beschrijft bestaande resources | Gratis (Consumption Plan) |
+| `function-app-flex.bicep` | Aanwezig, **niet auto-uitgerold** (`deployFlexApp=false`) | Gratis binnen het Flex-tegoed, mits `instanceMemoryMB`/`maximumInstanceCount` bewust laag blijven — zie hieronder |
 | `static-web-app.bicep` | Beschrijft bestaande resources | Gratis (Free SKU) |
 | `monitoring.bicep` | Aanwezig, **niet auto-uitgerold** | Gratis tot 5 GB/maand (gedeeld per billing account) |
+
+### ⚠️ Kostenwaarschuwing: Flex Consumption-app (epic #1063, FLEX-04/FLEX-05)
+
+`function-app-flex.bicep` beschrijft een **nieuwe** Function App op het Flex Consumption-plan,
+naast de bestaande Linux Consumption-app in `function-app.bicep`. In-place migratie naar Flex
+bestaat niet (bevestigd via Microsoft Learn) — dit is dus altijd een aparte resource, nooit een
+wijziging van de bestaande app.
+
+`deployFlexApp` staat standaard op `false` in `main.parameters.json`. Dit is de **FLEX-05-kostengate**:
+alleen op `true` zetten via een los `--parameters deployFlexApp=true` (nooit in dit bestand commit)
+na expliciete kostengoedkeuring van de eigenaar. Voor `what-if` mag de conditie tijdelijk `true` zijn
+— `what-if` wijzigt niets.
+
+Onderbouwde defaults (FLEX-02, gemeten 2026-09-12 over 31 dagen echt verbruik):
+- `flexInstanceMemoryMB = 2048` — 512 MB is **niet haalbaar**: op alle 31 gemeten dagen lag het
+  geheugengebruik boven 512 MB (gemiddeld 546 MB, piek 1.205 MB). Bij 2048 MB wordt 62–77% van het
+  gratis maandtegoed (100.000 GB-s) verbruikt — gratis, maar zonder ruime marge.
+- `flexMaximumInstanceCount = 5` — bewust ver onder de platform-default van 100. Flex kent **geen**
+  automatische kostenrem (geen spending limit op Pay-As-You-Go, budgetten zijn alleen meldingen);
+  bij de default van 100 is het theoretische maandmaximum ~$13.663, bij 5 blijft dat begrensd.
+
+De Flex-app gebruikt een system-assigned managed identity voor `AzureWebJobsStorage` en de
+deployment-storage-authenticatie — geen storage-connection-string-secret, een CISO-verbetering
+t.o.v. de Consumption-app.
 
 ### ⚠️ Kostenwaarschuwing: Log Analytics
 
