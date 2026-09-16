@@ -13,6 +13,14 @@ internal sealed class RecordingLogger : ILogger
 {
     public List<string> Messages { get; } = new();
 
+    /// <summary>
+    /// Het geformatteerde bericht mét zijn niveau (#1201). <see cref="Messages"/> bevat óók de losse
+    /// placeholder-waarden en kan daardoor niet zeggen op welk niveau iets gelogd is; een test die
+    /// wil bewijzen dat een waarschuwing daadwerkelijk is gelogd (en de melding dus niet stilzwijgend
+    /// verdwenen is toen het adres eruit ging) heeft dat onderscheid nodig.
+    /// </summary>
+    public List<(LogLevel Level, string Message)> Entries { get; } = new();
+
     public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
     public bool IsEnabled(LogLevel logLevel) => true;
@@ -20,6 +28,7 @@ internal sealed class RecordingLogger : ILogger
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
         Func<TState, Exception?, string> formatter)
     {
+        Entries.Add((logLevel, formatter(state, exception)));
         Messages.Add(formatter(state, exception));
 
         if (state is IEnumerable<KeyValuePair<string, object>> velden)
