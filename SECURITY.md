@@ -193,6 +193,12 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 - Sportlink-request-URL's (bevatten de clientId als queryparameter) — log het endpoint en de
   wedstrijdcode, nooit de volledige URL. De CI-job `PII Pattern Scan (AVG/GDPR)` blokkeert een
   logtemplate met een URL-placeholder (#1200).
+- Exception-teksten in CI-uitvoer. De uitvoer van een GitHub Actions-job van een publieke
+  repository is zelf publiek, en GitHub maskeert alleen de exacte, volledige waarde van een
+  secret — niet een deelstring ervan in een foutmelding (een databasefout noemt host, poort of
+  gebruikersnaam). Meld daar het exceptietype en de stap, nooit `ex.Message`; zie
+  `Database.Postgres/MigratieFoutRapportage.cs`. Dezelfde CI-job blokkeert een
+  `Console.Error.WriteLine` met een geïnterpoleerde exception (#1225).
 
 **Wat WEL wordt gelogd:**
 - MessageId (technische Graph API identifier, geen PII)
