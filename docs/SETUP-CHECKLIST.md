@@ -134,17 +134,24 @@ Alleen nodig als je naar Azure wilt deployen.
 - [ ] `POSTGRES_CONNECTION_STRING` — alleen bij `DatabaseTier=Postgres`; de pipeline past hiermee de migraties toe vóór elke deploy (#1093). Zelfde waarde als de Function App-instelling
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` — SWA deployment token
 
-**Variables:**
+**Secrets (aanbevolen — club-identificerende configuratie, #1204):**
+
+Deze zes waarden identificeren jouw club. Sla ze op als **Secret**, niet als Variable: bij een
+publieke fork zijn de Actions-logs publiek leesbaar, en GitHub maskeert alleen secrets (`***`).
+Als Variable werken ze ook — maar dan staan ze leesbaar in elke deploy-log.
 
 - [ ] `AZURE_FUNCTIONAPP_NAME`
 - [ ] `AZURE_FUNCTIONAPP_URL`
-- [ ] `DatabaseTier` — `SqlServer` of `Postgres`
-- [ ] `DatabaseTierSwitchConfirmation` — **exact dezelfde waarde als `DatabaseTier`**, anders faalt de deploy met exitcode 3
-- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer`
 - [ ] `AZURE_STATIC_WEB_APP_HOSTNAME`
 - [ ] `AZURE_AD_TENANT_ID`
 - [ ] `AZURE_AD_CLIENT_ID`
 - [ ] `POST_LOGOUT_REDIRECT_URL`
+
+**Variables:**
+
+- [ ] `DatabaseTier` — `SqlServer` of `Postgres`
+- [ ] `DatabaseTierSwitchConfirmation` — **exact dezelfde waarde als `DatabaseTier`**, anders faalt de deploy met exitcode 3
+- [ ] `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` — alleen bij `DatabaseTier=SqlServer` (deze worden in een job-`if:` gebruikt en moeten Variable blijven)
 
 **Verificatie na instellen:**
 
