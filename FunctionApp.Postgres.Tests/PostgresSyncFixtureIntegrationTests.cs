@@ -1,6 +1,7 @@
 using Database.Postgres;
 using Database.Postgres.Tests;
 using AwesomeAssertions;
+using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Sync;
 using FunctionApp.Tests.Sync;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -188,6 +189,120 @@ public class PostgresSyncFixtureIntegrationTests
         (await CountAsync(
                 $"SELECT count(*) FROM {PostgresPlannerViewGenerator.ViewName} WHERE clubcode = @club"))
             .Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    /// <summary>
+    /// #1193, het kernacceptatiecriterium: een wedstrijd die op een volgende sync niet meer in de
+    /// Sportlink-respons zit, moet daarna ook niet meer in de planner-resultaten verschijnen.
+    /// <para>
+    /// Simuleert dit door de fixture na de eerste (succesvolle) sync om te zetten naar een
+    /// <c>/programma</c>/<c>/uitslagen</c>-antwoord dat een ANDERE wedstrijd op dezelfde datum
+    /// bevat, maar niet meer <see cref="Wedstrijdcode"/> — exact zoals een club die één wedstrijd in
+    /// Sportlink annuleert terwijl de rest van het weekend gewoon doorgaat. Bewust niet volledig
+    /// leeg: de reconciliatiestap leidt het datumvenster af uit de MIN/MAX-datum die déze sync-run
+    /// in <c>stg</c> laadt (<see cref="Database.Postgres.PostgresMergeOrchestrator.ReconcileWindowedAsync"/>),
+    /// en die afleiding is met opzet onmogelijk wanneer <c>stg</c> voor de club volledig leeg is —
+    /// zie de xml-doc van die methode. Deze test bewijst dus het gangbare pad (een club heeft
+    /// zelden een compleet wedstrijdloos venster); de lege-stg-situatie zelf is los gedekt door
+    /// <c>Database.Postgres.Tests</c>.
+    /// </para>
+    /// <para>
+    /// De wedstrijd moet na de tweede sync (a) in <c>his.matches</c> blijven bestaan met
+    /// <c>mta_deleted</c> gezet (audit-trail, geen hard delete) en (b) niet meer voldoen aan
+    /// <see cref="PostgresClubScope.HisFilter"/>, het predicaat dat vrijwel elke lezende
+    /// <c>PlannerMatchRepository</c>-query gebruikt — dus ook niet meer terugkomen in enig
+    /// planner-resultaat.
+    /// </para>
+    /// </summary>
+    [PostgresFact]
+    public async Task RunSyncAsync_WedstrijdVerdwijntUitTweedeFixtureRespons_WordtGereconciliëerdEnVerdwijntUitPlannerresultaten()
+    {
+        await SchoonAsync();
+
+        using var fixtureServer = SportlinkFixtures.BuildServer(Wedstrijdcode, ClubCode);
+        await RunAsync(fixtureServer);
+
+        (await IsZichtbaarViaHisFilterAsync()).Should().BeTrue(
+            "na de eerste sync moet de wedstrijd via het planner-predicaat zichtbaar zijn");
+        (await ScalarAsync<DateTime?>(
+                "SELECT mta_deleted FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().BeNull("nog niet gereconcilieerd — de wedstrijd stond in beide sync-runs");
+
+        // Sportlink levert deze ene wedstrijd niet meer, maar wel nog een andere op dezelfde datum
+        // (zie klasse-doc-comment hierboven voor waarom dit venstertechnisch nodig is).
+        const long andereWedstrijdcode = Wedstrijdcode + 1;
+        fixtureServer.RespondWithJson("/programma", AndereWedstrijdJson(andereWedstrijdcode));
+        fixtureServer.RespondWithJson("/uitslagen", "[]");
+        await RunAsync(fixtureServer);
+
+        (await ScalarAsync<DateTime?>(
+                "SELECT mta_deleted FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().NotBeNull(
+                "de reconciliatiestap moet de wedstrijd als verdwenen markeren zodra hij niet meer in de sync zit");
+
+        (await IsZichtbaarViaHisFilterAsync()).Should().BeFalse(
+            "een zacht-verwijderde wedstrijd hoort niet meer via het planner-predicaat gevonden te worden");
+
+        // Audit-trail, geen hard delete: de rij zelf blijft gewoon bestaan.
+        (await CountAsync("SELECT count(*) FROM his.matches WHERE wedstrijdcode = @code AND clubcode = @club"))
+            .Should().Be(1, "his is een audit-trail — de rij mag nooit fysiek verwijderd worden");
+    }
+
+    /// <summary>
+    /// Minimale <c>/programma</c>-respons met precies één wedstrijd, op dezelfde datum als de
+    /// standaardfixture (2026-09-05) maar met een andere <c>wedstrijdcode</c> en team — voor het
+    /// "één wedstrijd verdwijnt, de rest van het weekend niet"-scenario hierboven.
+    /// </summary>
+    private static string AndereWedstrijdJson(long wedstrijdcode) => $$"""
+        [
+          {
+            "wedstrijddatum": "2026-09-05T12:00:00+0200",
+            "wedstrijdcode": {{wedstrijdcode}},
+            "wedstrijdnummer": 19781,
+            "teamnaam": "{{ClubCode}} JO13-2",
+            "thuisteam": "{{ClubCode}} JO13-2",
+            "uitteam": "Andere Tegenstander",
+            "teamvolgorde": 1,
+            "competitiesoort": "regulier",
+            "kaledatum": "2026-09-05 00:00:00.00",
+            "datum": "05 sep.",
+            "aanvangstijd": "12:00",
+            "wedstrijd": "{{ClubCode}} JO13-2 - Andere Tegenstander",
+            "status": "Te spelen",
+            "accommodatie": "Sportpark Oost",
+            "veld": "veld 4",
+            "locatie": "Veld",
+            "plaats": "TESTSTAD",
+            "meer": "wedstrijd-informatie?wedstrijdcode={{wedstrijdcode}}"
+          }
+        ]
+        """;
+
+    /// <summary>Bevraagt <c>his.matches</c> met exact hetzelfde predicaat als
+    /// <see cref="PostgresClubScope.HisFilter"/> — de plek waar vrijwel elke
+    /// <c>PlannerMatchRepository</c>-query zijn club-/zacht-verwijderd-filtering vandaan haalt.
+    /// <para>
+    /// Zet <c>@primaireclubcode</c>/<c>@clubcode</c> hier bewust rechtstreeks in plaats van via
+    /// <see cref="PostgresClubScope.AddHisParams"/>: die laatste leest de primaire club via
+    /// <see cref="PostgresClubScope.Primary"/> uit een procesbrede cache
+    /// (<c>PostgresAppSettings</c>) die alleen gevuld is binnen de draaiende Function-host, niet in
+    /// deze losstaande testrun. Voor deze query maakt de waarde toch niet uit: de fixture-rij heeft
+    /// altijd een niet-NULL <c>clubcode</c>, dus <c>COALESCE(m.clubcode, @primaireclubcode)</c> kiest
+    /// hier sowieso nooit de fallback.
+    /// </para>
+    /// </summary>
+    private static async Task<bool> IsZichtbaarViaHisFilterAsync()
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT count(*) FROM his.matches m
+            WHERE m.wedstrijdcode = @code AND {PostgresClubScope.HisFilter("m")}
+        ", conn);
+        cmd.Parameters.AddWithValue("code", Wedstrijdcode);
+        cmd.Parameters.AddWithValue("clubcode", ClubCode);
+        cmd.Parameters.AddWithValue("primaireclubcode", ClubCode);
+        return (long)(await cmd.ExecuteScalarAsync())! > 0;
     }
 
     private static async Task RunAsync(SportlinkFixtureServer fixtureServer) =>

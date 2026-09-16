@@ -771,6 +771,17 @@ jobs:
           # his.teams/his.matches bestaan pas na de eerste sync (#856-les, ook op de Postgres-tier).
           # DDL hier is de letterlijke PostgresSchemaGenerator.GenerateHisTable-output voor
           # KnownEntities.Teams/Matches (#818) — geen losstaande aanname, 1:1 overgenomen.
+          #
+          # #1193: bk_teams' scheidingsteken tussen de business-key-kolommen moet ECHT
+          # PostgresSchemaGenerator.BusinessKeySeparator (chr(1)) zijn, niet een lege string. Deze
+          # kopie dreef daar eerder stil vanaf (lege separator), en omdat CREATE TABLE IF NOT EXISTS
+          # geen bestaande tabel bijwerkt, bleef de verkeerde generated-kolomdefinitie de rest van
+          # deze job staan — de echte PostgresSchemaGenerator kreeg dus nooit de kans zijn eigen,
+          # correcte his.teams aan te maken. Zichtbaar geworden doordat de #1193-reconciliatiestap
+          # (PostgresReconciliationGenerator, sinds die wijziging kolom-voor-kolom vergelijkt en dus
+          # niet meer op bk_teams zelf leunt) net-ingevoegde teams stilzwijgend weer als verwijderd
+          # markeerde: "90001"+"1"+"7" (deze kopie, zonder separator) week af van wat de echte
+          # generator voor dezelfde rij zou produceren.
           psql_ci -c "CREATE SCHEMA IF NOT EXISTS his;"
           cat > /tmp/his-teams-matches.sql <<'SQLEOF'
           CREATE TABLE IF NOT EXISTS his."teams" (
@@ -782,7 +793,7 @@ jobs:
               "speeldagteam" VARCHAR(100), "more" VARCHAR(200), "clubcode" VARCHAR(20),
               "mta_inserted" TIMESTAMPTZ NOT NULL, "mta_modified" TIMESTAMPTZ NOT NULL,
               "mta_deleted" TIMESTAMPTZ NULL,
-              "bk_teams" TEXT GENERATED ALWAYS AS (COALESCE("teamcode"::text, '') || '' || COALESCE("lokaleteamcode"::text, '') || '' || COALESCE("poulecode"::text, '')) STORED
+              "bk_teams" TEXT GENERATED ALWAYS AS (COALESCE("teamcode"::text, '') || chr(1) || COALESCE("lokaleteamcode"::text, '') || chr(1) || COALESCE("poulecode"::text, '')) STORED
           );
           CREATE UNIQUE INDEX IF NOT EXISTS "UQ_teams_bk" ON his."teams" ("bk_teams");
           CREATE INDEX IF NOT EXISTS "IX_teams_clubcode" ON his."teams" ("clubcode");

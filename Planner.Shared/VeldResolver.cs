@@ -50,4 +50,26 @@ public static class VeldResolver
     public static (int VeldNummer, string? Subpositie) Resolve(
         string? sportlinkVeld, IReadOnlyDictionary<string, int> veldenPerNaam)
         => Resolve(sportlinkVeld, veldenPerNaam.Select(kv => ((string?)kv.Key, kv.Value)));
+
+    /// <summary>
+    /// Vertaalt een subpositie-label uit <see cref="Resolve"/> naar de fractie van het veld die de
+    /// boeking daadwerkelijk gebruikt (#1194) — het ENE vertaalpunt voor "welk deel van het veld
+    /// hoort bij deze subpositie", naast <see cref="Resolve"/>'s "welk veld en welke subpositie
+    /// hoort bij deze Sportlink-tekst". Beide horen bij elkaar: een aanroeper die de subpositie al
+    /// via <see cref="Resolve"/> heeft, gebruikt deze methode voor de bijbehorende veldafmeting in
+    /// plaats van zelf een tweede A/B/A1/A2/B1/B2-naar-fractie-mapping te bouwen.
+    /// <para>
+    /// <c>null</c> betekent hier bewust "geen subpositie, dus onbekend of dit een halve-veld-
+    /// boeking is" — niet "heel veld". De aanroeper valt in dat geval terug op de bestaande
+    /// teaminstelling (<c>public.speeltijden.veldafmeting</c>), precies zoals vóór deze wijziging:
+    /// de per-wedstrijd Sportlink-data is de primaire bron, de teaminstelling is alleen nog de
+    /// terugval voor wanneer Sportlink geen suffix meegeeft.
+    /// </para>
+    /// </summary>
+    public static decimal? SubpositieFractie(string? subpositie) => subpositie?.ToUpperInvariant() switch
+    {
+        "A" or "B" => 0.5m,
+        "A1" or "A2" or "B1" or "B2" => 0.25m,
+        _ => null
+    };
 }

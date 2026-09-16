@@ -18,6 +18,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.3.0] — 2026-09-16
+
+### Fixed
+- **Een halve-veld-boeking (bijv. een vlaggen-/veteranenteam als "V+1") wordt nu correct als halve
+  balk getoond in de Dagplanning en blokkeert niet langer onterecht het hele veld bij automatisch
+  plannen (#1194).** Sportlink geeft een halve-veld-boeking door als toevoeging aan de bestaande
+  veldnaam ("veld 3 A" in plaats van kaal "veld 3"), maar die informatie werd tot nu toe genegeerd
+  bij het bepalen van de balkhoogte — die kwam uitsluitend uit de standaardinstelling van het team.
+  Bij een team met "heel veld" als standaard die ad-hoc een halve boeking kreeg, tekende de balk
+  daardoor te hoog en liep hij door in de rij van het volgende veld.
+- **Een wedstrijd die bij Sportlink verdwijnt (geannuleerd of verwijderd), verdwijnt nu ook echt uit
+  de planner en de Dagplanning-pagina (#1193).** Voorheen bleef zo'n wedstrijd voor altijd in de
+  administratie staan omdat er geen opruimstap bestond na een sync — beheerders zagen dan een
+  wedstrijd die intussen niet meer bestond. Elke sync markeert nu wedstrijden en teams die niet meer
+  bij Sportlink voorkomen als verwijderd (binnen het venster dat die sync daadwerkelijk heeft
+  opgehaald); de rij zelf blijft bewaard voor de geschiedenis, maar verschijnt niet meer in enig
+  scherm of endpoint.
+
 ## [3.4.2.0] — 2026-09-16
 
 ### Security
