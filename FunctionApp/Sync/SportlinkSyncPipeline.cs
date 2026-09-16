@@ -122,6 +122,9 @@ internal static class SportlinkSyncPipeline
             else
             {
                 mdFout++;
+                // De foutregel in FetchAndStoreMatchDetailsAsync noemt bewust geen URL meer (#1200);
+                // de wedstrijdcode is hier wél veilig te loggen en houdt de fout herleidbaar.
+                log.LogWarning("MATCHDETAILS - mislukt voor wedstrijdcode={Code}", wedstrijdcode);
             }
         }
         log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Total}",
@@ -237,7 +240,12 @@ internal static class SportlinkSyncPipeline
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "MATCHDETAILS - ophalen mislukt voor {Url}", apiUrl);
+            // NOOIT de apiUrl loggen (#1200): Sportlink authenticeert op de dataservice via de
+            // queryparameter clientId, dus de aanroep-URL ís een secret. Vaste metadata + het
+            // fouttype geven de operator hetzelfde diagnostische houvast; de wedstrijdcode komt
+            // uit de waarschuwing in FetchMatchDetailsPhaseAsync. Zelfde stijl als #436.
+            log.LogError(ex, "MATCHDETAILS - ophalen mislukt ({ErrorType}) endpoint=/wedstrijd-informatie",
+                ex.GetType().Name);
             return false;
         }
     }

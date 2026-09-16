@@ -310,6 +310,9 @@ Database connection includes 5 retries with 5-second delays. If still failing:
 - Entity properties use camelCase (matching Sportlink API JSON)
 - Async/await pattern for all I/O operations
 - Exception handling at function entry points; specific errors logged to ILogger
+- **Never log a Sportlink request URL** — the dataservice authenticates through the `clientId` query
+  parameter, so the URL itself is a secret. Log the endpoint plus the `wedstrijdcode` (or another
+  non-secret identifier) instead. CI blocks a log template with a URL placeholder (#1200)
 - Column names in SQL queries use exact casing to match schema (e.g., `SportlinkApiUrl`)
 
 ## Related Documentation
