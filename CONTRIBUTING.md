@@ -29,7 +29,7 @@ Wil je deze software gebruiken voor jouw vereniging? Zie [SETUP-NIEUWE-CLUB.md](
 1. **Fork** deze repository naar jouw eigen GitHub-account
 2. Maak een **feature-branch** aan (zie [Branch-strategie](#branch-strategie))
 3. Implementeer je wijziging — inclusief tests en documentatie
-4. Maak een **Pull Request** naar `main` van dit project
+4. Maak een **Pull Request** naar `develop` van dit project (de integratiebranch — zie [Branch-strategie](#branch-strategie); alleen een release of urgente productiefix gaat naar `main`)
 5. De eigenaar beoordeelt de PR, eventueel samen met Claude Code
 6. Na goedkeuring wordt de PR gemerged
 
@@ -86,7 +86,7 @@ git checkout -b feature/#42-wedstrijd-exportfunctie
 # 3. Werk... commit... push
 git push -u origin feature/#42-wedstrijd-exportfunctie
 
-# 4. Pull Request openen via GitHub UI naar Jaapbeus/Sportlink-wedstrijdzaken main
+# 4. Pull Request openen via GitHub UI naar de develop-branch van de upstream repository
 ```
 
 ---
@@ -140,6 +140,10 @@ De Security Gate job in CI is **leidend**. Zolang deze rood is, wordt een PR nie
 - Wachtwoorden en tokens (gitleaks)
 - Persoonsgegevens (PII-scan)
 - Dependency vulnerabilities (Trivy)
+
+De gate draait op elke push én op elke pull request naar `main` of `develop` — ook op een PR vanuit
+een fork. Een fork-PR krijgt van GitHub een read-only token zonder secrets; de scan is daar bewust
+op ingericht en draait dus volledig (zie SECURITY.md, "Laag 2 — GitHub Actions").
 
 ---
 

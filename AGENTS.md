@@ -304,6 +304,7 @@ bewust worden bekeken.
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 | `SECURITY.md` | Security-beleid, AVG-regels of secrets-protocol gewijzigd |
+| `.github/workflows/*.yml` | Branch-strategie, PR-doelbranches of verplichte status checks gewijzigd → controleer élke `pull_request`-/`push`-trigger (zie issue #1202) |
 
 **Werkwijze:** lees elk relevant bestand, vergelijk met de gemaakte wijziging, update wat niet meer klopt.
 Verouderde informatie is erger dan geen documentatie — het misleidt toekomstige sessies.

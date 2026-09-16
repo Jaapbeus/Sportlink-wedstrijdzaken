@@ -143,6 +143,16 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 
 De **Security Gate** is de finale poortwachter. Zolang die rood is, is merge naar `main` geblokkeerd.
 
+**Op welke events de Security Scan draait (#1202):** `push` naar élke branch, én `pull_request`
+naar `main` en naar `develop` — die twee branches staan letterlijk zo in de `on:`-sectie van
+`.github/workflows/security-scan.yml`. Beide branches hebben branch protection die de check
+`Security Gate — blokkeert merge bij fout` verplicht stelt, dus documentatie, workflow-trigger en
+branch protection zeggen bewust alle drie hetzelfde. **De `pull_request`-trigger is niet optioneel
+naast de `push`-trigger:** een PR uit een fork levert géén push-event in deze repository op, dus
+zonder die trigger zou de verplichte check daar nooit verschijnen (de PR kan dan niet mergen) en
+zou de merge-context nooit upstream gescand worden. Wijzigt de branch-strategie of een doelbranch,
+werk dan de trigger en deze alinea in dezelfde PR bij.
+
 **Dependency Vulnerability Scan — dekking (#1126):** een kale `.csproj` is voor Trivy geen
 ondersteund NuGet-manifest. De job genereert daarom zelf per project een `packages.lock.json`
 (`dotnet restore -p:RestorePackagesWithLockFile=true`, inclusief transitieve pakketten) vóórdat
