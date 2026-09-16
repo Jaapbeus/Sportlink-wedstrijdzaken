@@ -677,6 +677,55 @@ endpoint bestaat juist om desgewenst bewust tegen de echte Sportlink-API te test
 
 ---
 
+### 5.4 Supabase MCP-server instellen (optioneel, #1222)
+
+Hiermee kan Claude Code rechtstreeks de Supabase-adviezen en de **platformlogs** van het
+productieproject lezen. Dat laatste is de reden dat dit iets toevoegt boven de dagelijkse workflow
+van #1221: logs van de edge-, auth- en Postgres-laag zijn niet via een databaseverbinding te lezen,
+alleen via de Management API of MCP.
+
+**Volledig optioneel.** Zonder deze stap werkt alles gewoon; je mist alleen de agentische controle
+`/supabase-check`.
+
+```bash
+cp .mcp.json.template .mcp.json
+# vervang {{SUPABASE_PROJECT_REF}} door de project-ref
+#   (Supabase-dashboard → Project Settings → General → Reference ID)
+
+# Token in je shellprofiel, NOOIT in een bestand in deze repository:
+export SUPABASE_ACCESS_TOKEN='...'
+```
+
+`.mcp.json` staat in `.gitignore` — de URL bevat de project-ref en die identificeert de club
+(`CLAUDE.md` regel 4a). Hetzelfde patroon als `local.settings.template.json`.
+
+**Token:** maak er één aan op <https://supabase.com/dashboard/account/tokens>. Kies als het kan een
+**scoped** token met alleen leesrechten: Advisors=Read, Logs=Read, Database Security=Read. Scoped
+tokens zijn nog in public alpha en niet voor elk account beschikbaar; zie je geen
+permissie-selectie, dan krijg je een classic token — en dat draagt **volledige accounttoegang** op
+elke organisatie en elk project, ook toekomstige. Weeg dat bewust af.
+
+**Drie dingen die vastliggen in de serverconfiguratie, en waarom:**
+
+| Parameter | Waarde | Reden |
+|---|---|---|
+| `read_only` | `true` | Geen voorkeur maar een **architectuurinvariant**: de tool `apply_migration` schrijft rechtstreeks en omzeilt `MigrationRunner` — geen `schema_migrations`-rij, geen checksum. Daarna lopen `/api/health`'s `pendingMigrations` en de checksum-guard in `build.yml` uit de pas met de werkelijkheid |
+| `project_ref` | jouw project | Zonder scoping reikt de server tot elk project dat het token kan zien |
+| `features` | `database,debugging,docs` | `debugging` levert `get_advisors` en `query_logs`. `account`, `functions`, `branching` en `storage` zijn weggelaten: kleinere blast radius |
+
+**Verwacht gedrag bij het eerste gebruik — dit is géén storing:** read-only mode voert queries uit
+als een read-only Postgres-gebruiker, niet als de eigenaarsrol. Sinds #1198 heeft elke
+applicatietabel RLS aan zónder policies. Heeft die gebruiker geen `BYPASSRLS`, dan geeft een
+`SELECT` op een applicatietabel **nul rijen terug zonder foutmelding**. Catalogusquery's
+(`pg_database_size`, `pg_stat_activity`) werken wel. Los dit **niet** op door policies toe te
+voegen — dat zou #985/#1198 heropenen. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
+
+**Gebruiken:** `/supabase-check` in Claude Code. De prompt staat in
+`.claude/skills/supabase-check/SKILL.md` en is bewust zelfstandig leesbaar, zodat een geplande run
+met een lege context hetzelfde doet als een handmatige.
+
+---
+
 ## 6. Services starten
 
 De aanbevolen manier is via het Start-Debug.ps1-script. Dit start Azurite, FunctionApp en BlazorAdmin, en wacht daarna tot elke service daadwerkelijk reageert.
