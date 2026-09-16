@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.3.0] — 2026-09-16
+
 ### Fixed
 - **Een halve-veld-boeking (bijv. een vlaggen-/veteranenteam als "V+1") wordt nu correct als halve
   balk getoond in de Dagplanning en blokkeert niet langer onterecht het hele veld bij automatisch
