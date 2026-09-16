@@ -1,0 +1,23 @@
+{
+  "_lees_dit_eerst": [
+    "Geaccepteerde bevindingen van Supabase's Security- en Performance Advisor (#1221, epic #1219).",
+    "Elke regel hier onderdrukt één bevinding in de dagelijkse controle .github/workflows/supabase-advisors.yml.",
+    "",
+    "WAAROM DIT BESTAND IN GIT STAAT: een risico accepteren hoort een PR-diff te zijn met een reden",
+    "en een issuenummer, niet een vinkje in een dashboard dat niemand terugziet. Dat is het principe",
+    "uit docs/ARCHITECTUUR-DATABASE-TIERS.md sectie 65: platformconfiguratie die geen diff achterlaat",
+    "is onzichtbaar voor codereview, en precies daardoor bleef #985 twaalf dagen onopgemerkt.",
+    "",
+    "VELDEN PER REGEL:",
+    "  cache_key  De sleutel die Supabase zelf meegeeft, stabiel per (lint, object). Staat letterlijk",
+    "             in het issue dat de workflow aanmaakt. Nooit zelf verzinnen.",
+    "  reden      Waarom dit risico aanvaardbaar is. Verplicht - de workflow faalt op een lege reden.",
+    "  issue      Het issue waar de afweging is vastgelegd.",
+    "",
+    "WAT HIER NIET HOORT: alles wat alleen maar lastig is om op te lossen. De dagelijkse controle",
+    "filtert al op ERROR en WARN; INFO-lints (rls_enabled_no_policy op alle 29 tabellen,",
+    "unindexed_foreign_keys) komen hier per definitie niet langs en hoeven dus niet onderdrukt te",
+    "worden."
+  ],
+  "geaccepteerd": []
+}
