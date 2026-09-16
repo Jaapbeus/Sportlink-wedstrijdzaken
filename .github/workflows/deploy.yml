@@ -352,10 +352,24 @@ jobs:
             BODY=$(printf '%s' "$RESPONSE" | sed '$d')
             echo "Poging $i/$MAX — health: $STATUS"
             if [ "$STATUS" = "200" ]; then
+              DB=$(printf '%s' "$BODY" | jq -r '.database // empty' 2>/dev/null || true)
               SETTINGS=$(printf '%s' "$BODY" | jq -r '.settingsLoaded // empty' 2>/dev/null || true)
               PENDING=$(printf '%s' "$BODY" | jq -r '(.pendingMigrations // []) | join(", ")' 2>/dev/null || true)
               SCHEMA=$(printf '%s' "$BODY" | jq -r '.schemaWarning // empty' 2>/dev/null || true)
               TLS=$(printf '%s' "$BODY" | jq -r '.tlsWarning // empty' 2>/dev/null || true)
+              # #1184: expliciet asserteren dat de database bereikbaar is. settingsLoaded=true
+              # bewijst dit indirect al (die cache komt uit dbo.AppSettings), maar impliciet
+              # bewijs is geen bewijs zodra iemand die tak wijzigt. Dit is bovendien de controle
+              # die de oude stap "Info: planner endpoint database-check" bedoelde te doen maar
+              # nooit kón doen: die liep op de admin-gate stuk vóór de database in beeld kwam.
+              # De -n-guard is bewust: ontbreekt het veld (oudere Function App-versie die nog
+              # draait tijdens een deploy), dan slaat de assertie over in plaats van de deploy
+              # te laten struikelen over een veld dat die versie niet kent.
+              if [ -n "$DB" ] && [ "$DB" != "online" ]; then
+                echo "FOUT: health geeft 200 maar database='$DB' (verwacht 'online')."
+                printf '%s\n' "$BODY" | jq . || printf '%s\n' "$BODY"
+                exit 1
+              fi
               if [ "$SETTINGS" = "false" ]; then
                 echo "FOUT: health geeft 200 maar settingsLoaded=false — de instellingencache is leeg, elk /api/beheer/*-endpoint antwoordt 500."
                 echo "Oorzaken: geen club met syncenabled=true, of de code verwacht een kolom die de database mist (zie schemaWarning/pendingMigrations hieronder)."
@@ -437,15 +451,38 @@ jobs:
             exit 1
           fi
 
-      - name: "Info: planner endpoint database-check"
-        continue-on-error: true
+      - name: "Smoke test: planner endpoint beveiligd met alleen een function key (→ 401)"
+        # #1184. Deze stap heette "Info: planner endpoint database-check" en verwachtte 200.
+        # Dat kon per definitie niet slagen: check-availability is AuthorizationLevel.Anonymous
+        # met EasyAuthHelper.RequireAdmin() als eerste regel, en een function key levert geen
+        # Easy Auth-principal op. De 401 kwam dus vóór WaitForDatabaseAsync — de database werd
+        # nooit aangeraakt. De stap meldde desondanks "Database mogelijk niet bereikbaar" en
+        # zette met exit 1 een rode annotatie op ELKE deploy, die door continue-on-error
+        # vervolgens genegeerd werd. Een annotatie die altijd rood staat leert iedereen om
+        # annotaties te negeren, en juist deze job gebruikt ze voor echte signalen (de
+        # TLS-waarschuwing uit #1095, de schemawaarschuwing uit /api/health).
+        #
+        # De databasecontrole die hier bedoeld was, staat nu in de health-stap hierboven als een
+        # expliciete assertie op het veld 'database'. Wat overblijft is wat deze aanroep
+        # werkelijk meet: dat het planner-endpoint achter de admin-gate zit. Dat is een echte
+        # veiligheidscontrole, in lijn met de drie stappen hierboven — en dus zonder
+        # continue-on-error, met dezelfde 503-cold-start-retry als de sync-matches-stap.
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST \
-            "https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}' || true)
-          echo "check-availability: $STATUS"
-          if [ "$STATUS" != "200" ]; then echo "⚠️ Database mogelijk niet bereikbaar (status $STATUS)"; exit 1; fi
+          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          MAX=6; WAIT=20
+          for i in $(seq 1 $MAX); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST \
+              "$URL" -H "Content-Type: application/json" \
+              -d '{"datum":"2026-12-01","leeftijdsCategorie":"JO13"}' || true)
+            echo "Poging $i/$MAX — check-availability met alleen een function key: $STATUS"
+            if [ "$STATUS" = "401" ]; then exit 0; fi
+            if [ "$STATUS" = "503" ] && [ "$i" -lt "$MAX" ]; then
+              echo "503 (cold start) — wacht ${WAIT}s..."; sleep $WAIT
+            else
+              echo "FOUT: verwacht 401, kreeg $STATUS — RequireAdmin beschermt dit endpoint niet meer"
+              exit 1
+            fi
+          done
 
   blazor-deploy:
     runs-on: ubuntu-latest

@@ -70,7 +70,30 @@ public class PostgresConnectionStringNormalizerTests
 
         new NpgsqlConnectionStringBuilder(result.ConnectionString).SslMode.Should().Be(SslMode.Require);
         result.EffectiveSslMode.Should().Be(SslMode.Require);
-        result.TlsWarning.Should().NotBeNullOrEmpty().And.Contain("verify-full");
+        // #1187: het advies is verify-CA, niet verify-full. verify-full valideert ook de hostnaam
+        // tegen de SubjectAltName van het servercertificaat, en het pooler-endpoint van de
+        // provider levert een certificaat zonder SAN — dat advies opvolgen legt de app plat.
+        result.TlsWarning.Should().NotBeNullOrEmpty().And.Contain("verify-ca");
+        result.TlsWarning.Should().NotContain("verify-full",
+            "verify-full is op dat endpoint onhaalbaar; dit advies opvolgen veroorzaakt het #1095-incident");
+    }
+
+    [Fact]
+    public void Normalize_VerifyCa_WaarschuwtDatDitHetHaalbareMaximumIs()
+    {
+        // #1187: de VerifyCA-tak krijgt bewust een ANDER advies dan Require/Prefer. Zou hij het
+        // generieke "zet verify-ca"-advies geven, dan stuurt hij naar de stand waar hij al op staat;
+        // zou hij verify-full adviseren, dan stuurt hij naar een doodlopend pad. Beide maken de
+        // waarschuwing waardeloos, en een waarschuwing die niemand meer leest doet zijn werk niet.
+        var result = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(
+            "postgresql://gebruiker:wachtwoord@db.voorbeeld.test:5432/sportlink"
+            + "?sslmode=verify-ca&sslrootcert=synthetic-ca.pem");
+
+        result.EffectiveSslMode.Should().Be(SslMode.VerifyCA);
+        result.TlsWarning.Should().NotBeNullOrEmpty();
+        result.TlsWarning.Should().Contain("hostnaam");
+        result.TlsWarning.Should().Contain("SubjectAltName");
+        result.TlsWarning.Should().Contain("niet blind");
     }
 
     [Fact]

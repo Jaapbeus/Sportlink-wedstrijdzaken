@@ -18,6 +18,35 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.2.0] — 2026-09-16
+
+### Security
+- **De databaseverbinding controleert nu of het certificaat van de database echt van de provider
+  komt (#1187).** Tot nu toe was het verkeer wel versleuteld, maar werd het certificaat niet
+  gecontroleerd — wie het netwerkpad naar de database kon beïnvloeden, kon zich in theorie als die
+  database voordoen. De productie-instelling staat nu op `verify-ca` met het meegeleverde
+  CA-certificaat, waardoor alleen een certificaat van de provider nog geaccepteerd wordt.
+- **De handleiding en de waarschuwing in de app schreven een instelling voor die de applicatie zou
+  platleggen (#1187).** Beide adviseerden `verify-full`. Die modus controleert ook de hostnaam
+  tegen het certificaat, en het database-endpoint levert een certificaat zonder hostnaamgegevens —
+  waardoor de verbinding altijd geweigerd zou worden. Omdat de connectiegegevens bij het opstarten
+  één keer worden gelezen, was élke databasetoegang uitgevallen: planner, beheer én de nachtelijke
+  synchronisatie, niet alleen de statuspagina. Precies het incident van release v3.3.0.0. Het advies
+  is nu `verify-ca`, en de waarschuwing legt bij die stand uit dat verder verhogen niet mogelijk is
+  zolang het endpoint geen hostnaamgegevens in zijn certificaat opneemt.
+
+### Fixed
+- **Elke deploy liet een rode foutmelding achter van een controle die niet kón slagen (#1184).**
+  De stap "planner endpoint database-check" riep een endpoint aan met alleen een function key,
+  terwijl dat endpoint sinds de invoering van Easy Auth een beheerdersrol vereist. Het antwoord was
+  dus altijd 401 — nog vóór de database werd aangeraakt — waarna de stap meldde dat de database
+  onbereikbaar zou zijn. Dat zei niets over de database: ook bij een werkelijk uitgevallen database
+  gaf deze controle precies hetzelfde resultaat. De melding werd genegeerd door de deploy zelf,
+  maar stond wel bij elke release in beeld, en een waarschuwing die altijd rood staat leert
+  iedereen om waarschuwingen te negeren. De databasecontrole gebeurt nu waar hij thuishoort — een
+  expliciete controle op het statusveld van `/api/health` — en de oude stap controleert nu wat hij
+  werkelijk meet: dat het planner-endpoint alleen voor beheerders toegankelijk is.
+
 ## [3.4.1.0] — 2026-09-16
 
 ### Fixed

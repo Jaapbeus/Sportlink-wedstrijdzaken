@@ -2707,8 +2707,9 @@ de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
 `MigrationTools/SqlServerToPostgresCopy` (#976-cutoverkopie) — alle drie roepen dezelfde
 `Normalize`-methode aan, er is geen aparte, zwakkere check ergens anders.
 
-**Operationele consequentie (oorspronkelijke tekst, #1004):** de Azure Function App-instelling
-`POSTGRES_CONNECTION_STRING` (zie stap 4 van het cutover-runbook hierboven) moest
+**Operationele consequentie (oorspronkelijke tekst, #1004 — inmiddels achterhaald, zie #1187:
+het werd `verify-ca`, want `verify-full` is op het pooler-endpoint onhaalbaar):** de Azure Function
+App-instelling `POSTGRES_CONNECTION_STRING` (zie stap 4 van het cutover-runbook hierboven) moest
 `?sslmode=verify-full` bevatten; anders gooide `PostgresDatabaseConfig`'s statische initializer bij
 de eerstvolgende cold start een `InvalidOperationException` (gevangen door `/api/health` als
 `"unconfigured"` → HTTP 503, zie §10).
@@ -2767,11 +2768,40 @@ wordt:
    deploy, niet als harde gate, omdat de pipeline zelf `POSTGRES_CONNECTION_STRING` niet zet (§49
    stap 4) en dus vóór de deploy niets over de productie-instelling kan weten.
 
-**Wat hiermee nog niet is opgelost.** `POSTGRES_CONNECTION_STRING` moet, ná release van dit
-certificaat naar productie (nooit ervoor — zie §49 stap 4), handmatig worden uitgebreid met
-`?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`. Tot die stap is gezet,
-blijft `tlsWarning` in `/api/health` non-null en is dat het juiste, verwachte signaal — geen
-regressie.
+**Uitgevoerd bij release v3.4.1.0 — maar met `verify-ca`, niet `verify-full` (#1187).**
+`POSTGRES_CONNECTION_STRING` is uitgebreid met
+`?sslmode=verify-ca&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`.
+
+> **Volg hier nooit het oorspronkelijke advies `verify-full` op.** Dat stond hier eerder en is voor
+> deze deployment onhaalbaar. Gemeten tegen de productiedatabase, met Npgsql 10.0.3 via deze
+> normalizer:
+>
+> | Modus | Uitkomst |
+> |---|---|
+> | `Require` (stand tot v3.4.1.0) | verbinding OK |
+> | `verify-ca` + provider-CA | **verbinding OK** |
+> | `verify-full` + provider-CA | **afgewezen** |
+>
+> Het pooler-endpoint levert een certificaat met alleen een CN (`*.pooler.…`) en **geen
+> SubjectAltName**. .NET valideert hostnamen uitsluitend tegen de SAN — CN-matching is sinds
+> RFC 6125 afgeschaft — dus `verify-full` faalt daar per definitie met
+> `RemoteCertificateNameMismatch`. Omdat `PostgresDatabaseConfig.ConnectionString` een static
+> initializer is, zou het opvolgen van dat advies de hele app platleggen: precies het
+> #1095-incident opnieuw.
+
+Wat `verify-ca` wél oplevert: de certificaatketen wordt gevalideerd, dus een aanvaller heeft een
+certificaat nodig dat door de root-CA van de provider is ondertekend — een willekeurig
+zelfondertekend certificaat volstaat niet meer. De hostnaam blijft ongevalideerd; dat is het
+restrisico, en daarom blijft `tlsWarning` in `/api/health` staan. Dat is vanaf nu het juiste,
+verwachte signaal en geen openstaande actie meer.
+
+**Bewust niet meegewijzigd: het GitHub-secret `POSTGRES_CONNECTION_STRING`.** `db-migrate-postgres`
+draait op een GitHub-runner, waar het pad `/home/site/wwwroot/...` niet bestaat; dezelfde waarde
+daarheen kopiëren breekt de volgende deploy. Dat vraagt een eigen oplossing (het certificaat staat
+ook in de checkout) en is losgekoppeld in #1187.
+
+**Vervolg voor later:** het **directe** database-endpoint zou `verify-full` mogelijk wél halen,
+maar dat raakt het verbindingslimiet-gedrag van de pooler en is dus een aparte afweging.
 
 **Bewust nog niet gedaan:** het beleid weer aanscherpen (`Require` zonder `verify-full` opnieuw
 weigeren). Dat is pas verantwoord zodra bovenstaande twee operationele stappen aantoonbaar zijn
