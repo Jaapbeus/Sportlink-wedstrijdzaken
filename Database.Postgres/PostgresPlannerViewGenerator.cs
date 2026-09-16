@@ -73,6 +73,12 @@ namespace Database.Postgres;
 /// <see cref="KnownEntities"/>) en de vier minimale configuratietabellen uit
 /// <see cref="PostgresPlannerSupportSchema"/>.
 /// </para>
+/// <para>
+/// <b>#1193:</b> <c>m.mta_deleted IS NULL</c> sluit wedstrijden uit die de sync-reconciliatiestap
+/// heeft gemarkeerd als niet meer bij Sportlink bestaand (zie
+/// <see cref="PostgresMergeOrchestrator.ReconcileWindowedAsync"/>); <c>t.mta_deleted IS NULL</c>
+/// in de team-join doet hetzelfde voor een zacht-verwijderd <c>his.teams</c>-team.
+/// </para>
 /// </summary>
 public static class PostgresPlannerViewGenerator
 {
@@ -105,6 +111,7 @@ public static class PostgresPlannerViewGenerator
         LEFT JOIN his.teams t
             ON t.teamnaam = m.teamnaam AND t.leeftijdscategorie IS NOT NULL AND t.leeftijdscategorie <> ''
            AND COALESCE(t.clubcode, a.clubcode) = COALESCE(m.clubcode, a.clubcode)
+           AND t.mta_deleted IS NULL
         LEFT JOIN public.speeltijden s
             ON s.leeftijd = CASE
                 WHEN m.teamnaam ~* ('^' || a.clubcode || ' G[0-9]') THEN 'G'
@@ -115,6 +122,7 @@ public static class PostgresPlannerViewGenerator
           AND m.status <> 'Afgelast'
           AND m.aanvangstijd IS NOT NULL
           AND s.wedstrijdtotaal IS NOT NULL
+          AND m.mta_deleted IS NULL
 
         UNION ALL
 

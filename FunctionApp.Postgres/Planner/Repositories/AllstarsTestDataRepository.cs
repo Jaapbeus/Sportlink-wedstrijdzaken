@@ -55,6 +55,7 @@ internal static class AllstarsTestDataRepository
                 WHERE m.kaledatum::date = @date
                   AND m.clubcode = 'ALLSTARS'
                   AND (m.status IS NULL OR m.status <> 'Afgelast')
+                  AND m.mta_deleted IS NULL
                 ORDER BY m.teamnaam"
             : $@"SELECT m.wedstrijdcode, m.wedstrijd, m.teamnaam, m.uitteam,
                        m.aanvangstijd, m.veld, m.competitiesoort,
@@ -69,6 +70,7 @@ internal static class AllstarsTestDataRepository
                 WHERE m.kaledatum::date = @date
                   AND m.clubcode = @clubCode
                   AND m.status <> 'Afgelast'
+                  AND m.mta_deleted IS NULL
                   AND m.accommodatie LIKE '%' || (SELECT accommodatie FROM public.appsettings WHERE clubcode = @clubCode LIMIT 1) || '%'
                 ORDER BY m.teamvolgorde, m.teamnaam";
 
