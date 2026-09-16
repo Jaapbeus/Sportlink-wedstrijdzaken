@@ -744,6 +744,14 @@ Harde regels, vanaf nu:
    repository. Dit is precies waarom #985 twaalf dagen ongemerkt bleef: het besluit stond correct
    gedocumenteerd, maar de vraag "wat stelt het hostingplatform zelf standaard open, los van onze
    eigen architectuur?" ontbrak in die analyse.
+4. **Een database-object dat in geen enkele migratie of C#-bestand voorkomt, is niet automatisch
+   overbodig — het kan platforminfrastructuur van Supabase zelf zijn.** §66 van
+   `docs/ARCHITECTUUR-DATABASE-TIERS.md`: een `DROP FUNCTION` op een onbekende functie faalde
+   direct op een dependency-fout, wat aan het licht bracht dat de functie een Supabase-eigen
+   event-trigger-vangnet was (auto-RLS op elke nieuwe tabel) — droppen had een nieuwe, blijvende
+   regressie geïntroduceerd. Controleer bij een onbekend Supabase-object altijd
+   `pg_get_functiondef`/`pg_event_trigger` vóór een `DROP`, en laat een faalende `DROP` eerst de
+   vraag "waarom bestaat dit" beantwoorden — nooit omzeilen met `CASCADE`.
 
 ---
 

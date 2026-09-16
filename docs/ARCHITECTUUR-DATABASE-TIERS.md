@@ -3577,6 +3577,45 @@ Dezelfde twee triggers als in #985 al genoemd, plus een derde:
    van onze eigen code?" — zie de nieuwe harde regel in CLAUDE.md/AGENTS.md onder "Supabase
    Postgres — Row-Level Security verplicht op elke tabel".
 
+## 66. `rls_auto_enable()` — een vangnet blijkt geen overbodig artefact (vervolg op #1198)
+
+Ná migratie 021 meldde Supabase's Security Advisor twee nieuwe WARN-bevindingen op
+`public.rls_auto_enable()`: een `SECURITY DEFINER`-functie, aanroepbaar door `anon` en
+`authenticated` via `/rest/v1/rpc/rls_auto_enable`.
+
+**Eerste, verkeerde hypothese:** de functie staat in geen enkele migratie of C#-bestand in dit
+repository — een volledige grep bevestigde dat. De aanname was dus dat ze een overbodig bijproduct
+was van een eenmalige "fix"-actie in het Supabase-dashboard, en de eerste versie van migratie 022
+liet haar dan ook droppen.
+
+**Waarom dat mis was, en hoe dat aan het licht kwam vóórdat het schade kon doen:** de `DROP
+FUNCTION` faalde direct met `2BP01: cannot drop function ... because other objects depend on it`.
+`pg_get_functiondef` en `pg_event_trigger` lieten zien waarom: de functie retourneert
+`event_trigger` en is gekoppeld aan het event-trigger `ensure_rls` (`ddl_command_end`) —
+geregistreerd naast onmiskenbaar Supabase-eigen platform-triggers (`pgrst_ddl_watch`,
+`issue_pg_cron_access`, `issue_pg_graphql_access`, `issue_pg_net_access`). Dit is Supabase's eigen
+aanbevolen mechanisme om RLS automatisch aan te zetten op elke **nieuwe** `public`-tabel — precies
+het vangnet dat het probleem van migratie 021 voor toekomstige tabellen voorkomt. Hem droppen had
+dus een nieuwe, blijvende regressie geïntroduceerd in ruil voor het "oplossen" van een bevinding
+die niets met de functie zelf te maken had.
+
+**De werkelijke oorzaak van de WARN, en de juiste fix:** Postgres kent `EXECUTE` op een nieuwe
+functie standaard toe aan de rol `PUBLIC`, en Supabase's PostgREST-laag ontsluit elke
+`public`-functie met `EXECUTE` voor `PUBLIC`/`anon`/`authenticated` automatisch als RPC-endpoint —
+ongeacht of de functie voor extern gebruik bedoeld is. Een event-trigger-functie is dat per
+definitie niet (Postgres roept hem uitsluitend intern aan via de event-trigger-machinerie).
+Migratie `022_revoke_public_execute_rls_auto_enable.sql` haalt daarom alleen `EXECUTE ... FROM
+PUBLIC` weg; functie en event trigger blijven volledig intact. Lokaal geverifieerd tijdens dit
+vervolgonderzoek: ná de revoke bleef `ensure_rls` enabled, en het aanmaken van een verse testtabel
+resulteerde nog steeds direct in `relrowsecurity = true` — het vangnet werkt, alleen de onbedoelde
+publieke aanroepbaarheid is weg.
+
+**Les voor toekomstige Supabase-bevindingen:** een object dat niet in de eigen migraties/code
+voorkomt is niet automatisch overbodig — het kan een deel van Supabase's eigen
+platforminfrastructuur zijn. Controleer altijd `pg_get_functiondef`/`pg_event_trigger` (of het
+Supabase-equivalent) vóór een `DROP`, en laat een `DROP` die faalt op een dependency-fout eerst de
+vraag "waarom bestaat dit object" beantwoorden in plaats van de fout te omzeilen met `CASCADE`.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
