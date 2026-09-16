@@ -25,6 +25,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   applicatie die ooit gebruikt — inclusief de tabel met Sportlink-servicetokens en de tabel met
   uitgesloten e-mailadressen. RLS staat nu aan op alle 27 toepassingstabellen, zonder policies:
   de applicatie verbindt via de tabeleigenaar-rol en merkt hier niets van.
+- **Een Supabase-eigen functie (`public.rls_auto_enable()`, het vangnet dat RLS automatisch aanzet
+  op elke nieuwe tabel) was voor iedereen aanroepbaar via de publieke API, ook zonder in te loggen
+  (#1198, vervolg).** De functie en het bijbehorende vangnet blijven volledig werken — alleen de
+  onbedoelde publieke aanroepbaarheid is weggehaald.
 
 ## [3.4.3.0] — 2026-09-16
 
