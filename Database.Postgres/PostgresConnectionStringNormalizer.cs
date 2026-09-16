@@ -217,17 +217,36 @@ public static class PostgresConnectionStringNormalizer
                 return BuildWarning(builder.SslMode, "het servercertificaat en de hostnaam worden niet gevalideerd");
 
             case SslMode.VerifyCA:
-                return BuildWarning(builder.SslMode, "de certificaatketen wordt gevalideerd, maar de hostnaam niet");
+                // Bewust een ANDER advies dan bij Require/Prefer (#1187). Verder opschalen naar
+                // VerifyFull kan hier een doodlopend pad zijn: dat valideert de hostnaam tegen de
+                // SubjectAltName van het servercertificaat, en het pooler-endpoint van de
+                // databaseprovider levert een certificaat zonder SAN (alleen een CN). .NET matcht
+                // hostnamen uitsluitend op de SAN, dus VerifyFull faalt daar per definitie.
+                // Gemeten op de productiedatabase: verify-ca slaagt, verify-full wordt afgewezen
+                // met RemoteCertificateNameMismatch. Iemand die dit advies letterlijk opvolgt legt
+                // de hele app plat — PostgresDatabaseConfig.ConnectionString is een static
+                // initializer, exact het #1095-incident.
+                return
+                    $"TLS-beleid niet volledig gehaald: verbinding is versleuteld (SslMode={builder.SslMode}) " +
+                    "en de certificaatketen wordt gevalideerd, maar de hostnaam niet. Dit is het haalbare " +
+                    "maximum zolang het database-endpoint een certificaat zonder SubjectAltName aanbiedt: " +
+                    "verify-full valideert de hostnaam tegen de SAN en faalt dan. Verhoog dit niet blind — " +
+                    "zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50 en issue #1187.";
 
             default:
                 return BuildWarning(builder.SslMode, "onbekende TLS-modus");
         }
     }
 
+    // #1187: het advies is verify-CA, niet verify-full. Dat laatste stond hier eerder en is voor
+    // een endpoint met een certificaat zonder SubjectAltName onhaalbaar — het opvolgen ervan legt
+    // de app plat (#1095). verify-ca is wél haalbaar en valideert de keten, wat het verschil maakt
+    // tussen "elk certificaat wordt geaccepteerd" en "alleen een certificaat van de CA van de
+    // provider". Zie de VerifyCA-tak hierboven voor het advies zodra die stap is gezet.
     private static string BuildWarning(SslMode effective, string reden) =>
         $"TLS-beleid niet volledig gehaald: verbinding is versleuteld (SslMode={effective}), maar {reden}. " +
-        "Zet sslmode=verify-full met het CA-certificaat van de databaseprovider (sslrootcert) — zie " +
-        "docs/ARCHITECTUUR-DATABASE-TIERS.md §50 en issue #1095.";
+        "Zet sslmode=verify-ca met het CA-certificaat van de databaseprovider (sslrootcert) — zie " +
+        "docs/ARCHITECTUUR-DATABASE-TIERS.md §50 en issue #1187.";
 
     private static bool IsLocalDevelopmentHost(string? host) =>
         !string.IsNullOrEmpty(host) &&
