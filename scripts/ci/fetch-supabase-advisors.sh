@@ -22,6 +22,20 @@
 #                           identificeert de club (CLAUDE.md regel 4a — hetzelfde lek dat #1204
 #                           voor zes andere waarden dichtte).
 #
+#   ADVISOR_TESTLINT        Optioneel, alleen om de MELDKETEN te verifiëren. Vervangt het
+#                           ERROR/WARN-filter door "precies dit ene lint", zodat er gegarandeerd
+#                           bevindingen zijn en het issue-aanmaakpad daadwerkelijk doorlopen wordt.
+#
+#                           Waarom dit blijvend bestaat en geen wegwerp-commit was: zolang het
+#                           project schoon is levert de normale run nul bevindingen op, en dan
+#                           blijft het issue-pad per definitie ongetest. Een meldketen die nooit
+#                           heeft gemeld, is geen geverifieerde meldketen — dezelfde redenering als
+#                           bij de guards van #1220. Met `no_primary_key` (2 bevindingen) is de
+#                           proef klein en goedkoop.
+#
+#                           De redactie-gates hieronder draaien onverkort door; dit verandert
+#                           uitsluitend de selectie, nooit de veiligheidscontroles.
+#
 # ── Uitvoer ─────────────────────────────────────────────────────────────────────────────────────
 #   $1 (verplicht)  pad voor het JSON-resultaat: een array van bevindingen, elk met
 #                   categorie/name/level/facing/title/detail/remediation/cache_key.
@@ -83,6 +97,10 @@ haal_op() {
   fi
 }
 
+if [ -n "${ADVISOR_TESTLINT:-}" ]; then
+  echo "::warning::ADVISOR_TESTLINT staat aan (${ADVISOR_TESTLINT}) — filter vervangen om de meldketen te verifiëren. Dit is geen normale run."
+fi
+
 echo "Supabase-advisors ophalen..."
 haal_op security "$WERKMAP/security.json"
 haal_op performance "$WERKMAP/performance.json"
@@ -97,10 +115,14 @@ echo "  security: $TOTAAL_SEC bevinding(en) ruw, performance: $TOTAAL_PERF"
 # getoetst) in zitten. Die horen in een triageronde, niet in een dagelijkse melding — anders is
 # het signaal onmiddellijk ruis en kijkt niemand er meer naar.
 # INTERNAL-bevindingen gaan over Supabase's eigen objecten en zijn niet door ons op te lossen.
-jq -s '
+jq -s --arg testlint "${ADVISOR_TESTLINT:-}" '
   [ (.[0].lints[] | . + {categorie: "security"}),
     (.[1].lints[] | . + {categorie: "performance"}) ]
-  | map(select((.level // "") | ascii_upcase | . == "ERROR" or . == "WARN"))
+  | (if $testlint == "" then
+       map(select((.level // "") | ascii_upcase | . == "ERROR" or . == "WARN"))
+     else
+       map(select(.name == $testlint))
+     end)
   | map(select((.facing // "EXTERNAL") | ascii_upcase == "EXTERNAL"))
   | map({
       categorie,
