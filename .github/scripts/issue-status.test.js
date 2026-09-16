@@ -16,6 +16,28 @@ let r = extractIssueRefs('fix(#684): iets', 'Lost op. Zie ook #683 en #123.');
 check('titel-nummer is strong', [...r.strong], [684]);
 check('proza-verwijzing alleen in all', r.all.sort((a,b)=>a-b), [123, 683, 684]);
 
+// #1179 — titel-attributie is gebonden aan HAAKJES. Elk nummer in de titel meenemen
+// ondermijnde de #838/#630-versmalling in de workflow die issues sluit. De gevallen hieronder
+// zijn letterlijke PR-titels uit deze repo.
+r = extractIssueRefs('refactor(#1122): review epic #986 — endpoint-helper, code-behind', '');
+check('epic-kruisverwijzing in titelproza is NIET strong', [...r.strong], [1122]);
+check('die kruisverwijzing staat wel in all', r.all.sort((a,b)=>a-b), [986, 1122]);
+
+r = extractIssueRefs('docs(#1051): CHANGELOG-verwijzing naar #1048 gebruikte haakjesnotatie', '');
+check('onderwerp-van-de-zin is NIET strong', [...r.strong], [1051]);
+
+r = extractIssueRefs('fix(#1131): import atomisch + club-lock (Postgres, #1132)', '');
+check('tweede haakjesgroep met tekst telt wel mee', [...r.strong].sort((a,b)=>a-b), [1131, 1132]);
+
+r = extractIssueRefs('feat(#1093): migraties vóór de code + fix(#1112): checksum', '');
+check('twee voorvoegsels in één titel', [...r.strong].sort((a,b)=>a-b), [1093, 1112]);
+
+r = extractIssueRefs('chore: sync develop met main-hotfixes (#1095, #1098, #1099, #1101)', '');
+check('titel zonder voorvoegsel, wel een haakjesgroep', [...r.strong].sort((a,b)=>a-b), [1095, 1098, 1099, 1101]);
+
+r = extractIssueRefs('chore: main terugmergen — productiefixes #972 en #976 ontbraken', '');
+check('kale nummers zonder haakjes leveren niets op', [...r.strong], []);
+
 r = extractIssueRefs('chore: geen nummer', 'Closes #42\nFixes: #43\nresolved #44\nzie #45');
 check('sluitende keywords zijn strong', [...r.strong].sort((a,b)=>a-b), [42, 43, 44]);
 check('#45 niet strong', r.strong.has(45), false);
@@ -149,6 +171,82 @@ async function run() {
     'PR met meerdere sluitende issues — allemaal geselecteerd',
     simulateSelection('chore: opruiming', 'Closes #820\nFixes #821'),
     [820, 821],
+  );
+
+  // ---------- close-released-issues.yml: epic-guard + merged_at-filter (#1179) ----------
+  // Simuleert de twee beslissingen uit de sluitloop. Die workflow draait alleen op een
+  // release-tag, dus zonder deze simulatie zou een fout er pas bij een echte release uitkomen —
+  // en dan heeft hij al issues gesloten die met de hand heropend moeten worden.
+  console.log('\nclose-released-issues.yml epic-guard + merged_at:');
+
+  // De sluitloop: PR's overslaan, epics overslaan, de rest sluiten.
+  function simulateSluiten(issue) {
+    if (issue.pull_request) return 'overgeslagen: pr';
+    if (isEpic(issue)) return 'overgeslagen: epic';
+    return issue.state === 'open' ? 'gesloten' : 'al gesloten';
+  }
+
+  check('epic wordt niet gesloten door een release',
+        simulateSluiten({ state: 'open', labels: [{ name: 'epic' }, { name: 'type: feature' }] }),
+        'overgeslagen: epic');
+  check('regressie: gewoon open issue wordt nog gewoon gesloten',
+        simulateSluiten({ state: 'open', labels: [{ name: 'type: bug' }] }),
+        'gesloten');
+  check('PR-nummer in de lijst wordt overgeslagen',
+        simulateSluiten({ state: 'open', pull_request: {}, labels: [] }),
+        'overgeslagen: pr');
+
+  // Bron 3: alleen GEMERGEDE PR's dragen nummers aan.
+  function simulateBron3(prs) {
+    const numbers = new Set();
+    for (const pr of prs) {
+      if (!pr.merged_at) continue;
+      for (const n of extractIssueRefs(pr.title, pr.body).strong) numbers.add(n);
+    }
+    return [...numbers].sort((a, b) => a - b);
+  }
+
+  check('open PR op dezelfde commit draagt niets bij',
+        simulateBron3([
+          { title: 'fix(#100): gemerged werk', body: '', merged_at: '2026-01-01T00:00:00Z' },
+          { title: 'fix(#999): nog open branch vanaf develop', body: '', merged_at: null },
+        ]),
+        [100]);
+
+  // #1179-vervolg: het vangnet-rapport filtert op wat de sluitstap ECHT afhandelde, niet op de
+  // ruwe kandidatenlijst. Zou het op die kandidatenlijst filteren, dan verdwijnt een overgeslagen
+  // epic stilzwijgend uit het rapport terwijl hij nog op 'awaiting-release' staat — precies de
+  // blinde vlek waarvoor #1168 is aangemaakt.
+  console.log('\nclose-released-issues.yml vangnet-rapport:');
+
+  // Sluitloop + rapport, samen gesimuleerd.
+  function simulateRapport(kandidaten, nogGelabeld) {
+    const afgehandeld = [];
+    for (const issue of kandidaten) {
+      if (issue.pull_request) continue;
+      if (isEpic(issue)) continue;
+      afgehandeld.push(issue.number);
+    }
+    const afgevinkt = new Set(afgehandeld);
+    return nogGelabeld.filter(n => !afgevinkt.has(n)).sort((a, b) => a - b);
+  }
+
+  check(
+    'overgeslagen epic blijft in het vangnet-rapport staan',
+    simulateRapport(
+      [{ number: 100, state: 'open', labels: [{ name: 'type: bug' }] },
+       { number: 986, state: 'open', labels: [{ name: 'epic' }] }],
+      [100, 986],
+    ),
+    [986],
+  );
+  check(
+    'regressie: een echt afgehandeld issue verdwijnt wel uit het rapport',
+    simulateRapport(
+      [{ number: 100, state: 'open', labels: [{ name: 'type: bug' }] }],
+      [100],
+    ),
+    [],
   );
 
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);

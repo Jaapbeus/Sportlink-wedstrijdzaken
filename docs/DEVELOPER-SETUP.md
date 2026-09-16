@@ -76,14 +76,28 @@ Dekt **Windows** en **macOS (Apple Silicon)**. Sla het platform over dat niet va
   # PowerShell.
   brew install powershell
   ```
-- [ ] **.NET 9 Runtime** — vereist voor FunctionApp (Linux Consumption Plan ondersteunt net10.0 niet)
+- [ ] **.NET 9 Runtime — TWEE frameworks** — vereist voor FunctionApp (Linux Consumption Plan
+  ondersteunt net10.0 niet)
+
+  > **Let op (#1174): alleen de base runtime is niet genoeg.** `FunctionApp.Tests` en
+  > `FunctionApp.Postgres.Tests` hebben blijkens hun `runtimeconfig.json` zowel
+  > `Microsoft.NETCore.App` **als** `Microsoft.AspNetCore.App` op 9.x nodig. Ontbreekt de tweede,
+  > dan bouwen die projecten gewoon, maar breekt `dotnet test` af met
+  > *"You must install or update .NET to run this application"* — een melding die naar een
+  > ontbrekende SDK lijkt te wijzen in plaats van naar een ontbrekend gedeeld framework.
+  > In CI blijft dit onzichtbaar: `actions/setup-dotnet` installeert beide.
+
   ```powershell
-  # Windows
+  # Windows — base runtime én ASP.NET Core runtime
   winget install Microsoft.DotNet.Runtime.9
+  winget install Microsoft.DotNet.AspNetCore.9
   ```
   ```bash
-  # macOS — dotnet-install script; --runtime dotnet installeert alleen de runtime
-  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+  # macOS — dotnet-install script. --runtime dotnet geeft ALLEEN Microsoft.NETCore.App,
+  # dus de tweede aanroep (--runtime aspnetcore) is net zo verplicht als de eerste.
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
+  /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+  /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
   ```
 - [ ] **.NET 10 SDK** — vereist voor BlazorAdmin
   ```powershell
@@ -149,7 +163,8 @@ Dekt **Windows** en **macOS (Apple Silicon)**. Sla het platform over dat niet va
 ### Versies controleren
 
 ```powershell
-dotnet --list-runtimes   # moet 'Microsoft.NETCore.App 9.x.x' bevatten
+# Beide 9.x-regels moeten er staan — alleen de eerste is niet genoeg, zie #1174.
+dotnet --list-runtimes   # moet 'Microsoft.NETCore.App 9.x.x' EN 'Microsoft.AspNetCore.App 9.x.x' bevatten
 dotnet --version         # moet 10.x.x zijn (SDK)
 func --version           # moet 4.x.x zijn
 azurite --version        # moet aanwezig zijn
@@ -964,7 +979,7 @@ geen `PackageReference`-project en wordt door Central Package Management niet aa
 Eén bestand, `Directory.Packages.props` in de repository-root, bevat de versie van elk pakket:
 
 ```xml
-<PackageVersion Include="Npgsql" Version="9.0.3" />
+<PackageVersion Include="Npgsql" Version="10.0.3" />
 ```
 
 Elk project-bestand refereert een pakket zonder versie:
@@ -1082,15 +1097,18 @@ dotnet --list-runtimes
 # Moet bevatten: Microsoft.NETCore.App 9.x.x
 ```
 
-Ontbreekt .NET 9?
+Ontbreekt .NET 9? Installeer **beide** frameworks — de base runtime alleen is niet genoeg (#1174):
 
 ```powershell
 # Windows
 winget install Microsoft.DotNet.Runtime.9
+winget install Microsoft.DotNet.AspNetCore.9
 ```
 ```bash
 # macOS
-curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
+/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+/tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
 ```
 
 > .NET 10 als runtime voor FunctionApp geeft een 503 op Azure Consumption Plan. Zie CLAUDE.md voor

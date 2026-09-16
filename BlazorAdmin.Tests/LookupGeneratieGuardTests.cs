@@ -1,5 +1,5 @@
 using BlazorAdmin.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Xunit;
 
 namespace BlazorAdmin.Tests;

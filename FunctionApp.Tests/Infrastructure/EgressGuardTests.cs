@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using SportlinkFunction.Infrastructure;
 using Xunit;
 

@@ -1,5 +1,5 @@
 using Database.Postgres.Tests;
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;

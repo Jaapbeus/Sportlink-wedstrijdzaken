@@ -18,6 +18,92 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.1.0] — 2026-09-16
+
+### Fixed
+- **De release-automatisering kon issues sluiten die niet in de release zaten (#1179).** Drie gaten
+  in `close-released-issues.yml`, geen ervan zichtbaar bij een gewone PR omdat die workflow alleen
+  op een release-tag draait. Ten eerste telde elk issuenummer ergens in een PR-titel mee, ook een
+  kruisverwijzing in proza — een titel als "review epic #986" kon daarmee een epic meesluiten.
+  Ten tweede telden ook níet-gemergede PR's mee, simpelweg omdat ze dezelfde commit bevatten;
+  elke feature-branch vanaf `develop` droeg zo zijn issuenummers bij. Ten derde miste de sluitstap
+  de epic-uitzondering die de zusterworkflow wél heeft, waardoor één opgeleverd deelissue een hele
+  epic kon sluiten. Daarbovenop pikte de CHANGELOG-lezer ook nummers op uit voorbeeldtekst tussen
+  backticks. En tot slot viel een overgeslagen epic stilzwijgend weg uit het vangnetrapport dat
+  juist moet melden wat er ná een release nog op 'wacht op release' staat, en deed de PR-koppeling
+  één API-aanroep per commit — genoeg om bij een allereerste release van een fork, waar geen
+  vorige tag bestaat, halverwege op de uurlimiet te stranden en maar een deel van de issues te
+  sluiten. Alles is verholpen en vastgelegd in de bestaande unittests, die bij elke PR draaien —
+  de workflow zelf draait immers pas bij een release, en dan is de schade al aangericht.
+- **De setup-instructies installeerden maar de helft van wat .NET 9 nodig heeft, waardoor twee
+  testprojecten niet konden draaien (#1174).** `dotnet-install.sh --runtime dotnet` levert alleen
+  `Microsoft.NETCore.App`, maar `FunctionApp.Tests` en `FunctionApp.Postgres.Tests` hebben ook
+  `Microsoft.AspNetCore.App` op 9.x nodig. Zonder die tweede bouwen ze wel, maar breekt
+  `dotnet test` af met "You must install or update .NET to run this application" — een melding die
+  naar een ontbrekende SDK wijst in plaats van naar een ontbrekend gedeeld framework. De
+  verificatiestap in dezelfde handleiding controleerde bovendien alleen op het eerste framework en
+  gaf dus groen licht terwijl het niet werkte. Alle zes de plekken waar deze installatie wordt
+  beschreven noemen nu beide frameworks, en de controlestap vraagt om beide. In CI was dit
+  onzichtbaar omdat `actions/setup-dotnet` ze allebei installeert.
+- **De git-hooks blokkeerden commits en pushes op ongevaarlijke code, waardoor `--no-verify` de
+  enige uitweg was (#1172).** De secrets-scan keek naar elk gestaged bestand in zijn geheel in
+  plaats van naar de wijziging, en sloeg daardoor aan op bestaande, onschuldige regels in bestanden
+  die je alleen maar aanraakte. Twee vormen kwamen structureel voor: een wachtwoord dat via een
+  variabele wordt doorgegeven (`PGPASSWORD=$Password` — juist het veilige patroon dat dit project
+  voorschrijft, want zo staat het wachtwoord niet in de processenlijst), en een synthetische
+  wedstrijdcode van negen cijfers die het BSN-patroon raakte. Beide zijn nu vrijgesteld. Dat is
+  géén verzwakking van de scan maar een versterking: `--no-verify` schakelt de controle uit voor
+  álle bestanden in een commit, en dat was precies waar dit toe dwong. Een letterlijk wachtwoord
+  blijft blokkeren, en van het testdata-bereik is alleen die ene bestaande waarde vrijgesteld, niet
+  het bereik.
+- **De dev-scripts zagen op macOS nooit een draaiende service, en `Test-App.ps1` meldde daardoor
+  ten onrechte dat alles goed was (#1171).** `Test-PortListening` gebruikte
+  `GetActiveTcpListeners()` uit de .NET BCL, en die geeft op macOS alleen de listeners van het
+  eigen proces terug — alles wat een ander proces opent, zoals Azurite en de FunctionApp, is er
+  onzichtbaar. Gevolg: `Start-Debug.ps1` dacht dat Azurite niet draaide, startte
+  een tweede die niet kon binden, wachtte 30 seconden op een listener die het nooit zou zien en
+  startte FunctionApp en BlazorAdmin daarna helemaal niet meer. Kwalijker nog: `Test-App.ps1` sloeg
+  zijn API- en Blazor-controles stilzwijgend over terwijl beide services gewoon draaiden, en sloot
+  daarna af met "Geslaagd" — een groene run bewees op macOS dus niets over de endpoints of de GUI.
+  De functie gebruikt op macOS nu `lsof`, net als `Get-PortOwnerId` al deed; Windows en Linux
+  houden het bestaande pad. Er draait vanaf nu een CI-test die de detectie tegen een echte socket
+  in een ander proces houdt, zodat deze fout niet opnieuw jarenlang onopgemerkt kan blijven. Ontbreekt `lsof`, dan volgt er nu een expliciete waarschuwing in plaats van een stil
+  verkeerd antwoord. Dit corrigeert de claim bij #800 dat poortdetectie via een cross-platform
+  .NET-API zou lopen.
+- **Issues bleven na een release onterecht op 'wacht op release' staan als de commit-message of de
+  CHANGELOG-vermelding het issuenummer niet in het verwachte format bevatte (#1168).** Twee gaten:
+  een commit-titel met meerdere issues (`feat(#990, #1017): ...`) werd niet herkend, en een
+  handmatig herschreven squash-commit-message kon de issue-referentie helemaal verliezen (zoals bij
+  #1013, waar `fix(#1013): ...` bij het mergen `fix: ... (#1014)` werd — het PR-nummer, niet het
+  issuenummer). `close-released-issues.yml` leest nu ook de titel/body van elke gemergede PR
+  rechtstreeks, die informatie verandert niet mee met een herschreven commit-message. Daarnaast
+  bleek epic #986 het label `epic` te missen, waardoor de bestaande epic-uitzondering niet gold en
+  het issue permanent op 'wacht op release' bleef staan; #986/#1013/#1017 zijn handmatig
+  gecorrigeerd.
+- **Seizoensgrenzen en zonsondergangstijden werden niet meer uit de database gelezen na de
+  Npgsql-upgrade (#1170).** Npgsql 10 geeft een `DATE`- en een `TIME`-kolom voortaan als `DateOnly`
+  respectievelijk `TimeOnly` terug in plaats van als `DateTime`/`TimeSpan`. Vier plekken in de
+  Postgres-tier tastten het resultaat nog op het oude type af en vielen daardoor stilzwijgend terug
+  op "niets gevonden": de einddatum van het seizoen, de begin- en einddatum die het
+  synchronisatievenster bepalen, en de zonsondergangstijd waarop de veldplanning de laatste
+  wedstrijd van de dag afknijpt. Zichtbaar gevolg zou zijn geweest: de synchronisatie haalt een
+  vast venster van 30 weken op in plaats van het echte seizoen, en de planner rekent met de
+  berekende zonsondergang in plaats van de opgeslagen waarde. Alle vier zijn hersteld en er staan nu
+  regressietests op, want drie ervan hadden geen enkele testdekking en faalden zonder foutmelding.
+
+### Changed
+- **Assertiebibliotheek in de testprojecten van FluentAssertions naar AwesomeAssertions
+  (#1170).** FluentAssertions 8 is van Apache-2.0 overgestapt op de Xceed Community License, die
+  alleen niet-commercieel gebruik toestaat en gebruik "by or for an organisation ... that charges
+  fees or earns revenues" expliciet uitsluit. Omdat deze repository publiek is en bedoeld om door
+  verenigingen te worden geforkt, zou die licentie ook voor elke forkende club gaan gelden.
+  AwesomeAssertions is de Apache-2.0 community-fork met dezelfde assertie-API. Alleen testcode
+  raakt hierdoor gewijzigd; niets aan de applicatie zelf verandert.
+- **Afhankelijkheden bijgewerkt (#1170)** — Npgsql 9.0.3 → 10.0.3, Microsoft.NET.Test.Sdk
+  17.12.0 → 18.10.0, coverlet.collector 6.0.3 → 10.0.1 en Microsoft.Playwright 1.49.0 → 1.62.0.
+  Dit consolideert de Dependabot-PR's #1163 tot en met #1167, die alle vijf hetzelfde bestand
+  wijzigden en daardoor niet los van elkaar te mergen waren.
+
 ## [3.4.0.0] — 2026-09-14
 
 ### Added

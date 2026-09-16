@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
 

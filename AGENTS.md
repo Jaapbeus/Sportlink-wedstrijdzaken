@@ -204,14 +204,21 @@ ITERATIE:
 
        # Alternatief (handmatig, als Start-Debug.ps1 niet beschikbaar) — Windows én macOS (#800):
        #   - 'powershell' bestaat niet op macOS; daar heet de executable 'pwsh'.
-       #   - Get-NetTCPConnection zit in de Windows-only module NetTCPIP; gebruik de .NET BCL.
+       #   - Get-NetTCPConnection zit in de Windows-only module NetTCPIP. De .NET BCL is
+       #     hier ook geen optie: op macOS geeft GetActiveTcpListeners() een lege lijst
+       #     terug terwijl er wel listeners zijn (#1171). Gebruik lsof.
        #   - $env:TEMP bestaat niet op macOS; gebruik [System.IO.Path]::GetTempPath().
        #   - Start-Process opent op macOS nooit een venster, dus daar is een logbestand nodig.
        $shell   = if ($IsWindows) { 'powershell' } else { 'pwsh' }
        $tempDir = [System.IO.Path]::GetTempPath()
        # 1. Azurite
-       $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
-       if (-not ($listeners | Where-Object { $_.Port -eq 10000 })) {
+       $luistert = if ($IsWindows) {
+           $l = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+           [bool]($l | Where-Object { $_.Port -eq 10000 })
+       } else {
+           [bool](& lsof '-nP' '-iTCP:10000' '-sTCP:LISTEN' '-t' 2>$null)
+       }
+       if (-not $luistert) {
            $azuriteDir = Join-Path $tempDir 'azurite'
            if (-not (Test-Path $azuriteDir)) { New-Item -ItemType Directory -Path $azuriteDir | Out-Null }
            Start-Process $shell -ArgumentList '-NoProfile','-Command',"azurite --location '$azuriteDir'"
@@ -562,7 +569,7 @@ FunctionApp op dat plan draait bestaat de stackwaarde `dotnet-isolated 10.0` daa
 > uitgefaseerd. De migratie naar Flex Consumption + .NET 10 loopt via **epic #1063**, en stond al
 > als roadmap-punt in `CHANGELOG.md` bij v2.1.0 (#162).
 
-**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — Windows: `winget install Microsoft.DotNet.Runtime.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
+**Lokale ontwikkeling:** zorg dat de .NET 9 runtime geïnstalleerd is — **beide frameworks**, `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App`; zonder de tweede breekt `dotnet test` op de twee FunctionApp-testprojecten af (#1174). Windows: `winget install Microsoft.DotNet.Runtime.9` plus `Microsoft.DotNet.AspNetCore.9`, macOS: zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md).
 Zonder net9.0 runtime kan `func start` niet starten — het installatieprobleem oplossen, nooit het target verhogen.
 
 **Upgradepad naar .NET 10 — uitsluitend via epic #1063, in deze volgorde:**

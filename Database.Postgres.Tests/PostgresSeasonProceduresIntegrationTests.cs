@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Npgsql;
 using Xunit;
 
@@ -234,9 +234,12 @@ public class PostgresSeasonProceduresIntegrationTests
     {
         await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season", conn);
         var result = await cmd.ExecuteScalarAsync();
-        result.Should().BeOfType<DateTime>("er moet minstens één seizoen in de tabel staan");
-        var eind = (DateTime)result!;
-        return (int)Math.Ceiling((eind - vandaag.ToDateTime(TimeOnly.MinValue)).TotalDays / 7.0);
+        // DateOnly, niet DateTime: Npgsql 10 leest een DATE-kolom via ExecuteScalar als DateOnly.
+        // Deze assertie is precies de reden dat de helper hierboven de échte formule herhaalt —
+        // hij viel om bij de Npgsql-upgrade, net als de productiecode die hij naspeelt.
+        result.Should().BeOfType<DateOnly>("er moet minstens één seizoen in de tabel staan");
+        var eind = (DateOnly)result!;
+        return (int)Math.Ceiling((eind.ToDateTime(TimeOnly.MinValue) - vandaag.ToDateTime(TimeOnly.MinValue)).TotalDays / 7.0);
     }
 
     private static async Task<(DateTime Van, DateTime Tot)> GrenzenAsync(NpgsqlConnection conn, string naam)

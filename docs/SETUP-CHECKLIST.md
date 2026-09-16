@@ -20,14 +20,19 @@ Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — zie
   # macOS
   brew install powershell
   ```
-- [ ] .NET 9 Runtime geïnstalleerd (`dotnet --list-runtimes` toont `Microsoft.NETCore.App 9.x.x`)
+- [ ] .NET 9 Runtime geïnstalleerd — **beide** frameworks (`dotnet --list-runtimes` toont
+  `Microsoft.NETCore.App 9.x.x` én `Microsoft.AspNetCore.App 9.x.x`). Zonder de tweede breken
+  `FunctionApp.Tests` en `FunctionApp.Postgres.Tests` af bij `dotnet test` (#1174).
   ```powershell
   # Windows
   winget install Microsoft.DotNet.Runtime.9
+  winget install Microsoft.DotNet.AspNetCore.9
   ```
   ```bash
   # macOS
-  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+  curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
+  /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+  /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
   ```
 - [ ] .NET 10 SDK geïnstalleerd (`dotnet --version` toont `10.x.x`) — macOS: `/tmp/dotnet-install.sh --channel 10.0`
 - [ ] Azure Functions Core Tools v4 geïnstalleerd (`func --version` toont `4.x.x`) — macOS: `brew tap azure/functions && brew install azure-functions-core-tools@4`

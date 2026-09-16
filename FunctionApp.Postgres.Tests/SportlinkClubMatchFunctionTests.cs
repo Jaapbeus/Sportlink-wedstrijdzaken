@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Postgres.Sportlink;
 using Microsoft.AspNetCore.Mvc;
 using Planner.Shared.Integrations.SportlinkClub;

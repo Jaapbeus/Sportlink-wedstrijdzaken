@@ -28,13 +28,24 @@ internal static class PlannerSettingsRepository
     /// gedocumenteerde default heeft — een andere vraag, dus een ander antwoord.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Let op bij een Npgsql-major-upgrade.</b> De patroonvergelijking hieronder is
+    /// <see cref="DateOnly"/> omdat Npgsql sinds 10.0 een <c>DATE</c>-kolom via de niet-generieke
+    /// leespaden (<c>ExecuteScalar</c>, <c>GetValue</c>) als <see cref="DateOnly"/> teruggeeft in
+    /// plaats van <c>DateTime</c>. Een niet-passend patroon geeft hier geen fout maar stilletjes
+    /// <c>null</c> — de aanroeper concludeert dan "geen seizoen bekend" terwijl de rij gewoon in de
+    /// tabel staat. Sterk getypeerde lezers (<c>reader.GetDateTime</c>) blijven wél converteren;
+    /// alleen deze niet-generieke vorm is gevoelig.
+    /// </para>
+    /// </remarks>
     internal static async Task<DateOnly?> GetSeasonEndDateAsync(string connectionString)
     {
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand("SELECT MAX(dateuntil) FROM public.season", conn);
         var result = await cmd.ExecuteScalarAsync();
-        return result is DateTime einde ? DateOnly.FromDateTime(einde) : null;
+        return result is DateOnly einde ? einde : null;
     }
 
     internal static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenLookupAsync(
@@ -76,6 +87,11 @@ internal static class PlannerSettingsRepository
     /// <summary>
     /// Postgres-vertaling van het SQL Server-origineel (issue 888 vervolg, §41) — leest
     /// <c>public.zonsondergang</c>, de tegenhanger van <c>dbo.Zonsondergang</c> (migratie 011).
+    /// <para>
+    /// De patroonvergelijking is <see cref="TimeOnly"/> en niet <c>TimeSpan</c>: sinds Npgsql 10
+    /// levert een <c>TIME</c>-kolom via <c>ExecuteScalar</c> een <see cref="TimeOnly"/> op. Zie de
+    /// waarschuwing bij <see cref="GetSeasonEndDateAsync"/> — dezelfde valkuil, andere kolomsoort.
+    /// </para>
     /// </summary>
     internal static async Task<TimeOnly?> GetSunsetAsync(string connectionString, DateOnly date)
     {
@@ -85,7 +101,7 @@ internal static class PlannerSettingsRepository
             "SELECT zonsondergang FROM public.zonsondergang WHERE datum = @datum", conn);
         cmd.Parameters.AddWithValue("datum", date.ToDateTime(TimeOnly.MinValue).Date);
         var result = await cmd.ExecuteScalarAsync();
-        return result is TimeSpan ts ? TimeOnly.FromTimeSpan(ts) : null;
+        return result is TimeOnly tijd ? tijd : null;
     }
 
     /// <summary>

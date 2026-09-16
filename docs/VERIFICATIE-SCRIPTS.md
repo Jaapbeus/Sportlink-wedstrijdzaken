@@ -239,7 +239,7 @@ Gedeelde logica staat in `scripts/dev/DevServices.psm1`, cross-platform sinds #8
 |---|---|
 | `Get-DebugTempDir` | Tijdelijke map via `[System.IO.Path]::GetTempPath()` — nooit `$env:TEMP`, dat bestaat niet op macOS |
 | `Get-DebugPidFile`, `Get-DebugPorts` | Pad naar het PID-bestand resp. de vaste poorttoewijzing (Azurite/FunctionApp/BlazorAdmin/SWA) |
-| `Test-PortListening` | Luistert er iets op een poort — via de .NET BCL (`IPGlobalProperties`), niet via `Get-NetTCPConnection` (alleen Windows) |
+| `Test-PortListening` | Luistert er iets op een poort — Windows via de .NET BCL (`IPGlobalProperties`), macOS via `lsof`. Op macOS geeft de BCL-aanroep een lege lijst terug terwijl er wél listeners zijn (#1171) |
 | `Get-PortOwner`, `Get-PortOwnerId` | PID/proces dat op een poort luistert — Windows via `Get-NetTCPConnection`, macOS via `lsof` |
 | `Get-ParentProcessId`, `Get-ChildProcessId` | Proceshiërarchie opvragen — Windows via CIM (`Win32_Process`), macOS via `ps` |
 | `Get-ProcessTree`, `Stop-ProcessTree` | Een proces plus al zijn nakomelingen opsommen resp. stoppen (leaf-first, nodig omdat `dotnet watch` zijn kind herstart) |

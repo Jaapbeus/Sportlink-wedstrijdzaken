@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FunctionApp.Postgres.Admin;
 using Xunit;
 

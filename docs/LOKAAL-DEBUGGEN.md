@@ -298,18 +298,21 @@ Alle admin-endpoints vereisen Entra ID auth in productie. Lokaal (zonder `WEBSIT
 
 ```powershell
 dotnet --list-runtimes
-# Moet bevatten: Microsoft.NETCore.App 9.x.x
+# Moet BEIDE bevatten: Microsoft.NETCore.App 9.x.x en Microsoft.AspNetCore.App 9.x.x (#1174)
 ```
 
-Ontbreekt .NET 9?
+Ontbreekt .NET 9? Installeer allebei de frameworks — de base runtime alleen is niet genoeg:
 
 ```powershell
 # Windows
 winget install Microsoft.DotNet.Runtime.9
+winget install Microsoft.DotNet.AspNetCore.9
 ```
 ```bash
 # macOS
-curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh && /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
+/tmp/dotnet-install.sh --channel 9.0 --runtime dotnet
+/tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore
 ```
 
 ### Blazor "An unhandled error has occurred"
