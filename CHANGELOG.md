@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Elke deploy liet een rode foutmelding achter van een controle die niet kón slagen (#1184).**
+  De stap "planner endpoint database-check" riep een endpoint aan met alleen een function key,
+  terwijl dat endpoint sinds de invoering van Easy Auth een beheerdersrol vereist. Het antwoord was
+  dus altijd 401 — nog vóór de database werd aangeraakt — waarna de stap meldde dat de database
+  onbereikbaar zou zijn. Dat zei niets over de database: ook bij een werkelijk uitgevallen database
+  gaf deze controle precies hetzelfde resultaat. De melding werd genegeerd door de deploy zelf,
+  maar stond wel bij elke release in beeld, en een waarschuwing die altijd rood staat leert
+  iedereen om waarschuwingen te negeren. De databasecontrole gebeurt nu waar hij thuishoort — een
+  expliciete controle op het statusveld van `/api/health` — en de oude stap controleert nu wat hij
+  werkelijk meet: dat het planner-endpoint alleen voor beheerders toegankelijk is.
+
 ## [3.4.1.0] — 2026-09-16
 
 ### Fixed
