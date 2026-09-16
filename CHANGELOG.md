@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **De release-automatisering kon issues sluiten die niet in de release zaten (#1179).** Drie gaten
+  in `close-released-issues.yml`, geen ervan zichtbaar bij een gewone PR omdat die workflow alleen
+  op een release-tag draait. Ten eerste telde elk issuenummer ergens in een PR-titel mee, ook een
+  kruisverwijzing in proza — een titel als "review epic #986" kon daarmee een epic meesluiten.
+  Ten tweede telden ook níet-gemergede PR's mee, simpelweg omdat ze dezelfde commit bevatten;
+  elke feature-branch vanaf `develop` droeg zo zijn issuenummers bij. Ten derde miste de sluitstap
+  de epic-uitzondering die de zusterworkflow wél heeft, waardoor één opgeleverd deelissue een hele
+  epic kon sluiten. Daarbovenop pikte de CHANGELOG-lezer ook nummers op uit voorbeeldtekst tussen
+  backticks. Alle vier zijn verholpen en vastgelegd in de bestaande unittests, die bij elke PR
+  draaien — de workflow zelf draait immers pas bij een release, en dan is de schade al aangericht.
 - **De setup-instructies installeerden maar de helft van wat .NET 9 nodig heeft, waardoor twee
   testprojecten niet konden draaien (#1174).** `dotnet-install.sh --runtime dotnet` levert alleen
   `Microsoft.NETCore.App`, maar `FunctionApp.Tests` en `FunctionApp.Postgres.Tests` hebben ook

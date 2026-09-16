@@ -70,12 +70,20 @@ jobs:
           # Alleen haakjesgroepen die UITSLUITEND issuenummers bevatten — '(#574)' of '(#599, #595)' —
           # conform de attributie-conventie uit CLAUDE.md. Zo blijven kruisverwijzingen in prozavorm
           # buiten beeld: '(zie #569)' en 'conform het patroon van issue #242' mogen niets sluiten.
+          #
+          # #1179: inline code-spans worden eerst weggestreept. Een CHANGELOG-entry die de conventie
+          # zélf uitlegt bevat namelijk voorbeelden als `feat(#990, #1017): ...` of `fix: ... (#1014)`,
+          # en die zijn illustratie, geen attributie. Zonder deze stap sluit een release de issues uit
+          # zijn eigen voorbeeldtekst. Concreet aanwezig in de entry van #1168. De impact was nul —
+          # die nummers waren al gesloten, en een PR-nummer wordt door de sluitloop overgeslagen —
+          # maar de volgende keer hoeft dat niet zo uit te komen.
           VERSION="${CURRENT_TAG#v}"
           CHANGELOG_NUMBERS=$(awk -v marker="## [${VERSION}]" '
               index($0, marker) == 1 { inside = 1; next }
               inside && /^## \[/ { exit }
               inside
             ' CHANGELOG.md \
+            | sed 's/`[^`]*`//g' \
             | grep -oE '\(#[0-9]+(, *#[0-9]+)*\)' \
             | grep -oE '[0-9]+' | sort -un || true)
           echo "Uit CHANGELOG-sectie [${VERSION}]: $(echo $CHANGELOG_NUMBERS | tr '\n' ' ')"
@@ -123,6 +131,15 @@ jobs:
                 continue;
               }
               for (const pr of prs) {
+                // #1179: listPullRequestsAssociatedWithCommit geeft ook OPEN PR's terug die deze
+                // commit bevatten — elke feature-branch die vanaf develop is afgetakt dus. Zonder
+                // deze filter draagt zo'n PR zijn titelnummers bij aan een release waar hij niet
+                // in zit. Aantoonbaar tijdens de review van v3.4.0.1: twee op dat moment nog open
+                // PR's kwamen langs deze weg binnen. De stap heet niet voor niets "gemergede PR's".
+                if (!pr.merged_at) {
+                  core.info(`${sha}: PR #${pr.number} is niet gemerged — overgeslagen`);
+                  continue;
+                }
                 const { strong } = extractIssueRefs(pr.title, pr.body);
                 for (const n of strong) numbers.add(n);
               }
@@ -154,7 +171,7 @@ jobs:
             // Een gesloten, uitgerold issue hoort geen lifecycle-status meer te hebben; bleef
             // er een 'in-progress' of 'review-needed' op staan, dan zou dat na de release nog
             // suggereren dat er werk loopt (#690).
-            const { clearIssueStatus } =
+            const { clearIssueStatus, isEpic } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const tag = process.env.RELEASE_TAG;
@@ -175,6 +192,18 @@ jobs:
 
               // issues.get retourneert ook PR's — die slaan we over.
               if (issue.pull_request) {
+                continue;
+              }
+
+              // #1179: een epic is geen release-eenheid. label-awaiting-release.yml sloeg epics
+              // al over bij het ZETTEN van het label, maar deze stap — die daadwerkelijk sluit —
+              // had die guard niet. Eén opgeleverd deelissue zou de hele epic kunnen sluiten.
+              // Niet alleen niet sluiten maar volledig overslaan: ook het status-label van een
+              // epic hoort niet door een release-run te worden opgeruimd (zie isEpic in
+              // issue-status.js). Dit is het scenario uit CLAUDE.md bij v2.18.0.1, waar drie
+              // issues onterecht werden gesloten en met de hand heropend moesten worden.
+              if (isEpic(issue)) {
+                core.notice(`#${number}: epic — overgeslagen (geen release-eenheid)`);
                 continue;
               }
 
