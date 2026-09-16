@@ -52,16 +52,27 @@ internal static class PostgresSyncPipeline
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Teams);
-        partialFailure |= await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        var teamsFailed = await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
+        partialFailure |= teamsFailed;
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Matches);
-        partialFailure |= await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, log);
-        partialFailure |= await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, log);
+        var programmaFailed = await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, log);
+        var uitslagenFailed = await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, log);
+        var matchesFailed = programmaFailed || uitslagenFailed;
+        partialFailure |= matchesFailed;
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.MatchDetails);
         partialFailure |= await FetchMatchDetailsPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, log);
 
         await MergeAllEntitiesAsync(orchestrator);
+
+        // Reconciliatie (#1193): "Sportlink is de waarheid altijd" — his-rijen die niet meer in de
+        // zojuist geladen stg-snapshot voorkomen worden gemarkeerd als verwijderd (mta_deleted),
+        // nooit hard verwijderd. BEST-EFFORT, met opzet, om dezelfde reden als de
+        // teamcanonicalisatie hieronder: his.* is op dit punt al gemerged, dus een fout hier mag de
+        // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
+        // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
+        await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed, log);
 
         // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
         //
@@ -212,6 +223,64 @@ internal static class PostgresSyncPipeline
         await orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
         await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
         await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
+    }
+
+    /// <summary>
+    /// Reconciliatie na de merge (#1193): markeert his-rijen die niet meer in de zojuist geladen
+    /// stg-snapshot voorkomen als verwijderd (<c>mta_deleted</c>). BEST-EFFORT per entiteit, met
+    /// opzet — zelfde afweging als <see cref="CanonicaliseerBestEffortAsync"/>: his.* is op dit punt
+    /// al succesvol gemerged, dus een fout in deze afgeleide opruimstap mag die geslaagde ETL-run
+    /// niet alsnog laten falen.
+    /// <para>
+    /// <b>Alleen wanneer de bijbehorende fetch-fase zonder fouten verliep</b>
+    /// (<paramref name="teamsFailed"/>/<paramref name="matchesFailed"/>) — anders kan een
+    /// lege/onvolledige stg-snapshot legitieme his-rijen ten onrechte als "verdwenen bij Sportlink"
+    /// laten lijken terwijl het gewoon een mislukte aanroep was. Bewust twee losse vlaggen in plaats
+    /// van de gecombineerde <c>partialFailure</c>: een mislukte matchdetails-fetch (die wél in
+    /// <c>partialFailure</c> meetelt) mag de matches- en teams-reconciliatie niet onnodig blokkeren.
+    /// </para>
+    /// <para>
+    /// <c>matchdetails</c> reconcilieert bewust NIET mee: <c>/wedstrijd-informatie</c> wordt per
+    /// wedstrijdcode los opgehaald (<see cref="FetchMatchDetailsPhaseAsync"/>), en een individuele
+    /// fetch-fout voor één wedstrijd telt niet mee in <paramref name="matchesFailed"/>. Zonder die
+    /// garantie zou een reconciliatie hier een detailrij van een wél nog bestaande wedstrijd onterecht
+    /// als verdwenen kunnen markeren, puur door een transiënte netwerkfout bij die ene aanroep.
+    /// </para>
+    /// </summary>
+    private static async Task ReconcileVerdwenenAsync(
+        PostgresMergeOrchestrator orchestrator, string clubCode, bool teamsFailed, bool matchesFailed, ILogger log)
+    {
+        if (!teamsFailed)
+        {
+            try
+            {
+                var teamsVerwijderd = await orchestrator.ReconcileFullScopeAsync(KnownEntities.Teams, clubCode);
+                if (teamsVerwijderd > 0)
+                    log.LogInformation(
+                        "RECONCILIATIE - {Aantal} his.teams-rij(en) gemarkeerd als verwijderd voor {ClubCode}",
+                        teamsVerwijderd, clubCode);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "RECONCILIATIE - his.teams mislukt voor {ClubCode}", clubCode);
+            }
+        }
+
+        if (!matchesFailed)
+        {
+            try
+            {
+                var matchesVerwijderd = await orchestrator.ReconcileWindowedAsync(KnownEntities.Matches, clubCode, "kaledatum");
+                if (matchesVerwijderd > 0)
+                    log.LogInformation(
+                        "RECONCILIATIE - {Aantal} his.matches-rij(en) gemarkeerd als verwijderd voor {ClubCode}",
+                        matchesVerwijderd, clubCode);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "RECONCILIATIE - his.matches mislukt voor {ClubCode}", clubCode);
+            }
+        }
     }
 
     /// <summary>

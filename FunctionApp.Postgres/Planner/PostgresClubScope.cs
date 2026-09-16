@@ -26,9 +26,17 @@ internal static class PostgresClubScope
     internal const string PrimaryClubCodeParam = "@primaireclubcode";
 
     /// <summary>SQL-predicaat voor een <c>his.*</c>-tabel met NULL-tolerantie. Vereist beide
-    /// parameters — zet ze via <see cref="AddHisParams"/>.</summary>
+    /// parameters — zet ze via <see cref="AddHisParams"/>.
+    /// <para>
+    /// <b>#1193:</b> sluit ook zacht-verwijderde rijen uit (<c>mta_deleted IS NULL</c>) — een rij
+    /// die door de reconciliatiestap na een sync als verdwenen bij Sportlink is gemarkeerd
+    /// (<see cref="Database.Postgres.PostgresMergeOrchestrator.ReconcileWindowedAsync"/>/
+    /// <c>ReconcileFullScopeAsync</c>) hoort niet meer in enige lezende query terug te komen — <c>his</c>
+    /// is een audit-trail, geen live-view, dus de rij blijft bestaan maar telt hier niet meer mee.
+    /// </para>
+    /// </summary>
     internal static string HisFilter(string alias)
-        => $"COALESCE({alias}.clubcode, {PrimaryClubCodeParam}) = {ClubCodeParam}";
+        => $"COALESCE({alias}.clubcode, {PrimaryClubCodeParam}) = {ClubCodeParam} AND {alias}.mta_deleted IS NULL";
 
     /// <summary>
     /// SQL-predicaat voor een tabel met <c>clubcode NOT NULL DEFAULT ''</c> waarin nog rijen zonder

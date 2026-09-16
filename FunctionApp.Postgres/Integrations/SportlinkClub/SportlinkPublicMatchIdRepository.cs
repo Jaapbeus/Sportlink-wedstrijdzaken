@@ -31,7 +31,7 @@ internal static class SportlinkPublicMatchIdRepository
         await using var cmd = new NpgsqlCommand(@"
             SELECT wedstrijdnummer, kaledatum::date
             FROM his.matches
-            WHERE wedstrijdcode = @wedstrijdcode AND clubcode = @clubcode",
+            WHERE wedstrijdcode = @wedstrijdcode AND clubcode = @clubcode AND mta_deleted IS NULL",
             connection);
         cmd.Parameters.AddWithValue("wedstrijdcode", wedstrijdcode);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -63,6 +63,7 @@ internal static class SportlinkPublicMatchIdRepository
             WHERE m.clubcode = @clubcode
               AND m.kaledatum::date BETWEEN @vanaf AND @totEnMet
               AND m.wedstrijdnummer IS NOT NULL
+              AND m.mta_deleted IS NULL
               AND c.wedstrijdcode IS NULL",
             connection);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
@@ -99,7 +100,7 @@ internal static class SportlinkPublicMatchIdRepository
             SELECT c.publicmatchid, m.wedstrijdcode, m.wedstrijdnummer, m.thuisteam, m.uitteam,
                    to_char(m.kaledatum::date, 'YYYY-MM-DD'), m.aanvangstijd, m.accommodatie
             FROM public.sportlinkpublicmatchidcache c
-            JOIN his.matches m ON m.wedstrijdcode = c.wedstrijdcode AND m.clubcode = c.clubcode
+            JOIN his.matches m ON m.wedstrijdcode = c.wedstrijdcode AND m.clubcode = c.clubcode AND m.mta_deleted IS NULL
             WHERE c.clubcode = @clubcode
               AND c.publicmatchid = ANY(@ids)",
             connection);

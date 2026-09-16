@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Een wedstrijd die bij Sportlink verdwijnt (geannuleerd of verwijderd), verdwijnt nu ook echt uit
+  de planner en de Dagplanning-pagina (#1193).** Voorheen bleef zo'n wedstrijd voor altijd in de
+  administratie staan omdat er geen opruimstap bestond na een sync — beheerders zagen dan een
+  wedstrijd die intussen niet meer bestond. Elke sync markeert nu wedstrijden en teams die niet meer
+  bij Sportlink voorkomen als verwijderd (binnen het venster dat die sync daadwerkelijk heeft
+  opgehaald); de rij zelf blijft bewaard voor de geschiedenis, maar verschijnt niet meer in enig
+  scherm of endpoint.
+
 ## [3.4.2.0] — 2026-09-16
 
 ### Security
