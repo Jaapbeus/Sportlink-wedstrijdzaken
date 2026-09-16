@@ -18,6 +18,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
+  Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
+  extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
+  applicatie die ooit gebruikt — inclusief de tabel met Sportlink-servicetokens en de tabel met
+  uitgesloten e-mailadressen. RLS staat nu aan op alle 27 toepassingstabellen, zonder policies:
+  de applicatie verbindt via de tabeleigenaar-rol en merkt hier niets van.
+- **Een Supabase-eigen functie (`public.rls_auto_enable()`, het vangnet dat RLS automatisch aanzet
+  op elke nieuwe tabel) was voor iedereen aanroepbaar via de publieke API, ook zonder in te loggen
+  (#1198, vervolg).** De functie en het bijbehorende vangnet blijven volledig werken — alleen de
+  onbedoelde publieke aanroepbaarheid is weggehaald.
+
+## [3.4.3.0] — 2026-09-16
+
 ### Fixed
 - **Een halve-veld-boeking (bijv. een vlaggen-/veteranenteam als "V+1") wordt nu correct als halve
   balk getoond in de Dagplanning en blokkeert niet langer onterecht het hele veld bij automatisch
@@ -33,14 +47,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bij Sportlink voorkomen als verwijderd (binnen het venster dat die sync daadwerkelijk heeft
   opgehaald); de rij zelf blijft bewaard voor de geschiedenis, maar verschijnt niet meer in enig
   scherm of endpoint.
-
-### Security
-- **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
-  Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
-  extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
-  applicatie die ooit gebruikt — inclusief de tabel met Sportlink-servicetokens en de tabel met
-  uitgesloten e-mailadressen. RLS staat nu aan op alle 27 toepassingstabellen, zonder policies:
-  de applicatie verbindt via de tabeleigenaar-rol en merkt hier niets van.
 
 ## [3.4.2.0] — 2026-09-16
 
