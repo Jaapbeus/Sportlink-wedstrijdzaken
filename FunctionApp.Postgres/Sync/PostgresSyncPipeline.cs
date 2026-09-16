@@ -207,6 +207,9 @@ internal static class PostgresSyncPipeline
             else
             {
                 mdFout++;
+                // De foutregel in FetchAndStoreMatchDetailsAsync noemt bewust geen URL meer (#1200);
+                // de wedstrijdcode is hier wél veilig te loggen en houdt de fout herleidbaar.
+                log.LogWarning("MATCHDETAILS - mislukt voor wedstrijdcode={Code}", wedstrijdcode);
             }
         }
         log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Total}",
@@ -380,11 +383,16 @@ internal static class PostgresSyncPipeline
         }
     }
 
-    private static async Task<bool> FetchAndStoreMatchDetailsAsync(string connectionString, string apiUrl, string clubCode, ILogger log)
+    // Retourneert true bij succes, false bij elke fout — zodat de caller partialFailure kan bijhouden.
+    // internal + optionele httpClient: zelfde testbaarheid als de SQL Server-tegenhanger (#476),
+    // nodig voor de logregressietests van #1200. Standaard blijft de static HttpClient in gebruik.
+    internal static async Task<bool> FetchAndStoreMatchDetailsAsync(
+        string connectionString, string apiUrl, string clubCode, ILogger log, HttpClient? httpClient = null)
     {
+        var client = httpClient ?? HttpClient;
         try
         {
-            var response = await HttpClient.GetAsync(apiUrl);
+            var response = await client.GetAsync(apiUrl);
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
             try
@@ -404,7 +412,12 @@ internal static class PostgresSyncPipeline
         }
         catch (Exception ex)
         {
-            log.LogError(ex, "MATCHDETAILS - ophalen mislukt voor {Url}", apiUrl);
+            // NOOIT de apiUrl loggen (#1200): Sportlink authenticeert op de dataservice via de
+            // queryparameter clientId, dus de aanroep-URL ís een secret. Vaste metadata + het
+            // fouttype geven de operator hetzelfde diagnostische houvast; de wedstrijdcode komt
+            // uit de waarschuwing in FetchMatchDetailsPhaseAsync. Zelfde stijl als #436.
+            log.LogError(ex, "MATCHDETAILS - ophalen mislukt ({ErrorType}) endpoint=/wedstrijd-informatie",
+                ex.GetType().Name);
             return false;
         }
     }

@@ -18,7 +18,38 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **De AVG-uitleg in `SECURITY.md` en `README.md` klopte niet en is gecorrigeerd (#1203).** Er stond
+  dat namen, e-mailadressen, telefoonnummers en geboortedatums van trainers en leiders "bijzondere
+  gegevens" zijn; dat zijn het niet — het zijn gewone persoonsgegevens. Bijzondere categorieën
+  (gezondheid, geloof, etniciteit en dergelijke) en strafrechtelijke gegevens worden in dit project
+  helemaal niet verwerkt. Wél benoemd zijn nu de twee punten die het risico écht verhogen: het gaat
+  deels om gegevens van kinderen, en vrije tekst in een e-mail kan toevallig iets over gezondheid
+  bevatten. Daarnaast is de datalekprocedure vervangen door een stappenplan: de melding aan de
+  Autoriteit Persoonsgegevens (waar mogelijk binnen 72 uur, tenzij een risico onwaarschijnlijk is)
+  staat nu los van het informeren van de betrokkenen zelf (alleen bij hoog risico), met een
+  risicobeoordeling, een aanwijsbare beslisser binnen het bestuur en de plicht elk incident vast te
+  leggen — ook als er niet gemeld wordt.
+
 ### Security
+- **De Security Scan draaide niet op pull requests naar `develop`, waardoor een bijdrage vanuit
+  een fork nooit gescand werd én nooit kon worden gemerged (#1202).** De scan luisterde nog naar
+  de branchnamen van vóór de overstap op `develop` als integratiebranch. Binnen deze repository
+  viel dat niet op — daar leverde de push naar de branch toevallig dezelfde controle op — maar een
+  fork heeft die push niet, dus de verplichte controle "Security Gate" verscheen daar simpelweg
+  nooit. De scan luistert nu op pull requests naar zowel `main` als `develop`. Voor de beheerder
+  betekent dit: bijdragen van buiten worden weer volledig op secrets, persoonsgegevens en
+  kwetsbare pakketten gecontroleerd vóórdat ze gemerged kunnen worden.
+- **De sleutel waarmee de club bij Sportlink inlogt kon in de foutlogboeken van de wedstrijdsync
+  belanden (#1200).** Sportlink controleert wie gegevens opvraagt via een waarde in het webadres
+  zelf, dus dat adres is net zo gevoelig als een wachtwoord. Ging het ophalen van de details van
+  één wedstrijd mis, dan schreef de applicatie het volledige adres — inclusief die sleutel — weg
+  in het foutlogboek, op beide databasevarianten. Dat gebeurt niet meer: het logboek noemt nu
+  alleen nog het soort fout, het endpoint en de wedstrijdcode, wat voor het opsporen van een
+  storing evenveel houvast geeft. Twee automatische controles houden dit zo: een regressietest per
+  databasevariant en een controle in de bouwstraat die elke logregel met een webadres erin
+  blokkeert. Beheerders die Application Insights gebruiken: laat de bewaarde logboeken eenmalig
+  nakijken op deze sleutel en vervang hem bij twijfel — zie het issue voor de stappen.
 - **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
   Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
   extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
@@ -30,6 +61,24 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   (#1198, vervolg).** De functie en het bijbehorende vangnet blijven volledig werken — alleen de
   onbedoelde publieke aanroepbaarheid (zowel de algemene als de rechtstreekse toegang die Supabase
   standaard aan ingelogde en niet-ingelogde gebruikers geeft) is weggehaald.
+- **De namen die verraden welke club deze installatie draait, stonden leesbaar in de publieke
+  deploy-logs (#1204).** GitHub Actions drukt configuratiewaarden letterlijk in de joblog af, en
+  bij een publieke repository is die log voor iedereen te lezen. Zes waarden — de naam en URL van
+  de Function App, de hostname van de Admin GUI, het Entra tenant- en client-ID en de
+  uitlog-URL — stonden daardoor open en bloot in elke deploy. Het zijn geen wachtwoorden, maar ze
+  horen niet in een club-neutrale open-sourcerepo. Na deze wijziging kun je deze zes instellingen
+  als **Secret** opslaan in plaats van als Variable, waarna ze in de publieke deploy-logs
+  gemaskeerd worden als `***`. Laat je ze als Variable staan, dan blijft alles gewoon werken —
+  ze blijven dan alleen leesbaar. Zie `docs/DEVELOPER-SETUP.md` §9.2 voor de stappen. Let op:
+  logs van eerdere deploys veranderen hier niet door.
+- **Het e-mailadres waar een database-uitvalmelding naartoe gaat, staat niet langer in het
+  Function-log (#1201).** De dagelijkse database-uitvalmonitor schreef bij elke verstuurde melding
+  het geconfigureerde postbusadres letterlijk in het log, en daarmee in Application Insights — terwijl
+  het beveiligingsbeleid van dit project e-mailadressen daar expliciet van uitsluit. Het log vermeldt
+  nu alleen nog dát er een melding is verstuurd en hoe lang de database al gepauzeerd stond; de
+  melding zelf en de ontvanger ervan veranderen niet. Dezelfde soort lek is eerder bij de
+  e-mailverwerking gedicht, zie issue #1143. Beheerders met Application Insights: het adres kan nog
+  in reeds opgeslagen logregels staan tot die buiten de bewaartermijn vallen.
 
 ## [3.4.3.0] — 2026-09-16
 

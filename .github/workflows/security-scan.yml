@@ -1,10 +1,18 @@
 name: Security Scan
 
+# #1202: de pull_request-trigger stond nog op de oude integratiebranch-namen. Sinds
+# 2026-07-25 is `develop` de integratiebranch (build.yml en de branch protection zijn toen
+# wél meegegaan, deze workflow niet) en bestaat er geen `v2/*`-branch meer. Gevolg: een PR
+# uit een fork kreeg hier nooit een run — geen push-event in deze repo, geen pull_request-run
+# — terwijl de branch protection van `develop` en `main` de check
+# "Security Gate — blokkeert merge bij fout" verplicht stelt. Zo'n PR bleef dus eeuwig
+# hangen én de merge-context werd nooit upstream gescand. Bij een PR binnen deze repo viel
+# het niet op: de push-run rapporteert de check op dezelfde commit-SHA.
 on:
   push:
     branches: ['**']
   pull_request:
-    branches: [main, 'v2/**']
+    branches: [main, develop]
 
 permissions:
   contents: read
@@ -99,6 +107,20 @@ jobs:
           check_pattern "Hotmail-adressen"             "[a-z0-9._%+\-]+@hotmail\.(com|nl)"
           check_pattern "Persoonlijke e-mailadressen"  "[a-z0-9._%+\-]+@(gmail\.com|outlook\.(com|nl)|ziggo\.nl|kpnmail\.nl|casema\.nl|home\.nl)"
           check_pattern "Sportlink ledencodesn"        "BCZ[A-Z][A-Z0-9]{5}"
+
+          # #1200: een URL-variabele in een logregel draagt bij Sportlink de clientId mee — die
+          # dataservice authenticeert via een queryparameter, dus de aanroep-URL ís een secret.
+          # Log endpoint + wedstrijdcode, nooit de URL zelf. Testprojecten zijn uitgezonderd:
+          # de regressietests noemen zo'n template juist letterlijk.
+          CS_FILES=$(echo "$FILES" | grep -E '\.cs$' | grep -vE '(^|/)[^/]*Tests/' || true)
+          if [ -n "$CS_FILES" ]; then
+            url_log_matches=$(echo "$CS_FILES" | xargs grep -nP 'Log(Trace|Debug|Information|Warning|Error|Critical)\([^;]*\{(Url|ApiUrl|Uri|RequestUri|FullUrl)\}' 2>/dev/null || true)
+            if [ -n "$url_log_matches" ]; then
+              echo "::error::🚨 URL-PLACEHOLDER IN LOGREGEL — kan de Sportlink-clientId lekken (zie #1200)"
+              echo "$url_log_matches" | while IFS= read -r line; do echo "::error::  $line"; done
+              FOUND=1
+            fi
+          fi
 
           if [ "$FOUND" -eq 1 ]; then
             echo "::error::Verwijder de persoonsgegevens uit de bestanden hierboven."

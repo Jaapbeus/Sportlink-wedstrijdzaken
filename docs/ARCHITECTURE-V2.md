@@ -191,11 +191,16 @@ Productie-configuratie wordt **nooit** in git opgeslagen. De CI-pipeline generee
 | `FunctionApp/local.settings.template.json` | ✓ | Template zonder waarden |
 | `exports/*.csv` / `exports/*.xlsx` | ✗ | Persoonsgegevens — zie §6 |
 
-**GitHub Variables** (per fork in te stellen via Settings → Secrets and variables → Actions):
+**Club-identificerende configuratie — als Secret** (per fork in te stellen via Settings → Secrets
+and variables → Actions → Secrets). `deploy.yml` leest deze als `${{ secrets.NAAM || vars.NAAM }}`:
+een bestaande Variable blijft werken, maar alleen een Secret wordt gemaskeerd in de Actions-logs,
+die bij een publieke repository voor iedereen leesbaar zijn (#1204).
 
-| Variable | Inhoud |
+| Naam | Inhoud |
 |---|---|
+| `AZURE_FUNCTIONAPP_NAME` | Naam van de Function App |
 | `AZURE_FUNCTIONAPP_URL` | URL van de Function App |
+| `AZURE_STATIC_WEB_APP_HOSTNAME` | Hostname van de Static Web App |
 | `AZURE_AD_TENANT_ID` | Entra Directory (tenant) ID |
 | `AZURE_AD_CLIENT_ID` | Entra Application (client) ID |
 | `POST_LOGOUT_REDIRECT_URL` | Clubwebsite-URL voor na uitloggen |
