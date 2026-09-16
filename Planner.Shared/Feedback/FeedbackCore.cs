@@ -259,14 +259,25 @@ public static class FeedbackCore
         // - Veilig omdat dit endpoint achter RequireAdmin zit en dezelfde beheerder via het veld
         //   Beschrijving sowieso al willekeurige tekst in de body kan krijgen; er komt dus geen nieuw
         //   aanvalspad bij.
-        // Vertrouwd wordt de client hier desondanks niet: de tekst gaat door dezelfde Sanitize heen en
-        // de PII-gate hieronder draait onverkort op de uiteindelijke, samengestelde titel + body.
+        // Vertrouwd wordt de client hier desondanks niet. Deze velden waren vóór #1205 altijd
+        // AI-output; nu kunnen ze rechtstreeks van de client komen, dus ze krijgen exact dezelfde
+        // behandeling als alle andere tekst die de body in gaat: Normaliseer hieronder haalt ze door
+        // dezelfde Sanitize (script-escaping) én dezelfde lengte-/aantalgrenzen, en de PII-gate
+        // daarna draait onverkort op de uiteindelijke, samengestelde titel + body. Zonder die
+        // normalisatie zou een verzoek met een megabyte aan samenvatting integraal in een publiek
+        // issue belanden, terwijl Beschrijving wél op 2000 tekens wordt afgekapt.
         var structured = dto.Bevestiging is { } bevestiging
             ? new StructuredIssue(
                 string.IsNullOrWhiteSpace(bevestiging.Titel) ? StandaardTitel(dto.Type) : bevestiging.Titel,
                 bevestiging.Samenvatting ?? "",
                 bevestiging.Acceptatiecriteria is { } criteria ? [.. criteria] : [])
             : await StructureerIssue(chatClient, dto, log);
+
+        // Op beide takken toegepast, niet alleen op de bevestigingstak: zou het voorbeeld een
+        // ongenormaliseerde samenvatting teruggeven en de publicatie een genormaliseerde, dan
+        // verschilt de gepubliceerde body van wat de beheerder zag — precies de misleiding die
+        // #1205 wegneemt.
+        structured = Normaliseer(structured);
 
         var issueBody = BouwIssueBody(dto, structured, tijdstipUtc ?? DateTime.UtcNow);
         var title = Sanitize(structured.Title, 80);
@@ -416,6 +427,29 @@ public static class FeedbackCore
 
     private static string StandaardTitel(string type) => $"[{type}] Gebruikersmelding";
 
+    // Grenzen voor de gestructureerde velden. De samenvatting is volgens de system prompt 1-2 zinnen;
+    // 500 tekens sluit aan bij de bestaande grens voor een antwoord op een aanvulvraag en laat een
+    // uitgebreide samenvatting ruim toe. Acceptatiecriteria vraagt de prompt om "max 5 stuks" — dat
+    // is hier de harde grens, zodat een client die er 500 stuurt wordt afgekapt in plaats van ze
+    // allemaal in een publiek issue te krijgen.
+    private const int MaxSamenvattingLengte = 500;
+    private const int MaxAcceptatiecriteria = 5;
+    private const int MaxAcceptatiecriteriumLengte = 120;
+
+    /// <summary>
+    /// Brengt de gestructureerde velden binnen dezelfde sanitizer en grenzen als alle andere tekst die
+    /// de issuebody in gaat (#1205). Wordt op zowel AI-output als bevestigde clientwaarden toegepast,
+    /// zodat het voorbeeld en de publicatie per constructie dezelfde tekst opleveren.
+    /// <see cref="Sanitize"/> is idempotent, dus dubbel toepassen (hier én in
+    /// <see cref="BouwIssueBody"/>) verandert het resultaat niet.
+    /// </summary>
+    private static StructuredIssue Normaliseer(StructuredIssue structured) => new(
+        structured.Title,
+        Sanitize(structured.Samenvatting, MaxSamenvattingLengte),
+        [.. structured.Acceptatiecriteria
+            .Take(MaxAcceptatiecriteria)
+            .Select(c => Sanitize(c, MaxAcceptatiecriteriumLengte))]);
+
     // ── GitHub Issue aanmaken ──────────────────────────────────────────────────
 
     /// <summary>
@@ -519,7 +553,7 @@ public static class FeedbackCore
             sb.AppendLine("## Acceptatiecriteria");
             sb.AppendLine();
             foreach (var criterium in structured.Acceptatiecriteria)
-                sb.AppendLine($"- [ ] {Sanitize(criterium, 120)}");
+                sb.AppendLine($"- [ ] {Sanitize(criterium, MaxAcceptatiecriteriumLengte)}");
             sb.AppendLine();
         }
 

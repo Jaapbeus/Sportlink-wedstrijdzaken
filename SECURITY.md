@@ -107,8 +107,10 @@ openbaar op internet staat, en pas een expliciete bevestiging leidt tot `POST /a
 De bevestiging stuurt de getoonde AI-velden terug zodat er exact gepubliceerd wordt wat er op het
 scherm stond — een tweede AI-aanroep zou andere tekst opleveren en het voorbeeld tot een gok maken.
 Dat is veilig omdat beide endpoints achter `RequireAdmin` zitten en dezelfde beheerder via het veld
-`Beschrijving` sowieso al willekeurige tekst in de body krijgt; de server saniteert en past beide
-PII-gates onverkort toe op de uiteindelijke, samengestelde body en vertrouwt de client daar dus niet.
+`Beschrijving` sowieso al willekeurige tekst in de body krijgt. De client wordt op dat punt
+desondanks niet vertrouwd: de teruggestuurde velden gaan door **dezelfde sanitizer en dezelfde
+lengte- en aantalgrenzen** als alle andere tekst in de body (samenvatting afgekapt, maximaal vijf
+acceptatiecriteria), en beide PII-gates draaien onverkort op de uiteindelijke, samengestelde body.
 
 **Regel bij wijzigingen aan dit pad:** maak nooit een route die publiceert zonder dat de beheerder
 de uiteindelijke tekst heeft gezien, en presenteer de PII-gate in geen enkel scherm of document als

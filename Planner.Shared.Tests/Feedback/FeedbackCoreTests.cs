@@ -319,6 +319,38 @@ public class FeedbackCoreTests
     }
 
     [Fact]
+    public async Task SubmitAsync_BevestigdeVeldenBuitenDeGrenzen_WordenAfgekaptInDeBody()
+    {
+        // De bevestigde velden komen van de client en waren vóór #1205 altijd AI-output. Zonder
+        // normalisatie belandt een megabyte aan samenvatting — of een lijst met honderden criteria —
+        // integraal in een openbaar issue, terwijl Beschrijving wél op 2000 tekens wordt afgekapt.
+        var dto = MaakSchoonRequest();
+        var langeSamenvatting = new string('A', 5000);
+        dto.Bevestiging = new FeedbackBevestiging
+        {
+            Titel = "Veldenpagina laadt niet",
+            Samenvatting = langeSamenvatting,
+            // Ruim meer dan de AI er ooit produceert (de prompt vraagt om maximaal 5).
+            Acceptatiecriteria = [.. Enumerable.Range(1, 50).Select(i => $"Criterium {i} " + new string('B', 300))],
+        };
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+        var github = new FakeGitHubIssueCreator();
+
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance, VastTijdstip);
+
+        result.Status.Should().Be(FeedbackStatus.Ok);
+        var body = github.LaatsteBody!;
+
+        body.Should().NotContain(langeSamenvatting, "de samenvatting hoort afgekapt te zijn");
+        body.Should().Contain(new string('A', 500) + "…");
+
+        // Precies vijf criteria, elk afgekapt — niet vijftig.
+        body.Split("- [ ] ").Length.Should().Be(6, "vijf criteria leveren vijf scheidingen plus de kop op");
+        body.Should().Contain("Criterium 5 ").And.NotContain("Criterium 6 ");
+        body.Should().NotContain(new string('B', 300));
+    }
+
+    [Fact]
     public async Task VoorbeeldAsync_OngeldigType_WordtGeblokkeerdZonderAiAanroep()
     {
         var dto = MaakSchoonRequest();

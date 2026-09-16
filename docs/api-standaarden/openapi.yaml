@@ -1900,14 +1900,22 @@ components:
         De door de AI geproduceerde velden zoals `/feedback/preview` ze teruggaf en de beheerder ze
         heeft gezien. Alleen te gebruiken op `/feedback/submit`: de server publiceert dan exact deze
         tekst in plaats van de AI opnieuw te bevragen, zodat het getoonde voorbeeld klopt met wat er
-        gepubliceerd wordt. De PII-gate blijft onverkort van toepassing op de uiteindelijke body.
+        gepubliceerd wordt.
+
+        De server vertrouwt deze waarden niet: ze gaan door dezelfde sanitizer en dezelfde grenzen
+        als alle andere tekst in de body, en de PII-gate blijft onverkort van toepassing op de
+        uiteindelijke body.
       properties:
         titel:
           type: string
+          description: Wordt afgekapt op 80 tekens
         samenvatting:
           type: string
+          description: Wordt afgekapt op 500 tekens
         acceptatiecriteria:
           type: array
+          description: Maximaal 5 items; elk item wordt afgekapt op 120 tekens
+          maxItems: 5
           items:
             type: string
 

@@ -2469,16 +2469,20 @@
       },
       "FeedbackBevestiging": {
         "type": "object",
-        "description": "De door de AI geproduceerde velden zoals `/feedback/preview` ze teruggaf en de beheerder ze\nheeft gezien. Alleen te gebruiken op `/feedback/submit`: de server publiceert dan exact deze\ntekst in plaats van de AI opnieuw te bevragen, zodat het getoonde voorbeeld klopt met wat er\ngepubliceerd wordt. De PII-gate blijft onverkort van toepassing op de uiteindelijke body.\n",
+        "description": "De door de AI geproduceerde velden zoals `/feedback/preview` ze teruggaf en de beheerder ze\nheeft gezien. Alleen te gebruiken op `/feedback/submit`: de server publiceert dan exact deze\ntekst in plaats van de AI opnieuw te bevragen, zodat het getoonde voorbeeld klopt met wat er\ngepubliceerd wordt.\n\nDe server vertrouwt deze waarden niet: ze gaan door dezelfde sanitizer en dezelfde grenzen\nals alle andere tekst in de body, en de PII-gate blijft onverkort van toepassing op de\nuiteindelijke body.\n",
         "properties": {
           "titel": {
-            "type": "string"
+            "type": "string",
+            "description": "Wordt afgekapt op 80 tekens"
           },
           "samenvatting": {
-            "type": "string"
+            "type": "string",
+            "description": "Wordt afgekapt op 500 tekens"
           },
           "acceptatiecriteria": {
             "type": "array",
+            "description": "Maximaal 5 items; elk item wordt afgekapt op 120 tekens",
+            "maxItems": 5,
             "items": {
               "type": "string"
             }
