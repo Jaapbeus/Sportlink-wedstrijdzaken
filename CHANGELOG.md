@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.4.1.0] — 2026-09-16
+
 ### Fixed
 - **De release-automatisering kon issues sluiten die niet in de release zaten (#1179).** Drie gaten
   in `close-released-issues.yml`, geen ervan zichtbaar bij een gewone PR omdat die workflow alleen
