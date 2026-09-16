@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.4.2.0",
+    "version": "3.4.4.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -2460,6 +2460,53 @@
           "context": {
             "$ref": "#/components/schemas/FeedbackContext",
             "nullable": true
+          },
+          "bevestiging": {
+            "$ref": "#/components/schemas/FeedbackBevestiging",
+            "nullable": true
+          }
+        }
+      },
+      "FeedbackBevestiging": {
+        "type": "object",
+        "description": "De door de AI geproduceerde velden zoals `/feedback/preview` ze teruggaf en de beheerder ze\nheeft gezien. Alleen te gebruiken op `/feedback/submit`: de server publiceert dan exact deze\ntekst in plaats van de AI opnieuw te bevragen, zodat het getoonde voorbeeld klopt met wat er\ngepubliceerd wordt. De PII-gate blijft onverkort van toepassing op de uiteindelijke body.\n",
+        "properties": {
+          "titel": {
+            "type": "string"
+          },
+          "samenvatting": {
+            "type": "string"
+          },
+          "acceptatiecriteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FeedbackPreviewResponse": {
+        "type": "object",
+        "description": "De exacte tekst die bij publicatie openbaar op GitHub zou komen te staan.",
+        "properties": {
+          "titel": {
+            "type": "string",
+            "description": "Titel van het issue zoals die gepubliceerd zou worden"
+          },
+          "body": {
+            "type": "string",
+            "description": "Volledige markdown-body van het issue zoals die gepubliceerd zou worden"
+          },
+          "samenvatting": {
+            "type": "string",
+            "description": "AI-samenvatting, onveranderd terug te sturen als onderdeel van `bevestiging`"
+          },
+          "acceptatiecriteria": {
+            "type": "array",
+            "description": "AI-acceptatiecriteria, onveranderd terug te sturen als onderdeel van `bevestiging`",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -7260,6 +7307,70 @@
         }
       }
     },
+    "/feedback/preview": {
+      "post": {
+        "tags": [
+          "feedback"
+        ],
+        "operationId": "feedbackPreview",
+        "summary": "Voorbeeld van het te publiceren issue opvragen",
+        "description": "Stelt de exacte titel en body samen die bij publicatie naar GitHub zouden gaan, en geeft\ndie terug **zonder** een issue aan te maken. Bedoeld om de beheerder te laten zien wat er\nopenbaar op internet komt te staan, zodat hij daarna bewust kan bevestigen.\n\nDezelfde controles als `/feedback/submit` draaien in dezelfde volgorde: de type-allowlist,\nde PII-gate op de verzamelde invoer en de PII-gate op de uiteindelijke titel/body. Een\nvoorbeeld komt dus nooit door waar een publicatie zou afketsen.\n\nGeen rate limiting — er wordt niets gepubliceerd.\n",
+        "security": [
+          {
+            "easyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Voorbeeld van het te publiceren issue",
+            "headers": {
+              "x-correlation-id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "Mogelijke persoonsgegevens gedetecteerd in invoer of AI-output",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          }
+        }
+      }
+    },
     "/feedback/submit": {
       "post": {
         "tags": [
@@ -7267,7 +7378,7 @@
         ],
         "operationId": "feedbackSubmit",
         "summary": "Feedback indienen als GitHub issue",
-        "description": "Structureert de feedback met GPT-4o-mini en maakt een GitHub Issue aan in de repository.\nRate limiting: max 5 indieningenen per 10 minuten (globaal).\n",
+        "description": "Structureert de feedback met GPT-4o-mini en maakt een GitHub Issue aan in de repository.\n\nIs `bevestiging` meegestuurd — de velden zoals `/feedback/preview` ze teruggaf en de\nbeheerder ze gezien heeft — dan wordt exact díe tekst gepubliceerd en volgt er géén nieuwe\nAI-aanroep. De PII-gate draait onverkort op de uiteindelijke titel en body.\n\nRate limiting: max 5 indieningenen per 10 minuten (globaal).\n",
         "security": [
           {
             "easyAuth": []

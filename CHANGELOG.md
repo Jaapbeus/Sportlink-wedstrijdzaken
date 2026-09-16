@@ -32,6 +32,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijven. Er zijn geen aanwijzingen dat dit ooit daadwerkelijk is gebeurd: de migratiestap is in
   de laatste 40 deploys nooit gefaald.
 
+### Changed
+- **Feedback wordt pas gepubliceerd nadat u het voorbeeld heeft gezien en bevestigd (#1205).** De
+  FEEDBACK-knop maakt een GitHub-issue aan, en die staat **openbaar op internet** — voorheen ging uw
+  tekst er met één klik heen zonder dat u de uiteindelijke melding ooit te zien kreeg. Nu volgt na
+  het overzicht een voorbeeldscherm met de exacte titel en de volledige tekst van het issue,
+  inclusief de samenvatting en acceptatiecriteria die de AI ervan maakt. Daar kiest u zelf:
+  *Aanpassen* (terug naar het formulier, uw tekst blijft staan) of *Openbaar publiceren*. Tot die
+  klik gaat er niets naar internet. De waarschuwing in de widget zegt nu ook expliciet dat GitHub
+  openbaar is en noemt namen, adressen en geboortedata als dingen om op te letten — de automatische
+  controle herkent namelijk alleen e-mailadressen en telefoonnummers en is een vangnet, geen
+  garantie. Dat restrisico staat nu uitgeschreven in `SECURITY.md` en
+  `docs/BEHEERDER-HANDLEIDING.md`. Het voorbeeld doorloopt dezelfde controles als een publicatie:
+  wat geweigerd zou worden, komt ook niet als voorbeeld terug.
+
 ### Fixed
 - **Teamherkenning zocht aliassen via een volledige tabelscan — een index uit migratie 003 was sinds
   de collatie-fix onbruikbaar geworden (#1211).** Migratie 007 zette destijds alle vergelijkingen op

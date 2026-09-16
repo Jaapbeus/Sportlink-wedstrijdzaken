@@ -1050,3 +1050,53 @@ Voert de AI-classificatie van een binnenkomend bericht uit als **dry-run** — e
 verzonden en niets in de e-maillog vastgelegd. Handig om te controleren hoe de AI een nieuw of
 grensgeval van een bericht zou classificeren vóórdat het echt binnenkomt, of om een
 classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
+
+---
+
+## 21. Feedback geven (FEEDBACK-knop) — met voorbeeld vóór publicatie
+
+De FEEDBACK-knop rechtsboven maakt van uw melding een **GitHub-issue**. Die issue staat in een
+publieke repository: hij is **openbaar op internet** en voor iedereen leesbaar, ook zonder account.
+Dat is bewust — het is de plek waar de ontwikkelaar het werk bijhoudt — maar het betekent dat alles
+wat u typt openbaar wordt.
+
+### De vier stappen
+
+| Stap | Wat u doet | Wat het systeem doet |
+|---|---|---|
+| 1. **Formulier** | Kies Fout / Verzoek / Vraag en beschrijf de melding in eigen woorden | Beoordeelt of de beschrijving compleet is en stelt zo nodig maximaal drie aanvulvragen |
+| 2. **Overzicht** | Controleer type, pagina en uw eigen tekst | — |
+| 3. **Voorbeeld** | **Lees de volledige tekst die gepubliceerd wordt** en kies: *Aanpassen* of *Openbaar publiceren* | Stelt de exacte titel en body samen — inclusief de AI-samenvatting en acceptatiecriteria — en toont die, zónder iets te publiceren |
+| 4. **Bevestiging** | — | Pas nu wordt het issue aangemaakt; u krijgt het issuenummer met een link |
+
+Stap 3 is de publicatiegrens: tot u daar op **Openbaar publiceren** klikt, is er niets naar
+internet gegaan. Klikt u op **Aanpassen**, dan keert u terug naar het formulier met uw tekst intact.
+
+### Wat u zelf moet controleren in het voorbeeld
+
+Het systeem blokkeert automatisch e-mailadressen en Nederlandse telefoonnummers — zowel in uw eigen
+tekst als in de tekst die de AI ervan maakt. Ziet u die melding, dan haalt u het betreffende gegeven
+weg en probeert u het opnieuw.
+
+Die controle is een **vangnet, geen anonimisering**. Niet herkend worden onder meer:
+
+- namen van personen (leden, trainers, leiders, ouders)
+- adressen, woonplaatsen en postcodes
+- geboortedata en leeftijden van individuele personen
+- lidnummers, relatiecodes en andere identificerende nummers
+- wachtwoorden, tokens, API-sleutels en connectiestrings
+- buitenlandse telefoonnummers
+
+Lees het voorbeeld daarom woord voor woord. Twijfelt u? Klik op **Aanpassen** en herschrijf de
+melding zonder het gegeven — of beschrijf de situatie in algemene termen ("een speler van JO13-1"
+in plaats van een naam).
+
+> **Eenmaal gepubliceerd is niet terug te draaien.** GitHub bewaart bewerkingsgeschiedenis, en
+> zoekmachines en archiefdiensten nemen nieuwe issues binnen minuten op. Een issue later aanpassen
+> of verwijderen haalt de gegevens daar niet meer weg.
+
+### Grenzen
+
+- Maximaal 5 publicaties per 10 minuten. Het voorbeeld opvragen telt niet mee — dat publiceert niets.
+- Werkt alleen als de GitHub-koppeling is geconfigureerd; anders meldt de widget dat en wordt er
+  niets verstuurd.

@@ -79,6 +79,41 @@ Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
   Entra tenant-/client-ID, post-logout-URL) hoort daarom in **GitHub Secrets**, niet in Variables —
   zie `docs/DEVELOPER-SETUP.md` §9.2 (#1204).
 
+### De feedbackwidget publiceert óók naar diezelfde publieke repository (#1205)
+
+De FEEDBACK-knop in de Admin GUI maakt een GitHub-issue aan in deze repository. Alles hierboven
+geldt daar onverkort voor — met één verschil: de tekst wordt niet door een ontwikkelaar getypt maar
+door een clubbeheerder, in vrije tekst, vaak zonder besef dat GitHub openbaar op internet staat.
+
+**De regexdetectie in `Planner.Shared/Feedback/FeedbackCore.cs` (`BevatPii`) is een vangnet, geen
+anonimisering.** Ze draait twee keer — op de verzamelde invoer vóór elke AI-aanroep, en op de
+uiteindelijke titel + body vlak vóór de GitHub-write — maar herkent uitsluitend **e-mailadressen en
+Nederlandse telefoonnummers**. Expliciet restrisico, dat door geen enkele laag in de code wordt
+afgedekt:
+
+| Niet herkend | Waarom het erdoor glipt |
+|---|---|
+| Namen van personen | Niet van gewone woorden te onderscheiden met een patroon |
+| Adressen, woonplaatsen, postcodes | Idem; een postcodepatroon zou vooral vals alarm geven |
+| Geboortedata en leeftijden | Een datum is op zichzelf niet identificerend |
+| Lidnummers, relatiecodes, andere ID's | Vormvrij en clubafhankelijk |
+| Wachtwoorden, tokens, API-sleutels, connectiestrings | Geen vaste vorm; de gitleaks-regels gelden voor bestanden in git, niet voor deze invoer |
+| Buitenlandse telefoonnummers | De regex dekt alleen het Nederlandse formaat |
+
+Daarom is de publicatiegrens sinds #1205 **een bewuste handeling van de beheerder**, niet een
+automatische controle: `POST /api/feedback/preview` stelt de exacte titel + body samen en geeft die
+terug zonder iets aan te maken, de widget toont die letterlijk met de waarschuwing dat GitHub
+openbaar op internet staat, en pas een expliciete bevestiging leidt tot `POST /api/feedback/submit`.
+De bevestiging stuurt de getoonde AI-velden terug zodat er exact gepubliceerd wordt wat er op het
+scherm stond — een tweede AI-aanroep zou andere tekst opleveren en het voorbeeld tot een gok maken.
+Dat is veilig omdat beide endpoints achter `RequireAdmin` zitten en dezelfde beheerder via het veld
+`Beschrijving` sowieso al willekeurige tekst in de body krijgt; de server saniteert en past beide
+PII-gates onverkort toe op de uiteindelijke, samengestelde body en vertrouwt de client daar dus niet.
+
+**Regel bij wijzigingen aan dit pad:** maak nooit een route die publiceert zonder dat de beheerder
+de uiteindelijke tekst heeft gezien, en presenteer de PII-gate in geen enkel scherm of document als
+een garantie dat er geen persoonsgegevens meer in staan.
+
 ---
 
 ## Achtergrond: wat er in dit project op het spel staat

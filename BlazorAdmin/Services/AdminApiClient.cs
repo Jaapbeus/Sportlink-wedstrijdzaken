@@ -320,6 +320,12 @@ public class AdminApiClient
     public async Task<ApiResult<FeedbackValidateResponse>> ValidateFeedbackAsync(FeedbackValidateRequest dto)
         => await PostAsync<FeedbackValidateResponse>("api/feedback/validate", dto);
 
+    /// <summary>
+    /// Haalt de exacte titel + body op die gepubliceerd zou worden, zonder iets aan te maken (#1205).
+    /// </summary>
+    public async Task<ApiResult<FeedbackPreviewResponse>> PreviewFeedbackAsync(FeedbackValidateRequest dto)
+        => await PostAsync<FeedbackPreviewResponse>("api/feedback/preview", dto);
+
     public async Task<ApiResult<FeedbackSubmitResponse>> SubmitFeedbackAsync(FeedbackValidateRequest dto)
         => await PostAsync<FeedbackSubmitResponse>("api/feedback/submit", dto);
 

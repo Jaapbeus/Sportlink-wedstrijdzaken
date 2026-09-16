@@ -43,12 +43,46 @@ public sealed record FeedbackSubmitResultaat(
     int IssueNummer = 0,
     string? IssueUrl = null);
 
+/// <summary>
+/// Uitkomst van de voorbeeldstap (#1205): de exacte titel en body die bij publicatie naar GitHub
+/// zouden gaan, plus de losse AI-velden die de bevestigingsstap onveranderd terugstuurt. Bij een
+/// geblokkeerde status blijven alle tekstvelden leeg — een geweigerd voorbeeld geeft nooit de
+/// samengestelde tekst terug.
+/// </summary>
+public sealed record FeedbackVoorbeeldResultaat(
+    FeedbackStatus Status,
+    string? Foutmelding,
+    string? Titel = null,
+    string? Body = null,
+    string? Samenvatting = null,
+    IReadOnlyList<string>? Acceptatiecriteria = null);
+
+/// <summary>
+/// De door de AI geproduceerde velden zoals de beheerder ze in het voorbeeld heeft gezien (#1205).
+/// Staat dit gevuld op een submit, dan publiceert de server exact die tekst in plaats van de AI
+/// opnieuw aan te roepen.
+/// </summary>
+public sealed class FeedbackBevestiging
+{
+    // Nullable: deze waarden komen rechtstreeks uit de gedeserialiseerde requestbody, dus een
+    // ontbrekend of null veld is een realistische invoer en geen programmeerfout.
+    public string? Titel { get; set; }
+    public string? Samenvatting { get; set; }
+    public List<string>? Acceptatiecriteria { get; set; }
+}
+
 public sealed class FeedbackRequest
 {
     public string Type { get; set; } = "";
     public string Beschrijving { get; set; } = "";
     public List<VraagAntwoord>? VragenAntwoorden { get; set; }
     public FeedbackContext? Context { get; set; }
+
+    /// <summary>
+    /// Alleen gevuld op de bevestigingsstap na een voorbeeld (#1205). Zie
+    /// <see cref="FeedbackCore.SubmitAsync"/> voor waarom deze clientwaarden hier veilig zijn.
+    /// </summary>
+    public FeedbackBevestiging? Bevestiging { get; set; }
 }
 
 public sealed class VraagAntwoord
@@ -111,7 +145,39 @@ public static class FeedbackCore
         return new FeedbackValidatieResultaat(FeedbackStatus.Ok, null, result.Volledig, result.Vragen);
     }
 
-    // ── Submit ─────────────────────────────────────────────────────────────────
+    // ── Voorbeeld + Submit ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stelt de uiteindelijke titel + body samen en geeft die terug **zonder** iets te publiceren
+    /// (#1205). Dit is de stap die de beheerder te zien krijgt vóór hij bewust bevestigt dat zijn
+    /// tekst openbaar op GitHub mag.
+    ///
+    /// Alle controles van <see cref="SubmitAsync"/> draaien hier in dezelfde volgorde: de
+    /// type-allowlist, de PII-gate op de verzamelde invoer en de tweede PII-gate op de uiteindelijke
+    /// titel/body. Een voorbeeld dat PII bevat wordt dus net zo geweigerd als een publicatie — het
+    /// voorbeeld is geen ontsnappingsroute langs de gates heen.
+    /// </summary>
+    /// <param name="tijdstipUtc">
+    /// Zie <see cref="SubmitAsync"/> — alleen bedoeld om het Tijdstip-veld in tests vast te zetten.
+    /// </param>
+    public static async Task<FeedbackVoorbeeldResultaat> VoorbeeldAsync(
+        FeedbackRequest dto,
+        IChatClient chatClient,
+        ILogger log,
+        DateTime? tijdstipUtc = null)
+    {
+        var voorbereid = await BereidPublicatieVoorAsync(dto, chatClient, log, tijdstipUtc, "Feedback-voorbeeld");
+        if (voorbereid.Status != FeedbackStatus.Ok)
+            return new FeedbackVoorbeeldResultaat(voorbereid.Status, voorbereid.Foutmelding);
+
+        return new FeedbackVoorbeeldResultaat(
+            FeedbackStatus.Ok,
+            null,
+            voorbereid.Titel,
+            voorbereid.Body,
+            voorbereid.Structured!.Samenvatting,
+            voorbereid.Structured.Acceptatiecriteria);
+    }
 
     /// <summary>
     /// Vóór alles: Type wordt tegen de vaste keuzes gevalideerd (#1127) — vóór enige verwerking of
@@ -125,42 +191,95 @@ public static class FeedbackCore
     ///    AI-gegenereerde Samenvatting/acceptatiecriteria. AI-output wordt nooit impliciet vertrouwd als
     ///    publiceerbare tekst.
     /// Een blocked input doet daarom nooit een AI-aanroep; een blocked output doet nooit een GitHub-aanroep.
+    ///
+    /// Staat <see cref="FeedbackRequest.Bevestiging"/> gevuld, dan zijn dat de door de AI geproduceerde
+    /// velden zoals de beheerder ze in de voorbeeldstap heeft gezien, en wordt de AI niet opnieuw
+    /// aangeroepen (#1205).
     /// </summary>
+    /// <param name="tijdstipUtc">
+    /// Optioneel vast tijdstip voor de Tijdstip-regel in de body; standaard <c>DateTime.UtcNow</c>.
+    /// Uitsluitend bedoeld om die ene regel in tests deterministisch te maken — in productie blijft
+    /// het het publicatiemoment, en dat is dan ook het enige verschil tussen een voorbeeld en de
+    /// publicatie erna. Die regel is servermetadata, geen tekst van de beheerder.
+    /// </param>
     public static async Task<FeedbackSubmitResultaat> SubmitAsync(
         FeedbackRequest dto,
         IChatClient chatClient,
         Func<string, string, string[], Task<(int nummer, string url)>> maakGitHubIssueAsync,
-        ILogger log)
+        ILogger log,
+        DateTime? tijdstipUtc = null)
+    {
+        var voorbereid = await BereidPublicatieVoorAsync(dto, chatClient, log, tijdstipUtc, "Feedback");
+        if (voorbereid.Status != FeedbackStatus.Ok)
+            return new FeedbackSubmitResultaat(voorbereid.Status, voorbereid.Foutmelding);
+
+        var labels = KiesLabels(dto.Type);
+        var (issueNummer, issueUrl) = await maakGitHubIssueAsync(voorbereid.Titel!, voorbereid.Body!, labels);
+
+        return new FeedbackSubmitResultaat(FeedbackStatus.Ok, null, issueNummer, issueUrl);
+    }
+
+    private sealed record VoorbereidePublicatie(
+        FeedbackStatus Status,
+        string? Foutmelding,
+        string? Titel = null,
+        string? Body = null,
+        StructuredIssue? Structured = null);
+
+    /// <summary>
+    /// De ene plek waar de te publiceren titel + body wordt samengesteld — gedeeld door de
+    /// voorbeeldstap en de publicatiestap (#1205), zodat het voorbeeld per constructie dezelfde tekst
+    /// oplevert als de publicatie. Een tweede opbouwpad zou het voorbeeld tot een gok maken.
+    /// </summary>
+    private static async Task<VoorbereidePublicatie> BereidPublicatieVoorAsync(
+        FeedbackRequest dto,
+        IChatClient chatClient,
+        ILogger log,
+        DateTime? tijdstipUtc,
+        string logLabel)
     {
         if (IsOngeldigType(dto.Type))
         {
-            log.LogWarning("Feedback geblokkeerd: onbekend Type-veld (vóór enige verwerking)");
-            return new FeedbackSubmitResultaat(FeedbackStatus.OngeldigType, OngeldigTypeMelding());
+            log.LogWarning("{Label} geblokkeerd: onbekend Type-veld (vóór enige verwerking)", logLabel);
+            return new VoorbereidePublicatie(FeedbackStatus.OngeldigType, OngeldigTypeMelding());
         }
 
         if (BevatPii(VerzamelTeCheckenTekst(dto)))
         {
-            log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in invoer (vóór AI-aanroep)");
-            return new FeedbackSubmitResultaat(FeedbackStatus.PiiGedetecteerd, PiiMelding());
+            log.LogWarning("{Label} geblokkeerd: PII gedetecteerd in invoer (vóór AI-aanroep)", logLabel);
+            return new VoorbereidePublicatie(FeedbackStatus.PiiGedetecteerd, PiiMelding());
         }
 
-        var structured = await StructureerIssue(chatClient, dto, log);
+        // Bevestigingsstap: de beheerder heeft deze velden letterlijk in het voorbeeld gezien en
+        // bevestigd, dus ze worden hergebruikt in plaats van de AI opnieuw te bevragen. Dat is hier
+        // veilig én noodzakelijk:
+        // - Noodzakelijk omdat StructureerIssue op temperature 0.2 draait: een tweede aanroep levert
+        //   andere tekst op, waardoor het getoonde voorbeeld niet meer zou kloppen met wat er
+        //   gepubliceerd wordt — precies de misleiding die #1205 wegneemt.
+        // - Veilig omdat dit endpoint achter RequireAdmin zit en dezelfde beheerder via het veld
+        //   Beschrijving sowieso al willekeurige tekst in de body kan krijgen; er komt dus geen nieuw
+        //   aanvalspad bij.
+        // Vertrouwd wordt de client hier desondanks niet: de tekst gaat door dezelfde Sanitize heen en
+        // de PII-gate hieronder draait onverkort op de uiteindelijke, samengestelde titel + body.
+        var structured = dto.Bevestiging is { } bevestiging
+            ? new StructuredIssue(
+                string.IsNullOrWhiteSpace(bevestiging.Titel) ? StandaardTitel(dto.Type) : bevestiging.Titel,
+                bevestiging.Samenvatting ?? "",
+                bevestiging.Acceptatiecriteria is { } criteria ? [.. criteria] : [])
+            : await StructureerIssue(chatClient, dto, log);
 
-        var issueBody = BouwIssueBody(dto, structured);
-        var labels = KiesLabels(dto.Type);
+        var issueBody = BouwIssueBody(dto, structured, tijdstipUtc ?? DateTime.UtcNow);
         var title = Sanitize(structured.Title, 80);
 
         // Laatste controle vlak vóór de GitHub-write: op de daadwerkelijke, volledige titel + body —
         // inclusief AI-output (samenvatting, acceptatiecriteria) en alle contextvelden. (#1006)
         if (BevatPii(title) || BevatPii(issueBody))
         {
-            log.LogWarning("Feedback geblokkeerd: PII gedetecteerd in uiteindelijke titel/body vóór publicatie naar GitHub");
-            return new FeedbackSubmitResultaat(FeedbackStatus.PiiGedetecteerd, PiiMelding());
+            log.LogWarning("{Label} geblokkeerd: PII gedetecteerd in uiteindelijke titel/body vóór publicatie naar GitHub", logLabel);
+            return new VoorbereidePublicatie(FeedbackStatus.PiiGedetecteerd, PiiMelding());
         }
 
-        var (issueNummer, issueUrl) = await maakGitHubIssueAsync(title, issueBody, labels);
-
-        return new FeedbackSubmitResultaat(FeedbackStatus.Ok, null, issueNummer, issueUrl);
+        return new VoorbereidePublicatie(FeedbackStatus.Ok, null, title, issueBody, structured);
     }
 
     private static string OngeldigTypeMelding() =>
@@ -289,11 +408,13 @@ public static class FeedbackCore
 
         var parsed = await RoepAiJsonAanAsync(chatClient, messages, 0.2f, "Submit", log);
         return new StructuredIssue(
-            parsed["title"]?.Value<string>() ?? $"[{dto.Type}] Gebruikersmelding",
+            parsed["title"]?.Value<string>() ?? StandaardTitel(dto.Type),
             parsed["samenvatting"]?.Value<string>() ?? "",
             parsed["acceptatiecriteria"]?.ToObject<List<string>>() ?? []
         );
     }
+
+    private static string StandaardTitel(string type) => $"[{type}] Gebruikersmelding";
 
     // ── GitHub Issue aanmaken ──────────────────────────────────────────────────
 
@@ -346,12 +467,12 @@ public static class FeedbackCore
 
     // ── Issue body samenstelllen ───────────────────────────────────────────────
 
-    private static string BouwIssueBody(FeedbackRequest dto, StructuredIssue structured)
+    private static string BouwIssueBody(FeedbackRequest dto, StructuredIssue structured, DateTime tijdstipUtc)
     {
         var typeIcon = dto.Type switch { "Fout" => "🐛", "Verzoek" => "💡", _ => "❓" };
         var ctx = dto.Context;
         var beschrijving = Sanitize(dto.Beschrijving, 2000);
-        var tijdstip = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm") + " UTC";
+        var tijdstip = tijdstipUtc.ToString("yyyy-MM-dd HH:mm") + " UTC";
 
         var sb = new StringBuilder();
         sb.AppendLine("## 🗣️ Gemeld via feedback widget");

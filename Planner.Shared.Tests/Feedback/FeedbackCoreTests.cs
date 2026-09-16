@@ -203,6 +203,134 @@ public class FeedbackCoreTests
         github.AantalAanroepen.Should().Be(1);
     }
 
+    // ── Voorbeeld vóór publicatie (#1205) ───────────────────────────────────────
+
+    // Vast tijdstip: BouwIssueBody zet een Tijdstip-regel in de body. In productie is dat het
+    // publicatiemoment, dus een voorbeeld en de publicatie erna kunnen een minuut schelen. Dat is
+    // metadata die de beheerder niet zelf schrijft; om te bewijzen dat de rest van de body
+    // tekstueel identiek is, bevriezen deze tests het tijdstip.
+    private static readonly DateTime VastTijdstip = new(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task VoorbeeldAsync_MaaktGeenGitHubIssueAanEnGeeftDezelfdeBodyAlsPublicatie()
+    {
+        var dto = MaakSchoonRequest();
+        var fakeVoorbeeld = new FakeChatClient(GeldigeAiStructuurJson());
+        var githubVoorbeeld = new FakeGitHubIssueCreator();
+
+        var voorbeeld = await FeedbackCore.VoorbeeldAsync(dto, fakeVoorbeeld, NullLogger.Instance, VastTijdstip);
+
+        voorbeeld.Status.Should().Be(FeedbackStatus.Ok);
+        voorbeeld.Titel.Should().NotBeNullOrWhiteSpace();
+        voorbeeld.Body.Should().Contain("Gemeld via feedback widget");
+        githubVoorbeeld.AantalAanroepen.Should().Be(0, "een voorbeeld publiceert per definitie niets");
+
+        // Dezelfde invoer + dezelfde AI-uitkomst moet bij publicatie exact dezelfde tekst opleveren,
+        // anders is het voorbeeld een leugen.
+        var fakeSubmit = new FakeChatClient(GeldigeAiStructuurJson());
+        var githubSubmit = new FakeGitHubIssueCreator();
+        var submit = await FeedbackCore.SubmitAsync(
+            MaakSchoonRequest(), fakeSubmit, githubSubmit.MaakAsync, NullLogger.Instance, VastTijdstip);
+
+        submit.Status.Should().Be(FeedbackStatus.Ok);
+        githubSubmit.LaatsteTitel.Should().Be(voorbeeld.Titel);
+        githubSubmit.LaatsteBody.Should().Be(voorbeeld.Body);
+    }
+
+    [Fact]
+    public async Task VoorbeeldAsync_PiiInInvoer_WordtGeweigerdZonderAiAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        dto.Beschrijving = $"De pagina laadt niet; mail mij op {PiiMarker} voor details.";
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+
+        var voorbeeld = await FeedbackCore.VoorbeeldAsync(dto, fake, NullLogger.Instance, VastTijdstip);
+
+        voorbeeld.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
+        voorbeeld.Body.Should().BeNull("een geweigerd voorbeeld geeft nooit de samengestelde tekst terug");
+        fake.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VoorbeeldAsync_PiiInAiOutput_WordtGeweigerdNaAiAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        var fake = new FakeChatClient($$"""
+            {"title": "Veldenpagina laadt niet", "samenvatting": "Neem contact op via {{PiiMarker}}.", "acceptatiecriteria": []}
+            """);
+
+        var voorbeeld = await FeedbackCore.VoorbeeldAsync(dto, fake, NullLogger.Instance, VastTijdstip);
+
+        voorbeeld.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
+        voorbeeld.Body.Should().BeNull();
+        fake.AantalAanroepen.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_MetBevestiging_PubliceertExactDeGetoondeTekstZonderNieuweAiAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        var fakeVoorbeeld = new FakeChatClient(GeldigeAiStructuurJson());
+        var voorbeeld = await FeedbackCore.VoorbeeldAsync(dto, fakeVoorbeeld, NullLogger.Instance, VastTijdstip);
+
+        // De bevestigingsstap stuurt terug wat de beheerder gezien heeft. StructureerIssue draait op
+        // temperature 0.2 en levert niet tweemaal dezelfde tekst — een tweede AI-aanroep zou het
+        // voorbeeld waardeloos maken.
+        var bevestigd = MaakSchoonRequest();
+        bevestigd.Bevestiging = new FeedbackBevestiging
+        {
+            Titel = voorbeeld.Titel!,
+            Samenvatting = voorbeeld.Samenvatting!,
+            Acceptatiecriteria = [.. voorbeeld.Acceptatiecriteria!],
+        };
+
+        var fakeSubmit = new FakeChatClient("""{"title": "HEEL ANDERE TITEL", "samenvatting": "anders", "acceptatiecriteria": []}""");
+        var github = new FakeGitHubIssueCreator();
+
+        var submit = await FeedbackCore.SubmitAsync(
+            bevestigd, fakeSubmit, github.MaakAsync, NullLogger.Instance, VastTijdstip);
+
+        submit.Status.Should().Be(FeedbackStatus.Ok);
+        fakeSubmit.AantalAanroepen.Should().Be(0, "de bevestigde velden vervangen de AI-aanroep");
+        github.LaatsteTitel.Should().Be(voorbeeld.Titel);
+        github.LaatsteBody.Should().Be(voorbeeld.Body);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_BevestigdeVeldenMetPii_WordtAlsnogGeblokkeerdVoorGitHub()
+    {
+        // De client mag nooit vertrouwd worden op het punt van publiceren: de PII-gate draait
+        // onverkort op de uiteindelijke, samengestelde titel + body.
+        var dto = MaakSchoonRequest();
+        dto.Bevestiging = new FeedbackBevestiging
+        {
+            Titel = "Veldenpagina laadt niet",
+            Samenvatting = $"Neem contact op via {PiiMarker}.",
+            Acceptatiecriteria = [],
+        };
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+        var github = new FakeGitHubIssueCreator();
+
+        var result = await FeedbackCore.SubmitAsync(dto, fake, github.MaakAsync, NullLogger.Instance, VastTijdstip);
+
+        result.Status.Should().Be(FeedbackStatus.PiiGedetecteerd);
+        fake.AantalAanroepen.Should().Be(0);
+        github.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VoorbeeldAsync_OngeldigType_WordtGeblokkeerdZonderAiAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        dto.Type = "Onbekend";
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+
+        var voorbeeld = await FeedbackCore.VoorbeeldAsync(dto, fake, NullLogger.Instance, VastTijdstip);
+
+        voorbeeld.Status.Should().Be(FeedbackStatus.OngeldigType);
+        fake.AantalAanroepen.Should().Be(0);
+    }
+
     // ── Rate limiter ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -245,10 +373,14 @@ public class FeedbackCoreTests
     private sealed class FakeGitHubIssueCreator
     {
         public int AantalAanroepen { get; private set; }
+        public string? LaatsteTitel { get; private set; }
+        public string? LaatsteBody { get; private set; }
 
         public Task<(int nummer, string url)> MaakAsync(string title, string body, string[] labels)
         {
             AantalAanroepen++;
+            LaatsteTitel = title;
+            LaatsteBody = body;
             return Task.FromResult((123, "https://github.com/example/repo/issues/123"));
         }
     }
