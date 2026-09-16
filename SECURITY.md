@@ -154,6 +154,9 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 - E-mailadressen (afzender, ontvanger)
 - Onderwerpregels van emails
 - Emailinhoud, AI-classificatieresultaten
+- Sportlink-request-URL's (bevatten de clientId als queryparameter) — log het endpoint en de
+  wedstrijdcode, nooit de volledige URL. De CI-job `PII Pattern Scan (AVG/GDPR)` blokkeert een
+  logtemplate met een URL-placeholder (#1200).
 
 **Wat WEL wordt gelogd:**
 - MessageId (technische Graph API identifier, geen PII)

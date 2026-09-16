@@ -19,6 +19,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Security
+- **De sleutel waarmee de club bij Sportlink inlogt kon in de foutlogboeken van de wedstrijdsync
+  belanden (#1200).** Sportlink controleert wie gegevens opvraagt via een waarde in het webadres
+  zelf, dus dat adres is net zo gevoelig als een wachtwoord. Ging het ophalen van de details van
+  één wedstrijd mis, dan schreef de applicatie het volledige adres — inclusief die sleutel — weg
+  in het foutlogboek, op beide databasevarianten. Dat gebeurt niet meer: het logboek noemt nu
+  alleen nog het soort fout, het endpoint en de wedstrijdcode, wat voor het opsporen van een
+  storing evenveel houvast geeft. Twee automatische controles houden dit zo: een regressietest per
+  databasevariant en een controle in de bouwstraat die elke logregel met een webadres erin
+  blokkeert. Beheerders die Application Insights gebruiken: laat de bewaarde logboeken eenmalig
+  nakijken op deze sleutel en vervang hem bij twijfel — zie het issue voor de stappen.
 - **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
   Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
   extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
