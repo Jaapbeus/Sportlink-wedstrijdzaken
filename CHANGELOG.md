@@ -27,8 +27,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   elke feature-branch vanaf `develop` droeg zo zijn issuenummers bij. Ten derde miste de sluitstap
   de epic-uitzondering die de zusterworkflow wél heeft, waardoor één opgeleverd deelissue een hele
   epic kon sluiten. Daarbovenop pikte de CHANGELOG-lezer ook nummers op uit voorbeeldtekst tussen
-  backticks. Alle vier zijn verholpen en vastgelegd in de bestaande unittests, die bij elke PR
-  draaien — de workflow zelf draait immers pas bij een release, en dan is de schade al aangericht.
+  backticks. En tot slot viel een overgeslagen epic stilzwijgend weg uit het vangnetrapport dat
+  juist moet melden wat er ná een release nog op 'wacht op release' staat, en deed de PR-koppeling
+  één API-aanroep per commit — genoeg om bij een allereerste release van een fork, waar geen
+  vorige tag bestaat, halverwege op de uurlimiet te stranden en maar een deel van de issues te
+  sluiten. Alles is verholpen en vastgelegd in de bestaande unittests, die bij elke PR draaien —
+  de workflow zelf draait immers pas bij een release, en dan is de schade al aangericht.
 - **De setup-instructies installeerden maar de helft van wat .NET 9 nodig heeft, waardoor twee
   testprojecten niet konden draaien (#1174).** `dotnet-install.sh --runtime dotnet` levert alleen
   `Microsoft.NETCore.App`, maar `FunctionApp.Tests` en `FunctionApp.Postgres.Tests` hebben ook

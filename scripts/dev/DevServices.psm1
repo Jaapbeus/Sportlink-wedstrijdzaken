@@ -75,8 +75,12 @@ function Test-PortListening {
         macOS         → lsof, via Get-PortOwnerId.
 
         Alleen macOS wijkt af, niet "alles wat geen Windows is": op Linux levert de BCL wél een
-        correcte lijst, en een lsof-pad zou daar een onnodige externe afhankelijkheid zijn in
-        bijvoorbeeld een kale container.
+        correcte lijst, dus daar is geen reden om ervan af te wijken.
+
+        Let wel: dit maakt Linux niet lsof-vrij. Get-PortOwnerId hieronder heeft lsof nog steeds
+        nodig op élk niet-Windows-platform, want de BCL geeft geen proces-eigenaar. Deze functie
+        werkt op Linux voortaan zonder, maar de teardown niet — en die valt bij een ontbrekende
+        lsof terug op het PID-bestand.
 
         Waarom macOS afwijkt: daar geeft IPGlobalProperties().GetActiveTcpListeners() alleen
         de listeners van het EIGEN proces terug. Alles wat een ander proces opent is er
