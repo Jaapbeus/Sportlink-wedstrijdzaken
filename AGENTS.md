@@ -524,6 +524,45 @@ Samenvatting van de drie harde regels:
 
 ---
 
+### Supabase Postgres — Row-Level Security verplicht op elke tabel (#1198, herziening van #985)
+
+> Volledige analyse: **[docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md), §65**
+
+Issue #985 (2026-09-04) onderzocht RLS al eens (CISO/DPO/Architect) en besloot bewust om het niet
+te implementeren, met als redenering: er is precies één vertrouwde databaseclient (de FunctionApp),
+dus RLS trekt een autorisatiegrens die hier niet bestaat. **Die redenering ging alleen over
+autorisatie tussen clients van déze applicatie — niet over wat het platform zelf standaard
+blootstelt.** Supabase genereert voor elke tabel in het `public`-schema automatisch een
+PostgREST-REST-endpoint, bereikbaar met de (bewust publieke) anon-key, **ongeacht of de applicatie
+die API ooit gebruikt.** Zonder RLS is elke `public`-tabel dus extern leesbaar/schrijfbaar/
+verwijderbaar door wie dan ook met de project-URL — exact wat Supabase's Security Advisor op
+13 september 2026 meldde als **CRITICAL** (`rls_disabled_in_public`), onder andere op
+`public.sportlinkservicetokens` (Sportlink-servicetokens) en `public.uitgeslotenemailadressen`
+(persoonsgegevens).
+
+Harde regels, vanaf nu:
+
+1. **Elke nieuwe tabel in een Postgres-migratie krijgt in dezelfde migratie een
+   `ALTER TABLE <schema>.<tabel> ENABLE ROW LEVEL SECURITY;`.** Zie
+   `Database.Postgres/migrations/021_enable_row_level_security.sql` als precedent voor alle
+   tabellen die vóór #1198 al bestonden.
+2. **Geen policies nodig — en dat is bewust.** De FunctionApp verbindt via één
+   `POSTGRES_CONNECTION_STRING`-rol die tabeleigenaar is (of Supabase-superuser via de pooler);
+   die rol omzeilt RLS altijd, met of zonder policies. RLS is hier uitsluitend een schakelaar die
+   Supabase's eigen `anon`/`authenticated`-PostgREST-rollen buitensluit — geen per-rij-autorisatie,
+   geen wijziging aan het single-tenant-deploymentmodel van #985/#393. Voeg dus geen policies toe
+   tenzij een taak dat expliciet vereist en documenteer dan waarom.
+3. **Databaseplatform-configuratie (RLS, Exposed schemas, API-instellingen) is onzichtbaar voor
+   codereview zolang hij niet als migratie in git staat.** Een wijziging in het Supabase-dashboard
+   laat geen diff na — geen enkele codereview (Claude Code, Codex, of een mens) kan zien wat daar
+   staat. Controleer daarom **na elk architectuurbesluit over databasebeveiliging, en periodiek
+   los daarvan**, het Supabase-dashboard onder **Advisors → Security** — niet alleen de
+   repository. Dit is precies waarom #985 twaalf dagen ongemerkt bleef: het besluit stond correct
+   gedocumenteerd, maar de vraag "wat stelt het hostingplatform zelf standaard open, los van onze
+   eigen architectuur?" ontbrak in die analyse.
+
+---
+
 ### Sportlink Web Extension — één helper op de server, geen code in de Razor-pagina's (#1122)
 
 Vastgelegd na de review van epic #986. Twee harde regels:
