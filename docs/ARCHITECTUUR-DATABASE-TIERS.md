@@ -3843,6 +3843,45 @@ overgrote deel. Dat is dashboard- en connectiepooler-overhead. **Bij het lezen v
 query-performance-log is de eerste vraag dus welke `rolname` een query uitvoert** — `authenticator`,
 `postgres`, `pgbouncer` en `supabase_admin` zijn platform, niet applicatie.
 
+## 70. De migratie-CLI meldt het exceptietype, niet de foutmelding — CI-uitvoer is publiek (#1225)
+
+`Database.Postgres.Cli` schreef bij een mislukte migratie `ex.Message` naar stderr. Sinds §57 draait
+die CLI in de job `db-migrate-postgres` van `deploy.yml`, en **de Actions-logs van deze repository
+zijn publiek**. GitHub maskeert uitsluitend de exacte, volledige waarde van een secret — niet een
+deelstring ervan die toevallig in een foutmelding staat. Een Npgsql-verbindingsfout luidt
+`Failed to connect to <host>:<poort>`; bij een authenticatiefout kan Npgsql ook de gebruikersnaam
+noemen, die bij de gehoste provider de projectidentificatie draagt. Alle drie zijn onderdelen van
+`POSTGRES_CONNECTION_STRING`.
+
+Gereproduceerd met een synthetische connectiestring. In de laatste 40 deploy-runs is de job nooit
+gefaald, dus dit was een openstaand lekpad, geen vastgesteld lek — maar precies dezelfde foutklasse
+als #1200, waar de Sportlink-clientId via een log-URL lekte.
+
+**Wat er nu gebeurt.** `Database.Postgres/MigratieFoutRapportage.cs` is de ene plek die een mislukte
+databasehandeling naar een consoleregel vertaalt: aanhef + stap + exceptietype, plus de SQLSTATE-code
+bij een `PostgresException`. `MigrationRunner.RunAsync` heeft daarvoor een optionele
+`onMigratieStart`-callback gekregen — de aanroeper weet zo wélk migratiebestand faalde zonder de
+exception te hoeven lezen of in te pakken (en zonder dat de bestaande exception-typen wijzigen,
+waar de integratietests op toetsen). `MigrationTools/SqlServerToPostgresCopy` gebruikt dezelfde
+helper; ook dat hulpmiddel opent verbindingen met host en wachtwoord erin, en zijn uitvoer belandt
+in de praktijk in een issue.
+
+**Waarom dit bruikbaar blijft om fouten mee te zoeken.** Bestandsnaam plus SQLSTATE wijzen de
+oorzaak aan: het bestand de SQL, de SQLSTATE de foutklasse (`42601` syntax, `42703` onbekende kolom,
+`23505` unique violation). De volledige melding staat in de databaselogs van de provider en is
+lokaal reproduceerbaar tegen een wegwerpcontainer.
+
+**Bewust niet gedaan: een conditionele variant** die de volledige melding wél schrijft zodra de
+omgeving aantoonbaar niet-publiek is. Een schakelaar die bepaalt of een secret in een log belandt,
+is één configuratiefout verwijderd van een lek; de altijd-veilige vorm kost hier niets dat niet
+elders terug te vinden is.
+
+**Geborgd in CI.** De job `pii-patterns` in `security-scan.yml` bevatte al de #1200-guard op
+`ILogger`-templates met een URL-placeholder. Die keek alleen naar `ILogger`, niet naar
+`Console.Error`/`Console.Out` — de reden dat dit pad langs de vorige controle kwam. De guard faalt
+nu ook op een `Console.Error.WriteLine`/`Console.WriteLine` met een geïnterpoleerde exception in
+productie-C# (testprojecten uitgezonderd, die noemen zo'n vorm juist letterlijk).
+
 
 ## Gerelateerd
 

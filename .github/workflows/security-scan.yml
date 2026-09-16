@@ -120,6 +120,22 @@ jobs:
               echo "$url_log_matches" | while IFS= read -r line; do echo "::error::  $line"; done
               FOUND=1
             fi
+
+            # #1225: dezelfde foutklasse, andere uitvoerkanaal. De guard hierboven kijkt alleen naar
+            # ILogger-templates; Database.Postgres.Cli schreef zijn fout naar Console.Error en draait
+            # in de job db-migrate-postgres van deploy.yml — waarvan de log publiek is. Een
+            # exception-tekst van Npgsql noemt "Failed to connect to <host>:<poort>" en bij een
+            # authenticatiefout de gebruikersnaam; dat zijn deelstrings van
+            # POSTGRES_CONNECTION_STRING, en GitHub maskeert alleen de exacte, volledige secretwaarde.
+            # Meld het exceptietype en de stap (Database.Postgres/MigratieFoutRapportage.cs), nooit
+            # de melding zelf.
+            console_ex_matches=$(echo "$CS_FILES" | xargs grep -nP 'Console\.(Error\.)?Write(Line)?\([^;]*\{(ex|e|err|error|exception)(\.[A-Za-z]+(\(\))?)?\}' 2>/dev/null || true)
+            if [ -n "$console_ex_matches" ]; then
+              echo "::error::🚨 EXCEPTIE-TEKST NAAR DE CONSOLE — CI-uitvoer van een publieke repo is publiek (zie #1225)"
+              echo "::error::  Gebruik MigratieFoutRapportage.Beschrijf(...) — exceptietype + stap, nooit ex.Message."
+              echo "$console_ex_matches" | while IFS= read -r line; do echo "::error::  $line"; done
+              FOUND=1
+            fi
           fi
 
           if [ "$FOUND" -eq 1 ]; then

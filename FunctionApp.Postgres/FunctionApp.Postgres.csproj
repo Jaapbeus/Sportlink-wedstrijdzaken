@@ -15,9 +15,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Version>3.4.3.5</Version>
-    <AssemblyVersion>3.4.3.5</AssemblyVersion>
-    <FileVersion>3.4.3.5</FileVersion>
+    <Version>3.4.3.6</Version>
+    <AssemblyVersion>3.4.3.6</AssemblyVersion>
+    <FileVersion>3.4.3.6</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Test-project heeft toegang tot internal members — zelfde patroon als de SQL Server-tier

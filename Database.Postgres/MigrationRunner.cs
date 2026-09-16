@@ -52,7 +52,15 @@ public static class MigrationRunner
     /// <summary>Willekeurige, stabiele advisory-lock-sleutel — vast getal, moet nooit wijzigen.</summary>
     private const long AdvisoryLockKey = 8150000821;
 
-    public static async Task<MigrationRunResult> RunAsync(string connectionString, string migrationsDirectory, CancellationToken ct = default)
+    /// <param name="onMigratieStart">
+    /// #1225: wordt aangeroepen met de bestandsnaam vlak vóór elk migratiebestand wordt behandeld.
+    /// Hiermee weet een aanroeper bij een exception wélke stap faalde, zónder dat de exception zelf
+    /// hoeft te worden ingepakt of gelezen — de tekst van een databasefout draagt host of
+    /// gebruikersnaam mee en mag niet in een publiek CI-log belanden (zie
+    /// <see cref="MigratieFoutRapportage"/>). Blijft de callback ongeroepen, dan ging het mis vóór
+    /// de eerste stap, bijvoorbeeld bij het openen van de verbinding.
+    /// </param>
+    public static async Task<MigrationRunResult> RunAsync(string connectionString, string migrationsDirectory, CancellationToken ct = default, Action<string>? onMigratieStart = null)
     {
         var result = new MigrationRunResult();
         if (!Directory.Exists(migrationsDirectory))
@@ -79,6 +87,7 @@ public static class MigrationRunner
 
             foreach (var file in files)
             {
+                onMigratieStart?.Invoke(file.Naam);
                 var uitkomst = await ApplyMigrationFileAsync(connection, file.Path, file.Naam, ct);
                 switch (uitkomst)
                 {

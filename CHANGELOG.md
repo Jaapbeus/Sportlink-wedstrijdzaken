@@ -18,6 +18,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Security
+- **De migratiestap in de deploy meldde bij een fout de volledige databasefoutmelding in een
+  publiek logbestand (#1225).** De GitHub Actions-logs van dit project zijn openbaar, en GitHub
+  verbergt daarin alleen de exacte, volledige waarde van een geheim — niet een stukje ervan dat
+  toevallig in een foutmelding staat. Een mislukte databaseverbinding noemt de servernaam en poort,
+  en bij een verkeerd wachtwoord ook de gebruikersnaam; die zijn alle drie onderdeel van de
+  geheime verbindingsgegevens van de database. De migratiestap meldt vanaf nu alleen nog welk
+  migratiebestand faalde, welk soort fout het was en de Postgres-foutcode — genoeg om de oorzaak te
+  vinden, zonder dat er iets over de database zelf op straat komt te liggen. Hetzelfde geldt voor
+  het eenmalige kopieerhulpmiddel dat bij de overstap naar Postgres is gebruikt. Een controle in de
+  beveiligingsscan blokkeert voortaan elke nieuwe plek die een foutmelding naar de console zou
+  schrijven. Er zijn geen aanwijzingen dat dit ooit daadwerkelijk is gebeurd: de migratiestap is in
+  de laatste 40 deploys nooit gefaald.
+
 ### Fixed
 - **Teamherkenning zocht aliassen via een volledige tabelscan — een index uit migratie 003 was sinds
   de collatie-fix onbruikbaar geworden (#1211).** Migratie 007 zette destijds alle vergelijkingen op
