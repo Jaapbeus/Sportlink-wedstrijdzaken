@@ -47,10 +47,20 @@ fi
 TOTAAL=$(jq 'length' "$ADVISORS")
 GEACCEPTEERD=$(jq '.geaccepteerd | length' "$BASELINE")
 
+# Sorteren op ECHTE ernst, niet alfabetisch: alfabetisch levert ERROR, INFO, WARN op, waardoor de
+# minst ernstige bevindingen boven de ernstigere komen te staan. De lezer moet bovenaan beginnen.
 jq -s '
   .[0] as $bevindingen | .[1].geaccepteerd as $ok
   | ($ok | map(.cache_key)) as $keys
-  | $bevindingen | map(select(.cache_key as $k | ($keys | index($k)) | not))
+  | $bevindingen
+  | map(select(.cache_key as $k | ($keys | index($k)) | not))
+  | sort_by(
+      (if   .level == "ERROR" then 0
+       elif .level == "WARN"  then 1
+       elif .level == "INFO"  then 2
+       else 3 end),
+      .name, .cache_key
+    )
 ' "$ADVISORS" "$BASELINE" > "${BODY}.nieuw.json"
 
 NIEUW=$(jq 'length' "${BODY}.nieuw.json")
@@ -64,20 +74,22 @@ if [ "$NIEUW" = "0" ]; then
   exit 0
 fi
 
-AANTAL_ERROR=$(jq '[.[] | select(.level == "ERROR")] | length' "${BODY}.nieuw.json")
-AANTAL_WARN=$(jq '[.[] | select(.level == "WARN")] | length' "${BODY}.nieuw.json")
-
 {
   echo "De dagelijkse controle van Supabase's Security- en Performance Advisor vond **$NIEUW bevinding(en)** die niet in \`.github/supabase-advisors-baseline.json\` staan."
   echo ""
-  echo "| | Aantal |"
+  echo "| Niveau | Aantal |"
   echo "|---|---|"
-  echo "| ERROR | $AANTAL_ERROR |"
-  echo "| WARN | $AANTAL_WARN |"
+  # Alleen niveaus die daadwerkelijk voorkomen. Een vaste ERROR/WARN-tabel toont "0 | 0" zodra er
+  # via ADVISOR_TESTLINT op een INFO-lint wordt geverifieerd, en dat leest als "niets gevonden"
+  # terwijl er acht bevindingen onder staan.
+  jq -r 'group_by(.level) | map("| \(.[0].level) | \(length) |") | .[]' "${BODY}.nieuw.json"
   echo ""
   echo "## Bevindingen"
   echo ""
-  jq -r '.[] | "### \(.level) — \(.title)\n\n- **Lint:** `\(.name)` (\(.categorie))\n- **Detail:** \(.detail)\n- **Uitleg:** \(.remediation)\n- **Baseline-sleutel:** `\(.cache_key)`\n"' "${BODY}.nieuw.json"
+  # Supabase levert `detail` met ontsnapte backticks (\`public.foo\`). In GitHub-markdown rendert
+  # dat als een zichtbaar backtick-teken in plaats van als code, wat de tekst rommelig maakt.
+  # Terugzetten naar een gewone backtick zodat objectnamen als code worden getoond.
+  jq -r '.[] | "### \(.level) — \(.title)\n\n- **Lint:** `\(.name)` (\(.categorie))\n- **Detail:** \(.detail | gsub("\\\\`"; "`"))\n- **Uitleg:** \(.remediation)\n- **Baseline-sleutel:** `\(.cache_key)`\n"' "${BODY}.nieuw.json"
   echo "## Wat nu"
   echo ""
   echo "Per bevinding één van twee dingen, allebei een PR-diff:"
