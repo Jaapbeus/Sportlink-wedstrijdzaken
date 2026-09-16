@@ -101,6 +101,76 @@ Bron: [Azure Monitor cost — alerts](https://learn.microsoft.com/azure/azure-mo
 
 ---
 
+## Dagelijkse Supabase-advisorcontrole (#1221, epic #1219)
+
+> De eerste geautomatiseerde productiebewaking in dit repo die **niet** van e-mail afhankelijk is
+> en **niet** op een timer in de FunctionApp draait.
+
+`.github/workflows/supabase-advisors.yml` draait elke dag om **05:00 UTC** (07:00 CEST / 06:00 CET,
+net na de nachtelijke Sportlink-sync) en is ook handmatig te starten via *Actions → Supabase-advisors
+→ Run workflow*.
+
+### Wat het doet
+
+1. Haalt de **Security Advisor** en de **Performance Advisor** op via de Supabase Management API.
+2. Filtert op **ERROR/WARN** en `facing = EXTERNAL`.
+3. Vergelijkt met `.github/supabase-advisors-baseline.json` (geaccepteerde risico's, op `cache_key`).
+4. Nieuwe bevindingen ⇒ één issue met label `supabase-advisor`, of een reactie op het bestaande
+   open issue. Niets nieuws ⇒ geen issue.
+
+### Waarom dagelijks
+
+Logretentie op het Supabase Free plan is **één dag**. Een wekelijkse cadans zou het logvenster
+structureel missen — het venster dat de agentische laag (#1222) nodig heeft. Bijkomend voordeel: een
+Free-project wordt na zeven dagen zonder verkeer automatisch gepauzeerd, en deze run telt als
+activiteit.
+
+### Escalatie
+
+| Signaal | Betekenis | Actie |
+|---|---|---|
+| Issue met `supabase-advisor`, niveau **ERROR** | Supabase meldt een concreet beveiligings- of performanceprobleem | Zelfde dag beoordelen; meestal een nieuwe migratie |
+| Issue met `supabase-advisor`, niveau **WARN** | Aandachtspunt | Meenemen in de eerstvolgende iteratie |
+| **Workflow rood** | De controle zélf is kapot: ontbrekend secret, API-fout, gewijzigd responseformaat, of een redactie-gate die afging | Direct onderzoeken — zolang dit rood staat wordt er *niets* bewaakt |
+| Geen issue, groene run | Niets gevonden buiten de baseline | Geen actie |
+
+Let op het verschil tussen de derde en de vierde regel: "geen issue" en "niet gedraaid" zien er van
+buiten identiek uit. Daarom schrijft elke run een samenvatting naar de runsamenvatting, ook als er
+niets te melden valt.
+
+### Configuratie
+
+Twee repository-secrets, **allebei als Secret en niet als Variable** — deze repository is publiek,
+Actions-logs zijn dat ook, en de project-ref identificeert de club (`CLAUDE.md` regel 4a; ditzelfde
+lek werd bij #1204 voor zes andere waarden gedicht):
+
+| Secret | Inhoud |
+|---|---|
+| `SUPABASE_ACCESS_TOKEN` | Personal access token. Aanbevolen **scoped**: Advisors=Read, Logs=Read, Database Security=Read. Een classic token draagt volledige accounttoegang op elke organisatie en elk project |
+| `SUPABASE_PROJECT_REF` | De project-ref (Project Settings → General → Reference ID) |
+
+### Een bevinding accepteren
+
+Voeg de baseline-sleutel toe aan `.github/supabase-advisors-baseline.json`, mét `reden` en `issue`.
+De workflow faalt op een regel zonder reden. Zo is "wij accepteren dit risico" een PR-diff met een
+onderbouwing, in plaats van een vinkje in een dashboard dat niemand terugziet — hetzelfde principe
+als §65 van `docs/ARCHITECTUUR-DATABASE-TIERS.md`.
+
+### De meldketen verifiëren terwijl er niets mis is
+
+Zolang het project schoon is, levert een normale run nul bevindingen en blijft het issue-pad
+ongetest. Start de workflow daarom af en toe handmatig met de input `testlint` op bijvoorbeeld
+`no_primary_key`: dat vervangt het niveaufilter door dat ene lint, zodat er gegarandeerd
+bevindingen zijn en het volledige pad doorlopen wordt. Sluit het testissue daarna. De redactie-gates
+draaien bij zo'n run onverkort door.
+
+### Kosten
+
+Management API en GitHub Actions zijn beide gratis binnen de huidige plannen; twee HTTPS-calls per
+run. Geen Azure-resource, geen tierwijziging — dit valt buiten het kostenbeleid in `CLAUDE.md`.
+
+---
+
 ## Azure SQL Free-tier bescherming
 
 > **Geldt uitsluitend voor de SQL Server-tier.** Sinds 2026-09-04 draait productie op Postgres
@@ -110,6 +180,12 @@ Bron: [Azure Monitor cost — alerts](https://learn.microsoft.com/azure/azure-mo
 > draait heeft dus geen losstaande, e-mail-onafhankelijke uitvalmonitor. Dit is een bekend, open
 > punt, geen verkeerd begrepen architectuur; behandel het als zodanig totdat het is opgepakt.
 > Draai je (nog) op de SQL Server-tier, dan is deze sectie onverkort van toepassing.
+>
+> **Sinds #1221 is een deel hiervan wél gedekt, maar nadrukkelijk niet het uitvaldeel.** De
+> dagelijkse Supabase-advisorcontrole (zie hieronder) kijkt naar beveiliging en performance van de
+> Postgres-database. Een database die *plat ligt* merkt hij niet als zodanig op: de workflow faalt
+> dan op een API-fout, wat een signaal is maar geen gerichte uitvalmelding met noodmail. Het open
+> punt blijft dus staan.
 
 De gratis Azure SQL database heeft een maandlimiet van **100.000 vCore-seconden**. Bij uitputting
 wordt de database gepauzeerd tot het begin van de volgende kalendermaand. Dit heeft impact op drie lagen.

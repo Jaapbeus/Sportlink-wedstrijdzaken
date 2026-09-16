@@ -32,5 +32,6 @@
   {"name": "discipline: ciso",     "color": "B60205", "description": "Security review required (CISO hat)"},
   {"name": "discipline: dpo",      "color": "FBCA04", "description": "Data protection review required (DPO hat)"},
   {"name": "discipline: architect","color": "0052CC", "description": "Architectural decision required"},
-  {"name": "via: feedback-widget", "color": "0075CA", "description": "Created via the Blazor Admin GUI feedback widget"}
+  {"name": "via: feedback-widget", "color": "0075CA", "description": "Created via the Blazor Admin GUI feedback widget"},
+  {"name": "supabase-advisor",     "color": "3ECF8E", "description": "Reported by the daily Supabase Security/Performance Advisor check"}
 ]

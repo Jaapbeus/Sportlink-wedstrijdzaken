@@ -1,0 +1,160 @@
+# Dagelijkse controle van Supabase's Security- en Performance Advisor (#1221, epic #1219).
+#
+# DE EERSTE WORKFLOW IN DIT REPO MET EEN SCHEDULE-TRIGGER. Reden: regel 3 van de Supabase-RLS-sectie
+# in CLAUDE.md schrijft voor het dashboard "periodiek" te controleren, en die regel leunde volledig
+# op een mens die eraan denkt. #1198 liet zien wat dat kost — het besluit stond correct
+# gedocumenteerd, de blootstelling stond twaalf dagen open, en het was Supabase's eigen advisor die
+# hem vond, niet een codereview.
+#
+# TAAKVERDELING MET #1220: build.yml dekt af wat vóór de merge zichtbaar is op een verse database
+# (RLS-invariant, schema-statische lints). Deze workflow dekt af wat alleen de levende
+# productiedatabase weet: gebruiksafhankelijke lints en platformconfiguratie die geen diff in git
+# achterlaat.
+#
+# KOSTEN: de Management API zit in het Free plan, GitHub Actions is gratis op dit repo. Twee
+# HTTPS-calls per run. Geen nieuwe Azure-resource, geen tierwijziging.
+name: Supabase-advisors
+
+on:
+  schedule:
+    # 05:00 UTC = 07:00 CEST / 06:00 CET — na de nachtelijke Sportlink-sync, zodat de bevindingen
+    # de toestand van ná de sync weerspiegelen.
+    #
+    # Waarom dagelijks en niet wekelijks: logretentie op het Free plan is ÉÉN DAG. Een wekelijkse
+    # cadans zou het logvenster structureel missen, en dat venster is precies wat de agentische
+    # laag (#1222) nodig heeft. Een dagelijkse run houdt bovendien het project actief, wat het
+    # automatisch pauzeren na zeven dagen inactiviteit voorkomt.
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      testlint:
+        description: >-
+          Alleen om de meldketen te verifiëren: vervang het ERROR/WARN-filter door precies dit ene
+          lint, zodat er gegarandeerd bevindingen zijn en het issue-pad doorlopen wordt. Bijv.
+          no_primary_key. Leeg laten voor een normale run.
+        required: false
+        default: ''
+
+# De workflow maakt en becommentarieert issues; verder niets.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: supabase-advisors
+  cancel-in-progress: false
+
+jobs:
+  advisors:
+    name: Advisors ophalen en melden
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Faalt liever luid dan stil over te slaan: een advisorcontrole die niets meldt omdat een
+      # secret ontbreekt, wekt vertrouwen zonder iets te controleren.
+      - name: Secrets aanwezig?
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          ONTBREEKT=""
+          [ -n "$TOKEN" ] || ONTBREEKT="$ONTBREEKT SUPABASE_ACCESS_TOKEN"
+          [ -n "$REF" ] || ONTBREEKT="$ONTBREEKT SUPABASE_PROJECT_REF"
+          if [ -n "$ONTBREEKT" ]; then
+            echo "::error::Ontbrekende repository-secret(s):$ONTBREEKT"
+            echo "Aanmaken onder Settings → Secrets and variables → Actions. Beide als SECRET,"
+            echo "niet als Variable: deze repository is publiek en Actions-logs zijn dat ook, en de"
+            echo "project-ref identificeert de club (CLAUDE.md regel 4a)."
+            exit 1
+          fi
+          echo "Beide secrets aanwezig."
+
+      - name: Advisors ophalen
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          # Normaal leeg. Alleen gevuld via de workflow_dispatch-input, om de meldketen te
+          # verifiëren wanneer het project schoon is — zie de kop van het script.
+          ADVISOR_TESTLINT: ${{ inputs.testlint }}
+        run: ./scripts/ci/fetch-supabase-advisors.sh "${RUNNER_TEMP}/advisors.json"
+
+      - name: Vergelijken met de baseline
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          ./scripts/ci/supabase-advisors-report.sh \
+            "${RUNNER_TEMP}/advisors.json" \
+            .github/supabase-advisors-baseline.json \
+            "${RUNNER_TEMP}/body.md"
+          echo "NIEUW=$(cat "${RUNNER_TEMP}/body.md.count")" >> "$GITHUB_ENV"
+
+      # Samenvatting in de runsamenvatting, ook als er niets nieuws is. Zo is achteraf te zien dat
+      # de controle daadwerkelijk heeft gedraaid — "geen issue" en "niet gedraaid" zien er anders
+      # identiek uit.
+      - name: Samenvatting
+        run: |
+          set -euo pipefail
+          {
+            echo "# Supabase-advisors"
+            echo ""
+            if [ "${NIEUW}" = "0" ]; then
+              echo "Geen nieuwe bevindingen buiten de baseline. Er is geen issue aangemaakt."
+            else
+              echo "**${NIEUW}** nieuwe bevinding(en) buiten de baseline."
+              echo ""
+              cat "${RUNNER_TEMP}/body.md"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Dedup zoals GitHubIssueReporter.cs het al doet voor runtime-fouten (#106): bestaat er een
+      # open issue met dit label, dan een comment; anders een nieuw issue. Nooit elke dag een nieuw
+      # issue — dat is hoe een periodieke controle in ruis verandert en genegeerd wordt.
+      #
+      # Bewust GEEN status:-label meegeven: label-issue-status.yml zet zelf status: triage
+      # (invariant 1 van de issue-lifecycle in CLAUDE.md).
+      - name: Issue aanmaken of bijwerken
+        if: env.NIEUW != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          BESTAAND=$(gh issue list --state open --label "supabase-advisor" \
+            --limit 1 --json number --jq '.[0].number // empty')
+
+          if [ -n "$BESTAAND" ]; then
+            echo "Bestaand issue #$BESTAAND — reactie toevoegen in plaats van een nieuw issue."
+            {
+              echo "## Nieuwe advisor-bevindingen op $(date -u '+%Y-%m-%d')"
+              echo ""
+              cat "${RUNNER_TEMP}/body.md"
+            } > "${RUNNER_TEMP}/comment.md"
+            gh issue comment "$BESTAAND" --body-file "${RUNNER_TEMP}/comment.md"
+            echo "ISSUE_URL=$(gh issue view "$BESTAAND" --json url --jq .url)" >> "$GITHUB_ENV"
+          else
+            URL=$(gh issue create \
+              --title "Supabase-advisor: ${NIEUW} nieuwe bevinding(en) op $(date -u '+%Y-%m-%d')" \
+              --label "supabase-advisor" \
+              --label "type: security" \
+              --label "priority: high" \
+              --label "discipline: ciso" \
+              --body-file "${RUNNER_TEMP}/body.md")
+            echo "Nieuw issue aangemaakt: $URL"
+            echo "ISSUE_URL=$URL" >> "$GITHUB_ENV"
+          fi
+
+      # De run zelf faalt NIET op bevindingen. Een rode workflow zou hier betekenen "de controle is
+      # kapot", en dat is iets anders dan "de controle heeft iets gevonden" — dat laatste staat in
+      # het issue. Rood blijft voorbehouden aan een kapotte controle: ontbrekend secret, API-fout,
+      # gewijzigd responseformaat, of een redactie-gate die afgaat.
+      - name: Uitkomst
+        run: |
+          if [ "${NIEUW}" = "0" ]; then
+            echo "Geen nieuwe bevindingen."
+          else
+            echo "::notice::${NIEUW} nieuwe advisor-bevinding(en) gemeld in ${ISSUE_URL:-een issue}."
+          fi

@@ -56,6 +56,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   analyse vraagt en er geen index wordt verwijderd die juist nodig is.
 
 ### Security
+- **Supabase controleert nu elke dag zelf of er iets mis is met de database, en meldt het via een
+  GitHub-issue (#1221).** Supabase draait continu twee controles op de database — één voor
+  beveiliging, één voor prestaties — maar tot nu toe zag je die alleen als je zelf het dashboard
+  opende. Bij #1198 kostte dat twaalf dagen: het probleem stond er, niemand keek. Elke ochtend om
+  07:00 worden beide controles nu automatisch opgehaald. Is er iets nieuws op niveau "fout" of
+  "waarschuwing", dan verschijnt er één issue met de bevindingen en wat eraan te doen is; is alles
+  in orde, dan gebeurt er niets. Bekende, bewust geaccepteerde meldingen staan in een lijst in de
+  repository — mét reden erbij, zodat later terug te lezen is waarom iets is goedgekeurd. Bij het
+  in gebruik nemen bleek de database op dit moment **nul** meldingen op die twee niveaus te hebben.
 - **De Security Scan draaide niet op pull requests naar `develop`, waardoor een bijdrage vanuit
   een fork nooit gescand werd én nooit kon worden gemerged (#1202).** De scan luisterde nog naar
   de branchnamen van vóór de overstap op `develop` als integratiebranch. Binnen deze repository
