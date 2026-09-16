@@ -28,7 +28,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Een Supabase-eigen functie (`public.rls_auto_enable()`, het vangnet dat RLS automatisch aanzet
   op elke nieuwe tabel) was voor iedereen aanroepbaar via de publieke API, ook zonder in te loggen
   (#1198, vervolg).** De functie en het bijbehorende vangnet blijven volledig werken — alleen de
-  onbedoelde publieke aanroepbaarheid is weggehaald.
+  onbedoelde publieke aanroepbaarheid (zowel de algemene als de rechtstreekse toegang die Supabase
+  standaard aan ingelogde en niet-ingelogde gebruikers geeft) is weggehaald.
 
 ## [3.4.3.0] — 2026-09-16
 
