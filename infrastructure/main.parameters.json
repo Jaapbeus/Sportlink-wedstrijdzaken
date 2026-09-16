@@ -22,6 +22,21 @@
     },
     "deployMonitoring": {
       "value": false
+    },
+    "deployFlexApp": {
+      "value": false
+    },
+    "flexFunctionAppName": {
+      "value": "func-<clubcode>-sportlink-flex"
+    },
+    "flexAppServicePlanName": {
+      "value": "plan-<clubcode>-sportlink-flex"
+    },
+    "flexInstanceMemoryMB": {
+      "value": 2048
+    },
+    "flexMaximumInstanceCount": {
+      "value": 5
     }
   }
 }
