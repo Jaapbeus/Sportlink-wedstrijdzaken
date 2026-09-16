@@ -146,3 +146,9 @@ __MACOSX/
 # Database-dumps (#800) — een .bacpac van de ontwikkeldatabase bevat persoonsgegevens
 # (o.a. avg.Teambegeleiding). Nooit in git, ook niet tijdelijk. *.bak stond al hierboven.
 *.bacpac
+
+# ── MCP-serverconfiguratie (#1222) ────────────────────────────────────────────
+# .mcp.json bevat de project-ref in de server-URL, en die identificeert de club — deze
+# repository is publiek (CLAUDE.md regel 4a). Het sjabloon met {{SUPABASE_PROJECT_REF}}
+# staat wél in git: .mcp.json.template.
+.mcp.json

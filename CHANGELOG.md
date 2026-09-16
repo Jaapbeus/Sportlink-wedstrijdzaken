@@ -70,6 +70,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   analyse vraagt en er geen index wordt verwijderd die juist nodig is.
 
 ### Security
+- **Claude kan de Supabase-database nu rechtstreeks uitlezen om te controleren of alles goed gaat —
+  alleen lezen, nooit wijzigen (#1222).** Naast de dagelijkse automatische controle (#1221) is er nu
+  een handmatige controle `/supabase-check` die verder kijkt: behalve de adviezen van Supabase leest
+  hij ook de logboeken van de afgelopen dag en de capaciteit van de database, en meldt alleen wat
+  aandacht nodig heeft. De verbinding staat hard op alleen-lezen: wijzigingen aan de database blijven
+  uitsluitend via de normale weg lopen, zodat de administratie van uitgevoerde databasewijzigingen
+  niet stilzwijgend uit de pas kan gaan lopen. Gegevens uit logboeken worden altijd samengevat
+  gerapporteerd, nooit herleidbaar tot een persoon. De instelling is optioneel: wie hem niet
+  configureert, merkt niets en houdt de dagelijkse controle.
 - **Supabase controleert nu elke dag zelf of er iets mis is met de database, en meldt het via een
   GitHub-issue (#1221).** Supabase draait continu twee controles op de database — één voor
   beveiliging, één voor prestaties — maar tot nu toe zag je die alleen als je zelf het dashboard

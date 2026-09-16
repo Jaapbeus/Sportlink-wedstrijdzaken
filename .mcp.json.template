@@ -1,0 +1,43 @@
+{
+  "_lees_dit_eerst": [
+    "Sjabloon voor de Supabase MCP-server (#1222, epic #1219).",
+    "",
+    "GEBRUIK:  cp .mcp.json.template .mcp.json",
+    "          vervang {{SUPABASE_PROJECT_REF}} door de project-ref",
+    "          export SUPABASE_ACCESS_TOKEN=... in je shellprofiel (NOOIT in een bestand hier)",
+    "",
+    "WAAROM EEN SJABLOON EN NIET .mcp.json ZELF: de URL bevat de project-ref, en die identificeert",
+    "de club. Deze repository is publiek (CLAUDE.md regel 4a). Zelfde patroon als",
+    "local.settings.template.json en appsettings.Production.template.json; .mcp.json staat in",
+    ".gitignore.",
+    "",
+    "read_only=true IS HIER EEN ARCHITECTUURINVARIANT, GEEN VOORKEUR. De MCP-tool apply_migration",
+    "schrijft rechtstreeks naar de database en omzeilt daarmee Database.Postgres/MigrationRunner.cs:",
+    "geen schema_migrations-rij, geen SHA-256-checksum. Daarna lopen /api/health's",
+    "pendingMigrations en de checksum-guard in build.yml uit de pas met de werkelijkheid. Elke",
+    "schemawijziging blijft lopen via git -> Database.Postgres.Cli -> db-migrate-postgres.",
+    "",
+    "features: bewust beperkt tot drie groepen.",
+    "  database   list_tables en read-only execute_sql",
+    "  debugging  get_advisors en query_logs - query_logs is de reden dat MCP hier iets toevoegt",
+    "             boven de Management API-workflow van #1221: platformlogs zijn niet via een",
+    "             databaseverbinding te lezen",
+    "  docs       search_docs, voor remediatie",
+    "Weggelaten: account, functions, branching, storage, development - kleinere blast radius.",
+    "",
+    "LET OP bij het eerste gebruik: read-only mode voert queries uit als een read-only",
+    "Postgres-gebruiker, niet als de eigenaarsrol. Sinds #1198 heeft elke applicatietabel RLS aan",
+    "zonder policies. Heeft die gebruiker geen BYPASSRLS, dan geeft SELECT nul rijen terug ZONDER",
+    "foutmelding. Dat is correct gedrag - niet 'repareren' met policies, dat zou #985/#1198",
+    "heropenen. Zie docs/ARCHITECTUUR-DATABASE-TIERS.md."
+  ],
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref={{SUPABASE_PROJECT_REF}}&read_only=true&features=database,debugging,docs",
+      "headers": {
+        "Authorization": "Bearer ${SUPABASE_ACCESS_TOKEN}"
+      }
+    }
+  }
+}
