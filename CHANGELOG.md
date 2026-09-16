@@ -34,6 +34,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   opgehaald); de rij zelf blijft bewaard voor de geschiedenis, maar verschijnt niet meer in enig
   scherm of endpoint.
 
+### Security
+- **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
+  Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
+  extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
+  applicatie die ooit gebruikt — inclusief de tabel met Sportlink-servicetokens en de tabel met
+  uitgesloten e-mailadressen. RLS staat nu aan op alle 27 toepassingstabellen, zonder policies:
+  de applicatie verbindt via de tabeleigenaar-rol en merkt hier niets van.
+
 ## [3.4.2.0] — 2026-09-16
 
 ### Security
