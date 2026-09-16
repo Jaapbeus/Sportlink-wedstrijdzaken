@@ -3737,6 +3737,113 @@ Zowel `CHANGELOG.md` als §65 spraken van "alle 27 toepassingstabellen". Migrati
 Beide plekken zijn gecorrigeerd naar 29 — het is precies het getal dat de nieuwe guard rapporteert,
 dus een afwijking hier zou toekomstige sessies op het verkeerde been zetten.
 
+## 69. Supabase Performance Advisor getoetst — welke meldingen een defect zijn en welke bewust blijven (#1211)
+
+> **Verhouding tot §68 (#1220).** Die paragraaf zet dezelfde linter (splinter) als CI-gate in,
+> maar **sluit precies de drie lintfamilies uit die hieronder behandeld worden** —
+> `unindexed_foreign_keys`, `unused_index` en `no_primary_key` — omdat ze contextafhankelijk zijn
+> en een verse CI-database geen gebruiksstatistiek heeft. Die uitsluiting en de analyse hieronder
+> zijn twee kanten van dezelfde conclusie: deze drie lints vragen een menselijk oordeel per geval,
+> niet een harde gate. Wat hieronder staat is dat oordeel, voor de run van 16 september 2026.
+
+De Supabase Performance Advisor meldde 22 bevindingen (alle INFO). Alle 22 zijn empirisch getoetst
+tegen het schema, de queries in `FunctionApp.Postgres/` en een lokale Postgres 17. **Twee waren een
+echt defect, één is een integriteitsprobleem dat de advisor als performanceprobleem labelt, en
+negentien zijn correct waargenomen maar vragen bewust géén actie.** Deze paragraaf legt vooral dat
+laatste vast: zonder die onderbouwing wordt bij elke volgende advisor-run dezelfde analyse opnieuw
+gedaan, of erger, wordt een index gedropt die juist nodig is.
+
+### De kernles: "unused index" is een waarneming, geen diagnose
+
+`ix_teamaliassen_club_genormaliseerd` werd gemeld als *unused index — candidate for removal*. De
+index was inderdaad nooit gebruikt, maar de voorgestelde remedie was precies verkeerd: hij was niet
+ongebruikt omdat de app stil is, maar omdat **geen enkele query hem kón gebruiken.**
+
+Migratie 003 legde hem aan op de kale kolom `(clubcode, ruwetekstgenormaliseerd)`. Migratie 007
+(#820, collatie-fix) zette daarna alle vergelijkingen op die kolom om naar `UPPER(...)` en zette
+`public.teams` en `teamaliassen.ruwetekst` wél om naar expressie-indexen — maar
+`ruwetekstgenormaliseerd` niet. Een gewone b-tree kan een predicaat `UPPER(kolom) = ...` niet
+bedienen, dus de index stond er sindsdien als pure schrijflast.
+
+Gemeten op 60.000 rijen, met de échte queryvorm uit `TeamCandidateRepository.cs:53` en
+`PlannerMatchRepository.cs:66` (een `OR` over `ruwetekst` en `ruwetekstgenormaliseerd`):
+
+| Geval | Vóór 024 | Na 024 |
+|---|---|---|
+| Geen treffer (meest voorkomende pad) | `Seq Scan`, 14,50 ms, 609 buffers, 60.000 rijen gefilterd | `BitmapOr` over beide expressie-indexen, 0,046 ms, 6 buffers |
+| Treffer achteraan de tabel | `Seq Scan`, 14,53 ms, 609 buffers | `BitmapOr`, 0,04 ms, 7 buffers |
+
+De `OR` is hier het interessante deel: Postgres kan hem alleen efficiënt afhandelen als **beide**
+takken een bruikbare index hebben. Zolang één tak onbruikbaar was, viel het hele predicaat terug op
+een volledige scan — de expressie-index op `ruwetekst` uit 007 leverde in deze query dus niets op.
+Dat verklaart waarom dit zo lang onzichtbaar bleef: de index uit 007 leek de zaak gedekt te hebben.
+
+Eén meetartefact, om verkeerde conclusies te voorkomen: bij een treffer vóór in de heap is de
+`Seq Scan` mét `LIMIT 1` juist sneller (0,015 ms), omdat hij direct kan stoppen. Dat is de gunstige
+uitzondering, niet de norm — bij teamherkenning is "geen gevalideerde alias gevonden" het normale
+pad, en dat is exact het geval dat de volledige scan afdwingt.
+
+**Regel hieruit:** een `UPPER()`/`LOWER()`-vergelijking in een query vereist een expressie-index op
+diezelfde uitdrukking. Wijzig je een vergelijking naar `UPPER(...)`, dan is het bijwerken van de
+bijbehorende index onderdeel van diezelfde wijziging — niet iets voor later.
+
+### Wat bewust niet gewijzigd is
+
+**Zeven "unused index"-meldingen: de feature draait nog niet.** `ix_sportlinkpublicmatchidcache_*`,
+`ix_sportlinkmutationaudit_*`, `ix_sportlinkcontractcheck_*` en `ix_knvbkalenderdag_datum` komen uit
+migraties 013–019 en horen bij de Sportlink Web Extension (epic #986), die nog niet in productie
+draait. Per index is gecontroleerd dat de query wél bij de indexvorm past — bijvoorbeeld
+`WHERE clubcode = @clubcode ORDER BY opgehaaldop DESC LIMIT 1` tegenover `(clubcode, opgehaaldop DESC)`.
+Twee ervan zijn bij #1122 juist toegevoegd om een groeiende volledige scan te voorkomen; droppen zou
+die fix terugdraaien. **Een advisor die "nooit gebruikt" meldt, kan niet zien dat een feature nog
+niet live is** — dat onderscheid moet altijd handmatig gemaakt worden.
+
+**`IX_matchdetails_clubcode`: nutteloos, maar droppen levert niets op.** In het vastgelegde
+deploymentmodel (§"Deployment-model" in `CLAUDE.md`) draait één primaire club per deployment, dus
+`clubcode` heeft in de praktijk één distinct waarde — lokaal geverifieerd: alle rijen in
+`his.matches` dezelfde waarde. Een index met die selectiviteit wordt nooit gekozen. Dat geldt even
+goed voor `IX_matches_clubcode` en `IX_teams_clubcode`, die de advisor níet noemde — reden te meer
+om hier niet selectief te gaan droppen. De winst is verwaarloosbaar, de kosten zijn schema-churn en
+een afwijking tussen de tiers.
+
+**Vier van de zes onindexeerde FK's: begrensde tabellen.** `veldbeschikbaarheid` (30 rijen) en
+`veldtraining` (0) zijn structureel begrensd door velden × dagen van de week (±63 rijen); een
+FK-index daarop kan per definitie nooit iets opleveren. De afweging bij een onindexeerde FK gaat
+**niet** over de omvang van de ouder maar over die van het kind: bij een `DELETE` op de ouder scant
+Postgres het kind per verwijderde rij. Daarom is `planner.geplandewedstrijden` (groeit per seizoen)
+wél meegenomen en zijn de twee begrensde configuratietabellen dat niet.
+
+**`no_primary_key` op `his.*` en `stg.*`: ontwerpkeuze.** De drie `his`-tabellen hebben elk al een
+unique index op hun business key (`UQ_matches_bk`, `UQ_teams_bk`, `UQ_matchdetails_bk`), dus de
+efficiëntiezorg is al ondervangen; een gedeclareerde PK zou cosmetisch zijn. De `stg`-tabellen
+worden elke run getruncate en bulk-geladen — een PK voegt daar alleen ingest-kosten toe.
+`public.season` heeft `ux_season_name`. Geen actie.
+
+### `public.appsettings` heeft géén enkele constraint — apart op te pakken
+
+De advisor meldt dit onder *no primary key / performance*. Met twee rijen is dat de verkeerde bril:
+het echte punt is dat `pg_constraint` voor deze tabel **nul rijen** teruggeeft — geen PK én geen
+unique op `clubcode`. Niets verhindert twee rijen met dezelfde `clubcode`, terwijl de code
+instellingen leest met `SELECT ... LIMIT 1`. Een dubbele rij geeft dan geen fout maar stilzwijgend
+de verkeerde configuratie — precies wat de regel "geen stille fallback" in `CLAUDE.md` wil
+voorkomen.
+
+Bewust niet in migratie 024 opgelost: een `CREATE UNIQUE INDEX` in een migratie die automatisch bij
+deploy draait (#1093) **faalt hard als productie al dubbele rijen heeft, en neemt dan de deploy
+mee** (§57). Dit vereist eerst een controle op de productiedatabase en is daarom een aparte,
+door de eigenaar bevestigde stap.
+
+### Over het query performance log
+
+Het log van dezelfde run bevatte geen aanknopingspunt voor tuning: de zwaarste queries zijn
+Supabase's eigen platformverkeer, niet de applicatie. `SELECT name FROM pg_timezone_names` (rol
+`authenticator`) is alleen al 41,9% van de totale databasetijd, de extensie-inventarisatie 17,6% en
+`pgbouncer.get_auth` 5,0%; samen met de catalogusqueries van PostgREST en het dashboard is dat het
+overgrote deel. Dat is dashboard- en connectiepooler-overhead. **Bij het lezen van een Supabase
+query-performance-log is de eerste vraag dus welke `rolname` een query uitvoert** — `authenticator`,
+`postgres`, `pgbouncer` en `supabase_admin` zijn platform, niet applicatie.
+
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).

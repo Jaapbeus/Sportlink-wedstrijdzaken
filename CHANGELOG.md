@@ -18,6 +18,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Teamherkenning zocht aliassen via een volledige tabelscan — een index uit migratie 003 was sinds
+  de collatie-fix onbruikbaar geworden (#1211).** Migratie 007 zette destijds alle vergelijkingen op
+  teamaliassen om naar `UPPER(...)`, maar liet de index op `ruwetekstgenormaliseerd` op de kale kolom
+  staan. Postgres kan zo'n index niet gebruiken voor een `UPPER()`-vergelijking, dus elke
+  aliaszoekopdracht las de hele tabel. Gemeten op 60.000 rijen: 14,5 ms en 609 gelezen blokken vóór,
+  0,05 ms en 6 blokken ná de fix. Bij de huidige omvang van de aliastabel is dat verschil niet
+  merkbaar — de fix voorkomt dat het meegroeit met het aantal geleerde aliassen, en neemt
+  schrijfoverhead weg die nergens voor diende.
+
 ### Changed
 - **De AVG-uitleg in `SECURITY.md` en `README.md` klopte niet en is gecorrigeerd (#1203).** Er stond
   dat namen, e-mailadressen, telefoonnummers en geboortedatums van trainers en leiders "bijzondere
@@ -30,6 +40,20 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   staat nu los van het informeren van de betrokkenen zelf (alleen bij hoog risico), met een
   risicobeoordeling, een aanwijsbare beslisser binnen het bestuur en de plicht elk incident vast te
   leggen — ook als er niet gemeld wordt.
+- **Opschonen van de e-mailhistorie schaalt niet langer kwadratisch (#1211).** `planner.classificatiecorrectie`
+  had geen index op de verwijzing `correctionverwerkingid`, terwijl de retentie-opschoning veel rijen
+  tegelijk uit `planner.emailverwerking` verwijdert. Postgres moest daardoor per verwijderde rij de
+  correctietabel volledig doorzoeken. Met de toegevoegde index blijft die opschoning ook bij een
+  groeiende e-mailhistorie snel.
+- **Index toegevoegd op `planner.geplandewedstrijden (veldnummer)` (#1211)** — goedkope verzekering
+  op een tabel die per seizoen doorgroeit, zodat het verwijderen of opschonen van een veld later geen
+  volledige scan van de planning vereist.
+- **De overige negentien meldingen van Supabase's Performance Advisor zijn getoetst en bewust niet
+  opgevolgd (#1211)** — onder meer zeven indexen die als "ongebruikt" gelden omdat de Sportlink Web
+  Extension nog niet in productie draait, en de ontbrekende primaire sleutels op de staging- en
+  historietabellen, die daar een bewuste ontwerpkeuze zijn. De onderbouwing per melding staat in
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §69, zodat een volgende advisor-run niet opnieuw dezelfde
+  analyse vraagt en er geen index wordt verwijderd die juist nodig is.
 
 ### Security
 - **De Security Scan draaide niet op pull requests naar `develop`, waardoor een bijdrage vanuit
