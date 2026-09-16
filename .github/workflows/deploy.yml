@@ -194,7 +194,9 @@ jobs:
       - name: Function App deployen naar Azure
         uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1.5.7
         with:
-          app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+          # #1204: eerst het secret, anders de variable. GitHub maskeert secrets in de
+          # (publiek leesbare) Actions-logs; variables worden letterlijk afgedrukt.
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
           package: ./output
 
   db-migrate:
@@ -342,8 +344,16 @@ jobs:
       # dezelfde categorie — de applicatie draait door (fail-open sinds #1095), dus ook hier een
       # waarschuwing, geen deploy-blokkade (ARCHITECTUUR-DATABASE-TIERS.md §50).
       - name: "Smoke test: function app bereikbaar (health → 200 én instellingen geladen)"
+        # #1204: de naam van de Function App staat in een step-env i.p.v. inline in het script.
+        # Een ${{ }}-expressie wordt vóór uitvoering ingevuld en het ingevulde script belandt
+        # in de publiek leesbare Actions-log; een env-waarde die uit een secret komt wordt
+        # gemaskeerd. De `secrets.X || vars.X`-vorm houdt clubs die nog een variable gebruiken
+        # werkend.
+        env:
+          FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
+          FUNCTION_KEY: ${{ secrets.AZURE_FUNCTION_KEY }}
         run: |
-          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          URL="https://${FUNCTIONAPP_NAME}.azurewebsites.net/api/health?code=${FUNCTION_KEY}"
           MAX=6
           WAIT=20
           for i in $(seq 1 $MAX); do
@@ -407,13 +417,16 @@ jobs:
         # resp. FunctionApp.Postgres/Sync/SyncFunction.cs, beide AuthorizationLevel.Admin). Een
         # hardcoded SQL-Server-pad hier gaf een niet-gerelateerde 404 i.p.v. de bedoelde 401-check
         # zodra de Postgres-tier gedeployed werd.
+        env:
+          FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
+          FUNCTION_KEY: ${{ secrets.AZURE_FUNCTION_KEY }}
         run: |
           if [ "${{ vars.DatabaseTier }}" = "Postgres" ]; then
             ADMIN_ROUTE="postgres/sync-matches"
           else
             ADMIN_ROUTE="sync-matches"
           fi
-          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/${ADMIN_ROUTE}?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          URL="https://${FUNCTIONAPP_NAME}.azurewebsites.net/api/${ADMIN_ROUTE}?code=${FUNCTION_KEY}"
           MAX=6; WAIT=20
           for i in $(seq 1 $MAX); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
@@ -427,8 +440,10 @@ jobs:
           done
 
       - name: "Smoke test: anonymous admin endpoint beveiligd zonder token (→ 401)"
+        env:
+          FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
         run: |
-          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/beheer/settings"
+          URL="https://${FUNCTIONAPP_NAME}.azurewebsites.net/api/beheer/settings"
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" || true)
           echo "GET /api/beheer/settings zonder token: $STATUS"
           if [ "$STATUS" != "401" ]; then
@@ -437,11 +452,13 @@ jobs:
           fi
 
       - name: "Smoke test: gefakete X-MS-CLIENT-PRINCIPAL wordt niet vertrouwd (→ 401)"
+        env:
+          FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
         run: |
           # Simuleert een aanvaller die admin-header meestuurt zonder geldig Entra-token.
           # Als Easy Auth actief is, strip Azure deze header vóór de Function.
           FAKE_PRINCIPAL=$(echo '{"auth_typ":"aad","claims":[{"typ":"roles","val":"admin"}],"name_typ":"","role_typ":"roles"}' | base64 -w 0)
-          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/beheer/settings"
+          URL="https://${FUNCTIONAPP_NAME}.azurewebsites.net/api/beheer/settings"
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
             -H "X-MS-CLIENT-PRINCIPAL: $FAKE_PRINCIPAL" \
             "$URL" || true)
@@ -467,8 +484,11 @@ jobs:
         # werkelijk meet: dat het planner-endpoint achter de admin-gate zit. Dat is een echte
         # veiligheidscontrole, in lijn met de drie stappen hierboven — en dus zonder
         # continue-on-error, met dezelfde 503-cold-start-retry als de sync-matches-stap.
+        env:
+          FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
+          FUNCTION_KEY: ${{ secrets.AZURE_FUNCTION_KEY }}
         run: |
-          URL="https://${{ vars.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/planner/check-availability?code=${{ secrets.AZURE_FUNCTION_KEY }}"
+          URL="https://${FUNCTIONAPP_NAME}.azurewebsites.net/api/planner/check-availability?code=${FUNCTION_KEY}"
           MAX=6; WAIT=20
           for i in $(seq 1 $MAX); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 -X POST \
@@ -493,7 +513,9 @@ jobs:
     # mag niet in job-level if direct staan).
     env:
       SWA_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-      SWA_HOSTNAME: ${{ vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
+      # #1204: secret gaat vóór variable — een secret wordt in de publieke Actions-log
+      # gemaskeerd, een variable niet. Variable blijft werken als fallback.
+      SWA_HOSTNAME: ${{ secrets.AZURE_STATIC_WEB_APP_HOSTNAME || vars.AZURE_STATIC_WEB_APP_HOSTNAME }}
     steps:
       - name: Token aanwezig?
         id: check
@@ -517,11 +539,14 @@ jobs:
 
       - name: appsettings.Production.json genereren vanuit template
         if: steps.check.outputs.skip == 'false'
+        # #1204: GitHub drukt de step-env af in de log. Voor een publieke repository is die log
+        # publiek leesbaar, dus komen deze club-identificerende waarden bij voorkeur uit een
+        # secret (gemaskeerd als ***). Variables blijven als fallback werken.
         env:
-          AZURE_FUNCTIONAPP_URL: ${{ vars.AZURE_FUNCTIONAPP_URL }}
-          AZURE_AD_TENANT_ID: ${{ vars.AZURE_AD_TENANT_ID }}
-          AZURE_AD_CLIENT_ID: ${{ vars.AZURE_AD_CLIENT_ID }}
-          POST_LOGOUT_REDIRECT_URL: ${{ vars.POST_LOGOUT_REDIRECT_URL }}
+          AZURE_FUNCTIONAPP_URL: ${{ secrets.AZURE_FUNCTIONAPP_URL || vars.AZURE_FUNCTIONAPP_URL }}
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID || vars.AZURE_AD_TENANT_ID }}
+          AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID || vars.AZURE_AD_CLIENT_ID }}
+          POST_LOGOUT_REDIRECT_URL: ${{ secrets.POST_LOGOUT_REDIRECT_URL || vars.POST_LOGOUT_REDIRECT_URL }}
         run: |
           sed \
             -e "s|{{AZURE_FUNCTIONAPP_URL}}|${AZURE_FUNCTIONAPP_URL}|g" \
@@ -535,7 +560,7 @@ jobs:
       - name: staticwebapp.config.json CSP-substitutie (#528)
         if: steps.check.outputs.skip == 'false'
         env:
-          AZURE_FUNCTIONAPP_URL: ${{ vars.AZURE_FUNCTIONAPP_URL }}
+          AZURE_FUNCTIONAPP_URL: ${{ secrets.AZURE_FUNCTIONAPP_URL || vars.AZURE_FUNCTIONAPP_URL }}
         run: |
           sed -i "s|{{AZURE_FUNCTIONAPP_URL}}|${AZURE_FUNCTIONAPP_URL}|g" \
             BlazorAdmin/wwwroot/staticwebapp.config.json

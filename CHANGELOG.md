@@ -51,6 +51,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   (#1198, vervolg).** De functie en het bijbehorende vangnet blijven volledig werken — alleen de
   onbedoelde publieke aanroepbaarheid (zowel de algemene als de rechtstreekse toegang die Supabase
   standaard aan ingelogde en niet-ingelogde gebruikers geeft) is weggehaald.
+- **De namen die verraden welke club deze installatie draait, stonden leesbaar in de publieke
+  deploy-logs (#1204).** GitHub Actions drukt configuratiewaarden letterlijk in de joblog af, en
+  bij een publieke repository is die log voor iedereen te lezen. Zes waarden — de naam en URL van
+  de Function App, de hostname van de Admin GUI, het Entra tenant- en client-ID en de
+  uitlog-URL — stonden daardoor open en bloot in elke deploy. Het zijn geen wachtwoorden, maar ze
+  horen niet in een club-neutrale open-sourcerepo. Na deze wijziging kun je deze zes instellingen
+  als **Secret** opslaan in plaats van als Variable, waarna ze in de publieke deploy-logs
+  gemaskeerd worden als `***`. Laat je ze als Variable staan, dan blijft alles gewoon werken —
+  ze blijven dan alleen leesbaar. Zie `docs/DEVELOPER-SETUP.md` §9.2 voor de stappen. Let op:
+  logs van eerdere deploys veranderen hier niet door.
 
 ## [3.4.3.0] — 2026-09-16
 

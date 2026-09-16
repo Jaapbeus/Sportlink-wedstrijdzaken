@@ -412,7 +412,7 @@ Deze repository is publiek en bedoeld voor gebruik door meerdere voetbalverenigi
 | Principe | Uitwerking |
 |---|---|
 | **Club-neutraal** | Geen clubnamen, tenant-IDs, URLs, of e-mailadressen in code of config-bestanden |
-| **Template + CI-substitutie** | `appsettings.Production.template.json` + GitHub Variables → CI genereert club-specifieke config bij elke deploy |
+| **Template + CI-substitutie** | `appsettings.Production.template.json` + GitHub Secrets (fallback: Variables) → CI genereert club-specifieke config bij elke deploy. Club-identificerende waarden horen in Secrets: Actions-logs van een publieke repo zijn publiek en maskeren alleen secrets (#1204) |
 | **ClubCode discriminator** | Elke databasetabel met club-data heeft een `ClubCode`-kolom; queries filteren altijd op `dbo.AppSettings.ClubCode` |
 | **Secrets via GitHub Secrets** | `AZURE_CREDENTIALS`, `AZURE_FUNCTION_KEY`, `AZURE_STATIC_WEB_APPS_API_TOKEN` — nooit in code |
 | **Contributiemodel** | Externe developers forken → PR naar main → Jaap + Codex beoordelen; zie CONTRIBUTING.md |

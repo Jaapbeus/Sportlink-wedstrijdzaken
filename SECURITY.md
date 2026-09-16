@@ -73,6 +73,12 @@ Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
 
 **Eén twijfel = niet publiceren. Gebruik placeholders en sla de echte waarde op in memory (nooit publiek).**
 
+- **Actions-logs en build-artefacten van een publieke repository zijn óók publiek.** GitHub drukt
+  step-`env:`-waarden en ingevulde `${{ }}`-expressies letterlijk in de joblog af, en maskeert
+  alleen secrets. Club-identificerende configuratie (Function App-naam en -URL, SWA-hostname,
+  Entra tenant-/client-ID, post-logout-URL) hoort daarom in **GitHub Secrets**, niet in Variables —
+  zie `docs/DEVELOPER-SETUP.md` §9.2 (#1204).
+
 ---
 
 ## Achtergrond: wat er in dit project op het spel staat

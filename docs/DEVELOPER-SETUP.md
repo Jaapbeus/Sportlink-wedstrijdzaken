@@ -1048,21 +1048,40 @@ Persist Security Info=False;User ID=[username];Password=<password>;
 Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 ```
 
-### 9.2 Variables instellen
+### 9.2 Club-identificerende configuratie — als Secret instellen (#1204)
 
-Klik op het tabblad **Variables** → **New repository variable** voor elk van de volgende:
+Deze zes waarden identificeren jouw club. Zet ze op het tabblad **Secrets** →
+**New repository secret**:
 
 | Naam | Voorbeeld | Beschrijving |
 |------|-----------|-------------|
 | `AZURE_FUNCTIONAPP_NAME` | `func-[clubcode]-sportlink` | Naam van de Function App (zonder `.azurewebsites.net`) |
 | `AZURE_FUNCTIONAPP_URL` | `https://func-[clubcode]-sportlink.azurewebsites.net` | Volledige URL inclusief `https://` — voor Blazor-configuratie |
-| `AZURE_SQL_SERVER_NAME` | `[sql-servernaam]` | SQL-servernaam **zonder** `.database.windows.net` |
-| `AZURE_SQL_DATABASE_NAME` | `[database-naam]` | Naam van de SQL-database |
-| `AZURE_SQL_RESOURCE_GROUP` | `rg-[clubcode]-sportlink` | Azure resource group van de SQL-server |
 | `AZURE_STATIC_WEB_APP_HOSTNAME` | `[naam].azurestaticapps.net` | Hostname van de Static Web App **zonder** `https://` |
 | `AZURE_AD_TENANT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | Azure Entra tenant ID (GUID) |
 | `AZURE_AD_CLIENT_ID` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | App Registration client ID (GUID) |
 | `POST_LOGOUT_REDIRECT_URL` | `https://[naam].azurestaticapps.net/` | URL na uitloggen (inclusief trailing slash) |
+
+> **Waarom Secret en niet Variable?** GitHub Actions drukt step-`env:`-waarden en ingevulde
+> `${{ }}`-expressies af in de joblog, en bij een publieke fork is die log voor iedereen leesbaar.
+> Secrets worden daar gemaskeerd (`***`), Variables niet. Het zijn geen wachtwoorden — een Blazor
+> SPA laat tenant- en client-ID toch aan elke browser zien — maar ze verraden wél welke club deze
+> fork draait, en dat is precies wat het club-neutrale open-sourcebeleid wil voorkomen.
+>
+> `deploy.yml` leest ze als `${{ secrets.NAAM || vars.NAAM }}`. Heb je ze al als **Variable**
+> staan, dan blijft de deploy gewoon werken; de waarden staan dan alleen leesbaar in de logs.
+
+### 9.2a Variables instellen
+
+Klik op het tabblad **Variables** → **New repository variable** voor elk van de volgende. Deze
+waarden zijn niet club-identificerend, of worden in een job-`if:` gebruikt — daar is de
+`secrets`-context niet beschikbaar, dus die moeten Variable blijven:
+
+| Naam | Voorbeeld | Beschrijving |
+|------|-----------|-------------|
+| `AZURE_SQL_SERVER_NAME` | `[sql-servernaam]` | SQL-servernaam **zonder** `.database.windows.net` |
+| `AZURE_SQL_DATABASE_NAME` | `[database-naam]` | Naam van de SQL-database |
+| `AZURE_SQL_RESOURCE_GROUP` | `rg-[clubcode]-sportlink` | Azure resource group van de SQL-server |
 
 ### 9.3 Welke configuratie is optioneel?
 
