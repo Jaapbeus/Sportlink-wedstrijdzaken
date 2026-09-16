@@ -3616,6 +3616,37 @@ platforminfrastructuur zijn. Controleer altijd `pg_get_functiondef`/`pg_event_tr
 Supabase-equivalent) vóór een `DROP`, en laat een `DROP` die faalt op een dependency-fout eerst de
 vraag "waarom bestaat dit object" beantwoorden in plaats van de fout te omzeilen met `CASCADE`.
 
+## 67. `rls_auto_enable()`, tweede poging — de PUBLIC-grant was niet de enige (vervolg op #1198/§66)
+
+Ná deploy van migratie 022 bleef Supabase's Security Advisor dezelfde twee WARN-bevindingen tonen
+op `public.rls_auto_enable()` — de fix uit §66 loste het probleem dus niet volledig op.
+
+**Oorzaak:** Supabase kent bij projectaanmaak standaard `EXECUTE` op elke `public`-functie toe aan
+de rollen `anon` en `authenticated` — een grant die **los staat** van de `PUBLIC`-grant die
+Postgres zelf standaard zet. Migratie 022 trok alleen de `PUBLIC`-grant in; de twee
+Supabase-eigen, rechtstreekse grants aan `anon`/`authenticated` bleven onaangeroerd.
+
+**Waarom dit niet eerder opviel bij de lokale verificatie:** de rollen `anon` en `authenticated`
+bestaan helemaal niet in de lokale/CI-Postgres. Het zijn cluster-brede rollen die Supabase's
+controlplane bij projectaanmaak aanmaakt — geen onderdeel van een gewone database-restore, want
+rollen zijn cluster-objecten, geen database-objecten. Migratie 022 kon dus lokaal probleemloos
+slagen zonder het echte productiegat te dekken; de lokale verificatie bewees alleen dat de
+`PUBLIC`-revoke geen fout gaf, niet dat het probleem opgelost was.
+
+**De fix, en hoe hij dit keer wél lokaal aantoonbaar geverifieerd is:** migratie
+`023_revoke_anon_authenticated_rls_auto_enable.sql` trekt `EXECUTE` in bij `anon` en
+`authenticated`, met een existence-check per rol zodat de migratie op elke omgeving foutloos
+draait. Omdat deze rollen lokaal ontbreken, is het *ontbrekende-rol-pad* alleen een "geen fout"
+bewijs — onvoldoende. Daarom is de daadwerkelijke revoke-logica apart bewezen: `anon` en
+`authenticated` tijdelijk lokaal aangemaakt, `EXECUTE` erop gezet (de productiesituatie
+nagebootst), exact de DO-block-inhoud van de migratie handmatig uitgevoerd, bevestigd dat beide
+grants verdwenen waren, en de testrollen daarna weer opgeruimd.
+
+**Les, aanvullend op §66:** "geen fout bij het toepassen" bewijst niet "het probleem is opgelost"
+wanneer de omgeving waartegen je test de rollen die het probleem veroorzaken niet eens kent. Bij
+een Supabase-specifieke rol/grant-fix: simuleer de rol lokaal (`CREATE ROLE ... NOLOGIN`) en
+herhaal het exacte scenario, in plaats van te vertrouwen op "de migratie gaf geen foutmelding".
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
