@@ -77,15 +77,35 @@ Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
 
 ## Achtergrond: wat er in dit project op het spel staat
 
-Deze repository koppelt aan Sportlink Club en verwerkt persoonsgegevens van leden van voetbalverenigingen: namen, e-mailadressen, telefoonnummers en geboortedatums van trainers, leiders en overige stafleden. Dit zijn bijzondere gegevens onder de AVG/GDPR.
+Deze repository koppelt aan Sportlink Club en verwerkt persoonsgegevens van leden van voetbalverenigingen: namen, e-mailadressen, telefoonnummers en geboortedatums van trainers, leiders en overige stafleden. Dit zijn **gewone persoonsgegevens** in de zin van de AVG (artikel 4 lid 1) — geen bijzondere categorie. Dat maakt ze niet vrijblijvend: ze zijn direct herleidbaar tot een persoon, en twee aspecten verhogen het risico:
+
+- **Gegevens van minderjarigen.** Bij jeugdteams gaat het om kinderen. Overweging 38 van de AVG bepaalt dat kinderen specifieke bescherming verdienen. Dat maakt hun gegevens géén bijzondere categorie, maar het weegt wel zwaarder mee in elke risicobeoordeling — ook bij een datalek.
+- **Vrije tekst in e-mails en feedback.** Een afmelding kan een blessure of ziekte noemen; dat is dan wél een gezondheidsgegeven. Dit is niet vooraf te filteren. Daarom de harde regel: **inhoud van berichten nooit loggen, nooit in een issue plakken, nooit publiceren.**
+
+**Bijzondere categorieën (AVG artikel 9)** zijn gegevens over ras of etnische afkomst, politieke opvattingen, religieuze of levensbeschouwelijke overtuigingen, vakbondslidmaatschap, genetische en biometrische gegevens, gezondheid, en seksueel gedrag of seksuele gerichtheid — deze worden **door het ontwerp heen niet verwerkt**; er is geen veld, tabel of scherm voor.
+**Strafrechtelijke gegevens (AVG artikel 10)** zijn gegevens over strafbare feiten, veroordelingen en daarmee samenhangende veiligheidsmaatregelen — ook die worden **niet verwerkt**.
 
 Een datalek in deze repository kan betekenen:
 - Persoonsgegevens van tientallen tot honderden clubleden komen openbaar op internet
-- De vereniging is meldplichtig bij de Autoriteit Persoonsgegevens (binnen 72 uur)
-- Reputatieschade voor de vereniging en betrokken personen
-- Mogelijk boetes tot 4% van de jaaromzet (AVG artikel 83)
+- Reputatieschade voor de vereniging en de betrokken personen
+- Een meldings- en documentatieplicht voor de vereniging (zie hieronder)
+- In het uiterste geval een boete: AVG artikel 83 lid 5 kent boetes tot € 20 miljoen of 4% van de wereldwijde jaaromzet, waarbij het hoogste bedrag geldt. Voor een vereniging weegt de Autoriteit Persoonsgegevens proportionaliteit mee — omvang, ernst en de getroffen maatregelen tellen.
 
 Elke beveiligingsmaatregel in dit document is er om dit te voorkomen.
+
+### Datalek: risicogestuurde triage
+
+Een datalek is niet automatisch een melding. Wat er moet gebeuren hangt af van het risico voor de betrokkenen. Werk deze stappen in volgorde af:
+
+1. **Feiten vastleggen.** Wat is er gebeurd, wanneer is het ontdekt, welke gegevens zijn geraakt, hoeveel betrokkenen, wat is de oorzaak, en welke containment is al uitgevoerd (secret ingetrokken, repository privé gezet, toegang geblokkeerd).
+2. **Risico voor betrokkenen beoordelen.** Aard en gevoeligheid van de gegevens, omvang, herleidbaarheid tot personen, kwetsbare groepen (minderjarigen), en de mogelijke gevolgen — van ongewenste benadering tot identiteitsfraude.
+3. **Verantwoordelijke aanwijzen.** De vereniging is verwerkingsverantwoordelijke. Het bestuur of de AVG-contactpersoon neemt het besluit over melden, en dat besluit wordt vastgelegd — ook als de uitkomst "niet melden" is.
+4. **Melding aan de Autoriteit Persoonsgegevens (artikel 33).** Zonder onredelijke vertraging en waar mogelijk binnen 72 uur na kennisname, tenzij het niet waarschijnlijk is dat de inbreuk een risico voor de betrokkenen inhoudt. Wordt er later dan 72 uur gemeld, leg dan de reden van de vertraging vast.
+5. **Betrokkenen informeren (artikel 34).** Zonder onredelijke vertraging wanneer de inbreuk waarschijnlijk een **hoog** risico voor hen inhoudt. Artikel 34 lid 3 kent drie uitzonderingen: de gegevens zijn onbegrijpelijk gemaakt voor onbevoegden (bijvoorbeeld versleuteld), het hoge risico is inmiddels weggenomen door maatregelen achteraf, of individueel informeren vergt een onevenredige inspanning — dan volgt een openbare mededeling.
+6. **Verwerkersrol.** Wie de installatie namens de club beheert — een externe ontwikkelaar of een hostende partij — is verwerker en meldt niet zelf aan de Autoriteit Persoonsgegevens, maar informeert de vereniging zonder onredelijke vertraging (artikel 33 lid 2). Leg dit vast in de verwerkersovereenkomst.
+7. **Register bijhouden.** Documenteer elke inbreuk — ook een niet-gemelde — met de feiten, de gevolgen en de getroffen maatregelen (artikel 33 lid 5). Dat register is wat de toezichthouder opvraagt als hij controleert of de afweging klopte.
+
+Bronnen: [AVG (Verordening (EU) 2016/679)](https://eur-lex.europa.eu/eli/reg/2016/679) en de [EDPB Guidelines 9/2022 over datalekmelding](https://www.edpb.europa.eu/documents/guideline/guidelines-92022-on-personal-data-breach-notification-under-gdpr_en).
 
 ---
 

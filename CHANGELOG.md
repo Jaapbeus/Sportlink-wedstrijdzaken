@@ -18,6 +18,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **De AVG-uitleg in `SECURITY.md` en `README.md` klopte niet en is gecorrigeerd (#1203).** Er stond
+  dat namen, e-mailadressen, telefoonnummers en geboortedatums van trainers en leiders "bijzondere
+  gegevens" zijn; dat zijn het niet — het zijn gewone persoonsgegevens. Bijzondere categorieën
+  (gezondheid, geloof, etniciteit en dergelijke) en strafrechtelijke gegevens worden in dit project
+  helemaal niet verwerkt. Wél benoemd zijn nu de twee punten die het risico écht verhogen: het gaat
+  deels om gegevens van kinderen, en vrije tekst in een e-mail kan toevallig iets over gezondheid
+  bevatten. Daarnaast is de datalekprocedure vervangen door een stappenplan: de melding aan de
+  Autoriteit Persoonsgegevens (waar mogelijk binnen 72 uur, tenzij een risico onwaarschijnlijk is)
+  staat nu los van het informeren van de betrokkenen zelf (alleen bij hoog risico), met een
+  risicobeoordeling, een aanwijsbare beslisser binnen het bestuur en de plicht elk incident vast te
+  leggen — ook als er niet gemeld wordt.
+
 ### Security
 - **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
   Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
