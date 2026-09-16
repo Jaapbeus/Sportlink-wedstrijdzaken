@@ -45,13 +45,36 @@ function isEpic(issue) {
  *
  * Twee sterktes, en dat onderscheid is wezenlijk (#630):
  *  - `all`    — elke #NNN, inclusief kale kruisverwijzingen in proza.
- *  - `strong` — alleen "deze PR pakt dat issue aan": het nummer staat in de TITEL
- *               (conventie 'fix(#NNN): ...') of achter een sluitend keyword in de body
- *               ('Closes #N', 'Fixes #N').
+ *  - `strong` — alleen "deze PR pakt dat issue aan": het nummer staat in de titel BINNEN
+ *               HAAKJES (conventie 'fix(#NNN): ...'), of achter een sluitend keyword in de
+ *               body ('Closes #N', 'Fixes #N').
  *
- * Alles wat de staat van een issue verandert (status zetten, heropenen) hoort `strong`
- * te gebruiken. PR #633 noemde '#624' alleen in proza en haalde daarmee een correct
- * gesloten issue uit de dood.
+ * Alles wat de staat van een issue verandert (status zetten, heropenen, sluiten) hoort
+ * `strong` te gebruiken. PR #633 noemde '#624' alleen in proza en haalde daarmee een
+ * correct gesloten issue uit de dood.
+ *
+ * #1179 — waarom haakjes, en niet "elk nummer in de titel". Die ruimere lezing stond hier
+ * eerder en ondermijnde de versmalling die #838/#630 juist bedoelden, nota bene in de
+ * workflow die issues SLUIT. Echte titels uit deze repo lopen erop vast:
+ *
+ *   'refactor(#1122): review epic #986 — endpoint-helper, ...'
+ *        #986 is een epic-kruisverwijzing in proza; die mocht nooit meegesloten worden.
+ *   'docs(#1051): CHANGELOG-verwijzing naar #1048 gebruikte per ongeluk haakjesnotatie'
+ *        #1048 is het onderwerp van de zin, niet het opgeleverde werk.
+ *
+ * Haakjes als scheidslijn is precies de conventie die CLAUDE.md al vastlegt voor de
+ * CHANGELOG — '(#N)' is attributie van opgeleverd werk, een kaal '#N' in proza is een
+ * kruisverwijzing — en die de bronnen 1 en 2 van close-released-issues.yml al hanteren.
+ * Deze functie sluit daar nu op aan in plaats van hem te ondergraven.
+ *
+ * De regel dekt alle vormen die in deze repo voorkomen, óók de meervoudige:
+ *   'fix(#1131): ... (Postgres, #1132)'                    -> 1131, 1132
+ *   'feat(#1093): ... + fix(#1112): ...'                   -> 1093, 1112
+ *   'chore: sync met main-hotfixes (#1095, #1098, #1101)'  -> 1095, 1098, 1101
+ *
+ * Bewust conservatief: een kaal nummer in de titel wordt genegeerd. Een gemist issue
+ * blijft open staan en valt op; een ten onrechte gesloten issue moet met de hand worden
+ * heropend (v2.18.0.1, zie CLAUDE.md). Die asymmetrie bepaalt de richting van de twijfel.
  */
 function extractIssueRefs(title, body) {
   const safeTitle = title || '';
@@ -62,7 +85,11 @@ function extractIssueRefs(title, body) {
     [...text.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10))
   )];
 
-  const titleNumbers = [...safeTitle.matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10));
+  // Alleen nummers binnen haakjes tellen als titel-attributie; zie de toelichting hierboven.
+  // Eerst elke haakjesgroep pakken, daarna de nummers daarbinnen — zo werkt zowel
+  // 'fix(#1131):' als '(Postgres, #1132)' als '(#1095, #1098, #1101)'.
+  const titleNumbers = [...safeTitle.matchAll(/\(([^()]*)\)/g)]
+    .flatMap(group => [...group[1].matchAll(/#(\d+)/g)].map(m => parseInt(m[1], 10)));
   const closingNumbers = [...safeBody.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)/gi)]
     .map(m => parseInt(m[1], 10));
 
