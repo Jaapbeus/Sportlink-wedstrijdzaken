@@ -90,4 +90,32 @@ public class VeldResolverTests
         var (veldNummer, _) = VeldResolver.Resolve("Veld  1", Velden);
         veldNummer.Should().Be(1);
     }
+
+    /// <summary>
+    /// #1194: de subpositie→fractie-mapping die zowel de Dagplanning-Gantt (Blazor) als de
+    /// auto-plan-scheduler (<c>FunctionApp.Postgres.Planner.AutoPlanService</c>) voedt.
+    /// </summary>
+    [Theory]
+    [InlineData("A", 0.5)]
+    [InlineData("B", 0.5)]
+    [InlineData("a", 0.5)]  // hoofdletterongevoelig, zelfde conventie als Resolve
+    [InlineData("A1", 0.25)]
+    [InlineData("A2", 0.25)]
+    [InlineData("B1", 0.25)]
+    [InlineData("B2", 0.25)]
+    public void SubpositieFractie_BekendeSubposities_GeeftDeJuisteFractie(string subpositie, double verwacht)
+    {
+        VeldResolver.SubpositieFractie(subpositie).Should().Be((decimal)verwacht);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("C")]      // onbekend label — geen aanname, laat de aanroeper terugvallen
+    public void SubpositieFractie_GeenOfOnbekendeSubpositie_GeeftNullTerug(string? subpositie)
+    {
+        // null hier betekent bewust "onbekend, val terug op de teaminstelling" — nooit "heel veld"
+        // aannemen op basis van een niet-herkend label.
+        VeldResolver.SubpositieFractie(subpositie).Should().BeNull();
+    }
 }

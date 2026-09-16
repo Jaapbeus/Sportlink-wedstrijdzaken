@@ -168,6 +168,7 @@ internal static class AutoPlanService
         Dictionary<string, (int bufferVoor, int bufferNa)> teamBuffers, int buffer)
     {
         var items = new List<AutoPlanWedstrijdItem>();
+        var veldNamen = veldInfoLookup.Values.Select(v => ((string?)v.VeldNaam, v.VeldNummer)).ToList();
 
         foreach (var (wedstrijd, doel) in metDoel)
         {
@@ -194,6 +195,13 @@ internal static class AutoPlanService
                 continue;
             }
 
+            // #1194: primair de subpositie die Sportlink per wedstrijd meegeeft (bijv. "veld 3 A"),
+            // pas als Sportlink geen suffix meegeeft de teaminstelling — zie VeldafmetingVoorWedstrijd.
+            // Stuurt zowel de scheduler hieronder als het gerapporteerde Veldafmeting-veld aan: vóór
+            // deze fix blokkeerde een halve-veld-wedstrijd van een team met "heel veld" als default
+            // (bijv. "V+1", dat vaak zelfs geen eigen speeltijden-rij heeft) onterecht het hele veld.
+            var veldafmeting = VeldafmetingVoorWedstrijd(wedstrijd.Veld, veldNamen, speeltijdInfo.Veldafmeting);
+
             IngeplandSlot? slot;
             string? voorkeurTijdStr = null;
             int? voorkeurAfwijking = null;
@@ -204,7 +212,7 @@ internal static class AutoPlanService
             {
                 var doelTijd = doel.DoelTijd.Value;
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
-                slot = scheduler.FindAndOccupyNearTime(doelTijd, speeltijdInfo.Veldafmeting,
+                slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
                     speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
                     voorkeurVeldNummer: doel.VoorkeurVeldNummer);
                 if (slot != null)
@@ -213,10 +221,10 @@ internal static class AutoPlanService
             else
             {
                 slot = doel.VoorkeurVeldNummer.HasValue
-                    ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, speeltijdInfo.Veldafmeting,
+                    ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
                         speeltijdInfo.WedstrijdTotaal, teamBufVoor, wedstrijd.TeamNaam,
                         voorkeurVeldNummer: doel.VoorkeurVeldNummer)
-                    : scheduler.FindAndOccupyNextSlot(speeltijdInfo.Veldafmeting, speeltijdInfo.WedstrijdTotaal,
+                    : scheduler.FindAndOccupyNextSlot(veldafmeting, speeltijdInfo.WedstrijdTotaal,
                         teamBufVoor, wedstrijd.TeamNaam);
             }
 
@@ -230,7 +238,7 @@ internal static class AutoPlanService
                     LeeftijdsCategorie = wedstrijd.LeeftijdsCategorie,
                     Competitiesoort = wedstrijd.Competitiesoort,
                     DuurMinuten = speeltijdInfo.WedstrijdTotaal,
-                    Veldafmeting = speeltijdInfo.Veldafmeting,
+                    Veldafmeting = veldafmeting,
                     HuidigeVeld = wedstrijd.Veld,
                     HuidigeTijd = wedstrijd.AanvangsTijd,
                     HeeftVeld = !string.IsNullOrWhiteSpace(wedstrijd.Veld),
@@ -260,7 +268,7 @@ internal static class AutoPlanService
                 LeeftijdsCategorie = string.IsNullOrWhiteSpace(leeftijd) ? null : leeftijd,
                 Competitiesoort = wedstrijd.Competitiesoort,
                 DuurMinuten = speeltijdInfo.WedstrijdTotaal,
-                Veldafmeting = speeltijdInfo.Veldafmeting,
+                Veldafmeting = veldafmeting,
                 HuidigeVeld = wedstrijd.Veld,
                 HuidigeTijd = wedstrijd.AanvangsTijd,
                 HeeftVeld = heeftVeld,
@@ -345,6 +353,10 @@ internal static class AutoPlanService
         bool isAllstars = clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase);
         var wedstrijden = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(connectionString, datum, clubCode);
         var speeltijden = await GetSpeeltijdenMetTerugvalAsync(connectionString, clubCode);
+        var velden = isAllstars
+            ? await AllstarsTestDataRepository.GetAllstarsVeldenAsync(connectionString)
+            : await PlannerSettingsRepository.GetVeldenAsync(connectionString, clubCode);
+        var veldNamen = velden.Select(v => ((string?)v.VeldNaam, v.VeldNummer)).ToList();
 
         return wedstrijden
             .Select(w =>
@@ -364,10 +376,31 @@ internal static class AutoPlanService
                     Competitiesoort: w.Competitiesoort,
                     LeeftijdsCategorie: w.LeeftijdsCategorie,
                     DuurMinuten: speeltijdInfo?.WedstrijdTotaal ?? 0,
-                    Veldafmeting: speeltijdInfo?.Veldafmeting ?? 1.00m);
+                    Veldafmeting: VeldafmetingVoorWedstrijd(w.Veld, veldNamen, speeltijdInfo?.Veldafmeting ?? 1.00m));
             })
             .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
             .ToList();
+    }
+
+    /// <summary>
+    /// Veldafmeting van één wedstrijd (#1194): primair de subpositie die Sportlink zelf in de
+    /// <c>veld</c>-tekst meegeeft ("veld 3 A" → half veld), pas als Sportlink geen suffix meegeeft
+    /// de <paramref name="terugvalVeldafmeting"/> uit <c>public.speeltijden</c> (de teaminstelling).
+    /// <para>
+    /// Vóór deze fix kwam <c>Veldafmeting</c> uitsluitend uit de teaminstelling — een team dat
+    /// standaard een heel veld heeft maar ad-hoc een halve-veld-boeking krijgt (zoals "V+1", dat
+    /// bovendien vaak helemaal geen <c>speeltijden</c>-rij heeft) werd dan altijd als heel veld
+    /// behandeld: zowel in de Dagplanning-Gantt (balk te hoog, overlapt de volgende veldrij) als in
+    /// de auto-plan-<see cref="FieldScheduler"/> (blokkeert onterecht het hele veld). Gebruikt
+    /// dezelfde <see cref="global::Planner.Shared.VeldResolver"/> als de rest van de codebase — geen
+    /// nieuwe, losstaande veld-tekst-parser.
+    /// </para>
+    /// </summary>
+    private static decimal VeldafmetingVoorWedstrijd(
+        string? ruweVeldTekst, IEnumerable<(string? VeldNaam, int VeldNummer)> velden, decimal terugvalVeldafmeting)
+    {
+        var (_, subpositie) = VeldResolver.Resolve(ruweVeldTekst, velden);
+        return VeldResolver.SubpositieFractie(subpositie) ?? terugvalVeldafmeting;
     }
 
     private static async Task<Dictionary<string, Speeltijd>> GetSpeeltijdenMetTerugvalAsync(

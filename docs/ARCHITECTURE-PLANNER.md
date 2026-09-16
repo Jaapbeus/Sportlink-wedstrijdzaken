@@ -81,7 +81,7 @@ Dit zijn voorkeuren, geen harde beperkingen.
 
 ## Veldcapaciteit (deelveld-wedstrijden)
 
-Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis van leeftijdscategorie:
+Een veld heeft capaciteit **1.00**.
 
 | Veldafmeting | Betekenis | Gelijktijdig op 1 veld |
 |-------------|-----------|----------------------|
@@ -90,6 +90,33 @@ Een veld heeft capaciteit **1.00**. Wedstrijden gebruiken een fractie op basis v
 | 1.00 | Heel veld | 1 wedstrijd |
 
 **Regel:** som van overlappende `Veldafmeting` op hetzelfde veld op hetzelfde moment moet ≤ 1.00 zijn.
+
+> **Bron van `Veldafmeting`: per-wedstrijd Sportlink-subpositie, leeftijdscategorie alleen als
+> terugval (#1194).** Vóór deze fix kwam `Veldafmeting` uitsluitend uit de tabel hieronder
+> ("Speeltijden per leeftijdscategorie") — een teaminstelling, niet een per-wedstrijd gegeven. Een
+> team kan bij Sportlink echter ad-hoc een halve-veld-boeking krijgen, ook als de standaard voor die
+> leeftijdscategorie een heel veld is (of, zoals bij vlaggen-/veteranenteams zoals "V+1", er
+> helemaal geen `speeltijden`-rij bestaat). Sportlink geeft die halve-veld-boeking door als suffix
+> in de bestaande `veld`-tekst zelf ("veld 3 A" versus kaal "veld 3") — exact dezelfde
+> `A`/`B`/`A1`/`A2`/`B1`/`B2`-subpositie die de Kwartbanen-sectie hieronder al beschrijft.
+>
+> `FunctionApp.Postgres.Planner.AutoPlanService.VeldafmetingVoorWedstrijd` (`VeldbezettingAsync` en
+> `PlanWedstrijden`/`AutoPlanAsync`) resolveert daarom eerst de subpositie via de bestaande
+> `Planner.Shared.VeldResolver.Resolve`, en vertaalt die met de nieuwe
+> `VeldResolver.SubpositieFractie` naar een `Veldafmeting` — hetzelfde ene vertaalpunt als de
+> Kwartbanen-matching hieronder, geen tweede kopie. Alleen wanneer Sportlink geen suffix meegeeft
+> valt dit terug op de leeftijdscategorie-tabel. `veld_subpositie`
+> (`Database.Postgres/KnownEntities.cs`) wordt bewust **niet** tijdens de sync gevuld voor deze fix:
+> de resolutie gebeurt al bij het lezen (dezelfde "C#-only, niet SQL-side/sync-side herbouwd"-regel
+> als de rest van deze sectie), dus een extra opgeslagen kolom zou een tweede, potentieel
+> verouderende bron naast de altijd-actuele `veld`-tekst zijn geweest.
+>
+> **Blazor-kant (`BlazorAdmin/Services/GanttLayout.cs`):** de Dagplanning-Gantt had daarnaast een
+> eigen bug — de verticale positie van een balk kwam al uit de subpositie-suffix, maar de hoogte
+> kwam los daarvan uit de server-`Veldafmeting`. Bij een team met "heel veld" als standaard dat een
+> halve-veld-boeking kreeg, positioneerde de balk half maar tekende hij heel hoog: hij liep door in
+> de rij van het volgende veld. `GanttLayout.Bereken` leidt top én hoogte nu uit dezelfde
+> subpositie af (met een defensieve clamp die een balk sowieso nooit buiten zijn rij laat renderen).
 
 **Voorbeeld efficiënt plannen:**
 - 2× JO9 (0.25) op één helft + 1× JO11 (0.50) op de andere helft = 1.00 → veld vol

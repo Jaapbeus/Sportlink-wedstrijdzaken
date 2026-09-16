@@ -638,15 +638,10 @@ public partial class Dagplanning : IDisposable
          : uur >= eindMinuut  ? "translateX(-100%)"
          : "translateX(-50%)";
 
-    private static double GanttTop(string? sub) => sub switch
-    {
-        "A" or "A1" => 0, "A2" => 25, "B" or "B1" => 50, "B2" => 75, _ => 0
-    };
-
-    private static double GanttHoogte(decimal fractie) => fractie switch
-    {
-        <= 0.26m => 25, <= 0.51m => 50, _ => 100
-    };
+    // Top + hoogte van een Gantt-balk (#1194) staan sinds deze fix in BlazorAdmin/Services/GanttLayout.cs
+    // — beide uit dezelfde subpositie-suffix, met een defensieve clamp. Losgetrokken zodat die
+    // kernlogica unit-testbaar is zonder deze code-behind op te tuigen; zie die klasse voor de
+    // volledige toelichting op de bug die dit oploste.
 
     private static string GanttTooltip(GanttItem gi)
     {

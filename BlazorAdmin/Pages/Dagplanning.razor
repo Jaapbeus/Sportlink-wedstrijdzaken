@@ -97,8 +97,9 @@
                                 {
                                     string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _vsMin, _vTotMin);
                                     string _wdt = GanttPct(gi.DuurMinuten, _vTotMin);
-                                    string _top = GanttPct((int)GanttTop(gi.SubPos), 100);
-                                    string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
+                                    var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
+                                    string _top = GanttPct((int)_topVal, 100);
+                                    string _hgt = GanttPct((int)_hgtVal, 100);
                                     string _tooltip = GanttTooltip(gi);
                                     <div title="@_tooltip"
                                          style="position:absolute;
@@ -327,8 +328,9 @@
                                 {
                                     string _lft = GanttPct((int)gi.Aanvang.ToTimeSpan().TotalMinutes - _sMin, _totMin);
                                     string _wdt = GanttPct(gi.DuurMinuten, _totMin);
-                                    string _top = GanttPct((int)GanttTop(gi.SubPos), 100);
-                                    string _hgt = GanttPct((int)GanttHoogte(gi.Fractie), 100);
+                                    var (_topVal, _hgtVal) = GanttLayout.Bereken(gi.SubPos, gi.Fractie);
+                                    string _top = GanttPct((int)_topVal, 100);
+                                    string _hgt = GanttPct((int)_hgtVal, 100);
                                     string _voorkeurBalk = GanttVoorkeurBalkKleur(gi.VoorkeurAfwijking, gi.VoorkeurTijd);
                                     string _tooltip = GanttTooltip(gi);
                                     bool _sleepbaar = gi.Bron != null;
