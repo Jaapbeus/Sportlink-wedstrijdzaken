@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.5.0.0] — 2026-09-17
+
 ### Security
 - **De migratiestap in de deploy meldde bij een fout de volledige databasefoutmelding in een
   publiek logbestand (#1225).** De GitHub Actions-logs van dit project zijn openbaar, en GitHub
