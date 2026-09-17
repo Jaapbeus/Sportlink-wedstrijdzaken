@@ -73,6 +73,56 @@ Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
 
 **Eén twijfel = niet publiceren. Gebruik placeholders en sla de echte waarde op in memory (nooit publiek).**
 
+#### Tweede controle: exploiteerbaarheid — óók als er géén waarde in de tekst staat
+
+De checklist hierboven is **waarde-georiënteerd**: elke vraag luidt "staat er een echte X in de
+tekst?". Een tekst kan die zes vragen met zes keer nee beantwoorden en tóch een vindaanwijzing zijn.
+
+Dat is geen theorie. Bij de ronde van september is precies dat gebeurd. Een verzamelissue beschreef
+van een bevinding die nog **niet** verholpen was: in welke soort omgeving het spoor te vinden zou
+zijn, hoe groot het was, en over welke periode het liep. Geen enkele echte waarde — dus zes keer
+"nee" op de checklist hierboven — en toch genoeg om gericht te gaan zoeken voor wie ooit toegang
+tot die omgeving krijgt. Het oorspronkelijke reviewissue hield het bewust bij het codepad; de
+uitkomst van het besloten onderzoek daarna belandde alsnog publiek.
+
+> **Dit voorbeeld is bewust abstract gehouden zolang de bijbehorende remediatie nog loopt.** Het
+> concreet maken zou hier dezelfde fout herhalen, in een bestand dat na merge permanent in de
+> git-historie staat — en git-historie is niet met een muisklik te redigeren zoals een
+> issue-revisie. Zodra het risico weg is mag het alsnog concreet, precies volgens de vuistregel
+> hieronder.
+
+Loop daarom vóór publicatie ook deze drie langs:
+
+```
+□ Gaat de tekst over een kwetsbaarheid die nog NIET verholpen is?
+  → dan alleen de klasse en het codepad benoemen; status, omvang en tijdvenster horen
+    in de besloten notitie
+□ Vertelt de tekst iemand WAAR hij moet zoeken — een logstore, een omgeving, een tijdvak,
+  een bestandslocatie, een zoekfilter?
+  → weglaten, ook als de vindplaats zelf afgeschermd is
+□ Is een genoemde credential al geroteerd/ingetrokken?
+  → zo nee: publiceer geen enkel detail dat het zoeken vergemakkelijkt, ook geen aantallen
+```
+
+**Vuistregel:** een publieke issue beschrijft *wat er in de code mis was en waar het gerepareerd
+is*. De bevestigde impact van een nog openstaande bevinding — is het echt gelekt, hoe vaak, waar,
+wanneer — is besloten tot het moment dat het risico weg is. Daarna mag het alsnog publiek, want dan
+is het historie in plaats van een aanwijzing.
+
+**Verzamelissues zijn hier de risicoplek.** Een issue dat acties bundelt zodat ze opvraagbaar zijn
+zonder chatsessie is nuttig — maar het trekt bevindingen uit besloten onderzoek naar een publieke
+plek. Zo'n issue mag **verwijzen** naar de besloten notitie; het mag de inhoud ervan niet
+herhalen.
+
+**Deze controle geldt óók voor bestanden in een commit, niet alleen voor issue- en PR-tekst.** Het
+kopje hierboven zegt "vóór elk gh-commando", en juist daardoor is deze sectie bij het schrijven
+ervan zelf de mist in gegaan: de exploiteerbare details werden uit een issue gehaald en vervolgens
+ter illustratie in dit bestand gezet. In een bestand is de fout duurder — een issue-revisie
+verwijdert de eigenaar in de browser, maar git-historie vereist een history-rewrite met tijdelijk
+force-push (zie "Uitzondering: history-rewrite na een leak"). Loop de drie vragen hierboven dus ook
+langs vóór een commit die over een openstaande bevinding gaat, inclusief documentatie en
+commit-berichten.
+
 - **Actions-logs en build-artefacten van een publieke repository zijn óók publiek.** GitHub drukt
   step-`env:`-waarden en ingevulde `${{ }}`-expressies letterlijk in de joblog af, en maskeert
   alleen secrets. Club-identificerende configuratie (Function App-naam en -URL, SWA-hostname,
