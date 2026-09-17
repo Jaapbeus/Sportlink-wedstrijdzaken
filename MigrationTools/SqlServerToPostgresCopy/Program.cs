@@ -104,7 +104,10 @@ foreach (var mapping in tables)
     }
     catch (Exception ex)
     {
-        Console.Error.WriteLine($"  FOUT bij {mapping.TargetTable}: {ex.Message}");
+        // #1225: dit hulpmiddel draait weliswaar lokaal, maar de uitvoer belandt in de praktijk in
+        // een issue of PR — en deze exception komt van een verbinding waarvan de string host,
+        // gebruikersnaam en wachtwoord bevat. Zelfde vorm als Database.Postgres.Cli.
+        Console.Error.WriteLine("  " + MigratieFoutRapportage.Beschrijf("Kopiëren", ex, mapping.TargetTable));
         return 1;
     }
     Console.WriteLine();

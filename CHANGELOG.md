@@ -18,18 +18,147 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.5.0.0] — 2026-09-17
+
 ### Security
+- **De migratiestap in de deploy meldde bij een fout de volledige databasefoutmelding in een
+  publiek logbestand (#1225).** De GitHub Actions-logs van dit project zijn openbaar, en GitHub
+  verbergt daarin alleen de exacte, volledige waarde van een geheim — niet een stukje ervan dat
+  toevallig in een foutmelding staat. Een mislukte databaseverbinding noemt de servernaam en poort,
+  en bij een verkeerd wachtwoord ook de gebruikersnaam; die zijn alle drie onderdeel van de
+  geheime verbindingsgegevens van de database. De migratiestap meldt vanaf nu alleen nog welk
+  migratiebestand faalde, welk soort fout het was en de Postgres-foutcode — genoeg om de oorzaak te
+  vinden, zonder dat er iets over de database zelf op straat komt te liggen. Hetzelfde geldt voor
+  het eenmalige kopieerhulpmiddel dat bij de overstap naar Postgres is gebruikt. Een controle in de
+  beveiligingsscan blokkeert voortaan elke nieuwe plek die een foutmelding naar de console zou
+  schrijven. Er zijn geen aanwijzingen dat dit ooit daadwerkelijk is gebeurd: de migratiestap is in
+  de laatste 40 deploys nooit gefaald.
+
+### Changed
+- **Feedback wordt pas gepubliceerd nadat u het voorbeeld heeft gezien en bevestigd (#1205).** De
+  FEEDBACK-knop maakt een GitHub-issue aan, en die staat **openbaar op internet** — voorheen ging uw
+  tekst er met één klik heen zonder dat u de uiteindelijke melding ooit te zien kreeg. Nu volgt na
+  het overzicht een voorbeeldscherm met de exacte titel en de volledige tekst van het issue,
+  inclusief de samenvatting en acceptatiecriteria die de AI ervan maakt. Daar kiest u zelf:
+  *Aanpassen* (terug naar het formulier, uw tekst blijft staan) of *Openbaar publiceren*. Tot die
+  klik gaat er niets naar internet. De waarschuwing in de widget zegt nu ook expliciet dat GitHub
+  openbaar is en noemt namen, adressen en geboortedata als dingen om op te letten — de automatische
+  controle herkent namelijk alleen e-mailadressen en telefoonnummers en is een vangnet, geen
+  garantie. Dat restrisico staat nu uitgeschreven in `SECURITY.md` en
+  `docs/BEHEERDER-HANDLEIDING.md`. Het voorbeeld doorloopt dezelfde controles als een publicatie:
+  wat geweigerd zou worden, komt ook niet als voorbeeld terug.
+
+### Fixed
+- **Teamherkenning zocht aliassen via een volledige tabelscan — een index uit migratie 003 was sinds
+  de collatie-fix onbruikbaar geworden (#1211).** Migratie 007 zette destijds alle vergelijkingen op
+  teamaliassen om naar `UPPER(...)`, maar liet de index op `ruwetekstgenormaliseerd` op de kale kolom
+  staan. Postgres kan zo'n index niet gebruiken voor een `UPPER()`-vergelijking, dus elke
+  aliaszoekopdracht las de hele tabel. Gemeten op 60.000 rijen: 14,5 ms en 609 gelezen blokken vóór,
+  0,05 ms en 6 blokken ná de fix. Bij de huidige omvang van de aliastabel is dat verschil niet
+  merkbaar — de fix voorkomt dat het meegroeit met het aantal geleerde aliassen, en neemt
+  schrijfoverhead weg die nergens voor diende.
+
+### Changed
+- **De AVG-uitleg in `SECURITY.md` en `README.md` klopte niet en is gecorrigeerd (#1203).** Er stond
+  dat namen, e-mailadressen, telefoonnummers en geboortedatums van trainers en leiders "bijzondere
+  gegevens" zijn; dat zijn het niet — het zijn gewone persoonsgegevens. Bijzondere categorieën
+  (gezondheid, geloof, etniciteit en dergelijke) en strafrechtelijke gegevens worden in dit project
+  helemaal niet verwerkt. Wél benoemd zijn nu de twee punten die het risico écht verhogen: het gaat
+  deels om gegevens van kinderen, en vrije tekst in een e-mail kan toevallig iets over gezondheid
+  bevatten. Daarnaast is de datalekprocedure vervangen door een stappenplan: de melding aan de
+  Autoriteit Persoonsgegevens (waar mogelijk binnen 72 uur, tenzij een risico onwaarschijnlijk is)
+  staat nu los van het informeren van de betrokkenen zelf (alleen bij hoog risico), met een
+  risicobeoordeling, een aanwijsbare beslisser binnen het bestuur en de plicht elk incident vast te
+  leggen — ook als er niet gemeld wordt.
+- **Opschonen van de e-mailhistorie schaalt niet langer kwadratisch (#1211).** `planner.classificatiecorrectie`
+  had geen index op de verwijzing `correctionverwerkingid`, terwijl de retentie-opschoning veel rijen
+  tegelijk uit `planner.emailverwerking` verwijdert. Postgres moest daardoor per verwijderde rij de
+  correctietabel volledig doorzoeken. Met de toegevoegde index blijft die opschoning ook bij een
+  groeiende e-mailhistorie snel.
+- **Index toegevoegd op `planner.geplandewedstrijden (veldnummer)` (#1211)** — goedkope verzekering
+  op een tabel die per seizoen doorgroeit, zodat het verwijderen of opschonen van een veld later geen
+  volledige scan van de planning vereist.
+- **De overige negentien meldingen van Supabase's Performance Advisor zijn getoetst en bewust niet
+  opgevolgd (#1211)** — onder meer zeven indexen die als "ongebruikt" gelden omdat de Sportlink Web
+  Extension nog niet in productie draait, en de ontbrekende primaire sleutels op de staging- en
+  historietabellen, die daar een bewuste ontwerpkeuze zijn. De onderbouwing per melding staat in
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §69, zodat een volgende advisor-run niet opnieuw dezelfde
+  analyse vraagt en er geen index wordt verwijderd die juist nodig is.
+
+### Security
+- **Claude kan de Supabase-database nu rechtstreeks uitlezen om te controleren of alles goed gaat —
+  alleen lezen, nooit wijzigen (#1222).** Naast de dagelijkse automatische controle (#1221) is er nu
+  een handmatige controle `/supabase-check` die verder kijkt: behalve de adviezen van Supabase leest
+  hij ook de logboeken van de afgelopen dag en de capaciteit van de database, en meldt alleen wat
+  aandacht nodig heeft. De verbinding staat hard op alleen-lezen: wijzigingen aan de database blijven
+  uitsluitend via de normale weg lopen, zodat de administratie van uitgevoerde databasewijzigingen
+  niet stilzwijgend uit de pas kan gaan lopen. Gegevens uit logboeken worden altijd samengevat
+  gerapporteerd, nooit herleidbaar tot een persoon. De instelling is optioneel: wie hem niet
+  configureert, merkt niets en houdt de dagelijkse controle.
+- **Supabase controleert nu elke dag zelf of er iets mis is met de database, en meldt het via een
+  GitHub-issue (#1221).** Supabase draait continu twee controles op de database — één voor
+  beveiliging, één voor prestaties — maar tot nu toe zag je die alleen als je zelf het dashboard
+  opende. Bij #1198 kostte dat twaalf dagen: het probleem stond er, niemand keek. Elke ochtend om
+  07:00 worden beide controles nu automatisch opgehaald. Is er iets nieuws op niveau "fout" of
+  "waarschuwing", dan verschijnt er één issue met de bevindingen en wat eraan te doen is; is alles
+  in orde, dan gebeurt er niets. Bekende, bewust geaccepteerde meldingen staan in een lijst in de
+  repository — mét reden erbij, zodat later terug te lezen is waarom iets is goedgekeurd. Bij het
+  in gebruik nemen bleek de database op dit moment **nul** meldingen op die twee niveaus te hebben.
+- **De Security Scan draaide niet op pull requests naar `develop`, waardoor een bijdrage vanuit
+  een fork nooit gescand werd én nooit kon worden gemerged (#1202).** De scan luisterde nog naar
+  de branchnamen van vóór de overstap op `develop` als integratiebranch. Binnen deze repository
+  viel dat niet op — daar leverde de push naar de branch toevallig dezelfde controle op — maar een
+  fork heeft die push niet, dus de verplichte controle "Security Gate" verscheen daar simpelweg
+  nooit. De scan luistert nu op pull requests naar zowel `main` als `develop`. Voor de beheerder
+  betekent dit: bijdragen van buiten worden weer volledig op secrets, persoonsgegevens en
+  kwetsbare pakketten gecontroleerd vóórdat ze gemerged kunnen worden.
+- **De sleutel waarmee de club bij Sportlink inlogt kon in de foutlogboeken van de wedstrijdsync
+  belanden (#1200).** Sportlink controleert wie gegevens opvraagt via een waarde in het webadres
+  zelf, dus dat adres is net zo gevoelig als een wachtwoord. Ging het ophalen van de details van
+  één wedstrijd mis, dan schreef de applicatie het volledige adres — inclusief die sleutel — weg
+  in het foutlogboek, op beide databasevarianten. Dat gebeurt niet meer: het logboek noemt nu
+  alleen nog het soort fout, het endpoint en de wedstrijdcode, wat voor het opsporen van een
+  storing evenveel houvast geeft. Twee automatische controles houden dit zo: een regressietest per
+  databasevariant en een controle in de bouwstraat die elke logregel met een webadres erin
+  blokkeert. Beheerders die Application Insights gebruiken: laat de bewaarde logboeken eenmalig
+  nakijken op deze sleutel en vervang hem bij twijfel — zie het issue voor de stappen.
 - **Row-Level Security stond nergens aan op de Postgres-tier (Supabase) — Supabase's eigen
   Security Advisor meldde dit als CRITICAL (#1198).** Zonder RLS was elke tabel in `public`
   extern leesbaar/schrijfbaar/verwijderbaar via Supabase's automatische REST-API, ongeacht of de
   applicatie die ooit gebruikt — inclusief de tabel met Sportlink-servicetokens en de tabel met
-  uitgesloten e-mailadressen. RLS staat nu aan op alle 27 toepassingstabellen, zonder policies:
+  uitgesloten e-mailadressen. RLS staat nu aan op alle 29 toepassingstabellen, zonder policies:
   de applicatie verbindt via de tabeleigenaar-rol en merkt hier niets van.
 - **Een Supabase-eigen functie (`public.rls_auto_enable()`, het vangnet dat RLS automatisch aanzet
   op elke nieuwe tabel) was voor iedereen aanroepbaar via de publieke API, ook zonder in te loggen
   (#1198, vervolg).** De functie en het bijbehorende vangnet blijven volledig werken — alleen de
   onbedoelde publieke aanroepbaarheid (zowel de algemene als de rechtstreekse toegang die Supabase
   standaard aan ingelogde en niet-ingelogde gebruikers geeft) is weggehaald.
+- **De namen die verraden welke club deze installatie draait, stonden leesbaar in de publieke
+  deploy-logs (#1204).** GitHub Actions drukt configuratiewaarden letterlijk in de joblog af, en
+  bij een publieke repository is die log voor iedereen te lezen. Zes waarden — de naam en URL van
+  de Function App, de hostname van de Admin GUI, het Entra tenant- en client-ID en de
+  uitlog-URL — stonden daardoor open en bloot in elke deploy. Het zijn geen wachtwoorden, maar ze
+  horen niet in een club-neutrale open-sourcerepo. Na deze wijziging kun je deze zes instellingen
+  als **Secret** opslaan in plaats van als Variable, waarna ze in de publieke deploy-logs
+  gemaskeerd worden als `***`. Laat je ze als Variable staan, dan blijft alles gewoon werken —
+  ze blijven dan alleen leesbaar. Zie `docs/DEVELOPER-SETUP.md` §9.2 voor de stappen. Let op:
+  logs van eerdere deploys veranderen hier niet door.
+- **Het e-mailadres waar een database-uitvalmelding naartoe gaat, staat niet langer in het
+  Function-log (#1201).** De dagelijkse database-uitvalmonitor schreef bij elke verstuurde melding
+  het geconfigureerde postbusadres letterlijk in het log, en daarmee in Application Insights — terwijl
+  het beveiligingsbeleid van dit project e-mailadressen daar expliciet van uitsluit. Het log vermeldt
+  nu alleen nog dát er een melding is verstuurd en hoe lang de database al gepauzeerd stond; de
+  melding zelf en de ontvanger ervan veranderen niet. Dezelfde soort lek is eerder bij de
+  e-mailverwerking gedicht, zie issue #1143. Beheerders met Application Insights: het adres kan nog
+  in reeds opgeslagen logregels staan tot die buiten de bewaartermijn vallen.
+- **De beveiligingsregel dat elke databasetabel afgeschermd moet zijn, wordt nu automatisch
+  gecontroleerd bij elke wijziging (#1220).** Die regel bestond al sinds #1198, maar leunde tot nu
+  toe volledig op iemand die eraan dacht. Een nieuwe tabel die de afscherming miste, kwam door alle
+  bestaande controles heen en werd pas ontdekt wanneer Supabase het in productie meldde — bij #1198
+  duurde dat twaalf dagen. Twee controles draaien nu bij elke wijziging mee tegen een echte
+  database: één die bevestigt dat elke tabel afgeschermd is, en één die Supabase's eigen
+  databasecontroleur draait op de punten die vóór livegang te beoordelen zijn. Beide zijn
+  aantoonbaar falend getest, niet alleen groen gezien.
 
 ## [3.4.3.0] — 2026-09-16
 

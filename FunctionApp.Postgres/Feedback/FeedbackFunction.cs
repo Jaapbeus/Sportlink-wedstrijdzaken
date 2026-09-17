@@ -22,8 +22,14 @@ namespace FunctionApp.Postgres.Feedback;
 ///   Valideert of de gebruikersbeschrijving voldoende informatie bevat.
 ///   Geen rate limiting — validatie is goedkoop en gebruiksvriendelijk.
 ///
+/// POST /api/feedback/preview
+///   Stelt de exacte titel + body samen die gepubliceerd zou worden, en geeft die terug zonder
+///   iets aan te maken (#1205). Geen rate limiting — er wordt niets gepubliceerd.
+///
 /// POST /api/feedback/submit
-///   Structureert de feedback met AI en maakt een GitHub Issue aan.
+///   Structureert de feedback met AI en maakt een GitHub Issue aan. Stuurt de client de in het
+///   voorbeeld getoonde velden mee (<c>bevestiging</c>), dan wordt exact díe tekst gepubliceerd
+///   zonder nieuwe AI-aanroep.
 ///   Rate limiting: max 5 per 10 minuten (globaal).
 /// </summary>
 public static class FeedbackFunction
@@ -72,6 +78,64 @@ public static class FeedbackFunction
             FeedbackStatus.OngeldigType => new BadRequestObjectResult(new { error = result.Foutmelding }),
             FeedbackStatus.PiiGedetecteerd => new ObjectResult(new { error = result.Foutmelding }) { StatusCode = 422 },
             _ => new OkObjectResult(new { volledig = result.Volledig, vragen = result.Vragen })
+        };
+    }
+
+    // ── Voorbeeld vóór publicatie (#1205) ──────────────────────────────────────
+
+    [Function("FeedbackPreview")]
+    public static async Task<IActionResult> Preview(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "feedback/preview")] HttpRequest req,
+        FunctionContext context)
+    {
+        var log = context.GetLogger("FeedbackPreview");
+        var correlationId = Admin.EasyAuthHelper.ExtractOrCreateCorrelationId(req);
+        var authResult = Admin.EasyAuthHelper.RequireAdmin(req);
+        if (authResult != null) return authResult;
+        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
+
+        // Bewust geen rate limiting, net als bij validate: een voorbeeld publiceert niets, en het is
+        // juist de stap die de beheerder moet zetten vóór hij iets openbaar maakt. De limiter blijft
+        // op submit staan — dáár gebeurt de GitHub-write.
+        try
+        {
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            var dto = JsonConvert.DeserializeObject<FeedbackRequest>(body);
+            if (dto == null || string.IsNullOrWhiteSpace(dto.Beschrijving))
+                return new BadRequestObjectResult(new { error = "Beschrijving is verplicht." });
+
+            var chatClient = context.InstanceServices.GetService<IChatClient>()
+                ?? throw new InvalidOperationException("IChatClient niet geconfigureerd — controleer OpenAiApiKey env var");
+
+            return await PreviewCoreAsync(dto, chatClient, log);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fout bij feedback voorbeeld");
+            return new ObjectResult(new { error = "Voorbeeld tijdelijk niet beschikbaar." }) { StatusCode = 500 };
+        }
+    }
+
+    /// <summary>
+    /// Testbare kern van <see cref="Preview"/>, los van <see cref="HttpRequest"/>/<see cref="FunctionContext"/>
+    /// (#1205). Vertaalt het provider-onafhankelijke resultaat van <see cref="FeedbackCore.VoorbeeldAsync"/>
+    /// naar de tier-specifieke <see cref="IActionResult"/> — met exact dezelfde statuscodes als
+    /// <see cref="SubmitCoreAsync"/>, zodat een voorbeeld nooit doorkomt waar een publicatie zou afketsen.
+    /// </summary>
+    internal static async Task<IActionResult> PreviewCoreAsync(FeedbackRequest dto, IChatClient chatClient, ILogger log)
+    {
+        var result = await FeedbackCore.VoorbeeldAsync(dto, chatClient, log);
+        return result.Status switch
+        {
+            FeedbackStatus.OngeldigType => new BadRequestObjectResult(new { error = result.Foutmelding }),
+            FeedbackStatus.PiiGedetecteerd => new ObjectResult(new { error = result.Foutmelding }) { StatusCode = 422 },
+            _ => new OkObjectResult(new
+            {
+                titel = result.Titel,
+                body = result.Body,
+                samenvatting = result.Samenvatting,
+                acceptatiecriteria = result.Acceptatiecriteria
+            })
         };
     }
 

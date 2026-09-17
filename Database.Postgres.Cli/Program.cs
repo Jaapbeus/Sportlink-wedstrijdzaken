@@ -30,11 +30,15 @@ if (normalization.TlsWarning is not null)
 
 if (ensureHisTables)
 {
+    // Welke stap liep toen het misging? Dat is de enige contextinformatie die de foutregel nog
+    // mag dragen (#1225) — de entiteitsnaam komt uit KnownEntities, niet uit de connectiestring.
+    string? huidigeEntiteit = null;
     try
     {
         var orchestrator = new PostgresMergeOrchestrator(normalized);
         foreach (var entity in KnownEntities.All)
         {
+            huidigeEntiteit = $"his.{entity.EntityName}";
             await orchestrator.EnsureHisTableAsync(entity);
             Console.WriteLine($"his.{entity.EntityName} gereed.");
         }
@@ -42,16 +46,21 @@ if (ensureHisTables)
     }
     catch (Exception ex)
     {
-        Console.Error.WriteLine($"Aanmaken van de his-tabellen mislukt: {ex.Message}");
+        // #1225: nooit ex.Message — zie MigratieFoutRapportage voor het waarom.
+        Console.Error.WriteLine(MigratieFoutRapportage.Beschrijf("Aanmaken van de his-tabellen", ex, huidigeEntiteit));
         return 1;
     }
 }
 
 var migrationsPath = positioneel.Length > 0 ? positioneel[0] : ResolveDefaultMigrationsPath();
 
+// Laatst gestarte migratiebestand — bij een fout is dat de stap die faalde. Dit is de vervanger
+// van de exception-tekst, niet een aanvulling erop (#1225).
+string? huidigeMigratie = null;
+
 try
 {
-    var result = await MigrationRunner.RunAsync(normalized, migrationsPath);
+    var result = await MigrationRunner.RunAsync(normalized, migrationsPath, onMigratieStart: naam => huidigeMigratie = naam);
     Console.WriteLine(
         $"Migraties toegepast vanuit '{migrationsPath}': {result.Applied.Count} nieuw, " +
         $"{result.AlreadyApplied.Count} al toegepast, {result.ChecksumNormalized.Count} ledger-checksum(s) genormaliseerd.");
@@ -65,7 +74,10 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"Migratie mislukt: {ex.Message}");
+    // #1225: deze regel verscheen in de publieke Actions-log van db-migrate-postgres. Een
+    // Npgsql-verbindingsfout noemt host en poort, een authenticatiefout de gebruikersnaam —
+    // allemaal deelstrings van POSTGRES_CONNECTION_STRING, die GitHub niet maskeert.
+    Console.Error.WriteLine(MigratieFoutRapportage.Beschrijf("Migratie", ex, huidigeMigratie));
     return 1;
 }
 

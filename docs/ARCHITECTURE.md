@@ -253,14 +253,26 @@ Productie-configuratie wordt **nooit** in git opgeslagen. De CI-pipeline generee
 | `FunctionApp.Postgres/local.settings.template.json` | ✓ | Template zonder waarden |
 | `exports/*.csv` / `exports/*.xlsx` | ✗ | Persoonsgegevens — zie §7 |
 
-**GitHub Variables** (per fork in te stellen via Settings → Secrets and variables → Actions):
+**Club-identificerende configuratie — als Secret** (per fork in te stellen via Settings → Secrets
+and variables → Actions → Secrets). `deploy.yml` leest deze als `${{ secrets.NAAM || vars.NAAM }}`:
+een bestaande Variable blijft werken, maar alleen een Secret wordt gemaskeerd in de Actions-logs,
+die bij een publieke repository voor iedereen leesbaar zijn (#1204).
 
-| Variable | Inhoud | Alleen bij |
+| Naam | Inhoud | Alleen bij |
 |---|---|---|
+| `AZURE_FUNCTIONAPP_NAME` | Naam van de Function App | beide tiers |
 | `AZURE_FUNCTIONAPP_URL` | URL van de Function App | beide tiers |
+| `AZURE_STATIC_WEB_APP_HOSTNAME` | Hostname van de Static Web App | beide tiers |
 | `AZURE_AD_TENANT_ID` | Entra Directory (tenant) ID | beide tiers |
 | `AZURE_AD_CLIENT_ID` | Entra Application (client) ID | beide tiers |
 | `POST_LOGOUT_REDIRECT_URL` | Clubwebsite-URL voor na uitloggen | beide tiers |
+
+**GitHub Variables** (per fork in te stellen via Settings → Secrets and variables → Actions).
+Deze worden in een job-`if:` gebruikt, waar de `secrets`-context niet beschikbaar is — ze blijven
+dus Variable:
+
+| Variable | Inhoud | Alleen bij |
+|---|---|---|
 | `DatabaseTier` | `SqlServer` of `Postgres` — bepaalt welke boom gebouwd/deployed wordt | beide tiers |
 | `DatabaseTierSwitchConfirmation` | Moet exact gelijk zijn aan `DatabaseTier`, anders faalt de deploy (exitcode 3) | beide tiers |
 | `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_RESOURCE_GROUP` | Azure SQL-resourcenamen | alleen `DatabaseTier=SqlServer` |

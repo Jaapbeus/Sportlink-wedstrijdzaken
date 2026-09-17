@@ -3553,7 +3553,7 @@ database, niet tegen de repository — dat is precies waarom hij dit wél zag en
 
 ### De oplossing
 
-`Database.Postgres/migrations/021_enable_row_level_security.sql` zet RLS aan op alle 27
+`Database.Postgres/migrations/021_enable_row_level_security.sql` zet RLS aan op alle 29
 toepassingstabellen (`public`, `avg`, `planner`) — inclusief de migratie-ledger `public.schema_migrations`
 zelf, want Supabase's advisor onderscheidt niet naar gevoeligheid. **Zonder policies, bewust:** de
 `POSTGRES_CONNECTION_STRING`-rol is eigenaar van elke tabel (zij heeft ze aangemaakt) of is de
@@ -3646,6 +3646,242 @@ grants verdwenen waren, en de testrollen daarna weer opgeruimd.
 wanneer de omgeving waartegen je test de rollen die het probleem veroorzaken niet eens kent. Bij
 een Supabase-specifieke rol/grant-fix: simuleer de rol lokaal (`CREATE ROLE ... NOLOGIN`) en
 herhaal het exacte scenario, in plaats van te vertrouwen op "de migratie gaf geen foutmelding".
+
+## 68. De RLS-regel afgedwongen in plaats van opgeschreven — en waarom een lokale test hem niet kan bewijzen (#1220)
+
+§65 tot §67 losten het RLS-gat op en legden de regel vast: elke nieuwe tabel krijgt in dezelfde
+migratie een `ENABLE ROW LEVEL SECURITY`. Die regel stond daarna correct in `CLAUDE.md` en
+`AGENTS.md` — en werd door niets gecontroleerd.
+
+Dat is dezelfde vorm als het oorspronkelijke probleem. §65 verwoordde het al:
+
+> Dit is geen codefout die aan een reviewer voorbij is gegaan — het is een *afwezigheid* die nooit
+> in de vorm van code heeft bestaan.
+
+Een migratie 025 die de `ALTER TABLE` vergeet komt door élke bestaande controle heen: er ontbreekt
+geen bestand, er mist geen kolom, er is geen diff om op te reageren. Het zou opnieuw pas blijken
+wanneer Supabase's Security Advisor het in productie meldt. Bij #1198 duurde dat twaalf dagen.
+
+### Wat er is toegevoegd
+
+Twee guards in de job `fresh-db-postgres` van `build.yml`, beide tegen de **levende** database ná
+het toepassen van de migraties — niet tegen bestanden, want een tabel kan in migratie 012 zijn
+aangemaakt en pas in 021 RLS hebben gekregen:
+
+| Script | Vraag die het beantwoordt |
+|---|---|
+| `scripts/ci/check-rls-enabled.sh` | Heeft elke tabel in `public`/`avg`/`planner` `relrowsecurity = true`? |
+| `scripts/ci/check-splinter-lints.sh` | Meldt Supabase's eigen linter iets op de punten die vóór livegang te beoordelen zijn? |
+
+Splinter (`supabase/splinter`) is de motor onder de Security- en Performance Advisor in het
+dashboard. Het wordt **niet** in dit repo opgenomen: upstream levert geen LICENSE-bestand (GitHub
+rapporteert de licentie als `null`), en code zonder expliciete licentie herdistribueren in een
+publieke repository is een onnodig risico. In plaats daarvan wordt het tijdens de CI-run opgehaald,
+vastgepind op een commit-SHA én geverifieerd op SHA-256 — reproduceerbaar en manipulatiebestendig,
+zonder herdistributie.
+
+### Wat bewust níet faalt, en waarom dat geen compromis is
+
+Van de 29 splinter-lints laten er vijf de build falen. De rest wordt geteld en getoond, maar
+blokkeert niets. Twee van die keuzes zijn principieel:
+
+- **`rls_enabled_no_policy` gaat op alle 29 tabellen af — dat ís de architectuur.** §65 koos bewust
+  voor RLS zonder policies. Dit lint gaten zou betekenen dat #985/#1198 wordt teruggedraaid.
+- **`unindexed_foreign_keys` is schema-statisch, maar de vraag is dat niet.** Of een foreign key een
+  index nodig heeft, hangt af van hoe er gequeryd wordt, niet van hoe het schema eruitziet. #1211
+  liet dat precies zien: 22 Performance Advisor-bevindingen, getoetst tegen productie, waarvan er
+  drie een index kregen (migratie 024) en de rest bewust bleef staan. Een gate op een verse
+  CI-database zou die afweging afdwingen zónder de gegevens die ervoor nodig zijn — en zou vandaag
+  meteen op zes bestaande, al beoordeelde bevindingen falen. Dit hoort bij de dagelijkse run tegen
+  productie (#1221), die wél statistieken heeft.
+
+### De blinde vlek van §67, nu omgekeerd
+
+§67 legde vast dat de rollen `anon` en `authenticated` lokaal en in CI niet bestaan, waardoor
+grant-gebaseerde controles er stille no-ops zijn. `check-splinter-lints.sh` maakt die rollen nu aan
+voordat het draait — splinter weigert zonder hen zelfs te starten (`role "anon" does not exist`).
+Daarmee is de les van §67 van een instructie in een architectuurdocument een uitgevoerde stap in de
+pipeline geworden.
+
+Tijdens het bouwen kwam de spiegelbeeldige variant aan het licht, en die is minstens zo belangrijk:
+
+> **Een lokale database die uit een productiedump is hersteld, kan deze guard niet laten falen.**
+
+De negatieve test — een tabel zonder RLS aanmaken en controleren dat de guard rood wordt — slaagde
+niet lokaal. De guard bleef groen en telde de nieuwe tabel zelfs mee als *wél* beveiligd. Oorzaak:
+een herstelde productiedump bevat Supabase's event-trigger `ensure_rls` (→ `public.rls_auto_enable()`,
+de functie uit §66), die op élke `CREATE TABLE` automatisch RLS aanzet. De tabel kreeg RLS voordat
+de guard ernaar keek.
+
+```
+ensure_rls -> rls_auto_enable (ddl_command_end)
+pgrst_ddl_watch -> extensions.pgrst_ddl_watch (ddl_command_end)
+issue_pg_cron_access, issue_pg_graphql_access, issue_pg_net_access, ...
+```
+
+Het bewijs is daarom geleverd op een **verse** `postgres:17`-container met alleen de migraties
+erop — exact de CI-situatie, en de enige omgeving waar de negatieve test iets betekent. Daar
+gedroegen beide guards zich zoals bedoeld: exit 1 met een bruikbare foutmelding op een overtreding,
+exit 0 zodra die verholpen is.
+
+**Les, aanvullend op §67:** §67 waarschuwde dat lokaal iets kan *ontbreken* dat productie wél heeft.
+Het omgekeerde geldt net zo goed: lokaal kan iets *aanwezig* zijn dat CI en een verse installatie
+niet hebben, en dat een test stilzwijgend laat slagen. Bij elke guard die een databasetoestand
+bewaakt: stel vast in welke omgeving de negatieve test betekenis heeft, en draai hem dáár. Een guard
+die nooit heeft gefaald, is geen geverifieerde guard.
+
+### Bijvangst
+
+Zowel `CHANGELOG.md` als §65 spraken van "alle 27 toepassingstabellen". Migratie 021 bevat 29
+`ALTER TABLE`-regels, en zowel een verse CI-database als de lokale productiekopie tellen er 29.
+Beide plekken zijn gecorrigeerd naar 29 — het is precies het getal dat de nieuwe guard rapporteert,
+dus een afwijking hier zou toekomstige sessies op het verkeerde been zetten.
+
+## 69. Supabase Performance Advisor getoetst — welke meldingen een defect zijn en welke bewust blijven (#1211)
+
+> **Verhouding tot §68 (#1220).** Die paragraaf zet dezelfde linter (splinter) als CI-gate in,
+> maar **sluit precies de drie lintfamilies uit die hieronder behandeld worden** —
+> `unindexed_foreign_keys`, `unused_index` en `no_primary_key` — omdat ze contextafhankelijk zijn
+> en een verse CI-database geen gebruiksstatistiek heeft. Die uitsluiting en de analyse hieronder
+> zijn twee kanten van dezelfde conclusie: deze drie lints vragen een menselijk oordeel per geval,
+> niet een harde gate. Wat hieronder staat is dat oordeel, voor de run van 16 september 2026.
+
+De Supabase Performance Advisor meldde 22 bevindingen (alle INFO). Alle 22 zijn empirisch getoetst
+tegen het schema, de queries in `FunctionApp.Postgres/` en een lokale Postgres 17. **Twee waren een
+echt defect, één is een integriteitsprobleem dat de advisor als performanceprobleem labelt, en
+negentien zijn correct waargenomen maar vragen bewust géén actie.** Deze paragraaf legt vooral dat
+laatste vast: zonder die onderbouwing wordt bij elke volgende advisor-run dezelfde analyse opnieuw
+gedaan, of erger, wordt een index gedropt die juist nodig is.
+
+### De kernles: "unused index" is een waarneming, geen diagnose
+
+`ix_teamaliassen_club_genormaliseerd` werd gemeld als *unused index — candidate for removal*. De
+index was inderdaad nooit gebruikt, maar de voorgestelde remedie was precies verkeerd: hij was niet
+ongebruikt omdat de app stil is, maar omdat **geen enkele query hem kón gebruiken.**
+
+Migratie 003 legde hem aan op de kale kolom `(clubcode, ruwetekstgenormaliseerd)`. Migratie 007
+(#820, collatie-fix) zette daarna alle vergelijkingen op die kolom om naar `UPPER(...)` en zette
+`public.teams` en `teamaliassen.ruwetekst` wél om naar expressie-indexen — maar
+`ruwetekstgenormaliseerd` niet. Een gewone b-tree kan een predicaat `UPPER(kolom) = ...` niet
+bedienen, dus de index stond er sindsdien als pure schrijflast.
+
+Gemeten op 60.000 rijen, met de échte queryvorm uit `TeamCandidateRepository.cs:53` en
+`PlannerMatchRepository.cs:66` (een `OR` over `ruwetekst` en `ruwetekstgenormaliseerd`):
+
+| Geval | Vóór 024 | Na 024 |
+|---|---|---|
+| Geen treffer (meest voorkomende pad) | `Seq Scan`, 14,50 ms, 609 buffers, 60.000 rijen gefilterd | `BitmapOr` over beide expressie-indexen, 0,046 ms, 6 buffers |
+| Treffer achteraan de tabel | `Seq Scan`, 14,53 ms, 609 buffers | `BitmapOr`, 0,04 ms, 7 buffers |
+
+De `OR` is hier het interessante deel: Postgres kan hem alleen efficiënt afhandelen als **beide**
+takken een bruikbare index hebben. Zolang één tak onbruikbaar was, viel het hele predicaat terug op
+een volledige scan — de expressie-index op `ruwetekst` uit 007 leverde in deze query dus niets op.
+Dat verklaart waarom dit zo lang onzichtbaar bleef: de index uit 007 leek de zaak gedekt te hebben.
+
+Eén meetartefact, om verkeerde conclusies te voorkomen: bij een treffer vóór in de heap is de
+`Seq Scan` mét `LIMIT 1` juist sneller (0,015 ms), omdat hij direct kan stoppen. Dat is de gunstige
+uitzondering, niet de norm — bij teamherkenning is "geen gevalideerde alias gevonden" het normale
+pad, en dat is exact het geval dat de volledige scan afdwingt.
+
+**Regel hieruit:** een `UPPER()`/`LOWER()`-vergelijking in een query vereist een expressie-index op
+diezelfde uitdrukking. Wijzig je een vergelijking naar `UPPER(...)`, dan is het bijwerken van de
+bijbehorende index onderdeel van diezelfde wijziging — niet iets voor later.
+
+### Wat bewust niet gewijzigd is
+
+**Zeven "unused index"-meldingen: de feature draait nog niet.** `ix_sportlinkpublicmatchidcache_*`,
+`ix_sportlinkmutationaudit_*`, `ix_sportlinkcontractcheck_*` en `ix_knvbkalenderdag_datum` komen uit
+migraties 013–019 en horen bij de Sportlink Web Extension (epic #986), die nog niet in productie
+draait. Per index is gecontroleerd dat de query wél bij de indexvorm past — bijvoorbeeld
+`WHERE clubcode = @clubcode ORDER BY opgehaaldop DESC LIMIT 1` tegenover `(clubcode, opgehaaldop DESC)`.
+Twee ervan zijn bij #1122 juist toegevoegd om een groeiende volledige scan te voorkomen; droppen zou
+die fix terugdraaien. **Een advisor die "nooit gebruikt" meldt, kan niet zien dat een feature nog
+niet live is** — dat onderscheid moet altijd handmatig gemaakt worden.
+
+**`IX_matchdetails_clubcode`: nutteloos, maar droppen levert niets op.** In het vastgelegde
+deploymentmodel (§"Deployment-model" in `CLAUDE.md`) draait één primaire club per deployment, dus
+`clubcode` heeft in de praktijk één distinct waarde — lokaal geverifieerd: alle rijen in
+`his.matches` dezelfde waarde. Een index met die selectiviteit wordt nooit gekozen. Dat geldt even
+goed voor `IX_matches_clubcode` en `IX_teams_clubcode`, die de advisor níet noemde — reden te meer
+om hier niet selectief te gaan droppen. De winst is verwaarloosbaar, de kosten zijn schema-churn en
+een afwijking tussen de tiers.
+
+**Vier van de zes onindexeerde FK's: begrensde tabellen.** `veldbeschikbaarheid` (30 rijen) en
+`veldtraining` (0) zijn structureel begrensd door velden × dagen van de week (±63 rijen); een
+FK-index daarop kan per definitie nooit iets opleveren. De afweging bij een onindexeerde FK gaat
+**niet** over de omvang van de ouder maar over die van het kind: bij een `DELETE` op de ouder scant
+Postgres het kind per verwijderde rij. Daarom is `planner.geplandewedstrijden` (groeit per seizoen)
+wél meegenomen en zijn de twee begrensde configuratietabellen dat niet.
+
+**`no_primary_key` op `his.*` en `stg.*`: ontwerpkeuze.** De drie `his`-tabellen hebben elk al een
+unique index op hun business key (`UQ_matches_bk`, `UQ_teams_bk`, `UQ_matchdetails_bk`), dus de
+efficiëntiezorg is al ondervangen; een gedeclareerde PK zou cosmetisch zijn. De `stg`-tabellen
+worden elke run getruncate en bulk-geladen — een PK voegt daar alleen ingest-kosten toe.
+`public.season` heeft `ux_season_name`. Geen actie.
+
+### `public.appsettings` heeft géén enkele constraint — apart op te pakken
+
+De advisor meldt dit onder *no primary key / performance*. Met twee rijen is dat de verkeerde bril:
+het echte punt is dat `pg_constraint` voor deze tabel **nul rijen** teruggeeft — geen PK én geen
+unique op `clubcode`. Niets verhindert twee rijen met dezelfde `clubcode`, terwijl de code
+instellingen leest met `SELECT ... LIMIT 1`. Een dubbele rij geeft dan geen fout maar stilzwijgend
+de verkeerde configuratie — precies wat de regel "geen stille fallback" in `CLAUDE.md` wil
+voorkomen.
+
+Bewust niet in migratie 024 opgelost: een `CREATE UNIQUE INDEX` in een migratie die automatisch bij
+deploy draait (#1093) **faalt hard als productie al dubbele rijen heeft, en neemt dan de deploy
+mee** (§57). Dit vereist eerst een controle op de productiedatabase en is daarom een aparte,
+door de eigenaar bevestigde stap.
+
+### Over het query performance log
+
+Het log van dezelfde run bevatte geen aanknopingspunt voor tuning: de zwaarste queries zijn
+Supabase's eigen platformverkeer, niet de applicatie. `SELECT name FROM pg_timezone_names` (rol
+`authenticator`) is alleen al 41,9% van de totale databasetijd, de extensie-inventarisatie 17,6% en
+`pgbouncer.get_auth` 5,0%; samen met de catalogusqueries van PostgREST en het dashboard is dat het
+overgrote deel. Dat is dashboard- en connectiepooler-overhead. **Bij het lezen van een Supabase
+query-performance-log is de eerste vraag dus welke `rolname` een query uitvoert** — `authenticator`,
+`postgres`, `pgbouncer` en `supabase_admin` zijn platform, niet applicatie.
+
+## 70. De migratie-CLI meldt het exceptietype, niet de foutmelding — CI-uitvoer is publiek (#1225)
+
+`Database.Postgres.Cli` schreef bij een mislukte migratie `ex.Message` naar stderr. Sinds §57 draait
+die CLI in de job `db-migrate-postgres` van `deploy.yml`, en **de Actions-logs van deze repository
+zijn publiek**. GitHub maskeert uitsluitend de exacte, volledige waarde van een secret — niet een
+deelstring ervan die toevallig in een foutmelding staat. Een Npgsql-verbindingsfout luidt
+`Failed to connect to <host>:<poort>`; bij een authenticatiefout kan Npgsql ook de gebruikersnaam
+noemen, die bij de gehoste provider de projectidentificatie draagt. Alle drie zijn onderdelen van
+`POSTGRES_CONNECTION_STRING`.
+
+Gereproduceerd met een synthetische connectiestring. In de laatste 40 deploy-runs is de job nooit
+gefaald, dus dit was een openstaand lekpad, geen vastgesteld lek — maar precies dezelfde foutklasse
+als #1200, waar de Sportlink-clientId via een log-URL lekte.
+
+**Wat er nu gebeurt.** `Database.Postgres/MigratieFoutRapportage.cs` is de ene plek die een mislukte
+databasehandeling naar een consoleregel vertaalt: aanhef + stap + exceptietype, plus de SQLSTATE-code
+bij een `PostgresException`. `MigrationRunner.RunAsync` heeft daarvoor een optionele
+`onMigratieStart`-callback gekregen — de aanroeper weet zo wélk migratiebestand faalde zonder de
+exception te hoeven lezen of in te pakken (en zonder dat de bestaande exception-typen wijzigen,
+waar de integratietests op toetsen). `MigrationTools/SqlServerToPostgresCopy` gebruikt dezelfde
+helper; ook dat hulpmiddel opent verbindingen met host en wachtwoord erin, en zijn uitvoer belandt
+in de praktijk in een issue.
+
+**Waarom dit bruikbaar blijft om fouten mee te zoeken.** Bestandsnaam plus SQLSTATE wijzen de
+oorzaak aan: het bestand de SQL, de SQLSTATE de foutklasse (`42601` syntax, `42703` onbekende kolom,
+`23505` unique violation). De volledige melding staat in de databaselogs van de provider en is
+lokaal reproduceerbaar tegen een wegwerpcontainer.
+
+**Bewust niet gedaan: een conditionele variant** die de volledige melding wél schrijft zodra de
+omgeving aantoonbaar niet-publiek is. Een schakelaar die bepaalt of een secret in een log belandt,
+is één configuratiefout verwijderd van een lek; de altijd-veilige vorm kost hier niets dat niet
+elders terug te vinden is.
+
+**Geborgd in CI.** De job `pii-patterns` in `security-scan.yml` bevatte al de #1200-guard op
+`ILogger`-templates met een URL-placeholder. Die keek alleen naar `ILogger`, niet naar
+`Console.Error`/`Console.Out` — de reden dat dit pad langs de vorige controle kwam. De guard faalt
+nu ook op een `Console.Error.WriteLine`/`Console.WriteLine` met een geïnterpoleerde exception in
+productie-C# (testprojecten uitgezonderd, die noemen zo'n vorm juist letterlijk).
+
 
 ## Gerelateerd
 

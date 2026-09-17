@@ -231,6 +231,70 @@ public class FeedbackFunctionPiiGateTests
         github.AantalAanroepen.Should().Be(1);
     }
 
+    // ── Voorbeeld vóór publicatie (#1205) ──────────────────────────────────────
+
+    [Fact]
+    public async Task PreviewCoreAsync_SchoneInvoer_GeeftTitelEnBodyTerugZonderTePubliceren()
+    {
+        var dto = MaakSchoonRequest();
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+        var github = new FakeGitHubIssueCreator();
+
+        var result = await FeedbackFunction.PreviewCoreAsync(dto, fake, NullLogger.Instance);
+
+        result.Should().BeOfType<OkObjectResult>();
+        fake.AantalAanroepen.Should().Be(1);
+        github.AantalAanroepen.Should().Be(0, "een voorbeeld maakt per definitie geen issue aan");
+    }
+
+    [Fact]
+    public async Task PreviewCoreAsync_PiiInInvoer_WordtGeweigerdMetZelfdeStatusAlsPublicatie()
+    {
+        // Een voorbeeld mag geen ontsnappingsroute langs de PII-gate zijn: dezelfde 422 als submit.
+        var dto = MaakSchoonRequest();
+        dto.Beschrijving = $"De pagina laadt niet; mail mij op {PiiMarker}.";
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+
+        var result = await FeedbackFunction.PreviewCoreAsync(dto, fake, NullLogger.Instance);
+
+        AssertGeblokkeerd(result);
+        fake.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task PreviewCoreAsync_OngeldigType_WordtGeblokkeerdZonderAiAanroep()
+    {
+        var dto = MaakSchoonRequest();
+        dto.Type = "Onbekend";
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+
+        var result = await FeedbackFunction.PreviewCoreAsync(dto, fake, NullLogger.Instance);
+
+        AssertOngeldigType(result);
+        fake.AantalAanroepen.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SubmitCoreAsync_BevestigdeVeldenMetPii_WordtAlsnogGeblokkeerdVoorGitHub()
+    {
+        // De bevestigde velden komen van de client; de PII-gate draait er onverkort overheen.
+        var dto = MaakSchoonRequest();
+        dto.Bevestiging = new FeedbackBevestiging
+        {
+            Titel = "Veldenpagina laadt niet",
+            Samenvatting = $"Neem contact op via {PiiMarker}.",
+            Acceptatiecriteria = [],
+        };
+        var fake = new FakeChatClient(GeldigeAiStructuurJson());
+        var github = new FakeGitHubIssueCreator();
+
+        var result = await FeedbackFunction.SubmitCoreAsync(dto, fake, github.MaakAsync, NullLogger.Instance);
+
+        AssertGeblokkeerd(result);
+        fake.AantalAanroepen.Should().Be(0, "bevestigde velden vervangen de AI-aanroep");
+        github.AantalAanroepen.Should().Be(0);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static void AssertGeblokkeerd(IActionResult result)

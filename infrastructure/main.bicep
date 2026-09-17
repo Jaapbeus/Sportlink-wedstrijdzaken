@@ -56,6 +56,33 @@ param tenantId string = ''
 @description('Entra ID client ID van de App Registration — via GitHub Variable AZURE_AD_CLIENT_ID. Leeg = Easy Auth niet declaratief geconfigureerd.')
 param clientId string = ''
 
+// ── Flex Consumption-migratie (epic #1063, FLEX-04) ─────────────────────────────
+// deployFlexApp staat standaard op false: dit is de FLEX-05-kostengate. Alleen op true zetten
+// (via een los --parameters deployFlexApp=true, nooit in dit bestand) na expliciete
+// bevestiging van de eigenaar, en alleen voor een echte `deployment group create`. Voor
+// `what-if` (FLEX-04) mag de conditie tijdelijk true zijn — what-if wijzigt niets.
+@description('Nieuwe Flex Consumption Function App uitrollen? Alleen true na expliciete kostengoedkeuring eigenaar (FLEX-05).')
+param deployFlexApp bool = false
+
+@description('Naam van de NIEUWE Flex Consumption Function App — bijv. func-<clubcode>-sportlink-flex')
+param flexFunctionAppName string = ''
+
+@description('Naam van het NIEUWE App Service Plan (Flex Consumption, SKU FC1)')
+param flexAppServicePlanName string = ''
+
+@description('Instance-geheugen (MB) voor de Flex-app — zie modules/function-app-flex.bicep voor de onderbouwing van de default (2048)')
+@allowed([
+  512
+  2048
+  4096
+])
+param flexInstanceMemoryMB int = 2048
+
+@description('Maximaal aantal on-demand instances voor de Flex-app — bewust laag, Flex kent geen automatische kostenrem')
+@minValue(1)
+@maxValue(1000)
+param flexMaximumInstanceCount int = 5
+
 // ── Modules ──────────────────────────────────────────────────────────────────
 
 module functionApp 'modules/function-app.bicep' = {
@@ -90,7 +117,28 @@ module monitoring 'modules/monitoring.bicep' = if (deployMonitoring) {
   }
 }
 
+// Flex Consumption-app (epic #1063) — alleen uitgerold als deployFlexApp=true (FLEX-05-kostengate).
+// De bestaande functionApp-module hierboven blijft ongewijzigd: in-place migratie naar Flex
+// bestaat niet, dus dit is een aparte, nieuwe resource naast de bestaande app.
+module functionAppFlex 'modules/function-app-flex.bicep' = if (deployFlexApp) {
+  name: 'function-app-flex'
+  params: {
+    location: location
+    flexFunctionAppName: flexFunctionAppName
+    flexAppServicePlanName: flexAppServicePlanName
+    storageAccountName: storageAccountName
+    instanceMemoryMB: flexInstanceMemoryMB
+    maximumInstanceCount: flexMaximumInstanceCount
+    appInsightsConnectionString: appInsightsConnectionString
+    sqlConnectionString: sqlConnectionString
+    tenantId: tenantId
+    clientId: clientId
+  }
+}
+
 // ── Outputs ──────────────────────────────────────────────────────────────────
 
 output functionAppUrl string = 'https://${functionApp.outputs.functionAppDefaultHostname}'
 output staticWebAppUrl string = 'https://${staticWebApp.outputs.staticWebAppDefaultHostname}'
+var flexFunctionAppHostname = functionAppFlex.?outputs.?flexFunctionAppDefaultHostname
+output flexFunctionAppUrl string = flexFunctionAppHostname == null ? '' : 'https://${flexFunctionAppHostname}'

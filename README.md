@@ -145,7 +145,7 @@ Beveiligingsprotocol: [SECURITY.md](SECURITY.md)
 
 ## AVG / Privacy
 
-Deze applicatie verwerkt persoonsgegevens van clubleden (namen, e-mailadressen, telefoonnummers van teamleiders en trainers). Dit zijn bijzondere gegevens onder de AVG/GDPR.
+Deze applicatie verwerkt persoonsgegevens van clubleden (namen, e-mailadressen, telefoonnummers van teamleiders en trainers). Dit zijn gewone persoonsgegevens onder de AVG (artikel 4 lid 1) — deels van minderjarigen, wat extra zorgvuldigheid vraagt. Zie [SECURITY.md](SECURITY.md) voor de classificatie en de datalekprocedure.
 
 Het project is zo gebouwd dat:
 - Persoonsgegevens **nooit** in git belanden (meerdere onafhankelijke beveiligingslagen)

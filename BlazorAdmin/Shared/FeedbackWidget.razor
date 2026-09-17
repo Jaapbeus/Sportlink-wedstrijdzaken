@@ -79,10 +79,13 @@
                     </div>
                     <div class="modal-body">
                         <div class="alert alert-warning py-2 small mb-3">
-                            ⚠️ Voeg geen persoonsgegevens toe (e-mailadressen, telefoonnummers). Feedback wordt gepubliceerd als GitHub issue.
+                            ⚠️ Deze melding wordt <strong>openbaar op internet</strong> gepubliceerd als GitHub-issue —
+                            iedereen kan hem lezen. Voeg geen persoonsgegevens toe (namen, adressen, geboortedata,
+                            e-mailadressen, telefoonnummers) en geen wachtwoorden of sleutels.
                         </div>
                         <p class="text-muted small mb-3">
-                            Dit wordt als melding doorgestuurd naar de ontwikkelaar als GitHub issue.
+                            In de volgende stap ziet u de volledige tekst zoals die gepubliceerd wordt,
+                            en bevestigt u zelf of die openbaar mag.
                         </p>
                         <dl class="row mb-0 small">
                             <dt class="col-4">Type</dt>
@@ -113,7 +116,47 @@
                         <button class="btn btn-success" disabled="@_bezig" @onclick="VersturenAsync">
                             @if (_bezig)
                             { <span class="spinner-border spinner-border-sm me-1"></span> }
-                            Versturen
+                            Voorbeeld bekijken →
+                        </button>
+                    </div>
+                }
+
+                else if (_stap == Stap.Voorbeeld)
+                {
+                    <div class="modal-header">
+                        <h5 class="modal-title">Zo wordt uw melding gepubliceerd</h5>
+                        <button type="button" class="btn-close" @onclick="Sluit"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger py-2 mb-3">
+                            <strong>⚠️ Dit wordt openbaar op internet gepubliceerd</strong> als GitHub-issue —
+                            iedereen kan het lezen, ook zonder account. Controleer hieronder woord voor woord of
+                            er geen namen, adressen, geboortedata, lidnummers, wachtwoorden of andere
+                            persoonsgegevens in staan.
+                        </div>
+
+                        <label class="form-label fw-semibold small mb-1">Titel van het issue</label>
+                        <p class="border rounded bg-light p-2 small mb-3">@_voorbeeldTitel</p>
+
+                        <label class="form-label fw-semibold small mb-1">Volledige tekst van het issue</label>
+                        <pre class="border rounded bg-light p-2 small mb-2"
+                             style="max-height:18rem; overflow:auto; white-space:pre-wrap; word-break:break-word;">@_voorbeeldBody</pre>
+                        <p class="text-muted small mb-0">
+                            Alleen het tijdstip in de tabel wordt bij publiceren op het publicatiemoment gezet;
+                            de rest is exact de tekst hierboven.
+                        </p>
+
+                        @if (_foutmelding != null)
+                        {
+                            <div class="alert alert-danger py-2 mt-2">@_foutmelding</div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" @onclick="TerugNaarFormulier">← Aanpassen</button>
+                        <button class="btn btn-danger" disabled="@_bezig" @onclick="PublicerenAsync">
+                            @if (_bezig)
+                            { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Openbaar publiceren
                         </button>
                     </div>
                 }
@@ -156,7 +199,14 @@
     private int _issueNummer;
     private string _issueUrl = "";
 
-    private enum Stap { Formulier, Overzicht, Bevestiging }
+    // Het voorbeeld dat de beheerder te zien krijgt vóór publicatie (#1205). De AI-velden worden bij
+    // het publiceren onveranderd teruggestuurd, zodat er exact gepubliceerd wordt wat hier stond —
+    // een tweede AI-aanroep op de server zou andere tekst opleveren.
+    private string _voorbeeldTitel = "";
+    private string _voorbeeldBody = "";
+    private FeedbackBevestiging? _bevestiging;
+
+    private enum Stap { Formulier, Overzicht, Voorbeeld, Bevestiging }
 
     private async Task OpenAsync()
     {
@@ -167,6 +217,9 @@
         _vragen = [];
         _antwoorden = [];
         _foutmelding = null;
+        _voorbeeldTitel = "";
+        _voorbeeldBody = "";
+        _bevestiging = null;
 
         // Geen JS eval() gebruiken: de productie-CSP staat alleen 'wasm-unsafe-eval' toe, waardoor
         // eval() een EvalError gooit en de hele widget crasht. Pathname komt uit NavigationManager,
@@ -258,19 +311,64 @@
         }
     }
 
+    /// <summary>
+    /// Haalt het voorbeeld op — publiceert nog niets. De beheerder krijgt de volledige, uiteindelijke
+    /// tekst te zien en bevestigt daarna pas dat die openbaar mag (#1205).
+    /// </summary>
     private async Task VersturenAsync()
     {
         _bezig = true;
         _foutmelding = null;
 
+        var result = await Api.PreviewFeedbackAsync(BouwRequest());
+
+        _bezig = false;
+
+        if (!result.Success)
+        {
+            _foutmelding = result.ErrorMessage ?? "Voorbeeld ophalen mislukt. Probeer het opnieuw.";
+            return;
+        }
+
+        _voorbeeldTitel = result.Data!.Titel;
+        _voorbeeldBody = result.Data.Body;
+        _bevestiging = new FeedbackBevestiging
+        {
+            Titel = result.Data.Titel,
+            Samenvatting = result.Data.Samenvatting,
+            Acceptatiecriteria = result.Data.Acceptatiecriteria
+        };
+        _stap = Stap.Voorbeeld;
+    }
+
+    private void TerugNaarFormulier()
+    {
+        // De ingevulde tekst blijft staan: _beschrijving, _vragen en _antwoorden worden niet gewist.
+        _stap = Stap.Formulier;
+        _foutmelding = null;
+        _bevestiging = null;
+        _voorbeeldTitel = "";
+        _voorbeeldBody = "";
+    }
+
+    /// <summary>
+    /// De bewuste publicatiestap: stuurt de in het voorbeeld getoonde velden terug, zodat exact díe
+    /// tekst openbaar wordt (#1205). De server past de PII-gate onverkort opnieuw toe.
+    /// </summary>
+    private async Task PublicerenAsync()
+    {
+        _bezig = true;
+        _foutmelding = null;
+
         var request = BouwRequest();
+        request.Bevestiging = _bevestiging;
         var result = await Api.SubmitFeedbackAsync(request);
 
         _bezig = false;
 
         if (!result.Success)
         {
-            _foutmelding = result.ErrorMessage ?? "Indienen mislukt. Probeer het opnieuw.";
+            _foutmelding = result.ErrorMessage ?? "Publiceren mislukt. Probeer het opnieuw.";
             return;
         }
 

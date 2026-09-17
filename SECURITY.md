@@ -73,19 +73,82 @@ Vóór `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`:
 
 **Eén twijfel = niet publiceren. Gebruik placeholders en sla de echte waarde op in memory (nooit publiek).**
 
+- **Actions-logs en build-artefacten van een publieke repository zijn óók publiek.** GitHub drukt
+  step-`env:`-waarden en ingevulde `${{ }}`-expressies letterlijk in de joblog af, en maskeert
+  alleen secrets. Club-identificerende configuratie (Function App-naam en -URL, SWA-hostname,
+  Entra tenant-/client-ID, post-logout-URL) hoort daarom in **GitHub Secrets**, niet in Variables —
+  zie `docs/DEVELOPER-SETUP.md` §9.2 (#1204).
+
+### De feedbackwidget publiceert óók naar diezelfde publieke repository (#1205)
+
+De FEEDBACK-knop in de Admin GUI maakt een GitHub-issue aan in deze repository. Alles hierboven
+geldt daar onverkort voor — met één verschil: de tekst wordt niet door een ontwikkelaar getypt maar
+door een clubbeheerder, in vrije tekst, vaak zonder besef dat GitHub openbaar op internet staat.
+
+**De regexdetectie in `Planner.Shared/Feedback/FeedbackCore.cs` (`BevatPii`) is een vangnet, geen
+anonimisering.** Ze draait twee keer — op de verzamelde invoer vóór elke AI-aanroep, en op de
+uiteindelijke titel + body vlak vóór de GitHub-write — maar herkent uitsluitend **e-mailadressen en
+Nederlandse telefoonnummers**. Expliciet restrisico, dat door geen enkele laag in de code wordt
+afgedekt:
+
+| Niet herkend | Waarom het erdoor glipt |
+|---|---|
+| Namen van personen | Niet van gewone woorden te onderscheiden met een patroon |
+| Adressen, woonplaatsen, postcodes | Idem; een postcodepatroon zou vooral vals alarm geven |
+| Geboortedata en leeftijden | Een datum is op zichzelf niet identificerend |
+| Lidnummers, relatiecodes, andere ID's | Vormvrij en clubafhankelijk |
+| Wachtwoorden, tokens, API-sleutels, connectiestrings | Geen vaste vorm; de gitleaks-regels gelden voor bestanden in git, niet voor deze invoer |
+| Buitenlandse telefoonnummers | De regex dekt alleen het Nederlandse formaat |
+
+Daarom is de publicatiegrens sinds #1205 **een bewuste handeling van de beheerder**, niet een
+automatische controle: `POST /api/feedback/preview` stelt de exacte titel + body samen en geeft die
+terug zonder iets aan te maken, de widget toont die letterlijk met de waarschuwing dat GitHub
+openbaar op internet staat, en pas een expliciete bevestiging leidt tot `POST /api/feedback/submit`.
+De bevestiging stuurt de getoonde AI-velden terug zodat er exact gepubliceerd wordt wat er op het
+scherm stond — een tweede AI-aanroep zou andere tekst opleveren en het voorbeeld tot een gok maken.
+Dat is veilig omdat beide endpoints achter `RequireAdmin` zitten en dezelfde beheerder via het veld
+`Beschrijving` sowieso al willekeurige tekst in de body krijgt. De client wordt op dat punt
+desondanks niet vertrouwd: de teruggestuurde velden gaan door **dezelfde sanitizer en dezelfde
+lengte- en aantalgrenzen** als alle andere tekst in de body (samenvatting afgekapt, maximaal vijf
+acceptatiecriteria), en beide PII-gates draaien onverkort op de uiteindelijke, samengestelde body.
+
+**Regel bij wijzigingen aan dit pad:** maak nooit een route die publiceert zonder dat de beheerder
+de uiteindelijke tekst heeft gezien, en presenteer de PII-gate in geen enkel scherm of document als
+een garantie dat er geen persoonsgegevens meer in staan.
+
 ---
 
 ## Achtergrond: wat er in dit project op het spel staat
 
-Deze repository koppelt aan Sportlink Club en verwerkt persoonsgegevens van leden van voetbalverenigingen: namen, e-mailadressen, telefoonnummers en geboortedatums van trainers, leiders en overige stafleden. Dit zijn bijzondere gegevens onder de AVG/GDPR.
+Deze repository koppelt aan Sportlink Club en verwerkt persoonsgegevens van leden van voetbalverenigingen: namen, e-mailadressen, telefoonnummers en geboortedatums van trainers, leiders en overige stafleden. Dit zijn **gewone persoonsgegevens** in de zin van de AVG (artikel 4 lid 1) — geen bijzondere categorie. Dat maakt ze niet vrijblijvend: ze zijn direct herleidbaar tot een persoon, en twee aspecten verhogen het risico:
+
+- **Gegevens van minderjarigen.** Bij jeugdteams gaat het om kinderen. Overweging 38 van de AVG bepaalt dat kinderen specifieke bescherming verdienen. Dat maakt hun gegevens géén bijzondere categorie, maar het weegt wel zwaarder mee in elke risicobeoordeling — ook bij een datalek.
+- **Vrije tekst in e-mails en feedback.** Een afmelding kan een blessure of ziekte noemen; dat is dan wél een gezondheidsgegeven. Dit is niet vooraf te filteren. Daarom de harde regel: **inhoud van berichten nooit loggen, nooit in een issue plakken, nooit publiceren.**
+
+**Bijzondere categorieën (AVG artikel 9)** zijn gegevens over ras of etnische afkomst, politieke opvattingen, religieuze of levensbeschouwelijke overtuigingen, vakbondslidmaatschap, genetische en biometrische gegevens, gezondheid, en seksueel gedrag of seksuele gerichtheid — deze worden **door het ontwerp heen niet verwerkt**; er is geen veld, tabel of scherm voor.
+**Strafrechtelijke gegevens (AVG artikel 10)** zijn gegevens over strafbare feiten, veroordelingen en daarmee samenhangende veiligheidsmaatregelen — ook die worden **niet verwerkt**.
 
 Een datalek in deze repository kan betekenen:
 - Persoonsgegevens van tientallen tot honderden clubleden komen openbaar op internet
-- De vereniging is meldplichtig bij de Autoriteit Persoonsgegevens (binnen 72 uur)
-- Reputatieschade voor de vereniging en betrokken personen
-- Mogelijk boetes tot 4% van de jaaromzet (AVG artikel 83)
+- Reputatieschade voor de vereniging en de betrokken personen
+- Een meldings- en documentatieplicht voor de vereniging (zie hieronder)
+- In het uiterste geval een boete: AVG artikel 83 lid 5 kent boetes tot € 20 miljoen of 4% van de wereldwijde jaaromzet, waarbij het hoogste bedrag geldt. Voor een vereniging weegt de Autoriteit Persoonsgegevens proportionaliteit mee — omvang, ernst en de getroffen maatregelen tellen.
 
 Elke beveiligingsmaatregel in dit document is er om dit te voorkomen.
+
+### Datalek: risicogestuurde triage
+
+Een datalek is niet automatisch een melding. Wat er moet gebeuren hangt af van het risico voor de betrokkenen. Werk deze stappen in volgorde af:
+
+1. **Feiten vastleggen.** Wat is er gebeurd, wanneer is het ontdekt, welke gegevens zijn geraakt, hoeveel betrokkenen, wat is de oorzaak, en welke containment is al uitgevoerd (secret ingetrokken, repository privé gezet, toegang geblokkeerd).
+2. **Risico voor betrokkenen beoordelen.** Aard en gevoeligheid van de gegevens, omvang, herleidbaarheid tot personen, kwetsbare groepen (minderjarigen), en de mogelijke gevolgen — van ongewenste benadering tot identiteitsfraude.
+3. **Verantwoordelijke aanwijzen.** De vereniging is verwerkingsverantwoordelijke. Het bestuur of de AVG-contactpersoon neemt het besluit over melden, en dat besluit wordt vastgelegd — ook als de uitkomst "niet melden" is.
+4. **Melding aan de Autoriteit Persoonsgegevens (artikel 33).** Zonder onredelijke vertraging en waar mogelijk binnen 72 uur na kennisname, tenzij het niet waarschijnlijk is dat de inbreuk een risico voor de betrokkenen inhoudt. Wordt er later dan 72 uur gemeld, leg dan de reden van de vertraging vast.
+5. **Betrokkenen informeren (artikel 34).** Zonder onredelijke vertraging wanneer de inbreuk waarschijnlijk een **hoog** risico voor hen inhoudt. Artikel 34 lid 3 kent drie uitzonderingen: de gegevens zijn onbegrijpelijk gemaakt voor onbevoegden (bijvoorbeeld versleuteld), het hoge risico is inmiddels weggenomen door maatregelen achteraf, of individueel informeren vergt een onevenredige inspanning — dan volgt een openbare mededeling.
+6. **Verwerkersrol.** Wie de installatie namens de club beheert — een externe ontwikkelaar of een hostende partij — is verwerker en meldt niet zelf aan de Autoriteit Persoonsgegevens, maar informeert de vereniging zonder onredelijke vertraging (artikel 33 lid 2). Leg dit vast in de verwerkersovereenkomst.
+7. **Register bijhouden.** Documenteer elke inbreuk — ook een niet-gemelde — met de feiten, de gevolgen en de getroffen maatregelen (artikel 33 lid 5). Dat register is wat de toezichthouder opvraagt als hij controleert of de afweging klopte.
+
+Bronnen: [AVG (Verordening (EU) 2016/679)](https://eur-lex.europa.eu/eli/reg/2016/679) en de [EDPB Guidelines 9/2022 over datalekmelding](https://www.edpb.europa.eu/documents/guideline/guidelines-92022-on-personal-data-breach-notification-under-gdpr_en).
 
 ---
 
@@ -123,6 +186,16 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 
 De **Security Gate** is de finale poortwachter. Zolang die rood is, is merge naar `main` geblokkeerd.
 
+**Op welke events de Security Scan draait (#1202):** `push` naar élke branch, én `pull_request`
+naar `main` en naar `develop` — die twee branches staan letterlijk zo in de `on:`-sectie van
+`.github/workflows/security-scan.yml`. Beide branches hebben branch protection die de check
+`Security Gate — blokkeert merge bij fout` verplicht stelt, dus documentatie, workflow-trigger en
+branch protection zeggen bewust alle drie hetzelfde. **De `pull_request`-trigger is niet optioneel
+naast de `push`-trigger:** een PR uit een fork levert géén push-event in deze repository op, dus
+zonder die trigger zou de verplichte check daar nooit verschijnen (de PR kan dan niet mergen) en
+zou de merge-context nooit upstream gescand worden. Wijzigt de branch-strategie of een doelbranch,
+werk dan de trigger en deze alinea in dezelfde PR bij.
+
 **Dependency Vulnerability Scan — dekking (#1126):** een kale `.csproj` is voor Trivy geen
 ondersteund NuGet-manifest. De job genereert daarom zelf per project een `packages.lock.json`
 (`dotnet restore -p:RestorePackagesWithLockFile=true`, inclusief transitieve pakketten) vóórdat
@@ -154,6 +227,15 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 - E-mailadressen (afzender, ontvanger)
 - Onderwerpregels van emails
 - Emailinhoud, AI-classificatieresultaten
+- Sportlink-request-URL's (bevatten de clientId als queryparameter) — log het endpoint en de
+  wedstrijdcode, nooit de volledige URL. De CI-job `PII Pattern Scan (AVG/GDPR)` blokkeert een
+  logtemplate met een URL-placeholder (#1200).
+- Exception-teksten in CI-uitvoer. De uitvoer van een GitHub Actions-job van een publieke
+  repository is zelf publiek, en GitHub maskeert alleen de exacte, volledige waarde van een
+  secret — niet een deelstring ervan in een foutmelding (een databasefout noemt host, poort of
+  gebruikersnaam). Meld daar het exceptietype en de stap, nooit `ex.Message`; zie
+  `Database.Postgres/MigratieFoutRapportage.cs`. Dezelfde CI-job blokkeert een
+  `Console.Error.WriteLine` met een geïnterpoleerde exception (#1225).
 
 **Wat WEL wordt gelogd:**
 - MessageId (technische Graph API identifier, geen PII)

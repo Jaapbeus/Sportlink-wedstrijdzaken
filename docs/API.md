@@ -39,7 +39,9 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `GET/POST/PUT/DELETE` | `/beheer/teamregels` en `/{id}` | **Admin** | Planningsregels per team (bijv. buffertijd) |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
 | `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
-| `POST` | `/feedback/validate` / `/feedback/submit` | Anoniem | Feedback-widget: voorvalidatie resp. indienen als GitHub-issue |
+| `POST` | `/feedback/validate` | Anoniem | Feedback-widget: voorvalidatie op volledigheid |
+| `POST` | `/feedback/preview` | Anoniem | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
+| `POST` | `/feedback/submit` | Anoniem | Feedback-widget: publiceren als **openbaar** GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd |
 | `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
 | `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
