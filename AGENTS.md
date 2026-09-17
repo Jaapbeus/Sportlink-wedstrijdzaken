@@ -397,6 +397,22 @@ Deze regels gelden altijd, zonder uitzondering:
 
    Vermelding in issue/PR van gevoelige data is **niet terugdraaibaar** — GitHub bewaard edit-history en de data verschijnt in externe caches (Google, archive.org) binnen minuten.
 
+   **Een tekst zonder echte waarden kan nog steeds een vindaanwijzing zijn.** De lijst hierboven is
+   waarde-georiënteerd; hij vangt niet de tekst die vertelt *waar* iets te halen valt. Van een
+   **nog niet verholpen** bevinding horen de bevestigde status, de omvang, het tijdvenster en de
+   vindplaats daarom **niet** in een publieke issue, ook niet als er geen enkele waarde in staat en
+   ook niet als die vindplaats zelf afgeschermd is. Benoem de klasse en het codepad; de rest gaat
+   naar de besloten notitie tot het risico weg is.
+
+   Dit is bij de ronde van september één keer misgegaan, en juist niet door slordigheid: de tekst
+   kwam met zes keer "nee" langs de volledige controleplicht. Volledige onderbouwing en de drie
+   extra controlevragen: `SECURITY.md`, "Tweede controle: exploiteerbaarheid".
+
+   **Let extra op bij verzamelissues.** Een issue dat openstaande acties bundelt zodat ze
+   opvraagbaar zijn zonder chatsessie is nuttig, maar trekt bevindingen uit besloten onderzoek naar
+   een publieke plek. Zo'n issue mag **verwijzen** naar de besloten notitie, nooit de inhoud ervan
+   herhalen.
+
 5. **De Security Gate job is leidend.** Zolang `Security Gate — blokkeert merge bij fout` rood is, mag er niets gemerged worden — ook al zijn andere checks groen.
 
 6. **Elke sessie begint op een geïsoleerde branch — volledig autonoom geregeld.** Voer bij sessiestart altijd Stap S0 uit (zie "Sessie-isolatie" hierboven). Zit je op `main` of detached HEAD? Maak direct autonoom een branch aan — nooit vragen aan de gebruiker, nooit wachten, nooit een bestandswijziging vóór de branch bestaat. Issue-nummer bepaal je uit de conversatiecontext of via `gh issue list`; ontbreekt een passend issue, maak er dan zelf één aan.
