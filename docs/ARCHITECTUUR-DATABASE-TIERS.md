@@ -3449,10 +3449,19 @@ query een `date`-kolom rechtstreeks selecteren, dan wijzigt de JSON van `"2026-0
 naar `"2026-09-15"` — een contractwijziging die de Admin GUI raakt. Houd `to_char` aan.
 
 **TLS.** Npgsql 10 valideert servercertificaten alleen nog tegen root-CA's (gelijk aan libpq). Dat
-raakt uitsluitend `VerifyCA`/`VerifyFull`; productie draait op `Require` (zie §57) en is dus
-ongewijzigd. Bij het uitvoeren van de nog openstaande stap naar
-`?sslmode=verify-full&sslrootcert=...` is dit wél relevant: het opgegeven bestand moet de **root**-CA
-bevatten, niet alleen een tussenliggend certificaat.
+raakt uitsluitend `VerifyCA`/`VerifyFull`.
+
+> **Bijgewerkt bij #1236.** Deze alinea stelde dat productie op `Require` draait en daarom
+> ongewijzigd is, met `verify-full` als "nog openstaande stap". Allebei achterhaald: sinds
+> v3.4.1.0 draait productie op **`verify-ca`** mét de meegeleverde CA (#1187, zie §50), en
+> `verify-full` is op het pooler-endpoint **onhaalbaar** — dat certificaat heeft alleen een CN
+> (`*.pooler.…`) en geen SubjectAltName, waar `verify-full` juist tegen valideert. Dit is dus geen
+> openstaande stap maar een gesloten afweging.
+>
+> Gevolg voor Npgsql 10: omdat productie op `VerifyCA` staat, is de root-CA-eis **wél** van
+> toepassing. Het bestand waar `sslrootcert` naar wijst moet de **root**-CA bevatten, niet alleen
+> een tussenliggend certificaat. Het meegeleverde `FunctionApp.Postgres/prod-ca-2021.crt` voldoet
+> daaraan; controleer dit opnieuw zodra de provider zijn CA vernieuwt (geldig tot 2031-04-26).
 
 ## 64. `his.matches`/`his.teams` reconciliëren nu na elke sync — Sportlink is de waarheid (#1193)
 
@@ -3958,6 +3967,26 @@ aantoonbaar betrouwbaar — en behandel een lege resultaatset uit een applicatie
 De MCP-sessie verscheen in `pg_stat_activity` als extra verbinding. Dat is geen ruis maar een
 bruikbaar detail: het bevestigt dat de read-only verbinding daadwerkelijk tot stand kwam, en het
 verklaart waarom het aantal verbindingen tijdens een controle één hoger ligt dan erbuiten.
+
+## §-verwijzingen in migratiekoppen — vertaaltabel (#1236)
+
+> **Migratiebestanden worden nooit achteraf gewijzigd.** `MigrationRunner` legt per bestand een
+> SHA-256 vast en weigert een bestand dat al is toegepast maar sindsdien is gewijzigd; dat zou elke
+> volgende migratie op bestaande databases blokkeren (zie §53 en de checksum-guard in `build.yml`).
+> De §-nummers in hun koppen verwijzen daarom naar de nummering zoals die gold op het moment van
+> schrijven. Dit document is sindsdien hernummerd. Gebruik deze tabel:
+
+| Migratie | Kop verwijst naar | Bedoelde sectie nu |
+|---|---|---|
+| `021_enable_row_level_security.sql` | §64 | **§65** — RLS alsnog ingeschakeld, #985 had een onvolledig dreigingsmodel |
+| `022_revoke_public_execute_rls_auto_enable.sql` | §65 | **§66** — `rls_auto_enable()`, een vangnet blijkt geen overbodig artefact |
+| `023_revoke_anon_authenticated_rls_auto_enable.sql` | §66/§67 | **§66 en §67** — klopt nog; §67 is de tweede poging (de PUBLIC-grant was niet de enige) |
+| `024_index_tuning_performance_advisor.sql` | §69, §57 | **§69** klopt (Performance Advisor getoetst); **§57** klopt (migratie die de vorige code breekt) |
+
+**Voorkom dat dit opnieuw ontstaat:** verwijs in nieuwe migratiekoppen niet naar een §-nummer maar
+naar de **titel** van de sectie, eventueel met het issuenummer erbij. Een titel overleeft een
+hernummering, een nummer niet. Dus `zie "Row-Level Security alsnog ingeschakeld" (#1198)` in plaats
+van `zie §65`.
 
 ## Gerelateerd
 

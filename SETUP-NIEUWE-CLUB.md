@@ -105,7 +105,12 @@ az sql db create \
 
 **Optie B — Postgres (bijv. Supabase free tier):** maak een nieuw project aan bij je gekozen
 Postgres-provider en noteer de connectiestring — die gaat in `PostgresConnectionString` (zie §5c).
-Zorg voor `sslmode=verify-full` in de connectiestring (zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`).
+Zet `sslmode=verify-ca` in de connectiestring, mét `sslrootcert` dat naar het CA-certificaat van je
+provider wijst. **Niet `verify-full`**, hoe verleidelijk dat ook klinkt: bij Supabase biedt het
+pooler-endpoint een certificaat zonder SubjectAltName aan, en `verify-full` valideert de hostnaam
+juist tegen die SAN — de verbinding faalt dan. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 en
+issue #1187. Verbind je rechtstreeks (niet via de pooler), dan kan `verify-full` wél; controleer dat
+dan eerst tegen je eigen endpoint.
 
 ### 2c. Azure Static Web Apps (Free tier)
 
