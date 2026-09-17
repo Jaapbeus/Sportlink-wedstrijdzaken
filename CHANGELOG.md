@@ -18,6 +18,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **De instellingen van de club konden stilzwijgend dubbel in de database staan, waarna de
+  applicatie willekeurig één van de twee gebruikte (#1218).** De tabel met clubinstellingen had
+  geen enkele regel die dat tegenhield. Bij twee regels voor dezelfde club koos het systeem er
+  simpelweg één — zonder foutmelding, zonder waarschuwing. Je zou dat pas merken aan gedrag dat
+  niet klopt met wat er in het beheerscherm staat. De database weigert zo'n tweede regel nu.
+  Gecontroleerd vóór het doorvoeren: de productiedatabase bevat twee regels met twee verschillende
+  clubs, dus er viel niets op te ruimen. Staan er op een andere installatie wél dubbelen, dan stopt
+  de bijwerking met een melding die vertelt om welke club het gaat, in plaats van half werk af te
+  leveren.
+
 ## [3.5.0.0] — 2026-09-17
 
 ### Security
