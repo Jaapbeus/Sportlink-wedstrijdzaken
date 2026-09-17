@@ -3883,6 +3883,82 @@ nu ook op een `Console.Error.WriteLine`/`Console.WriteLine` met een geïnterpole
 productie-C# (testprojecten uitgezonderd, die noemen zo'n vorm juist letterlijk).
 
 
+## 71. Eerste geauthenticeerde MCP-run — nulmeting, en de RLS-vraag die hij deels beantwoordt (#1234)
+
+Op **2026-09-17**, kort na release v3.5.0.0, is `/supabase-check` voor het eerst met een echt token
+tegen productie gedraaid (#1222 leverde de configuratie; #1234 de run). Vijftien MCP-aanroepen,
+read-only en project-scoped. Uitkomst: **geen bevindingen**.
+
+Dit is de nulmeting waartegen elke volgende run zich laat afzetten. Zonder vastgelegde nulmeting is
+"het aantal is gestegen" over een paar weken niet vast te stellen.
+
+### Nulmeting 2026-09-17
+
+| Signaal | Waarde |
+|---|---|
+| Advisors | Uitsluitend INFO. Geen ERROR, geen WARN — dus ook niets voor de baseline |
+| `rls_enabled_no_policy` | 29 tabellen — dat *is* de architectuur van #985/#1198, geen defect |
+| `unindexed_foreign_keys` | 4 — #1211 gaf er drie een index in migratie 024; de rest bleef bewust staan |
+| `no_primary_key` | 8 — staat open als #1235 |
+| Postgres-logs, 24 uur | 63 regels, alle `LOG/00000` (checkpoints); één losse `08006` connection-close, ver onder de piekdrempel |
+| Edge-logs, 24 uur | 22 requests, alle 200, uitsluitend Supabase's eigen health-endpoints |
+| Pgbouncer | Alleen `server idle timeout (age=600s)` — normaal poolgedrag |
+| Auth-/autorisatiefouten | Geen |
+| 5xx | Geen |
+| Databaseomvang | **17 MB = 3,4 %** van de 500 MB Free-grens |
+| Grootste tabel | `his.matches` — 1,4 MB, 850 rijen |
+| Verbindingen | Alleen platformrollen plus de read-only MCP-sessie; geen groei |
+
+De agent maakte geen issue aan, want er viel niets te melden. Dat is het bedoelde gedrag: stilte is
+de uitkomst bij een schone database, niet een teken dat de controle niet heeft gedraaid.
+
+### De `execute_sql`-vraag: deels beantwoord, en waarom "deels" hier belangrijk is
+
+#1222 liet één vraag open: geeft `execute_sql` in read-only mode rijen terug op een
+applicatietabel, of nul? Read-only mode verbindt als een **niet-eigenaar**, en sinds #1198 heeft
+elke applicatietabel RLS aan zonder policies — zonder `BYPASSRLS` levert `SELECT` dan nul rijen op
+**zonder foutmelding**.
+
+**Wat deze run bewijst:** catalogusquery's werken volledig. Databaseomvang (`pg_database_size`),
+tabelgroottes en rijschattingen (`pg_class`/`pg_stat_user_tables`), en actieve verbindingen
+(`pg_stat_activity`) kwamen allemaal terug met echte waarden. De capaciteitscontrole van de
+monitorprompt functioneert dus.
+
+**Wat deze run níet bewijst:** of een gewone `SELECT` op bijvoorbeeld `public.appsettings` rijen
+oplevert. De "850 rijen" hierboven is een **catalogusschatting**, geen `SELECT COUNT(*)` op de
+tabel zelf. De twee paden lopen langs verschillende rechten: catalogusweergaven zijn niet
+RLS-beschermd, applicatietabellen wel.
+
+Dat onderscheid is precies het soort verschil dat §66 en §67 duur hebben geleerd — "het gaf geen
+fout" en "het gaf het juiste antwoord" zijn niet hetzelfde, en een RLS-gat komt hier stil naar
+boven als een lege resultaatset in plaats van als een foutmelding.
+
+**Om het af te maken**, in een sessie met de MCP geladen:
+
+```
+Vraag via de Supabase MCP, read-only:
+  SELECT COUNT(*) FROM public.appsettings;
+  SELECT COUNT(*) FROM public.velden;
+```
+
+- **Komt er een getal > 0 terug** → de read-only rol heeft `BYPASSRLS` (of is tabeleigenaar), en
+  datavragen via MCP werken gewoon. Noteer dat hier.
+- **Komt er 0 terug terwijl de tabel aantoonbaar rijen heeft** → dat is **correct gedrag**: RLS
+  zonder policies sluit de niet-eigenaar buiten. **Niet repareren met policies** — dat heropent
+  #985/#1198 en zet het gat weer open dat Supabase's advisor destijds als CRITICAL meldde. De
+  monitorprompt moet dan voor datavragen terugvallen op de catalogus of op
+  `Database.Postgres.Cli`-toegang vanuit CI.
+
+Zolang dit niet is vastgesteld: vertrouw voor de monitor uitsluitend op catalogusquery's — die zijn
+aantoonbaar betrouwbaar — en behandel een lege resultaatset uit een applicatietabel als
+"onbeantwoorde vraag", nooit als "de tabel is leeg".
+
+### Terzijde: de sessie zelf is zichtbaar in de meting
+
+De MCP-sessie verscheen in `pg_stat_activity` als extra verbinding. Dat is geen ruis maar een
+bruikbaar detail: het bevestigt dat de read-only verbinding daadwerkelijk tot stand kwam, en het
+verklaart waarom het aantal verbindingen tijdens een controle één hoger ligt dan erbuiten.
+
 ## Gerelateerd
 
 Onderdeel van epic [#815](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/815).
