@@ -949,13 +949,22 @@ geen stilzwijgend groen resultaat.
 > gooit nog een `InvalidOperationException`. Tegen de lokale wegwerpcontainer hierboven
 > (`localhost:55432`) speelt dit nooit: die draait zonder TLS, en de bovenstaande commando's blijven
 > ongewijzigd werken. Verbind je met een echte gehoste Postgres-instantie, geef dan
-> `?sslmode=verify-full&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
-> zonder dat certificaat faalt `verify-full` op de ketenvalidatie. **Sinds #1096:** dat certificaat
+> `?sslmode=verify-ca&sslrootcert=/pad/naar/ca.pem` mee — Supabase gebruikt een **eigen** CA, dus
+> zonder dat certificaat faalt de ketenvalidatie.
+>
+> **Waarom `verify-ca` en niet `verify-full`, terwijl de norm hierboven `verify-full` is (#1187):**
+> het pooler-endpoint biedt een certificaat aan met alleen een CN (`*.pooler.…`) en **geen
+> SubjectAltName**. `verify-full` valideert de hostnaam tegen die SAN en weigert daarom de
+> verbinding; .NET accepteert een CN-only certificaat niet als alternatief. `verify-ca` is dus het
+> haalbare maximum op de pooler: versleuteld én ketenvalidatie, alleen geen hostnaamvalidatie. De
+> normalizer laat dat bewust staan en geeft er een `tlsWarning` bij — die waarschuwing hoort er in
+> productie te zijn en is geen defect. Verhoog hem niet blind naar `verify-full`; zie §50.
+> **Sinds #1096:** dat certificaat
 > hoort, zodra het is toegevoegd, op `FunctionApp.Postgres/prod-ca-2021.crt` (meegekopieerd naar het
 > publish-pakket door de csproj, `Exists(...)`-conditioneel — ontbreekt het lokaal, dan is dat een
 > no-op). Download het uit het Supabase-dashboard van déze deployment (Database → Settings → SSL
 > Configuration — geen publieke, statische URL) en verwijs er lokaal naar met
-> `?sslmode=verify-full&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
+> `?sslmode=verify-ca&sslrootcert=FunctionApp.Postgres/prod-ca-2021.crt` als je tegen een echte
 > gehoste instantie test. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §50 voor de volledige
 > onderbouwing.
 
@@ -1078,7 +1087,7 @@ Klik op **New repository secret** voor elk van de volgende:
 | `AZURE_CREDENTIALS` | JSON van Azure service principal | Zie stap 9.2 hieronder |
 | `AZURE_FUNCTION_KEY` | Host key van de Function App | Azure Portal → Function App → App keys → Host keys → `default` |
 | `SQL_CONNECTION_STRING` | Productie SQL-verbindingsstring — alleen bij `DatabaseTier=SqlServer` | Azure Portal → SQL Database → Connection strings → ADO.NET |
-| `POSTGRES_CONNECTION_STRING` | Productie Postgres-connectiestring — alleen bij `DatabaseTier=Postgres`; gebruikt door `db-migrate-postgres` om de migraties vóór de deploy toe te passen (#1093). Zelfde waarde als de Function App-instelling; norm `sslmode=verify-full` mét `sslrootcert` (#1096) | Dashboard van de databaseprovider → Connection string |
+| `POSTGRES_CONNECTION_STRING` | Productie Postgres-connectiestring — alleen bij `DatabaseTier=Postgres`; gebruikt door `db-migrate-postgres` om de migraties vóór de deploy toe te passen (#1093). Zelfde waarde als de Function App-instelling; in productie `sslmode=verify-ca` mét `sslrootcert` — `verify-full` is op het pooler-endpoint onhaalbaar (#1096, #1187) | Dashboard van de databaseprovider → Connection string |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | SWA deployment token | Azure Portal → Static Web App → Manage deployment token |
 
 **`AZURE_CREDENTIALS` aanmaken via Azure CLI:**
