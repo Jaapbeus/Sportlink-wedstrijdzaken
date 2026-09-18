@@ -103,8 +103,16 @@ internal sealed class EmailReplyPolicyService
 
         try
         {
-            await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-            await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
+            // Alleen labelen als er géén voorstel is opgebouwd (#1244). Is er wél een voorstel, dan
+            // ís er een AI-antwoord — het wacht enkel op beoordeling. Het label onvoorwaardelijk
+            // zetten maakte het betekenisloos: in review-mode kreeg élke verwerkte mail het, ook
+            // die waarvoor net een voorstel naar de review-ontvanger was gemaild.
+            if (!reviewBesluit.MoetVersturen)
+            {
+                await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+                await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
+            }
+
             await graphService.MarkAsReadAsync(email.MessageId);
         }
         catch (Exception ex)
