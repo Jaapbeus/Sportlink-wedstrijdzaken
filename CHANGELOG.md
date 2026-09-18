@@ -18,7 +18,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
-## [3.5.0.0] — 2026-09-17
+## [3.5.0.1] — 2026-09-18
+
+### Fixed
+- **In review-modus kreeg élke binnengekomen e-mail de markering "Geen AI antwoord", ook als er
+  net een antwoordvoorstel was opgesteld en naar u gemaild (#1244).** Daardoor zei het label niets
+  meer: het stond zowel op de mails waar de AI niets mee kon als op de mails waarvoor u een
+  voorstel ter beoordeling had gekregen. Vanaf nu krijgt een e-mail die markering alleen nog als er
+  daadwerkelijk géén AI-antwoord is opgesteld. Is er wel een voorstel, dan blijft de originele mail
+  ongemarkeerd — hij wordt wel als gelezen gemarkeerd, zoals eerder. De markering op e-mails buiten
+  het werkgebied van de planner verandert niet.
 
 ### Security
 - **De migratiestap in de deploy meldde bij een fout de volledige databasefoutmelding in een

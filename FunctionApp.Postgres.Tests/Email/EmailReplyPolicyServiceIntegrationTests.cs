@@ -76,7 +76,10 @@ public class EmailReplyPolicyServiceIntegrationTests
         result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
         buildCalled.Should().BeTrue();
         graph.SentReplies.Should().BeEmpty();
-        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+
+        // Er ís een AI-antwoord — het wacht alleen op beoordeling. Het label "Geen AI antwoord"
+        // hoort hier dus niet (#1244); als gelezen markeren blijft wel.
+        graph.CategoryUpdates.Should().BeEmpty();
         graph.MarkedAsReadIds.Should().ContainSingle(mid => mid == messageId);
 
         var stand = await SqlEmailPersistenceRepository.HaalVerwerkingStandOpAsync(ConnectionString, messageId);
@@ -298,6 +301,51 @@ public class EmailReplyPolicyServiceIntegrationTests
         standBijVersturen!.VerzendPogingOnbeslist.Should().BeTrue(
             "op het moment van versturen staat de intentie al vast, maar is er nog geen antwoord "
             + "vastgelegd — dat gebeurt pas ná een geslaagde verzending");
+    }
+
+    /// <summary>
+    /// De tegenhanger van #1244: onderdrukt de reply-policy het antwoord, dan is er in review-mode
+    /// daadwerkelijk geen AI-antwoord. Dit is het enige pad in review-mode waar het label
+    /// "Geen AI antwoord" hoort. Vóór #1244 kreeg élke in review-mode verwerkte mail het label,
+    /// ook die waarvoor net een voorstel naar de review-ontvanger was gemaild.
+    /// </summary>
+    [PostgresFact]
+    public async Task ReviewMode_ZonderVoorstel_ZetWelGeenAiAntwoordLabel()
+    {
+        await SchoonAsync();
+        var service = new EmailReplyPolicyService();
+        var graph = new FakeEmailGraphService();
+        var messageId = $"msg-review-geenvoorstel-{Guid.NewGuid():N}";
+        var id = await NieuweRijAsync(messageId);
+        var buildCalled = false;
+
+        // Planning is mogelijk op de gevraagde datum → de policy onderdrukt het antwoord, dus valt
+        // er in review-mode ook niets voor te stellen.
+        var result = await service.HandelReplyFlowAfAsync(
+            ConnectionString,
+            id,
+            Bericht(messageId),
+            new BerichtClassificatie { Type = VerzoekType.BeschikbaarheidCheck },
+            JsonConvert.SerializeObject(new { beschikbaar = true }),
+            reviewMode: true,
+            reviewRecipient: "reviewer@voorbeeld.test",
+            graphService: graph,
+            bouwTemplateAntwoordAsync: () =>
+            {
+                buildCalled = true;
+                return Task.FromResult(("subj", "body"));
+            },
+            sanitizeFoutMelding: s => s,
+            log: NullLogger.Instance);
+
+        result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
+        buildCalled.Should().BeFalse();
+        graph.SentReplies.Should().BeEmpty();
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.MarkedAsReadIds.Should().ContainSingle(mid => mid == messageId);
+
+        var stand = await SqlEmailPersistenceRepository.HaalVerwerkingStandOpAsync(ConnectionString, messageId);
+        stand!.Status.Should().Be("Review");
     }
 
     /// <summary>
