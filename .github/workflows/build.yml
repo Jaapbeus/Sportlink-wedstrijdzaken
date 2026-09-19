@@ -50,6 +50,9 @@ jobs:
       - name: Codekwaliteit — platformafhankelijke valkuilen
         run: bash scripts/ci/check-codekwaliteit-valkuilen.sh
 
+      - name: Codekwaliteit — bestandsgrootte en methodelengte
+        run: bash scripts/ci/check-bestandsgrootte.sh
+
       # AGENTS.md wordt uit CLAUDE.md afgeleid. Toen beide nog met de hand werden bijgehouden,
       # miste AGENTS.md negen secties — waaronder de tier-regel, de teamnormalisatieregel en de
       # EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.

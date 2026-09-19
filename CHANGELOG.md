@@ -34,7 +34,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   niet op logica die in een scherm blijft hangen in plaats van in een testbare laag te staan.
   De prijs kwam later: een fout in die gekopieerde code zorgde ervoor dat het automatisch ophalen
   van het clublogo en het website-icoon in werkelijkheid nooit heeft gewerkt, zonder één foutmelding.
-  Er zijn nu zes regels met elk een controle die de build tegenhoudt, en die controles zijn zelf
+  Er zijn nu acht regels met elk een controle die de build tegenhoudt, en die controles zijn zelf
   getest — een controle die altijd groen is, bewijst niets. Voor beheerders verandert er niets aan
   de werking van de applicatie; het verkleint de kans dat een reparatie voortaan maar half doorkomt.
 - **Het regelboek voor de tweede AI-reviewer liep 280 regels achter (#1262).** Dit project laat zijn

@@ -664,7 +664,7 @@ De bug die daardoor maandenlang onzichtbaar bleef (#1252) zat in beide kopieën 
 een test. Dit was de vierde keer — na #889, #1130 en #1122 — dat dezelfde klasse fout werd gevonden
 door een latere review in plaats van door een controle.
 
-Zes regels, alle zes met een exit-code:
+Acht regels, alle acht met een exit-code:
 
 1. **Tier-onafhankelijke logica hoort in `Planner.Shared`.** Een bestand in `FunctionApp/` of
    `FunctionApp.Postgres/` bevat uitsluitend query's, parameterbinding en de vertaling van een
@@ -688,6 +688,10 @@ Zes regels, alle zes met een exit-code:
 6. **Een nieuwe harde regel krijgt een guard, of wordt als onbewaakt gemarkeerd in het register.**
    Er is geen derde mogelijkheid. Zo ontstonden er eenentwintig regels die alleen in dit bestand
    stonden en door niets werden gecontroleerd.
+7. **Een productiebestand blijft onder de 500 regels**, en **8. een methode onder de 80.** Ook dit
+   zijn ratchets op een *aantal*: bestaande code mag blijven, het aantal overschrijdingen mag niet
+   groeien. Testbestanden tellen niet mee — die groeien door losse gevallen naast elkaar te zetten,
+   en een guard die het toevoegen van tests bestraft werkt averechts.
 
 Lokaal draaien: zie §7 van het architectuurdocument. De guards zijn zelf getest
 (`scripts/ci/check-codekwaliteit.test.sh`) — een groene guard bewijst niets zolang niet vaststaat

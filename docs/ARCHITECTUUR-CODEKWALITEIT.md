@@ -190,7 +190,7 @@ als gevolg.
 
 ### Regel 6 — Een nieuwe regel krijgt een guard, of wordt als onbewaakt gemarkeerd
 
-Dit is de regel die de andere vijf overeind houdt, en de directe les van dit onderzoek. Wie een
+Dit is de regel die de andere zeven overeind houdt, en de directe les van dit onderzoek. Wie een
 harde regel toevoegt aan CLAUDE.md of aan dit document, doet één van twee dingen:
 
 1. schrijft er een guard bij en zet die in het register hieronder; of
@@ -201,6 +201,36 @@ Wat niet mag, is een regel zonder allebei. Dat is hoe er 21 onbewaakte regels on
 *Guard: `scripts/ci/check-regelregister.sh` — controleert dat elk genoemd script bestaat,
 uitvoerbaar is en daadwerkelijk in een workflow wordt aangeroepen, en dat er geen guard bestaat die
 niet in het register staat.*
+
+### Regel 7 — Een productiebestand blijft onder de 500 regels
+
+### Regel 8 — Een methode blijft onder de 80 regels
+
+Beide zijn ratchets op een **aantal**, niet op een grens per bestand: geteld wordt hoeveel
+bestanden en methodes er boven zitten, en dat aantal mag niet stijgen. Bestaande code mag dus
+blijven; nieuwe code blijft eronder, of ruimt iets anders op.
+
+Dat is een bewuste keuze, omdat er geen gezaghebbende drempel bestaat om naar te wijzen. Google's
+reviewrichtlijnen noemen expliciet géén bestandsgrens en stellen dat "smallness" geen simpele
+functie van regelaantal is
+([bron](https://github.com/google/eng-practices/blob/master/review/developer/small-cls.md)).
+SonarSource hanteert cognitieve complexiteit 15 per functie; Microsofts CA1502 staat op
+cyclomatische complexiteit 25
+([bron](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1502)). Drie
+serieuze bronnen, drie andere antwoorden. Een zelfgekozen harde grens zou zevenentwintig bestaande
+bestanden in één klap illegaal maken, en zo'n guard wordt uitgezet.
+
+500 en 80 markeren niet "goed", maar "dit wordt moeilijk te lezen en te testen".
+
+**Testbestanden tellen niet mee.** Een testbestand groeit door losse gevallen naast elkaar te
+zetten; dat is geen verstrengeling en leest ook bij tweeduizend regels van boven naar beneden. Een
+guard die het toevoegen van tests bestraft, werkt averechts.
+
+Opvallend bij de nulmeting: van de acht grootste bestanden zijn er zes de twee helften van drie
+tier-paren, en van de zes langste methodes zijn het er ook zes. Regel 7 en 8 wijzen dus naar
+dezelfde schuld als regel 1, vanuit een andere hoek.
+
+*Guard: `scripts/ci/check-bestandsgrootte.sh`.*
 
 ---
 
@@ -215,7 +245,8 @@ niet in het register staat.*
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
-| Alle zes — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
+| 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
+| Alle acht — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
 
 De guards die al bestonden staan hier ook in. Het register is daarmee de volledige lijst: een
 guard die er niet in staat, laat `check-regelregister.sh` falen — zodat een controle niet stilletjes
@@ -241,7 +272,6 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 
 | Onderwerp | Waarom niet | Vervolg |
 |---|---|---|
-| Bestands- en methodegrootte | Er is geen gezaghebbende drempel om naar te wijzen: Google noemt bewust geen bestandsgrens, SonarSource hanteert cognitieve complexiteit 15, Microsofts CA1502 staat op 25. Een zelfgekozen getal dat 26 bestanden meteen rood maakt, wordt uitgezet. | Issue #1263 |
 | Roslyn-maintainability-analyzers (CA1502/1505/1506) | Staan niet standaard aan, ook niet bij `AnalysisMode=All` ([bron](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview)). Ze aanzetten vóór het aantal waarschuwingen bekend is, maakt de eerstvolgende PR rood. | Issue #1263 |
 | jscpd in CI | Zou duplicatie binnen één tier ook vangen (de tier-guard doet dat niet). Vraagt een npm-afhankelijkheid in CI; eerst het drempelgedrag vaststellen. | Issue #1263 |
 | `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1263 |
@@ -256,6 +286,7 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 bash scripts/ci/check-tier-duplicatie.sh
 bash scripts/ci/check-blazor-codebehind.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
+bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh
 python3 scripts/ci/genereer-agents-md.py
 

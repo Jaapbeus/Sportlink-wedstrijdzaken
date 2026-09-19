@@ -56,6 +56,7 @@ echo "Positieve tests (schone werkboom moet groen zijn):"
 verwacht_slagen "tier-duplicatie"      bash scripts/ci/check-tier-duplicatie.sh
 verwacht_slagen "blazor-codebehind"    bash scripts/ci/check-blazor-codebehind.sh
 verwacht_slagen "valkuilen"            bash scripts/ci/check-codekwaliteit-valkuilen.sh
+verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
 verwacht_slagen "regelregister"        bash scripts/ci/check-regelregister.sh
 verwacht_slagen "AGENTS.md afgeleid"   python3 scripts/ci/genereer-agents-md.py
 
@@ -112,7 +113,29 @@ verwacht_falen "valkuilpatronen in nieuwe code" bash scripts/ci/check-codekwalit
 git rm -q --cached "$proef_cs" >/dev/null 2>&1 || true
 rm -f "$proef_cs"
 
-# 4. Regelregister: een guard die niet in het register staat.
+# 4. Bestandsgrootte: een nieuw productiebestand van ruim 500 regels met een methode van ruim 80.
+proef_groot="Planner.Shared/ProefGroot1262.cs"
+{
+  echo "namespace Planner.Shared;"
+  echo "internal static class ProefGroot1262"
+  echo "{"
+  echo "    internal static int Lang()"
+  echo "    {"
+  echo "        var n = 0;"
+  i=0
+  while [ "$i" -lt 100 ]; do echo "        n += $i;"; i=$((i + 1)); done
+  echo "        return n;"
+  echo "    }"
+  i=0
+  while [ "$i" -lt 450 ]; do echo "    // opvulregel $i"; i=$((i + 1)); done
+  echo "}"
+} > "$proef_groot"
+git add -N "$proef_groot" >/dev/null 2>&1 || true
+verwacht_falen "te groot bestand en te lange methode" bash scripts/ci/check-bestandsgrootte.sh
+git rm -q --cached "$proef_groot" >/dev/null 2>&1 || true
+rm -f "$proef_groot"
+
+# 5. Regelregister: een guard die niet in het register staat.
 proef_guard="scripts/ci/check-proef1262.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$proef_guard"
 chmod +x "$proef_guard"
@@ -121,7 +144,7 @@ verwacht_falen "guard buiten het register" bash scripts/ci/check-regelregister.s
 git rm -q --cached "$proef_guard" >/dev/null 2>&1 || true
 rm -f "$proef_guard"
 
-# 5. AGENTS.md: een handmatige bewerking moet gezien worden.
+# 6. AGENTS.md: een handmatige bewerking moet gezien worden.
 printf '\n<!-- handmatige proefbewerking -->\n' >> AGENTS.md
 verwacht_falen "handmatige bewerking van AGENTS.md" python3 scripts/ci/genereer-agents-md.py
 # Herstel via de generator, niet via git checkout: AGENTS.md is een afgeleid bestand, en een
