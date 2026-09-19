@@ -3971,6 +3971,43 @@ deploy draait (#1093) **faalt hard als productie al dubbele rijen heeft, en neem
 mee** (§57). Dit vereist eerst een controle op de productiedatabase en is daarom een aparte,
 door de eigenaar bevestigde stap.
 
+### De SQL Server-tier heeft dezelfde mismatch — de CI-collatie vangt hem niet op (#1232)
+
+Bij het verplaatsen van deze bevinding naar een architectuurregel (#1232) stond de vraag open of de
+andere tier hetzelfde probleem heeft. `FunctionApp/TeamResolution/TeamCandidateRepository.cs` regel
+47 gebruikt dezelfde constructie — `UPPER(a.[RuweTekstGenormaliseerd]) = UPPER(@sleutel)` — en
+`Database/dbo/Tables/TeamAliassen.sql` legt daar dezelfde index op de kále kolommen aan:
+`IX_TeamAliassen_Club_Genormaliseerd (ClubCode, RuweTekstGenormaliseerd)`.
+
+De voor de hand liggende aanname was dat de case-insensitieve modelcollatie
+(`<ModelCollation>1033, CI</ModelCollation>`) de `UPPER()` overbodig en daarmee onschadelijk maakt.
+**Dat is niet zo.** Gemeten op SQL Server 2022 (`SQL_Latin1_General_CP1_CI_AS`) met exact die index
+en 200.000 rijen:
+
+| Vorm | Queryplan | Logische leesbewerkingen |
+|---|---|---|
+| `UPPER(kolom) = UPPER(@p)` | Index Seek met `SEEK:(ClubCode = …)` en `WHERE:(upper(…)=upper(@p))` als **residueel** predicaat | **1927** |
+| `kolom = @p` | Index Seek met beide kolommen in het SEEK-predicaat | **3** |
+
+De optimizer verwijdert een overbodige `UPPER()` dus niet, ook niet onder een CI-collatie: de
+uitdrukking blijft non-sargable en alleen de leidende kolom wordt geseekt.
+
+**Milder dan op Postgres, praktisch even duur.** SQL Server valt terug op een bereikscan van een
+dekkende index in plaats van de index te negeren, dus formeel is de index niet "dood". Maar het
+bereik is `ClubCode = <de enige club>` — bij een installatie met één club vrijwel de hele tabel.
+Het verschil van 642× hierboven is daarmee representatief, niet theoretisch.
+
+**Waarom het dan alleen op Postgres opviel:** niet omdat de fout daar erger is, maar omdat Supabase
+een advisor heeft die ongebruikte indexen meldt. Op de SQL Server-tier is er geen equivalent dat
+ongevraagd kijkt, en een index die deels gebruikt wordt valt sowieso buiten zo'n melding. Dat is een
+observatie over het *meetinstrument*, niet over de code — en precies de reden dat de regel in
+`CLAUDE.md` zegt dat je het queryplan moet controleren in plaats van af te gaan op "de query werkt".
+
+Geen migratie in deze PR: het herstellen van de index is een schemawijziging met eigen afwegingen
+per tier (op Postgres een expressie-index, op SQL Server de keuze tussen expressie-index via een
+persisted computed column óf de `UPPER()` weghalen nu de collatie hem toch al afhandelt). Dat is
+vastgelegd als losstaand vervolgpunt: **issue #1280**.
+
 ### Over het query performance log
 
 Het log van dezelfde run bevatte geen aanknopingspunt voor tuning: de zwaarste queries zijn
