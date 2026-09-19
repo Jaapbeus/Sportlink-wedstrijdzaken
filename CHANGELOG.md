@@ -35,6 +35,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Linux. Logo en icoontje komen er nu uit zoals bedoeld.
 
 ### Changed
+- **Voorbereiding op een donkere weergave: de kleuren van de schermen zitten niet langer vast in
+  de opmaak (#1255).** De achtergrond van de pagina, de kaartjes, de grijstinten en de schaduw
+  onder een kaartje waren tot nu toe vaste waarden die niemand kon aanpassen. Ze zijn nu
+  instelbaar gemaakt, elk met een variant voor een lichte en een donkere weergave. Er verandert
+  op dit moment nog niets zichtbaars — de schakelaar om over te stappen komt in een volgende stap.
+  Kleuren met een betekenis blijven bewust vast: groen blijft "klaar", rood blijft "fout", en de
+  oranje markering van de testmodus blijft oranje.
 - **De thema-functionaliteit bestond twee keer in de code, één keer per databasesoort (#1248).**
   Dat betekende dat elke aanpassing aan de kleuren ook twee keer met de hand moest, in twee
   bestanden die niets van elkaar wisten — met het risico dat een verbetering of beveiligingsfix in

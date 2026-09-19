@@ -500,10 +500,12 @@ draaiende database nodig.
 | `check-postgres-table-coverage.sh` | Elke SQL Server-tabel heeft een Postgres-tegenhanger of een gemotiveerde uitzondering (#864) |
 | `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
 | `check-postgres-procedure-view-coverage.sh` | Elke procedure/view heeft een aanwijsbare C#-tegenhanger of uitzondering (#864) |
+| `check-theme-variables.sh` | Elke `var(--theme-…)` in `app.css` is gedefinieerd, en elke themakleur heeft een `-light`- en `-dark`-variant plus een regel in het `:root[data-theme="dark"]`-blok (#1255) |
 
 ```bash
 # Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
 /bin/bash scripts/ci/check-path-casing.sh
+/bin/bash scripts/ci/check-theme-variables.sh
 /bin/bash scripts/ci/check-postgres-table-coverage.sh
 /bin/bash scripts/ci/check-postgres-column-coverage.sh
 /bin/bash scripts/ci/check-postgres-procedure-view-coverage.sh
