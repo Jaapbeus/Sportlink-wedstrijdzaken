@@ -501,11 +501,13 @@ draaiende database nodig.
 | `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
 | `check-postgres-procedure-view-coverage.sh` | Elke procedure/view heeft een aanwijsbare C#-tegenhanger of uitzondering (#864) |
 | `check-theme-variables.sh` | Elke `var(--theme-…)` in `app.css` is gedefinieerd, en elke themakleur heeft een `-light`- en `-dark`-variant plus een regel in het `:root[data-theme="dark"]`-blok (#1255) |
+| `check-theme-js-contract.js` | `theme.js` vertaalt elke camelCase-sleutel van `ThemeService` naar precies de CSS-variabele die `app.css` definieert, en weigert ongeldige sleutels/waarden. Draait met Node en een DOM-stub, zonder browser (#1256) |
 
 ```bash
 # Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
 /bin/bash scripts/ci/check-path-casing.sh
 /bin/bash scripts/ci/check-theme-variables.sh
+node scripts/ci/check-theme-js-contract.js
 /bin/bash scripts/ci/check-postgres-table-coverage.sh
 /bin/bash scripts/ci/check-postgres-column-coverage.sh
 /bin/bash scripts/ci/check-postgres-procedure-view-coverage.sh

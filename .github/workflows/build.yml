@@ -50,6 +50,15 @@ jobs:
       - name: Thema-variabele-guard
         run: bash scripts/ci/check-theme-variables.sh
 
+      # #1256 (epic #1249): bewaakt het contract tussen ThemeService (camelCase-sleutels), theme.js
+      # (vertaalt die naar een CSS-propertynaam) en app.css (definieert die naam). Klopt de
+      # vertaling niet, dan zet de browser een property die niemand leest — geen foutmelding, geen
+      # console-waarschuwing, de kleur blijft gewoon op de standaardwaarde staan. Ook de stille
+      # variant die dit issue beschrijft wordt hier gevangen: themeHelper.applyMode hernoemen
+      # zonder ThemeService mee te nemen. Draait zonder browser, met een minimale DOM-stub.
+      - name: Thema-JS-contractguard
+        run: node scripts/ci/check-theme-js-contract.js
+
       # #864, deel 2: de "grootste deelopgave" die #908 (deel 1) open liet — een tabel die aan de
       # SQL Server-boom wordt toegevoegd (of hernoemd) zonder Postgres-tegenhanger blijft anders
       # onopgemerkt tot iemand de Postgres-tier daadwerkelijk gebruikt. Geen database, geen

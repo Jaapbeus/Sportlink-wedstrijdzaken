@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De Admin GUI heeft een knop om tussen een lichte en een donkere weergave te wisselen (#1256).**
+  De knop staat rechtsboven in de balk, naast de feedbackknop. De keuze wordt onthouden voor een
+  volgend bezoek. Heb je nog niets gekozen, dan volgt de site de voorkeur die in je besturings-
+  systeem of browser staat ingesteld — wie zijn computer op donker heeft staan, krijgt de site dus
+  meteen donker. De weergave staat goed vanaf het allereerste moment dat de pagina verschijnt: er
+  is geen korte flits van het verkeerde thema tijdens het laden. Een club die nog geen eigen
+  donkere kleuren heeft ingesteld krijgt een neutrale donkere set te zien; de eigen clubkleuren
+  voor beide weergaven instellen kan zodra het beheerscherm daarvoor er is.
 - **De database kan nu een volledig kleurenpalet bewaren voor zowel een lichte als een donkere
   weergave (#1254).** Dit is de eerste stap van de thema-uitbreiding: de opslag en de API kunnen de
   twee sets aan, het beheerscherm en de schakelaar volgen in een latere stap. Voor een club die nog

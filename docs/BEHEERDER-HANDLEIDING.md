@@ -1053,7 +1053,29 @@ classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
 
 ---
 
-## 21. Feedback geven (FEEDBACK-knop) — met voorbeeld vóór publicatie
+## 21. Lichte of donkere weergave
+
+Rechtsboven in de balk staat een knopje met een maantje (of een zonnetje, als u al donker kijkt).
+Daarmee schakelt u de hele Admin GUI om tussen een lichte en een donkere weergave.
+
+- **Uw keuze wordt onthouden** in de browser waarmee u werkt. Gebruikt u thuis een andere computer
+  of een ander profiel, dan stelt u het daar apart in.
+- **Heeft u nog niets gekozen**, dan volgt de site de voorkeur van uw besturingssysteem of browser.
+  Staat uw laptop 's avonds automatisch op donker, dan is de Admin GUI dat ook.
+- **Het omschakelen is direct.** Er wordt niets opnieuw opgehaald bij de server en u hoeft de pagina
+  niet te herladen.
+
+Wat níet meekleurt, en met opzet: de statuskleuren. Groen blijft "klaar", rood blijft "fout", en de
+oranje markering die aangeeft dat u in de demo-/testclub werkt blijft oranje. Die kleuren dragen
+betekenis — als ze per weergave zouden verschillen, zou u een waarschuwing kunnen missen.
+
+Welke kleuren de club in beide weergaven gebruikt, stelt u in bij **Thema** (hoofdstuk over het
+thema-scherm). Heeft uw club nog geen eigen donkere kleuren ingesteld, dan gebruikt de site een
+neutrale donkere set — de site werkt dus meteen, ook zonder dat u iets instelt.
+
+---
+
+## 22. Feedback geven (FEEDBACK-knop) — met voorbeeld vóór publicatie
 
 De FEEDBACK-knop rechtsboven maakt van uw melding een **GitHub-issue**. Die issue staat in een
 publieke repository: hij is **openbaar op internet** en voor iedereen leesbaar, ook zonder account.
