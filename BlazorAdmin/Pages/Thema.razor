@@ -39,54 +39,69 @@ else
                 <div class="card-body">
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Primaire kleur</label>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="color" class="form-control form-control-color"
-                                   value="@_theme.Primary"
-                                   @oninput='e => OnColorChange("primary", e.Value?.ToString())' />
-                            <input type="text" class="form-control" maxlength="7"
-                                   value="@_theme.Primary"
-                                   @oninput='e => OnColorChange("primary", e.Value?.ToString())' />
-                        </div>
-                        <small class="text-muted">Achtergrond zijbalk, knoppen</small>
+                        <label class="form-label fw-semibold">Basisthema</label>
+                        <select class="form-select" @onchange="PresetToepassen">
+                            <option value="">Kies een basisthema om mee te beginnen…</option>
+                            @foreach (var preset in ThemePresets.Alle)
+                            {
+                                <option value="@preset.Naam">@preset.Naam — @preset.Toelichting</option>
+                            }
+                        </select>
+                        <small class="text-muted">Vult de kleuren van de modus die u nu bewerkt. Daarna kunt u ze los bijstellen.</small>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Secundaire kleur</label>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="color" class="form-control form-control-color"
-                                   value="@_theme.Secondary"
-                                   @oninput='e => OnColorChange("secondary", e.Value?.ToString())' />
-                            <input type="text" class="form-control" maxlength="7"
-                                   value="@_theme.Secondary"
-                                   @oninput='e => OnColorChange("secondary", e.Value?.ToString())' />
+                        <label class="form-label fw-semibold d-block">Welke weergave bewerkt u?</label>
+                        <div class="btn-group" role="group" aria-label="Te bewerken weergave">
+                            <button type="button" class="btn @(_modus == "light" ? "btn-primary" : "btn-outline-primary")"
+                                    @onclick='() => ModusBewerkenAsync("light")'>
+                                <i class="bi bi-sun me-1" aria-hidden="true"></i>Licht bewerken
+                            </button>
+                            <button type="button" class="btn @(_modus == "dark" ? "btn-primary" : "btn-outline-primary")"
+                                    @onclick='() => ModusBewerkenAsync("dark")'>
+                                <i class="bi bi-moon-stars me-1" aria-hidden="true"></i>Donker bewerken
+                            </button>
                         </div>
+                        <small class="d-block text-muted mt-1">
+                            De hele beheer-interface schakelt mee, zodat u meteen ziet wat u instelt.
+                        </small>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Accentkleur (links)</label>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="color" class="form-control form-control-color"
-                                   value="@_theme.Accent"
-                                   @oninput='e => OnColorChange("accent", e.Value?.ToString())' />
-                            <input type="text" class="form-control" maxlength="7"
-                                   value="@_theme.Accent"
-                                   @oninput='e => OnColorChange("accent", e.Value?.ToString())' />
-                        </div>
-                    </div>
+                    <hr class="my-3" />
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Tekstkleur op primaire achtergrond</label>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="color" class="form-control form-control-color"
-                                   value="@_theme.TextOnPrimary"
-                                   @oninput='e => OnColorChange("textOnPrimary", e.Value?.ToString())' />
-                            <input type="text" class="form-control" maxlength="7"
-                                   value="@_theme.TextOnPrimary"
-                                   @oninput='e => OnColorChange("textOnPrimary", e.Value?.ToString())' />
+                    @foreach (var kleur in ThemePresets.Kleuren)
+                    {
+                        var sleutel = kleur.Sleutel;
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">@kleur.Label</label>
+                            <div class="d-flex align-items-center gap-2">
+                                @if (kleur.StaatAlphaToe)
+                                {
+                                    @* <input type="color"> kent geen alpha en zou de waarde stilzwijgend
+                                       terugbrengen tot zes cijfers — daarom hier alleen een tekstveld met
+                                       een voorbeeldvlak ernaast. *@
+                                    <span class="form-control form-control-color p-0 border"
+                                          style="background-color:@Kleur(sleutel); width:3rem;"
+                                          aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <input type="color" class="form-control form-control-color"
+                                           value="@Kleur(sleutel)"
+                                           @oninput='e => OnColorChange(sleutel, e.Value?.ToString())' />
+                                }
+                                <input type="text" class="form-control" maxlength="9"
+                                       value="@Kleur(sleutel)"
+                                       @oninput='e => OnColorChange(sleutel, e.Value?.ToString())' />
+                            </div>
+                            @if (kleur.Toelichting != null)
+                            {
+                                <small class="text-muted">@kleur.Toelichting</small>
+                            }
                         </div>
-                        <small class="text-muted">Gebruik wit (#ffffff) of zwart (#000000)</small>
-                    </div>
+                    }
+
+                    <hr class="my-3" />
 
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Club-website URL</label>
@@ -106,7 +121,7 @@ else
                         @if (_extractedColors.Count > 0)
                         {
                             <div class="mt-2">
-                                <p class="small mb-1">Klik op een kleur om deze als primaire kleur in te stellen:</p>
+                                <p class="small mb-1">Klik op een kleur om deze als primaire kleur van de <strong>@(_modus == "dark" ? "donkere" : "lichte")</strong> weergave in te stellen:</p>
                                 <div class="d-flex flex-wrap gap-2">
                                     @foreach (var color in _extractedColors)
                                     {
@@ -177,23 +192,23 @@ else
 
         <div class="col-lg-6">
             <div class="card mb-4">
-                <div class="card-header">Live preview</div>
+                <div class="card-header">Live preview — @(_modus == "dark" ? "donkere" : "lichte") weergave</div>
                 <div class="card-body p-0">
-                    <div style="background-color: @_theme.Primary; padding: 1rem; display:flex; align-items:center; gap:0.5rem;">
+                    <div style="background-color: @Kleur("primary"); padding: 1rem; display:flex; align-items:center; gap:0.5rem;">
                         @if (!string.IsNullOrWhiteSpace(_theme.LogoUrl))
                         {
                             <img src="@_theme.LogoUrl" alt="Logo" style="height:28px;width:auto;object-fit:contain;" />
                         }
-                        <span style="color: @_theme.TextOnPrimary; font-weight: bold;">Zijbalk achtergrond</span>
+                        <span style="color: @Kleur("textOnPrimary"); font-weight: bold;">Zijbalk achtergrond</span>
                     </div>
                     <div style="padding: 1rem;">
-                        <button class="btn btn-primary me-2" style="background-color: @_theme.Primary; border-color: @_theme.Primary; color: @_theme.TextOnPrimary;">
+                        <button class="btn btn-primary me-2" style="background-color: @Kleur("primary"); border-color: @Kleur("primary"); color: @Kleur("textOnPrimary");">
                             Primaire knop
                         </button>
-                        <button class="btn btn-outline-secondary me-2" style="color: @_theme.Secondary; border-color: @_theme.Secondary;">Secundaire knop</button>
-                        <a href="#" style="color: @_theme.Accent;">Link</a>
+                        <button class="btn btn-outline-secondary me-2" style="color: @Kleur("secondary"); border-color: @Kleur("secondary");">Secundaire knop</button>
+                        <a href="#" style="color: @Kleur("accent");">Link</a>
                     </div>
-                    <div style="padding: 0.5rem 1rem; background: #f8f9fa;">
+                    <div style="padding: 0.5rem 1rem; background: @Kleur("cardBg");">
                         <small class="text-muted">Kleuren worden direct toegepast in de zijbalk en knoppen</small>
                     </div>
                 </div>
@@ -212,6 +227,12 @@ else
     private bool _saveSuccess;
     private string? _extractError;
     private List<string> _extractedColors = new();
+
+    // De twee paletten die bewerkt worden. _modus bepaalt welke de pickers tonen én welke weergave
+    // de hele interface laat zien, zodat de beheerder meteen ziet wat hij instelt.
+    private Dictionary<string, string> _licht = new();
+    private Dictionary<string, string> _donker = new();
+    private string _modus = "light";
     private string? _extractedFaviconUrl;
     private string? _extractedLogoUrl;
 
@@ -230,27 +251,107 @@ else
         _error = null;
         var result = await Api.GetThemeAsync();
         if (result.Success && result.Data != null)
+        {
             _theme = result.Data;
+            VulPalettenUitThema();
+        }
         else
+        {
             _error = result.ErrorMessage ?? "Thema kon niet worden geladen.";
+        }
+        _modus = await ThemeService.GetModeAsync();
         _loading = false;
     }
 
-    private void OnColorChange(string property, string? value)
+    /// <summary>
+    /// Zet de twee bewerkbare paletten klaar. Heeft de club nog geen eigen set (#1254), dan begint
+    /// het lichte palet bij de vier platte kleuren aangevuld met de standaardwaarden — zo ziet de
+    /// beheerder zijn huidige thema terug in plaats van een leeg formulier.
+    /// </summary>
+    private void VulPalettenUitThema()
+    {
+        _licht = new Dictionary<string, string>(ThemePresets.StandaardLicht);
+        if (_theme.LightColors is { Count: > 0 })
+        {
+            foreach (var (sleutel, waarde) in _theme.LightColors) _licht[sleutel] = waarde;
+        }
+        else
+        {
+            _licht["primary"]       = _theme.Primary;
+            _licht["secondary"]     = _theme.Secondary;
+            _licht["accent"]        = _theme.Accent;
+            _licht["textOnPrimary"] = _theme.TextOnPrimary;
+        }
+
+        _donker = new Dictionary<string, string>(ThemePresets.StandaardDonker);
+        if (_theme.DarkColors is { Count: > 0 })
+        {
+            foreach (var (sleutel, waarde) in _theme.DarkColors) _donker[sleutel] = waarde;
+        }
+    }
+
+    private Dictionary<string, string> ActiefPalet => _modus == "dark" ? _donker : _licht;
+
+    private string Kleur(string sleutel) => ActiefPalet.TryGetValue(sleutel, out var waarde) ? waarde : "#000000";
+
+    private async Task ModusBewerkenAsync(string modus)
+    {
+        _modus = modus;
+        // De hele interface schakelt mee: anders stelt de beheerder donkere kleuren in terwijl hij
+        // naar een licht scherm kijkt.
+        await ThemeService.SetModeAsync(modus);
+        await ToepassenAsync();
+    }
+
+    private async Task PresetToepassen(ChangeEventArgs e)
+    {
+        var naam = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(naam)) return;
+
+        var preset = ThemePresets.Alle.FirstOrDefault(p => p.Naam == naam);
+        if (preset == null) return;
+
+        var bron = _modus == "dark" ? preset.Donker : preset.Licht;
+        var doel = ActiefPalet;
+        foreach (var (sleutel, waarde) in bron) doel[sleutel] = waarde;
+
+        await ToepassenAsync();
+    }
+
+    /// <summary>Past beide paletten toe op de live interface, zonder op te slaan.</summary>
+    private async Task ToepassenAsync()
+    {
+        SynchroniseerNaarThema();
+        await ThemeService.ApplyAsync(_theme);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Schrijft de paletten terug naar de DTO. De vier platte velden blijven meelopen met het
+    /// lichte palet: die zijn de terugval voor een client die de paletten nog niet kent (#1254),
+    /// en zouden anders stilzwijgend uit de pas gaan lopen met wat de beheerder ziet.
+    /// </summary>
+    private void SynchroniseerNaarThema()
+    {
+        _theme.LightColors = new Dictionary<string, string>(_licht);
+        _theme.DarkColors  = new Dictionary<string, string>(_donker);
+        _theme.Primary       = _licht["primary"];
+        _theme.Secondary     = _licht["secondary"];
+        _theme.Accent        = _licht["accent"];
+        _theme.TextOnPrimary = _licht["textOnPrimary"];
+    }
+
+    private void OnColorChange(string sleutel, string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
-        // Auto-prepend # for bare 6-digit hex strings (e.g. "1b6ec2" → "#1b6ec2")
-        if (value.Length == 6 && System.Text.RegularExpressions.Regex.IsMatch(value, "^[0-9a-fA-F]{6}$"))
+
+        // Een kale hexcode zonder # aanvullen, zes cijfers of acht (de laatste twee zijn alpha).
+        if ((value.Length == 6 || value.Length == 8) &&
+            System.Text.RegularExpressions.Regex.IsMatch(value, "^[0-9a-fA-F]+$"))
             value = "#" + value;
-        switch (property)
-        {
-            case "primary":       _theme.Primary = value; break;
-            case "secondary":     _theme.Secondary = value; break;
-            case "accent":        _theme.Accent = value; break;
-            case "textOnPrimary": _theme.TextOnPrimary = value; break;
-        }
-        _ = ThemeService.ApplyAsync(_theme);
-        StateHasChanged();
+
+        ActiefPalet[sleutel] = value;
+        _ = ToepassenAsync();
     }
 
     private async Task SaveAsync()
@@ -259,6 +360,7 @@ else
         _saveMessage = null;
         StateHasChanged();
 
+        SynchroniseerNaarThema();
         var result = await Api.UpdateThemeAsync(_theme);
         _saveSuccess = result.Success;
         _saveMessage = result.Success ? "Thema opgeslagen." : (result.ErrorMessage ?? "Opslaan mislukt.");
@@ -268,8 +370,9 @@ else
     private async Task ResetToDefaultAsync()
     {
         _theme = new ThemeDto { FaviconUrl = null, LogoUrl = null };
-        await ThemeService.ApplyAsync(_theme);
-        StateHasChanged();
+        _licht = new Dictionary<string, string>(ThemePresets.StandaardLicht);
+        _donker = new Dictionary<string, string>(ThemePresets.StandaardDonker);
+        await ToepassenAsync();
     }
 
     private async Task ExtractFromWebsiteAsync()

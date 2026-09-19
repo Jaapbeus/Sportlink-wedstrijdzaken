@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **Het thema-scherm stelt nu beide weergaven in, met kant-en-klare basisthema's om mee te
+  beginnen (#1257).** U kiest bovenaan of u de lichte of de donkere weergave bewerkt; de hele
+  interface schakelt meteen mee, zodat u ziet wat u instelt in plaats van het te moeten
+  voorstellen. Een keuzelijst met basisthema's vult in één keer alle kleuren van die weergave,
+  waarna u elke kleur los kunt bijstellen. Het aantal instelbare kleuren is uitgebreid van vier
+  naar negen: naast de knop-, tekst- en accentkleuren nu ook de achtergrond van de pagina en de
+  kaartjes, twee grijstinten en de schaduw. Kleuren met een betekenis blijven vast: groen blijft
+  "klaar", rood blijft "fout", oranje blijft de testmodus.
 - **De Admin GUI heeft een knop om tussen een lichte en een donkere weergave te wisselen (#1256).**
   De knop staat rechtsboven in de balk, naast de feedbackknop. De keuze wordt onthouden voor een
   volgend bezoek. Heb je nog niets gekozen, dan volgt de site de voorkeur die in je besturings-
