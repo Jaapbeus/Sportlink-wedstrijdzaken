@@ -771,6 +771,33 @@ Samenvatting van de twee harde regels (epic #815):
 > SSRF-orkestratie. Dat is vier keer misgegaan (#889, #1130, #1122, #1248). Zie de
 > codekwaliteitssectie hierboven, regel 1.
 
+3. **Elke gebouwde tier is gelijkwaardig. Een feature bestaat op álle gebouwde tiers, of op geen
+   (#1266).** "Gebouwd" is wat `scripts/ci/database-tiers.json` zegt (`built: true`) — vandaag
+   SQL Server én Postgres. Welke tier déze installatie draait, is een deploymentkeuze en zegt
+   niets over de status van de andere.
+
+   > **Dit is de regel die twaalf endpoints heeft gekost.** Epic #986 is alleen op de Postgres-tier
+   > gebouwd, op grond van de aanname dat de SQL Server-tier "rollback-only" was. Die aanname is
+   > nooit als architectuurbesluit voorgelegd: hij sloop binnen als beschrijving van de situatie na
+   > de cutover en werd daarna als norm gebruikt, in vijftien documenten die elk naar de vorige
+   > verwezen. Ondertussen bleef `database-tiers.json` de tier gewoon als `built: true` voeren en
+   > bouwde en testte CI hem elke run.
+
+   Praktisch:
+   - **Een PR die een endpoint, timer of tabel toevoegt, doet dat op beide gebouwde tiers.** Lukt
+     dat niet in één PR, dan komt de route met een reden in
+     `scripts/ci/tier-pariteit-allowlist.txt` én is er een issue dat hem weghaalt. Dat bestand
+     hoort leeg te lopen.
+   - **Een tier degraderen is een expliciet besluit**, vastgelegd door `built` op `false` te zetten
+     in `database-tiers.json` — nooit een zin in een document. Zolang `built: true` staat, geldt
+     pariteit onverkort.
+   - **De drie Postgres-coverage-guards kijken maar één kant op** (staat elk SQL Server-object ook
+     in Postgres). Dat was juist toen SQL Server leidend was. `check-tier-pariteit.sh` bewaakt sinds
+     #1266 beide richtingen op routeniveau.
+   - **Schemawijziging op de SQL Server-tier hoort in `Database/Script.PostDeployment1.sql`**
+     (idempotent) én in de bijbehorende SSDT-tabel onder `Database/dbo/Tables/`. `scripts/migrations/`
+     draait niet automatisch.
+
 Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
 `dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
 empirisch bevestigde Postgres-lowercase-folding-valkuil.

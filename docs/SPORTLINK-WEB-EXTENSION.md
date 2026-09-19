@@ -80,9 +80,12 @@ Zet dry-run pas uit nadat je:
 2. de statussectie (§3.1b) groen ziet staan,
 3. een paar dry-run-pogingen in het audit-log hebt teruggezien met de verwachte `WaardeVoor`/`WaardeNa`.
 
-**Uitzondering, geen keuze:** op de SQL Server-tier (rollback-only sinds de Postgres-cutover, zie
-§4.3) staat dry-run onvoorwaardelijk hard aan in code — die tier heeft nooit een mutatie-endpoint
-gehad en mag dat ook nooit stilzwijgend krijgen via een instelling.
+**Op de SQL Server-tier stond dry-run tot #1266 onvoorwaardelijk hard aan in code**, met als
+motivering dat die tier nooit een mutatie-endpoint had gehad en dat ook niet stilzwijgend via een
+instelling mocht krijgen. #1266 bouwt die endpoints er wel op, want beide tiers zijn gelijkwaardig.
+De veiligheidsrail zelf blijft: `AppSettings.SportlinkDryRun` staat standaard op 1 (dry-run aan) en
+wordt fail-safe gelezen — faalt het lezen, dan blijft dry-run aan. Een club moet de schakelaar dus
+bewust omzetten, precies zoals op de Postgres-tier.
 
 ### 3.1b Statussectie — wat er te zien is
 Onder de rollen-tabel op Instellingen staat sinds #998 een statussectie die in één oogopslag toont:
@@ -264,8 +267,8 @@ verplichte N-user-test.
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
   periode zonder gebruik (`invalid_grant: "Token is not active"`, live vastgesteld 2026-09-05),
   ondanks dat de 6-uurs `refresh_expires_in` nog niet verstreken was — een lui verversende client
-  (alleen bij een echte GUI-actie) is dus niet genoeg. Alleen voor de Postgres-tier; de SQL
-  Server-tier is rollback-only, zie #1020.
+  (alleen bij een echte GUI-actie) is dus niet genoeg. Bestond tot #1266 alleen op de Postgres-tier;
+  de SQL Server-tegenhanger volgt daar, want beide tiers zijn gelijkwaardig.
 - `FunctionApp.Postgres/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs` (#1017) — dagelijkse
   timer die de PublicMatchId-cache vooraf vult voor de eerstkomende dagen (vandaag + 2), gegroepeerd
   per datum (één `MatchProgramOverview`-aanroep per dag, niet per wedstrijd — zie
@@ -396,13 +399,23 @@ schrijfrechten op de eigen Function App — een grotere attack surface voor hetz
 DB-tabel is een bestaande, gratis resource en dezelfde vertrouwensgrens als de bestaande
 `SqlConnectionString`-secrets.
 
-**Besluit (#1020, 2026-09-06):** de SQL Server-tier (`SportlinkClubAppSettingsTokenStore`, #998)
-behoudt bewust de oudere ARM-API-aanpak — géén migratie naar een DB-tabel, ook niet later. Die tier
-is rollback-only sinds de Postgres-cutover en heeft geen productieverkeer; een DB-tabel-migratie
-bouwen voor een tier die mogelijk nooit meer actief wordt is voorbarig werk. Deze twee tiers hebben
-dus bewust verschillende tokenopslag — geen halfslachtige tussenstand, maar een expliciete,
-blijvende keuze totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval eerst
-herbeoordelen, niet automatisch alignen).
+**Besluit (#1020, 2026-09-06) — premisse ingetrokken bij #1266.** #1020 koos ervoor dat de SQL
+Server-tier (`SportlinkClubAppSettingsTokenStore`, #998) de oudere ARM-API-aanpak behield, op grond
+van de aanname dat die tier "rollback-only" was en geen productieverkeer had. Dat besluit bevatte
+zelf de voorwaarde: *"totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval
+eerst herbeoordelen, niet automatisch alignen)"*.
+
+Die voorwaarde is nu ingetreden: beide tiers zijn gelijkwaardig (#1266). Wat dat concreet betekent:
+
+- **De asymmetrie in tokenopslag blijft voorlopig bestaan** en is daarmee een bewuste, herbeoordeelde
+  keuze in plaats van een vergeten verschil. De ARM-API-variant wérkt op deze tier; hem vervangen
+  door een DB-tabel is een aparte afweging (Managed Identity met Website Contributor-rol per
+  deployment versus een gewone tabel), geen onderdeel van pariteitsherstel.
+- **Het staat expliciet in `scripts/ci/tier-pariteit-allowlist.txt`** met deze reden, zodat het een
+  zichtbare, gemotiveerde uitzondering is en niet opnieuw stilzwijgend groeit.
+- De premisse "rollback-only" is uit de rest van de documentatie verwijderd. Hij was nooit als
+  architectuurbesluit voorgelegd; hij sloop binnen als beschrijving van de situatie na de cutover
+  en werd daarna als norm gebruikt.
 
 ### 4.4 HARDE REGEL: coding agents mogen dit mechanisme nooit zelf uitvoeren
 

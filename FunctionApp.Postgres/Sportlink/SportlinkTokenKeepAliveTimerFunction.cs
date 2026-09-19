@@ -26,7 +26,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// operationele afweging maar een vaste, technisch bepaalde ondergrens.
 /// </para>
 /// <para>
-/// Alleen voor de Postgres-tier: de SQL Server-tier is sinds de productiecutover rollback-only
+/// Bestond tot #1266 alleen op de Postgres-tier; de SQL Server-tegenhanger volgt daar, want beide
 /// (geen productieverkeer) en heeft nog de oudere ARM-API-tokenopslag — zie issue #1020 voor de
 /// bewust nog niet genomen beslissing daarover. Een keep-alive bouwen voor een tier die mogelijk
 /// een andere tokenopslag krijgt, zou voorbarig werk zijn.

@@ -69,6 +69,13 @@ jobs:
       # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
       - name: Codekwaliteit — guards zelf getest
         run: bash scripts/ci/check-codekwaliteit.test.sh
+      # #1266: de drie Postgres-coverage-guards hieronder kijken maar EEN kant op — staat elk SQL
+      # Server-object ook in Postgres. Ze zijn geschreven toen SQL Server de leidende tier was.
+      # Bij de cutover draaiden de rollen om, maar de richting van de guards niet; sindsdien groeide
+      # de Postgres-tier vrij en liep de SQL Server-tier twaalf endpoints achter zonder dat iets
+      # het merkte. Deze guard kijkt beide kanten op. Geen database, geen secrets.
+      - name: Tier-pariteit — zelfde routes op beide tiers
+        run: bash scripts/ci/check-tier-pariteit.sh
 
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-

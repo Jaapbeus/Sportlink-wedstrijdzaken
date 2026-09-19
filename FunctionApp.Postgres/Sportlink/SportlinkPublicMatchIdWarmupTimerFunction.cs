@@ -28,7 +28,7 @@ namespace FunctionApp.Postgres.Sportlink;
 /// </para>
 /// <para>
 /// Alleen voor de Postgres-tier — zelfde reden als <see cref="SportlinkTokenKeepAliveTimerFunction"/>:
-/// de SQL Server-tier is rollback-only sinds de Postgres-cutover (#1020).
+/// de SQL Server-tegenhanger volgt in #1266, want beide tiers zijn gelijkwaardig.
 /// </para>
 /// </summary>
 public static class SportlinkPublicMatchIdWarmupTimerFunction

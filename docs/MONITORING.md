@@ -20,7 +20,7 @@ Azure Static Web Apps (swa-[clubcode]-sportlink)
 Database — één van twee, per fork gekozen via DatabaseTier (zie docs/ARCHITECTUUR-DATABASE-TIERS.md):
   ├── Azure SQL ([database-naam] @ [sql-resource-group])
   │     → Geen Application Insights; Resource Health via Azure Portal; zie "Azure SQL Free-tier
-  │       bescherming" hieronder voor het volledige vangnet (productie sinds #976: rollbackpad)
+  │       bescherming" hieronder voor het volledige vangnet (SQL Server-tier)
   └── Postgres (bijv. Supabase, productietier sinds #976)
         → Provider-eigen dashboard/monitoring; nog geen los uitvalmonitor-equivalent in deze repo
 ```
@@ -174,8 +174,8 @@ run. Geen Azure-resource, geen tierwijziging — dit valt buiten het kostenbelei
 ## Azure SQL Free-tier bescherming
 
 > **Geldt uitsluitend voor de SQL Server-tier.** Sinds 2026-09-04 draait productie op Postgres
-> (issue #976, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`) — deze hele sectie is dus vandaag het
-> vangnet voor het rollbackpad, niet voor de live database. Er bestaat **nog geen Postgres-
+> (issue #976, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`) — deze sectie beschrijft dus vandaag het
+> vangnet voor de tier waarop déze installatie niet draait. Er bestaat **nog geen Postgres-
 > equivalent** van `DatabaseUitvalMonitorFunction` hieronder — een club die volledig op Postgres
 > draait heeft dus geen losstaande, e-mail-onafhankelijke uitvalmonitor. Dit is een bekend, open
 > punt, geen verkeerd begrepen architectuur; behandel het als zodanig totdat het is opgepakt.

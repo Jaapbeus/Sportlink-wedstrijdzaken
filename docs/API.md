@@ -4,9 +4,10 @@
 
 > **Tier-opmerking:** de meeste endpoints bestaan identiek op beide tiers (`FunctionApp` = SQL
 > Server, `FunctionApp.Postgres` = Postgres, productie sinds #976). De `/sportlink/*`-endpoints
-> (Sportlink Web Extension, epic #986) en `/beheer/sportlink-extensie/*` bestaan **uitsluitend op
-> de Postgres-tier** — de SQL Server-tier is rollback-only en heeft deze nooit gekregen. Zie
-> `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de tier-strategie.
+> (Sportlink Web Extension, epic #986) en `/beheer/sportlink-extensie/*` worden op de SQL
+> Server-tier hersteld in #1266: die tier is gelijkwaardig, maar epic #986 is er nooit op gebouwd.
+> `scripts/ci/check-tier-pariteit.sh` bewaakt sindsdien dat een endpoint niet op één tier kan
+> blijven bestaan. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de tier-strategie.
 
 ## Beveiliging
 

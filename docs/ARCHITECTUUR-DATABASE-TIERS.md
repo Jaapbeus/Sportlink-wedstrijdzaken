@@ -2890,7 +2890,7 @@ bestaat en losstaat van deze wijziging.
 
 De SQL Server-tier wordt niet verwijderd of gedeprecieerd. Hij blijft `built: true` in
 `database-tiers.json`, houdt zijn eigen compose-service, template en schemacontrole, en is het
-rollbackpad van §49 stap 7. Alleen de standaardkeuze is verschoven naar de tier die daadwerkelijk
+gelijkwaardige tier van §49 stap 7 (#1266). Alleen de standaardkeuze is verschoven naar de tier die daadwerkelijk
 draait.
 ## 52. `EmailProcessorFunction` alsnog vertaald — de mailbox werd sinds §49 nooit gepolld (#972, hotfix)
 
