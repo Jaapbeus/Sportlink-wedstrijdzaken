@@ -207,6 +207,27 @@ public static class SsrfProtection
     }
 
     /// <summary>
+    /// De <c>Accept</c>-header die elke via <see cref="CreateHttpClient"/> gebouwde client
+    /// meestuurt. Zie <see cref="DefaultAcceptLanguage"/> voor de reden dat deze bestaat.
+    /// </summary>
+    internal const string DefaultAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+
+    /// <summary>
+    /// De <c>Accept-Language</c>-header die elke via <see cref="CreateHttpClient"/> gebouwde client
+    /// meestuurt.
+    /// <para>
+    /// Reden: een verzoek met uitsluitend een <c>User-Agent</c> wordt door sommige hosts van
+    /// clubwebsites met <c>403 Forbidden</c> beantwoord, terwijl hetzelfde verzoek mét deze twee
+    /// headers gewoon <c>200 OK</c> geeft. Dat is kale header-sniffing op een browser-achtig
+    /// verzoekprofiel, geen bot-bescherming die we omzeilen: de aanvraag zelf is en blijft een
+    /// gewone, door de beheerder geïnitieerde GET op de eigen, in <c>AppSettings</c> vastgelegde
+    /// clubwebsite. Zonder deze headers faalt de thema-extractor op zulke hosts zonder dat er
+    /// iets mis is.
+    /// </para>
+    /// </summary>
+    internal const string DefaultAcceptLanguage = "nl-NL,nl;q=0.9,en;q=0.8";
+
+    /// <summary>
     /// Bouwt een <see cref="HttpClient"/> met redirects uit en een <c>ConnectCallback</c> die elke
     /// verbinding (initieel én elke handmatig gevolgde redirect-hop) resolvet en valideert vlak
     /// vóór het openen van de TCP-verbinding. De optionele overrides zijn uitsluitend voor tests —
@@ -228,6 +249,8 @@ public static class SsrfProtection
         };
         var client = new HttpClient(handler) { Timeout = timeout ?? TimeSpan.FromSeconds(10) };
         client.DefaultRequestHeaders.Add("User-Agent", userAgent);
+        client.DefaultRequestHeaders.Accept.ParseAdd(DefaultAccept);
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(DefaultAcceptLanguage);
         return client;
     }
 
