@@ -94,7 +94,7 @@ project is dus de richting van het gemiddelde — tenzij er iets tegenin duwt.
 |---|---|
 | Woordelijk identieke betekenisvolle regels tussen de twee tierbomen (77 paren) | **4.641** |
 | jscpd-duplicatie over alle C#-broncode | **15,4%** (376 clones) |
-| Regels logica in `@code`-blokken van Blazor-pagina's | **1.641** over 14 pagina's |
+| Regels logica in `@code`-blokken van Blazor-pagina's | **1.715** over 14 pagina's |
 | Blazor-pagina's mét code-behind | 4 van 18 |
 | `.cs`-bestanden boven 500 regels | 26 (waarvan 4 boven 800) |
 | `.editorconfig` / `Directory.Build.props` / analyzers | afwezig — alleen `<Nullable>enable</Nullable>` |
@@ -149,7 +149,7 @@ Elke `.razor` onder `BlazorAdmin/Pages/` met C#-logica heeft een code-behind: `<
 daarnaast géén `@code`-blok hebben.
 
 Reden is testbaarheid: `BlazorAdmin.Tests` kan een partial class instantiëren, een `@code`-blok
-niet. Dat 1.641 regels logica in pagina's staan, verklaart waarom dat testproject met 14 tests het
+niet. Dat 1.715 regels logica in pagina's staan, verklaart waarom dat testproject met 14 tests het
 kleinste van de vijf is.
 
 Dit is een eigen architectuurkeuze, geen Microsoft-voorschrift: Microsoft beschrijft beide vormen
