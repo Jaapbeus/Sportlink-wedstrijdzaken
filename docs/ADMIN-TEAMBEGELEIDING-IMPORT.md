@@ -1,26 +1,12 @@
 # Handleiding: Teambegeleiding export uit Sportlink Club
 
-Deze handleiding legt stap voor stap uit hoe je de lijst met teambegeleiders (trainers, leiders, coaches) exporteert uit Sportlink Club. Je hebt hier geen technische kennis voor nodig.
+> **Voor wie is dit document?** Voor de beheerder van de vereniging die deze lijst bijhoudt. Je
+> hebt hier geen technische kennis voor nodig. Helemaal onderaan staat een blok **Technische
+> achtergrond**; dat hoef je niet te lezen om de import uit te voeren.
 
-> **Ontwikkelaarsnotitie — Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de
-> stappen hieronder (Sportlink-export + upload via **Teambegeleiding → Teambegeleiding importeren**)
-> werken identiek op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
-> CSV-kolomherkenning (aliassen, dedup, validatie — `FunctionApp.Postgres/Admin/
-> AdminTeambegeleidingFunction.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
-> database-interactiedeel uit #824 zelf (`avg.teambegeleiding`/`avg.importlog` via
-> `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-import,
-> ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie). Getest tegen een
-> lokale Postgres-devcontainer, uitsluitend met fictieve testdata.
->
-> **#1131/#1132 (beide tiers atomisch en per-club geserialiseerd).** De SQL Server-import
-> (`FunctionApp/Admin/AdminTeambegeleidingFunction.cs`) valideert nu de kolomlengtes van élke rij
-> vóórdat de club-scoped DELETE draait, en voert DELETE + inserts + de audit-rij in `avg.ImportLog`
-> uit in één transactie met rollback bij elke fout — een te lange waarde (bijv. een teamnaam van
-> meer dan 100 tekens) levert nu een 400 met een foutmelding per rij/kolom op, en laat de vorige
-> geldige import ongemoeid. De Postgres-import serialiseert vervangingen per club met een
-> `pg_advisory_xact_lock` vóór de DELETE, zodat twee overlappende imports voor dezelfde club nooit
-> allebei kunnen committen (de tweede wacht en vervangt daarna de eerste volledig, in plaats van de
-> twee batches samen te voegen).
+Deze handleiding legt stap voor stap uit hoe je de lijst met teambegeleiders (trainers, leiders, coaches) exporteert uit Sportlink Club en importeert in de beheeromgeving.
+
+De import werkt hetzelfde, ongeacht welke database jouw club gebruikt.
 
 ---
 
@@ -102,9 +88,28 @@ technische kennis.
 3. Kies het gedownloade bestand
 4. Controleer de voorbeeldweergave en bevestig de import
 
-De CSV wordt in de browser ingelezen en verwerkt — er wordt geen bestand op de server opgeslagen.
+#### Wat er met de gegevens gebeurt
 
-### Optie B — via het PowerShell-script
+Je browser leest het bestand in en toont een voorbeeld van de eerste vijf rijen, zodat je kunt
+controleren of je het juiste bestand hebt. Klik je daarna op importeren, dan wordt **de volledige
+inhoud van de CSV naar de server gestuurd** — beveiligd, en alleen vanuit jouw ingelogde sessie —
+en daar meteen in de database verwerkt. De persoonsgegevens verlaten dus wél je browser; dat is
+inherent aan een import.
+
+Wat er daarna staat, en wat niet:
+
+| | |
+|---|---|
+| **Wordt bewaard** | De begeleidersgegevens zelf (team, leeftijdscategorie, teamrol, naam, e-mailadres, telefoonnummer) in de database van je club |
+| **Wordt bewaard** | Eén regel in het importlogboek: wie er wanneer heeft geïmporteerd, de bestandsnaam en het aantal rijen |
+| **Wordt níet bewaard** | Het CSV-bestand zelf — dat wordt nergens op de server opgeslagen |
+| **Wordt níet bewaard** | De inhoud van de CSV in logbestanden; de applicatie logt bewust alleen het aantal rijen en de duur |
+
+### Optie B — via het PowerShell-script (alleen bij een SQL Server-database)
+
+> **Let op:** dit script werkt uitsluitend als jouw installatie op SQL Server draait. Draait je
+> club op Postgres — wat de standaard is — gebruik dan Optie A. Weet je het niet zeker, gebruik dan
+> Optie A; die werkt altijd.
 
 1. Open **PowerShell** (zoek via het Startmenu op "PowerShell")
 
@@ -128,7 +133,11 @@ De CSV wordt in de browser ingelezen en verwerkt — er wordt geen bestand op de
 
 ## Controleren of het gelukt is
 
-Na het uitvoeren van het script zie je een samenvatting zoals:
+**Bij Optie A** verschijnt onder het importvak een groene melding:
+*"Geïmporteerd: [aantal] begeleiders succesvol geladen."* Staan er waarschuwingen onder —
+bijvoorbeeld over overgeslagen dubbele rijen — lees die dan even door; de import is dan wel gelukt.
+
+**Bij Optie B** toont PowerShell een samenvatting:
 
 ```
 Klaar!
@@ -159,3 +168,38 @@ Deze export wordt **wekelijks** uitgevoerd — kies een vast moment dat past bij
 | Verificatiecode werkt niet | Code verlopen | Wacht tot de authenticator-app een nieuwe code toont en probeer opnieuw |
 | Waarschuwing "exacte duplicaat-rij(en) overgeslagen" | Sportlink-export bevat dezelfde persoon met exact dezelfde rol twee keer | Geen actie nodig — de import slaat deze duplicaten automatisch over, de rest van de lijst is correct geïmporteerd |
 | Foutmelding "Een of meer rijen overschrijden de maximale kolomlengte" met een rij/kolom-lijst | Een veld in de CSV (bijv. een teamnaam of e-mailadres) is langer dan de databasekolom toestaat | Kort de genoemde velden in en importeer opnieuw — de vorige geldige import is niet gewijzigd |
+
+---
+
+## Technische achtergrond (niet nodig om de import uit te voeren)
+
+> **Postgres-tier (#824, epic #815).** Deze handleiding is tier-neutraal: de stappen hierboven
+> (Sportlink-export + upload via **Teambegeleiding → Teambegeleiding importeren**) werken identiek
+> op beide databasevarianten. Sinds #913 heeft de Postgres-tier dezelfde flexibele
+> CSV-kolomherkenning (aliassen, dedup, validatie — `FunctionApp.Postgres/Admin/
+> AdminTeambegeleidingFunction.cs`) als de SQL Server-tier, boven op het AVG-gevoelige
+> database-interactiedeel uit #824 zelf (`avg.teambegeleiding`/`avg.importlog` via
+> `Database.Postgres/TeambegeleidingImporter.cs`: atomische delete-vóór-COPY-import,
+> ClubCode-gescoped staleness-check, `syncenabled`-gevalideerde clubselectie). Getest tegen een
+> lokale Postgres-devcontainer, uitsluitend met fictieve testdata.
+>
+> **#1131/#1132 (beide tiers atomisch en per-club geserialiseerd).** De SQL Server-import
+> (`FunctionApp/Admin/AdminTeambegeleidingFunction.cs`) valideert de kolomlengtes van élke rij
+> vóórdat de club-scoped DELETE draait, en voert DELETE + inserts + de audit-rij in `avg.ImportLog`
+> uit in één transactie met rollback bij elke fout — een te lange waarde (bijv. een teamnaam van
+> meer dan 100 tekens) levert een 400 met een foutmelding per rij/kolom op, en laat de vorige
+> geldige import ongemoeid. De Postgres-import serialiseert vervangingen per club met een
+> `pg_advisory_xact_lock` vóór de DELETE, zodat twee overlappende imports voor dezelfde club nooit
+> allebei kunnen committen (de tweede wacht en vervangt daarna de eerste volledig, in plaats van de
+> twee batches samen te voegen).
+
+**Waar de CSV langskomt (Optie A).** `BlazorAdmin/Pages/Teambegeleiding.razor` leest het bestand
+met `OpenReadStream` (max. 5 MB) in `_csvContent` en maakt daar client-side alleen een voorbeeld
+van vijf rijen mee. Bij bevestigen gaat `_csvContent` ongewijzigd als JSON-veld `csvContent` naar
+`POST /api/beheer/teambegeleiding/import`. De Function deserialiseert die body, parseert de CSV
+server-side (`ParseCsv`) en geeft de genormaliseerde rijen door aan
+`Database.Postgres.TeambegeleidingImporter.ImportAsync`, dat in één transactie de bestaande rijen
+van de club verwijdert, de nieuwe rijen via binaire `COPY` in `avg.teambegeleiding` laadt en één
+auditrij in `avg.importlog` schrijft (aantal rijen, bestandsnaam, importeerder, duur, clubcode).
+Het bestand zelf wordt niet naar schijf geschreven, en de logregel bevat expliciet geen
+persoonsgegevens.

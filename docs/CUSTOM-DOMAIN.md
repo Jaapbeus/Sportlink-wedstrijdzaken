@@ -79,6 +79,19 @@ Het script stopt direct als je op de verkeerde tenant bent ingelogd, als een res
 of als het domeinformaat ongeldig is. Resolveert het CNAME-record nog niet, dan waarschuwt het en
 gaat het door — de SWA-validatie kan dan later alsnog slagen.
 
+> **Op macOS en Linux is de DNS-controle blind.** `Add-CustomDomain.ps1` gebruikt `Resolve-DnsName`,
+> een cmdlet uit de Windows-only module `DnsClient`. Elders bestaat die niet; de aanroep gooit een
+> `CommandNotFoundException` die door de omringende `try`/`catch` wordt opgevangen, waarna het
+> script **altijd** "CNAME nog niet vindbaar" waarschuwt — ook als het record perfect resolvet.
+> Controleer het daar zelf, vóór je verder gaat:
+>
+> ```bash
+> dig +short CNAME wz.[club-domein]        # of: nslookup -type=CNAME wz.[club-domein]
+> ```
+>
+> De uitvoer moet de gegenereerde hostnaam van je Static Web App zijn
+> (`[swa-url].azurestaticapps.net`).
+
 ### Waar vind ik de waarden?
 
 | Parameter | Vindplaats |
@@ -96,20 +109,30 @@ Validatie en certificaatuitgifte duren enkele minuten tot enkele uren. Controlee
 az staticwebapp hostname list --name <swa-naam> --resource-group <swa-rg> -o table
 ```
 
-Loop daarna deze vier punten na — punt 3 is de enige die bewijst dat CORS klopt:
+Loop daarna deze vijf punten na — punt 3 is de enige die bewijst dat CORS klopt:
 
 1. `https://wz.[club-domein]` opent **met een geldig certificaat**, zonder browserwaarschuwing.
 2. Inloggen via Microsoft werkt, zonder `AADSTS50011`.
 3. Een pagina die gegevens toont, laadt die gegevens ook echt. Lege schermen betekenen een
    CORS-probleem — controleer de browserconsole (F12).
 4. De oude `[swa-url].azurestaticapps.net` werkt nog steeds. Beide URL's blijven geldig.
+5. Draai het auth-verificatiescript:
+   ```powershell
+   .\scripts\azure\Verify-AzureAuthSetup.ps1 -ClientId '<app-id>' -ExpectedTenantId '<tenant-id>'
+   ```
+   > **Let op bij de redirect-URI-check van dat script.** Hij matcht uitsluitend op
+   > `^https://.*\.azurestaticapps\.net/authentication/login-callback$`. Zolang je de
+   > oorspronkelijke URI laat staan (punt 4 hierboven) slaagt hij. Verwijder je die en houd je
+   > alleen het eigen domein over, dan meldt het script **onterecht** een fout — de configuratie is
+   > dan correct, de check niet. Ga in dat geval niet "herstellen" door redirect-URI's te wijzigen.
 
 > Doe punt 2 in een **verse incognito-sessie**. MSAL bewaart het ID-token in `localStorage`; zonder
 > verse sessie test je de oude token en niet de nieuwe redirect-URI.
 
 ## Wat níet hoeft te wijzigen
 
-- **De Content-Security-Policy** in `staticwebapp.config.json`. Die staat op
+- **De Content-Security-Policy** in `BlazorAdmin/wwwroot/staticwebapp.config.json` (het enige
+  exemplaar in de repo — er staat er géén in de root). Die staat op
   `connect-src 'self' https://login.microsoftonline.com {{AZURE_FUNCTIONAPP_URL}}` — `'self'` wordt
   automatisch je nieuwe domein, en de Function App staat er expliciet in.
 - **`appsettings.Production.template.json`.** Daar staat geen frontend-URL in; MSAL leidt de
@@ -141,6 +164,8 @@ Twee praktische punten:
 
 ## Verwante documentatie
 
-- `SETUP-NIEUWE-CLUB.md` — volledige installatie voor een nieuwe club
-- `docs/ENTRA-AUTH-BEHEER.md` — Entra-configuratie en de verplichte 3-user-test
-- `docs/ARCHITECTURE.md` — architectuuroverzicht, inclusief de auth-lagen
+- [`../SETUP-NIEUWE-CLUB.md`](../SETUP-NIEUWE-CLUB.md) — volledige installatie voor een nieuwe club
+  (staat in de repo-root, niet in `docs/`)
+- [`ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — Entra-configuratie en de verplichte
+  gebruikersrollentest (in `CLAUDE.md` de "3-user-test")
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — architectuuroverzicht, inclusief de auth-lagen

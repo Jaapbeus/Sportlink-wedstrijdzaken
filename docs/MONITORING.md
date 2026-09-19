@@ -2,8 +2,28 @@
 
 Observability, alerting en debugging voor de Sportlink Wedstrijdzaken applicatie.
 
-> **Kostenstatus:** Fase A (documentatie + Application Insights) is gratis.  
-> Metric Alert Rules zijn **betaald** — zie sectie [Alerting](#alerting) voor gratis alternatieven.
+> **Kostenstatus — Application Insights is NIET onvoorwaardelijk gratis.**
+>
+> Application Insights is in deze stack **workspace-based**: ingestie en retentie lopen volledig via
+> een door Azure beheerde Log Analytics-workspace. Klassieke, workspace-loze Application Insights
+> bestaat sinds februari 2024 niet meer; `infrastructure/modules/monitoring.bicep` legt dit vast en
+> bevestigt het empirisch — beide componenten rapporteren `IngestionMode: LogAnalytics`. De Legacy
+> Free Tier is op **1 juli 2022** vervallen voor nieuwe workspaces. Het enige gratis budget is de
+> **5 GB/maand data-allowance per billing account**, gedeeld over álle workspaces in dat account.
+>
+> `CLAUDE.md` plaatst Application Insights daarom in de tabel *Potentieel betaald — expliciete
+> goedkeuring vereist*. Drie verplichtingen volgen daaruit:
+>
+> 1. **Daily cap van maximaal 100 MB/dag.** Die zet je niet op de Application Insights-resource maar
+>    op de gekoppelde Log Analytics-workspace (`properties.workspaceCapping.dailyQuotaGb`). Omdat
+>    Azure die workspace zelf beheert en hij niet in onze Bicep staat, is dit **handwerk in de
+>    portal**: Log Analytics workspace → Usage and estimated costs → Daily cap.
+> 2. **Expliciete goedkeuring van de eigenaar** vóór een nieuwe Application Insights-resource of
+>    workspace wordt aangemaakt — conform het kostenbeleid in `CLAUDE.md`.
+> 3. **Sampling aanzetten** vóórdat het telemetrievolume groeit; zie
+>    [host.json (sampling)](#hostjson-sampling). Dat is de enige kostenrem die in dit repo zelf ligt.
+>
+> Metric Alert Rules zijn eveneens **betaald** — zie [Alerting](#alerting) voor gratis alternatieven.
 
 ---
 
@@ -25,13 +45,34 @@ Database — één van twee, per fork gekozen via DatabaseTier (zie docs/ARCHITE
         → Provider-eigen dashboard/monitoring; nog geen los uitvalmonitor-equivalent in deze repo
 ```
 
+### Welk vangnet geldt voor welke tier
+
+Dit document beschrijft bewaking voor **beide** databasetiers. Niet elk vangnet geldt voor allebei:
+
+| Vangnet | SQL Server-tier | Postgres-tier (productie) |
+|---|---|---|
+| Application Insights (traces, exceptions, KQL) | ✅ | ✅ |
+| `GET /api/health` (`database`, `pendingMigrations`, `lastSync`) | ✅ | ✅ |
+| `db-check` in `deploy.yml` (ARM-status vóór migratie/deploy) | ✅ | ❌ — job is tier-gegate op `SqlServer` |
+| `DatabaseUitvalMonitorFunction` (dagelijkse uitvalmail) | ✅ | ❌ — **geen equivalent**, bekend open punt |
+| `Setup-SqlAlerts.ps1` (Resource Health Alert + e-mail) | ✅ | ❌ — Azure-SQL-specifiek |
+| Dagelijkse Supabase-advisorcontrole (beveiliging/performance) | ❌ | ✅ |
+| Supabase-dashboard / providermonitoring | ❌ | ✅ |
+
+**Het gat:** een club die op Postgres draait heeft géén losstaande, e-mail-onafhankelijke
+uitvalmonitor. De Supabase-advisorcontrole merkt een database die *plat ligt* niet als zodanig op —
+de workflow faalt dan op een API-fout, wat een signaal is maar geen gerichte uitvalmelding.
+Behandel dit als een bekend, open punt, niet als een verkeerd begrepen architectuur.
+
 ---
 
 ## Application Insights instellen
 
 ### Lokale ontwikkeling
 
-Voeg toe aan `FunctionApp/local.settings.json`:
+Voeg toe aan het `local.settings.json` van de tier waarop je werkt — standaard
+`FunctionApp.Postgres/local.settings.json` (de tier die in productie draait), voor de SQL
+Server-tier `FunctionApp/local.settings.json`:
 
 ```json
 "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=<key>;IngestionEndpoint=https://..."
@@ -54,7 +95,17 @@ Of via Azure Portal → Function App → Settings → Environment variables.
 
 ### host.json (sampling)
 
-Voeg sampling toe in `FunctionApp/host.json` als de telemetrie te groot wordt (gratis tier: 5 GB/maand):
+**Sampling staat nu niet aan.** Zowel `FunctionApp.Postgres/host.json` (productietier) als
+`FunctionApp/host.json` bevat uitsluitend `version` en `functionTimeout` — geen `samplingSettings`.
+`infrastructure/modules/monitoring.bicep` noemt sampling op 10% wél als de daadwerkelijke
+beheersmaatregel tegen onverwacht volume; die aanname klopt dus niet met de werkelijkheid.
+
+Er is ook geen app-eigen gratis limiet: het budget is 5 GB/maand Log Analytics-ingestie **per
+billing account**, gedeeld. Zet sampling daarom aan vóórdat het telemetrievolume groeit, en
+combineer het met de daily cap op de workspace (zie de kostenstatus bovenaan).
+
+Voeg toe aan het `host.json` van de actieve tier (`FunctionApp.Postgres/host.json`, respectievelijk
+`FunctionApp/host.json`):
 
 ```json
 {
@@ -90,7 +141,12 @@ Voeg sampling toe in `FunctionApp/host.json` als de telemetrie te groot wordt (g
 
 Bron: [Azure Monitor cost — alerts](https://learn.microsoft.com/azure/azure-monitor/fundamentals/best-practices-cost#alerts)
 
-### Alert-drempelwaarden (toekomstige implementatie via Bicep)
+### Alert-drempelwaarden — alleen relevant ná goedkeuring van betaalde alerts
+
+> Deze tabel beschrijft drempelwaarden voor **Metric Alert Rules**, en die zijn betaald per
+> gemonitorde tijdreeks. Er staat **geen** alert-implementatie in `infrastructure/`, en zolang de
+> eigenaar betaalde alerts niet expliciet goedkeurt komt die er ook niet. Lees de tabel dus als een
+> voorbereid ontwerp, niet als een geplande oplevering.
 
 | Metriek | Warning | Critical |
 |---|---|---|
@@ -192,9 +248,27 @@ wordt de database gepauzeerd tot het begin van de volgende kalendermaand. Dit he
 
 ### Laag 1 — Deployment guard (CI/CD)
 
-De `db-check` job in `deploy.yml` controleert de database-status via de Azure ARM API **vóór** elke
-build, migratie of Blazor-deploy. Als de database niet `Online` is, wordt de volledige pipeline
-geblokkeerd met een duidelijke foutmelding.
+De `db-check` job in `deploy.yml` controleert de database-status via de Azure ARM API. **Sinds #599
+blokkeert hij de build niet**, en de volledige pipeline dus evenmin. De gate geldt per job:
+
+| Job in `deploy.yml` | Gegate op `db-check`? | `needs:` |
+|---|---|---|
+| `build` | **Nee** — bewust, zie #599 | *(geen)* |
+| `blazor-deploy` | **Nee** | `build` |
+| `db-migrate` (alleen `DatabaseTier=SqlServer`) | **Ja** | `[build, db-check]` |
+| `db-migrate-postgres` (alleen `DatabaseTier=Postgres`) | **Nee** | `[build]` |
+| `deploy` (Function App naar Azure) | **Ja** | `[build, db-check, db-migrate, db-migrate-postgres]` |
+| `test` (smoke test) | Indirect, via `deploy` | `[deploy]` |
+
+Wat de gate wél garandeert: er gaat nooit Function App-code of een SQL Server-migratie naar Azure
+terwijl de database niet `Online` is. Wat hij **niet** garandeert: `build` en `blazor-deploy` lopen
+altijd door, dus **de Blazor-frontend gaat wél live** bij een gepauzeerde database. Lees een
+gefaalde of overgeslagen `db-check` daarom nooit als "er is niets gedeployed".
+
+Dat `build` losgekoppeld is, is geen omissie maar de kern van #599: eerder werden `build`,
+`blazor-deploy` én `test` allemaal overgeslagen zodra de Free-tier database gepauzeerd was, waardoor
+compileerfouten wekenlang onopgemerkt konden blijven. Bouwen heeft geen database nodig; deployen
+wel.
 
 **Vereiste GitHub variabele (eenmalig instellen):**
 ```
@@ -222,14 +296,16 @@ overgeslagen.
 ### Laag 2 — In-app overlay (Blazor)
 
 De `DatabaseStatusService` pollt `/api/health` na authenticatie (elke 15 seconden, max 2 minuten).
-Het `/api/health` endpoint probeert een `SELECT 1` met 5 seconden timeout en retourneert:
+Het `/api/health` endpoint doet een lichte probe met 5 seconden timeout — `SHOW server_version` op
+de Postgres-tier (`FunctionApp.Postgres/HealthFunction.cs`), `SELECT 1` op de SQL Server-tier — en
+retourneert:
 
 | `database` waarde | Betekenis |
 |---|---|
 | `online` | Database bereikbaar |
-| `paused` | Auto-paused (fout 40613); Azure begint automatisch te resumeren |
+| `paused` | **Alleen SQL Server-tier.** Auto-paused (fout 40613); Azure begint automatisch te resumeren. De Postgres-tier kent deze status niet — daar is een onbereikbare database altijd `timeout` of `unavailable` |
 | `timeout` | Verbinding time-out na 5 seconden |
-| `unavailable` | Andere SQL-fout |
+| `unavailable` | Andere databasefout |
 | `unconfigured` | Geen connection string (lokale dev zonder SQL) |
 
 **UI-gedrag:**
@@ -272,9 +348,12 @@ REST API (`GET .../providers/Microsoft.Sql/servers/{server}/databases/{database}
 ARM-leesoperatie, geen databaseverbinding, dus deze check kan niet zelf slachtoffer worden van
 dezelfde storing. Staat de database langer dan ~6 uur gepauzeerd (`properties.status == "Paused"`,
 duur via `properties.pausedDate`), dan gaat er een melding uit naar `GraphMailbox`; bij een
-langdurige uitval herhaalt dit maximaal 1x per dag (de throttle-registratie is dezelfde
-`INoodmailThrottleStore` als de e-mail-noodmail, dus welke van de twee het eerst meldt onderdrukt de
-ander voor diezelfde uitval).
+langdurige uitval herhaalt dit met een minimuminterval van **20 uur**
+(`MinimaleHerhalingsinterval`). De dagelijkse schedule maakt daar in de praktijk ~1x per dag van;
+de 20 uur voorkomt een dubbele mail als de functie een keer vaker dan gepland draait. De
+throttle-registratie is dezelfde `INoodmailThrottleStore` *en dezelfde sleutel*
+(`database-noodmail`) als de e-mail-noodmail, dus welke van de twee het eerst meldt onderdrukt de
+ander voor diezelfde uitval.
 
 **Het ontvangeradres staat niet in het log (#1201).** De functie logt uitsluitend dát er een melding
 is verstuurd, plus de uitvalduur — nooit de waarde van `GraphMailbox`. Dit volgt Laag 5 van
@@ -293,8 +372,14 @@ noodmail actief):**
    ```
    AzureSqlServerName      = [sql-servernaam]     (zonder .database.windows.net)
    AzureSqlDatabaseName    = [database-naam]
-   DATABASE_STATUS_MONITOR_SCHEDULE = 0 0 8 * * *   (optioneel, standaard 1x per dag om 08:00 UTC)
+   DATABASE_STATUS_MONITOR_SCHEDULE = 0 0 8 * * *   (VERPLICHT — zie hieronder)
    ```
+   > **`DATABASE_STATUS_MONITOR_SCHEDULE` is niet optioneel en heeft geen default in code.** De
+   > TimerTrigger is gedeclareerd als `[TimerTrigger("%DATABASE_STATUS_MONITOR_SCHEDULE%")]`, en de
+   > Functions-runtime lost die `%…%`-verwijzing op bij het **indexeren** van de functie — vóór de
+   > functiebody ooit draait. Ontbreekt de app setting, dan faalt het indexeren en komt de functie
+   > niet omhoog; dat symptoom wijst nergens naar deze instelling. De waarde `0 0 8 * * *` staat
+   > alleen als voorbeeld in `FunctionApp/local.settings.template.json`.
 2. **Eenmalige, gratis roltoewijzing:** de Function App heeft in productie al een Managed Identity
    met een rol op zijn eigen resource (Website Contributor, voor de bestaande herstartfunctie — zie
    `AdminSettingsFunction.TriggerFunctionAppRestartAsync`). Voor déze controle is alleen leestoegang
@@ -307,9 +392,12 @@ noodmail actief):**
    Dit voegt geen nieuwe Azure-resource toe en kost niets — het is een leesrol op een bestaande
    resource voor een identity die al bestaat.
 
-Zonder stap 1 (env vars leeg) logt de functie dit als informatiebericht en doet verder niets — een
-club kan dus zonder deze configuratie blijven draaien, met alleen de bestaande, e-mail-pipeline-
-afhankelijke noodmail als vangnet.
+Zonder de **vier resource-instellingen** (`AzureSubscriptionId`, `AzureResourceGroupName`,
+`AzureSqlServerName`, `AzureSqlDatabaseName`) logt de functie een informatiebericht en doet verder
+niets — een club kan dus zonder die configuratie blijven draaien, met alleen de bestaande,
+e-mail-pipeline-afhankelijke noodmail als vangnet. Dat geldt **niet** voor
+`DATABASE_STATUS_MONITOR_SCHEDULE`: die moet altijd gezet zijn, anders kan de functie niet worden
+geïndexeerd.
 
 ### Sportlink contract-check-noodmail (#998)
 
@@ -385,9 +473,13 @@ traces
 
 ### Dagelijkse sync monitoring
 
+De functienamen verschillen per tier: `PostgresFetchAndStoreApiData` / `PostgresSyncMatchesHttp` op
+de Postgres-tier (productie), `FetchAndStoreApiData` / `SyncMatchesHttp` op de SQL Server-tier. De
+query hieronder dekt beide, zodat hij niet stilzwijgend nul rijen geeft.
+
 ```kql
 traces
-| where operation_Name in ("FetchAndStoreApiData", "SyncAndStoreViaHttpTrigger")
+| where operation_Name in ("PostgresFetchAndStoreApiData", "PostgresSyncMatchesHttp", "FetchAndStoreApiData", "SyncMatchesHttp")
 | where timestamp > ago(7d)
 | summarize runs=count(), fouten=countif(severityLevel >= 2) by bin(timestamp, 1d)
 | order by timestamp desc
@@ -421,6 +513,19 @@ requests
 
 ## GitHub Actions monitoring
 
+### Welke workflows bewaken wat
+
+Naast `deploy.yml` bewaken nog vier workflows de gezondheid van deze applicatie. Ze draaien op
+verschillende momenten; alleen samen dekken ze de keten.
+
+| Workflow | Trigger | Wat het bewaakt |
+|---|---|---|
+| `build.yml` — *Build (PR)* | PR naar `main`/`develop`, push naar `develop` | Build van alle projecten, unit tests, de codekwaliteits- en tier-pariteitsguards, en op een **verse** Postgres-container de databaseguards uit #1220: `scripts/ci/check-rls-enabled.sh` (RLS aan op elke tabel) en `scripts/ci/check-splinter-lints.sh` (Supabase' eigen linter) |
+| `deploy.yml` — *Deploy naar Azure* | Push naar `main` | `db-check`, de migratiejobs, de deploy zelf en de smoke tests (401 op admin-endpoints, `settingsLoaded`, `pendingMigrations`) |
+| `pre-release-check.yml` — *Pre-release check (develop → main)* | PR naar `main` | Build moet slagen vóór een release-PR gemerged kan worden |
+| `pre-release-db-check.yml` — *Pre-release database check* | `workflow_run` na de vorige | Wekt/controleert de database met credentials, bewust via `workflow_run` + `ref: main` zodat PR-inhoud geen productiecredentials kan misbruiken (#1009) |
+| `supabase-advisors.yml` — *Supabase-advisors* | Dagelijks 05:00 UTC | Security- en Performance Advisor van de productiedatabase — zie [de sectie hierboven](#dagelijkse-supabase-advisorcontrole-1221-epic-1219) |
+
 ### CI-status bekijken
 
 ```bash
@@ -449,7 +554,8 @@ gh pr checks <pr-nr>
 | Application Insights niet geconfigureerd | `APPLICATIONINSIGHTS_CONNECTION_STRING` niet ingesteld in Azure | Zie sectie [Application Insights instellen](#application-insights-instellen) |
 | Geen Metric Alerts | Betaald; expliciete goedkeuring vereist | Activity Log Alerts als gratis alternatief |
 | Blazor WASM heeft geen eigen telemetrie | SWA bevat geen Application Insights SDK | Fouten zichtbaar via browser F12 / SWA-logs |
-| SQL monitoring beperkt | Free tier SQL heeft geen query-telemetrie | Gebruik `sys.dm_exec_query_stats` voor lokale diagnose |
+| Databasemonitoring beperkt | Geen query-telemetrie in Application Insights | Postgres-tier (productie): `pg_stat_statements` en het Supabase-dashboard. SQL Server-tier: `sys.dm_exec_query_stats` |
+| Geen uitvalmonitor op de Postgres-tier | `DatabaseUitvalMonitorFunction` is Azure-SQL-specifiek | Bekend open punt; zie "Welk vangnet geldt voor welke tier" bovenaan |
 
 ---
 

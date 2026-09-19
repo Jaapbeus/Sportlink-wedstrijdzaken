@@ -322,6 +322,8 @@ bewust worden bekeken.
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
 | `AGENTS.md` | **Nooit met de hand** — afgeleid uit CLAUDE.md via `python3 scripts/ci/genereer-agents-md.py --schrijf` |
+| `docs/INDEX.md` | **Altijd bij een nieuw, hernoemd of verwijderd document in `docs/`** — de index is de wegwijzer; een ontbrekend document is onvindbaar |
+| `docs/DOCUMENTATIEPLAN.md` | Idem: categorie-indeling of documentatieregels gewijzigd |
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 | `SECURITY.md` | Security-beleid, AVG-regels of secrets-protocol gewijzigd |
@@ -638,7 +640,9 @@ Elke club heeft een volledig geïsoleerde Azure-omgeving. Er is geen shared infr
 - Een hardening-check "bestaat deze ClubCode in onze AppSettings?" is zinvol maar geen security-grens.
 
 **AllStars FC:**
-- `allstars-fc` is de vaste demo-ClubCode in broncode, seeds en testdata.
+- `ALLSTARS` is de vaste demo-ClubCode in broncode, seeds en testdata — hoofdletters, precies zo.
+  `allstars-fc` is géén ClubCode: die vorm komt uitsluitend voor in het fictieve e-maildomein
+  `@allstars-fc.test` van de seeddata.
 - Wordt gebruikt voor lokale ontwikkeling en UI-demonstraties.
 - Nooit vervangen door een echte club-specifieke waarde.
 
@@ -1132,7 +1136,7 @@ Aanvullend:
   niet-executable hook op macOS stilzwijgend over — de secrets- en AVG-scan draait dan niet.
 - **Bouw nooit `sportlink-wedstrijdzaken.sln` op macOS.** Die bevat het legacy SSDT-project
   `Database/SportlinkSqlDb.sqlproj`, dat Visual Studio-targets vereist die alleen op Windows
-  bestaan. Gebruik `sportlink-wedstrijdzaken.slnf` (de drie .csproj's) of bouw per project —
+  bestaan. Gebruik `sportlink-wedstrijdzaken.slnf` (de elf .csproj's zonder het SSDT-project) of bouw per project —
   dat is ook wat de CI doet.
 
 **Nieuw platformspecifiek gedrag hoort in `scripts/dev/DevServices.psm1`, achter een functie —
@@ -1337,7 +1341,6 @@ De API-standaarden staan in `docs/api-standaarden/`:
 |---------|--------|---------------|
 | `docs/api-standaarden/openapi.yaml` | OpenAPI 3.0 spec (YAML) — machine-readable | Elk nieuw of gewijzigd endpoint |
 | `docs/api-standaarden/openapi.json` | Zelfde spec in JSON | Synchroniseer met YAML na elke wijziging |
-| `docs/api-standaarden/openspec/` | Structured requirements specs per domein | Architectural change of nieuwe requirement |
 
 ### Verplichte controles bij elke endpoint-wijziging
 
@@ -1609,7 +1612,11 @@ Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#1
 
 ## Solution Structure
 
-Two projects in `sportlink-wedstrijdzaken.sln`:
+De solution telt dertien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
+`sportlink-wedstrijdzaken.slnf` bevat de elf projecten zonder dat SSDT-project — dat is wat de CI bouwt,
+en het enige dat op macOS werkt. Actuele lijst: `find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*'`.
+
+De twee kernprojecten van de oorspronkelijke ETL-pijplijn:
 
 1. **FunctionApp/** (`fa-dev-sportlink-01.csproj`) — .NET 9 isolated worker Azure Function
    - `Function1.cs` — trigger functions and API fetch/store orchestration

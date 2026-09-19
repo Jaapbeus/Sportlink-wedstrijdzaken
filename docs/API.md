@@ -1,25 +1,55 @@
 # Sportlink API Documentatie
 
-**Basis-URL:** `http://localhost:7094/api`
+**Basis-URL (lokaal):** `http://localhost:7094/api`
+**Basis-URL (productie):** `https://<function-app-hostnaam>/api` — de hostnaam van de Function App
+van jouw deployment; zie `servers` in `docs/api-standaarden/openapi.yaml`.
 
-> **Tier-opmerking:** de meeste endpoints bestaan identiek op beide tiers (`FunctionApp` = SQL
-> Server, `FunctionApp.Postgres` = Postgres, productie sinds #976). De `/sportlink/*`-endpoints
-> (Sportlink Web Extension, epic #986) en `/beheer/sportlink-extensie/*` worden op de SQL
-> Server-tier hersteld in #1266: die tier is gelijkwaardig, maar epic #986 is er nooit op gebouwd.
-> `scripts/ci/check-tier-pariteit.sh` bewaakt sindsdien dat een endpoint niet op één tier kan
+> **Tier-opmerking:** sinds #1266 bestaan **alle** endpoints op beide tiers (`FunctionApp` = SQL
+> Server, `FunctionApp.Postgres` = Postgres, productie sinds #976) — ook de `/sportlink/*`- en
+> `/beheer/sportlink-extensie/*`-endpoints van de Sportlink Web Extension (epic #986). De tiers zijn
+> gelijkwaardig; `scripts/ci/check-tier-pariteit.sh` bewaakt dat een endpoint niet op één tier kan
 > blijven bestaan. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor de tier-strategie.
+>
+> **De enige route die per tier verschilt is de handmatige synchronisatie:**
+> `GET /api/postgres/sync-matches` op de Postgres-tier, `GET /api/sync-matches` op de SQL
+> Server-tier. Op de andere tier geeft die route `404`.
+>
+> Eén autorisatieverschil tussen de tiers, bewust: de `/sportlink/*`-endpoints vereisen op de
+> Postgres-tier alleen de rol `Wedstrijdzaken` (die vervangt daar de admin-check), en op de SQL
+> Server-tier `Wedstrijdzaken` **bovenop** `admin`
+> (`FunctionApp/Sportlink/SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`). De aanbevolen
+> roltoewijzing `["admin","Wedstrijdzaken"]` voldoet aan beide.
 
 ## Beveiliging
 
-Twee beveiligingsniveaus:
+Vier beveiligingsniveaus:
 
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
-| **Function** | Function key (`?code=`) | Automate, integraties | Alle planner endpoints |
-| **Admin** | Easy Auth Bearer + admin-rol | Alleen coördinator | Alle `/api/beheer/*` endpoints |
-| **Admin+User** | Easy Auth Bearer + admin- of user-rol | Coördinator + club-gebruikers | `/api/beheer/teambegeleiding/*` |
+| **Anoniem** | geen | iedereen | `GET /api/health` |
+| **Master key** | `?code=` queryparameter met de Azure **Master key** (`AuthorizationLevel.Admin`) | Timer/operator, integraties | Uitsluitend `GET /api/postgres/sync-matches` (Postgres-tier) en `GET /api/sync-matches` (SQL Server-tier) |
+| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige endpoints: `/api/beheer/*`, `/api/planner/*`, `/api/feedback/*`, `/api/test/*` |
+| **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol (`EasyAuthHelper.RequireWedstrijdzaken`) | Wedstrijdsecretariaat | Alle `/api/sportlink/*` (op de SQL Server-tier bovendien óók de `admin`-rol) |
 
-Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
+> **`AuthorizationLevel` in de trigger zegt niets over de echte poort.** Op één na staat elk
+> endpoint op `AuthorizationLevel.Anonymous` — dat betekent alleen "geen Function key". De
+> daadwerkelijke rolcontrole gebeurt in de functie zelf, via `EasyAuthHelper.RequireAdmin` /
+> `RequireWedstrijdzaken`, direct of via de wrappers `AdminEndpoint.ExecuteAsync` (default
+> `RequireAdmin`) en — op de SQL Server-tier — `PlannerFunction.HandleAsync` (`RequireAdmin`).
+> **Er is geen endpoint dat met alleen een Function key te benaderen is**, behalve de twee
+> sync-routes hierboven.
+>
+> `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) bestaat wel in de code, maar wordt
+> **nergens aangeroepen**. Er is dus geen endpoint waar de `user`-rol toegang geeft; een gebruiker
+> met alleen `user` krijgt overal `403`.
+
+Zonder token → `401 Unauthorized`. Mét geldig token maar zonder de vereiste rol → `403 Forbidden`
+met body `{ "error": "Forbidden: vereiste rol ontbreekt" }`. In beide gevallen vindt er geen
+verwerking plaats.
+
+> **Lokaal:** ontbreekt de omgevingsvariabele `WEBSITE_SITE_NAME` (dus buiten Azure), dan slaat
+> `RequireRole` de controle over en is elk endpoint zonder token bereikbaar. Dat is een
+> bewuste dev-bypass en geldt nooit in productie.
 
 ---
 
@@ -28,40 +58,49 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
-| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink data synchronisatie (SQL Server-tier). Postgres-tier: `/api/postgres/sync-matches`, zelfde parameters |
+| `GET` | `/postgres/sync-matches` | **Master key** (`?code=`) | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
+| `GET` | `/sync-matches` | **Master key** (`?code=`) | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
 | `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer |
 | `GET` | `/beheer/teams` | **Admin** | Teamlijst ophalen |
-| `GET/PUT/POST/DELETE` | `/beheer/templates` en `/{key}`, `/{key}/reset` | **Admin** | E-mailtemplates per berichttype beheren, met terugzetten naar standaard |
-| `GET/POST/DELETE` | `/beheer/uitgesloten-emails` en `/{id}` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden |
-| `GET/POST/PUT/DELETE` | `/beheer/voorkeurstijden` en `/{id}` | **Admin** | Gewenste speeltijden per team |
-| `GET/POST/PUT/DELETE` | `/beheer/teamregels` en `/{id}` | **Admin** | Planningsregels per team (bijv. buffertijd) |
+| `GET` | `/beheer/templates` | **Admin** | Alle e-mailtemplates per berichttype ophalen |
+| `PUT` | `/beheer/templates/{key}` | **Admin** | Eén e-mailtemplate opslaan |
+| `POST` | `/beheer/templates/{key}/reset` | **Admin** | Eén e-mailtemplate terugzetten naar standaard |
+| `GET/POST` | `/beheer/uitgesloten-emails` | **Admin** | E-mailadressen uitsluiten van automatische antwoorden: lijst ophalen / toevoegen |
+| `DELETE` | `/beheer/uitgesloten-emails/{id}` | **Admin** | Uitsluiting verwijderen |
+| `GET/POST` | `/beheer/voorkeurstijden` | **Admin** | Gewenste speeltijden per team: lijst ophalen / toevoegen |
+| `PUT/DELETE` | `/beheer/voorkeurstijden/{id}` | **Admin** | Gewenste speeltijd wijzigen / verwijderen |
+| `GET/POST` | `/beheer/teamregels` | **Admin** | Planningsregels per team (bijv. buffertijd): lijst ophalen / toevoegen |
+| `PUT/DELETE` | `/beheer/teamregels/{id}` | **Admin** | Planningsregel wijzigen / verwijderen |
 | `GET` | `/beheer/email-log` | **Admin** | Verwerkte e-mails inzien (AVG-conform: geen berichtteksten) |
 | `POST` | `/test/email` | **Admin** | AI-classificatie dry-run zonder e-mail te versturen (Email-tester-pagina) |
-| `POST` | `/feedback/validate` | Anoniem | Feedback-widget: voorvalidatie op volledigheid |
-| `POST` | `/feedback/preview` | Anoniem | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
-| `POST` | `/feedback/submit` | Anoniem | Feedback-widget: publiceren als **openbaar** GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd |
-| `POST` | `/planner/check-availability` | Function | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
-| `POST` | `/planner/bevestig` | Function | Wedstrijdslot boeken |
+| `POST` | `/feedback/validate` | **Admin** | Feedback-widget: voorvalidatie op volledigheid |
+| `POST` | `/feedback/preview` | **Admin** | Feedback-widget: exacte titel + body van het te publiceren issue opvragen, zónder iets aan te maken (#1205) |
+| `POST` | `/feedback/submit` | **Admin** | Feedback-widget: publiceren als **openbaar** GitHub-issue; met `bevestiging` wordt exact de in het voorbeeld getoonde tekst gepubliceerd |
+| `POST` | `/planner/check-availability` | **Admin** | Veldbeschikbaarheid controleren — gescoped op `X-Club-Code` header |
+| `POST` | `/planner/doordeweeks-beschikbaar` | **Admin** | Doordeweekse beschikbaarheid door het seizoen heen — gescoped op `X-Club-Code` header |
+| `POST` | `/planner/bevestig` | **Admin** | Wedstrijdslot boeken |
 | `POST` | `/planner/populate-sunset` | **Admin** | Zonsondergangtabel vullen |
-| `POST` | `/planner/zoek-wedstrijd` | Function | Bestaande wedstrijd zoeken — gescoped op `X-Club-Code` header |
-| `POST` | `/planner/herplan-check` | Function | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
-| `POST` | `/planner/herplan-bevestig` | Function | Herplanverzoek registreren |
-| `POST` | `/planner/auto-plan` | Easy Auth (admin) | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
-| `POST` | `/planner/auto-plan/toepassen` | Easy Auth (admin) | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
-| `GET` | `/planner/veldbezetting?datum=` | Easy Auth (admin) | Wedstrijden op een datum, zonder optimalisatie-berekening |
-| `GET` | `/beheer/teambegeleiding` | **Admin+User** | Alle teams met begeleiding in database |
-| `GET` | `/beheer/teambegeleiding/{team}` | **Admin+User** | Begeleiders van team (naam + rol, nooit e-mail) |
-| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin+User** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) |
+| `POST` | `/planner/zoek-wedstrijd` | **Admin** | Bestaande wedstrijd zoeken — gescoped op `X-Club-Code` header |
+| `POST` | `/planner/herplan-check` | **Admin** | Herplan-alternatieven simuleren — gescoped op `X-Club-Code` header |
+| `POST` | `/planner/herplan-bevestig` | **Admin** | Herplanverzoek registreren |
+| `POST` | `/planner/auto-plan` | **Admin** | **Dagplanning optimaliseren** — regels → voorkeurstijden → leeftijdsdefaults |
+| `POST` | `/planner/auto-plan/toepassen` | **Admin** | Berekende planning wegschrijven (alleen testmodus ALLSTARS) |
+| `GET` | `/planner/veldbezetting?datum=` | **Admin** | Wedstrijden op een datum, zonder optimalisatie-berekening |
+| `GET` | `/planner/team-schedule` | **Admin** | Wedstrijdschema per team — gescoped op `X-Club-Code` header |
+| `GET` | `/beheer/teambegeleiding` | **Admin** | Alle teams met begeleiding in database |
+| `GET` | `/beheer/teambegeleiding/{team}` | **Admin** | Begeleiders van team (naam + rol, nooit e-mail) |
+| `POST` | `/beheer/teambegeleiding/doorsturen` | **Admin** | Vraag doorsturen (BCC coördinator). `ontvangers` bepaalt de ontvangers (max 15, gevalideerd, uitsluitingslijst gecontroleerd); leeg → server-side coach-lookup (#765) |
 | `POST` | `/beheer/teambegeleiding/import` | **Admin** | CSV-import van begeleiders — vervangt de rijen van de club atomisch (DELETE + inserts + audit-rij in één transactie, rollback bij elke fout; #1131/#1132). Kolomlengtes worden vóór elke destructieve stap gevalideerd; een te lange waarde geeft `400` met `{ error, fouten: [...] }` (rij/kolom-omschrijving per overtreding) en laat de vorige import ongemoeid. Postgres-tier serialiseert vervangingen per club (`pg_advisory_xact_lock`) zodat twee gelijktijdige imports elkaar nooit tot een vereniging van beide batches kunnen combineren. CSV wordt in-memory verwerkt en nooit opgeslagen; `avg.ImportLog` bevat alleen metadata — geen PII |
-| `GET/POST/PUT/DELETE` | `/beheer/speeltijden` en `/{leeftijd}` | **Admin** | Speeltijden per leeftijdscategorie beheren |
+| `GET/POST` | `/beheer/speeltijden` | **Admin** | Speeltijden per leeftijdscategorie: lijst ophalen / toevoegen |
+| `PUT/DELETE` | `/beheer/speeltijden/{leeftijd}` | **Admin** | Speeltijd van één leeftijdscategorie wijzigen / verwijderen |
 | `GET` | `/beheer/leermomenten` | **Admin** | Classificatie-leermomenten ophalen (`?status=pending\|validated\|rejected`) |
 | `GET` | `/beheer/leermomenten/stats` | **Admin** | Aantallen leermomenten per status |
 | `PUT` | `/beheer/leermomenten/{id}/valideer` | **Admin** | Leermoment valideren of afwijzen (`{ "actie": "valideer"\|"afwijzen" }`) |
 | `GET` | `/beheer/teamaliassen` | **Admin** | Teamnaam-aliassen ophalen (`?status=pending\|validated\|rejected&limit=100`) — inclusief canonieke teamnaam |
-| `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.Teams`: volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
+| `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.teams` (Postgres-tier; `his.Teams` op de SQL Server-tier): volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`) |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
 | `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
@@ -82,10 +121,14 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
 | `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — scaffolding, endpoint/body ONBEVESTIGD en altijd code-gelockt (`forceDryRun`, onafhankelijk van `sportlinkDryRun`); geen `SportlinkMutationGuard` (er is vooraf geen bestaande wedstrijd), alleen eigen toggle/EgressGuard-check. Body sinds #1116: `MatchDateTime`, `Duration`, `TeamNaam` (actief clubteam uit eigen database), `Tegenstander` (vrije tekst), `VeldNummer`, `Description` — de server leidt `PublicHomeTeamId` (`his.teams.teamcode` via de gevalideerde teamaliassen), `AgeClassCode` (leeftijdscategorie van het team) en `FacilityId` (club-instelling `accommodatie`, opgezocht in de Sportlink-locatielijst) zelf af en meldt wat niet lukte als `Waarschuwingen`. Verwijderen/uitslag bewust niet gebouwd (#997) |
 | `GET` | `/sportlink/club-match/picklists` | **Wedstrijdzaken** | De twee Sportlink-picklists (Teams + Location) — read-only, persoonsgegevensvrij. Sinds #1116 niet meer door het formulier gebruikt; diagnostisch endpoint voor de mens die de ClubMatch-body live bevestigt (welke ID-vorm hanteert Sportlink Club?) (#997) |
-| `GET/POST/PUT` | `/beheer/velden` en `/{veldNummer}` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679) |
-| `GET/POST/PUT/DELETE` | `/beheer/veldbeschikbaarheid` en `/{id}` | **Admin** | Openingsvenster per veld per weekdag beheren, optioneel gekoppeld aan een periode (`PeriodeId`, #581) |
-| `GET/POST/PUT/DELETE` | `/beheer/veldtraining` en `/{id}` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679) |
-| `GET/POST/PUT/DELETE` | `/beheer/veldperiodes` en `/{id}` | **Admin** | Herbruikbare regimes (bijv. "Zomerstop", "Competitie") met een geldigheidsrange; koppel een veldbeschikbaarheid-venster eraan om het alleen tijdens die periode te laten gelden (#581) |
+| `GET/POST` | `/beheer/velden` | **Admin** | Velden beheren: naam, type (vrije tekst), kunstlicht, actief — per club vrij instelbaar (#679). Lijst ophalen / toevoegen |
+| `PUT` | `/beheer/velden/{veldNummer}` | **Admin** | Veld wijzigen. **Er is geen DELETE** — een veld wordt op inactief gezet in plaats van verwijderd |
+| `GET/POST` | `/beheer/veldbeschikbaarheid` | **Admin** | Openingsvenster per veld per weekdag, optioneel gekoppeld aan een periode (`PeriodeId`, #581). Lijst ophalen / toevoegen |
+| `PUT/DELETE` | `/beheer/veldbeschikbaarheid/{id}` | **Admin** | Openingsvenster wijzigen / verwijderen |
+| `GET/POST` | `/beheer/veldtraining` | **Admin** | Terugkerende trainingsbezetting per veld per weekdag — telt mee als bezetting in planner en e-mailreacties (#679). Lijst ophalen / toevoegen |
+| `PUT/DELETE` | `/beheer/veldtraining/{id}` | **Admin** | Trainingsbezetting wijzigen / verwijderen |
+| `GET/POST` | `/beheer/veldperiodes` | **Admin** | Herbruikbare regimes (bijv. "Zomerstop", "Competitie") met een geldigheidsrange; koppel een veldbeschikbaarheid-venster eraan om het alleen tijdens die periode te laten gelden (#581). Lijst ophalen / toevoegen |
+| `PUT/DELETE` | `/beheer/veldperiodes/{id}` | **Admin** | Periode wijzigen / verwijderen |
 | `GET` | `/beheer/testdata/wedstrijden` | **Admin** | Test-wedstrijden ophalen (`ClubCode='ALLSTARS'`) — altijd leeg voor echte clubs |
 | `GET` | `/beheer/testdata/teams` | **Admin** | Echte clubteams ophalen voor testdata-dropdown (filtert `ClubCode!='ALLSTARS'`) |
 | `POST` | `/beheer/testdata/wedstrijden` | **Admin** | Test-wedstrijd aanmaken of bijwerken (upsert op `bk_matches`) — forceert `ClubCode='ALLSTARS'` |
@@ -109,22 +152,35 @@ ontbreekt of is van de verkeerde engine) geeft **503**, niet 200. Elke andere `d
 
 ### Antwoord
 
+Voorbeeld van de **Postgres-tier** (de tier die in productie draait):
+
 ```json
 {
   "status": "ok",
-  "version": "3.0.9.0",
-  "timestamp": "2026-08-30T15:00:00Z",
+  "version": "3.5.3.1",
+  "timestamp": "2026-09-19T15:00:00Z",
   "database": "online",
   "settingsLoaded": true,
-  "tier": "SqlServer",
-  "provider": "Microsoft.Data.SqlClient",
-  "serverVersion": "16.0.4265.3"
+  "lastSync": "2026-09-19T04:00:12Z",
+  "syncStale": false,
+  "tier": "Postgres",
+  "provider": "Npgsql",
+  "serverVersion": "17.4",
+  "tlsMode": "VerifyFull",
+  "tlsWarning": null,
+  "schemaWarning": null,
+  "pendingMigrations": []
 }
 ```
 
+Op de **SQL Server-tier** ontbreken `lastSync`, `syncStale`, `tlsMode`, `tlsWarning`,
+`schemaWarning` en `pendingMigrations`; `tier` is dan `"SqlServer"` en `provider`
+`"Microsoft.Data.SqlClient"`.
+
 | Veld | Type | Beschrijving |
 |---|---|---|
-| `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en (Postgres-tier) `pendingMigrations` leeg is, anders `"degraded"` |
+| `status` | `string` | `"ok"` als `database` `"online"` is, `settingsLoaded` `true` is en — alleen op de Postgres-tier — `pendingMigrations` leeg is **én** `syncStale` `false` is op een omgeving waar een synchronisatie hoort te draaien (`EgressGuard` laat uitgaand verkeer toe). Anders `"degraded"`. Op de SQL Server-tier tellen alleen `database` en `settingsLoaded` mee |
+| `version` | `string` | Vierdelig assembly-versienummer, bijv. `"3.5.3.1"` |
 | `database` | `string` | `online`, `paused`, `timeout`, `unavailable` of `unconfigured` — `unconfigured` geeft HTTP 503 |
 | `settingsLoaded` | `boolean` | `false` als de laatste poging om de clubinstellingen te laden mislukte (#859) — geen foutdetails hier, die staan in het functielog |
 | `tier` | `string` | De databasetier waarmee dit artefact gebouwd is — zie `scripts/ci/database-tiers.json` |
@@ -144,29 +200,43 @@ op 500 zou lopen (#1098).
 
 ---
 
-## GET /api/sync-matches
+## GET /api/postgres/sync-matches (Postgres-tier) — GET /api/sync-matches (SQL Server-tier)
 
 Handmatig een Sportlink API synchronisatie starten (teams, wedstrijden, wedstrijddetails).
+
+**De route verschilt per tier.** Dit is het enige endpoint waarvoor dat geldt:
+
+| Tier | Route | Implementatie |
+|---|---|---|
+| Postgres (productie) | `GET /api/postgres/sync-matches` | `FunctionApp.Postgres/Sync/SyncFunction.cs` |
+| SQL Server | `GET /api/sync-matches` | `FunctionApp/Function1.cs` |
+
+**Authenticatie:** `AuthorizationLevel.Admin` — de Azure **Master key** via `?code=`. Dit is het
+enige endpoint dat níet via Easy Auth + rolcheck loopt.
 
 ### Queryparameters
 
 | Parameter | Type | Verplicht | Beschrijving |
 |-----------|------|-----------|-------------|
 | `reset` | `boolean` | Nee | `true` = volledige seizoensynchronisatie in plaats van incrementeel |
-| `season` | `integer` | Nee | Startjaar seizoen (bijv. `2024`). Gebruikt met `reset=true` |
+| `season` | `integer` | Nee | Startjaar seizoen (bijv. `2024`). Gebruikt met `reset=true`. Ontbreekt of onparseerbaar → stille terugval op de standaardmodus (vorige week t/m einde seizoen) |
 
 ### Voorbeeld
 
 ```
-GET /api/sync-matches
-GET /api/sync-matches?reset=true&season=2025
+GET /api/postgres/sync-matches?code=<master-key>
+GET /api/postgres/sync-matches?reset=true&season=2025&code=<master-key>
 ```
 
 ### Antwoord
 
-```
-200 OK
-```
+| Status | Tier | Body |
+|---|---|---|
+| `200 OK` | beide | `"Sync voltooid. WeekOffset-bereik: {from} tot {to}."` |
+| `207 Multi-Status` | **alleen Postgres** | `{ "status": "gedeeltelijk mislukt", "weekOffsetFrom": -1, "weekOffsetTo": 12, "melding": "..." }` — één of meer deelstappen zijn mislukt en `lastsynctimestamp` is bewust **niet** bijgewerkt (#1081). De geslaagde deelstappen blijven staan; het functielog noemt de betrokken fase(s) |
+| `500` | beide | Onverwachte fout; zie het functielog |
+
+De SQL Server-tier kent de `207` niet en antwoordt alleen `200` of `500`.
 
 ---
 
@@ -206,6 +276,7 @@ Controleer of een veld beschikbaar is voor een oefenwedstrijd. Geeft een specifi
 | `teamNaam` | `string` | Nee | Teamnaam voor conflictcontrole en teamspecifieke regels |
 | `tegenstander` | `string` | Nee | Tegenstander (alleen voor administratie) |
 | `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden) |
+| `heelVeld` | `boolean` | Nee | Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt. Levert een waarschuwing op, geen fout |
 
 ### Antwoord — Slot toegewezen (200)
 
@@ -358,7 +429,7 @@ Als de gevraagde dag geen wedstrijden toelaat (vrijdag/zondag):
 
 ## POST /api/planner/bevestig
 
-Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijden` tabel.
+Bevestig en boek een wedstrijdslot. Schrijft naar `planner.geplandewedstrijden` (Postgres-tier; `planner.GeplandeWedstrijden` op de SQL Server-tier).
 
 ### Aanvraag
 
@@ -387,6 +458,7 @@ Bevestig en boek een wedstrijdslot. Schrijft naar de `planner.GeplandeWedstrijde
 | `tegenstander` | `string` | Nee | Tegenstander |
 | `aangevraagdDoor` | `string` | Nee | Wie het verzoek heeft gedaan |
 | `wedstrijdDuurMinuten` | `integer` | Nee | Overschrijf wedstrijdduur (standaard uit Speeltijden of 105) |
+| `heelVeld` | `boolean` | Nee | Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt |
 
 ### Response (200)
 
@@ -641,7 +713,7 @@ Sinds #666 is dit de enige dagplanning-optimalisatie.
 | Veld | Type | Verplicht | Beschrijving |
 |------|------|-----------|-------------|
 | `datum` | `string` | **Ja** | Datum in `yyyy-MM-dd` formaat |
-| `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden. Standaard 15. Teamspecifieke buffers uit `dbo.TeamRegels` gaan vóór als die groter zijn |
+| `bufferMinuten` | `integer` | Nee | Buffer tussen wedstrijden. Standaard 15. Teamspecifieke buffers uit `public.teamregels` gaan vóór als die groter zijn |
 
 ### Rangorde van het planningsdoel
 
@@ -649,9 +721,9 @@ Per wedstrijd wordt de streeftijd bepaald in deze vaste volgorde:
 
 | Laag | Bron | `voorkeurBron` |
 |---|---|---|
-| 0 | `dbo.TeamRegels`, `RegelType = 'VoorkeurVeld'` (veld + optioneel tijd) | `regel` |
-| 1 | `dbo.TeamVoorkeurTijden` voor de betreffende dag van de week | `team` |
-| 2 | `dbo.Speeltijden.StandaardVoorkeurTijd` van de leeftijdscategorie | `leeftijd` |
+| 0 | `public.teamregels`, `regeltype = 'VoorkeurVeld'` (veld + optioneel tijd) | `regel` |
+| 1 | `public.teamvoorkeurtijden` voor de betreffende dag van de week | `team` |
+| 2 | `public.speeltijden.standaardvoorkeurtijd` van de leeftijdscategorie | `leeftijd` |
 | 3 | geen streeftijd → eerst beschikbare slot | `null` |
 
 Binnen elke laag beslist `Prioriteit` oplopend (**laag getal = belangrijker**) welk team zijn plek als
@@ -674,13 +746,19 @@ eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
       "wedstrijd": "[Team] - [Tegenstander]",
       "teamNaam": "[Team]",
       "leeftijdsCategorie": "JO15",
+      "competitiesoort": "Competitie",
       "duurMinuten": 85,
       "veldafmeting": 1.00,
       "huidigeVeld": "veld 2",
       "huidigeTijd": "11:00",
+      "heeftVeld": true,
+      "heeftTijd": true,
+      "optimaalVeldNummer": 3,
+      "optimaalVeldNaam": "veld 3",
       "optimaalVeld": "veld 3",
       "optimaalTijd": "11:15",
       "status": "wijziging",
+      "nietInplanbaaarReden": null,
       "voorkeurTijd": "11:00",
       "voorkeurAfwijkingMinuten": 15,
       "voorkeurBron": "leeftijd",
@@ -707,6 +785,11 @@ minuten als "OK" werd gepresenteerd.
 
 `voorkeurVeldToegepast` is `false` als er een voorkeursveld was maar de planner een ander veld moest
 kiezen; `null` als er geen voorkeursveld-regel is.
+
+> **`nietInplanbaaarReden` — let op de dubbele `a`.** De veldnaam bevat een typefout die in het
+> wire-contract zit (`AutoPlanWedstrijdItem` op beide tiers). Hij is gevuld bij
+> `status = "niet-inplanbaar"` en anders `null`. Hernoemen is een breaking change voor elke
+> consument, dus de naam blijft zoals hij is.
 
 ---
 
@@ -759,7 +842,7 @@ Resultaat is gesorteerd op `aanvangsTijd`. Wedstrijden zonder aanvangstijd staan
 ## Beheer — Teamaliassen
 
 Aliassen zijn afwijkende schrijfwijzen van een teamnaam (bijvoorbeeld `13-1` in plaats van
-`JO13-1`). Ze worden vastgelegd in `dbo.TeamAliassen` met status `pending`. Alleen een alias met
+`JO13-1`). Ze worden vastgelegd in `public.teamaliassen` met status `pending`. Alleen een alias met
 status `validated` mag bij teamnaam-resolutie als vertrouwde exacte match gelden — een foutieve
 AI-keuze kan zich zo niet zelfversterken. Alles is gescoped op de club uit de `X-Club-Code` header.
 
@@ -801,8 +884,9 @@ curl "http://localhost:7094/api/beheer/teamaliassen?status=pending&limit=50"
 
 `pending`/`validated`/`rejected` zijn de totalen per status voor de hele club — onafhankelijk van
 het `status`-filter en de `limit`. Datums zijn UTC (`Z`-suffix); de GUI toont ze in lokale tijd.
-Bestaat de tabel nog niet (post-deployment script niet uitgevoerd), dan volgt een lege lijst
-met nullen in plaats van een fout.
+Bestaat de tabel nog niet (op de Postgres-tier: migratie `003_admin_tables.sql` nog niet
+toegepast; op de SQL Server-tier: post-deployment script niet uitgevoerd), dan volgt een lege
+lijst met nullen in plaats van een fout.
 
 ### PUT /api/beheer/teamaliassen/{id}/valideer
 
@@ -858,7 +942,7 @@ Veld 1 > Veld 2 > Veld 3 > Veld 4 > Veld 5 (laatste keuze)
 | G | 0.50 (half) | 75 min | 2 per veld |
 | JO18, JO19, JO23, MO19, MO20, VR, 1-99 | 1.00 (heel) | 105 min | 1 per veld |
 
-### Teamspecifieke regels (dbo.TeamRegels)
+### Teamspecifieke regels (`public.teamregels`; `dbo.TeamRegels` op de SQL Server-tier)
 
 | Team | Regel | Waarde |
 |------|------|-------|
@@ -930,8 +1014,12 @@ De response bevat per wedstrijd het optimale veld en tijdslot, plus `voorkeurTij
 ### Handmatige Sportlink synchronisatie
 
 ```bash
+# Postgres-tier — standaard lokaal (Start-Debug.ps1) én in productie
+curl http://localhost:7094/api/postgres/sync-matches
+curl "http://localhost:7094/api/postgres/sync-matches?reset=true&season=2025"
+
+# SQL Server-tier — Start-Debug.ps1 -Tier SqlServer
 curl http://localhost:7094/api/sync-matches
-curl "http://localhost:7094/api/sync-matches?reset=true&season=2025"
 ```
 
 ### Sync-job starten en pollen (Admin GUI, #1138)

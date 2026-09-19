@@ -13,6 +13,11 @@ De SWA dient uitsluitend statische Blazor-bestanden. De Blazor-app haalt zelf ee
 op via MSAL (Entra ID) en stuurt dat mee naar de Function App. Easy Auth op de Function App
 valideert het token server-side.
 
+> **Voor wie is dit document?** **Hoofdstuk 1 t/m 9 zijn voor de technisch beheerder** die de
+> installatie opzet: Azure, Entra ID, .NET-runtimes en lokaal ontwikkelen. **Gebruikt u de app
+> dagelijks om wedstrijden te plannen en vragen door te sturen? Begin dan bij hoofdstuk 9a** —
+> vanaf daar gaat het over de schermen zelf, en is geen technische kennis nodig.
+
 ---
 
 ## 1. Lokaal ontwikkelen
@@ -21,18 +26,30 @@ valideert het token server-side.
 
 1. Start de lokale database (Docker — identiek op Windows en macOS). Kies één tier:
    ```powershell
-   docker compose up -d                              # SQL Server
-   docker compose --profile postgres up -d postgres  # Postgres (productietier sinds #976)
+   docker compose up -d                       # Postgres — de tier die in productie draait
+   docker compose --profile sqlserver up -d   # SQL Server (alleen als u aan FunctionApp/ werkt)
    ```
+   De service `postgres` in `docker-compose.yml` heeft géén profile en start dus bij een kale
+   `docker compose up -d`; `sqlserver` zit juist wél achter het profile `sqlserver`. Een profile
+   met de naam `postgres` bestaat niet.
 2. Stel `FunctionApp/local.settings.json` (SQL Server) of
    `FunctionApp.Postgres/local.settings.json` (Postgres) correct in (zie de bijbehorende
    `local.settings.template.json`) — zie `docs/DEVELOPER-SETUP.md` §4-5 voor beide paden
-3. Voer alle migraties uit op die database:
+3. Voer alle migraties uit op die database — **elke tier heeft een eigen migratiepad**:
    ```powershell
+   # Postgres (standaard) — wachtwoord uitsluitend via de omgevingsvariabele:
+   $env:POSTGRES_CONNECTION_STRING = "Host=localhost;Port=5432;Username=postgres;Password=…;Database=sportlink"
+   .\scripts\dev\Invoke-PostgresMigrations.ps1
+
+   # SQL Server:
    sqlcmd -S localhost,1433 -d SportlinkSqlDb -U sa -C -i Database/Script.PostDeployment1.sql
    ```
-   Het wachtwoord geeft u mee via de omgevingsvariabele `SQLCMDPASSWORD`, zodat het niet in de
-   opdrachtregel en dus niet in de processenlijst terechtkomt.
+   `Invoke-PostgresMigrations.ps1` is een dunne wrapper om `Database.Postgres.Cli`; de
+   migratiebestanden staan in `Database.Postgres/migrations/`.
+   **`Database/Script.PostDeployment1.sql` raakt geen enkele Postgres-tabel** — wie dat script op
+   de Postgres-tier draait houdt een lege database over. Het SQL Server-wachtwoord geeft u mee via
+   de omgevingsvariabele `SQLCMDPASSWORD`, zodat het niet in de opdrachtregel en dus niet in de
+   processenlijst terechtkomt.
 4. Installeer Azurite (voor storage emulator): `npm install -g azurite`
 
 ### Services starten
@@ -65,13 +82,16 @@ In lokale omgeving is `WEBSITE_SITE_NAME` niet aanwezig, waardoor `EasyAuthHelpe
 
 De Admin GUI heeft een ingebouwde testmodus waarmee de dagplanning volledig op fictieve data kan worden getest, zonder de echte Sportlink-wedstrijden te beïnvloeden.
 
-**Activeren:** Klik op **Testmodus** onderaan de zijbalk (onder de gebruikersnaam).  
-**Verlaten:** Klik op **Testmodus — verlaten** (gele knop, verschijnt in de zijbalk).
+**Activeren:** Kies **AllStars FC** in de club-keuzelijst midden in de bovenbalk. Die keuzelijst
+verschijnt zodra er meer dan één club in de installatie staat; de democlub staat er standaard in.  
+**Verlaten:** Kies in diezelfde keuzelijst uw eigen club weer.
 
 In testmodus:
-- Toont de zijbalk **"ALLSTARS (testmodus)"** als clubnaam
-- Laadt de dagplanning fictieve wedstrijden uit `his.matches WHERE ClubCode='ALLSTARS'`
-- Is het submenu **Testdata → Wedstrijden** zichtbaar voor het invoeren van fictieve wedstrijden
+- Verschijnt boven in de zijbalk een oranje blok met **TESTMODUS** en daaronder
+  **AllStars FC — geen productiedata**, en kleurt de club-keuzelijst in de bovenbalk oranje
+- Laadt de dagplanning fictieve wedstrijden in plaats van de echte wedstrijden van uw club
+- Verschijnt onderaan de zijbalk het kopje **TESTMODUS** met daaronder het menu-item **Testdata**,
+  voor het invoeren van fictieve wedstrijden
 - Zijn synchronisatie en e-mailverwerking op de Instellingen-pagina verborgen (niet van toepassing)
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
@@ -126,6 +146,7 @@ De dagplanning heeft **twee losse kolommen** die makkelijk verward worden (#666)
 | Tijd + afwijking, geel | Tot en met 15 minuten ernaast |
 | Tijd + afwijking, rood | Meer dan 15 minuten ernaast |
 | — | Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie |
+| ander veld (grijs, achter de tijd) | Het team heeft een voorkeursveld, maar dat was bezet — de planner koos een ander veld |
 
 Achter de tijd staat de herkomst: **regel** (teamregel voorkeursveld met tijd), **team** (eigen
 voorkeurstijd) of **standaard** (standaardtijd van de leeftijdscategorie).
@@ -148,7 +169,7 @@ Ontstaat er een onmogelijke planning — twee wedstrijden die niet samen op éé
 ruimte ertussen — dan verschijnt boven de tijdlijn een waarschuwing die benoemt welke twee wedstrijden
 het betreft. De wijziging wordt niet geblokkeerd; je ziet alleen dat het zo niet kan.
 
-Alleen de tab **Optimale planning** is te bewerken. **Huidige situatie** toont de stand uit Sportlink en
+Alleen de tab **Optimaal** is te bewerken. De tab **Huidig** toont de stand uit Sportlink en
 blijft ongewijzigd.
 
 Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere teams; ze worden niet als fout beschouwd.
@@ -180,7 +201,7 @@ Teams met een grijze "Onbekend"-badge blokkeren wel hun tijdslot voor andere tea
 
 ---
 
-## 3. Azure resources aanmaken (eenmalig — reeds gedaan)
+## 3a. Azure resources aanmaken (eenmalig — reeds gedaan)
 
 De resources zijn aangemaakt en actief. Deze sectie is documentatie voor toekomstige herinrichting.
 
@@ -503,16 +524,74 @@ Exitcode 0 = alles groen. Exitcode 1 = minimaal één check gefaald.
 
 ---
 
+## 9a. Het startscherm en de bovenbalk
+
+> **Vanaf hier gaat het over de schermen zelf.** De hoofdstukken hierboven zijn voor de technisch
+> beheerder die de installatie opzet; u heeft ze niet nodig om met de app te werken.
+
+### Het dashboard
+
+Na inloggen komt u op het **Dashboard**. Dat is een startpagina met vier snelkoppelingen naar de
+schermen die u het vaakst nodig heeft:
+
+| Tegel | Waarvoor |
+|---|---|
+| **Teambegeleiding** | Contactgegevens van teambegeleiders bekijken en een vraag doorsturen |
+| **Dagplanning** | Wedstrijden inplannen en de veldindeling voor een speeldag beheren |
+| **Leermomenten** | Correcties op de AI-classificatie beoordelen (zie hoofdstuk 16a) |
+| **Email-tester** | De e-mailverwerking uitproberen zonder iets te versturen (zie hoofdstuk 20) |
+
+Klik op een tegel om er direct naartoe te gaan. Alles is ook bereikbaar via de zijbalk links.
+Heeft u bij **Thema** een clublogo ingesteld, dan staat dat bovenaan het dashboard.
+
+### De bovenbalk — waaronder het wisselen van club
+
+Boven elk scherm staat een smalle balk met, van links naar rechts:
+
+- **De club-keuzelijst** (midden). Deze verschijnt alleen als er meer dan één club in de
+  installatie staat — in de praktijk uw eigen club plus de democlub **AllStars FC**. Kiest u hier
+  een andere club, dan tonen álle schermen voortaan de gegevens van die club. Dit is tegelijk de
+  schakelaar voor de testmodus: kiest u AllStars FC, dan werkt u in demodata (zie hoofdstuk 2 en
+  hoofdstuk 13). Uw keuze wordt door de browser onthouden, ook na afsluiten — kiest u later uw
+  eigen club weer, dan bent u terug in de echte gegevens.
+- **Backend start op…** verschijnt op deze plek in plaats van de keuzelijst zolang de server nog
+  aan het opstarten is. Dit duurt bij een koude start tot ongeveer een halve minuut en verdwijnt
+  vanzelf.
+- **Het versienummer** van de applicatie (rechts).
+- **De zon/maan-knop** voor lichte of donkere weergave — zie hoofdstuk 21.
+- **De FEEDBACK-knop** om een melding te doen — zie hoofdstuk 23.
+- **About**, een link naar de broncode van het project.
+
+### De zijbalk
+
+De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Dagplanning**,
+**Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
+hieronder) **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken**, en tot slot het uitklapbare menu
+**Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Voorkeurstijden*,
+*E-mailtemplates*, *Thema* en *Sportlink Web Extension*.
+
+Drie menu-items verschijnen alleen onder een voorwaarde:
+
+- **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken** staan er alleen als de Sportlink Web
+  Extension is ingeschakeld (hoofdstuk 19).
+- Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
+  staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
+
+Onderaan de zijbalk staat wie er is ingelogd, met de knop **Uitloggen**.
+
+---
+
 ## 10. Teambegeleiding-pagina (`/teambegeleiding`)
 
 De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol** in staat team-contactgegevens op te zoeken en vragen door te sturen aan de begeleiding.
 
 ### Functionaliteit
 
-1. **Team selecteren** — dropdown met alle teams waarvoor begeleiding beschikbaar is (uit `avg.Teambegeleiding`)
+1. **Team selecteren** — keuzelijst met alle teams waarvan begeleiders bekend zijn
 2. **Begeleiders inzien** — kaarten per begeleider met naam, teamrol, e-mailadres en telefoonnummer.
-   Deze pagina is zelf al afgeschermd achter Easy Auth (admin- of user-rol) — zichtbaarheid van
-   contactgegevens is dus geen aparte AVG-afweging per veld, maar een gevolg van wie er mag inloggen.
+   U moet ingelogd zijn om deze pagina te kunnen openen, dus deze contactgegevens zijn alleen
+   zichtbaar voor mensen die toegang hebben tot dit beheerscherm. Zichtbaarheid is daarmee geen
+   aparte afweging per veld, maar een gevolg van wie er mag inloggen.
 3. **"Email Aan"-veld** — bewerkbaar tekstveld, standaard gevuld met alle begeleiders van het team in
    `"Naam" <adres>; ...`-notatie. Dit veld bepaalt **daadwerkelijk** wie de mail bij "Vraag doorsturen"
    ontvangt (#765) — er is dus geen verschil meer tussen wat u ziet en wat er verstuurd wordt.
@@ -530,26 +609,33 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
    - To: de ontvangers uit het "Email Aan"-veld (leeg → server-side fallback: hoogst-geprioriteerde
      begeleider, Trainer > Coach > Teamleider, met de coördinator als laatste terugval)
    - Reply-To: e-mailadres van de aanvrager (automatisch uit Entra ID)
-   - BCC: coördinator (uit `dbo.AppSettings.plannerEmailAdres`)
+   - BCC: de coördinator — het adres dat bij Instellingen is ingevuld onder *Planner e-mailadres*
    - Ontvangers antwoorden rechtstreeks naar de aanvrager
    - **Zelf testen**: vul uw eigen e-mailadres in bij "Email Aan" (in plaats van of naast de
      begeleiders) en verstuur een testvraag — u ontvangt de mail dan zelf en kunt controleren of
      "Beantwoorden" in Outlook naar u terugkomt. Klik daarna "Herstel" om het veld weer op de echte
      begeleiders te zetten
-   - Elke verzending — automatisch opgezocht of zelf opgegeven — wordt weggeschreven als rij in
-     `planner.EmailVerwerking` (`VerzoekType = TeambegeleidingDoorsturen`), dezelfde tabel als de
-     automatische e-mailpipeline, en wordt na 30 dagen automatisch geanonimiseerd. De teller
-     "e-mailverwerking" op de Instellingen-pagina telt deze rijen op dit moment gewoon mee — er is
-     (nog) geen aparte detailweergave per rij
+   - Elke verzending — automatisch opgezocht of zelf opgegeven — wordt vastgelegd in het
+     e-mailoverzicht van de app, hetzelfde overzicht als de automatische e-mailafhandeling, en na
+     30 dagen automatisch geanonimiseerd. De teller "e-mailverwerking" op de Instellingen-pagina
+     telt deze verzendingen op dit moment gewoon mee — er is (nog) geen aparte detailweergave per
+     bericht
 5. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
-   en een voorbeeldweergave vóór bevestiging. De CSV wordt in de browser verwerkt en nooit op de server
-   opgeslagen.
-   - **Een import vervangt de bestaande teambegeleiding van de club volledig** — het verwijderen van
-     de bestaande rijen (`DELETE WHERE ClubCode`), het invoegen van de nieuwe lijst en de audit-regel
-     lopen in één geheel (#1131/#1132): een ongeldige rij (bijv. een te lange teamnaam) of een
-     tweede, gelijktijdige import verandert nooit een deel van de vorige lijst — óf de hele nieuwe
-     lijst komt erin, óf er verandert niets. Er wordt niets samengevoegd, dus een onvolledige export
-     herstel je door een complete export opnieuw te importeren.
+   en een voorbeeldweergave vóór bevestiging.
+   - **Wat er met de gegevens gebeurt.** Uw browser leest het bestand in en toont een voorbeeld van
+     de eerste vijf rijen, zodat u kunt controleren of u het juiste bestand heeft. Klikt u daarna op
+     importeren, dan wordt **de volledige inhoud van de CSV naar de server gestuurd** (beveiligd,
+     alleen voor uw ingelogde sessie) en daar meteen in de database verwerkt. De persoonsgegevens
+     verlaten dus wél uw browser — dat is inherent aan een import. Het bestand zelf wordt nergens
+     op de server bewaard en de inhoud komt niet in de logbestanden; wat blijft staan zijn de
+     begeleidersgegevens in de database, plus één regel in het importlogboek met wie wanneer welk
+     bestand heeft geïmporteerd en hoeveel rijen erin zaten.
+   - **Een import vervangt de bestaande teambegeleiding van de club volledig.** Het vervangen
+     gebeurt in één keer: óf de volledige nieuwe lijst komt erin, óf er verandert niets. Een fout
+     halverwege — bijvoorbeeld een te lange teamnaam — laat de vorige lijst dus ongemoeid, en twee
+     mensen die tegelijk importeren kunnen geen half-samengevoegde lijst veroorzaken. Er wordt niets
+     samengevoegd, dus een onvolledige export herstelt u door een complete export opnieuw te
+     importeren.
    - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
 
 > **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel
@@ -571,9 +657,13 @@ Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.
 
 ## 11. Speeltijden-pagina (`/instellingen/speeltijden`)
 
-De pagina `/instellingen/speeltijden` (alleen admin-rol) beheert de speeltijden per leeftijdscategorie. De planner gebruikt uitsluitend `dbo.Speeltijden.WedstrijdTotaal` voor de berekening van veldblokkeertijden — de Sportlink API-waarde `Duration` wordt niet meer gebruikt.
+De pagina `/instellingen/speeltijden` (alleen admin-rol) beheert de speeltijden per
+leeftijdscategorie. De planner rekent uitsluitend met het getal in de kolom **Totaal (min)** op
+deze pagina. Wat Sportlink zelf als wedstrijdduur doorgeeft, wordt genegeerd — u bepaalt het hier.
 
-Het veld **Totaal (incl. rust)** is de totale veldblokkeertijd die de planner direct gebruikt. Rust wordt **niet** apart opgeteld in code — WedstrijdTotaal = speeltijd + rust + buffer.
+Het veld **Totaal (min)** — in het scherm met de toevoeging *incl. rust* — is de totale
+veldblokkeertijd die de planner direct gebruikt. Rust wordt er dus **niet** nog eens apart bij
+opgeteld: Totaal = speeltijd + rust + buffer. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.
 
 ### Categorieregels
 - Categorie `1-99` = Senioren mannen; `VR` = Senioren vrouwen → beide 115 minuten
@@ -620,16 +710,17 @@ De **Testmodus** maakt het mogelijk fictieve wedstrijden aan te maken die worden
 
 ### Activeren
 
-Klik op **"Testmodus"** in de zijbalk (onderaan bij de ingelogde gebruiker). De knop activeert de ALLSTARS-modus:
-- Alle API-aanroepen sturen voortaan `X-Club-Code: ALLSTARS` mee
-- Het menu **"Test data"** verschijnt in de zijbalk
-- De actieve club-indicator in de topbalk toont "ALLSTARS"
+Kies **AllStars FC** in de club-keuzelijst midden in de bovenbalk. De testmodus is dan actief:
+- Alle opvragingen bij de server gebruiken voortaan de democlub in plaats van uw eigen club
+- Boven in de zijbalk verschijnt een oranje blok **TESTMODUS — AllStars FC — geen productiedata**
+- Onderaan de zijbalk verschijnt het kopje **TESTMODUS** met daaronder het menu-item **Testdata**
+- De club-keuzelijst zelf kleurt oranje
 
 ### Deactiveren
 
-Klik op **"Testmodus — verlaten"** (oranje knop) om terug te keren naar de normale clubmodus.
+Kies in diezelfde keuzelijst uw eigen club weer.
 
-### Test data → Wedstrijden
+### Testdata — wedstrijden invoeren
 
 De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fictieve wedstrijden:
 
@@ -640,35 +731,59 @@ De pagina `/testdata/wedstrijden` toont een invoergrid voor het aanmaken van fic
 | Tegenstander | Vrij tekstveld voor de naam van de tegenstander |
 | Starttijd | Aanvangstijd (↓ fill-down beschikbaar) |
 | Veld | Veldnaam selecteren uit de dropdown |
-| Velddeel | Deelveld-dropdown — verschijnt alleen als het team op een deelveld speelt. JO7-JO10 (¼ veld): A1/A2/B1/B2; JO11-JO12 (½ veld): A/B. De beschikbare opties worden automatisch bepaald op basis van de speeltijden-tabel. |
-| Soort | Competitie / Beker / Oefenwedstrijd / Vriendschappelijk |
+| Velddeel | Deelveld-keuzelijst — verschijnt alleen als het team op een deel van een veld speelt. Welke delen u kunt kiezen volgt uit **Veldafmeting** bij Instellingen → Speeltijden voor de leeftijdscategorie van het team: een half veld geeft A/B, een derde veld A/B/C en een kwart veld A1/A2/B1/B2. Staat er een heel veld (1,00), dan blijft deze kolom leeg. |
+| Soort | Competitie / Oefenwedstrijd / Toernooi / Vriendschappelijk |
 
-**Globale invoerbalk** (boven de tabel): Stel datum, soort, tegenstander en starttijd in vóór het toevoegen van rijen — deze waarden worden als default voor nieuwe rijen gebruikt.
+**Globale invoerbalk** (boven de tabel): stel **Datum**, **Soort**, **Tegenstander**, **Starttijd**
+en **Veld** in vóór het toevoegen van rijen — deze vijf waarden worden als startwaarde voor nieuwe
+rijen gebruikt en besparen het meeste typewerk.
 
-**Knoppen:**
+**Knoppen naast de invoerbalk:**
 - **Alle teams** — voegt één rij per huidig clubteam toe en slaat alles op
-- **+ Lege rij** — voegt één lege rij toe
+- **Lege rij** (met plus-pictogram) — voegt één lege rij toe
 - **↓** in een kolomkop — kopieert de eerste ingevulde waarde naar alle lege cellen in die kolom
-- **Verwijder alles** — verwijdert alle testdata-wedstrijden (`WHERE ClubCode='ALLSTARS'`)
 
-**Auto-save:** Elke celwijziging triggert direct een opslaan naar de database. Een ✅ of ⚠️ achter de rij geeft de opslagstatus aan.
+**Verplaats datum** (een eigen blok onder de invoerbalk): vul bij **Van** de datum in waarop nu
+testwedstrijden staan en bij **Naar** de datum waar ze naartoe moeten, en klik op **Verplaats**.
+Alle testwedstrijden van die ene dag schuiven in één keer mee. Handig om een eerder opgezette
+speeldag opnieuw te gebruiken zonder alles over te typen. De knop werkt pas als beide datums zijn
+ingevuld en verschillend zijn. Naast de knop verschijnt hoeveel wedstrijden verplaatst zijn, of
+waarom het niet lukte.
 
-### Technische details
+**Filter van / tot** (een blok daaronder): beperkt de lijst tot een datumbereik. Ditzelfde bereik
+bepaalt wat de verwijderknop weggooit.
+- **Wis filter** — maakt het datumbereik weer leeg
+- **Verwijder gefilterd** — verwijdert de testwedstrijden in het ingestelde datumbereik. Deze knop
+  werkt pas nadat u bij **Filter van / tot** een bereik heeft opgegeven; zonder bereik staat er
+  *Verwijder (stel filter in)* en is de knop grijs. Wilt u alles weggooien, kies dan een bereik dat
+  alle wedstrijden omvat.
 
-- Alle testdata gebruikt `ClubCode = 'ALLSTARS'` — echte wedstrijden (`ClubCode = '<clubcode>'`) blijven onaangetast
-- `bk_matches` wordt synthetisch gegenereerd als `ALLSTARS-{guid}` (28 tekens)
-- Testdata staat in `his.matches` — hetzelfde schema als productiewedstrijden, klaar voor gebruik door de dagplanning
-- De ALLSTARS-modus is persistent in de browser (localStorage via `ClubSelectorService`) en wordt hersteld bij herstart van de browser
+**Automatisch opslaan:** elke celwijziging wordt direct opgeslagen. Een ✅ of ⚠️ achter de rij geeft
+de opslagstatus aan.
+
+> **Voor de technisch beheerder**
+>
+> - Alle testdata gebruikt `ClubCode = 'ALLSTARS'` — echte wedstrijden blijven onaangetast
+> - `bk_matches` wordt synthetisch gegenereerd als `ALLSTARS-{guid}` (28 tekens)
+> - Testdata staat in `his.matches` — hetzelfde schema als productiewedstrijden, klaar voor gebruik
+>   door de dagplanning
+> - De keuze voor de democlub wordt in de browser bewaard (`localStorage`) en overleeft het sluiten
+>   van de browser
+>
+> Voor de gewone beheerder volstaat: testwedstrijden staan apart van de echte wedstrijden en kunnen
+> die nooit beïnvloeden. Uw keuze voor de democlub onthoudt de browser, ook na afsluiten.
+> Zie verder [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md).
 
 ### API-endpoints
 
 | Endpoint | Beschrijving |
 |---|---|
 | `GET /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden ophalen |
-| `GET /api/beheer/testdata/teams` | Echte clubteams ophalen voor dropdown |
+| `GET /api/beheer/testdata/teams` | Echte clubteams ophalen voor keuzelijst |
 | `POST /api/beheer/testdata/wedstrijden` | Test-wedstrijd aanmaken of bijwerken (upsert) |
+| `POST /api/beheer/testdata/wedstrijden/verplaats-datum` | Alle test-wedstrijden van één datum naar een andere datum verplaatsen |
 | `DELETE /api/beheer/testdata/wedstrijden/{bk}` | Één test-wedstrijd verwijderen |
-| `DELETE /api/beheer/testdata/wedstrijden` | Alle test-wedstrijden verwijderen |
+| `DELETE /api/beheer/testdata/wedstrijden` | Test-wedstrijden verwijderen; met de optionele parameters `van`/`tot` alleen binnen dat datumbereik (dat is wat de knop **Verwijder gefilterd** doet), zonder parameters allemaal |
 
 ---
 
@@ -889,6 +1004,46 @@ worden bijgewerkt.
 
 ---
 
+## 16a. AI-leermomenten (`/leermomenten`)
+
+Het systeem leest binnenkomende e-mail en bepaalt zelf om wat voor soort verzoek het gaat. Heeft
+het dat een keer verkeerd ingeschat en is die inschatting daarna gecorrigeerd, dan legt het systeem
+dat vast als **leermoment**. Op deze pagina — in de zijbalk **Leermomenten**, met bovenaan de kop
+*AI-leermomenten* — beoordeelt u die gevallen.
+
+### Wat u ziet
+
+Bovenaan staan drie tellers: **Te beoordelen**, **Gevalideerd (actief als voorbeeld)** en
+**Afgewezen**. Staat er iets bij *Te beoordelen*, dan kleurt die teller oranje — dan wacht er werk
+op u.
+
+Daaronder staan vier filterknoppen — **Te beoordelen**, **Gevalideerd**, **Afgewezen** en **Alle** —
+en een tabel met per leermoment: de **Datum**, het **Origineel type** (wat het systeem er eerst van
+maakte), het **Afgeleid type** (wat het na de correctie had moeten zijn), de **Originele
+samenvatting**, de **Correctie samenvatting** en de **Status**.
+
+### Wat u kunt doen
+
+| Actie | Effect |
+|---|---|
+| **Valideer** | Het systeem neemt dit geval voortaan mee als voorbeeld bij het beoordelen van nieuwe e-mail |
+| **Afwijzen** | Het geval wordt niet als voorbeeld gebruikt |
+
+De twee knoppen verschijnen alleen bij leermomenten die nog niet beoordeeld zijn.
+
+**Twijfelt u?** Net als bij Teamaliassen geldt: keur alleen goed wat u zeker weet. Een gevalideerd
+leermoment stuurt namelijk hoe toekomstige e-mail wordt afgehandeld.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/leermomenten` | Leermomenten ophalen, eventueel gefilterd op status |
+| `GET /api/beheer/leermomenten/stats` | De tellers boven aan de pagina |
+| `PUT /api/beheer/leermomenten/{id}/valideer` | Eén leermoment valideren of afwijzen |
+
+---
+
 ## 17. KNVB-verzetten zonder datum (`/instellingen`)
 
 ### Wat doet deze instelling?
@@ -923,6 +1078,33 @@ De regio geldt voor de hele club (één instelling, geen per-team-regio). Clubs 
 meerdere districten (bijv. een landelijk seniorenteam naast jeugd in een regionaal district)
 krijgen dus voor alle teams dezelfde kalender mee. Per-team-regio is een toekomstige uitbreiding
 zodra teamregio automatisch uit Sportlink-data kan worden afgeleid.
+
+---
+
+## 17a. Uitgesloten e-mailadressen (`/instellingen`)
+
+Onderaan de Instellingen-pagina staat de lijst **Uitgesloten e-mailadressen**, met daaronder de
+toelichting *"Adressen op deze lijst worden altijd overgeslagen door de email-verwerker."*
+Berichten van een adres dat hier staat, worden door de automatische e-mailverwerking overgeslagen:
+er gaat geen antwoord uit en er wordt niets ingepland. Gebruik dit voor nieuwsbrieven,
+no-reply-adressen, het wedstrijdsecretariaat van uw eigen club en andere afzenders waarop het
+systeem nooit moet reageren.
+
+De tabel heeft de kolommen **E-mailadres**, **Omschrijving** en **Actief**.
+
+- **Toevoegen:** klik rechtsboven de lijst op **Adres toevoegen**. Er verschijnt een kaartje
+  *Nieuw adres toevoegen* met de velden **E-mailadres** en **Omschrijving (optioneel)** — vul die
+  omschrijving in, zodat een volgende beheerder ziet waarom het adres er staat. Bevestig met
+  **Toevoegen**.
+- **Verwijderen:** klik op het prullenbak-knopje achter de regel.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/uitgesloten-emails` | De volledige lijst ophalen |
+| `POST /api/beheer/uitgesloten-emails` | Een adres toevoegen |
+| `DELETE /api/beheer/uitgesloten-emails/{id}` | Een adres verwijderen |
 
 ---
 
@@ -972,7 +1154,7 @@ Wat u níet hoeft in te vullen, doet de server:
 |---|---|
 | Team-ID | Het gekozen team, via de teamkoppeling met de gesynchroniseerde Sportlink-teams. Ontbreekt die koppeling (bijv. een puur lokaal team), dan blijft het leeg en ziet u dat als waarschuwing |
 | Leeftijdscategorie | Van het gekozen team (bijv. `JO10`) |
-| Locatie | Altijd de eigen accommodatie: de instelling **Accommodatie** (§2) wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
+| Locatie | Altijd de eigen accommodatie: het veld **Accommodatie** op de Instellingen-pagina wordt op naam opgezocht in de locatielijst van Sportlink Club. Niet (eenduidig) gevonden → leeg + waarschuwing |
 | Omschrijving | Leeg gelaten → `Oefenwedstrijd [team] - [tegenstander] ([veld])` |
 
 Het gekozen veld wordt nog **niet** als Sportlink-veld meegestuurd: dat gebeurt in het plan van
@@ -985,35 +1167,42 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 
 ---
 
-## 19. Sportlink Web Extension (`/instellingen`) — schrijfrechten naar Sportlink Club
+## 19. Sportlink Web Extension (`/sportlink-extension-settings`) — schrijfrechten naar Sportlink Club
 
 > Deze feature is **gedeeltelijk gebouwd** (epic #986) — zie
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
 
-Onderaan Instellingen staat de schakelaar **"Sportlink Web Extension inschakelen"** (standaard
-**uit**). Eenmaal aan verschijnt een tabel **"Sportlink-serviceaccounts per rol"**: elke functionele
-rol (bijv. "Wedstrijdzaken") gebruikt een eigen, smal-geschaald Sportlink-serviceaccount — nooit uw
-persoonlijke Sportlink-login — zodat Sportlinks eigen audit-log de rolnaam toont in plaats van een
-persoonsnaam.
+U opent dit scherm via **Instellingen → Sportlink Web Extension** in de zijbalk, of via de knop
+**Openen →** op de doorverwijskaart onderaan de Instellingen-pagina. De instellingen staan sinds
+#1122 dus niet meer op Instellingen zelf.
+
+Bovenaan het scherm staat het blok **Aan/uit** met de schakelaar
+**"Sportlink Web Extension inschakelen"** (standaard **uit**). Daaronder staat de tabel
+**"Sportlink-serviceaccounts per rol"**: elke functionele rol (bijv. "Wedstrijdzaken") gebruikt een
+eigen, smal-geschaald Sportlink-serviceaccount — nooit uw persoonlijke Sportlink-login — zodat
+Sportlinks eigen audit-log de rolnaam toont in plaats van een persoonsnaam.
 
 | Kolom | Betekenis |
 |---|---|
-| Gekoppeld | Of er een geldig, actief refresh-token voor deze rol is opgeslagen |
+| Rol | De functionele rol waarvoor dit account wordt gebruikt |
+| Gekoppeld | Of er een geldige, actieve toegangssleutel voor deze rol is opgeslagen |
 | Laatst gekoppeld door / op | Wie de koppeling voor het laatst (opnieuw) heeft geregistreerd, en wanneer |
 | Sportlink-account | Naam van het gekoppelde Sportlink-serviceaccount |
 
-**Koppeling (opnieuw) registreren** in de Admin GUI zelf overschrijft alleen een weergavenaam — het
-werkende refresh-token blijft daarbij ongewijzigd. Het daadwerkelijk *verkrijgen* van een nieuw
-refresh-token kan niet vanuit de webapp: Sportlink staat geen inlog via onze eigen applicatie toe
-(de redirect terug naar een eigen URL is aan hun kant dichtgezet). Dit is dus altijd een aparte,
-eenmalige technische stap die een **technisch beheerder** van deze installatie zelf uitvoert, op zijn
-eigen computer, met een lokaal hulpprogramma (`Tools/SportlinkTokenCapture`, met een echte
-browserlogin — nooit door een geautomatiseerd script of AI-agent, zie
-`docs/SPORTLINK-WEB-EXTENSION.md` §3.3/§4.4 voor de volledige stappen). Het resultaat plakt die
-beheerder daarna in het veld "Refresh-token registreren". Een gekoppelde rol behoudt de koppeling
-automatisch actief via een uur-timer, ook zonder dagelijks gebruik — dit hoeft dus niet routinematig
-herhaald te worden.
+Achter elke rol staat de knop **Koppeling (opnieuw) registreren**. Die knop overschrijft alleen de
+weergavenaam en de "laatst gekoppeld door/op"-gegevens — de werkende toegangssleutel blijft
+daarbij ongewijzigd. Het daadwerkelijk *verkrijgen* van een nieuwe sleutel kan niet vanuit de
+webapp: Sportlink staat geen inlog via onze eigen applicatie toe (de terugverwijzing naar een eigen
+adres is aan hun kant dichtgezet). Dit is dus altijd een aparte, eenmalige technische stap die een
+**technisch beheerder** van deze installatie zelf uitvoert, op zijn eigen computer, met een lokaal
+hulpprogramma (`Tools/SportlinkTokenCapture`, met een echte browserlogin — nooit door een
+geautomatiseerd script of AI-agent, zie `docs/SPORTLINK-WEB-EXTENSION.md` §3.3/§4.4 voor de
+volledige stappen). Het resultaat plakt die beheerder daarna in het vak **Refresh-token
+registreren** onder in datzelfde registratiekaartje — "refresh-token" is de technische naam voor
+die toegangssleutel — en bevestigt met **Token registreren**. Een gekoppelde rol houdt zichzelf
+daarna automatisch actief via een uur-timer, ook zonder dagelijks gebruik; dit hoeft dus niet
+routinematig herhaald te worden.
 
 **Dry-run: alles simuleren, niets naar Sportlink schrijven** — naast de aan/uit-schakelaar staat een
 tweede schakelaar die **standaard AAN** staat. Zolang deze aan staat, doorloopt elke kleedkamer-/
@@ -1050,6 +1239,54 @@ Voert de AI-classificatie van een binnenkomend bericht uit als **dry-run** — e
 verzonden en niets in de e-maillog vastgelegd. Handig om te controleren hoe de AI een nieuw of
 grensgeval van een bericht zou classificeren vóórdat het echt binnenkomt, of om een
 classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
+
+---
+
+## 20a. E-mailtemplates (`/email-templates`)
+
+Hier past u de standaardteksten aan die het systeem automatisch verstuurt — bijvoorbeeld het
+antwoord op een verzoek om een wedstrijd te verzetten. U opent het scherm via
+**Instellingen → E-mailtemplates** in de zijbalk.
+
+### Gedeelde e-mail voetnoot
+
+Bovenaan staat het vak **Gedeelde e-mail voetnoot**. Wat u daar intypt komt automatisch onder
+*elke* uitgaande e-mail te staan — typisch een afsluiting met de naam van de coördinator. Klik op
+**Opslaan** om de voetnoot vast te leggen.
+
+### De templatelijst
+
+Daaronder staat een tabel met per template de kolommen **Template** (de sleutel die de code
+gebruikt), **Naam** (het onderwerp), **Categorie** en **Status**. De status is **Standaard** —
+de tekst die standaard in de applicatie zit — of **Aangepast**: dan heeft iemand hier een eigen
+tekst vastgelegd.
+
+| Knop | Effect |
+|---|---|
+| **Aanpassen** | Opent het bewerkformulier voor die template |
+| **Verwijder aanpassing** | Gooit uw eigen tekst weg en zet de standaardtekst van de applicatie terug. Verschijnt alleen bij een template met status *Aangepast*, en raakt de andere templates niet |
+| **+ Nieuwe template** | Legt een eigen tekst vast voor een template die nu nog op de standaard staat; u kiest eerst uit de lijst om welk type bericht het gaat |
+
+### Het bewerkformulier
+
+Het formulier heeft de velden **Template key** (bij een bestaande template vast), **Onderwerp**,
+**Body template** en het vinkje **Actief**. Bewaren doet u met **Opslaan**, weggooien met
+**Annuleren**.
+
+In de tekst staan **plaatshouders** tussen dubbele accolades. Die vult het systeem bij verzending
+in met de echte waarde. Beschikbaar zijn: `{{voornaam}}`, `{{aanhef}}`, `{{datum}}`, `{{team}}`,
+`{{tegenstander}}` en `{{aanvangstijd}}`. Laat de accolades en de naam ertussen precies staan zoals
+ze zijn — typt u er iets anders, dan komt er letterlijk `{{team}}` in de mail te staan. De voetnoot
+uit het vak bovenaan wordt automatisch onder de body geplakt; die hoeft u hier dus niet te
+herhalen.
+
+### API-endpoints
+
+| Endpoint | Beschrijving |
+|---|---|
+| `GET /api/beheer/templates` | Alle templates ophalen |
+| `PUT /api/beheer/templates/{key}` | Eén template opslaan of bijwerken |
+| `POST /api/beheer/templates/{key}/reset` | De eigen tekst weggooien en terug naar de standaardtekst |
 
 ---
 
@@ -1106,6 +1343,14 @@ Twee dingen om te weten:
 - **Alleen het adres dat u hier heeft opgeslagen mag worden benaderd.** Dat is een bewuste
   beveiligingsmaatregel: hij voorkomt dat het scherm gebruikt kan worden om willekeurige adressen op
   te vragen. Wilt u een andere site uitlezen, sla dan eerst dat adres op.
+
+### Icoontje en logo
+
+Onder de website-URL staan nog twee velden: **Favicon URL** (het kleine icoontje in het
+browsertabblad) en **Club-logo URL** (het logo links boven in de zijbalk en boven aan het
+dashboard). Vindt **Ophalen** ze op de clubsite, dan verschijnt er een voorbeeldje met de knop
+**Gebruiken** om die waarde over te nemen; anders plakt u er zelf het webadres van een afbeelding
+in. Leeg laten mag: dan toont de app geen logo en het standaard-icoontje.
 
 ### Wat u níet kunt instellen, en waarom
 

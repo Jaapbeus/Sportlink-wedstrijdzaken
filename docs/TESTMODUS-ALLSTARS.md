@@ -2,6 +2,11 @@
 
 De ALLSTARS-testmodus maakt het mogelijk om de dagplanning en planner-logica te testen met volledig fictieve wedstrijden, zonder de echte Sportlink-data van de club te beïnvloeden.
 
+> **Voor wie is dit document?** Het is bewust tweeledig. Alles tot en met *Testmodus activeren en
+> verlaten* is voor de **beheerder van de vereniging**; daar is geen technische kennis voor nodig.
+> Vanaf de paragraaf *X-Club-Code header* gaat het over de database en de code — dat deel is voor
+> ontwikkelaars en kunt u overslaan.
+
 ---
 
 ## Wat is de ALLSTARS-testmodus?
@@ -36,7 +41,8 @@ In normale modus haalt de planner zijn data uit de Sportlink Club API (live) of 
 
 ### Wedstrijden invoeren
 
-Navigeer naar **Testdata → Wedstrijden** in de zijbalk (alleen zichtbaar in ALLSTARS-modus).
+Navigeer naar **Testdata** onder het kopje TESTMODUS onderaan de zijbalk (alleen zichtbaar wanneer
+AllStars FC in de club-keuzelijst geselecteerd is).
 
 Op die pagina voer je fictieve wedstrijden in met:
 - Datum
@@ -69,17 +75,20 @@ De koppeling in de planner werkt op teamnaam-prefix: `JO9-2` matcht op `JO9`.
 
 ### Activeren
 
-Klik op de knop **Testmodus** onderaan de zijbalk (onder de gebruikersnaam). Dit:
-1. Slaat `ALLSTARS` op als geselecteerde club in `localStorage`
-2. Navigeert naar `/testdata/wedstrijden`
-3. Toont "ALLSTARS (testmodus)" als clubnaam in de header
+Kies **AllStars FC** in de club-keuzelijst midden in de bovenbalk. Die keuzelijst verschijnt zodra
+er meer dan één club in de installatie staat; de democlub staat er standaard in. Zodra u hem kiest:
+
+1. Verschijnt boven in de zijbalk het oranje blok **TESTMODUS — AllStars FC — geen productiedata**
+2. Kleurt de club-keuzelijst in de bovenbalk oranje
+3. Verschijnt onderaan de zijbalk het kopje **TESTMODUS** met daaronder het menu-item **Testdata**
+4. Gebruiken alle schermen voortaan de gegevens van de democlub in plaats van die van uw club
+
+De browser onthoudt uw keuze, ook nadat u hem afsluit.
 
 ### Verlaten
 
-Klik op **Testmodus — verlaten** (gele knop, verschijnt in plaats van de normale Testmodus-knop). Dit:
-1. Verwijdert de ALLSTARS-selectie uit `localStorage`
-2. Schakelt terug naar de primaire club (eerste club met `SyncEnabled = true` in `dbo.AppSettings`)
-3. Navigeert naar het dashboard
+Kies in diezelfde keuzelijst uw eigen club weer. Het oranje blok en het menu-item **Testdata**
+verdwijnen, en alle schermen tonen weer de echte gegevens.
 
 ### X-Club-Code header
 
@@ -115,7 +124,7 @@ Velden zijn niet per club gesplitst — ze vertegenwoordigen de fysieke accommod
 
 ---
 
-## Technische werking
+## Technische werking (voor ontwikkelaars)
 
 ### Planner-routing
 
@@ -136,23 +145,42 @@ var occupations = string.Equals(clubCode, "ALLSTARS", StringComparison.OrdinalIg
 
 ### ClubSelectorService
 
-`ClubSelectorService` slaat de geselecteerde clubcode op in `localStorage`. De waarde `ALLSTARS` wordt **niet** teruggezet naar de primaire club bij paginawissel — `MainLayout.LaadClubsAsync` bevat een expliciete uitzondering hiervoor:
+`ClubSelectorService` slaat de geselecteerde clubcode op in `localStorage` (sleutel
+`selectedClubCode`). De keuze voor de democlub overleeft een paginawissel, maar **niet** door een
+uitzondering in de code: `ALLSTARS` staat gewoon als rij in `public.appsettings` en komt daardoor
+mee in `GET /api/beheer/clubs` (`AdminClubsRepository.GetClubsAsync`, dat
+`clubcode, clubname, syncenabled` uit die tabel leest). De opgeslagen keuze komt dus voor in de
+opgehaalde lijst, en `MainLayout.LaadClubsAsync` laat hem daarom staan. Terugvallen op de primaire
+club gebeurt alleen wanneer er géén keuze is opgeslagen, of wanneer de opgeslagen clubcode niet in
+die lijst voorkomt:
 
 ```csharp
 if (ClubSelector.SelectedClubCode == null ||
-    (!_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode) &&
-     ClubSelector.SelectedClubCode != "ALLSTARS"))
+    !_clubs.Any(c => c.ClubCode == ClubSelector.SelectedClubCode))
 {
-    // alleen resetten als het geen ALLSTARS is
-    await ClubSelector.SelectClubAsync(primary);
+    var primary = _clubs.FirstOrDefault(c => c.SyncEnabled) ?? _clubs[0];
+    await ClubSelector.SelectClubAsync(primary.ClubCode, primary.ClubName);
 }
 ```
+
+Er is dus **geen ALLSTARS-uitzondering** in dit bestand. Dat onderscheid is niet academisch:
+verdwijnt de AppSettings-rij van de democlub (aangemaakt door
+`Database.Postgres/migrations/006_allstars_demodata.sql`), dan valt de selectie wél terug op de
+primaire club.
+
+**In gewone taal, voor de beheerder:** de democlub blijft in de keuzelijst staan omdat hij als
+gewone club in de instellingen van de installatie is opgenomen — niet omdat er een speciale
+uitzondering voor gemaakt is. Uw keuze wordt door de browser onthouden; kiest u AllStars FC, dan
+blijft dat zo tot u zelf uw eigen club weer kiest.
 
 ---
 
 ## AVG en security
 
 - De ALLSTARS-testdata bevat **geen echte persoonsgegevens** — alle namen en tijden zijn fictief.
-- De teamnamen (bijv. `Jan de Vries`, `trainer@voorbeeld.nl`) volgen het [John Doe-principe](../CLAUDE.md): bewust niet-identificeerbaar.
+- De namen en e-mailadressen in de demodata volgen het [John Doe-principe](../CLAUDE.md):
+  voornamen zonder achternaam (`Frenkie`, `Bas`, `Guus`) op het gereserveerde domein
+  `@allstars-fc.test`, dat nooit een echt e-mailadres kan zijn. Teamnamen hebben de vorm
+  `AllStars JO13 1`.
 - De testdata staat in dezelfde database als de echte data, maar is volledig geïsoleerd via de `ClubCode = 'ALLSTARS'` discriminator.
 - Productie-API's (Sportlink, Microsoft Graph) worden in testmodus **niet** aangesproken.

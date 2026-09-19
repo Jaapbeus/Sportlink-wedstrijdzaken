@@ -71,7 +71,7 @@ niet voor de developer. De kernvraag is:
 | Bug die 500-errors veroorzaakte | ✅ Ja | Beheerder had last van de fout |
 | Security-patch (ook intern) | ✅ Ja | Altijd transparant — vertrouwenseis |
 | Nieuwe instelling in AppSettings | ✅ Ja | Beheerder moet weten dat het configureerbaar is |
-| Breaking change in API of schema | ✅ Altijd — ook als klein |
+| Breaking change in API of schema | ✅ Ja | Altijd — ook als de wijziging klein is |
 | Verwijdering van functionaliteit | ✅ Ja | Beheerder moet zich kunnen voorbereiden |
 
 ---
@@ -93,14 +93,32 @@ niet voor de developer. De kernvraag is:
 ### Grensgevallen
 
 **Deploy-workflow fix** — alleen in changelog als de fout een deployment blokkeerde
-die gebruikers troffen. Een fix van `.NET 9.0.x → 10.0.x` in deploy.yml terwijl de
-productie al op .NET 10 staat: ❌ niet in changelog (interne infrastructuur-correctie).
+die gebruikers troffen. Een correctie van de SDK-versie in `deploy.yml` die geen gedrag
+verandert: ❌ niet in changelog (interne infrastructuur-correctie).
+
+> Verwar de **SDK**-versie in `deploy.yml` (`DOTNET_VERSION: '10.0.x'`) niet met het
+> **doelframework**. Dat van de FunctionApp is en blijft `net9.0` — op beide tiers — tot epic #1063
+> de cutover naar Flex Consumption doet; een `net10.0`-build geeft op het Linux Consumption Plan
+> een 503 "Function host is not running". Alleen `BlazorAdmin` staat op `net10.0`. Bump dus nooit
+> het `<TargetFramework>` van een FunctionApp-csproj op grond van dit voorbeeld.
 
 **Performance-verbetering** — alleen in changelog als de verbetering merkbaar is
 voor de gebruiker (bijv. "laadtijd overview 60% sneller"). Micro-optimalisaties: ❌.
 
 **Hernoemen van routes** — `admin→beheer` is een Breaking Change voor integrerende
 partijen, dus ✅ in changelog onder `Changed`.
+
+**Databasemigratie** — `deploy.yml` past migraties zélf toe, vóór de code live gaat: job
+`db-migrate` bij `DatabaseTier=SqlServer`, `db-migrate-postgres` bij `DatabaseTier=Postgres`, en
+`deploy` wacht op de migratiejob van de actieve tier. Er is dus geen handmatige migratieronde meer
+na een release.
+
+- Een migratie die alleen schema *toevoegt*: ❌ niet in changelog — de beheerder merkt er niets van.
+- Een migratie die de **vorige** code breekt (kolom weg, type gewijzigd, constraint aangescherpt):
+  ✅ onder `Changed`, met een expliciete waarschuwing. En: die mag **niet in dezelfde release** als
+  de code die hem nodig heeft — de migratie draait immers vóór de nieuwe code live is. Zie
+  `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57.
+- De smoke test in `deploy.yml` faalt op een niet-lege `pendingMigrations` in `GET /api/health`.
 
 ---
 
@@ -166,20 +184,25 @@ changelog komt:
 | Spec was onduidelijk, gedrag bijgesteld | `### Changed` (bewuste aanpassing) |
 | Security-schending gedicht | `### Security` |
 
-### De "issue"-terminologie van de developer
+### Een onterechte melding is een issue, geen changelog-entry
 
-De gebruiker noemde het zelf al: *"Een onterechte melding of verkeerde terugkoppeling
-is een issue die een fix opleverde"*. Precies — dat is de `By Design` of `Documentation`
-categorie. In het changelog verschijnt dit **niet**, want de applicatie veranderde niet.
+Een onterechte melding of een verkeerde terugkoppeling is een **issue** die een fix oplevert, maar
+valt in de categorie `By Design` of `Documentation`: de applicatie veranderde niet, dus in het
+changelog verschijnt niets.
 
-In de commit-message: `fix(test): Test-App.ps1 detecteerde blazor-error-ui false positive`
-In CHANGELOG: niets — de applicatie was correct.
+- In de commit-message: `fix(test): Test-App.ps1 detecteerde blazor-error-ui false positive`
+- In CHANGELOG: niets — de applicatie was correct.
 
 ---
 
 ## 5. Wat is een Feature?
 
-### Nieuwe Feature (MINOR bump: 2.0.0 → 2.1.0)
+> **Bumpregels staan in [§6](#6-versie-bump-beslisboom), niet hier.** Deze sectie gaat over de
+> *classificatie* (feature, enhancement, behavior change). Tijdens development krijgt élke `feat:`
+> een **PATCH**-bump; MINOR komt pas bij de release. De versienummers in de kopjes hieronder zijn
+> dus release-nummers, niet wat je per commit zet.
+
+### Nieuwe Feature (development: PATCH · bij de release: MINOR)
 
 > Iets wat de applicatie eerder **niet kon**, nu **wel kan**.
 > Een geheel nieuwe capability voor de beheerder of gebruiker.
@@ -196,7 +219,7 @@ Voorbeelden in dit project:
 - InternDomein-filter — nieuwe classificatielogica
 - TeamRegels CRUD — teamspecifieke regels bestonden niet als concept
 
-### Feature-uitbreiding / Enhancement (MINOR of PATCH)
+### Feature-uitbreiding / Enhancement (development: PATCH of REVISION)
 
 > Een bestaande feature krijgt **extra opties, velden of gedrag**.
 > De basiswerking bestond al; er wordt iets aan toegevoegd.
@@ -206,10 +229,12 @@ Kenmerken:
 - Bestaande berekening wordt uitgebreid met een nieuw scenario
 - Iemand die de applicatie al kent zegt: "Oh, dit kon ik nog niet maar het past erbij"
 
-Versie-impact:
-- Uitbreiding zonder breaking change → MINOR (2.0.0 → 2.1.0)
-- Uitbreiding die bestaande gedrag vervangt → MINOR
-- Kleine uitbreiding die onderdeel is van een bugfix → PATCH
+Versie-impact (zie §6 voor de volledige beslisboom):
+- Tijdens development: elke uitbreiding die de gebruiker iets nieuws laat doen → **PATCH**
+  (`2.15.0.0 → 2.15.1.0`), ongeacht of je het een feature of een enhancement noemt
+- Een kleine uitbreiding die onderdeel is van een bugfix → **REVISION** (`2.15.1.0 → 2.15.1.1`)
+- Bij de release wordt dit samen één **MINOR**-bump (`2.15.x.x → 2.16.0.0`)
+- Breaking change → **MAJOR**, in beide fasen
 
 Voorbeelden in dit project:
 - EmailVoetnoot — e-mail bestond, voetnoot-editor is nieuw veld → **Enhancement**
@@ -278,13 +303,31 @@ Kijk naar de inhoud van `[Unreleased]` in CHANGELOG.md en bepaal dan pas de MINO
 > **Resultaat:** productie gaat netjes `2.15 → 2.16 → 2.17`. Development heeft tussentijds
 > volledige granulariteit (`2.15.1.0`, `2.15.2.3`) zonder de productie-teller op te blazen.
 
-### In de csproj
+### In de csproj — er zijn er **drie**, niet twee
 
-Zet alle drie velden synchroon op het volledige 4-cijferige nummer in **beide** csproj's:
+Zet alle drie de velden synchroon op het volledige 4-cijferige nummer in **alle drie** de csproj's:
+
+| Bestand | Tier / component |
+|---|---|
+| `FunctionApp.Postgres/FunctionApp.Postgres.csproj` | Postgres-tier — **draait in productie** |
+| `FunctionApp/fa-dev-sportlink-01.csproj` | SQL Server-tier |
+| `BlazorAdmin/BlazorAdmin.csproj` | Admin GUI |
+
 ```xml
 <Version>2.15.1.0</Version>
 <AssemblyVersion>2.15.1.0</AssemblyVersion>
 <FileVersion>2.15.1.0</FileVersion>
+```
+
+> **De Postgres-csproj wordt structureel vergeten.** Een wijziging die alleen die tier raakt, raakt
+> geen van de andere twee bestanden — en niets waarschuwt ervoor. Dat ging mis bij #859, #952 en
+> #939 (alle drie gecorrigeerd). Controleer bij twijfel het veld `version` in de respons van
+> `GET /api/health`: dat komt van de tier die daadwerkelijk draait.
+
+Verifieer in één regel dat alle drie gelijk staan:
+
+```bash
+grep -rn "<Version>" --include='*.csproj' .
 ```
 
 Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString(4)` getoond in de header.
@@ -299,6 +342,39 @@ Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString
 
 **"Is dit MAJOR?"**
 → Alleen als een bestaande gebruiker iets moet aanpassen (API, config, workflow) om te kunnen blijven werken na de update.
+
+---
+
+## 6b. Releaseprocedure — van `[Unreleased]` naar een getagde release
+
+De stappen hieronder in deze volgorde. Stap 2 is de voorwaarde waaronder `release.yml` überhaupt
+release-notes vindt.
+
+1. **Bepaal het nieuwe nummer** volgens Fase 2 hierboven, op basis van de inhoud van
+   `## [Unreleased]`.
+2. **Verplaats alles** van `## [Unreleased]` naar een nieuwe kop `## [x.y.z.r] — YYYY-MM-DD` en zet
+   een lege `## [Unreleased]` terug bovenaan.
+   > `release.yml` haalt de release-notes letterlijk uit die sectiekop
+   > (`awk "/^## \[${VERSION}\]/…"`), waarbij `VERSION` de tag zonder `v` is. Wijkt de kop af van
+   > de tag, dan komt er een lege release uit met de melding "Geen entry voor versie … gevonden".
+3. **Bump de drie csproj's** (zie [In de csproj](#in-de-csproj--er-zijn-er-drie-niet-twee)).
+4. **PR `develop` → `main`.** Daarop draaien `pre-release-check.yml` en
+   `pre-release-db-check.yml`; beide moeten groen zijn.
+5. **Na de merge: tag aanmaken op `main`.**
+   ```powershell
+   git checkout main && git pull
+   git tag vX.Y.Z.R -m "Release vX.Y.Z.R"
+   git push origin vX.Y.Z.R
+   ```
+   Die tag triggert twee workflows tegelijk:
+   - `release.yml` — maakt de GitHub Release aan met de notes uit de CHANGELOG-sectie.
+   - `close-released-issues.yml` — sluit de issues uit die sectie (en uit de commit-subjects sinds
+     de vorige tag) en verwijdert hun label `status: awaiting-release`.
+6. **Controleer de deploy per job** en doe de live browser-rendercheck op de Admin GUI — zie de
+   veiligheidsregels in `CLAUDE.md`. Een groene workflow bewijst niet dat de GUI rendert.
+
+Alternatief voor stap 5: `release.yml` handmatig starten via *Actions → Release aanmaken → Run
+workflow* met het versienummer als input.
 
 ---
 
@@ -320,13 +396,31 @@ Dit getal wordt via `Assembly.GetExecutingAssembly().GetName().Version?.ToString
   Nooit een technische "hoe", wel de "wat" en "waarom" voor de lezer.
 ```
 
-### Geen GitHub issue-nummers in changelog
+### Issue-nummers in het changelog — verplicht, in één vaste notatie
 
-Issue-nummers horen in de commit-body, niet in het changelog. Het changelog is
-een mensvriendelijk document, geen ticket-tracker.
+> **Let op: dit is precies omgekeerd aan wat hier tot #1269 stond.** De release-automatisering
+> *leest* het changelog; issue-nummers weglaten laat issues permanent openstaan.
+
+`.github/workflows/close-released-issues.yml` sluit bij een release-tag de issues die in de
+CHANGELOG-sectie van díe versie staan. Het pakt daarvoor elke haakjesgroep die **uitsluitend**
+issuenummers bevat — `(#574)` of `(#599, #595)`. Inline code-spans worden eerst weggestreept
+(#1179), zodat een entry die de conventie zélf uitlegt geen issues sluit uit zijn eigen
+voorbeeldtekst.
+
+| Bedoeling | Notatie | Effect bij de release |
+|---|---|---|
+| **Attributie van opgeleverd werk** | `(#574)` of `(#599, #595)`, achter de omschrijving | Issue wordt gesloten, label `status: awaiting-release` verwijderd |
+| **Kruisverwijzing naar vervolgwerk** | in proza: `zie issue #739` | Geen effect — het issue blijft open |
+| Nummer in de titel zelf | ❌ `Fixed #116 SWA route mismatch` | Onleesbaar voor de beheerder; niet doen |
+
+De tekst blijft dus mensvriendelijk; het nummer staat **erachter**, niet ervoor:
 
 - ❌ `Fixed #116 SWA route mismatch`
-- ✅ `Toegangsbeheer via SWA-routing werkt nu correct voor beveiligde schermen`
+- ✅ `Toegangsbeheer via SWA-routing werkt nu correct voor beveiligde schermen (#116)`
+
+> **Gebruik `(#N)` alleen voor werk dat écht in díe versie zit.** Bij v2.18.0.1 stonden drie
+> vervolgissues die juist bij die release waren *aangemaakt* (#734, #739, #740) tussen haakjes; de
+> release sloot ze en ze moesten met de hand worden heropend. Een vervolgpunt noem je in proza.
 
 ---
 

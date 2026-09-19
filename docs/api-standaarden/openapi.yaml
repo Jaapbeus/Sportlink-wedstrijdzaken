@@ -8,15 +8,29 @@ info:
 
     Twee beveiligingsschema's:
 
-    - **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.
-      Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en
-      populate-sunset).
-    - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor
-      alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele
+    - **functionKey** — `?code=` queryparameter met de Azure **Master key**
+      (`AuthorizationLevel.Admin`). Uitsluitend voor de twee synchronisatieroutes:
+      `/postgres/sync-matches` (Postgres-tier) en `/sync-matches` (SQL Server-tier).
+      Geen enkel ander endpoint accepteert een Function key.
+    - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
+      voor alle overige endpoints behalve `/health`. De rolcontrole gebeurt server-side:
+      `admin` (`EasyAuthHelper.RequireAdmin`) voor `/beheer/`, `/planner/`, `/feedback/` en
+      `/test/`; `Wedstrijdzaken` (`EasyAuthHelper.RequireWedstrijdzaken`) voor `/sportlink/`
+      (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de omgevingsvariabele
       `WEBSITE_SITE_NAME` afwezig is.
 
+    Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
+    `{ "error": "Forbidden: vereiste rol ontbreekt" }`. De rol `user` geeft nergens toegang:
+    `EasyAuthHelper.RequireAuthenticated` is wel gedefinieerd, maar wordt nergens aangeroepen.
+
+    ## Tiers
+
+    Alle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige
+    synchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en
+    `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
+
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.5.3.0
+  version: 3.5.3.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -29,9 +43,11 @@ servers:
 
 tags:
   - name: core
-    description: Health en handmatige Sportlink-synchronisatie
+    description: |
+      Health (anoniem) en handmatige Sportlink-synchronisatie (Azure Master key via ?code=).
+      De syncroute verschilt per tier: /postgres/sync-matches (Postgres) of /sync-matches (SQL Server).
   - name: planner
-    description: Veldplanning, beschikbaarheidscontrole en optimalisatie
+    description: Veldplanning, beschikbaarheidscontrole en dagplanning (vereist Entra ID authenticatie met admin-rol)
   - name: beheer
     description: Beheerfuncties (vereisen Entra ID authenticatie met admin-rol)
   - name: testdata
@@ -39,7 +55,10 @@ tags:
   - name: feedback
     description: Feedback widget (vereist Entra ID authenticatie met admin-rol)
   - name: sportlink
-    description: Sportlink Web Extension read-only endpoints (#986/#991, vereist Entra-approl Wedstrijdzaken)
+    description: |
+      Sportlink Web Extension (#986/#991) — lees- én mutatie-endpoints. Vereist de Entra-approl
+      Wedstrijdzaken; op de SQL Server-tier daarnaast ook de rol admin.
+      Verschillende mutaties zijn in de code op dry-run vastgezet — zie docs/SPORTLINK-WEB-EXTENSION.md.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Beveiligingsschema's
@@ -51,16 +70,18 @@ components:
       in: query
       name: code
       description: |
-        Azure Functions key. Gebruik de Function key voor planner-endpoints en de Master key voor
-        sync-matches en populate-sunset (AuthorizationLevel.Admin).
+        Azure **Master key** (`AuthorizationLevel.Admin`). Alleen geldig op `/postgres/sync-matches`
+        (Postgres-tier) en `/sync-matches` (SQL Server-tier). Alle andere endpoints staan op
+        `AuthorizationLevel.Anonymous` en negeren `?code=` volledig — daar geldt easyAuth.
     easyAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: |
         Azure Easy Auth Bearer token (Entra ID). De Function App valideert dit token via Easy Auth
-        en injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert de `admin`-rol op alle
-        /beheer/- en /feedback/-endpoints. Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
+        en injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op
+        alle /beheer/-, /planner/-, /feedback/- en /test/-endpoints, `Wedstrijdzaken` op alle
+        /sportlink/-endpoints. Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
@@ -323,6 +344,12 @@ components:
           type: integer
           nullable: true
           description: Overschrijf wedstrijdduur in minuten (standaard uit Speeltijden)
+        heelVeld:
+          type: boolean
+          nullable: true
+          description: |
+            Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt.
+            Geeft een waarschuwing terug in plaats van een fout.
 
     CheckAvailabilityResponse:
       type: object
@@ -388,6 +415,12 @@ components:
         wedstrijdDuurMinuten:
           type: integer
           nullable: true
+        heelVeld:
+          type: boolean
+          nullable: true
+          description: |
+            Dwing een heel veld af, ook als de leeftijdscategorie normaal op een deelveld speelt.
+            Geeft een waarschuwing terug in plaats van een fout.
 
     BevestigResponse:
       type: object
@@ -572,78 +605,6 @@ components:
         status:
           type: string
           example: "Aangevraagd"
-
-    OptimaliseerRequest:
-      type: object
-      required:
-        - datum
-      properties:
-        datum:
-          type: string
-          format: date
-          example: "2026-04-18"
-        doel:
-          type: string
-          nullable: true
-          enum: [veld5-ontlasten, strakker-plannen]
-          description: Optimalisatiedoel. Leeg = beide combineren.
-        gewensteEindtijd:
-          type: string
-          nullable: true
-          description: Gewenste eindtijd HH:mm. Standaard 16:15.
-          example: "16:15"
-        bufferMinuten:
-          type: integer
-          nullable: true
-          description: Buffer tussen wedstrijden in minuten. Standaard 15.
-
-    OptimalisatieSuggestie:
-      type: object
-      properties:
-        wedstrijd:
-          type: string
-        huidigVeldNummer:
-          type: integer
-        huidigVeld:
-          type: string
-        huidigeTijd:
-          type: string
-        nieuwVeldNummer:
-          type: integer
-        nieuwVeld:
-          type: string
-        nieuweTijd:
-          type: string
-        reden:
-          type: string
-
-    OptimaliseerResponse:
-      type: object
-      properties:
-        datum:
-          type: string
-          format: date
-        huidigeEindtijd:
-          type: string
-        geschatteNieuweEindtijd:
-          type: string
-          nullable: true
-        aantalVerplaatsingen:
-          type: integer
-        aantalVanVeld5Verplaatst:
-          type: integer
-        suggesties:
-          type: array
-          items:
-            $ref: '#/components/schemas/OptimalisatieSuggestie'
-        htmlPlanner:
-          type: string
-          description: HTML-plannerweergave (altijd meegegeven in JSON-modus)
-        voldoendeRuimte:
-          type: boolean
-        voldoendeRuimteMelding:
-          type: string
-          nullable: true
 
     DoordeweeksBeschikbaarRequest:
       type: object
@@ -2316,17 +2277,10 @@ components:
 
     # ── Beheer — Teambegeleiding ──────────────────────────────────────────────
 
-    TeambegeleidingTeam:
-      type: object
-      properties:
-        team:
-          type: string
-          description: Teamnaam
-
     TeambegeleidingLid:
       type: object
       description: |
-        AVG: e-mailadressen en telefoonnummers alleen zichtbaar voor admin/user-rol
+        AVG: e-mailadressen en telefoonnummers alleen zichtbaar voor de admin-rol
         achter Entra ID auth. Nooit in auto-reply body opgenomen.
       properties:
         Naam:
@@ -2710,17 +2664,90 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
 
+  /postgres/sync-matches:
+    get:
+      tags: [core]
+      operationId: syncMatchesPostgres
+      summary: Handmatige Sportlink synchronisatie starten (Postgres-tier)
+      description: |
+        **Tier: Postgres (productie).** Op de SQL Server-tier bestaat deze route niet (404) — daar
+        heet hij `/sync-matches`.
+
+        Start een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
+        Vereist de Azure Master key via `?code=` (`AuthorizationLevel.Admin`).
+
+        - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
+        - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.
+          Een ontbrekende of onparseerbare `season` valt stil terug op de standaardmodus.
+
+        Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
+        deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
+      security:
+        - functionKey: []
+      parameters:
+        - name: reset
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: true = volledig seizoen synchroniseren i.p.v. incrementeel
+        - name: season
+          in: query
+          required: false
+          schema:
+            type: integer
+            example: 2025
+          description: Startjaar seizoen (bijv. 2025 = seizoen 2025/2026). Gebruik samen met reset=true.
+      responses:
+        '200':
+          description: Synchronisatie voltooid
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Sync voltooid. WeekOffset-bereik: -1 tot 42."
+        '207':
+          description: |
+            Gedeeltelijk mislukt — één of meer deelstappen zijn niet geslaagd en
+            `lastsynctimestamp` is niet bijgewerkt (#1081).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "gedeeltelijk mislukt"
+                  weekOffsetFrom:
+                    type: integer
+                    example: -1
+                  weekOffsetTo:
+                    type: integer
+                    example: 42
+                  melding:
+                    type: string
+                    example: "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /sync-matches:
     get:
       tags: [core]
       operationId: syncMatches
-      summary: Handmatige Sportlink synchronisatie starten
+      summary: Handmatige Sportlink synchronisatie starten (SQL Server-tier)
       description: |
+        **Tier: SQL Server.** Op de Postgres-tier (productie) bestaat deze route niet (404) — daar
+        heet hij `/postgres/sync-matches`.
+
         Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
-        Vereist de Azure Master key via `?code=`.
+        Vereist de Azure Master key via `?code=` (`AuthorizationLevel.Admin`).
 
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
+
+        Deze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.
       security:
         - functionKey: []
       parameters:
@@ -2767,7 +2794,7 @@ paths:
 
         Controleert ook teamconflicten als `teamNaam` opgegeven is.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2803,7 +2830,7 @@ paths:
         Twee reserveringen die elkaar precies aanraken (bijv. 10:00–11:00 gevolgd door 11:00–12:00)
         zijn GEEN conflict.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2838,9 +2865,9 @@ paths:
       description: |
         Vult de `DateTable` met NOAA-berekende zonsondergangtijden voor het accommodatiecoördinaat.
         Eenmalig uitvoeren na initiële setup, of wanneer het seizoen/datumbereik wordt uitgebreid.
-        Vereist de Azure Master key.
+        Vereist een Entra ID Bearer token met de `admin`-rol — géén Master key.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: false
         content:
@@ -2872,7 +2899,7 @@ paths:
         Zoek een bestaande competitiewedstrijd op basis van teamnaam en datum.
         Gedeeltelijke teamnaam-match is ondersteund.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2916,7 +2943,7 @@ paths:
         Berekent alternatieve tijdsloten voor een bestaande wedstrijd.
         **Voert niets door** — puur simulatie waarbij het huidige slot als vrij wordt beschouwd.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2946,7 +2973,7 @@ paths:
         Registreert een herplanverzoek met status `"Aangevraagd"`.
         **Wijzigt de wedstrijd niet** — de feitelijke aanpassing in Sportlink is een handmatig proces.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: true
         content:
@@ -2976,7 +3003,7 @@ paths:
         Geeft beschikbare doordeweekse avondsloten (ma–do) t/m het einde van het seizoen.
         Optioneel gefilterd op dag en duur/leeftijdscategorie.
       security:
-        - functionKey: []
+        - easyAuth: []
       requestBody:
         required: false
         content:
@@ -3006,7 +3033,7 @@ paths:
 
         Optioneel `?format=html` voor een HTML-weergave.
       security:
-        - functionKey: []
+        - easyAuth: []
       parameters:
         - name: team
           in: query
@@ -6004,7 +6031,7 @@ paths:
       description: |
         Geeft Naam, Teamrol, Emailadres en Telefoonnummer voor de begeleidingsleden van het team.
 
-        **AVG:** persoonsgegevens worden uitsluitend aan admin/user-rol getoond achter Entra ID auth.
+        **AVG:** persoonsgegevens worden uitsluitend aan de admin-rol getoond achter Entra ID auth.
         E-mailadressen worden server-side gebruikt voor doorsturen — nooit opgenomen in auto-reply body.
       security:
         - easyAuth: []
