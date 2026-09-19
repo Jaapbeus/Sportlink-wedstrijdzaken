@@ -330,8 +330,11 @@ op elke database toegepast, productie inbegrepen.
 te rapporteren voor een applicatie waarvan geen enkel beheerscherm werkt.
 
 **Optioneel maar aanbevolen: AllStars-demoteams en -wedstrijden.** De migraties zaaien voor de
-democlub alleen de AppSettings-rij, velden, veldbeschikbaarheid en speeltijden — **geen teams en
-wedstrijden**. Die staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, en dat
+democlub alleen de AppSettings-rij, velden, veldbeschikbaarheid en een teamregel — **geen teams,
+wedstrijden, teambegeleiding of speeltijden**. (Migratie 006 probeert de speeltijden wél te
+kopiëren, maar dat kan nooit slagen: op migratiemoment heeft de primaire club er zelf nog geen —
+zie #1246 en `docs/ARCHITECTUUR-DATABASE-TIERS.md` §72. Die copy staat nu in het seedscript
+hieronder.) Die staan in `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, en dat
 script kan geen migratie zijn: het seedt in `his.teams`/`his.matches`, en die tabellen worden door
 geen enkel migratiebestand aangemaakt. `PostgresSchemaGenerator` maakt ze dynamisch zodra de ETL
 zijn eerste sync draait — op een verse ontwikkeldatabase bestaan ze dus nog niet, en het seed-script
@@ -346,7 +349,13 @@ Drie stappen, idempotent: de his-tabellen worden aangemaakt via
 `Database.Postgres.Cli --ensure-his-tables` (dat `PostgresMergeOrchestrator.EnsureHisTableAsync`
 aanroept — exact de weg die de ETL zelf neemt, dus geen handgeschreven DDL-kopie), daarna draait de
 seed, en tot slot bouwt `POST /api/beheer/teams/herstel` de canonieke teamlijst op. Levert 28 teams,
-28 aliassen en 224 wedstrijden onder clubcode `ALLSTARS`.
+28 aliassen, 224 wedstrijden en 28 teambegeleiders onder clubcode `ALLSTARS`, plus een kopie van de
+speeltijden van de primaire club.
+
+> **In productie hoef je dit niet te doen (#1246).** De job `db-migrate-postgres` in `deploy.yml`
+> draait sinds #1246 bij elke Postgres-deploy zelf `--ensure-his-tables` en `--seed-demodata`. Alleen
+> stap 3 blijft handwerk: `POST /api/beheer/teams/herstel` is `RequireAdmin`, dus de pipeline kan
+> dat endpoint niet aanroepen en meldt het in plaats daarvan met een waarschuwing.
 
 > **`public.teams` is een afgeleide tabel.** Zonder die laatste stap blijft de GUI leeg ook al staat
 > `his.teams` vol — de canonieke lijst ontstaat normaal pas aan het eind van een synchronisatie. Het

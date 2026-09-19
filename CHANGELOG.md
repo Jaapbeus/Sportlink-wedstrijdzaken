@@ -42,6 +42,17 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   maken heeft staat nu op één plek, met tests eromheen die er eerder helemaal niet waren. Voor de
   beheerder verandert er niets aan wat het scherm doet; het maakt toekomstige uitbreidingen van het
   thema wel betrouwbaarder. Deze ontdubbeling bracht meteen bovenstaande fout aan het licht.
+- **De demo-club AllStars FC had geen enkel team en geen enkele wedstrijd (#1246).** De testmodus
+  waarmee je de planner kunt uitproberen zonder de echte clubgegevens aan te raken, was in de
+  praktijk leeg: wel velden en instellingen, maar nul teams, nul wedstrijden, nul teambegeleiders
+  en nul speeltijden. De demodata bestond al wel, maar werd door niets automatisch klaargezet —
+  alleen met een script dat je met de hand moest draaien. Dat gebeurt nu bij elke update vanzelf,
+  en het herhaalt zichzelf zonder iets dubbel te zetten. De speeltijden van de demo-club worden
+  bovendien overgenomen van je eigen club zodra je ze hebt ingevuld; voorheen bleven ze voor altijd
+  leeg als je ze pas na de eerste installatie invoerde. Eén handeling blijft van jou: staat de
+  teamlijst van de demo-club nog leeg, gebruik dan de knop **Teamlijst opnieuw opbouwen** op de
+  pagina Teamaliassen — de update-procedure mag die knop om veiligheidsredenen niet zelf indrukken
+  en meldt het voortaan als het nodig is.
 - **De instellingen van de club konden stilzwijgend dubbel in de database staan, waarna de
   applicatie willekeurig één van de twee gebruikte (#1218).** De tabel met clubinstellingen had
   geen enkele regel die dat tegenhield. Bij twee regels voor dezelfde club koos het systeem er
