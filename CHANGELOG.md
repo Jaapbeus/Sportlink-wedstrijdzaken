@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **De Admin GUI heeft een knop om tussen een lichte en een donkere weergave te wisselen (#1256).**
+  De knop staat rechtsboven in de balk, naast de feedbackknop. De keuze wordt onthouden voor een
+  volgend bezoek. Heb je nog niets gekozen, dan volgt de site de voorkeur die in je besturings-
+  systeem of browser staat ingesteld — wie zijn computer op donker heeft staan, krijgt de site dus
+  meteen donker. De weergave staat goed vanaf het allereerste moment dat de pagina verschijnt: er
+  is geen korte flits van het verkeerde thema tijdens het laden. Een club die nog geen eigen
+  donkere kleuren heeft ingesteld krijgt een neutrale donkere set te zien; de eigen clubkleuren
+  voor beide weergaven instellen kan zodra het beheerscherm daarvoor er is.
 - **De database kan nu een volledig kleurenpalet bewaren voor zowel een lichte als een donkere
   weergave (#1254).** Dit is de eerste stap van de thema-uitbreiding: de opslag en de API kunnen de
   twee sets aan, het beheerscherm en de schakelaar volgen in een latere stap. Voor een club die nog
@@ -42,6 +50,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   thema wel betrouwbaarder. Deze ontdubbeling bracht meteen bovenstaande fout aan het licht.
 
 ### Fixed
+- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
+  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
+  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
+  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
+  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
+  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
+  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
 - **"Kleuren ophalen van de clubwebsite" kon mislukken bij websites die er niets mis mee hadden
   (#1250).** Het systeem vroeg de pagina op met alleen een naamkaartje van de applicatie erbij,
   zonder te vermelden welk soort inhoud en welke taal het verwachtte — iets wat elke browser wel
@@ -70,13 +85,6 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   clubs, dus er viel niets op te ruimen. Staan er op een andere installatie wél dubbelen, dan stopt
   de bijwerking met een melding die vertelt om welke club het gaat, in plaats van half werk af te
   leveren.
-- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
-  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
-  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
-  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
-  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
-  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
-  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
 
 ## [3.5.0.0] — 2026-09-17
 
