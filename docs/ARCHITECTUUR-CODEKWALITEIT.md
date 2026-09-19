@@ -278,6 +278,7 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 | jscpd in CI | Zou duplicatie binnen één tier ook vangen (de tier-guard doet dat niet). Vraagt een npm-afhankelijkheid in CI; eerst het drempelgedrag vaststellen. | Issue #1263 |
 | `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1263 |
 | Testdekking per productiemap | `Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hebben geen testproject. | Issue #1263 |
+| Expressie-index bij een `UPPER()`-vergelijking (#1232) | Niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 daarvan. | Handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
 
 ---
 

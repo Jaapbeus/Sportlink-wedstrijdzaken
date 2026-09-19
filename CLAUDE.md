@@ -983,6 +983,48 @@ Harde regels, vanaf nu:
 
 ---
 
+### Een `UPPER()`/`LOWER()`-vergelijking vereist een expressie-index op diezelfde uitdrukking (#1232)
+
+> Analyse, meting en het tier-antwoord: **[docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md) §69**
+
+**Wijzig je een vergelijking naar `UPPER(kolom) = ...`, dan hoort het bijwerken van de bijbehorende
+index bij diezelfde wijziging — niet bij een latere opruimronde.** Een index op de kale kolom wordt
+door Postgres genegeerd en is daarna alleen nog schrijflast.
+
+Zo is het één keer misgegaan: migratie 003 legde een index aan op
+`(clubcode, ruwetekstgenormaliseerd)`; migratie 007 (#820) zette de vergelijkingen op die kolom om
+naar `UPPER(...)` en migreerde twee ándere indexen wél naar hun expressievorm, deze niet. De index
+was vanaf dat moment dood en elke aliaszoekopdracht deed een volledige scan. Dat bleef ruim een jaar
+onopgemerkt en kwam pas boven doordat Supabase's advisor hem als "ongebruikt" markeerde — met de
+verkeerde remedie erbij (droppen in plaats van repareren).
+
+**Controleer het, want geen van de gebruikelijke signalen laat dit zien.** "De query werkt", "de
+build is groen" en "de tests slagen" zijn alle drie waar met én zonder bruikbare index; het verschil
+is alleen zichtbaar in het queryplan, op voldoende rijen:
+
+| Tier | Controle | Wat "goed" is |
+|---|---|---|
+| Postgres | `EXPLAIN (ANALYZE, BUFFERS)` | `Index Scan`/`Index Only Scan`, geen `Seq Scan` |
+| SQL Server | `SET SHOWPLAN_TEXT ON` + `SET STATISTICS IO ON` | de kolom staat in het **SEEK**-predicaat, niet in het residuele `WHERE` |
+
+**De SQL Server-tier heeft dezelfde mismatch — de case-insensitieve collatie vangt hem niet op.**
+Gemeten op SQL Server 2022 met de index uit `Database/dbo/Tables/TeamAliassen.sql` en 200.000 rijen:
+`UPPER(RuweTekstGenormaliseerd) = UPPER(@sleutel)` levert een Index Seek die **alleen op `ClubCode`
+seekt** en de `UPPER()`-vergelijking als residueel predicaat toepast — 1927 logische leesbewerkingen
+tegenover 3 voor de kale kolomvergelijking. SQL Server verwijdert een overbodige `UPPER()` dus niet,
+ook niet onder een `CI`-collatie. Het is er milder dan op Postgres (de index wordt deels gebruikt in
+plaats van genegeerd), maar bij één club matcht `ClubCode` vrijwel de hele tabel en komt het op
+hetzelfde neer.
+
+**Geen CI-gate.** Dit is niet schema-statisch te bepalen zonder de queries te parsen, en de
+splinter-gate van #1220 sluit `unused_index` bewust uit (§68). Deze regel wordt dus door mensen
+gevolgd, niet door een guard — en staat daarom in **§6 van
+`docs/ARCHITECTUUR-CODEKWALITEIT.md`**, de lijst van wat bewust niet wordt afgedwongen. Dat is de
+tweede uitweg die regel 6 van de codekwaliteitssectie biedt: een guard, óf expliciet als onbewaakt
+gemarkeerd. Niet stilzwijgend geen van beide.
+
+---
+
 ### E-mail — analyse + doelarchitectuur vastgelegd, migratie nog niet gestart
 
 > Volledig ontwerp en gefaseerd migratieplan: **[docs/ARCHITECTUUR-EMAIL-MODULE.md](docs/ARCHITECTUUR-EMAIL-MODULE.md)**
