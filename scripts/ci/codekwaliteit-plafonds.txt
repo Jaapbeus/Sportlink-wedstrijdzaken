@@ -1,0 +1,16 @@
+# codekwaliteit-plafonds.txt (#1262)
+#
+# Eén regel per metriek: <sleutel> <plafond> <toelichting>.
+#
+# Dit zijn RATCHET-waarden, geen doelen. Ze staan op de meting van het moment waarop de guard werd
+# ingevoerd. De bijbehorende guard faalt zodra de waarde stijgt, en faalt óók als de waarde flink
+# daalt zonder dat het plafond wordt meeverlaagd — winst die niet wordt vastgezet, lekt weg.
+#
+# Een plafond verhogen kan, maar alleen in een PR die uitlegt waarom de uitzondering nodig was.
+# Dat is het hele punt: de afweging wordt een diff die iemand moet goedkeuren, in plaats van een
+# stilzwijgende keuze in een bestand dat niemand meer opent.
+#
+# Nulmeting: 2026-09-19, op develop (d4003e9). Zie docs/ARCHITECTUUR-CODEKWALITEIT.md.
+
+tier-duplicatie-regels       4714  Woordelijk identieke betekenisvolle regels tussen FunctionApp/ en FunctionApp.Postgres/ (77 paren). Erfenis van de 1-op-1-poort #887/#952.
+blazor-code-regels-in-pages  1641  Regels logica in @code-blokken van BlazorAdmin/Pages/. Vier pagina's volgen #1122 al met een code-behind; veertien nog niet.

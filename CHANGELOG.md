@@ -26,6 +26,25 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   vier kleuren blijven de terugval.
 
 ### Changed
+- **De projectregels worden nu gecontroleerd in plaats van alleen opgeschreven (#1262).** Aanleiding
+  was een fout waarbij de volledige thema-logica — kleurherkenning, validatie en de beveiliging van
+  het ophalen van de clubwebsite — woordelijk twee keer in de codebase stond, één keer per
+  databasevariant. In het gekopieerde bestand stond zelfs een opmerking die dat toegaf. Niemand
+  hield het tegen, want er bestond geen enkele meting: niet op dubbele code, niet op bestandsgrootte,
+  niet op logica die in een scherm blijft hangen in plaats van in een testbare laag te staan.
+  De prijs kwam later: een fout in die gekopieerde code zorgde ervoor dat het automatisch ophalen
+  van het clublogo en het website-icoon in werkelijkheid nooit heeft gewerkt, zonder één foutmelding.
+  Er zijn nu zes regels met elk een controle die de build tegenhoudt, en die controles zijn zelf
+  getest — een controle die altijd groen is, bewijst niets. Voor beheerders verandert er niets aan
+  de werking van de applicatie; het verkleint de kans dat een reparatie voortaan maar half doorkomt.
+- **Het regelboek voor de tweede AI-reviewer liep 280 regels achter (#1262).** Dit project laat zijn
+  code door twee verschillende AI-assistenten beoordelen, elk met een eigen regelbestand. Die twee
+  bestanden werden met de hand gelijk gehouden en waren uit elkaar gelopen: negen hele onderdelen
+  ontbraken, waaronder juist de regels die dubbele code moeten voorkomen en de regel die bepaalt
+  wanneer de applicatie naar buiten mag verbinden. De tweede beoordelaar kende die regels dus niet.
+  Het tweede bestand wordt nu automatisch uit het eerste afgeleid en kan niet meer afwijken.
+
+### Fixed
 - **Voorbereiding op een donkere weergave: de kleuren van de schermen zitten niet langer vast in
   de opmaak (#1255).** De achtergrond van de pagina, de kaartjes, de grijstinten en de schaduw
   onder een kaartje waren tot nu toe vaste waarden die niemand kon aanpassen. Ze zijn nu
