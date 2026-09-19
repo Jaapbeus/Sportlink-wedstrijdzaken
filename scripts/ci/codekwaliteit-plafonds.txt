@@ -12,7 +12,7 @@
 #
 # Nulmeting: 2026-09-19, op develop (d4003e9). Zie docs/ARCHITECTUUR-CODEKWALITEIT.md.
 
-tier-duplicatie-regels       4639  Woordelijk identieke betekenisvolle regels tussen FunctionApp/ en FunctionApp.Postgres/ (77 paren). Erfenis van de 1-op-1-poort #887/#952. Stond op 4714 tot de merge van #1248 er 75 uit haalde.
+tier-duplicatie-regels       4641  Woordelijk identieke betekenisvolle regels tussen FunctionApp/ en FunctionApp.Postgres/ (77 paren). Erfenis van de 1-op-1-poort #887/#952. Stond op 4714; #1248 haalde er 75 uit en #1254 bracht netto 2 terug (het thema-paar zakte van 153 naar 80, elders kwamen incidentele overeenkomsten bij).
 blazor-code-regels-in-pages  1641  Regels logica in @code-blokken van BlazorAdmin/Pages/. Vier pagina's volgen #1122 al met een code-behind; veertien nog niet.
 bestanden-boven-grens          27  Productiebestanden (.cs/.razor, zonder testprojecten) boven 500 regels. De acht grootste zijn op twee na tier-paren — dezelfde schuld als hierboven, van een andere kant gezien.
 methodes-boven-grens           28  Methodes boven 80 regels. Idem: de langste zes zijn drie tier-paren.

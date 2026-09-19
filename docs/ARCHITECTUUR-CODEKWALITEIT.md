@@ -88,11 +88,11 @@ project is dus de richting van het gemiddelde — tenzij er iets tegenin duwt.
 
 ---
 
-## 3. Nulmeting (develop `6c6f50c`, 2026-09-19 — na de merge van #1248)
+## 3. Nulmeting (develop `03865a9`, 2026-09-19 — na de merges van #1248 en #1254)
 
 | Metriek | Waarde |
 |---|---|
-| Woordelijk identieke betekenisvolle regels tussen de twee tierbomen (77 paren) | **4.639** |
+| Woordelijk identieke betekenisvolle regels tussen de twee tierbomen (77 paren) | **4.641** |
 | jscpd-duplicatie over alle C#-broncode | **15,4%** (376 clones) |
 | Regels logica in `@code`-blokken van Blazor-pagina's | **1.641** over 14 pagina's |
 | Blazor-pagina's mét code-behind | 4 van 18 |
@@ -297,3 +297,11 @@ python3 scripts/ci/genereer-agents-md.py --schrijf
 Een guard die faalt omdat je iets hebt verbeterd, zegt welk getal in
 `scripts/ci/codekwaliteit-plafonds.txt` moet. Neem dat over in dezelfde PR — winst die niet wordt
 vastgezet, lekt binnen een paar PR's weg.
+
+**Over de nultolerantie naar boven.** Bij een getal van vier cijfers verschuift de tier-meting soms
+een of twee regels door toeval: twee bestanden krijgen onafhankelijk van elkaar een identieke
+regel. Dat is tijdens het invoeren zelf gebeurd — de merge van #1254 haalde 73 gedupliceerde regels
+uit het thema-paar en bracht er elders netto 2 terug. Het antwoord daarop is het plafond opnieuw
+vastleggen, met de reden erbij, en **niet** een marge naar boven inbouwen. Zo'n marge is precies de
+ruimte waarin echte groei ongemerkt past: vijf PR's van elk twee regels zijn samen een nieuw
+gekopieerd blok, en geen van vijf zou zijn opgevallen.
