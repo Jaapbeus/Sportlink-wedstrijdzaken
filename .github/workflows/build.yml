@@ -936,6 +936,71 @@ jobs:
       # die FunctionApp.Postgres.Tests gebruikte; die moet ná de suite hierboven nog steeds de
       # volledige, gemigreerde vorm hebben. Vóór deze wijziging stonden hier 3 kolommen en 0
       # migratierijen — precies de meting uit ARCHITECTUUR-DATABASE-TIERS.md §29.
+      # #1246: de demodata-seed in de ECHTE volgorde van een installatie, op een eigen database.
+      #
+      # De twee AllStars-stappen hierboven bewijzen de copy-logica van migratie 006, maar ze bouwen
+      # de gunstige volgorde met de hand: ze zetten CIPRIMARY + een speeltijdenrij neer en draaien
+      # 006 daarna nóg een keer als los bestand. Precies die hand-gebouwde volgorde verborg de fout
+      # van #1246 -- in werkelijkheid draait 006 één keer, via de ledger, vóór er ook maar één
+      # speeltijd bestaat. De copy leverde daardoor altijd 0 rijen op en werd nooit opnieuw
+      # geprobeerd: lokaal én in productie hield de democlub permanent 0 speeltijden.
+      #
+      # Deze stap legt dat vast als before/after. De "before"-assertie (0 speeltijden na de
+      # migraties) is de rode test: die zou vóór de fix ook ná de seed nog 0 zijn geweest.
+      - name: "Demodata-seed in de echte installatievolgorde (#1246)"
+        run: |
+          psql_seed() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci_seed1246 -t -A "$@"; }
+          CONN="Host=localhost;Port=5432;Username=ci_postgres;Password=ci-wegwerpwachtwoord-niet-geheim;Database=sportlink_ci_seed1246"
+
+          PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci \
+            -v ON_ERROR_STOP=1 -c "CREATE DATABASE sportlink_ci_seed1246;"
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
+
+          # De primaire club en zijn speeltijden komen PAS NA de migraties -- zo gaat het echt: een
+          # beheerder voert ze in via de Admin GUI, lang nadat 006 is toegepast.
+          psql_seed -c "INSERT INTO public.appsettings (clubcode, clubname, syncenabled) VALUES ('CIPRIMARY', 'CI Primary', false);"
+          psql_seed -c "INSERT INTO public.speeltijden (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, clubcode) VALUES ('JO13', 1.0, 60, 30, 10, 'CIPRIMARY'), ('JO15', 1.0, 70, 35, 10, 'CIPRIMARY');"
+
+          voor=$(psql_seed -c "SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS';")
+          echo "voor de seed: ALLSTARS-speeltijden=$voor"
+          if [ "$voor" != "0" ]; then
+            echo "::error::Verwacht 0 ALLSTARS-speeltijden na alleen de migraties (dat is de fout die #1246 beschrijft); gevonden $voor. Is de copy verplaatst of is de volgorde gewijzigd?"
+            exit 1
+          fi
+
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- --ensure-his-tables
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+
+          aantallen=$(psql_seed -c "
+            SELECT (SELECT COUNT(*) FROM public.speeltijden WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM his.matches WHERE clubcode='ALLSTARS') || ' ' ||
+                   (SELECT COUNT(*) FROM avg.teambegeleiding WHERE clubcode='ALLSTARS');
+          ")
+          read -r speeltijden teams matches begeleiding <<< "$aantallen"
+          echo "na de seed: speeltijden=$speeltijden teams=$teams matches=$matches teambegeleiding=$begeleiding"
+          if [ "$speeltijden" != "2" ] || [ "$teams" != "28" ] || [ "$matches" != "224" ] || [ "$begeleiding" != "28" ]; then
+            echo "::error::Demodata-seed (#1246) klopt niet: verwacht speeltijden=2 teams=28 matches=224 teambegeleiding=28, gevonden speeltijden=$speeltijden teams=$teams matches=$matches teambegeleiding=$begeleiding"
+            exit 1
+          fi
+
+          # Idempotentie: de deploy draait deze seed bij ELKE release, dus een tweede run mag niets
+          # verdubbelen.
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+          na2=$(psql_seed -c "SELECT COUNT(*) FROM his.teams WHERE clubcode='ALLSTARS';")
+          if [ "$na2" != "28" ]; then
+            echo "::error::Demodata-seed (#1246) is niet idempotent: his.teams=$na2 na een tweede run, verwacht 28."
+            exit 1
+          fi
+
+          # Een fork mag de democlub weghalen; dat mag de deploy niet laten falen.
+          psql_seed -c "DELETE FROM public.appsettings WHERE clubcode='ALLSTARS';"
+          POSTGRES_CONNECTION_STRING="$CONN" dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql
+          echo "Demodata-seed (#1246): echte volgorde, idempotentie en fork-zonder-democlub bevestigd."
+
       - name: Bewijzen dat sportlink_ci onaangetast is gebleven (#925)
         run: |
           psql_ci() { PGPASSWORD=ci-wegwerpwachtwoord-niet-geheim psql -h localhost -U ci_postgres -d sportlink_ci -t -A "$@"; }

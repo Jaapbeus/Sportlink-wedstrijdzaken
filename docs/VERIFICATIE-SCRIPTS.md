@@ -148,12 +148,17 @@ build-foutdetectie: eerst `Stop-Debug.ps1`, dan `Test-App.ps1`.
 Zet de AllStars-demoteams en -wedstrijden klaar op een lokale Postgres-ontwikkeldatabase. Drie
 stappen, alle idempotent:
 
+> **Alleen voor lokaal (#1246).** In productie draait `deploy.yml` stap 1 en 2 zelf bij elke
+> Postgres-deploy, via `Database.Postgres.Cli --ensure-his-tables` en `--seed-demodata`. Stap 3
+> blijft daar handwerk, want dat endpoint is `RequireAdmin`.
+
 1. `his.teams`/`his.matches`/`his.matchdetails` aanmaken via
    `Database.Postgres.Cli --ensure-his-tables` → `PostgresMergeOrchestrator.EnsureHisTableAsync`.
    Geen handgeschreven DDL: die bestaat al in de zelftest en in de CI-job `fresh-db-postgres`, en
    een derde kopie zou bij de eerstvolgende schemawijziging stilzwijgend uit de pas lopen.
 2. `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql` draaien — 28 teams,
-   224 wedstrijden.
+   224 wedstrijden, 28 teambegeleiders, plus een kopie van de speeltijden van de primaire club
+   (#1246).
 3. `POST /api/beheer/teams/herstel` met `X-Club-Code: ALLSTARS` — bouwt de canonieke
    `public.teams`/`public.teamaliassen` op (#946).
 
