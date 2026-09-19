@@ -1,0 +1,28 @@
+# codekwaliteit-valkuilen-allowlist.txt (#1262)
+#
+# Eén regel per toegestane uitzondering: <patroonsleutel> <pad> <reden>.
+#
+# Het pad is een bestandspad of een mapprefix. Een regel hier is een bewuste beslissing die iemand
+# heeft goedgekeurd — vandaar de verplichte reden. De guard faalt op een regel zonder reden.
+
+# --- UriKind.Absolute (#1252) -------------------------------------------------------------------
+# Toegestaan waar de invoer per contract absoluut MOET zijn en een pad geen geldige waarde is:
+# een door de beheerder ingevoerde website-URL, of de URL-parameter van het extract-endpoint.
+# NIET toegestaan als "is dit eigenlijk wel een URL"-test op invoer die ook een pad kan zijn —
+# dat is exact de #1252-bug: "/favicon.ico" parseert op Unix succesvol als file:-URI.
+uri-absolute  Planner.Shared/Theming/ThemeCore.cs             Beheerder-URL en extract-parameter zijn per contract absoluut; de relatieve tak loopt sinds #1252 via UriKind.RelativeOrAbsolute. De twee tier-kopieën stonden hier ook, tot #1248 de logica hierheen verplaatste.
+uri-absolute  Planner.Shared/Feedback/FeedbackCore.cs         Repository-URL uit configuratie is per contract absoluut.
+
+# --- DateTime.Now (UTC-regel) -------------------------------------------------------------------
+# De AI-services-regel schrijft juist lokale tijd voor in de system prompt: het model redeneert
+# over "vandaag" in NL-context. Alle overige tijdstempels horen UtcNow/GETUTCDATE te zijn.
+datetime-now  FunctionApp/Email/BerichtAiService.cs            Datum in de system prompt hoort NL-lokaal — zie CLAUDE.md "AI-services", regel 2.
+datetime-now  FunctionApp.Postgres/Email/BerichtAiService.cs   Idem.
+
+# --- GETDATE() in SQL ---------------------------------------------------------------------------
+# De UTC-regel geldt onverkort, maar deze bestaande SQL Server-bomen zijn nog niet nagelopen.
+# Zie het vervolgissue in docs/ARCHITECTUUR-CODEKWALITEIT.md; nieuwe SQL komt er niet bij.
+getdate       Database/                                       Legacy SSDT-boom, nog niet nagelopen op de UTC-regel.
+getdate       FunctionApp/setup/                              Idem, setup-scripts van de SQL Server-tier.
+getdate       scripts/migrations/                             Idem, bestaande migratiescripts; een migratie wijzig je nooit achteraf.
+uri-absolute  Planner.Shared/PlannerHtmlGenerator.cs         SanitizeHref is deny-by-default (#1010): alles wat geen absolute http(s)-URL is wordt "#". De Unix-file:-eigenaardigheid maakt hier geen gat — een file:-URI zakt door de schemacontrole.

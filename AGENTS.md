@@ -1,6 +1,18 @@
+<!-- GEGENEREERD BESTAND — NIET MET DE HAND BEWERKEN.
+
+     Afgeleid uit CLAUDE.md door scripts/ci/genereer-agents-md.py (#1262).
+     Wijzig CLAUDE.md en draai daarna:
+
+         python3 scripts/ci/genereer-agents-md.py --schrijf
+
+     De CI-job 'Build FunctionApp + BlazorAdmin' faalt als dit bestand niet overeenkomt met
+     CLAUDE.md. Reden: AGENTS.md liep 280 regels en negen hele secties achter toen beide
+     bestanden nog met de hand werden bijgehouden — zie de scriptkop.
+-->
+
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Codex when working with code in this repository.
 
 ## Rollen van Codex in dit project
 
@@ -180,8 +192,10 @@ if ($branch -eq 'main' -or $branch -eq 'develop' -or [string]::IsNullOrEmpty($br
 
 ```
 ITERATIE:
-  a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+  a. dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
      → fouten? Fix, ga terug naar a.
+     Dit is het project van de tier die in productie draait (#1060). Raak je ook de
+     SQL Server-tier aan, bouw dan óók FunctionApp/fa-dev-sportlink-01.csproj.
 
   b. dotnet build BlazorAdmin/BlazorAdmin.csproj  (build-fout-detectie — NIET terwijl server draait)
      → fouten? Fix, ga terug naar a.
@@ -190,11 +204,12 @@ ITERATIE:
      → exit 1 zonder -Fix te herstellen? Fix code, ga terug naar a.
 
   d. Stop services + clean BlazorAdmin + herstart:
-       Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-       Start-Sleep -Seconds 2
-       dotnet clean BlazorAdmin/BlazorAdmin.csproj | Out-Null   # verwijdert stale fingerprints
-       .\scripts\dev\Start-Debug.ps1
-       Start-Sleep -Seconds 20
+       .\scripts\dev\Stop-Debug.ps1 -Clean    # stopt process-trees + verwijdert stale fingerprints
+       .\scripts\dev\Start-Debug.ps1          # wacht zelf op readiness; exit 1 als een service niet opkomt
+
+       # Geen Start-Sleep meer nodig: Start-Debug.ps1 pollt /api/health (FunctionApp) en
+       # GET / (BlazorAdmin), en meldt de gemeten opstarttijd + versienummer. Gebruik
+       # -Tail voor één samengevoegde logstroom in plaats van losse vensters.
 
        # Hot reload gedrag (vastgelegd in Start-Debug.ps1):
        # - BlazorAdmin :5242 → HOT RELOAD via 'dotnet watch'. Wijzigingen in .razor/.cs/.css
@@ -225,7 +240,7 @@ ITERATIE:
            Start-Sleep -Seconds 3
        }
        # 2. FunctionApp (geen hot reload — herstart na codewijziging)
-       Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location FunctionApp; func start --port 7094'
+       Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location FunctionApp.Postgres; func start --port 7094'
        # 3. BlazorAdmin met hot reload
        if (Test-Path "BlazorAdmin/BlazorAdmin.csproj") {
            Start-Process $shell -ArgumentList '-NoProfile','-Command','Set-Location BlazorAdmin; dotnet watch run --launch-profile http'
@@ -233,23 +248,32 @@ ITERATIE:
        Start-Sleep -Seconds 20
 
   e. Controleer FunctionApp health + versienummer:
+       # Start-Debug.ps1 doet dit al en faalt met exit 1 als health niet 200 geeft.
+       # Handmatig herhalen kan met:
        $health = Invoke-RestMethod http://localhost:7094/api/health
        Write-Host "Versie: $($health.version)"
-       → niet 200? Fix, kill services, ga terug naar a.
+       → niet 200? Fix, .\scripts\dev\Stop-Debug.ps1, ga terug naar a.
 
-  f. Blazor fingerprint consistency check (VERPLICHT — detecteert root cause van "An unhandled error"):
-       # .NET 10 Blazor WASM: importmap key is './_framework/dotnet.js' (niet 'dotnet')
-       $html = (Invoke-WebRequest "http://localhost:5242/" -UseBasicParsing -ErrorAction SilentlyContinue).Content
-       $importmapMatch = [regex]::Match($html, '<script type="importmap"[^>]*>(.*?)</script>',
-           [System.Text.RegularExpressions.RegexOptions]::Singleline)
-       if ($importmapMatch.Success) {
-           $dotnetEntry = ($importmapMatch.Groups[1].Value | ConvertFrom-Json).imports."./_framework/dotnet.js" -replace '^\.\/', ''
-           $check = Invoke-WebRequest "http://localhost:5242/$dotnetEntry" -UseBasicParsing -ErrorAction SilentlyContinue
-           if ($check.StatusCode -ne 200) {
-               Write-Host "FINGERPRINT MISMATCH: $dotnetEntry → $($check.StatusCode)" -ForegroundColor Red
-           }
+  f. CSP-compatibiliteit van de gepubliceerde index.html (VERPLICHT — zie #659):
+       # Er MOET géén import-map en géén inline <script> in de publish-output staan: de
+       # productie-CSP van Azure SWA staat 'script-src self wasm-unsafe-eval' toe, zonder
+       # 'unsafe-inline'. Een inline script wordt daar geblokkeerd. Bij de import-map betekende
+       # dat: dotnet.js niet resolvebaar → 404 → Blazor start nooit → permanent laadscherm.
+       #
+       # Dit is NIET zichtbaar op :5242 en ook NIET op de SWA CLI-emulator (:4280) — geen van
+       # beide zet de CSP-header. Daarom op de publish-output controleren.
+       $pub = Join-Path ([System.IO.Path]::GetTempPath()) 'bapub'
+       dotnet publish BlazorAdmin/BlazorAdmin.csproj -c Release -o $pub | Out-Null
+       $raw = Get-Content (Join-Path $pub 'wwwroot/index.html') -Raw
+       $clean = [regex]::Replace($raw, '<!--.*?-->', '', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+       $inline = [regex]::Matches($clean, '<script(?:[^>]*)?>') | Where-Object { $_.Value -notmatch '\ssrc=' }
+       if ($inline -or $clean -match 'type="importmap"') {
+           Write-Host "CSP-PROBLEEM: inline script of import-map in publish-output" -ForegroundColor Red
        }
-       → mismatch of importmap leeg? Stop services → dotnet clean BlazorAdmin → terug naar d.
+       → treffer? OverrideHtmlAssetPlaceholders moet false blijven; inline scripts naar een
+         extern bestand in wwwroot/js/. Terug naar a.
+
+       De CI-job 'Build FunctionApp + BlazorAdmin' bevat deze guard ook, dus een PR faalt hierop.
 
   g. .\scripts\dev\Test-App.ps1 (met live services — secties 4+5+6 worden nu uitgevoerd)
      → exit 1? Fix, kill services, ga terug naar a.
@@ -265,9 +289,12 @@ ITERATIE:
      → fout? F12 → Console → foutmelding rapporteren
 
   i. Kill services:
-       Stop-Process -Name "func" -ErrorAction SilentlyContinue
-       Stop-Process -Name "dotnet" -ErrorAction SilentlyContinue
-       Stop-Process -Name "node" -ErrorAction SilentlyContinue  # SWA CLI
+       .\scripts\dev\Stop-Debug.ps1        # stopt process-trees; Azurite blijft draaien
+       # .\scripts\dev\Stop-Debug.ps1 -All  → inclusief Azurite
+
+       # Gebruik NIET Stop-Process -Name "dotnet": dat sloopt élk dotnet-proces op de
+       # machine, en het laat 'dotnet watch' zijn kindproces opnieuw starten (poort 5242
+       # raakt dan meteen weer bezet).
 
 GESLAAGD als: alle stappen exit 0 of 2xx, fingerprint consistent ✅, browser toont geen foutbanner
 ```
@@ -288,19 +315,25 @@ bewust worden bekeken.
 
 | Documentatiebestand | Bijwerken bij |
 |---|---|
-| `AGENTS.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
-| `FunctionApp/AGENTS.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
+| `CLAUDE.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
+| `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
 | `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
+| `docs/CUSTOM-DOMAIN.md` | Eigen domein, SWA-hostnames, CORS-origins of redirect-URI's gewijzigd |
 | `docs/BEHEERDER-HANDLEIDING.md` | Admin GUI: scherm, instelling, knop of workflow gewijzigd |
 | `docs/VERSIONING.md` | Release-proces of semver-afspraken gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/api-standaarden/openapi.yaml` | Endpoint toegevoegd, gewijzigd of verwijderd (sync met API.md) |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
+| `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
+| `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
+| `docs/ARCHITECTUUR-DATABASE-TIERS.md` | Tier-keuze, bouwvolgorde, casing-conventie of nieuwe tier-implementatie gewijzigd |
+| `docs/ARCHITECTUUR-CODEKWALITEIT.md` | Codekwaliteitsregel, guard, plafond of allowlist-uitzondering gewijzigd; nieuwe harde regel toegevoegd |
+| `docs/SPORTLINK-WEB-EXTENSION.md` | Sportlink Web Extension (epic #986): rol/serviceaccount-koppeling, auth-flow of de regel dat agents dit mechanisme nooit zelf mogen uitvoeren gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
-| `docs/SPORTLINK-WEB-EXTENSION.md` | Sportlink Web Extension (epic #986): rol/serviceaccount-koppeling, auth-flow of de regel dat agents dit mechanisme nooit zelf mogen uitvoeren gewijzigd |
+| `AGENTS.md` | **Nooit met de hand** — afgeleid uit CLAUDE.md via `python3 scripts/ci/genereer-agents-md.py --schrijf` |
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 | `SECURITY.md` | Security-beleid, AVG-regels of secrets-protocol gewijzigd |
@@ -316,14 +349,88 @@ git commit -m "feat(#<nr>): ..."
 git push -u origin <huidige-branch>
 
 # Feature branches gaan via PR naar develop (NIET naar main):
-gh pr create --base develop --title "feat(#<nr>): ..." --body "..."
+# --draft is verplicht: zonder --draft zet de automatisering meteen 'status: review-needed',
+# terwijl Stap 4 nog moet bevestigen dat alles groen is. Zie Stap 5 voor het uit-draft-halen.
+gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 
-# Hotfix branches gaan direct naar main:
-# gh pr create --base main --title "fix(#<nr>): ..." --body "..."
+# Hotfix branches gaan direct naar main (ook --draft, zelfde reden):
+# gh pr create --draft --base main --title "fix(#<nr>): ..." --body "..."
 
 # Release: develop → main (pas als alle features lokaal getest zijn):
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
+
+### Issue-lifecycle — elk open issue heeft precies één `status:`-label
+
+> **Vastgelegd na #690:** de automatisering dekte alleen de achterkant van de keten
+> (develop-merge en release). Daardoor had **7 van de 18** open issues geen enkel
+> status-label — inclusief issues waar op dat moment een open PR bij hoorde. Zonder status
+> is niet te zien of er iets loopt, of iets wacht, of niemand ernaar kijkt.
+
+De volledige keten, volledig geautomatiseerd:
+
+| Overgang | Status wordt | Workflow |
+|---|---|---|
+| Issue aangemaakt of heropend | `status: triage` (alleen als er nog géén status staat) | `label-issue-status.yml` |
+| PR geopend als draft | `status: in-progress` | `label-issue-status.yml` |
+| PR ready for review | `status: review-needed` | `label-issue-status.yml` |
+| PR terug naar draft | `status: in-progress` | `label-issue-status.yml` |
+| PR gesloten zonder merge | `status: triage` | `label-issue-status.yml` |
+| Groene verificatielus, geen escalatie (Stap 5) | `status: pr-aangemaakt` (handmatig, overschrijft `review-needed`) | Codex |
+| PR gemerged naar `develop` | `status: awaiting-release` | `label-awaiting-release.yml` |
+| Release-tag naar `main` | alle status-labels weg + issue gesloten | `close-released-issues.yml` |
+
+> **`status: review-needed` betekent altijd "de eigenaar moet hiernaar kijken."** Dat label
+> is dus **niet** de juiste eindstatus voor een routinematige, groene PR-afronding — zie
+> Stap 5 en "Escaleer naar gebruiker bij" in de autonome ontwikkelcyclus hieronder.
+> Vastgelegd na feedback 2026-07-29: de eigenaar opende `review-needed`-issues (bijv. #767)
+> waar niets te reviewen viel, omdat het label puur op PR-draft-status wordt gezet — niet op
+> of er daadwerkelijk een beslissing nodig is.
+
+**Invarianten:**
+
+1. **Hoogstens één `status:`-label per issue.** Alle drie de workflows zetten de status via
+   `setIssueStatus()` in [.github/scripts/issue-status.js](.github/scripts/issue-status.js),
+   die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
+   `gh issue edit --add-label` zonder de bestaande te verwijderen.
+2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`
+   en `status: waiting-owner` staan in `PROTECTED`: automatisering laat ze staan. Enige
+   uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat is een feit.
+3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
+   PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
+   Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
+   wijzigen of het heropenen — zie #630.
+4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
+   de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
+   trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
+5. **Eén gedocumenteerde handmatige uitzondering: Stap 5.** Na een groene verificatielus
+   zonder escalatie overschrijft Codex `status: review-needed` bewust met
+   `status: pr-aangemaakt` (zie Stap 5 hieronder). Dit is de enige plek waar Codex zelf een
+   status-label zet — en altijd via `--remove-label` + `--add-label` in dezelfde aanroep,
+   conform invariant 1.
+
+**Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
+`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
+`priority:`-label mee.
+
+### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
+
+> **Harde regel, vastgelegd na incident 2026-07-26:** issues werden gesloten zodra hun fix-PR
+> naar `develop` merget, terwijl `develop` soms weken/tientallen commits achterloopt op `main`.
+> Daardoor oogden issues als "opgelost" terwijl de fix niet live stond in productie.
+
+- **Een feature- of hotfix-PR mergen naar `develop` sluit het gekoppelde issue NOOIT.** Dat gebeurt
+  automatisch door de workflow `.github/workflows/label-awaiting-release.yml`, die bij elke
+  PR-merge naar `develop` het label `status: awaiting-release` toevoegt aan alle `#<nr>`-issues
+  die in de PR-titel/body staan (en het issue heropent als het per ongeluk al gesloten was).
+- **Het issue sluit pas** wanneer `.github/workflows/close-released-issues.yml` draait — dat
+  gebeurt bij een version-tag push naar `main` (dezelfde trigger als `release.yml`). Die workflow
+  verwijdert het label en sluit alle issues die sinds de vorige release-tag zijn gemerged.
+- Codex zelf roept dus **nooit** `gh issue close <nr>` aan direct na een develop-merge. Stap 5
+  hieronder rapporteert alleen de PR-status — het issue blijft open met `status: awaiting-release`
+  totdat de workflow het automatisch sluit bij de volgende productie-release.
+- Uitzondering: een **hotfix-PR naar `main`** mag na een succesvolle merge + groene
+  `close-released-issues.yml`-run als gesloten worden gerapporteerd, want die code staat dan al live.
 
 ### Stap 4 — CI bewaken
 ```powershell
@@ -332,10 +439,28 @@ gh pr checks <pr-nr> --watch           # wacht op groen
 - CI rood door build/code-fout? Fix → push → herhaal stap 4.
 - **Security Gate rood? → STOP. Meld aan gebruiker. Nooit mergen.**
 
-### Stap 5 — Rapporteer aan gebruiker
-Alleen als alles groen: PR-URL, issue-nr, samenvatting van wijzigingen.
+### Stap 5 — PR klaarzetten, label bijwerken en rapporteren aan gebruiker
 
-### Escaleer naar gebruiker bij (en alleen bij):
+Alleen als Stap 4 volledig groen is:
+
+1. Haal de PR uit draft: `gh pr ready <pr-nr>` (automatisering zet hierdoor
+   `status: review-needed` — dat is op dit punt nog een tussenstap, geen eindoordeel).
+2. Toets tegen "Escaleer naar gebruiker bij" hieronder — dat zijn de ENIGE gevallen waarin
+   `status: review-needed` mag blijven staan:
+   - **Escalatie van toepassing** → laat `status: review-needed` staan en leg in het
+     rapport aan de gebruiker expliciet uit welke beslissing nodig is.
+   - **Geen escalatie (het normale, autonome pad — de meeste PRs)** → overschrijf het
+     label meteen:
+     ```powershell
+     gh issue edit <issue-nr> --remove-label "status: review-needed" --add-label "status: pr-aangemaakt"
+     ```
+     `status: pr-aangemaakt` betekent: de PR staat klaar, CI is groen, er is niets van de
+     gebruiker nodig — de PR wacht alleen nog op een merge-moment naar keuze.
+3. Rapporteer aan de gebruiker: PR-URL, issue-nr, samenvatting van wijzigingen, en welk
+   label uiteindelijk is gezet (`review-needed` = actie nodig, `pr-aangemaakt` = geen actie
+   nodig).
+
+### Escaleer naar gebruiker bij (en alleen bij) — dit zijn de enige gevallen voor `status: review-needed`:
 - Security Gate blijft rood na fixpoging
 - > 3 iteraties in verificatielus zonder voortgang
 - Architectuurkeuze met meerdere gelijkwaardige paden
@@ -362,6 +487,36 @@ Deze regels gelden altijd, zonder uitzondering:
    gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
    ```
    **Stap C is verplicht**, ook als Stap B exit 0 geeft. `gh run watch` kan in de achtergrond exit 0 teruggeven terwijl individuele jobs (bijv. `blazor-deploy`) later falen. Pas als ALLE jobs `"conclusion": "success"` of `"conclusion": "skipped"` tonen is de deploy succesvol. Als één job `"conclusion": "failure"` toont: direct proberen te fixen (bijv. `gh run rerun <run-id> --failed` bij transient fouten). Lukt fix niet: onmiddellijk melden aan gebruiker. Nooit melden dat een PR succesvol is afgerond zonder Stap C te hebben uitgevoerd.
+
+2a. **Na elke productie-deploy: browser-rendercheck op de LIVE Admin GUI — verplicht (#659).**
+
+   > **Groene deploy-jobs en HTTP 200 bewijzen niets over de Admin GUI.** Bij release v2.17.2.0 waren
+   > alle zes deploy-jobs `success`, gaf de SWA HTTP 200 en stond het woord "blazor" in de HTML —
+   > terwijl de GUI in werkelijkheid permanent op het laadscherm hing. Een Blazor WASM-app levert op
+   > élke route dezelfde `index.html` met status 200; die controle kan de fout per definitie niet zien.
+
+   Verplicht ná Stap C, en **vóór** je meldt dat de release geslaagd is. Met een echte browser
+   (Playwright of handmatig in een verse incognito-sessie):
+
+   ```
+   □ Open de productie-URL van de Admin GUI
+   □ Console (F12): ZERO fouten — let specifiek op:
+       - "violates the following Content Security Policy directive"  → inline script geblokkeerd (#659)
+       - "Failed to start platform"                                  → Blazor start niet
+       - "Failed to load resource: 404" op iets in /_framework/       → asset niet resolvebaar
+   □ De pagina hangt NIET op het laadscherm: window.Blazor bestaat
+   □ Er is een redirect naar login.microsoftonline.com, óf de UI rendert voor een ingelogde sessie
+   □ Geen "An unhandled error has occurred"-banner
+   □ Na inloggen: een pagina met gegevens laadt daadwerkelijk gegevens (bewijst dat CORS klopt)
+   ```
+
+   Faalt één punt? Dan is de release **niet** geslaagd: direct een hotfix vanuit `main`, en melden
+   aan de gebruiker. Nooit "release geslaagd" rapporteren op basis van alleen CI en HTTP-status.
+
+   **Waarom dit niet lokaal te ondervangen is:** de CSP komt uit `staticwebapp.config.json` en wordt
+   alleen door Azure SWA toegepast — niet door de dev-server op :5242 en ook niet door de SWA
+   CLI-emulator op :4280. Stap `f` van de verificatielus dekt dit statisch af op de publish-output,
+   maar de live check blijft het enige echte bewijs.
 
 3. **Build- en runtime-fouten zijn zelfherstelbaar — Security Gate niet.** Bij een build-fout, startup-fout of testfout: fix het zelf en herhaal de verificatielus (zie "Autonome ontwikkelcyclus"). Bij een **Security Gate-fout of AVG-schending**: stop direct en meld aan de gebruiker — nooit stilzwijgend doorgaan of zelf mergen.
 
@@ -511,6 +666,76 @@ Bij elke PR controleer:
 
 ## Architectuurregels — altijd van toepassing
 
+### Codekwaliteit — gemeten, niet bedoeld (#1262, root cause van #1248/#1252)
+
+> Volledige analyse, nulmeting en register: **[docs/ARCHITECTUUR-CODEKWALITEIT.md](docs/ARCHITECTUUR-CODEKWALITEIT.md)**
+
+De thema-logica stond woordelijk twee keer in de codebase, met in het gedupliceerde bestand een
+comment die dat letterlijk toegaf. De review zág het dus, en had geen regel om het op af te wijzen.
+De bug die daardoor maandenlang onzichtbaar bleef (#1252) zat in beide kopieën en in geen van beide
+een test. Dit was de vierde keer — na #889, #1130 en #1122 — dat dezelfde klasse fout werd gevonden
+door een latere review in plaats van door een controle.
+
+Acht regels, alle acht met een exit-code:
+
+1. **Tier-onafhankelijke logica hoort in `Planner.Shared`.** Een bestand in `FunctionApp/` of
+   `FunctionApp.Postgres/` bevat uitsluitend query's, parameterbinding en de vertaling van een
+   kernstatus naar HTTP. De vraag bij een tier-poort is nooit "vertaal ik dit bestand?" maar
+   **"welk deel hiervan gaat over de database, en welk deel niet?"**
+2. **Duplicatie mag nooit stijgen.** De gemeten waarde staat als plafond in
+   `scripts/ci/codekwaliteit-plafonds.txt` en mag alleen omlaag. Verhogen kan, maar wordt dan een
+   diff die iemand goedkeurt.
+3. **Geen logica in Blazor-pagina's.** Elke `.razor` onder `BlazorAdmin/Pages/` met C# krijgt een
+   code-behind (`<Pagina>.razor.cs`, `public partial class`, `[Inject]`). Een pagina met een
+   code-behind mag daarnaast géén `@code`-blok hebben. Reden: een `@code`-blok is niet los te
+   testen, een partial class wel.
+4. **Vier platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd op de allowlist:**
+   `UriKind.Absolute` als URL-test (op Unix parseert `"/pad"` als `file:`-URI — #1252),
+   `DateTime.Now` en `GETDATE()` waar UTC hoort (#246), en `<input type="time">` in plaats van
+   `<TimeInput>`.
+5. **CLAUDE.md is de bron; AGENTS.md wordt eruit afgeleid.** Bewerk AGENTS.md nooit met de hand:
+   `python3 scripts/ci/genereer-agents-md.py --schrijf`. Toen beide met de hand werden bijgehouden,
+   miste AGENTS.md negen secties — waaronder déze tier-regel, de teamnormalisatieregel en de
+   EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
+6. **Een nieuwe harde regel krijgt een guard, of wordt als onbewaakt gemarkeerd in het register.**
+   Er is geen derde mogelijkheid. Zo ontstonden er eenentwintig regels die alleen in dit bestand
+   stonden en door niets werden gecontroleerd.
+7. **Een productiebestand blijft onder de 500 regels**, en **8. een methode onder de 80.** Ook dit
+   zijn ratchets op een *aantal*: bestaande code mag blijven, het aantal overschrijdingen mag niet
+   groeien. Testbestanden tellen niet mee — die groeien door losse gevallen naast elkaar te zetten,
+   en een guard die het toevoegen van tests bestraft werkt averechts.
+
+Lokaal draaien: zie §7 van het architectuurdocument. De guards zijn zelf getest
+(`scripts/ci/check-codekwaliteit.test.sh`) — een groene guard bewijst niets zolang niet vaststaat
+dat hij ook rood kan worden.
+
+### Teamnaam → TeamId: één vertaalpunt, nooit een nieuwe regex elders
+
+> Volledige onderbouwing: **[docs/ARCHITECTUUR-TEAMRESOLUTIE.md](docs/ARCHITECTUUR-TEAMRESOLUTIE.md)**
+
+Sportlink levert élk team in twee schrijfwijzen aan die geen gedeelde sleutel hebben: de lokale
+notatie (`JO10-1`, mét J) en de KNVB-notatie (`[club] O10-1`, zonder J, mét clubprefix). Daarbovenop
+komen e-mailvarianten (`JO 13-2`, `jo13/2`, `13-1`). Dat is de reden dat teamherkenning niet met
+"nog een regex" oplosbaar is.
+
+Harde regels:
+
+1. **Normalisatieregels horen uitsluitend in `Planner.Shared/TeamNaamNormalisatie.cs`.**
+   Een nieuwe teamnaam-regex elders is een architectuurschending — dat is exact het probleem dat
+   deze laag oplost (#692). *(Stond tot #889 in `FunctionApp/TeamResolution/`; verhuisd naar
+   `Planner.Shared/` toen de Postgres-tier dezelfde regels nodig had — een tweede kopie zou deze
+   regel letterlijk overtreden. Zelfde plek als `VeldResolver`/`VeldNormalisatie` en, sinds #889,
+   ook de pure `LeeftijdNormalisatie.Normaliseer`.)*
+2. **Raad nooit een ontbrekend geslacht-prefix.** `13-1` kan JO13-1 of MO13-1 zijn; bij één club zijn
+   er tien zulke paren. Ambiguïteit hoort in de kandidaten-/disambiguatiestap, niet in een
+   string-functie.
+3. **De disambiguator kiest alleen uit aangeboden kandidaten**, en die keuze wordt daarna in C#
+   gevalideerd tegen die lijst. Nooit vrije generatie van een teamnaam door een taalmodel.
+4. **Een geleerde alias is pas waarheid na goedkeuring** door een coördinator (status `validated`).
+   Zo kan een foutieve gok zich niet zelfversterken.
+5. **Verifieer nieuwe naamvormen tegen echte data** (`stg.teams` / `his.teams`) vóór je de
+   normalisatie aanpast — de ondersteunde vormen zijn zo gevonden, niet bedacht.
+
 ### AI-services — provider-agnostisch, datum altijd dynamisch
 
 > Volledige regels en migratiepad: **[docs/ARCHITECTUUR-AI-SERVICES.md](docs/ARCHITECTUUR-AI-SERVICES.md)**
@@ -538,6 +763,29 @@ Samenvatting van de drie harde regels:
 □ Modelnaam uit configuratie — niet hardcoded?
 □ KNVB-regels nog geldig voor het huidige seizoen?
 ```
+
+### Multi-tier databasestrategie — vaste bouwvolgorde, geen gedeelde abstractie
+
+> Volledig besluit + index van alle sub-issues: **[docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md)**
+
+Samenvatting van de twee harde regels (epic #815):
+
+1. **Vaste bouwvolgorde**: SQL Server (bestaand) → Postgres (eerste prioriteit) → SQLite → Cosmos DB
+   (uitsluitend het e-mailverwerkingslog). Niet gelijktijdig, niet in een andere volgorde.
+2. **Eén tier per club-deployment, nooit een gedeelde C#-providerabstractie.** Elke tier krijgt een
+   volledig gescheiden, parallelle implementatieboom (`Database.Postgres/`, `Database.Sqlite/`),
+   gekozen op build/deploytijd — nooit een runtime-switch in gedeelde code.
+
+> **Wat deze regel niet zegt (#1248).** Ze verbiedt een *runtime provider-switch* — één interface
+> met `SqlConnection`/`NpgsqlConnection` erachter. Ze staat het delen van pure, tier-onafhankelijke
+> logica juist toe, zoals `ARCHITECTUUR-DATABASE-TIERS.md` §2 expliciet vastlegt. Bij de
+> Postgres-poort is ze op het *hele bestand* toegepast, inclusief regex, validatie en
+> SSRF-orkestratie. Dat is vier keer misgegaan (#889, #1130, #1122, #1248). Zie de
+> codekwaliteitssectie hierboven, regel 1.
+
+Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
+`dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
+empirisch bevestigde Postgres-lowercase-folding-valkuil.
 
 ---
 
@@ -571,7 +819,7 @@ Harde regels, vanaf nu:
    tenzij een taak dat expliciet vereist en documenteer dan waarom.
 3. **Databaseplatform-configuratie (RLS, Exposed schemas, API-instellingen) is onzichtbaar voor
    codereview zolang hij niet als migratie in git staat.** Een wijziging in het Supabase-dashboard
-   laat geen diff na — geen enkele codereview (Claude Code, Codex, of een mens) kan zien wat daar
+   laat geen diff na — geen enkele codereview (Codex, Codex, of een mens) kan zien wat daar
    staat. Controleer daarom **na elk architectuurbesluit over databasebeveiliging, en periodiek
    los daarvan**, het Supabase-dashboard onder **Advisors → Security** — niet alleen de
    repository. Dit is precies waarom #985 twaalf dagen ongemerkt bleef: het besluit stond correct
@@ -681,6 +929,42 @@ Harde regels, vanaf nu:
 
 ---
 
+### E-mail — analyse + doelarchitectuur vastgelegd, migratie nog niet gestart
+
+> Volledig ontwerp en gefaseerd migratieplan: **[docs/ARCHITECTUUR-EMAIL-MODULE.md](docs/ARCHITECTUUR-EMAIL-MODULE.md)**
+> (epic #777). Dit document beschrijft het **toekomstige** ontwerp — er is nog geen code gemigreerd.
+> Tot Fase 1 daarvan is uitgevoerd, is de huidige, verspreide structuur (§1 van dat document) nog
+> steeds de werkelijkheid: `EmailGraphService` blijft de enige Graph-adapter, `planner.EmailVerwerking`
+> blijft de AI-verwerkingsstatusmachine, en er bestaat nog geen generiek verzend-contract of
+> `<EmailComposer>`-component.
+
+Harde regel zodra de migratie start: **een nieuw Blazor-scherm dat e-mail moet versturen, of een
+nieuwe wijziging aan een bestaand verzendpad, raadpleegt eerst
+`docs/ARCHITECTUUR-EMAIL-MODULE.md`** — met name de vraag of het nieuwe/gewijzigde pad via het
+generieke `IEmailVerzendService`-contract kan lopen in plaats van opnieuw een eigen Graph-aanroep,
+sanitizing, ontvangerparsing of logging-tabel te bouwen. Een nieuwe, losstaande "vierde
+verzendmanier" naast de bestaande is een architectuurschending — dat is exact het probleem dat dit
+document oplost.
+
+---
+
+### Uitgaande integraties — altijd via EgressGuard (#857)
+
+**Elke nieuwe uitgaande integratie (een externe HTTP-aanroep, een nieuwe AI-provider, een nieuw
+e-mail-/berichtenkanaal, een nieuwe issue-/ticketrapportage) controleert eerst
+`SportlinkFunction.Infrastructure.EgressGuard.ExternalIntegrationsAllowed()`, of wordt — zoals
+`IEmailGraphService`/`IChatClient` in `FunctionApp/Program.cs` — alleen geregistreerd als die true
+is.** Dit is de ene centrale poort die lokale ontwikkeling, CI en elke geautomatiseerde testrun
+beschermt tegen onbedoeld extern verkeer (de Sportlink-databron, GitHub-issue-rapportage, e-mail,
+AI-diensten), ook als het bijbehorende secret toevallig lokaal geconfigureerd staat. Zie
+`FunctionApp/Infrastructure/EgressGuard.cs` en `docs/DEVELOPER-SETUP.md` §5.3.
+
+Een nieuwe, losstaande "eigen is-dit-geconfigureerd-check" naast deze poort is een
+architectuurschending — dat is exact het probleem dat #857 oploste (vier losse, impliciete
+controles in plaats van één expliciete).
+
+---
+
 ### Thema-logica — één gedeelde kern, en nooit `UriKind.Absolute` als "is dit een URL"-test (#1248, #1252)
 
 Twee harde regels:
@@ -781,8 +1065,10 @@ Aanvullend:
   `$IsWindows`, nooit hardcoded.
 - **`Start-Process` opent op macOS nooit een venster** en `-WindowStyle` is er een no-op
   (gedocumenteerd gedrag). Output moet daar naar een logbestand, anders is hij weg.
-- **De lokale database is altijd SQL Server 2022 in Docker** — op Windows én macOS, via
-  `docker-compose.yml` in de repo-root (`docker compose up -d`). Een rechtstreeks
+- **De lokale database draait altijd in Docker** — op Windows én macOS, via `docker-compose.yml`
+  in de repo-root. `docker compose up -d` start Postgres: de tier die in productie draait (#1060).
+  De SQL Server-service staat achter een profile (`docker compose --profile sqlserver up -d`) en
+  blijft volledig ondersteund voor forks die die tier kiezen. Voor SQL Server geldt onverkort: een rechtstreeks
   geïnstalleerde SQL Server-service op Windows wordt **niet** ondersteund: dat werkt alleen
   daar en dwingt overal een tweede code- en documentatievariant af. Gevolg: altijd een
   SQL-login, nooit `Integrated Security` / `sqlcmd -E`, en altijd `TrustServerCertificate=True`
@@ -792,6 +1078,17 @@ Aanvullend:
   nooit in de repository.
 - **In shell-scripts en git-hooks: geen `grep -P`.** De BSD-grep van macOS kent geen PCRE.
   Gebruik `grep -E`. Dit is extra riskant in de hooks, waar een `|| true` de fout stil maakt.
+- **`\s`, `\d` en andere PCRE-shorthands wérken bij BSD-grep `-E` buiten een bracket-expressie
+  (`[Pp]assword\s*=`), maar niet erbinnen (`[^;'"`\s<>{}]`) — vastgesteld tijdens de macOS-
+  hardwareverificatie van #843 (issue #1090).** POSIX-bracket-expressies interpreteren `\` niet
+  speciaal: `[^;'"`\s<>{}]` sluit dan letterlijk de tekens `\` en `s` uit in plaats van elk
+  whitespace-teken. Bij een veelvoorkomende letter als `s` breekt dat de bedoelde `{n,}`-herhaling
+  zonder foutmelding — precies wat `.githooks/sensitive-patterns.txt` deed bij o.a. de
+  Password/Secret/Pwd-patronen: de pre-commit/pre-push-hook liet een testwaarde als
+  `Password=<testwaarde>` stilzwijgend door op macOS, terwijl dezelfde regex op Linux/CI
+  (GNU grep, wél `\s`-bewust binnen brackets) prima blokkeerde. Gebruik binnen een
+  bracket-expressie altijd de POSIX-klasse `[:space:]` (`[^;'"`[:space:]<>{}]`) — die werkt
+  identiek op BSD-grep, GNU grep én `git grep`.
 - **CI-shellscripts (`scripts/ci/*.sh`) moeten draaien op bash 3.2 — de standaard `/bin/bash`
   van macOS (#1155).** Dus geen `declare -A` (associatieve arrays), geen `mapfile`/`readarray`,
   geen `${var,,}`/`${var^^}`, en geen GNU-only `sed`-vlag `I`. Gebruik een newline-gescheiden
@@ -809,6 +1106,14 @@ Aanvullend:
 
 **Nieuw platformspecifiek gedrag hoort in `scripts/dev/DevServices.psm1`, achter een functie —
 nooit inline in een script.** Zo blijft er één plek waar de OS-verschillen staan.
+
+- **Bestandssysteem-casing-guard in CI** (`scripts/ci/check-path-casing.sh`, #825): git's
+  `core.ignorecase=true` (Windows/macOS-default) merkt een casing-mismatch in een padverwijzing
+  lokaal niet op; de Linux-CI-runner (`core.ignorecase=false`) faalt daar hard op. De guard
+  vergelijkt elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden tegen `git ls-files` en
+  faalt de build zichtbaar bij een case-insensitieve-maar-niet-exacte match — specifiek relevant
+  voor de nieuwe `Database.Postgres/`-boom, waar nog geen gevestigde conventie/spiergeheugen
+  bestaat.
 
 ### Azure Entra setup — verify/configure via scripts, nooit handmatig
 
@@ -966,7 +1271,25 @@ Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only d
 **Regels:**
 - Uitsluitend toegestaan als hardcoded UI-default in admin-only developer-testpagina's — **nooit** in bedrijfslogica, API-fallbacks of gedeelde configuratie.
 - `voorbeeld.nl` is opgenomen in `.gitleaks.toml` en `security-scan.yml` zodat security-checks hierop niet falen.
-- Deze lijst is **uitputtend** — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens.
+- Deze lijst is **uitputtend** voor UI-defaults van admin-only developer-testpagina's — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens. Zie de aparte uitzondering hieronder voor seed-migratiescripts.
+
+### AllStars FC demo-data (seed-migraties) — aparte goedgekeurde uitzondering
+
+`scripts/migrations/002-seed-allstars-fc.sql` bevat fictieve trainersgegevens voor de AllStars FC
+democlubcode (`ClubCode = 'ALLSTARS'`, zie [[architecture_multiclub]] en de sectie "Deployment-model"
+hierboven). Deze data valt buiten de scope van de admin-testpagina-lijst hierboven, maar is
+formeel goedgekeurd onder dezelfde AVG-redenering:
+
+| Kenmerk | Waarde | Reden |
+|---|---|---|
+| Domein | `@allstars-fc.test` | `.test` is een gereserveerd TLD (RFC 2606) — bestaat niet publiek, kan nooit een echt e-mailadres zijn |
+| Namen | Generieke voornamen zonder achternaam (bijv. `Frenkie`, `John`) | Niet herleidbaar tot een bestaand persoon |
+| Scope | Uitsluitend rijen met `ClubCode = 'ALLSTARS'` | Nooit gebruikt voor een echte club |
+
+**Regels:**
+- Uitsluitend toegestaan in `scripts/migrations/002-seed-allstars-fc.sql` (of vergelijkbare seed-scripts die exclusief AllStars FC-demodata vullen) — **nooit** als fallback in bedrijfslogica.
+- Nieuwe seed-rijen voor AllStars FC volgen hetzelfde patroon: `.test`-domein, voornaam zonder achternaam.
+- Bij bredere e-mailpatronen in `.gitleaks.toml` (zie de `consumer-email`-regel): controleer of `@allstars-fc\.test` een allowlist-entry nodig heeft, zodat deze seed-rijen niet alsnog worden geflagd.
 
 ### Microsoft Learn MCP server
 
@@ -996,7 +1319,7 @@ De API-standaarden staan in `docs/api-standaarden/`:
 
 **Nooit een endpoint-wijziging committen zonder de spec bij te werken.** De spec is de contractdefinitie voor andere systemen, consumers en toekomstige Codex-sessies. Een verouderde spec misleidt — dat is erger dan geen spec.
 
-**Stand van de spec (bijgewerkt 2026-09-16):** `openapi.yaml`/`.json` dekken 74 routes; `info.version` volgt de app-versie. De eerder hier genoemde ~22 ontbrekende routes waren al ingehaald — die notitie was zelf verouderd en misleidde. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
+**Stand van de spec (bijgewerkt 2026-09-16):** `openapi.yaml`/`.json` dekken 74 routes; `info.version` volgt de app-versie. Regenereer `openapi.json` altijd uit de YAML (nooit beide handmatig bijwerken):
 ```powershell
 python -c "import yaml,json,io; s=yaml.safe_load(io.open('docs/api-standaarden/openapi.yaml',encoding='utf-8')); json.dump(s, io.open('docs/api-standaarden/openapi.json','w',encoding='utf-8'), indent=2, ensure_ascii=False)"
 ```
@@ -1017,7 +1340,7 @@ Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
 | `fix:` of `security:` — bugfix | REVISION bump | `2.15.1.0 → 2.15.1.1` |
 | Kleine fix, CSS, UX, chore **met zichtbaar effect** | REVISION bump | `2.15.1.0 → 2.15.1.1` |
 | `BREAKING CHANGE:` in commit-body | MAJOR bump | `2.15.x.x → 3.0.0.0` |
-| Puur intern (refactor zonder effect, docs, AGENTS.md) | Geen bump | — |
+| Puur intern (refactor zonder effect, docs, CLAUDE.md) | Geen bump | — |
 
 **Fase 2 — release (develop → main PR, één keer per release):**
 
@@ -1038,7 +1361,11 @@ Het versienummer heeft vier cijfers: `MAJOR.MINOR.PATCH.REVISION`
 
 Samenvatting: **development** = `feat:` → PATCH, `fix:` → REVISION. **Release** = MINOR als er features in zitten.
 
-Zet alle drie velden synchroon in **beide** csproj's:
+Zet alle drie velden synchroon in **alle drie** csproj's — `FunctionApp/fa-dev-sportlink-01.csproj`,
+`BlazorAdmin/BlazorAdmin.csproj` **én `FunctionApp.Postgres/FunctionApp.Postgres.csproj`**. De derde
+wordt gemist zodra een wijziging alleen in Postgres-tier-bestanden zit: geen enkele van de eerste
+twee verandert dan mee, en niets waarschuwt ervoor. Gebeurd bij #859/#952/#939 (gecorrigeerd), zie
+`/api/health`'s `version`-veld op de Postgres-tier als je twijfelt of dit nog synchroon loopt.
 ```xml
 <Version>2.15.1.0</Version>
 <AssemblyVersion>2.15.1.0</AssemblyVersion>
@@ -1052,6 +1379,16 @@ Zet alle drie velden synchroon in **beide** csproj's:
 1. Voeg de wijziging toe onder `## [Unreleased]` in `CHANGELOG.md`
 2. Gebruik de secties `### Added`, `### Changed`, `### Fixed`, `### Security`, `### Removed`
 3. Schrijf voor de gebruiker, niet voor de developer: "Beheerders kunnen nu X" i.p.v. "Methode Y refactored"
+
+> **Let op de notatie van issuenummers — `(#N)` sluit het issue bij de volgende release.**
+> `close-released-issues.yml` leest de CHANGELOG-sectie van de getagde versie en behandelt elke
+> haakjesgroep die **uitsluitend** issuenummers bevat — `(#574)` of `(#599, #595)` — als attributie
+> van opgeleverd werk. Die issues worden gesloten.
+>
+> Gebruik `(#N)` dus alleen voor werk dat in díe versie zit. Voor een **kruisverwijzing** naar een
+> vervolgpunt schrijf je het nummer in proza: `zie issue #739` — nooit `(#739)`. Dit ging mis bij
+> v2.18.0.1: drie vervolgissues die juist bij die release waren aangemaakt (#734, #739, #740)
+> werden er door gesloten en moesten met de hand worden heropend.
 
 **Verplicht vóór een release:**
 1. Verplaats alles van `## [Unreleased]` naar `## [x.y.z] — YYYY-MM-DD`
@@ -1113,24 +1450,30 @@ Gebruik dit bijv. in de health-endpoint response of in de Admin GUI footer.
 > **`dotnet build` slagen ≠ werkt.** De enige definitie van "werkt" is: build groen + func start zonder crashes + health endpoint 200 + Test-App.ps1 exit 0. Volg altijd de autonome verificatielus hierboven.
 
 ```powershell
+# Stap 0: Database van de actieve tier (standaard Postgres — de tier die in productie draait)
+docker compose up -d
+
 # Stap 1: Build
-dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
 
 # Stap 2: Start alle services tegelijk (of gebruik Start-Debug.ps1)
-.\scripts\dev\Start-Debug.ps1         # start Azurite + FunctionApp + BlazorAdmin in aparte vensters
+.\scripts\dev\Start-Debug.ps1                    # Postgres-tier (standaard)
+# .\scripts\dev\Start-Debug.ps1 -Tier SqlServer  # alleen als je aan FunctionApp/ werkt
 # Poorten: Azurite :10000, FunctionApp :7094, BlazorAdmin :5242
 
 # Stap 3: Verificatie (wacht 15s na Start-Debug)
 .\scripts\dev\Test-App.ps1            # controleert schema, build, endpoints, Blazor-pagina's
 .\scripts\dev\Test-App.ps1 -Fix       # herstelt schema-drift automatisch
 
-# Handmatige sync
-# GET http://localhost:7094/api/sync?weekOffsetFrom=X&weekOffsetTo=Y
+# Handmatige sync — standaard: vorige week t/m einde seizoen (zelfde bereik als de timer)
+# GET http://localhost:7094/api/sync-matches
+# Volledig seizoen opnieuw ophalen:
+# GET http://localhost:7094/api/sync-matches?reset=true&season=2026
 ```
 
-**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), SQL Server met `SportlinkSqlDb` database.
+**Prerequisites:** .NET 9 runtime + .NET 10 SDK (Blazor), Azure Functions Core Tools v4, Azurite (Azure Storage Emulator), en de database van de actieve tier — standaard Postgres via `docker compose up -d` (#1060).
 
-**Configuration:** Kopieer `FunctionApp/local.settings.template.json` naar `local.settings.json` en stel `SqlConnectionString` in op je SQL Server.
+**Configuration:** Kopieer het `local.settings.template.json` van de tier waarop je werkt naar `local.settings.json` ernaast — standaard `FunctionApp.Postgres/`, met `POSTGRES_CONNECTION_STRING`; voor de SQL Server-tier `FunctionApp/`, met `SqlConnectionString`.
 
 **Verificatiescripts:** `scripts/dev/Test-App.ps1` (schema + build + endpoints + Blazor), `scripts/dev/Start-Debug.ps1` (alle services).  
 Zie [docs/VERIFICATIE-SCRIPTS.md](docs/VERIFICATIE-SCRIPTS.md) voor volledig overzicht.
@@ -1155,7 +1498,7 @@ Serverless ETL pipeline: **Sportlink REST API -> Azure Function -> SQL Server**
 
 **Two trigger functions** in `FunctionApp/Function1.cs`:
 - `FetchAndStoreApiData` — Timer trigger (schedule via `%FETCH_SCHEDULE%` app setting, default `0 0 4 * * *`), fetches teams, matches, and match details
-- `SyncMatchesHttp` — HTTP GET `/api/sync`, manual trigger with optional weekoffset params
+- `SyncMatchesHttp` — HTTP GET `/api/sync-matches`, manual trigger. Standaard vorige week t/m einde seizoen; met `?reset=true&season=YYYY` het volledige seizoen. **Let op:** de route is `sync-matches`, niet `sync` — dat laatste geeft 404 (gecorrigeerd bij #662)
 
 **Data flow:** Sportlink JSON -> C# entity models -> staging tables (`stg.*`) -> stored procedure MERGE -> history tables (`his.*`) -> public views (`pub.*`)
 
@@ -1214,9 +1557,12 @@ Browser (beheerder)
 | `GET/PUT/POST/DELETE /api/beheer/templates` | `AdminTemplatesFunction.cs` |
 | `GET/POST/DELETE /api/beheer/uitgesloten-emails` | `AdminUitgeslotenEmailFunction.cs` |
 | `GET/PUT/POST/DELETE /api/beheer/velden`, `/veldbeschikbaarheid` | `AdminVeldBeschikbaarheidFunction.cs` |
+| `GET/POST/PUT/DELETE /api/beheer/veldtraining` | `AdminVeldTrainingFunction.cs` |
+| `GET/POST/PUT/DELETE /api/beheer/veldperiodes` | `AdminVeldPeriodeFunction.cs` |
 | `GET/POST/PUT/DELETE /api/beheer/voorkeurstijden`, `/teamregels` | `AdminVoorkeurTijdenFunction.cs` |
 | `GET /api/beheer/email-log` | `AdminEmailLogFunction.cs` |
 | `GET /api/beheer/leermomenten`, `/stats`, `PUT /{id}/valideer` | `AdminLeermomentenFunction.cs` |
+| `GET /api/beheer/teamaliassen`, `PUT /{id}/valideer`, `DELETE /{id}` | `AdminTeamAliassenFunction.cs` |
 | `GET/POST /api/beheer/teambegeleiding`, `/{team}`, `/doorsturen` | `AdminTeambegeleidingFunction.cs` |
 | `GET/PUT /api/beheer/theme`, `POST /theme/extract` | `AdminThemeFunction.cs` |
 | `GET /api/beheer/clubs` | `AdminClubsFunction.cs` |
@@ -1267,7 +1613,7 @@ Documentatie:
 | Uitslagen | `/uitslagen?clientId=&weekoffset=` | Alleen scoreverrijking voor verleden wedstrijden. Mag geen toekomstige wedstrijden toevoegen of programma-velden overschrijven |
 | Match details | `/wedstrijd-informatie?clientId=&wedstrijdcode=` | Per-match detail |
 
-See `FunctionApp/AGENTS.md` for detailed field reference including all `/programma` fields.
+See `FunctionApp/CLAUDE.md` for detailed field reference including all `/programma` fields.
 
 ## Exports — Teambegeleiding
 
@@ -1286,5 +1632,3 @@ De `exports/` map bevat **scripts** voor data-exports. De databestanden zelf (CS
 1. Download CSV via club.sportlink.com (zie [docs/ADMIN-TEAMBEGELEIDING-IMPORT.md](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) voor exacte stappen)
 2. Importeer via de Admin GUI (**Teambegeleiding → Teambegeleiding importeren**) — CSV wordt in de browser verwerkt, niets op de server opgeslagen
 3. Alternatief vanaf de commandline: sla de CSV op in de lokale `exports/` map (nooit committen) en voer `.\exports\import-teambegeleiding-to-sql.ps1` uit
-
-## Imported Claude Cowork project instructions

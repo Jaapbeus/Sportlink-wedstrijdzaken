@@ -35,6 +35,41 @@ jobs:
       - name: Bestandssysteem-casing-guard
         run: bash scripts/ci/check-path-casing.sh
 
+      # #1262, root cause van #1248: er bestond geen enkele controle op codeduplicatie,
+      # bestandsgrootte of tier-drift in C#-bedrijfslogica. De thema-logica stond daardoor
+      # woordelijk twee keer in de codebase — bewust, gedocumenteerd in een code-comment, en
+      # langs elke review heen. De vier guards hieronder meten wat tot nu toe ongemeten bleef;
+      # de regels die ze afdwingen staan in docs/ARCHITECTUUR-CODEKWALITEIT.md.
+      # Geen database, geen secrets — pure bestandsvergelijking.
+      - name: Codekwaliteit — tier-duplicatie stijgt niet
+        run: bash scripts/ci/check-tier-duplicatie.sh
+
+      - name: Codekwaliteit — geen logica in Blazor-pagina's
+        run: bash scripts/ci/check-blazor-codebehind.sh
+
+      - name: Codekwaliteit — platformafhankelijke valkuilen
+        run: bash scripts/ci/check-codekwaliteit-valkuilen.sh
+
+      - name: Codekwaliteit — bestandsgrootte en methodelengte
+        run: bash scripts/ci/check-bestandsgrootte.sh
+
+      # AGENTS.md wordt uit CLAUDE.md afgeleid. Toen beide nog met de hand werden bijgehouden,
+      # miste AGENTS.md negen secties — waaronder de tier-regel, de teamnormalisatieregel en de
+      # EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
+      - name: Codekwaliteit — AGENTS.md afgeleid uit CLAUDE.md
+        run: python3 scripts/ci/genereer-agents-md.py
+
+      # Meta-guard: elke regel in het register heeft een bestaand, uitvoerbaar script dat ook echt
+      # in de genoemde workflow draait — en elke guard in scripts/ci/ staat in het register.
+      - name: Codekwaliteit — regelregister klopt
+        run: bash scripts/ci/check-regelregister.sh
+
+      # Een groene guard bewijst niets — hij kan ook groen zijn omdat hij niets ziet. Deze tests
+      # maken van elke overtreding tijdelijk een echte, en eisen dat de guard rood wordt. Twee van
+      # de vijf negatieve tests sloegen bij het schrijven ervan eerst ten onrechte niet aan.
+      - name: Codekwaliteit — guards zelf getest
+        run: bash scripts/ci/check-codekwaliteit.test.sh
+
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.

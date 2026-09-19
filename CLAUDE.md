@@ -316,10 +316,12 @@ bewust worden bekeken.
 | `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` | Teamnaam-normalisatie, `dbo.Teams`/`dbo.TeamAliassen`, disambiguatie of teamherkenning gewijzigd |
 | `docs/ARCHITECTUUR-EMAIL-MODULE.md` | E-mail-verzendlaag, afzenderstrategie, ontvangerresolutie of e-mail-loggingschema gewijzigd |
 | `docs/ARCHITECTUUR-DATABASE-TIERS.md` | Tier-keuze, bouwvolgorde, casing-conventie of nieuwe tier-implementatie gewijzigd |
+| `docs/ARCHITECTUUR-CODEKWALITEIT.md` | Codekwaliteitsregel, guard, plafond of allowlist-uitzondering gewijzigd; nieuwe harde regel toegevoegd |
 | `docs/SPORTLINK-WEB-EXTENSION.md` | Sportlink Web Extension (epic #986): rol/serviceaccount-koppeling, auth-flow of de regel dat agents dit mechanisme nooit zelf mogen uitvoeren gewijzigd |
 | `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting-drempelwaarden, KQL-queries of escalatiematrix gewijzigd |
 | `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
+| `AGENTS.md` | **Nooit met de hand** — afgeleid uit CLAUDE.md via `python3 scripts/ci/genereer-agents-md.py --schrijf` |
 | `CHANGELOG.md` | **Altijd** — elke feature of fix krijgt een entry onder `[Unreleased]` |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 | `SECURITY.md` | Security-beleid, AVG-regels of secrets-protocol gewijzigd |
@@ -652,6 +654,49 @@ Bij elke PR controleer:
 
 ## Architectuurregels — altijd van toepassing
 
+### Codekwaliteit — gemeten, niet bedoeld (#1262, root cause van #1248/#1252)
+
+> Volledige analyse, nulmeting en register: **[docs/ARCHITECTUUR-CODEKWALITEIT.md](docs/ARCHITECTUUR-CODEKWALITEIT.md)**
+
+De thema-logica stond woordelijk twee keer in de codebase, met in het gedupliceerde bestand een
+comment die dat letterlijk toegaf. De review zág het dus, en had geen regel om het op af te wijzen.
+De bug die daardoor maandenlang onzichtbaar bleef (#1252) zat in beide kopieën en in geen van beide
+een test. Dit was de vierde keer — na #889, #1130 en #1122 — dat dezelfde klasse fout werd gevonden
+door een latere review in plaats van door een controle.
+
+Acht regels, alle acht met een exit-code:
+
+1. **Tier-onafhankelijke logica hoort in `Planner.Shared`.** Een bestand in `FunctionApp/` of
+   `FunctionApp.Postgres/` bevat uitsluitend query's, parameterbinding en de vertaling van een
+   kernstatus naar HTTP. De vraag bij een tier-poort is nooit "vertaal ik dit bestand?" maar
+   **"welk deel hiervan gaat over de database, en welk deel niet?"**
+2. **Duplicatie mag nooit stijgen.** De gemeten waarde staat als plafond in
+   `scripts/ci/codekwaliteit-plafonds.txt` en mag alleen omlaag. Verhogen kan, maar wordt dan een
+   diff die iemand goedkeurt.
+3. **Geen logica in Blazor-pagina's.** Elke `.razor` onder `BlazorAdmin/Pages/` met C# krijgt een
+   code-behind (`<Pagina>.razor.cs`, `public partial class`, `[Inject]`). Een pagina met een
+   code-behind mag daarnaast géén `@code`-blok hebben. Reden: een `@code`-blok is niet los te
+   testen, een partial class wel.
+4. **Vier platformafhankelijke valkuilen zijn verboden, tenzij gemotiveerd op de allowlist:**
+   `UriKind.Absolute` als URL-test (op Unix parseert `"/pad"` als `file:`-URI — #1252),
+   `DateTime.Now` en `GETDATE()` waar UTC hoort (#246), en `<input type="time">` in plaats van
+   `<TimeInput>`.
+5. **CLAUDE.md is de bron; AGENTS.md wordt eruit afgeleid.** Bewerk AGENTS.md nooit met de hand:
+   `python3 scripts/ci/genereer-agents-md.py --schrijf`. Toen beide met de hand werden bijgehouden,
+   miste AGENTS.md negen secties — waaronder déze tier-regel, de teamnormalisatieregel en de
+   EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
+6. **Een nieuwe harde regel krijgt een guard, of wordt als onbewaakt gemarkeerd in het register.**
+   Er is geen derde mogelijkheid. Zo ontstonden er eenentwintig regels die alleen in dit bestand
+   stonden en door niets werden gecontroleerd.
+7. **Een productiebestand blijft onder de 500 regels**, en **8. een methode onder de 80.** Ook dit
+   zijn ratchets op een *aantal*: bestaande code mag blijven, het aantal overschrijdingen mag niet
+   groeien. Testbestanden tellen niet mee — die groeien door losse gevallen naast elkaar te zetten,
+   en een guard die het toevoegen van tests bestraft werkt averechts.
+
+Lokaal draaien: zie §7 van het architectuurdocument. De guards zijn zelf getest
+(`scripts/ci/check-codekwaliteit.test.sh`) — een groene guard bewijst niets zolang niet vaststaat
+dat hij ook rood kan worden.
+
 ### Teamnaam → TeamId: één vertaalpunt, nooit een nieuwe regex elders
 
 > Volledige onderbouwing: **[docs/ARCHITECTUUR-TEAMRESOLUTIE.md](docs/ARCHITECTUUR-TEAMRESOLUTIE.md)**
@@ -718,6 +763,13 @@ Samenvatting van de twee harde regels (epic #815):
 2. **Eén tier per club-deployment, nooit een gedeelde C#-providerabstractie.** Elke tier krijgt een
    volledig gescheiden, parallelle implementatieboom (`Database.Postgres/`, `Database.Sqlite/`),
    gekozen op build/deploytijd — nooit een runtime-switch in gedeelde code.
+
+> **Wat deze regel niet zegt (#1248).** Ze verbiedt een *runtime provider-switch* — één interface
+> met `SqlConnection`/`NpgsqlConnection` erachter. Ze staat het delen van pure, tier-onafhankelijke
+> logica juist toe, zoals `ARCHITECTUUR-DATABASE-TIERS.md` §2 expliciet vastlegt. Bij de
+> Postgres-poort is ze op het *hele bestand* toegepast, inclusief regex, validatie en
+> SSRF-orkestratie. Dat is vier keer misgegaan (#889, #1130, #1122, #1248). Zie de
+> codekwaliteitssectie hierboven, regel 1.
 
 Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
 `dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
