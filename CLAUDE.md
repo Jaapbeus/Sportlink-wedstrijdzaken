@@ -798,6 +798,22 @@ Samenvatting van de twee harde regels (epic #815):
      (idempotent) én in de bijbehorende SSDT-tabel onder `Database/dbo/Tables/`. `scripts/migrations/`
      draait niet automatisch.
 
+4. **Vóór een dérde tier komt eerst de gedeelde endpoint-orkestratie (#1271, stap 1 van epic
+   #826).** Een endpoint bestaat uit aansluitwerk — routeparameter lezen, rollen controleren,
+   client uit DI halen, resultaat naar `IActionResult` vertalen — en uit de databasevraag zelf.
+   Alleen dat tweede deel is tier-gebonden; het eerste is per tier identiek.
+
+   Bij twee tiers is dat 660 woordelijk gedupliceerde regels (gemeten bij #1266). Bij drie wordt
+   het ongeveer het dubbele. Die laag hoort dus gebouwd te zijn *voordat* de SQLite-tier zijn
+   endpoints krijgt, niet erna — anders wordt er een derde kopie geschreven die daarna weer
+   opgeruimd moet worden.
+
+   Vorm: een apart project dat wél op ASP.NET Core en de Azure Functions Worker mag leunen.
+   `Planner.Shared` blijft framework-vrij; die grens is er voor testbaarheid en is bij ThemeCore
+   (#1248) en FeedbackCore (#1130) vastgelegd. De databasetoegang gaat als delegate mee — net
+   zoals `SportlinkEndpointCore` dat al doet met de instellingenlezer — dus dit is géén gedeelde
+   providerabstractie en botst niet met regel 2.
+
 Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
 `dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
 empirisch bevestigde Postgres-lowercase-folding-valkuil.
