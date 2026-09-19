@@ -19,6 +19,22 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
+  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
+  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
+  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
+  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
+  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
+  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
+
+### Changed
+- **De thema-functionaliteit bestond twee keer in de code, één keer per databasesoort (#1248).**
+  Dat betekende dat elke aanpassing aan de kleuren ook twee keer met de hand moest, in twee
+  bestanden die niets van elkaar wisten — met het risico dat een verbetering of beveiligingsfix in
+  het ene bestand terechtkwam en in het andere werd vergeten. Alles wat niet met de database te
+  maken heeft staat nu op één plek, met tests eromheen die er eerder helemaal niet waren. Voor de
+  beheerder verandert er niets aan wat het scherm doet; het maakt toekomstige uitbreidingen van het
+  thema wel betrouwbaarder. Deze ontdubbeling bracht meteen bovenstaande fout aan het licht.
 - **De instellingen van de club konden stilzwijgend dubbel in de database staan, waarna de
   applicatie willekeurig één van de twee gebruikte (#1218).** De tabel met clubinstellingen had
   geen enkele regel die dat tegenhield. Bij twee regels voor dezelfde club koos het systeem er

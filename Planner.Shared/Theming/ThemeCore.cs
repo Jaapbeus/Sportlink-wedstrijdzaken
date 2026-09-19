@@ -204,7 +204,13 @@ public static class ThemeCore
     public static string? HostUitWebsiteUrl(string? websiteUrl)
     {
         if (string.IsNullOrWhiteSpace(websiteUrl)) return null;
-        return Uri.TryCreate(websiteUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
+        if (!Uri.TryCreate(websiteUrl, UriKind.Absolute, out var uri)) return null;
+
+        // Zelfde Unix-valkuil als in ResolveUrl (#1252): een opgeslagen waarde als "/pad" parseert
+        // hier succesvol als file:-URI en levert dan een lege host op. Expliciet op schema en een
+        // niet-lege host controleren, zodat er nooit een onzinnige allowlist-sleutel uit komt.
+        if (!IsHttpOfHttps(uri) || string.IsNullOrEmpty(uri.Host)) return null;
+        return uri.Host;
     }
 
     /// <summary>
@@ -309,15 +315,31 @@ public static class ThemeCore
 
     /// <summary>
     /// Maakt een absolute http/https-URL van een mogelijk relatieve verwijzing. Een ander schema
-    /// (<c>data:</c>, <c>javascript:</c>, ...) geeft <c>null</c>.
+    /// (<c>data:</c>, <c>javascript:</c>, <c>file:</c>, ...) geeft <c>null</c>.
+    /// <para>
+    /// Er wordt bewust met <see cref="UriKind.RelativeOrAbsolute"/> geparsed en daarna op
+    /// <see cref="Uri.IsAbsoluteUri"/> beslist, niet met <see cref="UriKind.Absolute"/> vooraf
+    /// (#1252): op Unix — en dus op het Linux Consumption Plan waar dit draait — parseert
+    /// <c>Uri.TryCreate("/favicon.ico", UriKind.Absolute, out _)</c> succesvol, als
+    /// <c>file:</c>-URI. De oude volgorde nam daardoor altijd de absolute tak, vond schema
+    /// <c>file</c> en gaf <c>null</c> terug; de relatieve tak was voor root-relatieve paden
+    /// onbereikbaar. Gevolg: favicon en logo kwamen er in productie nooit uit, zonder foutmelding.
+    /// Op Windows gaf dezelfde aanroep <c>false</c> en werkte het wél — een platformafhankelijke
+    /// stilte.
+    /// </para>
     /// </summary>
     public static string? ResolveUrl(string url, Uri baseUri)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
-        if (Uri.TryCreate(url, UriKind.Absolute, out var abs))
-            return abs.Scheme == "http" || abs.Scheme == "https" ? abs.ToString() : null;
-        if (Uri.TryCreate(baseUri, url, out var rel))
-            return rel.Scheme == "http" || rel.Scheme == "https" ? rel.ToString() : null;
-        return null;
+        if (!Uri.TryCreate(url, UriKind.RelativeOrAbsolute, out var kandidaat)) return null;
+
+        if (kandidaat.IsAbsoluteUri)
+            return IsHttpOfHttps(kandidaat) ? kandidaat.ToString() : null;
+
+        return Uri.TryCreate(baseUri, kandidaat, out var opgelost) && IsHttpOfHttps(opgelost)
+            ? opgelost.ToString()
+            : null;
     }
+
+    private static bool IsHttpOfHttps(Uri uri) => uri.Scheme == "http" || uri.Scheme == "https";
 }

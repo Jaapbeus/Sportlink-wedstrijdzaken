@@ -3968,6 +3968,58 @@ De MCP-sessie verscheen in `pg_stat_activity` als extra verbinding. Dat is geen 
 bruikbaar detail: het bevestigt dat de read-only verbinding daadwerkelijk tot stand kwam, en het
 verklaart waarom het aantal verbindingen tijdens een controle één hoger ligt dan erbuiten.
 
+## 73. Thema-logica gedeeld — en de platformafhankelijke bug die de duplicatie verborgen hield (#1248, #1252)
+
+Vierde stuk provider-onafhankelijke logica dat naar `Planner.Shared` verhuist, na de drie van §60.
+`FunctionApp/Admin/AdminThemeFunction.cs` en `FunctionApp.Postgres/Admin/AdminThemeFunction.cs`
+bevatten dezelfde zeven regexen, dezelfde `_skipColors`-lijst, dezelfde hexvalidatie, dezelfde
+SSRF-allowlist-flow en dezelfde standaardkleuren als magic strings; het enige echte verschil was de
+databaseclient en de kolomnaam-casing. De Postgres-tier was hier een generieke 1-op-1 poort (#887),
+geen bewuste keuze voor thema-logica — maar het gevolg was wel dat elke wijziging aan het
+kleurmodel twee keer met de hand moest, in twee bestanden die niets van elkaar weten.
+
+**Gedeeld:** `Planner.Shared/Theming/ThemeCore.cs` — kleur-/favicon-/logo-extractie, hexvalidatie,
+de allowlist-vergelijking, `ThemeUpdateRequest`, de standaardkleuren en het GET-responscontract.
+Zelfde vorm als `FeedbackCore` (§60): een pure klasse zonder ASP.NET Core-afhankelijkheid, met
+status-enums en resultaatrecords. Elke tier houdt alleen de eigen databasetoegang over en vertaalt
+een status naar `IActionResult`. Beide bestanden zijn daarmee van ~310 naar 178 regels gegaan en
+verschillen nog uitsluitend in `SqlConnection` vs. `NpgsqlConnection`, de query-tekst en de
+klasse-documentatie.
+
+Eén detail dat bij het delen bewaard moest blijven: de allowlist-host komt als **lui**
+`Func<Task<string?>>` binnen, niet als kant-en-klare waarde. Anders zou een onbruikbare URL ineens
+eerst een `WaitForDatabaseAsync` + query kosten, terwijl beide tiers de vorm van de URL daarvóór al
+afwezen. Een ontdubbeling die stilletjes de volgorde verandert is geen ontdubbeling meer.
+
+### De bug die pas zichtbaar werd toen er voor het eerst een test op stond
+
+Er bestond geen enkele test op deze logica — precies het risico dat #1248 beschrijft. De tests die
+bij deze consolidatie zijn toegevoegd vielen meteen om op zes gevallen, en dat bleek geen
+testfout maar **#1252**:
+
+```csharp
+if (Uri.TryCreate(url, UriKind.Absolute, out var abs))
+    return abs.Scheme == "http" || abs.Scheme == "https" ? abs.ToString() : null;
+if (Uri.TryCreate(baseUri, url, out var rel))      // ← onbereikbaar voor "/pad"
+```
+
+Op Unix parseert `Uri.TryCreate("/favicon.ico", UriKind.Absolute, out _)` **succesvol**, als
+`file:`-URI. De eerste tak wordt dus genomen, het schema is `file`, en de methode geeft `null`
+terug; de relatieve tak is voor root-relatieve paden onbereikbaar. Gevolg: favicon- en
+logo-extractie leverden in productie **nooit** iets op — ook de ingebouwde terugval `/favicon.ico`
+niet — zonder foutmelding, want `null` is een geldige waarde in een geslaagd antwoord.
+
+Op Windows geeft dezelfde aanroep `false` en werkt de code wél zoals bedoeld. Dat is de reden dat
+dit jaren onopgemerkt bleef: de fout bestaat alleen op het platform waar de code draait (Linux
+Consumption) en niet op het platform waar een ontwikkelaar hem het snelst zou zien.
+
+**De les, breder dan thema:** `Uri.TryCreate(..., UriKind.Absolute, ...)` is geen betrouwbare test
+voor "is dit een absolute URL" wanneer de invoer ook een pad kan zijn. Gebruik
+`UriKind.RelativeOrAbsolute` en beslis daarna op `IsAbsoluteUri`. Dezelfde valkuil zat in
+`HostUitWebsiteUrl`, waar een opgeslagen waarde als `/pad` een lege host opleverde in plaats van
+`null`; die controleert nu expliciet op schema én niet-lege host. Beide zijn fail-closed, dus er
+was geen security-gat — maar wel een stille onjuistheid.
+
 ## §-verwijzingen in migratiekoppen — vertaaltabel (#1236)
 
 > **Migratiebestanden worden nooit achteraf gewijzigd.** `MigrationRunner` legt per bestand een

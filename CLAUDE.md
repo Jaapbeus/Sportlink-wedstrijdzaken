@@ -901,6 +901,30 @@ controles in plaats van één expliciete).
 
 ---
 
+### Thema-logica — één gedeelde kern, en nooit `UriKind.Absolute` als "is dit een URL"-test (#1248, #1252)
+
+Twee harde regels:
+
+1. **Alle tier-onafhankelijke thema-logica staat in `Planner.Shared/Theming/ThemeCore.cs`.**
+   Kleur-/favicon-/logo-extractie, hexvalidatie, de SSRF-allowlist-vergelijking, `ThemeUpdateRequest`,
+   de standaardkleuren en het GET-responscontract horen daar en nergens anders. Een
+   `AdminThemeFunction.cs` bevat uitsluitend nog databasetoegang en de vertaling van een
+   `ThemeCore`-status naar een HTTP-respons. Een nieuwe regex, kleurconstante of validatieregel in
+   één van beide tierbestanden is een architectuurschending — dat is exact het probleem dat #1248
+   oploste (twee kopieën, geen gedeelde test, dus silent drift). Zelfde precedent en zelfde vorm als
+   `FeedbackCore`/`SsrfProtection` (#1130).
+
+2. **`Uri.TryCreate(x, UriKind.Absolute, out _)` is géén betrouwbare test voor "is dit een absolute
+   URL" zodra de invoer ook een pad kan zijn.** Op Unix — en dus op het Linux Consumption Plan waar
+   deze code draait — parseert `"/favicon.ico"` daarmee **succesvol**, als `file:`-URI. Op Windows
+   geeft dezelfde aanroep `false`. Code die op die uitkomst vertakt werkt dan lokaal op Windows en
+   faalt stilzwijgend in productie: #1252 maakte zo jarenlang élke favicon- en logo-extractie
+   `null`, zonder foutmelding, omdat de relatieve tak onbereikbaar was. Gebruik
+   `UriKind.RelativeOrAbsolute` en beslis daarna op `IsAbsoluteUri`. Controleer bij een
+   host-vergelijking bovendien expliciet op schema én niet-lege host.
+
+---
+
 ### Sportlink Web Extension — één helper op de server, geen code in de Razor-pagina's (#1122)
 
 Vastgelegd na de review van epic #986. Twee harde regels:
