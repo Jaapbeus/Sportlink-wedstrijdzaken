@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter, vereist voor planner- en sync-endpoints.\n  Gebruik de Azure Function key (voor planner-endpoints) of de Master key (voor admin sync-matches en\n  populate-sunset).\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist voor\n  alle `/beheer/`- en `/feedback/`-endpoints. Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.4.4.0",
+    "version": "3.5.0.5",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -2663,6 +2663,32 @@
           "logoUrl": {
             "type": "string",
             "nullable": true
+          },
+          "lightColors": {
+            "type": "object",
+            "nullable": true,
+            "description": "Volledig kleurenpalet voor de lichte modus (#1254). Sleutel -> hexwaarde.\nBewust een vrije sleutelverzameling en geen veld per kleur: het aantal kleuren groeit\nnog. `null` of leeg betekent: niet ingesteld, de client valt terug op de vier platte\nkleuren hierboven.\nEen sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en een waarde `#rrggbb` of\n`#rrggbbaa`; maximaal 40 sleutels per palet. De waarde belandt in een CSS custom\nproperty, dus vrije CSS zoals `rgba(...)` wordt geweigerd.\n",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
+            },
+            "example": {
+              "primary": "#1b6ec2",
+              "cardBg": "#ffffff"
+            }
+          },
+          "darkColors": {
+            "type": "object",
+            "nullable": true,
+            "description": "Als `lightColors`, voor de donkere modus.",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
+            },
+            "example": {
+              "primary": "#14213d",
+              "cardBg": "#171f30"
+            }
           }
         }
       },
@@ -2700,6 +2726,32 @@
           "logoUrl": {
             "type": "string",
             "nullable": true
+          },
+          "lightColors": {
+            "type": "object",
+            "nullable": true,
+            "description": "Volledig kleurenpalet voor de lichte modus (#1254). Sleutel -> hexwaarde.\nBewust een vrije sleutelverzameling en geen veld per kleur: het aantal kleuren groeit\nnog. `null` of leeg betekent: niet ingesteld, de client valt terug op de vier platte\nkleuren hierboven.\nEen sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en een waarde `#rrggbb` of\n`#rrggbbaa`; maximaal 40 sleutels per palet. De waarde belandt in een CSS custom\nproperty, dus vrije CSS zoals `rgba(...)` wordt geweigerd.\n",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
+            },
+            "example": {
+              "primary": "#1b6ec2",
+              "cardBg": "#ffffff"
+            }
+          },
+          "darkColors": {
+            "type": "object",
+            "nullable": true,
+            "description": "Als `lightColors`, voor de donkere modus.",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$"
+            },
+            "example": {
+              "primary": "#14213d",
+              "cardBg": "#171f30"
+            }
           }
         }
       },
@@ -7741,7 +7793,7 @@
         ],
         "operationId": "getTheme",
         "summary": "Club-thema ophalen",
-        "description": "Geeft de huidige themakleuren, favicon-URL en logo-URL uit `dbo.AppSettings`.\nGeeft standaardwaarden terug als er nog geen thema is ingesteld.\n",
+        "description": "Geeft de huidige themakleuren, favicon-URL, logo-URL en de licht/donker-paletten uit\n`dbo.AppSettings` (Postgres-tier: `public.appsettings`).\nGeeft standaardwaarden terug als er nog geen thema is ingesteld; `lightColors`/`darkColors`\nzijn dan `null` en de client valt terug op de vier platte kleuren.\n",
         "security": [
           {
             "easyAuth": []
@@ -7775,7 +7827,7 @@
         ],
         "operationId": "updateTheme",
         "summary": "Club-thema opslaan",
-        "description": "Slaat themakleuren, favicon-URL en logo-URL op in `dbo.AppSettings`.\nAlle kleurwaarden worden gevalideerd op hex-formaat (#rrggbb).\n",
+        "description": "Slaat themakleuren, favicon-URL, logo-URL en de licht/donker-paletten op in\n`dbo.AppSettings` (Postgres-tier: `public.appsettings`).\nDe vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in\n`lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het\nhele verzoek af met HTTP 400.\n",
         "security": [
           {
             "easyAuth": []

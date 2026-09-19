@@ -39,7 +39,8 @@ public static class AdminThemeFunction
             await using var command = new NpgsqlCommand(@"
                 SELECT themecolorprimary, themecolorsecondary, themecoloraccent,
                        themecolortextonprimary, themeclubwebsiteurl,
-                       faviconurl, logourl
+                       faviconurl, logourl,
+                       themecolorslightjson, themecolorsdarkjson
                 FROM public.appsettings
                 WHERE clubcode = @clubcode", connection);
             command.Parameters.AddWithValue("clubcode", clubCode);
@@ -54,7 +55,9 @@ public static class AdminThemeFunction
                 TextOnPrimary:  reader.IsDBNull(3) ? ThemeCore.DefaultTextOnPrimaryColor : reader.GetString(3),
                 ClubWebsiteUrl: reader.IsDBNull(4) ? ""                                  : reader.GetString(4),
                 FaviconUrl:     reader.IsDBNull(5) ? null                                : reader.GetString(5),
-                LogoUrl:        reader.IsDBNull(6) ? null                                : reader.GetString(6))));
+                LogoUrl:        reader.IsDBNull(6) ? null                                : reader.GetString(6),
+                LightColors:    ThemeCore.PaletUitJson(reader.IsDBNull(7) ? null : reader.GetString(7)),
+                DarkColors:     ThemeCore.PaletUitJson(reader.IsDBNull(8) ? null : reader.GetString(8)))));
         }
         catch (Exception ex)
         {
@@ -103,7 +106,9 @@ public static class AdminThemeFunction
                     themecolortextonprimary = @textonprimary,
                     themeclubwebsiteurl     = @websiteurl,
                     faviconurl              = @faviconurl,
-                    logourl                 = @logourl
+                    logourl                 = @logourl,
+                    themecolorslightjson    = @lightjson,
+                    themecolorsdarkjson     = @darkjson
                 WHERE clubcode             = @clubcode", connection);
             command.Parameters.AddWithValue("primary",        dto.Primary       ?? ThemeCore.DefaultPrimaryColor);
             command.Parameters.AddWithValue("secondary",      dto.Secondary     ?? ThemeCore.DefaultSecondaryColor);
@@ -112,6 +117,8 @@ public static class AdminThemeFunction
             command.Parameters.AddWithValue("websiteurl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
             command.Parameters.AddWithValue("faviconurl",     (object?)dto.FaviconUrl     ?? DBNull.Value);
             command.Parameters.AddWithValue("logourl",        (object?)dto.LogoUrl        ?? DBNull.Value);
+            command.Parameters.AddWithValue("lightjson",      (object?)ThemeCore.PaletNaarJson(dto.LightColors) ?? DBNull.Value);
+            command.Parameters.AddWithValue("darkjson",       (object?)ThemeCore.PaletNaarJson(dto.DarkColors)  ?? DBNull.Value);
             command.Parameters.AddWithValue("clubcode",       clubCode);
             await command.ExecuteNonQueryAsync();
 

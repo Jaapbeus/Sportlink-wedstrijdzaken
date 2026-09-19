@@ -16,7 +16,7 @@ info:
       `WEBSITE_SITE_NAME` afwezig is.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.4.4.0
+  version: 3.5.0.5
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2065,6 +2065,33 @@ components:
         logoUrl:
           type: string
           nullable: true
+        lightColors:
+          type: object
+          nullable: true
+          description: |
+            Volledig kleurenpalet voor de lichte modus (#1254). Sleutel -> hexwaarde.
+            Bewust een vrije sleutelverzameling en geen veld per kleur: het aantal kleuren groeit
+            nog. `null` of leeg betekent: niet ingesteld, de client valt terug op de vier platte
+            kleuren hierboven.
+            Een sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en een waarde `#rrggbb` of
+            `#rrggbbaa`; maximaal 40 sleutels per palet. De waarde belandt in een CSS custom
+            property, dus vrije CSS zoals `rgba(...)` wordt geweigerd.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#1b6ec2"
+            cardBg: "#ffffff"
+        darkColors:
+          type: object
+          nullable: true
+          description: Als `lightColors`, voor de donkere modus.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#14213d"
+            cardBg: "#171f30"
 
     ThemeSaveRequest:
       type: object
@@ -2094,6 +2121,33 @@ components:
         logoUrl:
           type: string
           nullable: true
+        lightColors:
+          type: object
+          nullable: true
+          description: |
+            Volledig kleurenpalet voor de lichte modus (#1254). Sleutel -> hexwaarde.
+            Bewust een vrije sleutelverzameling en geen veld per kleur: het aantal kleuren groeit
+            nog. `null` of leeg betekent: niet ingesteld, de client valt terug op de vier platte
+            kleuren hierboven.
+            Een sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en een waarde `#rrggbb` of
+            `#rrggbbaa`; maximaal 40 sleutels per palet. De waarde belandt in een CSS custom
+            property, dus vrije CSS zoals `rgba(...)` wordt geweigerd.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#1b6ec2"
+            cardBg: "#ffffff"
+        darkColors:
+          type: object
+          nullable: true
+          description: Als `lightColors`, voor de donkere modus.
+          additionalProperties:
+            type: string
+            pattern: '^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$'
+          example:
+            primary: "#14213d"
+            cardBg: "#171f30"
 
     ThemeExtractResponse:
       type: object
@@ -5547,8 +5601,10 @@ paths:
       operationId: getTheme
       summary: Club-thema ophalen
       description: |
-        Geeft de huidige themakleuren, favicon-URL en logo-URL uit `dbo.AppSettings`.
-        Geeft standaardwaarden terug als er nog geen thema is ingesteld.
+        Geeft de huidige themakleuren, favicon-URL, logo-URL en de licht/donker-paletten uit
+        `dbo.AppSettings` (Postgres-tier: `public.appsettings`).
+        Geeft standaardwaarden terug als er nog geen thema is ingesteld; `lightColors`/`darkColors`
+        zijn dan `null` en de client valt terug op de vier platte kleuren.
       security:
         - easyAuth: []
       responses:
@@ -5570,8 +5626,11 @@ paths:
       operationId: updateTheme
       summary: Club-thema opslaan
       description: |
-        Slaat themakleuren, favicon-URL en logo-URL op in `dbo.AppSettings`.
-        Alle kleurwaarden worden gevalideerd op hex-formaat (#rrggbb).
+        Slaat themakleuren, favicon-URL, logo-URL en de licht/donker-paletten op in
+        `dbo.AppSettings` (Postgres-tier: `public.appsettings`).
+        De vier platte kleurwaarden worden gevalideerd op `#rrggbb`. Elke sleutel en waarde in
+        `lightColors`/`darkColors` wordt afzonderlijk gevalideerd; één ongeldige waarde wijst het
+        hele verzoek af met HTTP 400.
       security:
         - easyAuth: []
       requestBody:

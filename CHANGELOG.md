@@ -18,6 +18,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **De database kan nu een volledig kleurenpalet bewaren voor zowel een lichte als een donkere
+  weergave (#1254).** Dit is de eerste stap van de thema-uitbreiding: de opslag en de API kunnen de
+  twee sets aan, het beheerscherm en de schakelaar volgen in een latere stap. Voor een club die nog
+  niets heeft ingesteld verandert er niets — die houdt exact het huidige thema, want de bestaande
+  vier kleuren blijven de terugval.
+
 ### Fixed
 - **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
   systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
