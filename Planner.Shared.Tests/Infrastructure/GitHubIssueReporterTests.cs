@@ -3,10 +3,10 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Moq.Protected;
-using SportlinkFunction.Infrastructure;
+using Planner.Shared.Infrastructure;
 using Xunit;
 
-namespace FunctionApp.Tests.Infrastructure;
+namespace Planner.Shared.Tests.Infrastructure;
 
 /// <summary>
 /// Tests voor GitHubIssueReporter.SearchIssueAsync — regressietest voor #830.

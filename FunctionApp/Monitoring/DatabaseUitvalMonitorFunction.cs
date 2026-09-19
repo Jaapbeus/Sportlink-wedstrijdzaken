@@ -1,6 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Monitoring;
 using SportlinkFunction.Email;
 
 namespace SportlinkFunction.Monitoring;
@@ -33,28 +34,27 @@ namespace SportlinkFunction.Monitoring;
 /// <c>AdminSettingsFunction.TriggerFunctionAppRestartAsync</c>. Een club kan dus zonder extra
 /// Azure-configuratie blijven draaien op alleen de bestaande, e-mail-pipeline-afhankelijke noodmail.
 /// </para>
+///
+/// <para>
+/// <b>#1268:</b> de beslisregels — wanneer telt iets als uitval, hoe lang moet die duren, hoe vaak mag
+/// dezelfde uitval gemeld worden, hoe luidt de melding — staan in <see cref="DatabaseUitvalCore"/> en
+/// zijn daar getest. De Postgres-tier gebruikt exact dezelfde regels; hier blijft alleen het
+/// ARM-specifieke deel over.
+/// </para>
 /// </summary>
 public class DatabaseUitvalMonitorFunction
 {
-    /// <summary>Gedeelde throttle-sleutel met <c>EmailProcessorFunction</c>'s database-noodmail: welke
-    /// van de twee paden ook het eerst een melding verstuurt, onderdrukt de ander voor dezelfde uitval.</summary>
-    internal const string ThrottleSleutel = "database-noodmail";
+    /// <summary>Zie <see cref="DatabaseUitvalCore.NoodmailSleutel"/>.</summary>
+    internal const string ThrottleSleutel = DatabaseUitvalCore.NoodmailSleutel;
 
     /// <summary>
-    /// Een normale serverless auto-pause herstelt doorgaans binnen enkele minuten bij de eerstvolgende
-    /// toegang. Een pauze die langer aanhoudt dan deze marge duidt op een structureel probleem (bijv.
-    /// de maandelijkse gratis vCore-limiet bereikt) in plaats van routine-gedrag — en voorkomt ruis op
-    /// elke normale nachtelijke auto-pause (exact het bezwaar tegen een kale Activity Log Alert, zie
-    /// issue #831).
+    /// Azure SQL serverless kent een routinematige auto-pause; zie
+    /// <see cref="DatabaseUitvalCore.MinimaleUitvalVoorMelding"/> voor waarom die drempel bestaat.
     /// </summary>
-    internal static readonly TimeSpan MinimaleUitvalVoorMelding = TimeSpan.FromHours(6);
+    internal static readonly TimeSpan MinimaleUitvalVoorMelding = DatabaseUitvalCore.MinimaleUitvalVoorMelding;
 
-    /// <summary>
-    /// Geen herhaalde melding binnen dit venster. De dagelijkse schedule zorgt al voor een natuurlijke
-    /// maximale herhalingsfrequentie tijdens een langdurige uitval (~1x per dag); dit voorkomt alleen
-    /// dubbele mails als de functie een keer vaker dan gepland binnen één dag draait.
-    /// </summary>
-    internal static readonly TimeSpan MinimaleHerhalingsinterval = TimeSpan.FromHours(20);
+    /// <summary>Zie <see cref="DatabaseUitvalCore.MinimaleHerhalingsinterval"/>.</summary>
+    internal static readonly TimeSpan MinimaleHerhalingsinterval = DatabaseUitvalCore.MinimaleHerhalingsinterval;
 
     [Function("DatabaseUitvalMonitor")]
     public async Task Run(
@@ -97,7 +97,8 @@ public class DatabaseUitvalMonitorFunction
 
     /// <summary>
     /// Kernlogica, los van de Functions-runtime zodat dit zonder een echte Azure-omgeving unit-testbaar
-    /// is (#831).
+    /// is (#831). Het besluit zelf komt uit <see cref="DatabaseUitvalCore.Beoordeel"/> (#1268); hier
+    /// blijft alleen het uitvoeren ervan over.
     /// </summary>
     internal static async Task VerwerkStatusAsync(
         IDatabaseStatusReader statusReader,
@@ -118,66 +119,51 @@ public class DatabaseUitvalMonitorFunction
             return;
         }
 
-        if (!string.Equals(status.Status, "Paused", StringComparison.OrdinalIgnoreCase))
-        {
-            if (await throttleStore.LaatsteKeerVerstuurdAsync(ThrottleSleutel) is not null)
-            {
-                await throttleStore.WisAsync(ThrottleSleutel);
-                log.LogInformation("Database-status is '{Status}' — eerdere uitvalmelding-registratie gewist", status.Status);
-            }
-
-            return;
-        }
-
-        // Zonder pausedDate kan de duur niet betrouwbaar bepaald worden — dan liever niets melden dan
-        // een fout-positief op een normale, korte auto-pause.
-        var uitvalDuur = status.PausedSinceUtc is { } pausedSinds ? nuUtc - pausedSinds : (TimeSpan?)null;
-        if (uitvalDuur is null || uitvalDuur.Value < MinimaleUitvalVoorMelding)
-        {
-            log.LogInformation(
-                "Database gepauzeerd sinds {PausedSinds:o} — binnen normale auto-pause marge, geen melding",
-                status.PausedSinceUtc);
-            return;
-        }
-
         var laatsteMelding = await throttleStore.LaatsteKeerVerstuurdAsync(ThrottleSleutel);
-        if (laatsteMelding is not null && (nuUtc - laatsteMelding.Value) < MinimaleHerhalingsinterval)
+        var besluit = DatabaseUitvalCore.Beoordeel(
+            status, laatsteMelding, nuUtc, DatabaseUitvalCore.MinimaleUitvalVoorMelding);
+
+        if (besluit.Actie == DatabaseUitvalActie.WisRegistratie)
         {
-            log.LogInformation(
-                "Uitvalmelding al verstuurd binnen de laatste {Uren} uur — geen herhaling",
-                MinimaleHerhalingsinterval.TotalHours);
+            await throttleStore.WisAsync(ThrottleSleutel);
+            log.LogInformation("Database-uitvalmonitor: {Reden}", besluit.Reden);
             return;
         }
 
-        var verzonden = await StuurUitvalMeldingAsync(graphService, uitvalDuur.Value, log);
-        if (verzonden)
+        if (besluit.Actie != DatabaseUitvalActie.Melden)
+        {
+            log.LogInformation("Database-uitvalmonitor: {Reden}", besluit.Reden);
+            return;
+        }
+
+        if (await StuurUitvalMeldingAsync(graphService, besluit.UitvalDuur!.Value, nuUtc, log))
             await throttleStore.RegistreerVerstuurdAsync(ThrottleSleutel, nuUtc);
     }
 
-    private static async Task<bool> StuurUitvalMeldingAsync(IEmailGraphService graphService, TimeSpan uitvalDuur, ILogger log)
+    private static async Task<bool> StuurUitvalMeldingAsync(
+        IEmailGraphService graphService, TimeSpan uitvalDuur, DateTime nuUtc, ILogger log)
     {
         var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
         var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
-        var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
+        var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(nuUtc, nlZone);
 
-        var body = $"URGENT: De database staat al circa {uitvalDuur.TotalHours:F0} uur gepauzeerd.\n\n"
-                 + $"Tijdstip van deze controle: {nlTijd:dd-MM-yyyy HH:mm}\n\n"
-                 + "Deze melding komt van de onafhankelijke, dagelijkse database-uitvalmonitor. Die "
-                 + "controleert de status rechtstreeks via de Azure Management API, los van de "
-                 + "e-mailverwerking. Komt er geen (of geen relevante) e-mail binnen terwijl de database "
-                 + "gepauzeerd staat, dan zou de eerdere, e-mail-pipeline-afhankelijke noodmail dit nooit "
-                 + "signaleren.\n\n"
-                 + "Meest waarschijnlijke oorzaak: de maandelijkse gratis vCore-limiet is bereikt.\n\n"
-                 + "Controleer in Azure Portal:\n"
-                 + "  • Azure SQL Server → Database → Overzicht → Status (moet 'Online' zijn)\n"
-                 + "  • Compute + storage → Free monthly vCore amount (maandlimiet bereikt?)\n\n"
-                 + "Als de maandlimiet bereikt is: Azure Portal → SQL database → Compute and Storage → "
-                 + "\"Continue using database with additional charges\"";
+        var body = DatabaseUitvalCore.BouwNoodmailBody(new DatabaseUitvalMeldingContext(
+            UitvalDuur: uitvalDuur,
+            TijdstipControleLokaal: nlTijd,
+            StatusOmschrijving: "gepauzeerd",
+            DuurHerkomst: "het tijdstip waarop het platform de database heeft gepauzeerd (properties.pausedDate)",
+            BronOmschrijving: "de Azure Management API",
+            VermoedelijkeOorzaak: "de maandelijkse gratis vCore-limiet is bereikt",
+            ControleStappen:
+            [
+                "Azure Portal -> SQL-database -> Overzicht -> Status (moet 'Online' zijn)",
+                "Compute + storage -> Free monthly vCore amount (maandlimiet bereikt?)",
+                "Bij een bereikte maandlimiet: Compute and Storage -> \"Continue using database with additional charges\"",
+            ]));
 
         try
         {
-            await graphService.SendReplyAsync(mailbox,
-                "URGENT: Database staat langdurig gepauzeerd", body, null);
+            await graphService.SendReplyAsync(mailbox, DatabaseUitvalCore.NoodmailOnderwerp, body, null);
             // Geen ontvangeradres in het log (SECURITY.md Laag 5: e-mailadressen nooit loggen) — #1201.
             // De uitvalduur is veilige, technische metadata en blijft wél zichtbaar: zonder die waarde
             // is uit het log niet af te leiden hoe ernstig de gemelde uitval was.

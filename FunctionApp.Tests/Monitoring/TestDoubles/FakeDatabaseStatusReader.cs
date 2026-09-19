@@ -1,3 +1,4 @@
+using Planner.Shared.Monitoring;
 using SportlinkFunction.Monitoring;
 
 namespace FunctionApp.Tests.Monitoring.TestDoubles;
@@ -15,6 +16,7 @@ internal sealed class FakeDatabaseStatusReader : IDatabaseStatusReader
         if (ExceptionToThrow is not null)
             throw ExceptionToThrow;
 
-        return Task.FromResult(StatusToReturn ?? new DatabaseStatusInfo("Online", null));
+        return Task.FromResult(StatusToReturn
+            ?? new DatabaseStatusInfo("Online", DatabaseBeschikbaarheid.Beschikbaar, null));
     }
 }

@@ -8,22 +8,24 @@ namespace SportlinkFunction.TeamResolution;
 /// regex-normalisatie en stringheuristieken zijn verwijderd.
 ///
 /// <para>
-/// De identiteitsbeslissing is deterministisch. Alleen wanneer de deterministische stappen méérdere
-/// kandidaten overhouden mag een optionele <see cref="ITeamDisambiguator"/> kiezen uit die korte
-/// lijst (forced choice, #697), en die keuze wordt daarna nog gevalideerd tegen de kandidaten.
+/// De identiteitsbeslissing is volledig deterministisch. Meerdere kandidaten leveren altijd
+/// <c>MeerdereKandidaten</c> op — geen gok, geen stille aanname.
+/// </para>
+///
+/// <para>
+/// <b>Gewijzigd bij #1268.</b> Tot dan kon een optionele <c>ITeamDisambiguator</c> hier een keuze
+/// laten maken door een taalmodel (#697). Die bestond alleen op deze tier; de Postgres-tier — die
+/// in productie draait — gaf al MeerdereKandidaten terug. Beide tiers zijn gelijkwaardig, dus dat
+/// verschil moest weg, en de eigenaar koos voor het deterministische gedrag als norm: een
+/// teamnaam laten raden is een productkeuze, en die is hier bewust niet gemaakt. Gevolg: er wordt
+/// vanuit deze klasse ook geen alias meer geleerd — dat gebeurde alleen ná een AI-keuze.
 /// </para>
 ///
 /// Volgorde: (1) gevalideerde alias → (2) exacte canonieke match → (3) kandidaten op
-/// leeftijd+teamnummer → (4) bij >1 kandidaat: disambiguatie, of onbeslist teruggeven.
+/// leeftijd+teamnummer → (4) bij >1 kandidaat: onbeslist teruggeven.
 /// </summary>
-public sealed class TeamResolver(
-    ITeamCandidateRepository repository,
-    ITeamDisambiguator? disambiguator = null,
-    TeamAliasLearningService? aliasLearning = null) : ITeamResolver
+public sealed class TeamResolver(ITeamCandidateRepository repository) : ITeamResolver
 {
-    /// <summary>Confidence bij een keuze uit disambiguatie — bewust lager dan een exacte match.</summary>
-    private const double DisambiguatieConfidence = 0.7;
-
     /// <summary>Confidence bij een unieke kandidaat na prefixloze zoektocht ("13-1" → precies één team).</summary>
     private const double UniekeKandidaatConfidence = 0.9;
 
@@ -62,29 +64,8 @@ public sealed class TeamResolver(
                 return Opgelost(kandidaten[0], UniekeKandidaatConfidence, [], ResolutionBron.ExacteMatch);
 
             default:
-                return await ResolveMetDisambiguatieAsync(request, ruweTekst, kandidaten);
+                return Onbeslist(kandidaten);
         }
-    }
-
-    private async Task<TeamResolutionResult> ResolveMetDisambiguatieAsync(
-        TeamResolutionRequest request, string ruweTekst, IReadOnlyList<TeamCandidate> kandidaten)
-    {
-        if (disambiguator is null)
-            return Onbeslist(kandidaten);
-
-        var gekozenId = await disambiguator.KiesAsync(ruweTekst, kandidaten);
-        var gekozen = gekozenId is null ? null : kandidaten.FirstOrDefault(k => k.TeamId == gekozenId);
-
-        if (gekozen is null) return Onbeslist(kandidaten);
-
-        // Leg de keuze vast als 'pending' alias. Zonder dit wordt voor élke terugkerende
-        // afwijkende schrijfwijze opnieuw een AI-call betaald, blijft de keuze
-        // niet-deterministisch, en ziet de coördinator op de aliassenpagina nooit iets staan.
-        // Pas na goedkeuring wordt de alias vertrouwd, dus dit kan zich niet zelfversterken.
-        if (aliasLearning is not null)
-            await aliasLearning.LegVastAsync(request.ClubCode, ruweTekst, gekozen.TeamId, "AiDisambiguatie");
-
-        return Opgelost(gekozen, DisambiguatieConfidence, kandidaten, ResolutionBron.AiDisambiguatie);
     }
 
     private static TeamResolutionResult Onbeslist(IReadOnlyList<TeamCandidate> kandidaten)

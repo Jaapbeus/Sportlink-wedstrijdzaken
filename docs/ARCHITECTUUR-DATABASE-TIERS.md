@@ -3055,6 +3055,11 @@ vertaald.)*
   `IDatabaseStatusReader`, #831 op de SQL Server-tier) is niet vertaald — die controleert
   specifiek Azure SQL-status, wat hier niet van toepassing is. De noodmail-throttle zelf
   (`INoodmailThrottleStore`) is wél vertaald, dus de e-mail-pipeline-afhankelijke noodmail werkt.
+  *(Bijgewerkt bij #1268: de monitor is er nu wél, maar niet als vertaling. De beslisregels zijn uit
+  de SQL Server-tier gelicht naar `Planner.Shared/Monitoring/DatabaseUitvalCore.cs`, die beide tiers
+  aanroepen; alleen het ophalen van de status is per tier eigen. "Niet van toepassing" bleek te gaan
+  over de ARM-aanroep, niet over de monitor — zie docs/MONITORING.md, "Uitvalmonitor op de
+  Postgres-tier".)*
 
 **`BerichtAiService.DetecteerCorrectieAsync` alsnog toegevoegd** (#323-functionaliteit) — deze
 methode bestond nog niet op de Postgres-tier, terwijl `LearningMomentRepository` (het andere deel

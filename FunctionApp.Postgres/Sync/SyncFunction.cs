@@ -53,6 +53,11 @@ public static class SyncFunction
             // Loggen én opnieuw gooien: zonder de rethrow slikt deze catch de uitzondering op en
             // rapporteert de host de invocatie als Success (#1081).
             log.LogError(ex, "PostgresFetchAndStoreApiData fout");
+            // #1268: zelfde automatische foutrapportage als de SQL Server-tier al had. Bewust vóór
+            // de rethrow — erna is deze regel onbereikbaar. RapporteerAsync gooit zelf nooit: alle
+            // fouten in de rapportage worden daar afgevangen en gelogd, dus de rethrow hieronder
+            // levert altijd de oorspronkelijke uitzondering af bij de host.
+            await FoutRapportage.RapporteerAsync(ex, "PostgresFetchAndStoreApiData", log);
             throw;
         }
     }
@@ -116,6 +121,8 @@ public static class SyncFunction
         catch (Exception ex)
         {
             log.LogError(ex, "PostgresSyncMatchesHttp fout");
+            // #1268: tegenhanger van de SQL Server-tier (FunctionApp/Function1.cs, SyncMatchesHttp).
+            await FoutRapportage.RapporteerAsync(ex, "PostgresSyncMatchesHttp", log);
             return new StatusCodeResult(500);
         }
     }

@@ -57,10 +57,9 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
         new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
             .AsIChatClient());
 
-    // Forced-choice teamdisambiguatie (#697). Alleen geregistreerd als er een AI-provider is:
-    // zonder OpenAiApiKey blijft TeamResolver puur deterministisch en geeft bij ambiguïteit
-    // gewoon de kandidatenlijst terug in plaats van te kiezen.
-    builder.Services.AddSingleton<ITeamDisambiguator, TeamDisambiguationAiService>();
+    // #1268: hier stond de forced-choice teamdisambiguatie (#697). Die bestond alleen op deze
+    // tier; de Postgres-tier gaf bij ambiguïteit altijd de kandidatenlijst terug. Beide tiers zijn
+    // gelijkwaardig, en de eigenaar koos het deterministische gedrag als norm — zie TeamResolver.
 }
 
 // Sportlink Club API client (#991, #998): read-only Match API + token-refresh per functionele rol.
@@ -96,7 +95,9 @@ if (EgressGuard.ExternalIntegrationsAllowed())
 
 builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();
 builder.Services.AddSingleton<ITeamResolver, TeamResolver>();
-builder.Services.AddSingleton<TeamAliasLearningService>();
+// #1268: TeamAliasLearningService is niet meer geregistreerd. Hij werd uitsluitend door
+// TeamResolver gebruikt, en alleen ná een AI-disambiguatie — die er niet meer is. De klasse blijft
+// staan omdat de Postgres-tier hem ook heeft (daar eveneens ongeregistreerd): gelijke tiers.
 builder.Services.AddSingleton<TeamlijstGereedheid>();
 
 // Repository-boundary voor de e-mailverwerking (#827): vóór deze registratie omzeilden

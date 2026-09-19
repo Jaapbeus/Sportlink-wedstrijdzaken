@@ -57,6 +57,31 @@ routes_van() {
 
 sql="$(mktemp)"; pg="$(mktemp)"
 trap 'rm -f "$sql" "$pg"' EXIT
+# Timerfuncties per tier. Apart van de routes, want een timer heeft geen route: hij is alleen
+# zichtbaar als [Function("Naam")] met daaronder een [TimerTrigger(...)]-parameter. Python omdat
+# dat "hoort dit TimerTrigger bij déze [Function]?" betrouwbaar kan beslissen; een grep-vensterhack
+# zou bij een lange signatuur of een extra attribuut stilletjes de verkeerde kant op vallen.
+timers_van() {
+  git ls-files -- "$1/*.cs" | python3 -c '
+import re, sys
+namen = set()
+for pad in (r.strip() for r in sys.stdin if r.strip()):
+    try:
+        tekst = open(pad, encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    for m in re.finditer(r"\[Function\(\"([^\"]+)\"\)\]", tekst):
+        # Alles tot aan het volgende [Function( hoort bij deze functie.
+        rest = tekst[m.end():]
+        volgende = rest.find("[Function(")
+        blok = rest if volgende == -1 else rest[:volgende]
+        if "TimerTrigger" in blok:
+            namen.add(m.group(1))
+for n in sorted(namen):
+    print(n)
+'
+}
+
 routes_van FunctionApp            > "$sql"
 routes_van FunctionApp.Postgres   > "$pg"
 
@@ -101,6 +126,41 @@ while IFS= read -r route; do
   ontbreekt_pg=$((ontbreekt_pg + 1))
 done < <(comm -23 "$sql" "$pg")
 
+# ── Timers ──────────────────────────────────────────────────────────────────────────────────────
+# Toegevoegd bij #1268. De guard keek tot dan alleen naar HTTP-routes, en zag daardoor niet dat de
+# database-uitvalmonitor (#831) uitsluitend op de SQL Server-tier bestond — terwijl de Postgres-tier
+# in productie draait. Een achtergrondtaak die maar op één tier bestaat is net zo goed een gat als
+# een ontbrekend endpoint; hij is alleen minder zichtbaar, want niemand krijgt er een 404 van.
+sql_t="$(mktemp)"; pg_t="$(mktemp)"
+trap 'rm -f "$sql" "$pg" "$sql_t" "$pg_t"' EXIT
+timers_van FunctionApp          > "$sql_t"
+timers_van FunctionApp.Postgres > "$pg_t"
+
+n_sql_t="$(grep -c '' "$sql_t" || true)"
+n_pg_t="$(grep -c '' "$pg_t" || true)"
+if [ "$n_sql_t" -eq 0 ] || [ "$n_pg_t" -eq 0 ]; then
+  echo "::error::Geen timerfuncties gevonden in een van beide tiers (SQL Server: $n_sql_t, Postgres: $n_pg_t) — dat deel van deze guard bewijst dan niets."
+  exit 1
+fi
+
+echo "Timers: SQL Server-tier $n_sql_t, Postgres-tier $n_pg_t."
+
+while IFS= read -r timer; do
+  [ -n "$timer" ] || continue
+  if ! is_toegestaan alleen-postgres-timer "$timer"; then
+    echo "::error::Timer '$timer' draait alleen op de Postgres-tier. Beide tiers zijn gelijkwaardig (#1266) — bouw de SQL Server-tegenhanger, of zet de timer met een reden in $ALLOWLIST."
+    fail=1
+  fi
+done < <(comm -13 "$sql_t" "$pg_t")
+
+while IFS= read -r timer; do
+  [ -n "$timer" ] || continue
+  if ! is_toegestaan alleen-sqlserver-timer "$timer"; then
+    echo "::error::Timer '$timer' draait alleen op de SQL Server-tier. Bouw de Postgres-tegenhanger, of zet de timer met een reden in $ALLOWLIST."
+    fail=1
+  fi
+done < <(comm -23 "$sql_t" "$pg_t")
+
 openstaand="$(awk '!/^[[:space:]]*#/ && NF >= 3' "$ALLOWLIST" | grep -c '' || true)"
 echo "Alleen op Postgres: $ontbreekt_sql route(s). Alleen op SQL Server: $ontbreekt_pg route(s)."
 echo "Openstaande, gemotiveerde uitzonderingen in $ALLOWLIST: $openstaand."
@@ -114,4 +174,4 @@ if [ "$openstaand" -gt 0 ]; then
 fi
 
 echo
-echo "OK — geen ongemotiveerd routeverschil tussen de tiers."
+echo "OK — geen ongemotiveerd route- of timerverschil tussen de tiers."

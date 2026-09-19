@@ -23,6 +23,8 @@
     "AzureSubscriptionId": "",
     "AzureResourceGroupName": "",
     "AzureFunctionAppName": "",
+    "SUPABASE_PROJECT_REF": "",
+    "SUPABASE_ACCESS_TOKEN": "",
     "GitHubPat": "",
     "GitHubOwner": "",
     "GitHubRepo": "Sportlink-wedstrijdzaken",

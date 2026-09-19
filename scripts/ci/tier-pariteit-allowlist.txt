@@ -26,3 +26,9 @@ alleen-sqlserver sync-matches                                       Heet op de P
 # De twaalf routes van epic #986 die hier stonden, bestaan nu op beide tiers. Ze zijn weggehaald in
 # plaats van doorgestreept: een allowlist met dode regels is precies de rot die deze guard moet
 # voorkomen. De git-historie bewaart wat er stond.
+
+# ── Timers: zelfde naamsverschil als bij sync-matches (#1268) ────────────────────────────────────
+# De nachtelijke sync-timer heet op de twee tiers anders, net als zijn HTTP-tegenhanger hierboven.
+# Functioneel gelijkwaardig; uitlijnen is dezelfde kleine wijziging met dezelfde breaking-change-kant.
+alleen-postgres-timer   PostgresFetchAndStoreApiData   Heet op de SQL Server-tier 'FetchAndStoreApiData'; naamsverschil, geen ontbrekende functionaliteit.
+alleen-sqlserver-timer  FetchAndStoreApiData           Heet op de Postgres-tier 'PostgresFetchAndStoreApiData'; zelfde regel als hierboven.

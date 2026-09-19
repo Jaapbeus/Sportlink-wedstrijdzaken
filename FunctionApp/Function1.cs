@@ -48,7 +48,7 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError(ex, "FetchAndStoreApiData fout");
-                await GitHubIssueReporter.ReportAsync(ex, "FetchAndStoreApiData", log);
+                await FoutRapportage.RapporteerAsync(ex, "FetchAndStoreApiData", log);
             }
         }
 
@@ -102,7 +102,7 @@ namespace SportlinkFunction
             catch (Exception ex)
             {
                 log.LogError(ex, "SyncMatchesHttp fout");
-                await GitHubIssueReporter.ReportAsync(ex, "SyncMatchesHttp", log);
+                await FoutRapportage.RapporteerAsync(ex, "SyncMatchesHttp", log);
                 return new StatusCodeResult(500);
             }
         }

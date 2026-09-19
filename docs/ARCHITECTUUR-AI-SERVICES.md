@@ -62,10 +62,14 @@ builder.Services.AddSingleton<IChatClient>(
 | Component | Tier | Status |
 |-----------|------|--------|
 | `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | `IChatClient` via constructor |
-| `TeamDisambiguationAiService` | alleen SQL Server (`FunctionApp/TeamResolution/`) | `IChatClient` via constructor |
 | `Planner.Shared/Feedback/FeedbackCore` | gedeeld | `IChatClient` als methodeparameter |
 | Provider-registratie | per tier één regel in `Program.cs` | `new ChatClient(aiModelName, …).AsIChatClient()` |
 | Toekomstige AI-services | — | Altijd `IChatClient` vanaf aanmaak |
+
+*(Tot #1268 stond hier ook `TeamDisambiguationAiService` — forced-choice teamdisambiguatie op de
+SQL Server-tier. Die functionaliteit bestond alleen op die ene tier; de eigenaar koos het
+deterministische gedrag van de Postgres-tier als norm voor beide, en de klasse is verwijderd. Zie
+`docs/ARCHITECTUUR-TEAMRESOLUTIE.md` voor het volledige verhaal.)*
 
 Een provider-wissel is daarmee inderdaad wat de grondregel belooft: **één regel per tier.**
 

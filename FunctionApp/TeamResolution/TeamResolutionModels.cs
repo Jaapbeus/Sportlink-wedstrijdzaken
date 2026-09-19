@@ -31,7 +31,9 @@ public enum ResolutionBron
     /// <summary>Meerdere kandidaten gevonden en géén betrouwbare keuze gemaakt — terugvragen aan de afzender.</summary>
     MeerdereKandidaten,
 
-    /// <summary>Keuze uit een korte kandidatenlijst gemaakt door <see cref="ITeamDisambiguator"/> (#697).</summary>
+    /// <summary>Keuze uit een korte kandidatenlijst door een AI-disambiguator (#697). Sinds #1268
+    /// niet meer in gebruik: die disambiguator is verwijderd, op beide tiers. De waarde blijft staan
+    /// zodat bestaande, opgeslagen resolutieresultaten leesbaar blijven.</summary>
     AiDisambiguatie,
 
     /// <summary>Geen enkele kandidaat gevonden.</summary>

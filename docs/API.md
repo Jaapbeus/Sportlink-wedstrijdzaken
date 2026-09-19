@@ -843,8 +843,8 @@ Resultaat is gesorteerd op `aanvangsTijd`. Wedstrijden zonder aanvangstijd staan
 
 Aliassen zijn afwijkende schrijfwijzen van een teamnaam (bijvoorbeeld `13-1` in plaats van
 `JO13-1`). Ze worden vastgelegd in `public.teamaliassen` met status `pending`. Alleen een alias met
-status `validated` mag bij teamnaam-resolutie als vertrouwde exacte match gelden — een foutieve
-AI-keuze kan zich zo niet zelfversterken. Alles is gescoped op de club uit de `X-Club-Code` header.
+status `validated` mag bij teamnaam-resolutie als vertrouwde exacte match gelden — zo kan een
+onjuiste gok zich niet zelfversterken. Alles is gescoped op de club uit de `X-Club-Code` header.
 
 ### GET /api/beheer/teamaliassen
 
@@ -887,6 +887,12 @@ het `status`-filter en de `limit`. Datums zijn UTC (`Z`-suffix); de GUI toont ze
 Bestaat de tabel nog niet (op de Postgres-tier: migratie `003_admin_tables.sql` nog niet
 toegepast; op de SQL Server-tier: post-deployment script niet uitgevoerd), dan volgt een lege
 lijst met nullen in plaats van een fout.
+
+> Het voorbeeld hierboven toont `"bron": "AiDisambiguatie"` — de waarde die de nu verwijderde
+> forced-choice teamdisambiguatie (#697) bij een geleerde alias schreef. Sinds #1268 bestaat die
+> functionaliteit op geen van beide tiers meer, dus dit is de weergave van een rij uit vóór die
+> wijziging; nieuwe aliassen ontstaan niet meer langs deze weg. Zie
+> `docs/ARCHITECTUUR-TEAMRESOLUTIE.md` voor de volledige achtergrond.
 
 ### PUT /api/beheer/teamaliassen/{id}/valideer
 

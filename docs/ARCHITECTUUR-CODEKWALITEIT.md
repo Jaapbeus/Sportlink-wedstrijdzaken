@@ -262,7 +262,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | RLS aan op elke tabel (#1198, #1220) | `scripts/ci/check-rls-enabled.sh` | `build.yml` |
 | Supabase-lints (#1220) | `scripts/ci/check-splinter-lints.sh` | `build.yml` |
 | Thema-CSS-variabelen consistent (#1255) | `scripts/ci/check-theme-variables.sh` | `build.yml` |
-| Beide tiers bieden dezelfde routes (#1266) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
+| Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
 
 <!-- REGELREGISTER-EINDE -->
 

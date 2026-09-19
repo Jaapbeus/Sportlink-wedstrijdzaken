@@ -59,6 +59,7 @@ verwacht_slagen "valkuilen"            bash scripts/ci/check-codekwaliteit-valku
 verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
 verwacht_slagen "regelregister"        bash scripts/ci/check-regelregister.sh
 verwacht_slagen "AGENTS.md afgeleid"   python3 scripts/ci/genereer-agents-md.py
+verwacht_slagen "tier-pariteit"        bash scripts/ci/check-tier-pariteit.sh
 
 echo
 echo "Negatieve tests (een overtreding moet rood zijn):"
@@ -144,7 +145,28 @@ verwacht_falen "guard buiten het register" bash scripts/ci/check-regelregister.s
 git rm -q --cached "$proef_guard" >/dev/null 2>&1 || true
 rm -f "$proef_guard"
 
-# 6. AGENTS.md: een handmatige bewerking moet gezien worden.
+# 6. Tier-pariteit op TIMERS: een achtergrondtaak die maar op één tier bestaat.
+#    Toegevoegd bij #1268. Die richting was tot dan ongedekt: de guard keek alleen naar HTTP-routes,
+#    en juist daardoor kon de database-uitvalmonitor jarenlang op één tier staan zonder dat iets het
+#    merkte — een timer geeft niemand een 404.
+proef_timer="FunctionApp.Postgres/ProefTimer1268.cs"
+cat > "$proef_timer" <<'CS'
+using Microsoft.Azure.Functions.Worker;
+
+namespace FunctionApp.Postgres;
+
+internal static class ProefTimer1268
+{
+    [Function("ProefTimer1268")]
+    public static void Run([TimerTrigger("0 0 3 * * *")] TimerInfo timer) { }
+}
+CS
+git add -N "$proef_timer" >/dev/null 2>&1 || true
+verwacht_falen "timer op maar één tier" bash scripts/ci/check-tier-pariteit.sh
+git rm -q --cached "$proef_timer" >/dev/null 2>&1 || true
+rm -f "$proef_timer"
+
+# 7. AGENTS.md: een handmatige bewerking moet gezien worden.
 printf '\n<!-- handmatige proefbewerking -->\n' >> AGENTS.md
 verwacht_falen "handmatige bewerking van AGENTS.md" python3 scripts/ci/genereer-agents-md.py
 # Herstel via de generator, niet via git checkout: AGENTS.md is een afgeleid bestand, en een
