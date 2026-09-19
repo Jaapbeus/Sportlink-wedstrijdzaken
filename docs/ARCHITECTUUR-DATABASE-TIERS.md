@@ -3968,6 +3968,76 @@ De MCP-sessie verscheen in `pg_stat_activity` als extra verbinding. Dat is geen 
 bruikbaar detail: het bevestigt dat de read-only verbinding daadwerkelijk tot stand kwam, en het
 verklaart waarom het aantal verbindingen tijdens een controle één hoger ligt dan erbuiten.
 
+## 72. Demodata van de democlub: waarom een eenmalige migratie het verkeerde gereedschap was (#1246)
+
+De democlub AllStars FC was zowel lokaal als in productie een halve club: wél een instellingenrij,
+velden, veldbeschikbaarheid en een teamregel uit migratie 006 — maar **0 teams, 0 wedstrijden,
+0 teambegeleiding en 0 speeltijden**. De teamregel die 006 aanmaakt verwijst naar `AllStars Heren 1`,
+een team dat nergens bestond. Dat wijkt af van het deploymentmodel in `CLAUDE.md` ("precies één
+echte club + AllStars FC als demo/testdata — in dezelfde database").
+
+### Twee onafhankelijke oorzaken
+
+**(a) De team-/wedstrijdseed draaide nergens automatisch.**
+`scripts/migrations/003-seed-allstars-demo-matches-postgres.sql` (28 teams, 224 wedstrijden,
+28 teambegeleiders) kán geen migratie zijn: het vult `his.teams`/`his.matches`, en die tabellen
+maakt geen enkel migratiebestand aan — `PostgresSchemaGenerator` doet dat dynamisch bij de eerste
+ETL-sync (§-les van #856). Die analyse was correct en goed opgeschreven. Wat ontbrak was de
+vervolgstap: er kwam nooit een plek die het script daarna alsnog uitvoerde.
+`scripts/dev/Seed-AllStarsDemodata.ps1` overbrugde het voor een ontwikkelmachine; `deploy.yml` had
+geen equivalent. **Een correcte analyse met een ontbrekende uitvoerstap is functioneel gelijk aan
+geen analyse.**
+
+**(b) De speeltijden-copy in migratie 006 kón per definitie niet slagen.**
+Regel 54-60 van 006 kopieert speeltijden van de primaire club naar de democlub. Dat is de *enige*
+`INSERT INTO public.speeltijden` in alle migraties: de primaire club vult zijn speeltijden via de
+Admin GUI, dus op migratiemoment valt er niets te kopiëren. De copy leverde 0 rijen op, en omdat
+een migratie eenmalig is en `IF NOT EXISTS`-gated, werd het nooit opnieuw geprobeerd.
+
+> **De generieke les:** een eenmalige migratie mag niet afhangen van data die pas later door een
+> gebruiker wordt ingevoerd. Zulke afhankelijkheden horen in een **herhaalbare, idempotente
+> seedstap**, niet in de ledger.
+
+### Waarom CI dit niet ving
+
+`fresh-db-postgres` verifieerde de copy-logica van 006 wél — maar bouwde daarvoor eerst met de hand
+de gunstige volgorde: een `CIPRIMARY`-club plus een speeltijdenrij neerzetten, en 006 daarna nóg een
+keer als los bestand draaien. Die constructie bewees dat de *query* klopt, nooit dat de *volgorde*
+klopt. In werkelijkheid draait 006 één keer, via de ledger, vóór er één speeltijd bestaat.
+
+Dat is dezelfde klasse blinde vlek als §67: de test stelde een gunstiger wereld op dan de
+werkelijkheid, en bewees daardoor iets anders dan hij leek te bewijzen.
+
+### Wat er nu staat
+
+| Waar | Wat |
+|---|---|
+| `scripts/migrations/003-...-postgres.sql` | Speeltijden-copy erbij (inclusief `standaardvoorkeurtijd`, die 006 niet meenam). Idempotent; `RAISE NOTICE` als de primaire club nog niets heeft |
+| `Database.Postgres/DemodataSeeder.cs` | Draait het seedscript en telt daarna wat de democlub werkelijk heeft. Slaat over (geen fout) als de democlub niet in `appsettings` staat — een fork mag hem weghalen |
+| `Database.Postgres.Cli --seed-demodata <pad>` | Derde CLI-modus, zodat `deploy.yml` het script kan draaien zonder de connectiestring door een `psql`-argument te halen (#1225-regel) |
+| `deploy.yml`, job `db-migrate-postgres` | Na de migraties: `--ensure-his-tables`, dan `--seed-demodata`. Beide idempotent, bij elke release |
+| `build.yml`, job `fresh-db-postgres` | Nieuwe stap op een eigen database die de **echte** installatievolgorde nabootst, met een before-assertie (0 speeltijden na alleen de migraties) als rode test |
+
+**Migratie 006 is bewust ongewijzigd gebleven** — hij is toegepast en checksum-bewaakt; hem
+repareren zou elke bestaande database blokkeren. De copy staat nu op een plek die wél opnieuw mag
+draaien, en de oude copy in 006 blijft een no-op.
+
+### Wat de pipeline níet kan, en waarom dat een signaal is
+
+`public.teams` is een **afgeleide** tabel en wordt uitsluitend opgebouwd door
+`POST /api/beheer/teams/herstel` (#946). Dat endpoint is `RequireAdmin` en vereist een Entra-token,
+dat een deploypipeline niet heeft en ook niet hoort te hebben. Automatiseren zou betekenen dat de
+canonicalisatielogica een tweede keer in SQL wordt nagebouwd — precies de fixture die #946 en
+`Seed-AllStarsDemodata.ps1` bewust vermeden.
+
+Daarom meldt de seedstap dit in plaats van het op te lossen: bij `his.teams > 0 AND public.teams = 0`
+schrijft de CLI de marker `DEMOCLUB_CANONIEKE_LIJST_ONTBREEKT`, en `deploy.yml` maakt daar een
+`::warning::` van met de verwijzing naar de knop op de pagina Teamaliassen. Bewust **geen**
+build-breker: de rest van de demodata staat er wel, en een deploy laten falen op een demoklus is
+niet in verhouding.
+
+---
+
 ## 73. Thema-logica gedeeld — en de platformafhankelijke bug die de duplicatie verborgen hield (#1248, #1252)
 
 Vierde stuk provider-onafhankelijke logica dat naar `Planner.Shared` verhuist, na de drie van §60.

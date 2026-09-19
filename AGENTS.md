@@ -1087,6 +1087,17 @@ geen handmatige migratieronde meer na een release. Gevolg als ontwerpregel: een 
 release als de code die hem nodig heeft — zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57. De smoke
 test faalt op een niet-lege `pendingMigrations`.
 
+**Demodata van de democlub bij een release (#1246):** dezelfde job draait ná de migraties ook
+`--ensure-his-tables` en `--seed-demodata` (`scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`).
+Beide zijn idempotent en raken uitsluitend rijen met `ClubCode = 'ALLSTARS'`. Ontwerpregel die
+hieruit volgt: **demodata die afhangt van door de beheerder ingevoerde gegevens hoort in dat
+idempotente seedscript, nooit in een eenmalige migratie** — een migratie draait één keer en kan
+niet wachten op data die pas later bestaat. Dat was precies de fout in
+`006_allstars_demodata.sql` (speeltijden-copy, altijd 0 rijen). `public.teams` blijft handwerk:
+dat is een afgeleide tabel die alleen `POST /api/beheer/teams/herstel` (`RequireAdmin`) opbouwt,
+dus de pipeline meldt het met een `::warning::` in plaats van het te automatiseren. Zie
+`docs/ARCHITECTUUR-DATABASE-TIERS.md` §72.
+
 ### Versienummer ophalen in code
 
 ```csharp
