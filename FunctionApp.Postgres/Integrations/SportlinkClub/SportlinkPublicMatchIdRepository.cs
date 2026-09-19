@@ -1,17 +1,7 @@
-using FunctionApp.Postgres.Sportlink;
 using Npgsql;
+using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Integrations.SportlinkClub;
-
-/// <summary>Interne wedstrijdgegevens nodig voor de #987-reverse-lookup — niet de volledige
-/// <c>his.matches</c>-rij, alleen wat <see cref="SportlinkClubClient.ResolvePublicMatchIdAsync"/>
-/// nodig heeft.</summary>
-internal sealed record WedstrijdVoorLookup(long Wedstrijdnummer, DateOnly Datum);
-
-/// <summary>Eén rij zonder cache-entry, gebruikt door de #1017-warmup-timer — bevat ook
-/// <c>Wedstrijdcode</c> (de eigen sleutel om straks in de cache te schrijven), in tegenstelling tot
-/// <see cref="WedstrijdVoorLookup"/> dat alleen is wat de Sportlink-aanroep zelf nodig heeft.</summary>
-internal sealed record WedstrijdZonderCache(long Wedstrijdcode, long Wedstrijdnummer, DateOnly Datum);
 
 /// <summary>DB-toegang voor de PublicMatchId-cache (#991, epic #986). Cachet het resultaat van de
 /// trage (12+ s), niet-club-gescoped reverse-lookup in een eigen tabel — <b>niet</b> als kolom op

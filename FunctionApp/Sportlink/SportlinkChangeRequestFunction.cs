@@ -1,20 +1,24 @@
-using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Integrations.SportlinkClub;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Admin;
+using SportlinkFunction.Integrations.SportlinkClub;
 
-namespace FunctionApp.Postgres.Sportlink;
+namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// Inkomende wijzigingsverzoeken van tegenstanders (#996, epic #986). Niet wedstrijdcode-gescoped
-/// (geen eigen route-segment daarvoor) — Sportlinks <c>MatchChangeRequests</c>-endpoint levert alle
-/// openstaande verzoeken voor het gekoppelde serviceaccount in één keer.
+/// SQL Server-tegenhanger van
+/// <c>FunctionApp.Postgres/Sportlink/SportlinkChangeRequestFunction.cs</c> (#1266, epic #986).
+/// <para>
+/// Inkomende wijzigingsverzoeken van tegenstanders (#996). Niet wedstrijdcode-gescoped (geen eigen
+/// route-segment daarvoor) — Sportlinks <c>MatchChangeRequests</c>-endpoint levert alle openstaande
+/// verzoeken voor het gekoppelde serviceaccount in één keer.
+/// </para>
 /// <para>
 /// <b>Geen <see cref="SportlinkMutationGuard"/>-check hier:</b> die guard bewaakt of ONZE eigen
 /// wedstrijd een bepaalde mutatie toestaat (<c>IsEditFieldAllowed</c> e.d.) — het goedkeuren/
@@ -35,12 +39,12 @@ public static class SportlinkChangeRequestFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
-    [Function("SportlinkChangeRequestsGet")]
+    [Function("SqlSportlinkChangeRequestsGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/change-requests")] HttpRequest req,
         FunctionContext context)
     {
-        var log = context.GetLogger("SportlinkChangeRequestsGet");
+        var log = context.GetLogger("SqlSportlinkChangeRequestsGet");
         return SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, log, "sportlink-wijzigingsverzoeken ophalen",
             async clubCode =>
             {
@@ -49,7 +53,7 @@ public static class SportlinkChangeRequestFunction
                 var (sportlinkClient, clientFout) = SportlinkEndpointSupport.ClientOfFout(context);
                 if (clientFout != null) return clientFout;
 
-                var result = await sportlinkClient.GetChangeRequestsAsync(RolNaam);
+                var result = await sportlinkClient!.GetChangeRequestsAsync(RolNaam);
                 var fout = VertaalStatusNaarFout(result.Status);
                 if (fout != null) return fout;
 
@@ -72,7 +76,7 @@ public static class SportlinkChangeRequestFunction
 
         try
         {
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             return await SportlinkPublicMatchIdRepository.ZoekWedstrijdenBijPublicMatchIdsAsync(connection, ids, clubCode);
         }
@@ -89,12 +93,12 @@ public static class SportlinkChangeRequestFunction
     /// resolutie nodig; <c>PublicMatchId</c> zit al in de request-body (client kent 'm uit dezelfde
     /// GET-respons).
     /// </summary>
-    [Function("SportlinkChangeRequestActionPut")]
+    [Function("SqlSportlinkChangeRequestActionPut")]
     public static Task<IActionResult> PutAction(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/change-requests/{publicRequestId}/action")] HttpRequest req,
         string publicRequestId,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkChangeRequestActionPut"), "sportlink-wijzigingsverzoek afhandelen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkChangeRequestActionPut"), "sportlink-wijzigingsverzoek afhandelen",
             async clubCode =>
             {
                 var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();

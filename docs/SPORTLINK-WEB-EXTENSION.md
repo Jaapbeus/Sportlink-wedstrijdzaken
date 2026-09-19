@@ -80,9 +80,12 @@ Zet dry-run pas uit nadat je:
 2. de statussectie (§3.1b) groen ziet staan,
 3. een paar dry-run-pogingen in het audit-log hebt teruggezien met de verwachte `WaardeVoor`/`WaardeNa`.
 
-**Uitzondering, geen keuze:** op de SQL Server-tier (rollback-only sinds de Postgres-cutover, zie
-§4.3) staat dry-run onvoorwaardelijk hard aan in code — die tier heeft nooit een mutatie-endpoint
-gehad en mag dat ook nooit stilzwijgend krijgen via een instelling.
+**Op de SQL Server-tier stond dry-run tot #1266 onvoorwaardelijk hard aan in code**, met als
+motivering dat die tier nooit een mutatie-endpoint had gehad en dat ook niet stilzwijgend via een
+instelling mocht krijgen. #1266 bouwt die endpoints er wel op, want beide tiers zijn gelijkwaardig.
+De veiligheidsrail zelf blijft: `AppSettings.SportlinkDryRun` staat standaard op 1 (dry-run aan) en
+wordt fail-safe gelezen — faalt het lezen, dan blijft dry-run aan. Een club moet de schakelaar dus
+bewust omzetten, precies zoals op de Postgres-tier.
 
 ### 3.1b Statussectie — wat er te zien is
 Onder de rollen-tabel op Instellingen staat sinds #998 een statussectie die in één oogopslag toont:
@@ -196,6 +199,19 @@ verplichte N-user-test.
   NIET hard afgedwongen (bijv. op `SCHEDULED`) — die waarde wordt sinds #998 wel uitgebreid
   meegelogd in de audit (zie hieronder), zodat er eerst een seizoen aan echte data verzameld wordt
   vóórdat die eventueel een harde blokkade wordt.
+> **Autorisatie: beide rollen, op beide tiers (#1272).** Elk Sportlink-endpoint eist zowel `admin`
+> als `Wedstrijdzaken`, via één gedeelde vorm: `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`
+> doet eerst `RequireWedstrijdzaken` en daarna `AdminEndpoint.ExecuteAsync` (met `RequireAdmin`).
+> Beide tiers gebruiken dezelfde wrapper.
+>
+> Tot #1272 gaf de Postgres-tier `requireRole:` mee aan `AdminEndpoint.ExecuteAsync`, waar het de
+> admin-controle *verving*. Dat sprak §3.4 hierboven tegen ("bovenop de bestaande admin-toegang")
+> en leverde een recht op dat alleen buiten de applicatie om bruikbaar was: `App.razor` poort de
+> hele Admin GUI op `admin` of `user`, dus iemand met alléén `Wedstrijdzaken` kon de interface niet
+> laden maar de mutatie-endpoints wél rechtstreeks aanroepen. De parameter is verwijderd, niet
+> alleen ongebruikt gelaten — een optionele parameter die stilzwijgend een autorisatiecontrole
+> vervangt, wordt vanzelf een tweede keer gebruikt.
+
 - `FunctionApp/Sportlink/` + `FunctionApp.Postgres/Sportlink/` (#998) — per-tier, niet-gedeelde
   `ISportlinkMutationAuditService`-implementatie; logt vóór én na elke toekomstige mutatie in
   `dbo.SportlinkMutationAudit`/`public.sportlinkmutationaudit`. Bewaartermijn sinds #1114: default
@@ -207,7 +223,7 @@ verplichte N-user-test.
   wedstrijdnummer/datum) die de reverse-lookup nodig heeft.
 - `FunctionApp.Postgres/Sportlink/SportlinkMatchFunction.cs` — `GET
   /api/sportlink/match/{wedstrijdcode}` (#991), het eerste endpoint met `RequireWedstrijdzaken`
-  i.p.v. `RequireAdmin` (zie #988 Besluit 1). Verbindt de reverse-lookup-cache, de token-store en de
+  **bovenop** `RequireAdmin` (#1272 — tot dan stond hier "i.p.v.", wat §3.4 tegensprak). Verbindt de reverse-lookup-cache, de token-store en de
   Dagplanning-GUI met elkaar. Sinds #989 ook `GET .../public-match-id` — dezelfde resolutie zonder
   de volledige `Match`-aanroep, voor de "Open in Sportlink"-deep-link-knop. Sinds #992 ook `PUT
   .../dressingrooms` (kleedkamers) en sinds #993 `PUT .../field` (veld) — de eerste echte
@@ -264,13 +280,20 @@ verplichte N-user-test.
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een
   periode zonder gebruik (`invalid_grant: "Token is not active"`, live vastgesteld 2026-09-05),
   ondanks dat de 6-uurs `refresh_expires_in` nog niet verstreken was — een lui verversende client
-  (alleen bij een echte GUI-actie) is dus niet genoeg. Alleen voor de Postgres-tier; de SQL
-  Server-tier is rollback-only, zie #1020.
+  (alleen bij een echte GUI-actie) is dus niet genoeg. Bestond tot #1266 alleen op de Postgres-tier;
+  sinds #1266 staat de tegenhanger in `FunctionApp/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs`
+  (zelfde uur-cron). Eén tierverschil, bewust: die tier bewaart refresh-tokens in Function
+  App-instellingen (#1020), dus "welke rollen zijn gekoppeld?" is daar een vraag aan
+  `ISportlinkClubTokenStore` in plaats van aan een DB-tabel.
 - `FunctionApp.Postgres/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs` (#1017) — dagelijkse
   timer die de PublicMatchId-cache vooraf vult voor de eerstkomende dagen (vandaag + 2), gegroepeerd
   per datum (één `MatchProgramOverview`-aanroep per dag, niet per wedstrijd — zie
   `ISportlinkClubClient.GetMatchProgramOverviewAsync`). Een cache-miss buiten dat venster valt nog
   steeds terug op de bestaande synchrone lookup in `SportlinkMatchFunction`, geen harde fout.
+  SQL Server-tegenhanger sinds #1266:
+  `FunctionApp/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs`. De horizon (vandaag + 2)
+  staat als `SportlinkEndpointCore.WarmupVooruitkijkDagen` in `Planner.Shared`, zodat een tierwissel
+  niet stilzwijgend een ander venster oplevert.
 - `FunctionApp.Postgres/Sportlink/SportlinkChangeRequestFunction.cs` (#996) — `GET
   /api/sportlink/change-requests` + `PUT .../{publicRequestId}/action`. Niet wedstrijdcode-
   gescoped (Sportlinks `MatchChangeRequests`-endpoint levert alles voor het gekoppelde
@@ -338,8 +361,10 @@ verplichte N-user-test.
   bij **elke** aanroep opnieuw `PostgresAppSettings.GetSetting("sportlinkDryRun")` leest (niet één
   keer bij opstarten) — de toggle op Instellingen heeft dus direct effect, zonder herstart, omdat
   `AdminSettingsPut` na elke wijziging `PostgresAppSettings.LoadSettingsAsync` opnieuw aanroept.
-  `FunctionApp/Program.cs` (SQL Server-tier) geeft hard `isDryRun: () => true` mee — die tier heeft
-  geen enkel mutatie-endpoint en mag dus per definitie nooit een echte PUT versturen.
+  `FunctionApp/Program.cs` (SQL Server-tier) gaf tot #1266 hard `isDryRun: () => true` mee, op grond
+  van de inmiddels ingetrokken premisse dat die tier geen mutatiepaden zou krijgen. Sinds #1266 leest
+  hij dezelfde instelling, via dezelfde gedeelde, fail-safe regel
+  (`SportlinkEndpointCore.IsDryRunActief`): alles behalve een expliciet geladen `"0"` blijft dry-run.
   `SportlinkMutationResult` kreeg er een derde veld `IsDryRun` bij; het audit-resultaat wordt bepaald
   door de gedeelde helper `SportlinkMatchFunction.BepaalAuditResultaat` (`DryRun` gaat vóór
   `IsSuccess`, want die is bij dry-run altijd `true`).
@@ -396,13 +421,23 @@ schrijfrechten op de eigen Function App — een grotere attack surface voor hetz
 DB-tabel is een bestaande, gratis resource en dezelfde vertrouwensgrens als de bestaande
 `SqlConnectionString`-secrets.
 
-**Besluit (#1020, 2026-09-06):** de SQL Server-tier (`SportlinkClubAppSettingsTokenStore`, #998)
-behoudt bewust de oudere ARM-API-aanpak — géén migratie naar een DB-tabel, ook niet later. Die tier
-is rollback-only sinds de Postgres-cutover en heeft geen productieverkeer; een DB-tabel-migratie
-bouwen voor een tier die mogelijk nooit meer actief wordt is voorbarig werk. Deze twee tiers hebben
-dus bewust verschillende tokenopslag — geen halfslachtige tussenstand, maar een expliciete,
-blijvende keuze totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval eerst
-herbeoordelen, niet automatisch alignen).
+**Besluit (#1020, 2026-09-06) — premisse ingetrokken bij #1266.** #1020 koos ervoor dat de SQL
+Server-tier (`SportlinkClubAppSettingsTokenStore`, #998) de oudere ARM-API-aanpak behield, op grond
+van de aanname dat die tier "rollback-only" was en geen productieverkeer had. Dat besluit bevatte
+zelf de voorwaarde: *"totdat de SQL Server-tier ooit weer productie-tier zou worden (in dat geval
+eerst herbeoordelen, niet automatisch alignen)"*.
+
+Die voorwaarde is nu ingetreden: beide tiers zijn gelijkwaardig (#1266). Wat dat concreet betekent:
+
+- **De asymmetrie in tokenopslag blijft voorlopig bestaan** en is daarmee een bewuste, herbeoordeelde
+  keuze in plaats van een vergeten verschil. De ARM-API-variant wérkt op deze tier; hem vervangen
+  door een DB-tabel is een aparte afweging (Managed Identity met Website Contributor-rol per
+  deployment versus een gewone tabel), geen onderdeel van pariteitsherstel.
+- **Het staat expliciet in `scripts/ci/tier-pariteit-allowlist.txt`** met deze reden, zodat het een
+  zichtbare, gemotiveerde uitzondering is en niet opnieuw stilzwijgend groeit.
+- De premisse "rollback-only" is uit de rest van de documentatie verwijderd. Hij was nooit als
+  architectuurbesluit voorgelegd; hij sloop binnen als beschrijving van de situatie na de cutover
+  en werd daarna als norm gebruikt.
 
 ### 4.4 HARDE REGEL: coding agents mogen dit mechanisme nooit zelf uitvoeren
 

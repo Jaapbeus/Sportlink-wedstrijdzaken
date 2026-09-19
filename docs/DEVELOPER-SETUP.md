@@ -221,13 +221,38 @@ git commit --allow-empty -m "test hooks"
 > Lokaal op de andere tier ontwikkelen betekent dat je dagelijkse verificatie een applicatie meet
 > die niet gedeployd wordt — precies hoe #972 dagenlang onopgemerkt bleef.
 >
-> **De SQL Server-tier blijft volledig ondersteund** (§4.4–§4.7) voor forks die hem kiezen, en is
-> het rollbackpad van de cutover. Hij is alleen niet langer de standaard.
+> **De SQL Server-tier is een gelijkwaardige tier** (§4.4–§4.7), volledig ondersteund voor forks
+> die hem kiezen. Hij is alleen niet de lokale standaard, omdat deze installatie op Postgres draait.
+> "Niet de standaard" betekent nadrukkelijk niet "minder": elke functionaliteit hoort op beide tiers
+> te bestaan, en `scripts/ci/check-tier-pariteit.sh` maakt de build rood zodra dat niet zo is (#1266).
 >
 > | Tier | Lokale database | Functieproject | Start-Debug |
 > |---|---|---|---|
 > | **Postgres** (standaard) | `docker compose up -d` | `FunctionApp.Postgres/` | `.\scripts\dev\Start-Debug.ps1` |
 > | SQL Server | `docker compose --profile sqlserver up -d` | `FunctionApp/` | `.\scripts\dev\Start-Debug.ps1 -Tier SqlServer` |
+>
+> **Werk je in een git-worktree?** Dan bestaat daar geen eigen `.env` (dat bestand staat in
+> `.gitignore` en wordt niet meegekopieerd). Verwijs expliciet naar die van de hoofdwerkmap:
+> `docker compose --env-file /pad/naar/hoofdwerkmap/.env --profile sqlserver up -d sqlserver`.
+> Zonder die variabelen weigert docker compose te starten, met een expliciete melding.
+>
+> **Twee dingen die op macOS misgaan** (geverifieerd bij #1266, Apple Silicon):
+> - Poort 1433 kan bezet zijn door een ongerelateerde SQL Server-container. Controleer met
+>   `lsof -nP -iTCP -sTCP:LISTEN` vóór je start.
+> - Een verweesde, *gestopte* `sportlink-sqlserver`-container van een eerdere run blokkeert
+>   `up -d` met een naamconflict. Bevestig met `docker inspect` dat hij daadwerkelijk gestopt is
+>   vóór je hem verwijdert — er kan een andere sessie aan werken.
+>
+> **Schemawijziging aan deze tier bewijzen, niet alleen bouwen.** Draai `Script.PostDeployment1.sql`
+> twee keer tegen de container; de tweede run moet exit 0 geven, nul `Msg <nr>, Level`-regels, en
+> niets opnieuw aanmaken:
+> ```bash
+> docker cp Database/Script.PostDeployment1.sql sportlink-sqlserver:/tmp/post.sql
+> docker exec -e SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" sportlink-sqlserver \
+>   /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -d SportlinkSqlDb -b -V 11 -i /tmp/post.sql
+> ```
+> `-b -V 11` laat sqlcmd afbreken op severity ≥ 11. Het wachtwoord gaat via `SQLCMDPASSWORD`,
+> nooit als `-P`-argument — argumenten zijn op beide platforms zichtbaar in de processenlijst.
 >
 > **Welke tier een fork daadwerkelijk deployt, is een CI/deploy-tijd-keuze, geen lokale keuze**
 > (#816): de GitHub repository-variabele `DatabaseTier` (Settings → Secrets and variables →

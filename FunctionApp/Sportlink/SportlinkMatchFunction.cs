@@ -1,38 +1,42 @@
-using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Integrations.SportlinkClub;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
-using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
-using System.Linq;
+using SportlinkFunction.Admin;
+using SportlinkFunction.Integrations.SportlinkClub;
 
-namespace FunctionApp.Postgres.Sportlink;
+namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// <c>GET /api/sportlink/match/{wedstrijdcode}</c> (#991, epic #986) — read-only paneel-endpoint
-/// voor Dagplanning, en <c>GET .../public-match-id</c> (#989) — lichtgewicht variant voor de
-/// "Open in Sportlink"-deep-link-knop. Eerste echte gebruik van <c>RequireWedstrijdzaken</c> (#988
-/// Besluit 1: die granulaire rol-gating komt pas bij het eerste echte lees-/mutatie-endpoint).
+/// SQL Server-tegenhanger van <c>FunctionApp.Postgres/Sportlink/SportlinkMatchFunction.cs</c>
+/// (#1266, epic #986).
 /// <para>
-/// Verbindt drie stukken die elk in een aparte issue/PR gebouwd zijn: de gedeelde
-/// <see cref="ISportlinkClubClient"/> (#991/#998, <c>Planner.Shared</c>), de Postgres-tier
-/// <see cref="PostgresSportlinkClubTokenStore"/> (#991) en de PublicMatchId-reverse-lookup-cache
-/// (#991/#1016, <see cref="SportlinkPublicMatchIdRepository"/>).
+/// <c>GET /api/sportlink/match/{wedstrijdcode}</c> (#991) — read-only paneel-endpoint voor
+/// Dagplanning, en <c>GET .../public-match-id</c> (#989) — lichtgewicht variant voor de
+/// "Open in Sportlink"-deep-link-knop. Daarnaast de vier mutatie-endpoints #992 (kleedkamers),
+/// #993 (veld), #994 (officials) en #995 (wijzigingsverzoek).
+/// </para>
+/// <para>
+/// <b>Geen gedupliceerde beslislogica.</b> De toggle+EgressGuard-controle, de statusvertaling, de
+/// dry-run-polariteit en de audit-afronding staan in <see cref="SportlinkEndpointCore"/>
+/// (Planner.Shared) en lopen hier via <see cref="SportlinkEndpointSupport"/>. Wat per tier
+/// verschilt is uitsluitend de databasetoegang (<see cref="SportlinkPublicMatchIdRepository"/>,
+/// <see cref="SqlConnection"/>) — conform docs/ARCHITECTUUR-DATABASE-TIERS.md §2.
 /// </para>
 /// </summary>
 public static class SportlinkMatchFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
-    [Function("SportlinkMatchGet")]
+    [Function("SqlSportlinkMatchGet")]
     public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkMatchGet"), "sportlink-match ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -59,12 +63,12 @@ public static class SportlinkMatchFunction
     /// volledige <c>Match</c>-aanroep bij Sportlink te doen — die extra aanroep is voor een
     /// deep-link niet nodig.
     /// </summary>
-    [Function("SportlinkMatchPublicMatchIdGet")]
+    [Function("SqlSportlinkMatchPublicMatchIdGet")]
     public static Task<IActionResult> GetPublicMatchId(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}/public-match-id")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -83,12 +87,12 @@ public static class SportlinkMatchFunction
     /// match-status ophalen (voor de guardrail) → <see cref="SportlinkMutationGuard"/> → audit
     /// "Pending" loggen → mutatie uitvoeren → audit voltooien met het echte resultaat.
     /// </summary>
-    [Function("SportlinkMatchDressingRoomsPut")]
+    [Function("SqlSportlinkMatchDressingRoomsPut")]
     public static Task<IActionResult> PutDressingRooms(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/dressingrooms")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -114,12 +118,12 @@ public static class SportlinkMatchFunction
     /// is niet bevestigd (zie issue #993), dus geen enkel pad in deze app mag hem op <c>true</c>
     /// zetten totdat een mens dit live heeft geverifieerd.
     /// </summary>
-    [Function("SportlinkMatchFieldPut")]
+    [Function("SqlSportlinkMatchFieldPut")]
     public static Task<IActionResult> PutField(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/field")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchFieldPut"), "sportlink-veld wijzigen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkMatchFieldPut"), "sportlink-veld wijzigen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -146,12 +150,12 @@ public static class SportlinkMatchFunction
     /// ingevoerde relatiecode/persoons-ID, nooit een naam — er wordt geen enkel Sportlink-zoek-
     /// /personendetail-endpoint aangeroepen (zie issue #994).
     /// </summary>
-    [Function("SportlinkMatchOfficialsPut")]
+    [Function("SqlSportlinkMatchOfficialsPut")]
     public static Task<IActionResult> PutOfficials(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/officials")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -187,12 +191,12 @@ public static class SportlinkMatchFunction
     /// 1 (deze) kan in werkelijkheid al het gevaarlijke moment zijn, vandaar dat de code-lock hier
     /// extra belangrijk is.
     /// </summary>
-    [Function("SportlinkMatchChangeRequestPut")]
+    [Function("SqlSportlinkMatchChangeRequestPut")]
     public static Task<IActionResult> PutChangeRequest(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/change-request")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -232,9 +236,9 @@ public static class SportlinkMatchFunction
             });
 
     // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): Sportlink verwacht
-    // "{FacilityId}-DRESSINGROOM-{n}" (bijv. "BBCF989-DRESSINGROOM-11"), geen los kleedkamernummer.
-    // De DTO-veldnamen blijven ...DressingRoomId (wire-compatibel met BlazorAdmin), maar de waarde
-    // die de UI stuurt is het losse nummer — deze helper bouwt de echte identifier.
+    // "{FacilityId}-DRESSINGROOM-{n}", geen los kleedkamernummer. De DTO-veldnamen blijven
+    // ...DressingRoomId (wire-compatibel met BlazorAdmin), maar de waarde die de UI stuurt is het
+    // losse nummer — deze helper bouwt de echte identifier.
     internal static string? BouwKleedkamerId(string? facilityId, string? kleedkamerNummer)
     {
         if (string.IsNullOrWhiteSpace(kleedkamerNummer)) return kleedkamerNummer;
@@ -242,14 +246,8 @@ public static class SportlinkMatchFunction
         return $"{facilityId}-DRESSINGROOM-{kleedkamerNummer}";
     }
 
-    /// <summary>
-    /// Bepaalt het audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994) — gedeeld
-    /// met <see cref="SportlinkChangeRequestFunction"/>. <c>IsForcedDryRun</c> gaat vóór
-    /// <c>IsDryRun</c>, dat op zijn beurt vóór <c>IsSuccess</c> gaat: een code-gelockte, nog niet
-    /// live bevestigde mutatie (#994, bijv. officials) moet in de audit apart herkenbaar zijn van
-    /// een dry-run die uitsluitend door de club-instelling <c>sportlinkDryRun</c> komt — bij beide
-    /// is <see cref="SportlinkMutationResult.IsSuccess"/> altijd <c>true</c> (gesimuleerd succes).
-    /// </summary>
+    /// <summary>Audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994) — één
+    /// gedeelde regel in <see cref="SportlinkEndpointCore.BepaalAuditResultaat"/>.</summary>
     internal static string BepaalAuditResultaat(SportlinkMutationResult r) => SportlinkEndpointSupport.BepaalAuditResultaat(r);
 
     private sealed class KleedkamersDto
@@ -295,18 +293,8 @@ public static class SportlinkMatchFunction
     /// <summary>Gedeelde stappen voor elke mutatie-actie op een bestaande wedstrijd: PublicMatchId
     /// resolven, huidige match ophalen (voor de guardrail), <see cref="SportlinkMutationGuard"/>,
     /// audit "Pending" loggen, <paramref name="mutationCall"/> uitvoeren, audit voltooien met het
-    /// echte resultaat. Eén vertaalpunt voor #992/#993 en toekomstige match-mutaties — een losse
-    /// kopie per endpoint zou het risico geven dat een nieuw endpoint de guard of de audit-log
-    /// vergeet.
-    /// <para>
-    /// Generiek gemaakt bij #995: <see cref="SportlinkClubClient.RequestMatchChangeAsync"/>
-    /// retourneert <c>SportlinkMatchChangeRequestResult</c> (mutatie + validatie), niet kaal
-    /// <see cref="SportlinkMutationResult"/> zoals de bestaande mutaties — <paramref name="naarMutatieResultaat"/>
-    /// haalt daaruit de gedeelde <see cref="SportlinkMutationResult"/> voor de audit-bepaling
-    /// (<see cref="BepaalAuditResultaat"/>), zonder dat generieke type zelf te vervuilen met een
-    /// taakspecifiek veld.
-    /// </para>
-    /// </summary>
+    /// echte resultaat. Eén vertaalpunt voor #992/#993/#994/#995 — een losse kopie per endpoint zou
+    /// het risico geven dat een nieuw endpoint de guard of de audit-log vergeet.</summary>
     private static async Task<IActionResult> ExecuteMutationAsync<T>(
         HttpRequest req,
         ISportlinkClubClient? sportlinkClient,
@@ -333,10 +321,9 @@ public static class SportlinkMatchFunction
 
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
         var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
-        // #998: WaardeVoor breidt uit met MatchStatus/IsCanceledMatch/IsConceptMatch/FacilityId/
-        // FacilityName — allemaal niet-persoonsgebonden velden die al in SportlinkMatch zitten. Geen
-        // schema-wijziging: de kolom is TEXT. Doel: een seizoen aan auditdata verzamelen vóórdat
-        // MatchStatus eventueel een harde guard-blokkade wordt (zie SportlinkMutationGuard).
+        // #998: WaardeVoor bevat alleen niet-persoonsgebonden velden die al in SportlinkMatch
+        // zitten. Doel: een seizoen aan auditdata verzamelen vóórdat MatchStatus eventueel een
+        // harde guard-blokkade wordt (zie SportlinkMutationGuard).
         var auditEntry = new SportlinkMutationAuditEntry(
             clubCode, RolNaam, triggerdDoor, publicMatchId!, actie,
             WaardeVoor: JsonConvert.SerializeObject(new
@@ -363,8 +350,8 @@ public static class SportlinkMatchFunction
             mutationResult, auditService, auditId, naarMutatieResultaat, data => new OkObjectResult(data));
     }
 
-    /// <summary>Gedeelde stappen van beide endpoints hierboven: toggle-check, EgressGuard,
-    /// wedstrijd-lookup en PublicMatchId-cache/reverse-lookup. Geen van beide aanroepers heeft de
+    /// <summary>Gedeelde stappen van alle endpoints hierboven: toggle-check, EgressGuard,
+    /// wedstrijd-lookup en PublicMatchId-cache/reverse-lookup. Geen van de aanroepers heeft de
     /// DB-connectie na afloop nog nodig (de resterende stap is telkens een HTTP-aanroep naar
     /// Sportlink), dus de connectie leeft uitsluitend binnen deze methode.</summary>
     private static async Task<(IActionResult? Fout, string? PublicMatchId)>
@@ -375,7 +362,7 @@ public static class SportlinkMatchFunction
         if (sportlinkClient == null)
             return (SportlinkEndpointSupport.ClientNietGeconfigureerdFout(), null);
 
-        await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        await using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await connection.OpenAsync();
 
         var wedstrijd = await SportlinkPublicMatchIdRepository.ZoekWedstrijdAsync(connection, wedstrijdcodeValue, clubCode);

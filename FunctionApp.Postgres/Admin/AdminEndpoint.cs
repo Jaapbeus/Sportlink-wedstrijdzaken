@@ -18,14 +18,17 @@ internal static class AdminEndpoint
         HttpRequest req,
         ILogger log,
         string errorContext,
-        Func<string, Task<IActionResult>> work,
-        Func<HttpRequest, IActionResult?>? requireRole = null)
+        Func<string, Task<IActionResult>> work)
     {
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        // #991: optioneel overschrijfbaar — default blijft RequireAdmin, dus 100%
-        // backward-compatible voor alle bestaande aanroepen. Eerste afnemer van een andere waarde:
-        // SportlinkMatchFunction (RequireWedstrijdzaken), zie #988 Besluit 1.
-        var authResult = (requireRole ?? EasyAuthHelper.RequireAdmin)(req);
+        // #1272: de optionele requireRole-parameter van #991 is hier weg. Die verving de
+        // admin-controle in plaats van er bovenop te komen, wat §3.4 van
+        // docs/SPORTLINK-WEB-EXTENSION.md tegensprak. De Sportlink-endpoints gebruiken nu
+        // SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync, dat beide poorten na elkaar zet —
+        // net als de SQL Server-tier. De parameter is verwijderd en niet alleen ongebruikt
+        // gelaten: een optionele parameter die stilzwijgend een autorisatiecontrole vervangt, is
+        // een valkuil die vanzelf een tweede keer gebruikt wordt.
+        var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
 
         using var _ = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });

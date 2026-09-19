@@ -1,38 +1,14 @@
 using FunctionApp.Postgres.TeamResolution;
 using Npgsql;
+using Planner.Shared.Integrations.SportlinkClub;
 
 namespace FunctionApp.Postgres.Sportlink;
 
 /// <summary>
-/// Eén team uit onze eigen database, verrijkt met wat het oefenwedstrijd-formulier (#1116) nodig
-/// heeft om een <c>ClubMatch</c>-aanvraag te vullen zonder Sportlink-picklist.
-/// </summary>
-/// <param name="TeamNaam">Canonieke teamnaam zoals in <c>public.teams</c>.</param>
-/// <param name="Leeftijdscategorie">
-/// Leeftijdscategorie uit <c>public.teams</c> (bijv. <c>JO10</c>; senioren <c>1-99</c>) — dezelfde
-/// vorm die het oude formulier als vrije tekst voor <c>AgeClassCode</c> vroeg. ONBEVESTIGD of
-/// Sportlink Club precies deze code verwacht; zie <see cref="Planner.Shared.Integrations.SportlinkClub.SportlinkClubMatchAanvraag"/>.
-/// </param>
-/// <param name="SportlinkTeamId">
-/// Het team-ID dat de Sportlink-dataservice zelf hanteert: <c>his.teams.teamcode</c> van de
-/// KNVB-rij(en) die als <b>gevalideerde alias</b> aan dit canonieke team hangen
-/// (<c>public.teamaliassen</c>, gevuld door <c>TeamCanonicalisatieService</c> na elke sync — regel
-/// 4 van docs/ARCHITECTUUR-TEAMRESOLUTIE.md: een alias is pas waarheid na validatie). Alleen gevuld
-/// als álle gekoppelde KNVB-rijen hetzelfde ID dragen; bij 0 of meer dan 1 verschillend ID blijft
-/// dit <c>null</c> en zegt <paramref name="AantalKandidaatIds"/> waarom. Onderbouwing (#1116,
-/// lokale data): voor 103 van de 108 eigen thuisteams in <c>his.matches</c> is <c>thuisteamid</c>
-/// exact deze <c>teamcode</c>; 98 van de 104 actieve teams krijgen zo precies één ID, geen enkel
-/// team een dubbelzinnig ID. Of Sportlink Club voor <c>PublicHomeTeamId</c> hetzelfde ID gebruikt
-/// is ONBEVESTIGD (kan ook een publiek string-ID zijn) — pas te bewijzen met de netwerktrace uit #997.
-/// </param>
-/// <param name="AantalKandidaatIds">Aantal verschillende <c>teamcode</c>s onder de gevalideerde aliassen (0 = geen KNVB-rij bekend, 1 = eenduidig, &gt;1 = dubbelzinnig).</param>
-internal sealed record ClubMatchTeamKoppeling(string TeamNaam, string? Leeftijdscategorie, long? SportlinkTeamId, int AantalKandidaatIds);
-
-/// <summary>
 /// Leesqueries voor het oefenwedstrijd-formulier (#1116): teams en velden komen uit onze eigen
-/// database, niet uit Sportlink-picklists. Alleen de Postgres-tier heeft de Sportlink Web
-/// Extension, dus er is bewust geen SQL Server-tegenhanger (zie
-/// docs/ARCHITECTUUR-DATABASE-TIERS.md — geen gedeelde abstractie). Bevat bewust géén eigen
+/// database, niet uit Sportlink-picklists. De SQL Server-tier heeft sinds #1266 een eigen,
+/// parallelle implementatie (<c>FunctionApp/Sportlink/SportlinkClubMatchRepository.cs</c>) — geen
+/// gedeelde providerabstractie, conform docs/ARCHITECTUUR-DATABASE-TIERS.md. Bevat bewust géén eigen
 /// teamnaam-logica: de koppeling lokale ↔ KNVB-schrijfwijze loopt uitsluitend via de aliastabel
 /// die <see cref="TeamCanonicalisatieService"/> vult (docs/ARCHITECTUUR-TEAMRESOLUTIE.md, regel 1).
 /// </summary>

@@ -92,8 +92,9 @@ if (EgressGuard.ExternalIntegrationsAllowed())
         // #1122 (CISO): fail-safe. Alles behalve een expliciet geladen "0" is dry-run — dezelfde
         // polariteit als SportlinkExtensieHealthFunction. Met "== \"1\"" was een nog niet geladen
         // instellingencache (null) fail-OPEN: het statuspaneel toonde "dry-run aan" terwijl een
-        // bevestigde mutatie écht naar Sportlink zou gaan.
-        isDryRun: () => PostgresAppSettings.GetSetting("sportlinkDryRun") != "0"));
+        // bevestigde mutatie écht naar Sportlink zou gaan. Sinds #1266 staat die regel in
+        // SportlinkEndpointCore, zodat beide tiers dezelfde polariteit hebben.
+        isDryRun: () => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting)));
 }
 
 // Audit-logging voor Sportlink-mutaties (#991, #998) — Postgres tier

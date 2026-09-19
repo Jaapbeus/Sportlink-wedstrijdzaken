@@ -29,8 +29,10 @@ namespace FunctionApp.Postgres.Sportlink;
 public static class SportlinkContractCheckTimerFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
-    internal const string NoodmailSleutel = "sportlink-contract-noodmail";
-    private static readonly TimeSpan NoodmailInterval = TimeSpan.FromHours(24);
+
+    /// <summary>#1266: sleutel, throttle-interval, beoordeling en mailtekst staan in
+    /// <see cref="SportlinkEndpointCore"/> — de SQL Server-timer gebruikt exact dezelfde.</summary>
+    internal const string NoodmailSleutel = SportlinkEndpointCore.ContractCheckNoodmailSleutel;
 
     [Function("SportlinkContractCheck")]
     public static async Task Run(
@@ -63,36 +65,10 @@ public static class SportlinkContractCheckTimerFunction
         }
 
         var rawResult = await sportlinkClient.GetMatchRawJsonAsync(RolNaam, publicMatchId);
-        bool isOk;
-        string? afwijkendeVeldenSamenvatting = null;
-        string? foutmeldingSamenvatting = null;
-
-        if (rawResult.Status != SportlinkClubCallStatus.Ok || rawResult.Data == null)
-        {
-            isOk = false;
-            foutmeldingSamenvatting = rawResult.FoutmeldingVoorLog ?? $"Status={rawResult.Status}";
-        }
-        else
-        {
-            try
-            {
-                var afwijkend = SportlinkMatchContract.ControleerVorm(rawResult.Data);
-                isOk = afwijkend.Count == 0;
-                if (!isOk)
-                {
-                    // Uitsluitend veldNAMEN, nooit waarden (AVG/CISO-regel) — SportlinkMatchContract
-                    // garandeert dit al, hier alleen samenvoegen tot één opslagbare string.
-                    afwijkendeVeldenSamenvatting = string.Join(", ", afwijkend);
-                    foutmeldingSamenvatting = $"Contractvorm afwijkend: {afwijkendeVeldenSamenvatting}";
-                }
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                isOk = false;
-                foutmeldingSamenvatting = "Respons is geen geldige JSON — contract gebroken.";
-                log.LogWarning(ex, "Contract-check: JSON-parsefout bij vormcontrole");
-            }
-        }
+        var uitkomst = SportlinkEndpointCore.BeoordeelContractCheck(rawResult, log);
+        var isOk = uitkomst.IsOk;
+        var afwijkendeVeldenSamenvatting = uitkomst.AfwijkendeVelden;
+        var foutmeldingSamenvatting = uitkomst.FoutmeldingSamenvatting;
 
         await using (var insertCmd = new NpgsqlCommand(@"
             INSERT INTO public.sportlinkcontractcheck
@@ -122,7 +98,7 @@ public static class SportlinkContractCheckTimerFunction
         if (throttleStore == null) return;
 
         var laatsteKeer = await throttleStore.LaatsteKeerVerstuurdAsync(NoodmailSleutel);
-        if (laatsteKeer != null && (DateTime.UtcNow - laatsteKeer.Value) < NoodmailInterval)
+        if (!SportlinkEndpointCore.MagContractCheckNoodmailVersturen(laatsteKeer, DateTime.UtcNow))
         {
             log.LogInformation("Contract-check-noodmail binnen throttle-interval — overgeslagen.");
             return;
@@ -144,16 +120,12 @@ public static class SportlinkContractCheckTimerFunction
         IEmailGraphService graphService, string? foutmelding, INoodmailThrottleStore throttleStore, ILogger log)
     {
         var mailbox = Environment.GetEnvironmentVariable("GraphMailbox") ?? "";
-        var body = "Sportlink contract-check gaf een afwijking — de vorm van de Match-respons is veranderd.\n\n"
-                 + $"Foutmelding: {foutmelding}\n\n"
-                 + "Dit is een vroege waarschuwing dat Sportlink de Club-website (mogelijk) heeft bijgewerkt.\n"
-                 + "Controleer docs/SPORTLINK-WEB-EXTENSION.md en de laatste rij in public.sportlinkcontractcheck.\n"
-                 + "Deze melding wordt niet binnen 24 uur herhaald.";
+        var body = SportlinkEndpointCore.BouwContractCheckNoodmailBody(foutmelding, "public.sportlinkcontractcheck");
 
         try
         {
             await graphService.SendReplyAsync(mailbox,
-                "Sportlink contract-check: afwijking gedetecteerd", body, null);
+                SportlinkEndpointCore.ContractCheckNoodmailOnderwerp, body, null);
             await throttleStore.RegistreerVerstuurdAsync(NoodmailSleutel, DateTime.UtcNow);
             // Geen ontvangeradres in het log (SECURITY.md: e-mailadressen nooit loggen) — #1107 bevinding 12.
             log.LogWarning("Contract-check-noodmail verstuurd.");

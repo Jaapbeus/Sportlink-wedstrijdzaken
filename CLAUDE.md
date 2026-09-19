@@ -771,6 +771,49 @@ Samenvatting van de twee harde regels (epic #815):
 > SSRF-orkestratie. Dat is vier keer misgegaan (#889, #1130, #1122, #1248). Zie de
 > codekwaliteitssectie hierboven, regel 1.
 
+3. **Elke gebouwde tier is gelijkwaardig. Een feature bestaat op álle gebouwde tiers, of op geen
+   (#1266).** "Gebouwd" is wat `scripts/ci/database-tiers.json` zegt (`built: true`) — vandaag
+   SQL Server én Postgres. Welke tier déze installatie draait, is een deploymentkeuze en zegt
+   niets over de status van de andere.
+
+   > **Dit is de regel die twaalf endpoints heeft gekost.** Epic #986 is alleen op de Postgres-tier
+   > gebouwd, op grond van de aanname dat de SQL Server-tier "rollback-only" was. Die aanname is
+   > nooit als architectuurbesluit voorgelegd: hij sloop binnen als beschrijving van de situatie na
+   > de cutover en werd daarna als norm gebruikt, in vijftien documenten die elk naar de vorige
+   > verwezen. Ondertussen bleef `database-tiers.json` de tier gewoon als `built: true` voeren en
+   > bouwde en testte CI hem elke run.
+
+   Praktisch:
+   - **Een PR die een endpoint, timer of tabel toevoegt, doet dat op beide gebouwde tiers.** Lukt
+     dat niet in één PR, dan komt de route met een reden in
+     `scripts/ci/tier-pariteit-allowlist.txt` én is er een issue dat hem weghaalt. Dat bestand
+     hoort leeg te lopen.
+   - **Een tier degraderen is een expliciet besluit**, vastgelegd door `built` op `false` te zetten
+     in `database-tiers.json` — nooit een zin in een document. Zolang `built: true` staat, geldt
+     pariteit onverkort.
+   - **De drie Postgres-coverage-guards kijken maar één kant op** (staat elk SQL Server-object ook
+     in Postgres). Dat was juist toen SQL Server leidend was. `check-tier-pariteit.sh` bewaakt sinds
+     #1266 beide richtingen op routeniveau.
+   - **Schemawijziging op de SQL Server-tier hoort in `Database/Script.PostDeployment1.sql`**
+     (idempotent) én in de bijbehorende SSDT-tabel onder `Database/dbo/Tables/`. `scripts/migrations/`
+     draait niet automatisch.
+
+4. **Vóór een dérde tier komt eerst de gedeelde endpoint-orkestratie (#1271, stap 1 van epic
+   #826).** Een endpoint bestaat uit aansluitwerk — routeparameter lezen, rollen controleren,
+   client uit DI halen, resultaat naar `IActionResult` vertalen — en uit de databasevraag zelf.
+   Alleen dat tweede deel is tier-gebonden; het eerste is per tier identiek.
+
+   Bij twee tiers is dat 660 woordelijk gedupliceerde regels (gemeten bij #1266). Bij drie wordt
+   het ongeveer het dubbele. Die laag hoort dus gebouwd te zijn *voordat* de SQLite-tier zijn
+   endpoints krijgt, niet erna — anders wordt er een derde kopie geschreven die daarna weer
+   opgeruimd moet worden.
+
+   Vorm: een apart project dat wél op ASP.NET Core en de Azure Functions Worker mag leunen.
+   `Planner.Shared` blijft framework-vrij; die grens is er voor testbaarheid en is bij ThemeCore
+   (#1248) en FeedbackCore (#1130) vastgelegd. De databasetoegang gaat als delegate mee — net
+   zoals `SportlinkEndpointCore` dat al doet met de instellingenlezer — dus dit is géén gedeelde
+   providerabstractie en botst niet met regel 2.
+
 Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
 `dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
 empirisch bevestigde Postgres-lowercase-folding-valkuil.

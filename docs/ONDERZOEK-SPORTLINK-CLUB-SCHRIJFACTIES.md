@@ -21,11 +21,11 @@ niet meer juist**:
 - De GitHub-repositoryvariabele `DatabaseTier` staat sinds 2026-09-04T13:25 op `Postgres`
   (bevestigd via `gh variable list`); issue #976 (eenmalige productiecutover) is gesloten.
 - Productie draait dus op **`FunctionApp.Postgres`**, niet op `FunctionApp` (SQL Server). De
-  SQL Server-database blijft bestaan als rollbackpad, maar is niet meer de bron van waarheid.
+  SQL Server-database blijft een gelijkwaardige tier (#1266), maar is voor deze installatie niet de bron van waarheid.
 - Volgens de vaste multi-tier-regel (`docs/ARCHITECTUUR-DATABASE-TIERS.md` §2: "nooit gelijktijdig,
   geen gedeelde abstractie") krijgt de Sportlink Web Extension **twee parallelle implementaties**
   als ze provider-specifieke code bevat (DB-lezen/schrijven): één in `FunctionApp.Postgres/Admin/`
-  (nu productie) en één in `FunctionApp/Admin/` (rollbackpad). Alleen pure, providervrije logica
+  (voor deze installatie productie) en één in `FunctionApp/Admin/`. Alleen pure, providervrije logica
   (bijv. de HTTP-client naar `club.sportlink.com` zelf, die geen SQL/ADO.NET raakt) mag naar
   `Planner.Shared/` — dezelfde uitzondering als `TeamNaamNormalisatie`/`VeldResolver`.
 - `public.appsettings` (Postgres) heeft **al** een `sportlinkapiurl`/`sportlinkclientid`-kolom en
@@ -35,8 +35,8 @@ niet meer juist**:
   — dit was hier nog als openstaand gat benoemd, is nu gebouwd en gemerged.
 - **§2.2 mapping-hypothese: WEERLEGD (2026-09-05), niet bevestigd.** Productiequery tegen Supabase
   voor exact dezelfde `wedstrijdnummer` (3403) en datum (2026-09-05) als het onderzoek gaf
-  `wedstrijdcode = 20698956` — niet `392686417` (het cijfer achter `PublicMatchId M392686417` uit
-  het onderzoek). Andere lengte (8 vs. 9 cijfers), geen enkele herkenbare relatie.
+  `wedstrijdcode = 20698956` — niet het cijferdeel van `PublicMatchId M392686417` uit
+  het onderzoek. Andere lengte (8 vs. 9 cijfers), geen enkele herkenbare relatie.
   **`PublicMatchId` is dus GEEN eenvoudige "M" + wedstrijdcode-samenvoeging.** Zie §2.2 voor het
   gevolg: dit vereist een reverse-lookup-endpoint, niet een formule.
 
@@ -67,8 +67,8 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
   wedstrijdnummer 3403 teruggevonden op dezelfde datum in productie).
 - **WEERLEGD (2026-09-05, live productiequery tegen Supabase):** `PublicMatchId` is GEEN
   `"M" + wedstrijdcode`. Voor exact dezelfde wedstrijd (wedstrijdnummer 3403, datum 2026-09-05)
-  geeft onze database `wedstrijdcode = 20698956` — niet `392686417` (het cijfer uit
-  `PublicMatchId M392686417` dat het onderzoek voor diezelfde wedstrijd noteerde). Verschillend
+  geeft onze database `wedstrijdcode = 20698956` — niet het cijferdeel uit
+  `PublicMatchId M392686417` dat het onderzoek voor diezelfde wedstrijd noteerde. Verschillend
   aantal cijfers (8 vs. 9), geen enkele herkenbare relatie (geen offset, geen bit-shift-patroon
   bekeken, maar op het eerste gezicht volledig ongerelateerd).
 - **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.

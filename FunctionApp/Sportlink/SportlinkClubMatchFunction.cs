@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using FunctionApp.Postgres.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -7,14 +6,18 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Admin;
 
-namespace FunctionApp.Postgres.Sportlink;
+namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997, epic #986; formulier herzien in
-/// #1116) — scaffolding, geen volledige implementatie. Van alle #986-sub-issues heeft dit issue de
-/// MEESTE onbekenden: volledige requestbody onbevestigd, picklist-vormen onbekend, delete-methode
-/// onbekend.
+/// SQL Server-tegenhanger van <c>FunctionApp.Postgres/Sportlink/SportlinkClubMatchFunction.cs</c>
+/// (#1266, epic #986).
+/// <para>
+/// Oefenwedstrijd ("clubwedstrijd") aanmaken bij Sportlink (#997; formulier herzien in #1116) —
+/// scaffolding, geen volledige implementatie. Van alle #986-sub-issues heeft dit issue de MEESTE
+/// onbekenden: volledige requestbody onbevestigd, picklist-vormen onbekend, delete-methode onbekend.
+/// </para>
 /// <para>
 /// <b>Sinds #1116 doet de server de vertaling, niet de gebruiker.</b> Het formulier levert alleen
 /// wat een wedstrijdsecretaris snel kan invullen: datum, tijd, duur, eigen team (naam uit onze
@@ -22,10 +25,9 @@ namespace FunctionApp.Postgres.Sportlink;
 /// Sportlink-velden: teamnaam → <c>PublicHomeTeamId</c> + <c>AgeClassCode</c> via
 /// <see cref="SportlinkClubMatchRepository"/>, de accommodatie uit de club-instelling
 /// <c>accommodatie</c> → <c>FacilityId</c> via de (read-only, echt aangeroepen) Sportlink-
-/// locatiepicklist. Het team-ID komt uit de gevalideerde aliassen (<c>public.teamaliassen</c> →
-/// <c>his.teams.teamcode</c>), nooit uit eigen naamlogica. Elke vertaling die niet lukt wordt een <i>waarschuwing</i> in de respons, geen
-/// fout — het pad is toch code-gelockt en de beheerder moet kunnen zien wat er (gesimuleerd) mee
-/// zou gaan.
+/// locatiepicklist. Het team-ID komt uit de gevalideerde aliassen, nooit uit eigen naamlogica. Elke
+/// vertaling die niet lukt wordt een <i>waarschuwing</i> in de respons, geen fout — het pad is toch
+/// code-gelockt en de beheerder moet kunnen zien wat er (gesimuleerd) mee zou gaan.
 /// </para>
 /// <para>
 /// <b>Structureel anders dan de andere Sportlink-mutatiefuncties:</b> <see
@@ -33,16 +35,14 @@ namespace FunctionApp.Postgres.Sportlink;
 /// BESTAANDE wedstrijd (eerst opzoeken, dan pas de guard aanroepen). Hier bestaat er vooraf geen
 /// <c>PublicMatchId</c>, geen <c>wedstrijdcode</c>, geen <c>SportlinkMatch</c> om te guarden — dus
 /// GEEN <see cref="SportlinkMutationGuard"/>-check. In plaats daarvan gelden alleen ONZE EIGEN
-/// regels (de <c>sportlinkExtensionEnabled</c>-toggle + <c>EgressGuard.ExternalIntegrationsAllowed()</c>),
-/// zelfde patroon als <see cref="SportlinkChangeRequestFunction"/>.
+/// regels (de toggle + <c>EgressGuard.ExternalIntegrationsAllowed()</c>), zelfde patroon als
+/// <see cref="SportlinkChangeRequestFunction"/>.
 /// </para>
 /// <para>
 /// <b>Audit-placeholder:</b> <see cref="SportlinkMutationAuditEntry"/> vereist een verplicht,
 /// niet-leeg <c>PublicMatchId</c>-veld — dat bestaat nog niet bij het aanmaken. De Pending-rij
 /// gebruikt daarom de placeholder-waarde <c>"NIEUW"</c>, met een gegenereerde GUID in
-/// <c>CorrelationId</c> om de Pending- en Voltooid-rij aan elkaar te koppelen. Zie de <c>TODO</c>
-/// bij <see cref="ISportlinkMutationAuditService.VoltooiAsync"/> hieronder voor waarom het écht
-/// opslaan van het teruggekregen <c>PublicMatchId</c> bewust niet is gebouwd.
+/// <c>CorrelationId</c> om de Pending- en Voltooid-rij aan elkaar te koppelen.
 /// </para>
 /// </summary>
 public static class SportlinkClubMatchFunction
@@ -65,14 +65,14 @@ public static class SportlinkClubMatchFunction
     /// forceDryRun-code-lock (<c>CreateClubMatchAsync</c>, #997) altijd gesimuleerd totdat een mens
     /// (nooit een agent, zie docs/SPORTLINK-WEB-EXTENSION.md §4.4) de body live heeft bevestigd.
     /// </summary>
-    [Function("SportlinkClubMatchPost")]
+    [Function("SqlSportlinkClubMatchPost")]
     public static Task<IActionResult> Post(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "sportlink/club-match")] HttpRequest req,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchPost"), "oefenwedstrijd aanmaken",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkClubMatchPost"), "oefenwedstrijd aanmaken",
             async clubCode =>
             {
-                var log = context.GetLogger("SportlinkClubMatchPost");
+                var log = context.GetLogger("SqlSportlinkClubMatchPost");
 
                 var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
                 if (toggleFout != null) return toggleFout;
@@ -84,7 +84,7 @@ public static class SportlinkClubMatchFunction
                 var (sportlinkClient, clientFout) = SportlinkEndpointSupport.ClientOfFout(context);
                 if (clientFout != null) return clientFout;
 
-                var cs = PostgresDatabaseConfig.ConnectionString;
+                var cs = SystemUtilities.DatabaseConfig.ConnectionString;
                 var team = await SportlinkClubMatchRepository.GetTeamKoppelingAsync(clubCode, dto!.TeamNaam!, cs);
                 if (team == null)
                     return new BadRequestObjectResult(new { error = $"Team '{dto.TeamNaam}' is niet bekend als actief clubteam." });
@@ -105,7 +105,7 @@ public static class SportlinkClubMatchFunction
                 if (string.IsNullOrWhiteSpace(team.Leeftijdscategorie))
                     waarschuwingen.Add($"Geen leeftijdscategorie bekend voor '{team.TeamNaam}' — AgeClassCode blijft leeg.");
 
-                var accommodatie = PostgresAppSettings.GetSetting("accommodatie");
+                var accommodatie = SystemUtilities.AppSettings.GetSetting("accommodatie");
                 var facilityId = await BepaalFacilityIdAsync(sportlinkClient!, clubCode, accommodatie, waarschuwingen, log);
 
                 var omschrijving = BouwOmschrijving(dto.Description, team.TeamNaam, dto.Tegenstander!, veldNaam);
@@ -136,7 +136,7 @@ public static class SportlinkClubMatchFunction
                 // audit vereist een uitbreiding van ISportlinkMutationAuditService.VoltooiAsync
                 // (raakt beide tiers) — niet nodig zolang dit pad altijd "DryRunLocked" teruggeeft
                 // (ClubMatchLiveBevestigd = false in SportlinkClubClient).
-                var mutationResult = await sportlinkClient.CreateClubMatchAsync(RolNaam, aanvraag);
+                var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
                     r => new OkObjectResult(new OefenwedstrijdAanmaakResultaat(
@@ -148,14 +148,13 @@ public static class SportlinkClubMatchFunction
     /// <c>GET /api/sportlink/club-match/picklists</c> — de twee ondersteunende Sportlink-picklists
     /// (Teams + Location). Sinds #1116 niet meer door het formulier gebruikt (teams en velden komen
     /// uit onze eigen database); blijft bestaan als diagnostisch endpoint voor de mens die de
-    /// ClubMatch-body live gaat bevestigen — om te zien welke ID-vorm Sportlink Club hanteert en of
-    /// die overeenkomt met <c>his.teams.teamcode</c>. Read-only en persoonsgegevensvrij.
+    /// ClubMatch-body live gaat bevestigen. Read-only en persoonsgegevensvrij.
     /// </summary>
-    [Function("SportlinkClubMatchPickListsGet")]
+    [Function("SqlSportlinkClubMatchPickListsGet")]
     public static Task<IActionResult> GetPickLists(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/club-match/picklists")] HttpRequest req,
         FunctionContext context) =>
-        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchPickListsGet"), "oefenwedstrijd-picklists ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SqlSportlinkClubMatchPickListsGet"), "oefenwedstrijd-picklists ophalen",
             async _ =>
             {
                 var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();

@@ -1,0 +1,28 @@
+# tier-pariteit-allowlist.txt (#1266)
+#
+# Eén regel per route die (nog) maar op één tier bestaat: <tier> <route> <reden>.
+# <tier> is 'alleen-postgres' of 'alleen-sqlserver'.
+#
+# DIT BESTAND HOORT LEEG TE LOPEN. Elke regel is openstaande schuld, geen vrijstelling. Beide
+# database-tiers zijn gelijkwaardig: een club die de SQL Server-tier kiest, hoort dezelfde
+# functionaliteit te krijgen als een club op Postgres.
+#
+# Achtergrond: epic #986 (Sportlink Web Extension) is na de basisimplementatie alleen op de
+# Postgres-tier doorontwikkeld. Dat gebeurde op grond van de premisse "de SQL Server-tier is
+# rollback-only" (#1020) — een beschrijving van de situatie na de cutover die als norm is gaan
+# gelden zonder ooit als architectuurbesluit te zijn voorgelegd. Die premisse is ingetrokken.
+#
+# Een regel zonder reden laat de guard falen: een uitzondering die niemand kan beoordelen, groeit
+# vanzelf uit tot gewoonte.
+
+# ── Naamsverschil, geen functioneel gat ─────────────────────────────────────────────────────────
+# Dezelfde handmatige sync-trigger heet op de twee tiers anders. Functioneel gelijkwaardig, maar
+# het betekent wel dat een beheerder een ander adres moet gebruiken na een tierwissel. Uitlijnen is
+# een aparte, kleine wijziging met een breaking-change-kant; zie #1266.
+alleen-postgres  postgres/sync-matches                              Heet op de SQL Server-tier 'sync-matches'; naamsverschil, geen ontbrekende functionaliteit.
+alleen-sqlserver sync-matches                                       Heet op de Postgres-tier 'postgres/sync-matches'; zelfde regel als hierboven.
+
+# ── Afgelost in #1266 ───────────────────────────────────────────────────────────────────────────
+# De twaalf routes van epic #986 die hier stonden, bestaan nu op beide tiers. Ze zijn weggehaald in
+# plaats van doorgestreept: een allowlist met dode regels is precies de rot die deze guard moet
+# voorkomen. De git-historie bewaart wat er stond.

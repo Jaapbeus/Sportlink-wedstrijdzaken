@@ -1,45 +1,36 @@
-using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Integrations.SportlinkClub;
-using FunctionApp.Postgres.Planner;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Integrations.SportlinkClub;
+using SportlinkFunction.Planner;
 
-namespace FunctionApp.Postgres.Sportlink;
+namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// Achtergrond-warmup van de PublicMatchId-cache (epic #986, issue #1017), vervolg op #987/#991/#1016.
+/// SQL Server-tegenhanger van
+/// <c>FunctionApp.Postgres/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs</c> (#1266,
+/// #1017, epic #986) — achtergrond-warmup van de PublicMatchId-cache.
 /// <para>
 /// <b>Waarom dit bestaat:</b> de reverse-lookup (<c>MatchProgramOverview</c>) duurt 12+ seconden en
 /// is niet club-gescoped (bevat het volledige regio-/competitieprogramma voor die dag). Zonder
-/// warmup wacht de EERSTE gebruiker die een wedstrijd opent (Dagplanning-paneel #991, deep-link
-/// #989) op die volle vertraging. Deze timer haalt het resultaat al op vóórdat dat gebeurt, gericht
-/// op de eerstvolgende dagen (waar de wedstrijdsecretaris in de praktijk mee werkt) — geen
+/// warmup wacht de EERSTE gebruiker die een wedstrijd opent op die volle vertraging. Deze timer
+/// haalt het resultaat al op vóórdat dat gebeurt, gericht op de eerstvolgende dagen — geen
 /// dagen-lange horizon, dat zou onnodig veel Sportlink-verkeer genereren voor wedstrijden die nog
 /// lang niet relevant zijn.
 /// </para>
 /// <para>
 /// Groepeert per datum en roept <see cref="ISportlinkClubClient.GetMatchProgramOverviewAsync"/> ÉÉN
 /// keer per unieke datum aan (niet per wedstrijd) — meerdere eigen wedstrijden op dezelfde dag
-/// (bijv. meerdere thuiswedstrijden op zaterdag) delen dezelfde, al opgehaalde dagrespons. Zie de
-/// #1017-refactor die dit apart van <c>ResolvePublicMatchIdAsync</c> mogelijk maakte.
-/// </para>
-/// <para>
-/// De SQL Server-tegenhanger staat sinds #1266 in
-/// <c>FunctionApp/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs</c> — beide tiers zijn
-/// gelijkwaardig.
+/// delen dezelfde, al opgehaalde dagrespons.
 /// </para>
 /// </summary>
 public static class SportlinkPublicMatchIdWarmupTimerFunction
 {
     private const string RolNaam = SportlinkEndpointSupport.RolWedstrijdzaken;
 
-    // 3 dagen (vandaag + 2) — dekt een doordeweekse wedstrijd morgen én het aankomende weekend als
-    // de timer op een donderdag/vrijdag draait, zonder een dagen-lange horizon vol nog-niet-
-    // relevante wedstrijden op te halen. Sinds #1266 gedeeld met de SQL Server-tier, zodat een
-    // tierwissel niet stilzwijgend een andere horizon oplevert.
+    /// <summary>Vandaag + dit aantal dagen. Gedeeld met de Postgres-tier, zodat een tierwissel niet
+    /// stilzwijgend een andere horizon oplevert.</summary>
     private const int VooruitkijkDagen = SportlinkEndpointCore.WarmupVooruitkijkDagen;
 
     [Function("SportlinkPublicMatchIdWarmup")]
@@ -49,23 +40,36 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
     {
         var log = context.GetLogger("SportlinkPublicMatchIdWarmup");
 
+        // Zie SportlinkContractCheckTimerFunction: deze tier laadt de instellingencache via
+        // WaitForDatabaseAsync, vóór de toggle gelezen wordt.
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Database niet bereikbaar — warmup overgeslagen.");
+            return;
+        }
+
         var sportlinkClient = SportlinkEndpointSupport.ClientVoorTimer(context, log, "warmup");
         if (sportlinkClient == null) return;
 
-        var clubCode = PostgresClubScope.Primary;
+        var clubCode = ClubScope.Primary;
         var vandaag = DateOnly.FromDateTime(DateTime.UtcNow);
         var totEnMet = vandaag.AddDays(VooruitkijkDagen);
 
         List<WedstrijdZonderCache> wedstrijden;
         try
         {
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
             await connection.OpenAsync();
             wedstrijden = await SportlinkPublicMatchIdRepository.ZoekWedstrijdenZonderCacheAsync(
                 connection, vandaag, totEnMet, clubCode);
         }
         catch (Exception ex)
         {
+            // Onder andere: his.matches bestaat nog niet (dynamisch aangemaakt bij de eerste sync).
             log.LogError(ex, "Kon wedstrijden zonder cache-entry niet ophalen — warmup overgeslagen.");
             return;
         }
@@ -83,7 +87,7 @@ public static class SportlinkPublicMatchIdWarmupTimerFunction
         var overviews = await Task.WhenAll(groepen.Select(async groep =>
             (Groep: groep, Overview: await sportlinkClient.GetMatchProgramOverviewAsync(RolNaam, groep.Key))));
 
-        await using var writeConnection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+        using var writeConnection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
         await writeConnection.OpenAsync();
 
         foreach (var (groep, overview) in overviews)

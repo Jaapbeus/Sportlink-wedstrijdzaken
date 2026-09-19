@@ -1,9 +1,9 @@
 # v2 Admin GUI — handleiding
 
 Deze handleiding beschrijft het Admin-portaal (Blazor WebAssembly) en de bijbehorende admin-API.
-**Sinds 2026-09-04 draait productie op de Postgres-tier** (`FunctionApp.Postgres/Admin/`) — SQL
-Server (`FunctionApp/Admin/`) blijft bestaan als rollbackpad. De admin-API-routes zijn op beide
-tiers identiek; welke tier jouw installatie gebruikt bepaalt alleen welk project daadwerkelijk
+**Deze installatie draait sinds 2026-09-04 op de Postgres-tier** (`FunctionApp.Postgres/Admin/`).
+De SQL Server-tier (`FunctionApp/Admin/`) is daarmee niet minder: het zijn twee gelijkwaardige
+tiers, en een fork kiest er één. De admin-API-routes zijn op beide tiers identiek; welke tier jouw installatie gebruikt bepaalt alleen welk project daadwerkelijk
 gedeployed is. Het portaal is **live** op (vul jouw clubspecifieke URLs in):
 
 - **Admin GUI:** zie Azure Portal → Static Web App → URL

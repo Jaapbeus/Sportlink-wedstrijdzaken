@@ -1279,6 +1279,92 @@ BEGIN
 END
 GO
 
+-- ============================================================================================
+-- #1266: pariteit met de Postgres-tier herstellen.
+--
+-- Beide tiers zijn gelijkwaardig. Epic #986 is na de basisimplementatie alleen op de Postgres-tier
+-- doorontwikkeld, omdat de premisse "de SQL Server-tier is rollback-only" (#1020) als norm werd
+-- gebruikt zonder ooit als architectuurbesluit te zijn voorgelegd. Die premisse is ingetrokken.
+--
+-- De drie bestaande pariteitsguards keken maar één kant op — staat elk SQL Server-object ook in
+-- Postgres — dus niets merkte op dat de omgekeerde richting achterliep.
+-- ============================================================================================
+
+-- #1266 (Postgres-migratie 016): AppSettings.SportlinkDryRun.
+-- Standaard AAN: een club die de extensie nog niet bewust heeft ingericht mag nooit per ongeluk
+-- echt naar Sportlink schrijven. Een club die de extensie al aan heeft staan, houdt zijn huidige
+-- gedrag — zelfde afweging als in de Postgres-migratie.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkDryRun')
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [SportlinkDryRun] BIT NOT NULL CONSTRAINT [DF_AppSettings_SportlinkDryRun] DEFAULT (1);
+    PRINT 'AppSettings.SportlinkDryRun toegevoegd (standaard 1 = dry-run aan).';
+END
+GO
+
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkDryRun')
+   AND EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'SportlinkExtensionEnabled')
+BEGIN
+    -- Alleen bij de allereerste toevoeging zinvol; daarna is de kolom door de beheerder gezet.
+    IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSettings] WHERE [SportlinkDryRun] = 0)
+        UPDATE [dbo].[AppSettings] SET [SportlinkDryRun] = 0 WHERE [SportlinkExtensionEnabled] = 1;
+END
+GO
+
+-- #1266: GEEN primaire sleutel op dbo.AppSettings.ClubCode, en dat is bewust.
+--
+-- Postgres-migratie 025 (#1218) voegde daar een primaire sleutel toe omdat public.appsettings
+-- helemaal geen constraint had: twee rijen met dezelfde clubcode waren mogelijk, en de applicatie
+-- leest instellingen met LIMIT 1 — dus stilzwijgend de verkeerde configuratie.
+--
+-- Op deze tier bestaat dat gat niet. UQ_AppSettings_ClubCode dwingt dezelfde uniciteit al af sinds
+-- #324 (zie verderop in dit bestand). Geverifieerd tegen een draaiende SQL Server-container bij
+-- #1266: de constraint was aanwezig vóór enige wijziging uit dat issue. Een primaire sleutel
+-- toevoegen zou alleen een tweede index op dezelfde kolom opleveren.
+
+-- #1266 (Postgres-migraties 014 + 018): SportlinkPublicMatchIdCache.
+-- Bewaart het resultaat van de reverse-lookup (#987/#1016). Sportlinks MatchProgramOverview matcht
+-- op ExternalMatchId en is traag (12+ s) en niet club-gescoped; zonder cache zou elke wedstrijdactie
+-- die lookup opnieuw doen.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SportlinkPublicMatchIdCache'))
+BEGIN
+    CREATE TABLE [dbo].[SportlinkPublicMatchIdCache] (
+        [Wedstrijdcode] BIGINT       NOT NULL,
+        [ClubCode]      NVARCHAR(20) NOT NULL,
+        [PublicMatchId] NVARCHAR(50) NOT NULL,
+        [OpgehaaldOp]   DATETIME2    NOT NULL CONSTRAINT [DF_SportlinkPublicMatchIdCache_OpgehaaldOp] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_SportlinkPublicMatchIdCache] PRIMARY KEY CLUSTERED ([Wedstrijdcode] ASC, [ClubCode] ASC)
+    );
+    -- Twee query's filteren op ClubCode zonder Wedstrijdcode en kunnen de primaire sleutel dus niet
+    -- gebruiken (bevinding A1 uit de review in #1122, Postgres-migratie 018).
+    CREATE NONCLUSTERED INDEX [IX_SportlinkPublicMatchIdCache_ClubCode_OpgehaaldOp] ON [dbo].[SportlinkPublicMatchIdCache] ([ClubCode], [OpgehaaldOp] DESC);
+    CREATE NONCLUSTERED INDEX [IX_SportlinkPublicMatchIdCache_ClubCode_PublicMatchId] ON [dbo].[SportlinkPublicMatchIdCache] ([ClubCode], [PublicMatchId]);
+    PRINT 'dbo.SportlinkPublicMatchIdCache aangemaakt.';
+END
+GO
+
+-- #1266 (Postgres-migratie 016): SportlinkContractCheck.
+-- Resultaat van de dagelijkse contract-check: een read-call die de vorm van de Sportlink
+-- Match-respons controleert, zodat een stille Sportlink-release ons niet pas via een mislukte
+-- mutatie bereikt. Bewust GEEN hergebruik van dbo.SportlinkMutationAudit — die tabel betekent
+-- "een rij per mutatiepoging", en een contract-check is geen mutatie.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SportlinkContractCheck'))
+BEGIN
+    CREATE TABLE [dbo].[SportlinkContractCheck] (
+        [Id]                      BIGINT IDENTITY(1,1) NOT NULL,
+        [ClubCode]                NVARCHAR(20)  NOT NULL,
+        [RolNaam]                 NVARCHAR(50)  NOT NULL,
+        [UitgevoerdOp]            DATETIME2     NOT NULL CONSTRAINT [DF_SportlinkContractCheck_UitgevoerdOp] DEFAULT (GETUTCDATE()),
+        [IsOk]                    BIT           NOT NULL,
+        [HttpStatus]              INT           NULL,
+        [AfwijkendeVelden]        NVARCHAR(MAX) NULL,
+        [FoutmeldingSamenvatting] NVARCHAR(500) NULL,
+        CONSTRAINT [PK_SportlinkContractCheck] PRIMARY KEY CLUSTERED ([Id] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_SportlinkContractCheck_ClubCode_UitgevoerdOp] ON [dbo].[SportlinkContractCheck] ([ClubCode], [UitgevoerdOp] DESC);
+    PRINT 'dbo.SportlinkContractCheck aangemaakt.';
+END
+GO
+
 -- v2 — #62: TeamVoorkeurTijden
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamVoorkeurTijden'))
 BEGIN

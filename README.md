@@ -27,7 +27,7 @@ Dit project bouwt die automatiseringslaag zelf.
 Een serverless pipeline die Sportlink-data synchroniseert, verwerkt en omzet in acties:
 
 ### 1 — Wedstrijddata automatisch ophalen
-Elke nacht haalt een Azure Function alle wedstrijden, teams en details op via de Sportlink Club API. De data wordt opgeslagen in een database (Postgres in productie sinds september 2026, SQL Server als rollbackpad — zie de architectuursectie hieronder) — zodat je er zelf query's op kunt draaien, rapporten van kunt bouwen, of koppelen aan andere systemen.
+Elke nacht haalt een Azure Function alle wedstrijden, teams en details op via de Sportlink Club API. De data wordt opgeslagen in een database (Postgres of SQL Server — twee gelijkwaardige tiers, zie de architectuursectie hieronder) — zodat je er zelf query's op kunt draaien, rapporten van kunt bouwen, of koppelen aan andere systemen.
 
 ### 2 — AI-gestuurde e-mailverwerking
 Binnenkomende e-mails over wedstrijdwijzigingen (verplaatsverzoeken, afzeggingen) worden automatisch geclassificeerd via OpenAI (gpt-4o-mini, direct via OpenAI API). Op basis van de classificatie stuurt de planner een standaardantwoord terug — met de leider en trainer van het betrokken team automatisch in BCC.
@@ -66,7 +66,7 @@ Azure Functions (.NET 9, isolated worker) — één van twee volledig gescheiden
   └── Admin API               — REST endpoints voor de beheer-GUI
         │
         ▼
-Postgres (productie sinds 2026-09-04, via Supabase) — of Azure SQL Server (rollbackpad)
+Postgres (via Supabase) of Azure SQL Server — twee gelijkwaardige tiers; je fork kiest er één
   ├── stg.*   — staging (tijdelijk, elke run geleegd)
   ├── his.*   — history (persistent, met audit-timestamps)
   ├── pub.*   — public views (alleen-lezen voor consumers)

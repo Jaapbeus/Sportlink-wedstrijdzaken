@@ -18,6 +18,36 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **De SQL Server-variant van de database was achtergebleven op de Postgres-variant (#1266).** Deze
+  applicatie ondersteunt twee soorten database; een club kiest er bij installatie één. Sinds deze
+  installatie in september op Postgres overging, is nieuwe functionaliteit alleen daar nog gebouwd —
+  twaalf schermfuncties rond de Sportlink-koppeling, twee tabellen en een instelling ontbraken aan
+  de SQL Server-kant. Dat was geen bewuste keuze om die variant te laten vallen: het kwam voort uit
+  de aanname dat hij alleen nog als terugvaloptie bestond, een aanname die nooit als beslissing is
+  voorgelegd maar wel in vijftien documenten terechtkwam. Beide varianten zijn gelijkwaardig, en
+  dat is nu ook vastgelegd. De ontbrekende tabellen en de instelling zijn toegevoegd en getest
+  tegen een echte SQL Server-database, vers opgebouwd én bijgewerkt vanaf de oude situatie.
+- **De Sportlink-koppeling werkt nu ook op de SQL Server-variant (#1266).** De twaalf
+  schermfuncties rond wedstrijdwijzigingen — kleedkamers, veld, scheidsrechters, wijzigingsverzoeken,
+  oefenwedstrijden aanmaken en het statusoverzicht — bestonden alleen op de Postgres-variant. Een
+  club op SQL Server kreeg daar foutmeldingen op schermen die verder gewoon zichtbaar waren. Ze
+  werken nu op beide varianten, samen met de drie achtergrondtaken die de koppeling in de lucht
+  houden. De veiligheidsschakelaar blijft daarbij aan: een club die de koppeling nog niet bewust
+  heeft ingericht, verstuurt niets naar Sportlink — ook niet als het uitlezen van die instelling
+  zelf misgaat.
+- **Wie wedstrijdgegevens in Sportlink mag wijzigen, was per databasevariant anders (#1272).** Voor
+  deze koppeling bestaat een aparte rol, "Wedstrijdzaken", die bedoeld is als extra slot bovenop de
+  gewone beheerderstoegang — zo staat het ook in de handleiding. Op de Postgres-variant werkte die
+  rol echter als vervánging: iemand met alleen die rol, en dus zonder beheerderstoegang, kon het
+  beheerscherm niet eens openen maar wél rechtstreeks wedstrijdgegevens wijzigen. Beide varianten
+  eisen nu allebei de rollen, precies zoals bedoeld.
+- **Nieuwe bewaking: een functie kan niet meer op één databasevariant blijven steken (#1266).** Er
+  bestonden al drie controles op verschillen tussen de twee varianten, maar die keken maar één kant
+  op — precies de kant die na de overgang naar Postgres de verkeerde was geworden. De nieuwe
+  controle kijkt beide kanten op en houdt de build tegen zodra een schermfunctie maar op één
+  variant bestaat.
+
 ### Added
 - **Het thema-scherm stelt nu beide weergaven in, met kant-en-klare basisthema's om mee te
   beginnen (#1257).** U kiest bovenaan of u de lichte of de donkere weergave bewerkt; de hele

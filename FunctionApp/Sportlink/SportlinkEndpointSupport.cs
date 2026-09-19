@@ -1,5 +1,3 @@
-using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -7,26 +5,32 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Admin;
+using SportlinkFunction.Infrastructure;
 
-namespace FunctionApp.Postgres.Sportlink;
+namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// De stappen die élk Sportlink Web Extension-endpoint en élke Sportlink-timer deelt (#1122, epic
-/// #986). Tot deze klasse bestond stonden ze gekopieerd: de toggle+EgressGuard-controle zes keer,
-/// de statusvertaling drie keer, de audit-afronding drie keer en de rolnaam zes keer. Een nieuw
-/// endpoint dat één van deze stappen vergeet is precies het risico dat #857 (EgressGuard) en #998
-/// (audit) wilden uitsluiten — daarom één plek.
+/// SQL Server-tegenhanger van <c>FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs</c>
+/// (#1266, epic #986): de gedeelde voorbereiding van élk Sportlink Web Extension-endpoint en élke
+/// Sportlink-timer op deze tier.
 /// <para>
-/// Sinds #1266 staat de beslislogica zelf in <see cref="SportlinkEndpointCore"/> (Planner.Shared),
-/// omdat de SQL Server-tier dezelfde regels nodig heeft. Wat hier overblijft is tier-plumbing: de
-/// Postgres-instellingenlezer, de Postgres-EgressGuard, de DI-lookup van de client en de vertaling
-/// naar <see cref="IActionResult"/>.
+/// <b>Geen kopie.</b> Alle beslislogica — de toggle+EgressGuard-controle, de vertaling van
+/// <see cref="SportlinkClubCallStatus"/> naar een HTTP-status, de rolnaam, de dry-run-polariteit en
+/// de audit-afronding — staat in <see cref="SportlinkEndpointCore"/> (Planner.Shared) en wordt door
+/// beide tiers aangeroepen. Wat hier staat is uitsluitend tier-plumbing: de SQL Server-
+/// instellingenlezer, de EgressGuard van deze assembly, de DI-lookup van de client en de vertaling
+/// naar <see cref="IActionResult"/>. Zelfde scheiding als ThemeCore (#1248) en FeedbackCore (#1130).
 /// </para>
 /// </summary>
 internal static class SportlinkEndpointSupport
 {
     /// <summary>De ene functionele rol waarmee deze app in Sportlink Club schrijft (#988).</summary>
     internal const string RolWedstrijdzaken = SportlinkEndpointCore.RolWedstrijdzaken;
+
+    /// <summary>Instellingenlezer van deze tier — één plek, zodat de cache-semantiek
+    /// (<c>null</c> = nog niet geladen) overal gelijk is.</summary>
+    private static Func<string, string?> LeesInstelling => SystemUtilities.AppSettings.GetSetting;
 
     /// <summary>Vertaalt een gedeelde foutuitkomst naar de HTTP-respons van deze tier.</summary>
     private static IActionResult NaarActionResult(SportlinkEndpointFout fout)
@@ -37,29 +41,26 @@ internal static class SportlinkEndpointSupport
     internal static IActionResult? ControleerToggleEnEgress()
     {
         var fout = SportlinkEndpointCore.ControleerToggleEnEgress(
-            PostgresAppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed);
+            LeesInstelling, EgressGuard.ExternalIntegrationsAllowed);
         return fout == null ? null : NaarActionResult(fout);
     }
 
-    /// <summary>Dry-run-stand van deze club (#998) — fail-safe, zie
-    /// <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
-    internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting);
+    /// <summary>Dry-run-stand van deze club (#998) — fail-safe: alles behalve een expliciet geladen
+    /// <c>"0"</c> is dry-run. Zie <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
+    internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(LeesInstelling);
 
     /// <summary>
-    /// Voert een Sportlink-endpoint uit met BEIDE poorten: eerst de functionele rol
-    /// <c>Wedstrijdzaken</c>, daarna de gewone admin-controle van
-    /// <see cref="AdminEndpoint.ExecuteAsync"/>.
+    /// De endpointwrapper voor élk Sportlink Web Extension-endpoint van deze tier (#1266).
     /// <para>
-    /// <b>Gewijzigd bij #1272.</b> Tot dan gaf deze tier <c>requireRole:</c> mee aan
-    /// <c>AdminEndpoint.ExecuteAsync</c>, waar het de admin-controle <i>verving</i> in plaats van
-    /// er bovenop te komen. Dat sprak §3.4 van docs/SPORTLINK-WEB-EXTENSION.md tegen, dat de rol
-    /// uitdrukkelijk omschrijft als een extra slot "bovenop de bestaande admin-toegang", en het
-    /// leverde een recht op dat alleen buiten de applicatie om bruikbaar was: de Admin GUI poort
-    /// in App.razor op <c>admin</c> of <c>user</c>, dus iemand met alléén <c>Wedstrijdzaken</c>
-    /// kon de interface niet laden maar deze endpoints wél rechtstreeks aanroepen.
-    /// </para>
-    /// <para>
-    /// Beide tiers gebruiken nu dezelfde wrapper met dezelfde volgorde — geen tierverschil meer.
+    /// <b>Waarom een eigen wrapper en niet <c>requireRole:</c> zoals de Postgres-tier?</b> De
+    /// Postgres-variant van <c>AdminEndpoint.ExecuteAsync</c> heeft sinds #991 een optionele
+    /// <c>requireRole</c>-parameter waarmee <c>RequireWedstrijdzaken</c> de <c>RequireAdmin</c>-check
+    /// <i>vervangt</i>; de SQL Server-variant heeft die parameter (nog) niet. Deze wrapper zet de
+    /// functionele rolcheck daarom <i>bovenop</i> de bestaande admin-gate — precies zoals
+    /// docs/SPORTLINK-WEB-EXTENSION.md §3.4 de rol beschrijft ("bovenop de bestaande
+    /// admin-toegang"). Nooit zwakker dan de Postgres-tegenhanger: een aanroeper heeft hier zowel
+    /// <c>admin</c> als <c>Wedstrijdzaken</c> nodig, wat de aanbevolen roltoewijzing
+    /// <c>["admin","Wedstrijdzaken"]</c> sowieso is.
     /// </para>
     /// </summary>
     internal static Task<IActionResult> ExecuteWedstrijdzakenAsync(
@@ -72,8 +73,7 @@ internal static class SportlinkEndpointSupport
 
     /// <summary>De 503 voor "client niet in DI geregistreerd", als losse respons — voor de paden die
     /// de client zelf uit <see cref="FunctionContext.InstanceServices"/> halen in plaats van via
-    /// <see cref="ClientOfFout"/>. Sinds #1266 komt de melding uit
-    /// <see cref="SportlinkEndpointCore"/>, zodat beide tiers dezelfde tekst en status geven.</summary>
+    /// <see cref="ClientOfFout"/>.</summary>
     internal static IActionResult ClientNietGeconfigureerdFout()
         => NaarActionResult(SportlinkEndpointCore.ClientNietGeconfigureerdFout);
 
@@ -91,8 +91,7 @@ internal static class SportlinkEndpointSupport
     /// <c>null</c> terug, zodat elke timer met één regel kan afbreken.</summary>
     internal static ISportlinkClubClient? ClientVoorTimer(FunctionContext context, ILogger log, string taak)
     {
-        switch (SportlinkEndpointCore.BepaalTimerStatus(
-                    PostgresAppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed))
+        switch (SportlinkEndpointCore.BepaalTimerStatus(LeesInstelling, EgressGuard.ExternalIntegrationsAllowed))
         {
             case SportlinkTimerStatus.ExtensieUit:
                 log.LogInformation(SportlinkEndpointCore.TimerExtensieUitLog, taak);
@@ -128,7 +127,7 @@ internal static class SportlinkEndpointSupport
     /// De afronding die élke mutatie deelt: transportfout → audit "Failure" + vertaalde fout; lege
     /// respons → audit "Failure" + 502; anders audit met <see cref="BepaalAuditResultaat"/> en
     /// <paramref name="ok"/>. Altijd HTTP 200 bij een inhoudelijke afwijzing door Sportlink —
-    /// <c>IsSuccess</c>/<c>Violations</c> dragen de uitkomst (consistent met AdminApiClient).
+    /// <c>IsSuccess</c>/<c>Violations</c> dragen de uitkomst.
     /// </summary>
     internal static async Task<IActionResult> RondMutatieAfAsync<T>(
         SportlinkClubResponse<T> mutationResult,

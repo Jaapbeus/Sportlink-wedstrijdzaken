@@ -49,5 +49,14 @@
 	-- in sp_CleanupSportlinkMutationAudit.sql. Aanpassen via een directe UPDATE (nog geen GUI-veld).
 	[SportlinkMutationAuditBewaarDagen] INT NOT NULL DEFAULT 365,
 	-- #988: schakelaar voor de Sportlink Web Extension (epic #986) — standaard UIT, club kiest zelf
-	[SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0
+	[SportlinkExtensionEnabled] BIT NOT NULL DEFAULT 0,
+	-- #1266 (tegenhanger van Postgres-migratie 016): slaat de daadwerkelijke PUT/POST naar Sportlink
+	-- over. Standaard AAN (1) — een club die de extensie nog niet bewust heeft ingericht mag nooit
+	-- per ongeluk echt schrijven. Dit is fail-safe: de waarde wordt per aanroep gelezen.
+	[SportlinkDryRun] BIT NOT NULL DEFAULT 1
+	-- Geen primaire sleutel op ClubCode: die uniciteit wordt al sinds #324 afgedwongen door
+	-- UQ_AppSettings_ClubCode in Script.PostDeployment1.sql. Het probleem dat Postgres-migratie 025
+	-- (#1218) oploste — twee rijen met dezelfde ClubCode, waarna een TOP 1-query er stilzwijgend
+	-- één kiest — kon op deze tier dus nooit optreden. Geverifieerd tegen een echte database bij
+	-- #1266; een PK toevoegen zou alleen een tweede index op dezelfde kolom opleveren.
 	)
