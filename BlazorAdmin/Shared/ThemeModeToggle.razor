@@ -1,0 +1,39 @@
+@using BlazorAdmin.Services
+@implements IDisposable
+@inject ThemeService ThemeService
+
+@* Licht/donker-schakelaar in de topbalk (#1256, epic #1249). De modus staat al in het DOM vóórdat
+   Blazor boot (de IIFE in theme.js); dit component leest hem uit en schrijft hem terug — het
+   bepaalt hem nooit zelf. Anders zou de knop kortstondig de verkeerde stand tonen. *@
+
+<button type="button"
+        class="btn btn-sm btn-outline-secondary"
+        title="@Titel"
+        aria-label="@Titel"
+        aria-pressed="@(_mode == "dark" ? "true" : "false")"
+        @onclick="WisselAsync">
+    <i class="bi @(_mode == "dark" ? "bi-sun" : "bi-moon-stars")" aria-hidden="true"></i>
+</button>
+
+@code {
+    private string _mode = "light";
+
+    private string Titel => _mode == "dark" ? "Overschakelen naar lichte weergave" : "Overschakelen naar donkere weergave";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ThemeService.OnModeChanged += OpModusGewijzigd;
+        _mode = await ThemeService.GetModeAsync();
+    }
+
+    private async Task WisselAsync()
+        => await ThemeService.SetModeAsync(_mode == "dark" ? "light" : "dark");
+
+    private void OpModusGewijzigd(string mode)
+    {
+        _mode = mode;
+        StateHasChanged();
+    }
+
+    public void Dispose() => ThemeService.OnModeChanged -= OpModusGewijzigd;
+}
