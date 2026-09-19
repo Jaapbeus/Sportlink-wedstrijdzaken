@@ -1,5 +1,3 @@
-using FunctionApp.Postgres.Admin;
-using FunctionApp.Postgres.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -7,26 +5,31 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Infrastructure;
 
-namespace FunctionApp.Postgres.Sportlink;
+namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// De stappen die élk Sportlink Web Extension-endpoint en élke Sportlink-timer deelt (#1122, epic
-/// #986). Tot deze klasse bestond stonden ze gekopieerd: de toggle+EgressGuard-controle zes keer,
-/// de statusvertaling drie keer, de audit-afronding drie keer en de rolnaam zes keer. Een nieuw
-/// endpoint dat één van deze stappen vergeet is precies het risico dat #857 (EgressGuard) en #998
-/// (audit) wilden uitsluiten — daarom één plek.
+/// SQL Server-tegenhanger van <c>FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs</c>
+/// (#1266, epic #986): de gedeelde voorbereiding van élk Sportlink Web Extension-endpoint en élke
+/// Sportlink-timer op deze tier.
 /// <para>
-/// Sinds #1266 staat de beslislogica zelf in <see cref="SportlinkEndpointCore"/> (Planner.Shared),
-/// omdat de SQL Server-tier dezelfde regels nodig heeft. Wat hier overblijft is tier-plumbing: de
-/// Postgres-instellingenlezer, de Postgres-EgressGuard, de DI-lookup van de client en de vertaling
-/// naar <see cref="IActionResult"/>.
+/// <b>Geen kopie.</b> Alle beslislogica — de toggle+EgressGuard-controle, de vertaling van
+/// <see cref="SportlinkClubCallStatus"/> naar een HTTP-status, de rolnaam, de dry-run-polariteit en
+/// de audit-afronding — staat in <see cref="SportlinkEndpointCore"/> (Planner.Shared) en wordt door
+/// beide tiers aangeroepen. Wat hier staat is uitsluitend tier-plumbing: de SQL Server-
+/// instellingenlezer, de EgressGuard van deze assembly, de DI-lookup van de client en de vertaling
+/// naar <see cref="IActionResult"/>. Zelfde scheiding als ThemeCore (#1248) en FeedbackCore (#1130).
 /// </para>
 /// </summary>
 internal static class SportlinkEndpointSupport
 {
     /// <summary>De ene functionele rol waarmee deze app in Sportlink Club schrijft (#988).</summary>
     internal const string RolWedstrijdzaken = SportlinkEndpointCore.RolWedstrijdzaken;
+
+    /// <summary>Instellingenlezer van deze tier — één plek, zodat de cache-semantiek
+    /// (<c>null</c> = nog niet geladen) overal gelijk is.</summary>
+    private static Func<string, string?> LeesInstelling => SystemUtilities.AppSettings.GetSetting;
 
     /// <summary>Vertaalt een gedeelde foutuitkomst naar de HTTP-respons van deze tier.</summary>
     private static IActionResult NaarActionResult(SportlinkEndpointFout fout)
@@ -37,13 +40,13 @@ internal static class SportlinkEndpointSupport
     internal static IActionResult? ControleerToggleEnEgress()
     {
         var fout = SportlinkEndpointCore.ControleerToggleEnEgress(
-            PostgresAppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed);
+            LeesInstelling, EgressGuard.ExternalIntegrationsAllowed);
         return fout == null ? null : NaarActionResult(fout);
     }
 
-    /// <summary>Dry-run-stand van deze club (#998) — fail-safe, zie
-    /// <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
-    internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting);
+    /// <summary>Dry-run-stand van deze club (#998) — fail-safe: alles behalve een expliciet geladen
+    /// <c>"0"</c> is dry-run. Zie <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
+    internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(LeesInstelling);
 
     /// <summary>De <see cref="ISportlinkClubClient"/> uit DI, of een 503 als hij niet geregistreerd
     /// is (Program.cs registreert hem alleen als de EgressGuard het toestaat).</summary>
@@ -59,8 +62,7 @@ internal static class SportlinkEndpointSupport
     /// <c>null</c> terug, zodat elke timer met één regel kan afbreken.</summary>
     internal static ISportlinkClubClient? ClientVoorTimer(FunctionContext context, ILogger log, string taak)
     {
-        switch (SportlinkEndpointCore.BepaalTimerStatus(
-                    PostgresAppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed))
+        switch (SportlinkEndpointCore.BepaalTimerStatus(LeesInstelling, EgressGuard.ExternalIntegrationsAllowed))
         {
             case SportlinkTimerStatus.ExtensieUit:
                 log.LogInformation(SportlinkEndpointCore.TimerExtensieUitLog, taak);
@@ -96,7 +98,7 @@ internal static class SportlinkEndpointSupport
     /// De afronding die élke mutatie deelt: transportfout → audit "Failure" + vertaalde fout; lege
     /// respons → audit "Failure" + 502; anders audit met <see cref="BepaalAuditResultaat"/> en
     /// <paramref name="ok"/>. Altijd HTTP 200 bij een inhoudelijke afwijzing door Sportlink —
-    /// <c>IsSuccess</c>/<c>Violations</c> dragen de uitkomst (consistent met AdminApiClient).
+    /// <c>IsSuccess</c>/<c>Violations</c> dragen de uitkomst.
     /// </summary>
     internal static async Task<IActionResult> RondMutatieAfAsync<T>(
         SportlinkClubResponse<T> mutationResult,

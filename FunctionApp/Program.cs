@@ -69,18 +69,29 @@ if (!string.IsNullOrWhiteSpace(openAiApiKey) && EgressGuard.ExternalIntegrations
 if (EgressGuard.ExternalIntegrationsAllowed())
 {
     builder.Services.AddSingleton<ISportlinkClubTokenStore, SportlinkClubAppSettingsTokenStore>();
-    // #998: deze tier heeft geen enkel mutatie-endpoint (alleen de nog niet vertaalde read-only
-    // paden) — isDryRun staat daarom hard op true, zodat een toekomstig mutatiepad hier nooit per
-    // ongeluk een echte PUT/POST naar Sportlink kan versturen.
+    // #1266: de dry-run-stand komt nu uit dbo.AppSettings.SportlinkDryRun in plaats van een harde
+    // `true`. Dezelfde gedeelde, fail-safe regel als de Postgres-tier (SportlinkEndpointCore):
+    // alles behalve een expliciet geladen "0" is dry-run. Zolang de instellingencache nog niet
+    // geladen is — of de kolom ontbreekt op een nog niet gemigreerde database — blijft dry-run dus
+    // AAN. Met de omgekeerde polariteit zou een lege cache fail-OPEN zijn en zou een mutatiepad
+    // per ongeluk een echte PUT/POST naar Sportlink versturen.
     builder.Services.AddHttpClient<ISportlinkClubClient, SportlinkClubClient>(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(15);
     })
-    .AddTypedClient<ISportlinkClubClient>((httpClient, sp) => new SportlinkClubClient(
-        httpClient,
-        sp.GetRequiredService<ISportlinkClubTokenStore>(),
-        sp.GetRequiredService<ILoggerFactory>().CreateLogger<SportlinkClubClient>(),
-        isDryRun: () => true));
+    .AddTypedClient<ISportlinkClubClient>((httpClient, sp) =>
+    {
+        var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+        var dryRunLogger = loggerFactory.CreateLogger("SportlinkDryRun");
+        return new SportlinkClubClient(
+            httpClient,
+            sp.GetRequiredService<ISportlinkClubTokenStore>(),
+            loggerFactory.CreateLogger<SportlinkClubClient>(),
+            // De instelling wordt bij ELKE mutatie-aanroep opnieuw gelezen (niet één keer bij
+            // opstarten), zodat de Instellingen-toggle direct effect heeft zonder herstart.
+            isDryRun: () => SportlinkEndpointCore.IsDryRunActief(
+                SportlinkFunction.SystemUtilities.AppSettings.GetSetting, dryRunLogger));
+    });
 }
 
 builder.Services.AddSingleton<ITeamCandidateRepository, TeamCandidateRepository>();

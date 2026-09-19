@@ -154,6 +154,22 @@ namespace SportlinkFunction
                     SELECT @v;", connection);
                 var sleResult = await sleCmd.ExecuteScalarAsync();
                 settings["sportlinkExtensionEnabled"] = (sleResult is bool b && b) ? "1" : "0";
+
+                // #1266: SportlinkDryRun — zelfde dynamische kolomcontrole, maar met de omgekeerde
+                // (fail-safe) default: ontbreekt de kolom of is de waarde NULL, dan blijft dry-run
+                // AAN. Alleen een expliciete 0 zet hem uit; SportlinkEndpointCore.IsDryRunActief
+                // leest dat met dezelfde polariteit terug.
+                using var dryRunCmd = new SqlCommand(@"
+                    DECLARE @d BIT = 1;
+                    DECLARE @sql NVARCHAR(200) = CASE
+                        WHEN COL_LENGTH('[dbo].[AppSettings]', 'SportlinkDryRun') IS NOT NULL
+                        THEN N'SELECT TOP 1 @d = [SportlinkDryRun] FROM [dbo].[AppSettings]'
+                        ELSE N'SELECT @d = CAST(1 AS BIT)'
+                    END;
+                    EXEC sp_executesql @sql, N'@d BIT OUTPUT', @d = @d OUTPUT;
+                    SELECT @d;", connection);
+                var dryRunResult = await dryRunCmd.ExecuteScalarAsync();
+                settings["sportlinkDryRun"] = (dryRunResult is bool dr && !dr) ? "0" : "1";
             }
 
             public static string? GetSetting(string key)

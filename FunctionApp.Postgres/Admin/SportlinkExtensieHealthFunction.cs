@@ -33,8 +33,10 @@ public static class SportlinkExtensieHealthFunction
             {
                 var live = req.Query["live"].ToString().Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                var extensionEnabled = PostgresAppSettings.GetSetting("sportlinkExtensionEnabled") == "1";
-                var dryRun = PostgresAppSettings.GetSetting("sportlinkDryRun") != "0";
+                var extensionEnabled = PostgresAppSettings.GetSetting(
+                    SportlinkEndpointCore.InstellingExtensieIngeschakeld) == "1";
+                // #1266: dezelfde fail-safe polariteit als Program.cs en de SQL Server-tier — één plek.
+                var dryRun = SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting);
                 var egressAllowed = EgressGuard.ExternalIntegrationsAllowed();
 
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
