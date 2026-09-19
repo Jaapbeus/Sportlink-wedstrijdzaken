@@ -36,6 +36,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   houden. De veiligheidsschakelaar blijft daarbij aan: een club die de koppeling nog niet bewust
   heeft ingericht, verstuurt niets naar Sportlink — ook niet als het uitlezen van die instelling
   zelf misgaat.
+- **Wie wedstrijdgegevens in Sportlink mag wijzigen, was per databasevariant anders (#1272).** Voor
+  deze koppeling bestaat een aparte rol, "Wedstrijdzaken", die bedoeld is als extra slot bovenop de
+  gewone beheerderstoegang — zo staat het ook in de handleiding. Op de Postgres-variant werkte die
+  rol echter als vervánging: iemand met alleen die rol, en dus zonder beheerderstoegang, kon het
+  beheerscherm niet eens openen maar wél rechtstreeks wedstrijdgegevens wijzigen. Beide varianten
+  eisen nu allebei de rollen, precies zoals bedoeld.
 - **Nieuwe bewaking: een functie kan niet meer op één databasevariant blijven steken (#1266).** Er
   bestonden al drie controles op verschillen tussen de twee varianten, maar die keken maar één kant
   op — precies de kant die na de overgang naar Postgres de verkeerde was geworden. De nieuwe

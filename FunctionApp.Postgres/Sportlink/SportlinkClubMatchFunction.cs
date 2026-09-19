@@ -69,7 +69,7 @@ public static class SportlinkClubMatchFunction
     public static Task<IActionResult> Post(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "sportlink/club-match")] HttpRequest req,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkClubMatchPost"), "oefenwedstrijd aanmaken",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchPost"), "oefenwedstrijd aanmaken",
             async clubCode =>
             {
                 var log = context.GetLogger("SportlinkClubMatchPost");
@@ -142,8 +142,7 @@ public static class SportlinkClubMatchFunction
                     r => new OkObjectResult(new OefenwedstrijdAanmaakResultaat(
                         r.IsSuccess, r.Violations, r.IsDryRun, r.IsForcedDryRun, r.PublicMatchId,
                         omschrijving, aanvraag.PublicHomeTeamId, aanvraag.AgeClassCode, facilityId, veldNaam, waarschuwingen)));
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>GET /api/sportlink/club-match/picklists</c> — de twee ondersteunende Sportlink-picklists
@@ -156,7 +155,7 @@ public static class SportlinkClubMatchFunction
     public static Task<IActionResult> GetPickLists(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/club-match/picklists")] HttpRequest req,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkClubMatchPickListsGet"), "oefenwedstrijd-picklists ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkClubMatchPickListsGet"), "oefenwedstrijd-picklists ophalen",
             async _ =>
             {
                 var toggleFout = SportlinkEndpointSupport.ControleerToggleEnEgress();
@@ -170,8 +169,7 @@ public static class SportlinkClubMatchFunction
 
                 return new OkObjectResult(result.Data ?? new SportlinkClubMatchPickLists(
                     Array.Empty<SportlinkPickListItem>(), Array.Empty<SportlinkPickListItem>()));
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>Invoer van het formulier (#1116) — alleen wat een mens snel kan intikken; de Sportlink-ID's leidt de server af.</summary>
     internal sealed class OefenwedstrijdAanmakenDto

@@ -32,7 +32,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchGet"), "sportlink-match ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -50,8 +50,7 @@ public static class SportlinkMatchFunction
                     return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
 
                 return new OkObjectResult(matchResult.Data);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>GET /api/sportlink/match/{wedstrijdcode}/public-match-id</c> (#989, epic #986) —
@@ -65,7 +64,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sportlink/match/{wedstrijdcode}/public-match-id")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchPublicMatchIdGet"), "sportlink-publicmatchid ophalen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -76,8 +75,7 @@ public static class SportlinkMatchFunction
                 if (fout != null) return fout;
 
                 return new OkObjectResult(new { PublicMatchId = publicMatchId });
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/dressingrooms</c> (#992, epic #986) — eerste
@@ -90,7 +88,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/dressingrooms")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchDressingRoomsPut"), "sportlink-kleedkamers wijzigen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -108,8 +106,7 @@ public static class SportlinkMatchFunction
                         BouwKleedkamerId(match.MatchField?.FacilityId, dto?.AwayDressingRoomId),
                         BouwKleedkamerId(match.MatchField?.FacilityId, dto?.OfficialDressingRoomId)),
                     naarMutatieResultaat: r => r);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/field</c> (#993, epic #986) — veld(deel)
@@ -122,7 +119,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/field")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchFieldPut"), "sportlink-veld wijzigen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchFieldPut"), "sportlink-veld wijzigen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -137,8 +134,7 @@ public static class SportlinkMatchFunction
                     (publicMatchId, _) => sportlinkClient!.UpdateFieldAsync(
                         RolNaam, publicMatchId, dto?.FieldId, dto?.FieldSize, dto?.FieldOffset, isForceUpdate: false),
                     naarMutatieResultaat: r => r);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     /// <summary>
     /// <c>PUT /api/sportlink/match/{wedstrijdcode}/officials</c> (#994, epic #986) — officials
@@ -155,7 +151,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/officials")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchOfficialsPut"), "sportlink-officials toewijzen",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -174,8 +170,7 @@ public static class SportlinkMatchFunction
                     SportlinkMutationSoort.Officials, dto, context,
                     (publicMatchId, _) => sportlinkClient!.AssignOfficialsAsync(RolNaam, publicMatchId, toewijzingen),
                     naarMutatieResultaat: r => r);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     // NIET VERDER BOUWEN ZONDER LIVE BEVESTIGING DOOR DE EIGENAAR (#995, Aanpak-stap 1: body van
     // beide PUT's en de bevestigingsvlag vastleggen). Dit endpoint is uitsluitend stap 1
@@ -197,7 +192,7 @@ public static class SportlinkMatchFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sportlink/match/{wedstrijdcode}/change-request")] HttpRequest req,
         string wedstrijdcode,
         FunctionContext context) =>
-        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
+        SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync(req, context.GetLogger("SportlinkMatchChangeRequestPut"), "sportlink-wijzigingsverzoek datum/tijd/accommodatie",
             async clubCode =>
             {
                 if (!long.TryParse(wedstrijdcode, out var wedstrijdcodeValue))
@@ -234,8 +229,7 @@ public static class SportlinkMatchFunction
                     (publicMatchId, _) => sportlinkClient!.RequestMatchChangeAsync(
                         RolNaam, publicMatchId, nieuweDatum, nieuweStartTijd, dto.NieuweFacilityId, dto.Toelichting!),
                     naarMutatieResultaat: r => r.Mutatie);
-            },
-            requireRole: EasyAuthHelper.RequireWedstrijdzaken);
+            });
 
     // Live vastgesteld (2026-09-06, netwerktrace door de eigenaar): Sportlink verwacht
     // "{FacilityId}-DRESSINGROOM-{n}" (bijv. "BBCF989-DRESSINGROOM-11"), geen los kleedkamernummer.

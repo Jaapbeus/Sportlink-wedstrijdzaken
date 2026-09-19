@@ -45,6 +45,31 @@ internal static class SportlinkEndpointSupport
     /// <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
     internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting);
 
+    /// <summary>
+    /// Voert een Sportlink-endpoint uit met BEIDE poorten: eerst de functionele rol
+    /// <c>Wedstrijdzaken</c>, daarna de gewone admin-controle van
+    /// <see cref="AdminEndpoint.ExecuteAsync"/>.
+    /// <para>
+    /// <b>Gewijzigd bij #1272.</b> Tot dan gaf deze tier <c>requireRole:</c> mee aan
+    /// <c>AdminEndpoint.ExecuteAsync</c>, waar het de admin-controle <i>verving</i> in plaats van
+    /// er bovenop te komen. Dat sprak §3.4 van docs/SPORTLINK-WEB-EXTENSION.md tegen, dat de rol
+    /// uitdrukkelijk omschrijft als een extra slot "bovenop de bestaande admin-toegang", en het
+    /// leverde een recht op dat alleen buiten de applicatie om bruikbaar was: de Admin GUI poort
+    /// in App.razor op <c>admin</c> of <c>user</c>, dus iemand met alléén <c>Wedstrijdzaken</c>
+    /// kon de interface niet laden maar deze endpoints wél rechtstreeks aanroepen.
+    /// </para>
+    /// <para>
+    /// Beide tiers gebruiken nu dezelfde wrapper met dezelfde volgorde — geen tierverschil meer.
+    /// </para>
+    /// </summary>
+    internal static Task<IActionResult> ExecuteWedstrijdzakenAsync(
+        HttpRequest req, ILogger log, string errorContext, Func<string, Task<IActionResult>> work)
+    {
+        var rolFout = EasyAuthHelper.RequireWedstrijdzaken(req);
+        if (rolFout != null) return Task.FromResult(rolFout);
+        return AdminEndpoint.ExecuteAsync(req, log, errorContext, work);
+    }
+
     /// <summary>De 503 voor "client niet in DI geregistreerd", als losse respons — voor de paden die
     /// de client zelf uit <see cref="FunctionContext.InstanceServices"/> halen in plaats van via
     /// <see cref="ClientOfFout"/>. Sinds #1266 komt de melding uit

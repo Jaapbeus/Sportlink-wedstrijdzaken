@@ -199,17 +199,18 @@ verplichte N-user-test.
   NIET hard afgedwongen (bijv. op `SCHEDULED`) — die waarde wordt sinds #998 wel uitgebreid
   meegelogd in de audit (zie hieronder), zodat er eerst een seizoen aan echte data verzameld wordt
   vóórdat die eventueel een harde blokkade wordt.
-> **Eén bewust tierverschil in de autorisatie (#1266, te beslissen in #1272).** Op de Postgres-tier
-> *vervangt* `requireRole: EasyAuthHelper.RequireWedstrijdzaken` de `RequireAdmin`-check
-> (`AdminEndpoint.ExecuteAsync`: `(requireRole ?? EasyAuthHelper.RequireAdmin)(req)`). De SQL
-> Server-tier kent die parameter niet; daar loopt elk Sportlink-endpoint via één wrapper,
-> `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`, die éérst `RequireWedstrijdzaken` doet en
-> dán `AdminEndpoint.ExecuteAsync` — dus **beide** rollen zijn vereist.
+> **Autorisatie: beide rollen, op beide tiers (#1272).** Elk Sportlink-endpoint eist zowel `admin`
+> als `Wedstrijdzaken`, via één gedeelde vorm: `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`
+> doet eerst `RequireWedstrijdzaken` en daarna `AdminEndpoint.ExecuteAsync` (met `RequireAdmin`).
+> Beide tiers gebruiken dezelfde wrapper.
 >
-> Dat is strikter, niet zwakker, en het is bewust zo gelaten: autorisatie hoort niet te verzwakken
-> als bijvangst van een pariteitsport. Voor de aanbevolen roltoewijzing (`["admin","Wedstrijdzaken"]`)
-> is het gedrag identiek. Een club die iemand alléén `Wedstrijdzaken` geeft, merkt wél verschil —
-> vandaar dat de richting van de uitlijning een expliciete keuze is en geen implementatiedetail.
+> Tot #1272 gaf de Postgres-tier `requireRole:` mee aan `AdminEndpoint.ExecuteAsync`, waar het de
+> admin-controle *verving*. Dat sprak §3.4 hierboven tegen ("bovenop de bestaande admin-toegang")
+> en leverde een recht op dat alleen buiten de applicatie om bruikbaar was: `App.razor` poort de
+> hele Admin GUI op `admin` of `user`, dus iemand met alléén `Wedstrijdzaken` kon de interface niet
+> laden maar de mutatie-endpoints wél rechtstreeks aanroepen. De parameter is verwijderd, niet
+> alleen ongebruikt gelaten — een optionele parameter die stilzwijgend een autorisatiecontrole
+> vervangt, wordt vanzelf een tweede keer gebruikt.
 
 - `FunctionApp/Sportlink/` + `FunctionApp.Postgres/Sportlink/` (#998) — per-tier, niet-gedeelde
   `ISportlinkMutationAuditService`-implementatie; logt vóór én na elke toekomstige mutatie in
@@ -222,7 +223,7 @@ verplichte N-user-test.
   wedstrijdnummer/datum) die de reverse-lookup nodig heeft.
 - `FunctionApp.Postgres/Sportlink/SportlinkMatchFunction.cs` — `GET
   /api/sportlink/match/{wedstrijdcode}` (#991), het eerste endpoint met `RequireWedstrijdzaken`
-  i.p.v. `RequireAdmin` (zie #988 Besluit 1). Verbindt de reverse-lookup-cache, de token-store en de
+  **bovenop** `RequireAdmin` (#1272 — tot dan stond hier "i.p.v.", wat §3.4 tegensprak). Verbindt de reverse-lookup-cache, de token-store en de
   Dagplanning-GUI met elkaar. Sinds #989 ook `GET .../public-match-id` — dezelfde resolutie zonder
   de volledige `Match`-aanroep, voor de "Open in Sportlink"-deep-link-knop. Sinds #992 ook `PUT
   .../dressingrooms` (kleedkamers) en sinds #993 `PUT .../field` (veld) — de eerste echte
