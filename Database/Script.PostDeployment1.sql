@@ -1581,6 +1581,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSet
     ALTER TABLE [dbo].[AppSettings] ADD [ThemeClubWebsiteUrl] NVARCHAR(300) NULL;
 GO
 
+-- ============================================================
+-- #1254 (epic #1249): volledig kleurenpalet per modus, als JSON
+-- Bewust geen kolom per kleur — het aantal kleuren groeit nog. De vier platte ThemeColor*-kolommen
+-- hierboven blijven de terugval voor clubs zonder licht/donker-set, dus dit is additief.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorsLightJson')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeColorsLightJson] NVARCHAR(MAX) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AppSettings') AND name = 'ThemeColorsDarkJson')
+    ALTER TABLE [dbo].[AppSettings] ADD [ThemeColorsDarkJson] NVARCHAR(MAX) NULL;
+GO
+
 -- v2 — #84: EmailTemplateInstellingen
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.EmailTemplateInstellingen'))
 BEGIN

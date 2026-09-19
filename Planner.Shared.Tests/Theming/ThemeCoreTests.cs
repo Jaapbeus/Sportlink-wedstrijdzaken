@@ -345,6 +345,143 @@ public class ThemeCoreTests
     }
 
     // ---------------------------------------------------------------------------------------
+    // Modus-paletten (#1254) — sleutel- en waardevorm liggen vast omdat de waarde in een CSS
+    // custom property belandt.
+    // ---------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("#112233")]      // #rrggbb
+    [InlineData("#11223344")]    // #rrggbbaa — nodig voor o.a. de hover-schaduw
+    [InlineData("#AABBCC")]
+    public void IsValidPaletWaarde_GeldigeHexvormen_IsTrue(string waarde)
+        => ThemeCore.IsValidPaletWaarde(waarde).Should().BeTrue();
+
+    [Theory]
+    [InlineData("rgba(0,0,0,.12)")]                  // vrije CSS-functie: nooit toestaan
+    [InlineData("red")]
+    [InlineData("#abc")]
+    [InlineData("#1122334")]                          // 7 tekens: noch rrggbb noch rrggbbaa
+    [InlineData("#112233; background: url(x)")]       // injectiepoging in de waarde
+    [InlineData("")]
+    [InlineData(null)]
+    public void IsValidPaletWaarde_OngeldigeWaarde_IsFalse(string? waarde)
+        => ThemeCore.IsValidPaletWaarde(waarde).Should().BeFalse();
+
+    [Theory]
+    [InlineData("primary")]
+    [InlineData("cardBg")]
+    [InlineData("muted-text-light")]
+    [InlineData("shadow2")]
+    public void IsValidPaletSleutel_GeldigeSleutel_IsTrue(string sleutel)
+        => ThemeCore.IsValidPaletSleutel(sleutel).Should().BeTrue();
+
+    [Theory]
+    [InlineData("Primary")]                     // moet met een kleine letter beginnen
+    [InlineData("2kleur")]
+    [InlineData("kleur: red; --evil")]          // zou uit de property-naam breken
+    [InlineData("kleur met spatie")]
+    [InlineData("kleur_underscore")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void IsValidPaletSleutel_OngeldigeSleutel_IsFalse(string? sleutel)
+        => ThemeCore.IsValidPaletSleutel(sleutel).Should().BeFalse();
+
+    [Fact]
+    public void ValideerPalet_LeegOfNull_IsGeldig()
+    {
+        // Niet ingesteld is een geldige toestand: de club valt terug op de vier platte kleuren.
+        ThemeCore.ValideerPalet(null, "test").Should().BeNull();
+        ThemeCore.ValideerPalet(new Dictionary<string, string>(), "test").Should().BeNull();
+    }
+
+    [Fact]
+    public void ValideerPalet_TeVeelSleutels_WordtAfgewezen()
+    {
+        var palet = Enumerable.Range(0, ThemeCore.MaxPaletSleutels + 1)
+            .ToDictionary(i => $"kleur{i}", _ => "#112233");
+
+        ThemeCore.ValideerPalet(palet, "het lichte kleurenpalet").Should().Contain("Te veel kleuren");
+    }
+
+    [Fact]
+    public void ValideerPalet_EenOngeldigeWaardeTussenGeldige_WordtAfgewezenMetDeSleutelErbij()
+    {
+        var palet = new Dictionary<string, string>
+        {
+            ["primary"] = "#112233",
+            ["cardBg"] = "rgba(0,0,0,.12)",
+            ["accent"] = "#445566"
+        };
+
+        ThemeCore.ValideerPalet(palet, "het donkere kleurenpalet")
+            .Should().Contain("cardBg").And.Contain("het donkere kleurenpalet");
+    }
+
+    [Fact]
+    public async Task ValideerUpdateAsync_OngeldigPalet_GeeftOngeldigPaletEnRaadpleegtGeenDns()
+    {
+        // Het palet wordt vóór de URL-controle getoetst, zodat een afgewezen palet geen DNS-lookup
+        // kost. Faalt de resolver alsnog, dan is de volgorde omgedraaid.
+        var resolverAangeroepen = false;
+
+        var resultaat = await ThemeCore.ValideerUpdateAsync(
+            new ThemeUpdateRequest
+            {
+                ClubWebsiteUrl = "https://www.example.com/",
+                DarkColors = new Dictionary<string, string> { ["primary"] = "niet-een-kleur" }
+            },
+            resolverOverride: _ => { resolverAangeroepen = true; return Task.FromResult<System.Net.IPAddress?>(null); });
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.OngeldigPalet);
+        resolverAangeroepen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ValideerUpdateAsync_GeldigePaletten_IsGeldig()
+    {
+        var resultaat = await ThemeCore.ValideerUpdateAsync(new ThemeUpdateRequest
+        {
+            LightColors = new Dictionary<string, string> { ["primary"] = "#112233", ["cardBg"] = "#ffffff" },
+            DarkColors = new Dictionary<string, string> { ["primary"] = "#14213d", ["shadowHover"] = "#0000001f" }
+        });
+
+        resultaat.Status.Should().Be(ThemeValidatieStatus.Ok);
+    }
+
+    [Fact]
+    public void PaletNaarJson_LeegOfNull_GeeftNull()
+    {
+        // Zodat de databasekolom NULL blijft en de terugval op de platte kleuren blijft werken.
+        ThemeCore.PaletNaarJson(null).Should().BeNull();
+        ThemeCore.PaletNaarJson(new Dictionary<string, string>()).Should().BeNull();
+    }
+
+    [Fact]
+    public void PaletNaarJson_EnTerug_LevertDezelfdeInhoud()
+    {
+        var origineel = new Dictionary<string, string> { ["primary"] = "#112233", ["cardBg"] = "#ffffffcc" };
+
+        var terug = ThemeCore.PaletUitJson(ThemeCore.PaletNaarJson(origineel));
+
+        terug.Should().NotBeNull();
+        terug!.Should().BeEquivalentTo(origineel);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("geen json")]
+    [InlineData("{\"primary\": \"rgba(0,0,0,.5)\"}")]   // geldige JSON, ongeldige kleur
+    [InlineData("{\"kleur: red; --evil\": \"#112233\"}")] // geldige JSON, ongeldige sleutel
+    [InlineData("[1,2,3]")]
+    public void PaletUitJson_OnbruikbareInhoud_GeeftNullInPlaatsVanEenUitzondering(string? json)
+    {
+        // Een kapot palet in de database mag nooit het hele thema-endpoint laten vallen; de club
+        // valt dan terug op de platte kleuren.
+        ThemeCore.PaletUitJson(json).Should().BeNull();
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Responscontract — beide tiers bouwen hun GET-antwoord hiermee
     // ---------------------------------------------------------------------------------------
 

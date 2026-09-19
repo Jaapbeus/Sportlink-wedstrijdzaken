@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Planner.Shared.Infrastructure;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Planner.Shared.Theming;
@@ -27,7 +28,9 @@ public sealed record ThemeWaarden(
     string TextOnPrimary,
     string ClubWebsiteUrl,
     string? FaviconUrl,
-    string? LogoUrl);
+    string? LogoUrl,
+    IReadOnlyDictionary<string, string>? LightColors = null,
+    IReadOnlyDictionary<string, string>? DarkColors = null);
 
 /// <summary>Uitkomst van de validatie vóór <c>PUT /api/beheer/theme</c>.</summary>
 public enum ThemeValidatieStatus
@@ -39,7 +42,10 @@ public enum ThemeValidatieStatus
     OngeldigeKleur,
 
     /// <summary>De club-website-URL is onbruikbaar of wijst naar een niet-toegestane bestemming (HTTP 400).</summary>
-    OngeldigeWebsiteUrl
+    OngeldigeWebsiteUrl,
+
+    /// <summary>Een sleutel of waarde in het licht-/donkerpalet is niet toegestaan (HTTP 400).</summary>
+    OngeldigPalet
 }
 
 /// <summary>Resultaat van <see cref="ThemeCore.ValideerUpdateAsync"/>.</summary>
@@ -86,6 +92,17 @@ public sealed class ThemeUpdateRequest
     public string? ClubWebsiteUrl { get; set; }
     public string? FaviconUrl     { get; set; }
     public string? LogoUrl        { get; set; }
+
+    /// <summary>
+    /// Het volledige kleurenpalet voor de lichte modus (#1254), als sleutel → hexwaarde. Bewust
+    /// een dictionary en geen veld per kleur: het aantal kleuren groeit nog met epic #1249, en een
+    /// veld per kleur betekent bij elke uitbreiding opnieuw een wijziging in beide tiers.
+    /// <c>null</c> of leeg = niet ingesteld, de club valt terug op de vier platte velden hierboven.
+    /// </summary>
+    public Dictionary<string, string>? LightColors { get; set; }
+
+    /// <summary>Als <see cref="LightColors"/>, voor de donkere modus.</summary>
+    public Dictionary<string, string>? DarkColors { get; set; }
 }
 
 /// <summary>
@@ -105,7 +122,7 @@ public static class ThemeCore
     /// <summary>Het thema zoals een club het krijgt zolang er niets is ingesteld.</summary>
     public static ThemeWaarden Standaard { get; } = new(
         DefaultPrimaryColor, DefaultSecondaryColor, DefaultAccentColor, DefaultTextOnPrimaryColor,
-        ClubWebsiteUrl: "", FaviconUrl: null, LogoUrl: null);
+        ClubWebsiteUrl: "", FaviconUrl: null, LogoUrl: null, LightColors: null, DarkColors: null);
 
     /// <summary>
     /// De responsvorm van <c>GET /api/beheer/theme</c>. Eén plek, zodat beide tiers gegarandeerd
@@ -120,7 +137,9 @@ public static class ThemeCore
         textOnPrimary  = waarden.TextOnPrimary,
         clubWebsiteUrl = waarden.ClubWebsiteUrl,
         faviconUrl     = waarden.FaviconUrl,
-        logoUrl        = waarden.LogoUrl
+        logoUrl        = waarden.LogoUrl,
+        lightColors    = waarden.LightColors,
+        darkColors     = waarden.DarkColors
     };
 
     private static readonly Regex _hexColorRegex      = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.Compiled);
@@ -138,6 +157,22 @@ public static class ThemeCore
 
     /// <summary>Maximaal aantal kleuren dat de extractie teruggeeft, aflopend op voorkomen.</summary>
     public const int MaxGeextraheerdeKleuren = 8;
+
+    /// <summary>Maximaal aantal kleuren in één modus-palet (#1254).</summary>
+    public const int MaxPaletSleutels = 40;
+
+    // Een paletsleutel wordt in de browser samengevoegd tot een CSS custom property
+    // (`--theme-<sleutel>-light`). De sleutel komt uit een admin-request, dus hij wordt hier
+    // vastgelegd op een vorm die geen CSS-syntaxis kan bevatten: begint met een kleine letter,
+    // daarna alleen letters, cijfers en koppeltekens. Een admin is binnen dit deploymentmodel
+    // vertrouwd (#393), dus dit is geen autorisatiegrens — maar een waarde die ongefilterd in een
+    // stylesheet-property belandt hoort wél een vaste vorm te hebben.
+    private static readonly Regex _paletSleutelRegex = new(@"^[a-z][a-zA-Z0-9-]{0,39}$", RegexOptions.Compiled);
+
+    // #rrggbb of #rrggbbaa. De alpha-variant is nodig voor kleuren als de hover-schaduw, die in
+    // app.css nu een rgba()-literal is; een vrije rgba()-string toestaan zou een willekeurige
+    // tekenreeks in een CSS-property laten belanden.
+    private static readonly Regex _paletWaardeRegex = new(@"^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$", RegexOptions.Compiled);
 
     /// <summary>
     /// De gedeelde, SSRF-beschermde <see cref="HttpClient"/> voor thema-extractie (#1007):
@@ -159,8 +194,71 @@ public static class ThemeCore
     }
 
     /// <summary>
-    /// Valideert de vier kleuren en — als er een club-website-URL is meegegeven — of die naar een
-    /// toegestane publieke bestemming resolvet.
+    /// Een paletwaarde is <c>#rrggbb</c> of <c>#rrggbbaa</c>. Strenger dan alleen "is dit een
+    /// kleur": de waarde belandt in een CSS custom property, dus een vrije tekenreeks is geen optie.
+    /// </summary>
+    public static bool IsValidPaletWaarde(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && _paletWaardeRegex.IsMatch(value);
+
+    /// <summary>Zie <see cref="_paletSleutelRegex"/> voor waarom de vorm van een sleutel vastligt.</summary>
+    public static bool IsValidPaletSleutel(string? key) =>
+        !string.IsNullOrWhiteSpace(key) && _paletSleutelRegex.IsMatch(key);
+
+    /// <summary>
+    /// Valideert één modus-palet: het aantal sleutels, en elke sleutel en waarde afzonderlijk.
+    /// Itereert bewust over de dictionary in plaats van per kleur een eigen regel te hebben — het
+    /// aantal kleuren groeit nog, en een regel per kleur is precies de duplicatie die #1248 ophief.
+    /// <c>null</c> of leeg is geldig: de club valt dan terug op de vier platte kleuren.
+    /// </summary>
+    public static string? ValideerPalet(IReadOnlyDictionary<string, string>? palet, string naam)
+    {
+        if (palet == null || palet.Count == 0) return null;
+
+        if (palet.Count > MaxPaletSleutels)
+            return $"Te veel kleuren in {naam} (maximaal {MaxPaletSleutels}).";
+
+        foreach (var (sleutel, waarde) in palet)
+        {
+            if (!IsValidPaletSleutel(sleutel))
+                return $"Ongeldige kleurnaam in {naam}.";
+            if (!IsValidPaletWaarde(waarde))
+                return $"Ongeldige kleurwaarde voor '{sleutel}' in {naam}.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Serialiseert een modus-palet naar de JSON die in de databasekolom gaat. <c>null</c> voor een
+    /// leeg of ontbrekend palet, zodat de kolom <c>NULL</c> blijft en de terugval op de platte
+    /// kleuren blijft werken.
+    /// </summary>
+    public static string? PaletNaarJson(IReadOnlyDictionary<string, string>? palet) =>
+        palet == null || palet.Count == 0 ? null : JsonSerializer.Serialize(palet);
+
+    /// <summary>
+    /// Leest een modus-palet uit de databasekolom. Onleesbare of ongeldige inhoud geeft
+    /// <c>null</c> in plaats van een uitzondering: een kapot palet mag nooit het hele
+    /// thema-endpoint laten vallen — de club valt dan terug op de platte kleuren.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string>? PaletUitJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var palet = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            if (palet == null || palet.Count == 0) return null;
+            return ValideerPalet(palet, "palet") == null ? palet : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Valideert de vier kleuren, beide modus-paletten, en — als er een club-website-URL is
+    /// meegegeven — of die naar een toegestane publieke bestemming resolvet.
     /// <para>
     /// Die laatste controle staat bewust al bij het opslaan en niet pas bij extractie (#1007):
     /// anders kan dezelfde admin die de allowlist beheert hem op een intern adres zetten.
@@ -178,6 +276,13 @@ public static class ThemeCore
             return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigeKleur, "Ongeldige accent kleur.");
         if (!IsValidHexColor(dto.TextOnPrimary))
             return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigeKleur, "Ongeldige textOnPrimary kleur.");
+
+        // Paletten vóór de URL-controle: die laatste doet een DNS-lookup, en een afgewezen palet
+        // hoeft dat niet te kosten.
+        var paletFout = ValideerPalet(dto.LightColors, "het lichte kleurenpalet")
+                     ?? ValideerPalet(dto.DarkColors, "het donkere kleurenpalet");
+        if (paletFout != null)
+            return new ThemeValidatieResultaat(ThemeValidatieStatus.OngeldigPalet, paletFout);
 
         if (string.IsNullOrWhiteSpace(dto.ClubWebsiteUrl))
             return new ThemeValidatieResultaat(ThemeValidatieStatus.Ok, null);
