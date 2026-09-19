@@ -19,6 +19,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **"Kleuren ophalen van de clubwebsite" kon mislukken bij websites die er niets mis mee hadden
+  (#1250).** Het systeem vroeg de pagina op met alleen een naamkaartje van de applicatie erbij,
+  zonder te vermelden welk soort inhoud en welke taal het verwachtte — iets wat elke browser wel
+  doet. Een deel van de websitehosts weigert zo'n verzoek daarom botweg, met als resultaat dat het
+  ophalen van de kleuren strandde terwijl er aan de kant van de club niets aan de hand was.
+  Diezelfde pagina komt mét die twee gegevens er gewoon binnen. Het ophalen werkt nu dus ook op die
+  websites. Aan wélke adressen benaderd mogen worden verandert niets: dat blijft uitsluitend het
+  webadres dat de beheerder zelf voor de eigen club heeft ingesteld.
 - **De demo-club AllStars FC had geen enkel team en geen enkele wedstrijd (#1246).** De testmodus
   waarmee je de planner kunt uitproberen zonder de echte clubgegevens aan te raken, was in de
   praktijk leeg: wel velden en instellingen, maar nul teams, nul wedstrijden, nul teambegeleiders
