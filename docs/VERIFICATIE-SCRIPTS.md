@@ -1,18 +1,24 @@
 # Verificatie & zelfherstellende tests
 
+> **Waarvoor dit document?** Naslagwerk over de verificatiescripts zelf: wat elk script meet, het
+> volledige parametercontract en de exitcodes. Dit is de bron voor scriptvlaggen — de andere
+> documenten verwijzen hierheen. Eerste opzet staat in [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md),
+> dagelijks werk in [LOKAAL-DEBUGGEN.md](LOKAAL-DEBUGGEN.md).
+
 Geldt voor **Windows** en **macOS (Apple Silicon)** (#800) — beide scripts en `DevServices.psm1`
 zijn cross-platform; waar een commando toch platform-specifiek is staat de macOS-variant
 ernaast.
 
 ## Test-App.ps1
 
-`scripts/dev/scripts/dev/Test-App.ps1` is het centrale verificatie- en herstelscript.
+`scripts/dev/Test-App.ps1` is het centrale verificatie- en herstelscript.
 Het controleert schema, build en runtime in één doorloop.
 
 **sqlcmd-authenticatie, cross-platform afgeleid (#800):** het script hardcodeerde vroeger `-E`
 (Windows Integrated Authentication) — dat werkte toevallig omdat de lokale database vroeger een
 Windows SQL Server-service was. Sinds de lokale database uitsluitend nog de Docker-container uit
-`docker-compose.yml` is (identiek op Windows en macOS, zie DEVELOPER-SETUP.md sectie 4.1), gebruikt
+`docker-compose.yml` is (identiek op Windows en macOS, zie DEVELOPER-SETUP.md sectie 4.4 — die
+service start met `docker compose --profile sqlserver up -d sqlserver`), gebruikt
 iedereen een SQL-login, en leidt het script de authenticatie af uit `SqlConnectionString` in
 `local.settings.json` in plaats van `-E` te hardcoden:
 - Staat er `User Id=`/`Password=` in (de standaardsituatie)? → `-U <user>` plus het wachtwoord via
@@ -52,28 +58,41 @@ vertaalpunt blijft (#816/#865). Standaard `Postgres`: de tier die in productie d
 
 ### Wat wordt gecontroleerd
 
-| Sectie | Controle | -Fix |
-|--------|----------|------|
-| 1. DB-verbinding | `local.settings.json` van de gekozen tier aanwezig en geldig | nee |
-| 2. Schema (SqlServer) | Alle 8 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
-| 2. Schema (Postgres) | `Database.Postgres/migrations/*.sql` vs. `schema_migrations` + kerntabellen aanwezig | ja — openstaande migraties toepassen |
-| 3. Build | `dotnet build` van het tier-project + BlazorAdmin | nee |
-| 4. API smoke | 11 endpoints op `:7094` | nee (2xx verwacht) |
-| 5. Blazor pagina's | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+De sectienamen hieronder zijn de koppen die het script zelf afdrukt (`=== <naam> ===`), in de
+volgorde waarin ze draaien.
 
-Secties 4 en 5 worden automatisch overgeslagen als de services niet draaien.
+| # | Sectie | Controle | -Fix |
+|---|--------|----------|------|
+| 1 | Git hooks | `core.hooksPath` en `.githooks/sensitive-patterns.txt` aanwezig | nee |
+| 2 | Database verbinding | `local.settings.json` van de gekozen tier aanwezig en geldig | nee |
+| 3 | Schema validatie (SqlServer) | Alle 11 tabellen én hun kolommen | ja — ALTER TABLE / CREATE TABLE |
+| 3 | Schema validatie (Postgres) | `Database.Postgres/migrations/*.sql` vs. `schema_migrations` + kerntabellen aanwezig | ja — openstaande migraties toepassen |
+| 4 | Build verificatie | `dotnet build` van het tier-project + BlazorAdmin | nee |
+| 5 | API smoke tests | 13 endpoints op `:7094` | nee (2xx verwacht) |
+| 6 | Feedback widget | GitHub-integratie van de feedbackwidget | nee |
+| 7 | Blazor pagina checks | 8 routes op `:5242` | nee (geen Blazor-foutindicatoren) |
+| 8 | SWA emulator checks | `/.auth/login/aad` op `:4280` | nee |
+
+Secties 5 t/m 8 worden automatisch overgeslagen als de bijbehorende service niet draait. CLAUDE.md
+verwijst naar "secties 4+5+6" van dit script; dat zijn hier de secties die een draaiende service
+nodig hebben (5 t/m 8).
 
 ### Bewake tabellen
 
+Elf tabellen, conform `$expectedColumns` in `scripts/dev/Test-App.ps1`:
+
 ```
 dbo.AppSettings              — ClubName, ClubCode, Accommodatie, GPS, ...
+dbo.SportlinkExtensieRollen  — RolNaam, LaatstGekoppeldDoor, LaatstGekoppeldOp, SportlinkAccountNaam, ClubCode
 dbo.TeamVoorkeurTijden       — Id, TeamNaam, DagVanWeek, VoorkeurTijd, ...
 dbo.VeldBeschikbaarheid      — Id, VeldNummer, DagVanWeek, BeschikbaarVanaf, ...
-dbo.UitgeslotenEmailAdressen — Id, EmailAdres, Omschrijving, Actief, ClubCode
+dbo.VeldPeriode              — Id, Naam, DatumVan, DatumTot, Actief, ClubCode
+dbo.UitgeslotenEmailAdressen — Id, EmailAdres, Omschrijving, Actief, ClubCode, mta_inserted
 dbo.EmailTemplateInstellingen— Id, TemplateKey, Onderwerp, BodyTemplate, ...
 dbo.AppSettingsAudit         — Id, GewijzigdDoor, Veld, OudeWaarde, ...
 dbo.TeamRegels               — Id, TeamNaam, RegelType, ...
-dbo.Velden                   — VeldNummer, VeldNaam, VeldType, ...
+dbo.Velden                   — VeldNummer, VeldNaam, VeldType, HeeftKunstlicht, Actief, ClubCode
+dbo.VeldTraining             — Id, VeldNummer, DagVanWeek, VanTijd, TotTijd, Omschrijving, Actief, ClubCode
 ```
 
 ### Verplicht workflow
@@ -121,7 +140,7 @@ houden dat tegen, en één in [.github/workflows/deploy.yml](../.github/workflow
 | **Schema-drift check** — tabellen | Elke tabel uit het DB-project heeft een echte `CREATE TABLE` in het PostDeployment-script | De check accepteerde eerder élke vermelding, ook een `INSERT`. Daardoor passeerde `dbo.KnvbKalenderDag` met acht INSERT-blokken en nul CREATE's (#738); zeven andere tabellen zaten in hetzelfde geval, waaronder `dbo.AppSettings` |
 | **Schema-drift check** — kolommen | Elke kolom uit het DB-project komt voor in het PostDeployment-script | Een kolom die alleen aan het DB-project wordt toegevoegd, kwam nooit in productie. Zo ontbraken `KnvbPdfBijlageIngeschakeld` en `KnvbStandaardRegio` terwijl de Instellingen-pagina ze onvoorwaardelijk uitleest |
 | **`PostDeployment op verse database`** | Voert het script twee keer uit tegen een lege SQL Server in een wegwerpcontainer, met `-b -V 11`, en controleert daarna dat 22 kernobjecten bestaan en gevuld zijn | Het enige wat een verse clubinstallatie écht bewijst. Tekstchecks vergelijken tekens; deze job voert de migratie uit. Kost niets: runner-container, geen Azure-resource, geen secret |
-| **`PostDeployment op verse Postgres-database`** (#823) | Postgres-tegenhanger: past `Database.Postgres/migrations/` twee keer toe via `Database.Postgres.Cli`/`MigrationRunner` (#821) tegen een verse Postgres 16-`services:`-container, en controleert daarna kernobjecten, ClubCode-dekking, exact één ledger-rij (geen duplicaat na de tweede run) en dat geen enkele kolomnaam afwijkt van lowercase (ARCHITECTUUR-DATABASE-TIERS.md §3) | Bewijst dat het Postgres-migratiepad idempotent is, net als de SQL Server-tegenhanger. Gebruikt het native `services:`-blok i.p.v. een rauwe `docker run`: GitHub Actions regelt zelf container-lifecycle/health-check. Credentials zijn een vast, niet-geheim wegwerpwachtwoord — geen GitHub Secret, want `services:`-containers provisioneren vóór elke step (een in een step gegenereerd wachtwoord zou hier te laat zijn) en secrets falen sowieso op fork-PR's |
+| **`PostDeployment op verse Postgres-database`** (#823) | Postgres-tegenhanger: past `Database.Postgres/migrations/` twee keer toe via `Database.Postgres.Cli`/`MigrationRunner` (#821) tegen een verse Postgres 17-`services:`-container, en controleert daarna kernobjecten, ClubCode-dekking, exact één ledger-rij (geen duplicaat na de tweede run) en dat geen enkele kolomnaam afwijkt van lowercase (ARCHITECTUUR-DATABASE-TIERS.md §3) | Bewijst dat het Postgres-migratiepad idempotent is, net als de SQL Server-tegenhanger. Gebruikt het native `services:`-blok i.p.v. een rauwe `docker run`: GitHub Actions regelt zelf container-lifecycle/health-check. Credentials zijn een vast, niet-geheim wegwerpwachtwoord — geen GitHub Secret, want `services:`-containers provisioneren vóór elke step (een in een step gegenereerd wachtwoord zou hier te laat zijn) en secrets falen sowieso op fork-PR's |
 | **`db-migrate` in deploy.yml** | `arguments: '-b -V 11'` op `azure/sql-action` | Zonder die vlaggen geeft sqlcmd exitcode 0 bij fouten van severity 16 en meldt de action "Successfully executed". Bij twee releases stonden er zo tien echte fouten in het log terwijl de job groen was (#739) |
 
 **Uitzonderingen in de allowlist**, met reden: `stg.*` (dynamisch aangemaakt door
@@ -459,7 +478,7 @@ zonder enige codewijziging.
 **Lokaal, tegen een eigen wegwerpcontainer:**
 
 ```powershell
-docker run -d --name pg866 -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink_test -p 5432:5432 postgres:16
+docker run -d --name pg866 -e POSTGRES_PASSWORD=devonly -e POSTGRES_DB=sportlink_test -p 5432:5432 postgres:17
 $env:POSTGRES_TEST_CONNECTION_STRING = "Host=localhost;Port=5432;Username=postgres;Password=devonly;Database=sportlink_test"
 dotnet test Database.Postgres.Tests --filter FullyQualifiedName~IntegrationTests
 docker rm -f pg866
@@ -493,15 +512,22 @@ Voor productie-deploys: gebruik de SSDT publish-diff workflow of een migratiescr
 
 ## CI-shellscripts lokaal draaien (`scripts/ci/*.sh`, #1155)
 
-De vier **bestandsguards** die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook
+De **bestandsguards** die `build.yml` als `bash scripts/ci/<naam>.sh` uitvoert, draaien ook
 lokaal — zonder database, zonder secrets — en horen op macOS met de standaard `/bin/bash` 3.2 en
 BSD grep/sed/awk **hetzelfde resultaat** te geven als op de Linux-CI-runner (bash 5, GNU tools).
 De twee **databaseguards** uit #1220 staan in een eigen sectie hieronder: die hebben wél een
 draaiende database nodig.
 
+> **Het volledige, bewaakte register van guards staat in
+> [ARCHITECTUUR-CODEKWALITEIT.md](ARCHITECTUUR-CODEKWALITEIT.md)** — `scripts/ci/check-regelregister.sh`
+> laat de build falen zodra een guard in `scripts/ci/` daar ontbreekt of niet in een workflow wordt
+> aangeroepen. De tabel hieronder is een selectie van de guards die je het vaakst lokaal draait, geen
+> uitputtende lijst; ga voor volledigheid altijd naar het register.
+
 | Script | Bewaakt |
 |---|---|
 | `check-path-casing.sh` | Padverwijzingen in ps1/psm1/md/yml/yaml/csproj matchen exact de casing van het getrackte bestand (#825) |
+| `check-postgres-identifier-casing.sh` | Identifiers in `Database.Postgres/migrations/*.sql` zijn lowercase snake_case, nooit gequote of PascalCase (#864) |
 | `check-postgres-table-coverage.sh` | Elke SQL Server-tabel heeft een Postgres-tegenhanger of een gemotiveerde uitzondering (#864) |
 | `check-postgres-column-coverage.sh` | Idem op kolomniveau (#864) |
 | `check-postgres-procedure-view-coverage.sh` | Elke procedure/view heeft een aanwijsbare C#-tegenhanger of uitzondering (#864) |
@@ -511,6 +537,7 @@ draaiende database nodig.
 ```bash
 # Vanuit de repo-root, met de standaard macOS-bash (bewust niet de Homebrew-bash):
 /bin/bash scripts/ci/check-path-casing.sh
+/bin/bash scripts/ci/check-postgres-identifier-casing.sh
 /bin/bash scripts/ci/check-theme-variables.sh
 node scripts/ci/check-theme-js-contract.js
 /bin/bash scripts/ci/check-postgres-table-coverage.sh
@@ -518,7 +545,7 @@ node scripts/ci/check-theme-js-contract.js
 /bin/bash scripts/ci/check-postgres-procedure-view-coverage.sh
 ```
 
-Tot #1155 faalden drie van de vier lokaal (`declare: -A: invalid option`, `mapfile: command not
+Tot #1155 faalden drie van de toenmalige vier lokaal (`declare: -A: invalid option`, `mapfile: command not
 found`), zodat de CLAUDE.md-regel "lokaal verifiëren vóór een push" voor deze guards alleen met
 Homebrew-bash én GNU grep vooraan in `PATH` haalbaar was. De scripts gebruiken nu uitsluitend
 bash-3.2- en POSIX-constructies; de regels daarvoor staan in CLAUDE.md onder "Cross-platform

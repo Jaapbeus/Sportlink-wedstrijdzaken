@@ -3,9 +3,9 @@
 Dit document beschrijft alle architectuurafspraken en -conventies die gelden voor dit project. Ze zijn opgebouwd uit concrete beslissingen en incidents uit de ontwikkelhistorie. Afwijkingen worden geblokkeerd door de Security Gate in CI of teruggegeven bij codereview.
 
 > **V3, sinds #976 (2026-09-04).** Dit document beschrijft de huidige, multi-tier architectuur:
-> Postgres is de productietier, Azure SQL is een volwaardige rollback-tier, en de Sportlink Web
-> Extension (epic #986) voegt een schrijfrichting webapp→Sportlink Club toe naast de bestaande
-> alleen-lezen ETL-sync. De vorige, single-tier (Azure SQL-only) architectuur staat gearchiveerd in
+> Postgres is de tier die deze installatie in productie draait; Azure SQL is een gelijkwaardige
+> tier die een fork kan kiezen (#1266). De Sportlink Web Extension (epic #986) voegt een
+> schrijfrichting webapp→Sportlink Club toe naast de bestaande alleen-lezen ETL-sync. De vorige, single-tier (Azure SQL-only) architectuur staat gearchiveerd in
 > [ARCHITECTURE-V2.md](ARCHITECTURE-V2.md) — wijzig dat bestand niet meer.
 
 ---
@@ -53,7 +53,7 @@ Browser (beheerder)
         │
         ├── DatabaseTier=SqlServer          ├── DatabaseTier=Postgres
         │   FunctionApp/                    │   FunctionApp.Postgres/
-        │   (rollback-tier, ongewijzigd)    │   (PRODUCTIETIER sinds #976)
+        │   (gelijkwaardige tier)           │   (deze installatie, sinds #976)
         │                                   │
         ▼                                   ▼
   Azure SQL (Free tier, 32 GB)         Postgres (Docker lokaal / Supabase cloud)
@@ -119,13 +119,14 @@ Sportlink REST API → Azure Function → stg.* (staging, per run leeggemaakt)
 > Dit is uitsluitend een samenvatting voor de systeemarchitectuur — de tier-strategie zelf niet
 > hier dupliceren; wijzig de strategie in het aangewezen document (epic #815).
 
-**Vaste bouwvolgorde:** SQL Server (bestaand) → **Postgres (eerste prioriteit, productietier sinds
-#976)** → SQLite (voorbereidend, #826) → Cosmos DB (uitsluitend het e-mailverwerkingslog, #828).
+**Vaste bouwvolgorde:** SQL Server (bestaand) → **Postgres (eerste prioriteit; de tier die deze
+installatie sinds #976 draait)** → SQLite (voorbereidend, #826) → Cosmos DB (uitsluitend het e-mailverwerkingslog, #828).
 Niet gelijktijdig, niet in een andere volgorde.
 
 **Eén tier per club-deployment, nooit een gedeelde C#-providerabstractie.** Elke tier is een
 volledig gescheiden, parallelle implementatieboom (`FunctionApp/` + `Database/` voor SQL Server,
-`FunctionApp.Postgres/` + `Database.Postgres/` voor Postgres), gekozen op build/deploytijd — nooit
+`FunctionApp.Postgres/` + `Database.Postgres/` voor Postgres, met `Database.Postgres.Cli/` als
+migratierunner die `deploy.yml` vóór elke deploy uitvoert), gekozen op build/deploytijd — nooit
 een runtime-switch in gedeelde code. **Uitzondering:** pure, provider-agnostische business-logica
 (geen SQL, geen ADO.NET/Npgsql-afhankelijkheid) leeft in `Planner.Shared/` en wordt door beide
 tiers gebruikt — bijvoorbeeld `TeamNaamNormalisatie` en de Sportlink-veldstring-matching.
@@ -143,12 +144,21 @@ Postgres gebruikt uitsluitend lowercase snake_case, nooit gequote (`public.appse
 latere gequote referentie (`"ClubCode"`) niet meer matcht. Zie §11 voor het volledige
 schemaoverzicht per tier.
 
-**Huidige status (2026-09-07):** Postgres draait in productie sinds #976. De admin-endpoints
-(#887), de eerste planner-endpoints (#888), e-mailpersistentie/teamresolutie (#889) en de
-AVG-opschoonprocedures (#861) zijn vertaald; de volledige planner-optimalisatie-engine
-(`AutoPlanService`/`RescheduleService`, elf resterende endpoints) en de synchronisatie-orkestratie
-(#890) staan nog open. `docs/ARCHITECTUUR-DATABASE-TIERS.md` is de gezaghebbende, actuele bron voor
-precies welke onderdelen al vertaald zijn.
+**Beide gebouwde tiers zijn gelijkwaardig (#1266).** "Gebouwd" is wat
+`scripts/ci/database-tiers.json` zegt (`built: true`) — vandaag SQL Server én Postgres. Welke tier
+déze installatie draait is een deploymentkeuze en zegt niets over de status van de andere. Een
+feature bestaat op álle gebouwde tiers of op geen; een route die (nog) maar op één tier bestaat,
+staat met een reden in `scripts/ci/tier-pariteit-allowlist.txt` en dat bestand hoort leeg te lopen.
+`scripts/ci/check-tier-pariteit.sh` vergelijkt de routes van beide tiers in beide richtingen en
+maakt de build rood bij een niet-verantwoord verschil. Een tier degraderen doe je door `built` op
+`false` te zetten, nooit met een zin in een document.
+
+**Vertaalstand:** Postgres draait in deze installatie in productie sinds #976 en de volledige
+backend is vertaald — admin-endpoints (#887), alle elf planner-endpoints inclusief
+`AutoPlanService`/`RescheduleService` (#888), e-mailpersistentie/teamresolutie (#889),
+AVG-opschoonprocedures (#861) en de synchronisatie-orkestratie (#890). De Sportlink Web Extension
+(epic #986) is in #1266 alsnog op de SQL Server-tier gebouwd. `docs/ARCHITECTUUR-DATABASE-TIERS.md`
+is de gezaghebbende, actuele bron voor precies welke onderdelen op welke tier bestaan.
 
 ---
 
@@ -249,7 +259,7 @@ Productie-configuratie wordt **nooit** in git opgeslagen. De CI-pipeline generee
 | `BlazorAdmin/wwwroot/appsettings.json` | ✓ | Localhost-config, geen secrets |
 | `FunctionApp/local.settings.json` | ✗ | Bevat `SqlConnectionString` en andere secrets |
 | `FunctionApp/local.settings.template.json` | ✓ | Template zonder waarden |
-| `FunctionApp.Postgres/local.settings.json` | ✗ | Bevat `PostgresConnectionString` |
+| `FunctionApp.Postgres/local.settings.json` | ✗ | Bevat `POSTGRES_CONNECTION_STRING` |
 | `FunctionApp.Postgres/local.settings.template.json` | ✓ | Template zonder waarden |
 | `exports/*.csv` / `exports/*.xlsx` | ✗ | Persoonsgegevens — zie §7 |
 
@@ -421,7 +431,7 @@ Elk van deze items moet aanwezig zijn in een werkende deployment, ongeacht datab
 
 ## 11. Database — schema's en conventies (per tier)
 
-**SQL Server (`FunctionApp`, rollback-tier):**
+**SQL Server (`FunctionApp`):**
 
 | Schema | Doel |
 |---|---|
@@ -433,7 +443,7 @@ Elk van deze items moet aanwezig zijn in een werkende deployment, ongeacht datab
 | `planner` | E-mailverwerking en planning |
 | `avg` | AVG-beschermde data (teambegeleiding); toegang beperkt |
 
-**Postgres (`FunctionApp.Postgres`, productietier sinds #976):**
+**Postgres (`FunctionApp.Postgres`) — de tier die deze installatie sinds #976 draait:**
 
 | Schema | Doel |
 |---|---|
@@ -458,13 +468,14 @@ Elk van deze items moet aanwezig zijn in een werkende deployment, ongeacht datab
 
 **Database-migraties:**
 - **SQL Server:** `deploy.yml` voert het PostDeployment-script (`Database/Script.PostDeployment1.sql`) inmiddels automatisch uit bij elke productie-deploy.
-- **Postgres:** heeft **geen** CI-automatisering voor migraties. Nieuwe `Database.Postgres/migrations/*.sql`-bestanden moeten handmatig worden toegepast via `.\scripts\dev\Invoke-PostgresMigrations.ps1` vóór de code-deploy. Zie §17 voor de volledige toelichting van dit gat.
+- **Postgres:** `deploy.yml` past de migraties sinds #1093 automatisch toe vóór de code live gaat, in de job `db-migrate-postgres` (`Database.Postgres.Cli`, secret `POSTGRES_CONNECTION_STRING`; idempotent, advisory lock, checksum-bewaakt). `.\scripts\dev\Invoke-PostgresMigrations.ps1` is alleen nog voor de lokale ontwikkeldatabase. De smoke test faalt op een niet-lege `pendingMigrations` in `/api/health`.
+- **Ontwerpregel die hieruit volgt:** een migratie die de *vorige* code breekt (kolom weg, type gewijzigd, constraint aangescherpt) mag niet in dezelfde release als de code die hem nodig heeft — zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` §57.
 
 ---
 
 ## 12. Berichtverwerking — kanaal-agnostische pipeline
 
-De verwerkingspipeline (classificeer → valideer → verwerk → bouw antwoord) is kanaal-onafhankelijk. Welk kanaal de input levert (e-mail, dry-run, WhatsApp, Socials) maakt niet uit voor de kern van de logica. Dit geldt vandaag voor de SQL Server-tier; de Postgres-vertaling van de volledige AI-pijplijn (`BerichtAiService`, `EmailProcessorFunction`, >2700 regels) is bewust nog niet gestart (#889's scope-afbakening).
+De verwerkingspipeline (classificeer → valideer → verwerk → bouw antwoord) is kanaal-onafhankelijk. Welk kanaal de input levert (e-mail, dry-run, WhatsApp, Socials) maakt niet uit voor de kern van de logica. Dit geldt op beide tiers: `BerichtPipeline`, `BerichtAiService`, `BerichtResponseGenerator` en `EmailProcessorFunction` bestaan zowel in `FunctionApp/` als in `FunctionApp.Postgres/`.
 
 **Klassen zijn hernoemd naar kanaal-agnostische namen:**
 - `BerichtAiService` — classificatie
@@ -490,9 +501,11 @@ Nooit de pipeline herhalen of `EmailProcessorFunction`-methoden direct aanroepen
 
 Sinds epic #986 heeft de applicatie, naast de bestaande alleen-lezen ETL-sync (Sportlink → eigen
 database), ook een **schrijfrichting**: de Admin GUI kan wijzigingen (kleedkamertoewijzing, veld,
-en meer) rechtstreeks terugschrijven naar Sportlink Club namens de club. Deze schrijfrichting is
-**uitsluitend op de Postgres-tier** gebouwd — er is geen SQL Server-equivalent en dat is niet
-gepland, omdat nieuwe functionaliteit sinds #976 primair op de productietier landt.
+en meer) rechtstreeks terugschrijven naar Sportlink Club namens de club. De extensie is eerst
+alleen op de Postgres-tier gebouwd; #1266 heeft de ontbrekende endpoints en timers alsnog op de
+SQL Server-tier gezet, omdat beide gebouwde tiers gelijkwaardig zijn (§2).
+`scripts/ci/check-tier-pariteit.sh` bewaakt sindsdien dat een `/sportlink/*`-route niet op één tier
+kan blijven bestaan.
 
 **Kernonderdelen:**
 - `Planner.Shared/Integrations/SportlinkClub/SportlinkClubClient.cs` — centrale HTTP-client voor alle mutaties, met een consistent fetch-snapshot-en-echo-patroon: eerst het volledige actuele record ophalen, dan alleen het gewijzigde veld overschrijven en het geheel terugsturen — Sportlink accepteert geen partiële updates op meerdere onderzochte endpoints.
@@ -528,29 +541,22 @@ Database-schema, API-endpoint en Blazor GUI worden **altijd in dezelfde commit**
 - Nieuw database-veld → bijbehorend API-veld en Blazor-weergave in dezelfde PR.
 - Nieuwe enum, template-sleutel of regeltype in code → GUI-optie in dezelfde commit.
 - Nooit een GUI die verwijst naar een API-veld dat nog niet bestaat, en andersom.
-- Een endpoint dat alleen op één tier bestaat (bijv. de Sportlink Web Extension, uitsluitend Postgres): de GUI toont het feature-gedeelte alleen als de actieve tier het ondersteunt, nooit een knop die op de andere tier een 404 geeft.
+- Een endpoint hoort op beide gebouwde tiers te bestaan (§2). Zolang een route uitzonderlijk maar op één tier bestaat en met een reden in `scripts/ci/tier-pariteit-allowlist.txt` staat: de GUI toont dat feature-gedeelte alleen als de actieve tier het ondersteunt, nooit een knop die op de andere tier een 404 geeft.
 
 ---
 
 ## 15. Versiebeheer en releases
 
-**Semantic Versioning:**
+**Semantic Versioning — vier cijfers, twee fasen:** `MAJOR.MINOR.PATCH.REVISION`.
 
-| Type | Wanneer |
+| Fase | Regel |
 |---|---|
-| `MAJOR` (x.0.0) | Nieuwe architectuurlaag, breaking API-wijziging, grote nieuwe functie-set |
-| `MINOR` (x.y.0) | Nieuwe feature, backwards compatible |
-| `PATCH` (x.y.z) | Bugfix, beveiligingspatch, documentatie zonder gedragswijziging |
+| Development (commit-voor-commit op een `feature/`-branch) | `feat:` bumpt PATCH; `fix:`/`security:` en een kleine fix met zichtbaar effect bumpen REVISION; puur intern werk (refactor zonder effect, docs) bumpt niet |
+| Release (`develop` → `main`, één keer per release) | `[Unreleased]` met minimaal één `feat:` bumpt MINOR (PATCH + REVISION → 0); alleen `fix:`/`security:` bumpt PATCH (REVISION → 0) |
+| `BREAKING CHANGE:` in de commit-body | MAJOR, in beide fasen |
 
-**Conventional Commits → versie-bump:**
-
-| Commit-prefix | Bump |
-|---|---|
-| `feat:` | MINOR |
-| `fix:` | PATCH |
-| `security:` | PATCH |
-| `BREAKING CHANGE:` in commit-body | MAJOR |
-| `chore:`, `docs:`, `refactor:` | geen bump |
+Volledige definities (bug versus issue versus feature versus enhancement, en wat in de changelog
+hoort): [docs/VERSIONING.md](VERSIONING.md). Die is gezaghebbend — dupliceer de regels niet.
 
 **Verplicht: alle drie de csproj's synchroon bumpen** —
 `FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj` **én
@@ -587,9 +593,15 @@ de Postgres-tier.
 | PII File Detection | Blokkeert CSV/Excel-bestanden |
 | PII Pattern Scan | Scant op AVG-gevoelige patronen (e-mails, BSN, telefoonnummers) |
 | PII in Documentatie | Controleert CHANGELOG.md en docs op PII |
+| Club-infrastructuur patrooncheck | Blokkeert club-identificerende resourcenamen, hostnames en GUID's in code en documentatie (`infra-patterns` in `security-scan.yml`) |
 | Dependency Vulnerability Scan (Trivy) | Scant NuGet-packages op bekende CVE's |
-| `fresh-db` / `fresh-db-postgres` | Verse-database-verificatie per tier: kernobjecten, identifier-casing, demodata-aantallen |
+| `fresh-db` / `fresh-db-postgres` | Verse-database-verificatie per tier: kernobjecten, identifier-casing, demodata-aantallen. `fresh-db-postgres` draait bovendien de RLS-guard (`scripts/ci/check-rls-enabled.sh`) en Supabase's splinter-linter (`scripts/ci/check-splinter-lints.sh`) tegen een levende database |
+| Tier-pariteit | `scripts/ci/check-tier-pariteit.sh` vergelijkt de routes van beide tiers in beide richtingen; een verschil moet met een reden in `scripts/ci/tier-pariteit-allowlist.txt` staan (#1266) |
 | Security Gate | Aggregeert alle bovenstaande checks — merge-blokkade bij fout |
+
+Daarnaast draait `.github/workflows/supabase-advisors.yml` dagelijks buiten de PR-keten om: die
+haalt de Supabase Security- en Performance Advisor op en meldt nieuwe EXTERNAL-bevindingen op
+ERROR/WARN-niveau in één issue met het label `supabase-advisor`.
 
 **Na een PR-merge:** controleer ook de `deploy.yml`-workflow op `main` via `gh run list --branch main --limit 3`. Als de build faalt: direct fixen of melden. Niet rapporteren dat de PR geslaagd is vóór de deploy-workflow groen is.
 
@@ -617,24 +629,29 @@ was tot 2026 een open gat (13 objecten moesten op 2026-05-20 handmatig gemigreer
 productie-crash) — zie de gearchiveerde §15 in [ARCHITECTURE-V2.md](ARCHITECTURE-V2.md) voor de
 volledige incidentgeschiedenis.
 
-**Postgres-migratiegap — nog open.** In tegenstelling tot de SQL Server-tier heeft de Postgres-tier
-**geen** CI- of deploy-automatisering voor migraties. Nieuwe `Database.Postgres/migrations/*.sql`
-moeten handmatig worden toegepast via `.\scripts\dev\Invoke-PostgresMigrations.ps1` vóór elke
-deploy die er een oplevert. Structurele fix nog niet gepland.
+**Postgres-migratiegap — opgelost (#1093).** `deploy.yml` past de Postgres-migraties sinds die fix
+automatisch toe in de job `db-migrate-postgres`, vóór de code-deploy; de deploy wacht daarop. Zie
+§11 voor de ontwerpregel die hieruit volgt.
 
-**Postgres mist de drie `pub.*`-rapportageviews.** Een zoekactie over de volledige broncode leverde
-nul consumenten op voor `pub.Matches`/`pub.Teams`/`pub.DateTable` — expliciet en gemotiveerd niet
-vertaald (#861). Een toekomstige externe-rapportagebehoefte kan deze alsnog toevoegen als een
-aparte, bewuste beslissing.
+**De handmatige sync-trigger heet per tier anders (#1266 — open).** Op de SQL Server-tier is de
+route `sync-matches`, op de Postgres-tier `postgres/sync-matches`. Functioneel gelijkwaardig, maar
+een beheerder moet na een tierwissel een ander adres gebruiken. Dit staat als enige openstaande
+post in `scripts/ci/tier-pariteit-allowlist.txt`; uitlijnen heeft een breaking-change-kant en is
+daarom een aparte wijziging.
 
-**Postgres-planner is grotendeels nog niet vertaald.** Alleen `GET /api/planner/veldbezetting`
-(#888) is af; de overige elf planner-endpoints — inclusief de eigenlijke dagplanning-
-optimalisatie-engine (`AutoPlanService`) — bestaan nog uitsluitend op de SQL Server-tier.
+**Postgres mist de drie `pub.*`-rapportageviews (#861 — gesloten, bewuste afbakening).** Een
+zoekactie over de volledige broncode leverde nul consumenten op voor
+`pub.Matches`/`pub.Teams`/`pub.DateTable`; ze zijn expliciet en gemotiveerd niet vertaald. Een
+toekomstige externe-rapportagebehoefte kan ze alsnog toevoegen als een aparte, bewuste beslissing.
 
-**Sportlink Web Extension is Postgres-only, met vier van zeven schrijfacties nog geblokkeerd.**
-Officials (#994), wijzigingsverzoek datum/tijd/accommodatie (#995), oefenwedstrijd aanmaken (#997)
-en de actiepad van #996 (goedkeuren/afwijzen) wachten op een door een mens uitgevoerde,
-live netwerktrace van het echte Sportlink Club-scherm — zie §13's "geen aannames"-principe.
+**Beide Function Apps staan op `net9.0` met een einddatum (epic #1063 — open).** Het Linux
+Consumption Plan ondersteunt `net10.0` niet, .NET 9 gaat op 10 november 2026 uit support en
+Linux Consumption wordt op 30 september 2028 uitgefaseerd. In-place migratie naar Flex Consumption
+bestaat niet. Zie §1 voor de volledige beperking.
+
+> **Onderhoudsregel voor deze sectie:** elke beperking draagt een issuenummer, zodat één
+> `gh issue view <nr>` volstaat om vast te stellen of hij nog bestaat. Drie van de vier eerdere
+> punten hier waren verouderd juist omdat dat handvat ontbrak.
 
 ---
 

@@ -1,13 +1,111 @@
 # Architectuur — Database-tiers
 
-> **Dit document is een index + vastgelegd besluit, geen implementatiehandleiding.** Voor de
-> daadwerkelijke bouw van een tier: ga naar het bijbehorende sub-issue in sectie 5. Dit document
-> beschrijft *waarom* de volgorde en de scheiding tussen tiers vaststaan — niet *hoe* een specifieke
-> tier wordt gebouwd.
+> **Dit document bestaat uit twee soorten tekst, en het verschil telt.**
+>
+> - **Geldende regels** — wat je vandaag moet volgen. Dat zijn §1–§4 (bouwvolgorde, tierscheiding,
+>   casing) plus een handvol latere secties; de inhoudsopgave hieronder markeert ze als `geldend`.
+> - **Werkjournaal** — ~3800 van de 4200 regels. Elke sectie legt één sessie, bug of besluit vast,
+>   in de tijd en in de bewoording van dat moment. Die secties worden **niet** bijgewerkt naar de
+>   huidige toestand: ze zijn verslag, en hun waarde zit in het *waarom*. Ze zijn gemarkeerd als
+>   `verslag`. Lees een tegenwoordige tijd daar als "op het moment van schrijven".
+>
+> **Stand per 2026-09-19:** epic #815 en al zijn sub-issues zijn gesloten. De SQL Server-tier en de
+> Postgres-tier zijn allebei gebouwd en **gelijkwaardig** (#1266); productie draait sinds #976 op
+> Postgres. SQLite (tier 3) en Cosmos DB (tier 4) zijn voorbereidend ontwerp — zie
+> [ARCHITECTUUR-SQLITE-TIER.md](ARCHITECTUUR-SQLITE-TIER.md) en
+> [ARCHITECTUUR-COSMOSDB-EMAILLOG.md](ARCHITECTUUR-COSMOSDB-EMAILLOG.md).
+>
+> **Verwijs in nieuwe tekst naar de *titel* van een sectie, niet naar het nummer.** Een titel
+> overleeft een hernummering, een nummer niet — zie "§-verwijzingen in migratiekoppen" onderaan.
+
+## Inhoudsopgave
+
+`geldend` = een regel die je vandaag moet volgen. `verslag` = vastlegging van wat er toen gebeurde;
+niet bijwerken naar de huidige toestand, wel doorzoekbaar houden.
+
+| § | Titel | Soort |
+|---|---|---|
+| [§1](#1-bouwvolgorde-vier-tiers-vaste-volgorde) | Bouwvolgorde (vier tiers, vaste volgorde) | **geldend** |
+| [§2](#2-eén-tier-per-club-nooit-gelijktijdig-geen-gedeelde-abstractie--besluit-en-rationale) | "Eén tier per club, nooit gelijktijdig, geen gedeelde abstractie" — besluit en rationale | **geldend** |
+| [§3](#3-identifier-casing-conventie) | Identifier-casing-conventie | **geldend** |
+| [§4](#4-bestandssysteem-casing--linux-ci-risico) | Bestandssysteem-casing / Linux-CI-risico | **geldend** |
+| [§5](#5-cross-referentietabel--index-van-alle-sub-issues-onder-epic-815) | Cross-referentietabel — index van alle sub-issues onder epic #815 | verslag |
+| [§6](#6-tweede-ronde-sub-issues--gevonden-bij-het-ontwerp-van-de-zelftest-851) | Tweede ronde sub-issues — gevonden bij het ontwerp van de zelftest (#851) | verslag |
+| [§7](#7-business-key-bronkolommen-altijd-vullen-ook-in-demodata-853) | Business-key-bronkolommen altijd vullen, ook in demodata (#853) | **geldend** |
+| [§8](#8-audit-tijdstempels-timestamptz-niet-naïeve-timestamp--timezone-wrap-854) | Audit-tijdstempels: TIMESTAMPTZ, niet naïeve TIMESTAMP + timezone-wrap (#854) | **geldend** |
+| [§9](#9-knownentities-kolomcasing-consistent-met-3-855) | KnownEntities-kolomcasing consistent met §3 (#855) | verslag |
+| [§10](#10-functionapppostgres--projectopzet-891) | FunctionApp.Postgres — projectopzet (#891) | verslag |
+| [§11](#11-functionapppostgresadmin--eerste-vertaalde-beheer-endpoint-887) | FunctionApp.Postgres/Admin — eerste vertaalde beheer-endpoint (#887) | verslag |
+| [§12](#12-publicspeeltijden--drie-ontbrekende-kolommen-bijgewerkt-893) | public.speeltijden — drie ontbrekende kolommen bijgewerkt (#893) | verslag |
+| [§13](#13-demodata-seed-verhuisd-naar-een-expliciete-post-sync-stap-856-architectuurbesluit-optie-b) | Demodata-seed verhuisd naar een expliciete post-sync stap (#856, architectuurbesluit "Optie B") | **geldend** |
+| [§14](#14-postgres-tier-demodata-seed-deel-1-het-rijcontract-862) | Postgres-tier demodata-seed, deel 1: het rijcontract (#862) | verslag |
+| [§15](#15-resterende-stored-procedures-en-views--de-vier-avg-opschoonprocedures-861) | Resterende stored procedures en views — de vier AVG-opschoonprocedures (#861) | verslag |
+| [§16](#16-planner-logica--eerste-vertaalde-endpoint-veldbezetting-888) | Planner-logica — eerste vertaalde endpoint: Veldbezetting (#888) | verslag |
+| [§17](#17-e-mailpersistentie-en-teamresolutie--data-accesslagen-vertaald-889) | E-mailpersistentie en teamresolutie — data-accesslagen vertaald (#889) | verslag |
+| [§18](#18-synchronisatie--en-stagingpad-vertaald-890) | Synchronisatie- en stagingpad vertaald (#890) | verslag |
+| [§19](#19-schema-drift-guard-en-veldresolutie-drifttest-uitgebreid-naar-de-tweede-boom-864-deel-1) | Schema-drift-guard en veldresolutie-drifttest uitgebreid naar de tweede boom (#864, deel 1) | verslag |
+| [§20](#20-zelftest-poorten-g2-g4-zijn-nu-echte-metingen-860-acceptatiecriterium-vervolg-op-851) | Zelftest-poorten G2-G4 zijn nu echte metingen (#860-acceptatiecriterium, vervolg op #851) | verslag |
+| [§21](#21-seizoensgrenzen-vertaald--markeervervallengeplandewedstrijdenasync-gedicht-890-vervolg) | Seizoensgrenzen vertaald + `MarkeerVervallenGeplandeWedstrijdenAsync` gedicht (#890, vervolg) | verslag |
+| [§22](#22-zelftest-poorten-g5g6-draaien-tegen-een-echte-functiehost-909) | Zelftest-poorten G5/G6 draaien tegen een echte functiehost (#909) | verslag |
+| [§23](#23-waarschuwing-twee-onafhankelijk-gebouwde-eindpunten-kunnen-alsnog-dezelfde-databaselaag-dupliceren-913) | Waarschuwing: twee onafhankelijk gebouwde eindpunten kunnen alsnog dezelfde databaselaag dupliceren (#913) | verslag |
+| [§24](#24-cross-tree-tabeldekking-guard--864-deel-2-de-grootste-deelopgave-uit-sectie-19) | Cross-tree tabeldekking-guard — #864 deel 2, de grootste deelopgave uit sectie 19 | verslag |
+| [§25](#25-planner-endpoint-2-van-12-het-teamrooster-888-vervolg) | Planner-endpoint 2 van 12: het teamrooster (#888, vervolg) | verslag |
+| [§26](#26-kleinere-zusterbevinding-van-sectie-23-onvolledig-audit-spoor-op-beide-tiers-916) | Kleinere zusterbevinding van sectie 23: onvolledig audit-spoor op beide tiers (#916) | verslag |
+| [§27](#27-cross-tree-kolomdekking--864-deel-3-het-niveau-waarop-de-epic-al-twee-keer-een-gat-had) | Cross-tree kolomdekking — #864 deel 3, het niveau waarop de epic al twee keer een gat had | verslag |
+| [§28](#28-teamcanonicalisatieservice-vertaald--en-daarmee-is-18s-tweede-gedocumenteerde-gat-gedicht) | `TeamCanonicalisatieService` vertaald — en daarmee is §18's tweede gedocumenteerde gat gedicht | verslag |
+| [§29](#29-functionapppostgrestests--het-einde-van-de-wegwerpharnas-verificatie-890-afgerond) | `FunctionApp.Postgres.Tests` — het einde van de wegwerpharnas-verificatie (#890 afgerond) | verslag |
+| [§30](#30-emailtemplateservice--889-afgerond-plus-een-latente-flake-uit-29-opgelost) | `EmailTemplateService` — #889 afgerond, plus een latente flake uit §29 opgelost | verslag |
+| [§31](#31-demodata-sjablonen-op-beide-tiers-911--en-waarom-dit-géén-aanvulling-op-migratie-006-werd) | Demodata-sjablonen op beide tiers (#911) — en waarom dit géén aanvulling op migratie 006 werd | verslag |
+| [§32](#32-seizoensdoorrol--het-gat-uit-21-gedicht-861) | Seizoensdoorrol — het gat uit §21 gedicht (#861) | verslag |
+| [§33](#33-eén-database-per-testsuite-925--de-oorzaak-weg-in-plaats-van-het-symptoom) | Eén database per testsuite (#925) — de oorzaak weg in plaats van het symptoom | **geldend** |
+| [§34](#34-de-laatste-opschoonprocedure-sp_cleanupappsettingsaudit-781861) | De laatste opschoonprocedure: `sp_CleanupAppSettingsAudit` (#781/#861) | verslag |
+| [§35](#35-planner-regressienet-vóór-verdere-portering-888-slice-1) | Planner-regressienet vóór verdere portering (#888, slice 1) | verslag |
+| [§36](#36-proceduresviews-dekkingsguard--de-derde-en-laatste-bomen-vergelijking-864-deel-4) | Procedures/views-dekkingsguard — de derde en laatste bomen-vergelijking (#864, deel 4) | verslag |
+| [§37](#37-negen-planner-endpoints-van-stille-404-naar-eerlijke-501-888) | Negen planner-endpoints: van stille 404 naar eerlijke 501 (#888) | verslag |
+| [§38](#38-de-twee-openstaande-architectuurbeslissingen-uit-3537-zijn-genomen-888) | De twee openstaande architectuurbeslissingen uit §35/§37 zijn genomen (#888) | **geldend** |
+| [§39](#39-twee-repositories-erbij-beschikbaarheid-en-teamregels-888) | Twee repositories erbij: beschikbaarheid en teamregels (#888) | verslag |
+| [§40](#40-drie-planner-endpoints-echt-gewireerd-schema-inhaalslag-plus-de-laatste-plannermatchrepository-methoden-888) | Drie planner-endpoints echt gewireerd: schema-inhaalslag plus de laatste `PlannerMatchRepository`-methoden (#888) | verslag |
+| [§41](#41-beschikbaarheid-herplannen-en-zonsondergang-van-elf-endpoints-zijn-er-negen-vertaald-888) | Beschikbaarheid, herplannen en zonsondergang: van elf endpoints zijn er negen vertaald (#888) | verslag |
+| [§42](#42-autoplan-de-laatste-twee-planner-endpoints-en-twee-verhuizingen-in-plaats-van-676-regels-duplicatie-888) | AutoPlan: de laatste twee planner-endpoints, en twee verhuizingen in plaats van 676 regels duplicatie (#888) | verslag |
+| [§43](#43-het-laatste-501-endpoint-uitgaande-e-mail-op-de-postgres-tier-888) | Het laatste 501-endpoint: uitgaande e-mail op de Postgres-tier (#888) | verslag |
+| [§44](#44-de-plannerview-bestond-op-een-verse-installatie-helemaal-niet-861) | De plannerview bestond op een verse installatie helemaal niet (#861) | verslag |
+| [§45](#45-een-gedeeld-defect-gevonden-door-naar-de-tiers-náást-elkaar-te-kijken-945) | Een gedeeld defect gevonden door naar de tiers náást elkaar te kijken (#945) | verslag |
+| [§46](#46-de-laatste-twee-geblokkeerde-zelftestpoorten-een-herstelpad-in-plaats-van-een-fixture-931946) | De laatste twee geblokkeerde zelftestpoorten: een herstelpad in plaats van een fixture (#931/#946) | verslag |
+| [§47](#47-wat-de-browsersweep-vond-dat-de-api-poorten-niet-konden-vinden-949) | Wat de browsersweep vond dat de API-poorten niet konden vinden (#949) | verslag |
+| [§48](#48-testdata-endpoints-op-postgres--optie-b-gekozen-952) | Testdata-endpoints op Postgres — Optie B gekozen (#952) | verslag |
+| [§49](#49-eenmalige-productiecutover-sql-server--supabase-postgres-976) | Eenmalige productiecutover SQL Server → Supabase Postgres (#976) | verslag |
+| [§50](#50-certificaatvalidatie-in-postgresconnectionstringnormalizer-verplicht-gemaakt-1004) | Certificaatvalidatie in `PostgresConnectionStringNormalizer` verplicht gemaakt (#1004) | **geldend** |
+| [§51](#51-de-lokale-ontwikkelomgeving-volgt-de-gedeployde-tier-1060) | De lokale ontwikkelomgeving volgt de gedeployde tier (#1060) | **geldend** |
+| [§52](#52-emailprocessorfunction-alsnog-vertaald--de-mailbox-werd-sinds-49-nooit-gepolld-972-hotfix) | `EmailProcessorFunction` alsnog vertaald — de mailbox werd sinds §49 nooit gepolld (#972, hotfix) | verslag |
+| [§53](#53-een-gewijzigd-migratiebestand-faalt-nu-in-ci-in-plaats-van-pas-in-productie-1062) | Een gewijzigd migratiebestand faalt nu in CI in plaats van pas in productie (#1062) | **geldend** |
+| [§54](#54-een-vertaalfout-die-acht-dagen-stil-bleef-met-een-foutmelding-die-de-verkeerde-kant-op-wees-1077) | Een vertaalfout die acht dagen stil bleef, met een foutmelding die de verkeerde kant op wees (#1077) | verslag |
+| [§55](#55-code-die-vooruitloopt-op-het-schema-is-nu-zichtbaar-in-apihealth-1098-hotfix) | Code die vooruitloopt op het schema is nu zichtbaar in `/api/health` (#1098, hotfix) | verslag |
+| [§56](#56-de-migratie-checksum-was-platformafhankelijk--en-blokkeerde-daarmee-de-hele-keten-1112) | De migratie-checksum was platformafhankelijk — en blokkeerde daarmee de hele keten (#1112) | verslag |
+| [§57](#57-postgres-migraties-draaien-nu-in-deployyml-vóór-de-code-1093) | Postgres-migraties draaien nu in `deploy.yml`, vóór de code (#1093) | **geldend** |
+| [§58](#58-review-epic-986--wat-de-database-kant-opleverde-1122) | Review epic #986 — wat de database-kant opleverde (#1122) | verslag |
+| [§59](#59-opponent-lookup-vertaald--eerste-van-972s-vier-resterende-deelstukken-1139) | Opponent-lookup vertaald — eerste van #972's vier resterende deelstukken (#1139) | verslag |
+| [§60](#60-drie-stukken-provider-onafhankelijke-logica-gedeeld-ssrfprotection-feedbackkern--replypolicy-bewust-niet-1130) | Drie stukken provider-onafhankelijke logica gedeeld (SsrfProtection, feedbackkern) — ReplyPolicy bewust niet (#1130) | verslag |
+| [§61](#61-teamcontact-opvragen-vertaald--tweede-van-972s-vier-resterende-deelstukken-1140) | Teamcontact opvragen vertaald — tweede van #972's vier resterende deelstukken (#1140) | verslag |
+| [§62](#62-verzet-zonder-datum-vertaald--derde-en-laatste-van-972s-vier-resterende-deelstukken-1141561) | "Verzet zonder datum" vertaald — derde en laatste van #972's vier resterende deelstukken (#1141/#561) | verslag |
+| [§63](#63-npgsql-10-date-en-time-komen-als-dateonlytimeonly-uit-de-niet-generieke-leespaden-1170) | Npgsql 10: `DATE` en `TIME` komen als `DateOnly`/`TimeOnly` uit de niet-generieke leespaden (#1170) | **geldend** |
+| [§64](#64-hismatcheshisteams-reconciliëren-nu-na-elke-sync--sportlink-is-de-waarheid-1193) | `his.matches`/`his.teams` reconciliëren nu na elke sync — Sportlink is de waarheid (#1193) | verslag |
+| [§65](#65-row-level-security-alsnog-ingeschakeld--985-had-een-onvolledig-dreigingsmodel-1198) | Row-Level Security alsnog ingeschakeld — #985 had een onvolledig dreigingsmodel (#1198) | **geldend** |
+| [§66](#66-rls_auto_enable--een-vangnet-blijkt-geen-overbodig-artefact-vervolg-op-1198) | `rls_auto_enable()` — een vangnet blijkt geen overbodig artefact (vervolg op #1198) | **geldend** |
+| [§67](#67-rls_auto_enable-tweede-poging--de-public-grant-was-niet-de-enige-vervolg-op-119866) | `rls_auto_enable()`, tweede poging — de PUBLIC-grant was niet de enige (vervolg op #1198/§66) | verslag |
+| [§68](#68-de-rls-regel-afgedwongen-in-plaats-van-opgeschreven--en-waarom-een-lokale-test-hem-niet-kan-bewijzen-1220) | De RLS-regel afgedwongen in plaats van opgeschreven — en waarom een lokale test hem niet kan bewijzen (#1220) | **geldend** |
+| [§69](#69-supabase-performance-advisor-getoetst--welke-meldingen-een-defect-zijn-en-welke-bewust-blijven-1211) | Supabase Performance Advisor getoetst — welke meldingen een defect zijn en welke bewust blijven (#1211) | **geldend** |
+| [§70](#70-de-migratie-cli-meldt-het-exceptietype-niet-de-foutmelding--ci-uitvoer-is-publiek-1225) | De migratie-CLI meldt het exceptietype, niet de foutmelding — CI-uitvoer is publiek (#1225) | **geldend** |
+| [§71](#71-eerste-geauthenticeerde-mcp-run--nulmeting-en-de-rls-vraag-die-hij-deels-beantwoordt-1234) | Eerste geauthenticeerde MCP-run — nulmeting, en de RLS-vraag die hij deels beantwoordt (#1234) | verslag |
+| [§72](#72-demodata-van-de-democlub-waarom-een-eenmalige-migratie-het-verkeerde-gereedschap-was-1246) | Demodata van de democlub: waarom een eenmalige migratie het verkeerde gereedschap was (#1246) | **geldend** |
+| [§73](#73-thema-logica-gedeeld--en-de-platformafhankelijke-bug-die-de-duplicatie-verborgen-hield-1248-1252) | Thema-logica gedeeld — en de platformafhankelijke bug die de duplicatie verborgen hield (#1248, #1252) | **geldend** |
+| [§74](#74-kleurenpalet-per-modus-als-json--en-waar-een-sql-server-schemawijziging-écht-hoort-1254) | Kleurenpalet per modus als JSON — en waar een SQL Server-schemawijziging écht hoort (#1254) | **geldend** |
 
 ## 1. Bouwvolgorde (vier tiers, vaste volgorde)
 
-1. **SQL Server / Azure SQL** — bestaand, ongewijzigd. De huidige productie-tier.
+1. **SQL Server / Azure SQL** — bestaand en volwaardig. Draaide in productie tot de eenmalige
+   cutover van #976 (zie "Eenmalige productiecutover SQL Server → Supabase Postgres", §49);
+   **sindsdien draait productie op Postgres.** Beide gebouwde tiers zijn gelijkwaardig (#1266):
+   allebei `built: true` in `scripts/ci/database-tiers.json`, en elke feature landt op allebei.
 2. **Postgres** (lokaal via Docker + Supabase in de cloud) — **eerste prioriteit**.
 3. **SQLite** — na Postgres.
 4. **Cosmos DB** — uitsluitend voor het e-mailverwerkingslog (`planner.EmailVerwerking`), niet voor
@@ -109,15 +207,22 @@ niet op, terwijl Linux CI-runners (`core.ignorecase=false`) daar hard op falen �
 "werkt-bij-mij-niet-in-CI"-risico specifiek voor de nieuwe tier-bomen, waar consequent lowercase
 mapnamen de norm zijn en een enkele PascalCase-tikfout dus niet lokaal wordt gesignaleerd.
 
-Geautomatiseerde bewaking hiervan is de scope van **#825** (CI-guard voor
-bestandssysteem-casing) — dit document beschrijft het risico en wijst ernaar door, het lost het
-zelf niet op.
+Geautomatiseerde bewaking hiervan **is gebouwd** (#825, gesloten):
+`scripts/ci/check-path-casing.sh` vergelijkt elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-
+bestanden tegen `git ls-files` en faalt de build bij een case-insensitieve-maar-niet-exacte match.
+Draait in `.github/workflows/build.yml`.
 
 ## 5. Cross-referentietabel — index van alle sub-issues onder epic #815
 
-Dit is de **enige plek** waar een developer die met deze epic begint, hoort te starten — dit
-document functioneert als index, niet als volledige inhoud (die staat per definitie in de
-individuele sub-issues en, later, in de code zelf).
+> **Stand per 2026-09-19: epic #815 en élk sub-issue in §5 en §6 zijn gesloten** (#816–#828,
+> #851, #853–#867, #887–#891 — stuk voor stuk nagegaan met `gh issue view`). Onderstaande tabellen
+> zijn daarmee een **historische index van waar wat is gebouwd**, geen werkvoorraad en geen
+> bouwinstructie. Openstaand tierwerk loopt via #1266 (pariteit SQL Server ← Postgres) en #1268
+> (pariteit de andere kant op).
+
+Dit was, tijdens de epic, de plek waar een developer die ermee begon hoorde te starten — dit
+document functioneerde als index, niet als volledige inhoud (die staat per definitie in de
+individuele sub-issues en in de code zelf).
 
 | Sub-issue | Levert op |
 |---|---|
@@ -193,9 +298,10 @@ De afhankelijkheden lopen niet gelijk aan de nummering:
    #866, #863. ✅ #866/#863 volledig gemerged; #867 gedeeltelijk (fixtureserver + SQL-Server-tier-
    test gemerged, Postgres-tier-variant wacht op #890, CI-wiring op #866-patroon nu beschikbaar).
 3. **Bouwen**: #860 (het grootste stuk — uitgewerkt naar #891/#887/#888/#889/#890, zie §6c),
-   daarna #861 en #862. #891 (projectopzet) en #887 (beheer, alle 16 endpointparen) gemerged;
-   #888/#889/#890 nog open — #887's `AdminSyncFunction.Trigger`/`AdminTeambegeleidingFunction.
-   Doorsturen` zijn bewuste 501-stubs die op #890 resp. #889 wachten.
+   daarna #861 en #862. ✅ Alle vijf gemerged, plus #861 en #862. De 501-stubs die hier nog als
+   openstaand stonden (`AdminSyncFunction.Trigger`, `AdminTeambegeleidingFunction.Doorsturen`)
+   zijn met #890 resp. #889 vervangen door echte implementaties; de Postgres-tier heeft nul
+   501-stubs meer (zie "Het laatste 501-endpoint: uitgaande e-mail op de Postgres-tier", §43).
 4. **Bewaken**: #864, #865.
 5. **Afrekenen**: #851 groen krijgen.
 
@@ -2273,7 +2379,8 @@ tier standaard argwaan.
 
 ## 44. De plannerview bestond op een verse installatie helemaal niet (#861)
 
-De losstaande bevinding uit §21 is nagemeten en klopte — met een grotere impact dan daar
+De losstaande bevinding uit "Resterende stored procedures en views — de vier
+AVG-opschoonprocedures" (§15) is nagemeten en klopte — met een grotere impact dan daar
 ingeschat, want §41 en §42 hebben sindsdien de rest van de planner aangesloten.
 
 **De meting.** Verse container, alle migraties toegepast via `Database.Postgres.Cli`, daarna:
@@ -2300,7 +2407,8 @@ CREATE OR REPLACE VIEW planner.test_dep AS SELECT 1 FROM his.matches LIMIT 1;
 `PostgresMergeOrchestrator` bij de eerste sync (#818). Een migratie die de view aanmaakt zou dus op
 een verse database hard falen — dezelfde #856-klasse beperking als bij de demodata.
 
-**Waarom in de sync en niet in de reader.** §21 stelde voor om `CreateView` uit te voeren vanuit
+**Waarom in de sync en niet in de reader.** §15 ("Resterende stored procedures en views")
+stelde voor om `CreateView` uit te voeren vanuit
 `PostgresPlannerAvailabilityReader.GetFieldOccupationsAsync`, vlak vóór de `SELECT`. Dat was toen
 een redelijke gok — er was één consument. Nu zijn het er vijf, verdeeld over drie klassen, en dan
 valt die optie af:
@@ -2651,11 +2759,15 @@ volgorde:
       Supabase-dashboard van déze deployment: Database → Settings → SSL Configuration — geen
       publieke, statische URL, per project verschillend) al live staat, zodat het certificaat
       op `/home/site/wwwroot/prod-ca-2021.crt` in het pakket zit.
-   2. Pas dáárna de instelling uitbreiden met `?sslmode=verify-full&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`.
-      Vóór stap 1 al `verify-full` zetten geeft een certificaatketen-fout (het #1095-incident,
-      tweede keer).
+   2. Pas dáárna de instelling uitbreiden met `?sslmode=verify-ca&sslrootcert=/home/site/wwwroot/prod-ca-2021.crt`.
+      **Niet `verify-full`** — zie "Certificaatvalidatie in `PostgresConnectionStringNormalizer`
+      verplicht gemaakt" (§50, #1187): het pooler-endpoint levert een certificaat zónder
+      SubjectAltName, waardoor `verify-full` daar per definitie faalt met
+      `RemoteCertificateNameMismatch`. Vóór stap 1 al een `verify-*`-modus zetten geeft bovendien
+      een certificaatketen-fout (het #1095-incident, tweede keer).
    3. Verifiëren via `curl https://<function-app>.azurewebsites.net/api/health` —
-      `tlsMode: "VerifyFull"` en `tlsWarning: null`.
+      `tlsMode: "VerifyCA"`. `tlsWarning` blíjft gevuld (de hostnaam wordt niet gevalideerd); dat
+      is vanaf #1187 het verwachte signaal, geen openstaande actie.
 5. **`DatabaseTier` én `DatabaseTierSwitchConfirmation`** in GitHub Settings → Actions → Variables
    allebei op `Postgres` zetten (zie het tier-switch-veiligheidsmechanisme hierboven) — in
    dezelfde actie, anders faalt de eerstvolgende deploy met exitcode 3.
@@ -2700,7 +2812,8 @@ gevalideerd.
 
 Onderscheid tussen lokaal en productie gebeurt dus op basis van de **daadwerkelijk benaderde host**,
 niet op basis van welk proces de verbinding opent — bewust consistent met hoe `EgressGuard`
-(§0/`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`) lokaal van productie onderscheidt
+(`FunctionApp.Postgres/Infrastructure/EgressGuard.cs`, #857 — zie CLAUDE.md, "Uitgaande
+integraties — altijd via EgressGuard") lokaal van productie onderscheidt
 (env-gebaseerd), maar toegepast op de vraag die hier telt: TLS-vertrouwen hoort af te hangen van
 de server aan de andere kant van de verbinding. Dit geldt daardoor identiek voor
 `PostgresDatabaseConfig` (Function App), `Database.Postgres.Cli` (migratiepad) én
@@ -2888,14 +3001,17 @@ bestaat en losstaat van deze wijziging.
 
 ### Wat bewust niet gebeurt
 
-De SQL Server-tier wordt niet verwijderd of gedeprecieerd. Hij blijft `built: true` in
-`database-tiers.json`, houdt zijn eigen compose-service, template en schemacontrole, en is het
-gelijkwaardige tier van §49 stap 7 (#1266). Alleen de standaardkeuze is verschoven naar de tier die daadwerkelijk
-draait.
+De SQL Server-tier wordt niet verwijderd of gedeprecieerd, en is **geen rollbackpad of
+achtervang**: hij is een volwaardige, gelijkwaardige tier (#1266). Hij blijft `built: true` in
+`database-tiers.json`, houdt zijn eigen compose-service, template en schemacontrole, en elke
+feature landt op álle tiers met `built: true`. Alleen de *standaardkeuze voor lokale ontwikkeling*
+is verschoven naar de tier die in productie draait.
+
 ## 52. `EmailProcessorFunction` alsnog vertaald — de mailbox werd sinds §49 nooit gepolld (#972, hotfix)
 
 **Het gat dat §49's "wat NIET gemigreerd hoeft te worden" niet zag aankomen.** Na de productiecutover
-naar Postgres draaide de mailbox-getriggerde e-mailverwerking helemaal niet meer: §29/§43 hadden
+naar Postgres draaide de mailbox-getriggerde e-mailverwerking helemaal niet meer: §30
+("`EmailTemplateService` — #889 afgerond") en §43 hadden
 `EmailProcessorFunction`/`EmailGraphService`'s vijf inkomende-mail-methoden bewust buiten scope
 gehouden (geen directe SQL-toegang, dus buiten #889's scope-omschrijving) — maar zodra Postgres de
 enige tier is die daadwerkelijk deployt, is "bewust nog niet vertaald" hetzelfde als "helemaal niet
@@ -2922,8 +3038,10 @@ voor een hotfix.
 **Drie al bestaande, gedocumenteerde afwijkingen op `BerichtPipeline`-niveau blijven ongewijzigd**
 (opponent-lookup, `TeamContactOpvragen` se `coachGevonden`, KNVB-PDF-bijlage/"verzet zonder datum") —
 dit issue port een aanroeper van die pijplijn, niet de pijplijn zelf. *(Bijgewerkt: opponent-lookup
-is sinds #1139 vertaald — zie §58 — `TeamContactOpvragen`/`coachGevonden` sinds #1140 — zie §61 —
-en de KNVB-PDF-bijlage/"verzet zonder datum"-flow sinds #1141 — zie §62. Alle drie zijn nu vertaald.)*
+is sinds #1139 vertaald — zie "Opponent-lookup vertaald" (§59) —
+`TeamContactOpvragen`/`coachGevonden` sinds #1140 — zie "Teamcontact opvragen vertaald" (§61) —
+en de KNVB-PDF-bijlage/"verzet zonder datum"-flow sinds #1141 — zie §62. Alle drie zijn nu
+vertaald.)*
 
 **Eén nieuw ontdekte, hier voor het eerst gedocumenteerde afwijking:**
 - De teamleider-/teamcontact-vervolgnotificaties (#66/#168) gebruikten
@@ -2931,8 +3049,8 @@ en de KNVB-PDF-bijlage/"verzet zonder datum"-flow sinds #1141 — zie §62. Alle
   `avg.teambegeleiding`) in plaats van `PlannerDataAccess.GetTeamleiderContactAsync` (bestond hier
   niet) — dat levert alleen een e-mailadres, geen naam, dus de notificatietekst gebruikte een
   generieke aanhef. *(Bijgewerkt: sinds #1140 gebruiken beide notificaties
-  `AllstarsTestDataRepository.GetTeamleiderContactAsync` — zie §59 — inclusief de naam van de
-  begeleider in de aanhef.)*
+  `AllstarsTestDataRepository.GetTeamleiderContactAsync` — zie "Teamcontact opvragen
+  vertaald" (§61) — inclusief de naam van de begeleider in de aanhef.)*
 - De onafhankelijke, ARM-gebaseerde database-uitvalmonitor (`DatabaseUitvalMonitorFunction`/
   `IDatabaseStatusReader`, #831 op de SQL Server-tier) is niet vertaald — die controleert
   specifiek Azure SQL-status, wat hier niet van toepassing is. De noodmail-throttle zelf
@@ -3208,7 +3326,11 @@ zitten daarom in dezelfde PR, in deze volgorde.
 
 **Voor de eigenaar, eenmalig:** secret `POSTGRES_CONNECTION_STRING` aanmaken in GitHub → Settings →
 Secrets and variables → Actions, met dezelfde connectiestring als de Function App-instelling
-(norm sinds #1096: `sslmode=verify-full` mét `sslrootcert`, zie §50). Supabase accepteert
+(norm sinds #1187: `sslmode=verify-ca` mét `sslrootcert` — **niet** `verify-full`, zie
+"Certificaatvalidatie in `PostgresConnectionStringNormalizer` verplicht gemaakt", §50). Let op:
+het pad `/home/site/wwwroot/...` bestaat niet op een GitHub-runner, dus de secretwaarde is
+**niet** letterlijk identiek aan de Function App-instelling — zie §50, "Bewust niet meegewijzigd".
+Supabase accepteert
 verbindingen van elk IP tenzij netwerkrestricties zijn ingesteld — in dat geval de GitHub
 Actions-runner-ranges toestaan of de restrictie heroverwegen.
 
@@ -3303,7 +3425,8 @@ op beide tiers staan zoals het was, inclusief de eigen tests
 
 ## 61. Teamcontact opvragen vertaald — tweede van #972's vier resterende deelstukken (#1140)
 
-§58 hief de eerste van drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen op; dit issue
+§59 ("Opponent-lookup vertaald") hief de eerste van drie in §52 gedocumenteerde
+`BerichtPipeline`-afwijkingen op; dit issue
 (#1140, deelstuk 2 van #972) heft de tweede op: `AllstarsTestDataRepository.GetTeamleiderContactAsync`
 is vertaald naar de Postgres-tier, en `BerichtPipeline`'s `TeamContactOpvragen`-tak geeft nu een echte
 `coachGevonden` terug in plaats van altijd `false`.
@@ -3314,8 +3437,8 @@ gebruikt in plaats daarvan `TeamNaamNormalisatie.NormaliseerVoorVergelijking` �
 teamnaam-normalisatielaag (zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) — toegepast in C# op elke
 kandidaatrij uit `avg.teambegeleiding`, in plaats van een tweede ad-hoc regex/REPLACE-implementatie
 in SQL te bouwen. Zelfde precedent als `PlannerMatchRepository.TeamSchrijfwijzenAsync`/
-`FindMatchByOpponentAsync` (§58). Functioneel gelijk gedrag: zowel de lokale notatie ("JO13-1") als
-de KNVB-notatie ("O13-1") normaliseren naar dezelfde sleutel, dus is er geen aparte
+`FindMatchByOpponentAsync` ("Opponent-lookup vertaald", §59). Functioneel gelijk gedrag: zowel
+de lokale notatie ("JO13-1") als de KNVB-notatie ("O13-1") normaliseren naar dezelfde sleutel, dus is er geen aparte
 "knvbSleutel"-tweede parameter nodig zoals op de SQL Server-tier.
 
 **`PostgresClubScope.LegacyFilter` toegevoegd.** `avg.teambegeleiding.clubcode` is `NOT NULL DEFAULT
@@ -3339,7 +3462,8 @@ niet is vertaald — zie #972 voor de volledige scope.
 
 ## 62. "Verzet zonder datum" vertaald — derde en laatste van #972's vier resterende deelstukken (#1141/#561)
 
-§58 en §61 hieven de eerste twee van de drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen
+§59 ("Opponent-lookup vertaald") en §61 ("Teamcontact opvragen vertaald") hieven de eerste twee
+van de drie in §52 gedocumenteerde `BerichtPipeline`-afwijkingen
 op; dit issue (#1141, deelstuk 3 van #972) heft de derde en laatste op: de KNVB-PDF-bijlage +
 vrije-zaterdagen-voorzet voor een herplanverzoek van de tegenstander zonder concrete nieuwe datum
 (#561) werkt nu ook op de Postgres-tier, in plaats van altijd terug te vallen op het standaard
@@ -3396,7 +3520,7 @@ en `EmailReplyPolicyService`'s BCC/bijlage-tak (via
 vertaald — beide fail-safe: een mislukte contact- of PDF-lookup verstuurt de mail gewoon zonder BCC
 of bijlage, nooit een crash.
 
-Met dit issue is #972 volledig afgerond: alle vier de resterende deelstukken (opponent-lookup §58,
+Met dit issue is #972 volledig afgerond: alle vier de resterende deelstukken (opponent-lookup §59,
 teamcontact §61, verzet-zonder-datum hier, `EmailProcessorFunction` al via de #972-hotfix, zie §52)
 zijn nu vertaald.
 
@@ -3526,7 +3650,7 @@ codereview — Claude Code, Codex, of een mens — dit ooit gemeld heeft.
 
 ### Wat #985 goed deed, en wat het miste
 
-§985 (2026-09-04) beoordeelde RLS vanuit drie rollen (CISO, DPO, Architect) tegen de architectuur
+#985 (2026-09-04) beoordeelde RLS vanuit drie rollen (CISO, DPO, Architect) tegen de architectuur
 van dit project en kwam tot een bewust, gedocumenteerd besluit om RLS niet te implementeren. De
 redenering zelf klopte, voor de vraag die ze stelde:
 
@@ -4106,7 +4230,8 @@ licht/donker-set; een bestaande installatie merkt van deze migratie dus niets.
 De waarde belandt in de browser in een CSS custom property (`--theme-<sleutel>-light`), samengesteld
 uit door een admin ingevoerde tekst. `ThemeCore` legt daarom vast: een sleutel matcht
 `^[a-z][a-zA-Z0-9-]{0,39}$`, een waarde `^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`, maximaal 40 sleutels
-per palet. Een admin is binnen het deploymentmodel van §393 vertrouwd, dus dit is geen
+per palet. Een admin is binnen het deploymentmodel van #393 (zie CLAUDE.md, "Deployment-model — één
+fork, één primaire club") vertrouwd, dus dit is geen
 autorisatiegrens — maar een waarde die ongefilterd een stylesheet-property vult hoort een vaste vorm
 te hebben, en een vrije `rgba(...)`-string zou dat niet zijn. De acht-cijferige hexvariant bestaat
 precies omdat de hover-schaduw alpha nodig heeft; dat is de reden om `#rrggbbaa` toe te staan en
@@ -4145,6 +4270,21 @@ niet meer. Ze staan er nu in.
 inmiddels bezet door `025_appsettings_primaire_sleutel.sql` (#1218). Een migratiebestand wordt nooit
 achteraf gewijzigd (§53), dus een dubbel nummer is niet terug te draaien — controleer de map altijd
 op het moment van schrijven, niet het nummer uit een issue dat eerder is opgesteld.
+
+**Er bestaat al één dubbel nummer, en dat blijft zo:** `Database.Postgres/migrations/` bevat zowel
+`003_admin_tables.sql` als `003_speeltijden_kolommen.sql` (#893). De map telt daardoor 27 bestanden
+over de reeks 001–026. Dit is **niet met terugwerkende kracht op te lossen**. `MigrationRunner`
+sleutelt zijn ledger `public.schema_migrations` op de **bestandsnaam** en legt daar per bestand een
+SHA-256 bij vast. Eén van de twee hernoemen naar `027_*` betekent daarom niet "hetzelfde bestand,
+nieuwe naam", maar: de oude rij blijft als wees staan én de runner ziet een onbekende migratie en
+voert hem opnieuw uit — op elke bestaande database, tegen een schema waar die DDL al is toegepast.
+De inhoud aanpassen kan evenmin: dan slaat de checksum-guard aan en blokkeert elke volgende
+migratie (zie "Een gewijzigd migratiebestand faalt nu in CI in plaats van pas in productie", §53). De uitvoervolgorde lijdt er niet onder:
+`MigrationRunner` sorteert op volgnummer en pas daarna ordinaal op bestandsnaam
+(`OrderBy(Volgnummer).ThenBy(Naam, StringComparer.Ordinal)`), dus `003_admin_tables.sql` gaat
+deterministisch vóór `003_speeltijden_kolommen.sql` en beide vóór `004_*`. Het kost alleen de
+eenduidigheid van "migratie 003" als aanduiding — noem in tekst daarom altijd de volledige
+bestandsnaam.
 
 ## §-verwijzingen in migratiekoppen — vertaaltabel (#1236)
 

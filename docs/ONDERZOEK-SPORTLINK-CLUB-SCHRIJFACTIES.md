@@ -4,15 +4,36 @@
 > samenvattende beschrijving — inclusief de verplichte regel dat coding agents dit mechanisme nooit
 > zelf mogen uitvoeren — zie [`docs/SPORTLINK-WEB-EXTENSION.md`](SPORTLINK-WEB-EXTENSION.md).**
 >
-> Datum: 2026-09-04. Status: **onderzoek/plan** — dit rapport zelf wordt niet meer actief
-> bijgewerkt als planstatus; de eerste implementatiestap (#988, feature-toggle + rolgebaseerde
-> serviceaccounts) is inmiddels gebouwd en gemerged. Alleen-lezen analyse van club.sportlink.com
-> plus één door de wedstrijdsecretaris zelf uitgevoerde en teruggedraaide kleedkamerwijziging
-> (meegelezen in netwerkverkeer).
-> Bevat bewust geen persoonsgegevens, club-/accommodatie-ID's, tokens of wachtwoorden. Waar iets niet hard is vastgesteld staat **[onzeker]**.
+> **MOMENTOPNAME van 2026-09-04 — niet bijgewerkt naar de huidige stand.** Status:
+> **onderzoek/plan**. Wat hieronder staat, beschrijft wat op die datum is vastgesteld; het is
+> bewust géén beschrijving van hoe het systeem vandaag werkt. Voor de actuele stand: zie het
+> levende document hierboven. Het rapport wordt niet meer als planstatus bijgewerkt; de eerste
+> implementatiestap (#988, feature-toggle + rolgebaseerde serviceaccounts) is inmiddels gebouwd en
+> gemerged. Alleen-lezen analyse van club.sportlink.com plus één door de wedstrijdsecretaris zelf
+> uitgevoerde en teruggedraaide kleedkamerwijziging (meegelezen in netwerkverkeer).
+>
+> **Regel voor latere correcties (vastgelegd 2026-09-19, #1269):** een correctie van ná 2026-09-04
+> wordt in de lopende tekst altijd als zodanig gemarkeerd en gedateerd (`**Opgelost (…)**`,
+> `**WEERLEGD (…)**`, `**Nagekomen correctie (…)**`). Alles zonder zo'n markering is de
+> oorspronkelijke tekst van 2026-09-04 en mag niet als actuele stand gelezen worden.
+>
+> Bevat bewust geen persoonsgegevens, club-/accommodatie-ID's, tokens of wachtwoorden. Concrete
+> wedstrijd-identificatoren (`PublicMatchId`, `ExternalMatchId`/wedstrijdnummer, `wedstrijdcode`)
+> zijn op 2026-09-19 vervangen door vormplaceholders (#1269): deze repository is publiek en die
+> drie waarden vormen samen een sleutel waarmee één echte wedstrijd — en daarmee de club —
+> herleidbaar is. De redenering waar het om ging (de twee getallen hebben géén relatie en een
+> verschillend aantal cijfers) staat er onveranderd. Waar iets niet hard is vastgesteld staat
+> **[onzeker]**.
 > Uitwerking en verificatie van dit plan loopt via de comments op epic #986 en sub-issues #987-#998 — dit document blijft het bronrapport, niet de actuele status. Zie #986 voor de actuele architectuur-beslissingen.
 
 ## 0. Correctie 2026-09-04 (na dit rapport): productie-databasetier is Postgres, niet SQL Server
+
+> **Nagekomen correctie (#1266, 2026-09-19).** Deze paragraaf beschrijft de feitelijke situatie
+> direct na de cutover van 2026-09-04. De term "rollbackpad", die hier oorspronkelijk stond, is
+> nooit als architectuurbesluit voorgelegd — hij sloop binnen als beschrijving en werd daarna als
+> norm gebruikt. De eigenaar heeft vastgesteld dat beide database-tiers **gelijkwaardig** zijn; de
+> eenzijdige doorontwikkeling die erop volgde geldt als regressie en is met #1266 hersteld. Gebruik
+> deze paragraaf dus niet als onderbouwing voor een nieuwe implementatie op één tier.
 
 Dit rapport en de sub-issues #987-#998 zijn geschreven met `his.matches`/`dbo.AppSettings` (SQL
 Server, PascalCase) als impliciete aanname voor "onze database". Die aanname is **sinds vandaag
@@ -34,9 +55,10 @@ niet meer juist**:
   `AdminSettingsFunction.cs` (beide tiers) zijn inmiddels uitgebreid met `SportlinkExtensionEnabled`
   — dit was hier nog als openstaand gat benoemd, is nu gebouwd en gemerged.
 - **§2.2 mapping-hypothese: WEERLEGD (2026-09-05), niet bevestigd.** Productiequery tegen Supabase
-  voor exact dezelfde `wedstrijdnummer` (3403) en datum (2026-09-05) als het onderzoek gaf
-  `wedstrijdcode = 20698956` — niet het cijferdeel van `PublicMatchId M392686417` uit
-  het onderzoek. Andere lengte (8 vs. 9 cijfers), geen enkele herkenbare relatie.
+  voor exact hetzelfde `wedstrijdnummer` en dezelfde speeldatum als het onderzoek gaf een
+  `wedstrijdcode` van **8 cijfers** — niet het cijferdeel van de `PublicMatchId` uit het
+  onderzoek, die de vorm `M` + **9 cijfers** heeft. Andere lengte (8 vs. 9 cijfers), geen enkele
+  herkenbare relatie.
   **`PublicMatchId` is dus GEEN eenvoudige "M" + wedstrijdcode-samenvoeging.** Zie §2.2 voor het
   gevolg: dit vereist een reverse-lookup-endpoint, niet een formule.
 
@@ -61,14 +83,16 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 | Monitoring | Sentry (session replay) en Google Analytics actief: Sportlink ziet gebruikersgedrag in de UI | sessionStorage/cookies |
 
 ### 2.2 Wedstrijd-identificatie
-- `PublicMatchId` (bv. `M392686417`) is de sleutel voor alle detail- en mutatiecalls.
-- `ExternalMatchId` (bv. `3403`) is het getoonde "Wedstrijdnr." in de UI. Komt overeen met onze
-  eigen `his.matches.wedstrijdnummer` — dat deel van de hypothese is **wél correct** (zelfde
-  wedstrijdnummer 3403 teruggevonden op dezelfde datum in productie).
+- `PublicMatchId` (vorm: `M` gevolgd door **9 cijfers**, hier genoteerd als `M<9 cijfers>`) is de
+  sleutel voor alle detail- en mutatiecalls.
+- `ExternalMatchId` (hier genoteerd als `<wedstrijdnummer>`) is het getoonde
+  "Wedstrijdnr." in de UI. Komt overeen met onze eigen `his.matches.wedstrijdnummer` — dat deel van
+  de hypothese is **wél correct** (hetzelfde wedstrijdnummer teruggevonden op dezelfde datum in
+  productie).
 - **WEERLEGD (2026-09-05, live productiequery tegen Supabase):** `PublicMatchId` is GEEN
-  `"M" + wedstrijdcode`. Voor exact dezelfde wedstrijd (wedstrijdnummer 3403, datum 2026-09-05)
-  geeft onze database `wedstrijdcode = 20698956` — niet het cijferdeel uit
-  `PublicMatchId M392686417` dat het onderzoek voor diezelfde wedstrijd noteerde. Verschillend
+  `"M" + wedstrijdcode`. Voor exact dezelfde wedstrijd (zelfde `<wedstrijdnummer>`, zelfde
+  speeldatum) geeft onze database een `wedstrijdcode` van **8 cijfers** — niet het cijferdeel uit
+  de `M<9 cijfers>`-waarde die het onderzoek voor diezelfde wedstrijd noteerde. Verschillend
   aantal cijfers (8 vs. 9), geen enkele herkenbare relatie (geen offset, geen bit-shift-patroon
   bekeken, maar op het eerste gezicht volledig ongerelateerd).
 - **Gevolg voor de architectuur:** `PublicMatchId` kan niet uit onze eigen data berekend worden.
@@ -77,8 +101,8 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
 - **Reverse-lookup BEVESTIGD WERKEND (2026-09-05, live productietest,
   `scripts/dev/Invoke-SportlinkMatchProgramLookup.ps1`):**
   `competition/match/MatchProgramOverview?DateFrom=<dag>&DateTo=<dag>` met een smal (1-daags)
-  date-bereik gaf voor ExternalMatchId 3403 (dezelfde wedstrijd als hierboven) `PublicMatchId
-  M392686417` terug — exact de eerder live geobserveerde waarde. Timing: 12,2 s voor het 1-daagse
+  date-bereik gaf voor dat `<wedstrijdnummer>` (dezelfde wedstrijd als hierboven) de
+  `M<9 cijfers>`-waarde terug — exact de eerder live geobserveerde waarde. Timing: 12,2 s voor het 1-daagse
   bereik (vs. 21,2 s voor een 4-weken-bereik) — nog steeds te traag voor synchroon gebruik bij een
   klik. De respons is **niet club-gescoped**: 81 wedstrijden voor die ene dag (regio-/
   competitiebreed), dus lokaal filteren op `ExternalMatchId` is verplicht.
@@ -87,7 +111,10 @@ Het kan. club.sportlink.com is geen server-rendered site maar een React-SPA (Vit
   gecachet in de nieuwe tabel `public.sportlinkpublicmatchidcache` (migratie
   `014_sportlink_club_postgres_tokenstore.sql`), zodat de trage lookup maar één keer per wedstrijd
   nodig is. Een achtergrond-warmup van die cache vóór de eerstvolgende wedstrijddag (in plaats van
-  pas bij de eerste klik) is apart uitgewerkt in issue #1017 — nog niet geïmplementeerd.
+  pas bij de eerste klik) is apart uitgewerkt in issue #1017. **Geïmplementeerd in #1017
+  (inmiddels gesloten):** `SportlinkPublicMatchIdWarmupTimerFunction` draait dagelijks om 06:00
+  UTC met een venster van vandaag + 2 dagen (`SportlinkEndpointCore.WarmupVooruitkijkDagen`), sinds
+  #1266 op beide tiers.
 - De server levert per wedstrijd permissie-flags: `IsEditFieldAllowed`, `IsAssignDressingRoomsAllowed`, `IsAssignOfficialsAllowed`, `IsEditFieldSidePanelAllowed`, `IsAddScoreAllowed`, `IsHomeMatch`, plus `TaskStatus` (bv. `MISSING_DRESSINGROOMS`). Ideaal om knoppen in onze app aan/uit te zetten.
 
 ### 2.3 Deep-links (route in de SPA)
@@ -246,11 +273,13 @@ Onze backend (Azure Function) roept dezelfde `PUT`-calls aan met een Bearer-toke
 - **Opgelost (§2.6):** redirect-URI-whitelist getest en afgewezen (HTTP 400); access-/refresh-token-
   levensduur bevestigd (1 uur / 6 uur bij eerste uitgifte); `device_code`-grant getest en bevestigd
   uitgeschakeld voor deze client.
-- **Nog steeds open:** MFA-eisen bij herlogin niet getest; of het refresh-token bij elke refresh
-  roteert (en of `refresh_expires_in` daarbij reset) niet getest; of `X-Navajo-*`-headers verplicht
-  zijn niet getest — alle drie geblokkeerd doordat een coding agent dit mechanisme (met een echt
-  token) niet zelf mag uitvoeren (zie §2.6). Vereist een mens die
+- **Nog steeds open:** MFA-eisen bij herlogin niet getest — geblokkeerd doordat een coding agent
+  dit mechanisme (met een echt token) niet zelf mag uitvoeren (zie §2.6). Vereist een mens die
   `scripts/dev/Invoke-SportlinkTokenSpike.ps1` zelf afmaakt.
+- **Opgelost (§2.6):** of het refresh-token bij elke refresh roteert — bevestigd door de eigenaar
+  zelf (refresh #1 én #2 geslaagd, beide met `expires_in: 3600` / `refresh_expires_in: 21600`).
+  **Opgelost (#991/#993):** of de `X-Navajo-*`-headers verplicht zijn — live bevestigd; ze worden
+  op elk pad gezet door `SportlinkClubClient.ZetSportlinkHeaders`.
 - Gebruiksvoorwaarden van Sportlink niet gelezen; risico op accountblokkade bij geautomatiseerd gebruik is reëel maar niet gekwantificeerd.
 
 ## 6. Architectuurbeslissing (2026-09-04): rol-gebaseerde Sportlink-service-accounts, geen gedeelde credential

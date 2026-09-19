@@ -209,7 +209,7 @@ De beveiliging werkt in lagen. Elke laag is een onafhankelijke blokkade. Als é�
 ### Laag 1 — Lokale git hooks (op de ontwikkelmachine)
 
 Bij elke `git commit` en `git push` draaien automatisch:
-- **PII-scan**: zoekt naar telefoonnummers, e-mailadressen en ledencodesn in de staged bestanden
+- **PII-scan**: zoekt naar telefoonnummers, e-mailadressen en ledencodes in de staged bestanden
 - **Gitleaks** (indien geïnstalleerd): diepere scan op wachtwoorden en tokens
 
 Instellen (eenmalig per machine):
@@ -217,6 +217,15 @@ Instellen (eenmalig per machine):
 git config core.hooksPath .githooks
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
+
+Controleer daarna dat de hooks daadwerkelijk draaien:
+```bash
+ls -l .githooks/pre-commit .githooks/pre-push   # beide moeten uitvoerbaar zijn (x-bit)
+git commit --allow-empty -m "hooktest"          # verwacht: de scanmelding van de pre-commit-hook
+```
+Ontbreekt de x-bit, dan slaat Git de hook **stilzwijgend** over en draait er geen enkele scan —
+een laag die faalt zonder signaal. Herstellen:
+`git update-index --chmod=+x .githooks/pre-commit .githooks/pre-push`.
 
 Gitleaks installeren (optioneel maar sterk aanbevolen):
 - Windows: `winget install gitleaks`
@@ -230,11 +239,18 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 |---|---|---|
 | **Secret Detection (gitleaks)** | Wachtwoorden, tokens, API-sleutels in code én volledige git-geschiedenis | ✅ Ja |
 | **PII File Detection** | CSV- en Excel-bestanden met mogelijke persoonsgegevens | ✅ Ja |
-| **PII Pattern Scan** | Nederlandse telefoonnummers, persoonlijke e-mailadressen, ledencodesn | ✅ Ja |
+| **PII Pattern Scan** | Nederlandse telefoonnummers, persoonlijke e-mailadressen, ledencodes | ✅ Ja |
+| **PII in Documentatie (CHANGELOG/docs)** | E-mailadressen in `CHANGELOG.md`, `docs/` en recente commit-berichten | ✅ Ja |
+| **Club-infrastructuur patrooncheck** | Azure-resourcenamen, hostnames, tenant-/client-ID's en andere club-identificerende waarden in getrackte bestanden — de check die regel 4a hierboven afdwingt | ✅ Ja |
 | **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in NuGet-pakketten (HIGH/CRITICAL), inclusief transitieve dependencies | ✅ Ja |
 | **Security Gate** | Faalt als één van de bovenstaande verplichte checks faalt | ✅ Ja |
 
-De **Security Gate** is de finale poortwachter. Zolang die rood is, is merge naar `main` geblokkeerd.
+De **Security Gate** is de finale poortwachter: hij hangt via `needs:` af van precies de zes jobs
+hierboven, en zolang hij rood is, is merge naar `main` geblokkeerd.
+
+Een fork kan de infrastructuur-patrooncheck uitbreiden met eigen reguliere expressies via het
+optionele GitHub Secret `CLUB_EXTRA_PATTERNS` (newline-gescheiden) — nuttig voor waarden die alleen
+jouw club identificeren.
 
 **Op welke events de Security Scan draait (#1202):** `push` naar élke branch, én `pull_request`
 naar `main` en naar `develop` — die twee branches staan letterlijk zo in de `on:`-sectie van
@@ -262,12 +278,39 @@ Bepaalde bestandstypen worden nooit getrackt door git, ongeacht wat er gedaan wo
 - `*.csv`, `*.xlsx`, `*.xls` — overal in de repo, niet alleen in `exports/` (#978). Enige
   uitzonderingen: seed-bestanden onder `scripts/migrations/` en testfixtures onder een
   `*.Tests/`-project — geen van beide bevat ledendata.
-- `FunctionApp/local.settings.json` — lokale verbindingsstrings
-- `*.env` — environment-bestanden
+- `**/local.settings.json` — lokale verbindingsstrings van élk projectpad, dus ook
+  `FunctionApp.Postgres/local.settings.json` (de productietier)
+- `.env` en `.env.*` — environment-bestanden, met uitzondering van `.env.template` en `.env.example`
 
-### Laag 4 — SQL-database (data at rest)
+### Laag 4 — Database (data at rest)
 
-Persoonsgegevens worden opgeslagen in de lokale SQL Server (`avg.Teambegeleiding`), niet in bestanden. De `avg`-schema is bedoeld voor AVG-beschermde data en de toegang moet beperkt zijn tot bevoegde gebruikers.
+Persoonsgegevens worden opgeslagen in de database van de actieve tier, nooit in bestanden:
+`avg.teambegeleiding` en `avg.importlog` op Postgres (de tier die in productie draait, gehost),
+`avg.Teambegeleiding` en `avg.ImportLog` op SQL Server. Het `avg`-schema is bedoeld voor
+AVG-beschermde data; de toegang moet beperkt zijn tot bevoegde gebruikers.
+
+**Row-Level Security op de Postgres-tier (#1198) — verplicht op élke tabel.** Een gehost
+Postgres-platform als Supabase genereert voor elke tabel in het `public`-schema automatisch een
+PostgREST-REST-endpoint, bereikbaar met de bewust publieke anon-key, **ongeacht of deze applicatie
+die API ooit gebruikt**. Zonder RLS is zo'n tabel dus extern leesbaar, schrijfbaar en verwijderbaar
+voor iedereen die de project-URL kent. Migratie
+`Database.Postgres/migrations/021_enable_row_level_security.sql` zet RLS aan op alle bestaande
+tabellen; `022` en `023` trekken daarnaast de overbodige rechten van de platformrollen `anon` en
+`authenticated` in.
+
+Twee regels die hieruit volgen:
+
+1. **Elke nieuwe tabel krijgt in dezelfde migratie een
+   `ALTER TABLE <schema>.<tabel> ENABLE ROW LEVEL SECURITY;`.** CI dwingt dit af tegen een levende
+   database (`scripts/ci/check-rls-enabled.sh` en `scripts/ci/check-splinter-lints.sh` in de job
+   `fresh-db-postgres`).
+2. **Bewust geen policies.** De applicatie verbindt via één rol die tabeleigenaar is; die omzeilt
+   RLS hoe dan ook. RLS is hier uitsluitend de schakelaar die de PostgREST-rollen buitensluit —
+   geen per-rij-autorisatie. Voeg dus geen policies toe zonder expliciete aanleiding.
+
+Controleer bij een gehost platform periodiek het beveiligingsadvies van de provider: configuratie
+die je in een dashboard wijzigt, laat geen diff in git achter en is daardoor onzichtbaar voor
+codereview.
 
 ### Laag 5 — Azure Function logs / Application Insights (AVG #210)
 
@@ -307,7 +350,31 @@ Persoonsgegevens mogen **nooit** in logs of Application Insights terechtkomen.
 
 De cleanup wordt wekelijks (zondagochtend 03:00 UTC) uitgevoerd door `CleanupEmailVerwerkingFunction`. De stored procedure `planner.sp_CleanupEmailVerwerking` is idempotent.
 
-`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. Er is geen automatische verwijdering — de rijen van de club worden bij elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier, geserialiseerd per club). Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder is dan 90 dagen.
+`avg.Teambegeleiding` bevat persoonsgegevens van teambegeleiders. De rijen van de club worden bij
+elke import volledig vervangen (club-scoped DELETE + insert, nooit een TRUNCATE — dat zou andere
+clubs' rijen ook wissen; #1131/#1132 maakten dit atomisch per import en, op de Postgres-tier,
+geserialiseerd per club).
+
+`avg.ImportLog` legt per import vast wie hem uitvoerde (`ImporterendeDoor`, een Entra-gebruikersnaam)
+en welk bestand daarbij hoorde (`CsvBestand`, kan herleidbare informatie bevatten). Beide zijn
+persoonsgegevens.
+
+Daarnaast geldt voor beide tabellen een automatische retentie:
+
+| Tabel | Fase | Wanneer | Actie |
+|---|---|---|---|
+| `avg.Teambegeleiding` | Verwijderen | > 1 jaar na de import (`mta_imported` / `ImportDatum`) | Hele rij verwijderd |
+| `avg.ImportLog` | Anonimiseren | > 90 dagen na de import | `ImporterendeDoor` en `CsvBestand` → NULL |
+| `avg.ImportLog` | Verwijderen | > 1 jaar na de import | Hele rij verwijderd |
+
+De cleanup draait maandelijks (1e van de maand, 04:00 UTC) via `CleanupTeambegeleidingFunction`, op
+beide tiers en met dezelfde termijnen; de Postgres-variant gebruikt
+`PostgresCleanupProcedures.CleanupTeambegeleidingAsync` / `CleanupImportLogAsync`, de SQL
+Server-variant de stored procedures `avg.sp_CleanupTeambegeleiding` en `avg.sp_CleanupImportLog`.
+Beide zijn idempotent.
+
+Importeer alleen aan het begin van een nieuw seizoen. Het importscript waarschuwt als de data ouder
+is dan 90 dagen.
 
 `dbo.AppSettingsAudit` bevat een auditlog van elke instellingenwijziging (#781). `GewijzigdDoor` is
 een Entra-gebruikersnaam/UPN; `OudeWaarde`/`NieuweWaarde` kunnen e-mailadressen bevatten (bijv. bij
@@ -382,7 +449,8 @@ Een wachtwoord, token of sleutel is gevonden in code of git-geschiedenis.
    | GitHub PAT | github.com → Settings → Developer settings → Personal access tokens |
    | Azure credentials | Azure Portal → App registrations of Key Vault |
    | Sportlink wachtwoord | club.sportlink.com → Accountinstellingen |
-   | Database wachtwoord | SQL Server Management Studio → Security → Logins |
+   | Database wachtwoord (Postgres-tier) | Dashboard van je provider (bijv. Supabase → Project Settings → Database → Reset database password). Werk daarna **zowel** het GitHub Secret `POSTGRES_CONNECTION_STRING` **als** de gelijknamige Function App-instelling bij |
+| Database wachtwoord (SQL Server-tier) | SQL Server Management Studio → Security → Logins; daarna het Secret `SQL_CONNECTION_STRING` en de Function App-instelling `SqlConnectionString` bijwerken |
    | 1Password TOTP-seed | Verwijder en herregistreer 2FA in de betreffende applicatie |
 
 2. Verwijder het secret uit de code en vervang door een omgevingsvariabele of Key Vault-referentie

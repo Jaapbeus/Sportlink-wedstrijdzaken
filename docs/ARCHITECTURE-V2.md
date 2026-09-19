@@ -6,11 +6,15 @@
 > enige databasetier en bestond de Sportlink Web Extension (epic #986, schrijfrichting
 > webapp→Sportlink Club) nog niet.
 >
-> Sinds #976 draait productie op de Postgres-tier, met Azure SQL als volwaardige rollback-tier —
-> zie **[docs/ARCHITECTURE.md](ARCHITECTURE.md)** voor de huidige (V3) architectuur en
+> Sinds #976 draait deze installatie op de Postgres-tier; Azure SQL blijft een gelijkwaardige
+> tier die een fork kan kiezen (#1266) — zie **[docs/ARCHITECTURE.md](ARCHITECTURE.md)** voor de
+> huidige (V3) architectuur en
 > **[docs/ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md)** voor de volledige
 > multi-tier strategie. Dit bestand blijft uitsluitend bewaard als historische referentie —
 > wijzig het niet meer; nieuwe architectuurwijzigingen horen in `ARCHITECTURE.md`.
+>
+> **Elke uitspraak hieronder is een uitspraak over de periode mei–september 2026**, ook waar hij
+> in de tegenwoordige tijd geschreven staat.
 
 ---
 
@@ -472,7 +476,7 @@ main  ←──── feature/#<nr>-<slug>   (via PR)
 
 *Workaround:* voer nieuwe migraties handmatig uit via Azure Portal (Query Editor) of `sqlcmd` vóór de code-deploy, of zorg dat de code backward-compatible is met de oude schema-versie totdat de migratie is uitgevoerd.
 
-*Structurele fix:* een DB-migratiestap toevoegen aan `deploy.yml` is gepland maar nog niet geïmplementeerd. *(Noot bij archivering: dit is inmiddels opgelost voor de SQL Server-tier — zie [project_db_migration_gap.md] in de auto-memory en de huidige [ARCHITECTURE.md](ARCHITECTURE.md) §10.)*
+*Structurele fix:* een DB-migratiestap toevoegen aan `deploy.yml` is gepland maar nog niet geïmplementeerd. *(Noot bij archivering: dit is inmiddels opgelost voor beide tiers — zie [ARCHITECTURE.md](ARCHITECTURE.md) §11 "Database-migraties" en §17.)*
 
 ---
 

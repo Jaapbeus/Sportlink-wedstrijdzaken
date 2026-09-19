@@ -309,7 +309,7 @@ jobs:
           if [ -z "$POSTGRES_CONNECTION_STRING" ]; then
             echo "::error::Secret POSTGRES_CONNECTION_STRING ontbreekt, terwijl DatabaseTier=Postgres."
             echo "::error::Zonder dit secret kan de pipeline de Postgres-migraties niet toepassen en zou de nieuwe code tegen een verouderd schema draaien (#1093, #1098)."
-            echo "::error::Zet het secret in GitHub Settings -> Secrets and variables -> Actions -> Secrets (zelfde connectiestring als de Function App-instelling; norm: sslmode=verify-full met sslrootcert, zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50) en start de deploy opnieuw."
+            echo "::error::Zet het secret in GitHub Settings -> Secrets and variables -> Actions -> Secrets (zelfde connectiestring als de Function App-instelling; norm: sslmode=verify-ca met sslrootcert — verify-full is op het pooler-endpoint onhaalbaar, zie docs/ARCHITECTUUR-DATABASE-TIERS.md §50) en start de deploy opnieuw."
             exit 1
           fi
           echo "Secret aanwezig (waarde niet gelogd)."

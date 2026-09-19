@@ -8,6 +8,19 @@
 
 ---
 
+## Waar moet ik zijn?
+
+| Ik ben… | Begin hier |
+|---|---|
+| **benieuwd wat dit is** | lees gewoon verder — twee minuten |
+| **bestuurder of beheerder van een club die dit wil gaan gebruiken** | [Voor wie is dit interessant?](#voor-wie-is-dit-interessant) → [SETUP-NIEUWE-CLUB.md](SETUP-NIEUWE-CLUB.md) |
+| **beheerder van een draaiende installatie** | [docs/BEHEERDER-HANDLEIDING.md](docs/BEHEERDER-HANDLEIDING.md) |
+| **developer die wil bijdragen** | [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) |
+| **AI-agent of nieuwe developer die de code moet begrijpen** | [CLAUDE.md](CLAUDE.md) — de harde architectuurregels, het kostenbeleid en de tierstrategie. [AGENTS.md](AGENTS.md) is dezelfde inhoud voor niet-Claude-agents en wordt uit `CLAUDE.md` gegenereerd. |
+| **op zoek naar één specifiek document** | [docs/INDEX.md](docs/INDEX.md) |
+
+---
+
 ## Het probleem
 
 Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse voetbalverenigingen. Het werkt — maar het werkt traag, omslachtig en biedt nauwelijks automatisering. Voor een kleine club met vijf teams valt dat mee. Voor een grote vereniging met dertig teams of meer wordt het een wekelijks gevecht.
@@ -16,7 +29,7 @@ Sportlink is het dominante ledenbeheer- en wedstrijdplatform voor Nederlandse vo
 
 - Een tegenstander vraagt een wedstrijd te verzetten. Jij moet handmatig de juiste leider en trainer opzoeken, een e-mail opstellen, en wachten op goedkeuring — terwijl het veld al geboekt is en de spelersbus al gepland staat.
 - Sportlink heeft nauwelijks een API die je zelf kunt aansturen. Nieuwe functies wachten jarenlang in de wachtrij.
-- Wijzigingen worden niet automatisch gecommuniceerd naar betrokkenen. Iemand moet altijd iets doosturen.
+- Wijzigingen worden niet automatisch gecommuniceerd naar betrokkenen. Iemand moet altijd iets doorsturen.
 
 Dit project bouwt die automatiseringslaag zelf.
 
@@ -42,12 +55,16 @@ Een Blazor WebAssembly-applicatie geeft beheerders via de browser volledig behee
 - **Speeltijden** — wedstrijdduur en veldfractie per leeftijdscategorie
 - **Veldbeschikbaarheid** — tijdvensters per veld configureren
 - **Velden** — velddefinities (type, verlichting, actief/inactief)
+- **Dagplanning** — wedstrijden en velden per speeldag plannen
 - **Teambegeleiding** — begeleiders per team raadplegen; contactverzoeken doorsturen
 - **Leermomenten** — AI-classificatiefouten inzien en corrigeren voor betere toekomstige classificaties
+- **Teamaliassen** — geleerde teamnaam-varianten goedkeuren of afwijzen
 - **E-mail tester** — AI-classificatie dry-run zonder e-mail te versturen
 - **E-maillog** — verwerkte e-mails inzien (AVG-conform: geen berichtteksten)
 - **Testmodus (ALLSTARS)** — fictieve wedstrijden invoeren om planner te testen zonder echte data
 - **Wijzigingsverzoeken** — inkomende Sportlink-wijzigingsverzoeken van tegenstanders goedkeuren of afwijzen
+- **Oefenwedstrijd aanmaken** — een oefenwedstrijd rechtstreeks in Sportlink Club aanmaken
+- **Thema** — clubkleuren, logo en favicon, met een aparte licht- en donkervariant en een schakelaar in de header
 - **Sportlink Web Extension** (in opbouw) — kleedkamers en veld van een wedstrijd rechtstreeks vanuit Dagplanning naar Sportlink Club terugschrijven, met een deep-link "Open in Sportlink" per wedstrijd
 
 ---
@@ -59,7 +76,8 @@ Sportlink Club API
         │  (nachtelijke sync via timer trigger)
         ▼
 Azure Functions (.NET 9, isolated worker) — één van twee volledig gescheiden tier-implementaties
-  ├── FetchAndStoreApiData    — haalt teams, wedstrijden en details op
+  ├── FetchAndStoreApiData    — nachtelijke sync van teams, wedstrijden en details
+  │                             (op de Postgres-tier: `PostgresFetchAndStoreApiData`)
   ├── EmailProcessorFunction  — leest mailbox via Microsoft Graph
   ├── BerichtAiService        — classifieert binnenkomende e-mails met AI
   ├── Sportlink Web Extension — schrijft wedstrijdwijzigingen terug naar Sportlink Club (in opbouw)
@@ -83,6 +101,25 @@ Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op b
 
 **Technologie:** .NET 9 (FunctionApp) · .NET 10 (Blazor) · Azure Functions v4 · Blazor WebAssembly · Postgres (Supabase) / Azure SQL · Microsoft Graph API · OpenAI (gpt-4o-mini, direct) · Azure Static Web Apps · Entra ID
 
+### Projectkaart
+
+De repository bevat 13 .NET-projecten en één SQL Server-databaseproject (SSDT):
+
+| Project | Rol |
+|---|---|
+| `FunctionApp.Postgres/` | Azure Functions, Postgres-tier (draait in productie, `net9.0`) |
+| `FunctionApp/` | Azure Functions, SQL Server-tier (`fa-dev-sportlink-01.csproj`, `net9.0`) |
+| `Planner.Shared/` | Tier-onafhankelijke domeinlogica: teamnaam-normalisatie, veldresolutie, planner-regels, thema (`Theming/ThemeCore.cs`), feedback en SSRF-bescherming. Nieuwe gedeelde logica hoort hier — nooit als tweede kopie in een tierboom. |
+| `Database.Postgres/` | Postgres-schema, migraties (`migrations/`) en de checksum-bewaakte migratierunner |
+| `Database.Postgres.Cli/` | CLI om die migraties toe te passen (gebruikt door CI en lokaal) |
+| `Database/` | SQL Server-databaseproject (SSDT, `SportlinkSqlDb.sqlproj`) |
+| `BlazorAdmin/` | Blazor WebAssembly Admin GUI (`net10.0`) |
+| `MigrationTools/SqlServerToPostgresCopy/` | Eenmalige kopieertool SQL Server → Postgres |
+| `Tools/SportlinkTokenCapture/` | Hulpprogramma voor het koppelen van een Sportlink-serviceaccount |
+| `BlazorAdmin.Tests/`, `FunctionApp.Tests/`, `FunctionApp.Postgres.Tests/`, `Database.Postgres.Tests/`, `Planner.Shared.Tests/` | Unit- en integratietests |
+
+Bouw altijd via `sportlink-wedstrijdzaken.slnf` of per project. De volledige `sportlink-wedstrijdzaken.sln` bevat het SSDT-project en bouwt daardoor niet op macOS.
+
 ---
 
 ## Voor wie is dit interessant?
@@ -90,7 +127,7 @@ Welke tier een fork daadwerkelijk gebruikt is een bewuste, expliciete keuze op b
 **Als bijdrager** ben je welkom als je ervaring hebt met een of meerdere van deze gebieden:
 - C# / .NET (backend logic, Azure Functions)
 - Blazor WebAssembly (admin GUI)
-- SQL Server (stored procedures, schema-ontwerp)
+- SQL — Postgres (migraties en schema-ontwerp) en SQL Server (stored procedures) voor de tweede tier
 - Azure (Functions, Static Web Apps, Entra ID, Graph API)
 - Nederlandse voetbalwereld (domeinkennis om de juiste problemen op te lossen)
 
@@ -119,16 +156,21 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 
 ## Lokaal aan de slag
 
-**Vereisten:** .NET 10.0 SDK + .NET 9 Runtime · Azure Functions Core Tools v4 · Azurite · een lokale database (SQL Server óf Postgres via Docker, zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) §4 voor beide paden)
+**Vereisten:** .NET 10.0 SDK · .NET 9 Runtime — beide frameworks, `Microsoft.NETCore.App` én `Microsoft.AspNetCore.App` · Azure Functions Core Tools v4 · Azurite · Docker voor de lokale database (zie [docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md) §4)
 
 ```powershell
-# Settings-template kopiëren en verbindingsgegevens invullen
-cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
+# 1. Lokale database starten — 'docker compose up -d' start Postgres, de tier die in
+#    productie draait. SQL Server staat achter een profile:
+#    docker compose --profile sqlserver up -d sqlserver
+docker compose up -d
 
-# Alle services starten (Azurite + FunctionApp :7094 + BlazorAdmin :5242)
-.\scripts\dev\Start-Debug.ps1
+# 2. Settings-template kopiëren en POSTGRES_CONNECTION_STRING invullen
+cp FunctionApp.Postgres/local.settings.template.json FunctionApp.Postgres/local.settings.json
 
-# Verificatie (wacht 15s na Start-Debug)
+# 3. Alle services starten (Azurite + FunctionApp :7094 + BlazorAdmin :5242)
+.\scripts\dev\Start-Debug.ps1            # -Tier SqlServer voor de andere tier
+
+# 4. Verificatie (Start-Debug wacht zelf tot de services klaar zijn)
 .\scripts\dev\Test-App.ps1
 ```
 
@@ -151,7 +193,7 @@ Het project is zo gebouwd dat:
 - Persoonsgegevens **nooit** in git belanden (meerdere onafhankelijke beveiligingslagen)
 - E-mailadressen van leden uitsluitend via **BCC** worden gebruikt bij communicatie met derden
 - De `avg`-database-schema is gescheiden van operationele data en bedoeld voor beperkte toegang
-- Alle automatische beveiligingschecks geblokkeerd bij een merge als er een risico gedetecteerd wordt
+- Automatische beveiligingschecks blokkeren een merge zodra er een risico wordt gedetecteerd
 
 Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en verantwoorde omgang met persoonsgegevens.
 
@@ -164,8 +206,10 @@ Zie [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) voor de architectuurprincipes: 
 Alle noemenswaardige wijzigingen staan in [CHANGELOG.md](CHANGELOG.md).  
 Releases zijn beschikbaar via [GitHub Releases](../../releases).
 
-Versienummering volgt een vier-delig schema: `MAJOR.MINOR.PATCH.REVISION` (huidig: v3.2.10.x).  
-Definitie van bug, feature en enhancement: zie [docs/VERSIONING.md](docs/VERSIONING.md).
+Versienummering volgt een vier-delig schema: `MAJOR.MINOR.PATCH.REVISION`. Het actuele nummer
+staat bovenaan [CHANGELOG.md](CHANGELOG.md) en op de [releases-pagina](../../releases); de Admin GUI
+toont het in de header en `/api/health` in het veld `version`.  
+Definitie van bug, feature en enhancement, en de twee versie-bumpfasen: zie [docs/VERSIONING.md](docs/VERSIONING.md).
 
 ---
 

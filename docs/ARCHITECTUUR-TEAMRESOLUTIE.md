@@ -2,6 +2,13 @@
 
 > Status: volledig opgeleverd (#692, #696, #697, #698, #699, #700, #701). De oude regex-normalisatie
 > en stringheuristieken zijn verwijderd: deze laag is het enige pad waarlangs een team wordt herkend.
+>
+> **Twee tiers.** Dit document beschrijft standaard de SQL Server-notatie (`dbo.Teams`,
+> `FunctionApp/TeamResolution/`). De tier die in productie draait is Postgres (#1060):
+> lowercase identifiers in schema `public`, code onder `FunctionApp.Postgres/`. Waar het gedrag
+> écht verschilt staat dat expliciet vermeld — de belangrijkste twee zijn **geen AI-disambiguatie
+> op Postgres** en **een ander vangnet bij een lege teamlijst**. Beide tiers zijn gelijkwaardig
+> (#1266). Feitelijkheid geverifieerd op 19-09-2026.
 
 ## Het probleem
 
@@ -79,15 +86,27 @@ teruggeven (forced choice). De keuze wordt daarna in C# gevalideerd tegen die li
 gehallucineerd nummer kan nooit tot een verkeerd `TeamId` leiden. Boven acht kandidaten wordt niet
 gedisambigueerd: dan is de tekst te vaag en is terugvragen aan de afzender correcter.
 
+> **Deze stap bestaat alleen op de SQL Server-tier.** `TeamDisambiguationAiService` en
+> `ITeamDisambiguator` staan uitsluitend in `FunctionApp/TeamResolution/`. Op de Postgres-tier
+> (productie, #1060) eindigt stap 3 bij meerdere kandidaten altijd in `MeerdereKandidaten` — dus
+> in de tak "terugvragen aan de afzender". Zie de tiertabel onder *Bestanden*.
+
 ## Datamodel
 
-| Tabel | Rol |
+Beide tiers hebben deze tabellen, met een andere naamconventie. Postgres-identifiers zijn lowercase
+en ongequote (`docs/ARCHITECTUUR-DATABASE-TIERS.md` §3); waar dit document verderop `dbo.Teams`
+schrijft, geldt hetzelfde voor `public.teams`.
+
+| Tabel (SQL Server / Postgres) | Rol |
 |---|---|
-| `dbo.Teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
-| `dbo.TeamAliassen` | Uitsluitend schrijfwijzen die **niet** uit de normalisatie volgen: geleerd uit e-mail of handmatig toegevoegd. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. |
+| `dbo.Teams` / `public.teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)` — op Postgres `(clubcode, teamnaamgenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
+| `dbo.TeamAliassen` / `public.teamaliassen` | Uitsluitend schrijfwijzen die **niet** uit de normalisatie volgen: geleerd uit e-mail of handmatig toegevoegd. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. |
+
+Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabellen) en
+`007_teams_collation_fix.sql` (de `upper(...)`-unique-indexen, zie de collatie-kanttekening onderaan).
 
 De sync schrijft géén aliassen: alle Sportlink-schrijfwijzen van één team normaliseren per definitie
-naar dezelfde sleutel, dus een alias-rij zou dupliceren wat `dbo.Teams` al weet.
+naar dezelfde sleutel, dus een alias-rij zou dupliceren wat de teamtabel al weet.
 
 Een alias die uit AI-disambiguatie komt, krijgt status `pending` en wordt dus **niet** vertrouwd
 totdat een coördinator hem goedkeurt (Beheer → Teamaliassen). Zo kan een foutieve keuze zich niet
@@ -105,24 +124,49 @@ Wat er in de plaats is gekomen aan veiligheid:
 | Situatie | Gedrag |
 |---|---|
 | Resolver niet geregistreerd in DI | E-mailverwerking stopt met een foutmelding. Verwerken zonder teamherkenning is erger dan niet verwerken. |
-| `dbo.Teams` leeg (bijv. direct na een deploy) | De canonicalisatie wordt eenmalig alsnog uitgevoerd op de al aanwezige `his.teams`-data. Lukt dat niet, dan wordt er niet verwerkt en volgt een expliciete foutmelding. |
+| Teamtabel leeg (bijv. direct na een deploy) | De canonicalisatie wordt op het e-mailpad alsnog uitgevoerd op de al aanwezige `his.teams`-data. Lukt dat niet, dan wordt er niet verwerkt en volgt een expliciete foutmelding. **Het mechanisme verschilt per tier — zie hieronder.** |
 | Teamaanduiding niet herleidbaar | Geen gok: de tak handelt af als "team onbekend". |
 | Meerdere kandidaten, geen betrouwbare keuze | Geen gok: de vraag wordt teruggelegd bij de afzender. |
 
-De gereedheidscheck staat bewust in fase 2 van de verwerking, ná het laden van `dbo.AppSettings`.
-In fase 1 zou hij (a) altijd falen omdat de clubCode dan nog niet geladen is, en (b) bij élke poll de
-database openen — wat een Azure SQL Serverless-database 24/7 wakker houdt en het gratis vCore-budget
-verbruikt.
+**Het vangnet bij een lege teamlijst verschilt per tier — de klasse `TeamlijstGereedheid` bestaat
+maar op één van de twee.**
+
+| | SQL Server-tier | Postgres-tier (productie, #1060) |
+|---|---|---|
+| Mechanisme | `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` — vult **alleen aan wanneer de lijst leeg is**, en draait daarnaast de sleutelmigratie (#766) | Geen `TeamlijstGereedheid`. `TeamCanonicalisatieService.RefreshAsync` wordt **onvoorwaardelijk** aangeroepen (die roept `MigreerSleuteldriftAsync` zelf al aan) |
+| Aanroeppunten | `FunctionApp/Email/EmailProcessorFunction.cs`, `FunctionApp/Admin/EmailTestFunction.cs` | `FunctionApp.Postgres/Email/EmailProcessorFunction.cs` (fase 2), `FunctionApp.Postgres/Admin/EmailTestFunction.cs` |
+| Expliciete hendel | `POST /api/beheer/teams/herstel` (#946) | idem — bestaat op **beide** tiers |
+
+Netto is het effect op het e-mailpad gelijkwaardig: een lege teamlijst wordt daar op beide tiers
+alsnog opgebouwd uit `his.teams`. Het verschil zit in *conditioneel versus onvoorwaardelijk*, en in
+de naam die je zoekt als je de code induikt.
+
+**Wat op geen van beide tiers gebeurt:** automatisch herstel vanuit een `GET`-pad. Bij #931 is dat
+alternatief expliciet gewogen en afgewezen — het zou leesverzoeken schrijvend maken op een database
+met automatische pauzering en een verbruiksbudget, op een platform dat kan uitschalen naar meerdere
+instanties. "Herstel hoort achter een handeling van een mens." Blijft de teamdropdown dus leeg zonder
+dat er e-mail verwerkt wordt, dan is `POST /api/beheer/teams/herstel` (admin-only, ook als knop op de
+pagina Beheer → Teamaliassen) de weg. Dat endpoint geeft bewust een `409` als `his.teams` leeg is,
+zodat "sync heeft nooit gelopen" niet als "hersteld" wordt gelezen.
+
+De gereedheidscheck (SQL Server-tier) staat bewust in fase 2 van de verwerking, ná het laden van
+`dbo.AppSettings`. In fase 1 zou hij (a) altijd falen omdat de clubCode dan nog niet geladen is, en
+(b) bij élke poll de database openen — wat een Azure SQL Serverless-database 24/7 wakker houdt en het
+gratis vCore-budget verbruikt. Op de Postgres-tier staat de onvoorwaardelijke `RefreshAsync` om
+dezelfde reden in fase 2.
 
 Logregels om op te zoeken: `TEAMRESOLUTIE` (per bericht: teamId, bron, confidence) en
 `TEAMS CANONICALISATIE` (per sync: aantal teams, gekoppelde schrijfwijzen, niet-herleidbare namen).
 
 **AllStars FC-uitzondering (#756):** de democlub heeft geen eigen Sportlink-sync — zijn
-`his.teams`/`his.matches`-rijen komen uit de PostDeployment-demodata-seed. `SportlinkSyncPipeline`
-roept `TeamCanonicalisatieService.RefreshAsync` daarom na elke echte sync **twee keer** aan: één keer
+`his.teams`/`his.matches`-rijen komen uit de demodata-seed. De sync-pipeline roept
+`TeamCanonicalisatieService.RefreshAsync` daarom na elke echte sync **twee keer** aan: één keer
 voor de geconfigureerde `clubCode`, één keer expliciet voor `"ALLSTARS"`. Zonder die tweede aanroep
-blijft `dbo.Teams` voor de democlub permanent leeg en toont elke UI die daaruit leest (bijv. de
-teamdropdown bij Voorkeurstijden) nul teams voor AllStars FC.
+blijft de teamtabel voor de democlub permanent leeg en toont elke UI die daaruit leest (bijv. de
+teamdropdown bij Voorkeurstijden) nul teams voor AllStars FC. Dit geldt op beide tiers, elk in de
+eigen pipeline: `FunctionApp/Sync/SportlinkSyncPipeline.cs` (SQL Server) en
+`FunctionApp.Postgres/Sync/PostgresSyncPipeline.cs` (Postgres, dat de dubbele aanroep overslaat
+wanneer de club zélf al `ALLSTARS` is).
 
 ## De genormaliseerde sleutel is opgeslagen data — wijzigen vraagt een migratie (#766)
 
@@ -155,8 +199,9 @@ unique constraint blijft falen.
    vindbaar zijn.
 
 De stap is idempotent: zonder drift kost hij twee SELECTs en verandert niets. Hij loopt mee in elke
-sync (voor de eigen club én voor AllStars FC), en daarnaast in `TeamlijstGereedheid` — dus ook vóór
-e-mailverwerking en vóór een dry-run in de e-mailtester. Daardoor herstelt een productiedatabase zich
+sync (voor de eigen club én voor AllStars FC), en daarnaast vóór e-mailverwerking en vóór een dry-run
+in de e-mailtester — op de SQL Server-tier via `TeamlijstGereedheid`, op de Postgres-tier doordat
+`RefreshAsync` hem zelf als eerste stap aanroept. Daardoor herstelt een productiedatabase zich
 ook wanneer de nachtelijke sync uit staat (`syncEnabled = 0`) of nog niet gelopen heeft sinds de deploy,
 zonder handmatig migratiescript.
 
@@ -205,20 +250,42 @@ onherleidbaarheid zichtbaar te worden, niet weggemiddeld in een lege collectie.
 |---|---|
 | `Planner.Shared/TeamWedstrijdenOpDatum.cs` (in `PlannerDomeinModellen.cs`) | Scheidt "team niet herleidbaar" van "team herkend, geen wedstrijd". **Tier-onafhankelijk** — beide bomen geven dit type terug (#945). |
 | `Planner.Shared/TeamNaamNormalisatie.cs` | Enige plek met normalisatieregels. Puur, geen DB, geen AI. **Tier-onafhankelijk** — beide databasebomen gebruiken exact deze klasse (verhuisd hierheen bij #889; stond tot dan in `FunctionApp/TeamResolution/`). |
-| `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
-| `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen`, altijd op ClubCode. |
-| `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. |
-| `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
-| `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult `dbo.Teams` na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
-| `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. |
+De onderstaande `FunctionApp/TeamResolution/`-bestanden hebben, tenzij anders vermeld, een
+tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel daaronder.
 
-**Postgres-tier (epic #815).** De datatoegangslaag bestaat als parallelle boom onder
-`FunctionApp.Postgres/TeamResolution/` — `TeamCandidateRepository`, `TeamAliasLearningService`
-(#889, deel 1) en `TeamCanonicalisatieService` (#889, deel 2), tegen `public.teams`/
-`public.teamaliassen`. De normalisatielogica zelf is **niet** gedupliceerd: beide bomen gebruiken
-`Planner.Shared.TeamNaamNormalisatie`. `TeamResolver`, `TeamDisambiguationAiService` en
-`TeamlijstGereedheid` zijn daar (nog) niet vertaald — zie
-`docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
+| Bestand | Verantwoordelijkheid |
+|---|---|
+| `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
+| `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen` (Postgres: `public.teams`/`public.teamaliassen`), altijd op ClubCode. |
+| `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. **Alleen SQL Server-tier.** |
+| `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
+| `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult de teamtabel na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
+| `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. **Alleen SQL Server-tier** — zie "Uitrol — geen schakelaar" hierboven voor wat er op Postgres voor in de plaats staat. |
+
+**Postgres-tier (epic #815) — stand per 19-09-2026.** De parallelle boom onder
+`FunctionApp.Postgres/TeamResolution/` is inmiddels verder dan alleen een datatoegangslaag:
+
+| Klasse | SQL Server | Postgres | Opmerking |
+|---|---|---|---|
+| `TeamNaamNormalisatie` | gedeeld | gedeeld | Staat in `Planner.Shared/` — **niet** gedupliceerd (verhuisd bij #889) |
+| `TeamCandidateRepository` | ✓ | ✓ | #889 deel 1 |
+| `TeamAliasLearningService` | ✓ | ✓ | #889 deel 1 |
+| `TeamCanonicalisatieService` | ✓ | ✓ | #889 deel 2 |
+| `TeamResolver` / `ITeamResolver` | ✓ | ✓ | **Wel vertaald, met één functioneel verschil — zie hieronder** |
+| `TeamAliasConstanten` | — | ✓ | Alleen Postgres |
+| `TeamDisambiguationAiService` / `ITeamDisambiguator` | ✓ | ✗ | Niet vertaald |
+| `TeamlijstGereedheid` | ✓ | ✗ | Vervangen door onvoorwaardelijke `RefreshAsync` + `AdminTeamsHerstelFunction` |
+
+> **Het functionele verschil dat je moet kennen: de Postgres-`TeamResolver` doet géén
+> AI-disambiguatie.** Stap 1 t/m 3 van de resolutievolgorde zijn identiek, maar waar de SQL
+> Server-tier bij meerdere kandidaten een `ITeamDisambiguator` mag laten kiezen
+> (`ResolutionBron.AiDisambiguatie`, confidence 0.7), geeft de Postgres-tier **altijd**
+> `MeerdereKandidaten` terug. Er wordt daar dus nooit een alias uit AI-disambiguatie geleerd.
+> Netto is dat conservatiever, niet onveiliger: geen gok is precies wat regel 2 hieronder
+> voorschrijft. Maar een e-mail die op SQL Server automatisch opgelost zou worden, wordt op de
+> productietier teruggelegd bij de afzender.
+
+Zie ook `docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
 
 ## Regels bij wijzigingen
 
@@ -228,9 +295,15 @@ onherleidbaarheid zichtbaar te worden, niet weggemiddeld in een lege collectie.
    hoort in de kandidaten-/disambiguatiestap, niet in een string-functie.
 3. **De disambiguator mag alleen kiezen uit aangeboden kandidaten**, en de keuze wordt altijd in C#
    gevalideerd. Nooit vrije generatie van een teamnaam.
-4. **Nieuwe naamvormen eerst tegen echte data verifiëren** (`stg.teams` / `his.teams`) vóór je de
-   normalisatie aanpast. De vormen in dit document zijn zo gevonden, niet bedacht.
-5. **Test met de clubprefix als parameter**, nooit hardcoded: de prefix komt uit `dbo.AppSettings`.
+4. **Nieuwe naamvormen eerst tegen echte data verifiëren** vóór je de normalisatie aanpast:
+   `stg.teams` én `his.teams` op SQL Server, **alleen `his.teams` op Postgres** — daar bestaat
+   geen `stg`-schema (de migraties kennen uitsluitend `his.teams`, `his.matches` en
+   `his.matchdetails`). De vormen in dit document zijn zo gevonden, niet bedacht.
+5. **Test met de clubprefix als parameter**, nooit hardcoded: de prefix komt uit de
+   instellingentabel (`public.appsettings` op Postgres, `dbo.AppSettings` op SQL Server).
+6. **Wijzig beide tiers.** De normalisatie is gedeeld, maar `TeamResolver`,
+   `TeamCandidateRepository`, `TeamAliasLearningService` en `TeamCanonicalisatieService` bestaan
+   per tier in een eigen kopie. Een wijziging in één boom is onaf (#1266).
 
 ## Postgres-collatie-kanttekening (#820)
 

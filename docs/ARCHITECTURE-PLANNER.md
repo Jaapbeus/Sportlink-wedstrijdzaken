@@ -2,13 +2,28 @@
 
 Dit document definieert de regels, beperkingen en API-contract voor de Veldplanner API. Het is de enige bron van waarheid voor de planningslogica.
 
+> **Twee leesaanwijzingen.**
+>
+> 1. **Schema- en typenotatie volgt de SQL Server-tier** (`dbo.Velden`, `NVARCHAR`, `DATETIME2`).
+>    Op de Postgres-tier bestaan dezelfde objecten onder lowercase snake_case-namen met
+>    Postgres-types (`public.velden`, `text`, `timestamptz`) — zie
+>    [ARCHITECTURE.md](ARCHITECTURE.md) §11. Beide tiers zijn gelijkwaardig en dragen dezelfde
+>    elf `planner/*`-routes.
+> 2. **Velddefinities, dagvensters en speeltijden hieronder zijn voorbeeldconfiguratie van één
+>    club**, geen architectuurregel. Ze komen uit `dbo.Velden` / `dbo.VeldBeschikbaarheid` /
+>    `dbo.Speeltijden` en zijn per club instelbaar via de Admin GUI. De buffers, de
+>    veldcapaciteitsregel en de rangorde van de auto-planner zijn wél regels.
+
 ## Doel
 
 Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **[Sportparklocatie]**. Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
 
 ---
 
-## Velddefinities
+## Velddefinities — voorbeeldconfiguratie van één club
+
+De onderstaande indeling is seeddata uit `dbo.Velden`/`dbo.VeldBeschikbaarheid`, beheerbaar via
+**Instellingen → Velden** (#679). Een fork vult hier zijn eigen sportpark in.
 
 | Veld | Kunstlicht | Beschikbaar voor planner | Opmerkingen |
 |------|-----------|-------------------------|-------------|
@@ -25,7 +40,7 @@ Veld 5 wordt alleen toegewezen als veld 1–4 volledig bezet zijn in het gevraag
 
 ---
 
-## Beschikbaarheidsregels per dag
+## Beschikbaarheidsregels per dag — voorbeeldconfiguratie van één club
 
 | Dag | Beschikbare velden | Tijdvenster | Bijzonderheden |
 |-----|-------------------|-------------|----------------|
@@ -172,30 +187,33 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 
 ### Speeltijden per leeftijdscategorie
 
+> **Dit is seeddata, geen architectuurregel.** De waarden hieronder zijn de seed uit
+> `Database/Script.PostDeployment1.sql` (`dbo.Speeltijden`); elke club past ze aan via
+> **Instellingen → Speeltijden**. Ze staan hier zodat het algoritme hieronder leesbaar is.
+
 | Categorie | Veldafmeting | Totaal (min) | Helft (min) | Rust (min) |
 |-----------|-------------|-------------|-------------|------------|
-| JO7 | 0.25 | 50 | 20 | 10 |
-| JO8 | 0.25 | 50 | 20 | 10 |
-| JO9 | 0.25 | 50 | 20 | 10 |
+| JO6 | 0.25 | 40 | 15 | 10 |
+| JO7 / JO8 / JO9 | 0.25 | 50 | 20 | 10 |
+| MO7 / MO8 / MO9 | 0.25 | 50 | 20 | 10 |
 | JO10 | 0.25 | 65 | 25 | 15 |
-| JO11 | 0.50 | 75 | 30 | 15 |
-| JO12 | 0.50 | 75 | 30 | 15 |
+| MO10 | 0.25 | 65 | 25 | 15 |
+| JO11 / JO12 | 0.50 | 75 | 30 | 15 |
+| MO11 / MO12 | 0.50 | 75 | 30 | 15 |
 | JO13 | 1.00 | 75 | 30 | 15 |
-| JO14 | 1.00 | 85 | 35 | 15 |
-| JO15 | 1.00 | 85 | 35 | 15 |
-| JO16 | 1.00 | 95 | 40 | 15 |
-| JO17 | 1.00 | 95 | 40 | 15 |
-| JO18 | 1.00 | 105 | 45 | 15 |
-| JO19 | 1.00 | 105 | 45 | 15 |
-| JO23 | 1.00 | 105 | 45 | 15 |
 | MO13 | 1.00 | 75 | 30 | 15 |
-| MO15 | 1.00 | 85 | 35 | 15 |
-| MO17 | 1.00 | 95 | 40 | 15 |
-| MO19 | 1.00 | 105 | 45 | 15 |
-| MO20 | 1.00 | 105 | 45 | 15 |
-| VR | 1.00 | 105 | 45 | 15 |
+| JO14 / JO15 | 1.00 | 85 | 35 | 15 |
+| MO14 / MO15 | 1.00 | 85 | 35 | 15 |
+| JO16 / JO17 | 1.00 | 95 | 40 | 15 |
+| MO16 / MO17 | 1.00 | 95 | 40 | 15 |
+| JO18 / JO19 / JO23 | 1.00 | 105 | 45 | 15 |
+| MO18 / MO19 / MO20 / MO23 | 1.00 | 105 | 45 | 15 |
 | G | 0.50 | 75 | 30 | 15 |
-| 1-99 | 1.00 | 105 | 45 | 15 |
+| VR | 1.00 | **115** | 45 | 15 |
+| 1-99 | 1.00 | **115** | 45 | 15 |
+
+De senioren staan op 115 minuten (2×45 + 15 rust + 10 buffer) sinds #291; datzelfde issue vulde
+JO6 en de ontbrekende MO-categorieën aan.
 
 ---
 
@@ -224,6 +242,9 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 
 `PlannerService` is een dunne facade die delegeert naar use-case services. Bestaande callers (PlannerFunctions, EmailProcessorFunction) roepen `PlannerService.*Async(...)` aan — de interne indeling is transparant.
 
+De paden hieronder zijn relatief aan `FunctionApp/` (SQL Server-tier). Op de Postgres-tier staan
+dezelfde services direct in `FunctionApp.Postgres/Planner/`, zonder `Services/`-submap.
+
 | Service | Locatie | Verantwoordelijkheid |
 |---|---|---|
 | `PlannerService` | `Planner/PlannerService.cs` | Facade — delegeert naar services |
@@ -231,7 +252,7 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 | `AutoPlanService` | `Planner/Services/` | AutoPlanAsync, Toepassen, Veldbezetting — de enige dagplanning-optimalisatie |
 | `RescheduleService` | `Planner/Services/` | CheckRescheduleAvailabilityAsync |
 | `TeamScheduleService` | `Planner/Services/` | GetTeamScheduleAsync |
-| `PlannerShared` | `Planner/Services/` | CanFitMatch, FieldScheduler, constanten |
+| `PlannerShared` / `FieldScheduler` | `Planner.Shared/FieldScheduler.cs` (tier-agnostisch, #888) | CanFitMatch, ValidateBevestigInterval, FindBezettingsConflict, constanten |
 | `PlannerDataAccess` | `Planner/PlannerDataAccess.cs` | Facade → repositories in `Planner/Repositories/` |
 | `ClubScope` | `Planner/ClubScope.cs` | ClubCode-resolutie + SQL-predicaten voor clubisolatie |
 
@@ -421,27 +442,22 @@ van 0 minuten gaf stilzwijgend een lege reservering.
 
 ## Beveiliging
 
-### Authorization levels
-
-| Niveau | Sleutel | Wie heeft toegang |
-|--------|---------|-------------------|
-| **Admin** | Master key | Alleen de coördinator (via Azure Portal of CLI) |
-| **Function** | Function key | Automate, email-integratie, externe systemen |
+> **De planner gebruikt geen function keys.** Het volledige vijf-lagen-model staat in
+> [ARCHITECTURE.md](ARCHITECTURE.md) §8; hieronder alleen wat voor de planner-endpoints afwijkt.
 
 ### Endpoint-indeling
 
-| Endpoint | Niveau | Toelichting |
-|----------|--------|-------------|
-| `sync-matches` | Admin | Sportlink sync — alleen handmatig door coördinator |
-| `populate-sunset` | Admin | Zonsondergangtabel vullen — eenmalig per seizoen |
-| Alle planner endpoints | Function | Beschikbaar voor toekomstige Automate-integratie |
+| Endpoint | Poort | Toelichting |
+|----------|-------|-------------|
+| Alle elf `planner/*`-endpoints, inclusief `populate-sunset` | Easy Auth + rol `admin` | De `HttpTrigger` staat op `AuthorizationLevel.Anonymous`; de autorisatie loopt via `EasyAuthHelper.RequireAdmin()`, niet via een function key. Op de SQL Server-tier zit die aanroep in de gedeelde `HandleAsync`-wrapper (`FunctionApp/Planner/PlannerFunction.cs`), op de Postgres-tier staat hij elf keer, één per endpoint |
+| `sync-matches` | Function-key (`AuthorizationLevel.Admin`) | Sportlink-sync, alleen handmatig door de coördinator. Op de Postgres-tier heet de route `postgres/sync-matches` |
+| `health` | Anoniem | Bewust publiek; geeft geen foutdetails prijs |
 
 ### Bescherming tegen misbruik
 
-- Zonder geldige sleutel → 401 Unauthorized (geen verwerking, geen kosten)
-- Function key = als een wachtwoord, alleen delen met vertrouwde integraties
-- Master key = alleen de coördinator, nooit delen
-- Gratis database heeft auto-pause — langdurig misbruik wordt vanzelf gestopt
+- Zonder geldig Bearer-token of zonder de rol `admin` → 401/403 (geen verwerking, geen kosten)
+- De master/function key van `sync-matches` werkt als een wachtwoord — nooit delen
+- Server is de waarheid: de Blazor-rolgate is UX, `RequireAdmin()` is de datagrens
 
 ---
 
@@ -589,7 +605,7 @@ prioriteit 10.
 
 De berekende planning is met de muis aan te passen: een wedstrijdblok kan naar een andere tijd (stappen
 van 5 minuten, zelfde afronding als de planner) of naar een ander veld gesleept worden. Dat gebeurt
-volledig client-side in `Dagplanning.razor`; er is geen extra endpoint.
+volledig client-side in de code-behind `Dagplanning.razor.cs`; er is geen extra endpoint.
 
 - Alleen de **optimale planning** is sleepbaar. De tab "Huidige situatie" is de stand uit Sportlink en
   blijft read-only.
@@ -650,11 +666,11 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 |-----------|-------|-------|
 | Email lezen/sturen | **Microsoft Graph API + Application Permissions** | Gratis (onderdeel M365), volledig unattended via client credentials flow |
 | AI/LLM | **OpenAI GPT-4o-mini** (direct, niet Azure OpenAI) | ~EUR 0.03/maand, geen goedkeuringsproces, later migreerbaar naar Azure OpenAI |
-| Trigger | **Timer (elke 5 min polling)** | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
+| Trigger | **Timer, interval configureerbaar via `EMAIL_POLL_SCHEDULE`** (sjabloonwaarde `0 0 * * * *` = elk uur) | Zelfde patroon als FetchAndStoreApiData, simpel en betrouwbaar |
 | Secrets opslag | **Azure Function Application Settings** | Gratis, encrypted at rest (AES-256), standaard Azure Functions patroon |
 
 **Verworpen alternatieven:**
-- Power Automate: gratis tier te beperkt (600 runs/maand vs. ~8.640 polls/maand)
+- Power Automate: gratis tier te beperkt (600 runs/maand). Bij de sjabloonwaarde van één poll per uur is dat ~720 polls/maand, bij een interval van vijf minuten ~8.640 — in beide gevallen boven de grens zodra het interval strakker wordt gezet
 - Graph webhooks: subscription verloopt elke 3 dagen, complexe renewal + cold start problemen
 - Azure OpenAI: langere setup door goedkeuringsproces, zelfde model/prijs
 - Key Vault: niet gratis ($0.03/10K operaties), overkill voor 2 secrets in verenigingsproject
@@ -662,7 +678,7 @@ Automatische verwerking van inkomende emails op de coordinator-mailbox. Leest ve
 ### Architectuur
 
 ```
-Timer (elke 5 min via EMAIL_POLL_SCHEDULE)
+Timer (interval uit EMAIL_POLL_SCHEDULE)
        |
        v
 EmailProcessorFunction
@@ -698,7 +714,7 @@ emails             |
 6. **Verstuur** — Graph API sendMail (Fase 1: review-mailbox, Fase 2: afzender)
 7. **Markeer als gelezen** — Graph API PATCH isRead=true
 
-### Bestanden (in `FunctionApp/Email/`)
+### Bestanden (in `FunctionApp.Postgres/Email/`, met een gelijknamige kopie in `FunctionApp/Email/`)
 
 | Bestand | Verantwoordelijkheid |
 |---------|---------------------|
@@ -756,7 +772,7 @@ Audit trail en conversatie-tracking voor alle verwerkte emails.
 | `EmailProcessorEnabled` | Kill-switch (`true`/`false`) |
 | `EmailReviewMode` | `true` = antwoorden naar review-mailbox (Fase 1) |
 | `EmailReviewRecipient` | Review-mailbox adres (Fase 1) |
-| `EMAIL_POLL_SCHEDULE` | CRON expressie (default `0 */5 * * * *`) |
+| `EMAIL_POLL_SCHEDULE` | CRON-expressie; sjabloonwaarde `0 0 * * * *` (elk uur) |
 
 ### Kostenanalyse (maandelijks)
 
@@ -787,12 +803,15 @@ Bij herplanverzoeken kan de email binnenkomen via een intern clubcontact (doorge
 
 #### Stap 1 — Afzender herkennen
 
-Het interne domein van de club is geconfigureerd in `dbo.AppSettings` als `internDomein` (bijv. `@mijnclub.nl`).
+De `InternDomein`-instelling bestaat niet meer: die is met issue #148 verwijderd (PR #151). Wat er
+voor in de plaats kwam is een expliciete uitsluitingslijst: afzenders die nooit verwerkt mogen worden staan in
+`UitgeslotenEmailAdressen` (SQL Server: `dbo.UitgeslotenEmailAdressen`; Postgres:
+`public.uitgeslotenemailadressen`), beheerbaar via **Beheer → Uitgesloten e-mailadressen**.
+`EmailProcessorFunction` filtert die lijst vóór classificatie
+(`LaadUitgeslotenAdressenAsync` / `FilterUitgeslotenAdressen`).
 
-| Aanwijzing | Conclusie |
-|-----------|-----------|
-| Emaildomein = `internDomein` uit AppSettings | Club-intern (thuisteam-kant) |
-| Ander emaildomein | Mogelijk tegenstander of ouder/coach tegenstander |
+Of een verzoek namens de eigen club of namens de tegenstander is, bepaalt de AI-laag in stap 2
+hieronder (`namensWie`) — niet een domeinvergelijking.
 
 #### Stap 2 — Namens wie is het verzoek?
 
