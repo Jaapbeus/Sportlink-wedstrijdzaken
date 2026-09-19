@@ -2,44 +2,26 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using Planner.Shared.Infrastructure;
 using Npgsql;
+using Planner.Shared.Theming;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace FunctionApp.Postgres.Admin;
 
 /// <summary>
 /// Postgres-tier-tegenhanger van <c>FunctionApp/Admin/AdminThemeFunction.cs</c> (#887). Vertaling:
 /// <c>[dbo].[AppSettings]</c> → <c>public.appsettings</c> (incl. <c>faviconurl</c>/<c>logourl</c>,
-/// zie <c>005_appsettings_theme_assets.sql</c>). De HTML-scraping/SSRF-allowlist-logica in
-/// <c>Extract</c> is ongewijzigd gekopieerd — die is databasetier-onafhankelijk.
+/// zie <c>005_appsettings_theme_assets.sql</c>).
+/// <para>
+/// Sinds #1248 staat alle tier-onafhankelijke logica in <see cref="ThemeCore"/> — de
+/// HTML-scraping, de hexvalidatie, de SSRF-allowlist-orkestratie en de standaardkleuren waren
+/// daarvóór een woordelijke kopie van de SQL Server-tier. Wat hier overblijft is uitsluitend de
+/// Npgsql-specifieke databasetoegang en de vertaling van een <see cref="ThemeCore"/>-status naar
+/// een HTTP-respons.
+/// </para>
 /// </summary>
 public static class AdminThemeFunction
 {
-    private const string DefaultPrimaryColor = "#1b6ec2";
-    private const string DefaultSecondaryColor = "#6c757d";
-    private const string DefaultAccentColor = "#0071c1";
-    private const string DefaultTextOnPrimaryColor = "#ffffff";
-
-    private static readonly HttpClient _httpClient;
-    private static readonly Regex _hexColorRegex    = new(@"#([0-9a-fA-F]{6})\b", RegexOptions.Compiled);
-    private static readonly Regex _hexColorValidRegex = new(@"^#[0-9a-fA-F]{6}$", RegexOptions.Compiled);
-    private static readonly Regex _faviconRegex     = new(@"<link[^>]*rel=[""'](?:shortcut icon|icon)[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _faviconAltRegex  = new(@"<link[^>]*href=[""']([^""']+)[""'][^>]*rel=[""'](?:shortcut icon|icon)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _ogImageRegex     = new(@"<meta[^>]*property=[""']og:image[""'][^>]*content=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _ogImageAltRegex  = new(@"<meta[^>]*content=[""']([^""']+)[""'][^>]*property=[""']og:image[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex _appleTouchRegex  = new(@"<link[^>]*rel=[""']apple-touch-icon[""'][^>]*href=[""']([^""']+)[""']", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    static AdminThemeFunction()
-    {
-        // SSRF-beschermd (#1007): redirects staan uit en worden begrensd/opnieuw gevalideerd
-        // gevolgd; elke daadwerkelijke connectie (initieel én elke hop) resolvet zelf en weigert
-        // privé/loopback/link-local bestemmingen — zie SsrfProtection.
-        _httpClient = SsrfProtection.CreateHttpClient(
-            TimeSpan.FromSeconds(AdminEndpoint.OutboundHttpTimeoutSeconds), AdminEndpoint.OutboundUserAgent);
-    }
-
     [Function("AdminThemeGet")]
     public static async Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/theme")] HttpRequest req,
@@ -63,18 +45,16 @@ public static class AdminThemeFunction
             command.Parameters.AddWithValue("clubcode", clubCode);
             await using var reader = await command.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
-                return new OkObjectResult(DefaultTheme());
+                return new OkObjectResult(ThemeCore.BouwResponse(ThemeCore.Standaard));
 
-            return new OkObjectResult(new
-            {
-                primary        = reader.IsDBNull(0) ? DefaultPrimaryColor : reader.GetString(0),
-                secondary      = reader.IsDBNull(1) ? DefaultSecondaryColor : reader.GetString(1),
-                accent         = reader.IsDBNull(2) ? DefaultAccentColor : reader.GetString(2),
-                textOnPrimary  = reader.IsDBNull(3) ? DefaultTextOnPrimaryColor : reader.GetString(3),
-                clubWebsiteUrl = reader.IsDBNull(4) ? ""        : reader.GetString(4),
-                faviconUrl     = reader.IsDBNull(5) ? null      : reader.GetString(5),
-                logoUrl        = reader.IsDBNull(6) ? null      : reader.GetString(6)
-            });
+            return new OkObjectResult(ThemeCore.BouwResponse(new ThemeWaarden(
+                Primary:        reader.IsDBNull(0) ? ThemeCore.DefaultPrimaryColor       : reader.GetString(0),
+                Secondary:      reader.IsDBNull(1) ? ThemeCore.DefaultSecondaryColor     : reader.GetString(1),
+                Accent:         reader.IsDBNull(2) ? ThemeCore.DefaultAccentColor        : reader.GetString(2),
+                TextOnPrimary:  reader.IsDBNull(3) ? ThemeCore.DefaultTextOnPrimaryColor : reader.GetString(3),
+                ClubWebsiteUrl: reader.IsDBNull(4) ? ""                                  : reader.GetString(4),
+                FaviconUrl:     reader.IsDBNull(5) ? null                                : reader.GetString(5),
+                LogoUrl:        reader.IsDBNull(6) ? null                                : reader.GetString(6))));
         }
         catch (Exception ex)
         {
@@ -91,12 +71,11 @@ public static class AdminThemeFunction
         var log = context.GetLogger("AdminThemePut");
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
-        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
         try
         {
-            string body;
-            using (var sr = new System.IO.StreamReader(req.Body))
-                body = await sr.ReadToEndAsync();
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            using var sr = new StreamReader(req.Body);
+            var body = await sr.ReadToEndAsync();
 
             ThemeUpdateRequest? dto = null;
             try
@@ -109,29 +88,9 @@ public static class AdminThemeFunction
             if (dto == null)
                 return new BadRequestObjectResult(new { error = "Ongeldige JSON." });
 
-            if (!IsValidHexColor(dto.Primary))
-                return new BadRequestObjectResult(new { error = "Ongeldige primary kleur." });
-            if (!IsValidHexColor(dto.Secondary))
-                return new BadRequestObjectResult(new { error = "Ongeldige secondary kleur." });
-            if (!IsValidHexColor(dto.Accent))
-                return new BadRequestObjectResult(new { error = "Ongeldige accent kleur." });
-            if (!IsValidHexColor(dto.TextOnPrimary))
-                return new BadRequestObjectResult(new { error = "Ongeldige textOnPrimary kleur." });
-
-            // SSRF-bescherming (#1007): weiger een club-website-URL die naar een privé/interne
-            // bestemming resolvet al bij het opslaan — niet pas bij extractie. Voorkomt dat
-            // dezelfde admin die de allowlist beheert, hem naar een intern adres kan zetten.
-            if (!string.IsNullOrWhiteSpace(dto.ClubWebsiteUrl))
-            {
-                if (!Uri.TryCreate(dto.ClubWebsiteUrl, UriKind.Absolute, out var websiteUri))
-                    return new BadRequestObjectResult(new { error = "Ongeldige club-website-URL." });
-                if (!SsrfProtection.TryValidateUriShape(websiteUri, out var shapeError))
-                    return new BadRequestObjectResult(new { error = shapeError });
-
-                var resolvedAddress = await SsrfProtection.ResolveAllowedAddressAsync(websiteUri.Host);
-                if (resolvedAddress == null)
-                    return new BadRequestObjectResult(new { error = "Club-website-URL resolveert niet naar een toegestaan publiek adres." });
-            }
+            var validatie = await ThemeCore.ValideerUpdateAsync(dto);
+            if (validatie.Status != ThemeValidatieStatus.Ok)
+                return new BadRequestObjectResult(new { error = validatie.Foutmelding });
 
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
             await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
@@ -146,10 +105,10 @@ public static class AdminThemeFunction
                     faviconurl              = @faviconurl,
                     logourl                 = @logourl
                 WHERE clubcode             = @clubcode", connection);
-            command.Parameters.AddWithValue("primary",        dto.Primary       ?? DefaultPrimaryColor);
-            command.Parameters.AddWithValue("secondary",      dto.Secondary     ?? DefaultSecondaryColor);
-            command.Parameters.AddWithValue("accent",         dto.Accent        ?? DefaultAccentColor);
-            command.Parameters.AddWithValue("textonprimary",  dto.TextOnPrimary ?? DefaultTextOnPrimaryColor);
+            command.Parameters.AddWithValue("primary",        dto.Primary       ?? ThemeCore.DefaultPrimaryColor);
+            command.Parameters.AddWithValue("secondary",      dto.Secondary     ?? ThemeCore.DefaultSecondaryColor);
+            command.Parameters.AddWithValue("accent",         dto.Accent        ?? ThemeCore.DefaultAccentColor);
+            command.Parameters.AddWithValue("textonprimary",  dto.TextOnPrimary ?? ThemeCore.DefaultTextOnPrimaryColor);
             command.Parameters.AddWithValue("websiteurl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
             command.Parameters.AddWithValue("faviconurl",     (object?)dto.FaviconUrl     ?? DBNull.Value);
             command.Parameters.AddWithValue("logourl",        (object?)dto.LogoUrl        ?? DBNull.Value);
@@ -175,47 +134,30 @@ public static class AdminThemeFunction
         var authResult = EasyAuthHelper.RequireAdmin(req);
         if (authResult != null) return authResult;
 
-        var url = req.Query["url"].ToString();
-        if (string.IsNullOrWhiteSpace(url))
-            return new BadRequestObjectResult(new { error = "Parameter 'url' ontbreekt." });
-
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var parsedUri) ||
-            (parsedUri.Scheme != "http" && parsedUri.Scheme != "https"))
-            return new BadRequestObjectResult(new { error = "Ongeldige URL. Alleen http/https toegestaan." });
-
-        await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-        var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-        var toegestaneHost = await GetToegestaneWebsiteHostAsync(clubCode, log);
-        if (toegestaneHost == null || !parsedUri.Host.Equals(toegestaneHost, StringComparison.OrdinalIgnoreCase))
-            return new BadRequestObjectResult(new { error = "URL-domein is niet toegestaan. Stel eerst de club-website in via het thema-scherm." });
-
-        try
+        // Lui: ThemeCore controleert eerst de vorm van de URL, zodat een onbruikbare URL geen
+        // databaseaanroep kost.
+        var resultaat = await ThemeCore.ExtraheerAsync(req.Query["url"].ToString(), async () =>
         {
-            // SSRF-bescherming (#1007): redirects worden begrensd en opnieuw gevalideerd gevolgd;
-            // de daadwerkelijke IP-validatie zit in de ConnectCallback van _httpClient en geldt
-            // dus voor elke hop, niet alleen deze initiële URL.
-            using var response = await SsrfProtection.GetWithBoundedRedirectsAsync(_httpClient, parsedUri);
-            response.EnsureSuccessStatusCode();
-            var html = await response.Content.ReadAsStringAsync();
-            var colors = ExtractColors(html);
-            var faviconUrl = ExtractFaviconUrl(html, parsedUri);
-            var logoUrl = ExtractLogoUrl(html, parsedUri);
-            log.LogInformation("Assets geëxtraheerd uit {Host}: {Count} kleuren, favicon={Fav}, logo={Logo}",
-                parsedUri.Host, colors.Count, faviconUrl != null, logoUrl != null);
-            return new OkObjectResult(new { colors, faviconUrl, logoUrl });
-        }
-        catch (SsrfBlockedException ex)
+            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+            return await GetToegestaneWebsiteHostAsync(EasyAuthHelper.GetClubCodeFromRequest(req), log);
+        }, log);
+
+        return resultaat.Status switch
         {
-            log.LogWarning(ex, "Extractie geweigerd door SSRF-bescherming: {Host}", parsedUri.Host);
-            return new BadRequestObjectResult(new { error = "URL-bestemming is niet toegestaan." });
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Ophalen website mislukt: {Host}", parsedUri.Host);
-            return new ObjectResult(new { error = "Website kon niet worden opgehaald." }) { StatusCode = 502 };
-        }
+            ThemeExtractieStatus.Ok => new OkObjectResult(new
+            {
+                colors = resultaat.Colors,
+                faviconUrl = resultaat.FaviconUrl,
+                logoUrl = resultaat.LogoUrl
+            }),
+            ThemeExtractieStatus.OphalenMislukt =>
+                new ObjectResult(new { error = resultaat.Foutmelding }) { StatusCode = 502 },
+            _ => new BadRequestObjectResult(new { error = resultaat.Foutmelding })
+        };
     }
 
+    // Leest themeclubwebsiteurl uit DB en geeft de hostnaam terug voor de SSRF-allowlist (#422).
+    // Retourneert null als de instelling leeg is of DB niet beschikbaar is → extract geblokkeerd.
     private static async Task<string?> GetToegestaneWebsiteHostAsync(string clubCode, ILogger log)
     {
         try
@@ -225,10 +167,7 @@ public static class AdminThemeFunction
             await using var cmd = new NpgsqlCommand(
                 "SELECT themeclubwebsiteurl FROM public.appsettings WHERE clubcode = @cc", connection);
             cmd.Parameters.AddWithValue("cc", clubCode);
-            var result = await cmd.ExecuteScalarAsync();
-            var websiteUrl = result as string;
-            if (string.IsNullOrWhiteSpace(websiteUrl)) return null;
-            return Uri.TryCreate(websiteUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
+            return ThemeCore.HostUitWebsiteUrl(await cmd.ExecuteScalarAsync() as string);
         }
         catch (Exception ex)
         {
@@ -236,76 +175,4 @@ public static class AdminThemeFunction
             return null;
         }
     }
-
-    private static readonly HashSet<string> _skipColors =
-        new(StringComparer.OrdinalIgnoreCase)
-        { "#ffffff", "#000000", "#eeeeee", "#cccccc", "#f0f0f0", "#333333" };
-
-    private static List<string> ExtractColors(string html)
-    {
-        var matches = _hexColorRegex.Matches(html);
-        var freq = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (System.Text.RegularExpressions.Match m in matches)
-        {
-            var color = m.Value.ToLowerInvariant();
-            if (_skipColors.Contains(color)) continue;
-            freq[color] = freq.TryGetValue(color, out var c) ? c + 1 : 1;
-        }
-        return freq.OrderByDescending(kv => kv.Value).Take(8).Select(kv => kv.Key).ToList();
-    }
-
-    private static bool IsValidHexColor(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return true;
-        return _hexColorValidRegex.IsMatch(value);
-    }
-
-    private static string? ExtractFaviconUrl(string html, Uri baseUri)
-    {
-        var m = _faviconRegex.Match(html);
-        if (!m.Success) m = _faviconAltRegex.Match(html);
-        var href = m.Success ? m.Groups[1].Value : "/favicon.ico";
-        return ResolveUrl(href, baseUri);
-    }
-
-    private static string? ExtractLogoUrl(string html, Uri baseUri)
-    {
-        var m = _ogImageRegex.Match(html);
-        if (!m.Success) m = _ogImageAltRegex.Match(html);
-        if (!m.Success) m = _appleTouchRegex.Match(html);
-        if (!m.Success) return null;
-        return ResolveUrl(m.Groups[1].Value, baseUri);
-    }
-
-    private static string? ResolveUrl(string url, Uri baseUri)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return null;
-        if (Uri.TryCreate(url, UriKind.Absolute, out var abs))
-            return abs.Scheme == "http" || abs.Scheme == "https" ? abs.ToString() : null;
-        if (Uri.TryCreate(baseUri, url, out var rel))
-            return rel.Scheme == "http" || rel.Scheme == "https" ? rel.ToString() : null;
-        return null;
-    }
-
-    private static object DefaultTheme() => new
-    {
-        primary        = DefaultPrimaryColor,
-        secondary      = DefaultSecondaryColor,
-        accent         = DefaultAccentColor,
-        textOnPrimary  = DefaultTextOnPrimaryColor,
-        clubWebsiteUrl = "",
-        faviconUrl     = (string?)null,
-        logoUrl        = (string?)null
-    };
-}
-
-internal sealed class ThemeUpdateRequest
-{
-    public string? Primary        { get; set; }
-    public string? Secondary      { get; set; }
-    public string? Accent         { get; set; }
-    public string? TextOnPrimary  { get; set; }
-    public string? ClubWebsiteUrl { get; set; }
-    public string? FaviconUrl     { get; set; }
-    public string? LogoUrl        { get; set; }
 }
