@@ -1,6 +1,13 @@
 # Architectuurprincipes — Sportlink Wedstrijdzaken (V3)
 
-Dit document beschrijft alle architectuurafspraken en -conventies die gelden voor dit project. Ze zijn opgebouwd uit concrete beslissingen en incidents uit de ontwikkelhistorie. Afwijkingen worden geblokkeerd door de Security Gate in CI of teruggegeven bij codereview.
+> **Dit is uitvoeringsdocumentatie.** Het leidende architectuurdocument is
+> **[ARCHITECTUUR.md](ARCHITECTUUR.md)** — daar staan de kwaliteitsdoelen, de
+> architectuurbesluiten en het toetsregister met per regel een externe basis en een
+> bewijsvorm. Dit document beschrijft *hoe* die afspraken in de praktijk worden toegepast
+> en mag ze niet zelfstandig wijzigen. Wijkt het hiervan af, dan geldt ARCHITECTUUR.md.
+
+Dit document beschrijft de uitvoeringsdetails van de architectuurafspraken: checklists,
+schemaconventies en configuratiedetails. Ze zijn opgebouwd uit concrete beslissingen en incidents uit de ontwikkelhistorie. Afwijkingen worden geblokkeerd door de Security Gate in CI of teruggegeven bij codereview.
 
 > **V3, sinds #976 (2026-09-04).** Dit document beschrijft de huidige, multi-tier architectuur:
 > Postgres is de tier die deze installatie in productie draait; Azure SQL is een gelijkwaardige

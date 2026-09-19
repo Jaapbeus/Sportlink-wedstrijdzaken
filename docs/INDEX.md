@@ -31,14 +31,15 @@ Voor de beheerder die beheertaken uitvoert buiten de dagelijkse GUI-flow.
 
 ## 3. Developers — architectuur, debuggen, API en specs
 
-Voor bijdragers aan de codebase. **Begin hier:** [ARCHITECTURE.md](ARCHITECTURE.md) — daarna het
+Voor bijdragers aan de codebase. **Begin hier:** [ARCHITECTUUR.md](ARCHITECTUUR.md) — daarna het
 document van het onderdeel waaraan je werkt.
 
 **Architectuur — geldende regels**
 
 | Document | Inhoud |
 |----------|--------|
-| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Startpunt. Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
+| **[Architectuurbeschrijving](ARCHITECTUUR.md)** | **Leidend document.** Kwaliteitsdoelen, belanghebbenden, architectuurbesluiten en het toetsregister met per regel een externe basis en een bewijsvorm (ISO 42010 / arc42) |
+| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Uitvoeringsdetail bij ARCHITECTUUR.md. Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
 | [Multi-tier databasestrategie](ARCHITECTUUR-DATABASE-TIERS.md) | Tierkeuze, bouwvolgorde, casing-conventie, RLS — gezaghebbende bron voor de tier-status |
 | [Codekwaliteit](ARCHITECTUUR-CODEKWALITEIT.md) | De codekwaliteitsregels met een CI-guard en een plafond per regel |
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |

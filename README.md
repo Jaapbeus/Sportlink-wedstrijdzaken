@@ -146,7 +146,7 @@ Alle documentatie staat in de [`docs/`](docs/) map, georganiseerd op doelgroep.
 |---|---|
 | **Beheerders** | [Beheerder handleiding](docs/BEHEERDER-HANDLEIDING.md) · [Testmodus ALLSTARS](docs/TESTMODUS-ALLSTARS.md) · [Teambegeleiding import](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) |
 | **Developers — opzet** | [Nieuwe club opzetten](SETUP-NIEUWE-CLUB.md) · [Developer setup](docs/DEVELOPER-SETUP.md) · [Setup checklist](docs/SETUP-CHECKLIST.md) · [Lokaal debuggen](docs/LOKAAL-DEBUGGEN.md) · [Quick reference](docs/QUICK-REFERENCE.md) |
-| **Developers — architectuur** | [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTURE-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
+| **Developers — architectuur** | [Architectuurbeschrijving](docs/ARCHITECTUUR.md) · [API referentie](docs/API.md) · [Planner architectuur](docs/ARCHITECTURE-PLANNER.md) · [E-mailverwerking](docs/EMAIL-VERWERKING.md) |
 | **Azure & auth** | [Entra auth & beheer](docs/ENTRA-AUTH-BEHEER.md) · [Versiebeheer](docs/VERSIONING.md) |
 | **Kwaliteit & security** | [Verificatie-scripts](docs/VERIFICATIE-SCRIPTS.md) · [Security](SECURITY.md) |
 
@@ -197,7 +197,11 @@ Het project is zo gebouwd dat:
 
 Zie [SECURITY.md](SECURITY.md) voor de volledige beveiligingsarchitectuur en verantwoorde omgang met persoonsgegevens.
 
-Zie [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) voor de architectuurprincipes: tijdzones, multi-club isolatie, secrets en AVG.
+Zie [docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md) voor de leidende architectuurbeschrijving —
+kwaliteitsdoelen, architectuurbesluiten en het toetsregister waarin per regel staat welke
+externe standaard eraan ten grondslag ligt en hoe je hem controleert. De uitvoeringsdetails
+(tijdzones, multi-club isolatie, secrets en AVG) staan in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
