@@ -1237,7 +1237,7 @@ Auth is NIET af zodra `IsAuthenticated = true`. Een tenant-user kan inloggen via
 | 1 | **Tenant-restriction** — Single tenant App Registration, externe tenants kunnen niet inloggen | Azure Portal → Entra ID → App registrations | ✓ Aanwezig |
 | 2 | **Assignment required = Yes** — alleen pre-toegewezen users krijgen een token | Azure Portal → Entra ID → Enterprise applications → Properties | ⚠️ Per-deploy verifiëren |
 | 3 | **App Roles** — `admin` en `user` rollen gedefinieerd in App Registration manifest, met `allowedMemberTypes: ["User"]` | Azure Portal → App registrations → App roles | ⚠️ Per-deploy verifiëren |
-| 4 | **Frontend role-gate (App.razor)** — check `IsInRole("admin") \|\| IsInRole("user")` BOVENOP `IsAuthenticated`. Zonder rol → `NoAccess`-pagina, géén MainLayout | `BlazorAdmin/App.razor` | ✓ Verplicht in code |
+| 4 | **Frontend role-gate** — check `IsInRole("admin") \|\| IsInRole("user")` BOVENOP `IsAuthenticated`. Zonder rol → `NoAccess`-pagina, géén MainLayout. De beslissing staat als pure functie in `AuthGate.Bepaal` (#1277), niet inline in de pagina — anders is hij niet te testen | `BlazorAdmin/Services/AuthGate.cs` + `BlazorAdmin/App.razor` | ✓ Verplicht in code, **getest** in `BlazorAdmin.Tests/AuthGateTests.cs` en `CustomUserFactoryTests.cs` |
 | 5 | **Backend role-gate (EasyAuthHelper)** — elke admin endpoint roept `RequireAdmin()` aan, die de `roles` claim in `X-MS-CLIENT-PRINCIPAL` valideert | `FunctionApp/Admin/EasyAuthHelper.cs` + alle `Admin*Function.cs` | ✓ Verplicht in code |
 
 **Server is de waarheid.** Frontend kan niet vertrouwd worden — een aanvaller kan de Blazor WASM modificeren. Daarom is Layer 5 leidend voor data-bescherming. Layer 4 is voor UX (geen UI-shell voor non-admin).

@@ -95,7 +95,9 @@
 
     private async Task EvaluateStateAsync()
     {
-        if (NavManager.Uri.Contains("/authentication/", StringComparison.OrdinalIgnoreCase))
+        // Op de MSAL-callbackroute bewust géén auth-state ophalen: die route brengt de sessie
+        // juist tot stand. Dezelfde volgorde als vóór #1277.
+        if (AuthGate.IsAuthRoute(NavManager.Uri))
         {
             _state = AppState.OnAuthRoute;
             StateHasChanged();
@@ -103,24 +105,20 @@
         }
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-        var isAuthenticated = user.Identity?.IsAuthenticated ?? false;
 
-        if (!isAuthenticated)
+        // Defense in depth — Layer 4: frontend role-gate.
+        // De beslissing zelf staat in AuthGate.Bepaal (#1277), zodat hij los te testen is:
+        // een @code-blok is niet te instantiëren en had daardoor geen enkele controle.
+        // Server-side EasyAuthHelper.RequireAdmin() is Layer 5 en blijft leidend voor
+        // databescherming; hier voorkomen we dat de UI-shell gerenderd wordt voor non-admin.
+        _state = AuthGate.Bepaal(NavManager.Uri, authState.User);
+        StateHasChanged();
+
+        if (_state == AppState.RedirectingToLogin)
         {
-            _state = AppState.RedirectingToLogin;
-            StateHasChanged();
             NavManager.NavigateToLogin("authentication/login");
             return;
         }
-
-        // Defense in depth — Layer 4: frontend role-gate.
-        // Server-side EasyAuthHelper.RequireAdmin() is Layer 5 (zal API-calls alsnog blokkeren),
-        // maar hier voorkomen we dat de UI-shell überhaupt gerenderd wordt voor non-admin.
-        var hasAccessRole = user.IsInRole("admin") || user.IsInRole("user");
-
-        _state = hasAccessRole ? AppState.Authenticated : AppState.AccessDenied;
-        StateHasChanged();
 
         if (_state == AppState.Authenticated)
         {
@@ -149,6 +147,4 @@
         NavManager.LocationChanged -= HandleLocationChange;
         DbStatusService.OnStateChanged -= HandleDbStateChanged;
     }
-
-    private enum AppState { Initializing, OnAuthRoute, Authenticated, AccessDenied, RedirectingToLogin }
 }
