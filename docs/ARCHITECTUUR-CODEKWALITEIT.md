@@ -261,6 +261,7 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Procedures/views gedekt in beide tierbomen | `scripts/ci/check-postgres-procedure-view-coverage.sh` | `build.yml` |
 | RLS aan op elke tabel (#1198, #1220) | `scripts/ci/check-rls-enabled.sh` | `build.yml` |
 | Supabase-lints (#1220) | `scripts/ci/check-splinter-lints.sh` | `build.yml` |
+| Thema-CSS-variabelen consistent (#1255) | `scripts/ci/check-theme-variables.sh` | `build.yml` |
 
 <!-- REGELREGISTER-EINDE -->
 
