@@ -63,8 +63,8 @@ Zonder geldige sleutel → 401 Unauthorized (kost niets, geen verwerking).
 | `POST` | `/beheer/teams/herstel` | **Admin** | Canonieke teamlijst opnieuw opbouwen uit `his.Teams`: volledige canonicalisatie + sleutelmigratie (#766). Idempotent. `409` als er nog niets gesynchroniseerd is — "niets te doen" is bewust geen `200` (#946) |
 | `PUT` | `/beheer/teamaliassen/{id}/valideer` | **Admin** | Alias goedkeuren of afwijzen (`{ "status": "validated"\|"rejected" }`) |
 | `DELETE` | `/beheer/teamaliassen/{id}` | **Admin** | Alias definitief verwijderen |
-| `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL) — gefilterd op `X-Club-Code` header |
-| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl }`) — gefilterd op `X-Club-Code` header |
+| `GET` | `/beheer/theme` | **Admin** | Club-thema ophalen (kleuren + website-URL + `lightColors`/`darkColors`) — gefilterd op `X-Club-Code` header. De paletten zijn `null` zolang er geen licht/donker-set is ingesteld; de client valt dan terug op de vier platte kleuren |
+| `PUT` | `/beheer/theme` | **Admin** | Club-thema opslaan (`{ primary, secondary, accent, textOnPrimary, clubWebsiteUrl, faviconUrl, logoUrl, lightColors, darkColors }`) — gefilterd op `X-Club-Code` header. `lightColors`/`darkColors` zijn sleutel→hex-objecten voor het volledige palet per modus (#1254); elke sleutel moet `^[a-z][a-zA-Z0-9-]{0,39}$` zijn en elke waarde `#rrggbb` of `#rrggbbaa`, maximaal 40 per palet |
 | `POST` | `/beheer/theme/extract?url=` | **Admin** | Kleuren extraheren uit club-website (SSRF-beschermd) |
 | `GET` | `/beheer/clubs` | **Admin** | Lijst van beschikbare clubs (`[{ clubCode, clubName }]`) voor de GUI-selector |
 | `GET` | `/beheer/sportlink-extensie/rollen` | **Admin** | Sportlink Web Extension (#986/#988): per functionele rol tonen of een eigen Sportlink-serviceaccount gekoppeld is, door wie en wanneer |

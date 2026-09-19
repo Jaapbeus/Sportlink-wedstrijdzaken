@@ -4038,6 +4038,114 @@ niet in verhouding.
 
 ---
 
+## 73. Thema-logica gedeeld — en de platformafhankelijke bug die de duplicatie verborgen hield (#1248, #1252)
+
+Vierde stuk provider-onafhankelijke logica dat naar `Planner.Shared` verhuist, na de drie van §60.
+`FunctionApp/Admin/AdminThemeFunction.cs` en `FunctionApp.Postgres/Admin/AdminThemeFunction.cs`
+bevatten dezelfde zeven regexen, dezelfde `_skipColors`-lijst, dezelfde hexvalidatie, dezelfde
+SSRF-allowlist-flow en dezelfde standaardkleuren als magic strings; het enige echte verschil was de
+databaseclient en de kolomnaam-casing. De Postgres-tier was hier een generieke 1-op-1 poort (#887),
+geen bewuste keuze voor thema-logica — maar het gevolg was wel dat elke wijziging aan het
+kleurmodel twee keer met de hand moest, in twee bestanden die niets van elkaar weten.
+
+**Gedeeld:** `Planner.Shared/Theming/ThemeCore.cs` — kleur-/favicon-/logo-extractie, hexvalidatie,
+de allowlist-vergelijking, `ThemeUpdateRequest`, de standaardkleuren en het GET-responscontract.
+Zelfde vorm als `FeedbackCore` (§60): een pure klasse zonder ASP.NET Core-afhankelijkheid, met
+status-enums en resultaatrecords. Elke tier houdt alleen de eigen databasetoegang over en vertaalt
+een status naar `IActionResult`. Beide bestanden zijn daarmee van ~310 naar 178 regels gegaan en
+verschillen nog uitsluitend in `SqlConnection` vs. `NpgsqlConnection`, de query-tekst en de
+klasse-documentatie.
+
+Eén detail dat bij het delen bewaard moest blijven: de allowlist-host komt als **lui**
+`Func<Task<string?>>` binnen, niet als kant-en-klare waarde. Anders zou een onbruikbare URL ineens
+eerst een `WaitForDatabaseAsync` + query kosten, terwijl beide tiers de vorm van de URL daarvóór al
+afwezen. Een ontdubbeling die stilletjes de volgorde verandert is geen ontdubbeling meer.
+
+### De bug die pas zichtbaar werd toen er voor het eerst een test op stond
+
+Er bestond geen enkele test op deze logica — precies het risico dat #1248 beschrijft. De tests die
+bij deze consolidatie zijn toegevoegd vielen meteen om op zes gevallen, en dat bleek geen
+testfout maar **#1252**:
+
+```csharp
+if (Uri.TryCreate(url, UriKind.Absolute, out var abs))
+    return abs.Scheme == "http" || abs.Scheme == "https" ? abs.ToString() : null;
+if (Uri.TryCreate(baseUri, url, out var rel))      // ← onbereikbaar voor "/pad"
+```
+
+Op Unix parseert `Uri.TryCreate("/favicon.ico", UriKind.Absolute, out _)` **succesvol**, als
+`file:`-URI. De eerste tak wordt dus genomen, het schema is `file`, en de methode geeft `null`
+terug; de relatieve tak is voor root-relatieve paden onbereikbaar. Gevolg: favicon- en
+logo-extractie leverden in productie **nooit** iets op — ook de ingebouwde terugval `/favicon.ico`
+niet — zonder foutmelding, want `null` is een geldige waarde in een geslaagd antwoord.
+
+Op Windows geeft dezelfde aanroep `false` en werkt de code wél zoals bedoeld. Dat is de reden dat
+dit jaren onopgemerkt bleef: de fout bestaat alleen op het platform waar de code draait (Linux
+Consumption) en niet op het platform waar een ontwikkelaar hem het snelst zou zien.
+
+**De les, breder dan thema:** `Uri.TryCreate(..., UriKind.Absolute, ...)` is geen betrouwbare test
+voor "is dit een absolute URL" wanneer de invoer ook een pad kan zijn. Gebruik
+`UriKind.RelativeOrAbsolute` en beslis daarna op `IsAbsoluteUri`. Dezelfde valkuil zat in
+`HostUitWebsiteUrl`, waar een opgeslagen waarde als `/pad` een lege host opleverde in plaats van
+`null`; die controleert nu expliciet op schema én niet-lege host. Beide zijn fail-closed, dus er
+was geen security-gat — maar wel een stille onjuistheid.
+
+## 74. Kleurenpalet per modus als JSON — en waar een SQL Server-schemawijziging écht hoort (#1254)
+
+Epic #1249 heeft per modus (licht/donker) een volledige kleurenset nodig, niet vier platte kolommen.
+Twee ontwerpkeuzes, en één correctie op een aanname die in de uitvoeringsinstructie stond.
+
+**Eén JSON-document per modus, geen kolom per kleur.** `themecolorslightjson` en
+`themecolorsdarkjson` (`TEXT`/`NVARCHAR(MAX)`) in plaats van een kolom per kleur. Het aantal kleuren
+groeit binnen dit epic nog — een kolom per kleur betekent bij elke uitbreiding een nieuwe migratie
+in twee tiers, plus een nieuw veld in twee DTO's en een nieuwe validatieregel. Additief bovenop de
+bestaande vier platte `themecolor*`-kolommen, die de terugval blijven voor clubs zonder
+licht/donker-set; een bestaande installatie merkt van deze migratie dus niets.
+
+**De prijs van een vrij sleutelveld is dat de vorm van sleutel én waarde vastgelegd moet worden.**
+De waarde belandt in de browser in een CSS custom property (`--theme-<sleutel>-light`), samengesteld
+uit door een admin ingevoerde tekst. `ThemeCore` legt daarom vast: een sleutel matcht
+`^[a-z][a-zA-Z0-9-]{0,39}$`, een waarde `^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`, maximaal 40 sleutels
+per palet. Een admin is binnen het deploymentmodel van §393 vertrouwd, dus dit is geen
+autorisatiegrens — maar een waarde die ongefilterd een stylesheet-property vult hoort een vaste vorm
+te hebben, en een vrije `rgba(...)`-string zou dat niet zijn. De acht-cijferige hexvariant bestaat
+precies omdat de hover-schaduw alpha nodig heeft; dat is de reden om `#rrggbbaa` toe te staan en
+`rgba()` niet.
+
+Bij het teruglezen geldt het omgekeerde: `PaletUitJson` geeft `null` bij onleesbare of ongeldige
+inhoud in plaats van een uitzondering. Een kapot palet in één kolom mag nooit het hele
+thema-endpoint laten vallen — de club valt dan terug op de platte kleuren.
+
+### Een SQL Server-schemawijziging hoort in `Script.PostDeployment1.sql`, niet in `scripts/migrations/`
+
+De uitvoeringsinstructie van #1250 vroeg om een nieuw bestand
+`scripts/migrations/005-add-theme-colors-json-to-appsettings.sql`, naar het patroon van `003`. Dat
+patroon bestaat, maar **die map wordt door niets automatisch uitgevoerd**: `scripts/migrations/`
+bevat seed- en eenmalige hulpscripts die met de hand of via `DemodataSeeder` draaien (zie §72 en
+`docs/DEVELOPER-SETUP.md`). De SQL Server-schemawijziging die de deploy daadwerkelijk toepast staat
+in `Database/Script.PostDeployment1.sql` — dat is wat de `db-migrate`-job uitvoert en wat de
+CI-job "PostDeployment op verse database" test. `003-add-favicon-logo-to-appsettings.sql` heeft
+daarom een tegenhanger op regel 362 van dat bestand; het losse bestand in `scripts/migrations/`
+was het duplicaat, niet het mechanisme.
+
+De nieuwe kolommen staan dus op drie plekken die elk hun eigen rol hebben:
+
+| Plek | Rol |
+|---|---|
+| `Database/Script.PostDeployment1.sql` | Wat de deploy en CI toepassen op een bestaande én verse SQL Server-database |
+| `Database/dbo/Tables/AppSettings.sql` | De SSDT-tabeldefinitie — beschrijft hoe de tabel eruit hoort te zien |
+| `Database.Postgres/migrations/026_appsettings_theme_modes.sql` | De Postgres-tier, via `MigrationRunner` |
+
+Bij die gelegenheid is ook de drift gedicht die #1250 correct opmerkte: `[FaviconUrl]` en
+`[LogoUrl]` stonden sinds #339 wél in `Script.PostDeployment1.sql` en dus live in productie, maar
+waren nooit aan de SSDT-tabeldefinitie toegevoegd. De definitie beschreef de echte database dus al
+niet meer. Ze staan er nu in.
+
+**Let op bij het nummeren:** #1250 noemde `025` voor de Postgres-migratie, maar dat nummer was
+inmiddels bezet door `025_appsettings_primaire_sleutel.sql` (#1218). Een migratiebestand wordt nooit
+achteraf gewijzigd (§53), dus een dubbel nummer is niet terug te draaien — controleer de map altijd
+op het moment van schrijven, niet het nummer uit een issue dat eerder is opgesteld.
+
 ## §-verwijzingen in migratiekoppen — vertaaltabel (#1236)
 
 > **Migratiebestanden worden nooit achteraf gewijzigd.** `MigrationRunner` legt per bestand een

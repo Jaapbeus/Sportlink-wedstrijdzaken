@@ -419,6 +419,52 @@ public class SsrfProtectionTests
         listener.Stop();
     }
 
+    // ---------------------------------------------------------------------------------------
+    // CreateHttpClient — verzoekheaders (#1250, taak 1).
+    //
+    // Een verzoek met alléén een User-Agent wordt door sommige hosts van clubwebsites met 403
+    // beantwoord; mét Accept + Accept-Language geeft exact hetzelfde verzoek 200. Deze tests zijn
+    // het regressieslot daarop: geen live HTTP-call nodig, maar wél bewijs dat de headers
+    // daadwerkelijk op de lijn staan en niet alleen in de collectie.
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void CreateHttpClient_ZetAcceptEnAcceptLanguage()
+    {
+        using var client = SsrfProtection.CreateHttpClient();
+
+        // Op waarde vergelijken, niet op de letterlijke headerstring: HttpClient serialiseert de
+        // geparste waarden met spaties na de komma's ("text/html, application/xhtml+xml, ...").
+        client.DefaultRequestHeaders.Accept.Should().NotBeEmpty("zonder Accept-header geeft een deel van de clubwebsites 403");
+        client.DefaultRequestHeaders.AcceptLanguage.Should().NotBeEmpty("zonder Accept-Language-header geeft een deel van de clubwebsites 403");
+        client.DefaultRequestHeaders.Accept.Select(a => a.MediaType)
+            .Should().Contain(new[] { "text/html", "application/xhtml+xml", "application/xml", "*/*" });
+        client.DefaultRequestHeaders.AcceptLanguage.Select(l => l.Value)
+            .Should().Contain(new[] { "nl-NL", "nl", "en" });
+        client.DefaultRequestHeaders.UserAgent.Should().NotBeEmpty("de bestaande User-Agent blijft ongewijzigd meegestuurd");
+    }
+
+    [Fact]
+    public async Task CreateHttpClient_StuurtAcceptHeadersDaadwerkelijkMeeOverDeLijn()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var ontvangenVerzoek = ServeAndCaptureRequestAsync(listener, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+
+        using var client = SsrfProtection.CreateHttpClient(
+            isAllowedEndpointOverride: (_, _) => true, isAllowedPortOverride: _ => true);
+        using var response = await client.GetAsync($"http://127.0.0.1:{port}/");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var verzoek = await ontvangenVerzoek;
+        listener.Stop();
+
+        verzoek.Should().MatchRegex(@"(?im)^Accept:\s*text/html\b", "de Accept-header moet op de lijn staan, niet alleen in de collectie");
+        verzoek.Should().MatchRegex(@"(?im)^Accept-Language:\s*nl-NL\b", "de Accept-Language-header moet op de lijn staan, niet alleen in de collectie");
+        verzoek.Should().Contain("User-Agent: SportlinkAdmin/2.0");
+    }
+
     /// <summary>Accepteert precies één TCP-verbinding op <paramref name="listener"/> en schrijft er de rauwe HTTP-response op.</summary>
     private static async Task ServeSingleHttpResponseAsync(TcpListener listener, string rawHttpResponse)
     {
@@ -430,5 +476,31 @@ public class SsrfProtectionTests
         var bytes = System.Text.Encoding.ASCII.GetBytes(rawHttpResponse);
         await networkStream.WriteAsync(bytes);
         await networkStream.FlushAsync();
+    }
+
+    /// <summary>
+    /// Als <see cref="ServeSingleHttpResponseAsync"/>, maar geeft de rauwe verzoekregels terug —
+    /// zodat een test kan controleren wélke headers er daadwerkelijk verstuurd zijn.
+    /// </summary>
+    private static async Task<string> ServeAndCaptureRequestAsync(TcpListener listener, string rawHttpResponse)
+    {
+        using var client = await listener.AcceptTcpClientAsync();
+        using var networkStream = client.GetStream();
+
+        // Doorlezen tot de lege regel die de headers afsluit: één ReadAsync kan de headers over
+        // meerdere TCP-segmenten binnenkrijgen, en dan mist de assertie een header die er wél is.
+        var verzoek = new System.Text.StringBuilder();
+        var buffer = new byte[1024];
+        while (!verzoek.ToString().Contains("\r\n\r\n"))
+        {
+            var gelezen = await networkStream.ReadAsync(buffer);
+            if (gelezen == 0) break;
+            verzoek.Append(System.Text.Encoding.ASCII.GetString(buffer, 0, gelezen));
+        }
+
+        var bytes = System.Text.Encoding.ASCII.GetBytes(rawHttpResponse);
+        await networkStream.WriteAsync(bytes);
+        await networkStream.FlushAsync();
+        return verzoek.ToString();
     }
 }

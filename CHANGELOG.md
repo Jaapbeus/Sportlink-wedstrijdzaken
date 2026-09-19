@@ -26,8 +26,38 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   op dit moment nog niets zichtbaars — de schakelaar om over te stappen komt in een volgende stap.
   Kleuren met een betekenis blijven bewust vast: groen blijft "klaar", rood blijft "fout", en de
   oranje markering van de testmodus blijft oranje.
+### Added
+- **De database kan nu een volledig kleurenpalet bewaren voor zowel een lichte als een donkere
+  weergave (#1254).** Dit is de eerste stap van de thema-uitbreiding: de opslag en de API kunnen de
+  twee sets aan, het beheerscherm en de schakelaar volgen in een latere stap. Voor een club die nog
+  niets heeft ingesteld verandert er niets — die houdt exact het huidige thema, want de bestaande
+  vier kleuren blijven de terugval.
 
 ### Fixed
+- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
+  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
+  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
+  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
+  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
+  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
+  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
+
+### Changed
+- **De thema-functionaliteit bestond twee keer in de code, één keer per databasesoort (#1248).**
+  Dat betekende dat elke aanpassing aan de kleuren ook twee keer met de hand moest, in twee
+  bestanden die niets van elkaar wisten — met het risico dat een verbetering of beveiligingsfix in
+  het ene bestand terechtkwam en in het andere werd vergeten. Alles wat niet met de database te
+  maken heeft staat nu op één plek, met tests eromheen die er eerder helemaal niet waren. Voor de
+  beheerder verandert er niets aan wat het scherm doet; het maakt toekomstige uitbreidingen van het
+  thema wel betrouwbaarder. Deze ontdubbeling bracht meteen bovenstaande fout aan het licht.
+- **"Kleuren ophalen van de clubwebsite" kon mislukken bij websites die er niets mis mee hadden
+  (#1250).** Het systeem vroeg de pagina op met alleen een naamkaartje van de applicatie erbij,
+  zonder te vermelden welk soort inhoud en welke taal het verwachtte — iets wat elke browser wel
+  doet. Een deel van de websitehosts weigert zo'n verzoek daarom botweg, met als resultaat dat het
+  ophalen van de kleuren strandde terwijl er aan de kant van de club niets aan de hand was.
+  Diezelfde pagina komt mét die twee gegevens er gewoon binnen. Het ophalen werkt nu dus ook op die
+  websites. Aan wélke adressen benaderd mogen worden verandert niets: dat blijft uitsluitend het
+  webadres dat de beheerder zelf voor de eigen club heeft ingesteld.
 - **De demo-club AllStars FC had geen enkel team en geen enkele wedstrijd (#1246).** De testmodus
   waarmee je de planner kunt uitproberen zonder de echte clubgegevens aan te raken, was in de
   praktijk leeg: wel velden en instellingen, maar nul teams, nul wedstrijden, nul teambegeleiders

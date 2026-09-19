@@ -25,6 +25,15 @@
 	[ThemeColorAccent]		NVARCHAR(7)		NULL,
 	[ThemeColorTextOnPrimary] NVARCHAR(7)	NULL,
 	[ThemeClubWebsiteUrl]	NVARCHAR(300)	NULL,		-- URL van club-website voor kleurextractie
+	-- #339: via Script.PostDeployment1.sql toegevoegd, maar nooit hier — die drift is met #1254
+	-- gedicht zodat de tabeldefinitie de echte database weer beschrijft.
+	[FaviconUrl]			NVARCHAR(2048)	NULL,		-- favicon van de clubwebsite
+	[LogoUrl]				NVARCHAR(2048)	NULL,		-- logo van de clubwebsite
+	-- #1254 (epic #1249): volledig kleurenpalet per modus, als JSON. Bewust geen kolom per kleur —
+	-- het aantal kleuren groeit nog. De vier platte ThemeColor*-kolommen hierboven blijven staan als
+	-- terugval voor clubs die nog geen licht/donker-set hebben ingesteld.
+	[ThemeColorsLightJson]	NVARCHAR(MAX)	NULL,
+	[ThemeColorsDarkJson]	NVARCHAR(MAX)	NULL,
 	[SyncEnabled]			BIT				NOT NULL DEFAULT 1,	-- 0 = geen Sportlink API-sync voor deze club
 	-- #561: verzet-zonder-datum flow — KNVB-speeldagenkalender als bijlage + BCC eigen team
 	[KnvbPdfBijlageIngeschakeld] BIT			NOT NULL DEFAULT 1,	-- 1 = KNVB-kalender-PDF bijvoegen bij verzet-zonder-datum-antwoord
