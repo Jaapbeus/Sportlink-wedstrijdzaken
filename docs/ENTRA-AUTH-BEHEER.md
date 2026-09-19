@@ -60,13 +60,28 @@ auth-laag bewaakt:
 | 2 — Assignment required | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 3a — App Roles | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 3b — Optional claims | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
-| 4 — Frontend role-gate | `Verify-AzureAuthSetup.ps1` (statisch: zoekt `IsInRole("admin")` in `App.razor`) | Handmatig | ❌ — **geen enkele automatische controle** |
+| 4 — Frontend role-gate | `BlazorAdmin.Tests/AuthGateTests.cs` + `CustomUserFactoryTests.cs` (#1277) **plus** `Verify-AzureAuthSetup.ps1` (statisch: zoekt `IsInRole("admin")` in `App.razor`) | Automatisch, **in de PR-CI** | ✅ |
 | 5 — Backend role-gate | Smoke tests in `deploy.yml` (401 verwacht op een admin-endpoint met alleen een function key, zonder token, en met een gefakete `X-MS-CLIENT-PRINCIPAL`) **plus** `Verify-AzureAuthSetup.ps1` (statisch, alleen de SQL Server-tier) | Automatisch, maar **pas ná de merge naar `main`** | ⚠️ gedeeltelijk |
 
-Concreet: `build.yml` bevat geen auth-controle, en `BlazorAdmin.Tests/` bevat geen test die
-`IsInRole`, `NoAccess` of `hasAccessRole` aanraakt. **Layer 4 kan dus stilzwijgend verdwijnen zonder
-dat één check rood wordt.** Draai `Verify-AzureAuthSetup.ps1` daarom bij elke auth-wijziging; dat is
-de enige plek waar alle vijf lagen langskomen.
+Layer 4 was tot #1277 de enige laag zonder énige automatische controle: de beslissing stond inline
+in het `@code`-blok van `App.razor` en viel daarmee buiten elk testproject. Hij staat nu als pure
+functie in `BlazorAdmin/Services/AuthGate.cs` en wordt op twee niveaus getest, omdat deze laag op
+twee manieren kan omvallen:
+
+| Faalwijze | Hoe hij eruitziet | Afgedekt door |
+|---|---|---|
+| **Verwijdering** — de rolcontrole is weg of staat altijd op `true` | Iedereen met een geldig token krijgt de app-shell | `AuthGateTests` — de drie rolgevallen uit de 3-user-test, plus de MSAL-callbackroute |
+| **Stille variant** — de controle staat er nog, maar geeft altijd `false` | Ook een echte admin ziet `NoAccess`; er verandert niets zichtbaars in de code | `CustomUserFactoryTests` — bewijst dat een Entra-`roles`-JSON-array daadwerkelijk tot `IsInRole("admin") == true` leidt |
+
+Die tweede is de gevaarlijke: zonder de `roles`-claimmapping of de `CustomUserFactory` cast Blazor
+WASM de array `["admin"]` naar één claim met de hele JSON-string als waarde, waarna `IsInRole` faalt
+terwijl de rol gewoon in het token staat. Een grep op `App.razor` ziet daar niets van.
+
+Beide testklassen zijn mutatiegetest: met de rolcontrole uitgeschakeld vallen er vier om, met het
+uitpakken van de rollen uitgeschakeld drie. Een groene test die niet rood kán worden, bewaakt niets.
+
+`Verify-AzureAuthSetup.ps1` blijft daarnaast de enige plek waar alle vijf lagen in één keer
+langskomen — inclusief de vier die alleen tegen Entra zelf te controleren zijn.
 
 ## Identifiers (club-specifiek — haal op via Azure Portal)
 
