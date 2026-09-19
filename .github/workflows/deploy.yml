@@ -327,6 +327,42 @@ jobs:
         run: |
           dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- Database.Postgres/migrations
 
+      # #1246: de demodata van de democlub stond tot nu toe in geen enkele geautomatiseerde stap.
+      # scripts/migrations/003-seed-allstars-demo-matches-postgres.sql kán geen migratie zijn — het
+      # vult his.teams/his.matches, en die tabellen maakt geen migratiebestand aan (PostgresSchemaGenerator
+      # doet dat dynamisch bij de eerste ETL-sync). Gevolg: de democlub had wél een AppSettings-rij,
+      # velden en veldbeschikbaarheid uit migratie 006, maar 0 teams, 0 wedstrijden en 0
+      # teambegeleiding — zowel lokaal als in productie.
+      #
+      # --ensure-his-tables maakt die tabellen langs exact dezelfde weg als de ETL zelf, zodat het
+      # seedscript daarna niet meer (terecht) hoeft te weigeren. Beide stappen zijn idempotent.
+      #
+      # Herhaald draaien is hier geen bijwerking maar het punt: de speeltijden-copy hangt af van
+      # data die de beheerder pas via de Admin GUI invoert, en een eenmalige migratie kan daar per
+      # definitie niet op wachten (dat was precies de fout in migratie 006).
+      - name: "his-tabellen aanmaken (idempotent — voorwaarde voor de demodata-seed)"
+        env:
+          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+        run: |
+          dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- --ensure-his-tables
+
+      - name: "Demodata democlub seeden (idempotent, uitsluitend rijen van de democlub)"
+        id: demodata
+        env:
+          POSTGRES_CONNECTION_STRING: ${{ secrets.POSTGRES_CONNECTION_STRING }}
+        run: |
+          set -o pipefail
+          dotnet run --project Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release -- \
+            --seed-demodata scripts/migrations/003-seed-allstars-demo-matches-postgres.sql 2>&1 | tee seed-demodata.log
+
+          # public.teams is een AFGELEIDE tabel en wordt uitsluitend opgebouwd door
+          # POST /api/beheer/teams/herstel. Dat endpoint is RequireAdmin (Entra-token), dus deze
+          # pipeline kán het niet aanroepen — bewust een zichtbaar signaal in plaats van een
+          # stilzwijgend gat, en bewust geen build-breker: de rest van de demodata staat er wel.
+          if grep -q 'DEMOCLUB_CANONIEKE_LIJST_ONTBREEKT' seed-demodata.log; then
+            echo "::warning title=Democlub: canonieke teamlijst ontbreekt::his.teams is gevuld maar public.teams is leeg. Open de Admin GUI, selecteer de democlub en gebruik de knop 'Teamlijst opnieuw opbouwen' op de pagina Teamaliassen. De pipeline kan dat endpoint niet aanroepen (RequireAdmin)."
+          fi
+
   test:
     runs-on: ubuntu-latest
     needs: [deploy]
