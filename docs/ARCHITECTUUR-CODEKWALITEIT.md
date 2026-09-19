@@ -88,11 +88,11 @@ project is dus de richting van het gemiddelde — tenzij er iets tegenin duwt.
 
 ---
 
-## 3. Nulmeting (develop `d4003e9`, 2026-09-19)
+## 3. Nulmeting (develop `6c6f50c`, 2026-09-19 — na de merge van #1248)
 
 | Metriek | Waarde |
 |---|---|
-| Woordelijk identieke betekenisvolle regels tussen de twee tierbomen (77 paren) | **4.714** |
+| Woordelijk identieke betekenisvolle regels tussen de twee tierbomen (77 paren) | **4.639** |
 | jscpd-duplicatie over alle C#-broncode | **15,4%** (376 clones) |
 | Regels logica in `@code`-blokken van Blazor-pagina's | **1.641** over 14 pagina's |
 | Blazor-pagina's mét code-behind | 4 van 18 |

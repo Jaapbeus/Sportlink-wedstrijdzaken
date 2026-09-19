@@ -10,9 +10,7 @@
 # een door de beheerder ingevoerde website-URL, of de URL-parameter van het extract-endpoint.
 # NIET toegestaan als "is dit eigenlijk wel een URL"-test op invoer die ook een pad kan zijn —
 # dat is exact de #1252-bug: "/favicon.ico" parseert op Unix succesvol als file:-URI.
-uri-absolute  Planner.Shared/Theming/ThemeCore.cs             Beheerder-URL en extract-parameter zijn per contract absoluut; de relatieve tak loopt sinds #1252 via UriKind.RelativeOrAbsolute.
-uri-absolute  FunctionApp/Admin/AdminThemeFunction.cs         Idem, tot de ontdubbeling van #1248 in deze tier is gemerged.
-uri-absolute  FunctionApp.Postgres/Admin/AdminThemeFunction.cs  Idem, tot de ontdubbeling van #1248 in deze tier is gemerged.
+uri-absolute  Planner.Shared/Theming/ThemeCore.cs             Beheerder-URL en extract-parameter zijn per contract absoluut; de relatieve tak loopt sinds #1252 via UriKind.RelativeOrAbsolute. De twee tier-kopieën stonden hier ook, tot #1248 de logica hierheen verplaatste.
 uri-absolute  Planner.Shared/Feedback/FeedbackCore.cs         Repository-URL uit configuratie is per contract absoluut.
 
 # --- DateTime.Now (UTC-regel) -------------------------------------------------------------------
