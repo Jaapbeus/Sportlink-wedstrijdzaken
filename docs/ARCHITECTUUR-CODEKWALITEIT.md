@@ -102,6 +102,17 @@ project is dus de richting van het gemiddelde — tenzij er iets tegenin duwt.
 | Harde regels in CLAUDE.md zonder enige geautomatiseerde controle | **21** |
 | Verschil CLAUDE.md ↔ AGENTS.md (moesten tweelingen zijn) | **280 regels, 9 ontbrekende secties** |
 
+> **Stand sindsdien.** Deze tabel is een nulmeting op een genoemde commit en wordt niet
+> bijgewerkt — dan zou hij geen nulmeting meer zijn. Wat er sindsdien is verschoven, staat hier:
+>
+> | Metriek | Nulmeting | Nu | Door |
+> |---|---|---|---|
+> | Regels logica in `@code`-blokken | 1.715 over 14 pagina's | **1.559** over 13 pagina's | #1270 (`Thema.razor`) |
+> | Blazor-pagina's mét code-behind | 4 van 18 | **5 van 18** | #1270 |
+>
+> Het plafond in `scripts/ci/codekwaliteit-plafonds.txt` volgt de kolom "Nu"; de ratchet is de
+> plek waar de actuele waarde hoort te staan, niet dit hoofdstuk.
+
 Die laatste regel verdient aparte vermelding. AGENTS.md — het regelboek dat de tweede reviewer van
 dit project leest — miste onder meer *"Multi-tier databasestrategie"*, *"Teamnaam → TeamId: één
 vertaalpunt"* en *"Uitgaande integraties — altijd via EgressGuard"*. De twee regels die duplicatie
@@ -149,8 +160,8 @@ Elke `.razor` onder `BlazorAdmin/Pages/` met C#-logica heeft een code-behind: `<
 daarnaast géén `@code`-blok hebben.
 
 Reden is testbaarheid: `BlazorAdmin.Tests` kan een partial class instantiëren, een `@code`-blok
-niet. Dat 1.715 regels logica in pagina's staan, verklaart waarom dat testproject met 14 tests het
-kleinste van de vijf is.
+niet. Dat bij de nulmeting 1.715 regels logica in pagina's stonden, verklaart waarom dat
+testproject met 14 tests het kleinste van de vijf is.
 
 Dit is een eigen architectuurkeuze, geen Microsoft-voorschrift: Microsoft beschrijft beide vormen
 als ondersteund en noemt geen grens
