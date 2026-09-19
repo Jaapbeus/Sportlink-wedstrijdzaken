@@ -1069,13 +1069,58 @@ Wat níet meekleurt, en met opzet: de statuskleuren. Groen blijft "klaar", rood 
 oranje markering die aangeeft dat u in de demo-/testclub werkt blijft oranje. Die kleuren dragen
 betekenis — als ze per weergave zouden verschillen, zou u een waarschuwing kunnen missen.
 
-Welke kleuren de club in beide weergaven gebruikt, stelt u in bij **Thema** (hoofdstuk over het
-thema-scherm). Heeft uw club nog geen eigen donkere kleuren ingesteld, dan gebruikt de site een
-neutrale donkere set — de site werkt dus meteen, ook zonder dat u iets instelt.
+Welke kleuren de club in beide weergaven gebruikt, stelt u in bij **Thema** — zie hoofdstuk 22.
+Heeft uw club nog geen eigen donkere kleuren ingesteld, dan gebruikt de site een neutrale donkere
+set: de site werkt dus meteen, ook zonder dat u iets instelt.
 
 ---
 
-## 22. Feedback geven (FEEDBACK-knop) — met voorbeeld vóór publicatie
+## 22. Kleuren van de club instellen (`/instellingen/thema`)
+
+Op dit scherm stelt u de kleuren in die de Admin GUI gebruikt. Sinds de lichte/donkere weergave
+(hoofdstuk 21) stelt u **twee** sets in: één voor licht en één voor donker.
+
+### Zo werkt het
+
+1. **Kies welke weergave u bewerkt** met de knoppen *Licht bewerken* / *Donker bewerken*. De hele
+   interface schakelt meteen mee, zodat u ziet wat u instelt in plaats van het te moeten voorstellen.
+2. **Kies eventueel een basisthema** uit de keuzelijst bovenaan. Dat vult in één keer alle kleuren
+   van de weergave die u nu bewerkt. Daarna kunt u elke kleur los bijstellen — een basisthema is een
+   startpunt, geen keurslijf.
+3. **Stel de losse kleuren bij** met de kleurenkiezer of door de code in te typen.
+4. **Opslaan.** Tot u opslaat is alles wat u ziet een voorbeeld: sluit u het scherm zonder opslaan,
+   dan blijft alles zoals het was.
+
+### Kleuren van de eigen website ophalen
+
+Vult u bij **Club-website URL** het adres van de clubsite in en klikt u op **Ophalen**, dan zoekt
+het systeem de kleuren, het icoontje en het logo van die pagina. Klik daarna op een gevonden kleur
+om die als primaire kleur van de weergave die u nu bewerkt over te nemen.
+
+Twee dingen om te weten:
+
+- **Er worden alleen kleuren gevonden die letterlijk in de pagina staan.** Veel moderne
+  clubwebsites zetten hun huisstijl in een apart opmaakbestand; dan levert Ophalen weinig of niets
+  op. Dat is geen storing — typ de kleurcodes in dat geval gewoon in. Uw clubbeheerder of
+  websitebouwer kent ze.
+- **Alleen het adres dat u hier heeft opgeslagen mag worden benaderd.** Dat is een bewuste
+  beveiligingsmaatregel: hij voorkomt dat het scherm gebruikt kan worden om willekeurige adressen op
+  te vragen. Wilt u een andere site uitlezen, sla dan eerst dat adres op.
+
+### Wat u níet kunt instellen, en waarom
+
+Statuskleuren liggen vast: groen voor "klaar", rood voor "fout", en oranje voor de markering dat u
+in de demo-/testclub werkt. Die kleuren dragen betekenis — als ze per club of per weergave zouden
+verschillen, zou u een waarschuwing kunnen missen.
+
+### Standaard herstellen
+
+De knop **Standaard herstellen** zet beide weergaven terug op de standaardkleuren van de
+applicatie. Ook dat is pas definitief nadat u opslaat.
+
+---
+
+## 23. Feedback geven (FEEDBACK-knop) — met voorbeeld vóór publicatie
 
 De FEEDBACK-knop rechtsboven maakt van uw melding een **GitHub-issue**. Die issue staat in een
 publieke repository: hij is **openbaar op internet** en voor iedereen leesbaar, ook zonder account.

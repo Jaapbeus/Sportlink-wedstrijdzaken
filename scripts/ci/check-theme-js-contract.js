@@ -98,6 +98,37 @@ if (Object.keys(gezet).length !== voor || bijgekomen.length > 0) {
     meld('theme.js heeft een ongeldige sleutel of waarde doorgelaten naar een CSS-property.');
 }
 
+// --- ThemePresets.cs: kan de beheerder élke kleur uit app.css ook instellen? ----------------
+// Een kleur die wel in app.css staat maar niet in ThemePresets.Kleuren is onzichtbaar in het
+// beheerscherm: hij bestaat, maar niemand kan hem zetten. Andersom levert een sleutel die app.css
+// niet kent een CSS-property op die niets doet.
+const presetsPad = path.join(wortel, 'BlazorAdmin/Models/ThemePresets.cs');
+if (fs.existsSync(presetsPad)) {
+    const presets = fs.readFileSync(presetsPad, 'utf8');
+    const naarKebab = (camel) => camel.replace(/[A-Z]/g, (l) => '-' + l.toLowerCase());
+    const presetBasis = [...presets.matchAll(/new ThemeKleurDefinitie\("([a-zA-Z0-9]+)"/g)].map((m) => naarKebab(m[1]));
+
+    for (const basis of basisNamen) {
+        if (!presetBasis.includes(basis)) {
+            meld(`app.css definieert '--theme-${basis}-light' maar ThemePresets.Kleuren kent '${basis}' niet. Die kleur is dan niet in te stellen in het beheerscherm.`);
+        }
+    }
+    for (const basis of presetBasis) {
+        if (!basisNamen.includes(basis)) {
+            meld(`ThemePresets.Kleuren kent '${basis}' maar app.css definieert '--theme-${basis}-light' niet. Die kleur wordt dan nergens gebruikt.`);
+        }
+    }
+
+    // Elke preset moet compleet zijn: een half gevulde set laat kleuren op de vorige waarde staan.
+    for (const m of presets.matchAll(/new ThemePreset\(\s*"([^"]+)"/g)) {
+        // Volledigheid wordt in C# afgedwongen doordat elke preset op de standaardset wordt
+        // samengesteld; hier alleen vastleggen dat die samenstelling er nog is.
+        if (!/Samenstellen\(/.test(presets) && m[1] !== 'Standaard') {
+            meld(`Preset '${m[1]}' wordt niet meer op de standaardset samengesteld — dan raakt hij stilzwijgend incompleet zodra er een kleur bij komt.`);
+        }
+    }
+}
+
 if (fouten > 0) {
     console.log(`Thema-JS-contractguard: ${fouten} probleem(en).`);
     process.exit(1);
