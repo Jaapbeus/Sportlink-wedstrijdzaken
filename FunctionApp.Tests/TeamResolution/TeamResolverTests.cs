@@ -70,8 +70,11 @@ public class TeamResolverTests
         resultaat.Confidence.Should().BeLessThan(1.0);
     }
 
+    // #1268: dit is sinds de verwijdering van de AI-disambiguator het ENIGE gedrag bij meerdere
+    // kandidaten, op beide tiers. Drie tests die een keuze door een taalmodel afdekten zijn
+    // vervallen; "13-1" kan JO13-1 of MO13-1 zijn en dat raadt de applicatie niet meer.
     [Fact]
-    public async Task ResolveAsync_MeerdereKandidatenZonderDisambiguator_GeeftKandidatenTerugZonderGok()
+    public async Task ResolveAsync_MeerdereKandidaten_GeeftKandidatenTerugZonderGok()
     {
         var fake = new FakeTeamCandidateRepository
         {
@@ -84,53 +87,6 @@ public class TeamResolverTests
         resultaat.TeamId.Should().BeNull();
         resultaat.Bron.Should().Be(ResolutionBron.MeerdereKandidaten);
         resultaat.Kandidaten.Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_MeerdereKandidatenMetDisambiguator_GebruiktDeKeuze()
-    {
-        var fake = new FakeTeamCandidateRepository
-        {
-            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13"), new TeamCandidate(10, "TESTCLUB MO13-1", "MO13")],
-        };
-        var resolver = new TeamResolver(fake, new FakeDisambiguator(10));
-
-        var resultaat = await resolver.ResolveAsync(Request("13-1"));
-
-        resultaat.TeamId.Should().Be(10);
-        resultaat.Bron.Should().Be(ResolutionBron.AiDisambiguatie);
-        resultaat.Confidence.Should().BeInRange(0.5, 0.9);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_DisambiguatorKiestBuitenKandidatenlijst_WordtGenegeerd()
-    {
-        // Harde validatie: een keuze die niet in de aangeboden lijst staat mag nooit een TeamId opleveren.
-        var fake = new FakeTeamCandidateRepository
-        {
-            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13"), new TeamCandidate(10, "TESTCLUB MO13-1", "MO13")],
-        };
-        var resolver = new TeamResolver(fake, new FakeDisambiguator(999));
-
-        var resultaat = await resolver.ResolveAsync(Request("13-1"));
-
-        resultaat.TeamId.Should().BeNull();
-        resultaat.Bron.Should().Be(ResolutionBron.MeerdereKandidaten);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_DisambiguatorKiestNiets_GeeftKandidatenTerug()
-    {
-        var fake = new FakeTeamCandidateRepository
-        {
-            Kandidaten = [new TeamCandidate(9, "TESTCLUB O13-1", "JO13"), new TeamCandidate(10, "TESTCLUB MO13-1", "MO13")],
-        };
-        var resolver = new TeamResolver(fake, new FakeDisambiguator(null));
-
-        var resultaat = await resolver.ResolveAsync(Request("13-1"));
-
-        resultaat.TeamId.Should().BeNull();
-        resultaat.Bron.Should().Be(ResolutionBron.MeerdereKandidaten);
     }
 
     [Fact]
@@ -190,11 +146,5 @@ public class TeamResolverTests
             KandidatenOpgevraagd = true;
             return Task.FromResult(Kandidaten);
         }
-    }
-
-    private sealed class FakeDisambiguator(int? keuze) : ITeamDisambiguator
-    {
-        public Task<int?> KiesAsync(string ruweTekst, IReadOnlyList<TeamCandidate> kandidaten, CancellationToken ct = default)
-            => Task.FromResult(keuze);
     }
 }

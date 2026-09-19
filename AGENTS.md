@@ -731,12 +731,25 @@ Harde regels:
    regel letterlijk overtreden. Zelfde plek als `VeldResolver`/`VeldNormalisatie` en, sinds #889,
    ook de pure `LeeftijdNormalisatie.Normaliseer`.)*
 2. **Raad nooit een ontbrekend geslacht-prefix.** `13-1` kan JO13-1 of MO13-1 zijn; bij één club zijn
-   er tien zulke paren. Ambiguïteit hoort in de kandidaten-/disambiguatiestap, niet in een
-   string-functie.
-3. **De disambiguator kiest alleen uit aangeboden kandidaten**, en die keuze wordt daarna in C#
-   gevalideerd tegen die lijst. Nooit vrije generatie van een teamnaam door een taalmodel.
-4. **Een geleerde alias is pas waarheid na goedkeuring** door een coördinator (status `validated`).
-   Zo kan een foutieve gok zich niet zelfversterken.
+   er tien zulke paren. Ambiguïteit hoort in de kandidatenstap, niet in een string-functie.
+3. **Bij meerdere kandidaten wordt er niets gekozen (#1268).** `TeamResolver` geeft dan
+   `MeerdereKandidaten` terug, met de lijst erbij — op béíde tiers. Er is geen AI-disambiguator meer.
+
+   > Die bestond tot #1268 alleen op de SQL Server-tier (#697): een taalmodel koos uit de korte
+   > kandidatenlijst. De Postgres-tier, die in productie draait, deed dat nooit. Dat verschil is
+   > opgeheven door de deterministische kant als norm te nemen — een teamnaam laten raden is een
+   > productkeuze, en die is bewust niet gemaakt.
+
+   Komt er ooit opnieuw een disambiguator, dan gelden drie dingen tegelijk: hij landt **op alle
+   gebouwde tiers tegelijk** (regel 3 van de multi-tier-strategie), hij kiest **alleen uit de
+   aangeboden kandidaten** met validatie in C# daarna — nooit vrije generatie van een teamnaam —
+   en een daaruit geleerde alias is **pas waarheid na goedkeuring** door een coördinator (status
+   `validated`), zodat een foutieve gok zich niet kan zelfversterken.
+
+4. **`TeamAliasLearningService` en `ResolutionBron.AiDisambiguatie` staan er nog, ongebruikt, op
+   beide tiers.** Niet opruimen zonder de vraag uit regel 3 te beantwoorden: ze zijn het
+   aanknopingspunt als die functionaliteit terugkomt, en ze weghalen bij één tier zou de
+   pariteit opnieuw breken.
 5. **Verifieer nieuwe naamvormen tegen echte data** (`stg.teams` / `his.teams`) vóór je de
    normalisatie aanpast — de ondersteunde vormen zijn zo gevonden, niet bedacht.
 
@@ -809,7 +822,13 @@ Samenvatting van de twee harde regels (epic #815):
      pariteit onverkort.
    - **De drie Postgres-coverage-guards kijken maar één kant op** (staat elk SQL Server-object ook
      in Postgres). Dat was juist toen SQL Server leidend was. `check-tier-pariteit.sh` bewaakt sinds
-     #1266 beide richtingen op routeniveau.
+     #1266 beide richtingen op **routeniveau**, en sinds #1268 ook op **timerniveau**.
+
+     > Die uitbreiding is er niet voor de netheid. De database-uitvalmonitor (#831) stond jarenlang
+     > alleen op de SQL Server-tier terwijl Postgres in productie draait, en geen enkele guard zag
+     > het — een ontbrekende timer geeft niemand een 404. Wat nog stééds niet bewaakt wordt:
+     > geregistreerde services, autorisatieregels (#1272) en achtergrondlogica zonder trigger.
+     > Bij twijfel is een handmatige vergelijking van beide `Program.cs`-bestanden de snelste toets.
    - **Schemawijziging op de SQL Server-tier hoort in `Database/Script.PostDeployment1.sql`**
      (idempotent) én in de bijbehorende SSDT-tabel onder `Database/dbo/Tables/`. `scripts/migrations/`
      draait niet automatisch.

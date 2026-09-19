@@ -116,4 +116,11 @@ builder.Services.AddSingleton<INoodmailThrottleStore>(sp =>
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TableStorageNoodmailThrottleStore>());
 });
 
+// Onafhankelijke database-uitvalmonitor (#1268, tegenhanger van #831 op de SQL Server-tier).
+// Onvoorwaardelijk registreren: de reader doet pas iets bij aanroep en kiest dan zelf tussen het
+// control-plane-pad (SUPABASE_PROJECT_REF + SUPABASE_ACCESS_TOKEN + EgressGuard) en een
+// rechtstreekse verbindingsprobe. Zonder die instellingen valt hij vanzelf terug op de probe —
+// dat is bewust, anders is de monitor dood voor elke club die geen managementtoken wil zetten.
+builder.Services.AddSingleton<IDatabaseStatusReader, PostgresDatabaseStatusReader>();
+
 builder.Build().Run();

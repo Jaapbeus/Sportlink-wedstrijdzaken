@@ -856,24 +856,24 @@ vier env vars `AzureSubscriptionId`/`AzureResourceGroupName`/`AzureSqlServerName
 [docs/MONITORING.md](MONITORING.md#onafhankelijke-database-uitvalmonitor-831) voor de configuratie
 en de vereiste (gratis) Reader-roltoewijzing.
 
-> **Deze monitor bestaat alleen op de SQL Server-tier — en dat is een reëel gat op de tier die
-> vandaag live staat.** `DatabaseUitvalMonitorFunction`, `ArmDatabaseStatusReader` en
-> `IDatabaseStatusReader` staan uitsluitend in `FunctionApp/Monitoring/`;
-> `FunctionApp.Postgres/Monitoring/` bevat alleen `INoodmailThrottleStore` en
-> `TableStorageNoodmailThrottleStore`. Dat is deels inherent: de reader bevraagt een
-> `Microsoft.Sql/servers/...`-resource via ARM, wat voor een Supabase-Postgres niet bestaat.
+> **Beide tiers hebben deze monitor sinds #1268.** De beslisregels staan gedeeld in
+> `Planner.Shared/Monitoring/DatabaseUitvalCore.cs` — inclusief de throttle-sleutel
+> `database-noodmail`, die dezelfde is als die van de noodmail hierboven: welk pad ook het eerst
+> meldt, onderdrukt de ander voor diezelfde uitval.
 >
-> **Gevolg voor de Postgres-tier:** de detectie valt daar terug op precies het mechanisme dat in
-> augustus 2026 tekortschoot — de fase-2-check in `EmailProcessorFunction`
-> (`PostgresSystemUtilities.WaitForDatabaseAsync` → `BehandelDatabaseVerbindingsFoutAsync`), die
-> alleen bereikt wordt als er e-mail binnenkomt die fase 2 haalt. De noodmail-throttle is er wél
-> persistent (`INoodmailThrottleStore` is op beide tiers geregistreerd), dus de *melding* werkt —
-> maar de *onafhankelijke detectie* niet.
+> Wat per tier verschilt is uitsluitend de statusbron, en dat verschil is inherent. De SQL
+> Server-tier bevraagt een `Microsoft.Sql/servers/...`-resource via ARM en krijgt daar ook een
+> `pausedDate` bij. Voor een beheerde Postgres-omgeving bestaat die resource niet en levert de
+> management-API geen uitvaltijdstip; `PostgresDatabaseStatusReader` gebruikt daarom de
+> control-plane van die omgeving als hij geconfigureerd is, en anders een verbindingsprobe — met de
+> eerste eigen waarneming als (expliciet als ondergrens gemelde) starttijd. Zie
+> [docs/MONITORING.md](MONITORING.md) → "Uitvalmonitor op de Postgres-tier" voor wat elk pad wél en
+> niet kan vaststellen.
 >
-> Wat er op de Postgres-tier wél dagelijks draait, is `.github/workflows/supabase-advisors.yml`
+> Wat er op de Postgres-tier daarnaast dagelijks draait, is `.github/workflows/supabase-advisors.yml`
 > (#1221): een read-only ophaling van de Supabase Security- en Performance Advisor. Dat houdt het
 > project tegelijk actief en voorkomt automatisch pauzeren na zeven dagen inactiviteit, maar het is
-> geen uptime-monitor en vervangt dit vangnet dus niet.
+> geen uptime-monitor.
 
 ---
 

@@ -64,7 +64,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 > | `IEmailGraphService` | eigen bestand `Email/IEmailGraphService.cs` | in `Email/EmailGraphService.cs` (regel 23) |
 > | `EmailStatus`, `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
 > | Persistentielaag | `IEmailPersistenceRepository` + `SqlEmailPersistenceRepository` + `EmailPersistenceService` (DI-wrapper) | alleen `SqlEmailPersistenceRepository` — een `internal static class`, geen interface, geen wrapper |
-> | Team-disambiguatie / uitvalmonitor | `TeamDisambiguationAiService`, `TeamlijstGereedheid`, `Monitoring/DatabaseUitvalMonitorFunction` | bestaan niet |
+> | Teamlijst-vangnet / uitvalmonitor | `TeamlijstGereedheid`, `Monitoring/DatabaseUitvalMonitorFunction` | bestaan niet (Postgres-tier roept in plaats daarvan onvoorwaardelijk `TeamCanonicalisatieService.RefreshAsync` aan, zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) |
 
 | Bestand | Verantwoordelijkheid |
 |---|---|

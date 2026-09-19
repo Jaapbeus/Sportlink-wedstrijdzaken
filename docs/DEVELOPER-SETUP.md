@@ -723,10 +723,13 @@ Lokaal draaien (én CI) raakt standaard **geen enkele externe dienst** — ook n
 een secret hebt ingevuld:
 
 - de externe Sportlink-databron (de timer-trigger `FetchAndStoreApiData`),
-- GitHub-issue-rapportage bij een onafgevangen fout (`GitHubIssueReporter`),
+- GitHub-issue-rapportage bij een onafgevangen fout (`Planner.Shared/Infrastructure/GitHubIssueReporter.cs`
+  — sinds #1268 gedeeld en actief op beide tiers; elke tier geeft zijn eigen `EgressGuard` als
+  delegate mee via `<tier>/Infrastructure/FoutRapportage.cs`),
 - e-mail via Microsoft Graph (`IEmailGraphService` wordt dan niet geregistreerd),
-- de AI-diensten (`IChatClient` wordt dan niet geregistreerd — teamdisambiguatie valt terug op
-  puur deterministisch gedrag).
+- de AI-diensten (`IChatClient` wordt dan niet geregistreerd — de e-mailclassificatie en de
+  feedbackwidget draaien dan niet). Teamresolutie staat hier bewust niet meer bij: die is sinds
+  #1268 op beide tiers volledig deterministisch en gebruikt geen taalmodel.
 
 Dit is één centrale poort (`FunctionApp/Infrastructure/EgressGuard.cs`), niet vier losse
 controles. De poort herkent productie aan `WEBSITE_SITE_NAME` (Azure zet die altijd; lokaal en in

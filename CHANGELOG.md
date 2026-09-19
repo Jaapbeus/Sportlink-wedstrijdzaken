@@ -29,6 +29,55 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   automatisch te controleren. Die regels vormen samen hoofdstuk 11 en daarmee een geordende
   werkvoorraad. `docs/ARCHITECTURE.md` behoudt zijn volledige inhoud en is nu expliciet
   uitvoeringsdocumentatie: het beschrijft hoe een afspraak wordt toegepast, niet welke geldt.
+- **De database wordt nu ook op de variant die in productie draait dagelijks op uitval
+  gecontroleerd (#1268).** Tot nu toe ging er alleen een waarschuwingsmail uit als er toevallig
+  e-mail binnenkwam die de database aansprak; bleef het stil in de mailbox, dan bleef een uitval
+  onopgemerkt — precies wat er in augustus 2026 vijf dagen lang gebeurde. Er draait nu elke ochtend
+  een losse controle die niet van e-mailverkeer afhangt. Ligt de database eruit, dan gaat er een
+  waarschuwing naar de beheerdersmailbox, met daarin hoe lang het al speelt en wat er te
+  controleren valt. Bij een aanhoudende storing wordt die waarschuwing hooguit eens per twintig uur
+  herhaald, en een herstart of onderhoudsmoment van de hostingomgeving levert geen loos alarm op.
+  De controle werkt zonder extra instellingen; wie de hostingomgeving rechtstreeks laat bevragen,
+  krijgt een preciezere melding terug.
+- **Automatische foutrapportage werkt nu ook op de databasevariant die in productie draait (#1268).**
+  Een onverwachte fout in de nachtelijke of handmatige synchronisatie meldde zichzelf tot nu toe
+  alleen aan als de andere databasevariant actief was; op de variant die daadwerkelijk live staat,
+  bleef zo'n fout een logregel die niemand las. Beide varianten melden een fout nu op dezelfde
+  manier: één melding per unieke fout per 24 uur, met bij herhaling een reactie op de bestaande
+  melding in plaats van een nieuwe. De melding bevat uitsluitend vaste technische velden
+  (foutsoort, fouttype, tijdstip, kenmerk) — nooit de fouttekst zelf, een bestandspad of een
+  gegeven dat naar de club of een persoon te herleiden is.
+
+### Changed
+- **De regels achter de uitvalwaarschuwing staan nu één keer in de codebase (#1268).** Wanneer iets
+  als uitval telt, hoe lang die moet duren, hoe vaak er herhaald mag worden en hoe de waarschuwing
+  luidt: dat heeft niets met de databasekeuze te maken en staat nu in de gedeelde laag, met eigen
+  tests. Beide databasevarianten gebruiken dezelfde regels en kunnen dus niet meer stilzwijgend uit
+  elkaar lopen. Alleen het opvragen van de status blijft per variant eigen — daar verschillen de
+  hostingomgevingen werkelijk van elkaar.
+- **De foutrapportage staat nu één keer in de codebase in plaats van in één databasevariant
+  (#1268).** De logica erachter — de melding opstellen, dubbele meldingen herkennen en de melding
+  versturen — heeft niets met de databasekeuze te maken en is verplaatst naar de gedeelde laag.
+  Per variant blijft alleen staan wat daar echt verschilt. Daarmee kunnen de twee varianten niet
+  meer stilzwijgend uit elkaar lopen, en zijn het herkennen van dubbele meldingen en het opstellen
+  van de melding voor het eerst met tests afgedekt.
+
+- **De bewaking die verschillen tussen de twee databasevarianten opspoort, kijkt nu ook naar
+  achtergrondtaken (#1268).** Tot nu toe vergeleek die controle alleen de schermfuncties die via een
+  webadres bereikbaar zijn. Juist daardoor kon de uitvalbewaking van de database jarenlang op één
+  variant ontbreken zonder dat iemand het merkte: een ontbrekende achtergrondtaak geeft geen
+  foutmelding, hij doet gewoon niets. De controle vergelijkt nu beide, in beide richtingen.
+
+### Removed
+- **De applicatie raadt niet langer welk team bedoeld wordt bij een dubbelzinnige naam (#1268).**
+  Staat er in een e-mail bijvoorbeeld "13-1", dan kan dat zowel JO13-1 als MO13-1 zijn. Op één van
+  de twee databasevarianten liet de applicatie een taalmodel die keuze maken; op de andere — de
+  variant die in productie draait — gebeurde dat nooit. Dat verschil is opgeheven door de
+  voorzichtige kant als norm te nemen: er wordt niet meer geraden. Je krijgt in zo'n geval de
+  mogelijke teams te zien in plaats van een keuze die er misschien naast zit. Gevolg voor de
+  praktijk: een e-mail met een dubbelzinnige teamnaam wordt niet meer automatisch gekoppeld en
+  vraagt om een handmatige bevestiging, en er worden vanuit die route ook geen nieuwe
+  schrijfwijzen meer geleerd.
 
 ### Fixed
 - **Documentatie feitelijk gelijkgetrokken met de code (#1269).** Alle documenten in `docs/` en de

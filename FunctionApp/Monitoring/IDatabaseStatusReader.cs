@@ -1,22 +1,17 @@
-namespace SportlinkFunction.Monitoring;
+using Planner.Shared.Monitoring;
 
-/// <summary>
-/// Resultaat van een management-plane statuscontrole van de Azure SQL Database.
-/// </summary>
-/// <param name="Status">
-/// Ruwe <c>properties.status</c>-waarde van de Azure SQL Database REST API, bijv. "Online", "Paused",
-/// "Pausing" of "Resuming".
-/// </param>
-/// <param name="PausedSinceUtc">
-/// De <c>properties.pausedDate</c>-waarde (UTC), of <c>null</c> als de database niet gepauzeerd is of
-/// als de API dit veld niet teruggeeft.
-/// </param>
-public sealed record DatabaseStatusInfo(string Status, DateTime? PausedSinceUtc);
+namespace SportlinkFunction.Monitoring;
 
 /// <summary>
 /// Leest de management-plane status van de Azure SQL Database — géén databaseverbinding. Bewust
 /// abstract van de concrete Azure Management API-aanroep zodat <c>DatabaseUitvalMonitorFunction</c>
 /// unit-testbaar is zonder een echte Azure-omgeving (#831).
+///
+/// <para>
+/// De uitkomst (<see cref="DatabaseStatusInfo"/>) en alles wat er daarna mee gebeurt staan sinds
+/// #1268 in <see cref="DatabaseUitvalCore"/>, gedeeld met de Postgres-tier. Wat hier tier-specifiek
+/// blijft is uitsluitend hóe de status wordt opgehaald.
+/// </para>
 /// </summary>
 public interface IDatabaseStatusReader
 {

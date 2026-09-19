@@ -4,15 +4,42 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace SportlinkFunction.Infrastructure;
+namespace Planner.Shared.Infrastructure;
 
 /// <summary>
 /// Rapporteert onverwachte exceptions als GitHub Issues.
-/// Deduplicatie op fingerprint (zie SystemUtilities.ComputeFingerprint):
+/// Deduplicatie op fingerprint (zie <see cref="ComputeFingerprint"/>):
 ///   - Bestaand open issue → voeg comment toe
 ///   - Bestaand gesloten issue → heropen + voeg comment toe (de fout is opnieuw opgetreden)
 ///   - Geen bestaand issue → maak nieuw issue aan
 ///   - Al gerapporteerd binnen 24u → overslaan (rate-limiting, issue #106)
+///
+/// <para>
+/// <b>Waarom dit in Planner.Shared staat (#1268).</b> Deze klasse doet een HTTP-aanroep naar de
+/// GitHub API, dedupliceert op een fingerprint en bouwt een issue-body. Geen enkele stap daarvan
+/// is databasetier-specifiek: de configuratie komt volledig uit omgevingsvariabelen. Ze stond tot
+/// #1268 uitsluitend in de SQL Server-tier, waardoor de Postgres-tier — de tier die in productie
+/// draait — runtimefouten alleen als logregel achterliet. Een kopie maken zou precies de fout zijn
+/// die <c>ThemeCore</c> (#1248), <c>FeedbackCore</c> (#1130) en <c>SportlinkEndpointCore</c>
+/// (#1266) hebben opgeruimd: twee bestanden die niets van elkaar weten, niet gedeeld getest worden
+/// en dus stilzwijgend uit elkaar lopen.
+/// </para>
+///
+/// <para>
+/// <b>Twee tier-specifieke dingen komen als parameter binnen</b>, zelfde vorm als
+/// <c>SportlinkEndpointCore.BepaalTimerStatus(..., Func&lt;bool&gt; egressToegestaan)</c>:
+/// <list type="bullet">
+///   <item><description><c>egressToegestaan</c> — de <c>EgressGuard</c> van de aanroepende tier
+///   (#857). Die guard blijft bewust per tier staan: hij is een poort van díe Function App, en
+///   beide tiers gebruiken hem op tientallen plaatsen. Hier meegeven is goedkoper en eerlijker dan
+///   een tweede, impliciete "is dit toegestaan?"-controle in gedeelde code.</description></item>
+///   <item><description><c>eigenNamespacePrefix</c> — het namespace-voorvoegsel van de eigen code
+///   van die tier (<c>SportlinkFunction.</c> respectievelijk <c>FunctionApp.Postgres.</c>).
+///   <see cref="GetCallerFrame"/> gebruikt dat om de eerste eigen stackframe te vinden. Eén vaste
+///   lijst met beide voorvoegsels zou de fingerprints van de bestaande tier verschuiven en dus de
+///   dedup van reeds aangemaakte issues breken.</description></item>
+/// </list>
+/// </para>
 ///
 /// De dedup-lookup (<see cref="SearchIssueAsync"/>) gebruikt de gewone Issues List API
 /// (<c>GET /repos/{owner}/{repo}/issues</c>), niet de GitHub Search API. De Search API bleek
@@ -24,7 +51,8 @@ namespace SportlinkFunction.Infrastructure;
 ///   GitHubOwner — GitHub organisatie of gebruikersnaam (default: env GITHUB_REPOSITORY_OWNER)
 ///   GitHubRepo  — repository naam (verplicht — geen fallback, zie #607)
 ///
-/// Wanneer GitHubPat niet geconfigureerd is, wordt alles stil overgeslagen.
+/// Wanneer GitHubPat niet geconfigureerd is, wordt alles stil overgeslagen. De PAT wordt nooit
+/// gelogd en komt uitsluitend in de Authorization-header terecht.
 /// </summary>
 public static class GitHubIssueReporter
 {
@@ -33,9 +61,17 @@ public static class GitHubIssueReporter
 
     private const int RateLimitHours = 24;
 
-    public static async Task ReportAsync(Exception ex, string functionName, ILogger log)
+    /// <param name="egressToegestaan">De <c>EgressGuard</c> van de aanroepende tier (#857).</param>
+    /// <param name="eigenNamespacePrefix">Namespace-voorvoegsel van de eigen code van die tier,
+    /// inclusief de afsluitende punt — bijv. <c>"SportlinkFunction."</c>.</param>
+    public static async Task ReportAsync(
+        Exception ex,
+        string functionName,
+        ILogger log,
+        Func<bool> egressToegestaan,
+        string eigenNamespacePrefix)
     {
-        if (!EgressGuard.ExternalIntegrationsAllowed())
+        if (!egressToegestaan())
         {
             log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — issue-rapportage overgeslagen (#857).");
             return;
@@ -61,17 +97,12 @@ public static class GitHubIssueReporter
             return;
         }
 
-        var fp = SystemUtilities.ComputeFingerprint(ex);
+        var fp = ComputeFingerprint(ex, eigenNamespacePrefix);
 
-        lock (_lock)
+        if (!ProbeerRegistreren(fp, DateTime.UtcNow))
         {
-            if (_recentlyReported.TryGetValue(fp, out var last)
-                && (DateTime.UtcNow - last).TotalHours < RateLimitHours)
-            {
-                log.LogInformation("Exception fp:{Fp} al gerapporteerd binnen {H}u — overgeslagen", fp, RateLimitHours);
-                return;
-            }
-            _recentlyReported[fp] = DateTime.UtcNow;
+            log.LogInformation("Exception fp:{Fp} al gerapporteerd binnen {H}u — overgeslagen", fp, RateLimitHours);
+            return;
         }
 
         try
@@ -94,6 +125,68 @@ public static class GitHubIssueReporter
         }
     }
 
+    /// <summary>
+    /// In-memory rate-limiting (#106): registreert <paramref name="fp"/> als "nu gerapporteerd" en
+    /// geeft <c>false</c> terug als dezelfde fingerprint binnen <see cref="RateLimitHours"/> uur al
+    /// geregistreerd was. Los testbaar gemaakt in #1268 — hiervóór zat deze beslissing als
+    /// <c>lock</c>-blok midden in <see cref="ReportAsync"/> en was hij alleen te raken door een
+    /// echte GitHub-aanroep te doen.
+    /// </summary>
+    internal static bool ProbeerRegistreren(string fp, DateTime nuUtc)
+    {
+        lock (_lock)
+        {
+            if (_recentlyReported.TryGetValue(fp, out var last)
+                && (nuUtc - last).TotalHours < RateLimitHours)
+            {
+                return false;
+            }
+            _recentlyReported[fp] = nuUtc;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Berekent een deterministische 12-karakter hex fingerprint voor een exception.
+    /// Identieke fouten (zelfde type, genormaliseerd bericht, zelfde callsite) geven altijd
+    /// dezelfde fingerprint — essentieel voor deduplicatie van GitHub Issues.
+    /// <para>
+    /// De fingerprint is een SHA-256-hash en wordt afgekapt op 12 hex-tekens; het onderliggende
+    /// foutbericht is er niet uit terug te halen en komt nergens in het publieke issue terecht
+    /// (#1008).
+    /// </para>
+    /// </summary>
+    internal static string ComputeFingerprint(Exception ex, string eigenNamespacePrefix)
+    {
+        var raw = $"{ex.GetType().FullName}|{NormalizeMessage(ex.Message)}|{GetCallerFrame(ex, eigenNamespacePrefix)}";
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
+        return Convert.ToHexString(bytes)[..12].ToLower();
+    }
+
+    private static string NormalizeMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return "";
+        // Verwijder variabele delen zodat dezelfde fout altijd dezelfde fingerprint geeft
+        var s = message;
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<guid>");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?", "<date>");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\b\d+\b", "<n>");
+        return s.Trim();
+    }
+
+    private static string GetCallerFrame(Exception ex, string eigenNamespacePrefix)
+    {
+        if (ex.StackTrace == null) return "unknown";
+        foreach (var line in ex.StackTrace.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("at " + eigenNamespacePrefix, StringComparison.Ordinal))
+                return trimmed.Split('(')[0].Replace("at ", "").Trim();
+        }
+        return "external";
+    }
+
     private static HttpClient BuildHttpClient(string pat)
     {
         var http = new HttpClient();
@@ -114,9 +207,9 @@ public static class GitHubIssueReporter
     /// titel. Gebruikt bewust de Issues List API in plaats van de GitHub Search API — zie #830
     /// voor de reden (Search API onbetrouwbaar met een fine-grained PAT die alleen
     /// <c>issues:write</c>-scope heeft).
-    /// <c>internal</c> zodat FunctionApp.Tests deze dedup-lookup rechtstreeks kan afdekken
-    /// (InternalsVisibleTo, zie #476) zonder de publieke <see cref="ReportAsync"/>-signatuur
-    /// te hoeven verbouwen.
+    /// <c>internal</c> zodat Planner.Shared.Tests deze dedup-lookup rechtstreeks kan afdekken
+    /// (InternalsVisibleTo) zonder de publieke <see cref="ReportAsync"/>-signatuur te hoeven
+    /// verbouwen.
     /// </summary>
     internal static async Task<(int number, bool isClosed)?> SearchIssueAsync(
         HttpClient http, string owner, string repo, string fp, ILogger log)
@@ -188,8 +281,8 @@ public static class GitHubIssueReporter
     }
 
     /// <summary>
-    /// Reageert op een recidiverende exception. <c>internal</c> zodat FunctionApp.Tests de
-    /// daadwerkelijk verzonden comment-body kan afdekken (InternalsVisibleTo, zie #476) —
+    /// Reageert op een recidiverende exception. <c>internal</c> zodat Planner.Shared.Tests de
+    /// daadwerkelijk verzonden comment-body kan afdekken (InternalsVisibleTo) —
     /// regressietest voor #1008: de body mag nooit vrije <c>ex.Message</c>/stacktrace-tekst
     /// bevatten, alleen de vaste allowlist-velden uit <see cref="BuildPublicDiagnostics"/>.
     /// </summary>
@@ -197,10 +290,7 @@ public static class GitHubIssueReporter
         HttpClient http, string owner, string repo, int issueNumber,
         Exception ex, string functionName, string fp, ILogger log)
     {
-        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
-        var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
-
-        var body = "🔁 Opnieuw opgetreden\n\n" + BuildPublicDiagnostics(ex, functionName, fp, nlTijd);
+        var body = "🔁 Opnieuw opgetreden\n\n" + BuildPublicDiagnostics(ex, functionName, fp, NederlandseTijdNu());
 
         var payload = JsonConvert.SerializeObject(new { body });
         var url = $"https://api.github.com/repos/{owner}/{repo}/issues/{issueNumber}/comments";
@@ -213,8 +303,8 @@ public static class GitHubIssueReporter
     }
 
     /// <summary>
-    /// Maakt een nieuw issue aan. <c>internal</c> zodat FunctionApp.Tests de daadwerkelijk
-    /// verzonden issue-titel/body kan afdekken (InternalsVisibleTo, zie #476) — regressietest
+    /// Maakt een nieuw issue aan. <c>internal</c> zodat Planner.Shared.Tests de daadwerkelijk
+    /// verzonden issue-titel/body kan afdekken (InternalsVisibleTo) — regressietest
     /// voor #1008: titel en body mogen nooit vrije <c>ex.Message</c>/stacktrace-tekst bevatten,
     /// alleen de vaste allowlist-velden uit <see cref="BuildPublicDiagnostics"/>.
     /// </summary>
@@ -222,12 +312,9 @@ public static class GitHubIssueReporter
         HttpClient http, string owner, string repo, string fp,
         Exception ex, string functionName, ILogger log)
     {
-        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
-        var nlTijd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
-
         var title = BuildPublicTitle(ex, fp);
         var body = "## Automatisch gerapporteerde exception\n\n"
-                 + BuildPublicDiagnostics(ex, functionName, fp, nlTijd)
+                 + BuildPublicDiagnostics(ex, functionName, fp, NederlandseTijdNu())
                  + "\n\n*Automatisch aangemaakt door GitHubIssueReporter (v2.1 zelfherstellend systeem)*";
 
         var payload = JsonConvert.SerializeObject(new
@@ -252,11 +339,17 @@ public static class GitHubIssueReporter
         }
     }
 
+    private static DateTime NederlandseTijdNu()
+    {
+        var nlZone = TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time");
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, nlZone);
+    }
+
     /// <summary>
     /// Bouwt de publieke issue-titel. Bevat uitsluitend het exceptietype en de fingerprint-tag —
     /// nooit <c>ex.Message</c> (#1008: vrije foutteksten kunnen databasenamen, servernamen of
     /// andere identificerende inhoud bevatten die geen enkel bestaand denylist-patroon dekt).
-    /// <c>internal</c> zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476).
+    /// <c>internal</c> zodat Planner.Shared.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo).
     /// </summary>
     internal static string BuildPublicTitle(Exception ex, string fp)
         => $"[bug][fp:{fp}] {ClassifyErrorCategory(ex)}: {ex.GetType().Name}";
@@ -266,10 +359,16 @@ public static class GitHubIssueReporter
     /// vaste technische velden (foutcategorie, exceptietype, interne operationele naam — de
     /// Azure Function-naam — veilige fingerprint/hash, tijdstip). Vrije <c>ex.Message</c>,
     /// inner-exceptietekst en bronpaden/stacktrace worden NOOIT overgenomen — die blijven
-    /// uitsluitend in de structured logging/Application Insights van deze Function App
-    /// (zie de <c>log.LogError(ex, ...)</c>-aanroep vóór <see cref="ReportAsync"/> in
-    /// Function1.cs), nooit in dit publieke GitHub-issue.
-    /// <c>internal</c> zodat FunctionApp.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo, #476).
+    /// uitsluitend in de structured logging/Application Insights van de betreffende Function App
+    /// (zie de <c>log.LogError(ex, ...)</c>-aanroep vóór <see cref="ReportAsync"/> in de
+    /// tier-specifieke catch-blokken), nooit in dit publieke GitHub-issue.
+    /// <para>
+    /// <b>Let op voor toekomstige aanroepers:</b> <paramref name="functionName"/> is de enige
+    /// door de aanroeper aangeleverde vrije tekst in dit blok. Geef daar uitsluitend een vaste
+    /// literal mee (de Azure Function-naam) — nooit een clubcode, e-mailadres, teamnaam of andere
+    /// runtimewaarde; deze repository is publiek en de aangemaakte issues dus ook.
+    /// </para>
+    /// <c>internal</c> zodat Planner.Shared.Tests dit rechtstreeks kan afdekken (InternalsVisibleTo).
     /// </summary>
     internal static string BuildPublicDiagnostics(Exception ex, string functionName, string fp, DateTime nlTijd)
     {
@@ -288,6 +387,13 @@ public static class GitHubIssueReporter
     /// Classificeert een exception (incl. inner exceptions) naar een vaste, veilige categorie —
     /// onderdeel van het allowlist-model van #1008. Doorloopt de inner-exceptionketen zodat een
     /// gewrapte SQL-fout (bv. via een repository-laag) ook als "Database" herkend wordt.
+    /// <para>
+    /// De <c>"Sql"</c>-toets dekt beide tiers: <c>Microsoft.Data.SqlClient.SqlException</c> zowel
+    /// als <c>Npgsql.PostgresException</c>/<c>Npgsql.NpgsqlException</c> — "Npgsql" bevat
+    /// hoofdletterongevoelig "sql". Dat is geen toeval waar we op leunen zonder het te bewijzen:
+    /// <c>GitHubIssueReporterTests.ClassifyErrorCategory_NpgsqlAchtigeException_...</c> legt het
+    /// vast.
+    /// </para>
     /// </summary>
     private static string ClassifyErrorCategory(Exception ex)
     {

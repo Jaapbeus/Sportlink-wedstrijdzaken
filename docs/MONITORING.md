@@ -42,7 +42,7 @@ Database — één van twee, per fork gekozen via DatabaseTier (zie docs/ARCHITE
   │     → Geen Application Insights; Resource Health via Azure Portal; zie "Azure SQL Free-tier
   │       bescherming" hieronder voor het volledige vangnet (SQL Server-tier)
   └── Postgres (bijv. Supabase, productietier sinds #976)
-        → Provider-eigen dashboard/monitoring; nog geen los uitvalmonitor-equivalent in deze repo
+        → Provider-eigen dashboard/monitoring + eigen DatabaseUitvalMonitorFunction (#1268)
 ```
 
 ### Welk vangnet geldt voor welke tier
@@ -54,15 +54,20 @@ Dit document beschrijft bewaking voor **beide** databasetiers. Niet elk vangnet 
 | Application Insights (traces, exceptions, KQL) | ✅ | ✅ |
 | `GET /api/health` (`database`, `pendingMigrations`, `lastSync`) | ✅ | ✅ |
 | `db-check` in `deploy.yml` (ARM-status vóór migratie/deploy) | ✅ | ❌ — job is tier-gegate op `SqlServer` |
-| `DatabaseUitvalMonitorFunction` (dagelijkse uitvalmail) | ✅ | ❌ — **geen equivalent**, bekend open punt |
+| `DatabaseUitvalMonitorFunction` (dagelijkse uitvalmail) | ✅ | ✅ sinds #1268 — eigen statusbron, zie hieronder |
 | `Setup-SqlAlerts.ps1` (Resource Health Alert + e-mail) | ✅ | ❌ — Azure-SQL-specifiek |
 | Dagelijkse Supabase-advisorcontrole (beveiliging/performance) | ❌ | ✅ |
 | Supabase-dashboard / providermonitoring | ❌ | ✅ |
 
-**Het gat:** een club die op Postgres draait heeft géén losstaande, e-mail-onafhankelijke
-uitvalmonitor. De Supabase-advisorcontrole merkt een database die *plat ligt* niet als zodanig op —
-de workflow faalt dan op een API-fout, wat een signaal is maar geen gerichte uitvalmelding.
-Behandel dit als een bekend, open punt, niet als een verkeerd begrepen architectuur.
+**Het gat is sinds #1268 gedicht, maar niet met een identiek instrument.** Beide tiers hebben nu een
+dagelijkse, e-mail-onafhankelijke uitvalmonitor met dezelfde beslisregels
+(`Planner.Shared/Monitoring/DatabaseUitvalCore.cs`) en dezelfde throttle-sleutel. Wat verschilt, is
+waar de status vandaan komt — en dat verschil is inherent, niet oplosbaar: zie
+"Uitvalmonitor op de Postgres-tier" hieronder voor wat die variant wél en niet kan vaststellen.
+
+De Supabase-advisorcontrole blijft iets anders meten: die merkt een database die *plat ligt* niet als
+zodanig op — de workflow faalt dan op een API-fout, wat een signaal is maar geen gerichte
+uitvalmelding.
 
 ---
 
@@ -230,18 +235,14 @@ run. Geen Azure-resource, geen tierwijziging — dit valt buiten het kostenbelei
 ## Azure SQL Free-tier bescherming
 
 > **Geldt uitsluitend voor de SQL Server-tier.** Sinds 2026-09-04 draait productie op Postgres
-> (issue #976, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`) — deze sectie beschrijft dus vandaag het
-> vangnet voor de tier waarop déze installatie niet draait. Er bestaat **nog geen Postgres-
-> equivalent** van `DatabaseUitvalMonitorFunction` hieronder — een club die volledig op Postgres
-> draait heeft dus geen losstaande, e-mail-onafhankelijke uitvalmonitor. Dit is een bekend, open
-> punt, geen verkeerd begrepen architectuur; behandel het als zodanig totdat het is opgepakt.
-> Draai je (nog) op de SQL Server-tier, dan is deze sectie onverkort van toepassing.
+> (issue #976, zie `docs/ARCHITECTUUR-DATABASE-TIERS.md`) — deze sectie beschrijft dus het vangnet
+> voor de tier waarop déze installatie niet draait. Draai je (nog) op de SQL Server-tier, dan is
+> deze sectie onverkort van toepassing.
 >
-> **Sinds #1221 is een deel hiervan wél gedekt, maar nadrukkelijk niet het uitvaldeel.** De
-> dagelijkse Supabase-advisorcontrole (zie hieronder) kijkt naar beveiliging en performance van de
-> Postgres-database. Een database die *plat ligt* merkt hij niet als zodanig op: de workflow faalt
-> dan op een API-fout, wat een signaal is maar geen gerichte uitvalmelding met noodmail. Het open
-> punt blijft dus staan.
+> **De Postgres-tier heeft sinds #1268 een eigen uitvalmonitor**, met dezelfde beslisregels maar een
+> andere statusbron — zie "Uitvalmonitor op de Postgres-tier" verderop. De dagelijkse
+> Supabase-advisorcontrole (#1221) blijft daarnaast iets anders meten: beveiliging en performance,
+> geen beschikbaarheid.
 
 De gratis Azure SQL database heeft een maandlimiet van **100.000 vCore-seconden**. Bij uitputting
 wordt de database gepauzeerd tot het begin van de volgende kalendermaand. Dit heeft impact op drie lagen.
@@ -398,6 +399,65 @@ niets — een club kan dus zonder die configuratie blijven draaien, met alleen d
 e-mail-pipeline-afhankelijke noodmail als vangnet. Dat geldt **niet** voor
 `DATABASE_STATUS_MONITOR_SCHEDULE`: die moet altijd gezet zijn, anders kan de functie niet worden
 geïndexeerd.
+
+### Uitvalmonitor op de Postgres-tier (#1268)
+
+De Postgres-tier heeft sinds #1268 dezelfde dagelijkse, e-mail-onafhankelijke uitvalmonitor
+(`FunctionApp.Postgres/Monitoring/DatabaseUitvalMonitorFunction.cs`). Alle beslisregels — wanneer
+iets als uitval telt, hoe lang die moet duren, hoe vaak dezelfde uitval gemeld mag worden, en de
+tekst van de melding — staan gedeeld in `Planner.Shared/Monitoring/DatabaseUitvalCore.cs` en zijn
+daar getest. Ook de throttle-sleutel is dezelfde (`database-noodmail`), dus welk pad ook het eerst
+meldt, onderdrukt de ander voor diezelfde uitval.
+
+**Wat wél anders is, en waarom dat inherent is.** `ArmDatabaseStatusReader` bevraagt een
+`Microsoft.Sql/servers/...`-resource via ARM en krijgt daar zowel een status als een
+`pausedDate` terug. Voor een beheerde Postgres-omgeving bestaat die resource niet, en de
+management-API van zo'n omgeving levert **geen tijdstip van uitvallen** — alleen een status
+(geverifieerd tegen de OpenAPI-specificatie van die API). `PostgresDatabaseStatusReader` doet daarom
+twee dingen, in deze volgorde:
+
+| Pad | Wanneer | Wat het vaststelt | Wat het níét kan |
+|---|---|---|---|
+| **Control-plane** — `GET /v1/projects/{ref}` op de management-API | Als `SUPABASE_PROJECT_REF` én `SUPABASE_ACCESS_TOKEN` gezet zijn én `EgressGuard` toestaat | Letterlijk of het project gepauzeerd is; geen databaseverbinding, dus deze controle kan niet zelf slachtoffer worden van de storing | Zeggen sinds wanneer |
+| **Verbindingsprobe** (terugval, altijd actief) | Zonder die twee instellingen | Of de database bereikbaar is — drie pogingen met 5 s ertussen, ongepoold, `SELECT 1` | Onderscheiden tussen een pauze, een netwerkstoring en een overbelaste host |
+
+Beide paden lossen het eigenlijke probleem van #831 op: de controle draait op een eigen timer en
+hangt niet meer af van toevallig inkomende e-mail. De probe is bewust de tweede keuze — het is een
+beschikbaarheidssignaal, geen statusuitlezing.
+
+**De gemelde duur is een ondergrens.** Omdat het platform geen uitvaltijdstip levert, legt de monitor
+zijn eigen eerste waarneming vast onder de sleutel `database-uitval-eerste-waarneming`, in dezelfde
+Azure Table Storage als de throttle — dus buiten de database die juist onbereikbaar kan zijn, en
+buiten het procesgeheugen dat bij elke cold start reset. De noodmail zegt dit ook met zoveel woorden.
+
+**Drempel: geen wachttijd, anders dan op de SQL Server-tier.** De zes uur daar bestaat om de
+routinematige auto-pause van Azure SQL serverless weg te filteren. Een beheerde Postgres-omgeving
+kent zo'n pauze-die-vanzelf-herstelt niet; de tijdelijke toestanden die hij wél kent (`COMING_UP`,
+`RESTARTING`, `RESTORING`, `UPGRADING`, `RESIZING`, `UNKNOWN` en elke statuswaarde die dit programma
+niet kent) worden als "onbepaald" behandeld en leiden nooit tot een melding — maar wissen ook geen
+lopende registratie. Een extra wachttijd zou hier dus geen ruis filteren maar de melding alleen een
+volle dag vertragen.
+
+**Schedule staat vast in code (`0 0 8 * * *`), niet in een app setting.** Een
+`[TimerTrigger("%…%")]` wordt opgelost bij het *indexeren* van de functie; ontbreekt die app setting,
+dan komt de hele Function App niet omhoog. Op de tier die in productie draait is dat een
+onaanvaardbaar risico voor een monitoringfunctie. Uitzetten kan met de standaard-app-setting
+`AzureWebJobs.DatabaseUitvalMonitor.Disabled`.
+
+**Kosten: €0.** Eén extra Function-executie per dag valt ruim binnen de Consumption-limiet, en er
+komt geen Azure-resource bij.
+
+**Optionele configuratie (app settings op de Function App):**
+
+```
+SUPABASE_PROJECT_REF    = <project-ref>       (optioneel — zonder dit draait de verbindingsprobe)
+SUPABASE_ACCESS_TOKEN   = <read-only token>   (optioneel — idem)
+```
+
+> Zet beide als **Secret**, nooit als Variable: de project-ref identificeert de club en deze
+> repository is publiek (#1204). Gebruik een **scoped** token met uitsluitend leesrechten — een
+> classic token draagt volledige accounttoegang op elke organisatie en elk project. Zonder deze twee
+> instellingen werkt de monitor gewoon, via de verbindingsprobe.
 
 ### Sportlink contract-check-noodmail (#998)
 

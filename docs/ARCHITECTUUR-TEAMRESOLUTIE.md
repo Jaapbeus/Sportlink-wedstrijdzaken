@@ -6,9 +6,12 @@
 > **Twee tiers.** Dit document beschrijft standaard de SQL Server-notatie (`dbo.Teams`,
 > `FunctionApp/TeamResolution/`). De tier die in productie draait is Postgres (#1060):
 > lowercase identifiers in schema `public`, code onder `FunctionApp.Postgres/`. Waar het gedrag
-> écht verschilt staat dat expliciet vermeld — de belangrijkste twee zijn **geen AI-disambiguatie
-> op Postgres** en **een ander vangnet bij een lege teamlijst**. Beide tiers zijn gelijkwaardig
-> (#1266). Feitelijkheid geverifieerd op 19-09-2026.
+> écht verschilt staat dat expliciet vermeld — het belangrijkste is **een ander vangnet bij een
+> lege teamlijst**. Tot #1268 bestond er ook een verschil in teamdisambiguatie bij meerdere
+> kandidaten (AI-keuze op SQL Server, altijd `MeerdereKandidaten` op Postgres); dat verschil is
+> met #1268 weggenomen door de AI-disambiguatie op de SQL Server-tier te verwijderen — zie
+> "Ambiguïteit is echt, niet theoretisch" hieronder. Beide tiers zijn gelijkwaardig (#1266).
+> Feitelijkheid geverifieerd op 19-09-2026.
 
 ## Het probleem
 
@@ -67,7 +70,7 @@ vrije tekst uit e-mail
         │                    2. exacte canonieke match → TeamId  (confidence 1.0)
         │                    3. kandidaten op leeftijd+teamnummer
         │                       └─ precies 1 → TeamId (confidence 0.9)
-        │                       └─ meerdere → disambiguatie of onbeslist
+        │                       └─ meerdere → altijd onbeslist (geen disambiguatie, #1268)
         ▼
   TeamId (of expliciet onbeslist — nooit een gok)
 ```
@@ -79,17 +82,22 @@ wordt niet gegokt.
 
 Bij één club bestaan tien paren met dezelfde leeftijd én hetzelfde teamnummer, alleen verschillend
 in jongens/meisjes — bijvoorbeeld `JO13-1` en `MO13-1`. Een e-mail die alleen "13-1" noemt is dus
-aantoonbaar dubbelzinnig. Daarvoor is er één plek die mag kiezen:
+aantoonbaar dubbelzinnig.
 
-`TeamDisambiguationAiService` krijgt een genummerde kandidatenlijst en mag **alleen een index**
-teruggeven (forced choice). De keuze wordt daarna in C# gevalideerd tegen die lijst, dus een
-gehallucineerd nummer kan nooit tot een verkeerd `TeamId` leiden. Boven acht kandidaten wordt niet
-gedisambigueerd: dan is de tekst te vaag en is terugvragen aan de afzender correcter.
-
-> **Deze stap bestaat alleen op de SQL Server-tier.** `TeamDisambiguationAiService` en
-> `ITeamDisambiguator` staan uitsluitend in `FunctionApp/TeamResolution/`. Op de Postgres-tier
-> (productie, #1060) eindigt stap 3 bij meerdere kandidaten altijd in `MeerdereKandidaten` — dus
-> in de tak "terugvragen aan de afzender". Zie de tiertabel onder *Bestanden*.
+**Sinds #1268 wordt hier niet meer gekozen: meerdere kandidaten leveren op beide tiers altijd
+`MeerdereKandidaten` op, en de vraag gaat terug naar de afzender.** Tot die wijziging bestond op de
+SQL Server-tier een extra stap die dat wél deed: `TeamDisambiguationAiService` kreeg een genummerde
+kandidatenlijst en mocht **alleen een index** teruggeven (forced choice), daarna in C# gevalideerd
+tegen die lijst zodat een gehallucineerd nummer nooit tot een verkeerd `TeamId` kon leiden. Die stap
+bestond uitsluitend op deze ene tier — de Postgres-tier (productie, #1060) gaf bij meerdere
+kandidaten altijd al `MeerdereKandidaten` terug. Omdat beide tiers gelijkwaardig moeten zijn
+(#1266), en de eigenaar het deterministische gedrag als norm koos (een teamnaam laten raden door
+een taalmodel is een productkeuze, en die is bewust niet gemaakt), is `TeamDisambiguationAiService`
+met #1268 verwijderd in plaats van naar Postgres vertaald.
+>
+> **Voor een toekomstige disambiguator geldt daarom een harde eis: hij landt op beide tiers
+> tegelijk**, niet als functionaliteit van één tier — zie regel 3 en 6 onder "Regels bij
+> wijzigingen" hieronder.
 
 ## Datamodel
 
@@ -100,7 +108,7 @@ schrijft, geldt hetzelfde voor `public.teams`.
 | Tabel (SQL Server / Postgres) | Rol |
 |---|---|
 | `dbo.Teams` / `public.teams` | Eén rij per werkelijk team, gesleuteld op `(ClubCode, TeamnaamGenormaliseerd)` — op Postgres `(clubcode, teamnaamgenormaliseerd)`. Gevuld door de nachtelijke sync. Verdwenen teams worden gedeactiveerd, niet verwijderd. |
-| `dbo.TeamAliassen` / `public.teamaliassen` | Uitsluitend schrijfwijzen die **niet** uit de normalisatie volgen: geleerd uit e-mail of handmatig toegevoegd. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. |
+| `dbo.TeamAliassen` / `public.teamaliassen` | Uitsluitend schrijfwijzen die **niet** uit de normalisatie volgen: handmatig toegevoegd, of (tot #1268) geleerd uit e-mail. Status `pending`/`validated`/`rejected` — alleen `validated` wordt vertrouwd. |
 
 Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabellen) en
 `007_teams_collation_fix.sql` (de `upper(...)`-unique-indexen, zie de collatie-kanttekening onderaan).
@@ -108,9 +116,13 @@ Postgres-definities: `Database.Postgres/migrations/003_admin_tables.sql` (tabell
 De sync schrijft géén aliassen: alle Sportlink-schrijfwijzen van één team normaliseren per definitie
 naar dezelfde sleutel, dus een alias-rij zou dupliceren wat de teamtabel al weet.
 
-Een alias die uit AI-disambiguatie komt, krijgt status `pending` en wordt dus **niet** vertrouwd
-totdat een coördinator hem goedkeurt (Beheer → Teamaliassen). Zo kan een foutieve keuze zich niet
-zelfversterken.
+**Sinds #1268 wordt hier niets meer automatisch geleerd.** `TeamAliasLearningService` (`LegVastAsync`)
+bestaat nog op beide tiers, maar heeft nergens meer een aanroeper: hij werd uitsluitend gebruikt om
+een AI-disambiguatiekeuze als `pending`-alias vast te leggen, en die keuze wordt niet meer gemaakt
+(zie "Ambiguïteit is echt, niet theoretisch" hierboven). Een alias die vóór #1268 uit AI-disambiguatie
+ontstond, behield zijn status `pending` totdat een coördinator hem goedkeurde (Beheer →
+Teamaliassen) — zo kon een foutieve keuze zich niet zelfversterken. Die goedkeuringsregel blijft
+gelden voor elke `pending`-rij, ongeacht hoe hij is ontstaan.
 
 ## Uitrol — geen schakelaar
 
@@ -255,10 +267,9 @@ tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel da
 
 | Bestand | Verantwoordelijkheid |
 |---|---|
-| `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit. |
+| `FunctionApp/TeamResolution/TeamResolver.cs` | Resolutievolgorde; kiest nooit zelf bij ambiguïteit — sinds #1268 identiek aan de Postgres-tegenhanger. |
 | `FunctionApp/TeamResolution/TeamCandidateRepository.cs` | Lookups tegen `dbo.Teams`/`dbo.TeamAliassen` (Postgres: `public.teams`/`public.teamaliassen`), altijd op ClubCode. |
-| `FunctionApp/TeamResolution/TeamDisambiguationAiService.cs` | Forced-choice keuze uit een korte kandidatenlijst. **Alleen SQL Server-tier.** |
-| `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. |
+| `FunctionApp/TeamResolution/TeamAliasLearningService.cs` | Legt nieuwe schrijfwijzen vast als `pending`. **Sinds #1268 zonder aanroeper op beide tiers** — hij werd uitsluitend ná een AI-disambiguatiekeuze gebruikt (zie hieronder), en die keuze wordt niet meer gemaakt. Ook niet meer in DI geregistreerd op de SQL Server-tier (op Postgres nooit geweest). De klasse blijft in de codebase staan uit tier-gelijkwaardigheid, niet omdat hij nog iets doet. |
 | `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs` | Vult de teamtabel na de sync; ontdubbelt de twee notaties; migreert opgeslagen sleutels na een normalisatiewijziging. |
 | `FunctionApp/TeamResolution/TeamlijstGereedheid.cs` | Vult de teamlijst alsnog als die leeg is en migreert sleuteldrift als die wél gevuld is; faalt hard en zichtbaar als dat niet lukt. **Alleen SQL Server-tier** — zie "Uitrol — geen schakelaar" hierboven voor wat er op Postgres voor in de plaats staat. |
 
@@ -269,21 +280,21 @@ tegenhanger onder `FunctionApp.Postgres/TeamResolution/` — zie de tiertabel da
 |---|---|---|---|
 | `TeamNaamNormalisatie` | gedeeld | gedeeld | Staat in `Planner.Shared/` — **niet** gedupliceerd (verhuisd bij #889) |
 | `TeamCandidateRepository` | ✓ | ✓ | #889 deel 1 |
-| `TeamAliasLearningService` | ✓ | ✓ | #889 deel 1 |
+| `TeamAliasLearningService` | ✓ (ongebruikt) | ✓ (ongebruikt) | #889 deel 1; sinds #1268 op beide tiers zonder aanroeper — zie hierboven |
 | `TeamCanonicalisatieService` | ✓ | ✓ | #889 deel 2 |
-| `TeamResolver` / `ITeamResolver` | ✓ | ✓ | **Wel vertaald, met één functioneel verschil — zie hieronder** |
+| `TeamResolver` / `ITeamResolver` | ✓ | ✓ | **Sinds #1268 woordelijk gelijk — geen functioneel verschil meer** |
 | `TeamAliasConstanten` | — | ✓ | Alleen Postgres |
-| `TeamDisambiguationAiService` / `ITeamDisambiguator` | ✓ | ✗ | Niet vertaald |
 | `TeamlijstGereedheid` | ✓ | ✗ | Vervangen door onvoorwaardelijke `RefreshAsync` + `AdminTeamsHerstelFunction` |
 
-> **Het functionele verschil dat je moet kennen: de Postgres-`TeamResolver` doet géén
-> AI-disambiguatie.** Stap 1 t/m 3 van de resolutievolgorde zijn identiek, maar waar de SQL
-> Server-tier bij meerdere kandidaten een `ITeamDisambiguator` mag laten kiezen
-> (`ResolutionBron.AiDisambiguatie`, confidence 0.7), geeft de Postgres-tier **altijd**
-> `MeerdereKandidaten` terug. Er wordt daar dus nooit een alias uit AI-disambiguatie geleerd.
-> Netto is dat conservatiever, niet onveiliger: geen gok is precies wat regel 2 hieronder
-> voorschrijft. Maar een e-mail die op SQL Server automatisch opgelost zou worden, wordt op de
-> productietier teruggelegd bij de afzender.
+> **Tot #1268 stond hier nog een rij `TeamDisambiguationAiService` / `ITeamDisambiguator` (✓ SQL
+> Server, ✗ Postgres, "niet vertaald").** Dat was toen het enige functionele verschil tussen de
+> twee `TeamResolver`-implementaties: de SQL Server-tier mocht bij meerdere kandidaten een
+> `ITeamDisambiguator` laten kiezen (`ResolutionBron.AiDisambiguatie`, confidence 0.7), de
+> Postgres-tier gaf toen al **altijd** `MeerdereKandidaten` terug. Met #1268 is die klasse
+> verwijderd in plaats van naar Postgres vertaald — beide tiers geven nu op elk moment
+> `MeerdereKandidaten` terug bij ambiguïteit, en er wordt op geen van beide nog een alias uit
+> AI-disambiguatie geleerd. Zie "Ambiguïteit is echt, niet theoretisch" hierboven voor de volledige
+> redenering.
 
 Zie ook `docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
 
@@ -292,9 +303,14 @@ Zie ook `docs/ARCHITECTUUR-DATABASE-TIERS.md` §28.
 1. **Normalisatieregels horen uitsluitend in `TeamNaamNormalisatie`.** Een nieuwe regex elders in de
    codebase is een architectuurschending — dat is precies het probleem dat deze laag oplost.
 2. **Voeg nooit een regel toe die een ontbrekend geslacht-prefix raadt.** "13-1" is dubbelzinnig; dat
-   hoort in de kandidaten-/disambiguatiestap, niet in een string-functie.
-3. **De disambiguator mag alleen kiezen uit aangeboden kandidaten**, en de keuze wordt altijd in C#
-   gevalideerd. Nooit vrije generatie van een teamnaam.
+   hoort in de kandidatenstap (die bij meerdere treffers `MeerdereKandidaten` teruggeeft), niet in
+   een string-functie.
+3. **Bij meerdere kandidaten wordt niet gegokt.** Sinds #1268 kiest geen enkele component
+   automatisch tussen kandidaten — `TeamResolver` geeft op beide tiers altijd `MeerdereKandidaten`
+   terug. Komt er ooit weer een disambiguator (mens of AI), dan gelden dezelfde twee eisen als
+   vóór #1268: hij mag **alleen kiezen uit aangeboden kandidaten**, met die keuze altijd in C#
+   gevalideerd tegen die lijst — nooit vrije generatie van een teamnaam — en hij landt op beide
+   tiers tegelijk (regel 6), nooit als functionaliteit van één tier.
 4. **Nieuwe naamvormen eerst tegen echte data verifiëren** vóór je de normalisatie aanpast:
    `stg.teams` én `his.teams` op SQL Server, **alleen `his.teams` op Postgres** — daar bestaat
    geen `stg`-schema (de migraties kennen uitsluitend `his.teams`, `his.matches` en
