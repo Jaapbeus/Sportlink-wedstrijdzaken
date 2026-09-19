@@ -18,6 +18,18 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Centrale architectuurbeschrijving (#1274).** `docs/ARCHITECTUUR.md` is het nieuwe leidende
+  architectuurdocument: één plek met de kwaliteitsdoelen, de belanghebbenden en hun zorgen, de
+  architectuurbesluiten en een toetsregister. Het is opgezet volgens ISO/IEC/IEEE 42010 en
+  gestructureerd met arc42, en gegrond in openbare standaarden — het Azure Well-Architected
+  Framework, OWASP ASVS, de HTTP- en foutmodel-RFC's, OpenAPI en de AVG — zodat elke fork de
+  bronnen zelf kan nalezen. Het register noemt per regel de externe basis, de lokale afspraak en
+  de **bewijsvorm**: staat daar `ontbreekt`, dan geldt de regel wel maar is hij nog niet
+  automatisch te controleren. Die regels vormen samen hoofdstuk 11 en daarmee een geordende
+  werkvoorraad. `docs/ARCHITECTURE.md` behoudt zijn volledige inhoud en is nu expliciet
+  uitvoeringsdocumentatie: het beschrijft hoe een afspraak wordt toegepast, niet welke geldt.
+
 ### Fixed
 - **Documentatie feitelijk gelijkgetrokken met de code (#1269).** Alle documenten in `docs/` en de
   documentatie in de hoofdmap zijn document voor document tegen de werkelijke broncode getoetst.

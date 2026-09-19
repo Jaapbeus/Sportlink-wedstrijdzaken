@@ -60,7 +60,8 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 
 | Bestand | Onderwerp |
 |---------|-----------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Architectuurprincipes: multi-tier, multi-club, ClubCode, kanaalstrategie — startpunt |
+| [ARCHITECTUUR.md](ARCHITECTUUR.md) | **Leidend.** Architectuurbeschrijving volgens ISO 42010 / arc42: kwaliteitsdoelen, besluiten, toetsregister met externe basis en bewijsvorm |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Uitvoeringsdetail bij ARCHITECTUUR.md: multi-tier, multi-club, ClubCode, kanaalstrategie |
 | [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md) | Multi-tier strategie, bouwvolgorde, casing-conventie, RLS, sub-issue-index |
 | [ARCHITECTUUR-CODEKWALITEIT.md](ARCHITECTUUR-CODEKWALITEIT.md) | Codekwaliteitsregels met CI-guard en plafond per regel |
 | [ARCHITECTUUR-AI-SERVICES.md](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch AI-ontwerp, datumregel, few-shot conventies |
