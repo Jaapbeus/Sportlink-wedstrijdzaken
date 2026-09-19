@@ -641,18 +641,28 @@ jobs:
       # Alleen zinvol bij een pull request — bij een push naar main/develop is er geen basis om
       # tegen af te zetten.
       # ──────────────────────────────────────────────────────────────────────
+      # #1265: NIET de live tip van de basisbranch ophalen, maar de commit die GitHub bij dit
+      # event als basis vastlegde. De checkout hierboven is bij een pull_request de merge-ref —
+      # een momentopname van head gemerged in de basis op het moment dat het event afging.
+      # 'git fetch origin <branch>' levert daarentegen de tip van NU. Mergt er tijdens deze run
+      # een andere PR een migratie naar develop, dan past deze stap er één méér toe dan de
+      # checkout kent, en faalt de telling verderop op een PR die migraties niet eens aanraakt.
+      # github.event.pull_request.base.sha is per definitie dezelfde basis als die van de
+      # merge-ref en beweegt dus niet mee.
       - name: Migratiepad van de basisbranch toepassen (checksum-basis, #1062)
         if: github.event_name == 'pull_request'
+        env:
+          BASIS_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          git fetch --no-tags --depth=1 origin "$BASIS_SHA"
           rm -rf /tmp/basismigraties && mkdir -p /tmp/basismigraties
           # git archive faalt als de map op de basisbranch niet bestaat — dat is geen fout maar
           # een nieuwe map, en dan valt er ook niets te vergelijken.
-          if git archive FETCH_HEAD Database.Postgres/migrations 2>/dev/null | tar -x -C /tmp/basismigraties; then
+          if git archive "$BASIS_SHA" Database.Postgres/migrations 2>/dev/null | tar -x -C /tmp/basismigraties; then
             dotnet run --project Database.Postgres.Cli --configuration Release -- /tmp/basismigraties/Database.Postgres/migrations
           else
-            echo "::notice::Database.Postgres/migrations bestaat niet op ${{ github.base_ref }} — checksum-basis overgeslagen."
+            echo "::notice::Database.Postgres/migrations bestaat niet op basis $BASIS_SHA — checksum-basis overgeslagen."
           fi
 
       - name: Migratiepad toepassen (1e keer — verse database)
@@ -698,17 +708,22 @@ jobs:
           fi
           echo "ClubCode-dekking bevestigd voor alle vier tabellen."
 
-          # schema_migrations moet precies evenveel rijen tonen als er .sql-bestanden in de
-          # migratiemap staan — geen dubbele rij door de tweede run hierboven. Geteld vanaf schijf
-          # i.p.v. hardcoded, zodat een volgend migratiebestand (#824 voegde het tweede toe) deze
-          # assertie niet stil laat verouderen.
-          verwacht_aantal=$(ls Database.Postgres/migrations/*.sql | wc -l)
-          count=$(psql_ci -c "SELECT COUNT(*) FROM public.schema_migrations;")
-          if [ "$count" != "$verwacht_aantal" ]; then
-            echo "::error::Verwacht $verwacht_aantal toegepaste migratie(s) in schema_migrations, gevonden: $count"
+          # schema_migrations moet exact de migratiebestanden bevatten die deze checkout kent —
+          # geen dubbele rij door de tweede run hierboven, en niets extra's.
+          #
+          # #1265: vergelijk de BESTANDSNAMEN, niet alleen het aantal. Een telling zegt bij een
+          # verschil alleen "verwacht 26, gevonden 27" en laat je zelf raden welke; de namen wijzen
+          # meteen aan wat er te veel of te weinig is. Dat is hier het verschil tussen een echte
+          # fout en de basis-checksumstap die iets anders toepaste dan deze checkout bevat.
+          ls Database.Postgres/migrations/*.sql | xargs -n1 basename | sort > /tmp/verwachte_migraties.txt
+          psql_ci -c "SELECT filename FROM public.schema_migrations ORDER BY filename;" | sort > /tmp/toegepaste_migraties.txt
+          if ! diff -u /tmp/verwachte_migraties.txt /tmp/toegepaste_migraties.txt > /tmp/migratie_diff.txt; then
+            echo "::error::schema_migrations komt niet overeen met Database.Postgres/migrations."
+            echo "Alleen in de checkout (-) of alleen in de database (+):"
+            cat /tmp/migratie_diff.txt
             exit 1
           fi
-          echo "schema_migrations: exact $verwacht_aantal toegepaste migratie(s), geen duplicaat door de idempotentie-run."
+          echo "schema_migrations: exact $(wc -l < /tmp/verwachte_migraties.txt) toegepaste migratie(s), namen identiek aan de checkout."
 
           # Identifier-casing-conventie (ARCHITECTUUR-DATABASE-TIERS.md §3): geen enkele kolomnaam
           # in de vier tabellen mag afwijken van zijn eigen lowercase-vorm.
