@@ -170,23 +170,80 @@ if ($appRazor -and (Get-Content $appRazor -Raw) -match 'IsInRole\("admin"\)') {
 # ── Layer 5 — Backend RequireAdmin op alle protected endpoints ────────────────
 Write-Section 'Layer 5 — Backend RequireAdmin (EasyAuthHelper) — code-side'
 
-$adminFns = Join-Path $PSScriptRoot '../../FunctionApp/Admin' -Resolve -ErrorAction SilentlyContinue
-if ($adminFns) {
-    $files = Get-ChildItem -Path $adminFns -Filter '*.cs' | Where-Object { $_.Name -ne 'EasyAuthHelper.cs' }
-    $missing = @()
-    foreach ($f in $files) {
-        $content = Get-Content $f.FullName -Raw
-        $functions = [regex]::Matches($content, '\[Function\("[^"]+"\)\]')
-        $requireAdmin = [regex]::Matches($content, 'EasyAuthHelper\.RequireAdmin')
-        if ($functions.Count -gt $requireAdmin.Count) {
-            $missing += "$($f.Name) — $($functions.Count) [Function], $($requireAdmin.Count) RequireAdmin"
-        }
+# #1276 — drie dingen gingen hier mis, en ze faalden alle drie de verkeerde kant op:
+#
+#   1. Er werd één tier gescand (FunctionApp/Admin). Sinds #1266 zijn beide tiers gelijkwaardig
+#      (built=true in scripts/ci/database-tiers.json), dus juist de tier die déze installatie
+#      draait kon ongecontroleerd blijven. De tierlijst komt nu uit dat bestand — nooit een
+#      tweede hardcoded lijst, zie de tier-regels in CLAUDE.md.
+#   2. -ErrorAction SilentlyContinue maakte $adminFns leeg als het pad niet oploste, en er was
+#      geen else-tak. Het script zei dan NIETS over laag 5, wat leest als "in orde". Een
+#      onoplosbaar pad is nu een Write-Fail.
+#   3. De telling [Function] > RequireAdmin gaf 15 van de 24 bestanden vals als onbeschermd op.
+#      Die endpoints lopen via AdminEndpoint.ExecuteAsync, dat de rolcontrole centraal doet —
+#      de tekst "EasyAuthHelper.RequireAdmin" staat dan niet in het bestand zelf. Een controle
+#      die op 15 plekken ten onrechte rood staat, wordt niet gelezen, en dan bewaakt hij niets.
+#
+# De controle redeneert nu per endpoint in plaats van per bestand te tellen: knip de inhoud bij
+# elke [Function("...")], houd de stukken met een HttpTrigger over (een TimerTrigger heeft geen
+# aanroeper met een rol) en eis dat zo'n stuk langs een van de bekende poorten gaat.
+$guardPatronen = @(
+    'EasyAuthHelper\.RequireAdmin',                 # rechtstreeks in het endpoint
+    'AdminEndpoint\.ExecuteAsync',                  # centrale poort: doet RequireAdmin
+    'SportlinkEndpointSupport\.Execute'             # Wedstrijdzaken-rol + AdminEndpoint erachter
+)
+
+$tierBestand = Join-Path $PSScriptRoot '../ci/database-tiers.json'
+if (-not (Test-Path $tierBestand)) {
+    Write-Fail "Tierlijst niet gevonden op $tierBestand — laag 5 is NIET gecontroleerd"
+} else {
+    $tiers = (Get-Content $tierBestand -Raw | ConvertFrom-Json).tiers | Where-Object { $_.built }
+    if (-not $tiers) {
+        Write-Fail "Geen enkele tier met built=true in $tierBestand — laag 5 is NIET gecontroleerd"
     }
-    if ($missing.Count -eq 0) {
-        Write-Pass "Alle Admin*Function bestanden hebben RequireAdmin op elk endpoint"
-    } else {
-        Write-Fail 'Endpoint(s) zonder RequireAdmin:'
-        $missing | ForEach-Object { Write-Info $_ }
+    foreach ($tier in $tiers) {
+        # csproj -> projectmap -> Admin-map. Zo blijft database-tiers.json de enige vertaaltabel.
+        $projectMap = Split-Path $tier.csproj -Parent
+        $adminFns   = Join-Path $PSScriptRoot "../../$projectMap/Admin"
+
+        if (-not (Test-Path $adminFns)) {
+            Write-Fail "$($tier.name): Admin-map niet gevonden op $adminFns — laag 5 is voor deze tier NIET gecontroleerd"
+            continue
+        }
+
+        $files = Get-ChildItem -Path $adminFns -Filter '*.cs' | Where-Object { $_.Name -ne 'EasyAuthHelper.cs' }
+        if ($files.Count -eq 0) {
+            Write-Fail "$($tier.name): geen .cs-bestanden in $adminFns — laag 5 is voor deze tier NIET gecontroleerd"
+            continue
+        }
+
+        $missing   = @()
+        $gecontroleerd = 0
+        foreach ($f in $files) {
+            $content = Get-Content $f.FullName -Raw
+            # Knip bij elke [Function("...")]; stuk 0 is alles ervóór (usings, class-declaratie).
+            $stukken = [regex]::Split($content, '(?=\[Function\("[^"]+"\)\])')
+            foreach ($stuk in $stukken) {
+                if ($stuk -notmatch '\[Function\("([^"]+)"\)\]') { continue }
+                $naam = $Matches[1]
+                if ($stuk -notmatch 'HttpTrigger') { continue }   # timer: geen aanroeper met een rol
+                $gecontroleerd++
+                $bewaakt = $false
+                foreach ($patroon in $guardPatronen) {
+                    if ($stuk -match $patroon) { $bewaakt = $true; break }
+                }
+                if (-not $bewaakt) { $missing += "$($f.Name) → $naam" }
+            }
+        }
+
+        if ($gecontroleerd -eq 0) {
+            Write-Fail "$($tier.name): geen enkel HTTP-endpoint aangetroffen in $adminFns — dat kan niet kloppen"
+        } elseif ($missing.Count -eq 0) {
+            Write-Pass "$($tier.name): alle $gecontroleerd HTTP-endpoints in Admin/ gaan langs een rolcontrole"
+        } else {
+            Write-Fail "$($tier.name): $($missing.Count) van $gecontroleerd HTTP-endpoint(s) zonder rolcontrole:"
+            $missing | ForEach-Object { Write-Info $_ }
+        }
     }
 }
 

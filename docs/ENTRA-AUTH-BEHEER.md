@@ -43,16 +43,28 @@ De Blazor Admin GUI (Static Web App) authenticeert tegen Entra ID via MSAL (OIDC
 | 4 | **Frontend role-gate** | `App.razor` checkt `IsInRole("admin") \|\| IsInRole("user")` |
 | 5 | **Backend role-gate** | `EasyAuthHelper.RequireAdmin()` op elke admin endpoint — aanwezig in **beide** tiers: `FunctionApp.Postgres/Admin/EasyAuthHelper.cs` (productie) en `FunctionApp/Admin/EasyAuthHelper.cs` (SQL Server-tier) |
 
-> **Bekend gat in het verificatiescript.** De Layer 5-scan in `Verify-AzureAuthSetup.ps1` doorzoekt
-> uitsluitend `FunctionApp/Admin/` — de SQL Server-tier. `FunctionApp.Postgres/Admin/`, de tier die
-> in productie draait, wordt nooit gescand. Een admin-endpoint dat daar zonder `RequireAdmin` wordt
-> toegevoegd passeert het script dus **groen**. Controleer die map met de hand tot het script beide
-> bomen scant.
+> **Gedicht in #1276.** De Layer 5-scan doorzocht uitsluitend `FunctionApp/Admin/` — de SQL
+> Server-tier — zodat een endpoint zonder rolcontrole in `FunctionApp.Postgres/Admin/` het script
+> groen passeerde. Hij leest nu de tierlijst uit `scripts/ci/database-tiers.json` en scant de
+> `Admin/`-map van elke tier met `built = true`; een pad dat niet oplost is sindsdien een `FAIL`
+> in plaats van stilte, en een ontbrekende tierlijst ook.
+>
+> Daarbij bleek de scan zelf niet te kloppen: hij vergeleek per bestand het aantal `[Function]`-
+> attributen met het aantal letterlijke `EasyAuthHelper.RequireAdmin`-voorkomens, en meldde
+> daardoor **15 van de 24 bestanden ten onrechte als onbeschermd** — die endpoints lopen via
+> `AdminEndpoint.ExecuteAsync`, dat de rolcontrole centraal doet. De scan redeneert nu per
+> endpoint: elk stuk met een `HttpTrigger` moet langs `EasyAuthHelper.RequireAdmin`,
+> `AdminEndpoint.ExecuteAsync` of `SportlinkEndpointSupport.Execute*` gaan. Een `TimerTrigger`
+> wordt overgeslagen — die heeft geen aanroeper met een rol.
+>
+> Handmatig te draaien: `pwsh scripts/azure/Verify-AzureAuthSetup.ps1`. Verwacht resultaat op een
+> gezonde codebase: 66 HTTP-endpoints per tier, alle bewaakt.
 
 ### Wat bewaakt welke laag, en wanneer
 
-Layer 1–3b zijn Azure-config, Layer 4–5 zijn code. Er is **geen enkele check in de PR-CI** die een
-auth-laag bewaakt:
+Layer 1–3b zijn Azure-config, Layer 4–5 zijn code. Sinds #1277 is er precies één laag die in de
+PR-CI bewaakt wordt — laag 4. De overige vier zijn alleen tegen Entra zelf of ná de merge naar
+`main` te controleren:
 
 | Laag | Bewaakt door | Wanneer | Automatisch? |
 |---|---|---|---|
@@ -61,7 +73,7 @@ auth-laag bewaakt:
 | 3a — App Roles | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 3b — Optional claims | `Verify-AzureAuthSetup.ps1` | Handmatig, tegen Entra | ❌ |
 | 4 — Frontend role-gate | `BlazorAdmin.Tests/AuthGateTests.cs` + `CustomUserFactoryTests.cs` (#1277) **plus** `Verify-AzureAuthSetup.ps1` (statisch: zoekt `IsInRole("admin")` in `App.razor`) | Automatisch, **in de PR-CI** | ✅ |
-| 5 — Backend role-gate | Smoke tests in `deploy.yml` (401 verwacht op een admin-endpoint met alleen een function key, zonder token, en met een gefakete `X-MS-CLIENT-PRINCIPAL`) **plus** `Verify-AzureAuthSetup.ps1` (statisch, alleen de SQL Server-tier) | Automatisch, maar **pas ná de merge naar `main`** | ⚠️ gedeeltelijk |
+| 5 — Backend role-gate | Smoke tests in `deploy.yml` (401 verwacht op een admin-endpoint met alleen een function key, zonder token, en met een gefakete `X-MS-CLIENT-PRINCIPAL`) **plus** `Verify-AzureAuthSetup.ps1` (statisch, **beide gebouwde tiers** sinds #1276) | Automatisch, maar **pas ná de merge naar `main`** | ⚠️ gedeeltelijk |
 
 Layer 4 was tot #1277 de enige laag zonder énige automatische controle: de beslissing stond inline
 in het `@code`-blok van `App.razor` en viel daarmee buiten elk testproject. Hij staat nu als pure
