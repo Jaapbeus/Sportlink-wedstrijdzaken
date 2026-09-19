@@ -25,16 +25,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   niets heeft ingesteld verandert er niets — die houdt exact het huidige thema, want de bestaande
   vier kleuren blijven de terugval.
 
-### Fixed
-- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
-  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
-  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
-  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
-  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
-  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
-  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
-
 ### Changed
+- **Voorbereiding op een donkere weergave: de kleuren van de schermen zitten niet langer vast in
+  de opmaak (#1255).** De achtergrond van de pagina, de kaartjes, de grijstinten en de schaduw
+  onder een kaartje waren tot nu toe vaste waarden die niemand kon aanpassen. Ze zijn nu
+  instelbaar gemaakt, elk met een variant voor een lichte en een donkere weergave. Er verandert
+  op dit moment nog niets zichtbaars — de schakelaar om over te stappen komt in een volgende stap.
+  Kleuren met een betekenis blijven bewust vast: groen blijft "klaar", rood blijft "fout", en de
+  oranje markering van de testmodus blijft oranje.
 - **De thema-functionaliteit bestond twee keer in de code, één keer per databasesoort (#1248).**
   Dat betekende dat elke aanpassing aan de kleuren ook twee keer met de hand moest, in twee
   bestanden die niets van elkaar wisten — met het risico dat een verbetering of beveiligingsfix in
@@ -42,6 +40,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   maken heeft staat nu op één plek, met tests eromheen die er eerder helemaal niet waren. Voor de
   beheerder verandert er niets aan wat het scherm doet; het maakt toekomstige uitbreidingen van het
   thema wel betrouwbaarder. Deze ontdubbeling bracht meteen bovenstaande fout aan het licht.
+
+### Fixed
 - **"Kleuren ophalen van de clubwebsite" kon mislukken bij websites die er niets mis mee hadden
   (#1250).** Het systeem vroeg de pagina op met alleen een naamkaartje van de applicatie erbij,
   zonder te vermelden welk soort inhoud en welke taal het verwachtte — iets wat elke browser wel
@@ -70,6 +70,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   clubs, dus er viel niets op te ruimen. Staan er op een andere installatie wél dubbelen, dan stopt
   de bijwerking met een melding die vertelt om welke club het gaat, in plaats van half werk af te
   leveren.
+- **Het logo en het icoontje van de clubwebsite werden bij "Ophalen" nooit gevonden (#1252).** Het
+  systeem zocht ze wel degelijk op de pagina, maar liet het gevonden adres daarna stilzwijgend
+  vallen zodra dat adres — zoals gebruikelijk op websites — een verkorte verwijzing was in plaats
+  van een volledig webadres. Er kwam geen foutmelding: het resultaat was simpelweg "geen logo
+  gevonden", niet te onderscheiden van een website die er echt geen heeft. Op een Windows-machine
+  werkte dezelfde code wél, waardoor het bij testen niet opviel; de servers waarop dit draait zijn
+  Linux. Logo en icoontje komen er nu uit zoals bedoeld.
 
 ## [3.5.0.0] — 2026-09-17
 

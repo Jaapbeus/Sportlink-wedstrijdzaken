@@ -41,6 +41,15 @@ jobs:
       - name: Postgres identifier-casing-guard
         run: bash scripts/ci/check-postgres-identifier-casing.sh
 
+      # #1255 (epic #1249): bewaakt de thema-CSS-variabelen. Een selector die var(--theme-iets)
+      # gebruikt terwijl die variabele nergens gedefinieerd is, geeft géén foutmelding — de
+      # eigenschap valt weg en het element rendert ongestyled, zichtbaar alleen als iemand precies
+      # die pagina in precies die modus opent. Sinds het thema twee modi heeft moet elke kleur op
+      # vier plekken staan (-light, -dark, en de effectieve verwijzing in beide :root-blokken);
+      # één vergeten plek is exact zo'n stille fout. Geen database, geen secrets, geen browser.
+      - name: Thema-variabele-guard
+        run: bash scripts/ci/check-theme-variables.sh
+
       # #864, deel 2: de "grootste deelopgave" die #908 (deel 1) open liet — een tabel die aan de
       # SQL Server-boom wordt toegevoegd (of hernoemd) zonder Postgres-tegenhanger blijft anders
       # onopgemerkt tot iemand de Postgres-tier daadwerkelijk gebruikt. Geen database, geen
