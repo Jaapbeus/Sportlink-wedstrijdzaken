@@ -2,7 +2,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
+using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Infrastructure;
 
 namespace SportlinkFunction.Admin;
 
@@ -19,6 +22,11 @@ namespace SportlinkFunction.Admin;
 public static class SportlinkExtensieRollenFunction
 {
     private static readonly string[] FunctioneleRollen = { "Wedstrijdzaken" };
+
+    // #1266 (port van #991): kale HttpClient voor de Keycloak-validatie bij het registreren van een
+    // refresh-token — zelfde precedent als de Postgres-tegenhanger (geen resilience-library elders
+    // in deze repo).
+    private static readonly HttpClient TokenHttp = new();
 
     [Function("SportlinkExtensieRollenGet")]
     public static Task<IActionResult> Get(
@@ -100,8 +108,62 @@ public static class SportlinkExtensieRollenFunction
                 return new OkObjectResult(new { RolNaam = rolNaam, LaatstGekoppeldDoor = door });
             });
 
+    // #1266 (port van #991): registreert het échte refresh_token productie-persistent. Bewust géén
+    // GET-tegenhanger — dit endpoint is write-only. Valideert eerst met één refresh-poging
+    // rechtstreeks bij Keycloak, zodat een ongeldige waarde nooit opgeslagen wordt.
+    //
+    // TIERVERSCHIL, BEWUST BEHOUDEN (#1020, herbevestigd bij #1266): waar de Postgres-tier hier
+    // naar een eigen DB-tabel schrijft, schrijft deze tier via ISportlinkClubTokenStore naar een
+    // Function App-instelling (Azure Management API). Dat is geen achterstand maar een andere,
+    // volwaardige opslagkeuze — een tweede DB-tabel-tokenstore bouwen zou die keuze stilzwijgend
+    // terugdraaien.
+    [Function("SportlinkExtensieRollenPutToken")]
+    public static Task<IActionResult> PutToken(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/sportlink-extensie/rollen/{rolNaam}/token")] HttpRequest req,
+        string rolNaam,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("SportlinkExtensieRollenPutToken"), "sportlink-extensie-token registreren",
+            async _ =>
+            {
+                if (!FunctioneleRollen.Contains(rolNaam, StringComparer.OrdinalIgnoreCase))
+                    return new BadRequestObjectResult(new { error = $"Onbekende rol '{rolNaam}'. Toegestaan: {string.Join(", ", FunctioneleRollen)}." });
+
+                var dto = JsonConvert.DeserializeObject<RegistreerTokenDto>(
+                    await new StreamReader(req.Body).ReadToEndAsync());
+                if (string.IsNullOrWhiteSpace(dto?.RefreshToken))
+                    return new BadRequestObjectResult(new { error = "refreshToken ontbreekt." });
+
+                // #857: dit is een echte uitgaande aanroep naar de Sportlink-identiteitsprovider —
+                // zelfde poort als elke andere externe integratie in deze repo, nooit een eigen
+                // ad-hoc controle.
+                if (!EgressGuard.ExternalIntegrationsAllowed())
+                    return Fout(SportlinkEndpointCore.EgressGeblokkeerdFout);
+
+                // Program.cs registreert de tokenopslag alleen als de EgressGuard het toestaat; de
+                // controle hierboven dekt dat af, deze null-tak is de vangnetvariant.
+                var tokenStore = context.InstanceServices.GetService<ISportlinkClubTokenStore>();
+                if (tokenStore == null)
+                    return Fout(SportlinkEndpointCore.ClientNietGeconfigureerdFout);
+
+                if (!await SportlinkClubClient.ValideerRefreshTokenAsync(TokenHttp, dto.RefreshToken))
+                    return new ObjectResult(new { error = "Sportlink heeft dit refresh-token geweigerd — controleer of het recent en correct is." }) { StatusCode = 409 };
+
+                // De tokenwaarde gaat uitsluitend naar de opslag — nooit naar het log of de respons.
+                await tokenStore.SchrijfRefreshTokenAsync(rolNaam, dto.RefreshToken);
+
+                return new OkObjectResult(new { RolNaam = rolNaam });
+            });
+
+    private static ObjectResult Fout(SportlinkEndpointFout fout)
+        => new(new { error = fout.Foutmelding }) { StatusCode = fout.HttpStatus };
+
     private class RegistreerKoppelingDto
     {
         public string? SportlinkAccountNaam { get; set; }
+    }
+
+    private class RegistreerTokenDto
+    {
+        public string? RefreshToken { get; set; }
     }
 }

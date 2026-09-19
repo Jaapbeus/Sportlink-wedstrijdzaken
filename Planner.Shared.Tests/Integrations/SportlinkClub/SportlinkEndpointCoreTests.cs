@@ -218,4 +218,145 @@ public class SportlinkEndpointCoreTests
         afronding.AuditResultaat.Should().Be("DryRun");
         afronding.AuditSamenvatting.Should().BeNull();
     }
+    // ── Rolstatus van het statuspaneel (#998, gedeeld in #1266) ─────────────────────────────────
+    // De SQL Server-tier kent geen verversmomenten (tokenopslag in een Function App-instelling,
+    // #1020). "Onbekend" mag daar nooit als "verlopen" uit komen — dat zou de beheerder een
+    // koppeling laten herstellen die prima werkt.
+
+    [Fact]
+    public void BouwRolStatus_GekoppeldZonderTijdstempels_IsNietVermoedelijkVerlopen()
+    {
+        var status = SportlinkEndpointCore.BouwRolStatus(
+            SportlinkEndpointCore.RolWedstrijdzaken, gekoppeld: true,
+            laatstVerverstOpUtc: null, refreshTokenVervaltOpUtc: null,
+            nuUtc: new DateTime(2026, 9, 19, 12, 0, 0, DateTimeKind.Utc));
+
+        status.Gekoppeld.Should().BeTrue();
+        status.LaatstVerverstOp.Should().BeNull();
+        status.VermoedelijkNietMeerGeldig.Should().BeFalse(
+            "een onbekend verversmoment is geen aanwijzing dat het token dood is");
+    }
+
+    [Fact]
+    public void BouwRolStatus_NietGekoppeld_DraagtGeenOudeTijdstempelsMee()
+    {
+        var nu = new DateTime(2026, 9, 19, 12, 0, 0, DateTimeKind.Utc);
+
+        var status = SportlinkEndpointCore.BouwRolStatus(
+            SportlinkEndpointCore.RolWedstrijdzaken, gekoppeld: false,
+            laatstVerverstOpUtc: nu.AddDays(-3), refreshTokenVervaltOpUtc: nu.AddDays(-3),
+            nuUtc: nu);
+
+        status.LaatstVerverstOp.Should().BeNull();
+        status.RefreshTokenVervaltOp.Should().BeNull();
+        status.VermoedelijkNietMeerGeldig.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(119, false)]   // net binnen de drempel
+    [InlineData(121, true)]    // twee uur gepasseerd: de uur-timer heeft twee runs gemist
+    public void IsTokenVermoedelijkVerlopen_DrempelIsTweeUur(int minutenGeleden, bool verwacht)
+    {
+        var nu = new DateTime(2026, 9, 19, 12, 0, 0, DateTimeKind.Utc);
+
+        SportlinkEndpointCore.IsTokenVermoedelijkVerlopen(nu.AddMinutes(-minutenGeleden), nu)
+            .Should().Be(verwacht);
+    }
+
+    // ── Live controle (#998) ────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void BouwLiveControle_LegeCache_IsGeenFout()
+    {
+        var live = SportlinkEndpointCore.BouwLiveControle(SportlinkClubCallStatus.Ok);
+
+        live.TokenRefreshGelukt.Should().BeTrue();
+        live.MatchCheckResultaat.Should().Be(SportlinkEndpointCore.LiveControleGeenWedstrijdMelding);
+        live.MatchCheckHttpStatus.Should().BeNull();
+    }
+
+    [Fact]
+    public void BouwLiveControle_MetControleGet_GeeftAlleenStatusTerug()
+    {
+        var live = SportlinkEndpointCore.BouwLiveControle(
+            SportlinkClubCallStatus.HerkoppelingVereist, SportlinkClubCallStatus.SportlinkFout, 500);
+
+        live.TokenRefreshGelukt.Should().BeFalse();
+        live.MatchCheckResultaat.Should().Be("SportlinkFout");
+        live.MatchCheckHttpStatus.Should().Be(500);
+    }
+
+    // ── Contract-check (#998) ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void BeoordeelContractCheck_TransportFout_TeltAlsNietOk()
+    {
+        var respons = new SportlinkClubResponse<string>(
+            SportlinkClubCallStatus.NetwerkFout, null, "timeout", null);
+
+        var uitkomst = SportlinkEndpointCore.BeoordeelContractCheck(respons);
+
+        uitkomst.IsOk.Should().BeFalse();
+        uitkomst.AfwijkendeVelden.Should().BeNull();
+        uitkomst.FoutmeldingSamenvatting.Should().Be("timeout");
+    }
+
+    [Fact]
+    public void BeoordeelContractCheck_OngeldigeJson_IsGebrokenContractGeenCrash()
+    {
+        var respons = new SportlinkClubResponse<string>(
+            SportlinkClubCallStatus.Ok, "dit is geen json", null, 200);
+
+        var uitkomst = SportlinkEndpointCore.BeoordeelContractCheck(respons);
+
+        uitkomst.IsOk.Should().BeFalse();
+        uitkomst.FoutmeldingSamenvatting.Should().Contain("geen geldige JSON");
+    }
+
+    [Fact]
+    public void BeoordeelContractCheck_AfwijkendeVorm_MeldtAlleenVeldnamen()
+    {
+        // publicMatchId ontbreekt; de waarde van de overige velden mag nooit in de melding staan.
+        var respons = new SportlinkClubResponse<string>(
+            SportlinkClubCallStatus.Ok, """{"matchStatus":"GEHEIME_WAARDE"}""", null, 200);
+
+        var uitkomst = SportlinkEndpointCore.BeoordeelContractCheck(respons);
+
+        uitkomst.IsOk.Should().BeFalse();
+        uitkomst.AfwijkendeVelden.Should().Contain("publicMatchId");
+        uitkomst.FoutmeldingSamenvatting.Should().StartWith("Contractvorm afwijkend: ");
+        uitkomst.AfwijkendeVelden.Should().NotContain("GEHEIME_WAARDE");
+        uitkomst.FoutmeldingSamenvatting.Should().NotContain("GEHEIME_WAARDE");
+    }
+
+    // ── Noodmail-throttle (#998) ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void MagContractCheckNoodmailVersturen_NogNooitVerstuurd_MagWel()
+    {
+        SportlinkEndpointCore.MagContractCheckNoodmailVersturen(null, DateTime.UtcNow)
+            .Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(23, false)]
+    [InlineData(24, true)]
+    [InlineData(25, true)]
+    public void MagContractCheckNoodmailVersturen_PasNaVierentwintigUur(int urenGeleden, bool verwacht)
+    {
+        var nu = new DateTime(2026, 9, 19, 12, 0, 0, DateTimeKind.Utc);
+
+        SportlinkEndpointCore.MagContractCheckNoodmailVersturen(nu.AddHours(-urenGeleden), nu)
+            .Should().Be(verwacht);
+    }
+
+    [Fact]
+    public void BouwContractCheckNoodmailBody_NoemtDeTabelVanDeTier()
+    {
+        var body = SportlinkEndpointCore.BouwContractCheckNoodmailBody("Contractvorm afwijkend: matchField", "dbo.SportlinkContractCheck");
+
+        body.Should().Contain("dbo.SportlinkContractCheck");
+        body.Should().Contain("Contractvorm afwijkend: matchField");
+    }
 }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Shared.Integrations.SportlinkClub;
+using SportlinkFunction.Admin;
 using SportlinkFunction.Infrastructure;
 
 namespace SportlinkFunction.Sportlink;
@@ -47,6 +48,34 @@ internal static class SportlinkEndpointSupport
     /// <summary>Dry-run-stand van deze club (#998) — fail-safe: alles behalve een expliciet geladen
     /// <c>"0"</c> is dry-run. Zie <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
     internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(LeesInstelling);
+
+    /// <summary>
+    /// De endpointwrapper voor élk Sportlink Web Extension-endpoint van deze tier (#1266).
+    /// <para>
+    /// <b>Waarom een eigen wrapper en niet <c>requireRole:</c> zoals de Postgres-tier?</b> De
+    /// Postgres-variant van <c>AdminEndpoint.ExecuteAsync</c> heeft sinds #991 een optionele
+    /// <c>requireRole</c>-parameter waarmee <c>RequireWedstrijdzaken</c> de <c>RequireAdmin</c>-check
+    /// <i>vervangt</i>; de SQL Server-variant heeft die parameter (nog) niet. Deze wrapper zet de
+    /// functionele rolcheck daarom <i>bovenop</i> de bestaande admin-gate — precies zoals
+    /// docs/SPORTLINK-WEB-EXTENSION.md §3.4 de rol beschrijft ("bovenop de bestaande
+    /// admin-toegang"). Nooit zwakker dan de Postgres-tegenhanger: een aanroeper heeft hier zowel
+    /// <c>admin</c> als <c>Wedstrijdzaken</c> nodig, wat de aanbevolen roltoewijzing
+    /// <c>["admin","Wedstrijdzaken"]</c> sowieso is.
+    /// </para>
+    /// </summary>
+    internal static Task<IActionResult> ExecuteWedstrijdzakenAsync(
+        HttpRequest req, ILogger log, string errorContext, Func<string, Task<IActionResult>> work)
+    {
+        var rolFout = EasyAuthHelper.RequireWedstrijdzaken(req);
+        if (rolFout != null) return Task.FromResult(rolFout);
+        return AdminEndpoint.ExecuteAsync(req, log, errorContext, work);
+    }
+
+    /// <summary>De 503 voor "client niet in DI geregistreerd", als losse respons — voor de paden die
+    /// de client zelf uit <see cref="FunctionContext.InstanceServices"/> halen in plaats van via
+    /// <see cref="ClientOfFout"/>.</summary>
+    internal static IActionResult ClientNietGeconfigureerdFout()
+        => NaarActionResult(SportlinkEndpointCore.ClientNietGeconfigureerdFout);
 
     /// <summary>De <see cref="ISportlinkClubClient"/> uit DI, of een 503 als hij niet geregistreerd
     /// is (Program.cs registreert hem alleen als de EgressGuard het toestaat).</summary>

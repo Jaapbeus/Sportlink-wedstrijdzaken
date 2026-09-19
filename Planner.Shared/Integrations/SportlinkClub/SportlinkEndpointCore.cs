@@ -51,6 +51,44 @@ public sealed record SportlinkMutatieAfronding<T>(
     T? Data) where T : class;
 
 /// <summary>
+/// Koppelingsstatus van één functionele rol, zoals het statuspaneel op de Instellingen-pagina hem
+/// toont (#998). Een record en geen anoniem object per tier: de vorm van dit antwoord is het
+/// contract met de Admin GUI, en die GUI is gedeeld — twee losse anonieme objecten kunnen
+/// stilzwijgend uit elkaar lopen (#1248).
+/// <para>
+/// <see cref="LaatstVerverstOp"/> en <see cref="RefreshTokenVervaltOp"/> zijn <c>null</c> op een
+/// tier waarvan de tokenopslag die momenten niet bijhoudt — de SQL Server-tier bewaart het
+/// refresh-token in een Function App-instelling (#1020), zonder tijdstempels. Dat is geen fout,
+/// maar "niet bekend": <see cref="VermoedelijkNietMeerGeldig"/> blijft dan <c>false</c>.
+/// </para>
+/// </summary>
+public sealed record SportlinkRolStatus(
+    string RolNaam,
+    bool Gekoppeld,
+    DateTime? LaatstVerverstOp,
+    DateTime? RefreshTokenVervaltOp,
+    bool VermoedelijkNietMeerGeldig);
+
+/// <summary>
+/// Uitkomst van de optionele <c>?live=true</c>-controle van het health-endpoint (#998). Bevat
+/// nooit responsdata — alleen of de tokenverversing lukte en welke statusaard/HTTP-status de
+/// controle-GET opleverde.
+/// </summary>
+public sealed record SportlinkLiveControle(
+    bool TokenRefreshGelukt,
+    string MatchCheckResultaat,
+    int? MatchCheckHttpStatus);
+
+/// <summary>
+/// Beoordeling van één contract-check-antwoord (#998): is de vorm van de <c>Match</c>-respons nog
+/// zoals verwacht, en zo niet, welke veldNAMEN wijken af. Bevat nooit veldwaarden (AVG/CISO).
+/// </summary>
+public sealed record SportlinkContractCheckUitkomst(
+    bool IsOk,
+    string? AfwijkendeVelden,
+    string? FoutmeldingSamenvatting);
+
+/// <summary>
 /// De beslisregels die élk Sportlink Web Extension-endpoint en élke Sportlink-timer deelt,
 /// onafhankelijk van de databasetier.
 /// </summary>
@@ -182,4 +220,119 @@ public static class SportlinkEndpointCore
         return new SportlinkMutatieAfronding<T>(
             BepaalAuditResultaat(resultaat), violations, null, respons.Data);
     }
+    // ── Statuspaneel: rolkoppeling (#998) ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Zonder tokenverversing binnen deze termijn is de koppeling vermoedelijk niet meer geldig.
+    /// De keep-alive-timer ververst elk uur; twee uur geeft één gemiste run speling. Informatief —
+    /// nooit een harde blokkade, want een gemiste timerrun is geen bewijs van een dood token.
+    /// </summary>
+    public static readonly TimeSpan TokenVermoedelijkVerlopenNa = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// <c>true</c> als de laatste tokenverversing langer dan <see cref="TokenVermoedelijkVerlopenNa"/>
+    /// geleden is. Een onbekend moment (<c>null</c>) is nadrukkelijk géén vermoeden van verlopen —
+    /// zie <see cref="SportlinkRolStatus"/>.
+    /// </summary>
+    public static bool IsTokenVermoedelijkVerlopen(DateTime? laatstVerverstOpUtc, DateTime nuUtc)
+        => laatstVerverstOpUtc is { } op && (nuUtc - op) > TokenVermoedelijkVerlopenNa;
+
+    /// <summary>Bouwt de statusregel van één rol. Een niet-gekoppelde rol krijgt nooit tijdstempels
+    /// mee: die zouden van een eerdere, inmiddels verwijderde koppeling kunnen zijn.</summary>
+    public static SportlinkRolStatus BouwRolStatus(
+        string rolNaam,
+        bool gekoppeld,
+        DateTime? laatstVerverstOpUtc,
+        DateTime? refreshTokenVervaltOpUtc,
+        DateTime nuUtc)
+        => new(rolNaam,
+            gekoppeld,
+            gekoppeld ? laatstVerverstOpUtc : null,
+            gekoppeld ? refreshTokenVervaltOpUtc : null,
+            gekoppeld && IsTokenVermoedelijkVerlopen(laatstVerverstOpUtc, nuUtc));
+
+    // ── Statuspaneel: live controle (#998) ──────────────────────────────────────────────────────
+
+    /// <summary>Melding als er nog geen wedstrijd in de PublicMatchId-cache staat — geen fout: de
+    /// warmup-timer of een eerste paneel-lookup vult die cache vanzelf.</summary>
+    public const string LiveControleGeenWedstrijdMelding = "Overgeslagen: geen bekende wedstrijd in de cache.";
+
+    /// <summary>Live-uitkomst zonder controle-GET: de cache is nog leeg.</summary>
+    public static SportlinkLiveControle BouwLiveControle(SportlinkClubCallStatus tokenRefreshStatus)
+        => new(tokenRefreshStatus == SportlinkClubCallStatus.Ok, LiveControleGeenWedstrijdMelding, null);
+
+    /// <summary>Live-uitkomst mét controle-GET. Alleen de statusaard en de HTTP-status — nooit de
+    /// respons zelf, die bevat wedstrijd- en persoonsgegevens.</summary>
+    public static SportlinkLiveControle BouwLiveControle(
+        SportlinkClubCallStatus tokenRefreshStatus,
+        SportlinkClubCallStatus matchCheckStatus,
+        int? matchCheckHttpStatus)
+        => new(tokenRefreshStatus == SportlinkClubCallStatus.Ok,
+            matchCheckStatus.ToString(),
+            matchCheckHttpStatus);
+
+    // ── Dagelijkse contract-check (#998) ────────────────────────────────────────────────────────
+
+    /// <summary>Aantal dagen vooruit dat de warmup-timer de PublicMatchId-cache vult (vandaag + dit
+    /// aantal). Gedeeld, omdat een verschil tussen de tiers betekent dat dezelfde club na een
+    /// tierwissel een ander aantal wedstrijden voorgeladen krijgt.</summary>
+    public const int WarmupVooruitkijkDagen = 2;
+
+    /// <summary>Throttle-sleutel van de contract-check-noodmail.</summary>
+    public const string ContractCheckNoodmailSleutel = "sportlink-contract-noodmail";
+
+    /// <summary>Onderwerp van de contract-check-noodmail.</summary>
+    public const string ContractCheckNoodmailOnderwerp = "Sportlink contract-check: afwijking gedetecteerd";
+
+    /// <summary>Hoe lang dezelfde contract-check-afwijking onderdrukt blijft na een verzonden mail.</summary>
+    public static readonly TimeSpan ContractCheckNoodmailInterval = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Beoordeelt het rauwe antwoord van de contract-check-GET. Een transportfout telt als
+    /// "niet ok" — dan is er niets te controleren en verdient dat dezelfde aandacht als een
+    /// gewijzigde vorm. Ongeldige JSON is géén aparte tak maar een gebroken contract.
+    /// </summary>
+    /// <param name="logger">Optioneel — krijgt de JSON-parsefout met exception mee.</param>
+    public static SportlinkContractCheckUitkomst BeoordeelContractCheck(
+        SportlinkClubResponse<string> rawResult, ILogger? logger = null)
+    {
+        if (rawResult.Status != SportlinkClubCallStatus.Ok || rawResult.Data == null)
+            return new SportlinkContractCheckUitkomst(false, null,
+                rawResult.FoutmeldingVoorLog ?? $"Status={rawResult.Status}");
+
+        try
+        {
+            var afwijkend = SportlinkMatchContract.ControleerVorm(rawResult.Data);
+            if (afwijkend.Count == 0)
+                return new SportlinkContractCheckUitkomst(true, null, null);
+
+            // Uitsluitend veldNAMEN, nooit waarden (AVG/CISO-regel) — SportlinkMatchContract
+            // garandeert dit al, hier alleen samenvoegen tot één opslagbare string.
+            var samenvatting = string.Join(", ", afwijkend);
+            return new SportlinkContractCheckUitkomst(false, samenvatting,
+                $"Contractvorm afwijkend: {samenvatting}");
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            logger?.LogWarning(ex, "Contract-check: JSON-parsefout bij vormcontrole");
+            return new SportlinkContractCheckUitkomst(false, null,
+                "Respons is geen geldige JSON — contract gebroken.");
+        }
+    }
+
+    /// <summary>Throttle-beslissing: mag er nú een contract-check-noodmail uit?</summary>
+    public static bool MagContractCheckNoodmailVersturen(DateTime? laatsteKeerUtc, DateTime nuUtc)
+        => laatsteKeerUtc is not { } laatste || (nuUtc - laatste) >= ContractCheckNoodmailInterval;
+
+    /// <summary>
+    /// Tekst van de contract-check-noodmail. <paramref name="tabelnaam"/> verschilt per tier
+    /// (<c>public.sportlinkcontractcheck</c> / <c>dbo.SportlinkContractCheck</c>) — de rest van de
+    /// melding is identiek en hoort dus niet twee keer te bestaan.
+    /// </summary>
+    public static string BouwContractCheckNoodmailBody(string? foutmelding, string tabelnaam)
+        => "Sportlink contract-check gaf een afwijking — de vorm van de Match-respons is veranderd.\n\n"
+         + $"Foutmelding: {foutmelding}\n\n"
+         + "Dit is een vroege waarschuwing dat Sportlink de Club-website (mogelijk) heeft bijgewerkt.\n"
+         + $"Controleer docs/SPORTLINK-WEB-EXTENSION.md en de laatste rij in {tabelnaam}.\n"
+         + "Deze melding wordt niet binnen 24 uur herhaald.";
 }

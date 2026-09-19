@@ -1,14 +1,17 @@
 using AwesomeAssertions;
-using FunctionApp.Postgres.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using Xunit;
 
-namespace FunctionApp.Postgres.Tests;
+namespace Planner.Shared.Tests.Integrations.SportlinkClub;
 
 /// <summary>
 /// Unit tests voor <see cref="SportlinkChangeRequestOverzichtItem.Verrijk"/> (#1111) — de pure
 /// koppel- en sorteerregel achter <c>GET /api/sportlink/change-requests</c>. Geen database, geen
 /// Sportlink.
+/// <para>
+/// Verhuisd uit <c>FunctionApp.Postgres.Tests</c> bij #1266: sinds het type in Planner.Shared staat
+/// is de regel niet meer van één tier. Eén test dekt nu beide tiers.
+/// </para>
 /// </summary>
 public class SportlinkChangeRequestOverzichtTests
 {

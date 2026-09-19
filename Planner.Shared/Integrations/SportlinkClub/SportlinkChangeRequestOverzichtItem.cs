@@ -1,12 +1,17 @@
-using Planner.Shared.Integrations.SportlinkClub;
-
-namespace FunctionApp.Postgres.Sportlink;
+namespace Planner.Shared.Integrations.SportlinkClub;
 
 /// <summary>
 /// Eén rij van <c>GET /api/sportlink/change-requests</c> sinds #1111: het Sportlink-verzoek
 /// (letterlijk, <see cref="SportlinkChangeRequest"/>) plus onze eigen <see cref="Wedstrijd"/>-context.
 /// De Sportlink-velden blijven onaangeroerd, zodat het contract van #996 niet verandert — er komt
 /// alleen een veld bij.
+/// <para>
+/// Stond tot #1266 als <c>FunctionApp.Postgres/Sportlink/SportlinkChangeRequestOverzicht.cs</c> in
+/// de Postgres-tier. Bij het herstellen van de SQL Server-tier zou een tweede kopie ontstaan zijn,
+/// terwijl hier geen enkele databasetoegang in zit: <see cref="Verrijk"/> is een pure koppel- en
+/// sorteerregel over gegevens die de tier al heeft opgehaald. Zelfde beweging en zelfde reden als
+/// <see cref="SportlinkEndpointCore"/> (#1266), ThemeCore (#1248) en FeedbackCore (#1130).
+/// </para>
 /// </summary>
 public sealed record SportlinkChangeRequestOverzichtItem(
     string PublicMatchId,

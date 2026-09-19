@@ -123,7 +123,12 @@ public static class SportlinkExtensieRollenFunction
                 // #857: dit is een echte uitgaande aanroep naar idm.sportlink.com — zelfde poort als
                 // elke andere externe integratie in deze repo, nooit een eigen ad-hoc controle.
                 if (!EgressGuard.ExternalIntegrationsAllowed())
-                    return new ObjectResult(new { error = "Uitgaande integraties staan hier niet toe." }) { StatusCode = 503 };
+                {
+                    // #1266: dezelfde status én tekst als elke andere EgressGuard-afwijzing op beide
+                    // tiers — uit SportlinkEndpointCore, niet nog een keer uitgeschreven.
+                    var egressFout = SportlinkEndpointCore.EgressGeblokkeerdFout;
+                    return new ObjectResult(new { error = egressFout.Foutmelding }) { StatusCode = egressFout.HttpStatus };
+                }
 
                 if (!await SportlinkClubClient.ValideerRefreshTokenAsync(TokenHttp, dto.RefreshToken))
                     return new ObjectResult(new { error = "Sportlink heeft dit refresh-token geweigerd — controleer of het recent en correct is." }) { StatusCode = 409 };

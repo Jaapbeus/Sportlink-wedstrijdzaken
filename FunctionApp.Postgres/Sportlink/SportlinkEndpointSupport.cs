@@ -45,6 +45,13 @@ internal static class SportlinkEndpointSupport
     /// <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
     internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(PostgresAppSettings.GetSetting);
 
+    /// <summary>De 503 voor "client niet in DI geregistreerd", als losse respons — voor de paden die
+    /// de client zelf uit <see cref="FunctionContext.InstanceServices"/> halen in plaats van via
+    /// <see cref="ClientOfFout"/>. Sinds #1266 komt de melding uit
+    /// <see cref="SportlinkEndpointCore"/>, zodat beide tiers dezelfde tekst en status geven.</summary>
+    internal static IActionResult ClientNietGeconfigureerdFout()
+        => NaarActionResult(SportlinkEndpointCore.ClientNietGeconfigureerdFout);
+
     /// <summary>De <see cref="ISportlinkClubClient"/> uit DI, of een 503 als hij niet geregistreerd
     /// is (Program.cs registreert hem alleen als de EgressGuard het toestaat).</summary>
     internal static (ISportlinkClubClient? Client, IActionResult? Fout) ClientOfFout(FunctionContext context)

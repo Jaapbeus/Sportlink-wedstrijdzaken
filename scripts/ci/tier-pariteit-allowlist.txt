@@ -15,23 +15,14 @@
 # Een regel zonder reden laat de guard falen: een uitzondering die niemand kan beoordelen, groeit
 # vanzelf uit tot gewoonte.
 
-# ── Epic #986, wordt geport in #1266 ────────────────────────────────────────────────────────────
-alleen-postgres  sportlink/match/{wedstrijdcode}                   Epic #986; SQL Server-tegenhanger in aanbouw (#1266).
-alleen-postgres  sportlink/match/{wedstrijdcode}/public-match-id    Idem.
-alleen-postgres  sportlink/match/{wedstrijdcode}/dressingrooms      Idem.
-alleen-postgres  sportlink/match/{wedstrijdcode}/field              Idem.
-alleen-postgres  sportlink/match/{wedstrijdcode}/officials          Idem.
-alleen-postgres  sportlink/match/{wedstrijdcode}/change-request     Idem.
-alleen-postgres  sportlink/change-requests                          Idem.
-alleen-postgres  sportlink/change-requests/{publicRequestId}/action  Idem.
-alleen-postgres  sportlink/club-match                               Idem.
-alleen-postgres  sportlink/club-match/picklists                     Idem.
-alleen-postgres  beheer/sportlink-extensie/health                   Idem.
-alleen-postgres  beheer/sportlink-extensie/rollen/{rolNaam}/token    Idem; het bestand bestaat op beide tiers, alleen deze derde functie ontbreekt.
-
 # ── Naamsverschil, geen functioneel gat ─────────────────────────────────────────────────────────
 # Dezelfde handmatige sync-trigger heet op de twee tiers anders. Functioneel gelijkwaardig, maar
-# het betekent wel dat een beheerder een ander adres moet gebruiken na een tierwissel. Uitlijnen
-# is een aparte, kleine wijziging met een breaking-change-kant; zie #1266.
+# het betekent wel dat een beheerder een ander adres moet gebruiken na een tierwissel. Uitlijnen is
+# een aparte, kleine wijziging met een breaking-change-kant; zie #1266.
 alleen-postgres  postgres/sync-matches                              Heet op de SQL Server-tier 'sync-matches'; naamsverschil, geen ontbrekende functionaliteit.
 alleen-sqlserver sync-matches                                       Heet op de Postgres-tier 'postgres/sync-matches'; zelfde regel als hierboven.
+
+# ── Afgelost in #1266 ───────────────────────────────────────────────────────────────────────────
+# De twaalf routes van epic #986 die hier stonden, bestaan nu op beide tiers. Ze zijn weggehaald in
+# plaats van doorgestreept: een allowlist met dode regels is precies de rot die deze guard moet
+# voorkomen. De git-historie bewaart wat er stond.
