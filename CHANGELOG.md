@@ -28,6 +28,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   voorgelegd maar wel in vijftien documenten terechtkwam. Beide varianten zijn gelijkwaardig, en
   dat is nu ook vastgelegd. De ontbrekende tabellen en de instelling zijn toegevoegd en getest
   tegen een echte SQL Server-database, vers opgebouwd én bijgewerkt vanaf de oude situatie.
+- **De Sportlink-koppeling werkt nu ook op de SQL Server-variant (#1266).** De twaalf
+  schermfuncties rond wedstrijdwijzigingen — kleedkamers, veld, scheidsrechters, wijzigingsverzoeken,
+  oefenwedstrijden aanmaken en het statusoverzicht — bestonden alleen op de Postgres-variant. Een
+  club op SQL Server kreeg daar foutmeldingen op schermen die verder gewoon zichtbaar waren. Ze
+  werken nu op beide varianten, samen met de drie achtergrondtaken die de koppeling in de lucht
+  houden. De veiligheidsschakelaar blijft daarbij aan: een club die de koppeling nog niet bewust
+  heeft ingericht, verstuurt niets naar Sportlink — ook niet als het uitlezen van die instelling
+  zelf misgaat.
 - **Nieuwe bewaking: een functie kan niet meer op één databasevariant blijven steken (#1266).** Er
   bestonden al drie controles op verschillen tussen de twee varianten, maar die keken maar één kant
   op — precies de kant die na de overgang naar Postgres de verkeerde was geworden. De nieuwe

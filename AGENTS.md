@@ -783,24 +783,6 @@ Samenvatting van de twee harde regels (epic #815):
 > SSRF-orkestratie. Dat is vier keer misgegaan (#889, #1130, #1122, #1248). Zie de
 > codekwaliteitssectie hierboven, regel 1.
 
-Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
-`dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
-empirisch bevestigde Postgres-lowercase-folding-valkuil.
-
----
-
-### Multi-tier databasestrategie — vaste bouwvolgorde, geen gedeelde abstractie
-
-> Volledig besluit + index van alle sub-issues: **[docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md)**
-
-Samenvatting van de twee harde regels (epic #815):
-
-1. **Vaste bouwvolgorde**: SQL Server (bestaand) → Postgres (eerste prioriteit) → SQLite → Cosmos DB
-   (uitsluitend het e-mailverwerkingslog). Niet gelijktijdig, niet in een andere volgorde.
-2. **Eén tier per club-deployment, nooit een gedeelde C#-providerabstractie.** Elke tier krijgt een
-   volledig gescheiden, parallelle implementatieboom (`Database.Postgres/`, `Database.Sqlite/`),
-   gekozen op build/deploytijd — nooit een runtime-switch in gedeelde code.
-
 3. **Elke gebouwde tier is gelijkwaardig. Een feature bestaat op álle gebouwde tiers, of op geen
    (#1266).** "Gebouwd" is wat `scripts/ci/database-tiers.json` zegt (`built: true`) — vandaag
    SQL Server én Postgres. Welke tier déze installatie draait, is een deploymentkeuze en zegt
