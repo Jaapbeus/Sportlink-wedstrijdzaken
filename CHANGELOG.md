@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Voorbereiding op een donkere weergave: de kleuren van de schermen zitten niet langer vast in
+  de opmaak (#1255).** De achtergrond van de pagina, de kaartjes, de grijstinten en de schaduw
+  onder een kaartje waren tot nu toe vaste waarden die niemand kon aanpassen. Ze zijn nu
+  instelbaar gemaakt, elk met een variant voor een lichte en een donkere weergave. Er verandert
+  op dit moment nog niets zichtbaars — de schakelaar om over te stappen komt in een volgende stap.
+  Kleuren met een betekenis blijven bewust vast: groen blijft "klaar", rood blijft "fout", en de
+  oranje markering van de testmodus blijft oranje.
+
 ### Fixed
 - **De instellingen van de club konden stilzwijgend dubbel in de database staan, waarna de
   applicatie willekeurig één van de twee gebruikte (#1218).** De tabel met clubinstellingen had

@@ -1,9 +1,77 @@
-/* Club-thema CSS variabelen — worden door theme.js overschreven met DB-waarden (#325) */
+/* ==========================================================================================
+   Club-thema CSS variabelen (#325, uitgebreid met licht/donker in #1255 — epic #1249)
+
+   Opzet in twee lagen, en dat is bewust:
+
+   1. Per kleur staat er een -light- en een -dark-variant. Dát zijn de variabelen die theme.js
+      overschrijft met de waarden van de club uit de database; de waarden hieronder zijn de
+      terugval voor een club die nog niets heeft ingesteld.
+   2. De "effectieve" variabele (--theme-primary) verwijst naar een van die twee, afhankelijk van
+      het data-theme-attribuut op <html>. Dat attribuut wordt synchroon gezet vóórdat Blazor boot,
+      zodat er geen flits van het verkeerde thema is.
+
+   Waarom deze indirectie en niet simpelweg twee losse sets: de selectors verderop in dit bestand
+   hoeven zo niets van modi te weten. Ze gebruiken var(--theme-primary) en krijgen automatisch de
+   juiste variant. Een nieuwe kleur toevoegen is daarmee één regel per modus, niet een tweede
+   kopie van elke selector.
+
+   Let op bij het uitbreiden: een kleur die hier een variabele wordt, is daarmee door de beheerder
+   instelbaar. Functionele status- en foutkleuren (groen = klaar, rood = fout, de testmodus-oranje)
+   staan daarom bewust NIET hierin — hun betekenis zit in de kleur zelf.
+
+   Naamgeving: het achtervoegsel -light/-dark betekent altijd de MODUS. De lichtere grijstint die
+   #1250 "--theme-muted-text-light" noemde heet hier daarom --theme-muted-text-subtle; anders zou
+   die variabele "--theme-muted-text-light-light" krijgen voor zijn lichte-modus-variant, en zou
+   niet meer te zien zijn welk achtervoegsel de modus is. De basisnamen zonder achtervoegsel zijn
+   tevens de sleutels die het beheerscherm en theme.js gebruiken (#1256): "primary", "cardBg",
+   "mutedTextSubtle", ... in camelCase, hier in kebab-case.
+   ========================================================================================== */
 :root {
-    --theme-primary:         #1b6ec2;
-    --theme-secondary:       #6c757d;
-    --theme-accent:          #0071c1;
-    --theme-text-on-primary: #ffffff;
+    /* Licht — de huidige, ongewijzigde standaardwaarden */
+    --theme-primary-light:          #1b6ec2;
+    --theme-secondary-light:        #6c757d;
+    --theme-accent-light:           #0071c1;
+    --theme-text-on-primary-light:  #ffffff;
+    --theme-page-bg-light:          #f0f2f5;
+    --theme-card-bg-light:          #ffffff;
+    --theme-muted-text-light: #6c757d;
+    --theme-muted-text-subtle-light: #adb5bd;
+    --theme-shadow-hover-light:     rgba(0, 0, 0, .12);
+
+    /* Donker — neutrale terugval, geen clubkleur. Een club stelt zijn eigen set in via het
+       thema-scherm; deze waarden zijn wat een club zonder eigen donkere set te zien krijgt. */
+    --theme-primary-dark:           #4a9eff;
+    --theme-secondary-dark:         #9aa4b2;
+    --theme-accent-dark:            #6cb6ff;
+    --theme-text-on-primary-dark:   #0c1424;
+    --theme-page-bg-dark:           #0c1424;
+    --theme-card-bg-dark:           #171f30;
+    --theme-muted-text-dark:  #9aa4b2;
+    --theme-muted-text-subtle-dark: #6b7686;
+    --theme-shadow-hover-dark:      rgba(0, 0, 0, .55);
+
+    /* Effectief: lichte modus is de standaard, ook zonder data-theme-attribuut */
+    --theme-primary:          var(--theme-primary-light);
+    --theme-secondary:        var(--theme-secondary-light);
+    --theme-accent:           var(--theme-accent-light);
+    --theme-text-on-primary:  var(--theme-text-on-primary-light);
+    --theme-page-bg:          var(--theme-page-bg-light);
+    --theme-card-bg:          var(--theme-card-bg-light);
+    --theme-muted-text:         var(--theme-muted-text-light);
+    --theme-muted-text-subtle:  var(--theme-muted-text-subtle-light);
+    --theme-shadow-hover:     var(--theme-shadow-hover-light);
+}
+
+:root[data-theme="dark"] {
+    --theme-primary:          var(--theme-primary-dark);
+    --theme-secondary:        var(--theme-secondary-dark);
+    --theme-accent:           var(--theme-accent-dark);
+    --theme-text-on-primary:  var(--theme-text-on-primary-dark);
+    --theme-page-bg:          var(--theme-page-bg-dark);
+    --theme-card-bg:          var(--theme-card-bg-dark);
+    --theme-muted-text:         var(--theme-muted-text-dark);
+    --theme-muted-text-subtle:  var(--theme-muted-text-subtle-dark);
+    --theme-shadow-hover:     var(--theme-shadow-hover-dark);
 }
 
 html, body {
@@ -121,7 +189,7 @@ code {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f0f2f5;
+    background: var(--theme-page-bg);
     z-index: 9999;
 }
 
@@ -131,7 +199,7 @@ code {
     align-items: center;
     gap: 1.25rem;
     padding: 2.5rem 3rem;
-    background: white;
+    background: var(--theme-card-bg);
     border-radius: 1rem;
     box-shadow: 0 4px 32px rgba(0, 0, 0, .10);
     min-width: 230px;
@@ -147,7 +215,7 @@ code {
 .startup-label {
     margin: 0;
     font-size: .95rem;
-    color: #6c757d;
+    color: var(--theme-muted-text);
     font-weight: 500;
     min-height: 1.4em;
     transition: color 0.3s;
@@ -179,14 +247,14 @@ code {
 .startup-sub {
     margin: 0;
     font-size: .85rem;
-    color: #6c757d;
+    color: var(--theme-muted-text);
     line-height: 1.5;
     text-align: center;
 }
 
 .startup-sub-muted {
     font-size: .78rem;
-    color: #adb5bd;
+    color: var(--theme-muted-text-subtle);
 }
 
 .startup-icon {
@@ -209,7 +277,7 @@ code {
 
 .dashboard-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, .12) !important;
+    box-shadow: 0 6px 20px var(--theme-shadow-hover) !important;
     color: var(--theme-primary);
 }
 
