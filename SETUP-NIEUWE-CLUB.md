@@ -13,6 +13,7 @@ Deze handleiding beschrijft hoe je een eigen instantie van Sportlink Wedstrijdza
 7. [Clubconfiguratie invullen via Admin GUI](#7-clubconfiguratie-invullen-via-admin-gui)
 8. [Lokale ontwikkelomgeving](#8-lokale-ontwikkelomgeving)
 9. [Kosten](#9-kosten)
+10. [Optioneel: Sportlink Web Extension](#10-optioneel-sportlink-web-extension)
 
 ---
 
@@ -52,7 +53,7 @@ az functionapp config appsettings set \
   --name func-<clubcode>-sportlink \
   --resource-group rg-<clubcode>-sportlink \
   --settings \
-    "SqlConnectionString=<jouw-azure-sql-connection-string>" \
+    "<CONNECTIESTRING-INSTELLING — zie hieronder>" \
     "GraphTenantId=<entra-tenant-id>" \
     "GraphClientId=<entra-app-client-id>" \
     "GraphClientSecret=<entra-app-secret>" \
@@ -65,6 +66,17 @@ az functionapp config appsettings set \
     "EmailProcessorEnabled=false" \
     "EmailReviewMode=true"
 ```
+
+> **De connectiestring-instelling verschilt per databasetier (§2b). Neem er precies één op:**
+>
+> | Jouw tier | Instelling |
+> |---|---|
+> | `DatabaseTier=Postgres` | `"POSTGRES_CONNECTION_STRING=<connectiestring met sslmode=verify-ca en sslrootcert>"` |
+> | `DatabaseTier=SqlServer` | `"SqlConnectionString=<jouw-azure-sql-connection-string>"` |
+>
+> De Postgres-tier leest `SqlConnectionString` nergens, en omgekeerd. Zet je de verkeerde, dan start
+> de app wel maar bereikt hij de database niet: `/api/health` geeft dan 503 met `"database":"unconfigured"`.
+> Maak de database eerst aan (§2b) en kom daarna terug voor deze stap.
 
 > Stel `EmailProcessorEnabled=true` pas in als je de e-mailverwerking wilt activeren. Begin met `false` tijdens de initiële setup.
 
@@ -104,7 +116,10 @@ az sql db create \
 > **Let op:** Controleer de actuele beschikbaarheid van de Free tier via de [Azure Portal](https://portal.azure.com) of via `mcp__claude_ai_Microsoft_Learn__microsoft_docs_search("Azure SQL Free tier pricing")` — Microsoft kan dit aanbod wijzigen zonder voorafgaande aankondiging.
 
 **Optie B — Postgres (bijv. Supabase free tier):** maak een nieuw project aan bij je gekozen
-Postgres-provider en noteer de connectiestring — die gaat in `PostgresConnectionString` (zie §5c).
+Postgres-provider en noteer de connectiestring. Die gaat op twee plaatsen naartoe, allebei onder de
+naam **`POSTGRES_CONNECTION_STRING`**: als app-instelling van de Function App (§2a) en als GitHub
+Secret in jouw fork (§5b). Een andere schrijfwijze werkt niet — de applicatie leest uitsluitend deze
+naam.
 Zet `sslmode=verify-ca` in de connectiestring, mét `sslrootcert` dat naar het CA-certificaat van je
 provider wijst. **Niet `verify-full`**, hoe verleidelijk dat ook klinkt: bij Supabase biedt het
 pooler-endpoint een certificaat zonder SubjectAltName aan, en `verify-full` valideert de hostnaam
@@ -131,19 +146,30 @@ Na aanmaken: kopieer het **Deployment Token** (Settings → Deployment tokens). 
 automatisch en idempotent uit bij elke deploy (mits `AZURE_SQL_SERVER_NAME` gezet is) — geen
 handmatige stap nodig.
 
-**Postgres:** hiervoor bestaat nog geen CI-automatisering. Voer de migraties in
-`Database.Postgres/migrations/` handmatig uit tegen je Postgres-database via
-`scripts/dev/Invoke-PostgresMigrations.ps1` (zet `POSTGRES_CONNECTION_STRING` als
-omgevingsvariabele, nooit als scriptparameter) — zowel bij de eerste opzet als na elke latere
-migratie-toevoeging. Zie `docs/ARCHITECTUUR-DATABASE-TIERS.md` voor het migratiemechanisme.
+**Postgres:** `deploy.yml`'s `db-migrate-postgres`-job past de migraties in
+`Database.Postgres/migrations/` automatisch en idempotent toe bij elke deploy, vóórdat de nieuwe
+code live gaat (#1093). Dezelfde job maakt de `his`-tabellen aan en seedt de demodata van de
+democlub (#1246). **Er is geen handmatige migratieronde** — de job faalt wel expliciet als het
+Secret `POSTGRES_CONNECTION_STRING` (§5b) ontbreekt. Zie
+`docs/ARCHITECTUUR-DATABASE-TIERS.md` voor het migratiemechanisme.
 
-**Lokaal (voor development):**
+Wil je de migraties lokaal of buiten de pipeline om toepassen, gebruik dan
+`scripts/dev/Invoke-PostgresMigrations.ps1` en zet `POSTGRES_CONNECTION_STRING` als
+omgevingsvariabele — nooit als scriptparameter, want argumenten staan op elk platform zichtbaar in
+de processenlijst.
+
+**Verbinding verifiëren (lokaal, voor development):**
 ```powershell
-# Verbinding verifiëren
-sqlcmd -S JOUW-SERVER -E -Q "SELECT @@VERSION"
+# Postgres-tier
+$env:PGPASSWORD = '<wachtwoord uit je lokale .env>'
+.\scripts\dev\Test-PostgresConnection.ps1
 
-# Schema aanmaken via Test-App.ps1
-.\Test-App.ps1 -Fix
+# SQL Server-tier — altijd een SQL-login, nooit -E; wachtwoord via SQLCMDPASSWORD
+$env:SQLCMDPASSWORD = '<sa-wachtwoord uit je lokale .env>'
+sqlcmd -S localhost,1433 -U sa -C -Q "SELECT @@VERSION"
+
+# Schema controleren en zo nodig herstellen
+.\scripts\dev\Test-App.ps1 -Fix
 ```
 
 ---
@@ -170,7 +196,8 @@ az login  # log in met een admin-account van jouw tenant
 ```
 
 Het script configureert idempotent:
-- App Roles `admin` en `user`
+- App Roles `admin`, `user` en `Wedstrijdzaken` — die laatste is de functionele rol voor
+  Sportlink Web Extension-mutaties (§10), náást `admin`/`user` en geen vervanging ervan (#988)
 - `roles`-claim in ID-token
 - Assignment Required (alleen pre-toegewezen gebruikers)
 - Wijst de opgegeven admin-user toe aan de `admin`-rol
@@ -207,6 +234,21 @@ In jouw fork: Settings → Secrets and variables → Actions → **Secrets**:
 | `AZURE_FUNCTION_KEY` | Function key van jouw Function App |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Deployment token van de SWA |
 | `SQL_CONNECTION_STRING` | Alleen bij `DatabaseTier=SqlServer` — connectiestring voor de `db-migrate`-job |
+| `POSTGRES_CONNECTION_STRING` | Alleen bij `DatabaseTier=Postgres` — hiermee past de `db-migrate-postgres`-job de migraties toe vóór elke deploy (#1093). Zelfde waarde als de Function App-instelling uit §2a; ontbreekt hij, dan breekt de eerste deploy af met een expliciete foutmelding. |
+| `AZURE_FUNCTIONAPP_NAME` | `func-<clubcode>-sportlink` |
+| `AZURE_FUNCTIONAPP_URL` | `https://func-<clubcode>-sportlink.azurewebsites.net` |
+| `AZURE_STATIC_WEB_APP_HOSTNAME` | `<swa-hostname>.azurestaticapps.net` |
+| `AZURE_AD_TENANT_ID` | Jouw Entra Directory (tenant) ID |
+| `AZURE_AD_CLIENT_ID` | Jouw Entra Application (client) ID |
+| `POST_LOGOUT_REDIRECT_URL` | URL van de website van jouw club |
+
+> **Waarom die onderste zes Secrets zijn en geen Variables (#1204).** Ze identificeren jouw club.
+> Deze repository is publiek en de Actions-logs van een publieke repository zijn dat óók: GitHub
+> drukt ingevulde expressies letterlijk in de joblog af en maskeert **alleen** secrets. Als Variable
+> belanden je Function App-naam, SWA-hostname en Entra-ID's dus zichtbaar in elke workflow-run. De
+> workflows lezen ze als `secrets.X || vars.X`, dus een Variable werkt technisch nog wel — maar dat
+> is een fallback voor bestaande installaties, niet de aanbevolen inrichting. Zie SECURITY.md,
+> "Laag 2 — GitHub Actions".
 
 **Service Principal aanmaken voor `AZURE_CREDENTIALS`:**
 ```bash
@@ -222,17 +264,14 @@ Kopieer de volledige JSON-output als waarde voor `AZURE_CREDENTIALS`.
 
 In jouw fork: Settings → Secrets and variables → Actions → **Variables**:
 
+Hier horen uitsluitend de waarden die **niet** club-identificerend zijn en die een workflow in een
+job-`if:` moet kunnen lezen — dat kan namelijk niet met een secret.
+
 | Variable | Waarde |
 |---|---|
-| `AZURE_FUNCTIONAPP_NAME` | `func-<clubcode>-sportlink` |
-| `AZURE_FUNCTIONAPP_URL` | `https://func-<clubcode>-sportlink.azurewebsites.net` |
-| `AZURE_STATIC_WEB_APP_HOSTNAME` | `<swa-hostname>.azurestaticapps.net` |
-| `AZURE_AD_TENANT_ID` | Jouw Entra Directory (tenant) ID |
-| `AZURE_AD_CLIENT_ID` | Jouw Entra Application (client) ID |
-| `POST_LOGOUT_REDIRECT_URL` | URL van de website van jouw club |
-| `DatabaseTier` | `SqlServer` of `Postgres` — bepaalt welk `.csproj` gebouwd wordt (§2b) |
+| `DatabaseTier` | `SqlServer` of `Postgres` — bepaalt welk `.csproj` gebouwd wordt en welke migratiejob draait (§2b) |
 | `DatabaseTierSwitchConfirmation` | **Exact dezelfde waarde als `DatabaseTier`** — veiligheidsmechanisme tegen een per-ongeluk-gewijzigde tier; ontbreekt deze of wijkt hij af, dan faalt de eerste deploy met exitcode 3 |
-| `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_RESOURCE_GROUP` | Alleen bij `DatabaseTier=SqlServer` — vereist voor de `db-migrate`-job |
+| `AZURE_SQL_SERVER_NAME` / `AZURE_SQL_DATABASE_NAME` / `AZURE_SQL_RESOURCE_GROUP` | Alleen bij `DatabaseTier=SqlServer` — vereist voor de `db-migrate`-job |
 
 ---
 
@@ -251,8 +290,22 @@ Controleer de voortgang via GitHub → Actions.
 **Smoke test na deployment:**
 ```bash
 curl https://func-<clubcode>-sportlink.azurewebsites.net/api/health
-# → {"status":"ok","timestamp":"..."}
+# → {"status":"ok","version":"…","database":"online","settingsLoaded":true,
+#    "tier":"Postgres","pendingMigrations":[], …}
 ```
+
+`"status":"degraded"` betekent dat één van de onderliggende velden niet klopt — een HTTP 200 alleen
+is dus geen geslaagde deploy. Controleer in dat geval:
+
+| Veld | Wat het betekent als het afwijkt |
+|---|---|
+| `database` | Niet `online`: de connectiestring bereikt de database niet |
+| `settingsLoaded` | `false`: de instellingen zijn nog niet ingevuld (§7) of niet leesbaar |
+| `pendingMigrations` | Niet leeg: er zijn migraties die nog niet zijn toegepast |
+| `tlsWarning` / `schemaWarning` | Gevuld: TLS-configuratie of databaseschema wijkt af van wat de code verwacht |
+
+`"database":"unconfigured"` geeft HTTP 503 en betekent dat er helemaal geen bruikbare
+connectiestring is — controleer dan de instelling uit §2a.
 
 ---
 
@@ -281,46 +334,25 @@ Na het invullen van de instellingen:
 
 ## 8. Lokale ontwikkelomgeving
 
-### Vereisten
+Een lokale ontwikkelomgeving is **geen voorwaarde voor een werkende clubinstallatie** — de stappen 1
+tot en met 7 hierboven volstaan. Wil je wel lokaal ontwikkelen of testen:
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) — voor BlazorAdmin (net10.0)
-- [.NET 9 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) — voor FunctionApp (net9.0, vereist door Linux Consumption Plan)
-- [Azure Functions Core Tools v4](https://github.com/Azure/azure-functions-core-tools#installing)
-- SQL Server (lokaal of via Docker)
-- [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) (Azure Storage Emulator)
-- (Optioneel) [Azure Static Web Apps CLI](https://github.com/Azure/static-web-apps-cli) voor auth-flow testen
+- **[docs/DEVELOPER-SETUP.md](docs/DEVELOPER-SETUP.md)** — de volledige setup, per platform
+  (Windows en macOS) en per databasetier. Dit is de enige bron voor lokale setup.
+- **[docs/SETUP-CHECKLIST.md](docs/SETUP-CHECKLIST.md)** — dezelfde stappen als afvinklijst.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — branch-strategie, commit-conventies en de Security Gate.
 
-### Configuratie
+Kort samengevat: `docker compose up -d` voor de database, het `local.settings.template.json` van
+jouw tier kopiëren naar `local.settings.json` ernaast, en daarna `.\scripts\dev\Start-Debug.ps1`
+gevolgd door `.\scripts\dev\Test-App.ps1`. De Blazor Admin GUI draait lokaal zonder Azure en
+zonder echte authenticatie — je bent er altijd ingelogd als admin.
 
-```powershell
-# FunctionApp-configuratie aanmaken
-cp FunctionApp/local.settings.template.json FunctionApp/local.settings.json
-```
-
-Bewerk `FunctionApp/local.settings.json` en vul in:
-- `SqlConnectionString`: jouw lokale SQL Server (bijv. `Server=localhost;Database=SportlinkSqlDb;Integrated Security=True;TrustServerCertificate=True;`)
-- Overige velden kun je leeg laten voor basis-functionaliteit
-
-### Starten
-
-```powershell
-# Alle services starten (Azurite + FunctionApp + BlazorAdmin)
-.\scripts\dev\Start-Debug.ps1
-
-# Verifiëren (wacht 15s na start)
-.\scripts\dev\Test-App.ps1
-```
-
-### Git hooks activeren (verplicht)
+Activeer vóór je eerste commit de git hooks (verplicht):
 
 ```bash
 git config core.hooksPath .githooks
 cp .githooks/sensitive-patterns.template.txt .githooks/sensitive-patterns.txt
 ```
-
-### Blazor Admin GUI lokaal
-
-De Blazor GUI gebruikt lokaal `appsettings.json` (niet `appsettings.Production.json`). Authenticatie wordt gesimuleerd — je bent altijd ingelogd als admin. Dit is bedoeld voor snel itereren zonder Azure-omgeving.
 
 ---
 

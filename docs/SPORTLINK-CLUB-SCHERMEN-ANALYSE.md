@@ -1,6 +1,15 @@
-# Sportlink Club - Schermen & Data Analyse
+# Sportlink Club — Schermen & Data Analyse
 
-> Doel: Inventarisatie van alle schermen in Sportlink Club (club.sportlink.com) en de beschikbare data voor de Blazor app. Gebaseerd op analyse van de live omgeving.
+> **MOMENTOPNAME van 2026-05-31 — niet bijgehouden.** Inventarisatie van de schermen in Sportlink
+> Club (club.sportlink.com) en de daar beschikbare data, gemaakt bij de eerste verkenning van de
+> koppeling, op basis van analyse van de live omgeving. Dit document beschrijft **Sportlinks eigen
+> schermen**, niet die van deze app, en is géén bouwinstructie.
+>
+> Voor de actuele stand van de koppeling: [`SPORTLINK-WEB-EXTENSION.md`](SPORTLINK-WEB-EXTENSION.md).
+> Voor de technische bevindingen over de schrijf-endpoints:
+> [`ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md).
+> De labels HOOG/GEMIDDELD/INTERN/NIET PUBLIEK in §3 zijn de inschatting van dat moment en nergens
+> formeel gedefinieerd.
 
 ## 1. Navigatiestructuur
 
@@ -134,6 +143,10 @@ Financieel overzicht per seizoen. Categorieën: Contributie Leden, Wedstrijdgeld
 
 ## 3. Conclusie — Blazor Schermen Prioritering
 
+> **Gedeeltelijk ingehaald door de bouw — bewaard als verantwoording van de oorspronkelijke keuze.**
+> Deze prioritering is van 2026-05-31 en is sindsdien niet bijgewerkt. Werk hier niet uit; raadpleeg
+> de actuele stand in [`SPORTLINK-WEB-EXTENSION.md`](SPORTLINK-WEB-EXTENSION.md).
+
 ### HOGE PRIORITEIT — Direct inzetbaar
 
 | Module | Blazor-scherm | Data Bron |
@@ -196,11 +209,29 @@ Financieel (alle sub-pagina's), Tuchtzaken, Spelregelbewijzen VSK, Personen zond
 
 ### Huidig gekozen architectuur
 
+> **Actuele stand (2026-09-19), het verslag hieronder is onveranderd:** "eigen SQL Database" was de
+> situatie van 2026-05-31. Welke database het is, is inmiddels een deploymentkeuze — deze
+> installatie draait sinds #976 op de **Postgres**-tier, en de SQL Server-tier is daarnaast een
+> gelijkwaardige, onderhouden tier (#1266). Beide staan als `"built": true` in
+> `scripts/ci/database-tiers.json`. Zie
+> [`ARCHITECTUUR-DATABASE-TIERS.md`](ARCHITECTUUR-DATABASE-TIERS.md). Het architectuurprincipe zelf
+> — pollen en in een eigen database opslaan, Blazor leest nooit rechtstreeks bij Sportlink — is
+> ongewijzigd.
+
 Azure Functions pollen de Sportlink Dataservice en slaan data op in eigen SQL Database. Blazor leest altijd uit eigen DB, volledig onafhankelijk van Sportlink uptime.
 
 Voordelen: geen Sportlink-afhankelijkheid bij live gebruik, historische data bewaren, Blazor leest snel uit eigen SQL, retries via Azure Functions, data-verrijking mogelijk (teamkleuren, foto's, beschrijvingen).
 
 ### Modules zonder dataservice — aanbevolen alternatieven
+
+> **Actuele stand (2026-09-19), de tabel hieronder is onveranderd:** twee van de zes aanbevelingen
+> zijn uitgevoerd, één daarvan langs een andere route dan hier voorgesteld.
+> **Veldplanner — gebouwd** als eigen veldbezetting/Gantt in BlazorAdmin
+> (`BlazorAdmin/Pages/Dagplanning.razor`, `BlazorAdmin/Services/GanttLayout.cs`,
+> `GET /api/planner/veldbezetting`, op beide tiers).
+> **Kleedkamerplanner — anders opgelost:** géén eigen module, maar terugschrijven náár Sportlink via
+> de Sportlink Web Extension (`PUT /api/sportlink/match/{wedstrijdcode}/dressingrooms`, #992, live
+> bevestigd werkend). Zie [`SPORTLINK-WEB-EXTENSION.md`](SPORTLINK-WEB-EXTENSION.md).
 
 | Functionaliteit | Aanbevolen alternatief |
 |----------------|----------------------|

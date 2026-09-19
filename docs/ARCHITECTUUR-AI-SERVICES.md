@@ -35,10 +35,10 @@ public class BerichtAiService(IChatClient chatClient, ILogger<BerichtAiService> 
 ### Provider-registratie via DI (één plek, één wissel)
 
 ```csharp
-// OpenAI (huidig)
+// OpenAI (huidig) — zoals werkelijk geregistreerd in FunctionApp.Postgres/Program.cs
+// en FunctionApp/Program.cs
 builder.Services.AddSingleton<IChatClient>(
-    new OpenAIClient(apiKey)
-        .GetChatClient("gpt-4o-mini")
+    new ChatClient(aiModelName, new System.ClientModel.ApiKeyCredential(openAiApiKey))
         .AsIChatClient());
 
 // Azure OpenAI (druppel-in vervanging)
@@ -53,15 +53,25 @@ builder.Services.AddSingleton<IChatClient>(
         .AsIChatClient("claude-sonnet-4-6"));
 ```
 
-### Migratiestatus
+### Migratiestatus — afgerond
 
-| Component | Status | Actie |
-|-----------|--------|-------|
-| `BerichtAiService` | Directe OpenAI SDK | Migreren naar `IChatClient` bij volgende feature-branch |
+> **Status: afgerond** (geverifieerd 19-09-2026). Alle productie-AI-aanroepen lopen via
+> `IChatClient`. De enige plek in de codebase die nog een provider-klasse aanraakt is de
+> DI-registratie zelf — precies zoals de grondregel voorschrijft.
+
+| Component | Tier | Status |
+|-----------|------|--------|
+| `BerichtAiService` | beide (`FunctionApp.Postgres/Email/`, `FunctionApp/Email/`) | `IChatClient` via constructor |
+| `TeamDisambiguationAiService` | alleen SQL Server (`FunctionApp/TeamResolution/`) | `IChatClient` via constructor |
+| `Planner.Shared/Feedback/FeedbackCore` | gedeeld | `IChatClient` als methodeparameter |
+| Provider-registratie | per tier één regel in `Program.cs` | `new ChatClient(aiModelName, …).AsIChatClient()` |
 | Toekomstige AI-services | — | Altijd `IChatClient` vanaf aanmaak |
 
+Een provider-wissel is daarmee inderdaad wat de grondregel belooft: **één regel per tier.**
+
 **OpenAI SDK mag niet worden uitgebreid.** Nieuwe AI-aanroepen gaan via `IChatClient`.
-Bestaande code wordt gemigreerd zodra er een reden is om de provider te aan te raken.
+Deze regel blijft normatief, ook nu de migratie klaar is: hij bewaakt dat er geen nieuwe
+provider-afhankelijkheid binnensluipt.
 
 ---
 
@@ -70,7 +80,7 @@ Bestaande code wordt gemigreerd zodra er een reden is om de provider te aan te r
 ### Waarom
 
 Taalmodellen hebben geen betrouwbare kennis van de huidige datum. Zonder injectie
-berekent het model relatieve datums ("aanstaande zaterdag") incorrect — of niet at all.
+berekent het model relatieve datums ("aanstaande zaterdag") incorrect — of helemaal niet.
 
 **Bronnen die dit bevestigen:**
 - Anthropic: claude.ai injecteert `{{currentDateTime}}` in elke system prompt
@@ -165,28 +175,43 @@ var modelName = Environment.GetEnvironmentVariable("AiModelName") ?? "gpt-4o-min
 Configureer via GitHub Variable `AI_MODEL_NAME` en Azure Function Application Settings.
 Dit maakt model-upgrades (gpt-4o-mini → gpt-4.1-mini, etc.) zonder deployment mogelijk.
 
-> **Status: geïmplementeerd (#604).** `FunctionApp/Program.cs` leest de modelnaam uit de app setting
+> **Status: geïmplementeerd (#604), op beide tiers.** `FunctionApp.Postgres/Program.cs` (de tier die
+> in productie draait, #1060) **en** `FunctionApp/Program.cs` lezen de modelnaam uit de app setting
 > `AiModelName` bij de `IChatClient`-registratie; ontbreekt die, dan valt hij terug op `gpt-4o-mini`.
 > De fallback is toegestaan omdat het puur een provider-model-identifier is — geen club-specifieke
-> waarde. De naam komt bewust **niet** uit `dbo.AppSettings`: de DI-registratie loopt bij host-start,
-> vóór de eerste databaseverbinding.
+> waarde. De naam komt bewust **niet** uit de instellingentabel (`public.appsettings` op Postgres,
+> `dbo.AppSettings` op SQL Server): de DI-registratie loopt bij host-start, vóór de eerste
+> databaseverbinding.
 >
-> Zet de waarde lokaal in `FunctionApp/local.settings.json` (zie de template) en in productie als
-> Azure Function Application Setting.
+> Zet de waarde lokaal in het `local.settings.json` van de tier waarop je werkt — standaard
+> `FunctionApp.Postgres/local.settings.json`, voor de SQL Server-tier `FunctionApp/local.settings.json`
+> (zie de bijbehorende template) — en in productie als Azure Function Application Setting.
 
 ---
 
 ## Jaarlijkse onderhoudsplicht: KNVB-regels
 
 De `KnvbRegelsContext` constante in `BerichtAiService.cs` bevat KNVB-verplaatsingsregels
-voor één specifiek seizoen (huidig: 2026/'27). Deze datums zijn jaarlijks verouderd.
+voor één specifiek seizoen (huidig: 2026/'27 — actueel op 19-09-2026). Deze datums zijn
+jaarlijks verouderd. De constante staat **per tier** in een eigen kopie:
+`FunctionApp.Postgres/Email/BerichtAiService.cs` en `FunctionApp/Email/BerichtAiService.cs`.
+Werk beide bij.
 
 **Verplichting:** bij elke nieuwe seizoensstart (augustus/september):
 1. Controleer KNVB-website op gewijzigde verplaatsingsregels
 2. Update `KnvbRegelsContext` met nieuwe deadlines én de seizoensdata uit de speeldagenkalender
-3. Update de seizoensvermelding (`## KNVB-verplaatsingsregels seizoen 20XX/'YY`)
-4. Archiveer de nieuwe speeldagenkalender-PDF's in `docs/knvb-speeldagenkalenders/<seizoen>/`
-   en seed `dbo.KnvbKalenderDag` via `Database/Script.PostDeployment1.sql`
+3. Update de seizoensvermelding (`## KNVB-verplaatsingsregels seizoen 20XX/'YY`) **en de twee
+   begeleidende velden die sinds #608 naast de constante staan**: `KnvbRegelsSeizoen`
+   (nu `"2026/'27"`) en `KnvbRegelsGeldigTot` (nu 20 juni 2027). Voorbij die datum waarschuwt de
+   code uit zichzelf — zowel de beheerder via het log als het model via een extra promptregel —
+   dat de deadlines verlopen zijn en er geen `knvbNotitie` meer op gebaseerd mag worden.
+4. Archiveer de nieuwe speeldagenkalender-PDF's in `docs/knvb-speeldagenkalenders/<seizoen>/`,
+   plaats de PDF's die de app zelf meestuurt in `FunctionApp/Content/KnvbKalenders/<seizoen>/`
+   (die map is gedeeld: `FunctionApp.Postgres.csproj` linkt hem, beide csproj's sluiten hem in),
+   en seed de kalenderdagen **per tier**:
+   - Postgres (productie): een nieuwe migratie onder `Database.Postgres/migrations/` die
+     `public.knvbkalenderdag` vult — zie `019_knvbkalenderdag.sql` als model
+   - SQL Server: `dbo.KnvbKalenderDag` via `Database/Script.PostDeployment1.sql`
 5. Voeg CHANGELOG-entry toe onder `### Changed`
 
 **Bronnen:**
@@ -205,10 +230,12 @@ voor één specifiek seizoen (huidig: 2026/'27). Deze datums zijn jaarlijks vero
 □ Is de huidige datum dynamisch geïnjecteerd in de system prompt?
 □ Bevatten few-shot voorbeelden GEEN hardcoded absolute datums (bijv. "2026-05-19")?
 □ Is de modelnaam configureerbaar (niet hardcoded)?
-□ Zijn KNVB-datums (bij klassieficatiedienst) hetzelfde seizoen als het huidige?
+□ Zijn KNVB-datums (bij de classificatiedienst) hetzelfde seizoen als het huidige?
+□ Is de wijziging op beide built-tiers doorgevoerd (FunctionApp.Postgres/ én FunctionApp/)?
 □ Is AVG-compliance bewaard (geen persoonsgegevens in logs — zie AVG #210)?
 ```
 
 ---
 
-*Laatste verificatie: v2.7.0.1 — 2026-05-31*
+*Laatste verificatie: v3.5.3.1 — 2026-09-19 (migratiestatus, modelnaam-registratie en
+KNVB-onderhoudsrecept getoetst tegen beide tiers).*

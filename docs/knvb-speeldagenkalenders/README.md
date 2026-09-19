@@ -57,8 +57,15 @@ Landelijke jeugd kan afwijken door interlands (voetnoot in PDF).
 
 ## Hoe wordt dit gebruikt?
 
-De inhoud is samengevat in de SQL-tabel `dbo.KnvbKalenderDag`.
-Zie [Database/Script.PostDeployment1.sql](../../Database/Script.PostDeployment1.sql).
+De inhoud is samengevat in een databasetabel — per tier een andere naam en een ander seedbestand:
+
+| Tier | Tabel | Aangemaakt en geseed door |
+|---|---|---|
+| Postgres (draait in productie) | `public.knvbkalenderdag` | [Database.Postgres/migrations/019_knvbkalenderdag.sql](../../Database.Postgres/migrations/019_knvbkalenderdag.sql) |
+| SQL Server | `dbo.KnvbKalenderDag` | [Database/Script.PostDeployment1.sql](../../Database/Script.PostDeployment1.sql) |
+
+Beide bevatten dezelfde gegevens; de Postgres-seed is mechanisch overgenomen uit de SQL
+Server-versie. Werk bij een nieuw seizoen dus **beide** bij.
 
 | Seizoen | Geseede regio's |
 |---|---|
@@ -82,9 +89,13 @@ Weekendrijen gebruiken de **zaterdagdatum**; vrijdagrijen zijn pupillen 7x7-toer
 (`PupillenToernooi = 1`). Midweekse reeksen zonder één vaste datum (bijv. "1 - 3 juni") worden
 niet geseed — de tabel is een weekend-overzicht.
 
-De verplaatsingsdeadlines uit deze kalenders zijn daarnaast verwerkt in `KnvbRegelsContext`
-in [FunctionApp/Email/BerichtAiService.cs](../../FunctionApp/Email/BerichtAiService.cs) —
-de AI gebruikt die om te signaleren dat een herplanverzoek een KNVB-regel raakt.
+De verplaatsingsdeadlines uit deze kalenders zijn daarnaast verwerkt in `KnvbRegelsContext`, dat in
+**beide** tiers bestaat:
+[FunctionApp.Postgres/Email/BerichtAiService.cs](../../FunctionApp.Postgres/Email/BerichtAiService.cs)
+(de tier die in productie draait) en
+[FunctionApp/Email/BerichtAiService.cs](../../FunctionApp/Email/BerichtAiService.cs).
+De AI gebruikt die om te signaleren dat een herplanverzoek een KNVB-regel raakt. Bij het jaarlijkse
+onderhoud moeten ze allebei bijgewerkt worden.
 Zie [docs/ARCHITECTUUR-AI-SERVICES.md](../ARCHITECTUUR-AI-SERVICES.md) voor de jaarlijkse
 onderhoudsplicht.
 

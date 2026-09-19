@@ -1,12 +1,32 @@
 # Architectuur — E-mail module
 
-> **Dit document is analyse + ontwerp voor de grotere migratie (§2+), nog niet geïmplementeerd.**
+> **§2 t/m §7 zijn toekomstig ontwerp en niet geïmplementeerd.** Geverifieerd op 19-09-2026:
+> `IEmailVerzendService`, `EmailVerzendService`, `EmailVerzendOpdracht`, `AfzenderStrategie`,
+> `EmailOorsprong`, `OntvangerResolutieService`, `IUitsluitingslijstRepository`, `IEmailLogService`
+> en `<EmailComposer>` bestaan geen van alle in de codebase, en er is geen `EmailLog`-tabel in
+> `Database/` of `Database.Postgres/migrations/`. Dat is geen achterstand maar de status van dit
+> document: het is een ontwerp-RFD.
+>
+> **§1 is iets anders: dat beschrijft de *huidige* situatie en veroudert dus wél.** Laatst
+> geverifieerd tegen de werkkopie op **19-09-2026** (v3.5.3.1).
+>
 > Raadpleeg dit document vóórdat je: (a) een nieuw Blazor-scherm bouwt dat e-mail moet kunnen
 > versturen, (b) `EmailGraphService`, `SqlEmailPersistenceRepository` of `EmailTemplateService`
 > aanraakt, of (c) de "verzenden als mezelf"-eis (afzenderstrategie, §4.6) oppakt. **Update #827
 > (2026-08-30):** de in §1.5 beschreven DI-bypasses en de derde indirectielaag
-> (`EmailProcessingRepository`) zijn inmiddels opgelost — zie §1.5 voor de huidige stand. De rest van
-> dit document (§2+) blijft ongewijzigd toekomstig ontwerp.
+> (`EmailProcessingRepository`) zijn inmiddels opgelost — zie §1.5 voor de huidige stand.
+
+> **Twee tiers, en dit ontwerp moet op allebei landen.** Er zijn twee volledige, parallelle
+> e-mailbomen: `FunctionApp.Postgres/Email/` (de tier die in productie draait, #1060) en
+> `FunctionApp/Email/` (SQL Server). Sinds #1266 staat vast dat de tiers **gelijkwaardig** zijn —
+> de eerdere "rollback"-framing was nooit een besluit. De bestandstabel in §1.1 en de
+> padverwijzingen verderop gebruiken voor de leesbaarheid de `FunctionApp/`-notatie; waar een
+> bestand maar op één tier bestaat of per tier verschilt, staat dat expliciet vermeld.
+>
+> **Gevolg voor §3 en §4:** elke nieuwe map, klasse, tabel en migratie uit het ontwerp hoort op
+> **beide** `built: true`-tiers te landen — een migratie dus zowel in `Database.Postgres/migrations/`
+> als in `Database/Script.PostDeployment1.sql`. Wie §4 letterlijk volgt en alleen `FunctionApp/`
+> aanraakt, bouwt de e-mailmodule uitsluitend op de tier die niet gedeployd wordt.
 
 > **De code is leidend.** Staat er iets in dit document dat je niet terugvindt op de genoemde
 > bestand:regel-verwijzing, dan is dit document fout — meld het als issue onder het epic (§7).
@@ -32,14 +52,28 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 
 ### 1.1 Bestanden en verantwoordelijkheden
 
+> **Lees deze tabel per tier.** Vrijwel elke rij hieronder bestaat **twee keer**: één keer onder
+> `FunctionApp/` (SQL Server) en één keer onder `FunctionApp.Postgres/` (productie). De
+> `FunctionApp/Email/EmailGraphService.cs` hieronder is dus niet dé enige plek die Graph `SendMail`
+> aanroept — er is één zo'n plek **per tier**. Afwijkingen per tier staan in de kolom rechts.
+>
+> De vier bekende structuurverschillen tussen de twee e-mailbomen:
+>
+> | Verschil | SQL Server | Postgres (productie) |
+> |---|---|---|
+> | `IEmailGraphService` | eigen bestand `Email/IEmailGraphService.cs` | in `Email/EmailGraphService.cs` (regel 23) |
+> | `EmailStatus`, `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
+> | Persistentielaag | `IEmailPersistenceRepository` + `SqlEmailPersistenceRepository` + `EmailPersistenceService` (DI-wrapper) | alleen `SqlEmailPersistenceRepository` — een `internal static class`, geen interface, geen wrapper |
+> | Team-disambiguatie / uitvalmonitor | `TeamDisambiguationAiService`, `TeamlijstGereedheid`, `Monitoring/DatabaseUitvalMonitorFunction` | bestaan niet |
+
 | Bestand | Verantwoordelijkheid |
 |---|---|
-| `FunctionApp/Email/EmailGraphService.cs` | Enige plek die Microsoft Graph `SendMail` aanroept. Wrapt Graph SDK: ongelezen mail ophalen, categoriseren, `SendReplyAsync` (automatische AI-reply), `StuurTeamContactDoorAsync` (doorsturen naar begeleiding). Leest de vaste mailbox uit de env var `GraphMailbox` (regel 17, 23-24) |
-| `FunctionApp/Email/IEmailGraphService.cs` | Het huidige contract — 6 methoden, waarvan 2 daadwerkelijk versturen |
+| `FunctionApp/Email/EmailGraphService.cs` | Enige plek **per tier** die Microsoft Graph `SendMail` aanroept. Wrapt Graph SDK: ongelezen mail ophalen, categoriseren, `SendReplyAsync` (automatische AI-reply), `StuurTeamContactDoorAsync` (doorsturen naar begeleiding). Leest de vaste mailbox uit de env var `GraphMailbox`. Tegenhanger: `FunctionApp.Postgres/Email/EmailGraphService.cs` |
+| `FunctionApp/Email/IEmailGraphService.cs` | Het huidige contract — 6 methoden, waarvan 2 daadwerkelijk versturen. Op de Postgres-tier staat dezelfde interface in `EmailGraphService.cs` zelf |
 | `FunctionApp/Email/EmailBijlage.cs` | Immutable `record` voor één bijlage (bestandsnaam, bytes, content-type) |
 | `FunctionApp/Email/EmailProcessorFunction.cs` | Timer-getriggerde orchestrator van de volledige AI-pipeline (fase 1: Graph+AI zonder DB, fase 2: DB-state-machine); haalt `IEmailGraphService`/`IEmailPersistenceService` sinds #827 via DI op (`context.InstanceServices`), niet meer met `new` |
-| `FunctionApp/Email/EmailPersistenceService.cs` | Dunne, DI-testbare wrapper rond `IEmailPersistenceRepository` (zie §1.5 voor de laagstructuur) |
-| `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository` — bevat sinds #827 rechtstreeks de ADO.NET-toegang tot `planner.EmailVerwerking` (voorheen een aparte `EmailProcessingRepository`, nu geabsorbeerd); forwardt alleen classificatiecorrectie/leermomenten nog naar `LearningMomentRepository` |
+| `FunctionApp/Email/EmailPersistenceService.cs` | Dunne, DI-testbare wrapper rond `IEmailPersistenceRepository` (zie §1.5 voor de laagstructuur). **Alleen SQL Server-tier** |
+| `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository` — bevat sinds #827 rechtstreeks de ADO.NET-toegang tot `planner.EmailVerwerking` (voorheen een aparte `EmailProcessingRepository`, nu geabsorbeerd); forwardt alleen classificatiecorrectie/leermomenten nog naar `LearningMomentRepository`. **Alleen SQL Server-tier**: Postgres heeft `Email/SqlEmailPersistenceRepository.cs` als `internal static class`, zonder interface en zonder wrapper |
 | `FunctionApp/Email/EmailBatchFilterService.cs` | Fase-1-voorfilter: eigen mailbox, gecachede uitsluitingslijst |
 | `FunctionApp/Email/EmailClassificationService.cs` | Batch-wrapper rond de AI-classificatie, vangt quota-fouten |
 | `FunctionApp/Email/EmailReplyPolicyService.cs` | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
@@ -50,8 +84,9 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Processing/BerichtPipeline.cs` | Kanaal-agnostische orchestratie tussen classificatie, `PlannerService` en templating |
 | `FunctionApp/Email/CleanupEmailVerwerkingFunction.cs` | Wekelijkse AVG-cleanup-timer (roept twee stored procedures aan) |
 | `FunctionApp/Email/ClubAppSettingsSnapshot.cs` | Club-specifieke settings-snapshot voor het dry-run-pad van de Email-tester (#677) |
-| `FunctionApp/Utilities/EmailSanitizer.cs` | HTML-sanitizing: `StripHtml` (inkomend), `SanitizeHtmlAllowlist`/`BouwVeiligeHtmlBody` (uitgaand), `SanitizeFoutMelding` (logging) |
-| `FunctionApp/Utilities/OntvangerParser.cs` | **Nieuw, nog niet gecommit (#765).** Enige plek die een vrije-tekst-ontvangersregel omzet naar een gevalideerde, gededupliceerde lijst e-mailadressen (max 15) |
+| `Planner.Shared/EmailSanitizer.cs` | HTML-sanitizing: `StripHtml` (inkomend), `SanitizeHtmlAllowlist`/`BouwVeiligeHtmlBody` (uitgaand), `SanitizeFoutMelding` (logging). **Tier-onafhankelijk** — beide bomen gebruiken deze klasse. *(De map `FunctionApp/Utilities/` bestaat niet meer.)* |
+| `Planner.Shared/OntvangerParser.cs` | Gecommit (#765). Enige plek die een vrije-tekst-ontvangersregel omzet naar een gevalideerde, gededupliceerde lijst e-mailadressen (max 15). **Tier-onafhankelijk** |
+| `Planner.Shared/EmailVerzendUitkomstClassificatie.cs` | Bevat de klasse `EmailVerzendFoutClassificatie` (let op: bestandsnaam ≠ klassenaam): classificeert een `SendReplyAsync`-exception als bewezen afwijzing of onbekende uitkomst (#1133). **Tier-onafhankelijk** |
 | `FunctionApp/Admin/AdminTeambegeleidingFunction.cs` | De handmatige "doorsturen"-actie — enige bestaande "gebruiker klikt knop, mail gaat uit"-flow buiten de AI-pipeline |
 | `FunctionApp/Admin/EmailTestFunction.cs` | Dry-run classifier/preview — **verstuurt niets** (zie §1.2, correctie op de aanname dat dit een verzendpad is) |
 | `FunctionApp/Admin/AdminTemplatesFunction.cs` | CRUD op `dbo.EmailTemplateInstellingen` (`GET/PUT/POST .../reset`) |
@@ -71,16 +106,32 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 > verzendpad. `EmailTestFunction.DryRun` (`FunctionApp/Admin/EmailTestFunction.cs:34-135`) roept
 > nergens `IEmailGraphService` aan — het classificeert, bouwt een planner-response en een
 > voorbeeldantwoord, en retourneert dat. De UI zegt het ook expliciet: *"deze test verstuurt niets
-> en slaat niets op"* (`BlazorAdmin/Pages/EmailTester.razor:9-13`). Er zijn dus twee échte
-> verzendpaden, niet drie.
+> en slaat niets op"* (`BlazorAdmin/Pages/EmailTester.razor:9-13`).
+
+**Twee verzendpaden naar externe ontvangers** — de automatische AI-reply en de handmatige
+doorstuur-actie, hieronder in de tabel. **Daarnaast bestaan er noodmailpaden naar de eigen
+mailbox**, die niet in die tabel staan maar wél `IEmailGraphService.SendReplyAsync` rechtstreeks
+aanroepen:
+
+| Noodmailpad | Tier | Aanleiding |
+|---|---|---|
+| `Email/EmailProcessorFunction.cs` | beide | Database onbereikbaar; OpenAI-quota overschreden |
+| `Sportlink/SportlinkContractCheckTimerFunction.cs` | beide (Postgres #1122, SQL Server #1266) | Sportlink contract-check: afwijking gedetecteerd |
+| `Monitoring/DatabaseUitvalMonitorFunction.cs` | **alleen SQL Server** | Database staat langdurig gepauzeerd (#831) |
+
+> **Relevant voor §2.2 en §4.** Het argument daar ("wat gaat er mis bij een vierde verzendpad")
+> telt de verzendpaden. Die telling is sinds het schrijven van dit document opgeschoven: de
+> Sportlink-contract-check is precies zo'n extra pad, en staat inmiddels op beide tiers. Een
+> toekomstig `IEmailVerzendService` moet deze noodmailpaden dus óf kunnen bedienen, óf ze expliciet
+> uitsluiten — met een reden. Stilzwijgend vergeten is de failure mode die dit document beschrijft.
 
 | Aspect | Automatische AI-reply | Handmatige "doorsturen" (Teambegeleiding) |
 |---|---|---|
 | Trigger | Timer (`EMAIL_POLL_SCHEDULE`), `EmailProcessorFunction.Run` | HTTP POST, `AdminTeambegeleidingFunction.Doorsturen` |
 | Graph-aanroep | `EmailGraphService.SendReplyAsync` (regel 193-256) of `.StuurTeamContactDoorAsync` (regel 271-311) voor `TeamContactOpvragen` | `EmailGraphService.StuurTeamContactDoorAsync` (regel 271-311) |
-| `EmailGraphService`-constructie | Sinds #827 via DI: `context.InstanceServices.GetService<IEmailGraphService>()` (Program.cs registreert de factory zodra Graph geconfigureerd is) | Nog steeds `new EmailGraphService(graphClient, loggerFactory.CreateLogger<...>())` — `AdminTeambegeleidingFunction.cs:213` (bewust buiten de #827-scope gelaten; geen enkele review vlagde dit specifieke call-site) |
+| `EmailGraphService`-constructie | Sinds #827 via DI: `context.InstanceServices.GetService<IEmailGraphService>()` (Program.cs registreert de factory zodra Graph geconfigureerd is) | **Verschilt per tier.** Postgres (productie), sinds #857/#1122: via DI, `context.InstanceServices.GetService<IEmailGraphService>()` in `FunctionApp.Postgres/Admin/AdminTeambegeleidingFunction.cs` (±regel 175), met een 503 als de service niet geregistreerd is — EgressGuard zorgt dat hij buiten productie onvoorwaardelijk ontbreekt, dus geen gefakete "verstuurd"-melding. SQL Server: nog steeds `new EmailGraphService(graphClient, loggerFactory.CreateLogger<...>())` in `FunctionApp/Admin/AdminTeambegeleidingFunction.cs` (±regel 163) |
 | Afzender-mailbox | Vaste `GraphMailbox` (systeem, app-only) | Zelfde vaste `GraphMailbox` |
-| Sjabloon | `EmailTemplateService` + `BerichtResponseGenerator`, incl. gedeelde `EmailVoetnoot` | Handgebouwde HTML-string met losse `WebUtility.HtmlEncode(...)`-aanroepen per veld (`AdminTeambegeleidingFunction.cs:216-222`) — **geen** `EmailTemplateService`, **geen** gedeelde voetnoot |
+| Sjabloon | `EmailTemplateService` + `BerichtResponseGenerator`, incl. gedeelde `EmailVoetnoot` | Handgebouwde HTML-string met losse `WebUtility.HtmlEncode(...)`-aanroepen per veld (`FunctionApp/Admin/AdminTeambegeleidingFunction.cs:166-170`) — **geen** `EmailTemplateService`, **geen** gedeelde voetnoot |
 | Ontvangerresolutie | Server-side lookup via `PlannerDataAccess.GetTeamleiderContactAsync` (automatische classificatie) | `OntvangerParser.Parse` op het vrije "Email Aan"-veld, met server-side TOP-1-fallback als het veld leeg is (regel 145-203) |
 | Opt-out-check | `IEmailPersistenceService.LaadUitgeslotenAdressenAsync` (via DI-testbare laag) | Sinds #827: `context.InstanceServices.GetRequiredService<IEmailPersistenceRepository>().GetExcludedEmailAddressesAsync(clubCode)` — geïnjecteerd, geen `new` meer |
 | Logging | `planner.EmailVerwerking`, rijke statusmachine (`Pogingen`, `VerzendPogingOpUtc`, `IsBeantwoord`, idempotentie) | `planner.EmailVerwerking`, **synthetische** rij met gegenereerd `MessageId` (§1.6) |
@@ -88,7 +139,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 
 ### 1.3 Sender identity vandaag: één vaste systeem-mailbox
 
-`FunctionApp/Program.cs:13-22` registreert `GraphServiceClient` als singleton met een
+`FunctionApp/Program.cs` (regels 20-31) registreert `GraphServiceClient` als singleton met een
 `ClientSecretCredential` (app-only, client-credentials flow):
 
 ```csharp
@@ -98,7 +149,7 @@ var graphAppCredential = Environment.GetEnvironmentVariable("GraphClientSecret")
 if (...) builder.Services.AddSingleton(new GraphServiceClient(credential));
 ```
 
-`EmailGraphService` leest daarnaast de doelmailbox uit een aparte env var (`FunctionApp/Email/EmailGraphService.cs:23-24`):
+`EmailGraphService` leest daarnaast de doelmailbox uit een aparte env var (`FunctionApp/Email/EmailGraphService.cs:24-25`):
 
 ```csharp
 _mailbox = Environment.GetEnvironmentVariable("GraphMailbox")
@@ -112,20 +163,26 @@ mailbox, één app-only credential, gebruikt door **beide** bestaande verzendpad
 
 **Sinds #827 (2026-08-30)** is `IEmailGraphService` wél in DI geregistreerd (`Program.cs`, alleen
 als Graph geconfigureerd is) en gebruikt `EmailProcessorFunction.Run` de geïnjecteerde instantie.
-`AdminTeambegeleidingFunction.Doorsturen` doet nog steeds zelf
-`new EmailGraphService(graphClient, loggerFactory.CreateLogger<EmailGraphService>())` — dat
-call-site viel buiten de scope van #827 (geen enkele review vlagde het) en blijft losse,
-kopieerbare boilerplate.
+
+`AdminTeambegeleidingFunction.Doorsturen` is inmiddels **per tier verschillend**, en dat is de enige
+plek waar dit document nog een openstaand gebrek beschrijft dat op de productietier al opgelost is:
+
+- **Postgres (productie)** — sinds #857/#1122 via DI, met de EgressGuard-redenering erbij: buiten
+  productie is `IEmailGraphService` onvoorwaardelijk ongeregistreerd, ook mét geconfigureerde
+  Graph-secrets, en het endpoint geeft dan een 503 in plaats van een gefakete "verstuurd"-melding.
+- **SQL Server** — nog steeds `new EmailGraphService(graphClient, loggerFactory.CreateLogger<…>())`.
+  Dat call-site viel buiten de scope van #827 en blijft losse, kopieerbare boilerplate. Met #1266
+  (tier-pariteit) is dit een concreet verschil dat nog gelijkgetrokken moet worden.
 
 ### 1.4 Wat de server al weet over de ingelogde gebruiker
 
 `FunctionApp/Admin/EasyAuthHelper.cs` haalt vandaag al drie dingen uit de `X-MS-CLIENT-PRINCIPAL`-claims
 die Easy Auth injecteert:
 
-- `GetCallerName` (regel 65-80) — claim `name`
-- `GetCallerEmail` (regel 86-104) — claim `preferred_username`, `upn` of `email`, met de expliciete
+- `GetCallerName` (regel 87) — claim `name`
+- `GetCallerEmail` (regel 94) — claim `preferred_username`, `upn` of `email`, met de expliciete
   toelichting *"Uitsluitend voor server-side gebruik ... Nooit in response terugsturen"*
-- `GetClubCodeFromRequest` (regel 110-118) — `X-Club-Code`-header met terugval op `dbo.AppSettings`
+- `GetClubCodeFromRequest` (regel 137) — `X-Club-Code`-header met terugval op `dbo.AppSettings`
 
 `GetCallerEmail` wordt vandaag gebruikt als **Reply-To** (niet als afzender) in zowel de handmatige
 doorstuur-actie (`AdminTeambegeleidingFunction.cs:142`) als de automatische
@@ -151,6 +208,14 @@ in MSAL) noch server-side (geen OBO-code, geen tweede Graph-credential).
 
 ### 1.5 Layering — opgelost sinds #827 (2026-08-30)
 
+> **Deze hele sectie gaat over de SQL Server-tier.** De Postgres-tier heeft die laagstructuur nooit
+> gehad: daar is `SqlEmailPersistenceRepository` een `internal static class` zonder interface en
+> zonder `EmailPersistenceService`-wrapper. De hieronder beschreven historie en oplossing gelden
+> dus niet één-op-één voor de tier die in productie draait.
+>
+> De alinea "Vóór #827" hieronder is een **historisch verslag** van code die niet meer bestaat; lees
+> hem als achtergrond, niet als huidige toestand.
+
 **Vóór #827** gebruikte `EmailProcessorFunction` `IEmailPersistenceService` (interface, voor
 testbaarheid), waarvan de enige implementatie `EmailPersistenceService` zelf weer een
 `IEmailPersistenceRepository` injecteerde. De enige productie-implementatie daarvan,
@@ -165,14 +230,18 @@ elke DI-registratie om.
 **Na #827:**
 - `EmailProcessingRepository` bestaat niet meer als apart bestand — de ADO.NET-toegang zit nu
   rechtstreeks in `SqlEmailPersistenceRepository`
-  (`FunctionApp/Email/IEmailPersistenceRepository.cs:68-430`; interface + exception op regels 1-59).
+  (`FunctionApp/Email/IEmailPersistenceRepository.cs`, klasse vanaf regel 68; interface vanaf regel 26).
   Twee lagen (Service → Repository) is normale, niet-anomale layering, geen aparte sectie meer waard.
 - `IEmailPersistenceRepository` en `IEmailPersistenceService` zijn beide geregistreerd in
   `Program.cs` (Singleton, via factory-registratie omdat beide implementatietypen bewust `internal`
   blijven — zie de code-comment daar voor de reden).
 - `EmailProcessorFunction.Run` en `AdminTeambegeleidingFunction.Doorsturen` gebruiken beide dezelfde
   geïnjecteerde `IEmailPersistenceRepository`/`IEmailPersistenceService` — geen `new
-  SqlEmailPersistenceRepository()` meer in de codebase (geverifieerd: 0 treffers).
+  SqlEmailPersistenceRepository()` meer op een **call-site**. De enige overgebleven constructie is
+  de DI-factory-registratie zelf (`FunctionApp/Program.cs`, ±regel 109) en de spiegel daarvan in
+  `FunctionApp.Tests/Email/EmailPersistenceDiRegistrationTests.cs` — precies zoals de bullet
+  hierboven beschrijft. Een kale `grep` op `new SqlEmailPersistenceRepository` geeft dus twee
+  treffers, en dat is correct.
 - De audit-insert (`InsertTeambegeleidingDoorsturenAuditAsync`) is nu onderdeel van
   `IEmailPersistenceRepository` zelf, niet meer van een losstaande static class.
 
@@ -181,7 +250,7 @@ via de geïnjecteerde interface.
 
 ### 1.6 De synthetische MessageId-smell (al gedocumenteerd, nu concreet aangetoond)
 
-`docs/EMAIL-VERWERKING.md:710-717` benoemt dit al expliciet:
+`docs/EMAIL-VERWERKING.md`, sectie *Doorsturen naar de coach (#168)*, benoemt dit al expliciet:
 
 > *"Beide schrijven wel naar dezelfde tabel `planner.EmailVerwerking`: de automatische pipeline met
 > `VerzoekType = TeamContactOpvragen`, de handmatige actie met `VerzoekType =
@@ -189,7 +258,7 @@ via de geïnjecteerde interface.
 > is gegenereerd, niet afkomstig van Graph)."*
 
 De code erachter, `SqlEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync`
-(`FunctionApp/Email/IEmailPersistenceRepository.cs:156-174`, sinds #827 onderdeel van
+(`FunctionApp/Email/IEmailPersistenceRepository.cs:156`, sinds #827 onderdeel van
 `IEmailPersistenceRepository` i.p.v. een losstaande static class):
 
 ```csharp
@@ -222,10 +291,12 @@ er geen andere generieke audit-log bestaat.
 `RequireAdmin`-guard, correlation-scope, `WaitForDatabaseAsync` en een uniforme 500-fallback. Het
 wordt gebruikt door `AdminEmailLogFunction.Get` en alle drie de methoden van
 `AdminUitgeslotenEmailFunction`. Het wordt **niet** gebruikt door `AdminTeambegeleidingFunction`
-(3 functies), `EmailTestFunction.DryRun` of `AdminTemplatesFunction` (3 functies) — die vijf
-schrijven dezelfde vier regels (`ExtractOrCreateCorrelationId` → `RequireAdmin` → `BeginScope` →
-eigen try/catch) telkens opnieuw inline. Geen functioneel probleem vandaag, wel een duidelijk
-voorbeeld van hoe makkelijk boilerplate zich vermenigvuldigt zonder een verplicht patroon.
+(4 functies — `Teams`, `Get`, `Doorsturen`, `Import`; die laatste kwam er later bij),
+`EmailTestFunction.DryRun` of `AdminTemplatesFunction` (3 functies) — die acht schrijven dezelfde
+vier regels (`ExtractOrCreateCorrelationId` → `RequireAdmin` → `BeginScope` → eigen try/catch)
+telkens opnieuw inline. Geen functioneel probleem vandaag, wel een duidelijk voorbeeld van hoe
+makkelijk boilerplate zich vermenigvuldigt zonder een verplicht patroon. **Dit patroon is identiek
+op beide tiers.**
 
 ### 1.8 Templates, opt-out en logging — datamodel
 
@@ -235,6 +306,13 @@ voorbeeld van hoe makkelijk boilerplate zich vermenigvuldigt zonder een verplich
 | `dbo.EmailTemplateInstellingen` | `Database/dbo/Tables/EmailTemplateInstellingen.sql` | Per-club DB-override van hardcoded default-templates, uniek op `(TemplateKey, ClubCode)` |
 | `dbo.UitgeslotenEmailAdressen` | `Database/dbo/Tables/UitgeslotenEmailAdressen.sql` | Opt-out-lijst, uniek op `(EmailAdres, ClubCode)` |
 | `avg.Teambegeleiding` | `Database/avg/Tables/Teambegeleiding.sql` | Bron van teambegeleider-emailadressen: `Team`, `Teamrol`, `Naam`, `Emailadres`, `Telefoonnummer`, `ClubCode`. Gevuld via CSV-import (`AdminTeambegeleidingFunction.Import`), **geen FK** naar andere tabellen — puur een opgeslagen contactenlijst per club |
+
+> **Deze schemakolom is de SQL Server-tier.** Op de Postgres-tier heten dezelfde objecten
+> `planner.emailverwerking`, `public.emailtemplateinstellingen`, `public.uitgeslotenemailadressen`
+> en `avg.teambegeleiding` (lowercase, `docs/ARCHITECTUUR-DATABASE-TIERS.md` §3), en staan ze in
+> `Database.Postgres/migrations/` in plaats van in losse `.sql`-bestanden per tabel. Een nieuwe
+> tabel uit §3/§4 heeft dus **twee** schemawijzigingen nodig — en op Postgres bovendien een
+> `ALTER TABLE … ENABLE ROW LEVEL SECURITY;` in dezelfde migratie (#1198, door CI afgedwongen).
 
 `sp_CleanupEmailVerwerking` (`Database/planner/System Stored Procedures/sp_CleanupEmailVerwerking.sql:1-72`)
 is het bestaande, te repliceren AVG-patroon: rijen tussen 30-90 dagen oud worden geanonimiseerd
@@ -246,23 +324,36 @@ dubbel-verzend-preventie).
 
 ### 1.9 Bestaande testdekking (`FunctionApp.Tests/Email/`)
 
-`EmailBatchFilterServiceTests.cs`, `ReplyPolicyTests.cs`, `BerichtResponseGeneratorClubSettingsTests.cs`,
-`BerichtResponseGeneratorVeldTypeTests.cs`, `EmailClassificationServiceTests.cs`,
-`EmailHardeningTests.cs`, `EmailIdempotentieTests.cs`, `EmailPersistenceServiceTests.cs`,
+`BerichtResponseGeneratorClubSettingsTests.cs`, `BerichtResponseGeneratorVeldTypeTests.cs`,
+`EmailBatchFilterServiceTests.cs`, `EmailClassificationServiceTests.cs`, `EmailHardeningTests.cs`,
+`EmailIdempotentieTests.cs`, `EmailPersistenceDiRegistrationTests.cs`,
+`EmailPersistenceServiceTests.cs`, `EmailProcessorFunctionNoodmailTests.cs`,
 `EmailProcessorFunctionTests.cs`, `EmailReplyPolicyServiceTests.cs`, `EmailSanitizerTests.cs`,
-`EmailTemplateServiceTests.cs`, `MultiDatumAfsluitzinTests.cs`,
-`TestDoubles/{FakeEmailGraphService,FakeEmailPersistenceRepository,RecordingEmailPersistenceService}.cs`.
-Plus, nog niet gecommit: `FunctionApp.Tests/Utilities/OntvangerParserTests.cs` — 13 tests die het
-volledige gedrag van `OntvangerParser.Parse` vastleggen (naam+adres, kaal adres, `;`/`,`-scheiding,
-deduplicatie, max 15, foutmeldingen per ongeldig fragment).
+`EmailTemplateServiceTests.cs`, `MultiDatumAfsluitzinTests.cs`, `ReplyPolicyTests.cs`,
+`TestDoubles/{FakeEmailGraphService,FakeEmailPersistenceRepository,FakeNoodmailThrottleStore,RecordingEmailPersistenceService,RecordingLogger}.cs`.
 
-### 1.10 Terzijde: documentatie-gap gevonden tijdens dit onderzoek
+Plus `FunctionApp.Tests/Utilities/OntvangerParserTests.cs` (gecommit): 12 testmethoden — 10 `[Fact]`
+en 2 `[Theory]` met samen 7 `InlineData`-gevallen — die het volledige gedrag van
+`OntvangerParser.Parse` vastleggen (naam+adres, kaal adres, `;`/`,`-scheiding, deduplicatie, max 15,
+foutmeldingen per ongeldig fragment).
 
-`docs/API.md` documenteert vandaag **geen** van de endpoints `/beheer/email-log`,
-`/beheer/uitgesloten-emails` of `/beheer/templates` (geverifieerd: geen treffers voor deze routes in
-`docs/API.md`), ondanks de notitie in het root-`CLAUDE.md` dat de spec "alle 51 productieroutes"
-dekt. Dit is een bestaande gap, losstaand van dit ontwerp, maar relevant voor §6.7: een nieuw
-`/api/beheer/email/send`-endpoint moet niet in dezelfde gap verdwijnen.
+> **De Postgres-tier heeft een eigen, parallelle testboom** onder `FunctionApp.Postgres.Tests/Email/`
+> met o.a. `ReplyPolicyTests.cs`, `EmailBatchFilterServiceTests.cs`,
+> `EmailClassificationServiceTests.cs`, `EmailHardeningTests.cs`,
+> `EmailProcessorFunctionIntegrationTests.cs`, `EmailProcessorFunctionNoodmailTests.cs`,
+> `EmailReplyPolicyServiceIntegrationTests.cs` en een eigen `TestDoubles/`. Een wijziging aan
+> gedeeld e-mailgedrag hoort in beide testbomen te landen.
+
+### 1.10 Terzijde: documentatie-gap uit dit onderzoek — inmiddels gedicht
+
+> **Opgelost.** Deze sectie meldde dat `docs/API.md` de endpoints `/beheer/email-log`,
+> `/beheer/uitgesloten-emails` en `/beheer/templates` niet documenteerde. Dat klopt niet meer:
+> alle drie staan er inmiddels in (`docs/API.md`, de admin-endpointtabel). Ook het aantal in het
+> root-`CLAUDE.md` is bijgesteld — de spec dekt daar nu 74 routes, niet 51.
+>
+> Wat blijft staan is de onderliggende regel, en die is normatief: een nieuw
+> `/api/beheer/email/send`-endpoint uit §6.7 hoort in dezelfde commit in `docs/API.md` én in
+> `docs/api-standaarden/openapi.yaml`/`.json` te landen.
 
 ---
 
@@ -386,7 +477,7 @@ public sealed record EmailVerzendOpdracht(
     IReadOnlyList<string> Ontvangers,
     string Onderwerp,
     string Body,                    // platte tekst of eigen-opmaak-HTML — zelfde detectie als
-                                     // EmailSanitizer.BouwVeiligeHtmlBody (EmailSanitizer.cs:118-129)
+                                     // EmailSanitizer.BouwVeiligeHtmlBody (Planner.Shared/EmailSanitizer.cs:123)
     AfzenderStrategie Afzender,
     EmailOorsprong Oorsprong,
     string ClubCode,
@@ -450,7 +541,7 @@ public sealed class OntvangerResolutieService(IUitsluitingslijstRepository uitsl
 ```
 
 `IUitsluitingslijstRepository` verplaatst de bestaande `GetExcludedEmailAddressesAsync(clubCode)`-query
-(vandaag in `SqlEmailPersistenceRepository`, `IEmailPersistenceRepository.cs:28` en `:82-96`) naar een
+(vandaag in `SqlEmailPersistenceRepository`, `FunctionApp/Email/IEmailPersistenceRepository.cs`) naar een
 eigen, kleine interface zodat zowel de AI-pipeline als elk nieuw scherm hem via DI krijgen. Sinds
 #827 injecteert `AdminTeambegeleidingFunction` hiervoor al `IEmailPersistenceRepository` (niet meer
 `new SqlEmailPersistenceRepository()`) — deze toekomstige stap zou de opt-out-query verder
@@ -677,7 +768,7 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
 
 - `AdminTeambegeleidingFunction.Doorsturen` gebruikt `IEmailVerzendService` in plaats van
   rechtstreeks `new EmailGraphService(...)` (sinds #827 al via DI voor de repository-kant, maar de
-  Graph-constructie op `AdminTeambegeleidingFunction.cs:213` staat nog steeds los) +
+  Graph-constructie op `FunctionApp/Admin/AdminTeambegeleidingFunction.cs:163` staat nog steeds los op de SQL Server-tier; de Postgres-tier gebruikt daar DI) +
   `IEmailPersistenceRepository.InsertTeambegeleidingDoorsturenAuditAsync`.
 - De `OntvangerParser`-aanroep verplaatst naar `OntvangerResolutieService`; het parse-gedrag zelf
   verandert niet, dus `FunctionApp.Tests/Utilities/OntvangerParserTests.cs` (13 tests, §1.9) blijft
@@ -724,8 +815,8 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
   aantekening in de code dat er geen nieuwe rijen meer bijkomen.
 - Update `docs/EMAIL-VERWERKING.md` §"Doorsturen naar de coach" om te verwijzen naar dit document
   in plaats van de nu-historische synthetische-rij-uitleg te herhalen.
-- Update `CHANGELOG.md`, `docs/API.md` (voeg ook de vandaag ontbrekende `email-log`/
-  `uitgesloten-emails`/`templates`/nieuwe `email/send`-routes toe, zie §1.10),
+- Update `CHANGELOG.md`, `docs/API.md` (de nieuwe `email/send`-route; `email-log`,
+  `uitgesloten-emails` en `templates` staan er inmiddels al in — zie §1.10),
   `docs/api-standaarden/openapi.yaml` (+ hersynchroniseer `openapi.json`).
 
 ---
@@ -767,9 +858,12 @@ vóórdat hij het token gebruikt — Blazor levert alleen het token aan, beslist
 7. **`dbo.EmailLog` is nieuw** en moet, net als elke andere tabel, bij codereview op de
    multi-club-invarianten uit root-`CLAUDE.md` gecontroleerd worden (ClubCode-discriminator, geen
    club-specifieke fallback-strings).
-8. **De bestaande documentatiegap in `docs/API.md`/openapi (§1.10)** moet worden meegenomen zodra
-   Fase 2 het nieuwe `email/send`-endpoint toevoegt — anders groeit de gap in plaats van dat hij
-   wordt gedicht.
+8. **Het nieuwe `email/send`-endpoint hoort in dezelfde commit in `docs/API.md` én
+   `docs/api-standaarden/openapi.yaml`/`.json`.** De gap die §1.10 oorspronkelijk meldde is
+   inmiddels gedicht; de regel blijft omdat een nieuw endpoint hem anders opnieuw opent.
+9. **Elke nieuwe klasse, tabel en migratie landt op beide `built: true`-tiers** (#1266) — zie de
+   tier-waarschuwing bovenaan dit document. Een Postgres-migratie krijgt bovendien in dezelfde
+   migratie `ALTER TABLE … ENABLE ROW LEVEL SECURITY;` (#1198).
 
 ---
 

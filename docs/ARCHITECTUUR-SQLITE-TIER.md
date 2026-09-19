@@ -1,8 +1,10 @@
 # Architectuur — SQLite-tier (tier 3, voorbereidend ontwerp)
 
-> **Dit document is voorbereidend werk, geen bouwhandleiding — en expliciet geen blokkade voor het
-> lopende Postgres/SQL-Server-werk in epic #815.** SQLite is tier 3, gepland ná Postgres (tier 2),
-> waar nu de prioriteit ligt. Dit document legt vast wat vandaag al ontwerpbaar is, onafhankelijk
+> **Dit document is voorbereidend werk, geen bouwhandleiding. Er is geen regel SQLite-code gebouwd:
+> `FunctionApp.Sqlite/` en `Database.Sqlite/` bestaan niet.** SQLite is tier 3. De tiers vóór hem
+> zijn inmiddels klaar — epic #815 is afgerond en zowel SQL Server als Postgres staat op
+> `built: true` in `scripts/ci/database-tiers.json`; productie draait op Postgres. Deze tier is
+> daarmee niet langer geblokkeerd door ander werk, maar ook niet ingepland. Dit document legt vast wat vandaag al ontwerpbaar is, onafhankelijk
 > van één specifieke, nog niet te beantwoorden vraag — zie sectie 6. Zie
 > [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md) voor de volledige bouwvolgorde
 > en het "geen gedeelde provider-abstractie"-besluit dat ook voor deze tier geldt.
@@ -108,11 +110,17 @@ moment dat tier 3 daadwerkelijk wordt opgepakt.
 
 ## 8. Kostentier-check
 
-Dit document creëert en wijzigt geen Azure-resources — geen prijscheck vereist. Optie B en C uit
-sectie 6 hebben wél kostenimpact zodra ze daadwerkelijk gekozen worden — een hernieuwde MS
-Docs-prijsverificatie plus expliciete goedkeuring is verplicht zodra tier 3 wordt opgepakt. Optie A
-heeft geen kostenimpact voor de eigen gratis-tier-stack, maar verplaatst kosten naar de
-zelf-hostende club — moet expliciet in publieke documentatie staan zodra gekozen.
+> **Elke kosten- en platformuitspraak in dit document is een momentopname van 2026-08-30**
+> (Microsoft Learn, zie sectie 6). Gratis-tier-voorwaarden en plan-eigenschappen wijzigen zonder
+> aankondiging vooraf. **Verifieer ze opnieuw via de Microsoft Learn MCP server vóór je er een
+> besluit of een resource op baseert** — dat is niet optioneel, het is de kostenbeleidsregel uit
+> CLAUDE.md.
+
+Dit document creëert en wijzigt geen Azure-resources — geen prijscheck vereist om het af te
+ronden. Optie B en C uit sectie 6 hebben wél kostenimpact zodra ze daadwerkelijk gekozen worden —
+een hernieuwde MS Docs-prijsverificatie plus expliciete goedkeuring is verplicht zodra tier 3
+wordt opgepakt. Optie A heeft geen kostenimpact voor de eigen gratis-tier-stack, maar verplaatst
+kosten naar de zelf-hostende club — moet expliciet in publieke documentatie staan zodra gekozen.
 
 ## 9. Wat dit document NIET doet
 

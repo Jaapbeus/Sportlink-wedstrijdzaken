@@ -19,6 +19,28 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Documentatie feitelijk gelijkgetrokken met de code (#1269).** Alle documenten in `docs/` en de
+  documentatie in de hoofdmap zijn document voor document tegen de werkelijke broncode getoetst.
+  De belangrijkste correcties, elk met gevolgen voor wie ze volgde: de twee databasevarianten
+  stonden in vier installatiedocumenten omgewisseld, waardoor het startcommando de verkeerde
+  database opstartte en een nieuwe ontwikkelaar met een lege omgeving achterbleef; de API-tabel gaf
+  bij een aantal endpoints het verkeerde beveiligingsniveau; de beheerdershandleiding beschreef een
+  knop "Testmodus" die niet bestaat (van club wisselen gaat via de clubkeuzelijst in de bovenbalk);
+  en vier schermen — Dashboard, Leermomenten, E-mailtemplates en die clubkeuzelijst — waren nergens
+  beschreven. Verder zijn verouderde versienummers uit documenttitels gehaald, is de
+  documentatie-index aangevuld met de documenten die eruit waren gelopen, en is een map met
+  ongebruikte, deels misleidende API-specificaties verwijderd.
+- **Onjuiste uitleg over de verwerking van het begeleidersbestand (#1269).** De handleiding en de
+  importinstructie stelden dat het CSV-bestand "in de browser wordt verwerkt en niets op de server
+  wordt opgeslagen". Dat gaf een verkeerd beeld: de browser toont alleen een voorbeeld van de
+  eerste regels, het volledige bestand gaat wel degelijk naar de server en wordt daar verwerkt.
+  Het wordt niet als bestand bewaard, maar de gegevens passeren de server wél. Beide documenten
+  beschrijven nu precies wat er gebeurt — een onjuiste geruststelling over persoonsgegevens is
+  ernstiger dan een onvolledige uitleg.
+- **Voorbeeldwaarden die naar de eigen club te herleiden waren, vervangen door placeholders (#1269).**
+  Twee documenten gebruikten echte identificatienummers uit de productieomgeving als voorbeeld. Ze
+  zijn vervangen door neutrale placeholders; de redenering eromheen is ongewijzigd gebleven.
+
 - **De SQL Server-variant van de database was achtergebleven op de Postgres-variant (#1266).** Deze
   applicatie ondersteunt twee soorten database; een club kiest er bij installatie één. Sinds deze
   installatie in september op Postgres overging, is nieuwe functionaliteit alleen daar nog gebouwd —

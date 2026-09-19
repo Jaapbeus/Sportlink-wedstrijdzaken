@@ -1,6 +1,7 @@
 # Documentatie — Sportlink Wedstrijdzaken
 
-Centrale inhoudsopgave. Structuur en categorieregels: zie [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
+Centrale inhoudsopgave — elk document in `docs/` staat hier. Structuur en categorieregels: zie
+[DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md).
 
 ---
 
@@ -30,23 +31,48 @@ Voor de beheerder die beheertaken uitvoert buiten de dagelijkse GUI-flow.
 
 ## 3. Developers — architectuur, debuggen, API en specs
 
-Voor bijdragers aan de codebase.
+Voor bijdragers aan de codebase. **Begin hier:** [ARCHITECTURE.md](ARCHITECTURE.md) — daarna het
+document van het onderdeel waaraan je werkt.
+
+**Architectuur — geldende regels**
 
 | Document | Inhoud |
 |----------|--------|
-| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
-| [Architectuurprincipes (V2, gearchiveerd)](ARCHITECTURE-V2.md) | Historische snapshot vóór de Postgres-cutover — niet meer bijwerken |
+| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Startpunt. Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
+| [Multi-tier databasestrategie](ARCHITECTUUR-DATABASE-TIERS.md) | Tierkeuze, bouwvolgorde, casing-conventie, RLS — gezaghebbende bron voor de tier-status |
+| [Codekwaliteit](ARCHITECTUUR-CODEKWALITEIT.md) | De codekwaliteitsregels met een CI-guard en een plafond per regel |
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
 | [Planner architectuur](ARCHITECTURE-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
+| [Teamresolutie](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie — één vertaalpunt |
+| [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
+| [E-mailmodule (doelarchitectuur)](ARCHITECTUUR-EMAIL-MODULE.md) | Verzendlaag, afzenderstrategie, e-maillogging — ontwerp, migratie nog niet gestart |
+| [Sportlink Web Extension](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
+
+**API-contract**
+
+| Document | Inhoud |
+|----------|--------|
 | [API referentie](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
 | [OpenAPI spec (YAML)](api-standaarden/openapi.yaml) | Machine-readable OpenAPI 3.0 spec — **altijd bijhouden bij endpoint-wijziging** |
 | [OpenAPI spec (JSON)](api-standaarden/openapi.json) | Zelfde spec in JSON-formaat — sync met YAML |
-| [Structured specs (openspec)](api-standaarden/openspec/config.yaml) | Machine-readable requirements per domein |
-| [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
+
+**Werkwijze en gereedschap**
+
+| Document | Inhoud |
+|----------|--------|
 | [Versioning & CHANGELOG](VERSIONING.md) | Semver-regels, conventional commits, release-workflow |
-| [Verificatie-scripts](VERIFICATIE-SCRIPTS.md) | Test-App.ps1 + Start-Debug.ps1: schema-controle, endpoints, Blazor-pagina's — voor developers |
+| [Verificatie-scripts](VERIFICATIE-SCRIPTS.md) | Test-App.ps1 + Start-Debug.ps1: schema-controle, endpoints, Blazor-pagina's |
 | [Lokaal debuggen](LOKAAL-DEBUGGEN.md) | Services starten, poorten, hot-reload, func start |
-| [Sportlink schermen-analyse](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Beschikbare datavelden in Sportlink Club-interface |
+
+**Onderzoek, ontwerp en archief — nog geen gebouwde code, of niet meer actueel**
+
+| Document | Inhoud |
+|----------|--------|
+| [SQLite-tier](ARCHITECTUUR-SQLITE-TIER.md) | Tier 3 — voorbereidend ontwerp, nog niet gebouwd |
+| [Cosmos DB e-maillog](ARCHITECTUUR-COSMOSDB-EMAILLOG.md) | Tier 4, alleen het e-mailverwerkingslog — ontwerp + kostenverificatie, nog niet gebouwd |
+| [Sportlink schermen-analyse](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Beschikbare datavelden in de Sportlink Club-interface |
+| [Sportlink Club schrijfacties — onderzoek](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) | Bronrapport met netwerktraces en gevonden endpoint-contracten |
+| [Architectuurprincipes (V2, gearchiveerd)](ARCHITECTURE-V2.md) | Historische snapshot vóór de Postgres-cutover — niet meer bijwerken |
 
 ---
 
@@ -60,6 +86,7 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 | [Developer setup](DEVELOPER-SETUP.md) | .NET, SQL Server/Postgres, Azurite, GitHub Actions — lokale ontwikkelomgeving, beide databasetiers |
 | [Setup checklist](SETUP-CHECKLIST.md) | Snelle checklist voor eerste opzet, beide databasetiers |
 | [Entra auth & beheer](ENTRA-AUTH-BEHEER.md) | App Registration, Easy Auth, rollen, gebruikers toevoegen — via scripts |
+| [Eigen domein](CUSTOM-DOMAIN.md) | Custom domain op de Static Web App, CORS-origins, redirect-URI's |
 
 ---
 
@@ -74,4 +101,6 @@ Voor nieuwe clubs en developers die de app voor het eerst inrichten.
 
 ---
 
-*Structuur gedefinieerd in [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md) · Bijhoudconventie: zie CLAUDE.md Stap 2b*
+*Structuur gedefinieerd in [DOCUMENTATIEPLAN.md](DOCUMENTATIEPLAN.md). Een document dat in `docs/`
+wordt toegevoegd, hernoemd of verwijderd, wordt in dezelfde PR in deze index én in
+DOCUMENTATIEPLAN.md bijgewerkt.*

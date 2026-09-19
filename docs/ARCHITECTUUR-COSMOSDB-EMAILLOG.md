@@ -26,7 +26,9 @@ repository-grens kan landen — geen harde afhankelijkheid, wel de logische volg
 ## 2. Free-tier vereisten — harde eis (kostenbeleid)
 
 Bevestigd in #814: Cosmos DB gratis tier = 1000 RU/s + 25 GB opslag, voor de levensduur van het
-account, één gratis account per subscription.
+account, één gratis account per subscription. **Deze hele sectie is een momentopname, laatst
+geverifieerd op 2026-08-30** (zie de aanvulling hieronder); herverifieer hem via de Microsoft
+Learn MCP server vóór elk besluit — zie ook "Kostentier-check" onderaan.
 
 **Aanvulling, geverifieerd via Microsoft Learn (2026-08-30) — ontbrak in #814:** de gratis tier is
 **niet beschikbaar voor accounts in serverless-modus**. Ze geldt uitsluitend voor accounts met
