@@ -8,7 +8,9 @@ De ALLSTARS-testmodus maakt het mogelijk om de dagplanning en planner-logica te 
 
 In normale modus haalt de planner zijn data uit de Sportlink Club API (live) of de gesynchroniseerde database (`his.matches` met `ClubCode = '<jouwclub>'`). In ALLSTARS-modus wordt dezelfde plannerlogica uitgevoerd op testdata die opgeslagen staat in `his.matches WHERE ClubCode = 'ALLSTARS'`.
 
-**Er is geen echte ALLSTARS-club.** De ClubCode `ALLSTARS` is een speciale sleutelwaarde die aangeeft dat het om fictieve testdata gaat. Er is geen rij in `dbo.AppSettings` voor ALLSTARS — dit is bewust: de testmodus heeft geen eigen e-mail, API-verbinding of synchronisatieschema.
+**Er is geen echte ALLSTARS-club.** De ClubCode `ALLSTARS` is een speciale sleutelwaarde die aangeeft dat het om fictieve testdata gaat.
+
+> **Bijgewerkt (#1246).** Op de Postgres-tier is er wél een instellingenrij voor ALLSTARS: `Database.Postgres/migrations/006_allstars_demodata.sql` maakt hem aan, met `sportlinkclientid = 'ALLSTARS_NO_SYNC'` en `syncenabled = FALSE`. De democlub heeft dus nog steeds geen e-mail, API-verbinding of synchronisatieschema — maar de eerdere formulering ("er is geen rij") klopte niet meer met de code en is hier gecorrigeerd.
 
 ---
 
@@ -20,9 +22,9 @@ In normale modus haalt de planner zijn data uit de Sportlink Club API (live) of 
 | Planner-optimalisatie | ✅ | Volledige grasveld-logica, teamtijden en veldconflicten |
 | Testdata beheer (wedstrijden) | ✅ | Invoergrid op `/testdata/wedstrijden` |
 | Velden & veldbeschikbaarheid | ✅ | Deelt `dbo.Velden` met de echte club |
-| Speeltijden | ✅ | Deelt `dbo.Speeltijden` met de echte club |
+| Speeltijden | ✅ | **Eigen rijen** met `ClubCode='ALLSTARS'`, gekopieerd van de primaire club — niet gedeeld (#1246). De kopie draait bij elke deploy en vult zichzelf aan zodra de primaire club speeltijden heeft |
 | Leermomenten | ✅ | Deelt tabel met echte club |
-| Instellingen | ❌ | Geen `AppSettings`-rij voor ALLSTARS — pagina toont testmodus-melding |
+| Instellingen | ❌ | Pagina toont testmodus-melding. Op de Postgres-tier bestaat er sinds #1246 wél een `AppSettings`-rij voor de democlub (met `syncenabled = FALSE`); de pagina blijft bewust afgeschermd |
 | Synchronisatie | ❌ | Niet van toepassing — testdata wordt handmatig beheerd |
 | E-mailverwerking | ❌ | Niet van toepassing — testdata genereert geen echte e-mails |
 | E-mailtester | ✅ | Dry-run (verstuurt en bewaart niets). Respecteert sinds #677 de geselecteerde club: de teamnaam-prefix en de voorbeeld-handtekening (afzender, coördinator) komen uit de instellingen van de gekozen club, niet meer altijd uit die van de echte club |
@@ -47,11 +49,19 @@ De wedstrijden worden opgeslagen in `his.matches` met `ClubCode = 'ALLSTARS'`.
 
 ### Teams in ALLSTARS-modus
 
-De planner-logica zoekt teamdata op via `avg.Teambegeleiding WHERE ClubCode = 'ALLSTARS'`. Voeg fictieve teambegeleiders toe via het CSV-importscript of direct in SQL.
+De planner-logica zoekt teamdata op via `avg.Teambegeleiding WHERE ClubCode = 'ALLSTARS'`. Sinds #1246
+worden 28 fictieve teambegeleiders meegeseed door het demodata-seedscript, dat bij elke Postgres-deploy
+draait — je hoeft ze niet meer met de hand aan te maken. Lokaal: `scripts/dev/Seed-AllStarsDemodata.ps1`.
 
 ### Speeltijden voor testdata
 
-De testmodus deelt de `dbo.Speeltijden`-tabel met de echte club. De koppeling in de planner werkt op teamnaam-prefix: `JO9-2` matcht op `JO9`. Voeg speeltijden toe via **Instellingen → Speeltijden** (in normale modus).
+De democlub heeft **eigen speeltijdenrijen** met `ClubCode='ALLSTARS'` — hij deelt de tabel dus niet
+met de echte club (#1246; de eerdere tekst hier beweerde dat wel). Die rijen worden gekopieerd van
+de primaire club door `scripts/migrations/003-seed-allstars-demo-matches-postgres.sql`, dat bij elke
+Postgres-deploy draait. Voer de speeltijden dus gewoon in via **Instellingen → Speeltijden** in
+normale modus; de democlub volgt bij de eerstvolgende deploy vanzelf.
+
+De koppeling in de planner werkt op teamnaam-prefix: `JO9-2` matcht op `JO9`.
 
 ---
 
