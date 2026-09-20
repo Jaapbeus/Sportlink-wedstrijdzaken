@@ -221,6 +221,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   vier kleuren blijven de terugval.
 
 ### Changed
+- **Dubbele code binnen één databasevariant wordt nu ook gemeten, niet alleen tussen de twee
+  varianten (#1263).** De bestaande controle (#1262) vergelijkt alleen de SQL Server- en
+  Postgres-variant met elkaar; twee keer dezelfde logica binnen één variant viel daarbuiten. Een
+  nieuwe, aparte controle vangt dat nu op. Voor beheerders verandert er niets aan de werking van de
+  applicatie.
 - **De projectregels worden nu gecontroleerd in plaats van alleen opgeschreven (#1262).** Aanleiding
   was een fout waarbij de volledige thema-logica — kleurherkenning, validatie en de beveiliging van
   het ophalen van de clubwebsite — woordelijk twee keer in de codebase stond, één keer per

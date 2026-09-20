@@ -53,6 +53,12 @@ jobs:
       - name: Codekwaliteit — bestandsgrootte en methodelengte
         run: bash scripts/ci/check-bestandsgrootte.sh
 
+      # #1263: check-tier-duplicatie.sh vergelijkt alleen paren tussen FunctionApp/ en
+      # FunctionApp.Postgres/ — duplicatie binnen één boom ziet die guard niet. jscpd meet dat,
+      # met FunctionApp/ uitgesloten zodat cross-tier duplicatie niet dubbel telt.
+      - name: Codekwaliteit — interne duplicatie stijgt niet
+        run: bash scripts/ci/check-interne-duplicatie.sh
+
       # AGENTS.md wordt uit CLAUDE.md afgeleid. Toen beide nog met de hand werden bijgehouden,
       # miste AGENTS.md negen secties — waaronder de tier-regel, de teamnormalisatieregel en de
       # EgressGuard-regel. De tweede reviewer van dit project werkte er dus zonder.
