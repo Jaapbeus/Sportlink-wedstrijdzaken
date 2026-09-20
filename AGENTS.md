@@ -1033,6 +1033,7 @@ Harde regels, vanaf nu:
 ### Een `UPPER()`/`LOWER()`-vergelijking vereist een expressie-index op diezelfde uitdrukking (#1232)
 
 > Analyse, meting en het tier-antwoord: **[docs/ARCHITECTUUR-DATABASE-TIERS.md](docs/ARCHITECTUUR-DATABASE-TIERS.md) §69**
+> — de uitvoering op beide tiers, inclusief het SQL Server-antwoord: **§75** (#1280)
 
 **Wijzig je een vergelijking naar `UPPER(kolom) = ...`, dan hoort het bijwerken van de bijbehorende
 index bij diezelfde wijziging — niet bij een latere opruimronde.** Een index op de kale kolom wordt
@@ -1063,12 +1064,25 @@ ook niet onder een `CI`-collatie. Het is er milder dan op Postgres (de index wor
 plaats van genegeerd), maar bij één club matcht `ClubCode` vrijwel de hele tabel en komt het op
 hetzelfde neer.
 
-**Geen CI-gate.** Dit is niet schema-statisch te bepalen zonder de queries te parsen, en de
-splinter-gate van #1220 sluit `unused_index` bewust uit (§68). Deze regel wordt dus door mensen
-gevolgd, niet door een guard — en staat daarom in **§6 van
-`docs/ARCHITECTUUR-CODEKWALITEIT.md`**, de lijst van wat bewust niet wordt afgedwongen. Dat is de
-tweede uitweg die regel 6 van de codekwaliteitssectie biedt: een guard, óf expliciet als onbewaakt
-gemarkeerd. Niet stilzwijgend geen van beide.
+**SQL Server kent geen expressie-index.** De tegenhanger is een **persisted computed column** met
+een index daarop: de optimizer matcht `UPPER(kolom)` uit de query automatisch tegen die kolom, dus
+de querytekst hoeft niet te wijzigen en blijft gelijk aan die van de Postgres-tier. Zo is het bij
+#1280 opgelost voor `dbo.Teams` en `dbo.TeamAliassen` (3181 → 6 logische leesbewerkingen). Twee
+dingen horen daar altijd bij: `SET QUOTED_IDENTIFIER ON` vóór de DDL in
+`Database/Script.PostDeployment1.sql` — sqlcmd zet hem standaard OFF en SQL Server weigert de DDL
+dan met `Msg 1934` — en géén `UNIQUE` op de uppercase-vorm, want dat kan op een case-sensitieve
+collatie bij aanmaak falen en de deploy breken.
+
+**Gedeeltelijke CI-gate.** In het algemeen is dit niet schema-statisch te bepalen zonder de queries
+te parsen, en de splinter-gate van #1220 sluit `unused_index` bewust uit (§68). Voor de drie
+sleutelkolommen van de teamresolutie is het sinds #1280 wél afgedwongen:
+`FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` leest uit
+`TeamCandidateRepository.cs` welke kolommen via `UPPER()` worden vergeleken en eist voor elk een
+computed column plus index, in de SSDT-definitie én in het PostDeployment-script. Daarbuiten blijft
+de regel door mensen gevolgd en staat hij als deels-onbewaakt in **§6 van
+`docs/ARCHITECTUUR-CODEKWALITEIT.md`**. Dat is de tweede uitweg die regel 6 van de
+codekwaliteitssectie biedt: een guard, óf expliciet als onbewaakt gemarkeerd. Niet stilzwijgend geen
+van beide.
 
 ---
 

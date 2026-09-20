@@ -4328,6 +4328,134 @@ deterministisch vóór `003_speeltijden_kolommen.sql` en beide vóór `004_*`. H
 eenduidigheid van "migratie 003" als aanduiding — noem in tekst daarom altijd de volledige
 bestandsnaam.
 
+## 75. De UPPER()-indexregel toegepast op de SQL Server-tier — en wat de Postgres-meting weerlegde (#1280)
+
+§69 en de architectuurregel uit #1232 legden vast dát een `UPPER()`-vergelijking een expressie-index
+nodig heeft. #1280 is de uitvoering daarvan op beide tiers. De uitkomst per tier verschilt, en dat
+is hier het interessante deel: één tier had niets nodig, de andere kreeg een ander mechanisme dan
+Postgres omdat SQL Server geen expressie-indexen kent.
+
+### De Postgres-kant was al klaar — en de voorgestelde verbetering is gemeten weerlegd
+
+De issue beschreef `ix_teamaliassen_club_genormaliseerd` nog als een index op de kale kolom. Dat was
+op het moment van schrijven niet meer zo: migratie `024_index_tuning_performance_advisor.sql` (#1211,
+16 september 2026) had hem al vervangen door `ix_teamaliassen_club_genormaliseerd_upper`. De
+Postgres-tier vroeg dus geen wijziging. Nagemeten op Postgres 17, 200.000 aliasrijen, met de echte
+queryvorm uit `FindValidatedAliasAsync` (een `OR` over beide aliaskolommen) op het gangbare pad —
+géén treffer:
+
+| Indexvorm | Plan | Buffers | Uitvoering |
+|---|---|---|---|
+| kale kolom (vóór 024) | Parallel Seq Scan, 100.000 rijen per worker weggefilterd | 2309 | 25,3 ms |
+| expressie-index (024, nu) | BitmapOr over beide expressie-indexen | 8 | 0,064 ms |
+
+De issue stelde daarnaast voor er `INCLUDE (teamid, status)` aan toe te voegen, zodat hij dezelfde
+vorm zou krijgen als de SQL Server-index. **Dat is gemeten en afgewezen.** Het `OR`-predicaat levert
+een `BitmapOr` op, en een bitmap-scan kán INCLUDE-kolommen niet lezen — hij levert alleen
+heap-pagina's aan, waarna de `Bitmap Heap Scan` alsnog naar de tabel gaat voor de recheck en het
+`status`-filter. Het plan is voor en na identiek; het enige verschil is de index zelf: 7960 kB
+tegenover 11 MB, oftewel 38% meer schrijflast en geheugen voor nul winst. Dit is dezelfde les als in
+§69: symmetrie tussen tiers is geen argument op zichzelf, en een indexclaim geldt pas na een meting
+met de **echte** queryvorm.
+
+### De SQL Server-kant: persisted computed column in plaats van expressie-index
+
+SQL Server kent geen index op een expressie. De tegenhanger is een **persisted computed column** met
+een index daarop: de optimizer herkent de expressie `UPPER(kolom)` in de query en matcht hem tegen
+die kolom, zonder dat de querytekst wijzigt.
+
+Gemeten op SQL Server 2022, collatie `SQL_Latin1_General_CP1_CI_AS`, 200.000 aliasrijen, opgebouwd
+met het echte `Script.PostDeployment1.sql` (dus niet met een nagebouwd schema):
+
+| Vorm | Plan | Logische leesbewerkingen | CPU |
+|---|---|---|---|
+| `UPPER(kolom) = UPPER(@p)`, index op de kale kolom | Clustered Index Scan | **3181** | ~40 ms |
+| idem, met persisted computed column + index | twee Index Seeks, `SEEK:([a].[ClubCode]=@clubCode AND [a].[RuweTekstGenormaliseerdUpper]=upper(@sleutel))` | **6** | <1 ms |
+
+De issue rapporteerde 1927 leesbewerkingen met een vereenvoudigd predicaat; met de echte `OR`-vorm
+en de join op `dbo.Teams` is het 3181 en vervalt de seek volledig. **De case-insensitieve
+modelcollatie (`1033, CI`) verwijdert de overbodige `UPPER()` dus niet** — precies wat #1232 stelde,
+nu met de plannen erbij.
+
+Meegenomen in dezelfde wijziging: `dbo.Teams.TeamnaamGenormaliseerd`. `FindExactTeamAsync` vergelijkt
+die kolom óók via `UPPER()`, terwijl `UQ_Teams_Club_Genormaliseerd` op de kale kolom ligt — exact
+hetzelfde defect, en op Postgres al gedekt door `ux_teams_club_teamnaamgenormaliseerd_upper` uit
+migratie 007. Eén tier repareren en de zusterkolom in hetzelfde bestand laten staan zou het patroon
+zijn dat #1266 opruimde.
+
+### Waarom niet gewoon de `UPPER()` uit de query halen
+
+Dat was de tweede weg in de issue, en op het eerste gezicht de goedkoopste: onder een CI-collatie is
+`kolom = @p` al hoofdletterongevoelig, en de bestaande index wordt dan wél gebruikt (gemeten: ook
+6 leesbewerkingen — de twee wegen zijn qua prestatie gelijkwaardig). Toch is hij niet gekozen:
+
+1. **Niets in deze repository garandeert dat de database een CI-collatie heeft.** De deploy
+   publiceert geen dacpac — `deploy.yml` draait uitsluitend `Script.PostDeployment1.sql` tegen een
+   database die de club zelf heeft aangemaakt. `ModelCollation = 1033, CI` in
+   `SportlinkSqlDb.sqlproj` wordt daarmee nooit toegepast. Op een fork met een case-**sensitieve**
+   collatie zou een kale `=` stilzwijgend nul rijen opleveren bij afwijkende casing: teamherkenning
+   die niets vindt, zonder foutmelding. Dat is precies het risico dat #820 benoemde.
+2. **Het zou een bestaande, bewust getoetste guard omkeren.** `TeamCandidateRepositoryCollationTests`
+   verbiedt elke kale vergelijking op deze drie kolommen. Zo'n test schrappen om een indexprobleem
+   op te lossen ruilt een correctheidsgrens in voor een prestatiegrens.
+3. **De computed column is zuiver additief** (§57): geen kolom, type of constraint wijzigt, dus de
+   vórige codeversie blijft werken op het nieuwe schema — een voorwaarde voor een migratie die bij
+   de deploy automatisch vóór de code draait.
+
+De tiers lopen hiermee bewust uiteen in *mechanisme* (expressie-index tegenover computed column),
+maar niet in querytekst en niet in gedrag. Dat is toegestaan zolang het is vastgelegd — dit is die
+vastlegging.
+
+### Drie dingen die je moet weten voordat je hieraan sleutelt
+
+- **`SET QUOTED_IDENTIFIER ON` is geen netheid maar een voorwaarde.** sqlcmd zet hem standaard OFF,
+  en SQL Server weigert dan zowel het aanmaken als het indexeren van een persisted computed column
+  met `Msg 1934`. Zowel de CI-job "PostDeployment op verse database" als de productie-deploy draait
+  via sqlcmd, dus zonder die regel in het script faalt de deploy — terwijl dezelfde DDL in SSMS
+  (waar de optie standaard AAN staat) probleemloos werkt. Dit is empirisch gevonden, niet
+  voorspeld: de eerste run brak er precies op af.
+- **De applicatie zelf hoeft niets te doen.** `Microsoft.Data.SqlClient` zet `QUOTED_IDENTIFIER`,
+  `ANSI_NULLS`, `ANSI_PADDING`, `ANSI_WARNINGS` en `CONCAT_NULL_YIELDS_NULL` standaard ON en
+  `NUMERIC_ROUNDABORT` OFF. `ARITHABORT` staat er standaard **OFF**, maar `ANSI_WARNINGS ON`
+  impliceert hem vanaf compatibiliteitsniveau 90. Nagemeten via een echte SqlClient-verbinding:
+  `INSERT` en `UPDATE` op de tabel slagen. Zonder die controle zou dit een schemawijziging zijn
+  geweest die élke schrijfactie op `dbo.TeamAliassen` breekt.
+- **De kale indexen blijven staan, en dat is geen slordigheid.** `TeamAliasLearningService` en
+  `PlannerMatchRepository` vergelijken dezelfde kolommen juist **zonder** `UPPER()` en gebruiken
+  `IX_TeamAliassen_Club_Genormaliseerd` wél. De SQL Server-tier hanteert dus twee
+  vergelijkingsstijlen naast elkaar op dezelfde kolom; die inconsistentie is ouder dan dit issue
+  (#820 dekte alleen `TeamCandidateRepository`) en blijft staan — zie het vervolgpunt onderaan.
+- **De nieuwe indexen zijn bewust niet UNIEK.** `UQ_TeamAliassen_Club_RuweTekst` en
+  `UQ_Teams_Club_Genormaliseerd` blijven de integriteitsgrens. Een UNIQUE index op de
+  uppercase-vorm zou op een installatie met een case-sensitieve collatie kunnen falen bij aanmaak
+  — twee rijen die alleen in casing verschillen zijn daar vandaag toegestaan — en daarmee de deploy
+  breken. Postgres kent die uniciteit wél op de `upper()`-vorm, omdat migratie 007 daar de
+  constraint zelf verving; dat verschil is hier geen drift maar een gevolg van de
+  default-collatie van elk platform.
+
+### De regel is nu gedeeltelijk bewaakt
+
+#1232 legde vast dat deze regel géén CI-gate had, omdat hij niet schema-statisch te bepalen is
+zonder de queries te parsen. Dat blijft waar in het algemeen, maar voor de drie sleutelkolommen van
+de teamresolutie is het wél te doen: `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs`
+leest uit `TeamCandidateRepository.cs` welke kolommen via `UPPER()` worden vergeleken en eist voor
+elk ervan een persisted computed column plus index, in zowel de SSDT-definitie als
+`Script.PostDeployment1.sql`. Een nieuwe `UPPER()`-vergelijking op een vierde kolom faalt de build
+totdat het paar er is.
+
+De guard is zelf negatief getest — alle vier de assertions zijn één voor één rood gemaakt. Dat leverde
+meteen een fout-positief op: de controle op `SET QUOTED_IDENTIFIER ON` gebruikte een losse
+tekstzoektocht en vond daarmee zijn eigen toelichting bóven het blok, niet het statement. Hij bleef
+dus groen met het statement verwijderd. Nu regelankerend (`^SET QUOTED_IDENTIFIER ON;`). Dit is
+waarom "de test slaagt" nooit hetzelfde is als "de test bewaakt iets".
+
+### Vervolgpunt
+
+De SQL Server-tier vergelijkt `RuweTekst`/`RuweTekstGenormaliseerd` op de ene plek mét en op de
+andere zónder `UPPER()`, terwijl de Postgres-tier overal `UPPER()` gebruikt. Dat is een echte
+tier-divergentie in gedrag onder een case-sensitieve collatie, geen prestatiekwestie, en valt buiten
+de scope van dit issue.
+
 ## §-verwijzingen in migratiekoppen — vertaaltabel (#1236)
 
 > **Migratiebestanden worden nooit achteraf gewijzigd.** `MigrationRunner` legt per bestand een

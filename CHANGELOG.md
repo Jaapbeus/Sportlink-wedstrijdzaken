@@ -80,6 +80,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **Teamherkenning zoekt weer via de index in plaats van de hele aliastabel door te lopen (#1280).**
+  De lookups die een teamnaam naar een team vertalen vergelijken hoofdletterongevoelig. Op de
+  variant van de database die deze installatie draait was dat sinds 16 september al opgelost; op de
+  andere ondersteunde variant las het systeem bij elke zoekopdracht nog de volledige aliastabel.
+  Met testdata van 200.000 aliassen daalde dat van 3181 naar 6 leesbewerkingen per zoekopdracht.
+  Merkbaar wordt dit pas bij een club met veel aliassen — de reden om het nu te doen is dat het
+  met de omvang van die tabel meegroeit.
 - **Een eerder in productie opgeloste fout stond nog wél in de ontwikkelbranche (#1287).** De
   correctie op het label "Geen AI antwoord" draaide sinds 18 september wel live, maar was nooit
   teruggebracht naar de branche waarop verder wordt ontwikkeld. Daar stonden de code, de tests en

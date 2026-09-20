@@ -362,6 +362,23 @@ Postgres-16-container (2026-08-31): een casing-only-duplicaat wordt geweigerd, `
 `LegVastAsync`-aanroep met andere casing verhoogt de teller op de bestaande rij in plaats van een
 duplicaat aan te maken.
 
+**De prijs van die keuze, en hoe die betaald is (#1232 → #1280).** `UPPER(kolom) = UPPER(@p)` is
+niet gratis: een index op de kale kolom kan zo'n predicaat niet bedienen. Op Postgres is dat
+absoluut — een b-tree op de kolom wordt genegeerd — en op SQL Server bijna, want de optimizer laat
+een overbodige `UPPER()` staan óók onder een CI-collatie en degradeert de vergelijking tot een
+residueel predicaat. Gemeten op 200.000 aliasrijen met de echte `OR`-queryvorm: 3181 tegenover 6
+logische leesbewerkingen op SQL Server, 2309 tegenover 8 buffers op Postgres. Vandaar:
+
+| Tier | Mechanisme | Waar |
+|---|---|---|
+| Postgres | expressie-index op `upper(...)` | migratie `007_teams_collation_fix.sql` en `024_index_tuning_performance_advisor.sql` |
+| SQL Server | persisted computed column `[…Upper]` + index daarop (SQL Server kent geen expressie-index) | `Database/dbo/Tables/{Teams,TeamAliassen}.sql` + `Script.PostDeployment1.sql` |
+
+De querytekst is op beide tiers ongewijzigd gebleven: SQL Server matcht de expressie zelf tegen de
+computed column. `TeamCandidateIndexSargabilityTests` bewaakt dat elke `UPPER()`-vergeleken kolom in
+`TeamCandidateRepository.cs` zo'n paar heeft — een vierde sleutelkolom toevoegen zonder index faalt
+de build. Volledige meting en afweging: `docs/ARCHITECTUUR-DATABASE-TIERS.md` §75.
+
 **Nog niet gedaan — vereist expliciete eigenaargoedkeuring, niet autonoom uit te voeren:** de
 audit/replay tegen échte, historische productiedata (`his.teams`/`stg.teams`/`dbo.Teams`) om te
 bepalen of er vandaag al casing-drift verborgen zit achter SQL Server's CI-collatie. Dat vereist

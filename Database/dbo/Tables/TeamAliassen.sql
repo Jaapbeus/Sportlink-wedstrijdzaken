@@ -35,3 +35,37 @@ GO
 CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_Genormaliseerd]
     ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstGenormaliseerd])
     INCLUDE ([TeamId], [Status]);
+
+GO
+
+-- #1280: sargability van de UPPER()-lookup in TeamCandidateRepository.FindValidatedAliasAsync.
+--
+-- IX_TeamAliassen_Club_Genormaliseerd hierboven blijft staan: TeamAliasLearningService en
+-- PlannerMatchRepository vergelijken deze kolom KAAL en gebruiken hem wél. Wat hij niet kan
+-- bedienen is de UPPER()-vorm uit FindValidatedAliasAsync (#820). Gemeten op SQL Server 2022,
+-- collatie SQL_Latin1_General_CP1_CI_AS, 200.000 rijen, met de echte queryvorm (een OR over
+-- RuweTekst en RuweTekstGenormaliseerd):
+--
+--   zonder deze indexen : Clustered Index Scan, 3181 logische leesbewerkingen, ~40 ms CPU
+--   met deze indexen    : twee Index Seeks met de expressie IN het SEEK-predicaat,
+--                         6 logische leesbewerkingen, <1 ms CPU
+--
+-- De case-insensitieve modelcollatie (1033, CI) verwijdert de overbodige UPPER() dus niet. Zie
+-- docs/ARCHITECTUUR-DATABASE-TIERS.md §75 voor de volledige meting en de tier-afweging; de
+-- Postgres-tegenhanger zijn de expressie-indexen uit migratie 007 en 024.
+--
+-- Bewust NIET uniek — UQ_TeamAliassen_Club_RuweTekst blijft de integriteitsgrens; zie de
+-- toelichting in Database/dbo/Tables/Teams.sql.
+ALTER TABLE [dbo].[TeamAliassen]
+    ADD [RuweTekstUpper]               AS UPPER([RuweTekst])               PERSISTED,
+        [RuweTekstGenormaliseerdUpper] AS UPPER([RuweTekstGenormaliseerd]) PERSISTED;
+GO
+
+CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_RuweTekstUpper]
+    ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstUpper])
+    INCLUDE ([TeamId], [Status]);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_GenormaliseerdUpper]
+    ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstGenormaliseerdUpper])
+    INCLUDE ([TeamId], [Status]);
