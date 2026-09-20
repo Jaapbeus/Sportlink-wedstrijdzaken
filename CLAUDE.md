@@ -156,8 +156,30 @@ de fout niet tegenhoudt.
 Dus direct na de merge naar `main`: een `feature/#<nr>-backport-...`-branch vanuit `develop`, met
 daarin uitsluitend de codewijziging, de tests en de documentatie van de hotfix — **niet** het
 versienummer en **niet** de CHANGELOG-sectie van de release, want die twee lopen op `develop`
-vooruit. Controleer met `git log --oneline origin/develop..origin/main`; die uitvoer hoort alleen
-release-merges te bevatten.
+vooruit.
+
+**Controleer op inhoud, niet op commits.** `git log --oneline origin/develop..origin/main` vindt de
+achterstand, maar blijft de hotfix-commits daarna tonen: een backport is inhoudelijk gelijk, niet
+dezelfde commit, en `--cherry-mark` ziet dat ook niet omdat het versienummer en de CHANGELOG
+bewust niet mee overkomen. Toets dus per bestand:
+
+```bash
+# 1. Wat zit er op main en niet op develop?  Alleen release-merges is goed.
+git log --oneline origin/develop..origin/main
+
+# 2. Is een commit uit die lijst inhoudelijk wél overgekomen?
+for f in $(git show --name-only --format= <sha> | grep -vE '\.csproj$|^CHANGELOG\.md$'); do
+    git diff --quiet origin/develop origin/main -- "$f" || echo "nog niet overgenomen: $f"
+done
+```
+
+Stap 2 levert een **lijst om na te lopen, geen oordeel**. Een bestand dat hij noemt is óf nog niet
+overgenomen, óf een bestand waar `develop` inmiddels terecht verder is dan `main`. Bij codebestanden
+is dat vrijwel altijd het eerste; bij documentatie vaak het tweede. Bij de backport van #1244 bleef
+`docs/EMAIL-VERWERKING.md` in de lijst staan terwijl de hotfix-alinea er wél in zat — `develop` had
+daar de nieuwere tekst van #1269. Neem daarom van een document altijd alleen de hunk van de hotfix
+over (`git show <sha> -- <pad> | git apply --3way`) en controleer die met de hand; een `git checkout
+main -- <pad>` zou nieuwere documentatie terugdraaien.
 
 ---
 
