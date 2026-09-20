@@ -350,9 +350,10 @@ bewust worden bekeken.
 
 | Documentatiebestand | Bijwerken bij |
 |---|---|
-| `CLAUDE.md` | Architectuurregel, buildproces, conventie of deployment-constraint gewijzigd |
+| `CLAUDE.md` | Buildproces, git-workflow, statuslabels of een Codex-instructie gewijzigd (géén architectuurregel — zie §13.1 van ARCHITECTUUR.md) |
+| `docs/ARCHITECTUUR.md` | Kwaliteitsdoel, randvoorwaarde, architectuurbesluit, of een systeembrede regel (auth, UTC, ClubCode, secrets, CI/CD) gewijzigd |
 | `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
-| `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
+| `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
 | `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra App Registration of rollen gewijzigd |
 | `docs/CUSTOM-DOMAIN.md` | Eigen domein, SWA-hostnames, CORS-origins of redirect-URI's gewijzigd |
 | `docs/BEHEERDER-HANDLEIDING.md` | Admin GUI: scherm, instelling, knop of workflow gewijzigd |
@@ -613,89 +614,20 @@ Zie [SECURITY.md](SECURITY.md) voor het volledige protocol.
 
 ## Open-source en multi-club architectuur
 
-Deze repository is publiek en bedoeld voor gebruik door meerdere voetbalverenigingen. Elke club forkt de repo, richt eigen Azure-resources in en configureert eigen secrets/variables — **geen club-specifieke waarden in de broncode**.
+Deze repository is publiek en bedoeld voor gebruik door meerdere voetbalverenigingen. Elke club
+forkt de repo, richt eigen Azure-resources in en configureert eigen secrets/variables — **geen
+club-specifieke waarden in de broncode**.
 
-### Kernprincipes
+> **Volledig uitgewerkt in [docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md):** de kernprincipes en het
+> B1-randvoorwaarde staan in §2, het "één fork = één productieclub + AllStars FC"-besluit
+> (WZ-ADR-011) inclusief de `X-Club-Code`-semantiek in §2.1, de volledige secrets-/bestandentabel
+> in §8.2.4, en de omgevingen-per-club-diagram in §7.1. Dupliceer die tabellen niet hier — de
+> branch-strategie hierboven (Sessie-isolatie) is al de ene plek voor dat onderdeel.
 
-| Principe | Uitwerking |
-|---|---|
-| **Club-neutraal** | Geen clubnamen, tenant-IDs, URLs, of e-mailadressen in code of config-bestanden |
-| **Template + CI-substitutie** | `appsettings.Production.template.json` + GitHub Secrets (fallback: Variables) → CI genereert club-specifieke config bij elke deploy. Club-identificerende waarden horen in Secrets: Actions-logs van een publieke repo zijn publiek en maskeren alleen secrets (#1204) |
-| **ClubCode discriminator** | Elke databasetabel met club-data heeft een `ClubCode`-kolom; queries filteren altijd op `dbo.AppSettings.ClubCode` |
-| **Secrets via GitHub Secrets** | `AZURE_CREDENTIALS`, `AZURE_FUNCTION_KEY`, `AZURE_STATIC_WEB_APPS_API_TOKEN` — nooit in code |
-| **Contributiemodel** | Externe developers forken → PR naar main → Jaap + Codex beoordelen; zie CONTRIBUTING.md |
+**AllStars FC, kort:** `ALLSTARS` is de vaste demo-`ClubCode` in broncode, seeds en testdata —
+hoofdletters, precies zo. Nooit vervangen door een echte club-specifieke waarde.
 
-### Wat bevatten de bestanden in git?
-
-| Bestand | Mag in git? | Reden |
-|---|---|---|
-| `BlazorAdmin/wwwroot/appsettings.Production.template.json` | ✓ Ja | Bevat alleen `{{PLACEHOLDER}}` tokens — geen echte waarden |
-| `BlazorAdmin/wwwroot/appsettings.Production.json` | ✗ Nee | Gegenereerd door CI, bevat Tenant/Client ID van de club |
-| `BlazorAdmin/wwwroot/appsettings.json` | ✓ Ja | Localhost-config zonder secrets |
-| `FunctionApp/local.settings.json` | ✗ Nee | Bevat `SqlConnectionString` en andere secrets |
-| `FunctionApp/local.settings.template.json` | ✓ Ja | Template zonder waarden |
-| `exports/*.csv` / `*.xlsx` | ✗ Nee | Persoonsgegevens (AVG) |
-
-### Branch-strategie (open-source model)
-
-```
-main     ←── develop              (via PR, release naar productie)
-  └──── hotfix/#<nr>-<slug>       (via PR, urgente productiefix)
-
-develop  ←── feature/#<nr>-<slug> (via PR, per issue)
-```
-
-- **main** is altijd deploybaar — de live-branch, elke push triggert Azure deploy
-- **develop** is de integratiebranch — geen deploy, voor lokaal combineren en testen van features
-- **feature/** branches starten vanuit `develop`, PR terug naar `develop`
-- **hotfix/** branches starten vanuit `main`, PR direct naar `main` (noodfix productie)
-- **Externe contributors** maken een fork → branch in hun fork → PR naar `develop` van de upstream
-- **Codex** werkt altijd op een `feature/` of `hotfix/` branch, nooit direct op `main` of `develop`
-
-### Omgevingen per club
-
-```
-[GitHub fork, club-specifieke secrets]
-  │  push → deploy.yml
-  ▼
-Azure Functions  ← eigen func-<clubcode>-sportlink
-Azure SQL        ← eigen database met dezelfde schema's
-Azure SWA        ← eigen static web app
-Entra ID         ← eigen App Registration (single-tenant)
-```
-
-Elke club heeft een volledig geïsoleerde Azure-omgeving. Er is geen shared infrastructure.
-
-### Deployment-model — één fork, één primaire club (vastgelegd architectuurbesluit)
-
-> **Dit is een harde architectuurkeuze, vastgelegd na review van #393 (2026-05-31).**
-> Wijzig dit model niet zonder expliciete heroverweging van alle multi-club security-implicaties.
-
-**Het model:** één GitHub-fork = één productieclub + één demo/testclub (AllStars FC).
-
-| Aspect | Beslissing |
-|---|---|
-| **Clubs per deployment** | Precies één echte club + AllStars FC als demo/testdata — in dezelfde database, beheerd door dezelfde admin |
-| **`admin`-rol** | Club-scoped: admin van deze installatie = admin van de ene club in deze deployment |
-| **`X-Club-Code` semantiek** | UX-feature voor wisselen tussen productie- en demodata — **geen multi-user autorisatieboundary** |
-| **`SELECT TOP 1` AppSettings** | Acceptabel: er is altijd precies één primaire club per deployment |
-| **Shared hosting** | **Niet ondersteund en niet het doel.** Meerdere echte clubs met aparte admins in één deployment vereist een volledige herontwerpslag van auth, data-isolatie en settings. |
-
-**Implicaties voor code:**
-- Server-side validatie of een gebruiker een specifieke club mag beheren is **geen vereiste** in dit model — elke geauthenticeerde admin beheert per definitie de ene club in zijn deployment.
-- `X-Club-Code` uit de request header mag vertrouwd worden als de waarde een geldige `ClubCode` is in `dbo.AppSettings` van déze deployment.
-- Een hardening-check "bestaat deze ClubCode in onze AppSettings?" is zinvol maar geen security-grens.
-
-**AllStars FC:**
-- `ALLSTARS` is de vaste demo-ClubCode in broncode, seeds en testdata — hoofdletters, precies zo.
-  `allstars-fc` is géén ClubCode: die vorm komt uitsluitend voor in het fictieve e-maildomein
-  `@allstars-fc.test` van de seeddata.
-- Wordt gebruikt voor lokale ontwikkeling en UI-demonstraties.
-- Nooit vervangen door een echte club-specifieke waarde.
-
-### Invarianten bij codereview
-
-Bij elke PR controleer:
+**Invarianten bij codereview** — bij elke PR controleer:
 1. Geen hardcoded clubnamen, domeinen, e-mailadressen, tenant-IDs, resource-namen
 2. Nieuwe databasetabellen hebben `ClubCode`-kolom (of komen via `dbo.AppSettings`)
 3. Fallback `?? "waarde"` in C# mag geen naam/URL/club-specifieke string bevatten
@@ -704,6 +636,14 @@ Bij elke PR controleer:
 ---
 
 ## Architectuurregels — altijd van toepassing
+
+> **Waar hoort een nieuwe regel?** Zie [docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md) §13.1 voor de
+> volledige routeringsregel (vastgelegd na #1291). Kort: een systeembrede architectuurregel met zijn
+> concrete uitwerking hoort in ARCHITECTUUR.md zelf; onderwerp-specifiek uitvoeringsdetail hoort in
+> het bijbehorende `ARCHITECTUUR-<ONDERWERP>.md`; een instructie voor hoe Codex zelf werkt hoort
+> hier, met hoogstens een korte samenvatting + verwijzing als hij op een architectuurprincipe leunt.
+> De secties hieronder volgen dat patroon al: een samenvatting plus een pointer naar de
+> gezaghebbende bron, nooit de volledige regel nogmaals.
 
 ### Codekwaliteit — gemeten, niet bedoeld (#1262, root cause van #1248/#1252)
 
@@ -1289,110 +1229,23 @@ Volledig protocol incl. valstrikken, 3-user-test en gebruiker-toevoegen-snippets
 
 **Verplicht na elke configuratie-wijziging:** sluit alle browser-tabs van de Admin GUI, open verse Incognito sessie, log opnieuw in. MSAL bewaart het ID-token in `localStorage` — zonder verse sessie blijft de oude (rolloze) token in gebruik.
 
-### Defense in depth — vijf auth-lagen, allemaal verplicht
+### Auth, UTC en secrets — geldende regel staat in ARCHITECTUUR.md
 
-Auth is NIET af zodra `IsAuthenticated = true`. Een tenant-user kan inloggen via Entra zonder enige app-rol. Elke laag hieronder moet onafhankelijk werken — een gemiste laag is een security-incident.
+> Vóór #1291 stonden de vijf auth-lagen, de Blazor auth-gate, de MSAL-checklist en de UTC-regel
+> hier woordelijk uitgeschreven — en bijna identiek nogmaals in het toenmalige `ARCHITECTURE.md`.
+> Beide kopieën zijn samengevoegd tot één versie in **[docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md)
+> §8.2** (auth, defense-in-depth, Blazor auth-gate, MSAL-checklist, secrets/configuratietabellen)
+> en **§8.1.1** (UTC in database, lokale tijd in GUI). Lees die versie — dit bestand herhaalt hem
+> niet meer.
 
-| Laag | Wat | Waar | Status |
-|---|---|---|---|
-| 1 | **Tenant-restriction** — Single tenant App Registration, externe tenants kunnen niet inloggen | Azure Portal → Entra ID → App registrations | ✓ Aanwezig |
-| 2 | **Assignment required = Yes** — alleen pre-toegewezen users krijgen een token | Azure Portal → Entra ID → Enterprise applications → Properties | ⚠️ Per-deploy verifiëren |
-| 3 | **App Roles** — `admin` en `user` rollen gedefinieerd in App Registration manifest, met `allowedMemberTypes: ["User"]` | Azure Portal → App registrations → App roles | ⚠️ Per-deploy verifiëren |
-| 4 | **Frontend role-gate** — check `IsInRole("admin") \|\| IsInRole("user")` BOVENOP `IsAuthenticated`. Zonder rol → `NoAccess`-pagina, géén MainLayout. De beslissing staat als pure functie in `AuthGate.Bepaal` (#1277), niet inline in de pagina — anders is hij niet te testen | `BlazorAdmin/Services/AuthGate.cs` + `BlazorAdmin/App.razor` | ✓ Verplicht in code, **getest** in `BlazorAdmin.Tests/AuthGateTests.cs` en `CustomUserFactoryTests.cs` |
-| 5 | **Backend role-gate (EasyAuthHelper)** — elke admin endpoint roept `RequireAdmin()` aan, die de `roles` claim in `X-MS-CLIENT-PRINCIPAL` valideert | `FunctionApp/Admin/EasyAuthHelper.cs` + alle `Admin*Function.cs` | ✓ Verplicht in code |
-
-**Server is de waarheid.** Frontend kan niet vertrouwd worden — een aanvaller kan de Blazor WASM modificeren. Daarom is Layer 5 leidend voor data-bescherming. Layer 4 is voor UX (geen UI-shell voor non-admin).
-
-**Verplichte 3-user-test bij elke auth-wijziging:**
-
-| Test-user | Configuratie in Azure | Verwacht resultaat |
-|---|---|---|
-| Admin user (eigen tenant) | Toegewezen met rol `admin` | Volledige UI, alle API werkt |
-| Tweede user (eigen tenant) | Toegewezen met rol `user` | UI laadt, GET-API werkt, mutaties geblokkeerd (toekomstig: nu zelfde als admin maar nog niet gescheiden) |
-| Derde user (eigen tenant) | **Geen** rol toegewezen | `NoAccess` pagina, géén sidebar/nav/FEEDBACK-knop, logout-knop wel zichtbaar |
-| Externe user (andere tenant / guest) | n.v.t. | Kan zelfs niet inloggen — Entra weigert vóór redirect |
-
-Documenteer per release welke 3-user-tests zijn uitgevoerd. Zonder deze tests is een security-wijziging **niet** geaccepteerd.
-
-### Blazor auth-gate: altijd BOVEN de Router, nooit erin
-
-**KRITIEKE REGEL — drie keer overtreden (PR #178, PR #179, en de auth-redirect-loop hotfix):**
-
-De Blazor admin UI mag nooit zichtbaar zijn voor niet-ingelogde gebruikers — ook niet kortstondig, ook niet de sidebar/navigatie, ook niet de FEEDBACK-knop. Bovendien moet een ongeauthenticeerde gebruiker binnen seconden naar de Microsoft login worden gestuurd — niet vastlopen op een laadscherm.
-
-**Fout patroon (VERBODEN):**
-```razor
-<AuthorizeRouteView DefaultLayout="@typeof(MainLayout)">
-    <NotAuthorized><RedirectToLogin /></NotAuthorized>
-```
-→ `AuthorizeRouteView` rendert `MainLayout` (inclusief sidebar + alle knoppen) voor ALLE states — ook Authorizing en NotAuthorized. Gebruiker ziet de volledige UI.
-
-**Anti-patroon: blocking health-check vóór auth-check:**
-```razor
-@if (_phase is Phase.Checking or Phase.Ready) { ... }  // 1-2s vertraging
-else if (_isAuthenticated) { ... }
-```
-→ De auth-check loopt pas NA de health-check delay. InPrivate gebruikers zien een laadscherm dat blijft hangen omdat MSAL silent-SSO faalt en `NavigateToLogin` te laat wordt aangeroepen.
-
-**Juist patroon (VERPLICHT):**
-```razor
-@* App.razor controleert auth EERST, geen blocking delay ervoor *@
-@if (_state == AppState.Initializing)        { spinner (geen layout) }
-else if (_state == AppState.OnAuthRoute)     { <Router> ... <RouteView /> (geen layout) }
-else if (_state == AppState.Authenticated)   { <Router> ... <RouteView DefaultLayout="MainLayout" /> }
-@* RedirectingToLogin: NavigateToLogin is aangeroepen, geen UI nodig *@
-```
-
-**Implementatieregels:**
-1. `App.razor` injecteert `AuthenticationStateProvider` en roept `GetAuthenticationStateAsync()` als ÉÉRSTE actie aan vóór de Router rendert. Geen health-check, geen splash, geen delay ertussen.
-2. `MainLayout` (sidebar, navigatie, FEEDBACK-knop) wordt ALLEEN gerenderd als de gebruiker geauthenticeerd is.
-3. `/authentication/...` routes (MSAL callbacks) krijgen een aparte Router-branch zonder layout.
-4. `NavigationManager.LocationChanged` bewaken om de state opnieuw te evalueren na MSAL-callback.
-5. Geen `AuthorizeRouteView` gebruiken als de DefaultLayout de volledige app-shell is.
-
-### MSAL-configuratie checklist (verplicht voor Blazor WASM + Entra ID)
-
-Elk van deze items moet aanwezig zijn — een gemist item veroorzaakt een vastlopende login:
-
-| # | Item | Locatie | Reden |
-|---|---|---|---|
-| 1 | `<script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js">` | `wwwroot/index.html` (vóór `blazor.webassembly.js`) | MSAL JS-bridge — zonder dit script doet `RemoteAuthenticatorView` niets |
-| 2 | `options.ProviderOptions.LoginMode = "redirect"` | `Program.cs` in `AddMsalAuthentication` | Voorkomt popup-blocker fails in InPrivate/Incognito |
-| 3 | `appsettings.Production.json` met `AzureAd.Authority` en `AzureAd.ClientId` | `wwwroot/` | Zonder ClientId/Authority crasht MSAL bij initialisatie |
-| 4 | `<WasmApplicationEnvironmentName>Production</WasmApplicationEnvironmentName>` voor Release | `BlazorAdmin.csproj` | .NET 10: zonder dit laadt Blazor `appsettings.json` (localhost) i.p.v. Production |
-| 5 | SPA redirect URI in Entra App Registration: `https://<host>/authentication/login-callback` | Azure Portal | Anders weigert Entra de redirect na login |
-| 6 | `Authentication.razor` op `@page "/authentication/{action}"` met `<RemoteAuthenticatorView Action="@Action" />` | `Pages/` | Verwerkt MSAL callback (login-callback, logout-callback) |
-| 7 | Easy Auth op Function App (`platform.enabled=true`) + `EasyAuthHelper.RequireAdmin()` op elke admin endpoint | Azure + `FunctionApp/Admin/` | Server-side validatie van Bearer token + admin-rol |
-| 8 | `<CompressionEnabled>false</CompressionEnabled>` in `BlazorAdmin.csproj` | `BlazorAdmin.csproj` | Azure SWA serveert pre-compressed `.wasm.br` zonder `Content-Encoding: br` header → Chrome Incognito faalt op SRI integrity check. Uitschakelen van Blazor's pre-compressie laat SWA terugvallen op uncompressed serving (of correcte dynamische compressie). |
-| 9 | `options.UserOptions.RoleClaim = "roles"` in `AddMsalAuthentication` | `Program.cs` | Entra schrijft app-rollen in de claim `roles`. `ClaimsPrincipal.IsInRole()` leest standaard van `ClaimTypes.Role`. Zonder deze mapping geeft `IsInRole("admin")` altijd `false` — defense-in-depth Layer 4 valt stil en elke geauthenticeerde tenant-user komt voorbij de gate. |
-| 10 | `Cache-Control: no-cache` voor `/index.html` en `/` in `staticwebapp.config.json` | `staticwebapp.config.json` | Browser cachet anders een oude `index.html` die naar fingerprinted assets uit een eerdere deploy verwijst. Na nieuwe deploy → 404's en SRI-mismatches. Fingerprinted assets in `_framework/` mogen wel lang cachen — hun URL verandert per deploy. |
-| 11 | `CustomUserFactory` + `.AddAccountClaimsPrincipalFactory<CustomUserFactory>()` | `BlazorAdmin/Services/CustomUserFactory.cs` + `Program.cs` | Blazor WASM cast een `"roles": ["admin"]` JSON-array uit het ID-token naar één claim met de JSON-string als value (`'["admin"]'`), waardoor `IsInRole("admin")` faalt ook al staat de rol in het token. Custom factory pakt het uit naar losse claims. Zonder dit valt Layer 4 stilzwijgend om. Bron: Microsoft Learn troubleshoot artikel. |
-
-**Verificatie bij elke Blazor auth-wijziging — VERPLICHT:**
-1. Open de site in een verse Incognito/InPrivate mode (geen oude cookies).
-2. Microsoft login-pagina moet binnen 2-3 seconden verschijnen.
-3. Vóór de login: geen sidebar, geen navigatie, geen FEEDBACK-knop, geen "An unhandled error" zichtbaar.
-4. Na inloggen: volledige admin UI laadt, alle API-calls slagen met de Bearer token.
-5. F12 → Network tab: controleer dat MSAL daadwerkelijk naar `login.microsoftonline.com` redirect (geen vastlopende AJAX-requests).
-
-### UTC in database, lokale tijd in GUI
-
-**Drielaagse verplichting — alle lagen moeten correct zijn, anders stapelen offsets zich op:**
-
-| Laag | Regel | Hoe | Fout patroon |
-|---|---|---|---|
-| **Database** | Altijd UTC opslaan | `GETUTCDATE()` — **nooit `GETDATE()`** | `GETDATE()` slaat lokale servertijd op (CEST = UTC+2); de API markeert het daarna als UTC → Blazor telt nog eens +2u op → tijdstip in de toekomst |
-| **API (FunctionApp)** | Markeer elke DateTime als UTC na lezen uit SQL | `DateTime.SpecifyKind(dt, DateTimeKind.Utc)` → JSON krijgt `Z`-suffix | Zonder SpecifyKind is Kind=Unspecified; sommige clients behandelen Unspecified als Local → inconsistent gedrag |
-| **Blazor WASM** | Converteer UTC naar lokale tijd vóór weergave | `.ToLocalTime()` op elke DateTime die uit de API komt | Rauw UTC tonen zonder conversie geeft tijden in UTC-notatie die 1-2u achter lijken voor NL-gebruikers |
-
-**Incident-referentie (2026-05-21):** `GETDATE()` in `SaveLastSyncTimestampAsync` sloeg CEST-tijd op. API markeerde als UTC. Blazor voegde +2u toe. Dashboard toonde 'Laatste sync' als toekomstig tijdstip. Fix: `GETDATE()` → `GETUTCDATE()` in alle 6 C#-bestanden. Zie PR #246.
-
-**Verplichte check bij codereview:**
-- Elke `INSERT`/`UPDATE` in C# die een `DateTime`-kolom vult: gebruikt `GETUTCDATE()` (niet `GETDATE()`) of `DateTime.UtcNow`?
-- Elke DateTime-weergave in Blazor: staat er `.ToLocalTime()` voor de `.ToString()`?
-- JSON van API: heeft elke datetime een `Z`-suffix (`"2026-05-21T12:39:00Z"`)? Controleer via browser DevTools → Network → response body.
-
-**Reden:** Zomertijdwissel (CEST↔CET, ±1u) maakt fouten pas bij 2% van het jaar zichtbaar. GETUTCDATE() voorkomt dat seizoensgebonden bugs pas 6 maanden later opduiken.
+**Kort, om te onthouden zonder de link te openen:**
+- Vijf onafhankelijke auth-lagen; `IsAuthenticated = true` is niet voldoende. Server is leidend
+  (backend role-gate), frontend is UX. Verplichte 3-user-test bij elke auth-wijziging.
+- Blazor auth-gate hoort **boven** de `Router`, nooit `AuthorizeRouteView` met de volledige
+  `MainLayout` als `DefaultLayout` — dat heeft de sidebar drie keer laten lekken naar
+  niet-ingelogde gebruikers (PR #178, PR #179, auth-redirect-loop hotfix).
+- Database schrijft UTC (`GETUTCDATE()`, nooit `GETDATE()`); Blazor toont lokale tijd
+  (`.ToLocalTime()` vóór `.ToString()`).
 
 ### Tijdinvoer-normalisering — altijd via TimeHelper + TimeInput
 
@@ -1400,53 +1253,18 @@ Alle invoervelden voor tijden in Blazor gebruiken het `<TimeInput>`-component (`
 
 **Regel:** Nooit een `<input type="time">` of bare `<input @bind="...Tijd">` voor tijdinvoer. Altijd `<TimeInput @bind-Value="..." />`. Nieuwe tijdinvoervelden die dit niet volgen zijn een architectuurschending.
 
-### GUI en code altijd synchroon
+### GUI/code-synchroniteit, club-specifieke strings en AVG-testdata — geldende regel staat in ARCHITECTUUR.md
 
-- Als er een placeholder, template-key, enum-waarde of regeltype wordt toegevoegd aan de **code of database**, dan wordt de **GUI** in dezelfde commit bijgewerkt.
-- Als er een UI-veld wordt toegevoegd, wordt ook gecontroleerd of de API en het datamodel meegegroeid zijn.
-- Nooit de GUI laten achterlopen op de code, en nooit de code laten achterlopen op de GUI.
+> Ook deze drie onderwerpen zijn samengevoegd naar **[docs/ARCHITECTUUR.md](docs/ARCHITECTUUR.md)**:
+> "lagen altijd synchroon" staat in **§8.7**, "geen club-specifieke waarden in code" met de
+> correct/fout-codevoorbeelden in **§8.1.3**, en de uitputtende AVG-testdata-uitzonderingslijst
+> (`Jan de Vries`/`trainer@voorbeeld.nl` voor admin-testpagina's, en het aparte
+> `@allstars-fc.test`-patroon voor de AllStars FC-seedmigratie) in **§8.1.5** (register: WZ-DAT-06).
 
-### Geen club-specifieke strings in code — nooit
-
-- Fallback-waarden (`?? "..."`) in C#-code mogen **nooit** een clubnaam, domeinnaam, persoonsnaam, plaatsnaam of adres bevatten.
-- Als een verplichte instelling ontbreekt in `dbo.AppSettings` → gooi een `InvalidOperationException`. Een stille fallback maskeert misconfiguratie en breekt multi-club ondersteuning.
-- **Correct:** `GetSetting("clubCode") ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings")`
-- **Fout:** `GetSetting("clubCode") ?? "VRC"` — nooit een clubnaam als default
-- **Fout:** `GetSetting("plannerAfzenderNaam") ?? "VRC Veldplanner"` — nooit
-- Documentatie-voorbeelden bevatten `[ClubNaam]` als placeholder, nooit echte club-specifieke waarden die in code kunnen terechtkomen.
-- Check bij codereview: scan op `?? "` gevolgd door een eigennaam, clubnaam, of adres.
-
-### AVG-veilige testdata — goedgekeurde uitzonderingen (uitputtende lijst)
-
-Twee fictieve placeholders zijn formeel goedgekeurd voor gebruik in admin-only developer-testpagina's. Ze volgen het **John Doe-principe**: bewust niet-identificeerbaar, niet gebonden aan een bestaand persoon of domein.
-
-| Waarde | Type | Toegestaan in |
-|---|---|---|
-| `Jan de Vries` | Fictieve naam (NL equivalent van "John Doe") | UI-defaults van admin-only testpagina's |
-| `trainer@voorbeeld.nl` | Fictief e-mailadres (`.voorbeeld.nl` bestaat niet) | UI-defaults van admin-only testpagina's |
-
-**Regels:**
-- Uitsluitend toegestaan als hardcoded UI-default in admin-only developer-testpagina's — **nooit** in bedrijfslogica, API-fallbacks of gedeelde configuratie.
-- `voorbeeld.nl` is opgenomen in `.gitleaks.toml` en `security-scan.yml` zodat security-checks hierop niet falen.
-- Deze lijst is **uitputtend** voor UI-defaults van admin-only developer-testpagina's — alle andere namen, e-mailadressen of domeinen in code gelden als potentiële persoonsgegevens. Zie de aparte uitzondering hieronder voor seed-migratiescripts.
-
-### AllStars FC demo-data (seed-migraties) — aparte goedgekeurde uitzondering
-
-`scripts/migrations/002-seed-allstars-fc.sql` bevat fictieve trainersgegevens voor de AllStars FC
-democlubcode (`ClubCode = 'ALLSTARS'`, zie [[architecture_multiclub]] en de sectie "Deployment-model"
-hierboven). Deze data valt buiten de scope van de admin-testpagina-lijst hierboven, maar is
-formeel goedgekeurd onder dezelfde AVG-redenering:
-
-| Kenmerk | Waarde | Reden |
-|---|---|---|
-| Domein | `@allstars-fc.test` | `.test` is een gereserveerd TLD (RFC 2606) — bestaat niet publiek, kan nooit een echt e-mailadres zijn |
-| Namen | Generieke voornamen zonder achternaam (bijv. `Frenkie`, `John`) | Niet herleidbaar tot een bestaand persoon |
-| Scope | Uitsluitend rijen met `ClubCode = 'ALLSTARS'` | Nooit gebruikt voor een echte club |
-
-**Regels:**
-- Uitsluitend toegestaan in `scripts/migrations/002-seed-allstars-fc.sql` (of vergelijkbare seed-scripts die exclusief AllStars FC-demodata vullen) — **nooit** als fallback in bedrijfslogica.
-- Nieuwe seed-rijen voor AllStars FC volgen hetzelfde patroon: `.test`-domein, voornaam zonder achternaam.
-- Bij bredere e-mailpatronen in `.gitleaks.toml` (zie de `consumer-email`-regel): controleer of `@allstars-fc\.test` een allowlist-entry nodig heeft, zodat deze seed-rijen niet alsnog worden geflagd.
+**Kort:** database-schema, API-endpoint en Blazor-GUI altijd in dezelfde commit; een `?? "..."`
+fallback in C# nooit een clubnaam/domein/adres, anders `InvalidOperationException`; testdata
+uitsluitend uit de uitputtende lijst in §8.1.5 — elke andere naam of elk ander domein in code is
+een potentieel persoonsgegeven.
 
 ### Microsoft Learn MCP server
 

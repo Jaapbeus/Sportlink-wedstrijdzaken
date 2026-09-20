@@ -60,15 +60,14 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 
 | Bestand | Onderwerp |
 |---------|-----------|
-| [ARCHITECTUUR.md](ARCHITECTUUR.md) | **Leidend.** Architectuurbeschrijving volgens ISO 42010 / arc42: kwaliteitsdoelen, besluiten, toetsregister met externe basis en bewijsvorm |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Uitvoeringsdetail bij ARCHITECTUUR.md: multi-tier, multi-club, ClubCode, kanaalstrategie |
+| [ARCHITECTUUR.md](ARCHITECTUUR.md) | **Het enige, leidende architectuurdocument** (sinds #1291). ISO 42010 / arc42: kwaliteitsdoelen, besluiten, concrete uitwerkingen en toetsregister met externe basis en bewijsvorm |
 | [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md) | Multi-tier strategie, bouwvolgorde, casing-conventie, RLS, sub-issue-index |
 | [ARCHITECTUUR-CODEKWALITEIT.md](ARCHITECTUUR-CODEKWALITEIT.md) | Codekwaliteitsregels met CI-guard en plafond per regel |
 | [ARCHITECTUUR-AI-SERVICES.md](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch AI-ontwerp, datumregel, few-shot conventies |
 | [ARCHITECTUUR-TEAMRESOLUTIE.md](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie |
 | [ARCHITECTUUR-EMAIL-MODULE.md](ARCHITECTUUR-EMAIL-MODULE.md) | Doelarchitectuur e-mailverzendlaag — ontwerp, migratie nog niet gestart |
 | [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) | Schrijfrichting webapp → Sportlink Club: protocol, endpoints, agent-tokengrens |
-| [ARCHITECTURE-PLANNER.md](ARCHITECTURE-PLANNER.md) | Planner API: algoritme, velddefinities, API-contract |
+| [ARCHITECTUUR-PLANNER.md](ARCHITECTUUR-PLANNER.md) | Planner API: algoritme, velddefinities, API-contract |
 | [API.md](API.md) | Alle HTTP-endpoints: routes, parameters, response-formaten |
 | [api-standaarden/openapi.yaml](api-standaarden/openapi.yaml) | Machine-readable OpenAPI 3.0 spec — bewaakt op actualiteit via CLAUDE.md |
 | [api-standaarden/openapi.json](api-standaarden/openapi.json) | Zelfde spec in JSON-formaat |
@@ -90,13 +89,17 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md) | Entra App Registration, Easy Auth, rollen — configure via scripts |
 | [CUSTOM-DOMAIN.md](CUSTOM-DOMAIN.md) | Eigen domein op de Static Web App, CORS-origins, redirect-URI's |
 
-### Navigatie en archief
+### Navigatie
 
 | Bestand | Status |
 |---------|--------|
 | [INDEX.md](INDEX.md) | Inhoudsopgave — blijft in de `docs/`-root als navigatiepunt |
 | `DOCUMENTATIEPLAN.md` | Dit bestand — blijft in de `docs/`-root |
-| [ARCHITECTURE-V2.md](ARCHITECTURE-V2.md) | Gearchiveerd: de single-tier architectuur van 2026-05-17 tot de Postgres-cutover (#976). Niet meer bijwerken |
+
+> **Geen archiefcategorie meer (#1291-vervolg).** `ARCHITECTURE-V2.md` — de gearchiveerde,
+> single-tier architectuur van vóór de Postgres-cutover (#976) — is verwijderd. De repository houdt
+> alleen geldende regels vast; een bevroren historisch verslag hoort niet in de codebase maar in de
+> git-geschiedenis van `docs/ARCHITECTUUR.md` zelf.
 
 ---
 

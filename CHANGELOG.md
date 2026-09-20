@@ -27,8 +27,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   bronnen zelf kan nalezen. Het register noemt per regel de externe basis, de lokale afspraak en
   de **bewijsvorm**: staat daar `ontbreekt`, dan geldt de regel wel maar is hij nog niet
   automatisch te controleren. Die regels vormen samen hoofdstuk 11 en daarmee een geordende
-  werkvoorraad. `docs/ARCHITECTURE.md` behoudt zijn volledige inhoud en is nu expliciet
-  uitvoeringsdocumentatie: het beschrijft hoe een afspraak wordt toegepast, niet welke geldt.
+  werkvoorraad. *(Bijgewerkt: `docs/ARCHITECTURE.md` is per #1291, nog vóór de eerste release van
+  dit document, volledig in `ARCHITECTUUR.md` samengevoegd — zie de entry hieronder.)*
 - **De database wordt nu ook op de variant die in productie draait dagelijks op uitval
   gecontroleerd (#1268).** Tot nu toe ging er alleen een waarschuwingsmail uit als er toevallig
   e-mail binnenkwam die de database aansprak; bleef het stil in de mailbox, dan bleef een uitval
@@ -49,6 +49,19 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   gegeven dat naar de club of een persoon te herleiden is.
 
 ### Changed
+- **Eén architectuurdocument in plaats van drie kopieën van dezelfde regel (#1291).** De vorige
+  ronde (#1274) introduceerde `docs/ARCHITECTUUR.md` bewust náást het bestaande
+  `docs/ARCHITECTURE.md`, om het risico van inhoudsverlies bij een directe samenvoeging te
+  vermijden. Die samenvoeging is nu gedaan: `ARCHITECTURE.md` bestaat niet meer, en de checklists,
+  codevoorbeelden en schemaconventies staan als concrete uitwerking in `ARCHITECTUUR.md` zelf, in
+  het hoofdstuk waar ze inhoudelijk bij horen. Dezelfde opschoning is doorgevoerd in `CLAUDE.md`:
+  de auth-lagen, de Blazor auth-gate, de MSAL-checklist, de UTC-regel, de club-isolatieregels en de
+  AVG-testdata-uitzonderingen stonden daar (bijna) woordelijk nogmaals uitgeschreven en zijn
+  vervangen door een korte samenvatting met een verwijzing naar de ene geldende versie. Voor
+  toekomstige wijzigingen legt `ARCHITECTUUR.md` §13.1 vast waar een nieuwe architectuurregel
+  voortaan hoort. Daarnaast is `docs/ARCHITECTURE-PLANNER.md` hernoemd naar
+  `docs/ARCHITECTUUR-PLANNER.md`, voor consistente naamgeving met de overige
+  `ARCHITECTUUR-*.md`-documenten. Geen functionele wijziging.
 - **De regels achter de uitvalwaarschuwing staan nu één keer in de codebase (#1268).** Wanneer iets
   als uitval telt, hoe lang die moet duren, hoe vaak er herhaald mag worden en hoe de waarschuwing
   luidt: dat heeft niets met de databasekeuze te maken en staat nu in de gedeelde laag, met eigen
@@ -69,6 +82,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   foutmelding, hij doet gewoon niets. De controle vergelijkt nu beide, in beide richtingen.
 
 ### Removed
+- **`docs/ARCHITECTURE-V2.md` verwijderd (#1291-vervolg).** Dit was een bevroren, gearchiveerd
+  verslag van de single-tier architectuur van vóór de Postgres-cutover (#976) — expliciet niet meer
+  bijgewerkt sinds die datum en volledig ingehaald door `docs/ARCHITECTUUR.md`. De repository houdt
+  alleen geldende regels vast; de historische inhoud blijft opvraagbaar via de git-geschiedenis.
+  `INDEX.md` en `DOCUMENTATIEPLAN.md` zijn bijgewerkt: de "archief"-categorie is vervallen.
 - **De applicatie raadt niet langer welk team bedoeld wordt bij een dubbelzinnige naam (#1268).**
   Staat er in een e-mail bijvoorbeeld "13-1", dan kan dat zowel JO13-1 als MO13-1 zijn. Op één van
   de twee databasevarianten liet de applicatie een taalmodel die keuze maken; op de andere — de

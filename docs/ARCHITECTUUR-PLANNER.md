@@ -7,7 +7,7 @@ Dit document definieert de regels, beperkingen en API-contract voor de Veldplann
 > 1. **Schema- en typenotatie volgt de SQL Server-tier** (`dbo.Velden`, `NVARCHAR`, `DATETIME2`).
 >    Op de Postgres-tier bestaan dezelfde objecten onder lowercase snake_case-namen met
 >    Postgres-types (`public.velden`, `text`, `timestamptz`) — zie
->    [ARCHITECTURE.md](ARCHITECTURE.md) §11. Beide tiers zijn gelijkwaardig en dragen dezelfde
+>    [ARCHITECTUUR.md](ARCHITECTUUR.md) §5.4. Beide tiers zijn gelijkwaardig en dragen dezelfde
 >    elf `planner/*`-routes.
 > 2. **Velddefinities, dagvensters en speeltijden hieronder zijn voorbeeldconfiguratie van één
 >    club**, geen architectuurregel. Ze komen uit `dbo.Velden` / `dbo.VeldBeschikbaarheid` /
@@ -443,7 +443,7 @@ van 0 minuten gaf stilzwijgend een lege reservering.
 ## Beveiliging
 
 > **De planner gebruikt geen function keys.** Het volledige vijf-lagen-model staat in
-> [ARCHITECTURE.md](ARCHITECTURE.md) §8; hieronder alleen wat voor de planner-endpoints afwijkt.
+> [ARCHITECTUUR.md](ARCHITECTUUR.md) §8.2; hieronder alleen wat voor de planner-endpoints afwijkt.
 
 ### Endpoint-indeling
 

@@ -168,4 +168,4 @@ Twee praktische punten:
   (staat in de repo-root, niet in `docs/`)
 - [`ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — Entra-configuratie en de verplichte
   gebruikersrollentest (in `CLAUDE.md` de "3-user-test")
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — architectuuroverzicht, inclusief de auth-lagen
+- [`ARCHITECTUUR.md`](ARCHITECTUUR.md) — architectuuroverzicht, inclusief de auth-lagen (§8.2)

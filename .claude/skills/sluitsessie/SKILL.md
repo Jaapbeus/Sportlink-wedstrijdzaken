@@ -89,7 +89,7 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 | Gewijzigd | Controleer |
 |---|---|
 | FunctionApp/**/*.cs | docs/API.md |
-| FunctionApp/Planner/** | docs/ARCHITECTURE-PLANNER.md |
+| FunctionApp/Planner/** | docs/ARCHITECTUUR-PLANNER.md |
 | BlazorAdmin/**/*.razor | docs/v2-admin-handleiding.md |
 | Architectuurregel/conventie | CLAUDE.md |
 | Setup/configuratie | docs/SETUP.md |
