@@ -251,7 +251,7 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 | `FunctionApp/CLAUDE.md` | Endpoint, datamodel, API-veld of FunctionApp-configuratie gewijzigd |
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/openapi.yaml` | Idem — sync met API.md |
-| `docs/ARCHITECTURE-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
+| `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
 | `docs/AZURE-ENTRA-SETUP.md` | Auth-configuratie, Easy Auth, Entra of rollen gewijzigd |
 | `docs/TESTING.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting, KQL-queries of escalatiematrix gewijzigd |

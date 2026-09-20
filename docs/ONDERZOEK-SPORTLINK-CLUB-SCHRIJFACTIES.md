@@ -319,4 +319,4 @@ te herleiden is wélke ingelogde webapp-gebruiker een specifieke actie heeft get
 - Live netwerkverkeer en Performance API in club.sportlink.com (ingelogde sessie, 2026-09-04).
 - `https://club.sportlink.com/config.json` en hoofdbundle `/assets/main-*.js`.
 - `https://idm.sportlink.com/realms/sportlink/.well-known/openid-configuration`.
-- Repo: `docs/SPORTLINK-CLUB-SCHERMEN-ANALYSE.md`, `FunctionApp/Enitities.cs`, `BlazorAdmin/Pages/Dagplanning.razor`, `FunctionApp/Infrastructure/EgressGuard.cs`, `docs/ARCHITECTURE-PLANNER.md`.
+- Repo: `docs/SPORTLINK-CLUB-SCHERMEN-ANALYSE.md`, `FunctionApp/Enitities.cs`, `BlazorAdmin/Pages/Dagplanning.razor`, `FunctionApp/Infrastructure/EgressGuard.cs`, `docs/ARCHITECTUUR-PLANNER.md`.

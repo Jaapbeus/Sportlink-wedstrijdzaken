@@ -38,12 +38,11 @@ document van het onderdeel waaraan je werkt.
 
 | Document | Inhoud |
 |----------|--------|
-| **[Architectuurbeschrijving](ARCHITECTUUR.md)** | **Leidend document.** Kwaliteitsdoelen, belanghebbenden, architectuurbesluiten en het toetsregister met per regel een externe basis en een bewijsvorm (ISO 42010 / arc42) |
-| [Architectuurprincipes (V3)](ARCHITECTURE.md) | Uitvoeringsdetail bij ARCHITECTUUR.md. Multi-tier database, multi-club, ClubCode, kanaalstrategie, security-lagen, Sportlink Web Extension |
+| **[Architectuurbeschrijving](ARCHITECTUUR.md)** | **Het enige, leidende architectuurdocument** (sinds #1291). Kwaliteitsdoelen, belanghebbenden, bouwblokken, concrete uitwerkingen (auth-lagen, UTC, secrets, CI/CD) en het toetsregister met per regel een externe basis en een bewijsvorm (ISO 42010 / arc42) |
 | [Multi-tier databasestrategie](ARCHITECTUUR-DATABASE-TIERS.md) | Tierkeuze, bouwvolgorde, casing-conventie, RLS — gezaghebbende bron voor de tier-status |
 | [Codekwaliteit](ARCHITECTUUR-CODEKWALITEIT.md) | De codekwaliteitsregels met een CI-guard en een plafond per regel |
 | [AI-services architectuur](ARCHITECTUUR-AI-SERVICES.md) | Provider-agnostisch ontwerp, datumregel, few-shot conventies, IChatClient |
-| [Planner architectuur](ARCHITECTURE-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
+| [Planner architectuur](ARCHITECTUUR-PLANNER.md) | Algoritme, velddefinities, API-contract veldplanner |
 | [Teamresolutie](ARCHITECTUUR-TEAMRESOLUTIE.md) | Teamnaam-normalisatie, aliassen, disambiguatie — één vertaalpunt |
 | [E-mailverwerking](EMAIL-VERWERKING.md) | Pipeline, AI-classificatie, templates, kanaalstrategie |
 | [E-mailmodule (doelarchitectuur)](ARCHITECTUUR-EMAIL-MODULE.md) | Verzendlaag, afzenderstrategie, e-maillogging — ontwerp, migratie nog niet gestart |
@@ -73,7 +72,7 @@ document van het onderdeel waaraan je werkt.
 | [Cosmos DB e-maillog](ARCHITECTUUR-COSMOSDB-EMAILLOG.md) | Tier 4, alleen het e-mailverwerkingslog — ontwerp + kostenverificatie, nog niet gebouwd |
 | [Sportlink schermen-analyse](SPORTLINK-CLUB-SCHERMEN-ANALYSE.md) | Beschikbare datavelden in de Sportlink Club-interface |
 | [Sportlink Club schrijfacties — onderzoek](ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md) | Bronrapport met netwerktraces en gevonden endpoint-contracten |
-| [Architectuurprincipes (V2, gearchiveerd)](ARCHITECTURE-V2.md) | Historische snapshot vóór de Postgres-cutover — niet meer bijwerken |
+| [Architectuurprincipes (V2, gearchiveerd)](ARCHITECTURE-V2.md) | Historische snapshot vóór de Postgres-cutover — niet meer bijwerken. Naam bewust ongewijzigd gelaten, zie DOCUMENTATIEPLAN.md |
 
 ---
 
