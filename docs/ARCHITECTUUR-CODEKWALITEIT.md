@@ -151,7 +151,12 @@ uitlegt waarom — de afweging wordt een diff die iemand goedkeurt.
 Bestaande duplicatie wordt niet in één ronde opgeruimd: dat zou riskanter zijn dan het probleem.
 De ratchet zorgt dat ze alleen nog kleiner wordt.
 
-*Guard: idem regel 1.*
+*Guard: idem regel 1, plus `scripts/ci/check-interne-duplicatie.sh` (#1263) voor duplicatie
+**binnen** één boom — twee identieke methodes in hetzelfde bestand, of in twee bestanden binnen
+dezelfde tier, komen niet voor in een tier-paar en dus niet in `check-tier-duplicatie.sh`. Meet
+met jscpd op productiecode (geen testprojecten, zelfde reden als regel 7/8), met `FunctionApp/`
+volledig uitgesloten zodat cross-tier duplicatie niet dubbel wordt geteld door twee guards
+tegelijk.*
 
 ### Regel 3 — Geen logica in Blazor-pagina's
 
@@ -252,6 +257,7 @@ dezelfde schuld als regel 1, vanuit een andere hoek.
 | Regel | Afgedwongen door | Draait in |
 |---|---|---|
 | 1, 2 — tier-duplicatie stijgt niet | `scripts/ci/check-tier-duplicatie.sh` | `build.yml` |
+| 1, 2 — interne duplicatie stijgt niet (#1263) | `scripts/ci/check-interne-duplicatie.sh` | `build.yml` |
 | 3 — geen logica in Blazor-pagina's | `scripts/ci/check-blazor-codebehind.sh` | `build.yml` |
 | 4 — platformafhankelijke valkuilen | `scripts/ci/check-codekwaliteit-valkuilen.sh` | `build.yml` |
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
@@ -285,10 +291,9 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 
 | Onderwerp | Waarom niet | Vervolg |
 |---|---|---|
-| Roslyn-maintainability-analyzers (CA1502/1505/1506) | Staan niet standaard aan, ook niet bij `AnalysisMode=All` ([bron](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview)). Ze aanzetten vóór het aantal waarschuwingen bekend is, maakt de eerstvolgende PR rood. | Issue #1263 |
-| jscpd in CI | Zou duplicatie binnen één tier ook vangen (de tier-guard doet dat niet). Vraagt een npm-afhankelijkheid in CI; eerst het drempelgedrag vaststellen. | Issue #1263 |
-| `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1263 |
-| Testdekking per productiemap | `Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hebben geen testproject. | Issue #1263 |
+| Roslyn-maintainability-analyzers (CA1502/1505/1506) | Staan niet standaard aan, ook niet bij `AnalysisMode=All` ([bron](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview)). Ze aanzetten vóór het aantal waarschuwingen bekend is, maakt de eerstvolgende PR rood. | Issue #1300 (afgesplitst uit #1263) |
+| `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1301 (afgesplitst uit #1263) |
+| Testdekking per productiemap | `Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hebben geen testproject. | Issue #1302 (afgesplitst uit #1263) |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
 
 ---
@@ -298,6 +303,7 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 ```bash
 # Alle codekwaliteitsguards lokaal, zelfde volgorde als CI:
 bash scripts/ci/check-tier-duplicatie.sh
+bash scripts/ci/check-interne-duplicatie.sh
 bash scripts/ci/check-blazor-codebehind.sh
 bash scripts/ci/check-codekwaliteit-valkuilen.sh
 bash scripts/ci/check-bestandsgrootte.sh

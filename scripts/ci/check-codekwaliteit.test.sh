@@ -54,6 +54,7 @@ herstel() {
 
 echo "Positieve tests (schone werkboom moet groen zijn):"
 verwacht_slagen "tier-duplicatie"      bash scripts/ci/check-tier-duplicatie.sh
+verwacht_slagen "interne duplicatie"   bash scripts/ci/check-interne-duplicatie.sh
 verwacht_slagen "blazor-codebehind"    bash scripts/ci/check-blazor-codebehind.sh
 verwacht_slagen "valkuilen"            bash scripts/ci/check-codekwaliteit-valkuilen.sh
 verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
@@ -90,6 +91,14 @@ else
   echo "::error::Proefpagina met code-behind ontbreekt — de negatieve test is overgeslagen."
   mislukt=$((mislukt + 1))
 fi
+
+# 2b. Interne duplicatie: kopieer een bestaand Postgres-tierbestand woordelijk naar een nieuw
+#     bestand in dezelfde tier. check-tier-duplicatie.sh ziet dit niet (geen paar met FunctionApp/);
+#     check-interne-duplicatie.sh moet het wel zien, want FunctionApp.Postgres/ blijft in de scan.
+proef_intern="FunctionApp.Postgres/Admin/ProefInterneDuplicatie1263.cs"
+cp "FunctionApp.Postgres/Admin/SportlinkExtensieRollenFunction.cs" "$proef_intern"
+verwacht_falen "interne duplicatie stijgt" bash scripts/ci/check-interne-duplicatie.sh
+rm -f "$proef_intern"
 
 # 3. Valkuilen: elk van de vier patronen, op een plek die niet op de allowlist staat.
 proef_cs="Planner.Shared/Proef1262.cs"
