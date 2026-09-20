@@ -13,6 +13,13 @@ Symbolen:
 - ⚠️ Aandachtspunt (kan nog gecorrigeerd worden)
 - ❌ Harde blocker — sessie NIET veilig af te sluiten zolang dit open staat
 
+> 🖥️ **CROSS-PLATFORM — altijd van toepassing (#800, #1286).**
+> Deze skill draait op Windows én macOS. Twee regels bij het aanpassen ervan:
+> 1. **`grep -E`, nooit `grep -P`.** De BSD-grep van macOS kent geen PCRE; in een pijplijn faalt
+>    dat stil en lijkt het resultaat gewoon leeg.
+> 2. **Geen hardgecodeerde paden met een gebruikersnaam of schijfletter.** De memory-map verschilt
+>    per machine en per platform — neem hem over uit de sessie-instructies (zie Fase 4).
+
 ---
 
 ## FASE 0 — TRIAGE (altijd eerst, alleen lezen, geen wijzigingen)
@@ -87,7 +94,7 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 Haal issue-nummers op uit recente commit-messages op de huidige branch:
 ```bash
 git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
-  | grep -oP '#\d+' | sort -u
+  | grep -oE '#[0-9]+' | sort -u
 ```
 Voor elk gevonden nummer: controleer de GitHub-status:
 ```bash
@@ -104,8 +111,14 @@ gh issue view <nr> --json number,title,state 2>/dev/null
 
 ## FASE 4 — MEMORY SCHRIJVEN (altijd)
 
-Schrijf `session_latest.md` naar:
-`C:\Users\Jaap.vanBeusekom\.Codex\projects\c--repo-jaapbeus-Sportlink-wedstrijdzaken\memory\`
+Schrijf `session_latest.md` naar de **memory-map van deze sessie** — dat is de map die in de
+sessie-instructies genoemd staat en waar `MEMORY.md` al in staat. Neem die map over zoals hij
+daar vermeld wordt; schrijf hier nooit een pad met de hand uit.
+
+> **Waarom geen vast pad (#1286).** De projectmap onder de agent-configuratiemap is een slug van
+> het checkout-pad, dus hij verschilt per machine én per platform. Hier stond een hardgecodeerd
+> Windows-pad inclusief gebruikersnaam en schijfletter: op macOS bestaat dat niet, en de
+> sessiesamenvatting belandde dan nergens of op een nieuw aangemaakt, verkeerd pad.
 
 ```
 ---
