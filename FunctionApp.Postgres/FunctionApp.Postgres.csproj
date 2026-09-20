@@ -100,5 +100,6 @@
          TeamNaamNormalisatie die al transitief binnenkwamen. Een impliciete afhankelijkheid keert
          de bedoelde gelaagdheid om zodra er planner-logica in Planner.Shared bijkomt. -->
     <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
+    <ProjectReference Include="..\Planner.Endpoints\Planner.Endpoints.csproj" />
   </ItemGroup>
 </Project>

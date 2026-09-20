@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- **Eén stuk aansluitcode voor de Sportlink-koppeling in plaats van twee (#1271).** De SQL Server-
+  en Postgres-variant van de app deelden tot nu toe geen code voor het afhandelen van een
+  Sportlink-verzoek — alleen de databasevraag zelf verschilt tussen de twee, maar het aansluitwerk
+  eromheen stond twee keer geschreven. Dat aansluitwerk is nu één gedeeld stuk, zodat een
+  verbetering of reparatie daar voortaan maar op één plek hoeft te gebeuren. Voor beheerders
+  verandert er niets aan de werking van de applicatie.
+
 ### Added
 - **Centrale architectuurbeschrijving (#1274).** `docs/ARCHITECTUUR.md` is het nieuwe leidende
   architectuurdocument: één plek met de kwaliteitsdoelen, de belanghebbenden en hun zorgen, de

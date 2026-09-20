@@ -797,20 +797,27 @@ Samenvatting van de twee harde regels (epic #815):
      draait niet automatisch.
 
 4. **Vóór een dérde tier komt eerst de gedeelde endpoint-orkestratie (#1271, stap 1 van epic
-   #826).** Een endpoint bestaat uit aansluitwerk — routeparameter lezen, rollen controleren,
-   client uit DI halen, resultaat naar `IActionResult` vertalen — en uit de databasevraag zelf.
-   Alleen dat tweede deel is tier-gebonden; het eerste is per tier identiek.
+   #826) — gestart, nog niet compleet.** Een endpoint bestaat uit aansluitwerk — routeparameter
+   lezen, rollen controleren, client uit DI halen, resultaat naar `IActionResult` vertalen — en uit
+   de databasevraag zelf. Alleen dat tweede deel is tier-gebonden; het eerste is per tier identiek.
 
-   Bij twee tiers is dat 660 woordelijk gedupliceerde regels (gemeten bij #1266). Bij drie wordt
-   het ongeveer het dubbele. Die laag hoort dus gebouwd te zijn *voordat* de SQLite-tier zijn
-   endpoints krijgt, niet erna — anders wordt er een derde kopie geschreven die daarna weer
-   opgeruimd moet worden.
+   Bij twee tiers is dat 660 woordelijk gedupliceerde regels (gemeten bij #1266), 775 van de 907
+   regels in de hele `Sportlink/`-boom bij een hermeting op #1271. Bij drie wordt het ongeveer het
+   dubbele. Die laag hoort dus gebouwd te zijn *voordat* de SQLite-tier zijn endpoints krijgt, niet
+   erna — anders wordt er een derde kopie geschreven die daarna weer opgeruimd moet worden.
 
-   Vorm: een apart project dat wél op ASP.NET Core en de Azure Functions Worker mag leunen.
-   `Planner.Shared` blijft framework-vrij; die grens is er voor testbaarheid en is bij ThemeCore
-   (#1248) en FeedbackCore (#1130) vastgelegd. De databasetoegang gaat als delegate mee — net
-   zoals `SportlinkEndpointCore` dat al doet met de instellingenlezer — dus dit is géén gedeelde
-   providerabstractie en botst niet met regel 2.
+   Vorm: `Planner.Endpoints`, een apart project dat wél op ASP.NET Core en de Azure Functions
+   Worker mag leunen. `Planner.Shared` blijft framework-vrij; die grens is er voor testbaarheid en
+   is bij ThemeCore (#1248) en FeedbackCore (#1130) vastgelegd. De databasetoegang gaat als
+   delegate mee — net zoals `SportlinkEndpointCore` dat al doet met de instellingenlezer — dus dit
+   is géén gedeelde providerabstractie en botst niet met regel 2.
+
+   **Stand:** `SportlinkEndpointSupportCore` (`Planner.Endpoints/Sportlink/`) is het eerste stuk —
+   het kleinste bestandspaar (`SportlinkEndpointSupport.cs`, 51 van de 56 regels identiek), gekozen
+   om de vorm te bewijzen vóór de grotere bestanden. De drie `*Function.cs`-bestanden die de rest
+   van de 775 regels dragen (`SportlinkMatchFunction.cs`, `SportlinkClubMatchFunction.cs`,
+   `SportlinkChangeRequestFunction.cs`) staan nog open. Zie `docs/SPORTLINK-WEB-EXTENSION.md` voor
+   het huidige overzicht per bestand.
 
 Nieuwe SQL-mapstructuren voor een niet-SQL-Server-tier: lowercase snake_case identifiers, nooit
 `dbo`-conventie overnemen — zie het architectuurdocument voor de volledige casing-regel en de
@@ -1540,8 +1547,8 @@ Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#1
 
 ## Solution Structure
 
-De solution telt dertien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
-`sportlink-wedstrijdzaken.slnf` bevat de elf projecten zonder dat SSDT-project — dat is wat de CI bouwt,
+De solution telt vijftien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
+`sportlink-wedstrijdzaken.slnf` bevat de vijftien projecten zonder dat SSDT-project — dat is wat de CI bouwt,
 en het enige dat op macOS werkt. Actuele lijst: `find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*'`.
 
 De twee kernprojecten van de oorspronkelijke ETL-pijplijn:

@@ -139,6 +139,17 @@ Precedenten: `ThemeCore` (#1248), `FeedbackCore` + `SsrfProtection` (#1130),
 De vraag bij een tier-poort is nooit "vertaal ik dit bestand?" maar **"welk deel hiervan gaat over
 de database, en welk deel niet?"** Alleen het eerste deel wordt vertaald.
 
+**Uitzondering, met een eigen project: endpoint-orkestratie (#1271).** Niet alle tier-duplicatie is
+databasetoegang. De routeparameter parsen, de client uit DI halen, de gedeelde kern aanroepen en
+het resultaat naar `IActionResult` vertalen, leunt op ASP.NET Core en de Azure Functions Worker —
+`Planner.Shared` blijft daarom bewust framework-vrij (zelfde grens als bij `ThemeCore`/
+`FeedbackCore`). Voor precies dát soort logica bestaat sinds #1271 `Planner.Endpoints`: een tweede
+gedeelde laag, met dezelfde discipline als `Planner.Shared`, maar wél met die afhankelijkheid.
+Eerste precedent: `SportlinkEndpointSupportCore` (`Planner.Endpoints/Sportlink/`) — de twee
+tier-`SportlinkEndpointSupport.cs`-bestanden zijn er nu een dun omhulsel om, met tier-specifieke
+stukken (instellingenlezer, `EgressGuard`, auth-keten) als delegate. Een nieuwe klasse met dezelfde
+soort orkestratie hoort in `Planner.Endpoints`, niet in `Planner.Shared` en niet nogmaals per tier.
+
 *Guard: `scripts/ci/check-tier-duplicatie.sh` — ratchet op het totaal aantal woordelijk identieke
 betekenisvolle regels.*
 

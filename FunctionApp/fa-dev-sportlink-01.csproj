@@ -72,5 +72,6 @@
     <!-- Tier-agnostische veldresolutie-logica (#819) — gedeeld met Database.Postgres, geen
          gedeelde DB-provider-abstractie (zie Planner.Shared/VeldResolver.cs). -->
     <ProjectReference Include="..\Planner.Shared\Planner.Shared.csproj" />
+    <ProjectReference Include="..\Planner.Endpoints\Planner.Endpoints.csproj" />
   </ItemGroup>
 </Project>
