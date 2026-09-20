@@ -89,13 +89,17 @@ Azure-productieomgeving. Eenmalig uit te voeren, daarna niet meer dagelijks nodi
 | [ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md) | Entra App Registration, Easy Auth, rollen — configure via scripts |
 | [CUSTOM-DOMAIN.md](CUSTOM-DOMAIN.md) | Eigen domein op de Static Web App, CORS-origins, redirect-URI's |
 
-### Navigatie en archief
+### Navigatie
 
 | Bestand | Status |
 |---------|--------|
 | [INDEX.md](INDEX.md) | Inhoudsopgave — blijft in de `docs/`-root als navigatiepunt |
 | `DOCUMENTATIEPLAN.md` | Dit bestand — blijft in de `docs/`-root |
-| [ARCHITECTURE-V2.md](ARCHITECTURE-V2.md) | Gearchiveerd: de single-tier architectuur van 2026-05-17 tot de Postgres-cutover (#976). Niet meer bijwerken — ook de bestandsnaam niet, want dit is een bevroren historisch verslag, geen geldende regel |
+
+> **Geen archiefcategorie meer (#1291-vervolg).** `ARCHITECTURE-V2.md` — de gearchiveerde,
+> single-tier architectuur van vóór de Postgres-cutover (#976) — is verwijderd. De repository houdt
+> alleen geldende regels vast; een bevroren historisch verslag hoort niet in de codebase maar in de
+> git-geschiedenis van `docs/ARCHITECTUUR.md` zelf.
 
 ---
 

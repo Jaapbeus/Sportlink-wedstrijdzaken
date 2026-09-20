@@ -82,6 +82,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   foutmelding, hij doet gewoon niets. De controle vergelijkt nu beide, in beide richtingen.
 
 ### Removed
+- **`docs/ARCHITECTURE-V2.md` verwijderd (#1291-vervolg).** Dit was een bevroren, gearchiveerd
+  verslag van de single-tier architectuur van vóór de Postgres-cutover (#976) — expliciet niet meer
+  bijgewerkt sinds die datum en volledig ingehaald door `docs/ARCHITECTUUR.md`. De repository houdt
+  alleen geldende regels vast; de historische inhoud blijft opvraagbaar via de git-geschiedenis.
+  `INDEX.md` en `DOCUMENTATIEPLAN.md` zijn bijgewerkt: de "archief"-categorie is vervallen.
 - **De applicatie raadt niet langer welk team bedoeld wordt bij een dubbelzinnige naam (#1268).**
   Staat er in een e-mail bijvoorbeeld "13-1", dan kan dat zowel JO13-1 als MO13-1 zijn. Op één van
   de twee databasevarianten liet de applicatie een taalmodel die keuze maken; op de andere — de

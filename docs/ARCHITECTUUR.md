@@ -1134,8 +1134,7 @@ gegevensstroom, of een wijziging in de gratis tiers van de leverancier.
 | OpenAPI 3.0.3 | Contractformaat | §8.3 en §10.3 |
 | AVG (Verordening (EU) 2016/679) | Gegevensbescherming | §8.1, §8.5 en §10.1 |
 
-*Zie ook:* [ARCHITECTURE-V2.md](ARCHITECTURE-V2.md) (gearchiveerde, single-tier voorganger, alleen
-historisch) · [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md) ·
+*Zie ook:* [ARCHITECTUUR-DATABASE-TIERS.md](ARCHITECTUUR-DATABASE-TIERS.md) ·
 [SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) · [EMAIL-VERWERKING.md](EMAIL-VERWERKING.md) ·
 [VERSIONING.md](VERSIONING.md) · [ENTRA-AUTH-BEHEER.md](ENTRA-AUTH-BEHEER.md) ·
 [SETUP-NIEUWE-CLUB.md](../SETUP-NIEUWE-CLUB.md) · [DEVELOPER-SETUP.md](DEVELOPER-SETUP.md) ·
