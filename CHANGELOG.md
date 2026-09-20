@@ -87,6 +87,16 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   Met testdata van 200.000 aliassen daalde dat van 3181 naar 6 leesbewerkingen per zoekopdracht.
   Merkbaar wordt dit pas bij een club met veel aliassen — de reden om het nu te doen is dat het
   met de omvang van die tabel meegroeit.
+- **De ontwikkelhulpmiddelen werken nu ook op een Mac (#1286).** De drie geautomatiseerde
+  werkwijzen die een ontwikkelaar gebruikt om de omgeving op te starten, een sessie af te sluiten
+  en de ontwikkelcyclus te doorlopen, waren op Windows geschreven en deden op macOS deels niets.
+  Het opstarten kon draaiende onderdelen daar niet zien en meldde ze als "niet actief", de
+  sessie-afsluiting sloeg de controle op afgeronde taken stilzwijgend over en schreef haar
+  samenvatting naar een pad dat op een Mac niet bestaat, en de beveiligingsscan doorzocht ook
+  build-uitvoer die overgeslagen had moeten worden. Alle drie werken nu op Windows én macOS, en de
+  Codex-tweelingen ervan zijn meegenomen. Verder bleek de controle op inconsistente
+  Blazor-bestandsversies nooit iets te kunnen aantonen — die is vervangen door een controle die
+  aantoonbaar zowel groen als rood kan worden.
 - **Een eerder in productie opgeloste fout stond nog wél in de ontwikkelbranche (#1287).** De
   correctie op het label "Geen AI antwoord" draaide sinds 18 september wel live, maar was nooit
   teruggebracht naar de branche waarop verder wordt ontwikkeld. Daar stonden de code, de tests en
