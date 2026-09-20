@@ -50,13 +50,25 @@ Voer uit: `gh pr list --head $(git branch --show-current) 2>/dev/null`
 
 ## FASE 1 — CODE-INTEGRITEIT (alleen als Fase 0 geen harde blockers heeft)
 
-**1a. FunctionApp build**
-`dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | tail -8`
+**1a. FunctionApp build (Postgres-tier eerst — draait in productie, #1060)**
+`dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug --no-restore 2>&1 | tail -8`
 - Exit 0 → ✅ | fouten → ❌ HARDE BLOCKER — stop hier.
+- Zijn in deze sessie ook SQL Server-tier-bestanden (`FunctionApp/`) gewijzigd? Bouw die er dan
+  ook bij: `dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | tail -8`
 
-**1b. BlazorAdmin build**
-`dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | tail -8`
-- Exit 0 → ✅ | fouten → ❌ HARDE BLOCKER — stop hier.
+**1b. BlazorAdmin build — ALLEEN als de BlazorAdmin dev server niet draait**
+> ⚠️ Draait `/startdebug` (dotnet watch op :5242) nog vanuit deze of een eerdere sessie?
+> `lsof -nP -iTCP:5242 -sTCP:LISTEN` (macOS/Linux) of `Get-NetTCPConnection -LocalPort 5242`
+> (Windows) laat dat zien. Een tweede `dotnet build` naast of vlak na die draaiende server
+> genereert een tweede set content-hash fingerprints → 404 op framework-JS → "An unhandled
+> error has occurred. Reload" (zie AGENTS.md-verificatielus stap b en de `startdebug`-skill).
+>
+> - Server draait niet → bouw gewoon: `dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | tail -8`
+> - Server draait wel → sla deze build over (Fase 1a dekt de compileerbaarheid al voor de
+>   FunctionApp-lagen) óf herstart bewust via `./scripts/dev/Stop-Debug.ps1 -Clean` gevolgd door
+>   `./scripts/dev/Start-Debug.ps1` — nooit een losse `dotnet build BlazorAdmin` ernaast.
+
+- Exit 0 (of bewust overgeslagen omdat de server draait) → ✅ | fouten → ❌ HARDE BLOCKER — stop hier.
 
 ---
 
@@ -74,12 +86,12 @@ Lees eerste 60 regels van `CHANGELOG.md` — entry aanwezig en passend? ✅ / le
 |---|---|
 | FunctionApp/**/*.cs | docs/API.md |
 | FunctionApp/Planner/** | docs/ARCHITECTUUR-PLANNER.md |
-| BlazorAdmin/**/*.razor | docs/v2-admin-handleiding.md |
+| BlazorAdmin/**/*.razor | docs/BEHEERDER-HANDLEIDING.md |
 | Architectuurregel/conventie | AGENTS.md |
-| Setup/configuratie | docs/SETUP.md |
-| Testscript | docs/TESTING.md |
+| Setup/configuratie | docs/DEVELOPER-SETUP.md |
+| Testscript | docs/VERIFICATIE-SCRIPTS.md |
 | Email-pipeline | docs/EMAIL-VERWERKING.md |
-| Auth/Entra | docs/AZURE-ENTRA-SETUP.md |
+| Auth/Entra | docs/ENTRA-AUTH-BEHEER.md |
 | Security/AVG | SECURITY.md |
 
 ---
