@@ -195,11 +195,21 @@ verplichte N-user-test.
 >   `FunctionApp/Sportlink/SportlinkEndpointSupport.cs` — toggle+EgressGuard-controle,
 >   statusvertaling, rolnaam, audit-afronding (`RondMutatieAfAsync`), timer-preamble
 >   (`ClientVoorTimer`). Alle Sportlink-Functions en -timers van die tier gebruiken hem. Sinds
->   #1266 is de tier-onafhankelijke kern daarvan verhuisd naar
+>   #1266 is de tier-onafhankelijke *beslislogica* daarvan verhuisd naar
 >   `Planner.Shared/Integrations/SportlinkClub/SportlinkEndpointCore.cs` (o.a.
->   `BepaalAuditResultaat`, `IsDryRunActief`, `WarmupVooruitkijkDagen`); de twee
->   `SportlinkEndpointSupport`-bestanden zijn daar doorgeefluiken van, zodat een tierwissel niet
->   stilzwijgend ander gedrag oplevert.
+>   `BepaalAuditResultaat`, `IsDryRunActief`, `WarmupVooruitkijkDagen`). Sinds **#1271** is ook de
+>   *orkestratie zelf* (routeparameter/DI-plumbing, de vertaling naar `IActionResult`) gedeeld, in
+>   `Planner.Endpoints/Sportlink/SportlinkEndpointSupportCore.cs` — een apart project omdat deze
+>   laag wél op ASP.NET Core en de Azure Functions Worker leunt, iets wat `Planner.Shared` bewust
+>   niet doet (zelfde grens als `ThemeCore` #1248 en `FeedbackCore` #1130). Tier-specifieke stukken
+>   (instellingenlezer, `EgressGuard`, `EasyAuthHelper`/`AdminEndpoint`) gaan als delegate mee; de
+>   twee `SportlinkEndpointSupport`-bestanden zijn nu een dun omhulsel om die gedeelde orkestratie,
+>   zodat een tierwissel niet stilzwijgend ander gedrag oplevert. Bewust **niet** meeverhuisd:
+>   `ISportlinkMutationAuditService` bestaat nog als twee identieke interfaces (één per
+>   tier-namespace) — dat samenvoegen raakt `Program.cs` van beide tiers en is een aparte afweging.
+>   De drie `*Function.cs`-bestanden die de rest van de bij #1271 gemeten duplicatie vormen
+>   (`SportlinkMatchFunction.cs`, `SportlinkClubMatchFunction.cs`,
+>   `SportlinkChangeRequestFunction.cs`) zijn nog niet naar deze vorm geport.
 > - `BlazorAdmin/Shared/SportlinkMatchPanel.razor(.cs)` — het paneel per wedstrijd in Dagplanning;
 >   `BlazorAdmin/Models/SportlinkActieStatus.cs` — status van één actie plus de ene vertaling van
 >   mutatieresultaat naar melding (`Verwerk`); `BlazorAdmin/Shared/Melding.razor` toont hem. De

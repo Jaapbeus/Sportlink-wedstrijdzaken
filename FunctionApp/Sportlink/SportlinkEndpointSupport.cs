@@ -1,9 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Planner.Endpoints.Sportlink;
 using Planner.Shared.Integrations.SportlinkClub;
 using SportlinkFunction.Admin;
 using SportlinkFunction.Infrastructure;
@@ -11,139 +10,79 @@ using SportlinkFunction.Infrastructure;
 namespace SportlinkFunction.Sportlink;
 
 /// <summary>
-/// SQL Server-tegenhanger van <c>FunctionApp.Postgres/Sportlink/SportlinkEndpointSupport.cs</c>
-/// (#1266, epic #986): de gedeelde voorbereiding van élk Sportlink Web Extension-endpoint en élke
-/// Sportlink-timer op deze tier.
+/// Tier-dun omhulsel om <see cref="SportlinkEndpointSupportCore"/> (Planner.Endpoints, #1271): de
+/// SQL Server-instellingenlezer, de SQL Server-EgressGuard en de SQL Server-<see cref="AdminEndpoint"/>
+/// als delegate meegeven aan de gedeelde orkestratie. De methodesignaturen blijven ongewijzigd
+/// zodat geen enkele aanroeper in deze tier hoeft te wijzigen.
 /// <para>
-/// <b>Geen kopie.</b> Alle beslislogica — de toggle+EgressGuard-controle, de vertaling van
-/// <see cref="SportlinkClubCallStatus"/> naar een HTTP-status, de rolnaam, de dry-run-polariteit en
-/// de audit-afronding — staat in <see cref="SportlinkEndpointCore"/> (Planner.Shared) en wordt door
-/// beide tiers aangeroepen. Wat hier staat is uitsluitend tier-plumbing: de SQL Server-
-/// instellingenlezer, de EgressGuard van deze assembly, de DI-lookup van de client en de vertaling
-/// naar <see cref="IActionResult"/>. Zelfde scheiding als ThemeCore (#1248) en FeedbackCore (#1130).
+/// Vóór #1271 stond hier de volledige orkestratielogica nog een keer, woordelijk gelijk aan de
+/// Postgres-tegenhanger op de databaseaanroep na — zie de toelichting bij
+/// <c>SportlinkEndpointSupportCore</c> voor de meting die dat bevestigde.
 /// </para>
 /// </summary>
 internal static class SportlinkEndpointSupport
 {
     /// <summary>De ene functionele rol waarmee deze app in Sportlink Club schrijft (#988).</summary>
-    internal const string RolWedstrijdzaken = SportlinkEndpointCore.RolWedstrijdzaken;
+    internal const string RolWedstrijdzaken = SportlinkEndpointSupportCore.RolWedstrijdzaken;
 
     /// <summary>Instellingenlezer van deze tier — één plek, zodat de cache-semantiek
     /// (<c>null</c> = nog niet geladen) overal gelijk is.</summary>
     private static Func<string, string?> LeesInstelling => SystemUtilities.AppSettings.GetSetting;
 
-    /// <summary>Vertaalt een gedeelde foutuitkomst naar de HTTP-respons van deze tier.</summary>
-    private static IActionResult NaarActionResult(SportlinkEndpointFout fout)
-        => new ObjectResult(new { error = fout.Foutmelding }) { StatusCode = fout.HttpStatus };
-
-    /// <summary>Toggle (#988) + EgressGuard (#857): <c>null</c> als de aanroep door mag, anders de
-    /// 409/503-fout die de client toont.</summary>
     internal static IActionResult? ControleerToggleEnEgress()
-    {
-        var fout = SportlinkEndpointCore.ControleerToggleEnEgress(
+        => SportlinkEndpointSupportCore.ControleerToggleEnEgress(
             LeesInstelling, EgressGuard.ExternalIntegrationsAllowed);
-        return fout == null ? null : NaarActionResult(fout);
-    }
 
-    /// <summary>Dry-run-stand van deze club (#998) — fail-safe: alles behalve een expliciet geladen
-    /// <c>"0"</c> is dry-run. Zie <see cref="SportlinkEndpointCore.IsDryRunActief"/>.</summary>
-    internal static bool IsDryRunActief() => SportlinkEndpointCore.IsDryRunActief(LeesInstelling);
+    internal static bool IsDryRunActief()
+        => SportlinkEndpointSupportCore.IsDryRunActief(LeesInstelling);
 
     /// <summary>
-    /// De endpointwrapper voor élk Sportlink Web Extension-endpoint van deze tier (#1266).
-    /// <para>
-    /// <b>Waarom een eigen wrapper en niet <c>requireRole:</c> zoals de Postgres-tier?</b> De
-    /// Postgres-variant van <c>AdminEndpoint.ExecuteAsync</c> heeft sinds #991 een optionele
-    /// <c>requireRole</c>-parameter waarmee <c>RequireWedstrijdzaken</c> de <c>RequireAdmin</c>-check
-    /// <i>vervangt</i>; de SQL Server-variant heeft die parameter (nog) niet. Deze wrapper zet de
-    /// functionele rolcheck daarom <i>bovenop</i> de bestaande admin-gate — precies zoals
-    /// docs/SPORTLINK-WEB-EXTENSION.md §3.4 de rol beschrijft ("bovenop de bestaande
-    /// admin-toegang"). Nooit zwakker dan de Postgres-tegenhanger: een aanroeper heeft hier zowel
-    /// <c>admin</c> als <c>Wedstrijdzaken</c> nodig, wat de aanbevolen roltoewijzing
-    /// <c>["admin","Wedstrijdzaken"]</c> sowieso is.
-    /// </para>
+    /// De endpointwrapper voor élk Sportlink Web Extension-endpoint van deze tier (#1266, #1272).
+    /// Zet, net als de Postgres-tier sinds #1272, de functionele rolcheck bovenop de bestaande
+    /// admin-gate — zie <see cref="SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync"/>.
     /// </summary>
     internal static Task<IActionResult> ExecuteWedstrijdzakenAsync(
         HttpRequest req, ILogger log, string errorContext, Func<string, Task<IActionResult>> work)
-    {
-        var rolFout = EasyAuthHelper.RequireWedstrijdzaken(req);
-        if (rolFout != null) return Task.FromResult(rolFout);
-        return AdminEndpoint.ExecuteAsync(req, log, errorContext, work);
-    }
+        => SportlinkEndpointSupportCore.ExecuteWedstrijdzakenAsync(
+            req, log, errorContext, work,
+            EasyAuthHelper.RequireWedstrijdzaken,
+            AdminEndpoint.ExecuteAsync);
 
-    /// <summary>De 503 voor "client niet in DI geregistreerd", als losse respons — voor de paden die
-    /// de client zelf uit <see cref="FunctionContext.InstanceServices"/> halen in plaats van via
-    /// <see cref="ClientOfFout"/>.</summary>
     internal static IActionResult ClientNietGeconfigureerdFout()
-        => NaarActionResult(SportlinkEndpointCore.ClientNietGeconfigureerdFout);
+        => SportlinkEndpointSupportCore.ClientNietGeconfigureerdFout();
 
-    /// <summary>De <see cref="ISportlinkClubClient"/> uit DI, of een 503 als hij niet geregistreerd
-    /// is (Program.cs registreert hem alleen als de EgressGuard het toestaat).</summary>
     internal static (ISportlinkClubClient? Client, IActionResult? Fout) ClientOfFout(FunctionContext context)
-    {
-        var client = context.InstanceServices.GetService<ISportlinkClubClient>();
-        return client == null
-            ? (null, NaarActionResult(SportlinkEndpointCore.ClientNietGeconfigureerdFout))
-            : (client, null);
-    }
+        => SportlinkEndpointSupportCore.ClientOfFout(context);
 
-    /// <summary>Timer-variant van de drie controles hierboven: logt waarom er niets gebeurt en geeft
-    /// <c>null</c> terug, zodat elke timer met één regel kan afbreken.</summary>
     internal static ISportlinkClubClient? ClientVoorTimer(FunctionContext context, ILogger log, string taak)
-    {
-        switch (SportlinkEndpointCore.BepaalTimerStatus(LeesInstelling, EgressGuard.ExternalIntegrationsAllowed))
-        {
-            case SportlinkTimerStatus.ExtensieUit:
-                log.LogInformation(SportlinkEndpointCore.TimerExtensieUitLog, taak);
-                return null;
-            case SportlinkTimerStatus.EgressGeblokkeerd:
-                log.LogInformation(SportlinkEndpointCore.TimerEgressGeblokkeerdLog, taak);
-                return null;
-        }
+        => SportlinkEndpointSupportCore.ClientVoorTimer(
+            context, log, taak, LeesInstelling, EgressGuard.ExternalIntegrationsAllowed);
 
-        var client = context.InstanceServices.GetService<ISportlinkClubClient>();
-        if (client == null)
-            log.LogWarning(SportlinkEndpointCore.TimerClientOntbreektLog, taak);
-        return client;
-    }
-
-    /// <summary>Vertaalt <see cref="SportlinkClubCallStatus"/> naar een HTTP-foutrespons — nooit de
-    /// onderliggende Sportlink-foutdetails 1-op-1 doorzetten (CISO-regel). <c>null</c> bij <c>Ok</c>.</summary>
     internal static IActionResult? VertaalStatusNaarFout(SportlinkClubCallStatus status)
-    {
-        var fout = SportlinkEndpointCore.VertaalStatusNaarFout(status);
-        return fout == null ? null : NaarActionResult(fout);
-    }
+        => SportlinkEndpointSupportCore.VertaalStatusNaarFout(status);
 
-    /// <summary>Request-body als DTO; <c>null</c> bij een lege body.</summary>
-    internal static async Task<T?> LeesBodyAsync<T>(HttpRequest req) where T : class
-        => JsonConvert.DeserializeObject<T>(await new StreamReader(req.Body).ReadToEndAsync());
+    internal static Task<T?> LeesBodyAsync<T>(HttpRequest req) where T : class
+        => SportlinkEndpointSupportCore.LeesBodyAsync<T>(req);
 
-    /// <summary>Audit-<c>resultaat</c> voor een mutatie-uitkomst (#998, uitgebreid #994).</summary>
     internal static string BepaalAuditResultaat(SportlinkMutationResult r)
-        => SportlinkEndpointCore.BepaalAuditResultaat(r);
+        => SportlinkEndpointSupportCore.BepaalAuditResultaat(r);
 
-    /// <summary>
-    /// De afronding die élke mutatie deelt: transportfout → audit "Failure" + vertaalde fout; lege
-    /// respons → audit "Failure" + 502; anders audit met <see cref="BepaalAuditResultaat"/> en
-    /// <paramref name="ok"/>. Altijd HTTP 200 bij een inhoudelijke afwijzing door Sportlink —
-    /// <c>IsSuccess</c>/<c>Violations</c> dragen de uitkomst.
-    /// </summary>
-    internal static async Task<IActionResult> RondMutatieAfAsync<T>(
+    internal static Task<IActionResult> RondMutatieAfAsync<T>(
         SportlinkClubResponse<T> mutationResult,
         ISportlinkMutationAuditService? auditService,
         long? auditId,
         Func<T, SportlinkMutationResult> naarMutatieResultaat,
         Func<T, IActionResult> ok)
         where T : class
-    {
-        var afronding = SportlinkEndpointCore.BepaalMutatieAfronding(mutationResult, naarMutatieResultaat);
-        await VoltooiAsync(auditService, auditId, afronding.AuditResultaat, afronding.AuditSamenvatting);
-        return afronding.Fout != null ? NaarActionResult(afronding.Fout) : ok(afronding.Data!);
-    }
+        => SportlinkEndpointSupportCore.RondMutatieAfAsync(
+            mutationResult,
+            VoltooiAuditDelegate(auditService, auditId),
+            naarMutatieResultaat,
+            ok);
 
-    private static Task VoltooiAsync(ISportlinkMutationAuditService? auditService, long? auditId, string resultaat, string? samenvatting)
+    private static Func<string, string?, Task>? VoltooiAuditDelegate(
+        ISportlinkMutationAuditService? auditService, long? auditId)
         => auditService != null && auditId.HasValue
-            ? auditService.VoltooiAsync(auditId.Value, resultaat, samenvatting)
-            : Task.CompletedTask;
+            ? (resultaat, samenvatting) => auditService.VoltooiAsync(auditId.Value, resultaat, samenvatting)
+            : null;
 }
