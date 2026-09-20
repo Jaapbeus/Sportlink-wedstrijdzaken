@@ -230,8 +230,17 @@ status op `Verwerkt` staan — dezelfde waarde als een mislukte verzending — w
 reviewen viel. Zou de reply-policy het antwoord onderdrukken, dan wordt er in review-mode ook geen
 voorstel gebouwd: de rij krijgt dan status `Review` zonder `AntwoordEmail`.
 
-Het bericht krijgt in review-mode het label **"Geen AI antwoord"** (niet "Handmatige planning") en
-wordt als gelezen gemarkeerd.
+Het bericht wordt in review-mode altijd als gelezen gemarkeerd. Het label hangt af van of er een
+voorstel is opgebouwd (#1244):
+
+| Situatie in review-mode | Label op de originele e-mail |
+|---|---|
+| Voorstel opgebouwd en opgeslagen (eventueel gemaild naar `EmailReviewRecipient`) | **geen label** — er ís een AI-antwoord, het wacht enkel op beoordeling |
+| Reply-policy onderdrukt het antwoord, dus geen voorstel | **"Geen AI antwoord"** (niet "Handmatige planning") |
+
+Tot #1244 kreeg élk in review-mode verwerkt bericht het label "Geen AI antwoord", ook direct nadat
+het voorstel naar de review-ontvanger was gemaild. Daarmee was het label betekenisloos: het stond
+zowel op berichten zonder AI-antwoord als op berichten mét een voorstel ter beoordeling.
 
 > **Let op:** het voorstel is nog niet in de Admin GUI zichtbaar. `AdminEmailLogRepository` geeft
 > `AntwoordEmail` bewust nooit terug (AVG: de body kan persoonsgegevens bevatten), dus het voorstel

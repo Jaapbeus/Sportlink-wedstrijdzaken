@@ -158,6 +158,19 @@ if ($safePrefix | Where-Object { $branch.StartsWith($_) }) { <# doorgaan #> }
 
 **Nooit direct committen of pushen naar `main` of `develop` — uitsluitend via PR.**
 
+**Een hotfix is pas af als hij ook terug in `develop` staat (#1287).** Een `hotfix/`-branch gaat
+naar `main` en daarmee de lucht in, maar `develop` heeft die commit dan niet. Het gaat niet fout
+bij de eerstvolgende release — `develop` raakte het bestand niet aan, dus de merge behoudt de
+versie van `main` en de fix wordt niet teruggedraaid. Het gaat fout bij wie daarna aan dat stuk
+code verder werkt: die leest op `develop` de oude code, de oude documentatie en een testsuite die
+de fout niet tegenhoudt.
+
+Dus direct na de merge naar `main`: een `feature/#<nr>-backport-...`-branch vanuit `develop`, met
+daarin uitsluitend de codewijziging, de tests en de documentatie van de hotfix — **niet** het
+versienummer en **niet** de CHANGELOG-sectie van de release, want die twee lopen op `develop`
+vooruit. Controleer met `git log --oneline origin/develop..origin/main`; die uitvoer hoort alleen
+release-merges te bevatten.
+
 ---
 
 ## Autonome ontwikkelcyclus — zelfhelende lus
