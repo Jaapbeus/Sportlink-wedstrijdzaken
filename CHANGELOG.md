@@ -98,6 +98,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **De `sluitsessie`- en `autonoom`-werkwijzen konden zelf een kapotte lokale omgeving
+  veroorzaken (#1296).** Beide bouwden `BlazorAdmin` zonder het voorbehoud dat elders al gold:
+  nooit bouwen terwijl de lokale ontwikkelserver draait. Een tweede compilatie ernaast levert een
+  tweede set bestandsfingerprints op, waardoor de browser blijft laden of "An unhandled error has
+  occurred" toont. Beide werkwijzen bouwen nu eerst de tier die in productie draait en slaan de
+  BlazorAdmin-build bewust over zolang de server actief is. Daarnaast verwezen ze naar vijf
+  documentbestanden die inmiddels waren hernoemd of nooit hebben bestaan — die verwijzingen zijn
+  gecorrigeerd zodat de bijbehorende controle niet langer stilzwijgend niets doet.
 - **Teamherkenning zoekt weer via de index in plaats van de hele aliastabel door te lopen (#1280).**
   De lookups die een teamnaam naar een team vertalen vergelijken hoofdletterongevoelig. Op de
   variant van de database die deze installatie draait was dat sinds 16 september al opgelost; op de

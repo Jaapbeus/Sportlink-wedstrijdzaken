@@ -231,11 +231,18 @@ Voor elk issue — volg de autonome ontwikkelcyclus uit AGENTS.md:
 
 **Stap B — Verificatielus (max 3 iteraties)**
 ```
-a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
+a. dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug
    → fouten? Fix, terug naar a.
+   Dit is de tier die in productie draait (#1060). Raak je ook de SQL Server-tier aan, bouw
+   dan óók: dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 
-b. dotnet build BlazorAdmin/BlazorAdmin.csproj
+b. ALLEEN als de BlazorAdmin dev server niet draait: dotnet build BlazorAdmin/BlazorAdmin.csproj
    → fouten? Fix, terug naar a.
+   ⚠️ NOOIT terwijl `/startdebug` (dotnet watch op :5242) al draait of vlak nadat die gestart is —
+   een tweede compilatiepas geeft een tweede set content-hash fingerprints naast de draaiende
+   server → 404 op framework-JS → "An unhandled error has occurred. Reload". Draait de server
+   al (`lsof -nP -iTCP:5242 -sTCP:LISTEN` / `Get-NetTCPConnection -LocalPort 5242`)? Sla deze
+   stap over — stap a dekt de compileerbaarheid van de FunctionApp-lagen al.
 
 c. ./scripts/dev/Test-App.ps1
    → exit 1? Fix, terug naar a.
@@ -261,8 +268,8 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 | `docs/API.md` | Endpoint toegevoegd, gewijzigd of verwijderd |
 | `docs/openapi.yaml` | Idem — sync met API.md |
 | `docs/ARCHITECTUUR-PLANNER.md` | Planner-logica, pipeline of kanaalstrategie gewijzigd |
-| `docs/AZURE-ENTRA-SETUP.md` | Auth-configuratie, Easy Auth, Entra of rollen gewijzigd |
-| `docs/TESTING.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
+| `docs/ENTRA-AUTH-BEHEER.md` | Auth-configuratie, Easy Auth, Entra of rollen gewijzigd |
+| `docs/VERIFICATIE-SCRIPTS.md` | Testscript, schema-controle of endpoint-verificatie gewijzigd |
 | `docs/MONITORING.md` | Alerting, KQL-queries of escalatiematrix gewijzigd |
 | `docs/EMAIL-VERWERKING.md` | Email-pipeline, kanalen of AI-verwerking gewijzigd |
 | `docs/VERSIONING.md` | Release-proces of semver-afspraken gewijzigd |
@@ -272,8 +279,8 @@ Loop onderstaande twee categorieën na. Lees elk relevant bestand, vergelijk met
 
 | Bestand | Bijwerken bij |
 |---|---|
-| `docs/v2-admin-handleiding.md` | **Altijd** als er een scherm, instelling, knop, workflow of tekst in de GUI gewijzigd is |
-| `docs/SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
+| `docs/BEHEERDER-HANDLEIDING.md` | **Altijd** als er een scherm, instelling, knop, workflow of tekst in de GUI gewijzigd is |
+| `docs/DEVELOPER-SETUP.md` | Lokale setup of configuratiestappen gewijzigd |
 | `README.md` | Publieke beschrijving, architectuuroverzicht of quick-start gewijzigd |
 
 **CHANGELOG.md — altijd bijwerken:**
@@ -500,12 +507,17 @@ git diff HEAD~20..HEAD -- "*.cs" "*.razor" "*.json" |
 #### P2-D — Kwaliteitscontroles
 
 ```powershell
-dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | Select-Object -Last 5
+dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj -c Debug --no-restore 2>&1 | Select-Object -Last 5
+# Ook FunctionApp/fa-dev-sportlink-01.csproj bouwen als deze cyclus de SQL Server-tier raakte.
+
+# BlazorAdmin ALLEEN bouwen als de dev server niet draait (lsof -nP -iTCP:5242 -sTCP:LISTEN /
+# Get-NetTCPConnection -LocalPort 5242) — anders geeft een tweede compilatiepas een fingerprint-
+# mismatch ("An unhandled error has occurred. Reload"). Draait de server, sla deze regel over:
 dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | Select-Object -Last 5
 ./scripts/dev/Test-App.ps1 2>&1 | Select-Object -Last 10
 ```
 
-- Beide builds exit 0 → ✅
+- Beide builds exit 0 (of BlazorAdmin bewust overgeslagen omdat de server draait) → ✅
 - Build-fouten → ❌ STOP — fix eerst
 - Test-App.ps1 exit 1 → ⚠️ noteer (geen hard stop als service-afhankelijke check faalt)
 
