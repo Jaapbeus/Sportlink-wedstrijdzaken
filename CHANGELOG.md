@@ -80,6 +80,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **Een eerder in productie opgeloste fout stond nog wél in de ontwikkelbranche (#1287).** De
+  correctie op het label "Geen AI antwoord" draaide sinds 18 september wel live, maar was nooit
+  teruggebracht naar de branche waarop verder wordt ontwikkeld. Daar stonden de code, de tests en
+  de beschrijving in `docs/EMAIL-VERWERKING.md` dus nog op het oude gedrag, waarbij in review-mode
+  élk verwerkt bericht dat label kreeg — ook een bericht waarvoor net een voorstel ter beoordeling
+  was klaargezet. Dit raakte de productieomgeving niet, maar wie aan dit onderdeel verder werkte,
+  las een verouderde beschrijving en had geen test die de fout tegenhield. Zie issue #1244 voor de
+  oorspronkelijke correctie.
 - **Documentatie feitelijk gelijkgetrokken met de code (#1269).** Alle documenten in `docs/` en de
   documentatie in de hoofdmap zijn document voor document tegen de werkelijke broncode getoetst.
   De belangrijkste correcties, elk met gevolgen voor wie ze volgde: de twee databasevarianten

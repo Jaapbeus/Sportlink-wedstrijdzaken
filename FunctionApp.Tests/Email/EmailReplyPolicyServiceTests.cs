@@ -51,7 +51,10 @@ public class EmailReplyPolicyServiceTests
         // reviewRecipient wordt er dus helemaal niets verstuurd.
         graph.SentReplies.Should().BeEmpty();
         persistence.AntwoordUpdates.Should().BeEmpty();
-        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+
+        // Er ís een AI-antwoord — het wacht alleen op beoordeling. Het label "Geen AI antwoord"
+        // hoort hier dus niet (#1244); als gelezen markeren blijft wel.
+        graph.CategoryUpdates.Should().BeEmpty();
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1");
     }
 
@@ -93,16 +96,16 @@ public class EmailReplyPolicyServiceTests
         graph.SentReplies.Should().ContainSingle(r =>
             r.To == "reviewer@voorbeeld.test" && r.Subject == "subj" && r.ConversationId == "conv-44");
         persistence.AntwoordUpdates.Should().BeEmpty();
-        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.CategoryUpdates.Should().BeEmpty();
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1c");
     }
 
     /// <summary>
-    /// Een mislukte reviewmail mag de opslag en labeling niet blokkeren — het voorstel blijft dan
-    /// alsnog in de database te vinden (#801).
+    /// Een mislukte reviewmail mag de opslag niet blokkeren — het voorstel blijft dan alsnog in de
+    /// database te vinden (#801). Er is een voorstel opgebouwd, dus er wordt niet gelabeld (#1244).
     /// </summary>
     [Fact]
-    public async Task ReviewMode_ReviewmailMislukt_SlaatTochOpEnLabelt()
+    public async Task ReviewMode_ReviewmailMislukt_SlaatVoorstelTochOp()
     {
         var service = new EmailReplyPolicyService();
         var graph = new FakeEmailGraphService { ThrowOnSendReply = true };
@@ -124,7 +127,7 @@ public class EmailReplyPolicyServiceTests
         result.Should().Be(ReplyVerwerkingUitkomst.AfgerondZonderAntwoord);
         persistence.VoorgesteldeAntwoorden.Should().ContainSingle(v =>
             v.VerwerkingId == 45 && v.AntwoordEmail == "voorgestelde-body");
-        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.CategoryUpdates.Should().BeEmpty();
         graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1d");
     }
 
@@ -161,6 +164,11 @@ public class EmailReplyPolicyServiceTests
         persistence.StatusUpdates.Should().ContainSingle(u =>
             u.VerwerkingId == 43 && u.Status == EmailStatus.Review && u.GeextraheerdeData == null);
         graph.SentReplies.Should().BeEmpty();
+
+        // Zonder voorstel is er daadwerkelijk geen AI-antwoord — dit is het enige pad in review-mode
+        // waar het label hoort (#1244).
+        graph.CategoryUpdates.Should().ContainSingle(c => c.Categories.Contains("Geen AI antwoord"));
+        graph.MarkedAsReadIds.Should().ContainSingle(id => id == "m1b");
     }
 
     [Fact]
