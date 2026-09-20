@@ -411,13 +411,18 @@ public static class TeamCanonicalisatieService
     /// Retourneert true als de schrijfwijze aan een actief canoniek team gekoppeld kon worden.
     /// Idempotent: bij een bestaande rij wordt alleen de koppeling bijgewerkt.
     /// </summary>
+    /// <remarks>
+    /// #1294: de teamlookup vergelijkt <c>TeamnaamGenormaliseerd</c> expliciet via
+    /// <c>UPPER(...)</c>, gelijk aan <see cref="TeamCandidateRepository"/> (#820) — zie diens
+    /// class-remarks voor de volledige onderbouwing.
+    /// </remarks>
     private static async Task<bool> UpsertBronAliasAsync(
         SqlConnection conn, string clubCode, string ruweTekst, string sleutel)
     {
         using var cmd = new SqlCommand($@"
             DECLARE @teamId INT = (
                 SELECT TOP 1 [TeamId] FROM [dbo].[Teams]
-                WHERE [ClubCode] = @clubCode AND [TeamnaamGenormaliseerd] = @sleutel AND [IsActief] = 1);
+                WHERE [ClubCode] = @clubCode AND UPPER([TeamnaamGenormaliseerd]) = UPPER(@sleutel) AND [IsActief] = 1);
 
             IF @teamId IS NULL
             BEGIN
