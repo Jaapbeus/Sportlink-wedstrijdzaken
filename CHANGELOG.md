@@ -98,6 +98,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **De `sluitsessie`- en `autonoom`-werkwijzen konden een issue sluiten dat nog niet live stond
+  (#1295).** Beide instrueerden op vier plekken om `gh issue close` aan te roepen direct na een
+  merge naar `develop` — precies het scenario waarvoor eerder al een regel is vastgelegd, omdat
+  `develop` soms weken achterloopt op productie. Een issue zag er dan opgelost uit terwijl de fix
+  nog niet bij de gebruiker was. Beide werkwijzen laten het sluiten nu volledig aan de bestaande
+  workflow over (`close-released-issues.yml`, die pas bij een productie-tag sluit) en herkennen
+  `status: awaiting-release` als de juiste, geen zorgwekkende eindtoestand na een develop-merge.
 - **De `sluitsessie`- en `autonoom`-werkwijzen konden zelf een kapotte lokale omgeving
   veroorzaken (#1296).** Beide bouwden `BlazorAdmin` zonder het voorbehoud dat elders al gold:
   nooit bouwen terwijl de lokale ontwikkelserver draait. Een tweede compilatie ernaast levert een

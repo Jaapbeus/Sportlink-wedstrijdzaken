@@ -108,16 +108,24 @@ Haal issue-nummers op uit recente commit-messages op de huidige branch:
 git log origin/main..HEAD --pretty=format:"%s" 2>/dev/null \
   | grep -oE '#[0-9]+' | sort -u
 ```
-Voor elk gevonden nummer: controleer de GitHub-status:
+Voor elk gevonden nummer: controleer de GitHub-status én het statuslabel:
 ```bash
-gh issue view <nr> --json number,title,state 2>/dev/null
+gh issue view <nr> --json number,title,state,labels 2>/dev/null
 ```
 - `state: CLOSED` → ✅
-- `state: OPEN` → ⚠️ controleer of het issue volledig is afgerond; zo ja: sluit het af met een afsluitend comment:
-  ```bash
-  gh issue close <nr> --comment "Afgerond in deze sessie — zie commit-geschiedenis voor details."
-  ```
-- Twijfel of werk nog open? → noteer als ⚠️ met toelichting in het eindrapport, sluit NIET zonder zekerheid.
+- `state: OPEN` met label `status: awaiting-release` → ✅ **dit is de juiste eindtoestand** na een
+  merge naar `develop` — NIET sluiten. `close-released-issues.yml` sluit het pas bij de
+  eerstvolgende productie-tag op `main` (AGENTS.md, "Issue-lifecycle: awaiting-release").
+- `state: OPEN` zonder enig `status:`-label, terwijl de bijbehorende PR wél gemerged is → ⚠️
+  noteer in het eindrapport en vraag de gebruiker het na te lopen — dit hoort niet voor te komen
+  (`label-awaiting-release.yml` zet het label automatisch).
+- Twijfel of werk nog open is? → noteer als ⚠️ met toelichting in het eindrapport.
+
+> **Nooit `gh issue close` aanroepen na een merge naar `develop` (#1295).** Dat sluiten gebeurt
+> uitsluitend automatisch bij een version-tag naar `main`. Reproduceert anders letterlijk het
+> incident van 2026-07-26 waar deze regel voor is vastgelegd. Uitzondering: een **hotfix-PR
+> rechtstreeks naar `main`** waarvan `close-released-issues.yml` al groen is gedraaid — dan is het
+> issue al automatisch gesloten en hoeft hier niets te gebeuren.
 
 ---
 
@@ -171,7 +179,7 @@ Update ook de `session_latest`-regel in MEMORY.md.
 | 2b | CHANGELOG bijgewerkt | |
 | 2c | Docs actueel | |
 | 3b | PR + CI groen | |
-| 3c | Afgeronde issues gesloten | |
+| 3c | Afgeronde issues op de juiste eindstatus (`awaiting-release` of `closed`) | |
 
 - Alle ✅ → `✅ Sessie volledig afgesloten`
 - ⚠️ aanwezig → `⚠️ Afgesloten met aandachtspunten`

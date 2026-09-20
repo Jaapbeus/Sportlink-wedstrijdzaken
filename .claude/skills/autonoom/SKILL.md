@@ -146,7 +146,9 @@ Verwerk elk security issue via de volledige implementatiecyclus (zie Fase 2 per-
 HERHAAL:
   1. gh issue list --state open --label "security"
   2. Zijn er issues? → Implementeer elk issue (stappen A-E)
-  3. Na merge: gh issue close <nr>
+  3. Na merge naar develop: NIET zelf sluiten (#1295) — label-awaiting-release.yml zet
+     status: awaiting-release; close-released-issues.yml sluit het pas bij de volgende
+     productie-tag op main. Zie CLAUDE.md, "Issue-lifecycle: awaiting-release".
   4. Zijn er daarna nog open security issues? → terug naar 1
   5. Geen security issues meer? → ✅ STOP lus
 ```
@@ -349,9 +351,17 @@ Na geslaagde merge:
 gh run list --branch main --workflow deploy.yml --limit 1 --json databaseId | ConvertFrom-Json
 gh run watch <run-id> --exit-status
 gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conclusion}'
-# Alle jobs success/skipped? → ✅
-gh issue close <nr> --comment "✅ Geïmplementeerd, Poort 1 geslaagd, gemerged in PR #<pr-nr>."
+# Alle jobs success/skipped? → ✅ code staat live
 ```
+
+> **Nooit hier zelf `gh issue close` aanroepen (#1295).** Dat sluiten hoort bij een version-tag op
+> `main` en gebeurt automatisch via `close-released-issues.yml` — die workflow verwijdert ook de
+> status-labels, wat een handmatige `gh issue close` niet doet en dan een `status:
+> awaiting-release`-label op een gesloten issue achterlaat. Rapporteer dit issue pas als gesloten
+> zodra die workflow na een release-tag daadwerkelijk groen is gedraaid
+> (`gh run list --workflow close-released-issues.yml --limit 1 --json conclusion`) — conform de
+> hotfix-uitzondering in CLAUDE.md, "Issue-lifecycle: awaiting-release". Is er nog geen release-tag
+> gepland? Dan blijft het issue open met `status: awaiting-release` totdat die er komt.
 
 ### Één branch per batch of per issue?
 
