@@ -27,6 +27,17 @@ Symbolen:
 > e-mailadressen). Gebruik altijd placeholders (`[clubcode]`, `[TENANT_ID]`,
 > `[swa-url]`, `[club-domein]`). Zie SECURITY.md § "GitHub issues, PR's en comments".
 
+> 🖥️ **CROSS-PLATFORM — altijd van toepassing (#800, #1286).**
+> Deze skill draait op Windows én macOS. Vier regels bij het aanpassen ervan:
+> 1. **Poortdetectie uitsluitend via `Test-PortListening`** uit `scripts/dev/DevServices.psm1` —
+>    nooit `Get-NetTCPConnection` (module `NetTCPIP`, alleen Windows).
+> 2. **Nooit `Stop-Process -Name`.** Dat sloopt élk `dotnet`/`node`-proces op de machine en
+>    `dotnet watch` herstart zijn kindproces meteen. Gebruik `Stop-Debug.ps1` / `Start-Debug.ps1 -Clean`.
+> 3. **Geen backslash in padliteralen of in een regex over een pad.** Op Unix is `\` een geldig
+>    teken ín een bestandsnaam. Een padfilter matcht op `[\\/]`, nooit op `\\` alleen.
+> 4. **In bash-blokken: `grep -E`, nooit `grep -P`** — de BSD-grep van macOS kent geen PCRE en
+>    faalt daar stil in een pijplijn.
+
 **Lus-structuur (belangrijk):**
 ```
 Fase 0  (voorbereiding: PR's mergen, branches opruimen, main synchen)
@@ -226,17 +237,15 @@ a. dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug
 b. dotnet build BlazorAdmin/BlazorAdmin.csproj
    → fouten? Fix, terug naar a.
 
-c. .\scripts\dev\Test-App.ps1
+c. ./scripts/dev/Test-App.ps1
    → exit 1? Fix, terug naar a.
 ```
 
-Als FunctionApp C# gewijzigd is → stop FunctionApp en herstart:
+Als FunctionApp C# gewijzigd is → stop FunctionApp en herstart (geen hot reload op de
+isolated worker):
 ```powershell
-Stop-Process -Name "func" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-Start-Process powershell -ArgumentList "-NoExit -Command Set-Location FunctionApp; func start --port 7094"
-Start-Sleep -Seconds 15
-Invoke-RestMethod http://localhost:7094/api/health
+./scripts/dev/Stop-Debug.ps1
+./scripts/dev/Start-Debug.ps1      # pollt zelf /api/health en faalt met exit 1 als de host niet opkomt
 ```
 
 **Stap C — Documentatie bijwerken (verplicht vóór commit)**
@@ -456,7 +465,7 @@ Als gitleaks niet geïnstalleerd is (`(Get-Command gitleaks -ErrorAction Silentl
 ```powershell
 # Fallback: scan op bekende high-risk patronen
 Get-ChildItem -Recurse -Include *.cs,*.json,*.yaml,*.yml,*.md |
-    Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+    Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
     Select-String -Pattern "(password|secret|token|key)\s*=\s*['""][^'""]{8,}" -CaseSensitive:$false |
     Where-Object { $_ -notmatch "(placeholder|template|example|your_|YOUR_|<[A-Z])" } |
     Select-Object -First 20
@@ -493,7 +502,7 @@ git diff HEAD~20..HEAD -- "*.cs" "*.razor" "*.json" |
 ```powershell
 dotnet build FunctionApp/fa-dev-sportlink-01.csproj -c Debug --no-restore 2>&1 | Select-Object -Last 5
 dotnet build BlazorAdmin/BlazorAdmin.csproj --no-restore 2>&1 | Select-Object -Last 5
-.\scripts\dev\Test-App.ps1 2>&1 | Select-Object -Last 10
+./scripts/dev/Test-App.ps1 2>&1 | Select-Object -Last 10
 ```
 
 - Beide builds exit 0 → ✅
@@ -631,9 +640,13 @@ Rapporteer: `✅ Nieuwe iteratie-branch: $branchName`
 ### 5a. Check lopende services
 
 ```powershell
-$fa  = [bool](Get-NetTCPConnection -LocalPort 7094  -State Listen -ErrorAction SilentlyContinue)
-$bl  = [bool](Get-NetTCPConnection -LocalPort 5242  -State Listen -ErrorAction SilentlyContinue)
-$az  = [bool](Get-NetTCPConnection -LocalPort 10000 -State Listen -ErrorAction SilentlyContinue)
+# Poortdetectie uitsluitend via DevServices.psm1 — Get-NetTCPConnection zit in de module
+# NetTCPIP en bestaat alleen op Windows (#800, #1286).
+Import-Module ./scripts/dev/DevServices.psm1 -Force
+$p   = Get-DebugPorts
+$fa  = Test-PortListening -Port $p.FunctionApp
+$bl  = Test-PortListening -Port $p.BlazorAdmin
+$az  = Test-PortListening -Port $p.Azurite
 ```
 
 ### 5b. Start wat ontbreekt
@@ -645,12 +658,13 @@ Invoke-RestMethod http://localhost:7094/api/health
 
 Als iets mist → start alles opnieuw:
 ```powershell
-Stop-Process -Name "func","dotnet","node" -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 3
-.\scripts\dev\Start-Debug.ps1
-Start-Sleep -Seconds 15
+# Nooit Stop-Process -Name: dat sloopt élk dotnet/node-proces op de machine, en 'dotnet watch'
+# herstart zijn kindproces meteen — poort 5242 is dan direct weer bezet (CLAUDE.md).
+./scripts/dev/Start-Debug.ps1 -Clean   # stopt, cleant de stale fingerprints en start opnieuw
+
+# Start-Debug pollt zelf tot de services gereed zijn; een vaste Start-Sleep is niet nodig.
 Invoke-RestMethod http://localhost:7094/api/health
-Invoke-WebRequest http://localhost:5242/ -UseBasicParsing | Select-Object StatusCode
+(Invoke-WebRequest http://localhost:5242/).StatusCode
 ```
 
 Na elke FunctionApp C#-wijziging in Fase 2 → FunctionApp opnieuw starten (geen hot reload).
