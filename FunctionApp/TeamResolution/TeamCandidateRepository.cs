@@ -25,6 +25,21 @@ namespace SportlinkFunction.TeamResolution;
 /// alias-treffers dan vandaag) en is hier niet gekozen omdat #820 expliciet als acceptatiecriterium
 /// stelt dat het teamresolutiepercentage niet mag dalen.
 /// </para>
+/// <para>
+/// <b>#1280 — wat die keuze kost, en hoe dat betaald is.</b> SQL Server verwijdert een overbodige
+/// <c>UPPER()</c> niet, ook niet onder de case-insensitieve modelcollatie. Een index op de kale
+/// kolom kan dit predicaat dus niet bedienen: gemeten op 200.000 aliasrijen met exact de
+/// onderstaande queryvorm was dit een Clustered Index Scan van 3181 logische leesbewerkingen. De
+/// redenering hierboven is daarmee niet verkeerd, maar ze is niet gratis — dat was het gat.
+/// Betaald met persisted computed columns (<c>[…Upper]</c>) plus indexen daarop in
+/// <c>Database/dbo/Tables/{Teams,TeamAliassen}.sql</c>: SQL Server matcht de expressie
+/// <c>UPPER(kolom)</c> automatisch tegen zo'n kolom, waardoor dezelfde query twee Index Seeks met
+/// de expressie ín het SEEK-predicaat oplevert (6 leesbewerkingen) zónder dat hier iets wijzigt.
+/// De querytekst blijft daardoor ook gelijk aan die van de Postgres-tier, waar
+/// <c>Database.Postgres/migrations/007</c> en <c>024</c> dezelfde rol vervullen met echte
+/// expressie-indexen. <c>TeamCandidateIndexSargabilityTests</c> bewaakt het paar; volledige meting
+/// en tier-afweging in <c>docs/ARCHITECTUUR-DATABASE-TIERS.md</c> §75.
+/// </para>
 /// </remarks>
 public sealed class TeamCandidateRepository : ITeamCandidateRepository
 {

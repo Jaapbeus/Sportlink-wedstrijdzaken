@@ -3288,6 +3288,91 @@ END
 GO
 
 -- ============================================================
+-- #1280: expressie-gebaseerde indexen voor de UPPER()-sleutelvergelijkingen (vervolg op #1232).
+--
+-- De teamherkenning vergelijkt drie sleutelkolommen expliciet via UPPER() in plaats van te leunen
+-- op de collatie (#820, zie het klassecommentaar in FunctionApp/TeamResolution/TeamCandidateRepository.cs).
+-- De bestaande indexen liggen op de KALE kolommen en kunnen zo'n predicaat niet bedienen: SQL Server
+-- laat een overbodige UPPER() staan, ook onder de case-insensitieve modelcollatie (1033, CI). De
+-- vergelijking wordt dan een residueel predicaat ná de seek — of de seek vervalt helemaal.
+--
+-- Gemeten op SQL Server 2022, SQL_Latin1_General_CP1_CI_AS, 200.000 aliasrijen, met de echte
+-- queryvorm uit FindValidatedAliasAsync (een OR over beide aliaskolommen):
+--   voor : Clustered Index Scan, 3181 logische leesbewerkingen, ~40 ms CPU
+--   na   : twee Index Seeks met de expressie IN het SEEK-predicaat, 6 leesbewerkingen, <1 ms CPU
+--
+-- Een persisted computed column is de SQL Server-tegenhanger van Postgres' expressie-index
+-- (Database.Postgres/migrations/007 en 024). SQL Server matcht UPPER(kolom) uit de query
+-- automatisch tegen de computed column, dus de C#-querytekst wijzigt niet en blijft gelijk aan die
+-- van de Postgres-tier. Volledige afweging: docs/ARCHITECTUUR-DATABASE-TIERS.md §75.
+--
+-- Zuiver additief (§57): geen kolom, type of constraint wijzigt, dus de vorige codeversie blijft
+-- werken op dit schema. De bestaande kale indexen blijven staan — TeamAliasLearningService en
+-- PlannerMatchRepository vergelijken deze kolommen kaal en gebruiken ze wél.
+--
+-- SET QUOTED_IDENTIFIER ON is hier VERPLICHT en geen overbodige netheid: sqlcmd zet hem standaard
+-- OFF, en SQL Server weigert dan zowel het aanmaken van een persisted computed column als het
+-- indexeren ervan met Msg 1934. Zonder deze regel faalt de CI-job 'PostDeployment op verse
+-- database' en daarmee de deploy. Alle dubbele aanhalingstekens in dit script staan in commentaar,
+-- dus het omzetten raakt verder niets.
+-- ============================================================
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Teams'))
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                   WHERE object_id = OBJECT_ID('dbo.Teams') AND name = 'TeamnaamGenormaliseerdUpper')
+        ALTER TABLE [dbo].[Teams]
+            ADD [TeamnaamGenormaliseerdUpper] AS UPPER([TeamnaamGenormaliseerd]) PERSISTED;
+END
+GO
+
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID('dbo.Teams') AND name = 'TeamnaamGenormaliseerdUpper')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'IX_Teams_Club_GenormaliseerdUpper'
+                     AND object_id = OBJECT_ID('dbo.Teams'))
+    CREATE NONCLUSTERED INDEX [IX_Teams_Club_GenormaliseerdUpper]
+        ON [dbo].[Teams] ([ClubCode], [TeamnaamGenormaliseerdUpper])
+        INCLUDE ([Teamnaam], [LeeftijdsCategorie], [IsActief]);
+GO
+
+IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamAliassen'))
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                   WHERE object_id = OBJECT_ID('dbo.TeamAliassen') AND name = 'RuweTekstUpper')
+        ALTER TABLE [dbo].[TeamAliassen]
+            ADD [RuweTekstUpper] AS UPPER([RuweTekst]) PERSISTED;
+
+    IF NOT EXISTS (SELECT 1 FROM sys.columns
+                   WHERE object_id = OBJECT_ID('dbo.TeamAliassen') AND name = 'RuweTekstGenormaliseerdUpper')
+        ALTER TABLE [dbo].[TeamAliassen]
+            ADD [RuweTekstGenormaliseerdUpper] AS UPPER([RuweTekstGenormaliseerd]) PERSISTED;
+END
+GO
+
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID('dbo.TeamAliassen') AND name = 'RuweTekstUpper')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'IX_TeamAliassen_Club_RuweTekstUpper'
+                     AND object_id = OBJECT_ID('dbo.TeamAliassen'))
+    CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_RuweTekstUpper]
+        ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstUpper])
+        INCLUDE ([TeamId], [Status]);
+GO
+
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID('dbo.TeamAliassen') AND name = 'RuweTekstGenormaliseerdUpper')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = 'IX_TeamAliassen_Club_GenormaliseerdUpper'
+                     AND object_id = OBJECT_ID('dbo.TeamAliassen'))
+    CREATE NONCLUSTERED INDEX [IX_TeamAliassen_Club_GenormaliseerdUpper]
+        ON [dbo].[TeamAliassen] ([ClubCode], [RuweTekstGenormaliseerdUpper])
+        INCLUDE ([TeamId], [Status]);
+GO
+
+-- ============================================================
 -- #718: planner.EmailVerwerking.IsBeantwoord — "wij hebben geantwoord" los van het adres.
 --
 -- Waarom: de AVG-retentie zet VerstuurdNaar na 30 dagen op NULL. Diezelfde kolom was óók het
