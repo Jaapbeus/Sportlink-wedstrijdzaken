@@ -5,16 +5,24 @@ using Xunit;
 namespace FunctionApp.Tests.TeamResolution;
 
 /// <summary>
-/// Bewaakt de keerzijde van <see cref="TeamCandidateRepositoryCollationTests"/> (#1232, #1280).
-/// Die test eist dat elke sleutelvergelijking in <c>TeamCandidateRepository.cs</c> expliciet in
-/// <c>UPPER(...)</c> staat (#820). Deze test eist dat er dan ook een index bestaat die zo'n
-/// predicaat kán bedienen.
+/// Bewaakt de keerzijde van <see cref="TeamCandidateRepositoryCollationTests"/> (#1232, #1280,
+/// uitgebreid in #1294). Die test eist dat elke sleutelvergelijking in de vier bestanden hieronder
+/// expliciet in <c>UPPER(...)</c> staat (#820). Deze test eist dat er dan ook een index bestaat die
+/// zo'n predicaat kán bedienen.
 /// <para>
 /// Waarom dat niet vanzelf spreekt: SQL Server verwijdert een overbodige <c>UPPER()</c> niet, ook
 /// niet onder de case-insensitieve modelcollatie (<c>1033, CI</c>). Een index op de kále kolom wordt
 /// dan alleen nog als residueel predicaat gebruikt — of helemaal niet. Gemeten op 200.000 rijen:
 /// 3181 logische leesbewerkingen tegenover 6. Dat verschil is per definitie onzichtbaar voor "de
 /// query werkt" en "de build is groen", en dat is precies waarom het ruim een jaar bleef staan.
+/// </para>
+/// <para>
+/// <b>#1294 — waarom vier bestanden in plaats van één.</b> #820 had de UPPER()-regel alleen op
+/// <c>TeamCandidateRepository.cs</c> toegepast; drie andere bestanden vergeleken dezelfde
+/// sleutelkolommen nog kaal. Omdat deze test per kolomnaam werkt (niet per bestand), was het
+/// uitbreiden naar meerdere bronbestanden de enige wijziging nodig — de bestaande
+/// index-/PostDeployment-controles gelden vanzelf ook voor kolommen die alleen in een van de nieuwe
+/// bestanden voorkomen.
 /// </para>
 /// <para>
 /// Bewust tekstueel, net als de collatietest: draait zonder database, dus faalt vóór een merge.
@@ -29,6 +37,15 @@ public class TeamCandidateIndexSargabilityTests
         ["RuweTekst"] = "TeamAliassen",
         ["RuweTekstGenormaliseerd"] = "TeamAliassen",
     };
+
+    /// <summary>Alle bestanden die een teamsleutel via UPPER(...) vergelijken (#1294).</summary>
+    private static readonly string[] BronBestanden =
+    [
+        "FunctionApp/TeamResolution/TeamCandidateRepository.cs",
+        "FunctionApp/Planner/Repositories/PlannerMatchRepository.cs",
+        "FunctionApp/TeamResolution/TeamAliasLearningService.cs",
+        "FunctionApp/TeamResolution/TeamCanonicalisatieService.cs",
+    ];
 
     private static string RepoRoot()
     {
@@ -46,17 +63,19 @@ public class TeamCandidateIndexSargabilityTests
         => string.Join('\n', inhoud.Split('\n').Where(r => !r.TrimStart().StartsWith("///")));
 
     /// <summary>
-    /// Leest uit de repository welke kolommen daadwerkelijk via <c>UPPER()</c> worden vergeleken.
-    /// Zo groeit deze test automatisch mee met een nieuwe sleutelvergelijking in plaats van een
-    /// tweede, handmatig bijgehouden lijst te worden.
+    /// Leest uit alle <see cref="BronBestanden"/> welke kolommen daadwerkelijk via <c>UPPER()</c>
+    /// worden vergeleken. Zo groeit deze test automatisch mee met een nieuwe sleutelvergelijking in
+    /// plaats van een tweede, handmatig bijgehouden lijst te worden (#1294: uitgebreid van één naar
+    /// vier bestanden, zelfde regex).
     /// </summary>
     private static IReadOnlyList<string> UpperVergelekenKolommen()
     {
-        var inhoud = ZonderCommentaar(Lees("FunctionApp/TeamResolution/TeamCandidateRepository.cs"));
-        return Regex.Matches(inhoud, @"UPPER\((?:\w+\.)?\[(?<kolom>\w+)\]\)\s*=\s*UPPER\(@")
-                    .Select(m => m.Groups["kolom"].Value)
-                    .Distinct()
-                    .ToList();
+        return BronBestanden
+            .Select(pad => ZonderCommentaar(Lees(pad)))
+            .SelectMany(inhoud => Regex.Matches(inhoud, @"UPPER\((?:\w+\.)?\[(?<kolom>\w+)\]\)\s*=\s*UPPER\(@")
+                                        .Select(m => m.Groups["kolom"].Value))
+            .Distinct()
+            .ToList();
     }
 
     [Fact]

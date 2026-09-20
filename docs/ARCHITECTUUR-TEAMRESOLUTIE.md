@@ -341,6 +341,19 @@ maar onder de huidige CI-collatie is die vergelijking vandaag al feitelijk hoofd
 `UPPER()` behoudt het waargenomen gedrag; een bewust hoofdlettergevoelige variant zou een
 gedragswijziging zijn (mogelijk minder validated-alias-treffers) en is niet gekozen.
 
+**Uitgebreid naar de rest van de SQL Server-tier (#1294).** #820 had deze regel alleen op
+`TeamCandidateRepository.cs` toegepast. Drie andere bestanden vergeleken dezelfde drie
+sleutelkolommen nog kaal: `FunctionApp/Planner/Repositories/PlannerMatchRepository.cs`
+(`TeamSchrijfwijzenAsync`), `FunctionApp/TeamResolution/TeamAliasLearningService.cs`
+(`LegVastAsync`) en `FunctionApp/TeamResolution/TeamCanonicalisatieService.cs`
+(`UpsertBronAliasAsync`) — onder de huidige CI-collatie zonder zichtbaar gedragsverschil, maar met
+hetzelfde stille-nul-rijen-risico als hierboven zodra een fork een case-sensitieve collatie
+gebruikt. Alle vijf vergelijkingen in die drie bestanden zijn nu ook expliciet `UPPER(...)`.
+`TeamAliasLearningService.LegVastAsync` doet bovendien een bestaat-anders-insert op
+`RuweTekstGenormaliseerd`: onder de huidige CI-collatie was die exists-check al hoofdletter-
+ongevoelig, dus de overgang naar `UPPER(...)` kan geen bestaande rij die eerder als "nieuw" gold nu
+als "bestaand" laten tellen — geverifieerd, geen migratie van bestaande data nodig.
+
 **Bijgewerkt (#820, vervolgronde):** de Postgres-tier heeft inmiddels wél een teamherkenning-
 datalaag (`FunctionApp.Postgres/TeamResolution/TeamCandidateRepository.cs`/
 `TeamAliasLearningService.cs`, #889) tegen `public.teams`/`public.teamaliassen`. Daar was dit
@@ -375,9 +388,16 @@ logische leesbewerkingen op SQL Server, 2309 tegenover 8 buffers op Postgres. Va
 | SQL Server | persisted computed column `[…Upper]` + index daarop (SQL Server kent geen expressie-index) | `Database/dbo/Tables/{Teams,TeamAliassen}.sql` + `Script.PostDeployment1.sql` |
 
 De querytekst is op beide tiers ongewijzigd gebleven: SQL Server matcht de expressie zelf tegen de
-computed column. `TeamCandidateIndexSargabilityTests` bewaakt dat elke `UPPER()`-vergeleken kolom in
-`TeamCandidateRepository.cs` zo'n paar heeft — een vierde sleutelkolom toevoegen zonder index faalt
-de build. Volledige meting en afweging: `docs/ARCHITECTUUR-DATABASE-TIERS.md` §75.
+computed column. `TeamCandidateIndexSargabilityTests` bewaakt sinds #1294 alle vier de bestanden
+(`TeamCandidateRepository.cs`, `PlannerMatchRepository.cs`, `TeamAliasLearningService.cs`,
+`TeamCanonicalisatieService.cs`) — een nieuwe `UPPER()`-vergeleken kolom in een van die bestanden
+zonder bijbehorende index/PostDeployment-object faalt de build. Een aparte, generieke
+`TeamSleutelvergelijkingCollationDriftTests` bewaakt dezelfde vier bestanden tegen het teruginsluipen
+van een kale vergelijking, kolomgericht in plaats van per bestand met een eigen parameternaam.
+Geverifieerd op SQL Server 2022 met 200.000 rijen: alle drie de nieuwe queryvormen (de
+`COALESCE`-lookup, de `EXISTS`-check en de enkele teamlookup) leveren een `Index Seek` met de
+expressie in het SEEK-predicaat op, 3–6 logische leesbewerkingen. Volledige meting en afweging van
+de oorspronkelijke #1280-fix: `docs/ARCHITECTUUR-DATABASE-TIERS.md` §75.
 
 **Nog niet gedaan — vereist expliciete eigenaargoedkeuring, niet autonoom uit te voeren:** de
 audit/replay tegen échte, historische productiedata (`his.teams`/`stg.teams`/`dbo.Teams`) om te
