@@ -98,6 +98,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **Teamherkenning op de SQL Server-tier vergelijkt schrijfwijzen nu overal hoofdletterongevoelig,
+  ook op een toekomstige fork met een andere databasecollatie (#1294).** Vijf plekken in drie
+  bestanden vergeleken een teamnaam of alias nog rechtstreeks, in plaats van via de methode die
+  elders al gebruikt werd. Op deze installatie was dat onzichtbaar (de database is hier al
+  hoofdletterongevoelig ingesteld), maar op een andere collatie kon een wedstrijd daardoor
+  onvindbaar zijn of een alias dubbel worden aangemaakt, zonder foutmelding. Geen verandering in
+  prestaties: dezelfde indexen die eerder al voor teamherkenning zijn aangelegd, bedienen ook deze
+  vergelijkingen.
 - **De `sluitsessie`- en `autonoom`-werkwijzen konden een issue sluiten dat nog niet live stond
   (#1295).** Beide instrueerden op vier plekken om `gh issue close` aan te roepen direct na een
   merge naar `develop` — precies het scenario waarvoor eerder al een regel is vastgelegd, omdat
