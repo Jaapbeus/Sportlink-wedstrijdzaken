@@ -36,8 +36,8 @@ BEGIN
         [target_pk] NVARCHAR(255) NULL,
         [merge_type] NVARCHAR(10) DEFAULT 'IUD', -- Insert, Update, Delete
         [is_active] BIT DEFAULT 1,
-        [created_date] DATETIME2 DEFAULT GETDATE(),
-        [modified_date] DATETIME2 DEFAULT GETDATE()
+        [created_date] DATETIME2 DEFAULT GETUTCDATE(),
+        [modified_date] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT '✓ Table [mta].[source_target_mapping] created successfully';
 END

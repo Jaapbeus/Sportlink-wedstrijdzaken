@@ -10,7 +10,7 @@ UPDATE [dbo].[AppSettings]
 SET 
     [sportlinkApiUrl] = 'https://data.sportlink.com/poule',
     [sportlinkClientId] = 'YOUR_CLIENT_ID_HERE',  -- REPLACE THIS!
-    [ModifiedDate] = GETDATE()
+    [ModifiedDate] = GETUTCDATE()
 WHERE [Id] = 1;
 GO
 

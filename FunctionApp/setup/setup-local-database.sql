@@ -27,8 +27,8 @@ BEGIN
         [Id] INT IDENTITY(1,1) PRIMARY KEY,
         [sportlinkApiUrl] NVARCHAR(500) NOT NULL,
         [sportlinkClientId] NVARCHAR(500) NOT NULL,
-        [CreatedDate] DATETIME2 DEFAULT GETDATE(),
-        [ModifiedDate] DATETIME2 DEFAULT GETDATE()
+        [CreatedDate] DATETIME2 DEFAULT GETUTCDATE(),
+        [ModifiedDate] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT 'AppSettings table created successfully';
 END
@@ -92,7 +92,7 @@ BEGIN
         [speeldag] NVARCHAR(100),
         [speeldagteam] NVARCHAR(100),
         [more] NVARCHAR(MAX),
-        [LoadedDate] DATETIME2 DEFAULT GETDATE()
+        [LoadedDate] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT 'Table [stg].[teams] created successfully';
 END
@@ -126,7 +126,7 @@ BEGIN
         [sportomschrijving] NVARCHAR(200),
         [verenigingswedstrijd] NVARCHAR(100),
         [status] NVARCHAR(50),
-        [LoadedDate] DATETIME2 DEFAULT GETDATE()
+        [LoadedDate] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT 'Table [stg].[matches] created successfully';
 END
@@ -196,7 +196,7 @@ BEGIN
         [UitTeamPostcodePlaats] NVARCHAR(200),
         [UitTeamTelefoon] NVARCHAR(50),
         [UitTeamEmail] NVARCHAR(200),
-        [LoadedDate] DATETIME2 DEFAULT GETDATE()
+        [LoadedDate] DATETIME2 DEFAULT GETUTCDATE()
     );
     PRINT 'Table [stg].[matchdetails] created successfully';
 END
