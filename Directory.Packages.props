@@ -56,7 +56,7 @@
     <!-- Testprojecten -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <!--
       AwesomeAssertions, niet FluentAssertions (#1170). FluentAssertions 8 is overgegaan van
       Apache-2.0 naar de Xceed Community License, die uitsluitend niet-commercieel gebruik
