@@ -273,7 +273,17 @@ public static class TableCopier
         return await selectCmd.ExecuteReaderAsync(ct);
     }
 
-    private static object ResolveValue(TableMapping mapping, string columnName, object rawValue, IdMapRegistry idMaps)
+    /// <summary>
+    /// Bepaalt welke waarde er in de doelkolom terechtkomt: ongewijzigd, of — als deze kolom in
+    /// <see cref="TableMapping.ForeignKeyRemaps"/> staat — de vertaalde id uit
+    /// <see cref="IdMapRegistry"/>. NULL blijft altijd NULL.
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> in plaats van <c>private</c> zodat <c>MigrationTools.Tests</c> hem
+    /// rechtstreeks kan bevragen (#1302). De omliggende kopieerlus vraagt een live SQL Server én
+    /// een live Postgres; deze beslissing is puur en hoort niet achter die twee te hoeven wachten.
+    /// </remarks>
+    internal static object ResolveValue(TableMapping mapping, string columnName, object rawValue, IdMapRegistry idMaps)
     {
         if (rawValue is DBNull)
             return DBNull.Value;

@@ -218,6 +218,19 @@ jobs:
       - name: Database.Postgres.Cli bouwen (net9.0)
         run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
 
+      # #1302: drie mappen hadden geen testproject. De CLI-argumentafhandeling bepaalt wat
+      # deploy.yml doet (migreren, his-tabellen aanmaken of demodata seeden), de kopieerder
+      # vertaalt foreign keys bij de cutover, en de tokencapture schrijft een secret in
+      # local.settings.json. Alle drie falen stil als ze fout gaan.
+      - name: Database.Postgres.Cli.Tests draaien (argumentafhandeling)
+        run: dotnet test Database.Postgres.Cli.Tests/Database.Postgres.Cli.Tests.csproj --configuration Release --verbosity minimal
+
+      - name: MigrationTools.Tests draaien (id-vertaling bij de cutover)
+        run: dotnet test MigrationTools.Tests/MigrationTools.Tests.csproj --configuration Release --verbosity minimal
+
+      - name: Tools.SportlinkTokenCapture.Tests draaien (schrijven naar local.settings.json)
+        run: dotnet test Tools.SportlinkTokenCapture.Tests/Tools.SportlinkTokenCapture.Tests.csproj --configuration Release --verbosity minimal
+
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
       # worden — ontdekt tijdens de adversariële verificatie van #705-#712. De testsuite dekt onder

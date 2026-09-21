@@ -1547,9 +1547,10 @@ Zelfherstellend systeem: auto-heal via GitHub Issues + Claude Code automatie (#1
 
 ## Solution Structure
 
-De solution telt vijftien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
-`sportlink-wedstrijdzaken.slnf` bevat de vijftien projecten zonder dat SSDT-project — dat is wat de CI bouwt,
-en het enige dat op macOS werkt. Actuele lijst: `find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*'`.
+De solution telt achttien .csproj-projecten plus het legacy SSDT-project `Database/SportlinkSqlDb.sqlproj`.
+`sportlink-wedstrijdzaken.slnf` bevat alle achttien zonder dat SSDT-project — dat is wat de CI bouwt,
+en het enige dat op macOS werkt. Sinds #1302 staan `MigrationTools/` en `Tools/` er ook in: ze
+zaten wél in de `.sln` maar niet in de `.slnf`, en werden dus door geen enkele CI-stap gebouwd. Actuele lijst: `find . -name '*.csproj' -not -path '*/obj/*' -not -path '*/bin/*'`.
 
 De twee kernprojecten van de oorspronkelijke ETL-pijplijn:
 
