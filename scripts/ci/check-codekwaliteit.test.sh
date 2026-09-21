@@ -182,6 +182,19 @@ verwacht_falen "handmatige bewerking van AGENTS.md" python3 scripts/ci/genereer-
 # checkout zou het terugzetten naar de laatste commit in plaats van naar de huidige CLAUDE.md.
 python3 scripts/ci/genereer-agents-md.py --schrijf >/dev/null
 
+# 8. Analyzers (#1300): de guard moet weigeren te meten zodra .editorconfig de drie regels niet
+#    meer aanzet. Dat is de gevaarlijke faalwijze — zonder die controle telt hij stilzwijgend nul
+#    en staat hij voor altijd groen, precies het patroon van de splinter-no-op uit §67.
+#
+#    Alleen DEZE negatieve test staat hier, en niet die op het aantal overtredingen: die vraagt een
+#    volledige solution-build, en deze zelftest draait in CI vóór de buildstappen. De teltest is
+#    handmatig uitgevoerd bij #1300 (een methode met complexiteit 40 toegevoegd → 20 > 19 → rood).
+#    De controle hieronder breekt bewust af vóór de build, dus hij kost niets.
+cp .editorconfig "$TMP_B"
+grep -v 'CA1506' "$TMP_B" > .editorconfig
+verwacht_falen "analyzers niet aangezet in .editorconfig" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+
 echo
 echo "Resultaat: $geslaagd geslaagd, $mislukt mislukt."
 [ "$mislukt" -eq 0 ] || exit 1

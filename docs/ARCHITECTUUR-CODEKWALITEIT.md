@@ -259,6 +259,50 @@ dezelfde schuld als regel 1, vanuit een andere hoek.
 
 *Guard: `scripts/ci/check-bestandsgrootte.sh`.*
 
+#### Aanvulling: de maintainability-analyzers meten dezelfde schuld, maar gezaghebbend (#1300)
+
+Regel 7 en 8 tellen *regels*, omdat er voor die grens geen externe autoriteit bestaat. Voor
+**complexiteit** bestaat die wel: Microsoft levert CA1502 (cyclomatische complexiteit), CA1505
+(maintainability index) en CA1506 (class coupling) mee in `Microsoft.CodeAnalysis.NetAnalyzers`,
+met hun eigen drempels. Sinds #1300 staan die drie aan.
+
+Ze staan standaard uit, **ook bij `<AnalysisMode>All</AnalysisMode>`** — dat is geen vergissing van
+ons maar een bewuste keuze van Microsoft, omdat de drempels projectafhankelijk zijn. Aanzetten
+gebeurt per regel in `.editorconfig` in de repo-root, op `warning`.
+
+Nulmeting (`develop` `b34e2b1`): **19 overtredingen**.
+
+| Regel | Aantal | Waar |
+|---|---:|---|
+| CA1502 — cyclomatische complexiteit > 25 | 13 | zwaarste: `BindMatchDetailsParameters` (58), `BouwTemplateAntwoord` (46 / 43), `VerwerkMetPlannerAsync` (33 / 31) |
+| CA1506 — class coupling | 6 | `EmailTestFunction.DryRun`, `EmailProcessorFunction.Run`, `Program.cs` — elk op beide tiers |
+| CA1505 — maintainability index | 0 | — |
+
+Twee dingen zijn hier het vermelden waard.
+
+**CA1505 op nul betekent niet dat de regel niets doet.** De maintainability index is een
+samengestelde maat die pas onder de 10 klaagt; geen enkel type zit daaronder. De regel blijft aan,
+zodat de ratchet hem opvangt zodra er wél een bijkomt.
+
+**Zes van de negentien zijn tier-paren.** Net als bij regel 7 en 8 wijst de meting naar dezelfde
+schuld als regel 1: `BerichtPipeline`, `EmailTestFunction`, `EmailProcessorFunction` en `Program.cs`
+staan tweemaal in de codebase, dus hun overtreding telt tweemaal. Die zes verdwijnen vanzelf zodra
+de gedeelde endpoint-orkestratie (#1271) verder komt — zonder dat er één methode herschreven wordt.
+
+**Waarom een ratchet en niet meteen `error`.** De zwaarste gevallen zitten in `BerichtPipeline`, dat
+binnenkomende e-mail verwerkt. Een methode met cyclomatische complexiteit 46 daar herschrijven is
+een echte refactor met productierisico, geen opruimwerk dat in een chore-PR hoort. Een gate die de
+eerstvolgende PR rood maakt zonder dat iemand de overtredingen heeft gezien, wordt binnen twee PR's
+weer uitgezet — en bewaakt dan niets meer.
+
+**Testprojecten zijn uitgesloten in `.editorconfig` zelf**, niet in de guard. Zelfde redenering als
+hierboven: `SportlinkClubClientTests` raakt 96 typen aan, en dat is dekking, geen verstrengeling.
+
+*Guard: `scripts/ci/check-analyzer-complexiteit.sh` — bouwt de solution en telt. Weigert te meten
+als `.editorconfig` de drie regels niet aanzet: zonder die controle zou hij stilzwijgend nul tellen
+en voor altijd groen staan, precies het no-op-patroon uit §67 van
+`ARCHITECTUUR-DATABASE-TIERS.md`.*
+
 ---
 
 ## 5. Register
@@ -274,6 +318,7 @@ dezelfde schuld als regel 1, vanuit een andere hoek.
 | 5 — AGENTS.md afgeleid uit CLAUDE.md | `scripts/ci/genereer-agents-md.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
+| 7, 8 — maintainability-analyzers stijgen niet (#1300) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
 | Alle acht — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
 
 De guards die al bestonden staan hier ook in. Het register is daarmee de volledige lijst: een
@@ -302,7 +347,6 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 
 | Onderwerp | Waarom niet | Vervolg |
 |---|---|---|
-| Roslyn-maintainability-analyzers (CA1502/1505/1506) | Staan niet standaard aan, ook niet bij `AnalysisMode=All` ([bron](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview)). Ze aanzetten vóór het aantal waarschuwingen bekend is, maakt de eerstvolgende PR rood. | Issue #1300 (afgesplitst uit #1263) |
 | `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1301 (afgesplitst uit #1263) |
 | Testdekking per productiemap | `Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hebben geen testproject. | Issue #1302 (afgesplitst uit #1263) |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
