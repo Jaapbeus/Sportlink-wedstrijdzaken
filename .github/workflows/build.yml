@@ -226,6 +226,15 @@ jobs:
       - name: Unittests draaien (FunctionApp.Tests)
         run: dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity minimal
 
+      # #1300: CA1502/1505/1506 staan niet standaard aan, ook niet bij AnalysisMode=All. De
+      # .editorconfig in de repo-root zet ze op 'warning'; deze guard bouwt de solution en telt
+      # de overtredingen. Ratchet, geen harde grens — de nulmeting bevat methodes met een
+      # cyclomatische complexiteit van 43, 46 en 58, en die herschrijf je niet in een chore-PR.
+      # Bewust ná de losse buildstappen: die geven een duidelijkere foutmelding bij een echte
+      # bouwfout dan deze guard, die dan alleen kan melden dat hij niets kon meten.
+      - name: Codekwaliteit — maintainability-analyzers (CA1502/1505/1506)
+        run: bash scripts/ci/check-analyzer-complexiteit.sh
+
       # ──────────────────────────────────────────────────────────────────────
       # #659: CSP-regressiewacht op de gepubliceerde index.html.
       #
