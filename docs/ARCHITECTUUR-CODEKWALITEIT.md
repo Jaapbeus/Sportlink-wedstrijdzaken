@@ -428,9 +428,18 @@ bash scripts/ci/check-bestandsgrootte.sh
 bash scripts/ci/check-regelregister.sh
 python3 scripts/ci/genereer-agents-md.py
 
+# Deze ene bouwt de hele solution en duurt dus langer dan de rest bij elkaar:
+bash scripts/ci/check-analyzer-complexiteit.sh
+
 # CLAUDE.md gewijzigd? Regenereer AGENTS.md:
 python3 scripts/ci/genereer-agents-md.py --schrijf
 ```
+
+Alle guards behalve de laatste lezen enkel bestanden — geen database, geen secrets, geen SDK.
+`check-analyzer-complexiteit.sh` is de uitzondering: hij draait `dotnet build` op
+`sportlink-wedstrijdzaken.slnf`, omdat CA1502/1505/1506 compileertijd-analyzers zijn en er geen
+manier is om ze zonder compilatie te tellen. Hij weigert te meten als `.editorconfig` de drie
+regels niet aanzet — anders telt hij stilzwijgend nul en staat hij voor altijd groen.
 
 Een guard die faalt omdat je iets hebt verbeterd, zegt welk getal in
 `scripts/ci/codekwaliteit-plafonds.txt` moet. Neem dat over in dezelfde PR — winst die niet wordt
