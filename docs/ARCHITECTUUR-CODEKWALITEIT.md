@@ -203,6 +203,42 @@ groeit vanzelf uit tot gewoonte.
 
 *Guard: `scripts/ci/check-codekwaliteit-valkuilen.sh`.*
 
+
+#### De `GETDATE()`-treffers zijn beoordeeld — wat overblijft is geen tijdstempel (#1301)
+
+De drie mapbrede uitzonderingen (`Database/`, `FunctionApp/setup/`, `scripts/migrations/`) zijn
+weg. Ze dekten samen honderden bestanden, dus een nieuwe tabel met `DEFAULT GETDATE()` was
+stilzwijgend toegestaan — precies het tegenovergestelde van wat een allowlist hoort te doen.
+
+Van de 34 ruwe treffers:
+
+| Categorie | Aantal | Uitkomst |
+|---|---:|---|
+| Commentaar dat juist **waarschuwt** tegen `GETDATE()` | 5 | Telden al niet mee: de guard slaat `--`-regels over |
+| Tijdstempelkolommen in `FunctionApp/setup/*.sql` | 8 | **Gecorrigeerd** naar `GETUTCDATE()`; allowlist-regel verwijderd |
+| Seizoenskalender in `sp_UpdateSeasonTable` + zijn kopie in `Script.PostDeployment1.sql` | 20 | Blijft, met reden |
+| `CAST(GETDATE() AS DATE)` in het AllStars-demoseedscript | 1 | Blijft, met reden |
+
+**Waarom de seizoenskalender blijft.** `YEAR(GETDATE())` leidt daar af *in welk seizoen we zitten*.
+Dat is een kalenderjaar, geen instant, en de afgeleide waarden zijn `DATE`-kolommen — er is niets om
+naar UTC om te rekenen. Op Azure SQL is `GETDATE()` bovendien sowieso UTC; alleen een zelf gehoste
+server in een andere zone wijkt af, en dan hooguit enkele uren rond een maandgrens midden in het
+jaar. De procedure is idempotent en corrigeert zichzelf bij de volgende run.
+
+De UTC-regel gaat over het **opslaan van tijdstempels**. Hem hier toepassen zou een stored procedure
+op productie wijzigen voor nul effect — en dat is precies het soort wijziging dat een guard
+ongeloofwaardig maakt.
+
+**Wat de acht correcties waard waren.** De drie bestanden in `FunctionApp/setup/` bleken nergens
+naar verwezen te worden en spraken bovendien de Docker-regel uit `CLAUDE.md` tegen. Dat is apart
+opgepakt als issue #1309; de `GETUTCDATE()`-correctie was juist ongeacht die uitkomst.
+
+> **Afloop (#1309).** De hele map is verwijderd — zeven bestanden, niet drie. De vier andere waren
+> even ongebruikt en hoorden bij dezelfde kit: `update-appsettings.sql` documenteerde expliciet dat
+> het ná `complete-database-setup.sql` draaide. Twee ervan (`fix-create-procedure.sql`,
+> `fix-merge-procedure.sql`) waren losse patches op stored procedures waarvan de gezaghebbende
+> definitie in het SSDT-project staat — een derde schemakopie die stil uit de pas kon lopen.
+
 ### Regel 5 — Eén regelboek, afgeleid in plaats van gekopieerd
 
 CLAUDE.md is de bron. AGENTS.md wordt eruit gegenereerd met
@@ -347,7 +383,6 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 
 | Onderwerp | Waarom niet | Vervolg |
 |---|---|---|
-| `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1301 (afgesplitst uit #1263) |
 | Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
 

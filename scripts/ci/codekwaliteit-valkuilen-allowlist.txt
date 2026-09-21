@@ -20,9 +20,18 @@ datetime-now  FunctionApp/Email/BerichtAiService.cs            Datum in de syste
 datetime-now  FunctionApp.Postgres/Email/BerichtAiService.cs   Idem.
 
 # --- GETDATE() in SQL ---------------------------------------------------------------------------
-# De UTC-regel geldt onverkort, maar deze bestaande SQL Server-bomen zijn nog niet nagelopen.
-# Zie het vervolgissue in docs/ARCHITECTUUR-CODEKWALITEIT.md; nieuwe SQL komt er niet bij.
-getdate       Database/                                       Legacy SSDT-boom, nog niet nagelopen op de UTC-regel.
-getdate       FunctionApp/setup/                              Idem, setup-scripts van de SQL Server-tier.
-getdate       scripts/migrations/                             Idem, bestaande migratiescripts; een migratie wijzig je nooit achteraf.
+# Bij #1301 zijn alle treffers een voor een beoordeeld. Wat overblijft is GEEN opslag van een
+# tijdstempel maar het afleiden van een KALENDERJAAR, en daar gaat de UTC-regel niet over.
+#
+# De drie brede mapuitzonderingen die hier stonden (Database/, FunctionApp/setup/,
+# scripts/migrations/) zijn vervangen door vermeldingen per bestand. Dat is het punt van deze
+# ronde: onder Database/ vielen honderden bestanden, dus een nieuwe tabel met
+# DEFAULT GETDATE() was stilzwijgend toegestaan. Nu wordt die wél gezien.
+#
+# LET OP bij het toevoegen van een regel: het pad is veld 2, gescheiden door witruimte. Een pad
+# MET een spatie erin kan dus niet volledig worden uitgeschreven — gebruik het langste
+# spatieloze prefix. Dat is hieronder het geval bij de map "System Stored Procedures".
+getdate       Database/Script.PostDeployment1.sql             Bevat een idempotente kopie van sp_UpdateSeasonTable; zelfde seizoenskalender-redenering als hieronder. De twee horen gelijk te blijven.
+getdate       Database/dbo/System                             Prefix voor "Database/dbo/System Stored Procedures/" (spatie in de mapnaam, zie hierboven). sp_UpdateSeasonTable leidt met YEAR(GETDATE()) af IN WELK SEIZOEN we zitten -- een kalenderjaar, geen tijdstempel. De afgeleide waarden zijn DATE-kolommen (DateFrom/DateUntil), geen instants, dus er is niets om naar UTC om te rekenen. Op Azure SQL is GETDATE() sowieso UTC; alleen een zelf gehoste server in een andere zone wijkt af, en dan hooguit enkele uren rond een maandgrens midden in het jaar -- de procedure is idempotent en corrigeert zichzelf bij de volgende run.
+getdate       scripts/migrations/003-seed-allstars-demo-matches.sql  Demowedstrijden worden rond "vandaag" geplaatst via CAST(GETDATE() AS DATE). Een lokale datum is hier juist de bedoeling: de demodata hoort te kloppen met wat de beheerder op zijn scherm als vandaag ziet.
 uri-absolute  Planner.Shared/PlannerHtmlGenerator.cs         SanitizeHref is deny-by-default (#1010): alles wat geen absolute http(s)-URL is wordt "#". De Unix-file:-eigenaardigheid maakt hier geen gat — een file:-URI zakt door de schemacontrole.
