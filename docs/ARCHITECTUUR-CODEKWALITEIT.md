@@ -229,9 +229,15 @@ De UTC-regel gaat over het **opslaan van tijdstempels**. Hem hier toepassen zou 
 op productie wijzigen voor nul effect — en dat is precies het soort wijziging dat een guard
 ongeloofwaardig maakt.
 
-**Wat de acht correcties waard waren.** De drie bestanden in `FunctionApp/setup/` blijken nergens
-naar verwezen te worden en spreken bovendien de Docker-regel uit `CLAUDE.md` tegen. Dat is apart
-opgepakt als issue #1309; de `GETUTCDATE()`-correctie is juist ongeacht die uitkomst.
+**Wat de acht correcties waard waren.** De drie bestanden in `FunctionApp/setup/` bleken nergens
+naar verwezen te worden en spraken bovendien de Docker-regel uit `CLAUDE.md` tegen. Dat is apart
+opgepakt als issue #1309; de `GETUTCDATE()`-correctie was juist ongeacht die uitkomst.
+
+> **Afloop (#1309).** De hele map is verwijderd — zeven bestanden, niet drie. De vier andere waren
+> even ongebruikt en hoorden bij dezelfde kit: `update-appsettings.sql` documenteerde expliciet dat
+> het ná `complete-database-setup.sql` draaide. Twee ervan (`fix-create-procedure.sql`,
+> `fix-merge-procedure.sql`) waren losse patches op stored procedures waarvan de gezaghebbende
+> definitie in het SSDT-project staat — een derde schemakopie die stil uit de pas kon lopen.
 
 ### Regel 5 — Eén regelboek, afgeleid in plaats van gekopieerd
 
