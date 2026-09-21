@@ -14,7 +14,12 @@
       "FunctionApp.Postgres\\FunctionApp.Postgres.csproj",
       "FunctionApp.Postgres.Tests\\FunctionApp.Postgres.Tests.csproj",
       "Planner.Endpoints\\Planner.Endpoints.csproj",
-      "Planner.Endpoints.Tests\\Planner.Endpoints.Tests.csproj"
+      "Planner.Endpoints.Tests\\Planner.Endpoints.Tests.csproj",
+      "MigrationTools\\SqlServerToPostgresCopy\\SqlServerToPostgresCopy.csproj",
+      "MigrationTools.Tests\\MigrationTools.Tests.csproj",
+      "Tools\\SportlinkTokenCapture\\SportlinkTokenCapture.csproj",
+      "Tools.SportlinkTokenCapture.Tests\\Tools.SportlinkTokenCapture.Tests.csproj",
+      "Database.Postgres.Cli.Tests\\Database.Postgres.Cli.Tests.csproj"
     ]
   }
 }

@@ -29,4 +29,11 @@
     <ProjectReference Include="..\..\Database.Postgres\Database.Postgres.csproj" />
   </ItemGroup>
 
+
+  <ItemGroup>
+    <!-- #1302: TableCopier.ResolveValue is internal zodat het testproject de vertaalbeslissing
+         kan bevragen zonder een live SQL Server en Postgres. -->
+    <InternalsVisibleTo Include="MigrationTools.Tests" />
+  </ItemGroup>
+
 </Project>

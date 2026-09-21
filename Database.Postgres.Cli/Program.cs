@@ -17,8 +17,11 @@ if (string.IsNullOrWhiteSpace(connectionString))
 // scripts/migrations/003-seed-allstars-demo-matches-postgres.sql weigert daarop (terecht) te
 // draaien. Deze vlag maakt ze aan langs exact dezelfde weg als de ETL zelf, zodat er geen
 // handgeschreven DDL-kopie bijkomt naast die van de zelftest en de CI-job.
-var ensureHisTables = args.Contains("--ensure-his-tables", StringComparer.Ordinal);
-var positioneel = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
+// #1302: het lezen van de argumenten staat in CliArgumentParser. Top-level statements
+// compileren naar een onbereikbare <Main>$, dus hier was het niet los te testen — terwijl juist
+// deze keuze bepaalt of deploy.yml migraties toepast of demodata seedt.
+var cli = Database.Postgres.Cli.CliArgumentParser.Lees(args);
+var ensureHisTables = cli.EnsureHisTables;
 
 // #1246: derde modus. Het demodata-seedscript staat bewust buiten Database.Postgres/migrations/ --
 // het vult his.teams/his.matches, die geen migratie aanmaakt -- en werd daardoor nergens in de
@@ -26,8 +29,7 @@ var positioneel = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal))
 // connectiestring door een psql-aanroep te halen (argumenten staan in de processenlijst en in het
 // joblog). Het script is idempotent, dus herhaald draaien is veilig en bovendien nodig: de
 // speeltijden-copy hangt af van data die de beheerder pas later invoert.
-var seedDemodataIndex = Array.IndexOf(args, "--seed-demodata");
-var seedDemodata = seedDemodataIndex >= 0;
+var seedDemodata = cli.SeedDemodata;
 
 var normalization = PostgresConnectionStringNormalizer.NormalizeWithDiagnostics(connectionString);
 var normalized = normalization.ConnectionString;
@@ -39,9 +41,8 @@ if (normalization.TlsWarning is not null)
 
 if (seedDemodata)
 {
-    var scriptPad = seedDemodataIndex + 1 < args.Length && !args[seedDemodataIndex + 1].StartsWith("--", StringComparison.Ordinal)
-        ? args[seedDemodataIndex + 1]
-        : Path.Combine(ResolveRepoRoot(), "scripts", "migrations", "003-seed-allstars-demo-matches-postgres.sql");
+    var scriptPad = cli.SeedScriptPad
+        ?? Path.Combine(ResolveRepoRoot("het pad naar het seedscript"), "scripts", "migrations", "003-seed-allstars-demo-matches-postgres.sql");
 
     try
     {
@@ -104,7 +105,7 @@ if (ensureHisTables)
     }
 }
 
-var migrationsPath = positioneel.Length > 0 ? positioneel[0] : ResolveDefaultMigrationsPath();
+var migrationsPath = cli.MigratiePad ?? ResolveDefaultMigrationsPath();
 
 // Laatst gestarte migratiebestand — bij een fout is dat de stap die faalde. Dit is de vervanger
 // van de exception-tekst, niet een aanvulling erop (#1225).
@@ -137,8 +138,10 @@ static string Beschrijf(int aantal) => aantal < 0 ? "(tabel bestaat nog niet)" :
 
 // Zelfde "loop omhoog tot .sln gevonden"-patroon als VeldResolutieDriftTests/PostgresPlannerSupportSchema
 // — werkt ongeacht of dit via 'dotnet run' vanuit de projectmap of tegen een build-output draait.
-// ResolveRepoRoot is alleen een terugval: deploy.yml geeft het seedscriptpad expliciet mee.
-static string ResolveRepoRoot()
+// Beide aanroepers zijn een terugval: deploy.yml geeft het pad expliciet mee.
+//
+// #1302: dit stond twee keer, woordelijk gelijk op de foutmelding na.
+static string ResolveRepoRoot(string watGeefJeMeeAlsHetMisgaat)
 {
     var dir = new DirectoryInfo(AppContext.BaseDirectory);
     while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "sportlink-wedstrijdzaken.sln")))
@@ -146,20 +149,10 @@ static string ResolveRepoRoot()
 
     if (dir is null)
         throw new InvalidOperationException(
-            "Kon de repository-root niet vinden — geef het pad naar het seedscript expliciet mee.");
+            $"Kon de repository-root niet vinden — geef {watGeefJeMeeAlsHetMisgaat} expliciet mee.");
 
     return dir.FullName;
 }
 
 static string ResolveDefaultMigrationsPath()
-{
-    var dir = new DirectoryInfo(AppContext.BaseDirectory);
-    while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "sportlink-wedstrijdzaken.sln")))
-        dir = dir.Parent;
-
-    if (dir is null)
-        throw new InvalidOperationException(
-            "Kon de repository-root niet vinden — geef de migratiemap expliciet mee als argument.");
-
-    return Path.Combine(dir.FullName, "Database.Postgres", "migrations");
-}
+    => Path.Combine(ResolveRepoRoot("de migratiemap als argument"), "Database.Postgres", "migrations");

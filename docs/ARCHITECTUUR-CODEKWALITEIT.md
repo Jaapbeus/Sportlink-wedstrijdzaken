@@ -348,8 +348,36 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 | Onderwerp | Waarom niet | Vervolg |
 |---|---|---|
 | `GETDATE()` in de bestaande SQL Server-bomen | 34 treffers in `Database/`, `FunctionApp/setup/` en `scripts/migrations/`; een migratie wijzig je nooit achteraf. Staan op de allowlist. | Issue #1301 (afgesplitst uit #1263) |
-| Testdekking per productiemap | `Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hebben geen testproject. | Issue #1302 (afgesplitst uit #1263) |
+| Testdekking per productiemap | `BlazorAdmin.Tests` heeft weinig tests tegenover bijna 7.000 regels Razor; dat groeit pas als regel 3 (code-behind) verder is doorgevoerd. De drie mappen zonder testproject zijn bij #1302 wél voorzien — zie hieronder. | Regel 3 |
 | Expressie-index bij een `UPPER()`-vergelijking (#1232) — **deels bewaakt sinds #1280** | In het algemeen niet schema-statisch te bepalen zonder de queries te parsen; de splinter-gate sluit `unused_index` bewust uit (§68 van `ARCHITECTUUR-DATABASE-TIERS.md`). De regel staat in `CLAUDE.md`, de meting per tier in §69 en §75 daarvan. Voor de drie sleutelkolommen van de teamresolutie is het wél afdwingbaar gebleken, omdat de vergelijkingen op één plek staan. | `FunctionApp.Tests/TeamResolution/TeamCandidateIndexSargabilityTests.cs` voor de teamresolutiekolommen; daarbuiten handmatig: `EXPLAIN (ANALYZE, BUFFERS)` resp. `SHOWPLAN_TEXT` bij zo'n wijziging |
+
+### Drie mappen zonder testproject, nu met een startpunt (#1302)
+
+`Database.Postgres.Cli/`, `MigrationTools/` en `Tools/` hadden geen enkele test. Per map is bepaald
+welke logica testbaar én risicovol genoeg is; een CLI-wrapper die alleen argumenten doorgeeft is dat
+niet, parsing- en vertaallogica wel.
+
+| Project | Wat er getest wordt | Waarom juist dat |
+|---|---|---|
+| `Database.Postgres.Cli.Tests` (11) | `CliArgumentParser` | Bepaalt of `deploy.yml` migraties toepast, `his`-tabellen aanmaakt of demodata seedt. Een verkeerde uitkomst is een verkeerde deploy. |
+| `MigrationTools.Tests` (11) | `IdMapRegistry`, `TableCopier.ResolveValue` | De enige plek in de cutover-kopie waar een fout **stil** is: geen exception, maar een rij die naar het verkeerde bovenliggende record wijst. |
+| `Tools.SportlinkTokenCapture.Tests` (9) | `WriteRefreshTokenToSettings`, `SettingsKeyFor` | Herschrijft `local.settings.json`, waar ook de connectiestring in staat. |
+
+Drie dingen die daarvoor nodig waren, en die de moeite van het onthouden waard zijn:
+
+**Top-level statements zijn niet testbaar.** `Database.Postgres.Cli/Program.cs` gebruikt ze, en die
+compileren naar een onbereikbare `<Main>$`. De argumentafhandeling is daarom verhuisd naar
+`CliArgumentParser`. Dat is geen stijlkeuze: zonder die verplaatsing valt er niets te asserten
+zonder het programma daadwerkelijk te starten — dezelfde reden als regel 3 voor `@code`-blokken.
+
+**`internal` plus `InternalsVisibleTo`, niet `public`.** `TableCopier.ResolveValue` en de twee
+helpers in `SportlinkTokenCapture` zijn van `private` naar `internal` gegaan. Ze horen niet bij het
+publieke oppervlak van die programma's; ze horen alleen bevraagbaar te zijn door hun eigen tests.
+
+**De eerste test was meteen rood, en terecht.** `WriteRefreshTokenToSettings` schreef een
+`local.settings.json` zónder `Values`-object gewoon terug — zonder het token, zonder foutmelding,
+met een succesmelding aan de aanroeper. Dat is nu een expliciete `InvalidOperationException`, met
+een vangnet achteraf voor elk toekomstig pad waarlangs de schrijfactie wordt overgeslagen.
 
 ---
 
