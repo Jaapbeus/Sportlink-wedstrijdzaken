@@ -547,7 +547,9 @@ identiek op Windows en macOS, want het is altijd dezelfde TDS-verbindingsstring.
 Het volledige schema komt uit **één script**: `Database/Script.PostDeployment1.sql`. Dat is
 idempotent en bouwt een verse database in één keer compleet op — dezelfde weg die de
 productie-deploy gebruikt, en die bij elke PR wordt bewezen door de CI-job *"PostDeployment op
-verse database"*. De losse scripts in `FunctionApp/setup/` zijn ouder en hiervoor niet nodig.
+verse database"*. Er is geen tweede weg: de losse setup-scripts die hier ooit naast stonden
+zijn bij #1309 verwijderd, omdat ze een verouderde schemakopie bevatten en een installatiepad
+beschreven dat dit project niet meer ondersteunt.
 
 De commando's hieronder draaien `sqlcmd` **binnen de container**. Dat scheelt een installatie van
 `mssql-tools18` op je eigen machine, en het wachtwoord blijft in de omgevingsvariabele van de
