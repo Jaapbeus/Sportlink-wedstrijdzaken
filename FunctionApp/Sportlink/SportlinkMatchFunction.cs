@@ -54,8 +54,26 @@ public static class SportlinkMatchFunction
                     return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
 
                 var velden = await SportlinkClubMatchRepository.GetActieveVeldenAsync(clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
-                return new OkObjectResult(SportlinkFieldIdBuilder.BouwPaneelResponse(matchResult.Data, velden));
+                var payload = SportlinkFieldIdBuilder.BouwPaneelResponse(matchResult.Data, velden);
+                var toestemmingen = await BepaalRolFeatureToestemmingenAsync(req, clubCode);
+                return new OkObjectResult(SportlinkRolFeature.VoegToestemmingenToe(payload, toestemmingen));
             });
+
+    /// <summary>
+    /// #1341: 'admin' mag altijd alles (fail-open bypass, toekomstbestendig — zie de toelichting
+    /// bij <see cref="ExecuteMutationAsync{T}"/>); anders per FeatureKey de
+    /// (club, Wedstrijdzaken, FeatureKey)-rij raadplegen (fail-closed: geen rij = uitgeschakeld).
+    /// </summary>
+    private static async Task<SportlinkRolFeatureToestemmingen> BepaalRolFeatureToestemmingenAsync(HttpRequest req, string clubCode)
+    {
+        if (EasyAuthHelper.IsAdmin(req))
+            return new SportlinkRolFeatureToestemmingen(true, true, true);
+
+        var cs = SystemUtilities.DatabaseConfig.ConnectionString;
+        var alle = await RolFeatureInstellingenRepository.GetAllAsync(clubCode, RolNaam, cs);
+        return new SportlinkRolFeatureToestemmingen(
+            alle[SportlinkRolFeature.Kleedkamers], alle[SportlinkRolFeature.Scheidsrechter], alle[SportlinkRolFeature.Veld]);
+    }
 
     /// <summary>
     /// <c>GET /api/sportlink/match/{wedstrijdcode}/public-match-id</c> (#989, epic #986) —
@@ -320,6 +338,21 @@ public static class SportlinkMatchFunction
 
         var guard = SportlinkMutationGuard.MagMuteren(matchResult.Data, soort);
 
+        // #1341: per-club, per-rol instelbare zichtbaarheid van deze actie. 'admin' is altijd
+        // toegestaan (fail-open bypass, bewust toekomstbestendig — vandaag valt elke
+        // Wedstrijdzaken-gebruiker ook al onder admin, dus deze bypass heeft nu geen zichtbaar
+        // effect, maar wordt meteen correct zodra ooit een beperktere rol bestaat). Fail-closed:
+        // geen rij = uitgeschakeld.
+        string? featureBlokReden = null;
+        var featureKey = SportlinkRolFeature.VoorMutatieSoort(soort);
+        if (guard.IsToegstaan && featureKey != null && !EasyAuthHelper.IsAdmin(req))
+        {
+            var featureAan = await RolFeatureInstellingenRepository.IsEnabledAsync(
+                clubCode, RolNaam, featureKey, SystemUtilities.DatabaseConfig.ConnectionString);
+            if (!featureAan)
+                featureBlokReden = $"Deze actie ('{featureKey}') staat uit voor de {RolNaam}-rol bij deze club. Vraag een beheerder om 'm aan te zetten.";
+        }
+
         var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
         var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
         // #998: WaardeVoor bevat alleen niet-persoonsgebonden velden die al in SportlinkMatch
@@ -340,10 +373,11 @@ public static class SportlinkMatchFunction
             CorrelationId: null);
         var auditId = auditService == null ? (long?)null : await auditService.LogPogingAsync(auditEntry);
 
-        if (!guard.IsToegstaan)
+        if (!guard.IsToegstaan || featureBlokReden != null)
         {
-            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", guard.Reden);
-            return new ObjectResult(new { error = guard.Reden }) { StatusCode = 409 };
+            var reden = !guard.IsToegstaan ? guard.Reden : featureBlokReden;
+            if (auditId.HasValue) await auditService!.VoltooiAsync(auditId.Value, "Geblokkeerd", reden);
+            return new ObjectResult(new { error = reden }) { StatusCode = 409 };
         }
 
         var mutationResult = await mutationCall(publicMatchId!, matchResult.Data);

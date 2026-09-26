@@ -76,6 +76,13 @@ public class SportlinkMatchInfoDto
     public string? FieldSize { get; set; }
     public List<SportlinkVeldOptieDto>? VeldOpties { get; set; }
     public List<SportlinkSubpositieOptieDto>? SubpositieOpties { get; set; }
+
+    // #1341: per-club, per-rol instelbare zichtbaarheid — combineer altijd met de bijbehorende
+    // Sportlink-eigen IsXAllowed-vlag hierboven (beide moeten waar zijn). Server is leidend: dit
+    // is uitsluitend UX om een knop niet te tonen die toch een 409 zou geven.
+    public bool KleedkamersFeatureToegestaan { get; set; }
+    public bool ScheidsrechterFeatureToegestaan { get; set; }
+    public bool VeldFeatureToegestaan { get; set; }
 }
 
 /// <summary>#1339: spiegelt Planner.Shared.Integrations.SportlinkClub.SportlinkVeldOptie.</summary>
@@ -97,6 +104,14 @@ public class SportlinkSubpositieOptieDto
 public class SportlinkPublicMatchIdDto
 {
     public string? PublicMatchId { get; set; }
+}
+
+/// <summary>#1341: één FeatureKey met zijn huidige aan/uit-stand voor de Wedstrijdzaken-rol bij
+/// deze club — spiegelt de anonieme respons van <c>GET /api/beheer/rolfeatureinstellingen</c>.</summary>
+public class RolFeatureInstellingDto
+{
+    public string FeatureKey { get; set; } = "";
+    public bool Enabled { get; set; }
 }
 
 /// <summary>#992: respons van een schrijvende Sportlink-actie (kleedkamers e.v.). Bij een
