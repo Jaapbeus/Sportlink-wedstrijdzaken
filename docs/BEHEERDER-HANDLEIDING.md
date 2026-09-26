@@ -651,10 +651,12 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam, rol, e-mailadres, telefoonnummer) |
 | `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag; `ontvangers` bepaalt de ontvangers (leeg → server-side coach-lookup) |
 
-Auth: `RequireAdmin()` — alleen toegankelijk voor de admin-rol. Namen, e-mailadressen en
-telefoonnummers zijn persoonsgegevens; sinds #310 (mei 2026) is dit voor alle vier
-Teambegeleiding-endpoints admin-only, ook al toonde deze sectie eerder ten onrechte
-`RequireAuthenticated()`.
+Auth: `AdminEndpoint.ExecuteAuthenticatedAsync` — toegankelijk voor elke ingelogde rol (admin +
+user). Namen, e-mailadressen en telefoonnummers zijn persoonsgegevens; sinds #310 (mei 2026) was
+dit voor alle vier Teambegeleiding-endpoints admin-only, maar de eigenaar heeft die beperking op
+26-09-2026 bewust weer teruggedraaid voor deze drie endpoints (#1330) — dit was oorspronkelijk het
+meest gebruikte scherm van de hele applicatie, ook voor gewone gebruikers. De vierde,
+CSV-bulkimport-endpoint blijft wél admin-only, zie §10a hieronder.
 
 ---
 

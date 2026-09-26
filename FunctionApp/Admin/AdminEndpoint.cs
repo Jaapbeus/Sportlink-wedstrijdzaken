@@ -88,8 +88,45 @@ internal static class AdminEndpoint
         }
     }
 
-    // De ene plek waar de poort staat. #1272: de optionele requireRole-parameter van #991 is hier
-    // weg. Die verving de admin-controle in plaats van er bovenop te komen, wat §3.4 van
+    /// <summary>
+    /// Zelfde poort als <see cref="ExecuteAsync"/>, maar accepteert elke ingelogde rol
+    /// (admin + user) in plaats van uitsluitend admin (#1330: Teambegeleiding-scherm bewust weer
+    /// open voor alle gebruikers, teruggedraaid uit de mei-2026-beperking). Bewust een aparte,
+    /// expliciet genoemde methode en géén parameter op <see cref="ExecuteAsync"/> — dat is exact de
+    /// valkuil die de #1272-comment op <see cref="PoortGeauthenticeerd"/> hieronder beschrijft: een
+    /// optionele rol-parameter kan stilzwijgend een striktere controle vervangen. Een tweede,
+    /// met naam zichtbare poort kan dat niet: een aanroeper kiest hem altijd bewust.
+    /// <see cref="check-endpoint-autorisatie.sh"/> (#1350) herkent deze naam expliciet als wrapper,
+    /// en <c>EndpointAutorisatieTests.MetAlleenUserRol_MagBijAuthenticatedEndpoints</c> bewijst dat
+    /// uitsluitend de hier genoemde endpoints met de rol <c>user</c> door mogen — elk ander
+    /// endpoint blijft admin-only.
+    /// </summary>
+    internal static async Task<IActionResult> ExecuteAuthenticatedAsync(
+        HttpRequest req,
+        ILogger log,
+        string errorContext,
+        Func<string, Task<IActionResult>> work)
+    {
+        var (correlationId, authResult) = PoortGeauthenticeerd(req);
+        if (authResult != null) return authResult;
+        if (PoortGepasseerdVoorTests is { } haak) return haak(errorContext);
+
+        using var _ = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
+        try
+        {
+            await SystemUtilities.WaitForDatabaseAsync(log);
+            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+            return await work(clubCode);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "{Context} mislukt [correlationId={CorrelationId}]", errorContext, correlationId);
+            return new ObjectResult(new { error = "Interne fout" }) { StatusCode = 500 };
+        }
+    }
+
+    // De ene plek waar de admin-poort staat. #1272: de optionele requireRole-parameter van #991 is
+    // hier weg. Die verving de admin-controle in plaats van er bovenop te komen, wat §3.4 van
     // docs/SPORTLINK-WEB-EXTENSION.md tegensprak. De Sportlink-endpoints gebruiken nu
     // SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync, dat beide poorten na elkaar zet — net
     // als de Postgres-tier. De parameter is verwijderd en niet alleen ongebruikt gelaten: een
@@ -99,5 +136,18 @@ internal static class AdminEndpoint
     {
         var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
         return (correlationId, EasyAuthHelper.RequireAdmin(req));
+    }
+
+    // De ene plek waar de "elke ingelogde rol"-poort staat (#1330) — zelfde vorm als Poort()
+    // hierboven, bewust niet dezelfde methode met een parameter (zie de #1272-toelichting daar).
+    // #1350 verwijderde EasyAuthHelper.RequireAuthenticated bewust volledig (niet alleen afgeraden) —
+    // deze poort roept daarom rechtstreeks RequireRole aan met beide rollen, en blijft de ENIGE
+    // plek in de hele codebase die dat doet. AdminEndpoint.cs zelf bevat geen [Function(...)] en
+    // valt dus buiten het bereik van scripts/ci/check-endpoint-autorisatie.sh (zie de klasse-doc
+    // hierboven) — deze aanroep omzeilt die guard dus niet, hij staat er gewoon los van.
+    private static (string CorrelationId, IActionResult? AuthResult) PoortGeauthenticeerd(HttpRequest req)
+    {
+        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
+        return (correlationId, EasyAuthHelper.RequireRole(req, "admin", "user"));
     }
 }

@@ -21,7 +21,8 @@
 #   1. Het blok roept NIET zelf EasyAuthHelper.RequireAdmin / RequireWedstrijdzaken / RequireRole
 #      aan — tenzij <functienaam> <bestandspad> met reden in de allowlist staat.
 #   2. Het blok gaat WEL langs een van de bekende poorten (AdminEndpoint.ExecuteAsync,
-#      AdminEndpoint.ExecuteZonderDatabaseAsync of SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync),
+#      AdminEndpoint.ExecuteZonderDatabaseAsync, AdminEndpoint.ExecuteAuthenticatedAsync (#1330 —
+#      elke ingelogde rol i.p.v. uitsluitend admin) of SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync),
 #      óf staat als 'anoniem' in de allowlist, óf staat daar als toegestane directe aanroep.
 #   3. De HttpTrigger staat op AuthorizationLevel.Anonymous: een Function- of Master key zou een
 #      tweede, identiteitsloze toegangsweg naast Easy Auth openhouden (#1350, onderdeel 3).
@@ -123,7 +124,7 @@ for bestand in $(git ls-files -- 'FunctionApp/*.cs' 'FunctionApp.Postgres/*.cs')
         }
       }
       if ($0 ~ /EasyAuthHelper\.(RequireAdmin|RequireWedstrijdzaken|RequireRole|RequireAuthenticated)\(/) direct = 1
-      if ($0 ~ /AdminEndpoint\.Execute(ZonderDatabase)?Async\(/) wrapper = 1
+      if ($0 ~ /AdminEndpoint\.Execute(ZonderDatabase|Authenticated)?Async\(/) wrapper = 1
       if ($0 ~ /SportlinkEndpointSupport\.ExecuteWedstrijdzakenAsync\(/) wrapper = 1
     }
     END { flush() }
