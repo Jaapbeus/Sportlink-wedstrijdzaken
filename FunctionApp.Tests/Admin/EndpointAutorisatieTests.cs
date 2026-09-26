@@ -17,7 +17,8 @@ namespace FunctionApp.Tests.Admin;
 /// Autorisatie-regressietest per HTTP-endpoint (#1350) — de SQL Server-tier. Tegenhanger van
 /// <c>FunctionApp.Postgres.Tests/EndpointAutorisatieTests.cs</c>; zie de klasse-doc daar voor de
 /// volledige toelichting. Kort: voor élk HTTP-endpoint in de assembly bewijst deze test dat
-/// zonder principal <c>401</c> volgt, met alleen de rol <c>user</c> <c>403</c>, en dat de vereiste
+/// zonder principal <c>401</c> volgt, met alleen de rol <c>user</c> <c>403</c> (behalve de
+/// expliciete <c>AuthenticatedRoutes</c>-uitzonderingslijst, #1330), en dat de vereiste
 /// rol(len) de poort van <see cref="AdminEndpoint"/> passeren — via de testhaak
 /// <see cref="AdminEndpoint.PoortGepasseerdVoorTests"/>, zodat geen database wordt geraakt en geen
 /// endpoint echt werk doet.
@@ -38,6 +39,21 @@ public class EndpointAutorisatieTests
         ["AdminThemeExtract"] = 400, // lege url → ThemeCore weigert vóór elke databaseaanroep
         ["AdminGeocodeGet"] = 400,   // lege plaatsnaam → eigen validatie, geen database
     };
+
+    /// <summary>
+    /// Endpoints die bewust open staan voor elke ingelogde rol (#1330), niet uitsluitend admin —
+    /// via <see cref="AdminEndpoint.ExecuteAuthenticatedAsync"/> in plaats van
+    /// <see cref="AdminEndpoint.ExecuteAsync"/>. Uitgezonderd van de 403-verwachting in
+    /// <see cref="MetAlleenUserRol_Geeft403"/>, die daar juist het omgekeerde bewijst: de rol
+    /// <c>user</c> passeert de poort. <c>AdminTeambegeleidingImport</c> staat hier bewust NIET op —
+    /// die blijft admin-only (CSV-bulkimport van persoonsgegevens, #1322).
+    /// </summary>
+    private static readonly string[] AuthenticatedRoutes =
+    [
+        "AdminTeambegeleidingTeams",
+        "AdminTeambegeleidingGet",
+        "AdminTeambegeleidingDoorsturen",
+    ];
 
     private const int MinimaalVerwachtAantalEndpoints = 90;
 
@@ -106,6 +122,8 @@ public class EndpointAutorisatieTests
         var routes = VindAlleHttpEndpoints().Select(e => e.Route).ToHashSet(StringComparer.Ordinal);
         AnoniemeRoutes.Should().OnlyContain(r => routes.Contains(r), "een verdwenen route hoort uit de allowlist");
         DirectePoortMetVerwachteStatus.Keys.Should().OnlyContain(n => VindAlleHttpEndpoints().Any(e => e.Naam == n));
+        AuthenticatedRoutes.Should().OnlyContain(n => VindAlleHttpEndpoints().Any(e => e.Naam == n),
+            "een verdwenen of hernoemd endpoint hoort niet meer in deze #1330-uitzonderingslijst");
     }
 
     // ── Per endpoint: dicht zonder rol ─────────────────────────────────────────────────────────
@@ -139,8 +157,19 @@ public class EndpointAutorisatieTests
 
             var result = await Roep(endpoint, Principal(("roles", "user"), ("preferred_username", "gebruiker@voorbeeld.nl")));
 
-            StatusVan(result).Should().Be(403, $"{endpoint} moet de rol 'user' weigeren — RequireAuthenticated bestaat niet meer (#1350)");
-            haakAangeroepen.Should().BeFalse();
+            if (AuthenticatedRoutes.Contains(endpoint.Naam))
+            {
+                result.Should().BeOfType<PoortGepasseerdResult>(
+                    $"{endpoint} staat bewust open voor elke ingelogde rol (#1330) — de rol 'user' moet de poort dus passeren");
+                haakAangeroepen.Should().BeTrue();
+            }
+            else
+            {
+                StatusVan(result).Should().Be(403,
+                    $"{endpoint} moet de rol 'user' weigeren — RequireAuthenticated is alleen toegestaan via de " +
+                    "expliciete #1330-uitzonderingslijst (AuthenticatedRoutes), nooit stilzwijgend (#1350/#1272)");
+                haakAangeroepen.Should().BeFalse();
+            }
         });
     }
 
