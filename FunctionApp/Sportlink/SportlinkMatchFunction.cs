@@ -53,7 +53,8 @@ public static class SportlinkMatchFunction
                 if (matchResult.Data == null)
                     return new NotFoundObjectResult(new { error = "Sportlink kent dit PublicMatchId niet (meer)." });
 
-                return new OkObjectResult(matchResult.Data);
+                var velden = await SportlinkClubMatchRepository.GetActieveVeldenAsync(clubCode, SystemUtilities.DatabaseConfig.ConnectionString);
+                return new OkObjectResult(SportlinkFieldIdBuilder.BouwPaneelResponse(matchResult.Data, velden));
             });
 
     /// <summary>

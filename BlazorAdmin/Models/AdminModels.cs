@@ -47,9 +47,12 @@ public class GeocodeResultDto
     public string DisplayName { get; set; } = "";
 }
 
-/// <summary>#991: read-only Sportlink-paneel per wedstrijd. Spiegelt
+/// <summary>#991: read-only Sportlink-paneel per wedstrijd. Spiegelt grotendeels
 /// Planner.Shared.Integrations.SportlinkClub.SportlinkMatch (gedeelde DTO, #991/#998) — houd deze
-/// twee synchroon bij een contractwijziging.</summary>
+/// twee synchroon bij een contractwijziging. Sinds #1339 bevat de respons ook <see cref="FieldId"/>/
+/// <see cref="FieldSize"/> (uit SportlinkMatch.Field) en de server-berekende
+/// <see cref="VeldOpties"/>/<see cref="SubpositieOpties"/> (géén Sportlink-veld, zie
+/// SportlinkMatchFunction.BouwPaneelResponse in beide tiers).</summary>
 public class SportlinkMatchInfoDto
 {
     public string? PublicMatchId { get; set; }
@@ -65,6 +68,29 @@ public class SportlinkMatchInfoDto
     public bool IsAssignOfficialsAllowed { get; set; }
     public bool IsEditFieldSidePanelAllowed { get; set; }
     public bool IsAddScoreAllowed { get; set; }
+
+    // #1339: huidig veld (prefill) + voorstellen om een ander veld te kiezen op onze eigen
+    // veldnaam i.p.v. Sportlinks FieldId-formaat te moeten kennen. Zie SportlinkFieldIdBuilder
+    // (Planner.Shared) voor hoe de voorstellen berekend worden — hier alleen het draaddata-model.
+    public string? FieldId { get; set; }
+    public string? FieldSize { get; set; }
+    public List<SportlinkVeldOptieDto>? VeldOpties { get; set; }
+    public List<SportlinkSubpositieOptieDto>? SubpositieOpties { get; set; }
+}
+
+/// <summary>#1339: spiegelt Planner.Shared.Integrations.SportlinkClub.SportlinkVeldOptie.</summary>
+public class SportlinkVeldOptieDto
+{
+    public int VeldNummer { get; set; }
+    public string VeldNaam { get; set; } = "";
+    public string? VoorstelFieldId { get; set; }
+}
+
+/// <summary>#1339: spiegelt Planner.Shared.Integrations.SportlinkClub.SportlinkSubpositieOptie.</summary>
+public class SportlinkSubpositieOptieDto
+{
+    public string? Subpositie { get; set; }
+    public string VoorstelFieldSize { get; set; } = "1.0";
 }
 
 /// <summary>#989: respons van de lichtgewicht PublicMatchId-only endpoint (deep-link-knop).</summary>

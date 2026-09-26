@@ -328,6 +328,21 @@ verplichte N-user-test.
   afgelast/niet-concept-checks controleert (geen specifieke `IsXxxAllowed`-vlag bestaat hiervoor bij
   Sportlink — TODO in de guard). De Blazor-UI toont het formulier alleen bij `IsHomeMatch` en biedt
   bewust GEEN bevestigknop, ook geen disabled-variant (dat zou een niet-gebouwde stap 2 suggereren).
+- **Sinds #1339 prefill van het huidige veld + veld-dropdown op onze eigen veldnaam bij `GET
+  .../match/{wedstrijdcode}`.** `SportlinkMatch.Field` (nieuw, spiegelt het al langer intern
+  gebruikte `SportlinkClubClient.SportlinkFieldRaw`) geeft het huidige `FieldId`/`FieldSize` van de
+  wedstrijd mee — dit stond al live bevestigd in dezelfde Match-GET-respons (2026-09-06, #1047),
+  maar werd tot nu toe alleen intern gebruikt bij een veldwijziging, nooit teruggegeven aan de UI.
+  `SportlinkMatchFunction.BouwPaneelResponse` (beide tiers) voegt daar `veldOpties`
+  (per actief club-veld een VOORSTEL-`FieldId`) en `subpositieOpties` (per subpositie een
+  voorgestelde `FieldSize`) aan toe — berekend door `SportlinkFieldIdBuilder`
+  (`Planner.Shared`), géén Sportlink-gegeven. **Dit is een voorstel, geen bevestigde resolutie:**
+  het patroon `"{FacilityId}-OUTDOOR_FIELD-{VeldNummer}"` is bevestigd voor precies één
+  combinatie (de vaste testwedstrijd, veld 6). Of Sportlinks eigen veldnummering voor élke club
+  exact gelijk loopt aan onze `VeldNummer`-kolom is NIET bevestigd — de Blazor-tekstvelden blijven
+  daarom altijd bewerkbaar, de dropdown vult ze alleen voor. Géén nieuwe Sportlink-aanroep,
+  géén nieuwe database-tabel — de veld-dropdown gebruikt de bestaande `public.velden`/`dbo.Velden`
+  via een nieuwe leesquery in `SportlinkClubMatchRepository.GetActieveVeldenAsync`.
 - `FunctionApp.Postgres/Sportlink/SportlinkTokenKeepAliveTimerFunction.cs` — uur-timer die
   `ISportlinkClubClient.VerversTokenAsync` aanroept voor elke rol met een opgeslagen token, ook
   zonder enige gebruikersactie. **Waarom nodig:** Keycloak deactiveert een refresh-token na een

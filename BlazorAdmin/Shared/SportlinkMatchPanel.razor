@@ -53,7 +53,36 @@ else
 
     @if (_info.IsEditFieldAllowed)
     {
-        @* #993: IsForceUpdate blijft server-side hard false (semantiek niet bevestigd) — geen UI-optie. *@
+        @* #993: IsForceUpdate blijft server-side hard false (semantiek niet bevestigd) — geen UI-optie.
+           #1339: FieldId/FieldSize staan voorafgevuld met de huidige waarde (indien bekend). De
+           dropdowns hieronder vullen ze met een VOORSTEL op basis van onze eigen veldnaam — de
+           tekstvelden blijven de bron van waarheid en zijn altijd handmatig te overschrijven. *@
+        @if (_info.VeldOpties is { Count: > 0 })
+        {
+            <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
+                <div>
+                    <label class="form-label mb-0 small">Veld (voorstel)</label>
+                    <select class="form-select form-select-sm" style="width:10rem;"
+                            value="@_veldGekozenVeldNummer" @onchange="OnVeldGekozen">
+                        <option value="">— kies veld —</option>
+                        @foreach (var optie in _info.VeldOpties)
+                        {
+                            <option value="@optie.VeldNummer">@optie.VeldNaam</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label mb-0 small">Subpositie</label>
+                    <select class="form-select form-select-sm" style="width:8rem;"
+                            value="@_veldGekozenSubpositie" @onchange="OnSubpositieGekozen">
+                        @foreach (var optie in _info.SubpositieOpties ?? new())
+                        {
+                            <option value="@optie.Subpositie">@(optie.Subpositie ?? "heel veld")</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        }
         <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
             <div>
                 <label class="form-label mb-0 small">FieldId</label>

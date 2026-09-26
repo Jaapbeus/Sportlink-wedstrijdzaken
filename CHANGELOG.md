@@ -18,6 +18,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Sportlink-wedstrijdpaneel: veld nu voorafgevuld en te kiezen op onze eigen veldnaam (#1339).**
+  In de Dagplanning liet het paneel "FieldId"/"FieldSize" altijd leeg staan, ook als de wedstrijd
+  al een veld had in Sportlink. Beheerders kunnen nu meteen zien welk veld een wedstrijd al heeft,
+  en bij het wijzigen een veld en subpositie kiezen op onze eigen veldnaam (bijv. "Veld 1", "A1")
+  — de app stelt daarbij zelf een Sportlink-`FieldId`/`FieldSize` voor. Dit voorstel is altijd
+  zichtbaar en bewerkbaar naast de bestaande tekstvelden, nooit een verplichte, verborgen waarde.
+
 ### Fixed
 - **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas
   bewerkbaar na een geslaagde optimalisatie (#1334).** De foutmelding stond onder de
