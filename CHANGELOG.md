@@ -25,6 +25,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   en bij het wijzigen een veld en subpositie kiezen op onze eigen veldnaam (bijv. "Veld 1", "A1")
   — de app stelt daarbij zelf een Sportlink-`FieldId`/`FieldSize` voor. Dit voorstel is altijd
   zichtbaar en bewerkbaar naast de bestaande tekstvelden, nooit een verplichte, verborgen waarde.
+- **Sportlink Web Extension: per club instelbaar wie kleedkamers/scheidsrechters mag toewijzen en
+  het veld mag wijzigen (#1341).** Nieuwe pagina "Instellingen → Sportlink — rechten per rol"
+  laat een beheerder deze drie acties onafhankelijk aan/uit zetten voor de Wedstrijdzaken-rol.
+  Admin heeft dit altijd aan. De server weigert een uitgeschakelde actie ook als de knop in de UI
+  omzeild wordt.
 
 ### Fixed
 - **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas

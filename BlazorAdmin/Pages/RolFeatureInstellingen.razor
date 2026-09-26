@@ -1,0 +1,70 @@
+@page "/sportlink-rol-instellingen"
+@inherits ClubSelectorPageBase
+@* Alle logica staat in RolFeatureInstellingen.razor.cs (#1341, epic #1338). *@
+
+<PageTitle>Sportlink — rechten per rol</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Sportlink — rechten per rol</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="instellingen">← Terug naar Instellingen</a>
+</div>
+
+<p class="text-muted">
+    Bepaalt of een gebruiker met de rol <strong>Wedstrijdzaken</strong> bij deze club kleedkamers/
+    scheidsrechters mag toewijzen en het veld mag wijzigen via het Sportlink-wedstrijdpaneel.
+    <strong>Admin</strong> heeft dit altijd aan, ongeacht deze instelling. Een uitgeschakelde actie
+    wordt ook door de server geweigerd — deze instelling is de leidende controle, niet alleen een
+    schakelaar in de weergave.
+</p>
+
+@if (_laden)
+{
+    <span class="text-muted">Bezig met laden…</span>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+    @if (!string.IsNullOrEmpty(_successMessage))
+    {
+        <div class="alert alert-success">@_successMessage</div>
+    }
+
+    <div class="list-group" style="max-width: 40rem;">
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-semibold">Kleedkamers toewijzen</div>
+                <div class="text-muted small">Kleedkamer-nummers invoeren en opslaan bij een wedstrijd.</div>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       checked="@IsAan(KleedkamersKey)"
+                       @onchange="e => ZetAsync(KleedkamersKey, (bool)e.Value!)" />
+            </div>
+        </div>
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-semibold">Scheidsrechters toewijzen</div>
+                <div class="text-muted small">Relatiecode van scheidsrechter/AR1/AR2 invoeren en opslaan.</div>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       checked="@IsAan(ScheidsrechterKey)"
+                       @onchange="e => ZetAsync(ScheidsrechterKey, (bool)e.Value!)" />
+            </div>
+        </div>
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-semibold">Veld wijzigen</div>
+                <div class="text-muted small">FieldId/FieldSize van een wedstrijd wijzigen.</div>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       checked="@IsAan(VeldKey)"
+                       @onchange="e => ZetAsync(VeldKey, (bool)e.Value!)" />
+            </div>
+        </div>
+    </div>
+}

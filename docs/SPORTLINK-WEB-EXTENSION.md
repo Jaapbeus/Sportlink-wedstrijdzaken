@@ -170,6 +170,27 @@ gaten, bovenop de bestaande admin-toegang. Zie
 [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) voor het volledige rolbeheer-protocol en de
 verplichte N-user-test.
 
+**Belangrijk om te weten:** vandaag komt `Wedstrijdzaken` in de praktijk altijd sámen met `admin`
+voor — er bestaat (nog) geen gebruiker met uitsluitend `Wedstrijdzaken`. De per-actie-toggles in
+§3.5 hieronder hebben daardoor vandaag geen zichtbaar effect (elke Wedstrijdzaken-gebruiker is óók
+admin, en admin heeft altijd alles aan) — ze zijn bewust toekomstbestendig gebouwd voor het moment
+dat er ooit een beperktere rol komt (bijv. een "sectiehoofd", zie het architectuurbesluit in
+§6 van `docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md`).
+
+### 3.5 Per-actie instelbaar: kleedkamers/scheidsrechter/veld (#1341, epic #1338)
+Een beheerder kan op **Instellingen → Sportlink — rechten per rol** per club onafhankelijk
+aan/uit zetten of de `Wedstrijdzaken`-rol kleedkamers mag toewijzen, scheidsrechters mag
+toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
+
+- **Server is leidend, niet de UI-toggle.** `SportlinkMatchFunction.ExecuteMutationAsync` (beide
+  tiers) wijst een uitgeschakelde actie af met HTTP 409, ook bij een directe API-aanroep buiten
+  de Blazor-UI om. De UI verbergt de bijbehorende sectie in `SportlinkMatchPanel` alleen om een
+  voorspelbare 409 te voorkomen.
+- **`admin` is altijd toegestaan** — geen rij nodig, geen UI-optie om admin te beperken.
+- **Ontbrekende instelling = uitgeschakeld (fail-closed).** Een club die deze pagina nog nooit
+  heeft geopend, heeft dus alle drie de acties standaard uitgeschakeld voor `Wedstrijdzaken` —
+  een beheerder moet ze bewust aanzetten.
+
 ## 4. Voor developers
 
 ### 4.1 Architectuur in het kort

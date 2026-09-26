@@ -30,7 +30,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.5.5.0
+  version: 3.5.6.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -829,6 +829,18 @@ components:
           type: string
           nullable: true
 
+    RolFeatureInstellingResponse:
+      type: object
+      description: |
+        Eén FeatureKey met zijn huidige aan/uit-stand voor de `Wedstrijdzaken`-rol bij deze club
+        (#1341, epic #1338). `admin` komt hier nooit in voor — die rol heeft altijd alles aan.
+      properties:
+        FeatureKey:
+          type: string
+          enum: [sportlink.kleedkamers, sportlink.scheidsrechter, sportlink.veld]
+        Enabled:
+          type: boolean
+
     SportlinkMatchInfoResponse:
       type: object
       description: |
@@ -937,6 +949,17 @@ components:
                 nullable: true
               voorstelFieldSize:
                 type: string
+        kleedkamersFeatureToegestaan:
+          type: boolean
+          description: |
+            #1341: combineer met isAssignDressingRoomsAllowed hierboven (beide moeten waar zijn) —
+            dit is de per-rol-instelling, niet Sportlinks eigen permissievlag. Server-side leidend.
+        scheidsrechterFeatureToegestaan:
+          type: boolean
+          description: "#1341: combineer met isAssignOfficialsAllowed hierboven."
+        veldFeatureToegestaan:
+          type: boolean
+          description: "#1341: combineer met isEditFieldAllowed hierboven."
 
     SportlinkMutationResponse:
       type: object
@@ -3208,6 +3231,76 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /beheer/rolfeatureinstellingen:
+    get:
+      tags: [beheer]
+      operationId: getRolFeatureInstellingen
+      summary: Per-club, per-rol feature-instellingen ophalen (#1341, epic #1338)
+      description: |
+        Toont voor de `Wedstrijdzaken`-rol bij deze club of kleedkamers toewijzen,
+        scheidsrechters toewijzen en veld wijzigen zijn ingeschakeld. `admin` heeft dit altijd
+        aan en komt hier niet in voor — alleen de instelbare rol. Fail-closed: een niet-
+        teruggegeven FeatureKey betekent uitgeschakeld.
+      security:
+        - easyAuth: []
+      responses:
+        '200':
+          description: Lijst van FeatureKeys met hun huidige stand
+          headers:
+            x-correlation-id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RolFeatureInstellingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [beheer]
+      operationId: zetRolFeatureInstelling
+      summary: Eén per-rol feature-instelling wijzigen (#1341, epic #1338)
+      description: |
+        Zet een van de drie instelbare FeatureKeys (`sportlink.kleedkamers`,
+        `sportlink.scheidsrechter`, `sportlink.veld`) aan/uit voor de `Wedstrijdzaken`-rol bij
+        deze club. Server-side de leidende controle: `SportlinkMatchFunction` wijst een
+        uitgeschakelde actie ook af als de UI-toggle omzeild wordt.
+      security:
+        - easyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [FeatureKey, Enabled]
+              properties:
+                FeatureKey:
+                  type: string
+                  enum: [sportlink.kleedkamers, sportlink.scheidsrechter, sportlink.veld]
+                Enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Instelling opgeslagen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolFeatureInstellingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /beheer/sportlink-extensie/rollen:
     get:
       tags: [beheer]
@@ -3519,7 +3612,9 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
+            "Kleedkamers toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -3571,7 +3666,9 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
+            "Veld wijzigen" staat uit voor de Wedstrijdzaken-rol bij deze club.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':
@@ -3638,7 +3735,9 @@ paths:
         '404':
           description: Wedstrijd of PublicMatchId niet gevonden
         '409':
-          description: Extension staat uit, koppeling ontbreekt/verlopen, of guardrail geblokkeerd
+          description: |
+            Extension staat uit, koppeling ontbreekt/verlopen, guardrail geblokkeerd, of (#1341)
+            "Scheidsrechters toewijzen" staat uit voor de Wedstrijdzaken-rol bij deze club.
         '500':
           $ref: '#/components/responses/InternalServerError'
         '502':

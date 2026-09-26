@@ -134,6 +134,11 @@
                             <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Sportlink Ext.
                         </NavLink>
                     </div>
+                    <div class="nav-item">
+                        <NavLink class="nav-link py-1" href="sportlink-rol-instellingen">
+                            <i class="bi bi-shield-lock me-1" aria-hidden="true"></i> Sportlink — rechten per rol
+                        </NavLink>
+                    </div>
                 </div>
             }
         </div>
@@ -170,7 +175,7 @@
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
-    private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates", "/sportlink-extension-settings"];
+    private static readonly string[] InstellingenRoutes = ["/instellingen", "/voorkeurstijden", "/email-templates", "/sportlink-extension-settings", "/sportlink-rol-instellingen"];
     // "/instellingen/velden" matcht al via de "/instellingen"-prefix hierboven.
 
     protected override void OnInitialized()

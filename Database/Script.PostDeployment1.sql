@@ -1252,6 +1252,21 @@ BEGIN
 END
 GO
 
+-- #1341: RolFeatureInstellingen — per-club, per-rol instelbare zichtbaarheid van Sportlink-acties
+-- (kleedkamers/scheidsrechter/veld). Generiek opgezet, niet beperkt tot deze drie acties. Geen rij
+-- voor een combinatie betekent UITGESCHAKELD (fail-closed); 'admin' komt hier nooit in voor.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.RolFeatureInstellingen'))
+BEGIN
+    CREATE TABLE [dbo].[RolFeatureInstellingen] (
+        [ClubCode]   NVARCHAR(20)  NOT NULL, -- geen DEFAULT: clubnaam hoort niet in het schema (#598)
+        [RolNaam]    NVARCHAR(50)  NOT NULL,
+        [FeatureKey] NVARCHAR(100) NOT NULL,
+        [Enabled]    BIT           NOT NULL DEFAULT 0,
+        CONSTRAINT [PK_RolFeatureInstellingen] PRIMARY KEY CLUSTERED ([ClubCode] ASC, [RolNaam] ASC, [FeatureKey] ASC)
+    );
+END
+GO
+
 -- #991/#998: SportlinkMutationAudit — eigen audit-trail voor Sportlink Web Extension-mutaties
 -- (epic #986). Sportlink's eigen log groepeert alleen per gekoppeld serviceaccount, niet per
 -- individuele webapp-gebruiker — deze tabel is de enige plek waar te herleiden is wélke ingelogde

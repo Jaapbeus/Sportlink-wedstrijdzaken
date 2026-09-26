@@ -29,9 +29,14 @@ else
         <div class="mt-1 text-muted">Openstaand: @_info.TaskStatus</div>
     }
 
-    @if (_info.IsAssignDressingRoomsAllowed)
+    @if (_info.IsAssignDressingRoomsAllowed && !_info.KleedkamersFeatureToegestaan)
     {
-        @* #992: eerste echte Sportlink-mutatie — de server valideert IsAssignDressingRoomsAllowed opnieuw (SportlinkMutationGuard). *@
+        <div class="text-muted small">Kleedkamers toewijzen staat uit voor jouw rol bij deze club.</div>
+    }
+    @if (_info.IsAssignDressingRoomsAllowed && _info.KleedkamersFeatureToegestaan)
+    {
+        @* #992: eerste echte Sportlink-mutatie — de server valideert IsAssignDressingRoomsAllowed
+           én de #1341-rol-instelling opnieuw (SportlinkMutationGuard resp. RolFeatureInstellingenRepository). *@
         <div class="mt-2 d-flex flex-wrap align-items-end gap-2">
             <div>
                 <label class="form-label mb-0 small">Thuis</label>
@@ -51,7 +56,11 @@ else
         <Melding Status="_kleedkamers" />
     }
 
-    @if (_info.IsEditFieldAllowed)
+    @if (_info.IsEditFieldAllowed && !_info.VeldFeatureToegestaan)
+    {
+        <div class="text-muted small">Veld wijzigen staat uit voor jouw rol bij deze club.</div>
+    }
+    @if (_info.IsEditFieldAllowed && _info.VeldFeatureToegestaan)
     {
         @* #993: IsForceUpdate blijft server-side hard false (semantiek niet bevestigd) — geen UI-optie.
            #1339: FieldId/FieldSize staan voorafgevuld met de huidige waarde (indien bekend). De
@@ -98,7 +107,11 @@ else
         <Melding Status="_veld" />
     }
 
-    @if (_info.IsAssignOfficialsAllowed)
+    @if (_info.IsAssignOfficialsAllowed && !_info.ScheidsrechterFeatureToegestaan)
+    {
+        <div class="text-muted small">Scheidsrechters toewijzen staat uit voor jouw rol bij deze club.</div>
+    }
+    @if (_info.IsAssignOfficialsAllowed && _info.ScheidsrechterFeatureToegestaan)
     {
         @* #994: scaffolding, altijd code-gelockt (forceDryRun). Bewust geen zoekfunctie (AVG):
            alleen een relatiecode/persoons-ID per positie, geen namen. *@

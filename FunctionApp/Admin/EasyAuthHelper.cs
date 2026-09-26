@@ -63,6 +63,37 @@ internal static class EasyAuthHelper
     public static IActionResult? RequireWedstrijdzaken(HttpRequest req)
         => RequireRole(req, "Wedstrijdzaken");
 
+    /// <summary>
+    /// Niet-gooiende variant van <see cref="RequireRole"/> (#1341) — voor een feature-toggle-check
+    /// die zelf al bepaalt wat er bij "nee" gebeurt (bijv. de rol-feature-instelling raadplegen)
+    /// in plaats van meteen een 401/403 te retourneren. Zelfde lokale bypass als alle
+    /// <c>Require*</c>-methoden: zonder <c>WEBSITE_SITE_NAME</c> (lokaal/CI) is elke rol "aanwezig".
+    /// </summary>
+    public static bool IsInRole(HttpRequest req, string role)
+    {
+        var siteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (string.IsNullOrEmpty(siteName)) return true;
+
+        if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||
+            string.IsNullOrEmpty(encoded))
+            return false;
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded!));
+            var principal = JsonSerializer.Deserialize<ClientPrincipal>(json, _opts);
+            return principal?.Claims?.Any(c =>
+                string.Equals(c.Typ, "roles", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(c.Val, role, StringComparison.OrdinalIgnoreCase)) ?? false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsAdmin(HttpRequest req) => IsInRole(req, "admin");
+
     private static string? GetClaimValue(HttpRequest req, params string[] claimTypes)
     {
         if (!req.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var encoded) ||

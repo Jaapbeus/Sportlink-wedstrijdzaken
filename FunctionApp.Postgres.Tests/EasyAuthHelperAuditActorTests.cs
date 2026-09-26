@@ -186,4 +186,52 @@ public class EasyAuthHelperAuditActorTests
             result.Should().BeOfType<UnauthorizedResult>();
         });
     }
+
+    // ── IsInRole/IsAdmin (#1341): niet-gooiende variant van RequireRole ──
+
+    [Fact]
+    public void IsAdmin_LokaleOntwikkeling_IsAltijdWaar()
+    {
+        WithEnv(azureHosting: null, () =>
+        {
+            var req = BuildRequest();
+
+            EasyAuthHelper.IsAdmin(req).Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public void IsAdmin_ProductieMetAdminRol_IsWaar()
+    {
+        WithEnv(azureHosting: "func-test-01", () =>
+        {
+            var principal = EncodePrincipal(("roles", "admin"));
+            var req = BuildRequest(principal);
+
+            EasyAuthHelper.IsAdmin(req).Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public void IsAdmin_ProductieZonderAdminRol_IsOnwaar()
+    {
+        WithEnv(azureHosting: "func-test-01", () =>
+        {
+            var principal = EncodePrincipal(("roles", "Wedstrijdzaken"));
+            var req = BuildRequest(principal);
+
+            EasyAuthHelper.IsAdmin(req).Should().BeFalse();
+        });
+    }
+
+    [Fact]
+    public void IsAdmin_ProductieZonderPrincipal_IsOnwaar()
+    {
+        WithEnv(azureHosting: "func-test-01", () =>
+        {
+            var req = BuildRequest();
+
+            EasyAuthHelper.IsAdmin(req).Should().BeFalse();
+        });
+    }
 }
