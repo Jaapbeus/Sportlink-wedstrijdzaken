@@ -18,6 +18,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- **Meisjeswedstrijd ontbrak zonder foutmelding in de Dagplanning-tijdlijn (#1332).** Sportlink
+  levert voor sommige meisjesteams de leeftijdscategorie aan als "Onder {n} Meiden" in plaats van
+  "{JO|MO}{n} Meiden". Dat format werd niet herkend, waardoor de speeltijd-opzoeking faalde en de
+  wedstrijd — hoewel correct met tijd en veld bekend — stil uit de visuele veldbezetting viel; in
+  de tabel eronder bleef hij wel zichtbaar. Alle drie de leeftijdsnormalisaties (de gedeelde C#-
+  logica en de twee databasevarianten) zijn aangepast om het leeftijdscijfer direct uit de tekst te
+  lezen in plaats van aan te nemen dat hij al op een vaste plek staat.
+
 ### Changed
 - **"Teambegeleiding importeren" verhuisd naar Instellingen (#1322).** Het scherm
   `/teambegeleiding` toont voortaan alleen nog team selectie, contactgegevens en "vraag doorsturen"

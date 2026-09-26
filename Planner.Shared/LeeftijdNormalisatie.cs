@@ -1,13 +1,17 @@
+using System.Linq;
+
 namespace Planner.Shared;
 
 /// <summary>
 /// Normaliseert een leeftijdscategorie naar de sleutel waarop de Speeltijden-tabel is
 /// geïndexeerd. Sportlink kan meisjesteams als "JO15 Meiden" aanleveren in plaats van "MO15",
-/// en oudere formats gebruiken "Onder 15"/"Meisjes Onder 15" (#486).
+/// en oudere formats gebruiken "Onder 15"/"Meisjes Onder 15" (#486), of de combinatie
+/// "Onder 15 Meiden" (#1332) — de volwoord-variant met "Meiden" erachter in plaats van ervoor.
 ///
 /// <para>
 /// Voorbeelden: "JO15 Meiden" → "MO15", "JO9 Meiden" → "MO9", "JO15" → "JO15",
-/// "Meisjes Onder 15" → "MO15", "Vrouwen" → "VR", "Senioren" → "1-99".
+/// "Meisjes Onder 15" → "MO15", "Onder 15 Meiden" → "MO15", "Vrouwen" → "VR",
+/// "Senioren" → "1-99".
 /// </para>
 ///
 /// <para>
@@ -47,17 +51,18 @@ public static class LeeftijdNormalisatie
             || trimmed.Equals("Senioren VR", StringComparison.OrdinalIgnoreCase))
             return "VR";
 
-        // "JO{n} Meiden" → "MO{n}" (Sportlink-specifiek formaat voor meisjesteams)
-        if (trimmed.Contains("Meiden", StringComparison.OrdinalIgnoreCase))
-        {
-            var num = trimmed
-                .Replace("JO", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("MO", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("Meiden", "", StringComparison.OrdinalIgnoreCase)
-                .Trim();
-            return $"MO{num}";
-        }
+        // Meisjesteams herkennen we aan "Meiden" of "Meisjes" ongeacht waar dat woord staat
+        // ("JO15 Meiden", "Onder 15 Meiden", "Meisjes Onder 15" komen alle drie voor — #486, #1332)
+        // en we lezen het leeftijdscijfer direct uit de string i.p.v. aan te nemen dat hij al
+        // begint met "JO"/"MO". Een blinde Replace-keten (de vorige aanpak) faalt zodra het cijfer
+        // niet direct na "JO"/"MO" staat, zoals bij "Onder 13 Meiden" → "MOOnder 13" (#1332).
+        bool isMeiden = trimmed.Contains("Meiden", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Contains("Meisjes", StringComparison.OrdinalIgnoreCase);
+        var cijfers = new string(trimmed.Where(char.IsDigit).ToArray());
+        if (cijfers.Length > 0)
+            return (isMeiden ? "MO" : "JO") + cijfers;
 
+        // Cijferloze categorieën (bv. kale "Vrouwen") hebben geen leeftijdsnummer om te extraheren.
         return trimmed
             .Replace("Onder ", "JO")
             .Replace("Meisjes ", "MO")
