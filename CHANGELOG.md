@@ -56,6 +56,13 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   omzeild wordt.
 
 ### Fixed
+- **Dagplanning: wedstrijdenlijst had geen eigen sortering (#1331).** De tabel onder de
+  Dagplanning-Gantt toonde wedstrijden in de volgorde die de planner toevallig teruggaf, in plaats
+  van een voorspelbare volgorde. Beheerders zien de lijst nu altijd gesorteerd op aanvangstijd
+  (vroeg naar laat) en, bij gelijke tijd, op de veldvolgorde zoals die voor de club is ingesteld —
+  dit werkt hetzelfde voor een club met velden "Veld 1"/"Veld 2" als voor een club met velden
+  "A"/"B"/"C". Een wedstrijd zonder (geldige) tijd of veld komt altijd achteraan te staan, nooit
+  onverwacht bovenaan.
 - **Donkere weergave paste alleen de merkkleuren toe, niet de rest van het scherm (#1348).**
   Na het omschakelen naar donker bleef de paginaachtergrond en het merendeel van de kaarten,
   tabellen, formuliervelden en meldingen wit — alleen de zijbalk en knoppen werden echt donker.
