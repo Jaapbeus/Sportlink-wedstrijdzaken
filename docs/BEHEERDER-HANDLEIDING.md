@@ -1184,7 +1184,7 @@ is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
 
 ---
 
-## 18a. Oefenwedstrijd aanmaken (`/oefenwedstrijd-aanmaken`)
+## 18a. Oefenwedstrijd aanmaken (`/wedstrijd-aanmaken`)
 
 > **Scaffolding (#997/#1116):** de aanroep naar Sportlink Club wordt altijd gesimuleerd totdat een
 > mens de exacte aanmaak-body met een netwerktrace heeft bevestigd. U ziet na het aanmaken wél wat
