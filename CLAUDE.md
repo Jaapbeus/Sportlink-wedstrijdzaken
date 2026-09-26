@@ -386,6 +386,30 @@ gh pr create --draft --base develop --title "feat(#<nr>): ..." --body "..."
 # gh pr create --base main --head develop --title "release: vX.Y.Z" --body "..."
 ```
 
+### Herkomstlabel (`source:`) — wie maakte dit issue aan
+
+> **Waarom een label en niet het native GitHub-auteursveld:** Codex en Claude Code werken beide
+> via `gh issue create`/`gh api` onder credentials die niet per se een uniek, herkenbaar GitHub-
+> account per assistent zijn. `issue.user.login` kan dus niet betrouwbaar onderscheiden wie het
+> issue inhoudelijk heeft opgesteld. Een expliciet label wel.
+
+| Label | Betekenis |
+|---|---|
+| `source: codex` | Issue aangemaakt of inhoudelijk opgesteld door Codex — read-only reviewer/architect (elke taak, niet alleen CISO/DPO-bevindingen) |
+| `source: claude-code` | Issue aangemaakt door Claude Code zelf (bijv. Stap S0-fallback: geen passend open issue gevonden) |
+| `source: owner` | Issue rechtstreeks aangemaakt door de eigenaar |
+| `via: feedback-widget` | Issue binnengekomen via het feedback-widget-kanaal in de Admin GUI — dekt herkomst al; géén aparte `source:`-variant, dat zou dupliceren |
+
+**Invariant:** precies één van deze vier labels per issue. Codex is in deze repository uitsluitend
+read-only reviewer/architect — hij wijzigt nooit code, maakt geen branch/PR en heeft ook geen
+GitHub-schrijftoegang voor labels. Een Codex-issue komt dus altijd ongelabeld (qua herkomst)
+binnen. **Claude Code zet `source: codex` zelf**, op hetzelfde moment dat hij de
+`type:`/`priority:`/`discipline:`-labels van een nieuwe Codex-batch toevoegt. Voor een issue dat de
+eigenaar zelf opent via de GitHub-UI zet Claude Code `source: owner` bij zodra hij het issue voor
+het eerst verwerkt. `source: claude-code` zet Claude Code zelf, direct bij het aanmaken
+(`gh issue create --label "source: claude-code"`) — daar heeft hij, in tegenstelling tot Codex,
+wel volledige `gh`-schrijftoegang voor.
+
 ### Issue-lifecycle — elk open issue heeft precies één `status:`-label
 
 > **Vastgelegd na #690:** de automatisering dekte alleen de achterkant van de keten
@@ -413,15 +437,30 @@ De volledige keten, volledig geautomatiseerd:
 > waar niets te reviewen viel, omdat het label puur op PR-draft-status wordt gezet — niet op
 > of er daadwerkelijk een beslissing nodig is.
 
+> **`status: waiting-codex` — de enige status die niet in de tabel hierboven staat, want er is
+> geen GitHub-event dat hem kan triggeren.** Codex draait als een handmatig aangeroepen, read-only
+> reviewsweep — geen bot met een webhook — dus zowel het zetten als het verwijderen van dit label
+> is altijd een bewuste handeling van Claude Code (of de eigenaar), nooit automatisering:
+> - **Zetten:** Claude Code pauzeert de implementatie en zet `status: waiting-codex` wanneer hij
+>   expliciet Codex' architectuur-/securityopinie nodig heeft vóórdat hij verdergaat.
+> - **Verwijderen:** zodra Codex' reactie (comment of bijgewerkt issue) verwerkt is, zet Claude Code
+>   het issue terug naar de status die past bij de volgende stap (`in-progress` om verder te
+>   bouwen, `triage` als het issue eerst opnieuw ingeschat moet worden).
+> Staat sinds #1336 in `PROTECTED` — automatisering overschrijft dit label dus nooit stilzwijgend.
+> **Bekende beperking:** er is geen guard die een verweesde `waiting-codex` na N dagen signaleert
+> (vergelijkbaar met wat `supabase-advisors.yml` voor advisorbevindingen doet). Dit is bewust
+> onbewaakt gelaten conform codekwaliteitsregel 6 — zie `docs/ARCHITECTUUR-CODEKWALITEIT.md`.
+
 **Invarianten:**
 
 1. **Hoogstens één `status:`-label per issue.** Alle drie de workflows zetten de status via
    `setIssueStatus()` in [.github/scripts/issue-status.js](.github/scripts/issue-status.js),
    die de oude status verwijdert. Voeg nooit met de hand een `status:`-label toe met
    `gh issue edit --add-label` zonder de bestaande te verwijderen.
-2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`
-   en `status: waiting-owner` staan in `PROTECTED`: automatisering laat ze staan. Enige
-   uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat is een feit.
+2. **Handmatige statussen worden niet overschreven.** `status: blocked`, `status: wont-fix`,
+   `status: waiting-owner` en `status: waiting-codex` staan in `PROTECTED`: automatisering laat
+   ze staan. Enige uitzondering: een merge naar `develop` zet altijd `awaiting-release`, want dat
+   is een feit.
 3. **Alleen "strong" referenties veranderen de staat van een issue.** Een nummer in de
    PR-titel (`fix(#NNN): ...`) of achter een sluitend keyword in de body (`Closes #N`).
    Een kale kruisverwijzing in proza (`zie #123`) mag nooit de status van dat andere issue
@@ -429,15 +468,16 @@ De volledige keten, volledig geautomatiseerd:
 4. **De helper is getest.** `node .github/scripts/issue-status.test.js` draait bij elke PR in
    de CI-job `Build FunctionApp + BlazorAdmin`. De workflows zelf draaien alleen op hun eigen
    trigger, dus zonder die tests zou een fout pas bij een echte merge of release blijken.
-5. **Eén gedocumenteerde handmatige uitzondering: Stap 5.** Na een groene verificatielus
-   zonder escalatie overschrijft Claude `status: review-needed` bewust met
-   `status: pr-aangemaakt` (zie Stap 5 hieronder). Dit is de enige plek waar Claude zelf een
+5. **Twee gedocumenteerde handmatige uitzonderingen — en geen andere.** Na een groene
+   verificatielus zonder escalatie overschrijft Claude `status: review-needed` bewust met
+   `status: pr-aangemaakt` (zie Stap 5 hieronder). En Claude zet/verwijdert `status: waiting-codex`
+   rond een Codex-consult (zie hierboven). Dit zijn de enige plekken waar Claude zelf een
    status-label zet — en altijd via `--remove-label` + `--add-label` in dezelfde aanroep,
    conform invariant 1.
 
 **Bij het aanmaken van een issue:** je hoeft zelf géén `status:`-label mee te geven —
-`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`- en
-`priority:`-label mee.
+`label-issue-status.yml` zet `status: triage`. Geef wel altijd een `type:`-, `priority:`- en
+`source:`-label mee (zie "Herkomstlabel" hierboven).
 
 ### Issue-lifecycle: awaiting-release (verplicht — nooit handmatig sluiten bij een develop-merge)
 
