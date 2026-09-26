@@ -55,6 +55,14 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   lezen in plaats van aan te nemen dat hij al op een vaste plek staat.
 
 ### Changed
+- **Teambegeleiding-scherm weer toegankelijk voor alle ingelogde gebruikers (#1330).** Tot mei 2026
+  kon iedereen die ingelogd was het scherm openen en vragen doorsturen aan begeleiders. Een
+  beveiligingspatch beperkte dit toen tot beheerders alleen — een gebruiker die het menu probeerde
+  te openen kreeg toen alleen foutmeldingen. De eigenaar heeft nu expliciet het beveiligingsbesluit
+  van mei teruggedraaid: trainers, coördinatoren en leden zien nu weer de contactgegevens en kunnen
+  vragen aan de begeleiding doorsturen. Dit betekent dat namen, e-mailadressen en telefoonnummers
+  van begeleiders opnieuw zichtbaar zijn voor alle ingelogde gebruikers, niet alleen beheerders —
+  dezelfde zichtbaarheid als vóór mei 2026.
 - **"Teambegeleiding importeren" verhuisd naar Instellingen (#1322).** Het scherm
   `/teambegeleiding` toont voortaan alleen nog team selectie, contactgegevens en "vraag doorsturen"
   — de CSV-import staat op een eigen pagina onder **Instellingen → Teambegeleiding importeren**.
