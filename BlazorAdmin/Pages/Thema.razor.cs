@@ -14,11 +14,10 @@ namespace BlazorAdmin.Pages;
 /// partial class wel. De logica zelf is ongewijzigd overgenomen — dit is een verplaatsing, geen
 /// herontwerp.
 /// </remarks>
-public partial class Thema : IDisposable
+public partial class Thema : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
     [Inject] private ThemeService ThemeService { get; set; } = default!;
-    [Inject] private ClubSelectorService ClubSelector { get; set; } = default!;
 
     private ThemeDto _theme = new();
     private bool _loading = true;
@@ -38,14 +37,9 @@ public partial class Thema : IDisposable
     private string? _extractedFaviconUrl;
     private string? _extractedLogoUrl;
 
-    protected override async Task OnInitializedAsync()
-    {
-        ClubSelector.OnChange += OnClubChanged;
-        await LoadAsync();
-    }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private void OnClubChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
-    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+    protected override Task OnClubChangedAsync() => LoadAsync();
 
     private async Task LoadAsync()
     {

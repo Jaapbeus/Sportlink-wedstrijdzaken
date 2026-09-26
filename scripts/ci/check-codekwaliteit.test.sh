@@ -56,6 +56,7 @@ echo "Positieve tests (schone werkboom moet groen zijn):"
 verwacht_slagen "tier-duplicatie"      bash scripts/ci/check-tier-duplicatie.sh
 verwacht_slagen "interne duplicatie"   bash scripts/ci/check-interne-duplicatie.sh
 verwacht_slagen "blazor-codebehind"    bash scripts/ci/check-blazor-codebehind.sh
+verwacht_slagen "blazor-inline-styles" bash scripts/ci/check-blazor-inline-styles.sh
 verwacht_slagen "valkuilen"            bash scripts/ci/check-codekwaliteit-valkuilen.sh
 verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
 verwacht_slagen "regelregister"        bash scripts/ci/check-regelregister.sh
@@ -89,6 +90,16 @@ if [ -f "$proef_razor" ] && [ -f "$proef_razor.cs" ]; then
   herstel "$proef_razor"
 else
   echo "::error::Proefpagina met code-behind ontbreekt — de negatieve test is overgeslagen."
+  mislukt=$((mislukt + 1))
+fi
+
+# 2c. CSS isolation (#1329): een statische inline style op een bestaande pagina.
+if [ -f "$proef_razor" ]; then
+  printf '<div style="color:red;">proef</div>\n' >> "$proef_razor"
+  verwacht_falen "statische inline style" bash scripts/ci/check-blazor-inline-styles.sh
+  herstel "$proef_razor"
+else
+  echo "::error::Proefpagina voor de inline-style-test ontbreekt — de negatieve test is overgeslagen."
   mislukt=$((mislukt + 1))
 fi
 

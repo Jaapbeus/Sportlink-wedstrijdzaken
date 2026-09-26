@@ -8,11 +8,10 @@ namespace BlazorAdmin.Pages;
 
 /// <summary>Code-behind van <c>Dagplanning.razor</c> (#1122): planning, Gantt, veldbezetting en de
 /// Sportlink-kolom. Het Sportlink-paneel per wedstrijd is <see cref="Shared.SportlinkMatchPanel"/>.</summary>
-public partial class Dagplanning : IDisposable
+public partial class Dagplanning : ClubSelectorPageBase
 {
     [Inject] private AdminApiClient Api { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
-    [Inject] private ClubSelectorService ClubSelector { get; set; } = default!;
 
     private const int KleineAfwijkingDrempelMinuten = 15;
 
@@ -102,8 +101,8 @@ public partial class Dagplanning : IDisposable
 
     protected override void OnInitialized()
     {
+        base.OnInitialized();
         _datumDt = VolgendZaterdag().ToDateTime(TimeOnly.MinValue);
-        ClubSelector.OnChange += OnClubChanged;
     }
 
     protected override async Task OnInitializedAsync()
@@ -149,17 +148,14 @@ public partial class Dagplanning : IDisposable
         finally { _veldbezettingBezig = false; }
     }
 
-    private void OnClubChanged() => InvokeAsync(async () =>
+    protected override async Task OnClubChangedAsync()
     {
         _plan = null;
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
         await AutoPlanAsync();
-        StateHasChanged();
-    });
-
-    public void Dispose() => ClubSelector.OnChange -= OnClubChanged;
+    }
 
     private static DateOnly VolgendZaterdag()
     {
