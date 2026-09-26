@@ -636,27 +636,11 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
      30 dagen automatisch geanonimiseerd. De teller "e-mailverwerking" op de Instellingen-pagina
      telt deze verzendingen op dit moment gewoon mee — er is (nog) geen aparte detailweergave per
      bericht
-5. **Teambegeleiding importeren** — CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen
-   en een voorbeeldweergave vóór bevestiging.
-   - **Wat er met de gegevens gebeurt.** Uw browser leest het bestand in en toont een voorbeeld van
-     de eerste vijf rijen, zodat u kunt controleren of u het juiste bestand heeft. Klikt u daarna op
-     importeren, dan wordt **de volledige inhoud van de CSV naar de server gestuurd** (beveiligd,
-     alleen voor uw ingelogde sessie) en daar meteen in de database verwerkt. De persoonsgegevens
-     verlaten dus wél uw browser — dat is inherent aan een import. Het bestand zelf wordt nergens
-     op de server bewaard en de inhoud komt niet in de logbestanden; wat blijft staan zijn de
-     begeleidersgegevens in de database, plus één regel in het importlogboek met wie wanneer welk
-     bestand heeft geïmporteerd en hoeveel rijen erin zaten.
-   - **Een import vervangt de bestaande teambegeleiding van de club volledig.** Het vervangen
-     gebeurt in één keer: óf de volledige nieuwe lijst komt erin, óf er verandert niets. Een fout
-     halverwege — bijvoorbeeld een te lange teamnaam — laat de vorige lijst dus ongemoeid, en twee
-     mensen die tegelijk importeren kunnen geen half-samengevoegde lijst veroorzaken. Er wordt niets
-     samengevoegd, dus een onvolledige export herstelt u door een complete export opnieuw te
-     importeren.
-   - Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
 
 > **Menupositie:** Teambegeleiding staat bewust direct onder Dashboard in de zijbalk en als eerste tegel
 > op het dashboard — het is het meest gebruikte scherm, omdat contactgegevens hier sneller te vinden
-> zijn dan in Sportlink Club zelf (#669).
+> zijn dan in Sportlink Club zelf (#669). De CSV-import staat sinds #1322 niet meer op dit scherm,
+> zie 10a hieronder.
 
 ### API-endpoints
 
@@ -665,9 +649,47 @@ De pagina `/teambegeleiding` stelt beheerders én gebruikers met de **user-rol**
 | `GET /api/beheer/teambegeleiding` | Alle teams met begeleiding |
 | `GET /api/beheer/teambegeleiding/{team}` | Begeleiders van team (naam, rol, e-mailadres, telefoonnummer) |
 | `POST /api/beheer/teambegeleiding/doorsturen` | Doorsturen van vraag; `ontvangers` bepaalt de ontvangers (leeg → server-side coach-lookup) |
+
+Auth: `RequireAdmin()` — alleen toegankelijk voor de admin-rol. Namen, e-mailadressen en
+telefoonnummers zijn persoonsgegevens; sinds #310 (mei 2026) is dit voor alle vier
+Teambegeleiding-endpoints admin-only, ook al toonde deze sectie eerder ten onrechte
+`RequireAuthenticated()`.
+
+---
+
+## 10a. Teambegeleiding importeren (`/instellingen/teambegeleiding-import`)
+
+Losgekoppeld van de team selectie/weergave-pagina bij #1322: CSV-import is een incidentele
+beheerdersactie (vervangt de teambegeleiding van de club volledig), geen dagelijks scherm — daarom
+staat deze pagina onder Instellingen in plaats van in het hoofdmenu. Bereikbaar via
+**Instellingen → Teambegeleiding importeren** in het submenu, of via de kaart op de
+Instellingen-pagina zelf.
+
+- CSV-export uit Sportlink inlezen; het scherm bevat de exportstappen en een voorbeeldweergave vóór
+  bevestiging.
+- **Wat er met de gegevens gebeurt.** Uw browser leest het bestand in en toont een voorbeeld van
+  de eerste vijf rijen, zodat u kunt controleren of u het juiste bestand heeft. Klikt u daarna op
+  importeren, dan wordt **de volledige inhoud van de CSV naar de server gestuurd** (beveiligd,
+  alleen voor uw ingelogde sessie) en daar meteen in de database verwerkt. De persoonsgegevens
+  verlaten dus wél uw browser — dat is inherent aan een import. Het bestand zelf wordt nergens
+  op de server bewaard en de inhoud komt niet in de logbestanden; wat blijft staan zijn de
+  begeleidersgegevens in de database, plus één regel in het importlogboek met wie wanneer welk
+  bestand heeft geïmporteerd en hoeveel rijen erin zaten.
+- **Een import vervangt de bestaande teambegeleiding van de club volledig.** Het vervangen
+  gebeurt in één keer: óf de volledige nieuwe lijst komt erin, óf er verandert niets. Een fout
+  halverwege — bijvoorbeeld een te lange teamnaam — laat de vorige lijst dus ongemoeid, en twee
+  mensen die tegelijk importeren kunnen geen half-samengevoegde lijst veroorzaken. Er wordt niets
+  samengevoegd, dus een onvolledige export herstelt u door een complete export opnieuw te
+  importeren.
+- Volledige exportinstructie voor de beheerder: [ADMIN-TEAMBEGELEIDING-IMPORT.md](ADMIN-TEAMBEGELEIDING-IMPORT.md)
+
+### API-endpoint
+
+| Endpoint | Beschrijving |
+|---|---|
 | `POST /api/beheer/teambegeleiding/import` | CSV-import; vervangt alle rijen van de club |
 
-Auth: `RequireAuthenticated()` — toegankelijk voor zowel admin- als user-rol.
+Auth: `RequireAdmin()`.
 
 ---
 

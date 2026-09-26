@@ -1,0 +1,110 @@
+@page "/instellingen/teambegeleiding-import"
+@* Alle logica staat in TeambegeleidingImport.razor.cs (#1122/regel 3, code-behind sinds #1322).
+   Losgekoppeld van de team selectie/weergave-pagina (Teambegeleiding.razor) omdat dit een
+   incidentele beheerdersactie is, geen dagelijks scherm — zie issue #1322. *@
+
+<PageTitle>Teambegeleiding importeren — Admin</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Teambegeleiding importeren</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="instellingen">← Terug naar Instellingen</a>
+</div>
+
+<p class="text-muted small mb-2">
+    De volledige inhoud van de CSV gaat naar de server en wordt daar meteen in de database verwerkt.
+    Het bestand zelf wordt nergens bewaard — wat blijft staan zijn de begeleidersgegevens en één
+    regel in het importlogboek.
+</p>
+
+<div class="card bg-light border-0 mb-3" style="max-width: 640px;">
+    <div class="card-body py-2 px-3">
+        <div class="small fw-semibold mb-1">De juiste CSV exporteren uit Sportlink</div>
+        <ol class="small text-muted mb-0 ps-3">
+            <li>Log in op <a href="https://club.sportlink.com" target="_blank" rel="noopener">club.sportlink.com</a></li>
+            <li>Ga naar <strong>Personen</strong></li>
+            <li>Kies <strong>Teams</strong></li>
+            <li>Klik bij <strong>Bondsteam</strong> op <em>alles selecteren</em></li>
+            <li>Klik bij <strong>Rol binnen het team</strong> op <em>alles selecteren</em></li>
+            <li>Verwijder de <strong>Teamspeler</strong>-opties (aanvaller, keeper, middenvelder, verdediger)</li>
+            <li>Klik op <strong>Zoeken</strong></li>
+            <li>Kies <strong>Exporteren</strong> en sla het document op</li>
+            <li>Kies het opgeslagen bestand hieronder</li>
+        </ol>
+    </div>
+</div>
+
+<div class="mb-3" style="max-width: 480px;">
+    <InputFile OnChange="BestandGeselecteerdAsync" accept=".csv" class="form-control"
+               disabled="@_importBezig" />
+    <div class="alert alert-warning small mt-2 mb-0" role="alert">
+        <strong>Let op:</strong> alle gegevens worden opnieuw ingelezen en vervangen de oude gegevens
+        van deze club volledig.
+    </div>
+</div>
+
+@if (_importLeesError != null)
+{
+    <div class="alert alert-danger">@_importLeesError</div>
+}
+
+@if (_csvPreview != null && _importResultaat == null)
+{
+    <div class="card border-info mb-3">
+        <div class="card-header bg-info bg-opacity-10">
+            Voorbeeldweergave — eerste @_csvPreview.VoorbeeldRijen.Count van @_csvPreview.TotaalRijen rijen
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        @foreach (var h in _csvPreview.Headers)
+                        {
+                            <th class="small">@h</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rij in _csvPreview.VoorbeeldRijen)
+                    {
+                        <tr>
+                            @foreach (var cel in rij)
+                            {
+                                <td class="small text-nowrap">@cel</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (_importError != null)
+    {
+        <div class="alert alert-danger">@_importError</div>
+    }
+
+    <button class="btn btn-warning" @onclick="ImporteerAsync" disabled="@_importBezig">
+        @if (_importBezig)
+        {
+            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+        }
+        Importeer @_csvPreview.TotaalRijen begeleider@(_csvPreview.TotaalRijen == 1 ? "" : "s")
+    </button>
+    <button class="btn btn-link text-muted ms-2" @onclick="ResetImport">Annuleer</button>
+}
+
+@if (_importResultaat != null)
+{
+    <div class="alert alert-success">
+        <strong>Geïmporteerd:</strong> @_importResultaat.Rijen begeleider@(_importResultaat.Rijen == 1 ? "" : "s") succesvol geladen.
+        @if (_importResultaat.Waarschuwingen.Count > 0)
+        {
+            <ul class="mt-2 mb-0 small">
+                @foreach (var w in _importResultaat.Waarschuwingen)
+                {
+                    <li>@w</li>
+                }
+            </ul>
+        }
+    </div>
+}
