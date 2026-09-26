@@ -28,6 +28,13 @@
     </div>
 </div>
 
+@* #1334: direct onder de knop tonen — niet pas na de (soms hoge) Veldbezetting-kaart, waar een
+   fout anders onopgemerkt bleef. *@
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger">@_errorMessage</div>
+}
+
 @* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center gap-2">
@@ -165,11 +172,6 @@
         }
     </div>
 </div>
-
-@if (!string.IsNullOrEmpty(_errorMessage))
-{
-    <div class="alert alert-danger">@_errorMessage</div>
-}
 
 @if (_plan != null)
 {

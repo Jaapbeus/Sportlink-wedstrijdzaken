@@ -19,6 +19,12 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
+- **Dagplanning: foutmelding bij "Optimaliseer" was onvindbaar, en wedstrijden waren pas
+  bewerkbaar na een geslaagde optimalisatie (#1334).** De foutmelding stond onder de
+  Veldbezetting-kaart en bleef daardoor vaak buiten beeld; hij verschijnt nu direct onder de knop.
+  Daarnaast werd de wedstrijdenlijst (met de Sportlink-bewerkkolom) pas gevuld ná een handmatige
+  klik op "Optimaliseer" — bij het openen van de pagina en bij het wijzigen van datum of club wordt
+  nu automatisch een plan geladen, zodat er meteen iets te bekijken en te bewerken is.
 - **Meisjeswedstrijd ontbrak zonder foutmelding in de Dagplanning-tijdlijn (#1332).** Sportlink
   levert voor sommige meisjesteams de leeftijdscategorie aan als "Onder {n} Meiden" in plaats van
   "{JO|MO}{n} Meiden". Dat format werd niet herkend, waardoor de speeltijd-opzoeking faalde en de
