@@ -348,6 +348,16 @@ toewijzen, en het veld mag wijzigen. Drie dingen om te onthouden:
   wordt `IsSuccess=false` gezet (Sportlinks "opgeslagen met fouten"), ook al is de HTTP-status 200.
   De Blazor-UI biedt bewust alleen een losse tekstinvoer per positie (relatiecode/persoons-ID) —
   géén zoekfunctie, geen namen (AVG, §5).
+  **Sinds #1340 wordt die tekstinvoer voorafgevuld** met de HUIDIGE relatiecode (indien Sportlink
+  er al één had), op dezelfde manier als #1339's FieldId/FieldSize-prefill: `GET
+  .../sportlink/match/{wedstrijdcode}` geeft nu ook `scheidsrechterRelatieCode`/`ar1RelatieCode`/
+  `ar2RelatieCode` terug (`SportlinkMatch.MatchOfficials`, Planner.Shared) — uitsluitend die twee
+  velden uit `matchOfficials`, nooit naam/geboortedatum/foto-URL (zie het incident hieronder in
+  §5). Genuld door de server als de rol geen `ScheidsrechterFeatureToegestaan` heeft (dezelfde
+  #1341-gate als de toewijs-actie zelf, `SportlinkRolFeature.VoegToestemmingenToe`). **Het exacte
+  JSON-veldnaam voor de relatiecode in `matchOfficials` is, net als `OfficialsToBeAssigned`
+  hierboven, NOOIT live geverifieerd** — zie de TODO bij `SportlinkMatchOfficial.RelatieCode` en
+  §8 hieronder voor de nog niet bevestigde AVG-vraag die bij deze prefill hoort.
 - **Sinds #995 ook `PUT .../change-request` — wijzigingsverzoek datum/tijd/accommodatie, ALLEEN
   stap 1 (valideren), altijd code-gelockt:** dit is de enige mutatiesoort die een ECHTE tegenstander
   raakt (Sportlink stuurt bij bevestiging een goedkeuringsverzoek naar de tegenstander) — zie het
@@ -825,3 +835,70 @@ nog steeds niet in de code en vereist een aparte, toekomstige beslissing.
 - Epic [#986](https://github.com/Jaapbeus/Sportlink-wedstrijdzaken/issues/986) en sub-issues #987-#998
 - [`docs/ENTRA-AUTH-BEHEER.md`](ENTRA-AUTH-BEHEER.md) — rolbeheer en N-user-test
 - [`docs/ARCHITECTUUR-DATABASE-TIERS.md`](ARCHITECTUUR-DATABASE-TIERS.md) — tier-bouwvolgorde; §4.2 hierboven legt uit waarom `SportlinkClubClient` wél in `Planner.Shared` zit maar de tokenopslag per tier verschilt
+
+## 8. Openstaande DPO-vraag — relatiecode-prefill (#1340), VOORSTEL nog niet bevestigd door eigenaar
+
+> **Dit is een VOORSTEL, GEEN besluit.** De eigenaar heeft op 2026-09-26 expliciet gevraagd om de
+> implementatie van #1340 te starten zonder op formele bevestiging van deze drie vragen te
+> wachten ("ik test dit zelf op mijn acceptatieomgeving — laat een duidelijke TODO staan, maar je
+> mag beginnen met coderen"). Dat is toestemming om de smalle technische scope te bouwen, GEEN
+> toestemming om deze paragraaf als beantwoord te behandelen. Behandel de relatiecode tot een
+> expliciete owner-bevestiging als een indirect persoonsgegeven (AVG) en werk deze sectie pas bij
+> nadat de eigenaar zelf reageert — nooit door een aanname van een agent.
+
+**Context.** #1340 herziet de AVG-grens uit §5/§6 hierboven (`matchOfficials` bevat naam,
+geboortedatum en foto-URL, live bevestigd tijdens het incident van 2026-09-06) door PRECIES ÉÉN
+veld alsnog toe te staan: de relatiecode — een intern Sportlink-identificatienummer, geen naam —
+van scheidsrechter/AR1/AR2, uitsluitend als prefill in `SportlinkMatchPanel`'s bestaande
+tekstinvoervelden (die al vóór #1340 relatiecodes accepteerden als INVOER voor de #994-toewijzing,
+zie hierboven). Er verandert niets aan wat de app OPSLAAT: de relatiecode wordt bij elke paneel-
+weergave live bij Sportlink opgehaald (`GET .../Match`) en nergens in onze eigen database
+bewaard — precies zoals de rest van dit paneel werkt (§5: "nooit opslaan buiten wat al in onze
+eigen DB staat").
+
+### Vraag 1 — rechtsgrond
+
+**VOORSTEL:** gerechtvaardigd belang van de club bij correcte wedstrijdorganisatie (AVG art. 6 lid
+1 sub f) — dezelfde grondslag die al impliciet gold voor de relatiecode als INVOERVELD bij de
+#994-toewijzing (die bestond al vóór #1340; #1340 voegt alleen prefill toe, geen nieuwe
+verwerkingsdoel). Dit is een aanname, geen onderbouwde toets: een volledige
+gerechtvaardigd-belang-afweging (doel, noodzakelijkheid, belangenafweging tegen de official) is
+niet gemaakt en hoort bij de owner-bevestiging.
+
+### Vraag 2 — bewaartermijn
+
+**VOORSTEL:** geen aparte bewaartermijn nodig, want de relatiecode wordt niet bewaard — zie
+"Context" hierboven. Bij elke weergave van het paneel haalt de server een verse `GET .../Match`-
+respons op; er is geen cache, geen kolom, geen tabel die de relatiecode vasthoudt. Zodra Sportlink
+zelf de toewijzing wijzigt of verwijdert, verandert de eerstvolgende prefill mee. Als dit voorstel
+klopt, is er geen "bewaartermijn" in de AVG-zin — wel blijft gelden dat de relatiecode nooit
+alsnog in een cache, log-tabel of exportbestand terecht mag komen zonder dat deze vraag opnieuw
+gesteld wordt.
+
+### Vraag 3 — audit-logging (`RondMutatieAfAsync`)
+
+**Gecontroleerd, geen aanname:** het NIEUWE leespad van #1340 (`GET
+/api/sportlink/match/{wedstrijdcode}`, `SportlinkMatchFunction.Get`) roept
+`ISportlinkMutationAuditService`/`RondMutatieAfAsync` helemaal niet aan — dat gebeurt uitsluitend
+in `ExecuteMutationAsync`, de gedeelde stap onder de vier PUT-mutatie-endpoints (kleedkamers, veld,
+officials, wijzigingsverzoek). De relatiecode-prefill wordt dus **niet** gelogd door dit issue.
+
+**Wat al vóór #1340 bestond en ongewijzigd blijft:** de bestaande `PUT .../officials`-mutatie
+(#994) logt via `ExecuteMutationAsync` wél een `WaardeNa` met de door de beheerder ingevoerde
+relatiecode (`OfficialToewijzingDto.PersoonId`, geserialiseerd met `JsonConvert.SerializeObject`)
+in de audit-tabel. Dat is geen nieuw gedrag van #1340 — het bestond al sinds #994 — maar volgt uit
+dezelfde constatering die de openstaande DPO-vraag stelt: als een relatiecode een indirect
+persoonsgegeven is, valt die bestaande `WaardeNa`-kolom onder dezelfde AVG-regels als de rest van
+de audit-tabel (bewaartermijn, toegangscontrole, eventueel een verwijderverzoek). **Dit is een
+bestaande situatie die #1340 blootlegt, geen regressie die #1340 veroorzaakt** — maar de
+eigenaar-bevestiging op vraag 1/2 hierboven zou logisch ook voor deze bestaande kolom moeten
+gelden, niet alleen voor de nieuwe prefill.
+
+### Samenvatting voor de eigenaar
+
+| Vraag | Voorstel | Status |
+|---|---|---|
+| Rechtsgrond | Gerechtvaardigd belang (art. 6 lid 1 sub f) | VOORSTEL, niet bevestigd |
+| Bewaartermijn | Geen — relatiecode wordt nooit opgeslagen, alleen live doorgegeven | VOORSTEL, niet bevestigd |
+| Audit-logging (nieuw leespad #1340) | Gecontroleerd: gebeurt niet | Feitelijk vastgesteld, geen aanname |
+| Audit-logging (bestaand schrijfpad #994) | Bestond al, valt onder dezelfde AVG-vraag | Feitelijk vastgesteld — vraagt alsnog om dezelfde bevestiging |

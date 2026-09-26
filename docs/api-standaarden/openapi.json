@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nTwee beveiligingsschema's:\n\n- **functionKey** — `?code=` queryparameter met de Azure **Master key**\n  (`AuthorizationLevel.Admin`). Uitsluitend voor de twee synchronisatieroutes:\n  `/postgres/sync-matches` (Postgres-tier) en `/sync-matches` (SQL Server-tier).\n  Geen enkel ander endpoint accepteert een Function key.\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle overige endpoints behalve `/health`. De rolcontrole gebeurt server-side:\n  `admin` (`EasyAuthHelper.RequireAdmin`) voor `/beheer/`, `/planner/`, `/feedback/` en\n  `/test/`; `Wedstrijdzaken` (`EasyAuthHelper.RequireWedstrijdzaken`) voor `/sportlink/`\n  (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de omgevingsvariabele\n  `WEBSITE_SITE_NAME` afwezig is.\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`. De rol `user` geeft nergens toegang:\n`EasyAuthHelper.RequireAuthenticated` is wel gedefinieerd, maar wordt nergens aangeroepen.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.5.6.0",
+    "version": "3.5.7.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -1187,6 +1187,21 @@
           "veldFeatureToegestaan": {
             "type": "boolean",
             "description": "#1341: combineer met isEditFieldAllowed hierboven."
+          },
+          "scheidsrechterRelatieCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "#1340 (VOORSTEL — DPO-vraag rechtsgrond/bewaartermijn/logging nog NIET bevestigd door\nde eigenaar, zie docs/SPORTLINK-WEB-EXTENSION.md §8): relatiecode van de huidige\nscheidsrechter, uitsluitend als Sportlink er al één had toegewezen — nooit een naam of\nander persoonsgegeven. Altijd null als scheidsrechterFeatureToegestaan hierboven false\nis (server-side genuld, ongeacht wat Sportlink teruggaf). Het Sportlink-JSON-veldnaam\nwaaruit dit gelezen wordt is NOOIT live geverifieerd — zie\nPlanner.Shared.Integrations.SportlinkClub.SportlinkMatchOfficial.RelatieCode.\n"
+          },
+          "ar1RelatieCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "#1340: relatiecode van de eerste assistent-scheidsrechter — zie scheidsrechterRelatieCode hierboven voor de volledige toelichting en de gate."
+          },
+          "ar2RelatieCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "#1340: relatiecode van de tweede assistent-scheidsrechter — zie scheidsrechterRelatieCode hierboven voor de volledige toelichting en de gate."
           }
         }
       },
@@ -4519,7 +4534,7 @@
         ],
         "operationId": "getSportlinkMatch",
         "summary": "Read-only wedstrijdgegevens uit Sportlink Club (#991, epic",
-        "description": "Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie\n`public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss\n— #987) en haalt daarmee het niet-persoonsgebonden wedstrijdobject op bij Sportlink Club.\nUitsluitend lezen — geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of\nin plaats van admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.\n",
+        "description": "Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie\n`public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss\n— #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —\ngeen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of in plaats van\nadmin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat. Bevat sinds #1340\n(VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de\nrelatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op \"verder\nniet-persoonsgebonden\" — nooit een naam of ander persoonsgegeven.\n",
         "security": [
           {
             "easyAuth": []

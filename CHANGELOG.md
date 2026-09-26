@@ -30,6 +30,15 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   laat een beheerder deze drie acties onafhankelijk aan/uit zetten voor de Wedstrijdzaken-rol.
   Admin heeft dit altijd aan. De server weigert een uitgeschakelde actie ook als de knop in de UI
   omzeild wordt.
+- **Sportlink-wedstrijdpaneel: relatiecode van scheidsrechter/AR1/AR2 nu voorafgevuld, indien al
+  bekend bij Sportlink (#1340).** De invoervelden voor het toewijzen van scheidsrechters stonden
+  altijd leeg, ook als Sportlink al een scheidsrechter/AR1/AR2 had geregistreerd. Ze tonen nu de
+  huidige relatiecode als voorstel — geen naam, alleen het interne Sportlink-identificatienummer —
+  en blijven vrij overschrijfbaar. Alleen zichtbaar voor een rol die scheidsrechters mag toewijzen
+  (dezelfde instelling als #1341). **Nog niet definitief:** het exacte veld in Sportlinks eigen
+  respons is nog niet door de eigenaar live geverifieerd, en de bijbehorende AVG-vraag
+  (rechtsgrond/bewaartermijn/logging) staat nog open als voorstel — zie
+  `docs/SPORTLINK-WEB-EXTENSION.md` §8.
 
 ### Fixed
 - **Donkere weergave paste alleen de merkkleuren toe, niet de rest van het scherm (#1348).**

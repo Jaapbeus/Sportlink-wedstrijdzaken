@@ -51,6 +51,15 @@ public partial class SportlinkMatchPanel
             // een ander veld kiezen.
             _veldFieldId = _info?.FieldId;
             _veldFieldSize = _info?.FieldSize;
+
+            // #1340 (VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md):
+            // prefill met de huidige relatiecode i.p.v. de velden leeg te laten. De server heeft ze
+            // al genuld als de rol geen ScheidsrechterFeatureToegestaan heeft (SportlinkRolFeature.
+            // VoegToestemmingenToe), dus hier is geen extra gate nodig — net als bij #1339's
+            // FieldId/FieldSize hierboven blijven de velden vrij overschrijfbaar.
+            _officialScheidsrechter = _info?.ScheidsrechterRelatieCode;
+            _officialAr1 = _info?.Ar1RelatieCode;
+            _officialAr2 = _info?.Ar2RelatieCode;
         }
         else _laadFout = result.ErrorMessage ?? "Onbekende fout bij ophalen Sportlink-gegevens.";
     }

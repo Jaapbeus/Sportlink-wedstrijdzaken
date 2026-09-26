@@ -30,7 +30,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.5.6.0
+  version: 3.5.7.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -960,6 +960,25 @@ components:
         veldFeatureToegestaan:
           type: boolean
           description: "#1341: combineer met isEditFieldAllowed hierboven."
+        scheidsrechterRelatieCode:
+          type: string
+          nullable: true
+          description: |
+            #1340 (VOORSTEL — DPO-vraag rechtsgrond/bewaartermijn/logging nog NIET bevestigd door
+            de eigenaar, zie docs/SPORTLINK-WEB-EXTENSION.md §8): relatiecode van de huidige
+            scheidsrechter, uitsluitend als Sportlink er al één had toegewezen — nooit een naam of
+            ander persoonsgegeven. Altijd null als scheidsrechterFeatureToegestaan hierboven false
+            is (server-side genuld, ongeacht wat Sportlink teruggaf). Het Sportlink-JSON-veldnaam
+            waaruit dit gelezen wordt is NOOIT live geverifieerd — zie
+            Planner.Shared.Integrations.SportlinkClub.SportlinkMatchOfficial.RelatieCode.
+        ar1RelatieCode:
+          type: string
+          nullable: true
+          description: "#1340: relatiecode van de eerste assistent-scheidsrechter — zie scheidsrechterRelatieCode hierboven voor de volledige toelichting en de gate."
+        ar2RelatieCode:
+          type: string
+          nullable: true
+          description: "#1340: relatiecode van de tweede assistent-scheidsrechter — zie scheidsrechterRelatieCode hierboven voor de volledige toelichting en de gate."
 
     SportlinkMutationResponse:
       type: object
@@ -3481,9 +3500,12 @@ paths:
       description: |
         Zoekt het `PublicMatchId` van deze wedstrijd op (gecached, zie
         `public.sportlinkpublicmatchidcache`; reverse-lookup bij Sportlink zelf bij een cache-miss
-        — #987) en haalt daarmee het niet-persoonsgebonden wedstrijdobject op bij Sportlink Club.
-        Uitsluitend lezen — geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of
-        in plaats van admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat.
+        — #987) en haalt daarmee het wedstrijdobject op bij Sportlink Club. Uitsluitend lezen —
+        geen enkele mutatie. Vereist de Entra-approl `Wedstrijdzaken` (naast of in plaats van
+        admin, zie #988 Besluit 1) en dat `SportlinkExtensionEnabled` aan staat. Bevat sinds #1340
+        (VOORSTEL, DPO-vraag nog niet bevestigd — zie docs/SPORTLINK-WEB-EXTENSION.md §8) ook de
+        relatiecode van scheidsrechter/AR1/AR2 als PRECIES ÉÉN uitzondering op "verder
+        niet-persoonsgebonden" — nooit een naam of ander persoonsgegeven.
       security:
         - easyAuth: []
       parameters:
