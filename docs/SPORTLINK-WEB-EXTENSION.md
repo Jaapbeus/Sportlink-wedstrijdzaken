@@ -73,7 +73,7 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
 
 ### 3.1 Inschakelen
 De extensie heeft sinds #1122 een **eigen scherm**: Instellingen → kaart "Sportlink Web Extension"
-→ **Openen**, of via het menu Instellingen → Sportlink Web Extension (route
+→ **Openen**, of via het menu Instellingen → Sportlink Ext. (route
 `/sportlink-extension-settings`, `BlazorAdmin/Pages/SportlinkExtensieInstellingen.razor`). Alle
 schakelaars en knoppen uit deze paragraaf staan op dát scherm — op de Instellingen-pagina zelf
 staat alleen nog de kaart met de Openen-knop.
@@ -566,8 +566,9 @@ test getriggerd wordt:
 
 ## 5. Risico's en beperkingen
 
-- **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Oefenwedstrijd aanmaken" staan alleen in
-  het menu als de extensie aan staat (`ClubSelectorService.SportlinkExtensionEnabled`, gevuld door
+- **Menu-zichtbaarheid (#1122):** "Wijzigingsverzoeken" en "Wedstrijden" (menu-item voor het scherm
+  "Oefenwedstrijd aanmaken", #1321) staan alleen in het menu als de extensie aan staat
+  (`ClubSelectorService.SportlinkExtensionEnabled`, gevuld door
   NavMenu bij laden/clubwissel en bijgewerkt door de instellingenpagina na opslaan). Een directe
   URL werkt nog wel; de API antwoordt dan 409 "Sportlink Web Extension staat uit."
 

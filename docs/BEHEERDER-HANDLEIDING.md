@@ -582,14 +582,15 @@ Boven elk scherm staat een smalle balk met, van links naar rechts:
 
 De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **Dagplanning**,
 **Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
-hieronder) **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken**, en tot slot het uitklapbare menu
+hieronder) **Wijzigingsverzoeken** en **Wedstrijden**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Voorkeurstijden*,
-*E-mailtemplates*, *Thema* en *Sportlink Web Extension*.
+*E-mailtemplates*, *Thema* en *Sportlink Ext.* (het menu-item; de functie zelf heet Sportlink Web
+Extension, zie §19).
 
 Drie menu-items verschijnen alleen onder een voorwaarde:
 
-- **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken** staan er alleen als de Sportlink Web
-  Extension is ingeschakeld (hoofdstuk 19).
+- **Wijzigingsverzoeken** en **Wedstrijden** (menu-item voor het scherm "Oefenwedstrijd aanmaken",
+  zie §18a) staan er alleen als de Sportlink Web Extension is ingeschakeld (hoofdstuk 19).
 - Onder het menu Instellingen komt nog het kopje **TESTMODUS** met daaronder **Testdata**; dat
   staat er alleen als AllStars FC in de club-keuzelijst is gekozen.
 
@@ -1146,7 +1147,7 @@ Per openstaand verzoek staan twee compacte knoppen:
 
 Staat dry-run aan (§19), dan wordt de actie gesimuleerd en gelogd; het scherm meldt dat expliciet.
 
-Deze pagina en "Oefenwedstrijd aanmaken" staan alleen in het menu als de Sportlink Web Extension
+Deze pagina en "Oefenwedstrijd aanmaken" (menu-item: **Wedstrijden**, zie §18a) staan alleen in het menu als de Sportlink Web Extension
 aan staat (§19); staat hij uit, dan verdwijnen beide menu-items en toont de Dagplanning geen
 Sportlink-kolom. Deze pagina is onderdeel van de Sportlink Web Extension (zie §19) en vereist dus dat die feature
 is ingeschakeld en gekoppeld voor de rol die deze acties uitvoert.
@@ -1189,7 +1190,7 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
 
-U opent dit scherm via **Instellingen → Sportlink Web Extension** in de zijbalk, of via de knop
+U opent dit scherm via **Instellingen → Sportlink Ext.** in de zijbalk, of via de knop
 **Openen →** op de doorverwijskaart onderaan de Instellingen-pagina. De instellingen staan sinds
 #1122 dus niet meer op Instellingen zelf.
 
