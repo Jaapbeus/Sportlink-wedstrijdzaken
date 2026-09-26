@@ -210,7 +210,10 @@ De beveiliging werkt in lagen. Elke laag is een onafhankelijke blokkade. Als é�
 
 Bij elke `git commit` en `git push` draaien automatisch:
 - **PII-scan**: zoekt naar telefoonnummers, e-mailadressen en ledencodes in de staged bestanden
-- **Gitleaks** (indien geïnstalleerd): diepere scan op wachtwoorden en tokens
+- **Gitleaks** (indien geïnstalleerd): diepere scan op wachtwoorden en tokens — uitsluitend over de
+  commits die de push toevoegt (`--log-opts`), niet over de volledige geschiedenis. Zo blijft dit
+  gelijk aan wat `gitleaks-action` in de CI-job hieronder al doet, en blokkeert een reeds bekende,
+  historische bevinding (zie #1204) niet elke volgende, op zichzelf schone push (#1314)
 
 Instellen (eenmalig per machine):
 ```bash
