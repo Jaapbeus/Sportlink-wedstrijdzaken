@@ -56,6 +56,20 @@ public static class SportlinkRolFeature
         payload["kleedkamersFeatureToegestaan"] = toestemmingen.Kleedkamers;
         payload["scheidsrechterFeatureToegestaan"] = toestemmingen.Scheidsrechter;
         payload["veldFeatureToegestaan"] = toestemmingen.Veld;
+
+        // #1340: dezelfde gate als de "scheidsrechter toewijzen"-actie hierboven — mag een rol
+        // geen scheidsrechter toewijzen, dan mag hij ook de HUIDIGE relatiecode niet zien. Zonder
+        // deze regel zou de server-side blokkade van de mutatie-actie (zie SportlinkMatchFunction.
+        // ExecuteMutationAsync) omzeild kunnen worden door alleen de GET-respons uit te lezen.
+        // SportlinkMatch.ScheidsrechterRelatieCode/Ar1RelatieCode/Ar2RelatieCode serialiseren altijd
+        // mee (geen [JsonIgnore]) — deze gate is dus de ENE plek die ze weer verwijdert.
+        if (!toestemmingen.Scheidsrechter)
+        {
+            payload["scheidsrechterRelatieCode"] = null;
+            payload["ar1RelatieCode"] = null;
+            payload["ar2RelatieCode"] = null;
+        }
+
         return payload;
     }
 }

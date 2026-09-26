@@ -83,6 +83,15 @@ public class SportlinkMatchInfoDto
     public bool KleedkamersFeatureToegestaan { get; set; }
     public bool ScheidsrechterFeatureToegestaan { get; set; }
     public bool VeldFeatureToegestaan { get; set; }
+
+    // #1340 (VOORSTEL — DPO-vraag nog niet bevestigd door de eigenaar, zie
+    // docs/SPORTLINK-WEB-EXTENSION.md): relatiecode van de huidige official per positie, alleen
+    // gevuld als Sportlink al een official had toegewezen. De server nult deze drie velden altijd
+    // naar null als ScheidsrechterFeatureToegestaan hierboven false is (SportlinkRolFeature.
+    // VoegToestemmingenToe) — dus géén extra client-side gate nodig, maar wél nooit weglaten.
+    public string? ScheidsrechterRelatieCode { get; set; }
+    public string? Ar1RelatieCode { get; set; }
+    public string? Ar2RelatieCode { get; set; }
 }
 
 /// <summary>#1339: spiegelt Planner.Shared.Integrations.SportlinkClub.SportlinkVeldOptie.</summary>
