@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using FunctionApp.Postgres.Admin;
 using FunctionApp.Postgres.Infrastructure;
 
 namespace FunctionApp.Postgres.Sync;
@@ -68,63 +69,78 @@ public static class SyncFunction
     /// wedstrijden vanaf de start van het opgegeven seizoensjaar t/m het einde van het huidige
     /// seizoen. Zelfde gedrag als een ontbrekende/onparseerbare <c>season</c>-param bij het
     /// SQL Server-origineel: valt dan stil terug op de standaardmodus (fromWeekOffset = -1).
+    /// <para>
+    /// <b>Autorisatie (#1350):</b> Easy Auth + rol <c>admin</c> via <see cref="AdminEndpoint.ExecuteAsync"/>,
+    /// zoals elk ander beheerendpoint. Tot #1350 was dit het enige endpoint achter een Azure
+    /// Function-<em>master key</em> (<c>AuthorizationLevel.Admin</c>): één statisch geheim zonder
+    /// identiteit of audittrail, dat bovendien de volledige Function App beheert. Er bestond geen
+    /// geautomatiseerde aanroeper die van die sleutel afhing — de nachtelijke sync is een
+    /// timer-trigger in hetzelfde proces, en de deploy-smoketest bewees juist dat een key
+    /// <em>geen</em> toegang geeft. De clubcode uit de wrapper wordt bewust genegeerd: een sync
+    /// geldt altijd de primaire club uit <c>public.appsettings</c>, nooit de democlub uit de
+    /// GUI-clubswitcher.
+    /// </para>
     /// </summary>
     [Function("PostgresSyncMatchesHttp")]
-    public static async Task<IActionResult> SyncMatchesHttp(
-        [HttpTrigger(AuthorizationLevel.Admin, "get", Route = "postgres/sync-matches")] HttpRequest req,
+    public static Task<IActionResult> SyncMatchesHttp(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "postgres/sync-matches")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("PostgresSyncMatchesHttp");
-        log.LogInformation("HTTP trigger PostgresSyncMatchesHttp uitgevoerd om: {Now}", DateTime.UtcNow);
-
-        var isReset = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
-        string? seasonParam = req.Query["season"];
-
-        try
-        {
-            await PostgresSystemUtilities.WaitForDatabaseAsync(log);
-
-            // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
-            await PostgresSeasonHelper.EnsureSeasonsAsync(log);
-            var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            var fromWeekOffset = -1;
-
-            if (isReset && int.TryParse(seasonParam, out var seasonStartYear))
+        return AdminEndpoint.ExecuteAsync(req, log, "handmatige Sportlink-sync",
+            async _ =>
             {
-                fromWeekOffset = await PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
-                log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
-                    seasonStartYear, fromWeekOffset, toWeekOffset);
-            }
-            else
-            {
-                log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
-            }
+                log.LogInformation("HTTP trigger PostgresSyncMatchesHttp uitgevoerd om: {Now}", DateTime.UtcNow);
 
-            var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
-            if (gedeeltelijkMislukt)
-            {
-                // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
-                // bijgewerkt. 207 maakt het verschil zichtbaar zonder de geslaagde deelstappen weg
-                // te gooien.
-                return new ObjectResult(new
+                var isReset = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
+                string? seasonParam = req.Query["season"];
+
+                // Eigen catch naast de wrapper: de automatische foutrapportage (#1268) hoort bij dit
+                // endpoint en niet bij de generieke 500 van de wrapper.
+                try
                 {
-                    status = "gedeeltelijk mislukt",
-                    weekOffsetFrom = fromWeekOffset,
-                    weekOffsetTo = toWeekOffset,
-                    melding = "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. "
-                              + "Zie het functielog voor de betrokken fase(s)."
-                })
-                { StatusCode = StatusCodes.Status207MultiStatus };
-            }
-            return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "PostgresSyncMatchesHttp fout");
-            // #1268: tegenhanger van de SQL Server-tier (FunctionApp/Function1.cs, SyncMatchesHttp).
-            await FoutRapportage.RapporteerAsync(ex, "PostgresSyncMatchesHttp", log);
-            return new StatusCodeResult(500);
-        }
+                    // #861: rol public.season zo nodig door vóór het venster gelezen wordt.
+                    await PostgresSeasonHelper.EnsureSeasonsAsync(log);
+                    var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                    var fromWeekOffset = -1;
+
+                    if (isReset && int.TryParse(seasonParam, out var seasonStartYear))
+                    {
+                        fromWeekOffset = await PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
+                        log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
+                            seasonStartYear, fromWeekOffset, toWeekOffset);
+                    }
+                    else
+                    {
+                        log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+                    }
+
+                    var gedeeltelijkMislukt = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
+                    if (gedeeltelijkMislukt)
+                    {
+                        // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
+                        // bijgewerkt. 207 maakt het verschil zichtbaar zonder de geslaagde deelstappen weg
+                        // te gooien.
+                        return new ObjectResult(new
+                        {
+                            status = "gedeeltelijk mislukt",
+                            weekOffsetFrom = fromWeekOffset,
+                            weekOffsetTo = toWeekOffset,
+                            melding = "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. "
+                                      + "Zie het functielog voor de betrokken fase(s)."
+                        })
+                        { StatusCode = StatusCodes.Status207MultiStatus };
+                    }
+                    return new OkObjectResult($"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "PostgresSyncMatchesHttp fout");
+                    // #1268: tegenhanger van de SQL Server-tier (FunctionApp/Function1.cs, SyncMatchesHttp).
+                    await FoutRapportage.RapporteerAsync(ex, "PostgresSyncMatchesHttp", log);
+                    return new StatusCodeResult(500);
+                }
+            });
     }
 
     /// <summary>Geeft terug of er deelstappen zijn mislukt (#1081).</summary>

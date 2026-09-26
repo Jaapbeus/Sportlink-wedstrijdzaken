@@ -449,14 +449,14 @@ van 0 minuten gaf stilzwijgend een lege reservering.
 
 | Endpoint | Poort | Toelichting |
 |----------|-------|-------------|
-| Alle elf `planner/*`-endpoints, inclusief `populate-sunset` | Easy Auth + rol `admin` | De `HttpTrigger` staat op `AuthorizationLevel.Anonymous`; de autorisatie loopt via `EasyAuthHelper.RequireAdmin()`, niet via een function key. Op de SQL Server-tier zit die aanroep in de gedeelde `HandleAsync`-wrapper (`FunctionApp/Planner/PlannerFunction.cs`), op de Postgres-tier staat hij elf keer, één per endpoint |
-| `sync-matches` | Function-key (`AuthorizationLevel.Admin`) | Sportlink-sync, alleen handmatig door de coördinator. Op de Postgres-tier heet de route `postgres/sync-matches` |
+| Alle elf `planner/*`-endpoints, inclusief `populate-sunset` | Easy Auth + rol `admin` | De `HttpTrigger` staat op `AuthorizationLevel.Anonymous`; de autorisatie loopt via `EasyAuthHelper.RequireAdmin()`, niet via een function key. Op beide tiers via `AdminEndpoint.ExecuteAsync` (#1350; tot dan een eigen `HandleAsync`-wrapper op SQL Server en elf losse aanroepen op Postgres) |
+| `sync-matches` | Easy Auth + rol `admin` (sinds #1350; tot dan een Function master key) | Sportlink-sync, alleen handmatig door de coördinator. Op de Postgres-tier heet de route `postgres/sync-matches` |
 | `health` | Anoniem | Bewust publiek; geeft geen foutdetails prijs |
 
 ### Bescherming tegen misbruik
 
 - Zonder geldig Bearer-token of zonder de rol `admin` → 401/403 (geen verwerking, geen kosten)
-- De master/function key van `sync-matches` werkt als een wachtwoord — nooit delen
+- Sinds #1350 accepteert geen enkel endpoint nog een Function key of Master key
 - Server is de waarheid: de Blazor-rolgate is UX, `RequireAdmin()` is de datagrens
 
 ---

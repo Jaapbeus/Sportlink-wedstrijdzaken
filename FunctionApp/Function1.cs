@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using SportlinkFunction.Admin;
 using SportlinkFunction.Infrastructure;
 using static SportlinkFunction.SystemUtilities;
 
@@ -57,54 +58,68 @@ namespace SportlinkFunction
         /// Default (geen params): vorige week t/m einde seizoen.
         /// Reset mode: GET /api/sync-matches?reset=true&amp;season=2024
         ///   Downloads all matches from the start of the given season year through end of current season.
+        /// <para>
+        /// <b>Autorisatie (#1350):</b> Easy Auth + rol <c>admin</c> via <see cref="AdminEndpoint.ExecuteAsync"/>,
+        /// zoals elk ander beheerendpoint. Tot #1350 was dit het enige endpoint achter een Azure
+        /// Function-<em>master key</em> (<c>AuthorizationLevel.Admin</c>): één statisch geheim zonder
+        /// identiteit of audittrail, dat bovendien de volledige Function App beheert. Er bestond geen
+        /// geautomatiseerde aanroeper die van die sleutel afhing — de nachtelijke sync is een
+        /// timer-trigger in hetzelfde proces, en de deploy-smoketest bewees juist dat een key
+        /// <em>geen</em> toegang geeft. De clubcode uit de wrapper wordt bewust genegeerd: een sync
+        /// geldt altijd de primaire club uit <c>dbo.AppSettings</c>, nooit de democlub uit de
+        /// GUI-clubswitcher.
+        /// </para>
         /// </summary>
         [Function("SyncMatchesHttp")]
-        public static async Task<IActionResult> SyncMatchesHttp(
-            [HttpTrigger(AuthorizationLevel.Admin, "get", Route = "sync-matches")] HttpRequest req,
+        public static Task<IActionResult> SyncMatchesHttp(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "sync-matches")] HttpRequest req,
             FunctionContext context)
         {
             var log = context.GetLogger("SyncMatchesHttp");
-            log.LogInformation("HTTP trigger SyncMatchesHttp executed at: {Now}", DateTime.UtcNow);
-
-            try
-            {
-                await WaitForDatabaseAsync(log);
-                await AppSettings.LoadSettingsAsync(log);
-
-                string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
-                if (string.IsNullOrEmpty(sportlinkApiUrl))
+            return AdminEndpoint.ExecuteAsync(req, log, "handmatige Sportlink-sync",
+                async _ =>
                 {
-                    log.LogError("sportlinkApiUrl is not configured.");
-                    return new StatusCodeResult(500);
-                }
-                string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
+                    log.LogInformation("HTTP trigger SyncMatchesHttp executed at: {Now}", DateTime.UtcNow);
 
-                bool   isReset    = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
-                string? seasonParam = req.Query["season"];
+                    // Eigen catch naast de wrapper: de automatische foutrapportage hoort bij dit
+                    // endpoint en niet bij de generieke 500 van de wrapper.
+                    try
+                    {
+                        string? sportlinkApiUrl = AppSettings.GetSetting("sportlinkApiUrl");
+                        if (string.IsNullOrEmpty(sportlinkApiUrl))
+                        {
+                            log.LogError("sportlinkApiUrl is not configured.");
+                            return new StatusCodeResult(500);
+                        }
+                        string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
 
-                int toWeekOffset   = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                int fromWeekOffset = -1;
+                        bool   isReset    = string.Equals(req.Query["reset"], "true", StringComparison.OrdinalIgnoreCase);
+                        string? seasonParam = req.Query["season"];
 
-                if (isReset && int.TryParse(seasonParam, out int seasonStartYear))
-                {
-                    fromWeekOffset = await SeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
-                    log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
-                        seasonStartYear, fromWeekOffset, toWeekOffset);
-                }
-                else
-                {
-                    log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
-                }
+                        int toWeekOffset   = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                        int fromWeekOffset = -1;
 
-                await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
-                return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "SyncMatchesHttp fout");
-                await FoutRapportage.RapporteerAsync(ex, "SyncMatchesHttp", log);
-                return new StatusCodeResult(500);
-            }
+                        if (isReset && int.TryParse(seasonParam, out int seasonStartYear))
+                        {
+                            fromWeekOffset = await SeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
+                            log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
+                                seasonStartYear, fromWeekOffset, toWeekOffset);
+                        }
+                        else
+                        {
+                            log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+                        }
+
+                        await SportlinkSyncPipeline.RunSyncAsync(fromWeekOffset, toWeekOffset, sportlinkApiUrl, sportlinkClientId, log);
+                        return new OkObjectResult($"Sync completed. WeekOffset range: {fromWeekOffset} to {toWeekOffset}.");
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "SyncMatchesHttp fout");
+                        await FoutRapportage.RapporteerAsync(ex, "SyncMatchesHttp", log);
+                        return new StatusCodeResult(500);
+                    }
+                });
         }
 
         // Publieke entry-point voor SyncJobProcessor (#1138, voorheen AdminSyncFunction's fire-and-forget

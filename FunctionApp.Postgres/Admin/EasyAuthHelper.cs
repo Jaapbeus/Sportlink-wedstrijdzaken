@@ -72,7 +72,10 @@ internal static class EasyAuthHelper
 
     public static bool IsAdmin(HttpRequest req) => IsInRole(req, "admin");
 
-    public static IActionResult? RequireAuthenticated(HttpRequest req) => RequireRole(req, "admin", "user");
+    // RequireAuthenticated ("admin" óf "user") is bij #1350 verwijderd: het werd op geen van beide
+    // tiers aangeroepen sinds #310 de teambegeleiding-endpoints admin-only maakte. De rol "user"
+    // geeft dus nergens API-toegang — een ongebruikte poort die ruimer is dan alle gebruikte, is
+    // een uitnodiging om hem per ongeluk te pakken.
 
     // #988: aanvullende, functionele rol (naast admin/user) voor Sportlink Web Extension-mutaties
     // (epic #986) — zie docs/ONDERZOEK-SPORTLINK-CLUB-SCHRIJFACTIES.md §6.

@@ -89,6 +89,14 @@ jobs:
       - name: Tier-pariteit — zelfde routes op beide tiers
         run: bash scripts/ci/check-tier-pariteit.sh
 
+      # #1350: elk HTTP-endpoint autoriseert via AdminEndpoint.ExecuteAsync (of de Sportlink-
+      # wrapper die daarop uitkomt) — nooit via een losse EasyAuthHelper.RequireAdmin-aanroep, en
+      # nooit achter een Function key. Tot #1350 bestonden drie patronen naast elkaar; de 31
+      # endpoints met een eigen poort hadden geen enkele test die dat bewaakte. Uitzonderingen
+      # staan met reden in scripts/ci/endpoint-autorisatie-allowlist.txt. Geen database, geen secrets.
+      - name: Autorisatie — elk HTTP-endpoint via de wrapper
+        run: bash scripts/ci/check-endpoint-autorisatie.sh
+
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-
       # casing hierboven (#825). Geen database, geen secrets.

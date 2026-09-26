@@ -22,26 +22,29 @@ van jouw deployment; zie `servers` in `docs/api-standaarden/openapi.yaml`.
 
 ## Beveiliging
 
-Vier beveiligingsniveaus:
+Drie beveiligingsniveaus:
 
 | Niveau | Sleutel | Wie | Endpoints |
 |--------|---------|-----|-----------|
 | **Anoniem** | geen | iedereen | `GET /api/health` |
-| **Master key** | `?code=` queryparameter met de Azure **Master key** (`AuthorizationLevel.Admin`) | Timer/operator, integraties | Uitsluitend `GET /api/postgres/sync-matches` (Postgres-tier) en `GET /api/sync-matches` (SQL Server-tier) |
-| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige endpoints: `/api/beheer/*`, `/api/planner/*`, `/api/feedback/*`, `/api/test/*` |
-| **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol (`EasyAuthHelper.RequireWedstrijdzaken`) | Wedstrijdsecretariaat | Alle `/api/sportlink/*` (op de SQL Server-tier bovendien óók de `admin`-rol) |
+| **Admin** | Easy Auth Bearer + `admin`-rol (`EasyAuthHelper.RequireAdmin`) | Alleen coördinator | Alle overige endpoints: `/api/beheer/*`, `/api/planner/*`, `/api/feedback/*`, `/api/test/*`, én `GET /api/postgres/sync-matches` / `GET /api/sync-matches` (sinds #1350) |
+| **Wedstrijdzaken** | Easy Auth Bearer + `Wedstrijdzaken`-rol (`EasyAuthHelper.RequireWedstrijdzaken`) **én** de `admin`-rol (beide tiers sinds #1272; per endpoint getest sinds #1350) | Wedstrijdsecretariaat | Alle `/api/sportlink/*` |
 
-> **`AuthorizationLevel` in de trigger zegt niets over de echte poort.** Op één na staat elk
-> endpoint op `AuthorizationLevel.Anonymous` — dat betekent alleen "geen Function key". De
-> daadwerkelijke rolcontrole gebeurt in de functie zelf, via `EasyAuthHelper.RequireAdmin` /
-> `RequireWedstrijdzaken`, direct of via de wrappers `AdminEndpoint.ExecuteAsync` (default
-> `RequireAdmin`) en — op de SQL Server-tier — `PlannerFunction.HandleAsync` (`RequireAdmin`).
-> **Er is geen endpoint dat met alleen een Function key te benaderen is**, behalve de twee
-> sync-routes hierboven.
+> **`AuthorizationLevel` in de trigger zegt niets over de echte poort.** Élk endpoint staat op
+> `AuthorizationLevel.Anonymous` — dat betekent alleen "geen Function key". De daadwerkelijke
+> rolcontrole gebeurt via de centrale wrappers `AdminEndpoint.ExecuteAsync` (admin, met
+> database-toegang) en `AdminEndpoint.ExecuteZonderDatabaseAsync` (admin, zonder database — de drie
+> `/api/feedback/*`-endpoints) en, voor de Sportlink-endpoints, via
+> `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync` (Wedstrijdzaken + admin). Twee bewuste
+> uitzonderingen roepen `EasyAuthHelper.RequireAdmin` nog direct aan, vóór een eventuele
+> databaseaanroep: `POST /api/beheer/theme/extract` (een luie URL-check vóór de databaseaanroep) en
+> `GET /api/beheer/geocode` (geen database nodig) — zelfde poort, alleen zonder de databasewacht van
+> de wrapper. **Sinds #1350 accepteert geen enkel endpoint nog een Function key of Master key** —
+> ook de twee sync-routes niet meer (zie hieronder).
 >
-> `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) bestaat wel in de code, maar wordt
-> **nergens aangeroepen**. Er is dus geen endpoint waar de `user`-rol toegang geeft; een gebruiker
-> met alleen `user` krijgt overal `403`.
+> `EasyAuthHelper.RequireAuthenticated` (`admin` óf `user`) is bij #1350 verwijderd — hij werd
+> nergens aangeroepen. Er is dus geen endpoint waar de `user`-rol toegang geeft; een gebruiker met
+> alleen `user` krijgt overal `403`.
 
 Zonder token → `401 Unauthorized`. Mét geldig token maar zonder de vereiste rol → `403 Forbidden`
 met body `{ "error": "Forbidden: vereiste rol ontbreekt" }`. In beide gevallen vindt er geen
@@ -58,8 +61,8 @@ verwerking plaats.
 | Methode | Endpoint | Niveau | Beschrijving |
 |---------|----------|--------|-------------|
 | `GET` | `/health` | Anoniem | Status, versie, tier-herkomst (#863) — zie hieronder |
-| `GET` | `/postgres/sync-matches` | **Master key** (`?code=`) | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
-| `GET` | `/sync-matches` | **Master key** (`?code=`) | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
+| `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt) of `500`. Bestaat niet op de SQL Server-tier |
+| `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, zelfde parameters (`reset`, `season`). Antwoordt `200` of `500`. Bestaat niet op de Postgres-tier |
 | `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar) |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
@@ -213,8 +216,13 @@ Handmatig een Sportlink API synchronisatie starten (teams, wedstrijden, wedstrij
 | Postgres (productie) | `GET /api/postgres/sync-matches` | `FunctionApp.Postgres/Sync/SyncFunction.cs` |
 | SQL Server | `GET /api/sync-matches` | `FunctionApp/Function1.cs` |
 
-**Authenticatie:** `AuthorizationLevel.Admin` — de Azure **Master key** via `?code=`. Dit is het
-enige endpoint dat níet via Easy Auth + rolcheck loopt.
+**Authenticatie:** Easy Auth Bearer + `admin`-rol, via `AdminEndpoint.ExecuteAsync` — sinds #1350
+dezelfde poort als elk ander beheerendpoint. Vóór #1350 liep dit endpoint op
+`AuthorizationLevel.Admin` (de Azure Master key via `?code=`); die is vervallen omdat er geen
+geautomatiseerde aanroeper was die van de master key afhing — de nachtelijke sync draait als
+timer-trigger in hetzelfde proces — en een master key één statisch geheim zonder identiteit of
+audittrail is dat bovendien de hele Function App beheert. Een `?code=`-queryparameter wordt nu
+genegeerd; alleen een geldig Entra ID Bearer-token met de `admin`-rol geeft toegang.
 
 ### Queryparameters
 
@@ -226,8 +234,11 @@ enige endpoint dat níet via Easy Auth + rolcheck loopt.
 ### Voorbeeld
 
 ```
-GET /api/postgres/sync-matches?code=<master-key>
-GET /api/postgres/sync-matches?reset=true&season=2025&code=<master-key>
+GET /api/postgres/sync-matches
+Authorization: Bearer <entra-token>
+
+GET /api/postgres/sync-matches?reset=true&season=2025
+Authorization: Bearer <entra-token>
 ```
 
 ### Antwoord
@@ -236,9 +247,11 @@ GET /api/postgres/sync-matches?reset=true&season=2025&code=<master-key>
 |---|---|---|
 | `200 OK` | beide | `"Sync voltooid. WeekOffset-bereik: {from} tot {to}."` |
 | `207 Multi-Status` | **alleen Postgres** | `{ "status": "gedeeltelijk mislukt", "weekOffsetFrom": -1, "weekOffsetTo": 12, "melding": "..." }` — één of meer deelstappen zijn mislukt en `lastsynctimestamp` is bewust **niet** bijgewerkt (#1081). De geslaagde deelstappen blijven staan; het functielog noemt de betrokken fase(s) |
+| `401 Unauthorized` | beide | Geen (geldig) Bearer-token — ook een `?code=`-master key geeft dit resultaat sinds #1350 |
+| `403 Forbidden` | beide | Geldig token, maar zonder de `admin`-rol |
 | `500` | beide | Onverwachte fout; zie het functielog |
 
-De SQL Server-tier kent de `207` niet en antwoordt alleen `200` of `500`.
+De SQL Server-tier kent de `207` niet en antwoordt alleen `200`, `401`, `403` of `500`.
 
 ---
 

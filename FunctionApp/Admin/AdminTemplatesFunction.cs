@@ -18,176 +18,134 @@ namespace SportlinkFunction.Admin;
 public static class AdminTemplatesFunction
 {
     [Function("AdminTemplatesGet")]
-    public static async Task<IActionResult> Get(
+    public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/templates")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTemplatesGet");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                SELECT [Id], [TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode],
-                       [mta_inserted], [mta_modified]
-                FROM [dbo].[EmailTemplateInstellingen]
-                WHERE [ClubCode] = @ClubCode
-                ORDER BY [TemplateKey]", connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-
-            using var reader = await command.ExecuteReaderAsync();
-            var list = new List<Dictionary<string, object?>>();
-            while (await reader.ReadAsync())
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTemplatesGet"), "templates ophalen",
+            async clubCode =>
             {
-                var row = new Dictionary<string, object?>();
-                for (int i = 0; i < reader.FieldCount; i++)
-                {
-                    var name = reader.GetName(i);
-                    row[name] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                }
-                list.Add(row);
-            }
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(@"
+                    SELECT [Id], [TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode],
+                           [mta_inserted], [mta_modified]
+                    FROM [dbo].[EmailTemplateInstellingen]
+                    WHERE [ClubCode] = @ClubCode
+                    ORDER BY [TemplateKey]", connection);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
 
-            return new OkObjectResult(list);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen templates");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+                using var reader = await command.ExecuteReaderAsync();
+                var list = new List<Dictionary<string, object?>>();
+                while (await reader.ReadAsync())
+                {
+                    var row = new Dictionary<string, object?>();
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        var name = reader.GetName(i);
+                        row[name] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    }
+                    list.Add(row);
+                }
+
+                return new OkObjectResult(list);
+            });
 
     [Function("AdminTemplatesPut")]
-    public static async Task<IActionResult> Put(
+    public static Task<IActionResult> Put(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/templates/{key}")] HttpRequest req,
         string key,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTemplatesPut");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        if (string.IsNullOrWhiteSpace(key))
-            return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
-
-        try
-        {
-            using var bodyReader = new StreamReader(req.Body);
-            var bodyText = await bodyReader.ReadToEndAsync();
-            var dto = JsonConvert.DeserializeObject<TemplateRequest>(bodyText);
-            if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
-                return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
-
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            // Issue 916: upsert + auditlog-insert in één transactie, zelfde patroon als
-            // AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
-            // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
-            using var transaction = await connection.BeginTransactionAsync();
-            try
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTemplatesPut"), $"template {key} opslaan",
+            async clubCode =>
             {
-                using var command = new SqlCommand(@"
-                    MERGE [dbo].[EmailTemplateInstellingen] AS T
-                    USING (SELECT @Key AS [TemplateKey], @ClubCode AS [ClubCode]) AS S
-                      ON  T.[TemplateKey] = S.[TemplateKey] AND T.[ClubCode] = S.[ClubCode]
-                    WHEN MATCHED THEN UPDATE SET
-                        [Onderwerp] = @Onderwerp,
-                        [BodyTemplate] = @BodyTemplate,
-                        [Actief] = @Actief,
-                        [mta_modified] = GETUTCDATE()
-                    WHEN NOT MATCHED THEN INSERT
-                        ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
-                        VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);",
-                    connection, (SqlTransaction)transaction);
-                command.Parameters.AddWithValue("@Key", key);
-                command.Parameters.AddWithValue("@Onderwerp", dto.Onderwerp);
-                command.Parameters.AddWithValue("@BodyTemplate", dto.BodyTemplate);
-                command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
-                command.Parameters.AddWithValue("@ClubCode", clubCode);
-                await command.ExecuteNonQueryAsync();
+                if (string.IsNullOrWhiteSpace(key))
+                    return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
-                // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
-                // de request-body — zelfde fix als AdminSettingsFunction.Put.
-                var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
-                using var auditCmd = new SqlCommand(@"
-                    INSERT INTO [dbo].[AppSettingsAudit]
-                        ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
-                    VALUES (@GewijzigdDoor, @Veld, NULL, @NieuweWaarde, @ClubCode)",
-                    connection, (SqlTransaction)transaction);
-                auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
-                auditCmd.Parameters.AddWithValue("@Veld", $"template:{key}");
-                auditCmd.Parameters.AddWithValue("@NieuweWaarde", dto.Onderwerp);
-                auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
-                await auditCmd.ExecuteNonQueryAsync();
+                using var bodyReader = new StreamReader(req.Body);
+                var bodyText = await bodyReader.ReadToEndAsync();
+                var dto = JsonConvert.DeserializeObject<TemplateRequest>(bodyText);
+                if (dto == null || dto.Onderwerp == null || dto.BodyTemplate == null)
+                    return new BadRequestObjectResult(new { error = "Onderwerp en BodyTemplate verplicht" });
 
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                // Issue 916: upsert + auditlog-insert in één transactie, zelfde patroon als
+                // AdminSettingsFunction.Put — anders kan een fout tussen de twee statements een
+                // wél-doorgevoerde templatewijziging zonder auditrij achterlaten.
+                using var transaction = await connection.BeginTransactionAsync();
+                try
+                {
+                    using var command = new SqlCommand(@"
+                        MERGE [dbo].[EmailTemplateInstellingen] AS T
+                        USING (SELECT @Key AS [TemplateKey], @ClubCode AS [ClubCode]) AS S
+                          ON  T.[TemplateKey] = S.[TemplateKey] AND T.[ClubCode] = S.[ClubCode]
+                        WHEN MATCHED THEN UPDATE SET
+                            [Onderwerp] = @Onderwerp,
+                            [BodyTemplate] = @BodyTemplate,
+                            [Actief] = @Actief,
+                            [mta_modified] = GETUTCDATE()
+                        WHEN NOT MATCHED THEN INSERT
+                            ([TemplateKey], [Onderwerp], [BodyTemplate], [Actief], [ClubCode])
+                            VALUES (@Key, @Onderwerp, @BodyTemplate, @Actief, @ClubCode);",
+                        connection, (SqlTransaction)transaction);
+                    command.Parameters.AddWithValue("@Key", key);
+                    command.Parameters.AddWithValue("@Onderwerp", dto.Onderwerp);
+                    command.Parameters.AddWithValue("@BodyTemplate", dto.BodyTemplate);
+                    command.Parameters.AddWithValue("@Actief", dto.Actief ?? true);
+                    command.Parameters.AddWithValue("@ClubCode", clubCode);
+                    await command.ExecuteNonQueryAsync();
 
-            // Cache invalideren zodat de nieuwe template direct gebruikt wordt
-            EmailTemplateService.InvalidateCache();
+                    // #1003: audit-actor komt uitsluitend uit gevalideerde Easy Auth-claims, nooit uit
+                    // de request-body — zelfde fix als AdminSettingsFunction.Put.
+                    var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
+                    using var auditCmd = new SqlCommand(@"
+                        INSERT INTO [dbo].[AppSettingsAudit]
+                            ([GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode])
+                        VALUES (@GewijzigdDoor, @Veld, NULL, @NieuweWaarde, @ClubCode)",
+                        connection, (SqlTransaction)transaction);
+                    auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
+                    auditCmd.Parameters.AddWithValue("@Veld", $"template:{key}");
+                    auditCmd.Parameters.AddWithValue("@NieuweWaarde", dto.Onderwerp);
+                    auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
+                    await auditCmd.ExecuteNonQueryAsync();
 
-            return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij opslaan template {Key}", key);
-            return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
-        }
-    }
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+
+                // Cache invalideren zodat de nieuwe template direct gebruikt wordt
+                EmailTemplateService.InvalidateCache();
+
+                return new OkObjectResult(new { templateKey = key, status = "opgeslagen" });
+            });
 
     [Function("AdminTemplatesReset")]
-    public static async Task<IActionResult> Reset(
+    public static Task<IActionResult> Reset(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/templates/{key}/reset")] HttpRequest req,
         string key,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminTemplatesReset");
-        var correlationId = EasyAuthHelper.ExtractOrCreateCorrelationId(req);
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId });
-        if (string.IsNullOrWhiteSpace(key))
-            return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminTemplatesReset"), $"template {key} resetten",
+            async clubCode =>
+            {
+                if (string.IsNullOrWhiteSpace(key))
+                    return new BadRequestObjectResult(new { error = "Template key ontbreekt" });
 
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(@"
+                    DELETE FROM [dbo].[EmailTemplateInstellingen]
+                    WHERE [TemplateKey] = @Key AND [ClubCode] = @ClubCode", connection);
+                command.Parameters.AddWithValue("@Key", key);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                var rows = await command.ExecuteNonQueryAsync();
 
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                DELETE FROM [dbo].[EmailTemplateInstellingen]
-                WHERE [TemplateKey] = @Key AND [ClubCode] = @ClubCode", connection);
-            command.Parameters.AddWithValue("@Key", key);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            var rows = await command.ExecuteNonQueryAsync();
-
-            EmailTemplateService.InvalidateCache();
-            return new OkObjectResult(new { templateKey = key, verwijderd = rows, status = "hardcoded default actief" });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij reset template {Key}", key);
-            return new ObjectResult(new { error = "Reset mislukt" }) { StatusCode = 500 };
-        }
-    }
+                EmailTemplateService.InvalidateCache();
+                return new OkObjectResult(new { templateKey = key, verwijderd = rows, status = "hardcoded default actief" });
+            });
 
     public class TemplateRequest
     {

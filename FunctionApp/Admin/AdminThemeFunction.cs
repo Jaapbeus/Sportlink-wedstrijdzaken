@@ -24,115 +24,100 @@ namespace SportlinkFunction.Admin;
 public static class AdminThemeFunction
 {
     [Function("AdminThemeGet")]
-    public static async Task<IActionResult> Get(
+    public static Task<IActionResult> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "beheer/theme")] HttpRequest req,
-        FunctionContext context)
-    {
-        var log = context.GetLogger("AdminThemeGet");
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        try
-        {
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                SELECT [ThemeColorPrimary], [ThemeColorSecondary], [ThemeColorAccent],
-                       [ThemeColorTextOnPrimary], [ThemeClubWebsiteUrl],
-                       [FaviconUrl], [LogoUrl],
-                       [ThemeColorsLightJson], [ThemeColorsDarkJson]
-                FROM [dbo].[AppSettings]
-                WHERE [ClubCode] = @ClubCode", connection);
-            command.Parameters.AddWithValue("@ClubCode", clubCode);
-            using var reader = await command.ExecuteReaderAsync();
-            if (!await reader.ReadAsync())
-                return new OkObjectResult(ThemeCore.BouwResponse(ThemeCore.Standaard));
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("AdminThemeGet"), "thema ophalen",
+            async clubCode =>
+            {
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(@"
+                    SELECT [ThemeColorPrimary], [ThemeColorSecondary], [ThemeColorAccent],
+                           [ThemeColorTextOnPrimary], [ThemeClubWebsiteUrl],
+                           [FaviconUrl], [LogoUrl],
+                           [ThemeColorsLightJson], [ThemeColorsDarkJson]
+                    FROM [dbo].[AppSettings]
+                    WHERE [ClubCode] = @ClubCode", connection);
+                command.Parameters.AddWithValue("@ClubCode", clubCode);
+                using var reader = await command.ExecuteReaderAsync();
+                if (!await reader.ReadAsync())
+                    return new OkObjectResult(ThemeCore.BouwResponse(ThemeCore.Standaard));
 
-            return new OkObjectResult(ThemeCore.BouwResponse(new ThemeWaarden(
-                Primary:        reader.IsDBNull(0) ? ThemeCore.DefaultPrimaryColor       : reader.GetString(0),
-                Secondary:      reader.IsDBNull(1) ? ThemeCore.DefaultSecondaryColor     : reader.GetString(1),
-                Accent:         reader.IsDBNull(2) ? ThemeCore.DefaultAccentColor        : reader.GetString(2),
-                TextOnPrimary:  reader.IsDBNull(3) ? ThemeCore.DefaultTextOnPrimaryColor : reader.GetString(3),
-                ClubWebsiteUrl: reader.IsDBNull(4) ? ""                                  : reader.GetString(4),
-                FaviconUrl:     reader.IsDBNull(5) ? null                                : reader.GetString(5),
-                LogoUrl:        reader.IsDBNull(6) ? null                                : reader.GetString(6),
-                LightColors:    ThemeCore.PaletUitJson(reader.IsDBNull(7) ? null : reader.GetString(7)),
-                DarkColors:     ThemeCore.PaletUitJson(reader.IsDBNull(8) ? null : reader.GetString(8)))));
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij ophalen thema");
-            return new ObjectResult(new { error = "Ophalen mislukt" }) { StatusCode = 500 };
-        }
-    }
+                return new OkObjectResult(ThemeCore.BouwResponse(new ThemeWaarden(
+                    Primary:        reader.IsDBNull(0) ? ThemeCore.DefaultPrimaryColor       : reader.GetString(0),
+                    Secondary:      reader.IsDBNull(1) ? ThemeCore.DefaultSecondaryColor     : reader.GetString(1),
+                    Accent:         reader.IsDBNull(2) ? ThemeCore.DefaultAccentColor        : reader.GetString(2),
+                    TextOnPrimary:  reader.IsDBNull(3) ? ThemeCore.DefaultTextOnPrimaryColor : reader.GetString(3),
+                    ClubWebsiteUrl: reader.IsDBNull(4) ? ""                                  : reader.GetString(4),
+                    FaviconUrl:     reader.IsDBNull(5) ? null                                : reader.GetString(5),
+                    LogoUrl:        reader.IsDBNull(6) ? null                                : reader.GetString(6),
+                    LightColors:    ThemeCore.PaletUitJson(reader.IsDBNull(7) ? null : reader.GetString(7)),
+                    DarkColors:     ThemeCore.PaletUitJson(reader.IsDBNull(8) ? null : reader.GetString(8)))));
+            });
 
     [Function("AdminThemePut")]
-    public static async Task<IActionResult> Put(
+    public static Task<IActionResult> Put(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/theme")] HttpRequest req,
         FunctionContext context)
     {
         var log = context.GetLogger("AdminThemePut");
-        var authResult = EasyAuthHelper.RequireAdmin(req);
-        if (authResult != null) return authResult;
-        try
-        {
-            var clubCode = EasyAuthHelper.GetClubCodeFromRequest(req);
-            using var sr = new StreamReader(req.Body);
-            var body = await sr.ReadToEndAsync();
-
-            ThemeUpdateRequest? dto = null;
-            try
+        return AdminEndpoint.ExecuteAsync(req, log, "thema opslaan",
+            async clubCode =>
             {
-                dto = JsonSerializer.Deserialize<ThemeUpdateRequest>(body,
-                    new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            }
-            catch { }
+                using var sr = new StreamReader(req.Body);
+                var body = await sr.ReadToEndAsync();
 
-            if (dto == null)
-                return new BadRequestObjectResult(new { error = "Ongeldige JSON." });
+                ThemeUpdateRequest? dto = null;
+                try
+                {
+                    dto = JsonSerializer.Deserialize<ThemeUpdateRequest>(body,
+                        new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                }
+                catch { }
 
-            var validatie = await ThemeCore.ValideerUpdateAsync(dto);
-            if (validatie.Status != ThemeValidatieStatus.Ok)
-                return new BadRequestObjectResult(new { error = validatie.Foutmelding });
+                if (dto == null)
+                    return new BadRequestObjectResult(new { error = "Ongeldige JSON." });
 
-            await SystemUtilities.WaitForDatabaseAsync(log);
-            using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            using var command = new SqlCommand(@"
-                UPDATE [dbo].[AppSettings]
-                SET [ThemeColorPrimary]        = @Primary,
-                    [ThemeColorSecondary]      = @Secondary,
-                    [ThemeColorAccent]         = @Accent,
-                    [ThemeColorTextOnPrimary]  = @TextOnPrimary,
-                    [ThemeClubWebsiteUrl]      = @WebsiteUrl,
-                    [FaviconUrl]               = @FaviconUrl,
-                    [LogoUrl]                  = @LogoUrl,
-                    [ThemeColorsLightJson]     = @LightJson,
-                    [ThemeColorsDarkJson]      = @DarkJson
-                WHERE [ClubCode]              = @ClubCode", connection);
-            command.Parameters.AddWithValue("@Primary",        dto.Primary       ?? ThemeCore.DefaultPrimaryColor);
-            command.Parameters.AddWithValue("@Secondary",      dto.Secondary     ?? ThemeCore.DefaultSecondaryColor);
-            command.Parameters.AddWithValue("@Accent",         dto.Accent        ?? ThemeCore.DefaultAccentColor);
-            command.Parameters.AddWithValue("@TextOnPrimary",  dto.TextOnPrimary ?? ThemeCore.DefaultTextOnPrimaryColor);
-            command.Parameters.AddWithValue("@WebsiteUrl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
-            command.Parameters.AddWithValue("@FaviconUrl",     (object?)dto.FaviconUrl     ?? DBNull.Value);
-            command.Parameters.AddWithValue("@LogoUrl",        (object?)dto.LogoUrl        ?? DBNull.Value);
-            command.Parameters.AddWithValue("@LightJson",      (object?)ThemeCore.PaletNaarJson(dto.LightColors) ?? DBNull.Value);
-            command.Parameters.AddWithValue("@DarkJson",       (object?)ThemeCore.PaletNaarJson(dto.DarkColors)  ?? DBNull.Value);
-            command.Parameters.AddWithValue("@ClubCode",       clubCode);
-            await command.ExecuteNonQueryAsync();
+                var validatie = await ThemeCore.ValideerUpdateAsync(dto);
+                if (validatie.Status != ThemeValidatieStatus.Ok)
+                    return new BadRequestObjectResult(new { error = validatie.Foutmelding });
 
-            log.LogInformation("Club-thema bijgewerkt");
-            return new OkObjectResult(new { success = true });
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "Fout bij opslaan thema");
-            return new ObjectResult(new { error = "Opslaan mislukt" }) { StatusCode = 500 };
-        }
+                using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+                using var command = new SqlCommand(@"
+                    UPDATE [dbo].[AppSettings]
+                    SET [ThemeColorPrimary]        = @Primary,
+                        [ThemeColorSecondary]      = @Secondary,
+                        [ThemeColorAccent]         = @Accent,
+                        [ThemeColorTextOnPrimary]  = @TextOnPrimary,
+                        [ThemeClubWebsiteUrl]      = @WebsiteUrl,
+                        [FaviconUrl]               = @FaviconUrl,
+                        [LogoUrl]                  = @LogoUrl,
+                        [ThemeColorsLightJson]     = @LightJson,
+                        [ThemeColorsDarkJson]      = @DarkJson
+                    WHERE [ClubCode]              = @ClubCode", connection);
+                command.Parameters.AddWithValue("@Primary",        dto.Primary       ?? ThemeCore.DefaultPrimaryColor);
+                command.Parameters.AddWithValue("@Secondary",      dto.Secondary     ?? ThemeCore.DefaultSecondaryColor);
+                command.Parameters.AddWithValue("@Accent",         dto.Accent        ?? ThemeCore.DefaultAccentColor);
+                command.Parameters.AddWithValue("@TextOnPrimary",  dto.TextOnPrimary ?? ThemeCore.DefaultTextOnPrimaryColor);
+                command.Parameters.AddWithValue("@WebsiteUrl",     (object?)dto.ClubWebsiteUrl ?? DBNull.Value);
+                command.Parameters.AddWithValue("@FaviconUrl",     (object?)dto.FaviconUrl     ?? DBNull.Value);
+                command.Parameters.AddWithValue("@LogoUrl",        (object?)dto.LogoUrl        ?? DBNull.Value);
+                command.Parameters.AddWithValue("@LightJson",      (object?)ThemeCore.PaletNaarJson(dto.LightColors) ?? DBNull.Value);
+                command.Parameters.AddWithValue("@DarkJson",       (object?)ThemeCore.PaletNaarJson(dto.DarkColors)  ?? DBNull.Value);
+                command.Parameters.AddWithValue("@ClubCode",       clubCode);
+                await command.ExecuteNonQueryAsync();
+
+                log.LogInformation("Club-thema bijgewerkt");
+                return new OkObjectResult(new { success = true });
+            });
     }
 
+    // #1350: bewust NIET via AdminEndpoint.ExecuteAsync — dat zou de databasewacht vóór de
+    // URL-vormcontrole zetten, terwijl het luie pad hieronder juist geen databaseaanroep wil doen
+    // voor een onbruikbare URL. Staat daarom, met deze reden, in
+    // scripts/ci/endpoint-autorisatie-allowlist.txt. De poort zelf is identiek.
     [Function("AdminThemeExtract")]
     public static async Task<IActionResult> Extract(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "beheer/theme/extract")] HttpRequest req,

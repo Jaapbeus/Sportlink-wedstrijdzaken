@@ -41,7 +41,7 @@ De Blazor Admin GUI (Static Web App) authenticeert tegen Entra ID via MSAL (OIDC
 | 3a | **App Roles** in manifest | `admin` en `user`, `isEnabled = true` |
 | 3b | **Optional claims** voor `roles` in het **ID-token** | `optionalClaims.idToken[]` — nooit `accessToken`, zie [de valstrik hieronder](#roles-mag-niet-in-optionalclaimsaccesstoken) |
 | 4 | **Frontend role-gate** | `App.razor` checkt `IsInRole("admin") \|\| IsInRole("user")` |
-| 5 | **Backend role-gate** | `EasyAuthHelper.RequireAdmin()` op elke admin endpoint — aanwezig in **beide** tiers: `FunctionApp.Postgres/Admin/EasyAuthHelper.cs` (productie) en `FunctionApp/Admin/EasyAuthHelper.cs` (SQL Server-tier) |
+| 5 | **Backend role-gate** | `EasyAuthHelper.RequireAdmin()` op elke admin endpoint — via de wrapper `AdminEndpoint.ExecuteAsync` (#1350) — aanwezig in **beide** tiers: `FunctionApp.Postgres/Admin/EasyAuthHelper.cs` (productie) en `FunctionApp/Admin/EasyAuthHelper.cs` (SQL Server-tier) |
 
 > **Gedicht in #1276.** De Layer 5-scan doorzocht uitsluitend `FunctionApp/Admin/` — de SQL
 > Server-tier — zodat een endpoint zonder rolcontrole in `FunctionApp.Postgres/Admin/` het script

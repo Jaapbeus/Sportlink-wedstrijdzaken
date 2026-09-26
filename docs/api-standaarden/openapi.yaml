@@ -6,22 +6,20 @@ info:
 
     ## Beveiliging
 
-    Twee beveiligingsschema's:
+    Eén beveiligingsschema:
 
-    - **functionKey** — `?code=` queryparameter met de Azure **Master key**
-      (`AuthorizationLevel.Admin`). Uitsluitend voor de twee synchronisatieroutes:
-      `/postgres/sync-matches` (Postgres-tier) en `/sync-matches` (SQL Server-tier).
-      Geen enkel ander endpoint accepteert een Function key.
     - **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist
-      voor alle overige endpoints behalve `/health`. De rolcontrole gebeurt server-side:
-      `admin` (`EasyAuthHelper.RequireAdmin`) voor `/beheer/`, `/planner/`, `/feedback/` en
-      `/test/`; `Wedstrijdzaken` (`EasyAuthHelper.RequireWedstrijdzaken`) voor `/sportlink/`
-      (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de omgevingsvariabele
-      `WEBSITE_SITE_NAME` afwezig is.
+      voor alle endpoints behalve `/health`. De rolcontrole gebeurt server-side:
+      `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /
+      `ExecuteZonderDatabaseAsync`) voor `/beheer/`, `/planner/`, `/feedback/` en `/test/` — sinds
+      #1350 óók voor `/postgres/sync-matches` en `/sync-matches`; `Wedstrijdzaken`
+      (`EasyAuthHelper.RequireWedstrijdzaken`, via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`)
+      voor `/sportlink/` (op de SQL Server-tier bovendien ook `admin`). Lokaal omzeild wanneer de
+      omgevingsvariabele `WEBSITE_SITE_NAME` afwezig is.
 
     Zonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met
     `{ "error": "Forbidden: vereiste rol ontbreekt" }`. De rol `user` geeft nergens toegang:
-    `EasyAuthHelper.RequireAuthenticated` is wel gedefinieerd, maar wordt nergens aangeroepen.
+    `EasyAuthHelper.RequireAuthenticated` is bij #1350 verwijderd.
 
     ## Tiers
 
@@ -30,7 +28,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.5.6.0
+  version: 3.5.6.1
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -44,7 +42,8 @@ servers:
 tags:
   - name: core
     description: |
-      Health (anoniem) en handmatige Sportlink-synchronisatie (Azure Master key via ?code=).
+      Health (anoniem) en handmatige Sportlink-synchronisatie (Entra ID, admin-rol — sinds #1350
+      geen Master key meer).
       De syncroute verschilt per tier: /postgres/sync-matches (Postgres) of /sync-matches (SQL Server).
   - name: planner
     description: Veldplanning, beschikbaarheidscontrole en dagplanning (vereist Entra ID authenticatie met admin-rol)
@@ -65,23 +64,18 @@ tags:
 # ─────────────────────────────────────────────────────────────────────────────
 components:
   securitySchemes:
-    functionKey:
-      type: apiKey
-      in: query
-      name: code
-      description: |
-        Azure **Master key** (`AuthorizationLevel.Admin`). Alleen geldig op `/postgres/sync-matches`
-        (Postgres-tier) en `/sync-matches` (SQL Server-tier). Alle andere endpoints staan op
-        `AuthorizationLevel.Anonymous` en negeren `?code=` volledig — daar geldt easyAuth.
     easyAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: |
-        Azure Easy Auth Bearer token (Entra ID). De Function App valideert dit token via Easy Auth
-        en injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op
-        alle /beheer/-, /planner/-, /feedback/- en /test/-endpoints, `Wedstrijdzaken` op alle
-        /sportlink/-endpoints. Lokaal altijd toegestaan als WEBSITE_SITE_NAME afwezig is.
+        Azure Easy Auth Bearer token (Entra ID). Geldt voor alle endpoints behalve `/health`,
+        inclusief `/postgres/sync-matches` en `/sync-matches` (sinds #1350 — tot dan een Function
+        key/Master key via `?code=`). De Function App valideert dit token via Easy Auth en
+        injecteert `X-MS-CLIENT-PRINCIPAL`. EasyAuthHelper controleert daarna de rol: `admin` op
+        alle /beheer/-, /planner/-, /feedback/- en /test/-endpoints (en de twee syncroutes),
+        `Wedstrijdzaken` op alle /sportlink/-endpoints. Lokaal altijd toegestaan als
+        WEBSITE_SITE_NAME afwezig is.
 
   # ───────────────────────────────────────────────────────────────────────────
   # Herbruikbare headers
@@ -2767,7 +2761,8 @@ paths:
         heet hij `/sync-matches`.
 
         Start een Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
-        Vereist de Azure Master key via `?code=` (`AuthorizationLevel.Admin`).
+        Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
+        via `?code=`, `AuthorizationLevel.Admin`).
 
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar.
@@ -2776,7 +2771,7 @@ paths:
         Mislukt één of meer deelstappen, dan volgt `207` in plaats van `200`: de geslaagde
         deelstappen blijven staan, maar `lastsynctimestamp` wordt bewust niet bijgewerkt (#1081).
       security:
-        - functionKey: []
+        - easyAuth: []
       parameters:
         - name: reset
           in: query
@@ -2822,6 +2817,8 @@ paths:
                     example: "Eén of meer deelstappen zijn mislukt; lastsynctimestamp is niet bijgewerkt. Zie het functielog voor de betrokken fase(s)."
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2835,14 +2832,15 @@ paths:
         heet hij `/postgres/sync-matches`.
 
         Start een volledige Sportlink API-synchronisatie (teams, wedstrijden, wedstrijddetails).
-        Vereist de Azure Master key via `?code=` (`AuthorizationLevel.Admin`).
+        Vereist een Entra ID Bearer token met de `admin`-rol (#1350; tot dan de Azure Master key
+        via `?code=`, `AuthorizationLevel.Admin`).
 
         - **Standaard**: vorige week t/m einde seizoen (weekOffset -1 tot seizoenEinde)
         - **Reset-modus**: `?reset=true&season=YYYY` — volledig seizoen vanaf startjaar
 
         Deze tier kent de `207`-respons van de Postgres-tier niet: alleen `200` of `500`.
       security:
-        - functionKey: []
+        - easyAuth: []
       parameters:
         - name: reset
           in: query
@@ -2867,6 +2865,8 @@ paths:
                 example: "Sync completed. WeekOffset range: -1 to 42."
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

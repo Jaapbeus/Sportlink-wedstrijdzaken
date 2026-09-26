@@ -450,9 +450,13 @@ jobs:
       - name: "Smoke test: admin endpoint beveiligd (function key → 401)"
         # #976-incident: dit endpoint bestaat onder een ander pad per tier (SQL Server:
         # /api/sync-matches, Postgres: /api/postgres/sync-matches — zie FunctionApp/Function1.cs
-        # resp. FunctionApp.Postgres/Sync/SyncFunction.cs, beide AuthorizationLevel.Admin). Een
-        # hardcoded SQL-Server-pad hier gaf een niet-gerelateerde 404 i.p.v. de bedoelde 401-check
-        # zodra de Postgres-tier gedeployed werd.
+        # resp. FunctionApp.Postgres/Sync/SyncFunction.cs). Een hardcoded SQL-Server-pad hier gaf
+        # een niet-gerelateerde 404 i.p.v. de bedoelde 401-check zodra de Postgres-tier gedeployed
+        # werd.
+        # Sinds #1350 staan beide syncroutes op AuthorizationLevel.Anonymous + AdminEndpoint.
+        # ExecuteAsync (Easy Auth + rol admin), net als elk ander beheerendpoint — een function key
+        # (of de vroegere master key) levert geen Easy Auth-principal op en krijgt dus 401. Deze
+        # stap bewijst precies dat: een key geeft geen toegang.
         env:
           FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME || vars.AZURE_FUNCTIONAPP_NAME }}
           FUNCTION_KEY: ${{ secrets.AZURE_FUNCTION_KEY }}

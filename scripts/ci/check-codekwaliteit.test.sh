@@ -62,6 +62,7 @@ verwacht_slagen "bestandsgrootte"      bash scripts/ci/check-bestandsgrootte.sh
 verwacht_slagen "regelregister"        bash scripts/ci/check-regelregister.sh
 verwacht_slagen "AGENTS.md afgeleid"   python3 scripts/ci/genereer-agents-md.py
 verwacht_slagen "tier-pariteit"        bash scripts/ci/check-tier-pariteit.sh
+verwacht_slagen "endpoint-autorisatie" bash scripts/ci/check-endpoint-autorisatie.sh
 
 echo
 echo "Negatieve tests (een overtreding moet rood zijn):"
@@ -185,6 +186,53 @@ git add -N "$proef_timer" >/dev/null 2>&1 || true
 verwacht_falen "timer op maar één tier" bash scripts/ci/check-tier-pariteit.sh
 git rm -q --cached "$proef_timer" >/dev/null 2>&1 || true
 rm -f "$proef_timer"
+
+# 6b. Endpoint-autorisatie (#1350): drie overtredingen die elk apart rood moeten zijn — een
+#     endpoint dat de poort zelf aanroept, een endpoint zonder enige poort, en een endpoint achter
+#     een Function key. Alle drie in één proefbestand; de guard hoort ze alle drie te melden, maar
+#     één is al genoeg om rood te worden. Zonder deze test zou de guard groen kunnen blijven omdat
+#     de awk-knip per [Function(...)] niets meer herkent na een onschuldig ogende wijziging.
+proef_auth="FunctionApp.Postgres/Admin/ProefAutorisatie1350.cs"
+cat > "$proef_auth" <<'CS'
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Functions.Worker;
+
+namespace FunctionApp.Postgres.Admin;
+
+internal static class ProefAutorisatie1350
+{
+    [Function("ProefDirect1350")]
+    public static IActionResult Direct(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "proef/direct")] HttpRequest req)
+    {
+        var authResult = EasyAuthHelper.RequireAdmin(req);
+        return authResult ?? new OkResult();
+    }
+
+    [Function("ProefZonderPoort1350")]
+    public static IActionResult ZonderPoort(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "proef/open")] HttpRequest req) => new OkResult();
+
+    [Function("ProefFunctionKey1350")]
+    public static Task<IActionResult> MetKey(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "proef/key")] HttpRequest req,
+        FunctionContext context) =>
+        AdminEndpoint.ExecuteAsync(req, context.GetLogger("x"), "proef", _ => Task.FromResult<IActionResult>(new OkResult()));
+}
+CS
+git add -N "$proef_auth" >/dev/null 2>&1 || true
+verwacht_falen "endpoint met eigen poort, zonder poort of achter een Function key" bash scripts/ci/check-endpoint-autorisatie.sh
+git rm -q --cached "$proef_auth" >/dev/null 2>&1 || true
+rm -f "$proef_auth"
+
+# 6c. En de allowlist zelf: een dode regel (naar een endpoint dat niet bestaat) moet rood zijn,
+#     anders groeit de lijst stilzwijgend dicht met uitzonderingen die niemand meer kan beoordelen.
+proef_allow="scripts/ci/endpoint-autorisatie-allowlist.txt"
+cp "$proef_allow" "$TMP_B"
+printf 'direct   ProefBestaatNiet1350  FunctionApp.Postgres/Admin/AdminThemeFunction.cs  dode proefregel\n' >> "$proef_allow"
+verwacht_falen "dode regel in de autorisatie-allowlist" bash scripts/ci/check-endpoint-autorisatie.sh
+cp "$TMP_B" "$proef_allow"
 
 # 7. AGENTS.md: een handmatige bewerking moet gezien worden.
 printf '\n<!-- handmatige proefbewerking -->\n' >> AGENTS.md
