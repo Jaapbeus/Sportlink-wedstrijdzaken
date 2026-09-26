@@ -212,15 +212,19 @@ public partial class Dagplanning : ClubSelectorPageBase
         finally { _bezig = false; }
     }
 
+    // Sortering staat sinds #1331 in BlazorAdmin/Services/DagplanningSortering.cs — tijd, dan de
+    // interne clubveldvolgorde (OptimaalVeldNummer). Vóór deze fix hing de zichtbare volgorde af van
+    // de volgorde in de AutoPlan-API-respons.
     private IEnumerable<AutoPlanWedstrijdItemDto> GefilterdeLijst()
     {
         if (_plan == null) return Enumerable.Empty<AutoPlanWedstrijdItemDto>();
-        return _filter switch
+        IEnumerable<AutoPlanWedstrijdItemDto> gefilterd = _filter switch
         {
             "wijzigingen" => _plan.Wedstrijden.Where(w => w.Status is "nieuw-slot" or "wijziging"),
             "probleem"    => _plan.Wedstrijden.Where(w => w.Status == "niet-inplanbaar"),
             _             => _plan.Wedstrijden
         };
+        return DagplanningSortering.Sorteer(gefilterd);
     }
 
     // ── Voorkeurstijd-weergave (#666) ──
