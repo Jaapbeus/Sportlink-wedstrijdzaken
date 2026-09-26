@@ -584,7 +584,8 @@ De zijbalk links bevat in deze volgorde: **Dashboard**, **Teambegeleiding**, **D
 **Leermomenten**, **Teamaliassen**, **Email-tester**, dan (alleen onder een voorwaarde, zie
 hieronder) **Wijzigingsverzoeken** en **Oefenwedstrijd aanmaken**, en tot slot het uitklapbare menu
 **Instellingen** met daarin *Instellingen*, *Speeltijden*, *Velden*, *Voorkeurstijden*,
-*E-mailtemplates*, *Thema* en *Sportlink Web Extension*.
+*E-mailtemplates*, *Thema* en *Sportlink Ext.* (het menu-item; de functie zelf heet Sportlink Web
+Extension, zie §19).
 
 Drie menu-items verschijnen alleen onder een voorwaarde:
 
@@ -1189,7 +1190,7 @@ Extension (§19) en vereist dat die is ingeschakeld en gekoppeld voor de rol Wed
 > [docs/SPORTLINK-WEB-EXTENSION.md](SPORTLINK-WEB-EXTENSION.md) voor de actuele stand per
 > deelfunctie vóór u hierop vertrouwt.
 
-U opent dit scherm via **Instellingen → Sportlink Web Extension** in de zijbalk, of via de knop
+U opent dit scherm via **Instellingen → Sportlink Ext.** in de zijbalk, of via de knop
 **Openen →** op de doorverwijskaart onderaan de Instellingen-pagina. De instellingen staan sinds
 #1122 dus niet meer op Instellingen zelf.
 

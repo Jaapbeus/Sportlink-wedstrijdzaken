@@ -112,6 +112,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
   schrijfwijzen meer geleerd.
 
 ### Fixed
+- **Sidebar-item "Sportlink Web Extension" liep over twee regels (#1314).** Het label onder
+  Instellingen is verkort naar "Sportlink Ext.", zodat het op één regel past — consistent met de
+  andere menu-items.
 - **Teamherkenning op de SQL Server-tier vergelijkt schrijfwijzen nu overal hoofdletterongevoelig,
   ook op een toekomstige fork met een andere databasecollatie (#1294).** Vijf plekken in drie
   bestanden vergeleken een teamnaam of alias nog rechtstreeks, in plaats van via de methode die

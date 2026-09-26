@@ -73,7 +73,7 @@ JSON-API die hun eigen React-SPA gebruikt. Staat daarom standaard **UIT** per cl
 
 ### 3.1 Inschakelen
 De extensie heeft sinds #1122 een **eigen scherm**: Instellingen → kaart "Sportlink Web Extension"
-→ **Openen**, of via het menu Instellingen → Sportlink Web Extension (route
+→ **Openen**, of via het menu Instellingen → Sportlink Ext. (route
 `/sportlink-extension-settings`, `BlazorAdmin/Pages/SportlinkExtensieInstellingen.razor`). Alle
 schakelaars en knoppen uit deze paragraaf staan op dát scherm — op de Instellingen-pagina zelf
 staat alleen nog de kaart met de Openen-knop.

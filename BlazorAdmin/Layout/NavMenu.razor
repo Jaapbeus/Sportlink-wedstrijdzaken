@@ -79,6 +79,11 @@
             </div>
         }
 
+        @* Conventie sidebar-labels (#1314): een label mag nooit op twee regels wrappen — de
+           sidebar-breedte is smal en een dubbele regel oogt inconsistent met de andere items.
+           Kies bij een lang label een korte, herkenbare afkorting (zoals "Sportlink Ext."
+           hieronder) in plaats van de volledige naam. *@
+
         @* Collapsible Instellingen submenu *@
         <div class="nav-item px-3">
             <button class="nav-link btn btn-link text-start w-100 d-flex justify-content-between align-items-center px-0 py-1"
@@ -121,7 +126,7 @@
                     </div>
                     <div class="nav-item">
                         <NavLink class="nav-link py-1" href="sportlink-extension-settings">
-                            <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Sportlink Web Extension
+                            <i class="bi bi-arrow-left-right me-1" aria-hidden="true"></i> Sportlink Ext.
                         </NavLink>
                     </div>
                 </div>
