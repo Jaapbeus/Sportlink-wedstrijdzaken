@@ -51,7 +51,7 @@ WHERE  Team      = @team
 10. Klik in de popup op **Download**
 11. De CSV wordt opgeslagen in je standaard downloadmap
 
-> De eenvoudigste route om de export daarna in te lezen is de Admin GUI: **Teambegeleiding →
+> De eenvoudigste route om de export daarna in te lezen is de Admin GUI: **Instellingen →
 > Teambegeleiding importeren**. Het PowerShell-script hieronder is het alternatief voor wie liever
 > vanaf de commandline werkt. Beide vervangen de bestaande gegevens van de club volledig.
 

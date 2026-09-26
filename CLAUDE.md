@@ -1604,5 +1604,7 @@ De `exports/` map bevat **scripts** voor data-exports. De databestanden zelf (CS
 
 **Workflow:**
 1. Download CSV via club.sportlink.com (zie [docs/ADMIN-TEAMBEGELEIDING-IMPORT.md](docs/ADMIN-TEAMBEGELEIDING-IMPORT.md) voor exacte stappen)
-2. Importeer via de Admin GUI (**Teambegeleiding → Teambegeleiding importeren**) — CSV wordt in de browser verwerkt, niets op de server opgeslagen
+2. Importeer via de Admin GUI (**Instellingen → Teambegeleiding importeren**, sinds #1322 een eigen
+   pagina) — de browser toont een voorbeeld, maar de volledige CSV-inhoud gaat naar de server en
+   wordt daar verwerkt; alleen het bestand zelf wordt nergens bewaard
 3. Alternatief vanaf de commandline: sla de CSV op in de lokale `exports/` map (nooit committen) en voer `.\exports\import-teambegeleiding-to-sql.ps1` uit

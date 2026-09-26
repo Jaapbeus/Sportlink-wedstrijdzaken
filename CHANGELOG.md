@@ -19,6 +19,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- **"Teambegeleiding importeren" verhuisd naar Instellingen (#1322).** Het scherm
+  `/teambegeleiding` toont voortaan alleen nog team selectie, contactgegevens en "vraag doorsturen"
+  — de CSV-import staat op een eigen pagina onder **Instellingen → Teambegeleiding importeren**.
+  De import zelf werkt ongewijzigd; alleen de plek in het menu is anders, omdat een CSV-import een
+  incidentele beheerdersactie is, geen dagelijks scherm.
 - **Eén stuk aansluitcode voor de Sportlink-koppeling in plaats van twee (#1271).** De SQL Server-
   en Postgres-variant van de app deelden tot nu toe geen code voor het afhandelen van een
   Sportlink-verzoek — alleen de databasevraag zelf verschilt tussen de twee, maar het aansluitwerk
