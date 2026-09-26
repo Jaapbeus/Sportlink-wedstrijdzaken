@@ -26,6 +26,11 @@
 # publiek hoeven te zijn.
 SECRET-ROTATION.md
 
+# ── Bruno API-collectie (#1354) ──────────────────────────────────────────────
+# Gegenereerd artefact (bruno-gen-collection-skill tegen docs/api-standaarden/openapi.yaml).
+# bruno-gen.json (de generatorconfig) blijft wél in git.
+/bruno/
+
 # ── Build output ──────────────────────────────────────────────────────────────
 [Dd]ebug/
 [Dd]ebugPublic/
