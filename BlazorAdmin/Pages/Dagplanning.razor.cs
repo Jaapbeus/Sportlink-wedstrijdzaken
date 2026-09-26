@@ -113,6 +113,13 @@ public partial class Dagplanning : IDisposable
         // #989: geen Sportlink-kolom/-knoppen tonen als de extension uit staat (DoD).
         var settings = await Api.GetSettingsAsync();
         _sportlinkExtensionEnabled = settings.Success && settings.Data?.SportlinkExtensionEnabled == true;
+
+        // #1334: automatisch een plan laden, zodat de wedstrijdenlijst (incl. de Sportlink-kolom
+        // met de bewerkacties) meteen zichtbaar is — vóór deze fix moest een gebruiker altijd eerst
+        // handmatig op "Optimaliseer" klikken voordat er ook maar één wedstrijd te zien of te
+        // bewerken was. De knop blijft bestaan voor een expliciete herberekening (bijv. na het
+        // wijzigen van de buffer-instelling, waar geen andere trigger voor is).
+        await AutoPlanAsync();
     }
 
     private async Task OnDatumChanged()
@@ -121,6 +128,7 @@ public partial class Dagplanning : IDisposable
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
+        await AutoPlanAsync();
     }
 
     private async Task LoadVeldbezettingAsync()
@@ -147,6 +155,7 @@ public partial class Dagplanning : IDisposable
         _errorMessage = null;
         _toepassenMelding = null;
         await LoadVeldbezettingAsync();
+        await AutoPlanAsync();
         StateHasChanged();
     });
 
