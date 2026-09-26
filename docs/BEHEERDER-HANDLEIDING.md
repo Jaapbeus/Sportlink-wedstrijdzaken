@@ -133,6 +133,12 @@ De **filterknoppen** (Alles / Wijzigingen / Probleem) gelden voor beide tabs. Fi
 "Wijzigingen", dan zie je in beide standen dezelfde selectie — dat maakt de vergelijking pas echt
 bruikbaar.
 
+De **wedstrijdenlijst** staat altijd gesorteerd op aanvangstijd, vroeg naar laat (#1331). Staan er
+meerdere wedstrijden op dezelfde tijd, dan bepaalt de veldvolgorde die voor uw club is ingesteld
+(Instellingen → Velden) de volgorde binnen die tijd — dit werkt hetzelfde ongeacht of uw velden
+namen als "Veld 1"/"Veld 2" of "A"/"B"/"C" hebben. Een wedstrijd zonder (geldige) tijd of veld
+staat altijd onderaan.
+
 De kolom **Wijziging** staat in beide tabs. In de tab Huidig is die juist het nuttigst: daar zie je
 welke wedstrijd gaat verschuiven, en met één klik op Optimaal zie je waarheen.
 
